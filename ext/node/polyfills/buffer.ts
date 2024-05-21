@@ -7,8 +7,11 @@ export {
   Buffer,
   constants,
   default,
+<<<<<<< HEAD
   isAscii,
   isUtf8,
+=======
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
   kMaxLength,
   kStringMaxLength,
   SlowBuffer,

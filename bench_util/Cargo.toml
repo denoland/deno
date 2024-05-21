@@ -2,7 +2,11 @@
 
 [package]
 name = "deno_bench_util"
+<<<<<<< HEAD
 version = "0.146.0"
+=======
+version = "0.147.0"
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

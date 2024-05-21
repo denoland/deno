@@ -2564,12 +2564,15 @@ export class ERR_HTTP_SOCKET_ASSIGNED extends NodeError {
   }
 }
 
+<<<<<<< HEAD
 export class ERR_INVALID_STATE extends NodeError {
   constructor(message: string) {
     super("ERR_INVALID_STATE", `Invalid state: ${message}`);
   }
 }
 
+=======
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
 interface UvExceptionContext {
   syscall: string;
   path?: string;
@@ -2830,7 +2833,10 @@ export default {
   ERR_INVALID_RETURN_PROPERTY,
   ERR_INVALID_RETURN_PROPERTY_VALUE,
   ERR_INVALID_RETURN_VALUE,
+<<<<<<< HEAD
   ERR_INVALID_STATE,
+=======
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
   ERR_INVALID_SYNC_FORK_INPUT,
   ERR_INVALID_THIS,
   ERR_INVALID_TUPLE,

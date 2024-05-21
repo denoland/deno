@@ -26,6 +26,10 @@ use serde::Serialize;
 use std::env;
 use std::ffi::OsString;
 use std::net::SocketAddr;
+<<<<<<< HEAD
+=======
+use std::num::NonZeroU16;
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
 use std::num::NonZeroUsize;
@@ -282,7 +286,11 @@ impl RunFlags {
 pub struct ServeFlags {
   pub script: String,
   pub watch: Option<WatchFlagsWithPaths>,
+<<<<<<< HEAD
   pub port: u16,
+=======
+  pub port: NonZeroU16,
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
   pub host: String,
 }
 
@@ -292,7 +300,11 @@ impl ServeFlags {
     Self {
       script,
       watch: None,
+<<<<<<< HEAD
       port,
+=======
+      port: NonZeroU16::new(port).unwrap(),
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
       host: host.to_owned(),
     }
   }
@@ -2463,8 +2475,13 @@ fn serve_subcommand() -> Command {
     .arg(
       Arg::new("port")
         .long("port")
+<<<<<<< HEAD
         .help("The TCP port to serve on, defaulting to 8000. Pass 0 to pick a random free port.")
         .value_parser(value_parser!(u16)),
+=======
+        .help("The TCP port to serve on, defaulting to 8000.")
+        .value_parser(value_parser!(NonZeroU16)),
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
     )
     .arg(
       Arg::new("host")
@@ -4126,7 +4143,13 @@ fn serve_parse(
   app: Command,
 ) -> clap::error::Result<()> {
   // deno serve implies --allow-net=host:port
+<<<<<<< HEAD
   let port = matches.remove_one::<u16>("port").unwrap_or(8000);
+=======
+  let port = matches
+    .remove_one::<NonZeroU16>("port")
+    .unwrap_or(NonZeroU16::new(8000).unwrap());
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
   let host = matches
     .remove_one::<String>("host")
     .unwrap_or_else(|| "0.0.0.0".to_owned());
@@ -5319,6 +5342,7 @@ mod tests {
         ..Flags::default()
       }
     );
+<<<<<<< HEAD
 
     let r = flags_from_vec(svec![
       "deno",
@@ -5345,6 +5369,8 @@ mod tests {
         ..Flags::default()
       }
     );
+=======
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
   }
 
   #[test]

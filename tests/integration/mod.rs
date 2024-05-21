@@ -60,8 +60,11 @@ mod publish;
 mod repl;
 #[path = "run_tests.rs"]
 mod run;
+<<<<<<< HEAD
 #[path = "serve_tests.rs"]
 mod serve;
+=======
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
 #[path = "shared_library_tests.rs"]
 mod shared_library_tests;
 #[path = "task_tests.rs"]

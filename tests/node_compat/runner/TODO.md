@@ -227,6 +227,11 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-buffer-constructor-outside-node-modules.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-constructor-outside-node-modules.js)
 - [parallel/test-buffer-fill.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-fill.js)
 - [parallel/test-buffer-inspect.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-inspect.js)
+<<<<<<< HEAD
+=======
+- [parallel/test-buffer-isascii.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-isascii.js)
+- [parallel/test-buffer-isutf8.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-isutf8.js)
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
 - [parallel/test-buffer-pending-deprecation.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-pending-deprecation.js)
 - [parallel/test-buffer-pool-untransferable.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-pool-untransferable.js)
 - [parallel/test-buffer-prototype-inspect.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-prototype-inspect.js)

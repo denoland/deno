@@ -1,5 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+<<<<<<< HEAD
+=======
+use std::num::NonZeroU16;
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -147,7 +151,11 @@ struct SharedWorkerState {
   disable_deprecated_api_warning: bool,
   verbose_deprecated_api_warning: bool,
   code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+<<<<<<< HEAD
   serve_port: Option<u16>,
+=======
+  serve_port: Option<NonZeroU16>,
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
   serve_host: Option<String>,
 }
 
@@ -417,7 +425,11 @@ impl CliMainWorkerFactory {
     feature_checker: Arc<FeatureChecker>,
     options: CliMainWorkerOptions,
     node_ipc: Option<i64>,
+<<<<<<< HEAD
     serve_port: Option<u16>,
+=======
+    serve_port: Option<NonZeroU16>,
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
     serve_host: Option<String>,
     enable_future_features: bool,
     disable_deprecated_api_warning: bool,

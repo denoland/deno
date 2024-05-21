@@ -186,8 +186,11 @@ deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   parameters = [P: NodePermissions],
   ops = [
+<<<<<<< HEAD
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
+=======
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
     ops::crypto::op_node_create_decipheriv,
     ops::crypto::op_node_cipheriv_encrypt,
     ops::crypto::op_node_cipheriv_final,

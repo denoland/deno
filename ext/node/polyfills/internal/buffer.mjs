@@ -6,7 +6,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
+<<<<<<< HEAD
 import { op_is_ascii, op_is_utf8 } from "ext:core/ops";
+=======
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
 
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
@@ -27,12 +30,18 @@ import {
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
+<<<<<<< HEAD
   isTypedArray,
+=======
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
 } from "ext:deno_node/internal/util/types.ts";
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { validateBuffer } from "ext:deno_node/internal/validators.mjs";
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+<<<<<<< HEAD
 import { ERR_INVALID_STATE } from "ext:deno_node/internal/errors.ts";
+=======
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
 import {
   forgivingBase64Encode,
   forgivingBase64UrlEncode,
@@ -2539,6 +2548,7 @@ export function writeU_Int24LE(buf, value, offset, min, max) {
   return offset;
 }
 
+<<<<<<< HEAD
 export function isUtf8(input) {
   if (isTypedArray(input)) {
     if (input.buffer.detached) {
@@ -2583,14 +2593,19 @@ export function isAscii(input) {
   ], input);
 }
 
+=======
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
 export default {
   atob,
   btoa,
   Blob,
   Buffer,
   constants,
+<<<<<<< HEAD
   isAscii,
   isUtf8,
+=======
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
   kMaxLength,
   kStringMaxLength,
   SlowBuffer,

@@ -52,7 +52,10 @@ hyper-util.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
 pretty_assertions.workspace = true
+<<<<<<< HEAD
 regex.workspace = true
+=======
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
 serde.workspace = true
 test_util.workspace = true
 tokio.workspace = true

@@ -179,9 +179,13 @@
       "test-buffer-includes.js",
       "test-buffer-indexof.js",
       "test-buffer-inheritance.js",
+<<<<<<< HEAD
       "test-buffer-isascii.js",
       "test-buffer-isencoding.js",
       "test-buffer-isutf8.js",
+=======
+      "test-buffer-isencoding.js",
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
       "test-buffer-iterator.js",
       "test-buffer-new.js",
       "test-buffer-no-negative-allocation.js",

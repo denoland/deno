@@ -103,7 +103,10 @@ export async function checkCopyright() {
     // show all the errors at the same time to prevent overlap with
     // other running scripts that may be outputting
     console.error(errors.join("\n"));
+<<<<<<< HEAD
     console.error(`Expected copyright:\n\`\`\`\n${COPYRIGHT_LINE}\n\`\`\``);
+=======
+>>>>>>> 7df3d5aee (1.43.6 (#23932))
     throw new Error(`Copyright checker had ${errors.length} errors.`);
   }
 }
