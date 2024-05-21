@@ -145,7 +145,7 @@ const windowOrWorkerGlobalScope = {
   [webidl.brand]: core.propNonEnumerable(webidl.brand),
 };
 
-const unstableForWindowOrWorkerGlobalScope = {};
+const unstableForWindowOrWorkerGlobalScope = { __proto__: null };
 unstableForWindowOrWorkerGlobalScope[unstableIds.broadcastChannel] = {
   BroadcastChannel: core.propNonEnumerable(broadcastChannel.BroadcastChannel),
 };

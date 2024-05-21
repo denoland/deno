@@ -591,7 +591,7 @@ function serve(arg1, arg2) {
     throw new TypeError("A handler function must be provided.");
   }
   if (options === undefined) {
-    options = {};
+    options = { __proto__: null };
   }
 
   const wantsHttps = hasTlsKeyPairOptions(options);

@@ -159,7 +159,7 @@ function chdir(directory) {
   op_fs_chdir(pathFromURL(directory));
 }
 
-function makeTempDirSync(options = {}) {
+function makeTempDirSync(options = { __proto__: null }) {
   return op_fs_make_temp_dir_sync(
     options.dir,
     options.prefix,
@@ -167,7 +167,7 @@ function makeTempDirSync(options = {}) {
   );
 }
 
-function makeTempDir(options = {}) {
+function makeTempDir(options = { __proto__: null }) {
   return op_fs_make_temp_dir_async(
     options.dir,
     options.prefix,
@@ -175,7 +175,7 @@ function makeTempDir(options = {}) {
   );
 }
 
-function makeTempFileSync(options = {}) {
+function makeTempFileSync(options = { __proto__: null }) {
   return op_fs_make_temp_file_sync(
     options.dir,
     options.prefix,
@@ -183,7 +183,7 @@ function makeTempFileSync(options = {}) {
   );
 }
 
-function makeTempFile(options = {}) {
+function makeTempFile(options = { __proto__: null }) {
   return op_fs_make_temp_file_async(
     options.dir,
     options.prefix,
@@ -245,7 +245,7 @@ function realPath(path) {
 
 function removeSync(
   path,
-  options = {},
+  options = { __proto__: null },
 ) {
   op_fs_remove_sync(
     pathFromURL(path),
@@ -255,7 +255,7 @@ function removeSync(
 
 async function remove(
   path,
-  options = {},
+  options = { __proto__: null },
 ) {
   await op_fs_remove_async(
     pathFromURL(path),
@@ -777,7 +777,7 @@ class FsFile {
     return core.isTerminal(this.#rid);
   }
 
-  setRaw(mode, options = {}) {
+  setRaw(mode, options = { __proto__: null }) {
     const cbreak = !!(options.cbreak ?? false);
     op_set_raw(this.#rid, mode, cbreak);
   }
@@ -893,7 +893,7 @@ async function readTextFile(path, options) {
 function writeFileSync(
   path,
   data,
-  options = {},
+  options = { __proto__: null },
 ) {
   options.signal?.throwIfAborted();
   op_fs_write_file_sync(
@@ -909,7 +909,7 @@ function writeFileSync(
 async function writeFile(
   path,
   data,
-  options = {},
+  options = { __proto__: null },
 ) {
   let cancelRid;
   let abortHandler;
@@ -955,7 +955,7 @@ async function writeFile(
 function writeTextFileSync(
   path,
   data,
-  options = {},
+  options = { __proto__: null },
 ) {
   const encoder = new TextEncoder();
   return writeFileSync(path, encoder.encode(data), options);
@@ -964,7 +964,7 @@ function writeTextFileSync(
 function writeTextFile(
   path,
   data,
-  options = {},
+  options = { __proto__: null },
 ) {
   if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, data)) {
     return writeFile(

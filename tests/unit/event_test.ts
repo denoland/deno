@@ -141,3 +141,14 @@ Deno.test(function inspectEvent() {
     `Event {\n  bubbles: false,\n  cancelable: false,`,
   );
 });
+
+Deno.test("default argument is null prototype", () => {
+  const event = new Event("test");
+  assertEquals(event.bubbles, false);
+
+  Object.prototype.bubbles = true;
+  const event2 = new Event("test");
+  assertEquals(event2.bubbles, false);
+
+  delete Object.prototype.bubbles;
+});
