@@ -6,15 +6,12 @@
 land until the release is finished.**
 
 - [ ] Ensure forks and local clones of:
-
-      - [`denoland/deno`](https://github.com/denoland/deno/),
-      - [`denoland/dotcom`](https://github.com/denoland/dotcom/),
-      - [`denoland/deno_docker`](https://github.com/denoland/deno_docker/),
-      - [`denoland/deno-docs`](https://github.com/denoland/deno-docs)
-
+  - [`denoland/deno`](https://github.com/denoland/deno/),
+  - [`denoland/dotcom`](https://github.com/denoland/dotcom/),
+  - [`denoland/deno_docker`](https://github.com/denoland/deno_docker/),
+  - [`denoland/deno-docs`](https://github.com/denoland/deno-docs)
 - [ ] Check https://deno.land/benchmarks?-100 and ensure there's no recent
       regressions.
-
 - [ ] Write a message in company's `#cli` channel:
 
 ```
