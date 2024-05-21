@@ -2,19 +2,20 @@
 
 ## Pre-flight
 
-- Forks and local clones of
-  [`denoland/deno`](https://github.com/denoland/deno/),
-  [`denoland/dotcom`](https://github.com/denoland/dotcom/),
-  [`denoland/deno_docker`](https://github.com/denoland/deno_docker/),
-  [`denoland/deno-docs`](https://github.com/denoland/deno-docs)
+**During this process $BRANCH_NAME branch should be frozen and no commits should
+land until the release is finished.**
 
-**During this process `main` branch (or any other branch that you're creating
-release from) should be frozen and no commits should land until the release is
-cut.**
+- [ ] Ensure forks and local clones of:
+
+      - [`denoland/deno`](https://github.com/denoland/deno/),
+      - [`denoland/dotcom`](https://github.com/denoland/dotcom/),
+      - [`denoland/deno_docker`](https://github.com/denoland/deno_docker/),
+      - [`denoland/deno-docs`](https://github.com/denoland/deno-docs)
 
 - [ ] Check https://deno.land/benchmarks?-100 and ensure there's no recent
       regressions.
-- [ ] Write a message in company's #cli channel:
+
+- [ ] Write a message in company's `#cli` channel:
 
 ```
 :lock: 
