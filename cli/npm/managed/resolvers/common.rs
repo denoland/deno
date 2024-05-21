@@ -9,6 +9,7 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::unsync::spawn;
@@ -94,9 +95,23 @@ impl RegistryReadPermissionChecker {
       let registry_path_canon = match cache.get(&self.registry_path) {
         Some(canon) => canon.clone(),
         None => {
-          let canon = self.fs.realpath_sync(&self.registry_path)?;
-          cache.insert(self.registry_path.to_path_buf(), canon.clone());
-          canon
+          match self.fs.realpath_sync(&self.registry_path) {
+            Ok(canon) => {
+              cache.insert(self.registry_path.to_path_buf(), canon.clone());
+              canon
+            }
+            Err(e) => {
+              if e.kind() == ErrorKind::NotFound {
+                return Ok(()); // root doesn't exist, so allow
+              }
+              return Err(AnyError::from(e)).with_context(|| {
+                format!(
+                  "failed canonicalizing '{}'",
+                  self.registry_path.display()
+                )
+              });
+            }
+          }
         }
       };
 
