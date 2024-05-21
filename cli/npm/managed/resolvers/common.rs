@@ -92,43 +92,31 @@ impl RegistryReadPermissionChecker {
 
     if is_path_in_node_modules {
       let mut cache = self.cache.lock().unwrap();
-      let registry_path_canon = match cache.get(&self.registry_path) {
-        Some(canon) => canon.clone(),
-        None => {
-          match self.fs.realpath_sync(&self.registry_path) {
-            Ok(canon) => {
-              cache.insert(self.registry_path.to_path_buf(), canon.clone());
-              canon
-            }
-            Err(e) => {
-              if e.kind() == ErrorKind::NotFound {
-                return Ok(()); // root doesn't exist, so allow
+      let mut canonicalize =
+        |path: &Path| -> Result<Option<PathBuf>, AnyError> {
+          match cache.get(path) {
+            Some(canon) => Ok(Some(canon.clone())),
+            None => match self.fs.realpath_sync(path) {
+              Ok(canon) => {
+                cache.insert(path.to_path_buf(), canon.clone());
+                Ok(Some(canon))
               }
-              return Err(AnyError::from(e)).with_context(|| {
-                format!(
-                  "failed canonicalizing '{}'",
-                  self.registry_path.display()
-                )
-              });
-            }
+              Err(e) => {
+                if e.kind() == ErrorKind::NotFound {
+                  return Ok(None);
+                }
+                Err(AnyError::from(e)).with_context(|| {
+                  format!("failed canonicalizing '{}'", path.display())
+                })
+              }
+            },
           }
-        }
+        };
+      let Some(registry_path_canon) = canonicalize(&self.registry_path)? else {
+        return Ok(()); // not exists, allow reading
       };
-
-      let path_canon = match cache.get(path) {
-        Some(canon) => canon.clone(),
-        None => {
-          let canon = self.fs.realpath_sync(path);
-          if let Err(e) = &canon {
-            if e.kind() == ErrorKind::NotFound {
-              return Ok(());
-            }
-          }
-
-          let canon = canon?;
-          cache.insert(path.to_path_buf(), canon.clone());
-          canon
-        }
+      let Some(path_canon) = canonicalize(path)? else {
+        return Ok(()); // not exists, allow reading
       };
 
       if path_canon.starts_with(registry_path_canon) {
