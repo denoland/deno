@@ -69,6 +69,9 @@ export DEBIAN_FRONTEND=noninteractive
 # Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
 sudo apt-get -qq remove --purge -y man-db  > /dev/null 2> /dev/null
+# Remove older clang before we install
+sudo apt-get -qq remove \
+  'clang-1*' 'llvm-1*' 'lld-1*' > /dev/null 2> /dev/null
 
 # Install clang-XXX, lld-XXX, and debootstrap.
 echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
