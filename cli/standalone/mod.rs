@@ -27,6 +27,7 @@ use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::v8::construct_v8_flags;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
+use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
 use deno_ast::MediaType;
 use deno_core::anyhow::Context;
@@ -192,33 +193,33 @@ impl ModuleLoader for EmbeddedModuleLoader {
       ));
     }
 
-    let permissions = if is_dynamic {
-      &self.dynamic_permissions
-    } else {
-      &self.root_permissions
-    };
-    if let Some(result) =
-      self.shared.npm_module_loader.load_sync_if_in_npm_package(
-        original_specifier,
-        maybe_referrer,
-        permissions,
-      )
-    {
-      return match result {
-        Ok(code_source) => deno_core::ModuleLoadResponse::Sync(Ok(
-          deno_core::ModuleSource::new_with_redirect(
+    if self.shared.node_resolver.in_npm_package(original_specifier) {
+      let npm_module_loader = self.shared.npm_module_loader.clone();
+      let original_specifier = original_specifier.clone();
+      let maybe_referrer = maybe_referrer.cloned();
+      let permissions = if is_dynamic {
+        self.dynamic_permissions.clone()
+      } else {
+        self.root_permissions.clone()
+      };
+      return deno_core::ModuleLoadResponse::Async(
+        async move {
+          let code_source = npm_module_loader
+            .load(&original_specifier, maybe_referrer.as_ref(), &permissions)
+            .await?;
+          Ok(deno_core::ModuleSource::new_with_redirect(
             match code_source.media_type {
               MediaType::Json => ModuleType::Json,
               _ => ModuleType::JavaScript,
             },
             ModuleSourceCode::String(code_source.code),
-            original_specifier,
+            &original_specifier,
             &code_source.found_url,
             None,
-          ),
-        )),
-        Err(err) => deno_core::ModuleLoadResponse::Sync(Err(err)),
-      };
+          ))
+        }
+        .boxed_local(),
+      );
     }
 
     let Some(module) =
@@ -282,30 +283,30 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
     &self,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader> {
-    Rc::new(EmbeddedModuleLoader {
-      shared: self.shared.clone(),
-      root_permissions,
-      dynamic_permissions,
-    })
+  ) -> ModuleLoaderAndSourceMapGetter {
+    ModuleLoaderAndSourceMapGetter {
+      module_loader: Rc::new(EmbeddedModuleLoader {
+        shared: self.shared.clone(),
+        root_permissions,
+        dynamic_permissions,
+      }),
+      source_map_getter: None,
+    }
   }
 
   fn create_for_worker(
     &self,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader> {
-    Rc::new(EmbeddedModuleLoader {
-      shared: self.shared.clone(),
-      root_permissions,
-      dynamic_permissions,
-    })
-  }
-
-  fn create_source_map_getter(
-    &self,
-  ) -> Option<Rc<dyn deno_core::SourceMapGetter>> {
-    None
+  ) -> ModuleLoaderAndSourceMapGetter {
+    ModuleLoaderAndSourceMapGetter {
+      module_loader: Rc::new(EmbeddedModuleLoader {
+        shared: self.shared.clone(),
+        root_permissions,
+        dynamic_permissions,
+      }),
+      source_map_getter: None,
+    }
   }
 }
 

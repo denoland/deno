@@ -162,6 +162,12 @@ async function clippy() {
       "warnings",
       "--deny",
       "clippy::unused_async",
+      // generally prefer the `log` crate, but ignore
+      // these print_* rules if necessary
+      "--deny",
+      "clippy::print_stderr",
+      "--deny",
+      "clippy::print_stdout",
     ],
     stdout: "inherit",
     stderr: "inherit",
@@ -210,12 +216,12 @@ async function ensureNoNewITests() {
     // Read the comment above. Please don't increase these numbers!
     "lsp_tests.rs": 0,
     "node_compat_tests.rs": 4,
-    "node_unit_tests.rs": 3,
+    "node_unit_tests.rs": 2,
     "npm_tests.rs": 98,
     "pm_tests.rs": 0,
     "publish_tests.rs": 0,
     "repl_tests.rs": 0,
-    "run_tests.rs": 373,
+    "run_tests.rs": 372,
     "shared_library_tests.rs": 0,
     "task_tests.rs": 30,
     "test_tests.rs": 77,

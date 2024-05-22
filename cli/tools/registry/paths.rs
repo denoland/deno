@@ -217,17 +217,29 @@ pub struct CollectedPublishPath {
   pub relative_path: String,
 }
 
+pub struct CollectPublishPathsOptions<'a> {
+  pub root_dir: &'a Path,
+  pub cli_options: &'a CliOptions,
+  pub file_patterns: FilePatterns,
+  pub force_include_paths: Vec<PathBuf>,
+  pub diagnostics_collector: &'a PublishDiagnosticsCollector,
+}
+
 pub fn collect_publish_paths(
-  root_dir: &Path,
-  cli_options: &CliOptions,
-  diagnostics_collector: &PublishDiagnosticsCollector,
-  file_patterns: FilePatterns,
+  opts: CollectPublishPathsOptions,
 ) -> Result<Vec<CollectedPublishPath>, AnyError> {
+  let diagnostics_collector = opts.diagnostics_collector;
   let publish_paths =
-    collect_paths(cli_options, diagnostics_collector, file_patterns)?;
-  let mut paths = HashSet::with_capacity(publish_paths.len());
-  let mut result = Vec::with_capacity(publish_paths.len());
-  for path in publish_paths {
+    collect_paths(opts.cli_options, diagnostics_collector, opts.file_patterns)?;
+  let publish_paths_set = publish_paths.iter().cloned().collect::<HashSet<_>>();
+  let capacity = publish_paths.len() + opts.force_include_paths.len();
+  let mut paths = HashSet::with_capacity(capacity);
+  let mut result = Vec::with_capacity(capacity);
+  let force_include_paths = opts
+    .force_include_paths
+    .into_iter()
+    .filter(|path| !publish_paths_set.contains(path));
+  for path in publish_paths.into_iter().chain(force_include_paths) {
     let Ok(specifier) = ModuleSpecifier::from_file_path(&path) else {
       diagnostics_collector
         .to_owned()
@@ -238,7 +250,7 @@ pub fn collect_publish_paths(
       continue;
     };
 
-    let Ok(relative_path) = path.strip_prefix(root_dir) else {
+    let Ok(relative_path) = path.strip_prefix(opts.root_dir) else {
       diagnostics_collector
         .to_owned()
         .push(PublishDiagnostic::InvalidPath {

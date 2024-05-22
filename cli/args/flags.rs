@@ -26,7 +26,6 @@ use serde::Serialize;
 use std::env;
 use std::ffi::OsString;
 use std::net::SocketAddr;
-use std::num::NonZeroU16;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
 use std::num::NonZeroUsize;
@@ -283,7 +282,7 @@ impl RunFlags {
 pub struct ServeFlags {
   pub script: String,
   pub watch: Option<WatchFlagsWithPaths>,
-  pub port: NonZeroU16,
+  pub port: u16,
   pub host: String,
 }
 
@@ -293,7 +292,7 @@ impl ServeFlags {
     Self {
       script,
       watch: None,
-      port: NonZeroU16::new(port).unwrap(),
+      port,
       host: host.to_owned(),
     }
   }
@@ -2473,8 +2472,8 @@ fn serve_subcommand() -> Command {
     .arg(
       Arg::new("port")
         .long("port")
-        .help("The TCP port to serve on, defaulting to 8000.")
-        .value_parser(value_parser!(NonZeroU16)),
+        .help("The TCP port to serve on, defaulting to 8000. Pass 0 to pick a random free port.")
+        .value_parser(value_parser!(u16)),
     )
     .arg(
       Arg::new("host")
@@ -3898,6 +3897,7 @@ fn eval_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   // TODO(@satyarohith): remove this flag in 2.0.
   let as_typescript = matches.get_flag("ts");
 
+  #[allow(clippy::print_stderr)]
   if as_typescript {
     eprintln!(
       "⚠️ {}",
@@ -4135,9 +4135,7 @@ fn serve_parse(
   app: Command,
 ) -> clap::error::Result<()> {
   // deno serve implies --allow-net=host:port
-  let port = matches
-    .remove_one::<NonZeroU16>("port")
-    .unwrap_or(NonZeroU16::new(8000).unwrap());
+  let port = matches.remove_one::<u16>("port").unwrap_or(8000);
   let host = matches
     .remove_one::<String>("host")
     .unwrap_or_else(|| "0.0.0.0".to_owned());
@@ -4227,6 +4225,8 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let no_run = matches.get_flag("no-run");
   let trace_leaks =
     matches.get_flag("trace-ops") || matches.get_flag("trace-leaks");
+
+  #[allow(clippy::print_stderr)]
   if trace_leaks && matches.get_flag("trace-ops") {
     // We can't change this to use the log crate because its not configured
     // yet at this point since the flags haven't been parsed. This flag is
@@ -4276,10 +4276,17 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     // yet at this point since the flags haven't been parsed. This flag is
     // deprecated though so it's not worth changing the code to use the log
     // crate here and this is only done for testing anyway.
-    eprintln!(
-      "⚠️ {}",
-      crate::colors::yellow("The `--jobs` flag is deprecated and will be removed in Deno 2.0.\nUse the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.\nLearn more at: https://docs.deno.com/runtime/manual/basics/env_variables"),
-    );
+    #[allow(clippy::print_stderr)]
+    {
+      eprintln!(
+        "⚠️ {}",
+        crate::colors::yellow(concat!(
+          "The `--jobs` flag is deprecated and will be removed in Deno 2.0.\n",
+          "Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.\n",
+          "Learn more at: https://docs.deno.com/runtime/manual/basics/env_variables"
+        )),
+      );
+    }
     if let Some(value) = matches.remove_one::<NonZeroUsize>("jobs") {
       Some(value)
     } else {
@@ -5315,6 +5322,32 @@ mod tests {
         )),
         permissions: PermissionFlags {
           allow_net: Some(vec!["example.com:5000".to_owned()]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "serve",
+      "--port",
+      "0",
+      "--host",
+      "example.com",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Serve(ServeFlags::new_default(
+          "main.ts".to_string(),
+          0,
+          "example.com"
+        )),
+        permissions: PermissionFlags {
+          allow_net: Some(vec!["example.com:0".to_owned()]),
           ..Default::default()
         },
         code_cache_enabled: true,

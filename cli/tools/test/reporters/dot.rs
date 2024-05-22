@@ -11,6 +11,7 @@ pub struct DotTestReporter {
   summary: TestSummary,
 }
 
+#[allow(clippy::print_stdout)]
 impl DotTestReporter {
   pub fn new(cwd: Url) -> DotTestReporter {
     let console_width = if let Some(size) = crate::util::console::console_size()
@@ -80,6 +81,7 @@ fn fmt_cancelled() -> String {
   colors::gray("!").to_string()
 }
 
+#[allow(clippy::print_stdout)]
 impl TestReporter for DotTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
 

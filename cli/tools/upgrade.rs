@@ -274,23 +274,17 @@ pub fn check_for_upgrades(
   if let Some(upgrade_version) = update_checker.should_prompt() {
     if log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal() {
       if version::is_canary() {
-        eprint!(
-          "{} ",
-          colors::green("A new canary release of Deno is available.")
-        );
-        eprintln!(
-          "{}",
+        log::info!(
+          "{} {}",
+          colors::green("A new canary release of Deno is available."),
           colors::italic_gray("Run `deno upgrade --canary` to install it.")
         );
       } else {
-        eprint!(
-          "{} {} → {} ",
+        log::info!(
+          "{} {} → {} {}",
           colors::green("A new release of Deno is available:"),
           colors::cyan(version::deno()),
-          colors::cyan(&upgrade_version)
-        );
-        eprintln!(
-          "{}",
+          colors::cyan(&upgrade_version),
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
       }

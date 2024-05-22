@@ -7,7 +7,7 @@
 
 /**
  * @category Messaging
- * @tags unstable
+ * @experimental
  */
 declare interface BroadcastChannelEventMap {
   "message": MessageEvent;
@@ -16,7 +16,7 @@ declare interface BroadcastChannelEventMap {
 
 /**
  * @category Messaging
- * @tags unstable
+ * @experimental
  */
 declare interface BroadcastChannel extends EventTarget {
   /**
@@ -59,7 +59,7 @@ declare interface BroadcastChannel extends EventTarget {
 
 /**
  * @category Messaging
- * @tags unstable
+ * @experimental
  */
 declare var BroadcastChannel: {
   readonly prototype: BroadcastChannel;

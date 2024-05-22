@@ -209,7 +209,12 @@ impl Pty {
 
   #[track_caller]
   fn read_until_condition(&mut self, condition: impl FnMut(&mut Self) -> bool) {
-    self.read_until_condition_with_timeout(condition, Duration::from_secs(15));
+    let duration = if std::env::var_os("CI").is_some() {
+      Duration::from_secs(30)
+    } else {
+      Duration::from_secs(15)
+    };
+    self.read_until_condition_with_timeout(condition, duration);
   }
 
   #[track_caller]
