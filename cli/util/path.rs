@@ -147,6 +147,7 @@ pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
   }
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 pub fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
   pathdiff::diff_paths(to, from)
 }
