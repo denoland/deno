@@ -27,6 +27,7 @@ use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
+use crate::npm::common::maybe_auth_header_for_npm_registry;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::sync::AtomicFlag;
@@ -308,19 +309,11 @@ impl CliNpmRegistryApiInner {
     let package_url = self.get_package_url(name, registry_url);
     let guard = self.progress_bar.update(package_url.as_str());
 
-    let mut maybe_header = None;
-    // TODO(bartlomieju): support more auth methods besides token
-    if let Some(token) = registry_config.auth_token.as_ref() {
-      maybe_header = Some((
-        reqwest::header::AUTHORIZATION,
-        reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
-          .unwrap(),
-      ))
-    }
+    let maybe_auth_header = maybe_auth_header_for_npm_registry(registry_config);
 
     let maybe_bytes = self
       .http_client
-      .download_with_progress(package_url, maybe_header, &guard)
+      .download_with_progress(package_url, maybe_auth_header, &guard)
       .await?;
     match maybe_bytes {
       Some(bytes) => {

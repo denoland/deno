@@ -21,6 +21,7 @@ use deno_semver::package::PackageNv;
 
 use crate::args::CacheSetting;
 use crate::http_util::HttpClient;
+use crate::npm::common::maybe_auth_header_for_npm_registry;
 use crate::npm::NpmCacheDir;
 use crate::util::fs::hard_link_dir_recursive;
 use crate::util::progress_bar::ProgressBar;
@@ -123,20 +124,12 @@ impl NpmCache {
       bail!("Tarball URL was empty.");
     }
 
-    let mut maybe_header = None;
-    // TODO(bartlomieju): support more auth methods besides token
-    if let Some(token) = registry_config.auth_token.as_ref() {
-      maybe_header = Some((
-        reqwest::header::AUTHORIZATION,
-        reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))
-          .unwrap(),
-      ))
-    }
+    let maybe_auth_header = maybe_auth_header_for_npm_registry(registry_config);
 
     let guard = self.progress_bar.update(&dist.tarball);
     let maybe_bytes = self
       .http_client
-      .download_with_progress(&dist.tarball, maybe_header, &guard)
+      .download_with_progress(&dist.tarball, maybe_auth_header, &guard)
       .await?;
     match maybe_bytes {
       Some(bytes) => {
