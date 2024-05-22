@@ -72,9 +72,10 @@ use super::check::TypeChecker;
 use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
 
+#[allow(clippy::print_stderr)]
 fn ring_bell() {
   // ASCII code for the bell character.
-  print!("\x07");
+  eprint!("\x07");
 }
 
 struct PreparedPublishPackage {
@@ -150,35 +151,40 @@ async fn prepare_publish(
     .map(|c| c.files)
     .unwrap_or_else(|| FilePatterns::new_with_base(root_dir.to_path_buf()));
 
-  let diagnostics_collector = diagnostics_collector.clone();
-  let tarball = deno_core::unsync::spawn_blocking(move || {
-    let bare_node_builtins = cli_options.unstable_bare_node_builtins();
-    let unfurler = SpecifierUnfurler::new(
-      &mapped_resolver,
-      sloppy_imports_resolver.as_ref(),
-      bare_node_builtins,
-    );
-    let root_specifier =
-      ModuleSpecifier::from_directory_path(&root_dir).unwrap();
-    let publish_paths = paths::collect_publish_paths(
-      &root_dir,
-      &cli_options,
-      &diagnostics_collector,
-      file_patterns,
-    )?;
-    collect_excluded_module_diagnostics(
-      &root_specifier,
-      &graph,
-      &publish_paths,
-      &diagnostics_collector,
-    );
-    tar::create_gzipped_tarball(
-      &publish_paths,
-      LazyGraphSourceParser::new(&source_cache, &graph),
-      &diagnostics_collector,
-      &unfurler,
-    )
-    .context("Failed to create a tarball")
+  let tarball = deno_core::unsync::spawn_blocking({
+    let diagnostics_collector = diagnostics_collector.clone();
+    let config_path = config_path.clone();
+    move || {
+      let bare_node_builtins = cli_options.unstable_bare_node_builtins();
+      let unfurler = SpecifierUnfurler::new(
+        &mapped_resolver,
+        sloppy_imports_resolver.as_ref(),
+        bare_node_builtins,
+      );
+      let root_specifier =
+        ModuleSpecifier::from_directory_path(&root_dir).unwrap();
+      let publish_paths =
+        paths::collect_publish_paths(paths::CollectPublishPathsOptions {
+          root_dir: &root_dir,
+          cli_options: &cli_options,
+          diagnostics_collector: &diagnostics_collector,
+          file_patterns,
+          force_include_paths: vec![config_path],
+        })?;
+      collect_excluded_module_diagnostics(
+        &root_specifier,
+        &graph,
+        &publish_paths,
+        &diagnostics_collector,
+      );
+      tar::create_gzipped_tarball(
+        &publish_paths,
+        LazyGraphSourceParser::new(&source_cache, &graph),
+        &diagnostics_collector,
+        &unfurler,
+      )
+      .context("Failed to create a tarball")
+    }
   })
   .await??;
 
@@ -291,18 +297,19 @@ async fn get_auth_headers(
           .context("Failed to create interactive authorization")?;
 
       let auth_url = format!("{}?code={}", auth.verification_url, auth.code);
-      print!(
-        "Visit {} to authorize publishing of",
-        colors::cyan(&auth_url)
-      );
-      if packages.len() > 1 {
-        println!(" {} packages", packages.len());
+      let pkgs_text = if packages.len() > 1 {
+        format!("{} packages", packages.len())
       } else {
-        println!(" @{}/{}", packages[0].scope, packages[0].package);
-      }
+        format!("@{}/{}", packages[0].scope, packages[0].package)
+      };
+      log::warn!(
+        "Visit {} to authorize publishing of {}",
+        colors::cyan(&auth_url),
+        pkgs_text,
+      );
 
       ring_bell();
-      println!("{}", colors::gray("Waiting..."));
+      log::info!("{}", colors::gray("Waiting..."));
       let _ = open::that_detached(&auth_url);
 
       let interval = std::time::Duration::from_secs(auth.poll_interval);
@@ -323,7 +330,7 @@ async fn get_auth_headers(
             .await;
         match res {
           Ok(res) => {
-            println!(
+            log::info!(
               "{} {} {}",
               colors::green("Authorization successful."),
               colors::gray("Authenticated as"),
@@ -490,13 +497,13 @@ async fn ensure_scopes_and_packages_exist(
     };
 
     ring_bell();
-    println!(
+    log::warn!(
       "'@{}/{}' doesn't exist yet. Visit {} to create the package",
       &package.scope,
       &package.package,
       colors::cyan_with_underline(&create_package_url)
     );
-    println!("{}", colors::gray("Waiting..."));
+    log::warn!("{}", colors::gray("Waiting..."));
     let _ = open::that_detached(&create_package_url);
 
     let package_api_url = api::get_package_api_url(
@@ -510,7 +517,7 @@ async fn ensure_scopes_and_packages_exist(
       let response = client.get(&package_api_url).send().await?;
       if response.status() == 200 {
         let name = format!("@{}/{}", package.scope, package.package);
-        println!("Package {} created", colors::green(name));
+        log::info!("Package {} created", colors::green(name));
         break;
       }
     }
@@ -615,7 +622,7 @@ async fn publish_package(
   provenance: bool,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
-  println!(
+  log::info!(
     "{} @{}/{}@{} ...",
     colors::intense_blue("Publishing"),
     package.scope,
@@ -649,7 +656,7 @@ async fn publish_package(
       )
       .unwrap();
       if task.status == "success" {
-        println!(
+        log::info!(
           "{} @{}/{}@{}",
           colors::yellow("Warning: Skipping, already published"),
           package.scope,
@@ -658,7 +665,7 @@ async fn publish_package(
         );
         return Ok(());
       }
-      println!(
+      log::info!(
         "{} @{}/{}@{}",
         colors::yellow("Already uploaded, waiting for publishing"),
         package.scope,
@@ -711,7 +718,7 @@ async fn publish_package(
     );
   }
 
-  println!(
+  log::info!(
     "{} @{}/{}@{}",
     colors::green("Successfully published"),
     package.scope,
@@ -748,7 +755,7 @@ async fn publish_package(
     let bundle = provenance::generate_provenance(subject).await?;
 
     let tlog_entry = &bundle.verification_material.tlog_entries[0];
-    println!("{}",
+    log::info!("{}",
       colors::green(format!(
         "Provenance transparency log available at https://search.sigstore.dev/?logIndex={}",
         tlog_entry.log_index
@@ -768,7 +775,7 @@ async fn publish_package(
       .await?;
   }
 
-  println!(
+  log::info!(
     "{}",
     colors::gray(format!(
       "Visit {}@{}/{}@{} for details",
@@ -798,7 +805,7 @@ async fn prepare_packages_for_publishing(
   let cli_options = cli_factory.cli_options();
 
   if members.len() > 1 {
-    println!("Publishing a workspace...");
+    log::info!("Publishing a workspace...");
   }
 
   // create the module graph

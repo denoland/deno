@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::num::NonZeroU16;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -58,20 +57,23 @@ use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
 use crate::version;
 
+pub struct ModuleLoaderAndSourceMapGetter {
+  pub module_loader: Rc<dyn ModuleLoader>,
+  pub source_map_getter: Option<Rc<dyn SourceMapGetter>>,
+}
+
 pub trait ModuleLoaderFactory: Send + Sync {
   fn create_for_main(
     &self,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader>;
+  ) -> ModuleLoaderAndSourceMapGetter;
 
   fn create_for_worker(
     &self,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader>;
-
-  fn create_source_map_getter(&self) -> Option<Rc<dyn SourceMapGetter>>;
+  ) -> ModuleLoaderAndSourceMapGetter;
 }
 
 #[async_trait::async_trait(?Send)]
@@ -112,6 +114,7 @@ pub struct CliMainWorkerOptions {
   pub is_npm_main: bool,
   pub location: Option<Url>,
   pub argv0: Option<String>,
+  pub node_debug: Option<String>,
   pub origin_data_folder_path: Option<PathBuf>,
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
@@ -144,7 +147,7 @@ struct SharedWorkerState {
   disable_deprecated_api_warning: bool,
   verbose_deprecated_api_warning: bool,
   code_cache: Option<Arc<dyn code_cache::CodeCache>>,
-  serve_port: Option<NonZeroU16>,
+  serve_port: Option<u16>,
   serve_host: Option<String>,
 }
 
@@ -414,7 +417,7 @@ impl CliMainWorkerFactory {
     feature_checker: Arc<FeatureChecker>,
     options: CliMainWorkerOptions,
     node_ipc: Option<i64>,
-    serve_port: Option<NonZeroU16>,
+    serve_port: Option<u16>,
     serve_host: Option<String>,
     enable_future_features: bool,
     disable_deprecated_api_warning: bool,
@@ -548,11 +551,12 @@ impl CliMainWorkerFactory {
       (main_module, false)
     };
 
-    let module_loader = shared
+    let ModuleLoaderAndSourceMapGetter {
+      module_loader,
+      source_map_getter,
+    } = shared
       .module_loader_factory
       .create_for_main(PermissionsContainer::allow_all(), permissions.clone());
-    let maybe_source_map_getter =
-      shared.module_loader_factory.create_source_map_getter();
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
     let create_web_worker_cb =
@@ -600,13 +604,15 @@ impl CliMainWorkerFactory {
         locale: deno_core::v8::icu::get_language_tag(),
         location: shared.options.location.clone(),
         no_color: !colors::use_color(),
-        is_tty: deno_terminal::is_stdout_tty(),
+        is_stdout_tty: deno_terminal::is_stdout_tty(),
+        is_stderr_tty: deno_terminal::is_stderr_tty(),
         unstable: shared.options.unstable,
         unstable_features,
         user_agent: version::get_user_agent().to_string(),
         inspect: shared.options.is_inspecting,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
+        node_debug: shared.options.node_debug.clone(),
         node_ipc_fd: shared.node_ipc,
         disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
         verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
@@ -624,7 +630,7 @@ impl CliMainWorkerFactory {
         .clone(),
       root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       seed: shared.options.seed,
-      source_map_getter: maybe_source_map_getter,
+      source_map_getter,
       format_js_error_fn: Some(Arc::new(format_js_error)),
       create_web_worker_cb,
       maybe_inspector_server,
@@ -766,12 +772,13 @@ fn create_web_worker_callback(
   Arc::new(move |args| {
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
-    let module_loader = shared.module_loader_factory.create_for_worker(
+    let ModuleLoaderAndSourceMapGetter {
+      module_loader,
+      source_map_getter,
+    } = shared.module_loader_factory.create_for_worker(
       args.parent_permissions.clone(),
       args.permissions.clone(),
     );
-    let maybe_source_map_getter =
-      shared.module_loader_factory.create_source_map_getter();
     let create_web_worker_cb =
       create_web_worker_callback(mode, shared.clone(), stdio.clone());
 
@@ -809,13 +816,15 @@ fn create_web_worker_callback(
         locale: deno_core::v8::icu::get_language_tag(),
         location: Some(args.main_module.clone()),
         no_color: !colors::use_color(),
-        is_tty: deno_terminal::is_stdout_tty(),
+        is_stdout_tty: deno_terminal::is_stdout_tty(),
+        is_stderr_tty: deno_terminal::is_stderr_tty(),
         unstable: shared.options.unstable,
         unstable_features,
         user_agent: version::get_user_agent().to_string(),
         inspect: shared.options.is_inspecting,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
+        node_debug: shared.options.node_debug.clone(),
         node_ipc_fd: None,
         disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
         verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
@@ -834,7 +843,7 @@ fn create_web_worker_callback(
       seed: shared.options.seed,
       create_web_worker_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
-      source_map_getter: maybe_source_map_getter,
+      source_map_getter,
       module_loader,
       fs: shared.fs.clone(),
       npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
@@ -865,6 +874,8 @@ fn create_web_worker_callback(
   })
 }
 
+#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
   use super::*;

@@ -8,7 +8,7 @@
  * to ensure that these are still available when using the Deno namespace in
  * conjunction with other type libs, like `dom`.
  *
- * @category ES Modules
+ * @category Platform
  */
 declare interface ImportMeta {
   /** A string representation of the fully qualified module URL. When the
@@ -322,7 +322,7 @@ declare namespace Deno {
    * console.log(Deno.pid);
    * ```
    *
-   * @category Runtime Environment
+   * @category Runtime
    */
   export const pid: number;
 
@@ -333,11 +333,11 @@ declare namespace Deno {
    * console.log(Deno.ppid);
    * ```
    *
-   * @category Runtime Environment
+   * @category Runtime
    */
   export const ppid: number;
 
-  /** @category Runtime Environment */
+  /** @category Runtime */
   export interface MemoryUsage {
     /** The number of bytes of the current Deno's process resident set size,
      * which is the amount of memory occupied in main memory (RAM). */
@@ -355,7 +355,7 @@ declare namespace Deno {
    * Returns an object describing the memory usage of the Deno process and the
    * V8 subsystem measured in bytes.
    *
-   * @category Runtime Environment
+   * @category Runtime
    */
   export function memoryUsage(): MemoryUsage;
 
@@ -369,7 +369,7 @@ declare namespace Deno {
    * Requires `allow-sys` permission.
    *
    * @tags allow-sys
-   * @category Runtime Environment
+   * @category Runtime
    */
   export function hostname(): string;
 
@@ -389,7 +389,7 @@ declare namespace Deno {
    * On Windows there is no API available to retrieve this information and this method returns `[ 0, 0, 0 ]`.
    *
    * @tags allow-sys
-   * @category Observability
+   * @category Runtime
    */
   export function loadavg(): number[];
 
@@ -443,14 +443,14 @@ declare namespace Deno {
    * Requires `allow-sys` permission.
    *
    * @tags allow-sys
-   * @category Runtime Environment
+   * @category Runtime
    */
   export function systemMemoryInfo(): SystemMemoryInfo;
 
   /**
    * Information returned from a call to {@linkcode Deno.systemMemoryInfo}.
    *
-   * @category Runtime Environment
+   * @category Runtime
    */
   export interface SystemMemoryInfo {
     /** Total installed memory in bytes. */
@@ -481,7 +481,7 @@ declare namespace Deno {
    *
    * See: https://no-color.org/
    *
-   * @category Runtime Environment
+   * @category Runtime
    */
   export const noColor: boolean;
 
@@ -497,7 +497,7 @@ declare namespace Deno {
    * it should depend sys-info, which may not be desirable.
    *
    * @tags allow-sys
-   * @category Runtime Environment
+   * @category Runtime
    */
   export function osRelease(): string;
 
@@ -511,7 +511,7 @@ declare namespace Deno {
    * Requires `allow-sys` permission.
    *
    * @tags allow-sys
-   * @category Runtime Environment
+   * @category Runtime
    */
   export function osUptime(): number;
 
@@ -1462,7 +1462,7 @@ declare namespace Deno {
    * Deno.exit(5);
    * ```
    *
-   * @category Runtime Environment
+   * @category Runtime
    */
   export function exit(code?: number): never;
 
@@ -1470,7 +1470,7 @@ declare namespace Deno {
    * variables.
    *
    * @tags allow-env
-   * @category Runtime Environment
+   * @category Runtime
    */
   export interface Env {
     /** Retrieve the value of an environment variable.
@@ -1549,7 +1549,7 @@ declare namespace Deno {
    * variables.
    *
    * @tags allow-env
-   * @category Runtime Environment
+   * @category Runtime
    */
   export const env: Env;
 
@@ -1563,7 +1563,7 @@ declare namespace Deno {
    * Requires `allow-read` permission.
    *
    * @tags allow-read
-   * @category Runtime Environment
+   * @category Runtime
    */
   export function execPath(): string;
 
@@ -1584,7 +1584,7 @@ declare namespace Deno {
    * Requires `allow-read` permission.
    *
    * @tags allow-read
-   * @category Runtime Environment
+   * @category Runtime
    */
   export function chdir(directory: string | URL): void;
 
@@ -1603,7 +1603,7 @@ declare namespace Deno {
    * Requires `allow-read` permission.
    *
    * @tags allow-read
-   * @category Runtime Environment
+   * @category Runtime
    */
   export function cwd(): string;
 
@@ -2563,8 +2563,7 @@ declare namespace Deno {
      * ```
      */
     statSync(): FileInfo;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Flushes any pending data and metadata operations of the given file
      * stream to disk.
      *
@@ -2582,8 +2581,7 @@ declare namespace Deno {
      * @category I/O
      */
     sync(): Promise<void>;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Synchronously flushes any pending data and metadata operations of the given
      * file stream to disk.
      *
@@ -2601,8 +2599,7 @@ declare namespace Deno {
      * @category I/O
      */
     syncSync(): void;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Flushes any pending data operations of the given file stream to disk.
      *  ```ts
      * using file = await Deno.open(
@@ -2617,8 +2614,7 @@ declare namespace Deno {
      * @category I/O
      */
     syncData(): Promise<void>;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Synchronously flushes any pending data operations of the given file stream
      * to disk.
      *
@@ -4033,7 +4029,7 @@ declare namespace Deno {
    */
   export function truncateSync(name: string, len?: number): void;
 
-  /** @category Observability
+  /** @category Runtime
    *
    * @deprecated This will be removed in Deno 2.0.
    */
@@ -4051,7 +4047,7 @@ declare namespace Deno {
     bytesReceived: number;
   }
 
-  /** @category Observability
+  /** @category Runtime
    *
    * @deprecated This will be removed in Deno 2.0.
    */
@@ -4082,7 +4078,7 @@ declare namespace Deno {
    * └─────────────────────────┴────────┘
    * ```
    *
-   * @category Observability
+   * @category Runtime
    *
    * @deprecated This will be removed in Deno 2.0.
    */
@@ -4094,7 +4090,7 @@ declare namespace Deno {
    *
    * @deprecated This will be removed in Deno 2.0.
    *
-   * @category Observability */
+   * @category Runtime */
   export interface ResourceMap {
     [rid: number]: unknown;
   }
@@ -4114,7 +4110,7 @@ declare namespace Deno {
    *
    * @deprecated This will be removed in Deno 2.0.
    *
-   * @category Observability
+   * @category Runtime
    */
   export function resources(): ResourceMap;
 
@@ -4392,7 +4388,7 @@ declare namespace Deno {
   /** Operating signals which can be listened for or sent to sub-processes. What
    * signals and what their standard behaviors are OS dependent.
    *
-   * @category Runtime Environment */
+   * @category Runtime */
   export type Signal =
     | "SIGABRT"
     | "SIGALRM"
@@ -4443,7 +4439,7 @@ declare namespace Deno {
    * _Note_: On Windows only `"SIGINT"` (CTRL+C) and `"SIGBREAK"` (CTRL+Break)
    * are supported.
    *
-   * @category Runtime Environment
+   * @category Runtime
    */
   export function addSignalListener(signal: Signal, handler: () => void): void;
 
@@ -4461,7 +4457,7 @@ declare namespace Deno {
    * _Note_: On Windows only `"SIGINT"` (CTRL+C) and `"SIGBREAK"` (CTRL+Break)
    * are supported.
    *
-   * @category Runtime Environment
+   * @category Runtime
    */
   export function removeSignalListener(
     signal: Signal,
@@ -4745,7 +4741,7 @@ declare namespace Deno {
 
   /** Option which can be specified when performing {@linkcode Deno.inspect}.
    *
-   * @category Console and Debugging */
+   * @category I/O */
   export interface InspectOptions {
     /** Stylize output with ANSI colors.
      *
@@ -4831,7 +4827,7 @@ declare namespace Deno {
    * Deno.inspect({a: {b: {c: {d: 'hello'}}}}, {depth: 2}); // { a: { b: [Object] } }
    * ```
    *
-   * @category Console and Debugging
+   * @category I/O
    */
   export function inspect(value: unknown, options?: InspectOptions): string;
 
@@ -5241,7 +5237,7 @@ declare namespace Deno {
    *
    * The intended use for the information is for logging and debugging purposes.
    *
-   * @category Runtime Environment
+   * @category Runtime
    */
   export const build: {
     /** The [LLVM](https://llvm.org/) target triple, which is the combination
@@ -5277,7 +5273,7 @@ declare namespace Deno {
    *
    * The intended use for the information is for logging and debugging purposes.
    *
-   * @category Runtime Environment
+   * @category Runtime
    */
   export const version: {
     /** Deno CLI's version. For example: `"1.26.0"`. */
@@ -5312,7 +5308,7 @@ declare namespace Deno {
    * [`parseArgs()`](https://jsr.io/@std/cli/doc/parse-args/~/parseArgs) from
    * the Deno Standard Library.
    *
-   * @category Runtime Environment
+   * @category Runtime
    */
   export const args: string[];
 
@@ -5325,7 +5321,7 @@ declare namespace Deno {
    * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
    * for migration instructions.
    *
-   * @category Console and Debugging
+   * @category I/O
    */
   export const customInspect: unique symbol;
 
@@ -5335,7 +5331,7 @@ declare namespace Deno {
    * Also see {@linkcode ImportMeta} for other related information.
    *
    * @tags allow-read
-   * @category Runtime Environment
+   * @category Runtime
    */
   export const mainModule: string;
 
@@ -5344,16 +5340,16 @@ declare namespace Deno {
    *
    * @category File System */
   export interface SymlinkOptions {
-    /** If the symbolic link should be either a file or directory. This option
-     * only applies to Windows and is ignored on other operating systems. */
-    type: "file" | "dir";
+    /** Specify the symbolic link type as file, directory or NTFS junction. This
+     * option only applies to Windows and is ignored on other operating systems. */
+    type: "file" | "dir" | "junction";
   }
 
   /**
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
-   * The `options.type` parameter can be set to `"file"` or `"dir"`. This
-   * argument is only available on Windows and ignored on other platforms.
+   * The `options.type` parameter can be set to `"file"`, `"dir"` or `"junction"`.
+   * This argument is only available on Windows and ignored on other platforms.
    *
    * ```ts
    * await Deno.symlink("old/name", "new/name");
@@ -5373,8 +5369,8 @@ declare namespace Deno {
   /**
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
-   * The `options.type` parameter can be set to `"file"` or `"dir"`. This
-   * argument is only available on Windows and ignored on other platforms.
+   * The `options.type` parameter can be set to `"file"`, `"dir"` or `"junction"`.
+   * This argument is only available on Windows and ignored on other platforms.
    *
    * ```ts
    * Deno.symlinkSync("old/name", "new/name");
@@ -6178,14 +6174,14 @@ declare namespace Deno {
   /**
    * Make the timer of the given `id` block the event loop from finishing.
    *
-   * @category Timers
+   * @category Runtime
    */
   export function refTimer(id: number): void;
 
   /**
    * Make the timer of the given `id` not block the event loop from finishing.
    *
-   * @category Timers
+   * @category Runtime
    */
   export function unrefTimer(id: number): void;
 
@@ -6199,7 +6195,7 @@ declare namespace Deno {
    * Requires `allow-sys` permission.
    *
    * @tags allow-sys
-   * @category Runtime Environment
+   * @category Runtime
    */
   export function uid(): number | null;
 
@@ -6213,7 +6209,7 @@ declare namespace Deno {
    * Requires `allow-sys` permission.
    *
    * @tags allow-sys
-   * @category Runtime Environment
+   * @category Runtime
    */
   export function gid(): number | null;
 

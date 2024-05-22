@@ -97,6 +97,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
+#[allow(clippy::print_stdout)]
 fn print_cache_info(
   factory: &CliFactory,
   json: bool,
