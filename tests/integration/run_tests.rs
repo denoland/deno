@@ -13,6 +13,7 @@ use deno_core::serde_json::json;
 use deno_core::url;
 use deno_fetch::reqwest;
 use deno_tls::rustls;
+use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls_pemfile;
 use deno_tls::TlsStream;
 use pretty_assertions::assert_eq;
@@ -231,12 +232,6 @@ itest!(_044_bad_resource {
   args: "run --quiet --reload --allow-read run/044_bad_resource.ts",
   output: "run/044_bad_resource.ts.out",
   exit_code: 1,
-});
-
-itest!(_045_proxy {
-  args: "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet run/045_proxy_test.ts",
-  output: "run/045_proxy_test.ts.out",
-  http_server: true,
 });
 
 itest!(_046_tsx {
@@ -4615,8 +4610,8 @@ fn file_fetcher_preserves_permissions() {
     .args("repl --quiet")
     .with_pty(|mut console| {
       console.write_line(
-      "const a = await import('http://localhost:4545/run/019_media_types.ts');",
-    );
+        "const a = await import('http://localhost:4545/run/019_media_types.ts');",
+      );
       console.expect("Allow?");
       console.human_delay();
       console.write_line_raw("y");
@@ -5388,8 +5383,11 @@ async fn listen_tls_alpn() {
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
     .await
     .unwrap();
-  let mut tls_stream =
-    TlsStream::new_client_side(tcp_stream, cfg, hostname, None);
+  let mut tls_stream = TlsStream::new_client_side(
+    tcp_stream,
+    ClientConnection::new(cfg, hostname).unwrap(),
+    None,
+  );
 
   let handshake = tls_stream.handshake().await.unwrap();
 
@@ -5437,8 +5435,11 @@ async fn listen_tls_alpn_fail() {
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
     .await
     .unwrap();
-  let mut tls_stream =
-    TlsStream::new_client_side(tcp_stream, cfg, hostname, None);
+  let mut tls_stream = TlsStream::new_client_side(
+    tcp_stream,
+    ClientConnection::new(cfg, hostname).unwrap(),
+    None,
+  );
 
   tls_stream.handshake().await.unwrap_err();
 

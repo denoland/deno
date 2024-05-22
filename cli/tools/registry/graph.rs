@@ -8,6 +8,8 @@ use deno_graph::ModuleEntryRef;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
 use deno_graph::WalkOptions;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
 use lsp_types::Url;
 
 use super::diagnostics::PublishDiagnostic;
@@ -22,20 +24,67 @@ pub fn collect_invalid_external_imports(
 
   let mut collect_if_invalid =
     |skip_specifiers: &mut HashSet<Url>,
-     text: &Arc<str>,
+     source_text: &Arc<str>,
+     specifier_text: &str,
      resolution: &ResolutionResolved| {
       if visited.insert(resolution.specifier.clone()) {
         match resolution.specifier.scheme() {
           "file" | "data" | "node" => {}
-          "jsr" | "npm" => {
+          "jsr" => {
             skip_specifiers.insert(resolution.specifier.clone());
+
+            // check for a missing version constraint
+            if let Ok(jsr_req_ref) =
+              JsrPackageReqReference::from_specifier(&resolution.specifier)
+            {
+              if jsr_req_ref.req().version_req.version_text() == "*" {
+                let maybe_version = graph
+                  .packages
+                  .mappings()
+                  .find(|(req, _)| *req == jsr_req_ref.req())
+                  .map(|(_, nv)| nv.version.clone());
+                diagnostics_collector.push(
+                  PublishDiagnostic::MissingConstraint {
+                    specifier: resolution.specifier.clone(),
+                    specifier_text: specifier_text.to_string(),
+                    resolved_version: maybe_version,
+                    text_info: SourceTextInfo::new(source_text.clone()),
+                    referrer: resolution.range.clone(),
+                  },
+                );
+              }
+            }
+          }
+          "npm" => {
+            skip_specifiers.insert(resolution.specifier.clone());
+
+            // check for a missing version constraint
+            if let Ok(jsr_req_ref) =
+              NpmPackageReqReference::from_specifier(&resolution.specifier)
+            {
+              if jsr_req_ref.req().version_req.version_text() == "*" {
+                let maybe_version = graph
+                  .get(&resolution.specifier)
+                  .and_then(|m| m.npm())
+                  .map(|n| n.nv_reference.nv().version.clone());
+                diagnostics_collector.push(
+                  PublishDiagnostic::MissingConstraint {
+                    specifier: resolution.specifier.clone(),
+                    specifier_text: specifier_text.to_string(),
+                    resolved_version: maybe_version,
+                    text_info: SourceTextInfo::new(source_text.clone()),
+                    referrer: resolution.range.clone(),
+                  },
+                );
+              }
+            }
           }
           "http" | "https" => {
             skip_specifiers.insert(resolution.specifier.clone());
             diagnostics_collector.push(
               PublishDiagnostic::InvalidExternalImport {
                 kind: format!("non-JSR '{}'", resolution.specifier.scheme()),
-                text_info: SourceTextInfo::new(text.clone()),
+                text_info: SourceTextInfo::new(source_text.clone()),
                 imported: resolution.specifier.clone(),
                 referrer: resolution.range.clone(),
               },
@@ -46,7 +95,7 @@ pub fn collect_invalid_external_imports(
             diagnostics_collector.push(
               PublishDiagnostic::InvalidExternalImport {
                 kind: format!("'{}'", resolution.specifier.scheme()),
-                text_info: SourceTextInfo::new(text.clone()),
+                text_info: SourceTextInfo::new(source_text.clone()),
                 imported: resolution.specifier.clone(),
                 referrer: resolution.range.clone(),
               },
@@ -77,12 +126,22 @@ pub fn collect_invalid_external_imports(
       continue;
     };
 
-    for (_, dep) in &module.dependencies {
+    for (specifier_text, dep) in &module.dependencies {
       if let Some(resolved) = dep.maybe_code.ok() {
-        collect_if_invalid(&mut skip_specifiers, &module.source, resolved);
+        collect_if_invalid(
+          &mut skip_specifiers,
+          &module.source,
+          specifier_text,
+          resolved,
+        );
       }
       if let Some(resolved) = dep.maybe_type.ok() {
-        collect_if_invalid(&mut skip_specifiers, &module.source, resolved);
+        collect_if_invalid(
+          &mut skip_specifiers,
+          &module.source,
+          specifier_text,
+          resolved,
+        );
       }
     }
   }

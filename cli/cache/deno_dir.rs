@@ -33,11 +33,10 @@ impl DenoDirProvider {
 
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
 /// in single directory that can be controlled with `$DENO_DIR` env variable.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DenoDir {
   /// Example: /Users/rld/.deno/
-  /// Note: This is not exposed in order to encourage using re-usable methods.
-  root: PathBuf,
+  pub root: PathBuf,
   /// Used by TsCompiler to cache compiler output.
   pub gen_cache: DiskCache,
 }

@@ -6,6 +6,107 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.43.6 / 2024.05.21
+
+- fix(cli): use CliNodeResolver::resolve() for managed node_modules (#23902)
+- fix(cli/coverage): invalid line id in html reporter (#23908)
+- fix(ext/web): fix potential leak of unread buffers (#23923)
+- fix(ext/webgpu): Allow `depthClearValue` to be undefined when `depthLoadOp` is
+  not "clear" (#23850)
+- fix(lsp): Fix display of JSDoc named examples (#23927)
+- fix(lsp): apply import fix to missing declaration code action (#23924)
+- fix(node): instantiating process class without new (#23865)
+- fix(node): patch MessagePort in worker_thread message (#23871)
+- fix(node): stub findSourceMap for `ava` (#23899)
+- fix(node): track `SIG*` listeners in `process.listeners` (#23890)
+- fix(task): do not error if node_modules folder not exists (#23920)
+- fix: add missing `URL.parse` types (#23893)
+- fix: handle signal 0 in process.kill (#23473)
+- fix: serve handler error with 0 arguments (#23652)
+- perf(cache): compile ts to js in parallel for `deno cache` (#23892)
+- perf: analyze cjs exports and emit typescript in parallel (#23856)
+- perf: analyze cjs re-exports in parallel (#23894)
+- perf: resolver - skip cwd lookup if able (#23851)
+
+### 1.43.5 / 2024.05.18
+
+- fix(npm): regression deserializing JSON for some npm packages (#23868)
+
+### 1.43.4 / 2024.05.16
+
+- fix(cli): panic with `deno coverage` (#23353)
+- fix(doc): --lint - private ref diagnostic was displaying incorrect information
+  (#23834)
+- fix(doc/publish): support expando properties (#23795)
+- fix(emit): regression - keep comments in emit (#23815)
+- fix(ext/node): export geteuid from node:process (#23840)
+- fix(ext/node): fix grpc error_handling example (#23755)
+- fix(ext/node): homedir() `getpwuid`/`SHGetKnownFolderPath` fallback (#23841)
+- fix(ext/node): process.uptime works without this (#23786)
+- fix(ext/web): update ongoing promise in async iterator `return()` method
+  (#23642)
+- fix(lsp): respect types dependencies for tsc roots (#23825)
+- fix(lsp): show reference code lens on methods (#23804)
+- fix(node): error when throwing `FS_EISDIR` (#23829)
+- fix(node): seperate worker module cache (#23634)
+- fix(node): stub `AsyncResource.emitDestroy()` (#23802)
+- fix(node): wrong `worker_threads.terminate()` return value (#23803)
+- fix(npm): handle null fields in npm registry JSON (#23785)
+- fix(npm): make tarball extraction more reliable (#23759)
+- fix(publish): always include config file when publishing (#23797)
+- fix(publish): error for missing version constraints on dry-publish instead of
+  just publish (#23798)
+- fix(runtime): output to stderr with colors if a tty and stdout is piped
+  (#23813)
+- fix: Add missing `"junction"` type for `SymlinkOptions.types` (#23756)
+- fix: update swc_ecma_parser to 0.114.1 (#23816)
+- fix: widen aarch64 linux minimum GLIBC version by improving sysroot build
+  (#23791)
+- perf(compile): Do not checksum eszip content (#23839)
+- perf(jsr): download metadata files as soon as possible and in parallel
+  (#23836)
+- perf(lsp): Cache semantic tokens for open documents (#23799)
+
+### 1.43.3 / 2024.05.10
+
+- fix(ext/webgpu): invalidate GPUAdapter when a device is created (#23752)
+- fix(lsp): completions for using decl identifiers (#23748)
+- fix(lsp): move sloppy import resolution from loader to resolver (#23751)
+- fix(node): better cjs re-export handling (#23760)
+- fix(runtime): Allow opening /dev/fd/XXX for unix (#23743)
+- fix(task): regression where `npx <command>` sometimes couldn't find command
+  (#23730)
+- fix: bump deno_core to fix unsoundness (#23768)
+
+### 1.43.2 / 2024.05.08
+
+- feat(runtime): allow adding custom extensions to snapshot (#23569)
+- fix(compile): relative permissions should be retained as relative (#23719)
+- fix(ext/node): check resource exists before close (#23655)
+- fix(ext/node): don't rely on Deno.env to read NODE_DEBUG (#23694)
+- fix(ext/node): napi_get_element and napi_set_element work with objects
+  (#23713)
+- fix(ext/node): support delete process.env.var (#23647)
+- fix(ext/web): properly handle `Blob` case for `createImageBitmap` (#23518)
+- fix(ext/webgpu): correctly validate GPUExtent3D, GPUOrigin3D, GPUOrigin2D &
+  GPUColor (#23413)
+- fix(fmt/js): `else` was moved to wrong `if` sometimes when formatting minified
+  code (#23706)
+- fix(jsr): panic when importing jsr package with deps via https (#23728)
+- fix(lsp): Catch cancellation exceptions thrown by TSC, stop waiting for TS
+  result upon cancellation (#23645)
+- fix(lsp): Pass diagnostic codes to TSC as numbers (#23720)
+- fix(lsp): always cache all npm packages (#23679)
+- fix(lsp): handle multiline semantic tokens (#23691)
+- fix(publish): public api - trace parent classes & interfaces when following a
+  method (#23661)
+- fix(runtime): allow r/w access to /etc without --allow-all (#23718)
+- fix(test): proper type checking for files with doc tests (#23654)
+- fix(workers): `importScripts` concurrently and use a new `reqwest::Client` per
+  importScripts (#23699)
+- fix: DOMException doesn't throw on __callSitesEvals (#23729)
+- fix: upgrade TypeScript from 5.4.3 to 5.4.5 (#23740)
+
 ### 1.43.0 / 2024.05.01
 
 - FUTURE(ext/net): remove

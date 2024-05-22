@@ -4,7 +4,6 @@ use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use serde::Serialize;
 use std::cell::RefCell;
-use std::num::NonZeroU16;
 use std::thread;
 
 use deno_terminal::colors;
@@ -76,7 +75,8 @@ pub struct BootstrapOptions {
   pub location: Option<ModuleSpecifier>,
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
-  pub is_tty: bool,
+  pub is_stdout_tty: bool,
+  pub is_stderr_tty: bool,
   // --unstable flag, deprecated
   pub unstable: bool,
   // --unstable-* flags
@@ -92,7 +92,7 @@ pub struct BootstrapOptions {
   pub future: bool,
   pub mode: WorkerExecutionMode,
   // Used by `deno serve`
-  pub serve_port: Option<NonZeroU16>,
+  pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
 }
 
@@ -109,7 +109,8 @@ impl Default for BootstrapOptions {
       user_agent,
       cpu_count,
       no_color: !colors::use_color(),
-      is_tty: deno_terminal::is_stdout_tty(),
+      is_stdout_tty: deno_terminal::is_stdout_tty(),
+      is_stderr_tty: deno_terminal::is_stderr_tty(),
       enable_op_summary_metrics: Default::default(),
       enable_testing_features: Default::default(),
       log_level: Default::default(),
@@ -196,7 +197,7 @@ impl BootstrapOptions {
       self.verbose_deprecated_api_warning,
       self.future,
       self.mode as u8 as _,
-      self.serve_port.map(|x| x.into()).unwrap_or_default(),
+      self.serve_port.unwrap_or_default(),
       self.serve_host.as_deref(),
     );
 
