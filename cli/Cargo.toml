@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.43.4"
+version = "1.43.6"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -72,7 +72,7 @@ deno_emit = "=0.40.3"
 deno_graph = { version = "=0.75.2", features = ["tokio_executor"] }
 deno_lint = { version = "=0.58.4", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm = "=0.20.1"
+deno_npm = "=0.20.2"
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver = "=0.5.4"
 deno_task_shell = "=0.16.1"
@@ -129,6 +129,7 @@ rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 reqwest.workspace = true
 ring.workspace = true
+runtimelib = "=0.9.0"
 rustyline.workspace = true
 rustyline-derive = "=0.7.0"
 serde.workspace = true
