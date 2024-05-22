@@ -353,6 +353,9 @@ impl TestRun {
             test::TestEvent::Output(_, output) => {
               reporter.report_output(&output);
             }
+            test::TestEvent::Slow(id, elapsed) => {
+              reporter.report_slow(tests.read().get(&id).unwrap(), elapsed);
+            }
             test::TestEvent::Result(id, result, elapsed) => {
               if tests_with_result.insert(id) {
                 let description = tests.read().get(&id).unwrap().clone();
@@ -609,6 +612,8 @@ impl LspTestReporter {
     let test = desc.as_test_identifier(&self.tests);
     self.progress(lsp_custom::TestRunProgressMessage::Started { test });
   }
+
+  fn report_slow(&mut self, _desc: &test::TestDescription, _elapsed: u64) {}
 
   fn report_output(&mut self, output: &[u8]) {
     let test = self
