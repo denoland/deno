@@ -776,7 +776,7 @@ impl CliOptions {
       };
 
     if let Some(env_file_name) = &flags.env_file {
-        match from_filename(env_file_name) {
+      match from_filename(env_file_name) {
           Ok(_) => (),
           Err(error) => {
             match error {
