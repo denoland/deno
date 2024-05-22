@@ -10,8 +10,8 @@ use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
+use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_util::has_graph_root_local_dependent_changed;
-use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
@@ -1305,12 +1305,10 @@ async fn fetch_inline_files(
 
 /// Type check a collection of module and document specifiers.
 pub async fn check_specifiers(
-  cli_options: &CliOptions,
   file_fetcher: &FileFetcher,
-  module_load_preparer: &ModuleLoadPreparer,
+  main_graph_container: &Arc<MainModuleGraphContainer>,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
 ) -> Result<(), AnyError> {
-  let lib = cli_options.ts_type_lib_window();
   let inline_files = fetch_inline_files(
     file_fetcher,
     specifiers
@@ -1346,13 +1344,8 @@ pub async fn check_specifiers(
     }
   }
 
-  module_load_preparer
-    .prepare_module_load(
-      module_specifiers,
-      false,
-      lib,
-      PermissionsContainer::allow_all(),
-    )
+  main_graph_container
+    .check_specifiers(&module_specifiers)
     .await?;
 
   Ok(())
@@ -1701,7 +1694,6 @@ pub async fn run_tests(
   let cli_options = factory.cli_options();
   let test_options = cli_options.resolve_test_options(test_flags)?;
   let file_fetcher = factory.file_fetcher()?;
-  let module_load_preparer = factory.module_load_preparer().await?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
@@ -1721,10 +1713,11 @@ pub async fn run_tests(
     return Err(generic_error("No test modules found"));
   }
 
+  let main_graph_container = factory.main_module_graph_container().await?;
+
   check_specifiers(
-    cli_options,
     file_fetcher,
-    module_load_preparer,
+    main_graph_container,
     specifiers_with_mode.clone(),
   )
   .await?;
@@ -1863,7 +1856,6 @@ pub async fn run_tests_with_watch(
 
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
-        let module_load_preparer = factory.module_load_preparer().await?;
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
           &cli_options,
           file_fetcher,
@@ -1875,10 +1867,11 @@ pub async fn run_tests_with_watch(
         .filter(|(specifier, _)| test_modules_to_reload.contains(specifier))
         .collect::<Vec<(ModuleSpecifier, TestMode)>>();
 
+        let main_graph_container =
+          factory.main_module_graph_container().await?;
         check_specifiers(
-          &cli_options,
           file_fetcher,
-          module_load_preparer,
+          main_graph_container,
           specifiers_with_mode.clone(),
         )
         .await?;

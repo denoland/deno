@@ -929,19 +929,32 @@ async fn inspector_with_ts_files() {
     .await;
 
   // receive messages with sources from this test
-  let script1 = tester.recv().await;
-  assert_contains!(script1, "testdata/inspector/test.ts");
+  let mut scripts = vec![
+    tester.recv().await,
+    tester.recv().await,
+    tester.recv().await,
+  ];
+  let script1 = scripts.remove(
+    scripts
+      .iter()
+      .position(|s| s.contains("testdata/inspector/test.ts"))
+      .unwrap(),
+  );
   let script1_id = {
     let v: serde_json::Value = serde_json::from_str(&script1).unwrap();
     v["params"]["scriptId"].as_str().unwrap().to_string()
   };
-  let script2 = tester.recv().await;
-  assert_contains!(script2, "testdata/inspector/foo.ts");
+  let script2 = scripts.remove(
+    scripts
+      .iter()
+      .position(|s| s.contains("testdata/inspector/foo.ts"))
+      .unwrap(),
+  );
   let script2_id = {
     let v: serde_json::Value = serde_json::from_str(&script2).unwrap();
     v["params"]["scriptId"].as_str().unwrap().to_string()
   };
-  let script3 = tester.recv().await;
+  let script3 = scripts.remove(0);
   assert_contains!(script3, "testdata/inspector/bar.js");
   let script3_id = {
     let v: serde_json::Value = serde_json::from_str(&script3).unwrap();
