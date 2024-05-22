@@ -2625,7 +2625,7 @@ Directory arguments are expanded to all contained files matching the glob
     .arg(
       Arg::new("clean")
         .long("clean")
-        .help("Empty the coverage profile data directory before running tests.
+        .help("Empty the temporary coverage profile data directory before running tests.
         
 Note: running multiple `deno test --clean` calls in series or parallel for the same coverage directory may cause race conditions.")
         .action(ArgAction::SetTrue),
