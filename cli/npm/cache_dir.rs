@@ -118,9 +118,6 @@ impl NpmCacheDir {
   ) -> Option<NpmPackageCacheFolderId> {
     let mut maybe_relative_url = None;
 
-    // let _relative_url = self.root_dir_url.make_relative(specifier).unwrap();
-    // panic!("relative url {}", _relative_url);
-
     // Iterate through known registries and try to get a match.
     for registry_dirname in &self.known_registries_dirnames {
       let registry_root_dir = self
