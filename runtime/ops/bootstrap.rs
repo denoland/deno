@@ -16,7 +16,8 @@ deno_core::extension!(
     op_bootstrap_language,
     op_bootstrap_log_level,
     op_bootstrap_no_color,
-    op_bootstrap_is_tty,
+    op_bootstrap_is_stdout_tty,
+    op_bootstrap_is_stderr_tty,
     op_bootstrap_unstable_args,
     op_snapshot_options,
   ],
@@ -117,7 +118,13 @@ pub fn op_bootstrap_no_color(state: &mut OpState) -> bool {
 }
 
 #[op2(fast)]
-pub fn op_bootstrap_is_tty(state: &mut OpState) -> bool {
+pub fn op_bootstrap_is_stdout_tty(state: &mut OpState) -> bool {
   let options = state.borrow::<BootstrapOptions>();
-  options.is_tty
+  options.is_stdout_tty
+}
+
+#[op2(fast)]
+pub fn op_bootstrap_is_stderr_tty(state: &mut OpState) -> bool {
+  let options = state.borrow::<BootstrapOptions>();
+  options.is_stderr_tty
 }

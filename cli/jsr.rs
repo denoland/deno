@@ -111,12 +111,32 @@ impl JsrCacheResolver {
   ) -> Option<String> {
     let info = self.package_version_info(nv)?;
     let path = path.strip_prefix("./").unwrap_or(path);
+    let mut sloppy_fallback = None;
     for (export, path_) in info.exports() {
-      if path_.strip_prefix("./").unwrap_or(path_) == path {
+      let path_ = path_.strip_prefix("./").unwrap_or(path_);
+      if path_ == path {
         return Some(export.strip_prefix("./").unwrap_or(export).to_string());
       }
+      // TSC in some cases will suggest a `.js` import path for a `.d.ts` source
+      // file.
+      if sloppy_fallback.is_none() {
+        let path = path
+          .strip_suffix(".js")
+          .or_else(|| path.strip_suffix(".mjs"))
+          .or_else(|| path.strip_suffix(".cjs"))
+          .unwrap_or(path);
+        let path_ = path_
+          .strip_suffix(".d.ts")
+          .or_else(|| path_.strip_suffix(".d.mts"))
+          .or_else(|| path_.strip_suffix(".d.cts"))
+          .unwrap_or(path_);
+        if path_ == path {
+          sloppy_fallback =
+            Some(export.strip_prefix("./").unwrap_or(export).to_string());
+        }
+      }
     }
-    None
+    sloppy_fallback
   }
 
   pub fn lookup_req_for_nv(&self, nv: &PackageNv) -> Option<PackageReq> {
@@ -162,6 +182,12 @@ impl JsrCacheResolver {
     let info = read_cached_package_version_info().map(Arc::new);
     self.info_by_nv.insert(nv.clone(), info.clone());
     info
+  }
+
+  pub fn did_cache(&self) {
+    self.nv_by_req.retain(|_, nv| nv.is_some());
+    self.info_by_nv.retain(|_, info| info.is_some());
+    self.info_by_name.retain(|_, info| info.is_some());
   }
 }
 
@@ -304,6 +330,7 @@ fn partial_jsr_package_version_info_from_slice(
       .as_object_mut()
       .and_then(|o| o.remove("exports"))
       .unwrap_or_default(),
-    module_graph: None,
+    module_graph_1: None,
+    module_graph_2: None,
   })
 }

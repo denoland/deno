@@ -24,6 +24,7 @@ export async function checkCopyright() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
+    ":!:tests/registry/**",
     ":!:tests/specs/**",
     ":!:tests/testdata/**",
     ":!:cli/bench/testdata/**",
@@ -71,7 +72,7 @@ export async function checkCopyright() {
       !fileText.startsWith(C_STYLE_COPYRIGHT_LINE)
     ) {
       let trimmedText = fileText;
-      // Attempt to trim accceptable lines
+      // Attempt to trim acceptable lines
       while (
         ACCEPTABLE_LINES.test(trimmedText) &&
         !trimmedText.startsWith(C_STYLE_COPYRIGHT_LINE)
@@ -102,6 +103,7 @@ export async function checkCopyright() {
     // show all the errors at the same time to prevent overlap with
     // other running scripts that may be outputting
     console.error(errors.join("\n"));
+    console.error(`Expected copyright:\n\`\`\`\n${COPYRIGHT_LINE}\n\`\`\``);
     throw new Error(`Copyright checker had ${errors.length} errors.`);
   }
 }

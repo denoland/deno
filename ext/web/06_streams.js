@@ -1995,6 +1995,10 @@ function readableByteStreamControllerPullInto(
       case "Uint32Array":
         ctor = Uint32Array;
         break;
+      case "Float16Array":
+        // TODO(petamoriken): add Float16Array to primordials
+        ctor = Float16Array;
+        break;
       case "Float32Array":
         ctor = Float32Array;
         break;
@@ -4960,11 +4964,11 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
       return PromiseResolve({ value: undefined, done: true });
     };
 
-    const returnPromise = reader[_iteratorNext]
+    reader[_iteratorNext] = reader[_iteratorNext]
       ? PromisePrototypeThen(reader[_iteratorNext], returnSteps, returnSteps)
       : returnSteps();
     return PromisePrototypeThen(
-      returnPromise,
+      reader[_iteratorNext],
       () => ({ value: arg, done: true }),
     );
   },
@@ -5270,7 +5274,7 @@ class ReadableStream {
         "Argument 1",
       );
     } else {
-      options = {};
+      options = { __proto__: null };
     }
     if (options.mode === undefined) {
       return acquireReadableStreamDefaultReader(this);
@@ -5286,7 +5290,7 @@ class ReadableStream {
    * @param {PipeOptions=} options
    * @returns {ReadableStream<T>}
    */
-  pipeThrough(transform, options = {}) {
+  pipeThrough(transform, options = { __proto__: null }) {
     webidl.assertBranded(this, ReadableStreamPrototype);
     const prefix = "Failed to execute 'pipeThrough' on 'ReadableStream'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -5325,7 +5329,7 @@ class ReadableStream {
    * @param {PipeOptions=} options
    * @returns {Promise<void>}
    */
-  pipeTo(destination, options = {}) {
+  pipeTo(destination, options = { __proto__: null }) {
     try {
       webidl.assertBranded(this, ReadableStreamPrototype);
       const prefix = "Failed to execute 'pipeTo' on 'ReadableStream'";
@@ -5563,7 +5567,7 @@ class ReadableStreamBYOBReader {
    * @param {ReadableStreamBYOBReaderReadOptions} options
    *  @returns {Promise<ReadableStreamBYOBReadResult>}
    */
-  read(view, options = {}) {
+  read(view, options = { __proto__: null }) {
     try {
       webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
       const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
@@ -6147,8 +6151,8 @@ class TransformStream {
    */
   constructor(
     transformer = undefined,
-    writableStrategy = {},
-    readableStrategy = {},
+    writableStrategy = { __proto__: null },
+    readableStrategy = { __proto__: null },
   ) {
     const prefix = "Failed to construct 'TransformStream'";
     if (transformer !== undefined) {

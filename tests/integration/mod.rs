@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
+
 // These files have `_tests.rs` suffix to make it easier to tell which file is
 // the test (ex. `lint_tests.rs`) and which is the implementation (ex. `lint.rs`)
 // when both are open, especially for two tabs in VS Code
@@ -10,8 +13,6 @@ mod bench;
 mod bundle;
 #[path = "cache_tests.rs"]
 mod cache;
-#[path = "cert_tests.rs"]
-mod cert;
 #[path = "check_tests.rs"]
 mod check;
 #[path = "compile_tests.rs"]
@@ -59,6 +60,8 @@ mod publish;
 mod repl;
 #[path = "run_tests.rs"]
 mod run;
+#[path = "serve_tests.rs"]
+mod serve;
 #[path = "shared_library_tests.rs"]
 mod shared_library_tests;
 #[path = "task_tests.rs"]

@@ -12,6 +12,7 @@ use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_ast::SourceMapOption;
 use deno_core::resolve_url_or_path;
+use deno_graph::GraphKind;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -67,6 +68,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
+use crate::args::import_map::enhance_import_map_value_with_workspace_members;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
@@ -108,7 +110,7 @@ pub static DENO_DISABLE_PEDANTIC_NODE_WARNINGS: Lazy<bool> = Lazy::new(|| {
     .is_some()
 });
 
-static DENO_FUTURE: Lazy<bool> =
+pub static DENO_FUTURE: Lazy<bool> =
   Lazy::new(|| std::env::var("DENO_FUTURE").ok().is_some());
 
 pub fn jsr_url() -> &'static Url {
@@ -149,9 +151,10 @@ pub fn jsr_api_url() -> &'static Url {
 
 pub fn ts_config_to_transpile_and_emit_options(
   config: deno_config::TsConfig,
-) -> (deno_ast::TranspileOptions, deno_ast::EmitOptions) {
+) -> Result<(deno_ast::TranspileOptions, deno_ast::EmitOptions), AnyError> {
   let options: deno_config::EmitConfigOptions =
-    serde_json::from_value(config.0).unwrap();
+    serde_json::from_value(config.0)
+      .context("Failed to parse compilerOptions")?;
   let imports_not_used_as_values =
     match options.imports_not_used_as_values.as_str() {
       "preserve" => deno_ast::ImportsNotUsedAsValues::Preserve,
@@ -173,7 +176,7 @@ pub fn ts_config_to_transpile_and_emit_options(
   } else {
     SourceMapOption::None
   };
-  (
+  Ok((
     deno_ast::TranspileOptions {
       use_ts_decorators: options.experimental_decorators,
       use_decorators_proposal: !options.experimental_decorators,
@@ -185,16 +188,17 @@ pub fn ts_config_to_transpile_and_emit_options(
       jsx_fragment_factory: options.jsx_fragment_factory,
       jsx_import_source: options.jsx_import_source,
       precompile_jsx,
-      precompile_jsx_skip_elements: None,
+      precompile_jsx_skip_elements: options.jsx_precompile_skip_elements,
       transform_jsx,
       var_decl_imports: false,
     },
     deno_ast::EmitOptions {
       inline_sources: options.inline_sources,
-      keep_comments: false,
+      keep_comments: true,
       source_map,
+      source_map_file: None,
     },
-  )
+  ))
 }
 
 /// Indicates how cached source files should be handled.
@@ -743,9 +747,12 @@ impl CliOptions {
         format!("for: {}", insecure_allowlist.join(", "))
       };
       let msg =
-        format!("DANGER: TLS certificate validation is disabled {domains}");
-      // use eprintln instead of log::warn so this always gets shown
-      eprintln!("{}", colors::yellow(msg));
+        format!("DANGER: TLS certificate validation is disabled {}", domains);
+      #[allow(clippy::print_stderr)]
+      {
+        // use eprintln instead of log::warn so this always gets shown
+        eprintln!("{}", colors::yellow(msg));
+      }
     }
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
@@ -866,6 +873,14 @@ impl CliOptions {
     self.maybe_config_file.as_ref().map(|f| f.specifier.clone())
   }
 
+  pub fn graph_kind(&self) -> GraphKind {
+    match self.sub_command() {
+      DenoSubcommand::Cache(_) => GraphKind::All,
+      DenoSubcommand::Check(_) => GraphKind::TypesOnly,
+      _ => self.type_check_mode().as_graph_kind(),
+    }
+  }
+
   pub fn ts_type_lib_window(&self) -> TsTypeLib {
     TsTypeLib::DenoWindow
   }
@@ -940,7 +955,7 @@ impl CliOptions {
     &self,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     match self.overrides.import_map_specifier.clone() {
-      Some(maybe_path) => Ok(maybe_path),
+      Some(maybe_url) => Ok(maybe_url),
       None => resolve_import_map_specifier(
         self.flags.import_map_path.as_deref(),
         self.maybe_config_file.as_ref(),
@@ -975,6 +990,10 @@ impl CliOptions {
           base_import_map_config,
           children_configs,
         );
+      let import_map = enhance_import_map_value_with_workspace_members(
+        import_map,
+        &workspace_config.members,
+      );
       log::debug!(
         "Workspace config generated this import map {}",
         serde_json::to_string_pretty(&import_map).unwrap()
@@ -1011,6 +1030,22 @@ impl CliOptions {
       // Remove so that child processes don't inherit this environment variable.
       std::env::remove_var("DENO_CHANNEL_FD");
       node_channel_fd.parse::<i64>().ok()
+    } else {
+      None
+    }
+  }
+
+  pub fn serve_port(&self) -> Option<u16> {
+    if let DenoSubcommand::Serve(flags) = self.sub_command() {
+      Some(flags.port)
+    } else {
+      None
+    }
+  }
+
+  pub fn serve_host(&self) -> Option<String> {
+    if let DenoSubcommand::Serve(flags) = self.sub_command() {
+      Some(flags.host.clone())
     } else {
       None
     }
@@ -1055,6 +1090,10 @@ impl CliOptions {
           resolve_url_or_path(&run_flags.script, self.initial_cwd())
             .map_err(AnyError::from)
         }
+      }
+      DenoSubcommand::Serve(run_flags) => {
+        resolve_url_or_path(&run_flags.script, self.initial_cwd())
+          .map_err(AnyError::from)
       }
       _ => {
         bail!("No main module.")
@@ -1496,10 +1535,6 @@ impl CliOptions {
     &self.flags.cache_path
   }
 
-  pub fn no_prompt(&self) -> bool {
-    resolve_no_prompt(&self.flags)
-  }
-
   pub fn no_remote(&self) -> bool {
     self.flags.no_remote
   }
@@ -1512,45 +1547,12 @@ impl CliOptions {
     self.flags.config_flag == deno_config::ConfigFlag::Disabled
   }
 
-  pub fn permissions_options(&self) -> PermissionsOptions {
-    PermissionsOptions {
-      allow_all: self.flags.allow_all,
-      allow_env: self.flags.allow_env.clone(),
-      deny_env: self.flags.deny_env.clone(),
-      allow_hrtime: self.flags.allow_hrtime,
-      deny_hrtime: self.flags.deny_hrtime,
-      allow_net: self.flags.allow_net.clone(),
-      deny_net: self.flags.deny_net.clone(),
-      allow_ffi: convert_option_str_to_path_buf(
-        &self.flags.allow_ffi,
-        self.initial_cwd(),
-      ),
-      deny_ffi: convert_option_str_to_path_buf(
-        &self.flags.deny_ffi,
-        self.initial_cwd(),
-      ),
-      allow_read: convert_option_str_to_path_buf(
-        &self.flags.allow_read,
-        self.initial_cwd(),
-      ),
-      deny_read: convert_option_str_to_path_buf(
-        &self.flags.deny_read,
-        self.initial_cwd(),
-      ),
-      allow_run: self.flags.allow_run.clone(),
-      deny_run: self.flags.deny_run.clone(),
-      allow_sys: self.flags.allow_sys.clone(),
-      deny_sys: self.flags.deny_sys.clone(),
-      allow_write: convert_option_str_to_path_buf(
-        &self.flags.allow_write,
-        self.initial_cwd(),
-      ),
-      deny_write: convert_option_str_to_path_buf(
-        &self.flags.deny_write,
-        self.initial_cwd(),
-      ),
-      prompt: !self.no_prompt(),
-    }
+  pub fn permission_flags(&self) -> &PermissionFlags {
+    &self.flags.permissions
+  }
+
+  pub fn permissions_options(&self) -> Result<PermissionsOptions, AnyError> {
+    self.flags.permissions.to_options(Some(&self.initial_cwd))
   }
 
   pub fn reload_flag(&self) -> bool {
@@ -1843,7 +1845,7 @@ fn resolve_files(
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.
-pub fn resolve_no_prompt(flags: &Flags) -> bool {
+pub fn resolve_no_prompt(flags: &PermissionFlags) -> bool {
   flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
 }
 
@@ -1857,20 +1859,6 @@ pub fn npm_pkg_req_ref_to_binary_command(
 ) -> String {
   let binary_name = req_ref.sub_path().unwrap_or(req_ref.req().name.as_str());
   binary_name.to_string()
-}
-
-fn convert_option_str_to_path_buf(
-  flag: &Option<Vec<String>>,
-  initial_cwd: &Path,
-) -> Option<Vec<PathBuf>> {
-  if let Some(allow_ffi_paths) = &flag {
-    let mut full_paths = Vec::new();
-    full_paths
-      .extend(allow_ffi_paths.iter().map(|path| initial_cwd.join(path)));
-    Some(full_paths)
-  } else {
-    None
-  }
 }
 
 #[cfg(test)]

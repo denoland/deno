@@ -234,7 +234,7 @@ class PerformanceMark extends PerformanceEntry {
 
   constructor(
     name,
-    options = {},
+    options = { __proto__: null },
   ) {
     const prefix = "Failed to construct 'PerformanceMark'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -441,7 +441,7 @@ class Performance extends EventTarget {
 
   mark(
     markName,
-    markOptions = {},
+    markOptions = { __proto__: null },
   ) {
     webidl.assertBranded(this, PerformancePrototype);
     const prefix = "Failed to execute 'mark' on 'Performance'";
@@ -466,7 +466,7 @@ class Performance extends EventTarget {
 
   measure(
     measureName,
-    startOrMeasureOptions = {},
+    startOrMeasureOptions = { __proto__: null },
     endMark = undefined,
   ) {
     webidl.assertBranded(this, PerformancePrototype);

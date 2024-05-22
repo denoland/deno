@@ -279,6 +279,7 @@ fn collect_lint_files(
     .collect_file_patterns(files)
 }
 
+#[allow(clippy::print_stdout)]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   let lint_rules = if maybe_rules_tags.is_none() {
     rules::get_all_rules()
@@ -646,12 +647,12 @@ impl LintReporter for PrettyLintReporter {
       }
     }
 
-    eprintln!("{}", d.display());
+    log::error!("{}", d.display());
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
-    eprintln!("Error linting: {file_path}");
-    eprintln!("   {err}");
+    log::error!("Error linting: {file_path}");
+    log::error!("   {err}");
   }
 
   fn close(&mut self, check_count: usize) {
@@ -694,7 +695,7 @@ impl LintReporter for CompactLintReporter {
     match d.range() {
       Some((text_info, range)) => {
         let line_and_column = text_info.line_and_column_display(range.start);
-        eprintln!(
+        log::error!(
           "{}: line {}, col {} - {} ({})",
           d.specifier(),
           line_and_column.line_number,
@@ -704,14 +705,14 @@ impl LintReporter for CompactLintReporter {
         )
       }
       None => {
-        eprintln!("{}: {} ({})", d.specifier(), d.message(), d.code())
+        log::error!("{}: {} ({})", d.specifier(), d.message(), d.code())
       }
     }
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
-    eprintln!("Error linting: {file_path}");
-    eprintln!("   {err}");
+    log::error!("Error linting: {file_path}");
+    log::error!("   {err}");
   }
 
   fn close(&mut self, check_count: usize) {
@@ -812,7 +813,10 @@ impl LintReporter for JsonLintReporter {
   fn close(&mut self, _check_count: usize) {
     sort_diagnostics(&mut self.diagnostics);
     let json = serde_json::to_string_pretty(&self);
-    println!("{}", json.unwrap());
+    #[allow(clippy::print_stdout)]
+    {
+      println!("{}", json.unwrap());
+    }
   }
 }
 

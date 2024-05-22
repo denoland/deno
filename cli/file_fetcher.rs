@@ -116,6 +116,10 @@ impl MemoryFiles {
   pub fn insert(&self, specifier: ModuleSpecifier, file: File) -> Option<File> {
     self.0.lock().insert(specifier, file)
   }
+
+  pub fn clear(&self) {
+    self.0.lock().clear();
+  }
 }
 
 /// Fetch a source file from the local file system.
@@ -616,6 +620,10 @@ impl FileFetcher {
   pub fn insert_memory_files(&self, file: File) -> Option<File> {
     self.memory_files.insert(file.specifier.clone(), file)
   }
+
+  pub fn clear_memory_files(&self) {
+    self.memory_files.clear();
+  }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -731,6 +739,8 @@ async fn fetch_no_follow<'a>(
   Ok(FetchOnceResult::Code(body, result_headers))
 }
 
+#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
   use crate::cache::GlobalHttpCache;

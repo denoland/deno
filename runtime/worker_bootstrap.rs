@@ -8,6 +8,31 @@ use std::thread;
 
 use deno_terminal::colors;
 
+/// The execution mode for this worker. Some modes may have implicit behaviour.
+#[derive(Copy, Clone)]
+#[repr(u8)]
+pub enum WorkerExecutionMode {
+  /// No special behaviour.
+  None,
+
+  /// Running in a worker.
+  Worker,
+  /// `deno run`
+  Run,
+  /// `deno repl`
+  Repl,
+  /// `deno eval`
+  Eval,
+  /// `deno test`
+  Test,
+  /// `deno bench`
+  Bench,
+  /// `deno serve`
+  Serve,
+  /// `deno jupyter`
+  Jupyter,
+}
+
 /// The log level to use when printing diagnostic log messages, warnings,
 /// or errors in the worker.
 ///
@@ -50,7 +75,8 @@ pub struct BootstrapOptions {
   pub location: Option<ModuleSpecifier>,
   /// Sets `Deno.noColor` in JS runtime.
   pub no_color: bool,
-  pub is_tty: bool,
+  pub is_stdout_tty: bool,
+  pub is_stderr_tty: bool,
   // --unstable flag, deprecated
   pub unstable: bool,
   // --unstable-* flags
@@ -59,10 +85,15 @@ pub struct BootstrapOptions {
   pub inspect: bool,
   pub has_node_modules_dir: bool,
   pub argv0: Option<String>,
+  pub node_debug: Option<String>,
   pub node_ipc_fd: Option<i64>,
   pub disable_deprecated_api_warning: bool,
   pub verbose_deprecated_api_warning: bool,
   pub future: bool,
+  pub mode: WorkerExecutionMode,
+  // Used by `deno serve`
+  pub serve_port: Option<u16>,
+  pub serve_host: Option<String>,
 }
 
 impl Default for BootstrapOptions {
@@ -78,7 +109,8 @@ impl Default for BootstrapOptions {
       user_agent,
       cpu_count,
       no_color: !colors::use_color(),
-      is_tty: deno_terminal::is_stdout_tty(),
+      is_stdout_tty: deno_terminal::is_stdout_tty(),
+      is_stderr_tty: deno_terminal::is_stderr_tty(),
       enable_op_summary_metrics: Default::default(),
       enable_testing_features: Default::default(),
       log_level: Default::default(),
@@ -90,10 +122,14 @@ impl Default for BootstrapOptions {
       args: Default::default(),
       has_node_modules_dir: Default::default(),
       argv0: None,
+      node_debug: None,
       node_ipc_fd: None,
       disable_deprecated_api_warning: false,
       verbose_deprecated_api_warning: false,
       future: false,
+      mode: WorkerExecutionMode::None,
+      serve_port: Default::default(),
+      serve_host: Default::default(),
     }
   }
 }
@@ -123,12 +159,20 @@ struct BootstrapV8<'a>(
   bool,
   // argv0
   Option<&'a str>,
+  // node_debug
+  Option<&'a str>,
   // disable_deprecated_api_warning,
   bool,
   // verbose_deprecated_api_warning
   bool,
   // future
   bool,
+  // mode
+  i32,
+  // serve port
+  u16,
+  // serve host
+  Option<&'a str>,
 );
 
 impl BootstrapOptions {
@@ -148,9 +192,13 @@ impl BootstrapOptions {
       self.enable_testing_features,
       self.has_node_modules_dir,
       self.argv0.as_deref(),
+      self.node_debug.as_deref(),
       self.disable_deprecated_api_warning,
       self.verbose_deprecated_api_warning,
       self.future,
+      self.mode as u8 as _,
+      self.serve_port.unwrap_or_default(),
+      self.serve_host.as_deref(),
     );
 
     bootstrap.serialize(ser).unwrap()

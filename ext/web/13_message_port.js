@@ -150,7 +150,7 @@ class MessagePort extends EventTarget {
    * @param {any} message
    * @param {object[] | StructuredSerializeOptions} transferOrOptions
    */
-  postMessage(message, transferOrOptions = {}) {
+  postMessage(message, transferOrOptions = { __proto__: null }) {
     webidl.assertBranded(this, MessagePortPrototype);
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -190,6 +190,11 @@ class MessagePort extends EventTarget {
       this[_enabled] = true;
       while (true) {
         if (this[_id] === null) break;
+        // Exit if no message event listeners are present in Node compat mode.
+        if (
+          typeof this[nodeWorkerThreadCloseCb] == "function" &&
+          messageEventListenerCount === 0
+        ) break;
         let data;
         try {
           data = await op_message_port_recv_message(
