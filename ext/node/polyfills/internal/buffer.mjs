@@ -6,6 +6,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
+import { op_is_ascii, op_is_utf8 } from "ext:core/ops";
 
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
@@ -26,10 +27,12 @@ import {
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
+  isTypedArray,
 } from "ext:deno_node/internal/util/types.ts";
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { validateBuffer } from "ext:deno_node/internal/validators.mjs";
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+import { ERR_INVALID_STATE } from "ext:deno_node/internal/errors.ts";
 import {
   forgivingBase64Encode,
   forgivingBase64UrlEncode,
@@ -2536,12 +2539,58 @@ export function writeU_Int24LE(buf, value, offset, min, max) {
   return offset;
 }
 
+export function isUtf8(input) {
+  if (isTypedArray(input)) {
+    if (input.buffer.detached) {
+      throw new ERR_INVALID_STATE("Cannot validate on a detached buffer");
+    }
+    return op_is_utf8(input);
+  }
+
+  if (isAnyArrayBuffer(input)) {
+    if (input.detached) {
+      throw new ERR_INVALID_STATE("Cannot validate on a detached buffer");
+    }
+    return op_is_utf8(new Uint8Array(input));
+  }
+
+  throw new codes.ERR_INVALID_ARG_TYPE("input", [
+    "ArrayBuffer",
+    "Buffer",
+    "TypedArray",
+  ], input);
+}
+
+export function isAscii(input) {
+  if (isTypedArray(input)) {
+    if (input.buffer.detached) {
+      throw new ERR_INVALID_STATE("Cannot validate on a detached buffer");
+    }
+    return op_is_ascii(input);
+  }
+
+  if (isAnyArrayBuffer(input)) {
+    if (input.detached) {
+      throw new ERR_INVALID_STATE("Cannot validate on a detached buffer");
+    }
+    return op_is_ascii(new Uint8Array(input));
+  }
+
+  throw new codes.ERR_INVALID_ARG_TYPE("input", [
+    "ArrayBuffer",
+    "Buffer",
+    "TypedArray",
+  ], input);
+}
+
 export default {
   atob,
   btoa,
   Blob,
   Buffer,
   constants,
+  isAscii,
+  isUtf8,
   kMaxLength,
   kStringMaxLength,
   SlowBuffer,

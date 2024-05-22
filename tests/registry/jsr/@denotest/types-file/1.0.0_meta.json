@@ -1,0 +1,28 @@
+{
+  "exports": {
+    ".": "./mod.ts",
+    "./types": "./types.d.ts"
+  },
+  "moduleGraph1": {
+    "/types.d.ts": {},
+    "/mod.ts": {
+      "dependencies": [
+        {
+          "type": "static",
+          "kind": "importType",
+          "specifier": "./types.d.ts",
+          "specifierRange": [
+            [
+              0,
+              42
+            ],
+            [
+              0,
+              46
+            ]
+          ]
+        }
+      ]
+    }
+  }
+}
