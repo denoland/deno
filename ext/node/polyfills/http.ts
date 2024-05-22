@@ -671,6 +671,9 @@ class ClientRequest extends OutgoingMessage {
     (async () => {
       try {
         const res = await op_fetch_send(this._req.requestRid);
+        if (this._req.cancelHandleRid !== null) {
+          core.tryClose(this._req.cancelHandleRid);
+        }
         try {
           cb?.();
         } catch (_) {
@@ -708,10 +711,6 @@ class ClientRequest extends OutgoingMessage {
           res.headers,
           Object.entries(res.headers).flat().length,
         );
-
-        if (this._req.cancelHandleRid !== null) {
-          core.tryClose(this._req.cancelHandleRid);
-        }
 
         if (incoming.upgrade) {
           if (this.listenerCount("upgrade") === 0) {

@@ -31,6 +31,7 @@ pub enum ResponseStreamResult {
   NoData,
   /// Stream failed.
   Error(AnyError),
+  // TODO: add a flush signal here
 }
 
 impl From<ResponseStreamResult> for Option<Result<Frame<BufView>, AnyError>> {
@@ -242,6 +243,10 @@ impl PollFrame for ResourceBodyAdapter {
     mut self: Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<ResponseStreamResult> {
+    // TODO: if the read promise hasn't resolved, but the timer tired,
+    // we want to send the flush signal
+    // OR: if the stream is not ready, create timer if one doesn't exist, if the timer
+    // has expired already then send the flush signal
     let res = match ready!(self.future.poll_unpin(cx)) {
       Err(err) => ResponseStreamResult::Error(err),
       Ok(buf) => {
@@ -293,6 +298,7 @@ impl PollFrame for tokio::sync::mpsc::Receiver<BufView> {
 enum GZipState {
   Header,
   Streaming,
+  // TODO: add FlushingIdle or PendingFlush for in the middle.
   Flushing,
   Trailer,
   EndOfStream,
@@ -367,6 +373,7 @@ impl PollFrame for GZipResponseStream {
         if let Some(partial) = this.partial.take() {
           ResponseStreamResult::NonEmptyBuf(partial)
         } else {
+          // TODO: If we get "flush" here we should flush the gzip stream
           ready!(Pin::new(&mut this.underlying).poll_frame(cx))
         }
       }
@@ -403,6 +410,8 @@ impl PollFrame for GZipResponseStream {
           this.partial = Some(input);
         }
         res
+        // TODO: if we get flush signal here we want to do
+        // stm.compress(&[], &mut buf, flate::FlushCompress::Sync);
       }
     };
     let len = stm.total_out() - start_out;
