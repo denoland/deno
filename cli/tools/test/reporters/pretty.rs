@@ -197,6 +197,18 @@ impl TestReporter for PrettyTestReporter {
     self.started_tests = true;
   }
 
+  fn report_slow(&mut self, description: &TestDescription, elapsed: u64) {
+    writeln!(
+      &mut self.writer,
+      "{}",
+      colors::yellow_bold(format!(
+        "'{}' has been running for over {}",
+        description.name,
+        colors::gray(format!("({})", display::human_elapsed(elapsed.into()))),
+      ))
+    )
+    .unwrap();
+  }
   fn report_output(&mut self, output: &[u8]) {
     if !self.echo_output {
       return;
