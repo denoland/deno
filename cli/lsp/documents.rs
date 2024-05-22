@@ -1060,18 +1060,17 @@ impl Documents {
 
   /// Return a document for the specifier.
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<Arc<Document>> {
-    let specifier = self.resolve_document_specifier(specifier)?;
-    if let Some(document) = self.open_docs.get(&specifier) {
+    if let Some(document) = self.open_docs.get(specifier) {
       Some(document.clone())
     } else {
       let old_doc = self
         .file_system_docs
         .docs
-        .get(&specifier)
+        .get(specifier)
         .map(|d| d.value().clone());
       if let Some(old_doc) = old_doc {
         self.file_system_docs.get(
-          &specifier,
+          specifier,
           &self.resolver,
           &self.config,
           &self.cache,
