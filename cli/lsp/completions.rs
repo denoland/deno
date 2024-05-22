@@ -157,6 +157,7 @@ pub async fn get_import_completions(
   maybe_import_map: Option<&ImportMap>,
 ) -> Option<lsp::CompletionResponse> {
   let document = documents.get(specifier)?;
+  let file_referrer = document.file_referrer();
   let (text, _, range) = document.get_maybe_dependency(position)?;
   let range = to_narrow_lsp_range(&document.text_info(), &range);
   if let Some(completion_list) = get_import_map_completions(
@@ -209,8 +210,8 @@ pub async fn get_import_completions(
       0
     };
     let maybe_list = module_registries
-      .get_completions(&text, offset, &range, |specifier| {
-        documents.exists(specifier)
+      .get_completions(&text, offset, &range, |s| {
+        documents.exists(s, file_referrer)
       })
       .await;
     let list = maybe_list.unwrap_or_else(|| lsp::CompletionList {

@@ -4310,7 +4310,11 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
       let types_specifier = (|| {
         let documents = &state.state_snapshot.documents;
         let types = doc.maybe_types_dependency().maybe_specifier()?;
-        let (types, _) = documents.resolve_dependency(types, specifier)?;
+        let (types, _) = documents.resolve_dependency(
+          types,
+          specifier,
+          doc.file_referrer(),
+        )?;
         let types_doc = documents.get_or_load(&types, specifier)?;
         Some(types_doc.specifier().clone())
       })();
