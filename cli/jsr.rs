@@ -111,12 +111,32 @@ impl JsrCacheResolver {
   ) -> Option<String> {
     let info = self.package_version_info(nv)?;
     let path = path.strip_prefix("./").unwrap_or(path);
+    let mut sloppy_fallback = None;
     for (export, path_) in info.exports() {
-      if path_.strip_prefix("./").unwrap_or(path_) == path {
+      let path_ = path_.strip_prefix("./").unwrap_or(path_);
+      if path_ == path {
         return Some(export.strip_prefix("./").unwrap_or(export).to_string());
       }
+      // TSC in some cases will suggest a `.js` import path for a `.d.ts` source
+      // file.
+      if sloppy_fallback.is_none() {
+        let path = path
+          .strip_suffix(".js")
+          .or_else(|| path.strip_suffix(".mjs"))
+          .or_else(|| path.strip_suffix(".cjs"))
+          .unwrap_or(path);
+        let path_ = path_
+          .strip_suffix(".d.ts")
+          .or_else(|| path_.strip_suffix(".d.mts"))
+          .or_else(|| path_.strip_suffix(".d.cts"))
+          .unwrap_or(path_);
+        if path_ == path {
+          sloppy_fallback =
+            Some(export.strip_prefix("./").unwrap_or(export).to_string());
+        }
+      }
     }
-    None
+    sloppy_fallback
   }
 
   pub fn lookup_req_for_nv(&self, nv: &PackageNv) -> Option<PackageReq> {

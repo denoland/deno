@@ -633,7 +633,7 @@ impl HtmlCoverageReporter {
   ) -> String {
     let line_num = file_text.lines().count();
     let line_count = (1..line_num + 1)
-      .map(|i| format!("<a name='L{i}'></a><a href='#{i}'>{i}</a>"))
+      .map(|i| format!("<a name='L{i}'></a><a href='#L{i}'>{i}</a>"))
       .collect::<Vec<_>>()
       .join("\n");
     let line_coverage = (0..line_num)

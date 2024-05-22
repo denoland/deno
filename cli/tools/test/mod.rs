@@ -74,6 +74,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::env;
 use std::fmt::Write as _;
 use std::future::poll_fn;
 use std::io::Write;
@@ -454,6 +455,7 @@ pub enum TestEvent {
   Plan(TestPlan),
   Wait(usize),
   Output(TestStdioStream, Vec<u8>),
+  Slow(usize, u64),
   Result(usize, TestResult, u64),
   UncaughtError(String, Box<JsError>),
   StepRegister(TestStepDescription),
@@ -912,11 +914,44 @@ async fn run_tests_for_worker_inner(
 
     let earlier = Instant::now();
     let call = worker.js_runtime.call(&function);
-    let result = match worker
+
+    let slow_state_rc = state_rc.clone();
+    let slow_test_id = desc.id;
+    let slow_test_warning = spawn(async move {
+      // The slow test warning should pop up every DENO_SLOW_TEST_TIMEOUT*(2**n) seconds,
+      // with a duration that is doubling each time. So for a warning time of 60s,
+      // we should get a warning at 60s, 120s, 240s, etc.
+      let base_timeout = env::var("DENO_SLOW_TEST_TIMEOUT").unwrap_or_default();
+      let base_timeout = base_timeout.parse().unwrap_or(60).max(1);
+      let mut multiplier = 1;
+      let mut elapsed = 0;
+      loop {
+        tokio::time::sleep(Duration::from_secs(
+          base_timeout * (multiplier - elapsed),
+        ))
+        .await;
+        if send_test_event(
+          &slow_state_rc,
+          TestEvent::Slow(
+            slow_test_id,
+            Duration::from_secs(base_timeout * multiplier).as_millis() as _,
+          ),
+        )
+        .is_err()
+        {
+          break;
+        }
+        multiplier *= 2;
+        elapsed += 1;
+      }
+    });
+
+    let result = worker
       .js_runtime
       .with_event_loop_promise(call, PollEventLoopOptions::default())
-      .await
-    {
+      .await;
+    slow_test_warning.abort();
+    let result = match result {
       Ok(r) => r,
       Err(error) => {
         if error.is::<JsError>() {
@@ -1457,6 +1492,9 @@ pub async fn report_tests(
       }
       TestEvent::Output(_, output) => {
         reporter.report_output(&output);
+      }
+      TestEvent::Slow(id, elapsed) => {
+        reporter.report_slow(tests.get(&id).unwrap(), elapsed);
       }
       TestEvent::Result(id, result, elapsed) => {
         if tests_with_result.insert(id) {
