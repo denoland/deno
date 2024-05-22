@@ -8150,7 +8150,11 @@
         "HTTP/1.1 200 ",
         "HTTP/1.1 999 DOES IT MATTER "
       ],
-      "resources-with-0x00-in-header.window.html": false
+      "resources-with-0x00-in-header.window.html": [
+        "Expect network error for script with 0x00 in a header",
+        "Expect network error for frame navigation to resource with 0x00 in a header",
+        "Expect network error for image with 0x00 in a header"
+      ]
     },
     "range": {
       "general.any.html": [
