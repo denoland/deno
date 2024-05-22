@@ -12,6 +12,7 @@ use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_ast::SourceMapOption;
 use deno_core::resolve_url_or_path;
+use deno_graph::GraphKind;
 use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
@@ -63,7 +64,6 @@ use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::net::SocketAddr;
-use std::num::NonZeroU16;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
@@ -196,7 +196,7 @@ pub fn ts_config_to_transpile_and_emit_options(
     },
     deno_ast::EmitOptions {
       inline_sources: options.inline_sources,
-      keep_comments: false,
+      keep_comments: true,
       source_map,
       source_map_file: None,
     },
@@ -966,6 +966,14 @@ impl CliOptions {
     self.maybe_config_file.as_ref().map(|f| f.specifier.clone())
   }
 
+  pub fn graph_kind(&self) -> GraphKind {
+    match self.sub_command() {
+      DenoSubcommand::Cache(_) => GraphKind::All,
+      DenoSubcommand::Check(_) => GraphKind::TypesOnly,
+      _ => self.type_check_mode().as_graph_kind(),
+    }
+  }
+
   pub fn ts_type_lib_window(&self) -> TsTypeLib {
     TsTypeLib::DenoWindow
   }
@@ -1120,7 +1128,7 @@ impl CliOptions {
     }
   }
 
-  pub fn serve_port(&self) -> Option<NonZeroU16> {
+  pub fn serve_port(&self) -> Option<u16> {
     if let DenoSubcommand::Serve(flags) = self.sub_command() {
       Some(flags.port)
     } else {

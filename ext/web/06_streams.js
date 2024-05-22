@@ -5274,7 +5274,7 @@ class ReadableStream {
         "Argument 1",
       );
     } else {
-      options = {};
+      options = { __proto__: null };
     }
     if (options.mode === undefined) {
       return acquireReadableStreamDefaultReader(this);
@@ -5290,7 +5290,7 @@ class ReadableStream {
    * @param {PipeOptions=} options
    * @returns {ReadableStream<T>}
    */
-  pipeThrough(transform, options = {}) {
+  pipeThrough(transform, options = { __proto__: null }) {
     webidl.assertBranded(this, ReadableStreamPrototype);
     const prefix = "Failed to execute 'pipeThrough' on 'ReadableStream'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -5329,7 +5329,7 @@ class ReadableStream {
    * @param {PipeOptions=} options
    * @returns {Promise<void>}
    */
-  pipeTo(destination, options = {}) {
+  pipeTo(destination, options = { __proto__: null }) {
     try {
       webidl.assertBranded(this, ReadableStreamPrototype);
       const prefix = "Failed to execute 'pipeTo' on 'ReadableStream'";
@@ -5567,7 +5567,7 @@ class ReadableStreamBYOBReader {
    * @param {ReadableStreamBYOBReaderReadOptions} options
    *  @returns {Promise<ReadableStreamBYOBReadResult>}
    */
-  read(view, options = {}) {
+  read(view, options = { __proto__: null }) {
     try {
       webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
       const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
@@ -6151,8 +6151,8 @@ class TransformStream {
    */
   constructor(
     transformer = undefined,
-    writableStrategy = {},
-    readableStrategy = {},
+    writableStrategy = { __proto__: null },
+    readableStrategy = { __proto__: null },
   ) {
     const prefix = "Failed to construct 'TransformStream'";
     if (transformer !== undefined) {

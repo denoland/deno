@@ -230,7 +230,6 @@ impl LspResolver {
     &self,
     req_ref: &NpmPackageReqReference,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let node_resolver = self.node_resolver.as_ref()?;
     Some(NodeResolution::into_specifier_and_media_type(
@@ -239,7 +238,7 @@ impl LspResolver {
           req_ref,
           &PermissionsContainer::allow_all(),
           referrer,
-          mode,
+          NodeResolutionMode::Types,
         )
         .ok(),
     ))

@@ -544,7 +544,10 @@ fn fix_ts_import_action(
   action: &tsc::CodeFixAction,
   import_mapper: &TsResponseImportMapper,
 ) -> Result<tsc::CodeFixAction, AnyError> {
-  if action.fix_name == "import" {
+  if matches!(
+    action.fix_name.as_str(),
+    "import" | "fixMissingFunctionDeclaration"
+  ) {
     let change = action
       .changes
       .first()

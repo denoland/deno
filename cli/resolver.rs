@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use dashmap::DashMap;
+use dashmap::DashSet;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
@@ -8,7 +9,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::NpmPackageReqResolution;
@@ -34,7 +34,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -91,8 +90,8 @@ impl CliNodeResolver {
     }
   }
 
-  pub fn in_npm_package(&self, referrer: &ModuleSpecifier) -> bool {
-    self.npm_resolver.in_npm_package(referrer)
+  pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
+    self.npm_resolver.in_npm_package(specifier)
   }
 
   pub fn get_closest_package_json(
@@ -249,6 +248,7 @@ impl CliNodeResolver {
   }
 }
 
+#[derive(Clone)]
 pub struct NpmModuleLoader {
   cjs_resolutions: Arc<CjsResolutionStore>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
@@ -271,32 +271,20 @@ impl NpmModuleLoader {
     }
   }
 
-  pub fn maybe_prepare_load(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Result<(), AnyError>> {
-    if self.node_resolver.in_npm_package(specifier) {
-      // nothing to prepare
-      Some(Ok(()))
-    } else {
-      None
-    }
-  }
-
-  pub fn load_sync_if_in_npm_package(
+  pub async fn load_if_in_npm_package(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     permissions: &PermissionsContainer,
   ) -> Option<Result<ModuleCodeStringSource, AnyError>> {
     if self.node_resolver.in_npm_package(specifier) {
-      Some(self.load_sync(specifier, maybe_referrer, permissions))
+      Some(self.load(specifier, maybe_referrer, permissions).await)
     } else {
       None
     }
   }
 
-  fn load_sync(
+  pub async fn load(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
@@ -305,7 +293,8 @@ impl NpmModuleLoader {
     let file_path = specifier.to_file_path().unwrap();
     let code = self
       .fs
-      .read_text_file_sync(&file_path, None)
+      .read_text_file_async(file_path.clone(), None)
+      .await
       .map_err(AnyError::from)
       .with_context(|| {
         if file_path.is_dir() {
@@ -340,11 +329,10 @@ impl NpmModuleLoader {
 
     let code = if self.cjs_resolutions.contains(specifier) {
       // translate cjs to esm if it's cjs and inject node globals
-      self.node_code_translator.translate_cjs_to_esm(
-        specifier,
-        Some(code),
-        permissions,
-      )?
+      self
+        .node_code_translator
+        .translate_cjs_to_esm(specifier, Some(code), permissions)
+        .await?
     } else {
       // esm and json code is untouched
       code
@@ -359,15 +347,15 @@ impl NpmModuleLoader {
 
 /// Keeps track of what module specifiers were resolved as CJS.
 #[derive(Debug, Default)]
-pub struct CjsResolutionStore(Mutex<HashSet<ModuleSpecifier>>);
+pub struct CjsResolutionStore(DashSet<ModuleSpecifier>);
 
 impl CjsResolutionStore {
   pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
-    self.0.lock().contains(specifier)
+    self.0.contains(specifier)
   }
 
   pub fn insert(&self, specifier: ModuleSpecifier) {
-    self.0.lock().insert(specifier);
+    self.0.insert(specifier);
   }
 }
 
@@ -687,6 +675,18 @@ impl Resolver for CliGraphResolver {
               }
             }
           }
+        }
+      }
+    } else if referrer.scheme() == "file" {
+      if let Some(node_resolver) = &self.node_resolver {
+        let node_result = node_resolver.resolve_if_in_npm_package(
+          specifier,
+          referrer,
+          to_node_mode(mode),
+          &PermissionsContainer::allow_all(),
+        );
+        if let Some(Ok(Some(res))) = node_result {
+          return Ok(res.into_url());
         }
       }
     }

@@ -284,8 +284,9 @@ pub async fn install_command(
   };
 
   // ensure the module is cached
-  CliFactory::from_flags(flags.clone())?
-    .module_load_preparer()
+  let factory = CliFactory::from_flags(flags.clone())?;
+  factory
+    .main_module_graph_container()
     .await?
     .load_and_type_check_files(&[install_flags_global.module_url.clone()])
     .await?;

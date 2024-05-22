@@ -475,7 +475,7 @@ const UnsafeCallbackPrototype = UnsafeCallback.prototype;
 
 class DynamicLibrary {
   #rid;
-  symbols = {};
+  symbols = { __proto__: null };
 
   constructor(path, symbols) {
     ({ 0: this.#rid, 1: this.symbols } = op_ffi_load({ path, symbols }));
