@@ -8,6 +8,7 @@ mod emit;
 mod errors;
 mod factory;
 mod file_fetcher;
+mod graph_container;
 mod graph_util;
 mod http_util;
 mod js;
@@ -30,6 +31,7 @@ use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::DENO_FUTURE;
+use crate::graph_container::ModuleGraphContainer;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
@@ -112,18 +114,19 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
       let factory = CliFactory::from_flags(flags)?;
-      let module_load_preparer = factory.module_load_preparer().await?;
       let emitter = factory.emitter()?;
-      let graph_container = factory.graph_container();
-      module_load_preparer
+      let main_graph_container =
+        factory.main_module_graph_container().await?;
+      main_graph_container
         .load_and_type_check_files(&cache_flags.files)
         .await?;
-      emitter.cache_module_emits(&graph_container.graph())
+      emitter.cache_module_emits(&main_graph_container.graph()).await
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
       let factory = CliFactory::from_flags(flags)?;
-      let module_load_preparer = factory.module_load_preparer().await?;
-      module_load_preparer
+      let main_graph_container =
+        factory.main_module_graph_container().await?;
+      main_graph_container
         .load_and_type_check_files(&check_flags.files)
         .await
     }),
@@ -238,6 +241,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
   handle.await?
 }
 
+#[allow(clippy::print_stderr)]
 fn setup_panic_hook() {
   // This function does two things inside of the panic hook:
   // - Tokio does not exit the process when a task panics, so we define a custom
@@ -262,6 +266,7 @@ fn setup_panic_hook() {
   }));
 }
 
+#[allow(clippy::print_stderr)]
 fn exit_with_message(message: &str, code: i32) -> ! {
   eprintln!(
     "{}: {}",
@@ -292,6 +297,7 @@ fn exit_for_error(error: AnyError) -> ! {
   exit_with_message(&error_string, error_code);
 }
 
+#[allow(clippy::print_stderr)]
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   eprintln!(
     "Unstable API '{api_name}'. The `--unstable-{}` flag must be provided.",
@@ -301,6 +307,7 @@ pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
 }
 
 // TODO(bartlomieju): remove when `--unstable` flag is removed.
+#[allow(clippy::print_stderr)]
 pub(crate) fn unstable_warn_cb(feature: &str, api_name: &str) {
   eprintln!(
     "⚠️  {}",
@@ -372,7 +379,9 @@ fn resolve_flags_and_init(
 
   // TODO(bartlomieju): remove when `--unstable` flag is removed.
   if flags.unstable_config.legacy_flag_enabled {
+    #[allow(clippy::print_stderr)]
     if matches!(flags.subcommand, DenoSubcommand::Check(_)) {
+      // can't use log crate because that's not setup yet
       eprintln!(
         "⚠️  {}",
         colors::yellow(
@@ -399,7 +408,10 @@ fn resolve_flags_and_init(
         // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
         vec!["--no-harmony-import-assertions".to_string()]
       } else {
-        vec![]
+        // If we're still in v1.X version we want to support import assertions.
+        // V8 12.6 unshipped the support by default, so force it by passing a
+        // flag.
+        vec!["--harmony-import-assertions".to_string()]
       }
     }
   };

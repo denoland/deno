@@ -21,6 +21,7 @@ use test_util as util;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use url::Url;
+use util::assert_contains;
 use util::assert_starts_with;
 use util::DenoChild;
 use util::TestContextBuilder;
@@ -94,12 +95,18 @@ impl InspectorTester {
     F: FnMut(&str) -> bool + 'static,
   {
     let stdout = child.stdout.take().unwrap();
-    let stdout_lines =
-      std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+    let stdout_lines = std::io::BufReader::new(stdout).lines().map(|r| {
+      let line = r.unwrap();
+      eprintln!("STDOUT: {}", line);
+      line
+    });
 
     let stderr = child.stderr.take().unwrap();
-    let mut stderr_lines =
-      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+    let mut stderr_lines = std::io::BufReader::new(stderr).lines().map(|r| {
+      let line = r.unwrap();
+      eprintln!("STDERR: {}", line);
+      line
+    });
 
     let uri = extract_ws_url_from_stderr(&mut stderr_lines);
 
@@ -810,7 +817,6 @@ async fn inspector_break_on_first_line_in_test() {
   let script = util::testdata_path().join("inspector/inspector_test.js");
   let child = util::deno_cmd()
     .arg("test")
-    .arg("--quiet")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
     .env("NO_COLOR", "1")
@@ -877,10 +883,7 @@ async fn inspector_break_on_first_line_in_test() {
 
   assert_starts_with!(&tester.stdout_line(), "running 1 test from");
   let line = tester.stdout_line();
-  assert!(
-    &line.contains("basic test ... ok"),
-    "Missing content: {line}"
-  );
+  assert_contains!(line, "basic test ... ok");
 
   tester.child.kill().unwrap();
   tester.child.wait().unwrap();
@@ -907,6 +910,7 @@ async fn inspector_with_ts_files() {
   let mut tester = InspectorTester::create(child, notification_filter).await;
 
   tester.assert_stderr_for_inspect_brk();
+  assert_eq!(&tester.stderr_line(), "Debugger session started.");
 
   tester
     .send_many(&[
@@ -925,20 +929,33 @@ async fn inspector_with_ts_files() {
     .await;
 
   // receive messages with sources from this test
-  let script1 = tester.recv().await;
-  assert!(script1.contains("testdata/inspector/test.ts"));
+  let mut scripts = vec![
+    tester.recv().await,
+    tester.recv().await,
+    tester.recv().await,
+  ];
+  let script1 = scripts.remove(
+    scripts
+      .iter()
+      .position(|s| s.contains("testdata/inspector/test.ts"))
+      .unwrap(),
+  );
   let script1_id = {
     let v: serde_json::Value = serde_json::from_str(&script1).unwrap();
     v["params"]["scriptId"].as_str().unwrap().to_string()
   };
-  let script2 = tester.recv().await;
-  assert!(script2.contains("testdata/inspector/foo.ts"));
+  let script2 = scripts.remove(
+    scripts
+      .iter()
+      .position(|s| s.contains("testdata/inspector/foo.ts"))
+      .unwrap(),
+  );
   let script2_id = {
     let v: serde_json::Value = serde_json::from_str(&script2).unwrap();
     v["params"]["scriptId"].as_str().unwrap().to_string()
   };
-  let script3 = tester.recv().await;
-  assert!(script3.contains("testdata/inspector/bar.js"));
+  let script3 = scripts.remove(0);
+  assert_contains!(script3, "testdata/inspector/bar.js");
   let script3_id = {
     let v: serde_json::Value = serde_json::from_str(&script3).unwrap();
     v["params"]["scriptId"].as_str().unwrap().to_string()
@@ -996,10 +1013,12 @@ async fn inspector_with_ts_files() {
     )
     .await;
 
+  let line = tester.stderr_line();
+  assert_contains!(test_util::strip_ansi_codes(&line), "Check");
   assert_eq!(
-      &tester.stdout_line(),
-      "Program finished. Waiting for inspector to disconnect to exit the process..."
-    );
+    &tester.stderr_line(),
+    "Program finished. Waiting for inspector to disconnect to exit the process..."
+  );
 
   tester.child.kill().unwrap();
   tester.child.wait().unwrap();
@@ -1194,7 +1213,6 @@ async fn inspector_break_on_first_line_npm_esm() {
     .new_command()
     .args_vec([
       "run",
-      "--quiet",
       &inspect_flag_with_unique_port("--inspect-brk"),
       "npm:@denotest/bin/cli-esm",
       "this",
@@ -1262,7 +1280,6 @@ async fn inspector_break_on_first_line_npm_cjs() {
     .new_command()
     .args_vec([
       "run",
-      "--quiet",
       &inspect_flag_with_unique_port("--inspect-brk"),
       "npm:@denotest/bin/cli-cjs",
       "this",
@@ -1331,7 +1348,6 @@ async fn inspector_error_with_npm_import() {
     .new_command()
     .args_vec([
       "run",
-      "--quiet",
       "-A",
       &inspect_flag_with_unique_port("--inspect-brk"),
       &script.to_string_lossy(),
@@ -1394,7 +1410,6 @@ async fn inspector_wait() {
     .new_command()
     .args_vec([
       "run",
-      "--quiet",
       "-A",
       &inspect_flag_with_unique_port("--inspect-wait"),
       &script.to_string_lossy(),

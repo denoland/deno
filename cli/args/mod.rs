@@ -12,6 +12,7 @@ use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_ast::SourceMapOption;
 use deno_core::resolve_url_or_path;
+use deno_graph::GraphKind;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -61,7 +62,6 @@ use std::env;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::net::SocketAddr;
-use std::num::NonZeroU16;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
@@ -194,7 +194,7 @@ pub fn ts_config_to_transpile_and_emit_options(
     },
     deno_ast::EmitOptions {
       inline_sources: options.inline_sources,
-      keep_comments: false,
+      keep_comments: true,
       source_map,
       source_map_file: None,
     },
@@ -747,9 +747,12 @@ impl CliOptions {
         format!("for: {}", insecure_allowlist.join(", "))
       };
       let msg =
-        format!("DANGER: TLS certificate validation is disabled {domains}");
-      // use eprintln instead of log::warn so this always gets shown
-      eprintln!("{}", colors::yellow(msg));
+        format!("DANGER: TLS certificate validation is disabled {}", domains);
+      #[allow(clippy::print_stderr)]
+      {
+        // use eprintln instead of log::warn so this always gets shown
+        eprintln!("{}", colors::yellow(msg));
+      }
     }
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
@@ -868,6 +871,14 @@ impl CliOptions {
 
   pub fn maybe_config_file_specifier(&self) -> Option<ModuleSpecifier> {
     self.maybe_config_file.as_ref().map(|f| f.specifier.clone())
+  }
+
+  pub fn graph_kind(&self) -> GraphKind {
+    match self.sub_command() {
+      DenoSubcommand::Cache(_) => GraphKind::All,
+      DenoSubcommand::Check(_) => GraphKind::TypesOnly,
+      _ => self.type_check_mode().as_graph_kind(),
+    }
   }
 
   pub fn ts_type_lib_window(&self) -> TsTypeLib {
@@ -1024,7 +1035,7 @@ impl CliOptions {
     }
   }
 
-  pub fn serve_port(&self) -> Option<NonZeroU16> {
+  pub fn serve_port(&self) -> Option<u16> {
     if let DenoSubcommand::Serve(flags) = self.sub_command() {
       Some(flags.port)
     } else {
@@ -1524,10 +1535,6 @@ impl CliOptions {
     &self.flags.cache_path
   }
 
-  pub fn no_prompt(&self) -> bool {
-    resolve_no_prompt(&self.flags)
-  }
-
   pub fn no_remote(&self) -> bool {
     self.flags.no_remote
   }
@@ -1540,45 +1547,12 @@ impl CliOptions {
     self.flags.config_flag == deno_config::ConfigFlag::Disabled
   }
 
-  pub fn permissions_options(&self) -> PermissionsOptions {
-    PermissionsOptions {
-      allow_all: self.flags.allow_all,
-      allow_env: self.flags.allow_env.clone(),
-      deny_env: self.flags.deny_env.clone(),
-      allow_hrtime: self.flags.allow_hrtime,
-      deny_hrtime: self.flags.deny_hrtime,
-      allow_net: self.flags.allow_net.clone(),
-      deny_net: self.flags.deny_net.clone(),
-      allow_ffi: convert_option_str_to_path_buf(
-        &self.flags.allow_ffi,
-        self.initial_cwd(),
-      ),
-      deny_ffi: convert_option_str_to_path_buf(
-        &self.flags.deny_ffi,
-        self.initial_cwd(),
-      ),
-      allow_read: convert_option_str_to_path_buf(
-        &self.flags.allow_read,
-        self.initial_cwd(),
-      ),
-      deny_read: convert_option_str_to_path_buf(
-        &self.flags.deny_read,
-        self.initial_cwd(),
-      ),
-      allow_run: self.flags.allow_run.clone(),
-      deny_run: self.flags.deny_run.clone(),
-      allow_sys: self.flags.allow_sys.clone(),
-      deny_sys: self.flags.deny_sys.clone(),
-      allow_write: convert_option_str_to_path_buf(
-        &self.flags.allow_write,
-        self.initial_cwd(),
-      ),
-      deny_write: convert_option_str_to_path_buf(
-        &self.flags.deny_write,
-        self.initial_cwd(),
-      ),
-      prompt: !self.no_prompt(),
-    }
+  pub fn permission_flags(&self) -> &PermissionFlags {
+    &self.flags.permissions
+  }
+
+  pub fn permissions_options(&self) -> Result<PermissionsOptions, AnyError> {
+    self.flags.permissions.to_options(Some(&self.initial_cwd))
   }
 
   pub fn reload_flag(&self) -> bool {
@@ -1871,7 +1845,7 @@ fn resolve_files(
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.
-pub fn resolve_no_prompt(flags: &Flags) -> bool {
+pub fn resolve_no_prompt(flags: &PermissionFlags) -> bool {
   flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
 }
 
@@ -1885,20 +1859,6 @@ pub fn npm_pkg_req_ref_to_binary_command(
 ) -> String {
   let binary_name = req_ref.sub_path().unwrap_or(req_ref.req().name.as_str());
   binary_name.to_string()
-}
-
-fn convert_option_str_to_path_buf(
-  flag: &Option<Vec<String>>,
-  initial_cwd: &Path,
-) -> Option<Vec<PathBuf>> {
-  if let Some(allow_ffi_paths) = &flag {
-    let mut full_paths = Vec::new();
-    full_paths
-      .extend(allow_ffi_paths.iter().map(|path| initial_cwd.join(path)));
-    Some(full_paths)
-  } else {
-    None
-  }
 }
 
 #[cfg(test)]
