@@ -7153,8 +7153,12 @@
       "response": {
         "json.any.html": true,
         "json.any.worker.html": true,
-        "response-blob-realm.any.html": true,
-        "response-blob-realm.any.worker.html": true,
+        "response-blob-realm.any.html": [
+          "realm of the Uint8Array from Response bytes()"
+        ],
+        "response-blob-realm.any.worker.html": [
+          "realm of the Uint8Array from Response bytes()"
+        ],
         "response-init-001.any.html": true,
         "response-init-001.any.worker.html": true,
         "response-init-002.any.html": true,
