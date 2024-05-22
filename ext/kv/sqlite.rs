@@ -18,6 +18,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::OpState;
 use deno_node::PathClean;
 pub use denokv_sqlite::SqliteBackendError;
+use denokv_sqlite::SqliteConfig;
 use denokv_sqlite::SqliteNotifier;
 use rand::RngCore;
 use rand::SeedableRng;
@@ -134,7 +135,16 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
         None => Box::new(rand::rngs::StdRng::from_entropy()),
       };
 
-    denokv_sqlite::Sqlite::new(conn, notifier, versionstamp_rng)
+    let config = SqliteConfig {
+      batch_timeout: None,
+      num_workers: 1,
+    };
+
+    denokv_sqlite::Sqlite::new(
+      || Ok((conn, versionstamp_rng)),
+      notifier,
+      config,
+    )
   }
 }
 
