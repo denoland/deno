@@ -12809,9 +12809,7 @@
     "dedicated-worker": {
       "eventsource-eventtarget.worker.html": true,
       "eventsource-constructor-no-new.any.html": true,
-      "eventsource-constructor-no-new.any.worker.html": true,
-      "eventsource-request-cancellation.window.any.html": true,
-      "eventsource-request-cancellation.window.any.worker.html": true
+      "eventsource-constructor-no-new.any.worker.html": true
     },
     "event-data.any.html": true,
     "event-data.any.worker.html": true,
@@ -12829,8 +12827,6 @@
     "eventsource-onopen.any.worker.html": true,
     "eventsource-prototype.any.html": true,
     "eventsource-prototype.any.worker.html": true,
-    "eventsource-request-cancellation.window.any.html": false,
-    "eventsource-request-cancellation.window.any.worker.html": false,
     "eventsource-url.any.html": true,
     "eventsource-url.any.worker.html": true,
     "format-bom-2.any.html": true,

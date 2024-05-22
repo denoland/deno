@@ -21,12 +21,8 @@ Deno.test(
 			response1
 				.statusText,
 		)
-		const u8a =
-			await response
-				.bytes()
-		const u8a1 =
-			await response1
-				.bytes()
+		const u8a = await response.bytes()
+		const u8a1 = await response1.bytes()
 		for (
 			let i = 0;
 			i <
