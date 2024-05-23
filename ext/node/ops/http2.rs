@@ -423,7 +423,7 @@ pub struct Http2ClientResponse {
 pub async fn op_http2_client_get_response(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
-) -> Result<Http2ClientResponse, AnyError> {
+) -> Result<(Http2ClientResponse, bool), AnyError> {
   let resource = state
     .borrow()
     .resource_table
@@ -439,6 +439,7 @@ pub async fn op_http2_client_get_response(
   for (key, val) in parts.headers.iter() {
     res_headers.push((key.as_str().into(), val.as_bytes().into()));
   }
+  let end_stream = body.is_end_stream();
 
   let (trailers_tx, trailers_rx) = tokio::sync::oneshot::channel();
   let body_rid =
@@ -450,11 +451,14 @@ pub async fn op_http2_client_get_response(
         trailers_rx: AsyncRefCell::new(Some(trailers_rx)),
         trailers_tx: AsyncRefCell::new(Some(trailers_tx)),
       });
-  Ok(Http2ClientResponse {
-    headers: res_headers,
-    body_rid,
-    status_code: status.into(),
-  })
+  Ok((
+    Http2ClientResponse {
+      headers: res_headers,
+      body_rid,
+      status_code: status.into(),
+    },
+    end_stream,
+  ))
 }
 
 enum DataOrTrailers {

@@ -67,6 +67,7 @@ use regex::Captures;
 use regex::Regex;
 use serde_repr::Deserialize_repr;
 use serde_repr::Serialize_repr;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp;
 use std::collections::HashMap;
@@ -92,7 +93,7 @@ static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
 static CAPTION_RE: Lazy<Regex> =
   lazy_regex!(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)");
-static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}");
+static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}"m);
 static EMAIL_MATCH_RE: Lazy<Regex> = lazy_regex!(r"(.+)\s<([-.\w]+@[-.\w]+)>");
 static HTTP_RE: Lazy<Regex> = lazy_regex!(r#"(?i)^https?:"#);
 static JSDOC_LINKS_RE: Lazy<Regex> = lazy_regex!(
@@ -3282,14 +3283,17 @@ impl CompletionEntryDetails {
       None
     };
     let documentation = if let Some(parts) = &self.documentation {
+      // NOTE: similar as `QuickInfo::to_hover()`
       let mut value = display_parts_to_string(parts, language_server);
       if let Some(tags) = &self.tags {
-        let tag_documentation = tags
+        let tags_preview = tags
           .iter()
           .map(|tag_info| get_tag_documentation(tag_info, language_server))
           .collect::<Vec<String>>()
-          .join("");
-        value = format!("{value}\n\n{tag_documentation}");
+          .join("  \n\n");
+        if !tags_preview.is_empty() {
+          value = format!("{value}\n\n{tags_preview}");
+        }
       }
       Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
         kind: lsp::MarkupKind::Markdown,
@@ -4053,7 +4057,7 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
   let mark = state.performance.mark("tsc.op.op_is_node_file");
   let r = match ModuleSpecifier::parse(&path) {
-    Ok(specifier) => state.state_snapshot.resolver.in_npm_package(&specifier),
+    Ok(specifier) => state.state_snapshot.resolver.in_node_modules(&specifier),
     Err(_) => false,
   };
   state.performance.measure(mark);
@@ -4250,43 +4254,54 @@ fn op_respond(
 fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_script_names");
-  let documents = &state.state_snapshot.documents;
-  let all_docs = documents.documents(DocumentsFilter::AllDiagnosable);
   let mut seen = HashSet::new();
   let mut result = Vec::new();
 
-  if documents.has_injected_types_node_package() {
+  if state
+    .state_snapshot
+    .documents
+    .has_injected_types_node_package()
+  {
     // ensure this is first so it resolves the node types first
     let specifier = "asset:///node_types.d.ts";
     result.push(specifier.to_string());
-    seen.insert(specifier);
+    seen.insert(Cow::Borrowed(specifier));
   }
 
   // inject these next because they're global
   for specifier in state.state_snapshot.resolver.graph_import_specifiers() {
-    if seen.insert(specifier.as_str()) {
+    if seen.insert(Cow::Borrowed(specifier.as_str())) {
       result.push(specifier.to_string());
     }
   }
 
-  // finally include the documents and all their dependencies
-  for doc in &all_docs {
-    let specifiers = std::iter::once(doc.specifier()).chain(
-      doc
-        .dependencies()
-        .values()
-        .filter_map(|dep| dep.get_type().or_else(|| dep.get_code())),
-    );
-    for specifier in specifiers {
-      if seen.insert(specifier.as_str()) {
-        if let Some(specifier) = documents.resolve_specifier(specifier) {
-          // only include dependencies we know to exist otherwise typescript will error
-          if documents.exists(&specifier)
-            && (specifier.scheme() == "file" || documents.is_open(&specifier))
-          {
-            result.push(specifier.to_string());
-          }
+  // finally include the documents
+  let docs = state
+    .state_snapshot
+    .documents
+    .documents(DocumentsFilter::AllDiagnosable);
+  for doc in &docs {
+    let specifier = doc.specifier();
+    let is_open = doc.is_open();
+    if seen.insert(Cow::Borrowed(specifier.as_str()))
+      && (is_open || specifier.scheme() == "file")
+    {
+      let types_specifier = (|| {
+        let documents = &state.state_snapshot.documents;
+        let types = doc.maybe_types_dependency().maybe_specifier()?;
+        let (types, _) = documents.resolve_dependency(types, specifier)?;
+        let types_doc = documents.get(&types)?;
+        Some(types_doc.specifier().clone())
+      })();
+      // If there is a types dep, use that as the root instead. But if the doc
+      // is open, include both as roots.
+      if let Some(types_specifier) = &types_specifier {
+        if seen.insert(Cow::Owned(types_specifier.to_string())) {
+          result.push(types_specifier.to_string());
         }
+      }
+      if types_specifier.is_none() || is_open {
+        result.push(specifier.to_string());
       }
     }
   }

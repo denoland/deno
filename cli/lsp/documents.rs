@@ -12,8 +12,6 @@ use super::tsc;
 use super::tsc::AssetDocument;
 
 use crate::graph_util::CliJsrUrlProvider;
-use crate::lsp::logging::lsp_warn;
-use deno_graph::source::Resolver;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use dashmap::DashMap;
@@ -31,8 +29,6 @@ use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
 use deno_runtime::deno_node;
-use deno_runtime::deno_node::NodeResolution;
-use deno_runtime::deno_node::NodeResolutionMode;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
@@ -146,6 +142,16 @@ impl AssetOrDocument {
     }
   }
 
+  pub fn maybe_semantic_tokens(&self) -> Option<lsp::SemanticTokens> {
+    match self {
+      AssetOrDocument::Asset(_) => None,
+      AssetOrDocument::Document(d) => d
+        .open_data
+        .as_ref()
+        .and_then(|d| d.maybe_semantic_tokens.lock().clone()),
+    }
+  }
+
   pub fn text(&self) -> Arc<str> {
     match self {
       AssetOrDocument::Asset(a) => a.text(),
@@ -252,6 +258,7 @@ fn get_maybe_test_module_fut(
 pub struct DocumentOpenData {
   lsp_version: i32,
   maybe_parsed_source: Option<ParsedSourceResult>,
+  maybe_semantic_tokens: Arc<Mutex<Option<lsp::SemanticTokens>>>,
 }
 
 #[derive(Debug)]
@@ -333,6 +340,7 @@ impl Document {
       open_data: maybe_lsp_version.map(|v| DocumentOpenData {
         lsp_version: v,
         maybe_parsed_source,
+        maybe_semantic_tokens: Default::default(),
       }),
       resolver,
       specifier,
@@ -388,7 +396,7 @@ impl Document {
               d.with_new_resolver(
                 s,
                 &CliJsrUrlProvider,
-                Some(&graph_resolver),
+                Some(graph_resolver),
                 Some(npm_resolver),
               ),
             )
@@ -398,7 +406,7 @@ impl Document {
       maybe_types_dependency = self.maybe_types_dependency.as_ref().map(|d| {
         Arc::new(d.with_new_resolver(
           &CliJsrUrlProvider,
-          Some(&graph_resolver),
+          Some(graph_resolver),
           Some(npm_resolver),
         ))
       });
@@ -424,6 +432,8 @@ impl Document {
       open_data: self.open_data.as_ref().map(|d| DocumentOpenData {
         lsp_version: d.lsp_version,
         maybe_parsed_source,
+        // reset semantic tokens
+        maybe_semantic_tokens: Default::default(),
       }),
       resolver,
       specifier: self.specifier.clone(),
@@ -502,6 +512,7 @@ impl Document {
       open_data: self.open_data.is_some().then_some(DocumentOpenData {
         lsp_version: version,
         maybe_parsed_source,
+        maybe_semantic_tokens: Default::default(),
       }),
       resolver: self.resolver.clone(),
     }))
@@ -655,6 +666,15 @@ impl Document {
   ) {
     *self.maybe_navigation_tree.lock() = Some(navigation_tree);
   }
+
+  pub fn cache_semantic_tokens_full(
+    &self,
+    semantic_tokens: lsp::SemanticTokens,
+  ) {
+    if let Some(open_data) = self.open_data.as_ref() {
+      *open_data.maybe_semantic_tokens.lock() = Some(semantic_tokens);
+    }
+  }
 }
 
 fn resolve_media_type(
@@ -663,17 +683,9 @@ fn resolve_media_type(
   maybe_language_id: Option<LanguageId>,
   resolver: &LspResolver,
 ) -> MediaType {
-  if resolver.in_npm_package(specifier) {
-    match resolver.url_to_node_resolution(specifier.clone()) {
-      Ok(Some(resolution)) => {
-        let (_, media_type) =
-          NodeResolution::into_specifier_and_media_type(Some(resolution));
-        return media_type;
-      }
-      Err(err) => {
-        lsp_warn!("Node resolution failed for '{}': {}", specifier, err);
-      }
-      _ => {}
+  if resolver.in_node_modules(specifier) {
+    if let Some(media_type) = resolver.node_media_type(specifier) {
+      return media_type;
     }
   }
 
@@ -979,7 +991,7 @@ impl Documents {
     }
   }
 
-  pub fn resolve_specifier(
+  pub fn resolve_document_specifier(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<ModuleSpecifier> {
@@ -998,7 +1010,7 @@ impl Documents {
 
   /// Return `true` if the specifier can be resolved to a document.
   pub fn exists(&self, specifier: &ModuleSpecifier) -> bool {
-    let specifier = self.resolve_specifier(specifier);
+    let specifier = self.resolve_document_specifier(specifier);
     if let Some(specifier) = specifier {
       if self.open_docs.contains_key(&specifier) {
         return true;
@@ -1035,7 +1047,7 @@ impl Documents {
     &self,
     original_specifier: &ModuleSpecifier,
   ) -> Option<Arc<Document>> {
-    let specifier = self.resolve_specifier(original_specifier)?;
+    let specifier = self.resolve_document_specifier(original_specifier)?;
     if let Some(document) = self.open_docs.get(&specifier) {
       Some(document.clone())
     } else {
@@ -1046,13 +1058,6 @@ impl Documents {
         &self.cache,
       )
     }
-  }
-
-  pub fn is_open(&self, specifier: &ModuleSpecifier) -> bool {
-    let Some(specifier) = self.resolve_specifier(specifier) else {
-      return false;
-    };
-    self.open_docs.contains_key(&specifier)
   }
 
   /// Return a collection of documents that are contained in the document store
@@ -1108,17 +1113,6 @@ impl Documents {
     let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
     for specifier in specifiers {
-      if self.resolver.in_npm_package(referrer) {
-        // we're in an npm package, so use node resolution
-        results.push(Some(NodeResolution::into_specifier_and_media_type(
-          self
-            .resolver
-            .node_resolve(specifier, referrer, NodeResolutionMode::Types)
-            .ok()
-            .flatten(),
-        )));
-        continue;
-      }
       if specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(specifier) {
           let media_type = MediaType::from_specifier(&specifier);
@@ -1136,20 +1130,6 @@ impl Documents {
         } else {
           results.push(None);
         }
-      } else if let Some(specifier) = self
-        .resolver
-        .resolve_graph_import(specifier)
-        .and_then(|r| r.maybe_specifier())
-      {
-        results.push(self.resolve_dependency(specifier, referrer));
-      } else if let Ok(npm_req_ref) =
-        NpmPackageReqReference::from_str(specifier)
-      {
-        results.push(node_resolve_npm_req_ref(
-          &npm_req_ref,
-          referrer,
-          &self.resolver,
-        ));
       } else if let Ok(specifier) = self.resolver.as_graph_resolver().resolve(
         specifier,
         &deno_graph::Range {
@@ -1299,7 +1279,7 @@ impl Documents {
     self.dirty = false;
   }
 
-  fn resolve_dependency(
+  pub fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
     referrer: &ModuleSpecifier,
@@ -1314,7 +1294,7 @@ impl Documents {
     }
 
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return node_resolve_npm_req_ref(&npm_ref, referrer, &self.resolver);
+      return self.resolver.npm_to_file_url(&npm_ref, referrer);
     }
     let Some(doc) = self.get(specifier) else {
       return Some((specifier.clone(), MediaType::from_specifier(specifier)));
@@ -1326,23 +1306,6 @@ impl Documents {
       Some((doc.specifier().clone(), media_type))
     }
   }
-}
-
-fn node_resolve_npm_req_ref(
-  npm_req_ref: &NpmPackageReqReference,
-  referrer: &ModuleSpecifier,
-  resolver: &LspResolver,
-) -> Option<(ModuleSpecifier, MediaType)> {
-  Some(NodeResolution::into_specifier_and_media_type(
-    resolver
-      .resolve_npm_req_reference(
-        npm_req_ref,
-        referrer,
-        NodeResolutionMode::Types,
-      )
-      .ok()
-      .flatten(),
-  ))
 }
 
 /// Loader that will look at the open documents.
@@ -1441,7 +1404,7 @@ fn analyze_module(
         // dynamic imports like import(`./dir/${something}`) in the LSP
         file_system: &deno_graph::source::NullFileSystem,
         jsr_url_provider: &CliJsrUrlProvider,
-        maybe_resolver: Some(&resolver.as_graph_resolver()),
+        maybe_resolver: Some(resolver.as_graph_resolver()),
         maybe_npm_resolver: Some(resolver.as_graph_npm_resolver()),
       },
     )),
