@@ -30,7 +30,6 @@ pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
   )
 });
 
-// TODO: rewrite to use config
 pub static PRIVATE_TEST_NPM_REGISTRY_1: Lazy<TestNpmRegistry> =
   Lazy::new(|| {
     TestNpmRegistry::new(
@@ -40,6 +39,18 @@ pub static PRIVATE_TEST_NPM_REGISTRY_1: Lazy<TestNpmRegistry> =
         crate::servers::PRIVATE_NPM_REGISTRY_1_PORT
       ),
       "npm-private",
+    )
+  });
+
+pub static PRIVATE_TEST_NPM_REGISTRY_2: Lazy<TestNpmRegistry> =
+  Lazy::new(|| {
+    TestNpmRegistry::new(
+      NpmRegistryKind::Private,
+      &format!(
+        "http://localhost:{}",
+        crate::servers::PRIVATE_NPM_REGISTRY_2_PORT
+      ),
+      "npm-private2",
     )
   });
 

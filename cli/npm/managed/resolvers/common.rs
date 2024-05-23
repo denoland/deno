@@ -44,11 +44,6 @@ pub trait NpmPackageFsResolver: Send + Sync {
     mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
-  fn resolve_package_folder_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError>;
-
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
@@ -132,16 +127,12 @@ impl RegistryReadPermissionChecker {
 pub async fn cache_packages(
   packages: Vec<NpmResolutionPackage>,
   cache: &Arc<NpmCache>,
-  registry_url: &Url,
 ) -> Result<(), AnyError> {
   let mut handles = Vec::with_capacity(packages.len());
   for package in packages {
     let cache = cache.clone();
-    let registry_url = registry_url.clone();
     let handle = spawn(async move {
-      cache
-        .ensure_package(&package.id.nv, &package.dist, &registry_url)
-        .await
+      cache.ensure_package(&package.id.nv, &package.dist).await
     });
     handles.push(handle);
   }

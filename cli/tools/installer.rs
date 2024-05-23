@@ -139,7 +139,7 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
 
   if url.path() == "/" {
     let client = HttpClient::new(None, None);
-    if let Ok(res) = client.get_redirected_response(url.clone()).await {
+    if let Ok(res) = client.get_redirected_response(url.clone(), None).await {
       url = res.url().clone();
     }
   }
