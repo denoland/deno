@@ -2563,8 +2563,7 @@ declare namespace Deno {
      * ```
      */
     statSync(): FileInfo;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Flushes any pending data and metadata operations of the given file
      * stream to disk.
      *
@@ -2582,8 +2581,7 @@ declare namespace Deno {
      * @category I/O
      */
     sync(): Promise<void>;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Synchronously flushes any pending data and metadata operations of the given
      * file stream to disk.
      *
@@ -2601,8 +2599,7 @@ declare namespace Deno {
      * @category I/O
      */
     syncSync(): void;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Flushes any pending data operations of the given file stream to disk.
      *  ```ts
      * using file = await Deno.open(
@@ -2617,8 +2614,7 @@ declare namespace Deno {
      * @category I/O
      */
     syncData(): Promise<void>;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Synchronously flushes any pending data operations of the given file stream
      * to disk.
      *
@@ -2686,27 +2682,23 @@ declare namespace Deno {
      * ```
      */
     setRaw(mode: boolean, options?: SetRawOptions): void;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Acquire an advisory file-system lock for the file.
      *
      * @param [exclusive=false]
      */
     lock(exclusive?: boolean): Promise<void>;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Synchronously acquire an advisory file-system lock synchronously for the file.
      *
      * @param [exclusive=false]
      */
     lockSync(exclusive?: boolean): void;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Release an advisory file-system lock for the file.
      */
     unlock(): Promise<void>;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Synchronously release an advisory file-system lock for the file.
      */
     unlockSync(): void;
@@ -5344,16 +5336,16 @@ declare namespace Deno {
    *
    * @category File System */
   export interface SymlinkOptions {
-    /** If the symbolic link should be either a file or directory. This option
-     * only applies to Windows and is ignored on other operating systems. */
-    type: "file" | "dir";
+    /** Specify the symbolic link type as file, directory or NTFS junction. This
+     * option only applies to Windows and is ignored on other operating systems. */
+    type: "file" | "dir" | "junction";
   }
 
   /**
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
-   * The `options.type` parameter can be set to `"file"` or `"dir"`. This
-   * argument is only available on Windows and ignored on other platforms.
+   * The `options.type` parameter can be set to `"file"`, `"dir"` or `"junction"`.
+   * This argument is only available on Windows and ignored on other platforms.
    *
    * ```ts
    * await Deno.symlink("old/name", "new/name");
@@ -5373,8 +5365,8 @@ declare namespace Deno {
   /**
    * Creates `newpath` as a symbolic link to `oldpath`.
    *
-   * The `options.type` parameter can be set to `"file"` or `"dir"`. This
-   * argument is only available on Windows and ignored on other platforms.
+   * The `options.type` parameter can be set to `"file"`, `"dir"` or `"junction"`.
+   * This argument is only available on Windows and ignored on other platforms.
    *
    * ```ts
    * Deno.symlinkSync("old/name", "new/name");

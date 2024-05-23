@@ -196,7 +196,7 @@ function testInner(
   nameOrFnOrOptions,
   optionsOrFn,
   maybeFn,
-  overrides = {},
+  overrides = { __proto__: null },
 ) {
   // No-op if we're not running in `deno test` subcommand.
   if (typeof op_register_test !== "function") {

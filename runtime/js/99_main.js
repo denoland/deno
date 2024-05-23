@@ -8,7 +8,8 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
   op_bootstrap_args,
-  op_bootstrap_is_tty,
+  op_bootstrap_is_stderr_tty,
+  op_bootstrap_is_stdout_tty,
   op_bootstrap_no_color,
   op_bootstrap_pid,
   op_main_module,
@@ -62,10 +63,10 @@ import * as timers from "ext:deno_web/02_timers.js";
 import {
   customInspect,
   getDefaultInspectOptions,
-  getNoColor,
+  getStderrNoColor,
   inspectArgs,
   quoteString,
-  setNoColorFn,
+  setNoColorFns,
 } from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
@@ -96,8 +97,6 @@ import {
   SymbolDispose,
   SymbolMetadata,
 } from "ext:deno_web/00_infra.js";
-// deno-lint-ignore prefer-primordials
-if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
 // deno-lint-ignore prefer-primordials
 if (Symbol.asyncDispose) {
   throw "V8 supports Symbol.asyncDispose now, no need to shim it!";
@@ -251,7 +250,7 @@ function workerClose() {
   op_worker_close();
 }
 
-function postMessage(message, transferOrOptions = {}) {
+function postMessage(message, transferOrOptions = { __proto__: null }) {
   const prefix =
     "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
   webidl.requiredArguments(arguments.length, 1, prefix);
@@ -379,7 +378,10 @@ function importScripts(...urls) {
 
 const opArgs = memoizeLazy(() => op_bootstrap_args());
 const opPid = memoizeLazy(() => op_bootstrap_pid());
-setNoColorFn(() => op_bootstrap_no_color() || !op_bootstrap_is_tty());
+setNoColorFns(
+  () => op_bootstrap_no_color() || !op_bootstrap_is_stdout_tty(),
+  () => op_bootstrap_no_color() || !op_bootstrap_is_stderr_tty(),
+);
 
 function formatException(error) {
   if (
@@ -390,11 +392,11 @@ function formatException(error) {
   } else if (typeof error == "string") {
     return `Uncaught ${
       inspectArgs([quoteString(error, getDefaultInspectOptions())], {
-        colors: !getNoColor(),
+        colors: !getStderrNoColor(),
       })
     }`;
   } else {
-    return `Uncaught ${inspectArgs([error], { colors: !getNoColor() })}`;
+    return `Uncaught ${inspectArgs([error], { colors: !getStderrNoColor() })}`;
   }
 }
 

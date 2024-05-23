@@ -1463,7 +1463,7 @@ fn lsp_hover_asset() {
           "value": "interface Date",
         },
         "Enables basic storage and retrieval of dates and times.",
-        "\n\n*@category* - Temporal  \n\n*@tags* - unstable"
+        "\n\n*@category* - Temporal  \n\n*@experimental*"
       ],
       "range": {
         "start": { "line": 111, "character": 10, },
@@ -2039,7 +2039,7 @@ fn lsp_hover_unstable_always_enabled() {
           "value":"interface Deno.ForeignLibraryInterface"
         },
         "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI  \n\n*@tags* - unstable",
+        "\n\n*@category* - FFI  \n\n*@experimental*",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
@@ -2084,7 +2084,7 @@ fn lsp_hover_unstable_enabled() {
           "value":"interface Deno.ForeignLibraryInterface"
         },
         "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI  \n\n*@tags* - unstable",
+        "\n\n*@category* - FFI  \n\n*@experimental*",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
@@ -3509,10 +3509,18 @@ fn lsp_semantic_tokens() {
 }
 
 #[test]
-fn lsp_code_lens() {
+fn lsp_code_lens_references() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "codeLens": {
+        "references": true,
+      }
+    },
+  }));
   client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file.ts",
@@ -3562,6 +3570,24 @@ fn lsp_code_lens() {
       "range": {
         "start": { "line": 1, "character": 2 },
         "end": { "line": 1, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 3, "character": 2 },
+        "end": { "line": 3, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 7, "character": 2 },
+        "end": { "line": 7, "character": 3 }
       },
       "data": {
         "specifier": "file:///a/file.ts",
@@ -3684,10 +3710,19 @@ fn lsp_code_lens() {
 }
 
 #[test]
-fn lsp_code_lens_impl() {
+fn lsp_code_lens_implementations() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "codeLens": {
+        "implementations": true,
+        "references": true,
+      }
+    },
+  }));
   client.did_open(
     json!({
       "textDocument": {
@@ -3728,8 +3763,26 @@ fn lsp_code_lens_impl() {
       }
     }, {
       "range": {
+        "start": { "line": 1, "character": 2 },
+        "end": { "line": 1, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
         "start": { "line": 4, "character": 6 },
         "end": { "line": 4, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 5, "character": 2 },
+        "end": { "line": 5, "character": 3 }
       },
       "data": {
         "specifier": "file:///a/file.ts",
@@ -4130,6 +4183,15 @@ fn lsp_code_lens_non_doc_nav_tree() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "codeLens": {
+        "implementations": true,
+        "references": true,
+      }
+    },
+  }));
   client.did_open(json!({
     "textDocument": {
       "uri": "file:///a/file.ts",
@@ -4188,6 +4250,15 @@ fn lsp_nav_tree_updates() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.change_configuration(json!({
+    "deno": {
+      "enable": true,
+      "codeLens": {
+        "implementations": true,
+        "references": true,
+      }
+    },
+  }));
   client.did_open(
     json!({
       "textDocument": {
@@ -4228,8 +4299,26 @@ fn lsp_nav_tree_updates() {
       }
     }, {
       "range": {
+        "start": { "line": 1, "character": 2 },
+        "end": { "line": 1, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
         "start": { "line": 4, "character": 6 },
         "end": { "line": 4, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 5, "character": 2 },
+        "end": { "line": 5, "character": 3 }
       },
       "data": {
         "specifier": "file:///a/file.ts",
@@ -4312,8 +4401,26 @@ fn lsp_nav_tree_updates() {
       }
     }, {
       "range": {
+        "start": { "line": 1, "character": 2 },
+        "end": { "line": 1, "character": 3 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
         "start": { "line": 4, "character": 6 },
         "end": { "line": 4, "character": 7 }
+      },
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "source": "references"
+      }
+    }, {
+      "range": {
+        "start": { "line": 5, "character": 2 },
+        "end": { "line": 5, "character": 3 }
       },
       "data": {
         "specifier": "file:///a/file.ts",
@@ -5255,6 +5362,126 @@ fn lsp_jsr_auto_import_completion_import_map() {
     })
   );
   client.shutdown();
+}
+
+#[test]
+fn lsp_jsr_code_action_missing_declaration() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let file = source_file(
+    temp_dir.path().join("file.ts"),
+    r#"
+      import { someFunction } from "jsr:@denotest/types-file";
+      assertReturnType(someFunction());
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file.uri()],
+    }),
+  );
+  client.did_open_file(&file);
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": file.uri(),
+      },
+      "range": {
+        "start": { "line": 2, "character": 6 },
+        "end": { "line": 2, "character": 22 },
+      },
+      "context": {
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 2, "character": 6 },
+              "end": { "line": 2, "character": 22 },
+            },
+            "severity": 8,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'assertReturnType'.",
+            "relatedInformation": [],
+          },
+        ],
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "title": "Add missing function declaration 'assertReturnType'",
+        "kind": "quickfix",
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 2,
+                "character": 6,
+              },
+              "end": {
+                "line": 2,
+                "character": 22,
+              },
+            },
+            "severity": 8,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'assertReturnType'.",
+            "relatedInformation": [],
+          },
+        ],
+        "edit": {
+          "documentChanges": [
+            {
+              "textDocument": {
+                "uri": file.uri(),
+                "version": 1,
+              },
+              "edits": [
+                {
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 6,
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 6,
+                    },
+                  },
+                  "newText": "import { ReturnType } from \"jsr:@denotest/types-file/types\";\n",
+                },
+                {
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 0,
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 0,
+                    },
+                  },
+                  "newText": "\n      function assertReturnType(arg0: ReturnType) {\n        throw new Error(\"Function not implemented.\");\n      }\n",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ])
+  );
 }
 
 #[test]
@@ -6740,7 +6967,7 @@ fn lsp_completions_auto_import() {
       "uri": "file:///a/🦕.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "export const foo = \"foo\";\n",
+      "text": "/**\n *\n * @example\n * ```ts\n * const result = add(1, 2);\n * console.log(result); // 3\n * ```\n *\n * @param {number} a - The first number\n * @param {number} b - The second number\n */\nexport function add(a: number, b: number) {\n  return a + b;\n}",
     }
   }));
   client.did_open(json!({
@@ -6757,20 +6984,20 @@ fn lsp_completions_auto_import() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  let item = list.items.iter().find(|item| item.label == "foo");
+  let item = list.items.iter().find(|item| item.label == "add");
   let Some(item) = item else {
-    panic!("completions items missing 'foo' symbol");
+    panic!("completions items missing 'add' symbol");
   };
   let mut item_value = serde_json::to_value(item).unwrap();
   item_value["data"]["tsc"]["data"]["exportMapKey"] =
     serde_json::Value::String("".to_string());
 
   let req = json!({
-    "label": "foo",
+    "label": "add",
     "labelDetails": {
       "description": "./🦕.ts",
     },
-    "kind": 6,
+    "kind": 3,
     "sortText": "￿16_0",
     "commitCharacters": [
       ".",
@@ -6782,14 +7009,14 @@ fn lsp_completions_auto_import() {
       "tsc": {
         "specifier": "file:///a/file.ts",
         "position": 12,
-        "name": "foo",
+        "name": "add",
         "source": "./%F0%9F%A6%95.ts",
          "specifierRewrite": [
            "./%F0%9F%A6%95.ts",
            "./🦕.ts",
          ],
         "data": {
-          "exportName": "foo",
+          "exportName": "add",
           "exportMapKey": "",
           "moduleSpecifier": "./%F0%9F%A6%95.ts",
           "fileName": "file:///a/%F0%9F%A6%95.ts"
@@ -6804,15 +7031,15 @@ fn lsp_completions_auto_import() {
   assert_eq!(
     res,
     json!({
-      "label": "foo",
+      "label": "add",
       "labelDetails": {
         "description": "./🦕.ts",
       },
-      "kind": 6,
-      "detail": "const foo: \"foo\"",
+      "kind": 3,
+      "detail": "function add(a: number, b: number): number",
       "documentation": {
         "kind": "markdown",
-        "value": ""
+        "value": "\n\n*@example*  \n```ts\nconst result = add(1, 2);\nconsole.log(result); // 3\n```  \n\n*@param* - a - The first number  \n\n*@param* - b - The second number"
       },
       "sortText": "￿16_0",
       "additionalTextEdits": [
@@ -6821,7 +7048,7 @@ fn lsp_completions_auto_import() {
             "start": { "line": 0, "character": 0 },
             "end": { "line": 0, "character": 0 }
           },
-          "newText": "import { foo } from \"./🦕.ts\";\n\n"
+          "newText": "import { add } from \"./🦕.ts\";\n\n"
         }
       ]
     })
@@ -7079,6 +7306,55 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
     }])
   );
   client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/23895.
+#[test]
+fn lsp_npm_types_nested_js_dts() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let file = source_file(
+    temp_dir.path().join("file.ts"),
+    r#"
+      import { someString } from "npm:@denotest/types-nested-js-dts";
+      const someNumber: number = someString;
+      console.log(someNumber);
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file.uri()],
+    }),
+  );
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 12,
+          },
+          "end": {
+            "line": 2,
+            "character": 22,
+          },
+        },
+        "severity": 1,
+        "code": 2322,
+        "source": "deno-ts",
+        "message": "Type 'string' is not assignable to type 'number'.",
+      },
+    ])
+  );
 }
 
 #[test]
@@ -8848,6 +9124,34 @@ fn lsp_diagnostics_deno_types() {
 }
 
 #[test]
+fn lsp_root_with_global_reference_types() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let file = source_file(
+    temp_dir.path().join("file.ts"),
+    "import 'http://localhost:4545/subdir/foo_types.d.ts'; Foo.bar;",
+  );
+  let file2 = source_file(
+    temp_dir.path().join("file2.ts"),
+    r#"/// <reference types="http://localhost:4545/subdir/foo_types.d.ts" />"#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file2.uri()],
+    }),
+  );
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+}
+
+#[test]
 fn lsp_diagnostics_refresh_dependents() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -9857,7 +10161,7 @@ fn lsp_completions_complete_function_calls() {
       "detail": "(method) Array<never>.map<U>(callbackfn: (value: never, index: number, array: never[]) => U, thisArg?: any): U[]",
       "documentation": {
         "kind": "markdown",
-        "value": "Calls a defined callback function on each element of an array, and returns an array that contains the results.\n\n*@param* - callbackfn A function that accepts up to three arguments. The map method calls the callbackfn function one time for each element in the array.*@param* - thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value."
+        "value": "Calls a defined callback function on each element of an array, and returns an array that contains the results.\n\n*@param* - callbackfn A function that accepts up to three arguments. The map method calls the callbackfn function one time for each element in the array.  \n\n*@param* - thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value."
       },
       "sortText": "1",
       "insertText": "map(${1:callbackfn})",
@@ -12590,4 +12894,140 @@ fn lsp_ts_code_fix_any_param() {
   }
 
   panic!("failed to find 'Infer parameter types from usage' fix in fixes: {fixes:#?}");
+}
+
+#[test]
+fn lsp_semantic_token_caching() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+
+  let mut client: LspClient = context
+    .new_lsp_command()
+    .collect_perf()
+    .set_root_dir(temp_dir.clone())
+    .build();
+  client.initialize_default();
+
+  let a = source_file(
+    temp_dir.join("a.ts"),
+    r#"
+    export const a = 1;
+    export const b = 2;
+    export const bar = () => "bar";
+    function foo(fun: (number, number, number) => number, c: number) {
+      const double = (x) => x * 2;
+      return fun(double(a), b, c);
+    }"#,
+  );
+
+  client.did_open_file(&a);
+
+  // requesting a range won't cache the tokens, so this will
+  // be computed
+  let res = client.write_request(
+    "textDocument/semanticTokens/range",
+    json!({
+      "textDocument": a.identifier(),
+      "range": {
+        "start": a.range_of("const bar").start,
+        "end": a.range_of("}").end,
+      }
+    }),
+  );
+
+  assert_eq!(
+    client
+      .perf_wait_for_measure("lsp.semantic_tokens_range")
+      .measure_count("tsc.request.getEncodedSemanticClassifications"),
+    1,
+  );
+
+  // requesting for the full doc should compute and cache the tokens
+  let _full = client.write_request(
+    "textDocument/semanticTokens/full",
+    json!({
+      "textDocument": a.identifier(),
+    }),
+  );
+
+  assert_eq!(
+    client
+      .perf_wait_for_measure("lsp.semantic_tokens_full")
+      .measure_count("tsc.request.getEncodedSemanticClassifications"),
+    2,
+  );
+
+  // use the cached tokens
+  let res_cached = client.write_request(
+    "textDocument/semanticTokens/range",
+    json!({
+      "textDocument": a.identifier(),
+      "range": {
+        "start": a.range_of("const bar").start,
+        "end": a.range_of("}").end,
+      }
+    }),
+  );
+
+  // make sure we actually used the cache
+  assert_eq!(
+    client
+      .perf_wait_for_measure("lsp.semantic_tokens_range")
+      .measure_count("tsc.request.getEncodedSemanticClassifications"),
+    2,
+  );
+
+  assert_eq!(res, res_cached);
+}
+
+#[test]
+fn lsp_jsdoc_named_example() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  let mut client = context
+    .new_lsp_command()
+    .set_root_dir(temp_dir.clone())
+    .build();
+  client.initialize_default();
+
+  let main = source_file(
+    temp_dir.join("main.ts"),
+    r#"
+    /**
+     * @example Example1
+     * ```ts
+     * foo();
+     * ```
+     */
+    export function foo(): number {
+      return 1;
+    }
+    "#,
+  );
+
+  let diagnostics = client.did_open_file(&main);
+  assert_eq!(diagnostics.all().len(), 0);
+
+  let hover = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": main.identifier(),
+      "position": main.range_of_nth(1, "foo").start,
+    }),
+  );
+
+  assert_json_subset(
+    hover,
+    json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "function foo(): number"
+        },
+        "",
+        // The example name `Example1` should not be enclosed in backticks
+        "\n\n*@example*  \nExample1\n```ts\nfoo();\n```"
+      ]
+    }),
+  );
 }

@@ -67,6 +67,7 @@ use regex::Captures;
 use regex::Regex;
 use serde_repr::Deserialize_repr;
 use serde_repr::Serialize_repr;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp;
 use std::collections::HashMap;
@@ -92,7 +93,7 @@ static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
 static CAPTION_RE: Lazy<Regex> =
   lazy_regex!(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)");
-static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}");
+static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}"m);
 static EMAIL_MATCH_RE: Lazy<Regex> = lazy_regex!(r"(.+)\s<([-.\w]+@[-.\w]+)>");
 static HTTP_RE: Lazy<Regex> = lazy_regex!(r#"(?i)^https?:"#);
 static JSDOC_LINKS_RE: Lazy<Regex> = lazy_regex!(
@@ -3282,14 +3283,17 @@ impl CompletionEntryDetails {
       None
     };
     let documentation = if let Some(parts) = &self.documentation {
+      // NOTE: similar as `QuickInfo::to_hover()`
       let mut value = display_parts_to_string(parts, language_server);
       if let Some(tags) = &self.tags {
-        let tag_documentation = tags
+        let tags_preview = tags
           .iter()
           .map(|tag_info| get_tag_documentation(tag_info, language_server))
           .collect::<Vec<String>>()
-          .join("");
-        value = format!("{value}\n\n{tag_documentation}");
+          .join("  \n\n");
+        if !tags_preview.is_empty() {
+          value = format!("{value}\n\n{tags_preview}");
+        }
       }
       Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
         kind: lsp::MarkupKind::Markdown,
@@ -4261,12 +4265,12 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     // ensure this is first so it resolves the node types first
     let specifier = "asset:///node_types.d.ts";
     result.push(specifier.to_string());
-    seen.insert(specifier);
+    seen.insert(Cow::Borrowed(specifier));
   }
 
   // inject these next because they're global
   for specifier in state.state_snapshot.resolver.graph_import_specifiers() {
-    if seen.insert(specifier.as_str()) {
+    if seen.insert(Cow::Borrowed(specifier.as_str())) {
       result.push(specifier.to_string());
     }
   }
@@ -4278,10 +4282,27 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     .documents(DocumentsFilter::AllDiagnosable);
   for doc in &docs {
     let specifier = doc.specifier();
-    if seen.insert(specifier.as_str())
-      && (doc.is_open() || specifier.scheme() == "file")
+    let is_open = doc.is_open();
+    if seen.insert(Cow::Borrowed(specifier.as_str()))
+      && (is_open || specifier.scheme() == "file")
     {
-      result.push(specifier.to_string());
+      let types_specifier = (|| {
+        let documents = &state.state_snapshot.documents;
+        let types = doc.maybe_types_dependency().maybe_specifier()?;
+        let (types, _) = documents.resolve_dependency(types, specifier)?;
+        let types_doc = documents.get(&types)?;
+        Some(types_doc.specifier().clone())
+      })();
+      // If there is a types dep, use that as the root instead. But if the doc
+      // is open, include both as roots.
+      if let Some(types_specifier) = &types_specifier {
+        if seen.insert(Cow::Owned(types_specifier.to_string())) {
+          result.push(types_specifier.to_string());
+        }
+      }
+      if types_specifier.is_none() || is_open {
+        result.push(specifier.to_string());
+      }
     }
   }
 

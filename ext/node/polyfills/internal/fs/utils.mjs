@@ -891,7 +891,7 @@ export const validateRmOptionsSync = hideStackFrames(
           message: "is a directory",
           path,
           syscall: "rm",
-          errno: EISDIR,
+          errno: osConstants.errno.EISDIR,
         });
       }
     }

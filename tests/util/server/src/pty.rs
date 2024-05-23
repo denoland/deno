@@ -9,7 +9,11 @@ use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
 
+use once_cell::sync::Lazy;
+
 use crate::strip_ansi_codes;
+
+static IS_CI: Lazy<bool> = Lazy::new(|| std::env::var("CI").is_ok());
 
 /// Points to know about when writing pty tests:
 ///
@@ -54,7 +58,7 @@ impl Pty {
 
   pub fn is_supported() -> bool {
     let is_windows = cfg!(windows);
-    if is_windows && std::env::var("CI").is_ok() {
+    if is_windows && *IS_CI {
       // the pty tests don't really start up on the windows CI for some reason
       // so ignore them for now
       eprintln!("Ignoring windows CI.");
@@ -209,7 +213,12 @@ impl Pty {
 
   #[track_caller]
   fn read_until_condition(&mut self, condition: impl FnMut(&mut Self) -> bool) {
-    self.read_until_condition_with_timeout(condition, Duration::from_secs(15));
+    let duration = if *IS_CI {
+      Duration::from_secs(30)
+    } else {
+      Duration::from_secs(15)
+    };
+    self.read_until_condition_with_timeout(condition, duration);
   }
 
   #[track_caller]
@@ -263,7 +272,12 @@ impl Pty {
         self.read_bytes.extend(&buf[..count]);
       }
       _ => {
-        std::thread::sleep(Duration::from_millis(15));
+        // be a bit easier on the CI
+        std::thread::sleep(Duration::from_millis(if *IS_CI {
+          100
+        } else {
+          20
+        }));
       }
     }
   }
