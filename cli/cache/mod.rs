@@ -24,6 +24,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+mod background_processor;
 mod cache_db;
 mod caches;
 mod check;

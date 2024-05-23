@@ -73,6 +73,7 @@ To grant permissions, set them before the script argument. For example:
     .await?;
 
   let exit_code = worker.run().await?;
+  factory.ensure_caches_filled().await;
   Ok(exit_code)
 }
 
@@ -102,6 +103,7 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
     .create_main_worker(WorkerExecutionMode::Run, main_module, permissions)
     .await?;
   let exit_code = worker.run().await?;
+  factory.ensure_caches_filled().await;
   Ok(exit_code)
 }
 
@@ -189,6 +191,7 @@ pub async fn eval_command(
     .create_main_worker(WorkerExecutionMode::Eval, main_module, permissions)
     .await?;
   let exit_code = worker.run().await?;
+  factory.ensure_caches_filled().await;
   Ok(exit_code)
 }
 

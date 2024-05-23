@@ -12,6 +12,7 @@ use deno_graph::ModuleParser;
 use deno_graph::ParserModuleAnalyzer;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
+use super::background_processor::BackgroundProcessor;
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheFailure;
@@ -63,21 +64,19 @@ impl From<ModuleInfoCacheSourceHash> for String {
   }
 }
 
+struct ProcessorMessage {
+  specifier: String,
+  media_type: MediaType,
+  source_hash: ModuleInfoCacheSourceHash,
+  module_info: String,
+}
+
 /// A cache of `deno_graph::ModuleInfo` objects. Using this leads to a considerable
 /// performance improvement because when it exists we can skip parsing a module for
 /// deno_graph.
 pub struct ModuleInfoCache {
   conn: CacheDB,
-  sender: Mutex<
-    Option<
-      tokio::sync::mpsc::UnboundedSender<(
-        String,
-        &'static str,
-        String,
-        String,
-      )>,
-    >,
-  >,
+  processor: Mutex<Option<BackgroundProcessor<ProcessorMessage>>>,
 }
 
 impl ModuleInfoCache {
@@ -89,7 +88,14 @@ impl ModuleInfoCache {
   pub fn new(conn: CacheDB) -> Self {
     Self {
       conn,
-      sender: Default::default(),
+      processor: Default::default(),
+    }
+  }
+
+  pub async fn ensure_caches_filled(&self) {
+    let processor = self.processor.lock().take();
+    if let Some(sender) = processor {
+      sender.shutdown().await;
     }
   }
 
@@ -98,7 +104,7 @@ impl ModuleInfoCache {
   pub(crate) fn recreate_with_version(self, version: &'static str) -> Self {
     Self {
       conn: self.conn.recreate_with_version(version),
-      sender: Default::default(),
+      processor: Default::default(),
     }
   }
 
@@ -132,45 +138,38 @@ impl ModuleInfoCache {
     source_hash: &ModuleInfoCacheSourceHash,
     module_info: &ModuleInfo,
   ) -> Result<(), AnyError> {
-    let data = (
-      specifier.to_string(),
-      serialize_media_type(media_type),
-      source_hash.as_str().to_string(),
-      serde_json::to_string(&module_info).unwrap(),
-    );
+    let data = ProcessorMessage {
+      specifier: specifier.to_string(),
+      media_type,
+      source_hash: source_hash.clone(),
+      module_info: serde_json::to_string(&module_info).unwrap(),
+    };
 
-    let mut sender = self.sender.lock();
-    if let Some(sender) = &mut *sender {
-      let _ = sender.send(data);
-    } else {
-      let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut processor = self.processor.lock();
+    if processor.is_none() {
       let conn = self.conn.clone();
-      let _ = deno_core::unsync::spawn(async move {
-        while let Some((specifier, media_type, source_hash, module_info)) =
-          rx.recv().await
-        {
-          let conn = conn.clone();
-          deno_core::unsync::spawn_blocking(move || {
-            let sql = "
-            INSERT OR REPLACE INTO
-              moduleinfocache (specifier, media_type, source_hash, module_info)
-            VALUES
-              (?1, ?2, ?3, ?4)";
-            let result = conn.execute(
-              sql,
-              params![specifier, media_type, source_hash, module_info],
-            );
-            if let Err(err) = result {
-              log::debug!("Error saving module cache info. {:#}", err);
-            }
-          })
-          .await
-          .unwrap();
-        }
-      });
-      tx.send(data).unwrap();
-      *sender = Some(tx);
+      *processor =
+        Some(BackgroundProcessor::new(move |data: ProcessorMessage| {
+          let sql = "
+        INSERT OR REPLACE INTO
+          moduleinfocache (specifier, media_type, source_hash, module_info)
+        VALUES
+          (?1, ?2, ?3, ?4)";
+          let result = conn.execute(
+            sql,
+            params![
+              data.specifier,
+              serialize_media_type(data.media_type),
+              data.source_hash.as_str(),
+              data.module_info
+            ],
+          );
+          if let Err(err) = result {
+            log::debug!("Error saving module cache info. {:#}", err);
+          }
+        }));
     }
+    processor.as_ref().unwrap().send(data);
 
     Ok(())
   }

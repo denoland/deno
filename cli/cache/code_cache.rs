@@ -5,6 +5,7 @@ use deno_core::parking_lot::Mutex;
 use deno_runtime::code_cache;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
+use super::background_processor::BackgroundProcessor;
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheFailure;
@@ -22,6 +23,13 @@ pub static CODE_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   on_failure: CacheFailure::Blackhole,
 };
 
+struct ProcessorMessage {
+  specifier: String,
+  code_cache_type: code_cache::CodeCacheType,
+  source_hash: String,
+  data: Vec<u8>,
+}
+
 pub struct CodeCache {
   inner: CodeCacheInner,
 }
@@ -30,6 +38,13 @@ impl CodeCache {
   pub fn new(db: CacheDB) -> Self {
     Self {
       inner: CodeCacheInner::new(db),
+    }
+  }
+
+  pub async fn ensure_caches_filled(&self) {
+    let processor = self.inner.processor.lock().take();
+    if let Some(sender) = processor {
+      sender.shutdown().await;
     }
   }
 
@@ -102,23 +117,14 @@ impl code_cache::CodeCache for CodeCache {
 
 struct CodeCacheInner {
   conn: CacheDB,
-  sender: Mutex<
-    Option<
-      tokio::sync::mpsc::UnboundedSender<(
-        String,
-        &'static str,
-        String,
-        Vec<u8>,
-      )>,
-    >,
-  >,
+  processor: Mutex<Option<BackgroundProcessor<ProcessorMessage>>>,
 }
 
 impl CodeCacheInner {
   pub fn new(conn: CacheDB) -> Self {
     Self {
       conn,
-      sender: Default::default(),
+      processor: Default::default(),
     }
   }
 
@@ -136,7 +142,8 @@ impl CodeCacheInner {
       WHERE
         specifier=?1 AND type=?2 AND source_hash=?3
       LIMIT 1";
-    let params = params![specifier, code_cache_type.as_str(), source_hash,];
+    let params =
+      params![specifier, code_cache_type.as_str(), source_hash.to_string()];
     self.conn.query_row(query, params, |row| {
       let value: Vec<u8> = row.get(0)?;
       Ok(value)
@@ -150,44 +157,37 @@ impl CodeCacheInner {
     source_hash: &str,
     data: &[u8],
   ) -> Result<(), AnyError> {
-    let data = (
-      specifier.to_string(),
-      code_cache_type.as_str(),
-      source_hash.to_string(),
-      data.to_vec(),
-    );
-    let mut sender = self.sender.lock();
-    if let Some(sender) = &mut *sender {
-      let _ = sender.send(data);
-    } else {
-      let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let message = ProcessorMessage {
+      specifier: specifier.to_string(),
+      code_cache_type,
+      source_hash: source_hash.to_string(),
+      data: data.to_vec(),
+    };
+    let mut processor = self.processor.lock();
+    if processor.is_none() {
       let conn = self.conn.clone();
-      let _ = deno_core::unsync::spawn(async move {
-        while let Some((specifier, code_cache_type, source_hash, data)) =
-          rx.recv().await
-        {
-          let conn = conn.clone();
-          deno_core::unsync::spawn_blocking(move || {
-            let sql = "
-              INSERT OR REPLACE INTO
-                codecache (specifier, type, source_hash, data)
-              VALUES
-                (?1, ?2, ?3, ?4)";
-            let result = conn.execute(
-              sql,
-              params![specifier, code_cache_type, source_hash, data],
-            );
-            if let Err(err) = result {
-              log::debug!("Error saving module cache info. {:#}", err);
-            }
-          })
-          .await
-          .unwrap();
-        }
-      });
-      tx.send(data).unwrap();
-      *sender = Some(tx);
+      *processor =
+        Some(BackgroundProcessor::new(move |data: ProcessorMessage| {
+          let sql = "
+          INSERT OR REPLACE INTO
+            codecache (specifier, type, source_hash, data)
+          VALUES
+            (?1, ?2, ?3, ?4)";
+          let result = conn.execute(
+            sql,
+            params![
+              data.specifier,
+              data.code_cache_type.as_str(),
+              data.source_hash.to_string(),
+              data.data,
+            ],
+          );
+          if let Err(err) = result {
+            log::debug!("Error saving module cache info. {:#}", err);
+          }
+        }));
     }
+    processor.as_ref().unwrap().send(message);
 
     Ok(())
   }

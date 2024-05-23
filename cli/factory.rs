@@ -127,6 +127,10 @@ impl<T> Deferred<T> {
     self.0.get_or_init(create)
   }
 
+  pub fn get_if_created(&self) -> Option<&T> {
+    self.0.get()
+  }
+
   pub async fn get_or_try_init_async(
     &self,
     // some futures passed here are boxed because it was discovered
@@ -798,7 +802,6 @@ impl CliFactory {
         },
         self.emitter()?.clone(),
         self.main_module_graph_container().await?.clone(),
-        self.module_info_cache()?.clone(),
         self.module_load_preparer().await?.clone(),
         cli_node_resolver.clone(),
         NpmModuleLoader::new(
@@ -831,6 +834,19 @@ impl CliFactory {
         None
       },
     ))
+  }
+
+  pub async fn ensure_caches_filled(&self) {
+    let mut futures = Vec::with_capacity(2);
+    if let Some(inner) = self.services.module_info_cache.get_if_created() {
+      futures.push(inner.ensure_caches_filled().boxed_local());
+    }
+    if let Some(inner) = self.services.code_cache.get_if_created() {
+      futures.push(inner.ensure_caches_filled().boxed_local());
+    }
+    if !futures.is_empty() {
+      deno_core::futures::future::join_all(futures).await;
+    }
   }
 
   fn create_cli_main_worker_options(

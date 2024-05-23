@@ -14,7 +14,6 @@ use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
 use crate::cache::CodeCache;
 use crate::cache::FastInsecureHasher;
-use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::factory::CliFactory;
@@ -69,7 +68,6 @@ use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::fs_util::code_timestamp;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 
@@ -223,7 +221,6 @@ struct SharedCliModuleLoaderState {
   code_cache: Option<Arc<CodeCache>>,
   emitter: Arc<Emitter>,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
-  module_info_cache: Arc<ModuleInfoCache>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: NpmModuleLoader,
@@ -242,7 +239,6 @@ impl CliModuleLoaderFactory {
     code_cache: Option<Arc<CodeCache>>,
     emitter: Arc<Emitter>,
     main_module_graph_container: Arc<MainModuleGraphContainer>,
-    module_info_cache: Arc<ModuleInfoCache>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_resolver: Arc<CliNodeResolver>,
     npm_module_loader: NpmModuleLoader,
@@ -263,7 +259,6 @@ impl CliModuleLoaderFactory {
         code_cache,
         emitter,
         main_module_graph_container,
-        module_info_cache,
         module_load_preparer,
         node_resolver,
         npm_module_loader,
@@ -845,7 +840,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
   fn code_cache_ready(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: ModuleSpecifier,
     hash: u64,
     code_cache: &[u8],
   ) -> Pin<Box<dyn Future<Output = ()>>> {
