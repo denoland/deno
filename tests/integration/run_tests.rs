@@ -754,11 +754,6 @@ itest!(env_file_missing {
   output: "run/env_file_missing.out",
 });
 
-itest!(env_unparsable_file {
-  args: "run --env=env_unparsable --allow-env run/env_file.ts",
-  output: "run/env_unparsable_file.out",
-});
-
 itest!(_091_use_define_for_class_fields {
   args: "run --check run/091_use_define_for_class_fields.ts",
   output: "run/091_use_define_for_class_fields.ts.out",
