@@ -23,7 +23,7 @@ async function handler(req: Request): Promise<Response> {
     method: req.method,
     headers: headers,
   });
-  return new Response(new Uint8Array(await resp.arrayBuffer()), {
+  return new Response(await resp.bytes(), {
     status: resp.status,
     headers: resp.headers,
   });

@@ -296,6 +296,15 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       configurable: true,
       enumerable: true,
     },
+    bytes: {
+      /** @returns {Promise<Uint8Array>} */
+      value: function bytes() {
+        return consumeBody(this, "bytes");
+      },
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    },
     formData: {
       /** @returns {Promise<FormData>} */
       value: function formData() {
@@ -330,7 +339,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
 /**
  * https://fetch.spec.whatwg.org/#concept-body-package-data
  * @param {Uint8Array | string} bytes
- * @param {"ArrayBuffer" | "Blob" | "FormData" | "JSON" | "text"} type
+ * @param {"ArrayBuffer" | "Blob" | "FormData" | "JSON" | "text" | "bytes"} type
  * @param {MimeType | null} [mimeType]
  */
 function packageData(bytes, type, mimeType) {
@@ -341,6 +350,8 @@ function packageData(bytes, type, mimeType) {
       return new Blob([bytes], {
         type: mimeType !== null ? mimesniff.serializeMimeType(mimeType) : "",
       });
+    case "bytes":
+      return chunkToU8(bytes);
     case "FormData": {
       if (mimeType !== null) {
         const essence = mimesniff.essence(mimeType);

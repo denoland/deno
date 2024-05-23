@@ -174,7 +174,7 @@ Deno.test("[node/http] server can respond with 101, 204, 205, 304 status", async
         // deno-lint-ignore no-explicit-any
         `http://127.0.0.1:${(server.address() as any).port}/`,
       );
-      await res.arrayBuffer();
+      await res.body?.cancel();
       assertEquals(res.status, status);
       server.close(() => resolve());
     });
