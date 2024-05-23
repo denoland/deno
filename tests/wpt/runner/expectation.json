@@ -7153,6 +7153,12 @@
       "response": {
         "json.any.html": true,
         "json.any.worker.html": true,
+        "response-blob-realm.any.html": [
+          "realm of the Uint8Array from Response bytes()"
+        ],
+        "response-blob-realm.any.worker.html": [
+          "realm of the Uint8Array from Response bytes()"
+        ],
         "response-init-001.any.html": true,
         "response-init-001.any.worker.html": true,
         "response-init-002.any.html": true,
@@ -8148,7 +8154,11 @@
         "HTTP/1.1 200 ",
         "HTTP/1.1 999 DOES IT MATTER "
       ],
-      "resources-with-0x00-in-header.window.html": false
+      "resources-with-0x00-in-header.window.html": [
+        "Expect network error for script with 0x00 in a header",
+        "Expect network error for frame navigation to resource with 0x00 in a header",
+        "Expect network error for image with 0x00 in a header"
+      ]
     },
     "range": {
       "general.any.html": [
@@ -12825,8 +12835,6 @@
     "eventsource-onopen.any.worker.html": true,
     "eventsource-prototype.any.html": true,
     "eventsource-prototype.any.worker.html": true,
-    "eventsource-request-cancellation.window.any.html": false,
-    "eventsource-request-cancellation.window.any.worker.html": false,
     "eventsource-url.any.html": true,
     "eventsource-url.any.worker.html": true,
     "format-bom-2.any.html": true,
@@ -12883,6 +12891,12 @@
     "eventsource-constructor-stringify.window.html": false,
     "eventsource-cross-origin.window.html": false,
     "eventsource-reconnect.window.html": false,
-    "request-status-error.window.html": false
+    "request-status-error.window.html": false,
+    "eventsource-constructor-empty-url.any.serviceworker.html": false,
+    "eventsource-constructor-empty-url.any.sharedworker.html": false,
+    "eventsource-constructor-url-bogus.any.serviceworker.html": false,
+    "eventsource-constructor-url-bogus.any.sharedworker.html": false,
+    "request-credentials.window.html": false,
+    "request-redirect.window.html": false
   }
 }
