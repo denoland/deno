@@ -33,12 +33,10 @@
         "commandName": "npm",
         "args": "install",
         "output": "\nadded 1 package in [WILDCARD]\n"
-      },
-      {
+      }, {
         "args": "task sayhi",
         "output": "already-set-up.out"
-      }
-      ]
+      }]
     }
   }
 }
