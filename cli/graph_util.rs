@@ -18,8 +18,6 @@ use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
-use crate::util::sync::TaskQueue;
-use crate::util::sync::TaskQueuePermit;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_config::WorkspaceMemberConfig;
@@ -27,7 +25,6 @@ use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::Loader;
 use deno_graph::source::ResolutionMode;
@@ -762,40 +759,6 @@ fn get_resolution_error_bare_specifier(
   }
 }
 
-/// Holds the `ModuleGraph` and what parts of it are type checked.
-pub struct ModuleGraphContainer {
-  // Allow only one request to update the graph data at a time,
-  // but allow other requests to read from it at any time even
-  // while another request is updating the data.
-  update_queue: Arc<TaskQueue>,
-  inner: Arc<RwLock<Arc<ModuleGraph>>>,
-}
-
-impl ModuleGraphContainer {
-  pub fn new(graph_kind: GraphKind) -> Self {
-    Self {
-      update_queue: Default::default(),
-      inner: Arc::new(RwLock::new(Arc::new(ModuleGraph::new(graph_kind)))),
-    }
-  }
-
-  /// Acquires a permit to modify the module graph without other code
-  /// having the chance to modify it. In the meantime, other code may
-  /// still read from the existing module graph.
-  pub async fn acquire_update_permit(&self) -> ModuleGraphUpdatePermit {
-    let permit = self.update_queue.acquire().await;
-    ModuleGraphUpdatePermit {
-      permit,
-      inner: self.inner.clone(),
-      graph: (**self.inner.read()).clone(),
-    }
-  }
-
-  pub fn graph(&self) -> Arc<ModuleGraph> {
-    self.inner.read().clone()
-  }
-}
-
 /// Gets if any of the specified root's "file:" dependents are in the
 /// provided changed set.
 pub fn has_graph_root_local_dependent_changed(
@@ -826,31 +789,6 @@ pub fn has_graph_root_local_dependent_changed(
     }
   }
   false
-}
-
-/// A permit for updating the module graph. When complete and
-/// everything looks fine, calling `.commit()` will store the
-/// new graph in the ModuleGraphContainer.
-pub struct ModuleGraphUpdatePermit<'a> {
-  permit: TaskQueuePermit<'a>,
-  inner: Arc<RwLock<Arc<ModuleGraph>>>,
-  graph: ModuleGraph,
-}
-
-impl<'a> ModuleGraphUpdatePermit<'a> {
-  /// Gets the module graph for mutation.
-  pub fn graph_mut(&mut self) -> &mut ModuleGraph {
-    &mut self.graph
-  }
-
-  /// Saves the mutated module graph in the container
-  /// and returns an Arc to the new module graph.
-  pub fn commit(self) -> Arc<ModuleGraph> {
-    let graph = Arc::new(self.graph);
-    *self.inner.write() = graph.clone();
-    drop(self.permit); // explicit drop for clarity
-    graph
-  }
 }
 
 #[derive(Clone, Debug)]

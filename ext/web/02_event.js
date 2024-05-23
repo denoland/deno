@@ -123,7 +123,7 @@ const _isTrusted = Symbol("[[isTrusted]]");
 const _path = Symbol("[[path]]");
 
 class Event {
-  constructor(type, eventInitDict = {}) {
+  constructor(type, eventInitDict = { __proto__: null }) {
     // TODO(lucacasonato): remove when this interface is spec aligned
     this[SymbolToStringTag] = "Event";
     this[_canceledFlag] = false;
@@ -1095,7 +1095,7 @@ class ErrorEvent extends Event {
       lineno = 0,
       colno = 0,
       error,
-    } = {},
+    } = { __proto__: null },
   ) {
     super(type, {
       bubbles: bubbles,
@@ -1164,7 +1164,7 @@ class CloseEvent extends Event {
     wasClean = false,
     code = 0,
     reason = "",
-  } = {}) {
+  } = { __proto__: null }) {
     super(type, {
       bubbles: bubbles,
       cancelable: cancelable,
@@ -1238,7 +1238,7 @@ const MessageEventPrototype = MessageEvent.prototype;
 class CustomEvent extends Event {
   #detail = null;
 
-  constructor(type, eventInitDict = {}) {
+  constructor(type, eventInitDict = { __proto__: null }) {
     super(type, eventInitDict);
     webidl.requiredArguments(
       arguments.length,
@@ -1280,7 +1280,7 @@ ReflectDefineProperty(CustomEvent.prototype, "detail", {
 // ProgressEvent could also be used in other DOM progress event emits.
 // Current use is for FileReader.
 class ProgressEvent extends Event {
-  constructor(type, eventInitDict = {}) {
+  constructor(type, eventInitDict = { __proto__: null }) {
     super(type, eventInitDict);
 
     this.lengthComputable = eventInitDict?.lengthComputable ?? false;
@@ -1329,7 +1329,7 @@ class PromiseRejectionEvent extends Event {
       composed,
       promise,
       reason,
-    } = {},
+    } = { __proto__: null },
   ) {
     super(type, {
       bubbles: bubbles,
