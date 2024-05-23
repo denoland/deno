@@ -98,8 +98,6 @@ import {
   SymbolMetadata,
 } from "ext:deno_web/00_infra.js";
 // deno-lint-ignore prefer-primordials
-if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
-// deno-lint-ignore prefer-primordials
 if (Symbol.asyncDispose) {
   throw "V8 supports Symbol.asyncDispose now, no need to shim it!";
 }

@@ -2,7 +2,6 @@
 
 mod interface;
 pub mod local;
-mod time;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
