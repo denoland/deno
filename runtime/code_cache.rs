@@ -2,14 +2,13 @@
 
 use deno_core::ModuleSpecifier;
 
-#[derive(Debug, Copy, Clone)]
 pub enum CodeCacheType {
   EsModule,
   Script,
 }
 
 impl CodeCacheType {
-  pub fn as_str(&self) -> &'static str {
+  pub fn as_str(&self) -> &str {
     match self {
       Self::EsModule => "esmodule",
       Self::Script => "script",
