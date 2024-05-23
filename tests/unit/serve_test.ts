@@ -340,7 +340,7 @@ Deno.test(
       });
 
       const resp = await fetch(`http://localhost:${servePort}`);
-      dataPromise = resp.arrayBuffer();
+      dataPromise = resp.bytes();
     }
 
     assertEquals((await dataPromise).byteLength, 1048576);
@@ -358,7 +358,7 @@ Deno.test(
 
     const [_, data] = await Promise.all([
       server.shutdown(),
-      resp.arrayBuffer(),
+      resp.bytes(),
     ]);
 
     assertEquals(data.byteLength, 1048576);
@@ -1861,13 +1861,12 @@ Deno.test(
       signal: ac.signal,
     });
     const response = await fetch(`http://localhost:${servePort}/`);
-    const body = await response.arrayBuffer();
+    const body = await response.bytes();
     assertEquals(1024 * 1024, body.byteLength);
-    const buffer = new Uint8Array(body);
     for (let i = 0; i < 256; i++) {
       assertEquals(
         i,
-        buffer[i * 4096],
+        body[i * 4096],
         `sentinel mismatch at index ${i * 4096}`,
       );
     }
@@ -2078,8 +2077,8 @@ Deno.test(
     await deferred.promise;
 
     assertEquals(resp.status, 200);
-    const body = await resp.arrayBuffer();
-    assertEquals(new Uint8Array(body), new Uint8Array([128]));
+    const body = await resp.bytes();
+    assertEquals(body, new Uint8Array([128]));
 
     ac.abort();
     await server.finished;
@@ -2694,7 +2693,7 @@ for (const testCase of compressionTestCases) {
             headers: testCase.in as HeadersInit,
           });
           await deferred.promise;
-          const body = await resp.arrayBuffer();
+          const body = await resp.bytes();
           if (testCase.expect == null) {
             assertEquals(body.byteLength, testCase.length);
             assertEquals(
@@ -2731,7 +2730,7 @@ Deno.test(
     const server = Deno.serve({
       handler: async (request) => {
         assertEquals(
-          new Uint8Array(await request.arrayBuffer()),
+          await request.bytes(),
           makeTempData(70 * 1024),
         );
         deferred.resolve();

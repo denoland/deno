@@ -20,13 +20,17 @@ import {
   op_fs_file_stat_async,
   op_fs_file_stat_sync,
   op_fs_flock_async,
+  op_fs_flock_async_unstable,
   op_fs_flock_sync,
+  op_fs_flock_sync_unstable,
   op_fs_fsync_async,
   op_fs_fsync_sync,
   op_fs_ftruncate_async,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
+  op_fs_funlock_async_unstable,
   op_fs_funlock_sync,
+  op_fs_funlock_sync_unstable,
   op_fs_futime_async,
   op_fs_futime_sync,
   op_fs_link_async,
@@ -577,19 +581,19 @@ async function fsync(rid) {
 }
 
 function flockSync(rid, exclusive) {
-  op_fs_flock_sync(rid, exclusive === true);
+  op_fs_flock_sync_unstable(rid, exclusive === true);
 }
 
 async function flock(rid, exclusive) {
-  await op_fs_flock_async(rid, exclusive === true);
+  await op_fs_flock_async_unstable(rid, exclusive === true);
 }
 
 function funlockSync(rid) {
-  op_fs_funlock_sync(rid);
+  op_fs_funlock_sync_unstable(rid);
 }
 
 async function funlock(rid) {
-  await op_fs_funlock_async(rid);
+  await op_fs_funlock_async_unstable(rid);
 }
 
 function seekSync(
