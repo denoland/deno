@@ -534,7 +534,12 @@ fn mutation_from_v8(
   let kind = match (value.1.as_str(), value.2) {
     ("set", Some(value)) => MutationKind::Set(value.try_into()?),
     ("delete", None) => MutationKind::Delete,
-    ("sum", Some(value)) => MutationKind::Sum(value.try_into()?),
+    ("sum", Some(value)) => MutationKind::Sum {
+      value: value.try_into()?,
+      min_v8: vec![],
+      max_v8: vec![],
+      clamp: false,
+    },
     ("min", Some(value)) => MutationKind::Min(value.try_into()?),
     ("max", Some(value)) => MutationKind::Max(value.try_into()?),
     ("setSuffixVersionstampedKey", Some(value)) => {

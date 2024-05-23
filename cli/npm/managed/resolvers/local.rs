@@ -58,7 +58,6 @@ pub struct LocalNpmPackageResolver {
   cache: Arc<NpmCache>,
   progress_bar: ProgressBar,
   resolution: Arc<NpmResolution>,
-  registry_url: Url,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
   system_info: NpmSystemInfo,
@@ -70,7 +69,6 @@ impl LocalNpmPackageResolver {
     fs: Arc<dyn deno_fs::FileSystem>,
     cache: Arc<NpmCache>,
     progress_bar: ProgressBar,
-    registry_url: Url,
     node_modules_folder: PathBuf,
     resolution: Arc<NpmResolution>,
     system_info: NpmSystemInfo,
@@ -80,7 +78,6 @@ impl LocalNpmPackageResolver {
       cache,
       progress_bar,
       resolution,
-      registry_url,
       root_node_modules_url: Url::from_directory_path(&node_modules_folder)
         .unwrap(),
       root_node_modules_path: node_modules_folder.clone(),
@@ -125,6 +122,17 @@ impl LocalNpmPackageResolver {
     canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())
       .map(Some)
       .map_err(|err| err.into())
+  }
+
+  fn resolve_package_folder_from_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<Option<PathBuf>, AnyError> {
+    let Some(local_path) = self.resolve_folder_for_specifier(specifier)? else {
+      return Ok(None);
+    };
+    let package_root_path = self.resolve_package_root(&local_path);
+    Ok(Some(package_root_path))
   }
 }
 
@@ -202,17 +210,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     );
   }
 
-  fn resolve_package_folder_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError> {
-    let Some(local_path) = self.resolve_folder_for_specifier(specifier)? else {
-      return Ok(None);
-    };
-    let package_root_path = self.resolve_package_root(&local_path);
-    Ok(Some(package_root_path))
-  }
-
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
@@ -231,7 +228,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       &self.resolution.snapshot(),
       &self.cache,
       &self.progress_bar,
-      &self.registry_url,
       &self.root_node_modules_path,
       &self.system_info,
     )
@@ -254,7 +250,6 @@ async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
   cache: &Arc<NpmCache>,
   progress_bar: &ProgressBar,
-  registry_url: &Url,
   root_node_modules_dir_path: &Path,
   system_info: &NpmSystemInfo,
 ) -> Result<(), AnyError> {
@@ -317,12 +312,9 @@ async fn sync_resolution_with_fs(
 
       let pb = progress_bar.clone();
       let cache = cache.clone();
-      let registry_url = registry_url.clone();
       let package = package.clone();
       let handle = spawn(async move {
-        cache
-          .ensure_package(&package.id.nv, &package.dist, &registry_url)
-          .await?;
+        cache.ensure_package(&package.id.nv, &package.dist).await?;
         let pb_guard = pb.update_with_prompt(
           ProgressMessagePrompt::Initialize,
           &package.id.nv.to_string(),
@@ -332,8 +324,8 @@ async fn sync_resolution_with_fs(
           join_package_name(&sub_node_modules, &package.id.nv.name);
         fs::create_dir_all(&package_path)
           .with_context(|| format!("Creating '{}'", folder_path.display()))?;
-        let cache_folder = cache
-          .package_folder_for_name_and_version(&package.id.nv, &registry_url);
+        let cache_folder =
+          cache.package_folder_for_name_and_version(&package.id.nv);
         if hard_link_dir_recursive(&cache_folder, &package_path).is_err() {
           // Fallback to copying the directory.
           //

@@ -98,7 +98,7 @@ fn lsp_tsconfig_types() {
     }
   }));
 
-  assert_eq!(diagnostics.all().len(), 0);
+  assert_eq!(json!(diagnostics.all()), json!([]));
 
   client.shutdown();
 }
@@ -143,7 +143,7 @@ fn lsp_tsconfig_types_config_sub_dir() {
     }
   }));
 
-  assert_eq!(diagnostics.all().len(), 0);
+  assert_eq!(json!(diagnostics.all()), json!([]));
 
   client.shutdown();
 }
@@ -11730,27 +11730,24 @@ fn lsp_vendor_dir() {
     temp_dir.path().join("deno.json"),
     "{ \"vendor\": true, \"lock\": false }\n",
   );
-  let refresh_config = |client: &mut LspClient| {
-    client.change_configuration(json!({ "deno": {
-      "enable": true,
-      "config": "./deno.json",
-      "codeLens": {
-        "implementations": true,
-        "references": true,
-      },
-      "importMap": null,
-      "lint": false,
-      "suggest": {
-        "autoImports": true,
-        "completeFunctionCalls": false,
-        "names": true,
-        "paths": true,
-        "imports": {},
-      },
-      "unstable": false,
-    } }));
-  };
-  refresh_config(&mut client);
+  client.change_configuration(json!({ "deno": {
+    "enable": true,
+    "config": "./deno.json",
+    "codeLens": {
+      "implementations": true,
+      "references": true,
+    },
+    "importMap": null,
+    "lint": false,
+    "suggest": {
+      "autoImports": true,
+      "completeFunctionCalls": false,
+      "names": true,
+      "paths": true,
+      "imports": {},
+    },
+    "unstable": false,
+  } }));
 
   let diagnostics = client.read_diagnostics();
   // won't be cached until a manual cache occurs
