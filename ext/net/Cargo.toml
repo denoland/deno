@@ -19,6 +19,7 @@ deno_tls.workspace = true
 # Pinning to 0.5.1, because 0.5.2 breaks "cargo publish"
 # https://github.com/bluejekyll/enum-as-inner/pull/91
 enum-as-inner = "=0.5.1"
+fqdn.workspace = true
 log.workspace = true
 pin-project.workspace = true
 rustls-tokio-stream.workspace = true
@@ -27,3 +28,4 @@ socket2.workspace = true
 tokio.workspace = true
 trust-dns-proto = "0.22"
 trust-dns-resolver = { version = "0.22", features = ["tokio-runtime", "serde-config"] }
+url = "2.4.1"

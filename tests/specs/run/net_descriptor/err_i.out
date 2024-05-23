@@ -1,4 +1,5 @@
-error: Failed to parse *.amazon.com
+error: Failed to parse host: *.amazon.com
+
 
 Caused by:
     invalid char found in FQDN

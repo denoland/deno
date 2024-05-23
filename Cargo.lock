@@ -1665,6 +1665,7 @@ dependencies = [
  "deno_core",
  "deno_tls",
  "enum-as-inner",
+ "fqdn",
  "log",
  "pin-project",
  "rustls-tokio-stream",
@@ -1673,6 +1674,7 @@ dependencies = [
  "tokio",
  "trust-dns-proto",
  "trust-dns-resolver",
+ "url",
 ]
 
 [[package]]
