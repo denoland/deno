@@ -184,31 +184,49 @@ impl LspResolver {
     Ok(())
   }
 
-  pub fn as_graph_resolver(&self) -> &dyn Resolver {
+  pub fn as_graph_resolver(
+    &self,
+    _file_referrer: Option<&ModuleSpecifier>,
+  ) -> &dyn Resolver {
     self.graph_resolver.as_ref()
   }
 
-  pub fn as_graph_npm_resolver(&self) -> &dyn NpmResolver {
+  pub fn as_graph_npm_resolver(
+    &self,
+    _file_referrer: Option<&ModuleSpecifier>,
+  ) -> &dyn NpmResolver {
     self.graph_resolver.as_ref()
   }
 
-  pub fn maybe_managed_npm_resolver(&self) -> Option<&ManagedCliNpmResolver> {
+  pub fn maybe_managed_npm_resolver(
+    &self,
+    _file_referrer: Option<&ModuleSpecifier>,
+  ) -> Option<&ManagedCliNpmResolver> {
     self.npm_resolver.as_ref().and_then(|r| r.as_managed())
   }
 
-  pub fn graph_import_specifiers(
+  pub fn graph_imports_by_referrer(
     &self,
-  ) -> impl Iterator<Item = &ModuleSpecifier> {
+  ) -> IndexMap<&ModuleSpecifier, Vec<&ModuleSpecifier>> {
     self
       .graph_imports
-      .values()
-      .flat_map(|i| i.dependencies.values())
-      .flat_map(|value| value.get_type().or_else(|| value.get_code()))
+      .iter()
+      .map(|(s, i)| {
+        (
+          s,
+          i.dependencies
+            .values()
+            .flat_map(|d| d.get_type().or_else(|| d.get_code()))
+            .collect(),
+        )
+      })
+      .collect()
   }
 
   pub fn jsr_to_registry_url(
     &self,
     req_ref: &JsrPackageReqReference,
+    _file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<ModuleSpecifier> {
     self.jsr_resolver.as_ref()?.jsr_to_registry_url(req_ref)
   }
@@ -217,11 +235,16 @@ impl LspResolver {
     &self,
     nv: &PackageNv,
     path: &str,
+    _file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<String> {
     self.jsr_resolver.as_ref()?.lookup_export_for_path(nv, path)
   }
 
-  pub fn jsr_lookup_req_for_nv(&self, nv: &PackageNv) -> Option<PackageReq> {
+  pub fn jsr_lookup_req_for_nv(
+    &self,
+    nv: &PackageNv,
+    _file_referrer: Option<&ModuleSpecifier>,
+  ) -> Option<PackageReq> {
     self.jsr_resolver.as_ref()?.lookup_req_for_nv(nv)
   }
 
@@ -229,6 +252,7 @@ impl LspResolver {
     &self,
     req_ref: &NpmPackageReqReference,
     referrer: &ModuleSpecifier,
+    _file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     let node_resolver = self.node_resolver.as_ref()?;
     Some(NodeResolution::into_specifier_and_media_type(
@@ -275,6 +299,7 @@ impl LspResolver {
   pub fn resolve_redirects(
     &self,
     specifier: &ModuleSpecifier,
+    _file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<ModuleSpecifier> {
     let Some(redirect_resolver) = self.redirect_resolver.as_ref() else {
       return Some(specifier.clone());
@@ -285,6 +310,7 @@ impl LspResolver {
   pub fn redirect_chain_headers(
     &self,
     specifier: &ModuleSpecifier,
+    _file_referrer: Option<&ModuleSpecifier>,
   ) -> Vec<(ModuleSpecifier, Arc<HashMap<String, String>>)> {
     let Some(redirect_resolver) = self.redirect_resolver.as_ref() else {
       return vec![];

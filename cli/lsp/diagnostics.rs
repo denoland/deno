@@ -1294,6 +1294,7 @@ fn diagnose_resolution(
   resolution: &Resolution,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
+  referrer_doc: &Document,
   import_map: Option<&ImportMap>,
 ) -> Vec<DenoDiagnostic> {
   fn check_redirect_diagnostic(
@@ -1327,13 +1328,21 @@ fn diagnose_resolution(
   match resolution {
     Resolution::Ok(resolved) => {
       let specifier = &resolved.specifier;
-      let managed_npm_resolver = snapshot.resolver.maybe_managed_npm_resolver();
-      for (_, headers) in snapshot.resolver.redirect_chain_headers(specifier) {
+      let managed_npm_resolver = snapshot
+        .resolver
+        .maybe_managed_npm_resolver(referrer_doc.file_referrer());
+      for (_, headers) in snapshot
+        .resolver
+        .redirect_chain_headers(specifier, referrer_doc.file_referrer())
+      {
         if let Some(message) = headers.get("x-deno-warning") {
           diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
         }
       }
-      if let Some(doc) = snapshot.documents.get(specifier) {
+      if let Some(doc) = snapshot
+        .documents
+        .get_or_load(specifier, referrer_doc.specifier())
+      {
         if let Some(headers) = doc.maybe_headers() {
           if let Some(message) = headers.get("x-deno-warning") {
             diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
@@ -1430,10 +1439,11 @@ fn diagnose_resolution(
 fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   snapshot: &language_server::StateSnapshot,
-  referrer: &ModuleSpecifier,
+  referrer_doc: &Document,
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
+  let referrer = referrer_doc.specifier();
   if snapshot.resolver.in_node_modules(referrer) {
     return; // ignore, surface typescript errors instead
   }
@@ -1488,6 +1498,7 @@ fn diagnose_dependency(
       },
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
+      referrer_doc,
       import_map.map(|i| i.as_ref()),
     )
     .iter()
@@ -1511,6 +1522,7 @@ fn diagnose_dependency(
         &dependency.maybe_type,
         dependency.is_dynamic,
         dependency.maybe_attribute_type.as_deref(),
+        referrer_doc,
         import_map.map(|i| i.as_ref()),
       )
       .iter()
@@ -1543,7 +1555,7 @@ fn generate_deno_diagnostics(
         diagnose_dependency(
           &mut diagnostics,
           snapshot,
-          specifier,
+          &document,
           dependency_key,
           dependency,
         );
@@ -1630,11 +1642,12 @@ mod tests {
         *version,
         *language_id,
         (*source).into(),
+        None,
       );
     }
     StateSnapshot {
       project_version: 0,
-      documents,
+      documents: Arc::new(documents),
       assets: Default::default(),
       config: Arc::new(config),
       resolver,
