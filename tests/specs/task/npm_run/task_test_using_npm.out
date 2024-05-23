@@ -1,3 +1,3 @@
 Task test_using_npm npm run non_existent -- --ignore-scripts
-npm ERR! Missing script: "non_existent"
+npm [WILDLINE] Missing script: "non_existent"
 [WILDCARD]

@@ -8,6 +8,10 @@
       "args": "task test_using_npm",
       "output": "task_test_using_npm.out",
       "exitCode": 1
+    },
+    "npm_run": {
+      "args": "task npm_run",
+      "output": "task_npm_run.out"
     }
   }
 }
