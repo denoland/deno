@@ -1236,6 +1236,15 @@ fn clap_root() -> Command {
     .long_version(long_version)
     // cause --unstable flags to display at the bottom of the help text
     .next_display_order(1000)
+    .disable_version_flag(true)
+    .arg(
+      Arg::new("version")
+        .short('V')
+        .short_alias('v')
+        .long("version")
+        .action(ArgAction::Version)
+        .help("Print version")
+    )
     .arg(
       Arg::new("unstable")
         .long("unstable")
