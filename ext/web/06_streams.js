@@ -5096,8 +5096,8 @@ async function* createAsyncFromSyncIterator(syncIterator) {
 // Ref: https://tc39.es/ecma262/#sec-getiterator
 function getIterator(obj, async = false) {
   if (async) {
-    if (obj[SymbolAsyncIterator] === undefined) {
-      if (obj[SymbolIterator] === undefined) {
+    if (obj[SymbolAsyncIterator] == null) {
+      if (obj[SymbolIterator] == null) {
         throw new TypeError("No iterator found");
       }
       return createAsyncFromSyncIterator(obj[SymbolIterator]());
@@ -5105,7 +5105,7 @@ function getIterator(obj, async = false) {
       return obj[SymbolAsyncIterator]();
     }
   } else {
-    if (obj[SymbolIterator] === undefined) {
+    if (obj[SymbolIterator] == null) {
       throw new TypeError("No iterator found");
     }
     return obj[SymbolIterator]();
