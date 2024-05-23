@@ -42,7 +42,7 @@ impl CacheDBConfiguration {
   fn create_combined_sql(&self) -> String {
     format!(
       "
-      PRAGMA journal_mode=TRUNCATE;
+      PRAGMA journal_mode=WAL;
       PRAGMA synchronous=NORMAL;
       PRAGMA temp_store=memory;
       PRAGMA page_size=4096;
