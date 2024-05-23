@@ -1007,9 +1007,10 @@ export class ClientHttp2Stream extends Duplex {
     debugHttp2(">>> read");
 
     (async () => {
-      const [chunk, finished, cancelled] = await op_http2_client_get_response_body_chunk(
-        this[kDenoResponse].bodyRid,
-      );
+      const [chunk, finished, cancelled] =
+        await op_http2_client_get_response_body_chunk(
+          this[kDenoResponse].bodyRid,
+        );
 
       if (cancelled) {
         return;
