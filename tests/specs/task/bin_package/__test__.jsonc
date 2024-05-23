@@ -30,10 +30,12 @@
     "warns_if_already_setup": {
       "tempDir": true,
       "steps": [{
+        "if": "unix",
         "commandName": "npm",
         "args": "install",
         "output": "\nadded 1 package in [WILDCARD]\n"
       }, {
+        "if": "unix",
         "args": "task sayhi",
         "output": "already-set-up.out"
       }]
