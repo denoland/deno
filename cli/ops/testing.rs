@@ -96,6 +96,7 @@ pub fn op_restore_test_permissions(
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 struct TestRegisterResult {
   id: usize,
   origin: String,

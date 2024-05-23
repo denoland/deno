@@ -100,8 +100,8 @@ impl LspResolver {
         node_resolver = create_node_resolver(npm_resolver.as_ref());
       }
     } else {
-      npm_resolver = self.npm_resolver.clone();
-      node_resolver = self.node_resolver.clone();
+      npm_resolver.clone_from(&self.npm_resolver);
+      node_resolver.clone_from(&self.node_resolver);
     }
     let graph_resolver = create_graph_resolver(
       config_data,
@@ -527,7 +527,7 @@ impl RedirectResolver {
       }
     };
     for (specifier, mut entry) in chain {
-      entry.destination = destination.clone();
+      entry.destination.clone_from(&destination);
       self.entries.insert(specifier, Some(Arc::new(entry)));
     }
     destination

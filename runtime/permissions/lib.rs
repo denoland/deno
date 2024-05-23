@@ -28,7 +28,6 @@ use std::hash::Hash;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::string::ToString;
 use std::sync::Arc;
 use which::which;
 
@@ -615,9 +614,11 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
       }
     }
     perms.flag_denied_global = self.flag_denied_global;
-    perms.flag_denied_list = self.flag_denied_list.clone();
+    perms.flag_denied_list.clone_from(&self.flag_denied_list);
     perms.prompt_denied_global = self.prompt_denied_global;
-    perms.prompt_denied_list = self.prompt_denied_list.clone();
+    perms
+      .prompt_denied_list
+      .clone_from(&self.prompt_denied_list);
     perms.prompt = self.prompt;
 
     Ok(perms)
@@ -864,11 +865,11 @@ impl From<PathBuf> for RunDescriptor {
   }
 }
 
-impl ToString for RunDescriptor {
-  fn to_string(&self) -> String {
+impl fmt::Display for RunDescriptor {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      RunDescriptor::Name(s) => s.clone(),
-      RunDescriptor::Path(p) => p.to_string_lossy().to_string(),
+      RunDescriptor::Name(s) => write!(f, "{}", s),
+      RunDescriptor::Path(p) => write!(f, "{}", p.to_string_lossy()),
     }
   }
 }

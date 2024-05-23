@@ -106,7 +106,7 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
 
       cpu.times.irq = 0;
 
-      cpu.model = model.clone();
+      cpu.model.clone_from(&model);
       cpu.speed = cpu_speed / 1000000;
     }
 
