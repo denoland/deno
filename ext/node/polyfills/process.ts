@@ -437,7 +437,7 @@ Object.defineProperty(Process.prototype, "exitCode", {
     return ProcessExitCode;
   },
   set(code: number | string | null | undefined) {
-    if (code != null) {
+    if (!!code) {
       // This is looser than `denoOs.setExitCode` which requires exit code
       // to be decimal or string of a decimal, but Node accept eg. 0x10.
       code = parseInt(code) || 0;
