@@ -798,7 +798,6 @@ impl CliFactory {
         },
         self.emitter()?.clone(),
         self.main_module_graph_container().await?.clone(),
-        self.module_info_cache()?.clone(),
         self.module_load_preparer().await?.clone(),
         cli_node_resolver.clone(),
         NpmModuleLoader::new(

@@ -26,6 +26,7 @@ use deno_core::LocalInspectorSession;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
+use deno_core::ModuleSourceCodeCache;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsFactoryFn;
 use deno_core::OpMetricsSummaryTracker;
@@ -45,7 +46,6 @@ use log::debug;
 
 use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
-use crate::fs_util::code_timestamp;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
@@ -307,48 +307,34 @@ pub fn create_op_metrics(
 }
 
 fn get_code_cache(
-  code_cache: Arc<dyn CodeCache>,
+  code_cache: &dyn CodeCache,
   specifier: &str,
+  source_hash: u64,
 ) -> Option<Vec<u8>> {
-  // Code hashes are not maintained for op_eval_context scripts. Instead we use
-  // the modified timestamp from the local file system.
-  if let Ok(code_timestamp) = code_timestamp(specifier) {
-    code_cache
-      .get_sync(
-        specifier,
-        CodeCacheType::Script,
-        code_timestamp.to_string().as_str(),
-      )
-      .inspect(|_| {
-        // This log line is also used by tests.
-        log::debug!(
-          "V8 code cache hit for script: {specifier}, [{code_timestamp}]"
-        );
-      })
-  } else {
-    None
-  }
+  code_cache
+    .get_sync(specifier, CodeCacheType::Script, &source_hash.to_string())
+    .inspect(|_| {
+      // This log line is also used by tests.
+      log::debug!("V8 code cache hit for script: {specifier}, [{source_hash}]");
+    })
 }
 
 fn set_code_cache(
-  code_cache: Arc<dyn CodeCache>,
+  code_cache: &dyn CodeCache,
   specifier: &str,
+  source_hash: u64,
   data: &[u8],
 ) {
-  // Code hashes are not maintained for op_eval_context scripts. Instead we use
-  // the modified timestamp from the local file system.
-  if let Ok(code_timestamp) = code_timestamp(specifier) {
-    // This log line is also used by tests.
-    log::debug!(
-      "Updating V8 code cache for script: {specifier}, [{code_timestamp}]",
-    );
-    code_cache.set_sync(
-      specifier,
-      CodeCacheType::Script,
-      code_timestamp.to_string().as_str(),
-      data,
-    );
-  }
+  // This log line is also used by tests.
+  log::debug!(
+    "Updating V8 code cache for script: {specifier}, [{source_hash}]",
+  );
+  code_cache.set_sync(
+    specifier,
+    CodeCacheType::Script,
+    &source_hash.to_string(),
+    data,
+  );
 }
 
 impl MainWorker {
@@ -554,12 +540,24 @@ impl MainWorker {
       eval_context_code_cache_cbs: options.v8_code_cache.map(|cache| {
         let cache_clone = cache.clone();
         (
-          Box::new(move |specifier: &str| {
-            Ok(get_code_cache(cache.clone(), specifier).map(Cow::Owned))
-          }) as Box<dyn Fn(&_) -> _>,
-          Box::new(move |specifier: &str, data: &[u8]| {
-            set_code_cache(cache_clone.clone(), specifier, data);
-          }) as Box<dyn Fn(&_, &_)>,
+          Box::new(move |specifier: &str, code: &v8::String| {
+            let source_hash = {
+              use std::hash::Hash;
+              use std::hash::Hasher;
+              let mut hasher = twox_hash::XxHash64::default();
+              code.hash(&mut hasher);
+              hasher.finish()
+            };
+            let data = get_code_cache(cache.as_ref(), specifier, source_hash)
+              .map(Cow::Owned);
+            Ok(ModuleSourceCodeCache {
+              data,
+              hash: source_hash,
+            })
+          }) as Box<dyn Fn(&_, &_) -> _>,
+          Box::new(move |specifier: &str, source_hash: u64, data: &[u8]| {
+            set_code_cache(cache_clone.as_ref(), specifier, source_hash, data);
+          }) as Box<dyn Fn(&_, _, &_)>,
         )
       }),
       ..Default::default()

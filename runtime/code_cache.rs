@@ -1,12 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#[derive(Debug, Copy, Clone)]
 pub enum CodeCacheType {
   EsModule,
   Script,
 }
 
 impl CodeCacheType {
-  pub fn as_str(&self) -> &str {
+  pub fn as_str(&self) -> &'static str {
     match self {
       Self::EsModule => "esmodule",
       Self::Script => "script",
