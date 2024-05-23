@@ -92,7 +92,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
         let (conn, notifier_key) = match (path.as_deref(), &default_storage_dir)
         {
           (Some(":memory:"), _) | (None, None) => (
-            Arc::new(|| rusqlite::Connection::open_in_memory()) as ConnGen,
+            Arc::new(rusqlite::Connection::open_in_memory) as ConnGen,
             None,
           ),
           (Some(path), _) => {
