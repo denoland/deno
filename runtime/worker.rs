@@ -505,7 +505,6 @@ impl MainWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
-      enable_code_cache: options.v8_code_cache.is_some(),
       eval_context_code_cache_cbs: options.v8_code_cache.map(|cache| {
         let cache_clone = cache.clone();
         (
