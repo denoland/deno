@@ -105,7 +105,11 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
         },
         cwd,
       });
+      const killer = setTimeout(() => {
+        command.kill();
+      }, 10 * 60_000);
       const { code, stdout, stderr } = await command.output();
+      clearTimeout(killer);
 
       if (code !== 0) {
         // If the test case failed, show the stdout, stderr, and instruction
