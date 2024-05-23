@@ -10,6 +10,8 @@ use test_util::DenoChild;
 use test_util::TestContext;
 use test_util::TestContextBuilder;
 
+use chrono::DateTime;
+use chrono::Utc;
 use deno_core::anyhow::Result;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -119,7 +121,7 @@ impl Default for JupyterMsg {
 struct MsgHeader {
   msg_id: Uuid,
   session: Uuid,
-  date: String,
+  date: DateTime<Utc>,
   username: String,
   msg_type: String,
   version: String,
@@ -136,7 +138,7 @@ impl Default for MsgHeader {
     Self {
       msg_id: Uuid::new_v4(),
       session: Uuid::new_v4(),
-      date: utc_now().to_rfc3339(),
+      date: utc_now(),
       username: "test".into(),
       msg_type: "kernel_info_request".into(),
       version: "5.3".into(),
@@ -517,7 +519,7 @@ async fn jupyter_kernel_info() -> Result<()> {
         "mimetype": "text/x.typescript",
         "file_extension": ".ts",
         "pygments_lexer": "typescript",
-        "nb_converter": "script"
+        "nbconvert_exporter": "script"
       },
     }),
   );
@@ -612,7 +614,7 @@ async fn jupyter_store_history_false() -> Result<()> {
       json!({
         "silent": false,
         "store_history": false,
-        "code": "console.log(\"asdf\")"
+        "code": "console.log(\"asdf\")",
       }),
     )
     .await?;
