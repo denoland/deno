@@ -243,8 +243,8 @@ Deno.test({ permissions: { net: true } }, async function responseClone() {
   assert(response !== response1);
   assertEquals(response.status, response1.status);
   assertEquals(response.statusText, response1.statusText);
-  const u8a = new Uint8Array(await response.arrayBuffer());
-  const u8a1 = new Uint8Array(await response1.arrayBuffer());
+  const u8a = await response.bytes();
+  const u8a1 = await response1.bytes();
   for (let i = 0; i < u8a.byteLength; i++) {
     assertEquals(u8a[i], u8a1[i]);
   }
@@ -675,7 +675,7 @@ Deno.test(
         ["Foo", "Bar"],
       ],
     });
-    await response.arrayBuffer();
+    await response.body?.cancel();
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
@@ -709,7 +709,7 @@ Deno.test(
         ["Accept-Language", "en-US"],
       ],
     });
-    await response.arrayBuffer();
+    await response.body?.cancel();
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
@@ -743,7 +743,7 @@ Deno.test(
       ],
       body,
     });
-    await response.arrayBuffer();
+    await response.body?.cancel();
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
@@ -782,7 +782,7 @@ Deno.test(
       ],
       body,
     });
-    await response.arrayBuffer();
+    await response.body?.cancel();
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
@@ -816,7 +816,7 @@ Deno.test(
         ["Content-Length", "10"],
       ],
     });
-    await response.arrayBuffer();
+    await response.body?.cancel();
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
@@ -847,7 +847,7 @@ Deno.test(
         ["Transfer-Encoding", "chunked"],
       ],
     });
-    await response.arrayBuffer();
+    await response.body?.cancel();
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
@@ -933,7 +933,7 @@ Deno.test(function responseRedirectTakeURLObjectAsParameter() {
 
 Deno.test(async function responseWithoutBody() {
   const response = new Response();
-  assertEquals(await response.arrayBuffer(), new ArrayBuffer(0));
+  assertEquals(await response.bytes(), new Uint8Array(0));
   const blob = await response.blob();
   assertEquals(blob.size, 0);
   assertEquals(await blob.arrayBuffer(), new ArrayBuffer(0));
@@ -1214,7 +1214,7 @@ Deno.test(
       ],
       body: stream.readable,
     });
-    await response.arrayBuffer();
+    await response.body?.cancel();
     assertEquals(response.status, 404);
     assertEquals(response.headers.get("Content-Length"), "2");
 
@@ -1793,10 +1793,9 @@ Deno.test(
     const listener = invalidServer(addr, body);
     const response = await fetch(`http://${addr}/`);
 
-    const res = await response.arrayBuffer();
+    const res = await response.bytes();
     const buf = new TextEncoder().encode(data);
-    assertEquals(res.byteLength, buf.byteLength);
-    assertEquals(new Uint8Array(res), buf);
+    assertEquals(res, buf);
 
     listener.close();
   },
@@ -1850,10 +1849,10 @@ Deno.test(
 
     // If content-length < totalLength, a maximum of content-length bytes
     // should be returned.
-    const res = await response.arrayBuffer();
+    const res = await response.bytes();
     const buf = new TextEncoder().encode(data);
     assertEquals(res.byteLength, contentLength);
-    assertEquals(new Uint8Array(res), buf.subarray(contentLength));
+    assertEquals(res, buf.subarray(contentLength));
 
     listener.close();
   },
@@ -2029,7 +2028,7 @@ Deno.test(
 Deno.test("Request with subarray TypedArray body", async () => {
   const body = new Uint8Array([1, 2, 3, 4, 5]).subarray(1);
   const req = new Request("https://example.com", { method: "POST", body });
-  const actual = new Uint8Array(await req.arrayBuffer());
+  const actual = await req.bytes();
   const expected = new Uint8Array([2, 3, 4, 5]);
   assertEquals(actual, expected);
 });
@@ -2037,7 +2036,7 @@ Deno.test("Request with subarray TypedArray body", async () => {
 Deno.test("Response with subarray TypedArray body", async () => {
   const body = new Uint8Array([1, 2, 3, 4, 5]).subarray(1);
   const req = new Response(body);
-  const actual = new Uint8Array(await req.arrayBuffer());
+  const actual = await req.bytes();
   const expected = new Uint8Array([2, 3, 4, 5]);
   assertEquals(actual, expected);
 });
