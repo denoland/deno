@@ -83,6 +83,8 @@ let ProcessExitCode: undefined | null | string | number;
 export const exit = (code?: number | string) => {
   if (code || code === 0) {
     denoOs.setExitCode(code);
+  } else if (Number.isNaN(code)) {
+    denoOs.setExitCode(1);
   }
 
   const exitCode = ProcessExitCode || denoOs.getExitCode();
@@ -437,10 +439,13 @@ Object.defineProperty(Process.prototype, "exitCode", {
     return ProcessExitCode;
   },
   set(code: number | string | null | undefined) {
-    if (code) {
+    if (!!code) {
       // This is looser than `denoOs.setExitCode` which requires exit code
       // to be decimal or string of a decimal, but Node accept eg. 0x10.
       code = parseInt(code) || 0;
+      denoOs.setExitCode(code);
+    } else if (Number.isNaN(code)) {
+      code = 1;
       denoOs.setExitCode(code);
     }
     // invalid string would have thrown
