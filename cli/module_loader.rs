@@ -13,6 +13,7 @@ use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
 use crate::cache::CodeCache;
+use crate::cache::FastInsecureHasher;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
@@ -51,6 +52,7 @@ use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
 use deno_core::ModuleSourceCode;
+use deno_core::ModuleSourceCodeCache;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
@@ -388,27 +390,24 @@ impl<TGraphContainer: ModuleGraphContainer>
     }
 
     let code_cache = if module_type == ModuleType::JavaScript {
-      self.shared.code_cache.as_ref().and_then(|cache| {
-        let code_hash = self
-          .get_code_hash_or_timestamp(specifier, code_source.media_type)
-          .ok()
-          .flatten();
-        if let Some(code_hash) = code_hash {
-          cache
-            .get_sync(
-              specifier.as_str(),
-              code_cache::CodeCacheType::EsModule,
-              &code_hash,
-            )
-            .map(Cow::from)
-            .inspect(|_| {
-              // This log line is also used by tests.
-              log::debug!(
-                "V8 code cache hit for ES module: {specifier}, [{code_hash:?}]"
-              );
-            })
-        } else {
-          None
+      self.shared.code_cache.as_ref().map(|cache| {
+        let code_hash = FastInsecureHasher::hash(&code);
+        let data = cache
+          .get_sync(
+            specifier.as_str(),
+            code_cache::CodeCacheType::EsModule,
+            &code_hash.to_string(),
+          )
+          .map(Cow::from)
+          .inspect(|_| {
+            // This log line is also used by tests.
+            log::debug!(
+              "V8 code cache hit for ES module: {specifier}, [{code_hash:?}]"
+            );
+          });
+        ModuleSourceCodeCache {
+          hash: code_hash,
+          data,
         }
       })
     } else {
@@ -587,25 +586,6 @@ impl<TGraphContainer: ModuleGraphContainer>
     }
 
     resolution.map_err(|err| err.into())
-  }
-
-  fn get_code_hash_or_timestamp(
-    &self,
-    specifier: &ModuleSpecifier,
-    media_type: MediaType,
-  ) -> Result<Option<String>, AnyError> {
-    let hash = self
-      .shared
-      .module_info_cache
-      .get_module_source_hash(specifier, media_type)?;
-    if let Some(hash) = hash {
-      return Ok(Some(hash.into()));
-    }
-
-    // Use the modified timestamp from the local file system if we don't have a hash.
-    let timestamp = code_timestamp(specifier.as_str())
-      .map(|timestamp| timestamp.to_string())?;
-    Ok(Some(timestamp))
   }
 
   async fn load_prepared_module(
@@ -866,27 +846,20 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
   fn code_cache_ready(
     &self,
     specifier: &ModuleSpecifier,
+    hash: u64,
     code_cache: &[u8],
   ) -> Pin<Box<dyn Future<Output = ()>>> {
     if let Some(cache) = self.0.shared.code_cache.as_ref() {
-      let media_type = MediaType::from_specifier(specifier);
-      let code_hash = self
-        .0
-        .get_code_hash_or_timestamp(specifier, media_type)
-        .ok()
-        .flatten();
-      if let Some(code_hash) = code_hash {
-        // This log line is also used by tests.
-        log::debug!(
-          "Updating V8 code cache for ES module: {specifier}, [{code_hash:?}]"
-        );
-        cache.set_sync(
-          specifier.as_str(),
-          code_cache::CodeCacheType::EsModule,
-          &code_hash,
-          code_cache,
-        );
-      }
+      // This log line is also used by tests.
+      log::debug!(
+        "Updating V8 code cache for ES module: {specifier}, [{hash}]"
+      );
+      cache.set_sync(
+        specifier.as_str(),
+        code_cache::CodeCacheType::EsModule,
+        &hash.to_string(),
+        code_cache,
+      );
     }
     std::future::ready(()).boxed_local()
   }

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_graph::ModuleInfo;
 use deno_graph::ModuleParser;
@@ -39,7 +40,7 @@ pub static MODULE_INFO_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   on_failure: CacheFailure::InMemory,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ModuleInfoCacheSourceHash(String);
 
 impl ModuleInfoCacheSourceHash {
@@ -67,6 +68,16 @@ impl From<ModuleInfoCacheSourceHash> for String {
 /// deno_graph.
 pub struct ModuleInfoCache {
   conn: CacheDB,
+  sender: Mutex<
+    Option<
+      tokio::sync::mpsc::UnboundedSender<(
+        String,
+        &'static str,
+        String,
+        String,
+      )>,
+    >,
+  >,
 }
 
 impl ModuleInfoCache {
@@ -76,7 +87,10 @@ impl ModuleInfoCache {
   }
 
   pub fn new(conn: CacheDB) -> Self {
-    Self { conn }
+    Self {
+      conn,
+      sender: Default::default(),
+    }
   }
 
   /// Useful for testing: re-create this cache DB with a different current version.
@@ -84,24 +98,8 @@ impl ModuleInfoCache {
   pub(crate) fn recreate_with_version(self, version: &'static str) -> Self {
     Self {
       conn: self.conn.recreate_with_version(version),
+      sender: Default::default(),
     }
-  }
-
-  pub fn get_module_source_hash(
-    &self,
-    specifier: &ModuleSpecifier,
-    media_type: MediaType,
-  ) -> Result<Option<ModuleInfoCacheSourceHash>, AnyError> {
-    let query = "SELECT source_hash FROM moduleinfocache WHERE specifier=?1 AND media_type=?2";
-    let res = self.conn.query_row(
-      query,
-      params![specifier.as_str(), serialize_media_type(media_type)],
-      |row| {
-        let source_hash: String = row.get(0)?;
-        Ok(ModuleInfoCacheSourceHash(source_hash))
-      },
-    )?;
-    Ok(res)
   }
 
   pub fn get_module_info(
@@ -134,20 +132,46 @@ impl ModuleInfoCache {
     source_hash: &ModuleInfoCacheSourceHash,
     module_info: &ModuleInfo,
   ) -> Result<(), AnyError> {
-    let sql = "
-      INSERT OR REPLACE INTO
-        moduleinfocache (specifier, media_type, source_hash, module_info)
-      VALUES
-        (?1, ?2, ?3, ?4)";
-    self.conn.execute(
-      sql,
-      params![
-        specifier.as_str(),
-        serialize_media_type(media_type),
-        source_hash.as_str(),
-        &serde_json::to_string(&module_info)?,
-      ],
-    )?;
+    let data = (
+      specifier.to_string(),
+      serialize_media_type(media_type),
+      source_hash.as_str().to_string(),
+      serde_json::to_string(&module_info).unwrap(),
+    );
+
+    let mut sender = self.sender.lock();
+    if let Some(sender) = &mut *sender {
+      let _ = sender.send(data);
+    } else {
+      let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+      let conn = self.conn.clone();
+      let _ = deno_core::unsync::spawn(async move {
+        while let Some((specifier, media_type, source_hash, module_info)) =
+          rx.recv().await
+        {
+          let conn = conn.clone();
+          deno_core::unsync::spawn_blocking(move || {
+            let sql = "
+            INSERT OR REPLACE INTO
+              moduleinfocache (specifier, media_type, source_hash, module_info)
+            VALUES
+              (?1, ?2, ?3, ?4)";
+            let result = conn.execute(
+              sql,
+              params![specifier, media_type, source_hash, module_info],
+            );
+            if let Err(err) = result {
+              log::debug!("Error saving module cache info. {:#}", err);
+            }
+          })
+          .await
+          .unwrap();
+        }
+      });
+      tx.send(data).unwrap();
+      *sender = Some(tx);
+    }
+
     Ok(())
   }
 

@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_runtime::code_cache;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
@@ -21,7 +22,6 @@ pub static CODE_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   on_failure: CacheFailure::Blackhole,
 };
 
-#[derive(Clone)]
 pub struct CodeCache {
   inner: CodeCacheInner,
 }
@@ -100,14 +100,26 @@ impl code_cache::CodeCache for CodeCache {
   }
 }
 
-#[derive(Clone)]
 struct CodeCacheInner {
   conn: CacheDB,
+  sender: Mutex<
+    Option<
+      tokio::sync::mpsc::UnboundedSender<(
+        String,
+        &'static str,
+        String,
+        Vec<u8>,
+      )>,
+    >,
+  >,
 }
 
 impl CodeCacheInner {
   pub fn new(conn: CacheDB) -> Self {
-    Self { conn }
+    Self {
+      conn,
+      sender: Default::default(),
+    }
   }
 
   pub fn get_sync(
@@ -138,14 +150,45 @@ impl CodeCacheInner {
     source_hash: &str,
     data: &[u8],
   ) -> Result<(), AnyError> {
-    let sql = "
-      INSERT OR REPLACE INTO
-        codecache (specifier, type, source_hash, data)
-      VALUES
-        (?1, ?2, ?3, ?4)";
-    let params =
-      params![specifier, code_cache_type.as_str(), source_hash, data];
-    self.conn.execute(sql, params)?;
+    let data = (
+      specifier.to_string(),
+      code_cache_type.as_str(),
+      source_hash.to_string(),
+      data.to_vec(),
+    );
+    let mut sender = self.sender.lock();
+    if let Some(sender) = &mut *sender {
+      let _ = sender.send(data);
+    } else {
+      let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+      let conn = self.conn.clone();
+      let _ = deno_core::unsync::spawn(async move {
+        while let Some((specifier, code_cache_type, source_hash, data)) =
+          rx.recv().await
+        {
+          let conn = conn.clone();
+          deno_core::unsync::spawn_blocking(move || {
+            let sql = "
+              INSERT OR REPLACE INTO
+                codecache (specifier, type, source_hash, data)
+              VALUES
+                (?1, ?2, ?3, ?4)";
+            let result = conn.execute(
+              sql,
+              params![specifier, code_cache_type, source_hash, data],
+            );
+            if let Err(err) = result {
+              log::debug!("Error saving module cache info. {:#}", err);
+            }
+          })
+          .await
+          .unwrap();
+        }
+      });
+      tx.send(data).unwrap();
+      *sender = Some(tx);
+    }
+
     Ok(())
   }
 }

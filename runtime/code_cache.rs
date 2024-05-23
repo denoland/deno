@@ -6,7 +6,7 @@ pub enum CodeCacheType {
 }
 
 impl CodeCacheType {
-  pub fn as_str(&self) -> &str {
+  pub fn as_str(&self) -> &'static str {
     match self {
       Self::EsModule => "esmodule",
       Self::Script => "script",
