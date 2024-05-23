@@ -306,37 +306,6 @@ pub fn create_op_metrics(
   (op_summary_metrics, op_metrics_factory_fn)
 }
 
-fn get_code_cache(
-  code_cache: &dyn CodeCache,
-  specifier: &str,
-  source_hash: u64,
-) -> Option<Vec<u8>> {
-  code_cache
-    .get_sync(specifier, CodeCacheType::Script, &source_hash.to_string())
-    .inspect(|_| {
-      // This log line is also used by tests.
-      log::debug!("V8 code cache hit for script: {specifier}, [{source_hash}]");
-    })
-}
-
-fn set_code_cache(
-  code_cache: &dyn CodeCache,
-  specifier: &str,
-  source_hash: u64,
-  data: &[u8],
-) {
-  // This log line is also used by tests.
-  log::debug!(
-    "Updating V8 code cache for script: {specifier}, [{source_hash}]",
-  );
-  code_cache.set_sync(
-    specifier,
-    CodeCacheType::Script,
-    &source_hash.to_string(),
-    data,
-  );
-}
-
 impl MainWorker {
   pub fn bootstrap_from_options(
     main_module: ModuleSpecifier,
@@ -540,7 +509,7 @@ impl MainWorker {
       eval_context_code_cache_cbs: options.v8_code_cache.map(|cache| {
         let cache_clone = cache.clone();
         (
-          Box::new(move |specifier: &str, code: &v8::String| {
+          Box::new(move |specifier: &ModuleSpecifier, code: &v8::String| {
             let source_hash = {
               use std::hash::Hash;
               use std::hash::Hasher;
@@ -548,16 +517,30 @@ impl MainWorker {
               code.hash(&mut hasher);
               hasher.finish()
             };
-            let data = get_code_cache(cache.as_ref(), specifier, source_hash)
+            let data = cache
+              .get_sync(specifier, CodeCacheType::Script, source_hash)
+              .inspect(|_| {
+                // This log line is also used by tests.
+                log::debug!("V8 code cache hit for script: {specifier}, [{source_hash}]");
+              })
               .map(Cow::Owned);
             Ok(ModuleSourceCodeCache {
               data,
               hash: source_hash,
             })
           }) as Box<dyn Fn(&_, &_) -> _>,
-          Box::new(move |specifier: &str, source_hash: u64, data: &[u8]| {
-            set_code_cache(cache_clone.as_ref(), specifier, source_hash, data);
-          }) as Box<dyn Fn(&_, _, &_)>,
+          Box::new(
+            move |specifier: ModuleSpecifier, source_hash: u64, data: &[u8]| {
+              // This log line is also used by tests.
+              log::debug!("Updating V8 code cache for script: {specifier}, [{source_hash}]");
+              cache_clone.set_sync(
+                specifier,
+                CodeCacheType::Script,
+                source_hash,
+                data,
+              );
+            },
+          ) as Box<dyn Fn(_, _, &_)>,
         )
       }),
       ..Default::default()

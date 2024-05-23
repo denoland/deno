@@ -388,11 +388,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       self.shared.code_cache.as_ref().map(|cache| {
         let code_hash = FastInsecureHasher::hash(&code);
         let data = cache
-          .get_sync(
-            specifier.as_str(),
-            code_cache::CodeCacheType::EsModule,
-            &code_hash.to_string(),
-          )
+          .get_sync(specifier, code_cache::CodeCacheType::EsModule, code_hash)
           .map(Cow::from)
           .inspect(|_| {
             // This log line is also used by tests.
@@ -850,9 +846,9 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         "Updating V8 code cache for ES module: {specifier}, [{source_hash:?}]"
       );
       cache.set_sync(
-        specifier.as_str(),
+        &specifier,
         code_cache::CodeCacheType::EsModule,
-        &source_hash.to_string(),
+        source_hash,
         code_cache,
       );
     }

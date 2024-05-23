@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::ModuleSpecifier;
+
 #[derive(Debug, Copy, Clone)]
 pub enum CodeCacheType {
   EsModule,
@@ -18,15 +20,15 @@ impl CodeCacheType {
 pub trait CodeCache: Send + Sync {
   fn get_sync(
     &self,
-    specifier: &str,
+    specifier: &ModuleSpecifier,
     code_cache_type: CodeCacheType,
-    source_hash: &str,
+    source_hash: u64,
   ) -> Option<Vec<u8>>;
   fn set_sync(
     &self,
-    specifier: &str,
+    specifier: ModuleSpecifier,
     code_cache_type: CodeCacheType,
-    source_hash: &str,
+    source_hash: u64,
     data: &[u8],
   );
 }
