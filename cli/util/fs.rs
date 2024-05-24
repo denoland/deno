@@ -492,10 +492,71 @@ pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
   }
 }
 
-/// Copies a directory to another directory.
+mod clone_dir_imp {
+  use deno_core::error::AnyError;
+
+  use super::copy_dir_recursive;
+  use std::path::Path;
+
+  cfg_if::cfg_if! {
+    if #[cfg(target_vendor = "apple")] {
+      use super::copy_dir_recursive_with;
+      use std::os::unix::ffi::OsStrExt;
+      fn clonefile(from: &Path, to: &Path) -> std::io::Result<()> {
+        let from = std::ffi::CString::new(from.as_os_str().as_bytes())?;
+        let to = std::ffi::CString::new(to.as_os_str().as_bytes())?;
+        let ret = unsafe { libc::clonefile(from.as_ptr(), to.as_ptr(), 0) };
+        if ret != 0 {
+          return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
+      }
+
+      pub(super) fn clone_dir_recursive(
+        from: &Path,
+        to: &Path,
+      ) -> Result<(), AnyError> {
+        if let Some(parent) = to.parent() {
+          std::fs::create_dir_all(parent)?;
+        }
+        if let Err(err) = clonefile(from, to) {
+          if err.kind() != std::io::ErrorKind::AlreadyExists {
+            log::warn!("Failed to clone dir {:?} to {:?} via clonefile: {}", from, to, err);
+          }
+          if let Err(err) = copy_dir_recursive_with(from, to, |src, dst| clonefile(src, dst).map_err(Into::into)) {
+            log::warn!("Failed to clone dir {:?} to {:?}: {}", from, to, err);
+            copy_dir_recursive(from, to)?;
+          }
+        }
+
+        Ok(())
+      }
+    } else {
+      use super::hard_link_dir_recursive;
+      pub(super) fn clone_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+        if let Err(e) = hard_link_dir_recursive(from, to) {
+          log::debug!("Failed to hard link dir {:?} to {:?}: {}", from, to, e);
+          copy_dir_recursive(from, to)?;
+        }
+      }
+    }
+  }
+}
+
+/// Clones a directory to another directory. The exact method
+/// is not guaranteed - it may be a hardlink, copy, or other platform-specific
+/// operation.
 ///
 /// Note: Does not handle symlinks.
-pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+pub fn clone_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+  clone_dir_imp::clone_dir_recursive(from, to)
+}
+
+fn copy_dir_recursive_with(
+  from: &Path,
+  to: &Path,
+  file_copier: impl Fn(&Path, &Path) -> Result<(), AnyError>,
+) -> Result<(), AnyError> {
   std::fs::create_dir_all(to)
     .with_context(|| format!("Creating {}", to.display()))?;
   let read_dir = std::fs::read_dir(from)
@@ -512,15 +573,26 @@ pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
         format!("Dir {} to {}", new_from.display(), new_to.display())
       })?;
     } else if file_type.is_file() {
-      std::fs::copy(&new_from, &new_to).with_context(|| {
-        format!("Copying {} to {}", new_from.display(), new_to.display())
-      })?;
+      file_copier(&new_from, &new_to)?;
     }
   }
 
   Ok(())
 }
 
+/// Copies a directory to another directory.
+///
+/// Note: Does not handle symlinks.
+pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+  copy_dir_recursive_with(from, to, |from, to| {
+    std::fs::copy(from, to).with_context(|| {
+      format!("Copying {} to {}", from.display(), to.display())
+    })?;
+    Ok(())
+  })
+}
+
+#[allow(dead_code)]
 /// Hardlinks the files in one directory to another directory.
 ///
 /// Note: Does not handle symlinks.
