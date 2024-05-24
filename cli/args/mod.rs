@@ -18,6 +18,7 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::deno_webgpu::deno_webgpu;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 
@@ -1750,6 +1751,15 @@ impl CliOptions {
       .unwrap_or_default();
 
     from_config_file.extend_from_slice(&self.flags.unstable_config.features);
+
+    if *DENO_FUTURE {
+      from_config_file.extend_from_slice(&[
+        deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string(),
+        deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string(),
+        deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME.to_string(),
+      ]);
+    }
+
     from_config_file
   }
 
