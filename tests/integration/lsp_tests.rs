@@ -98,7 +98,7 @@ fn lsp_tsconfig_types() {
     }
   }));
 
-  assert_eq!(diagnostics.all().len(), 0);
+  assert_eq!(json!(diagnostics.all()), json!([]));
 
   client.shutdown();
 }
@@ -143,7 +143,7 @@ fn lsp_tsconfig_types_config_sub_dir() {
     }
   }));
 
-  assert_eq!(diagnostics.all().len(), 0);
+  assert_eq!(json!(diagnostics.all()), json!([]));
 
   client.shutdown();
 }
@@ -1463,7 +1463,7 @@ fn lsp_hover_asset() {
           "value": "interface Date",
         },
         "Enables basic storage and retrieval of dates and times.",
-        "\n\n*@category* - Temporal  \n\n*@tags* - unstable"
+        "\n\n*@category* - Temporal  \n\n*@experimental*"
       ],
       "range": {
         "start": { "line": 111, "character": 10, },
@@ -2039,7 +2039,7 @@ fn lsp_hover_unstable_always_enabled() {
           "value":"interface Deno.ForeignLibraryInterface"
         },
         "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI  \n\n*@tags* - unstable",
+        "\n\n*@category* - FFI  \n\n*@experimental*",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
@@ -2084,7 +2084,7 @@ fn lsp_hover_unstable_enabled() {
           "value":"interface Deno.ForeignLibraryInterface"
         },
         "**UNSTABLE**: New API, yet to be vetted.\n\nA foreign library interface descriptor.",
-        "\n\n*@category* - FFI  \n\n*@tags* - unstable",
+        "\n\n*@category* - FFI  \n\n*@experimental*",
       ],
       "range":{
         "start":{ "line":0, "character":14 },
@@ -6967,7 +6967,7 @@ fn lsp_completions_auto_import() {
       "uri": "file:///a/🦕.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": "export const foo = \"foo\";\n",
+      "text": "/**\n *\n * @example\n * ```ts\n * const result = add(1, 2);\n * console.log(result); // 3\n * ```\n *\n * @param {number} a - The first number\n * @param {number} b - The second number\n */\nexport function add(a: number, b: number) {\n  return a + b;\n}",
     }
   }));
   client.did_open(json!({
@@ -6984,20 +6984,20 @@ fn lsp_completions_auto_import() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  let item = list.items.iter().find(|item| item.label == "foo");
+  let item = list.items.iter().find(|item| item.label == "add");
   let Some(item) = item else {
-    panic!("completions items missing 'foo' symbol");
+    panic!("completions items missing 'add' symbol");
   };
   let mut item_value = serde_json::to_value(item).unwrap();
   item_value["data"]["tsc"]["data"]["exportMapKey"] =
     serde_json::Value::String("".to_string());
 
   let req = json!({
-    "label": "foo",
+    "label": "add",
     "labelDetails": {
       "description": "./🦕.ts",
     },
-    "kind": 6,
+    "kind": 3,
     "sortText": "￿16_0",
     "commitCharacters": [
       ".",
@@ -7009,14 +7009,14 @@ fn lsp_completions_auto_import() {
       "tsc": {
         "specifier": "file:///a/file.ts",
         "position": 12,
-        "name": "foo",
+        "name": "add",
         "source": "./%F0%9F%A6%95.ts",
          "specifierRewrite": [
            "./%F0%9F%A6%95.ts",
            "./🦕.ts",
          ],
         "data": {
-          "exportName": "foo",
+          "exportName": "add",
           "exportMapKey": "",
           "moduleSpecifier": "./%F0%9F%A6%95.ts",
           "fileName": "file:///a/%F0%9F%A6%95.ts"
@@ -7031,15 +7031,15 @@ fn lsp_completions_auto_import() {
   assert_eq!(
     res,
     json!({
-      "label": "foo",
+      "label": "add",
       "labelDetails": {
         "description": "./🦕.ts",
       },
-      "kind": 6,
-      "detail": "const foo: \"foo\"",
+      "kind": 3,
+      "detail": "function add(a: number, b: number): number",
       "documentation": {
         "kind": "markdown",
-        "value": ""
+        "value": "\n\n*@example*  \n```ts\nconst result = add(1, 2);\nconsole.log(result); // 3\n```  \n\n*@param* - a - The first number  \n\n*@param* - b - The second number"
       },
       "sortText": "￿16_0",
       "additionalTextEdits": [
@@ -7048,7 +7048,7 @@ fn lsp_completions_auto_import() {
             "start": { "line": 0, "character": 0 },
             "end": { "line": 0, "character": 0 }
           },
-          "newText": "import { foo } from \"./🦕.ts\";\n\n"
+          "newText": "import { add } from \"./🦕.ts\";\n\n"
         }
       ]
     })
@@ -10161,7 +10161,7 @@ fn lsp_completions_complete_function_calls() {
       "detail": "(method) Array<never>.map<U>(callbackfn: (value: never, index: number, array: never[]) => U, thisArg?: any): U[]",
       "documentation": {
         "kind": "markdown",
-        "value": "Calls a defined callback function on each element of an array, and returns an array that contains the results.\n\n*@param* - callbackfn A function that accepts up to three arguments. The map method calls the callbackfn function one time for each element in the array.*@param* - thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value."
+        "value": "Calls a defined callback function on each element of an array, and returns an array that contains the results.\n\n*@param* - callbackfn A function that accepts up to three arguments. The map method calls the callbackfn function one time for each element in the array.  \n\n*@param* - thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value."
       },
       "sortText": "1",
       "insertText": "map(${1:callbackfn})",
@@ -11730,27 +11730,24 @@ fn lsp_vendor_dir() {
     temp_dir.path().join("deno.json"),
     "{ \"vendor\": true, \"lock\": false }\n",
   );
-  let refresh_config = |client: &mut LspClient| {
-    client.change_configuration(json!({ "deno": {
-      "enable": true,
-      "config": "./deno.json",
-      "codeLens": {
-        "implementations": true,
-        "references": true,
-      },
-      "importMap": null,
-      "lint": false,
-      "suggest": {
-        "autoImports": true,
-        "completeFunctionCalls": false,
-        "names": true,
-        "paths": true,
-        "imports": {},
-      },
-      "unstable": false,
-    } }));
-  };
-  refresh_config(&mut client);
+  client.change_configuration(json!({ "deno": {
+    "enable": true,
+    "config": "./deno.json",
+    "codeLens": {
+      "implementations": true,
+      "references": true,
+    },
+    "importMap": null,
+    "lint": false,
+    "suggest": {
+      "autoImports": true,
+      "completeFunctionCalls": false,
+      "names": true,
+      "paths": true,
+      "imports": {},
+    },
+    "unstable": false,
+  } }));
 
   let diagnostics = client.read_diagnostics();
   // won't be cached until a manual cache occurs

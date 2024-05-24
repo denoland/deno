@@ -7,7 +7,6 @@ mod local;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_core::url::Url;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 
@@ -25,7 +24,6 @@ pub fn create_npm_fs_resolver(
   fs: Arc<dyn FileSystem>,
   cache: Arc<NpmCache>,
   progress_bar: &ProgressBar,
-  registry_url: Url,
   resolution: Arc<NpmResolution>,
   maybe_node_modules_path: Option<PathBuf>,
   system_info: NpmSystemInfo,
@@ -35,7 +33,6 @@ pub fn create_npm_fs_resolver(
       fs,
       cache,
       progress_bar.clone(),
-      registry_url,
       node_modules_folder,
       resolution,
       system_info,
@@ -43,7 +40,6 @@ pub fn create_npm_fs_resolver(
     None => Arc::new(GlobalNpmPackageResolver::new(
       fs,
       cache,
-      registry_url,
       resolution,
       system_info,
     )),

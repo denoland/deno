@@ -4,6 +4,7 @@ use super::analysis::CodeActionData;
 use super::code_lens;
 use super::config;
 use super::documents::AssetOrDocument;
+use super::documents::Document;
 use super::documents::DocumentsFilter;
 use super::language_server;
 use super::language_server::StateSnapshot;
@@ -393,8 +394,8 @@ impl TsServer {
     let _join_handle = thread::spawn(move || {
       run_tsc_thread(
         receiver,
-        performance.clone(),
-        specifier_map.clone(),
+        performance,
+        specifier_map,
         maybe_inspector_server,
       )
     });
@@ -3283,14 +3284,17 @@ impl CompletionEntryDetails {
       None
     };
     let documentation = if let Some(parts) = &self.documentation {
+      // NOTE: similar as `QuickInfo::to_hover()`
       let mut value = display_parts_to_string(parts, language_server);
       if let Some(tags) = &self.tags {
-        let tag_documentation = tags
+        let tags_preview = tags
           .iter()
           .map(|tag_info| get_tag_documentation(tag_info, language_server))
           .collect::<Vec<String>>()
-          .join("");
-        value = format!("{value}\n\n{tag_documentation}");
+          .join("  \n\n");
+        if !tags_preview.is_empty() {
+          value = format!("{value}\n\n{tags_preview}");
+        }
       }
       Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
         kind: lsp::MarkupKind::Markdown,
@@ -3987,6 +3991,8 @@ struct State {
   response_tx: Option<oneshot::Sender<Result<String, AnyError>>>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
+  root_referrers: HashMap<ModuleSpecifier, ModuleSpecifier>,
+  last_referrer: Option<ModuleSpecifier>,
   token: CancellationToken,
   pending_requests: Option<UnboundedReceiver<Request>>,
   mark: Option<PerformanceMark>,
@@ -4005,9 +4011,27 @@ impl State {
       response_tx: None,
       state_snapshot,
       specifier_map,
+      root_referrers: Default::default(),
+      last_referrer: None,
       token: Default::default(),
       mark: None,
       pending_requests: Some(pending_requests),
+    }
+  }
+
+  fn get_document(&self, specifier: &ModuleSpecifier) -> Option<Arc<Document>> {
+    if let Some(referrer) = self.root_referrers.get(specifier) {
+      self
+        .state_snapshot
+        .documents
+        .get_or_load(specifier, referrer)
+    } else if let Some(referrer) = &self.last_referrer {
+      self
+        .state_snapshot
+        .documents
+        .get_or_load(specifier, referrer)
+    } else {
+      self.state_snapshot.documents.get(specifier)
     }
   }
 
@@ -4019,10 +4043,8 @@ impl State {
     if specifier.scheme() == "asset" {
       snapshot.assets.get(specifier).map(AssetOrDocument::Asset)
     } else {
-      snapshot
-        .documents
-        .get(specifier)
-        .map(AssetOrDocument::Document)
+      let document = self.get_document(specifier);
+      document.map(AssetOrDocument::Document)
     }
   }
 
@@ -4034,11 +4056,8 @@ impl State {
         None
       }
     } else {
-      self
-        .state_snapshot
-        .documents
-        .get(specifier)
-        .map(|d| d.script_version())
+      let document = self.get_document(specifier);
+      document.map(|d| d.script_version())
     }
   }
 }
@@ -4219,7 +4238,7 @@ fn op_resolve_inner(
       })
     })
     .collect();
-
+  state.last_referrer = Some(referrer);
   state.performance.measure(mark);
   Ok(specifiers)
 }
@@ -4232,6 +4251,7 @@ fn op_respond(
 ) {
   let state = state.borrow_mut::<State>();
   state.performance.measure(state.mark.take().unwrap());
+  state.last_referrer = None;
   let response = if !error.is_empty() {
     Err(anyhow!("tsc error: {error}"))
   } else {
@@ -4266,9 +4286,16 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
   }
 
   // inject these next because they're global
-  for specifier in state.state_snapshot.resolver.graph_import_specifiers() {
-    if seen.insert(Cow::Borrowed(specifier.as_str())) {
-      result.push(specifier.to_string());
+  for (referrer, specifiers) in
+    state.state_snapshot.resolver.graph_imports_by_referrer()
+  {
+    for specifier in specifiers {
+      if seen.insert(Cow::Borrowed(specifier.as_str())) {
+        result.push(specifier.to_string());
+      }
+      state
+        .root_referrers
+        .insert(specifier.clone(), referrer.clone());
     }
   }
 
@@ -4286,8 +4313,12 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
       let types_specifier = (|| {
         let documents = &state.state_snapshot.documents;
         let types = doc.maybe_types_dependency().maybe_specifier()?;
-        let (types, _) = documents.resolve_dependency(types, specifier)?;
-        let types_doc = documents.get(&types)?;
+        let (types, _) = documents.resolve_dependency(
+          types,
+          specifier,
+          doc.file_referrer(),
+        )?;
+        let types_doc = documents.get_or_load(&types, specifier)?;
         Some(types_doc.specifier().clone())
       })();
       // If there is a types dep, use that as the root instead. But if the doc
@@ -5166,11 +5197,12 @@ mod tests {
         *version,
         *language_id,
         (*source).into(),
+        None,
       );
     }
     let snapshot = Arc::new(StateSnapshot {
       project_version: 0,
-      documents,
+      documents: Arc::new(documents),
       assets: Default::default(),
       config: Arc::new(config),
       resolver,

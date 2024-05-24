@@ -37,7 +37,7 @@ const _ws = Symbol("[[associated_ws]]");
 const websocketCvf = buildCaseInsensitiveCommaValueFinder("websocket");
 const upgradeCvf = buildCaseInsensitiveCommaValueFinder("upgrade");
 
-function upgradeWebSocket(request, options = {}) {
+function upgradeWebSocket(request, options = { __proto__: null }) {
   const inner = toInnerRequest(request);
   const upgrade = request.headers.get("upgrade");
   const upgradeHasWebSocketOption = upgrade !== null &&
