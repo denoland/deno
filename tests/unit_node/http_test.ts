@@ -1004,6 +1004,12 @@ Deno.test("[node/http] ServerResponse getHeaders", () => {
   assertEquals(res.getHeaders(), { "bar": "baz", "foo": "bar" });
 });
 
+Deno.test("[node/http] ServerResponse default status code 200", () => {
+  const req = new http.IncomingMessage(new net.Socket());
+  const res = new http.ServerResponse(req);
+  assertEquals(res.statusCode, 200);
+});
+
 Deno.test("[node/http] maxHeaderSize is defined", () => {
   assertEquals(http.maxHeaderSize, 16_384);
 });
