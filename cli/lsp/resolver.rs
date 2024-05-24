@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::create_default_npmrc;
 use crate::args::package_json;
 use crate::args::CacheSetting;
 use crate::cache::FastInsecureHasher;
@@ -363,7 +364,10 @@ async fn create_npm_resolver(
       // do not install while resolving in the lsp—leave that to the cache command
       package_json_installer:
         CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
-      npm_registry_url: crate::args::npm_registry_url().to_owned(),
+      npmrc: config_data
+        .npmrc
+        .clone()
+        .unwrap_or_else(create_default_npmrc),
       npm_system_info: NpmSystemInfo::default(),
     })
   };

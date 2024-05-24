@@ -9,8 +9,8 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_graph::NpmPackageReqResolution;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
@@ -72,7 +72,7 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub maybe_node_modules_path: Option<PathBuf>,
   pub npm_system_info: NpmSystemInfo,
   pub package_json_installer: CliNpmResolverManagedPackageJsonInstallerOption,
-  pub npm_registry_url: Url,
+  pub npmrc: Arc<ResolvedNpmRc>,
 }
 
 pub async fn create_managed_npm_resolver_for_lsp(
@@ -96,7 +96,6 @@ pub async fn create_managed_npm_resolver_for_lsp(
     options.text_only_progress_bar,
     options.maybe_node_modules_path,
     options.package_json_installer,
-    options.npm_registry_url,
     options.npm_system_info,
   )
 }
@@ -116,7 +115,6 @@ pub async fn create_managed_npm_resolver(
     options.text_only_progress_bar,
     options.maybe_node_modules_path,
     options.package_json_installer,
-    options.npm_registry_url,
     options.npm_system_info,
   ))
 }
@@ -131,7 +129,6 @@ fn create_inner(
   text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   node_modules_dir_path: Option<PathBuf>,
   package_json_installer: CliNpmResolverManagedPackageJsonInstallerOption,
-  npm_registry_url: Url,
   npm_system_info: NpmSystemInfo,
 ) -> Arc<dyn CliNpmResolver> {
   let resolution = Arc::new(NpmResolution::from_serialized(
@@ -143,7 +140,6 @@ fn create_inner(
     fs.clone(),
     npm_cache.clone(),
     &text_only_progress_bar,
-    npm_registry_url,
     resolution.clone(),
     node_modules_dir_path,
     npm_system_info.clone(),
@@ -175,11 +171,15 @@ fn create_inner(
 
 fn create_cache(options: &CliNpmResolverManagedCreateOptions) -> Arc<NpmCache> {
   Arc::new(NpmCache::new(
-    NpmCacheDir::new(options.npm_global_cache_dir.clone()),
+    NpmCacheDir::new(
+      options.npm_global_cache_dir.clone(),
+      options.npmrc.get_all_known_registries_urls(),
+    ),
     options.cache_setting.clone(),
     options.fs.clone(),
     options.http_client.clone(),
     options.text_only_progress_bar.clone(),
+    options.npmrc.clone(),
   ))
 }
 
@@ -188,9 +188,9 @@ fn create_api(
   npm_cache: Arc<NpmCache>,
 ) -> Arc<CliNpmRegistryApi> {
   Arc::new(CliNpmRegistryApi::new(
-    options.npm_registry_url.clone(),
     npm_cache.clone(),
     options.http_client.clone(),
+    options.npmrc.clone(),
     options.text_only_progress_bar.clone(),
   ))
 }
@@ -483,15 +483,8 @@ impl ManagedCliNpmResolver {
       .map_err(|err| err.into())
   }
 
-  pub fn registry_base_url(&self) -> &ModuleSpecifier {
-    self.api.base_url()
-  }
-
-  pub fn registry_folder_in_global_cache(
-    &self,
-    registry_url: &ModuleSpecifier,
-  ) -> PathBuf {
-    self.global_npm_cache.registry_folder(registry_url)
+  pub fn global_cache_root_folder(&self) -> PathBuf {
+    self.global_npm_cache.root_folder()
   }
 }
 
@@ -564,7 +557,6 @@ impl CliNpmResolver for ManagedCliNpmResolver {
         self.fs.clone(),
         self.global_npm_cache.clone(),
         &self.progress_bar,
-        self.api.base_url().clone(),
         npm_resolution,
         self.root_node_modules_path().map(ToOwned::to_owned),
         self.npm_system_info.clone(),

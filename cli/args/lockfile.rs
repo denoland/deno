@@ -3,11 +3,14 @@
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
+use deno_runtime::deno_node::PackageJson;
 
 use crate::args::ConfigFile;
 use crate::Flags;
 
 use super::DenoSubcommand;
+use super::InstallFlags;
+use super::InstallKind;
 
 pub use deno_lockfile::Lockfile;
 pub use deno_lockfile::LockfileError;
@@ -15,11 +18,15 @@ pub use deno_lockfile::LockfileError;
 pub fn discover(
   flags: &Flags,
   maybe_config_file: Option<&ConfigFile>,
+  maybe_package_json: Option<&PackageJson>,
 ) -> Result<Option<Lockfile>, AnyError> {
   if flags.no_lock
     || matches!(
       flags.subcommand,
-      DenoSubcommand::Install(_) | DenoSubcommand::Uninstall(_)
+      DenoSubcommand::Install(InstallFlags {
+        kind: InstallKind::Global(..),
+        ..
+      }) | DenoSubcommand::Uninstall(_)
     )
   {
     return Ok(None);
@@ -38,7 +45,12 @@ pub fn discover(
           return Ok(None);
         }
       }
-      None => return Ok(None),
+      None => match maybe_package_json {
+        Some(package_json) => {
+          package_json.path.parent().unwrap().join("deno.lock")
+        }
+        None => return Ok(None),
+      },
     },
   };
 
