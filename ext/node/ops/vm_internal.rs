@@ -70,9 +70,9 @@ impl ContextifyContext {
     scope: &mut v8::HandleScope,
     sandbox_obj: v8::Local<v8::Object>,
   ) {
-    let tmp = init_global_template(scope);
+    init_global_template(scope);
 
-    let context = create_v8_context(scope, tmp, None);
+    let context = create_v8_context(scope);
     Self::from_context(scope, context, sandbox_obj);
   }
 
@@ -175,17 +175,10 @@ pub const VM_CONTEXT_INDEX: usize = 0;
 
 fn create_v8_context<'a>(
   scope: &mut v8::HandleScope<'a>,
-  object_template: v8::Local<v8::ObjectTemplate>,
-  snapshot_data: Option<&'static [u8]>,
 ) -> v8::Local<'a, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
-
-  let context = if let Some(_snapshot_data) = snapshot_data {
-    v8::Context::from_snapshot(scope, VM_CONTEXT_INDEX).unwrap()
-  } else {
-    v8::Context::new_from_template(scope, object_template)
-  };
-
+  let context = v8::Context::from_snapshot(scope, VM_CONTEXT_INDEX)
+    .expect("Failed to create VM context from snapshot");
   scope.escape(context)
 }
 
