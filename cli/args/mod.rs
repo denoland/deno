@@ -18,7 +18,6 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::deno_webgpu::deno_webgpu;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 
