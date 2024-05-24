@@ -3203,6 +3203,20 @@ itest!(byte_order_mark {
 });
 
 #[test]
+#[cfg(windows)]
+fn process_stdin_read_unblock() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdin_unblock.mjs"])
+    .with_pty(|mut console| {
+      console.write_raw("b");
+      console.human_delay();
+      console.write_line_raw("s");
+      console.expect_all(&["1", "1"]);
+    });
+}
+
+#[test]
 fn issue9750() {
   TestContext::default()
     .new_command()
