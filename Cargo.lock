@@ -1303,7 +1303,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.282.0"
+version = "0.283.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f5043f9f636a3fe021e63e41c946499e1706d7565126065c60912fe5c77e54e"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1751,7 +1753,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.158.0"
+version = "0.159.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b26cc5277982de16514282447f8674f9048d4f1b2c0d55c088d0a7d3bf6db385"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5750,7 +5754,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.191.0"
+version = "0.192.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7b616df6c4ff5643dd503cbfe119175ebebfd4132512e33de4971f1e91d5739"
 dependencies = [
  "num-bigint",
  "serde",
@@ -7510,7 +7516,7 @@ dependencies = [
  "log",
  "naga",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -7552,7 +7558,7 @@ dependencies = [
  "ndk-sys",
  "objc",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "range-alloc",
  "raw-window-handle",

@@ -51,11 +51,11 @@ use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
 use deno_core::ModuleSourceCode;
-use deno_core::ModuleSourceCodeCache;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
+use deno_core::SourceCodeCacheInfo;
 use deno_core::SourceMapGetter;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
@@ -396,7 +396,7 @@ impl<TGraphContainer: ModuleGraphContainer>
               "V8 code cache hit for ES module: {specifier}, [{code_hash:?}]"
             );
           });
-        ModuleSourceCodeCache {
+        SourceCodeCacheInfo {
           hash: code_hash,
           data,
         }

@@ -26,13 +26,13 @@ use deno_core::LocalInspectorSession;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
-use deno_core::ModuleSourceCodeCache;
 use deno_core::ModuleSpecifier;
 use deno_core::OpMetricsFactoryFn;
 use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::SourceCodeCacheInfo;
 use deno_core::SourceMapGetter;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
@@ -523,7 +523,7 @@ impl MainWorker {
                 log::debug!("V8 code cache hit for script: {specifier}, [{source_hash}]");
               })
               .map(Cow::Owned);
-            Ok(ModuleSourceCodeCache {
+            Ok(SourceCodeCacheInfo {
               data,
               hash: source_hash,
             })
