@@ -46,7 +46,6 @@ const {
   ObjectDefineProperty,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
-  Number,
   NumberIsSafeInteger,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
@@ -348,10 +347,6 @@ function isReturnedAsBigInt(type) {
     type === "usize" || type === "isize";
 }
 
-function isI64(type) {
-  return type === "i64" || type === "isize";
-}
-
 function isStruct(type) {
   return typeof type === "object" && type !== null &&
     typeof type.struct === "object";
@@ -562,7 +557,6 @@ class DynamicLibrary {
         const call = this.symbols[symbol];
         const parameters = symbols[symbol].parameters;
         const vi = new Int32Array(2);
-        const vui = new Uint32Array(TypedArrayPrototypeGetBuffer(vi));
         const b = new BigInt64Array(TypedArrayPrototypeGetBuffer(vi));
 
         const params = ArrayPrototypeJoin(
@@ -572,22 +566,13 @@ class DynamicLibrary {
         // Make sure V8 has no excuse to not optimize this function.
         this.symbols[symbol] = new Function(
           "vi",
-          "vui",
           "b",
           "call",
-          "NumberIsSafeInteger",
-          "Number",
           `return function (${params}) {
             call(${params}${parameters.length > 0 ? ", " : ""}vi);
-            ${
-            isI64(resultType)
-              ? `const n1 = Number(b[0])`
-              : `const n1 = vui[0] + 2 ** 32 * vui[1]` // Faster path for u64
-          };
-            if (NumberIsSafeInteger(n1)) return n1;
             return b[0];
           }`,
-        )(vi, vui, b, call, NumberIsSafeInteger, Number);
+        )(vi, b, call);
       } else if (isStructResult && !isNonBlocking) {
         const call = this.symbols[symbol];
         const parameters = symbols[symbol].parameters;
