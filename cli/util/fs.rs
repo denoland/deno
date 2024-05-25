@@ -538,6 +538,8 @@ mod clone_dir_imp {
           log::debug!("Failed to hard link dir {:?} to {:?}: {}", from, to, e);
           copy_dir_recursive(from, to)?;
         }
+
+        Ok(())
       }
     }
   }
@@ -581,7 +583,6 @@ pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
   Ok(())
 }
 
-#[allow(dead_code)]
 /// Hardlinks the files in one directory to another directory.
 ///
 /// Note: Does not handle symlinks.
