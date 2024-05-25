@@ -23,7 +23,7 @@ use crate::args::CacheSetting;
 use crate::http_util::HttpClient;
 use crate::npm::common::maybe_auth_header_for_npm_registry;
 use crate::npm::NpmCacheDir;
-use crate::util::fs::clone_dir_recursive;
+use crate::util::fs::hard_link_dir_recursive;
 use crate::util::progress_bar::ProgressBar;
 
 use super::tarball::verify_and_extract_tarball;
@@ -195,7 +195,7 @@ impl NpmCache {
     // it seems Windows does an "AccessDenied" error when moving a
     // directory with hard links, so that's why this solution is done
     with_folder_sync_lock(&folder_id.nv, &package_folder, || {
-      clone_dir_recursive(&original_package_folder, &package_folder)
+      hard_link_dir_recursive(&original_package_folder, &package_folder)
     })?;
     Ok(())
   }
