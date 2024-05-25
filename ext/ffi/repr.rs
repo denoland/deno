@@ -391,6 +391,8 @@ where
 pub fn op_ffi_read_u64<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
+  // Note: The representation of 64-bit integers is function-wide. We cannot
+  // choose to take this parameter as a number while returning a bigint.
   #[bigint] offset: isize,
 ) -> Result<u64, AnyError>
 where
@@ -417,6 +419,8 @@ where
 pub fn op_ffi_read_i64<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
+  // Note: The representation of 64-bit integers is function-wide. We cannot
+  // choose to take this parameter as a number while returning a bigint.
   #[bigint] offset: isize,
 ) -> Result<i64, AnyError>
 where
