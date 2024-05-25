@@ -420,7 +420,7 @@ function addU32Fast(a, b) {
 testOptimized(addU32Fast, () => addU32Fast(123, 456));
 
 function addU64Fast(a, b) { return add_usize_fast(a, b); };
-testOptimized(addU64Fast, () => addU64Fast(2, 3));
+testOptimized(addU64Fast, () => addU64Fast(2n, 3n));
 
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(0xffffffffn, 0xffffffffn));
@@ -578,7 +578,7 @@ function logManyParametersFast(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q
 testOptimized(
   logManyParametersFast,
   () => logManyParametersFast(
-    255, 65535, 4294967295, 4294967296, 123.456, 789.876, -1, -2, -3, -4, -1000, 1000,
+    255, 65535, 4294967295, 4294967296n, 123.456, 789.876, -1n, -2, -3, -4, -1000n, 1000n,
     12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910
   )
 );

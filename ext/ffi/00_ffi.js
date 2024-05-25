@@ -51,7 +51,6 @@ const {
   TypedArrayPrototypeGetByteLength,
   TypeError,
   Uint8Array,
-  Int32Array,
   Uint32Array,
   BigInt64Array,
   BigUint64Array,
@@ -342,11 +341,6 @@ class UnsafeFnPointer {
   }
 }
 
-function isReturnedAsBigInt(type) {
-  return type === "u64" || type === "i64" ||
-    type === "usize" || type === "isize";
-}
-
 function isStruct(type) {
   return typeof type === "object" && type !== null &&
     typeof type.struct === "object";
@@ -517,7 +511,6 @@ class DynamicLibrary {
       const structSize = isStructResult
         ? getTypeSizeAndAlignment(resultType)[0]
         : 0;
-      const needsUnpacking = isReturnedAsBigInt(resultType);
 
       const isNonBlocking = symbols[symbol].nonblocking;
       if (isNonBlocking) {
@@ -553,27 +546,7 @@ class DynamicLibrary {
         );
       }
 
-      if (needsUnpacking && !isNonBlocking) {
-        const call = this.symbols[symbol];
-        const parameters = symbols[symbol].parameters;
-        const vi = new Int32Array(2);
-        const b = new BigInt64Array(TypedArrayPrototypeGetBuffer(vi));
-
-        const params = ArrayPrototypeJoin(
-          ArrayPrototypeMap(parameters, (_, index) => `p${index}`),
-          ", ",
-        );
-        // Make sure V8 has no excuse to not optimize this function.
-        this.symbols[symbol] = new Function(
-          "vi",
-          "b",
-          "call",
-          `return function (${params}) {
-            call(${params}${parameters.length > 0 ? ", " : ""}vi);
-            return b[0];
-          }`,
-        )(vi, b, call);
-      } else if (isStructResult && !isNonBlocking) {
+      if (isStructResult && !isNonBlocking) {
         const call = this.symbols[symbol];
         const parameters = symbols[symbol].parameters;
         const params = ArrayPrototypeJoin(

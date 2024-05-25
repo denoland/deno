@@ -9,7 +9,6 @@ use dynasmrt::dynasm;
 use dynasmrt::DynasmApi;
 use dynasmrt::ExecutableBuffer;
 
-use crate::dlfcn::needs_unwrap;
 use crate::NativeType;
 use crate::Symbol;
 
@@ -46,21 +45,18 @@ pub(crate) fn make_template(
   sym: &Symbol,
   trampoline: &Trampoline,
 ) -> fast_api::FastFunction {
-  let mut params = once(fast_api::Type::V8Value) // Receiver
+  let params = once(fast_api::Type::V8Value) // Receiver
     .chain(sym.parameter_types.iter().map(|t| t.into()))
     .collect::<Vec<_>>();
 
-  let ret = if needs_unwrap(&sym.result_type) {
-    params.push(fast_api::Type::TypedArray(fast_api::CType::Int32));
-    fast_api::CType::Void
-  } else if sym.result_type == NativeType::Buffer {
+  let ret = if sym.result_type == NativeType::Buffer {
     // Buffer can be used as a return type and converts differently than in parameters.
     fast_api::CType::Pointer
   } else {
     fast_api::CType::from(&fast_api::Type::from(&sym.result_type))
   };
 
-  fast_api::FastFunction::new(
+  fast_api::FastFunction::new_with_bigint(
     Box::leak(params.into_boxed_slice()),
     ret,
     trampoline.ptr(),
@@ -158,15 +154,9 @@ impl SysVAmd64 {
 
     let must_cast_return_value =
       compiler.must_cast_return_value(&sym.result_type);
-    let must_wrap_return_value =
-      compiler.must_wrap_return_value_in_typed_array(&sym.result_type);
-    let must_save_preserved_register = must_wrap_return_value;
-    let cannot_tailcall = must_cast_return_value || must_wrap_return_value;
+    let cannot_tailcall = must_cast_return_value;
 
     if cannot_tailcall {
-      if must_save_preserved_register {
-        compiler.save_preserved_register_to_stack();
-      }
       compiler.allocate_stack(&sym.parameter_types);
     }
 
@@ -177,22 +167,13 @@ impl SysVAmd64 {
       // the receiver object should never be expected. Avoid its unexpected or deliberate leak
       compiler.zero_first_arg();
     }
-    if must_wrap_return_value {
-      compiler.save_out_array_to_preserved_register();
-    }
 
     if cannot_tailcall {
       compiler.call(sym.ptr.as_ptr());
       if must_cast_return_value {
         compiler.cast_return_value(&sym.result_type);
       }
-      if must_wrap_return_value {
-        compiler.wrap_return_value_in_out_array();
-      }
       compiler.deallocate_stack();
-      if must_save_preserved_register {
-        compiler.recover_preserved_register();
-      }
       compiler.ret();
     } else {
       compiler.tailcall(sym.ptr.as_ptr());
@@ -555,12 +536,6 @@ impl SysVAmd64 {
     )
   }
 
-  fn must_wrap_return_value_in_typed_array(&self, rv: &NativeType) -> bool {
-    // V8 only supports i32 and u32 return types for integers
-    // We support 64 bit integers by wrapping them in a TypedArray out parameter
-    crate::dlfcn::needs_unwrap(rv)
-  }
-
   fn finalize(self) -> ExecutableBuffer {
     self.assmblr.finalize().unwrap()
   }
@@ -602,19 +577,6 @@ impl Aarch64Apple {
   fn compile(sym: &Symbol) -> Trampoline {
     let mut compiler = Self::new();
 
-    let must_wrap_return_value =
-      compiler.must_wrap_return_value_in_typed_array(&sym.result_type);
-    let must_save_preserved_register = must_wrap_return_value;
-    let cannot_tailcall = must_wrap_return_value;
-
-    if cannot_tailcall {
-      compiler.allocate_stack(sym);
-      compiler.save_frame_record();
-      if compiler.must_save_preserved_register_to_stack(sym) {
-        compiler.save_preserved_register_to_stack();
-      }
-    }
-
     for param in sym.parameter_types.iter().cloned() {
       compiler.move_left(param)
     }
@@ -622,24 +584,8 @@ impl Aarch64Apple {
       // the receiver object should never be expected. Avoid its unexpected or deliberate leak
       compiler.zero_first_arg();
     }
-    if compiler.must_wrap_return_value_in_typed_array(&sym.result_type) {
-      compiler.save_out_array_to_preserved_register();
-    }
 
-    if cannot_tailcall {
-      compiler.call(sym.ptr.as_ptr());
-      if must_wrap_return_value {
-        compiler.wrap_return_value_in_out_array();
-      }
-      if must_save_preserved_register {
-        compiler.recover_preserved_register();
-      }
-      compiler.recover_frame_record();
-      compiler.deallocate_stack();
-      compiler.ret();
-    } else {
-      compiler.tailcall(sym.ptr.as_ptr());
-    }
+    compiler.tailcall(sym.ptr.as_ptr());
 
     Trampoline(compiler.finalize())
   }
@@ -980,10 +926,6 @@ impl Aarch64Apple {
     // > Each frame shall link to the frame of its caller by means of a frame record of two 64-bit values on the stack
     stack_size += 16;
 
-    if self.must_save_preserved_register_to_stack(symbol) {
-      stack_size += 8;
-    }
-
     // Section 6.2.2 of Aarch64 PCS:
     // > At any point at which memory is accessed via SP, the hardware requires that
     // > - SP mod 16 = 0. The stack must be quad-word aligned.
@@ -1064,16 +1006,6 @@ impl Aarch64Apple {
     self.integral_params > 0
   }
 
-  fn must_save_preserved_register_to_stack(&mut self, symbol: &Symbol) -> bool {
-    self.must_wrap_return_value_in_typed_array(&symbol.result_type)
-  }
-
-  fn must_wrap_return_value_in_typed_array(&self, rv: &NativeType) -> bool {
-    // V8 only supports i32 and u32 return types for integers
-    // We support 64 bit integers by wrapping them in a TypedArray out parameter
-    crate::dlfcn::needs_unwrap(rv)
-  }
-
   fn finalize(self) -> ExecutableBuffer {
     self.assmblr.finalize().unwrap()
   }
@@ -1117,15 +1049,9 @@ impl Win64 {
 
     let must_cast_return_value =
       compiler.must_cast_return_value(&sym.result_type);
-    let must_wrap_return_value =
-      compiler.must_wrap_return_value_in_typed_array(&sym.result_type);
-    let must_save_preserved_register = must_wrap_return_value;
-    let cannot_tailcall = must_cast_return_value || must_wrap_return_value;
+    let cannot_tailcall = must_cast_return_value;
 
     if cannot_tailcall {
-      if must_save_preserved_register {
-        compiler.save_preserved_register_to_stack();
-      }
       compiler.allocate_stack(&sym.parameter_types);
     }
 
@@ -1136,22 +1062,13 @@ impl Win64 {
       // the receiver object should never be expected. Avoid its unexpected or deliberate leak
       compiler.zero_first_arg();
     }
-    if must_wrap_return_value {
-      compiler.save_out_array_to_preserved_register();
-    }
 
     if cannot_tailcall {
       compiler.call(sym.ptr.as_ptr());
       if must_cast_return_value {
         compiler.cast_return_value(&sym.result_type);
       }
-      if must_wrap_return_value {
-        compiler.wrap_return_value_in_out_array();
-      }
       compiler.deallocate_stack();
-      if must_save_preserved_register {
-        compiler.recover_preserved_register();
-      }
       compiler.ret();
     } else {
       compiler.tailcall(sym.ptr.as_ptr());
@@ -1422,12 +1339,6 @@ impl Win64 {
       rv,
       NativeType::U8 | NativeType::I8 | NativeType::U16 | NativeType::I16
     )
-  }
-
-  fn must_wrap_return_value_in_typed_array(&self, rv: &NativeType) -> bool {
-    // V8 only supports i32 and u32 return types for integers
-    // We support 64 bit integers by wrapping them in a TypedArray out parameter
-    crate::dlfcn::needs_unwrap(rv)
   }
 
   fn finalize(self) -> ExecutableBuffer {
