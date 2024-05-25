@@ -512,19 +512,6 @@ mod clone_dir_imp {
         Ok(())
       }
 
-      /// Clones a directories contents to another directory.
-      pub(super) fn clone_dir_shallow(from: &Path, to: &Path) -> std::io::Result<()> {
-        let read_dir = std::fs::read_dir(from)?;
-        for entry in read_dir {
-          let entry = entry?;
-          let new_from = from.join(entry.file_name());
-          let new_to = to.join(entry.file_name());
-
-          clonefile(&new_from, &new_to)?;
-        }
-        Ok(())
-      }
-
       pub(super) fn clone_dir_recursive(
         from: &Path,
         to: &Path,
@@ -534,19 +521,12 @@ mod clone_dir_imp {
         }
         // Try to clone the whole directory
         if let Err(err) = clonefile(from, to) {
-          // clonefile won't overwrite existing files, so if the dir exists
-          // we need to handle it recursively.
           if err.kind() != std::io::ErrorKind::AlreadyExists {
             log::warn!("Failed to clone dir {:?} to {:?} via clonefile: {}", from, to, err);
           }
-          // Try to clone its contents one level down
-          if let Err(err) = clone_dir_shallow(from, to) {
-            if err.kind() != std::io::ErrorKind::AlreadyExists {
-              log::warn!("Failed to clone dir {:?} to {:?} via clonefile: {}", from, to, err);
-            }
-            // If that fails, fall back to copying recursively
-            copy_dir_recursive(from, to)?;
-          }
+          // clonefile won't overwrite existing files, so if the dir exists
+          // we need to handle it recursively.
+          copy_dir_recursive(from, to)?;
         }
 
         Ok(())
