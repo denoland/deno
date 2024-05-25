@@ -493,7 +493,7 @@ pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
 }
 
 mod clone_dir_imp {
-  use deno_core::error::AnyError;
+  use deno_core::{anyhow::Context, error::AnyError};
 
   use super::copy_dir_recursive;
   use std::path::Path;
@@ -520,10 +520,26 @@ mod clone_dir_imp {
           std::fs::create_dir_all(parent)?;
         }
         if let Err(err) = clonefile(from, to) {
+          // clonefile won't overwrite existing files, so if the dir exists
+          // we need to handle it recursively.
           if err.kind() != std::io::ErrorKind::AlreadyExists {
             log::warn!("Failed to clone dir {:?} to {:?} via clonefile: {}", from, to, err);
           }
-          if let Err(err) = copy_dir_recursive_with(from, to, |src, dst| clonefile(src, dst).map_err(Into::into)) {
+          if let Err(err) = copy_dir_recursive_with(from, to, |src, dst| {
+            let res = clonefile(src, dst);
+            if let Err(err) = res {
+              if err.kind() == std::io::ErrorKind::AlreadyExists {
+                // If the file already exists, try to copy it instead.
+                std::fs::copy(src, dst).with_context(|| {
+                  format!("Copying {} to {}", from.display(), to.display())
+                })?;
+              } else {
+                return Err(err.into());
+              }
+            }
+
+            Ok(())
+          }) {
             log::warn!("Failed to clone dir {:?} to {:?}: {}", from, to, err);
             copy_dir_recursive(from, to)?;
           }
