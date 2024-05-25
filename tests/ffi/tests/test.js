@@ -703,17 +703,17 @@ assertEquals(view.getUint32(), 55);
   const createdPointer = Deno.UnsafePointer.create(1);
   assertNotEquals(createdPointer, null);
   assertEquals(typeof createdPointer, "object");
-  assertEquals(Deno.UnsafePointer.value(null), 0);
-  assertEquals(Deno.UnsafePointer.value(createdPointer), 1);
+  assertEquals(Deno.UnsafePointer.value(null), 0n);
+  assertEquals(Deno.UnsafePointer.value(createdPointer), 1n);
   assert(Deno.UnsafePointer.equals(null, null));
   assertFalse(Deno.UnsafePointer.equals(null, createdPointer));
   assertFalse(Deno.UnsafePointer.equals(Deno.UnsafePointer.create(2), createdPointer));
   // Do not allow offsetting from null, `create` function should be used instead.
   assertThrows(() => Deno.UnsafePointer.offset(null, 5));
   const offsetPointer = Deno.UnsafePointer.offset(createdPointer, 5);
-  assertEquals(Deno.UnsafePointer.value(offsetPointer), 6);
+  assertEquals(Deno.UnsafePointer.value(offsetPointer), 6n);
   const zeroPointer = Deno.UnsafePointer.offset(offsetPointer, -6);
-  assertEquals(Deno.UnsafePointer.value(zeroPointer), 0);
+  assertEquals(Deno.UnsafePointer.value(zeroPointer), 0n);
   assertEquals(zeroPointer, null);
 }
 
