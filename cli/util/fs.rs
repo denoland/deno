@@ -504,6 +504,7 @@ mod clone_dir_imp {
       fn clonefile(from: &Path, to: &Path) -> std::io::Result<()> {
         let from = std::ffi::CString::new(from.as_os_str().as_bytes())?;
         let to = std::ffi::CString::new(to.as_os_str().as_bytes())?;
+        // SAFETY: `from` and `to` are valid C strings.
         let ret = unsafe { libc::clonefile(from.as_ptr(), to.as_ptr(), 0) };
         if ret != 0 {
           return Err(std::io::Error::last_os_error());
