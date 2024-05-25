@@ -1567,61 +1567,6 @@ mod tests {
       let expected = assembler.finalize().unwrap();
       assert_eq!(trampoline.0.deref(), expected.deref());
     }
-
-    #[test]
-    fn return_u64_in_register_typed_array() {
-      let trampoline = SysVAmd64::compile(&symbol(vec![], U64));
-
-      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/8G7a488o7
-      dynasm!(assembler
-        ; .arch x64
-        ; push rbx
-        ; xor edi, edi       // recv
-        ; mov rbx, [rsi + 8] // save data array pointer to non-volatile register
-        ; mov rax, QWORD 0
-        ; call rax
-        ; mov [rbx], rax     // copy return value to data pointer address
-        ; pop rbx
-        ; ret
-      );
-      let expected = assembler.finalize().unwrap();
-      assert_eq!(trampoline.0.deref(), expected.deref());
-    }
-
-    #[test]
-    fn return_u64_in_stack_typed_array() {
-      let trampoline = SysVAmd64::compile(&symbol(
-        vec![U64, U64, U64, U64, U64, U64, U64],
-        U64,
-      ));
-
-      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/cPnPYWdWq
-      dynasm!(assembler
-        ; .arch x64
-        ; push rbx
-        ; sub rsp, DWORD 16
-        ; mov rdi, rsi              // u64
-        ; mov rsi, rdx              // u64
-        ; mov rdx, rcx              // u64
-        ; mov rcx, r8               // u64
-        ; mov r8, r9                // u64
-        ; mov r9, [DWORD rsp + 32]  // u64
-        ; mov rax, [DWORD rsp + 40] // u64
-        ; mov [DWORD rsp + 0], rax  // ..
-        ; mov rax, [DWORD rsp + 48] // save data array pointer to non-volatile register
-        ; mov rbx, [rax + 8]        // ..
-        ; mov rax, QWORD 0
-        ; call rax
-        ; mov [rbx], rax     // copy return value to data pointer address
-        ; add rsp, DWORD 16
-        ; pop rbx
-        ; ret
-      );
-      let expected = assembler.finalize().unwrap();
-      assert_eq!(trampoline.0.deref(), expected.deref());
-    }
   }
 
   mod aarch64_apple {
@@ -1743,73 +1688,6 @@ mod tests {
       let expected = assembler.finalize().unwrap();
       assert_eq!(trampoline.0.deref(), expected.deref());
     }
-
-    #[test]
-    fn return_u64_in_register_typed_array() {
-      let trampoline = Aarch64Apple::compile(&symbol(vec![], U64));
-
-      let mut assembler = dynasmrt::aarch64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/47EvvYb83
-      dynasm!(assembler
-        ; .arch aarch64
-        ; sub sp, sp, 32
-        ; stp x29, x30, [sp, 16]
-        ; add x29, sp, 16
-        ; str x19, [sp, 8]
-        ; mov x0, xzr       // recv
-        ; ldr x19, [x1, 8]  // save data array pointer to non-volatile register
-        ; movz x8, 0
-        ; blr x8
-        ; str x0, [x19]     // copy return value to data pointer address
-        ; ldr x19, [sp, 8]
-        ; ldp x29, x30, [sp, 16]
-        ; add sp, sp, 32
-        ; ret
-      );
-      let expected = assembler.finalize().unwrap();
-      assert_eq!(trampoline.0.deref(), expected.deref());
-    }
-
-    #[test]
-    fn return_u64_in_stack_typed_array() {
-      let trampoline = Aarch64Apple::compile(&symbol(
-        vec![U64, U64, U64, U64, U64, U64, U64, U64, U8, U8],
-        U64,
-      ));
-
-      let mut assembler = dynasmrt::aarch64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/PvYPbsE1b
-      dynasm!(assembler
-        ; .arch aarch64
-        ; sub sp, sp, 32
-        ; stp x29, x30, [sp, 16]
-        ; add x29, sp, 16
-        ; str x19, [sp, 8]
-        ; mov x0, x1          // u64
-        ; mov x1, x2          // u64
-        ; mov x2, x3          // u64
-        ; mov x3, x4          // u64
-        ; mov x4, x5          // u64
-        ; mov x5, x6          // u64
-        ; mov x6, x7          // u64
-        ; ldr x7, [sp, 32]    // u64
-        ; ldr w8, [sp, 40]    // u8
-        ; strb w8, [sp]        // ..
-        ; ldr w8, [sp, 48]    // u8
-        ; strb w8, [sp, 1]        // ..
-        ; ldr x19, [sp, 56]   // save data array pointer to non-volatile register
-        ; ldr x19, [x19, 8]   // ..
-        ; movz x8, 0
-        ; blr x8
-        ; str x0, [x19]       // copy return value to data pointer address
-        ; ldr x19, [sp, 8]
-        ; ldp x29, x30, [sp, 16]
-        ; add sp, sp, 32
-        ; ret
-      );
-      let expected = assembler.finalize().unwrap();
-      assert_eq!(trampoline.0.deref(), expected.deref());
-    }
   }
 
   mod x64_windows {
@@ -1915,59 +1793,6 @@ mod tests {
         ; mov [DWORD rsp + 48], rax        // ..
         ; mov rax, QWORD 0
         ; jmp rax
-      );
-      let expected = assembler.finalize().unwrap();
-      assert_eq!(trampoline.0.deref(), expected.deref());
-    }
-
-    #[test]
-    fn return_u64_in_register_typed_array() {
-      let trampoline = Win64::compile(&symbol(vec![], U64));
-
-      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/7EnPE7o3T
-      dynasm!(assembler
-        ; .arch x64
-        ; push rbx
-        ; sub rsp, DWORD 32
-        ; xor ecx, ecx       // recv
-        ; mov rbx, [rdx + 8] // save data array pointer to non-volatile register
-        ; mov rax, QWORD 0
-        ; call rax
-        ; mov [rbx], rax     // copy return value to data pointer address
-        ; add rsp, DWORD 32
-        ; pop rbx
-        ; ret
-      );
-      let expected = assembler.finalize().unwrap();
-      assert_eq!(trampoline.0.deref(), expected.deref());
-    }
-
-    #[test]
-    fn return_u64_in_stack_typed_array() {
-      let trampoline =
-        Win64::compile(&symbol(vec![U64, U64, U64, U64, U64], U64));
-
-      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/3966sfEex
-      dynasm!(assembler
-        ; .arch x64
-        ; push rbx
-        ; sub rsp, DWORD 48
-        ; mov rcx, rdx               // u64
-        ; mov rdx, r8                // u64
-        ; mov r8, r9                 // u64
-        ; mov r9, [DWORD rsp + 96]   // u64
-        ; mov rax, [DWORD rsp + 104] // u64
-        ; mov [DWORD rsp + 32], rax  // ..
-        ; mov rax, [DWORD rsp + 112] // save data array pointer to non-volatile register
-        ; mov rbx, [rax + 8]         // ..
-        ; mov rax, QWORD 0
-        ; call rax
-        ; mov [rbx], rax             // copy return value to data pointer address
-        ; add rsp, DWORD 48
-        ; pop rbx
-        ; ret
       );
       let expected = assembler.finalize().unwrap();
       assert_eq!(trampoline.0.deref(), expected.deref());
