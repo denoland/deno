@@ -493,14 +493,13 @@ pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
 }
 
 mod clone_dir_imp {
-  use deno_core::{anyhow::Context, error::AnyError};
+  use deno_core::error::AnyError;
 
   use super::copy_dir_recursive;
   use std::path::Path;
 
   cfg_if::cfg_if! {
     if #[cfg(target_vendor = "apple")] {
-      use super::copy_dir_recursive_with;
       use std::os::unix::ffi::OsStrExt;
       fn clonefile(from: &Path, to: &Path) -> std::io::Result<()> {
         let from = std::ffi::CString::new(from.as_os_str().as_bytes())?;
@@ -512,6 +511,19 @@ mod clone_dir_imp {
         Ok(())
       }
 
+      /// Clones a directories contents to another directory.
+      pub(super) fn clone_dir_shallow(from: &Path, to: &Path) -> std::io::Result<()> {
+        let read_dir = std::fs::read_dir(from)?;
+        for entry in read_dir {
+          let entry = entry?;
+          let new_from = from.join(entry.file_name());
+          let new_to = to.join(entry.file_name());
+
+          clonefile(&new_from, &new_to)?;
+        }
+        Ok(())
+      }
+
       pub(super) fn clone_dir_recursive(
         from: &Path,
         to: &Path,
@@ -519,28 +531,19 @@ mod clone_dir_imp {
         if let Some(parent) = to.parent() {
           std::fs::create_dir_all(parent)?;
         }
+        // Try to clone the whole directory
         if let Err(err) = clonefile(from, to) {
           // clonefile won't overwrite existing files, so if the dir exists
           // we need to handle it recursively.
           if err.kind() != std::io::ErrorKind::AlreadyExists {
             log::warn!("Failed to clone dir {:?} to {:?} via clonefile: {}", from, to, err);
           }
-          if let Err(err) = copy_dir_recursive_with(from, to, |src, dst| {
-            let res = clonefile(src, dst);
-            if let Err(err) = res {
-              if err.kind() == std::io::ErrorKind::AlreadyExists {
-                // If the file already exists, try to copy it instead.
-                std::fs::copy(src, dst).with_context(|| {
-                  format!("Copying {} to {}", from.display(), to.display())
-                })?;
-              } else {
-                return Err(err.into());
-              }
+          // Try to clone its contents one level down
+          if let Err(err) = clone_dir_shallow(from, to) {
+            if err.kind() != std::io::ErrorKind::AlreadyExists {
+              log::warn!("Failed to clone dir {:?} to {:?} via clonefile: {}", from, to, err);
             }
-
-            Ok(())
-          }) {
-            log::warn!("Failed to clone dir {:?} to {:?}: {}", from, to, err);
+            // If that fails, fall back to copying recursively
             copy_dir_recursive(from, to)?;
           }
         }
@@ -568,11 +571,10 @@ pub fn clone_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
   clone_dir_imp::clone_dir_recursive(from, to)
 }
 
-fn copy_dir_recursive_with(
-  from: &Path,
-  to: &Path,
-  file_copier: impl Fn(&Path, &Path) -> Result<(), AnyError>,
-) -> Result<(), AnyError> {
+/// Copies a directory to another directory.
+///
+/// Note: Does not handle symlinks.
+pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
   std::fs::create_dir_all(to)
     .with_context(|| format!("Creating {}", to.display()))?;
   let read_dir = std::fs::read_dir(from)
@@ -589,23 +591,13 @@ fn copy_dir_recursive_with(
         format!("Dir {} to {}", new_from.display(), new_to.display())
       })?;
     } else if file_type.is_file() {
-      file_copier(&new_from, &new_to)?;
+      std::fs::copy(&new_from, &new_to).with_context(|| {
+        format!("Copying {} to {}", new_from.display(), new_to.display())
+      })?;
     }
   }
 
   Ok(())
-}
-
-/// Copies a directory to another directory.
-///
-/// Note: Does not handle symlinks.
-pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
-  copy_dir_recursive_with(from, to, |from, to| {
-    std::fs::copy(from, to).with_context(|| {
-      format!("Copying {} to {}", from.display(), to.display())
-    })?;
-    Ok(())
-  })
 }
 
 #[allow(dead_code)]

@@ -152,6 +152,7 @@ uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
 zeromq.workspace = true
 zstd.workspace = true
+cfg-if = "1.0.0"
 
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true
