@@ -292,6 +292,16 @@ fn exit_for_error(error: AnyError) -> ! {
   {
     error_string = e.to_string();
     error_code = 10;
+  } else if let Some(deno_graph::ModuleGraphError::ModuleError(
+    deno_graph::ModuleError::LoadingErr(_, _, e),
+  )) = error.downcast_ref::<deno_graph::ModuleGraphError>()
+  {
+    match e {
+      deno_graph::ModuleLoadError::HttpsChecksumIntegrity(_) => {
+        error_code = 10;
+      }
+      _ => {}
+    }
   }
 
   exit_with_message(&error_string, error_code);

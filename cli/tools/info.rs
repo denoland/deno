@@ -30,7 +30,6 @@ use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
 use crate::factory::CliFactory;
-use crate::graph_util::graph_lock_or_exit;
 use crate::npm::CliNpmResolver;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;
@@ -70,9 +69,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
 
     // If there is a lockfile...
     if let Some(lockfile) = &maybe_lockfile {
-      let mut lockfile = lockfile.lock();
-      // validate the integrity of all the modules
-      graph_lock_or_exit(&graph, &mut lockfile);
+      let lockfile = lockfile.lock();
       // update it with anything new
       lockfile.write().context("Failed writing lockfile.")?;
     }
@@ -668,18 +665,6 @@ impl<'a> GraphDisplayContext<'a> {
       }
       ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
         self.build_error_msg(specifier, "(missing)")
-      }
-      ModuleError::MissingWorkspaceMemberExports { .. } => {
-        self.build_error_msg(specifier, "(missing exports)")
-      }
-      ModuleError::UnknownExport { .. } => {
-        self.build_error_msg(specifier, "(unknown export)")
-      }
-      ModuleError::UnknownPackage { .. } => {
-        self.build_error_msg(specifier, "(unknown package)")
-      }
-      ModuleError::UnknownPackageReq { .. } => {
-        self.build_error_msg(specifier, "(unknown package constraint)")
       }
     }
   }

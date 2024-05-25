@@ -18,6 +18,7 @@ use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
+use deno_emit::LoaderChecksum;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_config::WorkspaceMemberConfig;
@@ -152,43 +153,6 @@ pub fn graph_valid(
   }
 }
 
-/// Checks the lockfile against the graph and exits on errors.
-pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
-  for module in graph.modules() {
-    let source = match module {
-      Module::Js(module) if module.media_type.is_declaration() => continue, // skip declaration files
-      Module::Js(module) => &module.source,
-      Module::Json(module) => &module.source,
-      Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
-    };
-
-    // skip over any specifiers in JSR packages because those
-    // are enforced via the integrity
-    if deno_graph::source::recommended_registry_package_url_to_nv(
-      jsr_url(),
-      module.specifier(),
-    )
-    .is_some()
-    {
-      continue;
-    }
-
-    if !lockfile.check_or_insert_remote(module.specifier().as_str(), source) {
-      let err = format!(
-        concat!(
-          "The source code is invalid, as it does not match the expected hash in the lock file.\n",
-          "  Specifier: {}\n",
-          "  Lock file: {}",
-        ),
-        module.specifier(),
-        lockfile.filename.display(),
-      );
-      log::error!("{} {}", colors::red("error:"), err);
-      std::process::exit(10);
-    }
-  }
-}
-
 pub struct CreateGraphOptions<'a> {
   pub graph_kind: GraphKind,
   pub roots: Vec<ModuleSpecifier>,
@@ -201,7 +165,6 @@ pub struct ModuleGraphCreator {
   options: Arc<CliOptions>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
-  lockfile: Option<Arc<Mutex<Lockfile>>>,
   type_checker: Arc<TypeChecker>,
 }
 
@@ -210,13 +173,11 @@ impl ModuleGraphCreator {
     options: Arc<CliOptions>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
-    lockfile: Option<Arc<Mutex<Lockfile>>>,
     type_checker: Arc<TypeChecker>,
   ) -> Self {
     Self {
       options,
       npm_resolver,
-      lockfile,
       module_graph_builder,
       type_checker,
     }
@@ -317,9 +278,6 @@ impl ModuleGraphCreator {
       .await?;
 
     self.graph_valid(&graph)?;
-    if let Some(lockfile) = &self.lockfile {
-      graph_lock_or_exit(&graph, &mut lockfile.lock());
-    }
 
     if self.options.type_check_mode().is_true() {
       // provide the graph to the type checker, then get it back after it's done
@@ -460,6 +418,7 @@ impl ModuleGraphBuilder {
           module_analyzer: &analyzer,
           reporter: maybe_file_watcher_reporter,
           resolver: Some(graph_resolver),
+          verify_and_fill_checksums: self.lockfile.is_some(),
         },
       )
       .await
@@ -480,8 +439,10 @@ impl ModuleGraphBuilder {
       }
     }
 
-    // add the lockfile redirects to the graph if it's the first time executing
-    if graph.redirects.is_empty() {
+    // fill the graph with the information from the lockfile
+    let is_first_execution = graph.roots.is_empty();
+    if is_first_execution {
+      // populate the information from the lockfile
       if let Some(lockfile) = &self.lockfile {
         let lockfile = lockfile.lock();
         for (from, to) in &lockfile.content.redirects {
@@ -493,13 +454,13 @@ impl ModuleGraphBuilder {
             }
           }
         }
-      }
-    }
-
-    // add the jsr specifiers to the graph if it's the first time executing
-    if graph.packages.is_empty() {
-      if let Some(lockfile) = &self.lockfile {
-        let lockfile = lockfile.lock();
+        for (module, checksum) in &lockfile.content.remote {
+          if let Ok(module) = ModuleSpecifier::parse(module) {
+            graph
+              .checksums
+              .insert(module, LoaderChecksum::new(checksum.clone()));
+          }
+        }
         for (key, value) in &lockfile.content.packages.specifiers {
           if let Some(key) = key
             .strip_prefix("jsr:")
@@ -529,43 +490,13 @@ impl ModuleGraphBuilder {
       }
     }
 
+    // todo: handle jsr package manifest checksums
+    let initial_redirects_len = graph.redirects.len();
+    let initial_checksums_len = graph.checksums.len();
+    let initial_packages_len = graph.packages.packages_len();
+    let initial_package_mappings_len = graph.packages.mappings().len();
+    let initial_npm_packages = graph.npm_packages.len();
     graph.build(roots, loader, options).await;
-
-    // add the redirects in the graph to the lockfile
-    if !graph.redirects.is_empty() {
-      if let Some(lockfile) = &self.lockfile {
-        let graph_redirects = graph.redirects.iter().filter(|(from, _)| {
-          !matches!(from.scheme(), "npm" | "file" | "deno")
-        });
-        let mut lockfile = lockfile.lock();
-        for (from, to) in graph_redirects {
-          lockfile.insert_redirect(from.to_string(), to.to_string());
-        }
-      }
-    }
-
-    // add the jsr specifiers in the graph to the lockfile
-    if !graph.packages.is_empty() {
-      if let Some(lockfile) = &self.lockfile {
-        let mappings = graph.packages.mappings();
-        let mut lockfile = lockfile.lock();
-        for (from, to) in mappings {
-          lockfile.insert_package_specifier(
-            format!("jsr:{}", from),
-            format!("jsr:{}", to),
-          );
-        }
-        for (name, checksum, deps) in
-          graph.packages.packages_with_checksum_and_deps()
-        {
-          lockfile.insert_package(
-            name.to_string(),
-            checksum.clone(),
-            deps.map(|s| s.to_string()),
-          );
-        }
-      }
-    }
 
     if let Some(npm_resolver) = self.npm_resolver.as_managed() {
       // ensure that the top level package.json is installed if a
@@ -577,6 +508,76 @@ impl ModuleGraphBuilder {
       // resolve the dependencies of any pending dependencies
       // that were inserted by building the graph
       npm_resolver.resolve_pending().await?;
+    }
+
+    let has_redirects_changed = graph.redirects.len() != initial_redirects_len;
+    let has_checksums_changed = graph.checksums.len() != initial_checksums_len;
+    let has_jsr_packages_changed =
+      graph.packages.packages_len() != initial_packages_len;
+    let has_jsr_package_mappings_changed =
+      graph.packages.mappings().len() != initial_package_mappings_len;
+    let has_npm_packages_changed =
+      graph.npm_packages.len() != initial_npm_packages;
+
+    if has_redirects_changed
+      || has_checksums_changed
+      || has_jsr_packages_changed
+      || has_jsr_package_mappings_changed
+      || has_npm_packages_changed
+    {
+      if let Some(lockfile) = &self.lockfile {
+        let mut lockfile = lockfile.lock();
+        // https redirects
+        if has_redirects_changed {
+          let graph_redirects = graph.redirects.iter().filter(|(from, _)| {
+            !matches!(from.scheme(), "npm" | "file" | "deno")
+          });
+          for (from, to) in graph_redirects {
+            lockfile.insert_redirect(from.to_string(), to.to_string());
+          }
+        }
+        // https module checksums
+        if has_checksums_changed {
+          for (module, checksum) in graph.checksums.iter() {
+            lockfile
+              .content
+              .remote
+              .insert(module.to_string(), checksum.as_str().to_string());
+          }
+        }
+        // jsr package mappings
+        if has_jsr_package_mappings_changed {
+          for (from, to) in graph.packages.mappings() {
+            lockfile.insert_package_specifier(
+              format!("jsr:{}", from),
+              format!("jsr:{}", to),
+            );
+          }
+        }
+        // jsr packages
+        if has_jsr_packages_changed {
+          for (name, checksum, deps) in
+            graph.packages.packages_with_checksum_and_deps()
+          {
+            lockfile.insert_package(
+              name.to_string(),
+              checksum.clone(),
+              deps.map(|s| s.to_string()),
+            );
+          }
+        }
+        // npm packages
+        if has_npm_packages_changed {
+          // this verifies integrity so may possibly error, but that
+          // will never happen because integrity verification happens
+          // when loading the npm resolution snapshot
+          self
+            .npm_resolver
+            .as_managed()
+            .unwrap()
+            .lock(&mut lockfile)?;
+        }
+      }
     }
 
     Ok(())

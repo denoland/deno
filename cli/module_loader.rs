@@ -20,7 +20,6 @@ use crate::factory::CliFactory;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node;
@@ -175,9 +174,7 @@ impl ModuleLoadPreparer {
 
     // If there is a lockfile...
     if let Some(lockfile) = &self.lockfile {
-      let mut lockfile = lockfile.lock();
-      // validate the integrity of all the modules
-      graph_lock_or_exit(graph, &mut lockfile);
+      let lockfile = lockfile.lock();
       // update it with anything new
       lockfile.write().context("Failed writing lockfile.")?;
     }
@@ -819,6 +816,9 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
       let graph = update_permit.graph_mut();
+      // if is_dynamic && graph.contains(&specifier) {
+      //   return Ok(());
+      // }
       module_load_preparer
         .prepare_module_load(
           graph,

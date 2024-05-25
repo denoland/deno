@@ -9,7 +9,6 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
-use deno_core::parking_lot::Mutex;
 use deno_graph::source::ResolutionMode;
 use deno_graph::JsModule;
 use deno_graph::Module;
@@ -19,10 +18,8 @@ use import_map::ImportMap;
 use import_map::SpecifierMap;
 
 use crate::args::JsxImportSourceConfig;
-use crate::args::Lockfile;
 use crate::cache::ParsedSourceCache;
 use crate::graph_util;
-use crate::graph_util::graph_lock_or_exit;
 use crate::tools::vendor::import_map::BuildImportMapInput;
 
 use super::analyze::has_default_export;
@@ -62,7 +59,6 @@ pub struct BuildInput<
   pub parsed_source_cache: &'a ParsedSourceCache,
   pub output_dir: &'a Path,
   pub maybe_original_import_map: Option<&'a ImportMap>,
-  pub maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_jsx_import_source: Option<&'a JsxImportSourceConfig>,
   pub resolver: &'a dyn deno_graph::source::Resolver,
   pub environment: &'a TEnvironment,
@@ -86,7 +82,6 @@ pub async fn build<
     parsed_source_cache,
     output_dir,
     maybe_original_import_map: original_import_map,
-    maybe_lockfile,
     maybe_jsx_import_source: jsx_import_source,
     resolver,
     environment,
@@ -117,11 +112,6 @@ pub async fn build<
   }
 
   let graph = build_graph(entry_points).await?;
-
-  // check the lockfile
-  if let Some(lockfile) = maybe_lockfile {
-    graph_lock_or_exit(&graph, &mut lockfile.lock());
-  }
 
   // surface any errors
   graph_util::graph_valid(

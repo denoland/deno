@@ -100,7 +100,7 @@ chrono = { version = "0.4", default-features = false, features = ["std", "serde"
 console_static_text = "=0.8.1"
 data-encoding = "2.3.3"
 data-url = "=0.3.0"
-deno_cache_dir = "=0.7.1"
+deno_cache_dir = "=0.10.0"
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
@@ -374,3 +374,4 @@ opt-level = 3
 deno_doc = { path = "../deno_doc" }
 deno_graph = { path = "../deno_graph" }
 deno_unsync = { path = "../deno_unsync" }
+deno_lockfile = { path = "../deno_lockfile" }

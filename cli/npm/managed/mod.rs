@@ -369,12 +369,6 @@ impl ManagedCliNpmResolver {
     self.resolution.add_package_reqs(packages).await?;
     self.fs_resolver.cache_packages().await?;
 
-    // If there's a lock file, update it with all discovered npm packages
-    if let Some(lockfile_mutex) = &self.maybe_lockfile {
-      let mut lockfile = lockfile_mutex.lock();
-      self.lock(&mut lockfile)?;
-    }
-
     Ok(())
   }
 

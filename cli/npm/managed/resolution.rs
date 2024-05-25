@@ -384,6 +384,9 @@ fn populate_lockfile_from_snapshot(
     );
   }
   for package in snapshot.all_packages_for_every_system() {
+    // todo(dsherret): there is no reason to verify the integrity here
+    // because we already did that when populating the snapshot from
+    // the lockfile
     lockfile
       .check_or_insert_npm_package(npm_package_to_lockfile_info(package))?;
   }
