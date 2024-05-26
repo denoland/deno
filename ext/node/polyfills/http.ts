@@ -1332,7 +1332,7 @@ function onError(self, error, cb) {
 }
 
 export class ServerResponse extends NodeWritable {
-  statusCode?: number = undefined;
+  statusCode = 200;
   statusMessage?: string = undefined;
   #headers = new Headers({});
   #readable: ReadableStream;
@@ -1444,8 +1444,7 @@ export class ServerResponse extends NodeWritable {
   }
 
   #ensureHeaders(singleChunk?: Chunk) {
-    if (this.statusCode === undefined) {
-      this.statusCode = 200;
+    if (this.statusCode === 200 && this.statusMessage === undefined) {
       this.statusMessage = "OK";
     }
     if (
@@ -1460,7 +1459,7 @@ export class ServerResponse extends NodeWritable {
     this.headersSent = true;
     this.#ensureHeaders(singleChunk);
     let body = singleChunk ?? (final ? null : this.#readable);
-    if (ServerResponse.#bodyShouldBeNull(this.statusCode!)) {
+    if (ServerResponse.#bodyShouldBeNull(this.statusCode)) {
       body = null;
     }
     this.#resolve(
