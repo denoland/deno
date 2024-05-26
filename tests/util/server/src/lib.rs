@@ -1,14 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-// Usage: provide a port as argument to run hyper_hello benchmark server
-// otherwise this starts multiple servers on many ports for test endpoints.
-use futures::FutureExt;
-use futures::Stream;
-use futures::StreamExt;
-use once_cell::sync::Lazy;
-use pretty_assertions::assert_eq;
-use pty::Pty;
-use regex::Regex;
-use serde::Serialize;
+
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
+
 use std::collections::HashMap;
 use std::env;
 use std::io::Write;
@@ -18,8 +12,17 @@ use std::process::Command;
 use std::process::Output;
 use std::process::Stdio;
 use std::result::Result;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
+
+use futures::FutureExt;
+use futures::Stream;
+use futures::StreamExt;
+use once_cell::sync::Lazy;
+use parking_lot::Mutex;
+use parking_lot::MutexGuard;
+use pretty_assertions::assert_eq;
+use pty::Pty;
+use regex::Regex;
+use serde::Serialize;
 use tokio::net::TcpStream;
 use url::Url;
 
@@ -47,8 +50,7 @@ pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
 pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
-static GUARD: Lazy<Mutex<HttpServerCount>> =
-  Lazy::new(|| Mutex::new(HttpServerCount::default()));
+static GUARD: Lazy<Mutex<HttpServerCount>> = Lazy::new(Default::default);
 
 pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   vec![
@@ -176,7 +178,7 @@ pub fn deno_config_path() -> PathRef {
 
 /// Test server registry url.
 pub fn npm_registry_url() -> String {
-  "http://localhost:4545/npm/registry/".to_string()
+  "http://localhost:4260/".to_string()
 }
 
 pub fn npm_registry_unset_url() -> String {
@@ -305,44 +307,19 @@ async fn get_tcp_listener_stream(
   futures::stream::select_all(listeners)
 }
 
+pub const TEST_SERVERS_COUNT: usize = 30;
+
 #[derive(Default)]
 struct HttpServerCount {
   count: usize,
-  test_server: Option<Child>,
+  test_server: Option<HttpServerStarter>,
 }
 
 impl HttpServerCount {
   fn inc(&mut self) {
     self.count += 1;
     if self.test_server.is_none() {
-      assert_eq!(self.count, 1);
-
-      println!("test_server starting...");
-      let mut test_server = Command::new(test_server_path())
-        .current_dir(testdata_path())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("failed to execute test_server");
-      let stdout = test_server.stdout.as_mut().unwrap();
-      use std::io::BufRead;
-      use std::io::BufReader;
-      let lines = BufReader::new(stdout).lines();
-
-      // Wait for all the servers to report being ready.
-      let mut ready_count = 0;
-      for maybe_line in lines {
-        if let Ok(line) = maybe_line {
-          if line.starts_with("ready:") {
-            ready_count += 1;
-          }
-          if ready_count == 12 {
-            break;
-          }
-        } else {
-          panic!("{}", maybe_line.unwrap_err());
-        }
-      }
-      self.test_server = Some(test_server);
+      self.test_server = Some(Default::default());
     }
   }
 
@@ -350,17 +327,7 @@ impl HttpServerCount {
     assert!(self.count > 0);
     self.count -= 1;
     if self.count == 0 {
-      let mut test_server = self.test_server.take().unwrap();
-      match test_server.try_wait() {
-        Ok(None) => {
-          test_server.kill().expect("failed to kill test_server");
-          let _ = test_server.wait();
-        }
-        Ok(Some(status)) => {
-          panic!("test_server exited unexpectedly {status}")
-        }
-        Err(e) => panic!("test_server error: {e}"),
-      }
+      self.test_server.take();
     }
   }
 }
@@ -372,14 +339,58 @@ impl Drop for HttpServerCount {
   }
 }
 
-fn lock_http_server<'a>() -> MutexGuard<'a, HttpServerCount> {
-  let r = GUARD.lock();
-  if let Err(poison_err) = r {
-    // If panics happened, ignore it. This is for tests.
-    poison_err.into_inner()
-  } else {
-    r.unwrap()
+struct HttpServerStarter {
+  test_server: Child,
+}
+
+impl Default for HttpServerStarter {
+  fn default() -> Self {
+    println!("test_server starting...");
+    let mut test_server = Command::new(test_server_path())
+      .current_dir(testdata_path())
+      .stdout(Stdio::piped())
+      .spawn()
+      .expect("failed to execute test_server");
+    let stdout = test_server.stdout.as_mut().unwrap();
+    use std::io::BufRead;
+    use std::io::BufReader;
+    let lines = BufReader::new(stdout).lines();
+
+    // Wait for all the servers to report being ready.
+    let mut ready_count = 0;
+    for maybe_line in lines {
+      if let Ok(line) = maybe_line {
+        if line.starts_with("ready:") {
+          ready_count += 1;
+        }
+        if ready_count == TEST_SERVERS_COUNT {
+          break;
+        }
+      } else {
+        panic!("{}", maybe_line.unwrap_err());
+      }
+    }
+    Self { test_server }
   }
+}
+
+impl Drop for HttpServerStarter {
+  fn drop(&mut self) {
+    match self.test_server.try_wait() {
+      Ok(None) => {
+        self.test_server.kill().expect("failed to kill test_server");
+        let _ = self.test_server.wait();
+      }
+      Ok(Some(status)) => {
+        panic!("test_server exited unexpectedly {status}")
+      }
+      Err(e) => panic!("test_server error: {e}"),
+    }
+  }
+}
+
+fn lock_http_server<'a>() -> MutexGuard<'a, HttpServerCount> {
+  GUARD.lock()
 }
 
 pub struct HttpServerGuard {}

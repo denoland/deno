@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use dashmap::DashMap;
+use dashmap::DashSet;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
@@ -7,7 +9,6 @@ use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::NpmPackageReqResolution;
@@ -33,8 +34,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use std::borrow::Cow;
-use std::collections::HashMap;
-use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -91,8 +90,8 @@ impl CliNodeResolver {
     }
   }
 
-  pub fn in_npm_package(&self, referrer: &ModuleSpecifier) -> bool {
-    self.npm_resolver.in_npm_package(referrer)
+  pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
+    self.npm_resolver.in_npm_package(specifier)
   }
 
   pub fn get_closest_package_json(
@@ -249,6 +248,7 @@ impl CliNodeResolver {
   }
 }
 
+#[derive(Clone)]
 pub struct NpmModuleLoader {
   cjs_resolutions: Arc<CjsResolutionStore>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
@@ -271,32 +271,20 @@ impl NpmModuleLoader {
     }
   }
 
-  pub fn maybe_prepare_load(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Result<(), AnyError>> {
-    if self.node_resolver.in_npm_package(specifier) {
-      // nothing to prepare
-      Some(Ok(()))
-    } else {
-      None
-    }
-  }
-
-  pub fn load_sync_if_in_npm_package(
+  pub async fn load_if_in_npm_package(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     permissions: &PermissionsContainer,
   ) -> Option<Result<ModuleCodeStringSource, AnyError>> {
     if self.node_resolver.in_npm_package(specifier) {
-      Some(self.load_sync(specifier, maybe_referrer, permissions))
+      Some(self.load(specifier, maybe_referrer, permissions).await)
     } else {
       None
     }
   }
 
-  fn load_sync(
+  pub async fn load(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
@@ -305,7 +293,8 @@ impl NpmModuleLoader {
     let file_path = specifier.to_file_path().unwrap();
     let code = self
       .fs
-      .read_text_file_sync(&file_path, None)
+      .read_text_file_async(file_path.clone(), None)
+      .await
       .map_err(AnyError::from)
       .with_context(|| {
         if file_path.is_dir() {
@@ -340,11 +329,10 @@ impl NpmModuleLoader {
 
     let code = if self.cjs_resolutions.contains(specifier) {
       // translate cjs to esm if it's cjs and inject node globals
-      self.node_code_translator.translate_cjs_to_esm(
-        specifier,
-        Some(code),
-        permissions,
-      )?
+      self
+        .node_code_translator
+        .translate_cjs_to_esm(specifier, Some(code), permissions)
+        .await?
     } else {
       // esm and json code is untouched
       code
@@ -359,15 +347,15 @@ impl NpmModuleLoader {
 
 /// Keeps track of what module specifiers were resolved as CJS.
 #[derive(Debug, Default)]
-pub struct CjsResolutionStore(Mutex<HashSet<ModuleSpecifier>>);
+pub struct CjsResolutionStore(DashSet<ModuleSpecifier>);
 
 impl CjsResolutionStore {
   pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
-    self.0.lock().contains(specifier)
+    self.0.contains(specifier)
   }
 
   pub fn insert(&self, specifier: ModuleSpecifier) {
-    self.0.lock().insert(specifier);
+    self.0.insert(specifier);
   }
 }
 
@@ -447,6 +435,7 @@ pub struct CliGraphResolver {
   sloppy_imports_resolver: Option<SloppyImportsResolver>,
   mapped_specifier_resolver: MappedSpecifierResolver,
   maybe_default_jsx_import_source: Option<String>,
+  maybe_default_jsx_import_source_types: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   maybe_vendor_specifier: Option<ModuleSpecifier>,
   node_resolver: Option<Arc<CliNodeResolver>>,
@@ -488,6 +477,10 @@ impl CliGraphResolver {
         .maybe_jsx_import_source_config
         .as_ref()
         .and_then(|c| c.default_specifier.clone()),
+      maybe_default_jsx_import_source_types: options
+        .maybe_jsx_import_source_config
+        .as_ref()
+        .and_then(|c| c.default_types_specifier.clone()),
       maybe_jsx_import_source_module: options
         .maybe_jsx_import_source_config
         .map(|c| c.module),
@@ -552,6 +545,10 @@ impl CliGraphResolver {
 impl Resolver for CliGraphResolver {
   fn default_jsx_import_source(&self) -> Option<String> {
     self.maybe_default_jsx_import_source.clone()
+  }
+
+  fn default_jsx_import_source_types(&self) -> Option<String> {
+    self.maybe_default_jsx_import_source_types.clone()
   }
 
   fn jsx_import_source_module(&self) -> &str {
@@ -678,6 +675,18 @@ impl Resolver for CliGraphResolver {
               }
             }
           }
+        }
+      }
+    } else if referrer.scheme() == "file" {
+      if let Some(node_resolver) = &self.node_resolver {
+        let node_result = node_resolver.resolve_if_in_npm_package(
+          specifier,
+          referrer,
+          to_node_mode(mode),
+          &PermissionsContainer::allow_all(),
+        );
+        if let Some(Ok(Some(res))) = node_result {
+          return Ok(res.into_url());
         }
       }
     }
@@ -849,38 +858,6 @@ impl NpmResolver for CliGraphResolver {
   }
 }
 
-#[derive(Debug)]
-struct SloppyImportsStatCache {
-  fs: Arc<dyn FileSystem>,
-  cache: Mutex<HashMap<PathBuf, Option<SloppyImportsFsEntry>>>,
-}
-
-impl SloppyImportsStatCache {
-  pub fn new(fs: Arc<dyn FileSystem>) -> Self {
-    Self {
-      fs,
-      cache: Default::default(),
-    }
-  }
-
-  pub fn stat_sync(&self, path: &Path) -> Option<SloppyImportsFsEntry> {
-    // there will only ever be one thread in here at a
-    // time, so it's ok to hold the lock for so long
-    let mut cache = self.cache.lock();
-    if let Some(entry) = cache.get(path) {
-      return *entry;
-    }
-
-    let entry = self
-      .fs
-      .stat_sync(path)
-      .ok()
-      .and_then(|stat| SloppyImportsFsEntry::from_fs_stat(&stat));
-    cache.insert(path.to_owned(), entry);
-    entry
-  }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SloppyImportsFsEntry {
   File,
@@ -980,33 +957,27 @@ impl<'a> SloppyImportsResolution<'a> {
 
 #[derive(Debug)]
 pub struct SloppyImportsResolver {
-  stat_cache: SloppyImportsStatCache,
+  fs: Arc<dyn FileSystem>,
+  cache: Option<DashMap<PathBuf, Option<SloppyImportsFsEntry>>>,
 }
 
 impl SloppyImportsResolver {
   pub fn new(fs: Arc<dyn FileSystem>) -> Self {
     Self {
-      stat_cache: SloppyImportsStatCache::new(fs),
+      fs,
+      cache: Some(Default::default()),
     }
   }
 
-  pub fn resolve_with_fs<'a>(
-    fs: &dyn FileSystem,
+  pub fn new_without_stat_cache(fs: Arc<dyn FileSystem>) -> Self {
+    Self { fs, cache: None }
+  }
+
+  pub fn resolve<'a>(
+    &self,
     specifier: &'a ModuleSpecifier,
     mode: ResolutionMode,
   ) -> SloppyImportsResolution<'a> {
-    Self::resolve_with_stat_sync(specifier, mode, |path| {
-      fs.stat_sync(path)
-        .ok()
-        .and_then(|stat| SloppyImportsFsEntry::from_fs_stat(&stat))
-    })
-  }
-
-  pub fn resolve_with_stat_sync(
-    specifier: &ModuleSpecifier,
-    mode: ResolutionMode,
-    stat_sync: impl Fn(&Path) -> Option<SloppyImportsFsEntry>,
-  ) -> SloppyImportsResolution {
     fn path_without_ext(
       path: &Path,
       media_type: MediaType,
@@ -1056,7 +1027,7 @@ impl SloppyImportsResolver {
     }
 
     let probe_paths: Vec<(PathBuf, SloppyImportsResolutionReason)> =
-      match (stat_sync)(&path) {
+      match self.stat_sync(&path) {
         Some(SloppyImportsFsEntry::File) => {
           if mode.is_types() {
             let media_type = MediaType::from_specifier(specifier);
@@ -1234,7 +1205,7 @@ impl SloppyImportsResolver {
       };
 
     for (probe_path, reason) in probe_paths {
-      if (stat_sync)(&probe_path) == Some(SloppyImportsFsEntry::File) {
+      if self.stat_sync(&probe_path) == Some(SloppyImportsFsEntry::File) {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(probe_path) {
           match reason {
             SloppyImportsResolutionReason::JsToTs => {
@@ -1254,14 +1225,22 @@ impl SloppyImportsResolver {
     SloppyImportsResolution::None(specifier)
   }
 
-  pub fn resolve<'a>(
-    &self,
-    specifier: &'a ModuleSpecifier,
-    mode: ResolutionMode,
-  ) -> SloppyImportsResolution<'a> {
-    Self::resolve_with_stat_sync(specifier, mode, |path| {
-      self.stat_cache.stat_sync(path)
-    })
+  fn stat_sync(&self, path: &Path) -> Option<SloppyImportsFsEntry> {
+    if let Some(cache) = &self.cache {
+      if let Some(entry) = cache.get(path) {
+        return *entry;
+      }
+    }
+
+    let entry = self
+      .fs
+      .stat_sync(path)
+      .ok()
+      .and_then(|stat| SloppyImportsFsEntry::from_fs_stat(&stat));
+    if let Some(cache) = &self.cache {
+      cache.insert(path.to_owned(), entry);
+    }
+    entry
   }
 }
 
@@ -1269,7 +1248,6 @@ impl SloppyImportsResolver {
 mod test {
   use std::collections::BTreeMap;
 
-  use deno_runtime::deno_fs::RealFs;
   use test_util::TestContext;
 
   use super::*;
@@ -1337,21 +1315,8 @@ mod test {
   #[test]
   fn test_unstable_sloppy_imports() {
     fn resolve(specifier: &ModuleSpecifier) -> SloppyImportsResolution {
-      SloppyImportsResolver::resolve_with_stat_sync(
-        specifier,
-        ResolutionMode::Execution,
-        |path| {
-          RealFs.stat_sync(path).ok().and_then(|stat| {
-            if stat.is_file {
-              Some(SloppyImportsFsEntry::File)
-            } else if stat.is_directory {
-              Some(SloppyImportsFsEntry::Dir)
-            } else {
-              None
-            }
-          })
-        },
-      )
+      SloppyImportsResolver::new(Arc::new(deno_fs::RealFs))
+        .resolve(specifier, ResolutionMode::Execution)
     }
 
     let context = TestContext::default();

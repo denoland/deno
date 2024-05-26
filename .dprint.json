@@ -28,6 +28,7 @@
     "cli/tsc/dts/lib.es*.d.ts",
     "cli/tsc/dts/typescript.d.ts",
     "tests/node_compat/test",
+    "tests/registry/",
     "tests/testdata/file_extensions/ts_with_js_extension.js",
     "tests/testdata/fmt/badly_formatted.json",
     "tests/testdata/fmt/badly_formatted.md",
@@ -41,7 +42,6 @@
     "tests/testdata/run/error_syntax_empty_trailing_line.mjs",
     "tests/testdata/run/inline_js_source_map*",
     "tests/testdata/malformed_config/",
-    "tests/testdata/npm/registry/",
     "tests/testdata/test/markdown_windows.md",
     "cli/tsc/*typescript.js",
     "gh-pages",
@@ -57,9 +57,9 @@
     "ext/websocket/autobahn/reports"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.90.4.wasm",
+    "https://plugins.dprint.dev/typescript-0.90.5.wasm",
     "https://plugins.dprint.dev/json-0.19.2.wasm",
-    "https://plugins.dprint.dev/markdown-0.16.4.wasm",
+    "https://plugins.dprint.dev/markdown-0.17.0.wasm",
     "https://plugins.dprint.dev/toml-0.6.1.wasm",
     "https://plugins.dprint.dev/exec-0.4.4.json@c207bf9b9a4ee1f0ecb75c594f774924baf62e8e53a2ce9d873816a408cecbf7"
   ]

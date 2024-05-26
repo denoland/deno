@@ -1,4 +1,4 @@
-Download http://localhost:4545/npm/registry/@denotest/esm-basic
-Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz
+Download http://localhost:4260/@denotest/esm-basic
+Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
 Initialize @denotest/esm-basic@1.0.0
 Check file://[WILDCARD]/main.ts

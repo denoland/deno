@@ -1053,6 +1053,15 @@ delete Object.prototype.__proto__;
     debug("<<< exec stop");
   }
 
+  /**
+   * @param {any} e
+   * @returns {e is (OperationCanceledError | ts.OperationCanceledException)}
+   */
+  function isCancellationError(e) {
+    return e instanceof OperationCanceledError ||
+      e instanceof ts.OperationCanceledException;
+  }
+
   function getAssets() {
     /** @type {{ specifier: string; text: string; }[]} */
     const assets = [];
@@ -1070,19 +1079,69 @@ delete Object.prototype.__proto__;
   /**
    * @param {number} _id
    * @param {any} data
+   * @param {any | null} error
    */
   // TODO(bartlomieju): this feels needlessly generic, both type chcking
   // and language server use it with inefficient serialization. Id is not used
   // anyway...
-  function respond(_id, data = null) {
-    ops.op_respond(JSON.stringify(data));
+  function respond(_id, data = null, error = null) {
+    if (error) {
+      ops.op_respond(
+        "error",
+        "stack" in error ? error.stack.toString() : error.toString(),
+      );
+    } else {
+      ops.op_respond(JSON.stringify(data), "");
+    }
+  }
+
+  /** @typedef {[[string, number][], number, boolean] } PendingChange */
+  /**
+   * @template T
+   * @typedef {T | null} Option<T> */
+
+  /** @returns {Promise<[number, string, any[], Option<PendingChange>] | null>} */
+  async function pollRequests() {
+    return await ops.op_poll_requests();
+  }
+
+  let hasStarted = false;
+
+  /** @param {boolean} enableDebugLogging */
+  async function serverMainLoop(enableDebugLogging) {
+    if (hasStarted) {
+      throw new Error("The language server has already been initialized.");
+    }
+    hasStarted = true;
+    languageService = ts.createLanguageService(host, documentRegistry);
+    setLogDebug(enableDebugLogging, "TSLS");
+    debug("serverInit()");
+
+    while (true) {
+      const request = await pollRequests();
+      if (request === null) {
+        break;
+      }
+      try {
+        serverRequest(request[0], request[1], request[2], request[3]);
+      } catch (err) {
+        const reqString = "[" + request.map((v) =>
+          JSON.stringify(v)
+        ).join(", ") + "]";
+        error(
+          `Error occurred processing request ${reqString} : ${
+            "stack" in err ? err.stack : err
+          }`,
+        );
+      }
+    }
   }
 
   /**
    * @param {number} id
    * @param {string} method
    * @param {any[]} args
-   * @param {[[string, number][], number, boolean] | null} maybeChange
+   * @param {PendingChange | null} maybeChange
    */
   function serverRequest(id, method, args, maybeChange) {
     if (logDebug) {
@@ -1149,14 +1208,10 @@ delete Object.prototype.__proto__;
           return respond(id, diagnosticMap);
         } catch (e) {
           if (
-            !(e instanceof OperationCanceledError ||
-              e instanceof ts.OperationCanceledException)
+            !isCancellationError(e)
           ) {
-            if ("stack" in e) {
-              error(e.stack);
-            } else {
-              error(e);
-            }
+            respond(id, {}, e);
+            throw e;
           }
           return respond(id, {});
         }
@@ -1168,25 +1223,21 @@ delete Object.prototype.__proto__;
           if (method == "getCompletionEntryDetails") {
             args[4] ??= undefined;
           }
-          return respond(id, languageService[method](...args));
+          try {
+            return respond(id, languageService[method](...args));
+          } catch (e) {
+            if (!isCancellationError(e)) {
+              respond(id, null, e);
+              throw e;
+            }
+            return respond(id);
+          }
         }
         throw new TypeError(
           // @ts-ignore exhausted case statement sets type to never
           `Invalid request method for request: "${method}" (${id})`,
         );
     }
-  }
-
-  let hasStarted = false;
-  /** @param {{ debug: boolean; }} init */
-  function serverInit({ debug: debugFlag }) {
-    if (hasStarted) {
-      throw new Error("The language server has already been initialized.");
-    }
-    hasStarted = true;
-    languageService = ts.createLanguageService(host, documentRegistry);
-    setLogDebug(debugFlag, "TSLS");
-    debug("serverInit()");
   }
 
   // A build time only op that provides some setup information that is used to
@@ -1279,6 +1330,5 @@ delete Object.prototype.__proto__;
 
   // exposes the functions that are called when the compiler is used as a
   // language service.
-  global.serverInit = serverInit;
-  global.serverRequest = serverRequest;
+  global.serverMainLoop = serverMainLoop;
 })(this);

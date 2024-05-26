@@ -1029,6 +1029,8 @@ interface Body {
     arrayBuffer(): Promise<ArrayBuffer>;
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/blob) */
     blob(): Promise<Blob>;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/bytes) */
+    bytes(): Promise<Uint8Array>;
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/formData) */
     formData(): Promise<FormData>;
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/json) */
@@ -5680,9 +5682,11 @@ declare var URL: {
     prototype: URL;
     new(url: string | URL, base?: string | URL): URL;
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/URL/canParse_static) */
-    canParse(url: string | URL, base?: string): boolean;
+    canParse(url: string | URL, base?: string | URL): boolean;
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/URL/createObjectURL_static) */
     createObjectURL(obj: Blob): string;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/URL/parse_static) */
+    parse(url: string | URL, base?: string | URL): URL | null;
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/URL/revokeObjectURL_static) */
     revokeObjectURL(url: string): void;
 };
@@ -8292,7 +8296,7 @@ interface WebSocket extends EventTarget {
      */
     readonly url: string;
     /**
-     * Closes the WebSocket connection, optionally using code as the WebSocket connection close code and reason as the WebSocket connection close reason.
+     * Closes the WebSocket connection, optionally using code as the the WebSocket connection close code and reason as the the WebSocket connection close reason.
      *
      * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebSocket/close)
      */

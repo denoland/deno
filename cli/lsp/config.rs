@@ -4,6 +4,7 @@ use super::logging::lsp_log;
 use crate::args::ConfigFile;
 use crate::args::FmtOptions;
 use crate::args::LintOptions;
+use crate::args::DENO_FUTURE;
 use crate::cache::FastInsecureHasher;
 use crate::file_fetcher::FileFetcher;
 use crate::lsp::logging::lsp_warn;
@@ -23,6 +24,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_lockfile::Lockfile;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_runtime::permissions::PermissionsContainer;
@@ -1056,29 +1058,13 @@ impl Default for LspTsConfig {
 }
 
 impl LspTsConfig {
-  pub fn new(
-    config_file: Option<&ConfigFile>,
-    import_map: Option<&ImportMap>,
-  ) -> Self {
+  pub fn new(config_file: Option<&ConfigFile>) -> Self {
     let mut ts_config = Self::default();
     match ts_config.inner.merge_tsconfig_from_config_file(config_file) {
       Ok(Some(ignored_options)) => lsp_warn!("{}", ignored_options),
       Err(err) => lsp_warn!("{}", err),
       _ => {}
     }
-    let mut maybe_map_jsx_import_source = || {
-      let import_map = import_map?;
-      let referrer = &config_file?.specifier;
-      let compiler_options = ts_config.inner.0.as_object_mut()?;
-      let jsx_import_source =
-        compiler_options.get("jsxImportSource")?.as_str()?;
-      let jsx_import_source =
-        import_map.resolve(jsx_import_source, referrer).ok()?;
-      compiler_options
-        .insert("jsxImportSource".to_string(), json!(jsx_import_source));
-      Some(())
-    };
-    maybe_map_jsx_import_source();
     ts_config
   }
 }
@@ -1105,6 +1091,7 @@ pub struct ConfigData {
   pub vendor_dir: Option<PathBuf>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub package_json: Option<Arc<PackageJson>>,
+  pub npmrc: Option<Arc<ResolvedNpmRc>>,
   pub import_map: Option<Arc<ImportMap>>,
   pub import_map_from_settings: bool,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
@@ -1261,6 +1248,8 @@ impl ConfigData {
       (lint_options, lint_rules)
     });
 
+    let ts_config = LspTsConfig::new(config_file.as_ref());
+
     let vendor_dir = config_file.as_ref().and_then(|c| c.vendor_dir_path());
 
     // Load lockfile
@@ -1287,6 +1276,8 @@ impl ConfigData {
 
     // Load package.json
     let mut package_json = None;
+    // TODO(bartlomieju): support discovering .npmrc
+    let npmrc = None;
     if let Ok(path) = specifier_to_file_path(scope) {
       let path = path.join("package.json");
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&path) {
@@ -1324,7 +1315,7 @@ impl ConfigData {
         .as_ref()
         .map(|c| c.has_unstable("byonm"))
         .unwrap_or(false)
-      || (std::env::var("DENO_FUTURE").is_ok()
+      || (*DENO_FUTURE
         && package_json.is_some()
         && config_file
           .as_ref()
@@ -1429,7 +1420,6 @@ impl ConfigData {
         }
       }
     }
-    let ts_config = LspTsConfig::new(config_file.as_ref(), import_map.as_ref());
 
     ConfigData {
       scope: scope.clone(),
@@ -1443,6 +1433,7 @@ impl ConfigData {
       vendor_dir,
       lockfile: lockfile.map(Mutex::new).map(Arc::new),
       package_json: package_json.map(Arc::new),
+      npmrc: npmrc.map(Arc::new),
       import_map: import_map.map(Arc::new),
       import_map_from_settings,
       watched_files,
@@ -1466,10 +1457,6 @@ impl ConfigTree {
       .root_data()
       .map(|d| d.ts_config.clone())
       .unwrap_or_default()
-  }
-
-  pub fn root_vendor_dir(&self) -> Option<&PathBuf> {
-    self.root_data().and_then(|d| d.vendor_dir.as_ref())
   }
 
   pub fn root_lockfile(&self) -> Option<&Arc<Mutex<Lockfile>>> {

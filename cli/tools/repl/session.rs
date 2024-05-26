@@ -637,6 +637,7 @@ impl ReplSession {
         },
         &deno_ast::EmitOptions {
           source_map: deno_ast::SourceMapOption::None,
+          source_map_file: None,
           inline_sources: false,
           keep_comments: false,
         },

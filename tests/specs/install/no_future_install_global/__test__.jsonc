@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install --root ./bins --name deno-test-bin ./main.js",
+      "output": "install.out"
+    },
+    {
+      "args": "run -A ./assert.js",
+      "output": ""
+    }
+  ]
+}

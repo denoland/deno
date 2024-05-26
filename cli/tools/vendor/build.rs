@@ -126,7 +126,7 @@ pub async fn build<
   // surface any errors
   graph_util::graph_valid(
     &graph,
-    &deno_fs::RealFs,
+    Arc::new(deno_fs::RealFs),
     &graph.roots,
     graph_util::GraphValidOptions {
       is_vendoring: true,
@@ -1205,6 +1205,7 @@ mod test {
     builder.add_entry_point("/mod.tsx");
     builder.set_jsx_import_source_config(JsxImportSourceConfig {
       default_specifier: Some("preact".to_string()),
+      default_types_specifier: None,
       module: "jsx-runtime".to_string(),
       base_url: builder.resolve_to_url("/deno.json"),
     });
@@ -1254,6 +1255,7 @@ mod test {
     builder.add_entry_point("/mod.ts");
     builder.set_jsx_import_source_config(JsxImportSourceConfig {
       default_specifier: Some("preact".to_string()),
+      default_types_specifier: None,
       module: "jsx-runtime".to_string(),
       base_url: builder.resolve_to_url("/deno.json"),
     });
