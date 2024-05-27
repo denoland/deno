@@ -116,6 +116,7 @@ signal-hook = "0.3.17"
 signal-hook-registry = "1.4.0"
 tokio.workspace = true
 tokio-metrics.workspace = true
+twox-hash.workspace = true
 uuid.workspace = true
 which = "4.2.5"
 

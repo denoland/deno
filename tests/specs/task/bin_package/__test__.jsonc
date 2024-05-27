@@ -1,0 +1,44 @@
+{
+  "tests": {
+    "sets_up_bin_dir": {
+      "tempDir": true,
+      "steps": [
+        // {"commandName": "npm", "args": "install", "output": "\nadded 1 package in [WILDCARD]\n"},
+        {
+          "args": "task sayhi",
+          "output": "task.out"
+        },
+        {
+          "if": "unix",
+          "commandName": "./node_modules/.bin/cli-esm",
+          "args": "hi hello",
+          "output": "hi\nhello\n"
+        },
+        {
+          "if": "windows",
+          "commandName": "./node_modules/.bin/cli-esm.cmd",
+          "args": "hi hello",
+          "output": "hi\nhello\n"
+        },
+        {
+          "commandName": "npm",
+          "args": "run sayhi",
+          "output": "npm-run.out"
+        }
+      ]
+    },
+    "warns_if_already_setup": {
+      "tempDir": true,
+      "steps": [{
+        "if": "unix",
+        "commandName": "npm",
+        "args": "install",
+        "output": "\nadded 1 package in [WILDCARD]\n"
+      }, {
+        "if": "unix",
+        "args": "task sayhi",
+        "output": "already-set-up.out"
+      }]
+    }
+  }
+}

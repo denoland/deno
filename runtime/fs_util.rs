@@ -63,17 +63,6 @@ pub fn specifier_to_file_path(
   }
 }
 
-pub fn code_timestamp(specifier: &str) -> Result<u64, AnyError> {
-  let specifier = ModuleSpecifier::parse(specifier)?;
-  let path = specifier_to_file_path(&specifier)?;
-  #[allow(clippy::disallowed_methods)]
-  let timestamp = std::fs::metadata(path)?
-    .modified()?
-    .duration_since(std::time::UNIX_EPOCH)?
-    .as_millis() as u64;
-  Ok(timestamp)
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;

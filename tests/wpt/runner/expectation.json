@@ -3170,8 +3170,14 @@
       "owning-type-message-port.any.worker.html": false,
       "owning-type.any.html": false,
       "owning-type.any.worker.html": false,
-      "from.any.html": true,
-      "from.any.worker.html": true
+      "from.any.html": [
+        "ReadableStream.from accepts a sync iterable of values",
+        "ReadableStream.from accepts a sync iterable of promises"
+      ],
+      "from.any.worker.html": [
+        "ReadableStream.from accepts a sync iterable of values",
+        "ReadableStream.from accepts a sync iterable of promises"
+      ]
     },
     "transform-streams": {
       "backpressure.any.html": true,
@@ -10072,7 +10078,6 @@
     "Worker-replace-event-handler.any.worker.html": true,
     "Worker-replace-global-constructor.any.worker.html": true,
     "Worker-replace-self.any.worker.html": true,
-    "WorkerGlobalScope_requestAnimationFrame.tentative.worker.html": false,
     "WorkerLocation-origin.sub.window.html": false,
     "WorkerNavigator-hardware-concurrency.any.worker.html": true,
     "WorkerNavigator.any.worker.html": false,
@@ -10753,6 +10758,9 @@
   },
   "service-workers": {
     "idlharness.https.any.html": [
+      "ServiceWorkerContainer interface: operation register((TrustedScriptURL or USVString), optional RegistrationOptions)",
+      "ServiceWorkerContainer interface: navigator.serviceWorker must inherit property \"register((TrustedScriptURL or USVString), optional RegistrationOptions)\" with the proper type",
+      "ServiceWorkerContainer interface: calling register((TrustedScriptURL or USVString), optional RegistrationOptions) on navigator.serviceWorker with too few arguments must throw TypeError",
       "ServiceWorker interface: existence and properties of interface object",
       "ServiceWorker interface object length",
       "ServiceWorker interface object name",
@@ -10861,6 +10869,9 @@
       "idl_test setup"
     ],
     "idlharness.https.any.worker.html": [
+      "ServiceWorkerContainer interface: operation register((TrustedScriptURL or USVString), optional RegistrationOptions)",
+      "ServiceWorkerContainer interface: navigator.serviceWorker must inherit property \"register((TrustedScriptURL or USVString), optional RegistrationOptions)\" with the proper type",
+      "ServiceWorkerContainer interface: calling register((TrustedScriptURL or USVString), optional RegistrationOptions) on navigator.serviceWorker with too few arguments must throw TypeError",
       "ServiceWorker interface: existence and properties of interface object",
       "ServiceWorker interface object length",
       "ServiceWorker interface object name",
