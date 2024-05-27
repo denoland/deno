@@ -61,11 +61,11 @@ async fn generate_doc_nodes_for_builtin_types(
         executor: Default::default(),
         file_system: &NullFileSystem,
         jsr_url_provider: Default::default(),
+        locker: None,
         module_analyzer: analyzer,
         npm_resolver: None,
         reporter: None,
         resolver: None,
-        verify_and_fill_checksums: false,
       },
     )
     .await;

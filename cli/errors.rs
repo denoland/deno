@@ -64,6 +64,7 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
           | JsrLoadError::ContentLoad(_)
           | JsrLoadError::ContentChecksumIntegrity(_)
           | JsrLoadError::PackageManifestLoad(_, _)
+          | JsrLoadError::PackageVersionManifestChecksumIntegrity(..)
           | JsrLoadError::PackageVersionManifestLoad(_, _)
           | JsrLoadError::RedirectInPackage(_) => "Error",
           JsrLoadError::PackageNotFound(_)

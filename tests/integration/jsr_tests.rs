@@ -259,18 +259,24 @@ console.log(version);"#,
 
   let actual_integrity =
     test_context.get_jsr_package_integrity("@denotest/no-module-graph/0.1.1");
-  let integrity_check_failed_msg = format!("error: Integrity check failed for http://127.0.0.1:4250/@denotest/no-module-graph/0.1.1_meta.json
+  let integrity_check_failed_msg = format!("[WILDCARD]Integrity check failed for package. The source code is invalid, as it does not match the expected hash in the lock file.
 
-Actual: {}
-Expected: bad_integrity
-    at file:///[WILDCARD]/main.ts:1:21
+  Package: @denotest/no-module-graph@0.1.1
+  Actual: {}
+  Expected: bad_integrity
+
+This could be caused by:
+  * the lock file may be corrupt
+  * the source itself may be corrupt
+
+Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server.
 ", actual_integrity);
   test_context
     .new_command()
     .args("run --quiet main.ts")
     .run()
     .assert_matches_text(&integrity_check_failed_msg)
-    .assert_exit_code(1);
+    .assert_exit_code(10);
 
   // now try with a vendor folder
   temp_dir
@@ -284,7 +290,7 @@ Expected: bad_integrity
     .args("run --quiet main.ts")
     .run()
     .assert_matches_text(&integrity_check_failed_msg)
-    .assert_exit_code(1);
+    .assert_exit_code(10);
 
   // now update to the correct integrity
   set_lockfile_pkg_integrity(&mut lockfile, pkg_name, &original_integrity);
@@ -318,7 +324,7 @@ Expected: bad_integrity
     .args("run --quiet main.ts")
     .run()
     .assert_matches_text(&integrity_check_failed_msg)
-    .assert_exit_code(1);
+    .assert_exit_code(10);
 }
 
 #[test]

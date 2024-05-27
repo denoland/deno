@@ -19,6 +19,8 @@ use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 use deno_emit::LoaderChecksum;
+use deno_graph::JsrLoadError;
+use deno_graph::ModuleLoadError;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_config::WorkspaceMemberConfig;
@@ -96,8 +98,71 @@ pub fn graph_valid(
             enhanced_resolution_error_message(resolution_error)
           )
         }
-        ModuleGraphError::ModuleError(e) => {
-          enhanced_module_error_message(fs.clone(), e)
+        ModuleGraphError::ModuleError(error) => {
+          match error {
+            ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
+            | ModuleError::Missing(specifier, _) => {
+              sloppy_imports_error_message(fs.clone(), specifier, error)
+            }
+            ModuleError::LoadingErr(specifier, _, ModuleLoadError::Jsr(JsrLoadError::ContentChecksumIntegrity(checksum_err))) => {
+              let err = format!(
+                concat!(
+                  "Integrity check failed in package. The package may have been tampered with.\n\n",
+                  "Specifier: {}\n",
+                  "Actual: {}\n",
+                  "Expected: {}\n\n",
+                  "If you modified your global cache, run again with the --reload ",
+                  "flag to restore its state. If you want to modify dependencies ",
+                  "locally run again with the --vendor flag or specify \"vendor\": true` ",
+                  "in a deno.json then modify the contents of the `vendor` folder."
+                ),
+                specifier,
+                checksum_err.actual,
+                checksum_err.expected,
+              );
+              log::error!("{} {}", colors::red("error:"), err);
+              std::process::exit(10);
+            }
+            ModuleError::LoadingErr(_specifier, _, ModuleLoadError::Jsr(JsrLoadError::PackageVersionManifestChecksumIntegrity(package_nv, checksum_err))) => {
+              let err = format!(
+                concat!(
+                  "Integrity check failed for package. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
+                  "  Package: {}\n",
+                  "  Actual: {}\n",
+                  "  Expected: {}\n\n",
+                  "This could be caused by:\n",
+                  "  * the lock file may be corrupt\n",
+                  "  * the source itself may be corrupt\n\n",
+                  "Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server."
+                ),
+                package_nv,
+                checksum_err.actual,
+                checksum_err.expected,
+              );
+              log::error!("{} {}", colors::red("error:"), err);
+              std::process::exit(10);
+            }
+            ModuleError::LoadingErr(specifier, _, ModuleLoadError::HttpsChecksumIntegrity(checksum_err)) => {
+              let err = format!(
+                concat!(
+                  "Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
+                  "  Specifier: {}\n",
+                  "  Actual: {}\n",
+                  "  Expected: {}\n\n",
+                  "This could be caused by:\n",
+                  "  * the lock file may be corrupt\n",
+                  "  * the source itself may be corrupt\n\n",
+                  "Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server."
+                ),
+                specifier,
+                checksum_err.actual,
+                checksum_err.expected,
+              );
+              log::error!("{} {}", colors::red("error:"), err);
+              std::process::exit(10);
+            }
+            _ => format!("{}", error),
+          }
         }
       };
 
@@ -384,6 +449,46 @@ impl ModuleGraphBuilder {
       }
     }
 
+    // todo(THIS PR): maybe clone from the lockfile then repopulate
+    struct LockfileLocker(Arc<Mutex<Lockfile>>);
+
+    impl deno_graph::source::Locker for LockfileLocker {
+      fn get_checksum(
+        &self,
+        specifier: &deno_ast::ModuleSpecifier,
+      ) -> Option<LoaderChecksum> {
+        self
+          .0
+          .lock()
+          .content
+          .remote
+          .get(specifier.as_str())
+          .map(|s| LoaderChecksum::new(s.clone()))
+      }
+
+      fn has_checksum(&self, specifier: &deno_ast::ModuleSpecifier) -> bool {
+        self
+          .0
+          .lock()
+          .content
+          .remote
+          .contains_key(specifier.as_str())
+      }
+
+      fn set_checksum(
+        &mut self,
+        specifier: &deno_ast::ModuleSpecifier,
+        checksum: LoaderChecksum,
+      ) {
+        self
+          .0
+          .lock()
+          .content
+          .remote
+          .insert(specifier.as_str().to_string(), checksum.into_string());
+      }
+    }
+
     let maybe_imports = self.options.to_maybe_imports()?;
     let analyzer = self
       .module_info_cache
@@ -401,6 +506,10 @@ impl ModuleGraphBuilder {
       .map(|r| r.as_reporter());
     let workspace_members =
       self.options.resolve_deno_graph_workspace_members()?;
+    let mut locker = self
+      .lockfile
+      .as_ref()
+      .map(|lockfile| LockfileLocker(lockfile.clone()));
     self
       .build_graph_with_npm_resolution_and_build_options(
         graph,
@@ -418,7 +527,7 @@ impl ModuleGraphBuilder {
           module_analyzer: &analyzer,
           reporter: maybe_file_watcher_reporter,
           resolver: Some(graph_resolver),
-          verify_and_fill_checksums: self.lockfile.is_some(),
+          locker: locker.as_mut().map(|l| l as _),
         },
       )
       .await
@@ -428,7 +537,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &mut ModuleGraph,
     roots: Vec<ModuleSpecifier>,
-    loader: &mut dyn deno_graph::source::Loader,
+    loader: &'a mut dyn deno_graph::source::Loader,
     options: deno_graph::BuildOptions<'a>,
   ) -> Result<(), AnyError> {
     // ensure an "npm install" is done if the user has explicitly
@@ -452,13 +561,6 @@ impl ModuleGraphBuilder {
                 graph.redirects.insert(from, to);
               }
             }
-          }
-        }
-        for (module, checksum) in &lockfile.content.remote {
-          if let Ok(module) = ModuleSpecifier::parse(module) {
-            graph
-              .checksums
-              .insert(module, LoaderChecksum::new(checksum.clone()));
           }
         }
         for (key, value) in &lockfile.content.packages.specifiers {
@@ -492,7 +594,6 @@ impl ModuleGraphBuilder {
 
     // todo: handle jsr package manifest checksums
     let initial_redirects_len = graph.redirects.len();
-    let initial_checksums_len = graph.checksums.len();
     let initial_packages_len = graph.packages.packages_len();
     let initial_package_mappings_len = graph.packages.mappings().len();
     let initial_npm_packages = graph.npm_packages.len();
@@ -511,7 +612,6 @@ impl ModuleGraphBuilder {
     }
 
     let has_redirects_changed = graph.redirects.len() != initial_redirects_len;
-    let has_checksums_changed = graph.checksums.len() != initial_checksums_len;
     let has_jsr_packages_changed =
       graph.packages.packages_len() != initial_packages_len;
     let has_jsr_package_mappings_changed =
@@ -520,7 +620,6 @@ impl ModuleGraphBuilder {
       graph.npm_packages.len() != initial_npm_packages;
 
     if has_redirects_changed
-      || has_checksums_changed
       || has_jsr_packages_changed
       || has_jsr_package_mappings_changed
       || has_npm_packages_changed
@@ -534,15 +633,6 @@ impl ModuleGraphBuilder {
           });
           for (from, to) in graph_redirects {
             lockfile.insert_redirect(from.to_string(), to.to_string());
-          }
-        }
-        // https module checksums
-        if has_checksums_changed {
-          for (module, checksum) in graph.checksums.iter() {
-            lockfile
-              .content
-              .remote
-              .insert(module.to_string(), checksum.as_str().to_string());
           }
         }
         // jsr package mappings
@@ -703,21 +793,14 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   message
 }
 
-pub fn enhanced_module_error_message(
+fn sloppy_imports_error_message(
   fs: Arc<dyn FileSystem>,
+  specifier: &ModuleSpecifier,
   error: &ModuleError,
 ) -> String {
-  let additional_message = match error {
-    ModuleError::LoadingErr(specifier, _, _) // ex. "Is a directory" error
-    | ModuleError::Missing(specifier, _) => {
-      SloppyImportsResolver::new(fs).resolve(
-        specifier,
-        ResolutionMode::Execution,
-      )
-      .as_suggestion_message()
-    }
-    _ => None,
-  };
+  let additional_message = SloppyImportsResolver::new(fs)
+    .resolve(specifier, ResolutionMode::Execution)
+    .as_suggestion_message();
   if let Some(message) = additional_message {
     format!(
       "{} {} or run with --unstable-sloppy-imports",

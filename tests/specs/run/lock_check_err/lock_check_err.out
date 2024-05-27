@@ -1,0 +1,11 @@
+[WILDCARD]Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.
+
+  Specifier: http://127.0.0.1:4545/run/003_relative_import.ts
+  Actual: a1572e8fd2c2712b33f04aed2561505b5feb2c8696f1f2cded3de7127931b97e
+  Expected: bad
+
+This could be caused by:
+  * the lock file may be corrupt
+  * the source itself may be corrupt
+
+Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server.

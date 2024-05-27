@@ -828,20 +828,6 @@ itest!(lock_dynamic_imports {
   http_server: true,
 });
 
-itest!(lock_check_err {
-  args: "run --lock=run/lock_check_err.json http://127.0.0.1:4545/run/003_relative_import.ts",
-  output: "run/lock_check_err.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_check_err2 {
-  args: "run --lock=run/lock_check_err2.json run/019_media_types.ts",
-  output: "run/lock_check_err2.out",
-  exit_code: 10,
-  http_server: true,
-});
-
 itest!(config_file_lock_path {
   args: "run --config=run/config_file_lock_path.json run/019_media_types.ts",
   output: "run/config_file_lock_path.out",
@@ -4561,13 +4547,6 @@ async fn websocket_server_idletimeout() {
       .unwrap();
   assert_eq!(child.wait().unwrap().code(), Some(123));
 }
-
-itest!(auto_discover_lockfile {
-  args: "run run/auto_discover_lockfile/main.ts",
-  output: "run/auto_discover_lockfile/main.out",
-  http_server: true,
-  exit_code: 10,
-});
 
 itest!(no_lock_flag {
   args: "run --no-lock run/no_lock_flag/main.ts",
