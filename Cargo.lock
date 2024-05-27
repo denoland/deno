@@ -1653,6 +1653,7 @@ version = "0.145.0"
 dependencies = [
  "deno_core",
  "deno_tls",
+ "fqdn",
  "pin-project",
  "rustls-tokio-stream",
  "serde",
@@ -1660,6 +1661,7 @@ dependencies = [
  "tokio",
  "trust-dns-proto",
  "trust-dns-resolver",
+ "url",
 ]
 
 [[package]]

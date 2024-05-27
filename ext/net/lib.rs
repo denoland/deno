@@ -9,20 +9,110 @@ pub mod raw;
 pub mod resolve_addr;
 mod tcp;
 
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::RootCertStoreProvider;
+use fqdn::FQDN;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "net";
 
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct NetPermissionHost {
+  pub host: String,
+  pub port: Option<u16>,
+}
+
+impl NetPermissionHost {
+  pub fn from_str(host: &str, mut port: Option<u16>) -> Result<Self, AnyError> {
+    // Extract the host portion from a potential URL format (e.g., https://host:port)
+    let mut extracted_host = Self::extract_host(host);
+
+    // Handle IPv6 addresses
+    if extracted_host.starts_with('[') {
+      if extracted_host.ends_with("]:") {
+        return Err(AnyError::msg("Invalid format: [ipv6]:port"));
+      }
+      if let Some(pos) = extracted_host.rfind("]:") {
+        let port_str = &extracted_host[pos + 2..];
+        let port_ = port_str.parse::<u16>().ok();
+        extracted_host = extracted_host[1..pos].to_string();
+        return Self::handle_ipv6(extracted_host, port_);
+      } else {
+        extracted_host =
+          extracted_host[1..(extracted_host.len() - 1)].to_string();
+        return Self::handle_ipv6(extracted_host, port);
+      }
+    }
+
+    // Handle IPv4 addresses and hostnames with optional ports
+    if let Some((host, port_)) = Self::split_host_port(&extracted_host) {
+      if port_.is_some() {
+        port = port_;
+      }
+      let fqdn = FQDN::from_str(&host).with_context(|| {
+        format!("Failed to parse host: {}\n", &extracted_host)
+      })?;
+      let host_str = fqdn.to_string();
+      if host_str.parse::<Ipv4Addr>().is_ok() {
+        return Ok(NetPermissionHost {
+          host: host_str,
+          port,
+        });
+      }
+      Ok(NetPermissionHost {
+        host: host_str,
+        port,
+      })
+    } else {
+      Err(AnyError::msg("Failed to parse input string"))
+    }
+  }
+
+  fn extract_host(s: &str) -> String {
+    let mut extracted_host = s.to_string();
+    if let Some(index) = extracted_host.find("://") {
+      extracted_host = extracted_host[index + 3..]
+        .split('/')
+        .next()
+        .unwrap_or(&extracted_host)
+        .to_string();
+    }
+    extracted_host
+  }
+
+  fn handle_ipv6(
+    host: String,
+    port: Option<u16>,
+  ) -> Result<NetPermissionHost, AnyError> {
+    Ok(NetPermissionHost {
+      host: format!("[{}]", host.parse::<Ipv6Addr>()?.to_string()),
+      port,
+    })
+  }
+
+  fn split_host_port(s: &str) -> Option<(String, Option<u16>)> {
+    if let Some(pos) = s.rfind(':') {
+      let port_str = &s[pos + 1..];
+      if let Ok(parsed_port) = port_str.parse::<u16>() {
+        let host = s[0..pos].to_string();
+        return Some((host, Some(parsed_port)));
+      }
+    }
+    Some((s.to_string(), None))
+  }
+}
+
 pub trait NetPermissions {
-  fn check_net<T: AsRef<str>>(
+  fn check_net(
     &mut self,
-    _host: &(T, Option<u16>),
+    _host: &NetPermissionHost,
     _api_name: &str,
   ) -> Result<(), AnyError>;
   fn check_read(&mut self, _p: &Path, _api_name: &str) -> Result<(), AnyError>;
@@ -148,4 +238,132 @@ mod ops_unix {
   stub_op!(op_node_unstable_net_listen_unixpacket<P>);
   stub_op!(op_net_recv_unixpacket);
   stub_op!(op_net_send_unixpacket<P>);
+}
+
+#[cfg(test)]
+mod tests {
+  use super::NetPermissionHost;
+
+  #[test]
+  fn test_net_permission_host_parsing() {
+    // Parsing host address without a port
+    assert_eq!(
+      NetPermissionHost::from_str("deno.land.", None).unwrap(),
+      NetPermissionHost {
+        host: "deno.land".to_string(),
+        port: None
+      }
+    );
+    // Parsing host address with a port
+    assert_eq!(
+      NetPermissionHost::from_str("deno.land:80", None).unwrap(),
+      NetPermissionHost {
+        host: "deno.land".to_string(),
+        port: Some(80)
+      }
+    );
+
+    // Parsing an IPv4 address
+    assert_eq!(
+      NetPermissionHost::from_str("127.0.0.1", None).unwrap(),
+      NetPermissionHost {
+        host: "127.0.0.1".to_string(),
+        port: None
+      }
+    );
+    // Parsing an IPv4 address with a port
+    assert_eq!(
+      NetPermissionHost::from_str("127.0.0.1:80", None).unwrap(),
+      NetPermissionHost {
+        host: "127.0.0.1".to_string(),
+        port: Some(80)
+      }
+    );
+
+    // Parsing an IPv6 address
+    assert_eq!(
+      NetPermissionHost::from_str("[2606:4700:4700::1111]", None).unwrap(),
+      NetPermissionHost {
+        host: "[2606:4700:4700::1111]".to_string(),
+        port: None
+      }
+    );
+    // Parsing an IPv6 address with a port
+    assert_eq!(
+      NetPermissionHost::from_str("[2606:4700:4700::1111]:80", None).unwrap(),
+      NetPermissionHost {
+        host: "[2606:4700:4700::1111]".to_string(),
+        port: Some(80)
+      }
+    );
+
+    // Parsing a URL with a host
+    assert_eq!(
+      NetPermissionHost::from_str("https://github.com/denoland/", None)
+        .unwrap(),
+      NetPermissionHost {
+        host: "github.com".to_string(),
+        port: None
+      }
+    );
+    // Parsing a URL with a host & port
+    assert_eq!(
+      NetPermissionHost::from_str("https://github.com:443/denoland/", None)
+        .unwrap(),
+      NetPermissionHost {
+        host: "github.com".to_string(),
+        port: Some(443)
+      }
+    );
+
+    // Parsing a URL with an IPv4 address
+    assert_eq!(
+      NetPermissionHost::from_str("https://127.0.0.1", None).unwrap(),
+      NetPermissionHost {
+        host: "127.0.0.1".to_string(),
+        port: None
+      }
+    );
+    // Parsing a URL with an IPv4 address & port
+    assert_eq!(
+      NetPermissionHost::from_str("https://127.0.0.1:80", None).unwrap(),
+      NetPermissionHost {
+        host: "127.0.0.1".to_string(),
+        port: Some(80)
+      }
+    );
+
+    // Parsing a URL with an IPv6 address
+    assert_eq!(
+      NetPermissionHost::from_str("https://[2606:4700:4700::1111]", None)
+        .unwrap(),
+      NetPermissionHost {
+        host: "[2606:4700:4700::1111]".to_string(),
+        port: None
+      }
+    );
+    // Parsing a URL with an IPv6 address & port
+    assert_eq!(
+      NetPermissionHost::from_str("https://[2606:4700:4700::1111]:80", None)
+        .unwrap(),
+      NetPermissionHost {
+        host: "[2606:4700:4700::1111]".to_string(),
+        port: Some(80)
+      }
+    );
+
+    // Parsing invalid URL/host with special characters
+    assert_eq!(
+      NetPermissionHost::from_str("foo@bar.com.", None)
+        .unwrap_err()
+        .to_string(),
+      "Failed to parse host: foo@bar.com.\n"
+    );
+    assert_eq!(
+      NetPermissionHost::from_str("http://foo@bar.com.:80", None)
+        .unwrap_err()
+        .to_string(),
+      "Failed to parse host: foo@bar.com.:80\n"
+    );
+  }
 }

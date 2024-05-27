@@ -1,0 +1,36 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": " run --allow-net=*.amazon.com  host.js",
+      "output": "err_i.out",
+      "exitCode": 1
+    },
+    {
+      "args": " run --allow-net=[::1]:  host.js",
+      "output": "error: Invalid format: [ipv6]:port\n",
+      "exitCode": 1
+    },
+    {
+      "args": " run --allow-net=[::1*]:1  host.js",
+      "output": "err_ii.out",
+      "exitCode": 1
+    },
+    {
+      "args": " run --allow-net host.js",
+      "output": "",
+      "exitCode": 0
+    },
+
+    {
+      "args": " run --allow-net ipv4.js",
+      "output": "",
+      "exitCode": 0
+    },
+    {
+      "args": " run  --allow-net=[::1]:80 ipv6.js",
+      "output": "err_iii.out",
+      "exitCode": 1
+    }
+  ]
+}

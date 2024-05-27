@@ -5,7 +5,7 @@ use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::tcp::TcpListener;
-use crate::NetPermissions;
+use crate::{NetPermissionHost, NetPermissions};
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -13,6 +13,7 @@ use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::CancelFuture;
 
+use deno_core::anyhow::Context;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
@@ -22,6 +23,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use fqdn::FQDN;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
@@ -57,6 +59,58 @@ pub struct TlsHandshakeInfo {
 pub struct IpAddr {
   pub hostname: String,
   pub port: u16,
+}
+
+fn split_host_port(s: &str) -> Option<(String, Option<u16>)> {
+  if let Some(pos) = s.rfind(':') {
+    let port_str = &s[pos + 1..];
+    if let Ok(parsed_port) = port_str.parse::<u16>() {
+      let host = s[0..pos].to_string();
+      return Some((host, Some(parsed_port)));
+    }
+    return Some((s.to_string(), None)); // Handle case where port is invalid
+  }
+  Some((s.to_string(), None))
+}
+
+fn extract_host(s: &str) -> String {
+  if let Some(index) = s.find("://") {
+    return s[index + 3..].split('/').next().unwrap_or(s).to_string();
+  }
+  s.to_string()
+}
+
+fn process_ip_addr(addr: &mut IpAddr) -> Result<(), AnyError> {
+  addr.hostname = extract_host(&addr.hostname);
+  let host_ = addr.hostname.clone();
+  if addr.hostname.starts_with('[') {
+    if addr.hostname.ends_with("]:") {
+      return Err(AnyError::msg("Invalid format: [ipv6]:port"));
+    }
+    if let Some(pos) = addr.hostname.rfind("]:") {
+      let port_str = &addr.hostname[pos + 2..];
+      let parsed_port = port_str.parse::<u16>().ok();
+      addr.hostname = addr.hostname[0..pos + 1].to_string();
+      if let Some(port) = parsed_port {
+        addr.port = port;
+      }
+    } else {
+      addr.hostname = addr.hostname[0..addr.hostname.len()].to_string();
+    }
+  } else {
+    let have_port = &addr.hostname.contains(":");
+    if let Some((host, port_)) = split_host_port(&addr.hostname) {
+      addr.hostname = FQDN::from_str(&host)
+        .with_context(|| format!("Failed to parse host: {}\n", &host_))?
+        .to_string();
+      if let Some(port) = port_ {
+        addr.port = port;
+      } else if *have_port {
+        return Err(AnyError::msg("No port specified after ':'"));
+      }
+    }
+  }
+  Ok(())
 }
 
 impl From<SocketAddr> for IpAddr {
@@ -133,18 +187,18 @@ pub async fn op_net_recv_udp(
 pub async fn op_net_send_udp<NP>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-  #[serde] addr: IpAddr,
+  #[serde] mut addr: IpAddr,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<usize, AnyError>
 where
   NP: NetPermissions + 'static,
 {
+  process_ip_addr(&mut addr)?;
   {
+    let host = NetPermissionHost::from_str(&addr.hostname, Some(addr.port))?;
     let mut s = state.borrow_mut();
-    s.borrow_mut::<NP>().check_net(
-      &(&addr.hostname, Some(addr.port)),
-      "Deno.DatagramConn.send()",
-    )?;
+    s.borrow_mut::<NP>()
+      .check_net(&host, "Deno.DatagramConn.send()")?;
   }
   let addr = resolve_addr(&addr.hostname, addr.port)
     .await?
@@ -293,11 +347,12 @@ pub async fn op_net_set_multi_ttl_udp(
 #[serde]
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
-  #[serde] addr: IpAddr,
+  #[serde] mut addr: IpAddr,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
+  process_ip_addr(&mut addr)?;
   op_net_connect_tcp_inner::<NP>(state, addr).await
 }
 
@@ -310,10 +365,11 @@ where
   NP: NetPermissions + 'static,
 {
   {
+    let host = NetPermissionHost::from_str(&addr.hostname, Some(addr.port))?;
     let mut state_ = state.borrow_mut();
     state_
       .borrow_mut::<NP>()
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")?;
+      .check_net(&host, "Deno.connect()")?;
   }
 
   let addr = resolve_addr(&addr.hostname, addr.port)
@@ -351,18 +407,18 @@ impl Resource for UdpSocketResource {
 #[serde]
 pub fn op_net_listen_tcp<NP>(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[serde] mut addr: IpAddr,
   reuse_port: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
+  process_ip_addr(&mut addr)?;
   if reuse_port {
     super::check_unstable(state, "Deno.listen({ reusePort: true })");
   }
-  state
-    .borrow_mut::<NP>()
-    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listen()")?;
+  let host = NetPermissionHost::from_str(&addr.hostname, Some(addr.port))?;
+  state.borrow_mut::<NP>().check_net(&host, "Deno.listen()")?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
@@ -384,9 +440,10 @@ fn net_listen_udp<NP>(
 where
   NP: NetPermissions + 'static,
 {
+  let host = NetPermissionHost::from_str(&addr.hostname, Some(addr.port))?;
   state
     .borrow_mut::<NP>()
-    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenDatagram()")?;
+    .check_net(&host, "Deno.listenDatagram()")?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
@@ -446,13 +503,14 @@ where
 #[serde]
 pub fn op_net_listen_udp<NP>(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[serde] mut addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
+  process_ip_addr(&mut addr)?;
   super::check_unstable(state, "Deno.listenDatagram");
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
@@ -461,13 +519,14 @@ where
 #[serde]
 pub fn op_node_unstable_net_listen_udp<NP>(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[serde] mut addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
+  process_ip_addr(&mut addr)?;
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
@@ -583,7 +642,8 @@ where
       let socker_addr = &ns.socket_addr;
       let ip = socker_addr.ip().to_string();
       let port = socker_addr.port();
-      perm.check_net(&(ip, Some(port)), "Deno.resolveDns()")?;
+      let host = NetPermissionHost::from_str(&ip, Some(port))?;
+      perm.check_net(&host, "Deno.resolveDns()")?;
     }
   }
 
@@ -970,9 +1030,9 @@ mod tests {
   struct TestPermission {}
 
   impl NetPermissions for TestPermission {
-    fn check_net<T: AsRef<str>>(
+    fn check_net(
       &mut self,
-      _host: &(T, Option<u16>),
+      _host: &NetPermissionHost,
       _api_name: &str,
     ) -> Result<(), AnyError> {
       Ok(())
