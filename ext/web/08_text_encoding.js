@@ -63,7 +63,7 @@ class TextDecoder {
    * @param {string} label
    * @param {TextDecoderOptions} options
    */
-  constructor(label = "utf-8", options = {}) {
+  constructor(label = "utf-8", options = { __proto__: null }) {
     const prefix = "Failed to construct 'TextDecoder'";
     label = webidl.converters.DOMString(label, prefix, "Argument 1");
     options = webidl.converters.TextDecoderOptions(
@@ -288,7 +288,7 @@ class TextDecoderStream {
    * @param {string} label
    * @param {TextDecoderOptions} options
    */
-  constructor(label = "utf-8", options = {}) {
+  constructor(label = "utf-8", options = { __proto__: null }) {
     const prefix = "Failed to construct 'TextDecoderStream'";
     label = webidl.converters.DOMString(label, prefix, "Argument 1");
     options = webidl.converters.TextDecoderOptions(

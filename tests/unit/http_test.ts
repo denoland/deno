@@ -239,7 +239,7 @@ Deno.test(
       headers: { "connection": "close" },
     });
 
-    await resp.arrayBuffer();
+    await resp.body?.cancel();
     await promise;
   },
 );
@@ -963,7 +963,7 @@ Deno.test(
       await respondWith(new Response(f.readable, { status: 200 }));
     })();
     const resp = await fetch(`http://127.0.0.1:${listenPort}/`);
-    const body = await resp.arrayBuffer();
+    const body = await resp.bytes();
     assertEquals(body.byteLength, 70 * 1024);
     await promise;
     httpConn!.close();
@@ -1293,8 +1293,8 @@ Deno.test(
 
     const resp = await fetch(`http://localhost:${listenPort}/`);
     assertEquals(resp.status, 200);
-    const body = await resp.arrayBuffer();
-    assertEquals(new Uint8Array(body), new Uint8Array([128]));
+    const body = await resp.bytes();
+    assertEquals(body, new Uint8Array([128]));
 
     await promise;
     httpConn!.close();

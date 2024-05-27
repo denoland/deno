@@ -446,7 +446,7 @@ impl CliFactory {
                 self.package_json_deps_provider().clone(),
               ),
             npm_system_info: self.options.npm_system_info(),
-            npm_registry_url: crate::args::npm_registry_url().to_owned(),
+            npmrc: self.options.npmrc().clone()
           })
         }).await
       }.boxed_local())
@@ -798,7 +798,6 @@ impl CliFactory {
         },
         self.emitter()?.clone(),
         self.main_module_graph_container().await?.clone(),
-        self.module_info_cache()?.clone(),
         self.module_load_preparer().await?.clone(),
         cli_node_resolver.clone(),
         NpmModuleLoader::new(

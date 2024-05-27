@@ -333,6 +333,7 @@ pub struct TestFlags {
   pub doc: bool,
   pub no_run: bool,
   pub coverage_dir: Option<String>,
+  pub clean: bool,
   pub fail_fast: Option<NonZeroUsize>,
   pub files: FileFlags,
   pub allow_none: bool,
@@ -1236,6 +1237,15 @@ fn clap_root() -> Command {
     .long_version(long_version)
     // cause --unstable flags to display at the bottom of the help text
     .next_display_order(1000)
+    .disable_version_flag(true)
+    .arg(
+      Arg::new("version")
+        .short('V')
+        .short_alias('v')
+        .long("version")
+        .action(ArgAction::Version)
+        .help("Print version")
+    )
     .arg(
       Arg::new("unstable")
         .long("unstable")
@@ -2620,6 +2630,14 @@ Directory arguments are expanded to all contained files matching the glob
         .conflicts_with("inspect-wait")
         .conflicts_with("inspect-brk")
         .help("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'."),
+    )
+    .arg(
+      Arg::new("clean")
+        .long("clean")
+        .help("Empty the temporary coverage profile data directory before running tests.
+        
+Note: running multiple `deno test --clean` calls in series or parallel for the same coverage directory may cause race conditions.")
+        .action(ArgAction::SetTrue),
     )
     .arg(
       Arg::new("parallel")
@@ -4231,6 +4249,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let doc = matches.get_flag("doc");
   let allow_none = matches.get_flag("allow-none");
   let filter = matches.remove_one::<String>("filter");
+  let clean = matches.get_flag("clean");
 
   let fail_fast = if matches.contains_id("fail-fast") {
     Some(
@@ -4316,6 +4335,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     no_run,
     doc,
     coverage_dir: matches.remove_one::<String>("coverage"),
+    clean,
     fail_fast,
     files: FileFlags { include, ignore },
     filter,
@@ -8180,7 +8200,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-leaks", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-leaks", "--no-run", "--filter", "- foo", "--coverage=cov", "--clean", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8198,6 +8218,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: true,
           coverage_dir: Some("cov".to_string()),
+          clean: true,
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
@@ -8285,6 +8306,7 @@ mod tests {
           concurrent_jobs: Some(NonZeroUsize::new(4).unwrap()),
           trace_leaks: false,
           coverage_dir: None,
+          clean: false,
           watch: Default::default(),
           junit_path: None,
         }),
@@ -8321,6 +8343,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          clean: false,
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
@@ -8362,6 +8385,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          clean: false,
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
@@ -8497,6 +8521,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          clean: false,
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
@@ -8531,6 +8556,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
           junit_path: None,
@@ -8564,6 +8590,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
           junit_path: None,
@@ -8599,6 +8626,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          clean: false,
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,

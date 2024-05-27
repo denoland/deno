@@ -91,7 +91,7 @@ impl LocalCronHandler {
         .copied();
 
       let sleep_fut = if let Some(earliest_deadline) = earliest_deadline {
-        let now = crate::time::utc_now().timestamp_millis() as u64;
+        let now = chrono::Utc::now().timestamp_millis() as u64;
         if let Some(delta) = earliest_deadline.checked_sub(now) {
           tokio::time::sleep(std::time::Duration::from_millis(delta)).boxed()
         } else {
@@ -121,7 +121,7 @@ impl LocalCronHandler {
           {
             let backoff_ms =
               backoff_schedule[cron.current_execution_retries as usize];
-            let now = crate::time::utc_now().timestamp_millis() as u64;
+            let now = chrono::Utc::now().timestamp_millis() as u64;
             cron.current_execution_retries += 1;
             now + backoff_ms as u64
           } else {
@@ -155,7 +155,7 @@ impl RuntimeState {
   fn get_ready_crons(
     &mut self,
   ) -> Result<Vec<(String, WeakSender<()>)>, AnyError> {
-    let now = crate::time::utc_now().timestamp_millis() as u64;
+    let now = chrono::Utc::now().timestamp_millis() as u64;
 
     let ready = {
       let to_remove = self
@@ -301,7 +301,7 @@ impl CronHandle for CronExecutionHandle {
 }
 
 fn compute_next_deadline(cron_expression: &str) -> Result<u64, AnyError> {
-  let now = crate::time::utc_now();
+  let now = chrono::Utc::now();
 
   if let Ok(test_schedule) = env::var("DENO_CRON_TEST_SCHEDULE_OFFSET") {
     if let Ok(offset) = test_schedule.parse::<u64>() {
@@ -334,7 +334,7 @@ mod tests {
 
   #[test]
   fn test_compute_next_deadline() {
-    let now = crate::time::utc_now().timestamp_millis() as u64;
+    let now = chrono::Utc::now().timestamp_millis() as u64;
     assert!(compute_next_deadline("*/1 * * * *").unwrap() > now);
     assert!(compute_next_deadline("* * * * *").unwrap() > now);
     assert!(compute_next_deadline("bogus").is_err());
