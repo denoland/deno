@@ -9793,14 +9793,14 @@ mod tests {
   #[test]
   fn wildcard_flags() {
     #[rustfmt::skip]
-        let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--allow-read",
-      "--allow-write=notion-next",
-      "--allow-net=api.notion.com,*.amazonaws.com",
-      "--allow-env",
-      "script.ts"
+    let r = flags_from_vec(svec![
+        "deno",
+        "run",
+        "--allow-read",
+        "--allow-write=notion-next",
+        "--allow-net=api.notion.com,*.amazonaws.com",
+        "--allow-env",
+        "script.ts"
     ]);
 
     let flags = r.unwrap();

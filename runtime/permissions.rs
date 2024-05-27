@@ -105,10 +105,9 @@ impl deno_net::NetPermissions for PermissionsContainer {
     host: &NetPermissionHost,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self.0.check_net(
-      &NetDescriptor(host.host.clone().to_string(), host.port),
-      api_name,
-    )
+    self
+      .0
+      .check_net(&NetDescriptor(host.host.clone(), host.port), api_name)
   }
 
   #[inline(always)]

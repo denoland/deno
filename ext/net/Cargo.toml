@@ -24,4 +24,3 @@ socket2.workspace = true
 tokio.workspace = true
 trust-dns-proto = "0.22"
 trust-dns-resolver = { version = "0.22", features = ["tokio-runtime", "serde-config"] }
-url = "2.4.1"

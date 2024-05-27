@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 pub mod io;
+pub mod net;
 pub mod ops;
 pub mod ops_tls;
 #[cfg(unix)]
@@ -9,103 +10,35 @@ pub mod raw;
 pub mod resolve_addr;
 mod tcp;
 
-use deno_core::anyhow::Context;
+use crate::net::extract_host;
+use crate::net::split_host_port;
+use crate::net::Host;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::RootCertStoreProvider;
-use fqdn::FQDN;
-use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::Path;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::Arc;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "net";
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct NetPermissionHost {
-  pub host: String,
+  pub host: Host,
   pub port: Option<u16>,
 }
 
 impl NetPermissionHost {
   pub fn from_str(host: &str, mut port: Option<u16>) -> Result<Self, AnyError> {
-    // Extract the host portion from a potential URL format (e.g., https://host:port)
-    let mut extracted_host = Self::extract_host(host);
-
-    // Handle IPv6 addresses
-    if extracted_host.starts_with('[') {
-      if extracted_host.ends_with("]:") {
-        return Err(AnyError::msg("Invalid format: [ipv6]:port"));
-      }
-      if let Some(pos) = extracted_host.rfind("]:") {
-        let port_str = &extracted_host[pos + 2..];
-        let port_ = port_str.parse::<u16>().ok();
-        extracted_host = extracted_host[1..pos].to_string();
-        return Self::handle_ipv6(extracted_host, port_);
-      } else {
-        extracted_host =
-          extracted_host[1..(extracted_host.len() - 1)].to_string();
-        return Self::handle_ipv6(extracted_host, port);
-      }
+    let extracted_host = extract_host(host);
+    let tmp_host = &extracted_host.clone();
+    let (host_str, port_) = split_host_port(&extracted_host)?;
+    let host = Host::from_str(&host_str, tmp_host)?;
+    if let Some(port_) = port_ {
+      port = Option::from(port_);
     }
-
-    // Handle IPv4 addresses and hostnames with optional ports
-    if let Some((host, port_)) = Self::split_host_port(&extracted_host) {
-      if port_.is_some() {
-        port = port_;
-      }
-      let fqdn = FQDN::from_str(&host).with_context(|| {
-        format!("Failed to parse host: {}\n", &extracted_host)
-      })?;
-      let host_str = fqdn.to_string();
-      if host_str.parse::<Ipv4Addr>().is_ok() {
-        return Ok(NetPermissionHost {
-          host: host_str,
-          port,
-        });
-      }
-      Ok(NetPermissionHost {
-        host: host_str,
-        port,
-      })
-    } else {
-      Err(AnyError::msg("Failed to parse input string"))
-    }
-  }
-
-  fn extract_host(s: &str) -> String {
-    let mut extracted_host = s.to_string();
-    if let Some(index) = extracted_host.find("://") {
-      extracted_host = extracted_host[index + 3..]
-        .split('/')
-        .next()
-        .unwrap_or(&extracted_host)
-        .to_string();
-    }
-    extracted_host
-  }
-
-  fn handle_ipv6(
-    host: String,
-    port: Option<u16>,
-  ) -> Result<NetPermissionHost, AnyError> {
-    Ok(NetPermissionHost {
-      host: format!("[{}]", host.parse::<Ipv6Addr>()?.to_string()),
-      port,
-    })
-  }
-
-  fn split_host_port(s: &str) -> Option<(String, Option<u16>)> {
-    if let Some(pos) = s.rfind(':') {
-      let port_str = &s[pos + 1..];
-      if let Ok(parsed_port) = port_str.parse::<u16>() {
-        let host = s[0..pos].to_string();
-        return Some((host, Some(parsed_port)));
-      }
-    }
-    Some((s.to_string(), None))
+    Ok(NetPermissionHost { host, port })
   }
 }
 
@@ -243,6 +176,10 @@ mod ops_unix {
 #[cfg(test)]
 mod tests {
   use super::NetPermissionHost;
+  use crate::net::Host;
+  use fqdn::FQDN;
+  use std::net::{Ipv4Addr, Ipv6Addr};
+  use std::str::FromStr;
 
   #[test]
   fn test_net_permission_host_parsing() {
@@ -250,7 +187,7 @@ mod tests {
     assert_eq!(
       NetPermissionHost::from_str("deno.land.", None).unwrap(),
       NetPermissionHost {
-        host: "deno.land".to_string(),
+        host: Host::FQDN(FQDN::from_str("deno.land").unwrap()),
         port: None
       }
     );
@@ -258,7 +195,7 @@ mod tests {
     assert_eq!(
       NetPermissionHost::from_str("deno.land:80", None).unwrap(),
       NetPermissionHost {
-        host: "deno.land".to_string(),
+        host: Host::FQDN(FQDN::from_str("deno.land").unwrap()),
         port: Some(80)
       }
     );
@@ -267,7 +204,7 @@ mod tests {
     assert_eq!(
       NetPermissionHost::from_str("127.0.0.1", None).unwrap(),
       NetPermissionHost {
-        host: "127.0.0.1".to_string(),
+        host: Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)),
         port: None
       }
     );
@@ -275,7 +212,7 @@ mod tests {
     assert_eq!(
       NetPermissionHost::from_str("127.0.0.1:80", None).unwrap(),
       NetPermissionHost {
-        host: "127.0.0.1".to_string(),
+        host: Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)),
         port: Some(80)
       }
     );
@@ -284,7 +221,9 @@ mod tests {
     assert_eq!(
       NetPermissionHost::from_str("[2606:4700:4700::1111]", None).unwrap(),
       NetPermissionHost {
-        host: "[2606:4700:4700::1111]".to_string(),
+        host: Host::Ipv6(Ipv6Addr::new(
+          0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111
+        )),
         port: None
       }
     );
@@ -292,7 +231,9 @@ mod tests {
     assert_eq!(
       NetPermissionHost::from_str("[2606:4700:4700::1111]:80", None).unwrap(),
       NetPermissionHost {
-        host: "[2606:4700:4700::1111]".to_string(),
+        host: Host::Ipv6(Ipv6Addr::new(
+          0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111
+        )),
         port: Some(80)
       }
     );
@@ -302,7 +243,7 @@ mod tests {
       NetPermissionHost::from_str("https://github.com/denoland/", None)
         .unwrap(),
       NetPermissionHost {
-        host: "github.com".to_string(),
+        host: Host::FQDN(FQDN::from_str("github.com").unwrap()),
         port: None
       }
     );
@@ -311,7 +252,7 @@ mod tests {
       NetPermissionHost::from_str("https://github.com:443/denoland/", None)
         .unwrap(),
       NetPermissionHost {
-        host: "github.com".to_string(),
+        host: Host::FQDN(FQDN::from_str("github.com").unwrap()),
         port: Some(443)
       }
     );
@@ -320,7 +261,7 @@ mod tests {
     assert_eq!(
       NetPermissionHost::from_str("https://127.0.0.1", None).unwrap(),
       NetPermissionHost {
-        host: "127.0.0.1".to_string(),
+        host: Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)),
         port: None
       }
     );
@@ -328,7 +269,7 @@ mod tests {
     assert_eq!(
       NetPermissionHost::from_str("https://127.0.0.1:80", None).unwrap(),
       NetPermissionHost {
-        host: "127.0.0.1".to_string(),
+        host: Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)),
         port: Some(80)
       }
     );
@@ -338,7 +279,9 @@ mod tests {
       NetPermissionHost::from_str("https://[2606:4700:4700::1111]", None)
         .unwrap(),
       NetPermissionHost {
-        host: "[2606:4700:4700::1111]".to_string(),
+        host: Host::Ipv6(Ipv6Addr::new(
+          0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111
+        )),
         port: None
       }
     );
@@ -347,7 +290,9 @@ mod tests {
       NetPermissionHost::from_str("https://[2606:4700:4700::1111]:80", None)
         .unwrap(),
       NetPermissionHost {
-        host: "[2606:4700:4700::1111]".to_string(),
+        host: Host::Ipv6(Ipv6Addr::new(
+          0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111
+        )),
         port: Some(80)
       }
     );
@@ -364,6 +309,18 @@ mod tests {
         .unwrap_err()
         .to_string(),
       "Failed to parse host: foo@bar.com.:80\n"
+    );
+    assert_eq!(
+      NetPermissionHost::from_str("http://foo@bar.com.:", None)
+        .unwrap_err()
+        .to_string(),
+      "No port specified after ':'"
+    );
+    assert_eq!(
+      NetPermissionHost::from_str("https://[2606:4700:4700::1111]:", None)
+          .unwrap_err()
+          .to_string(),
+      "Invalid format: [ipv6]:port"
     );
   }
 }

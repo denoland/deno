@@ -13,7 +13,9 @@ use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::CancelFuture;
 
-use deno_core::anyhow::Context;
+use crate::net::extract_host;
+use crate::net::split_host_port;
+use crate::net::Host;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
@@ -23,7 +25,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use fqdn::FQDN;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
@@ -61,54 +62,13 @@ pub struct IpAddr {
   pub port: u16,
 }
 
-fn split_host_port(s: &str) -> Option<(String, Option<u16>)> {
-  if let Some(pos) = s.rfind(':') {
-    let port_str = &s[pos + 1..];
-    if let Ok(parsed_port) = port_str.parse::<u16>() {
-      let host = s[0..pos].to_string();
-      return Some((host, Some(parsed_port)));
-    }
-    return Some((s.to_string(), None)); // Handle case where port is invalid
-  }
-  Some((s.to_string(), None))
-}
-
-fn extract_host(s: &str) -> String {
-  if let Some(index) = s.find("://") {
-    return s[index + 3..].split('/').next().unwrap_or(s).to_string();
-  }
-  s.to_string()
-}
-
 fn process_ip_addr(addr: &mut IpAddr) -> Result<(), AnyError> {
-  addr.hostname = extract_host(&addr.hostname);
-  let host_ = addr.hostname.clone();
-  if addr.hostname.starts_with('[') {
-    if addr.hostname.ends_with("]:") {
-      return Err(AnyError::msg("Invalid format: [ipv6]:port"));
-    }
-    if let Some(pos) = addr.hostname.rfind("]:") {
-      let port_str = &addr.hostname[pos + 2..];
-      let parsed_port = port_str.parse::<u16>().ok();
-      addr.hostname = addr.hostname[0..pos + 1].to_string();
-      if let Some(port) = parsed_port {
-        addr.port = port;
-      }
-    } else {
-      addr.hostname = addr.hostname[0..addr.hostname.len()].to_string();
-    }
-  } else {
-    let have_port = &addr.hostname.contains(":");
-    if let Some((host, port_)) = split_host_port(&addr.hostname) {
-      addr.hostname = FQDN::from_str(&host)
-        .with_context(|| format!("Failed to parse host: {}\n", &host_))?
-        .to_string();
-      if let Some(port) = port_ {
-        addr.port = port;
-      } else if *have_port {
-        return Err(AnyError::msg("No port specified after ':'"));
-      }
-    }
+  let extracted_host = extract_host(&addr.hostname);
+  let tmp_host = &extracted_host.clone();
+  let (host_str, port) = split_host_port(&extracted_host)?;
+  addr.hostname = Host::from_str(&host_str, &tmp_host)?.to_string();
+  if let Some(port) = port {
+    addr.port = port;
   }
   Ok(())
 }
