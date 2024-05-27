@@ -31,7 +31,6 @@ pub enum ResponseStreamResult {
   NoData,
   /// Stream failed.
   Error(AnyError),
-  // TODO: add a flush signal here
 }
 
 impl From<ResponseStreamResult> for Option<Result<Frame<BufView>, AnyError>> {
@@ -243,10 +242,6 @@ impl PollFrame for ResourceBodyAdapter {
     mut self: Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<ResponseStreamResult> {
-    // TODO: if the read promise hasn't resolved, but the timer tired,
-    // we want to send the flush signal
-    // OR: if the stream is not ready, create timer if one doesn't exist, if the timer
-    // has expired already then send the flush signal
     let res = match ready!(self.future.poll_unpin(cx)) {
       Err(err) => ResponseStreamResult::Error(err),
       Ok(buf) => {
