@@ -214,19 +214,11 @@ itest!(cached_only {
 });
 
 itest!(import_map {
-    args: "run --allow-read --allow-env --import-map npm/import_map/import_map.json npm/import_map/main.js",
-    output: "npm/import_map/main.out",
-    envs: env_vars_for_npm_tests(),
-    http_server: true,
-  });
-
-itest!(lock_file_integrity_failure {
-    args: "run --allow-read --allow-env --lock npm/lock_file/lock.json npm/lock_file/main.js",
-    output: "npm/lock_file/main.out",
-    envs: env_vars_for_npm_tests(),
-    http_server: true,
-    exit_code: 10,
-  });
+  args: "run --allow-read --allow-env --import-map npm/import_map/import_map.json npm/import_map/main.js",
+  output: "npm/import_map/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
 
 itest!(sub_paths {
   args: "run -A --quiet npm/sub_paths/main.jsx",

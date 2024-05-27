@@ -108,13 +108,13 @@ pub fn graph_valid(
               let err = format!(
                 concat!(
                   "Integrity check failed in package. The package may have been tampered with.\n\n",
-                  "Specifier: {}\n",
-                  "Actual: {}\n",
-                  "Expected: {}\n\n",
-                  "If you modified your global cache, run again with the --reload ",
-                  "flag to restore its state. If you want to modify dependencies ",
-                  "locally run again with the --vendor flag or specify \"vendor\": true` ",
-                  "in a deno.json then modify the contents of the `vendor` folder."
+                  "  Specifier: {}\n",
+                  "  Actual: {}\n",
+                  "  Expected: {}\n\n",
+                  "If you modified your global cache, run again with the --reload flag to restore ",
+                  "its state. If you want to modify dependencies locally run again with the ",
+                  "--vendor flag or specify `\"vendor\": true` in a deno.json then modify the contents ",
+                  "of the vendor/ folder."
                 ),
                 specifier,
                 checksum_err.actual,
@@ -453,29 +453,26 @@ impl ModuleGraphBuilder {
     struct LockfileLocker(Arc<Mutex<Lockfile>>);
 
     impl deno_graph::source::Locker for LockfileLocker {
-      fn get_checksum(
+      fn get_remote_checksum(
         &self,
         specifier: &deno_ast::ModuleSpecifier,
       ) -> Option<LoaderChecksum> {
         self
           .0
           .lock()
-          .content
-          .remote
+          .remote()
           .get(specifier.as_str())
           .map(|s| LoaderChecksum::new(s.clone()))
       }
 
-      fn has_checksum(&self, specifier: &deno_ast::ModuleSpecifier) -> bool {
-        self
-          .0
-          .lock()
-          .content
-          .remote
-          .contains_key(specifier.as_str())
+      fn has_remote_checksum(
+        &self,
+        specifier: &deno_ast::ModuleSpecifier,
+      ) -> bool {
+        self.0.lock().remote().contains_key(specifier.as_str())
       }
 
-      fn set_checksum(
+      fn set_remote_checksum(
         &mut self,
         specifier: &deno_ast::ModuleSpecifier,
         checksum: LoaderChecksum,
@@ -483,9 +480,34 @@ impl ModuleGraphBuilder {
         self
           .0
           .lock()
+          .insert_remote(specifier.to_string(), checksum.into_string())
+      }
+
+      fn get_pkg_manifest_checksum(
+        &self,
+        package_nv: &PackageNv,
+      ) -> Option<LoaderChecksum> {
+        self
+          .0
+          .lock()
           .content
-          .remote
-          .insert(specifier.as_str().to_string(), checksum.into_string());
+          .packages
+          .jsr
+          .get(&package_nv.to_string())
+          .map(|s| LoaderChecksum::new(s.integrity.clone()))
+      }
+
+      fn set_pkg_manifest_checksum(
+        &mut self,
+        package_nv: &PackageNv,
+        checksum: LoaderChecksum,
+      ) {
+        // a value would only exist in here if two workers raced
+        // to insert the same package manifest checksum
+        self
+          .0
+          .lock()
+          .insert_package(package_nv.to_string(), checksum.into_string());
       }
     }
 
@@ -576,27 +598,14 @@ impl ModuleGraphBuilder {
             }
           }
         }
-        for (nv, value) in &lockfile.content.packages.jsr {
-          if let Ok(nv) = PackageNv::from_str(nv) {
-            graph
-              .packages
-              .add_manifest_checksum(nv, value.integrity.clone())
-              .map_err(|err| deno_lockfile::IntegrityCheckFailedError {
-                package_display_id: format!("jsr:{}", err.nv),
-                actual: err.actual,
-                expected: err.expected,
-                filename: lockfile.filename.display().to_string(),
-              })?;
-          }
-        }
       }
     }
 
-    // todo: handle jsr package manifest checksums
     let initial_redirects_len = graph.redirects.len();
-    let initial_packages_len = graph.packages.packages_len();
+    let initial_package_deps_len = graph.packages.package_deps_sum();
     let initial_package_mappings_len = graph.packages.mappings().len();
     let initial_npm_packages = graph.npm_packages.len();
+
     graph.build(roots, loader, options).await;
 
     if let Some(npm_resolver) = self.npm_resolver.as_managed() {
@@ -612,15 +621,15 @@ impl ModuleGraphBuilder {
     }
 
     let has_redirects_changed = graph.redirects.len() != initial_redirects_len;
-    let has_jsr_packages_changed =
-      graph.packages.packages_len() != initial_packages_len;
+    let has_jsr_package_deps_changed =
+      graph.packages.package_deps_sum() != initial_package_deps_len;
     let has_jsr_package_mappings_changed =
       graph.packages.mappings().len() != initial_package_mappings_len;
     let has_npm_packages_changed =
       graph.npm_packages.len() != initial_npm_packages;
 
     if has_redirects_changed
-      || has_jsr_packages_changed
+      || has_jsr_package_deps_changed
       || has_jsr_package_mappings_changed
       || has_npm_packages_changed
     {
@@ -645,27 +654,15 @@ impl ModuleGraphBuilder {
           }
         }
         // jsr packages
-        if has_jsr_packages_changed {
-          for (name, checksum, deps) in
-            graph.packages.packages_with_checksum_and_deps()
-          {
-            lockfile.insert_package(
-              name.to_string(),
-              checksum.clone(),
-              deps.map(|s| s.to_string()),
-            );
+        if has_jsr_package_deps_changed {
+          for (name, deps) in graph.packages.packages_with_deps() {
+            lockfile
+              .add_package_deps(&name.to_string(), deps.map(|s| s.to_string()));
           }
         }
         // npm packages
         if has_npm_packages_changed {
-          // this verifies integrity so may possibly error, but that
-          // will never happen because integrity verification happens
-          // when loading the npm resolution snapshot
-          self
-            .npm_resolver
-            .as_managed()
-            .unwrap()
-            .lock(&mut lockfile)?;
+          self.npm_resolver.as_managed().unwrap().lock(&mut lockfile);
         }
       }
     }

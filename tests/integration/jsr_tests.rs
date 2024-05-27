@@ -214,7 +214,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
     .args("run --cached-only main.ts")
     .run();
   output.assert_exit_code(1);
-  output.assert_matches_text("error: Failed to resolve version constraint. Try running again without --cached-only
+  output.assert_matches_text("error: JSR package manifest for '@denotest/add' failed to load. Could not resolve version constraint using only cached data. Try running again without --cached-only
     at file:///[WILDCARD]main.ts:1:21
 ");
 
@@ -347,33 +347,33 @@ console.log(add);"#,
       "Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/meta.json
 Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0_meta.json
 Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0/mod.ts
-error: Integrity check failed.
+error: Integrity check failed in package. The package may have been tampered with.
 
-Actual: 9a30ac96b5d5c1b67eca69e1e2cf0798817d9578c8d7d904a81a67b983b35cba
-Expected: bad-checksum
-    at file:///[WILDCARD]main.ts:1:21
+  Specifier: http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0/mod.ts
+  Actual: 9a30ac96b5d5c1b67eca69e1e2cf0798817d9578c8d7d904a81a67b983b35cba
+  Expected: bad-checksum
+
+If you modified your global cache, run again with the --reload flag to restore its state. If you want to modify dependencies locally run again with the --vendor flag or specify `\"vendor\": true` in a deno.json then modify the contents of the vendor/ folder.
 ",
     )
-    .assert_exit_code(1);
+    .assert_exit_code(10);
 
   // test it properly checks the checksum when loading from the cache
   test_context
     .new_command()
-    .args("run  main.ts")
+    .args("run main.ts")
     .run()
     .assert_matches_text(
-      // ideally the two error messages would be the same... this one comes from
-      // deno_cache and the one above comes from deno_graph. The thing is, in deno_cache
-      // (source of this error) it makes sense to include the url in the error message
-      // because it's not always used in the context of deno_graph
-      "error: Integrity check failed for http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0/mod.ts
+      "error: Integrity check failed in package. The package may have been tampered with.
 
-Actual: 9a30ac96b5d5c1b67eca69e1e2cf0798817d9578c8d7d904a81a67b983b35cba
-Expected: bad-checksum
-    at file:///[WILDCARD]main.ts:1:21
+  Specifier: http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0/mod.ts
+  Actual: 9a30ac96b5d5c1b67eca69e1e2cf0798817d9578c8d7d904a81a67b983b35cba
+  Expected: bad-checksum
+
+If you modified your global cache, run again with the --reload flag to restore its state. If you want to modify dependencies locally run again with the --vendor flag or specify `\"vendor\": true` in a deno.json then modify the contents of the vendor/ folder.
 ",
     )
-    .assert_exit_code(1);
+    .assert_exit_code(10);
 }
 
 fn get_lockfile_pkg_integrity(lockfile: &Lockfile, pkg_name: &str) -> String {

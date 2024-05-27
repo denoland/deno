@@ -13,7 +13,6 @@ use super::InstallFlags;
 use super::InstallKind;
 
 pub use deno_lockfile::Lockfile;
-pub use deno_lockfile::LockfileError;
 
 pub fn discover(
   flags: &Flags,

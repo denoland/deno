@@ -395,7 +395,7 @@ impl ManagedCliNpmResolver {
       .serialized_valid_snapshot_for_system(system_info)
   }
 
-  pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
+  pub fn lock(&self, lockfile: &mut Lockfile) {
     self.resolution.lock(lockfile)
   }
 
