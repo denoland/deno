@@ -7,7 +7,6 @@ use std::fmt::Write;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
@@ -26,6 +25,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_terminal::colors;
 
+use crate::args::write_lockfile_if_has_changes;
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
@@ -70,8 +70,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     // If there is a lockfile...
     if let Some(lockfile) = &maybe_lockfile {
       let lockfile = lockfile.lock();
-      // update it with anything new
-      lockfile.write().context("Failed writing lockfile.")?;
+      write_lockfile_if_has_changes(&lockfile)?;
     }
 
     if info_flags.json {

@@ -9,6 +9,7 @@ use std::str;
 use std::sync::Arc;
 
 use crate::args::jsr_url;
+use crate::args::write_lockfile_if_has_changes;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
@@ -172,11 +173,10 @@ impl ModuleLoadPreparer {
 
     self.module_graph_builder.graph_roots_valid(graph, roots)?;
 
-    // If there is a lockfile...
+    // write the lockfile if there is one
     if let Some(lockfile) = &self.lockfile {
       let lockfile = lockfile.lock();
-      // update it with anything new
-      lockfile.write().context("Failed writing lockfile.")?;
+      write_lockfile_if_has_changes(&lockfile)?;
     }
 
     drop(_pb_clear_guard);

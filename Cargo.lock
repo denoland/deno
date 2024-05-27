@@ -2538,7 +2538,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.70.0"
+version = "0.70.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5f9947a8dd5ba292461c84a5bf142497e2840c4165994c5c3b3ae4954d38fef"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
@@ -7513,7 +7515,7 @@ dependencies = [
  "log",
  "naga",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -7555,7 +7557,7 @@ dependencies = [
  "ndk-sys",
  "objc",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "range-alloc",
  "raw-window-handle",

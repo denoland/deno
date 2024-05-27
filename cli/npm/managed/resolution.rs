@@ -401,7 +401,6 @@ fn npm_package_to_lockfile_info(
     .collect();
 
   NpmPackageLockfileInfo {
-    display_id: pkg.id.nv.to_string(),
     serialized_id: pkg.id.as_serialized(),
     integrity: pkg.dist.integrity().for_lockfile(),
     dependencies,
