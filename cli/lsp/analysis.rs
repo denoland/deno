@@ -248,6 +248,8 @@ impl<'a> TsResponseImportMapper<'a> {
       }
     }
 
+    let file_referrer = self.documents.get_file_referrer(referrer);
+
     if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
     {
       let mut segments = jsr_path.split('/');
@@ -259,7 +261,11 @@ impl<'a> TsResponseImportMapper<'a> {
       let version = Version::parse_standard(segments.next()?).ok()?;
       let nv = PackageNv { name, version };
       let path = segments.collect::<Vec<_>>().join("/");
-      let export = self.resolver.jsr_lookup_export_for_path(&nv, &path)?;
+      let export = self.resolver.jsr_lookup_export_for_path(
+        &nv,
+        &path,
+        file_referrer.as_deref(),
+      )?;
       let sub_path = (export != ".").then_some(export);
       let mut req = None;
       req = req.or_else(|| {
@@ -281,7 +287,11 @@ impl<'a> TsResponseImportMapper<'a> {
         }
         None
       });
-      req = req.or_else(|| self.resolver.jsr_lookup_req_for_nv(&nv));
+      req = req.or_else(|| {
+        self
+          .resolver
+          .jsr_lookup_req_for_nv(&nv, file_referrer.as_deref())
+      });
       let spec_str = if let Some(req) = req {
         let req_ref = PackageReqReference { req, sub_path };
         JsrPackageReqReference::new(req_ref).to_string()
@@ -298,7 +308,10 @@ impl<'a> TsResponseImportMapper<'a> {
       return Some(spec_str);
     }
 
-    if let Some(npm_resolver) = self.resolver.maybe_managed_npm_resolver() {
+    if let Some(npm_resolver) = self
+      .resolver
+      .maybe_managed_npm_resolver(file_referrer.as_deref())
+    {
       if npm_resolver.in_npm_package(specifier) {
         if let Ok(Some(pkg_id)) =
           npm_resolver.resolve_pkg_id_from_specifier(specifier)
