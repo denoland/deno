@@ -926,6 +926,7 @@ async function writeFile(
         append: options.append ?? false,
         create: options.create ?? true,
         createNew: options.createNew ?? false,
+        truncate: !(options.append ?? false),
         write: true,
       });
       await data.pipeTo(file.writable, {
