@@ -178,7 +178,8 @@ mod tests {
   use super::NetPermissionHost;
   use crate::net::Host;
   use fqdn::FQDN;
-  use std::net::{Ipv4Addr, Ipv6Addr};
+  use std::net::Ipv4Addr;
+  use std::net::Ipv6Addr;
   use std::str::FromStr;
 
   #[test]
@@ -318,8 +319,8 @@ mod tests {
     );
     assert_eq!(
       NetPermissionHost::from_str("https://[2606:4700:4700::1111]:", None)
-          .unwrap_err()
-          .to_string(),
+        .unwrap_err()
+        .to_string(),
       "Invalid format: [ipv6]:port"
     );
   }
