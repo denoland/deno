@@ -163,11 +163,8 @@ impl LspResolver {
     &self,
     reqs: &[PackageReq],
   ) -> Result<(), AnyError> {
-    dbg!(reqs.iter().map(|r| r.to_string()).collect::<Vec<_>>());
     if let Some(npm_resolver) = self.npm_resolver.as_ref() {
-      dbg!();
       if let Some(npm_resolver) = npm_resolver.as_managed() {
-        dbg!();
         return npm_resolver.set_package_reqs(reqs).await;
       }
     }
