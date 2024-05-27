@@ -1662,7 +1662,6 @@ dependencies = [
  "tokio",
  "trust-dns-proto",
  "trust-dns-resolver",
- "url",
 ]
 
 [[package]]
@@ -1774,6 +1773,7 @@ name = "deno_permissions"
 version = "0.13.0"
 dependencies = [
  "deno_core",
+ "deno_net",
  "deno_terminal",
  "fqdn",
  "libc",
