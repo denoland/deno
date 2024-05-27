@@ -401,7 +401,7 @@ impl PollFrame for GZipResponseStream {
         stm.compress(&[], &mut buf, flate2::FlushCompress::Finish)
       }
       ResponseStreamResult::NonEmptyBuf(mut input) => {
-        let res = stm.compress(&input, &mut buf, flate2::FlushCompress::None);
+        let res = stm.compress(&input, &mut buf, flate2::FlushCompress::Sync);
         let len_in = (stm.total_in() - start_in) as usize;
         debug_assert!(len_in <= input.len());
         this.crc.update(&input[..len_in]);
@@ -409,9 +409,8 @@ impl PollFrame for GZipResponseStream {
           input.advance_cursor(len_in);
           this.partial = Some(input);
         }
+
         res
-        // TODO: if we get flush signal here we want to do
-        // stm.compress(&[], &mut buf, flate::FlushCompress::Sync);
       }
     };
     let len = stm.total_out() - start_out;
