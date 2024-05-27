@@ -857,13 +857,17 @@ impl CliOptions {
       };
 
     if let Some(env_file_name) = &flags.env_file {
-      if (from_filename(env_file_name)).is_err() {
-        log::info!(
-          "{} The `--env` flag was used, but the dotenv file '{}' was not found.",
-          colors::yellow("Warning"),
-          env_file_name
-        );
-      }
+      match from_filename(env_file_name) {
+          Ok(_) => (),
+          Err(error) => {
+            match error {
+              dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
+              dotenvy::Error::Io(_)=> log::info!("{} The `--env` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
+              dotenvy::Error::EnvVar(_)=>log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
+              _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+            }
+          }
+        }
     }
 
     let disable_deprecated_api_warning = flags.log_level
