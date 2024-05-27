@@ -298,7 +298,6 @@ impl PollFrame for tokio::sync::mpsc::Receiver<BufView> {
 enum GZipState {
   Header,
   Streaming,
-  // TODO: add FlushingIdle or PendingFlush for in the middle.
   Flushing,
   Trailer,
   EndOfStream,
@@ -373,7 +372,6 @@ impl PollFrame for GZipResponseStream {
         if let Some(partial) = this.partial.take() {
           ResponseStreamResult::NonEmptyBuf(partial)
         } else {
-          // TODO: If we get "flush" here we should flush the gzip stream
           ready!(Pin::new(&mut this.underlying).poll_frame(cx))
         }
       }
@@ -409,7 +407,6 @@ impl PollFrame for GZipResponseStream {
           input.advance_cursor(len_in);
           this.partial = Some(input);
         }
-
         res
       }
     };
