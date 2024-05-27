@@ -49,9 +49,7 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_terminal::colors;
 use factory::CliFactory;
-use std::borrow::Cow;
 use std::env;
-use std::env::current_exe;
 use std::future::Future;
 use std::path::PathBuf;
 
@@ -191,6 +189,9 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Test(test_flags) => {
       spawn_subcommand(async {
         if let Some(ref coverage_dir) = test_flags.coverage_dir {
+          if test_flags.clean {
+            let _ = std::fs::remove_dir_all(coverage_dir);
+          }
           std::fs::create_dir_all(coverage_dir)
             .with_context(|| format!("Failed creating: {coverage_dir}"))?;
           // this is set in order to ensure spawned processes use the same
@@ -328,29 +329,12 @@ pub fn main() {
   );
 
   let args: Vec<_> = env::args_os().collect();
-  let current_exe_path = current_exe().unwrap();
-  let maybe_standalone = match standalone::extract_standalone(
-    &current_exe_path,
-    Cow::Borrowed(&args),
-  ) {
-    Ok(standalone) => standalone,
-    Err(err) => exit_for_error(err),
-  };
-
   let future = async move {
-    match maybe_standalone {
-      Some(future) => {
-        let (metadata, eszip) = future.await?;
-        standalone::run(eszip, metadata).await
-      }
-      None => {
-        // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
-        // initialize the V8 platform on a parent thread of all threads that will spawn
-        // V8 isolates.
-        let flags = resolve_flags_and_init(args)?;
-        run_subcommand(flags).await
-      }
-    }
+    // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
+    // initialize the V8 platform on a parent thread of all threads that will spawn
+    // V8 isolates.
+    let flags = resolve_flags_and_init(args)?;
+    run_subcommand(flags).await
   };
 
   match create_and_run_current_thread_with_maybe_metrics(future) {

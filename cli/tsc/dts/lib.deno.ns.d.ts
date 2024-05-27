@@ -2682,27 +2682,23 @@ declare namespace Deno {
      * ```
      */
     setRaw(mode: boolean, options?: SetRawOptions): void;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Acquire an advisory file-system lock for the file.
      *
      * @param [exclusive=false]
      */
     lock(exclusive?: boolean): Promise<void>;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Synchronously acquire an advisory file-system lock synchronously for the file.
      *
      * @param [exclusive=false]
      */
     lockSync(exclusive?: boolean): void;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Release an advisory file-system lock for the file.
      */
     unlock(): Promise<void>;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
+    /**
      * Synchronously release an advisory file-system lock for the file.
      */
     unlockSync(): void;
@@ -5734,7 +5730,7 @@ declare namespace Deno {
      * `pong` within the timeout specified, the connection is deemed
      * unhealthy and is closed. The `close` and `error` event will be emitted.
      *
-     * The unit is seconds, with a default of 120.
+     * The unit is seconds, with a default of 30.
      * Set to `0` to disable timeouts. */
     idleTimeout?: number;
   }

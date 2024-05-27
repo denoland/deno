@@ -173,6 +173,11 @@ pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
   }
 }
 
+#[cfg_attr(windows, allow(dead_code))]
+pub fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
+  pathdiff::diff_paths(to, from)
+}
+
 /// Gets if the provided character is not supported on all
 /// kinds of file systems.
 pub fn is_banned_path_char(c: char) -> bool {
