@@ -83,6 +83,7 @@ use super::tsc::ChangeKind;
 use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
+use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
 use crate::args::CaData;
 use crate::args::CacheSetting;
@@ -114,7 +115,10 @@ impl RootCertStoreProvider for LspRootCertStoreProvider {
 }
 
 #[derive(Debug, Clone)]
-pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>, CancellationToken);
+pub struct LanguageServer(
+  pub Arc<tokio::sync::RwLock<Inner>>,
+  CancellationToken,
+);
 
 /// Snapshot of the state used by TSC.
 #[derive(Clone, Debug, Default)]
@@ -122,7 +126,7 @@ pub struct StateSnapshot {
   pub project_version: usize,
   pub assets: AssetsSnapshot,
   pub config: Arc<Config>,
-  pub documents: Documents,
+  pub documents: Arc<Documents>,
   pub resolver: Arc<LspResolver>,
 }
 
@@ -149,7 +153,7 @@ impl Default for LanguageServerTaskQueue {
 }
 
 impl LanguageServerTaskQueue {
-  fn queue_task(&self, task_fn: LanguageServerTaskFn) -> bool {
+  pub fn queue_task(&self, task_fn: LanguageServerTaskFn) -> bool {
     self.task_tx.send(task_fn).is_ok()
   }
 
@@ -578,7 +582,7 @@ impl Inner {
       project_version: self.project_version,
       assets: self.assets.snapshot(),
       config: Arc::new(self.config.clone()),
-      documents: self.documents.clone(),
+      documents: Arc::new(self.documents.clone()),
       resolver: self.resolver.snapshot(),
     })
   }
@@ -990,6 +994,8 @@ impl Inner {
         params.text_document.uri
       );
     }
+    let file_referrer = (params.text_document.uri.scheme() == "file")
+      .then(|| params.text_document.uri.clone());
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -998,6 +1004,7 @@ impl Inner {
       params.text_document.version,
       params.text_document.language_id.parse().unwrap(),
       params.text_document.text.into(),
+      file_referrer,
     );
     self.project_changed([(document.specifier(), ChangeKind::Opened)], false);
     if document.is_diagnosable() {
@@ -1228,6 +1235,8 @@ impl Inner {
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
+    let file_referrer = (params.text_document.uri.scheme() == "file")
+      .then(|| params.text_document.uri.clone());
     let mut specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -1241,7 +1250,9 @@ impl Inner {
     {
       return Ok(None);
     }
-    let document = match self.documents.get(&specifier) {
+    let document =
+      file_referrer.and_then(|r| self.documents.get_or_load(&specifier, &r));
+    let document = match document {
       Some(doc) if doc.is_open() => doc,
       _ => return Ok(None),
     };
@@ -1329,41 +1340,44 @@ impl Inner {
 
     let mark = self.performance.mark_with_args("lsp.hover", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
+    let file_referrer = asset_or_doc.document().and_then(|d| d.file_referrer());
     let hover = if let Some((_, dep, range)) = asset_or_doc
       .get_maybe_dependency(&params.text_document_position_params.position)
     {
-      let dep_doc = dep.get_code().and_then(|s| self.documents.get(s));
+      let dep_doc = dep
+        .get_code()
+        .and_then(|s| self.documents.get_or_load(s, &specifier));
       let dep_maybe_types_dependency =
         dep_doc.as_ref().map(|d| d.maybe_types_dependency());
       let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
         (false, false, None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_code),
-          self.resolution_to_hover_text(&dep.maybe_type),
+          self.resolution_to_hover_text(&dep.maybe_code, file_referrer),
+          self.resolution_to_hover_text(&dep.maybe_type, file_referrer),
         ),
         (false, false, Some(types_dep)) if !types_dep.is_none() => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n**Types**: {}\n**Import Types**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_code),
-          self.resolution_to_hover_text(&dep.maybe_type),
-          self.resolution_to_hover_text(types_dep),
+          self.resolution_to_hover_text(&dep.maybe_code, file_referrer),
+          self.resolution_to_hover_text(&dep.maybe_type, file_referrer),
+          self.resolution_to_hover_text(types_dep, file_referrer),
         ),
         (false, false, Some(_)) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_code),
-          self.resolution_to_hover_text(&dep.maybe_type),
+          self.resolution_to_hover_text(&dep.maybe_code, file_referrer),
+          self.resolution_to_hover_text(&dep.maybe_type, file_referrer),
         ),
         (false, true, Some(types_dep)) if !types_dep.is_none() => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_code),
-          self.resolution_to_hover_text(types_dep),
+          self.resolution_to_hover_text(&dep.maybe_code, file_referrer),
+          self.resolution_to_hover_text(types_dep, file_referrer),
         ),
         (false, true, _) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_code),
+          self.resolution_to_hover_text(&dep.maybe_code, file_referrer),
         ),
         (true, false, _) => format!(
           "**Resolved Dependency**\n\n**Types**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_type),
+          self.resolution_to_hover_text(&dep.maybe_type, file_referrer),
         ),
         (true, true, _) => unreachable!("{}", json!(params)),
       };
@@ -1394,7 +1408,11 @@ impl Inner {
     Ok(hover)
   }
 
-  fn resolution_to_hover_text(&self, resolution: &Resolution) -> String {
+  fn resolution_to_hover_text(
+    &self,
+    resolution: &Resolution,
+    file_referrer: Option<&ModuleSpecifier>,
+  ) -> String {
     match resolution {
       Resolution::Ok(resolved) => {
         let specifier = &resolved.specifier;
@@ -1416,7 +1434,9 @@ impl Inner {
             if let Ok(jsr_req_ref) =
               JsrPackageReqReference::from_specifier(specifier)
             {
-              if let Some(url) = self.resolver.jsr_to_registry_url(&jsr_req_ref)
+              if let Some(url) = self
+                .resolver
+                .jsr_to_registry_url(&jsr_req_ref, file_referrer)
               {
                 result = format!("{result} (<{url}>)");
               }
@@ -3299,6 +3319,9 @@ impl Inner {
       config_data.and_then(|d| d.config_file.as_deref().cloned()),
       config_data.and_then(|d| d.lockfile.clone()),
       config_data.and_then(|d| d.package_json.as_deref().cloned()),
+      config_data
+        .and_then(|d| d.npmrc.clone())
+        .unwrap_or_else(create_default_npmrc),
       force_global_cache,
     )?;
 

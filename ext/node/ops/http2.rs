@@ -24,6 +24,7 @@ use deno_core::ResourceId;
 use deno_net::raw::take_network_stream_resource;
 use deno_net::raw::NetworkStream;
 use h2;
+use h2::Reason;
 use h2::RecvStream;
 use http_v02;
 use http_v02::request::Parts;
@@ -496,7 +497,7 @@ fn poll_data_or_trailers(
 pub async fn op_http2_client_get_response_body_chunk(
   state: Rc<RefCell<OpState>>,
   #[smi] body_rid: ResourceId,
-) -> Result<(Option<Vec<u8>>, bool), AnyError> {
+) -> Result<(Option<Vec<u8>>, bool, bool), AnyError> {
   let resource = state
     .borrow()
     .resource_table
@@ -504,9 +505,19 @@ pub async fn op_http2_client_get_response_body_chunk(
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
 
   loop {
-    match poll_fn(|cx| poll_data_or_trailers(cx, &mut body)).await? {
+    let result = poll_fn(|cx| poll_data_or_trailers(cx, &mut body)).await;
+    if let Err(err) = result {
+      let reason = err.reason();
+      if let Some(reason) = reason {
+        if reason == Reason::CANCEL {
+          return Ok((None, false, true));
+        }
+      }
+      return Err(err.into());
+    }
+    match result.unwrap() {
       DataOrTrailers::Data(data) => {
-        return Ok((Some(data.to_vec()), false));
+        return Ok((Some(data.to_vec()), false, false));
       }
       DataOrTrailers::Trailers(trailers) => {
         if let Some(trailers_tx) = RcRef::map(&resource, |r| &r.trailers_tx)
@@ -524,7 +535,7 @@ pub async fn op_http2_client_get_response_body_chunk(
           .borrow_mut()
           .await
           .take();
-        return Ok((None, true));
+        return Ok((None, true, false));
       }
     };
   }

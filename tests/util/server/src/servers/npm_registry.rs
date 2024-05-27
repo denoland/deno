@@ -33,12 +33,26 @@ pub fn public_npm_registry(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
 }
 
 const PRIVATE_NPM_REGISTRY_AUTH_TOKEN: &str = "private-reg-token";
+const PRIVATE_NPM_REGISTRY_2_AUTH_TOKEN: &str = "private-reg-token2";
+
+// `deno:land` encoded using base64
+const PRIVATE_NPM_REGISTRY_AUTH_BASE64: &str = "ZGVubzpsYW5k";
+// `deno:land2` encoded using base64
+const PRIVATE_NPM_REGISTRY_2_AUTH_BASE64: &str = "ZGVubzpsYW5kMg==";
 
 pub fn private_npm_registry1(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
   run_npm_server(
     port,
     "npm private registry server error",
     private_npm_registry1_handler,
+  )
+}
+
+pub fn private_npm_registry2(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
+  run_npm_server(
+    port,
+    "npm private registry server error",
+    private_npm_registry2_handler,
   )
 }
 
@@ -91,7 +105,9 @@ async fn private_npm_registry1_handler(
     .get("authorization")
     .and_then(|x| x.to_str().ok())
     .unwrap_or_default();
-  if auth != format!("Bearer {}", PRIVATE_NPM_REGISTRY_AUTH_TOKEN) {
+  if auth != format!("Bearer {}", PRIVATE_NPM_REGISTRY_AUTH_TOKEN)
+    && auth != format!("Basic {}", PRIVATE_NPM_REGISTRY_AUTH_BASE64)
+  {
     return Ok(
       Response::builder()
         .status(StatusCode::UNAUTHORIZED)
@@ -101,6 +117,28 @@ async fn private_npm_registry1_handler(
   }
 
   handle_req_for_registry(req, &npm::PRIVATE_TEST_NPM_REGISTRY_1).await
+}
+
+async fn private_npm_registry2_handler(
+  req: Request<hyper::body::Incoming>,
+) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
+  let auth = req
+    .headers()
+    .get("authorization")
+    .and_then(|x| x.to_str().ok())
+    .unwrap_or_default();
+  if auth != format!("Bearer {}", PRIVATE_NPM_REGISTRY_2_AUTH_TOKEN)
+    && auth != format!("Basic {}", PRIVATE_NPM_REGISTRY_2_AUTH_BASE64)
+  {
+    return Ok(
+      Response::builder()
+        .status(StatusCode::UNAUTHORIZED)
+        .body(empty_body())
+        .unwrap(),
+    );
+  }
+
+  handle_req_for_registry(req, &npm::PRIVATE_TEST_NPM_REGISTRY_2).await
 }
 
 async fn handle_req_for_registry(
