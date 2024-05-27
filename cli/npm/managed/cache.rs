@@ -13,6 +13,7 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_runtime::deno_fs;
@@ -20,6 +21,7 @@ use deno_semver::package::PackageNv;
 
 use crate::args::CacheSetting;
 use crate::http_util::HttpClient;
+use crate::npm::common::maybe_auth_header_for_npm_registry;
 use crate::npm::NpmCacheDir;
 use crate::util::fs::hard_link_dir_recursive;
 use crate::util::progress_bar::ProgressBar;
@@ -35,6 +37,7 @@ pub struct NpmCache {
   fs: Arc<dyn deno_fs::FileSystem>,
   http_client: Arc<HttpClient>,
   progress_bar: ProgressBar,
+  pub(crate) npmrc: Arc<ResolvedNpmRc>,
   /// ensures a package is only downloaded once per run
   previously_reloaded_packages: Mutex<HashSet<PackageNv>>,
 }
@@ -46,6 +49,7 @@ impl NpmCache {
     fs: Arc<dyn deno_fs::FileSystem>,
     http_client: Arc<HttpClient>,
     progress_bar: ProgressBar,
+    npmrc: Arc<ResolvedNpmRc>,
   ) -> Self {
     Self {
       cache_dir,
@@ -54,6 +58,7 @@ impl NpmCache {
       http_client,
       progress_bar,
       previously_reloaded_packages: Default::default(),
+      npmrc,
     }
   }
 
@@ -82,10 +87,9 @@ impl NpmCache {
     &self,
     package: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
-    registry_url: &Url,
   ) -> Result<(), AnyError> {
     self
-      .ensure_package_inner(package, dist, registry_url)
+      .ensure_package_inner(package, dist)
       .await
       .with_context(|| format!("Failed caching npm package '{package}'."))
   }
@@ -94,8 +98,10 @@ impl NpmCache {
     &self,
     package_nv: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
-    registry_url: &Url,
   ) -> Result<(), AnyError> {
+    let registry_url = self.npmrc.get_registry_url(&package_nv.name);
+    let registry_config = self.npmrc.get_registry_config(&package_nv.name);
+
     let package_folder = self
       .cache_dir
       .package_folder_for_name_and_version(package_nv, registry_url);
@@ -118,10 +124,12 @@ impl NpmCache {
       bail!("Tarball URL was empty.");
     }
 
+    let maybe_auth_header = maybe_auth_header_for_npm_registry(registry_config);
+
     let guard = self.progress_bar.update(&dist.tarball);
     let maybe_bytes = self
       .http_client
-      .download_with_progress(&dist.tarball, &guard)
+      .download_with_progress(&dist.tarball, maybe_auth_header, &guard)
       .await?;
     match maybe_bytes {
       Some(bytes) => {
@@ -164,8 +172,8 @@ impl NpmCache {
   pub fn ensure_copy_package(
     &self,
     folder_id: &NpmPackageCacheFolderId,
-    registry_url: &Url,
   ) -> Result<(), AnyError> {
+    let registry_url = self.npmrc.get_registry_url(&folder_id.nv.name);
     assert_ne!(folder_id.copy_index, 0);
     let package_folder = self
       .cache_dir
@@ -192,40 +200,37 @@ impl NpmCache {
     Ok(())
   }
 
-  pub fn package_folder_for_id(
-    &self,
-    id: &NpmPackageCacheFolderId,
-    registry_url: &Url,
-  ) -> PathBuf {
+  pub fn package_folder_for_id(&self, id: &NpmPackageCacheFolderId) -> PathBuf {
+    let registry_url = self.npmrc.get_registry_url(&id.nv.name);
     self.cache_dir.package_folder_for_id(id, registry_url)
   }
 
   pub fn package_folder_for_name_and_version(
     &self,
     package: &PackageNv,
-    registry_url: &Url,
   ) -> PathBuf {
+    let registry_url = self.npmrc.get_registry_url(&package.name);
     self
       .cache_dir
       .package_folder_for_name_and_version(package, registry_url)
   }
 
-  pub fn package_name_folder(&self, name: &str, registry_url: &Url) -> PathBuf {
+  pub fn package_name_folder(&self, name: &str) -> PathBuf {
+    let registry_url = self.npmrc.get_registry_url(name);
     self.cache_dir.package_name_folder(name, registry_url)
   }
 
-  pub fn registry_folder(&self, registry_url: &Url) -> PathBuf {
-    self.cache_dir.registry_folder(registry_url)
+  pub fn root_folder(&self) -> PathBuf {
+    self.cache_dir.root_dir().to_owned()
   }
 
   pub fn resolve_package_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-    registry_url: &Url,
   ) -> Option<NpmPackageCacheFolderId> {
     self
       .cache_dir
-      .resolve_package_folder_id_from_specifier(specifier, registry_url)
+      .resolve_package_folder_id_from_specifier(specifier)
   }
 }
 

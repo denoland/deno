@@ -619,7 +619,7 @@ async fn download_package(
     // text above which will stay alive after the progress bars are complete
     let progress = progress_bar.update("");
     client
-      .download_with_progress(download_url, &progress)
+      .download_with_progress(download_url, None, &progress)
       .await?
   };
   match maybe_bytes {

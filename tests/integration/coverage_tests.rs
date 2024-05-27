@@ -441,6 +441,12 @@ fn no_internal_node_code() {
 
 #[test]
 fn test_html_reporter() {
+  // This test case generates a html coverage report of test cases in /tests/testdata/coverage/multisource
+  // You can get the same reports in ./cov_html by running the following command:
+  // ```
+  // ./target/debug/deno test --coverage=cov_html tests/testdata/coverage/multisource
+  // ./target/debug/deno coverage --html cov_html
+  // ```
   let context = TestContext::default();
   let tempdir = context.temp_dir();
   let tempdir = tempdir.path().join("cov");
@@ -481,6 +487,9 @@ fn test_html_reporter() {
 
   let foo_ts_html = tempdir.join("html").join("foo.ts.html").read_to_string();
   assert_contains!(foo_ts_html, "<h1>Coverage report for foo.ts</h1>");
+  // Check that line count has correct title attribute
+  assert_contains!(foo_ts_html, "<span class='cline-any cline-yes' title='This line is covered 1 time'>x1</span>");
+  assert_contains!(foo_ts_html, "<span class='cline-any cline-yes' title='This line is covered 3 times'>x3</span>");
 
   let bar_ts_html = tempdir.join("html").join("bar.ts.html").read_to_string();
   assert_contains!(bar_ts_html, "<h1>Coverage report for bar.ts</h1>");

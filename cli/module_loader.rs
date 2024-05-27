@@ -13,7 +13,7 @@ use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
 use crate::cache::CodeCache;
-use crate::cache::ModuleInfoCache;
+use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::factory::CliFactory;
@@ -55,6 +55,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
+use deno_core::SourceCodeCacheInfo;
 use deno_core::SourceMapGetter;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
@@ -67,7 +68,6 @@ use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::fs_util::code_timestamp;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 
@@ -221,7 +221,6 @@ struct SharedCliModuleLoaderState {
   code_cache: Option<Arc<CodeCache>>,
   emitter: Arc<Emitter>,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
-  module_info_cache: Arc<ModuleInfoCache>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: NpmModuleLoader,
@@ -240,7 +239,6 @@ impl CliModuleLoaderFactory {
     code_cache: Option<Arc<CodeCache>>,
     emitter: Arc<Emitter>,
     main_module_graph_container: Arc<MainModuleGraphContainer>,
-    module_info_cache: Arc<ModuleInfoCache>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_resolver: Arc<CliNodeResolver>,
     npm_module_loader: NpmModuleLoader,
@@ -261,7 +259,6 @@ impl CliModuleLoaderFactory {
         code_cache,
         emitter,
         main_module_graph_container,
-        module_info_cache,
         module_load_preparer,
         node_resolver,
         npm_module_loader,
@@ -388,27 +385,20 @@ impl<TGraphContainer: ModuleGraphContainer>
     }
 
     let code_cache = if module_type == ModuleType::JavaScript {
-      self.shared.code_cache.as_ref().and_then(|cache| {
-        let code_hash = self
-          .get_code_hash_or_timestamp(specifier, code_source.media_type)
-          .ok()
-          .flatten();
-        if let Some(code_hash) = code_hash {
-          cache
-            .get_sync(
-              specifier.as_str(),
-              code_cache::CodeCacheType::EsModule,
-              &code_hash,
-            )
-            .map(Cow::from)
-            .inspect(|_| {
-              // This log line is also used by tests.
-              log::debug!(
-                "V8 code cache hit for ES module: {specifier}, [{code_hash:?}]"
-              );
-            })
-        } else {
-          None
+      self.shared.code_cache.as_ref().map(|cache| {
+        let code_hash = FastInsecureHasher::hash(&code);
+        let data = cache
+          .get_sync(specifier, code_cache::CodeCacheType::EsModule, code_hash)
+          .map(Cow::from)
+          .inspect(|_| {
+            // This log line is also used by tests.
+            log::debug!(
+              "V8 code cache hit for ES module: {specifier}, [{code_hash:?}]"
+            );
+          });
+        SourceCodeCacheInfo {
+          hash: code_hash,
+          data,
         }
       })
     } else {
@@ -587,25 +577,6 @@ impl<TGraphContainer: ModuleGraphContainer>
     }
 
     resolution.map_err(|err| err.into())
-  }
-
-  fn get_code_hash_or_timestamp(
-    &self,
-    specifier: &ModuleSpecifier,
-    media_type: MediaType,
-  ) -> Result<Option<String>, AnyError> {
-    let hash = self
-      .shared
-      .module_info_cache
-      .get_module_source_hash(specifier, media_type)?;
-    if let Some(hash) = hash {
-      return Ok(Some(hash.into()));
-    }
-
-    // Use the modified timestamp from the local file system if we don't have a hash.
-    let timestamp = code_timestamp(specifier.as_str())
-      .map(|timestamp| timestamp.to_string())?;
-    Ok(Some(timestamp))
   }
 
   async fn load_prepared_module(
@@ -865,28 +836,21 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
   fn code_cache_ready(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: ModuleSpecifier,
+    source_hash: u64,
     code_cache: &[u8],
   ) -> Pin<Box<dyn Future<Output = ()>>> {
     if let Some(cache) = self.0.shared.code_cache.as_ref() {
-      let media_type = MediaType::from_specifier(specifier);
-      let code_hash = self
-        .0
-        .get_code_hash_or_timestamp(specifier, media_type)
-        .ok()
-        .flatten();
-      if let Some(code_hash) = code_hash {
-        // This log line is also used by tests.
-        log::debug!(
-          "Updating V8 code cache for ES module: {specifier}, [{code_hash:?}]"
-        );
-        cache.set_sync(
-          specifier.as_str(),
-          code_cache::CodeCacheType::EsModule,
-          &code_hash,
-          code_cache,
-        );
-      }
+      // This log line is also used by tests.
+      log::debug!(
+        "Updating V8 code cache for ES module: {specifier}, [{source_hash:?}]"
+      );
+      cache.set_sync(
+        &specifier,
+        code_cache::CodeCacheType::EsModule,
+        source_hash,
+        code_cache,
+      );
     }
     std::future::ready(()).boxed_local()
   }
