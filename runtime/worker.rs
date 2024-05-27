@@ -32,6 +32,7 @@ use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::SourceCodeCacheInfo;
 use deno_core::SourceMapGetter;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
@@ -45,7 +46,6 @@ use log::debug;
 
 use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
-use crate::fs_util::code_timestamp;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
@@ -306,51 +306,6 @@ pub fn create_op_metrics(
   (op_summary_metrics, op_metrics_factory_fn)
 }
 
-fn get_code_cache(
-  code_cache: Arc<dyn CodeCache>,
-  specifier: &str,
-) -> Option<Vec<u8>> {
-  // Code hashes are not maintained for op_eval_context scripts. Instead we use
-  // the modified timestamp from the local file system.
-  if let Ok(code_timestamp) = code_timestamp(specifier) {
-    code_cache
-      .get_sync(
-        specifier,
-        CodeCacheType::Script,
-        code_timestamp.to_string().as_str(),
-      )
-      .inspect(|_| {
-        // This log line is also used by tests.
-        log::debug!(
-          "V8 code cache hit for script: {specifier}, [{code_timestamp}]"
-        );
-      })
-  } else {
-    None
-  }
-}
-
-fn set_code_cache(
-  code_cache: Arc<dyn CodeCache>,
-  specifier: &str,
-  data: &[u8],
-) {
-  // Code hashes are not maintained for op_eval_context scripts. Instead we use
-  // the modified timestamp from the local file system.
-  if let Ok(code_timestamp) = code_timestamp(specifier) {
-    // This log line is also used by tests.
-    log::debug!(
-      "Updating V8 code cache for script: {specifier}, [{code_timestamp}]",
-    );
-    code_cache.set_sync(
-      specifier,
-      CodeCacheType::Script,
-      code_timestamp.to_string().as_str(),
-      data,
-    );
-  }
-}
-
 impl MainWorker {
   pub fn bootstrap_from_options(
     main_module: ModuleSpecifier,
@@ -550,16 +505,41 @@ impl MainWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
-      enable_code_cache: options.v8_code_cache.is_some(),
       eval_context_code_cache_cbs: options.v8_code_cache.map(|cache| {
         let cache_clone = cache.clone();
         (
-          Box::new(move |specifier: &str| {
-            Ok(get_code_cache(cache.clone(), specifier).map(Cow::Owned))
-          }) as Box<dyn Fn(&_) -> _>,
-          Box::new(move |specifier: &str, data: &[u8]| {
-            set_code_cache(cache_clone.clone(), specifier, data);
-          }) as Box<dyn Fn(&_, &_)>,
+          Box::new(move |specifier: &ModuleSpecifier, code: &v8::String| {
+            let source_hash = {
+              use std::hash::Hash;
+              use std::hash::Hasher;
+              let mut hasher = twox_hash::XxHash64::default();
+              code.hash(&mut hasher);
+              hasher.finish()
+            };
+            let data = cache
+              .get_sync(specifier, CodeCacheType::Script, source_hash)
+              .inspect(|_| {
+                // This log line is also used by tests.
+                log::debug!("V8 code cache hit for script: {specifier}, [{source_hash}]");
+              })
+              .map(Cow::Owned);
+            Ok(SourceCodeCacheInfo {
+              data,
+              hash: source_hash,
+            })
+          }) as Box<dyn Fn(&_, &_) -> _>,
+          Box::new(
+            move |specifier: ModuleSpecifier, source_hash: u64, data: &[u8]| {
+              // This log line is also used by tests.
+              log::debug!("Updating V8 code cache for script: {specifier}, [{source_hash}]");
+              cache_clone.set_sync(
+                specifier,
+                CodeCacheType::Script,
+                source_hash,
+                data,
+              );
+            },
+          ) as Box<dyn Fn(_, _, &_)>,
         )
       }),
       ..Default::default()
