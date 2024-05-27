@@ -1753,9 +1753,7 @@ impl CliOptions {
 
     if *DENO_FUTURE {
       from_config_file.extend_from_slice(&[
-        deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string(),
         deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string(),
-        deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME.to_string(),
       ]);
     }
 
