@@ -5088,28 +5088,32 @@ function initializeCountSizeFunction(globalObject) {
   WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
 }
 
-async function* createAsyncFromSyncIterator(syncIterator) {
-  // deno-lint-ignore prefer-primordials
-  yield* syncIterator;
-}
-
 // Ref: https://tc39.es/ecma262/#sec-getiterator
-function getIterator(obj, async = false) {
-  if (async) {
-    if (obj[SymbolAsyncIterator] == null) {
-      if (obj[SymbolIterator] == null) {
-        throw new TypeError("No iterator found");
-      }
-      return createAsyncFromSyncIterator(obj[SymbolIterator]());
-    } else {
-      return obj[SymbolAsyncIterator]();
+function getAsyncOrSyncIterator(obj) {
+  let iterator;
+  if (obj[SymbolAsyncIterator] != null) {
+    iterator = obj[SymbolAsyncIterator]();
+    if (!isObject(iterator)) {
+      throw new TypeError(
+        "[Symbol.asyncIterator] returned a non-object value",
+      );
+    }
+  } else if (obj[SymbolIterator] != null) {
+    iterator = obj[SymbolIterator]();
+    if (!isObject(iterator)) {
+      throw new TypeError("[Symbol.iterator] returned a non-object value");
     }
   } else {
-    if (obj[SymbolIterator] == null) {
-      throw new TypeError("No iterator found");
-    }
-    return obj[SymbolIterator]();
+    throw new TypeError("No iterator found");
   }
+  if (typeof iterator.next !== "function") {
+    throw new TypeError("iterator.next is not a function");
+  }
+  return iterator;
+}
+
+function isObject(x) {
+  return (typeof x === "object" && x != null) || typeof x === "function";
 }
 
 const _resourceBacking = Symbol("[[resourceBacking]]");
@@ -5204,26 +5208,29 @@ class ReadableStream {
     );
     asyncIterable = webidl.converters.any(asyncIterable);
 
-    const iterator = getIterator(asyncIterable, true);
+    const iterator = getAsyncOrSyncIterator(asyncIterable);
 
     const stream = createReadableStream(noop, async () => {
       // deno-lint-ignore prefer-primordials
       const res = await iterator.next();
-      if (typeof res !== "object") {
+      if (!isObject(res)) {
         throw new TypeError("iterator.next value is not an object");
       }
       if (res.done) {
         readableStreamDefaultControllerClose(stream[_controller]);
       } else {
-        readableStreamDefaultControllerEnqueue(stream[_controller], res.value);
+        readableStreamDefaultControllerEnqueue(
+          stream[_controller],
+          await res.value,
+        );
       }
     }, async (reason) => {
-      if (typeof iterator.return === "undefined") {
+      if (iterator.return == null) {
         return undefined;
       } else {
         // deno-lint-ignore prefer-primordials
         const res = await iterator.return(reason);
-        if (typeof res !== "object") {
+        if (!isObject(res)) {
           throw new TypeError("iterator.return value is not an object");
         } else {
           return undefined;
