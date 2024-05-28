@@ -99,6 +99,7 @@ Object.defineProperty(globalThis, "{0}", {{
     lastThrownError: undefined,
     inspectArgs: Deno[Deno.internal].inspectArgs,
     noColor: Deno.noColor,
+    closed: this.closed
   }},
 }});
 Object.defineProperty(globalThis, "_", {{
@@ -299,8 +300,9 @@ impl ReplSession {
   }
 
   pub async fn closing(&mut self) -> Result<bool, AnyError> {
+    let expression = format!(r#"{}.closed"#, *REPL_INTERNALS_NAME);
     let closed = self
-      .evaluate_expression("(this.closed)")
+      .evaluate_expression(&expression)
       .await?
       .result
       .value
