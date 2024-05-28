@@ -31,7 +31,6 @@ use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types::request::*;
@@ -105,6 +104,7 @@ use crate::tools::upgrade::upgrade_check_enabled;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::is_importable_ext;
 use crate::util::path::to_percent_decoded_str;
+use crate::util::sync::AsyncFlag;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 struct LspRootCertStoreProvider(RootCertStore);
@@ -136,23 +136,6 @@ pub struct StateSnapshot {
   pub config: Arc<Config>,
   pub documents: Arc<Documents>,
   pub resolver: Arc<LspResolver>,
-}
-
-#[derive(Debug, Default, Clone)]
-struct AsyncFlag(CancellationToken);
-
-impl AsyncFlag {
-  fn raise(&self) {
-    self.0.cancel();
-  }
-
-  fn is_raised(&self) -> bool {
-    self.0.is_cancelled()
-  }
-
-  fn wait_raised(&self) -> impl std::future::Future<Output = ()> + '_ {
-    self.0.cancelled()
-  }
 }
 
 type LanguageServerTaskFn = Box<dyn FnOnce(LanguageServer) + Send + Sync>;
@@ -234,11 +217,11 @@ pub struct Inner {
 }
 
 impl LanguageServer {
-  pub fn new(client: Client, shutdown_token: CancellationToken) -> Self {
+  pub fn new(client: Client, shutdown_flag: AsyncFlag) -> Self {
     Self {
       inner: Arc::new(tokio::sync::RwLock::new(Inner::new(client))),
       init_flag: Default::default(),
-      shutdown_flag: AsyncFlag(shutdown_token),
+      shutdown_flag,
     }
   }
 
