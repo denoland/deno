@@ -123,8 +123,8 @@ pub struct LanguageServer {
   /// TODO(nayeemrmn): This wouldn't be necessary if LSP allowed
   /// `workspace/configuration` requests in the `initialize` handler. See:
   /// https://github.com/Microsoft/language-server-protocol/issues/567#issuecomment-2085131917
-  init_token: CancellationToken,
-  shutdown_token: CancellationToken,
+  init_flag: AsyncFlag,
+  shutdown_flag: AsyncFlag,
 }
 
 /// Snapshot of the state used by TSC.
@@ -135,6 +135,23 @@ pub struct StateSnapshot {
   pub config: Arc<Config>,
   pub documents: Arc<Documents>,
   pub resolver: Arc<LspResolver>,
+}
+
+#[derive(Debug, Default, Clone)]
+struct AsyncFlag(CancellationToken);
+
+impl AsyncFlag {
+  fn raise(&self) {
+    self.0.cancel();
+  }
+
+  fn is_raised(&self) -> bool {
+    self.0.is_cancelled()
+  }
+
+  fn wait_raised(&self) -> impl std::future::Future<Output = ()> + '_ {
+    self.0.cancelled()
+  }
 }
 
 type LanguageServerTaskFn = Box<dyn FnOnce(LanguageServer) + Send + Sync>;
@@ -219,8 +236,8 @@ impl LanguageServer {
   pub fn new(client: Client, shutdown_token: CancellationToken) -> Self {
     Self {
       inner: Arc::new(tokio::sync::RwLock::new(Inner::new(client))),
-      init_token: Default::default(),
-      shutdown_token,
+      init_flag: Default::default(),
+      shutdown_flag: AsyncFlag(shutdown_token),
     }
   }
 
@@ -232,8 +249,8 @@ impl LanguageServer {
     referrer: ModuleSpecifier,
     force_global_cache: bool,
   ) -> LspResult<Option<Value>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     async fn create_graph_for_caching(
       cli_options: CliOptions,
@@ -336,8 +353,8 @@ impl LanguageServer {
   pub async fn latest_diagnostic_batch_index_request(
     &self,
   ) -> LspResult<Option<Value>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     Ok(
       self
@@ -351,15 +368,15 @@ impl LanguageServer {
   }
 
   pub async fn performance_request(&self) -> LspResult<Option<Value>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     Ok(Some(self.inner.read().await.get_performance()))
   }
 
   pub async fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.task_definitions()
   }
@@ -368,8 +385,8 @@ impl LanguageServer {
     &self,
     params: Option<Value>,
   ) -> LspResult<Option<Value>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     let inner = self.inner.read().await;
     if let Some(testing_server) = &inner.maybe_testing_server {
@@ -391,8 +408,8 @@ impl LanguageServer {
     &self,
     params: Option<Value>,
   ) -> LspResult<Option<Value>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     if let Some(testing_server) = &self.inner.read().await.maybe_testing_server
     {
@@ -410,8 +427,8 @@ impl LanguageServer {
     &self,
     params: Option<Value>,
   ) -> LspResult<Option<Value>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     match params.map(serde_json::from_value) {
       Some(Ok(params)) => Ok(Some(
@@ -2838,8 +2855,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: ExecuteCommandParams,
   ) -> LspResult<Option<Value>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     if params.command == "deno.cache" {
       #[derive(Default, Deserialize)]
@@ -2884,7 +2901,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       inner.refresh_resolver().await;
       inner.refresh_documents_config().await;
       inner.task_queue.start(self.clone());
-      self.init_token.cancel();
+      self.init_flag.raise();
       if inner
         .config
         .client_capabilities
@@ -3002,34 +3019,34 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn shutdown(&self) -> LspResult<()> {
-    self.shutdown_token.cancel();
+    self.shutdown_flag.raise();
     Ok(())
   }
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.write().await.did_open(params).await;
   }
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.write().await.did_change(params).await
   }
 
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.write().await.did_save(params);
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.write().await.did_close(params).await
   }
@@ -3038,8 +3055,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeConfigurationParams,
   ) {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     let mark = {
       let inner = self.inner.read().await;
@@ -3080,8 +3097,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeWatchedFilesParams,
   ) {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self
       .inner
@@ -3095,8 +3112,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeWorkspaceFoldersParams,
   ) {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     let mark = {
       let mut inner = self.inner.write().await;
@@ -3141,8 +3158,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DocumentSymbolParams,
   ) -> LspResult<Option<DocumentSymbolResponse>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.document_symbol(params).await
   }
@@ -3151,15 +3168,15 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.formatting(params).await
   }
 
   async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.hover(params).await
   }
@@ -3168,8 +3185,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: InlayHintParams,
   ) -> LspResult<Option<Vec<InlayHint>>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.inlay_hint(params).await
   }
@@ -3178,8 +3195,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CodeActionParams,
   ) -> LspResult<Option<CodeActionResponse>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.code_action(params).await
   }
@@ -3188,8 +3205,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CodeAction,
   ) -> LspResult<CodeAction> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.code_action_resolve(params).await
   }
@@ -3198,15 +3215,15 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CodeLensParams,
   ) -> LspResult<Option<Vec<CodeLens>>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.code_lens(params).await
   }
 
   async fn code_lens_resolve(&self, params: CodeLens) -> LspResult<CodeLens> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.code_lens_resolve(params).await
   }
@@ -3215,8 +3232,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DocumentHighlightParams,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.document_highlight(params).await
   }
@@ -3225,8 +3242,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: ReferenceParams,
   ) -> LspResult<Option<Vec<Location>>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.references(params).await
   }
@@ -3235,8 +3252,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: GotoDefinitionParams,
   ) -> LspResult<Option<GotoDefinitionResponse>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.goto_definition(params).await
   }
@@ -3245,8 +3262,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: GotoTypeDefinitionParams,
   ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.goto_type_definition(params).await
   }
@@ -3255,8 +3272,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CompletionParams,
   ) -> LspResult<Option<CompletionResponse>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.completion(params).await
   }
@@ -3265,8 +3282,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CompletionItem,
   ) -> LspResult<CompletionItem> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.completion_resolve(params).await
   }
@@ -3275,8 +3292,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: GotoImplementationParams,
   ) -> LspResult<Option<GotoImplementationResponse>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.goto_implementation(params).await
   }
@@ -3285,8 +3302,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: FoldingRangeParams,
   ) -> LspResult<Option<Vec<FoldingRange>>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.folding_range(params).await
   }
@@ -3295,8 +3312,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CallHierarchyIncomingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.incoming_calls(params).await
   }
@@ -3305,8 +3322,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CallHierarchyOutgoingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.outgoing_calls(params).await
   }
@@ -3315,8 +3332,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CallHierarchyPrepareParams,
   ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.prepare_call_hierarchy(params).await
   }
@@ -3325,8 +3342,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: RenameParams,
   ) -> LspResult<Option<WorkspaceEdit>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.rename(params).await
   }
@@ -3335,8 +3352,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: SelectionRangeParams,
   ) -> LspResult<Option<Vec<SelectionRange>>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.selection_range(params).await
   }
@@ -3345,8 +3362,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: SemanticTokensParams,
   ) -> LspResult<Option<SemanticTokensResult>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.semantic_tokens_full(params).await
   }
@@ -3355,8 +3372,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: SemanticTokensRangeParams,
   ) -> LspResult<Option<SemanticTokensRangeResult>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.semantic_tokens_range(params).await
   }
@@ -3365,8 +3382,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: SignatureHelpParams,
   ) -> LspResult<Option<SignatureHelp>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.signature_help(params).await
   }
@@ -3375,8 +3392,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: RenameFilesParams,
   ) -> LspResult<Option<WorkspaceEdit>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.will_rename_files(params).await
   }
@@ -3385,8 +3402,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: WorkspaceSymbolParams,
   ) -> LspResult<Option<Vec<SymbolInformation>>> {
-    if !self.init_token.is_cancelled() {
-      self.init_token.cancelled().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
     }
     self.inner.read().await.symbol(params).await
   }
