@@ -8,6 +8,7 @@ use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::display::write_to_stdout_ignore_sigpipe;
 use crate::factory::CliFactory;
+use crate::graph_util::graph_exit_lock_errors;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
 use deno_ast::diagnostics::Diagnostic;
@@ -101,6 +102,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
     }
     DocSourceFileFlag::Paths(ref source_files) => {
       let module_graph_creator = factory.module_graph_creator().await?;
+      let maybe_lockfile = factory.maybe_lockfile();
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
@@ -119,6 +121,10 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       let graph = module_graph_creator
         .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
         .await?;
+
+      if maybe_lockfile.is_some() {
+        graph_exit_lock_errors(&graph);
+      }
 
       let doc_parser = doc::DocParser::new(
         &graph,

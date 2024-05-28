@@ -114,14 +114,16 @@ pub async fn build<
   let graph = build_graph(entry_points).await?;
 
   // surface any errors
+  let real_fs = Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>;
   graph_util::graph_valid(
     &graph,
-    Arc::new(deno_fs::RealFs),
+    &real_fs,
     &graph.roots,
     graph_util::GraphValidOptions {
       is_vendoring: true,
       check_js: true,
       follow_type_only: true,
+      exit_lockfile_errors: true,
     },
   )?;
 

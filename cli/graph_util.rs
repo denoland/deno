@@ -54,6 +54,9 @@ pub struct GraphValidOptions {
   pub check_js: bool,
   pub follow_type_only: bool,
   pub is_vendoring: bool,
+  /// Whether to exit the process for lockfile errors.
+  /// Otherwise, surfaces lockfile errors as errors.
+  pub exit_lockfile_errors: bool,
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -65,10 +68,14 @@ pub struct GraphValidOptions {
 /// for the CLI.
 pub fn graph_valid(
   graph: &ModuleGraph,
-  fs: Arc<dyn FileSystem>,
+  fs: &Arc<dyn FileSystem>,
   roots: &[ModuleSpecifier],
   options: GraphValidOptions,
 ) -> Result<(), AnyError> {
+  if options.exit_lockfile_errors {
+    graph_exit_lock_errors(graph);
+  }
+
   let mut errors = graph
     .walk(
       roots,
@@ -99,70 +106,9 @@ pub fn graph_valid(
           )
         }
         ModuleGraphError::ModuleError(error) => {
-          match error {
-            ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
-            | ModuleError::Missing(specifier, _) => {
-              sloppy_imports_error_message(fs.clone(), specifier, error)
-            }
-            ModuleError::LoadingErr(specifier, _, ModuleLoadError::Jsr(JsrLoadError::ContentChecksumIntegrity(checksum_err))) => {
-              let err = format!(
-                concat!(
-                  "Integrity check failed in package. The package may have been tampered with.\n\n",
-                  "  Specifier: {}\n",
-                  "  Actual: {}\n",
-                  "  Expected: {}\n\n",
-                  "If you modified your global cache, run again with the --reload flag to restore ",
-                  "its state. If you want to modify dependencies locally run again with the ",
-                  "--vendor flag or specify `\"vendor\": true` in a deno.json then modify the contents ",
-                  "of the vendor/ folder."
-                ),
-                specifier,
-                checksum_err.actual,
-                checksum_err.expected,
-              );
-              log::error!("{} {}", colors::red("error:"), err);
-              std::process::exit(10);
-            }
-            ModuleError::LoadingErr(_specifier, _, ModuleLoadError::Jsr(JsrLoadError::PackageVersionManifestChecksumIntegrity(package_nv, checksum_err))) => {
-              let err = format!(
-                concat!(
-                  "Integrity check failed for package. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
-                  "  Package: {}\n",
-                  "  Actual: {}\n",
-                  "  Expected: {}\n\n",
-                  "This could be caused by:\n",
-                  "  * the lock file may be corrupt\n",
-                  "  * the source itself may be corrupt\n\n",
-                  "Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server."
-                ),
-                package_nv,
-                checksum_err.actual,
-                checksum_err.expected,
-              );
-              log::error!("{} {}", colors::red("error:"), err);
-              std::process::exit(10);
-            }
-            ModuleError::LoadingErr(specifier, _, ModuleLoadError::HttpsChecksumIntegrity(checksum_err)) => {
-              let err = format!(
-                concat!(
-                  "Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
-                  "  Specifier: {}\n",
-                  "  Actual: {}\n",
-                  "  Expected: {}\n\n",
-                  "This could be caused by:\n",
-                  "  * the lock file may be corrupt\n",
-                  "  * the source itself may be corrupt\n\n",
-                  "Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server."
-                ),
-                specifier,
-                checksum_err.actual,
-                checksum_err.expected,
-              );
-              log::error!("{} {}", colors::red("error:"), err);
-              std::process::exit(10);
-            }
-            _ => format!("{}", error),
-          }
+          enhanced_lockfile_error_message(error)
+            .or_else(|| enhanced_sloppy_imports_error_message(fs, error))
+            .unwrap_or_else(|| format!("{}", error))
         }
       };
 
@@ -215,6 +161,19 @@ pub fn graph_valid(
     Err(error)
   } else {
     Ok(())
+  }
+}
+
+pub fn graph_exit_lock_errors(graph: &ModuleGraph) {
+  for error in graph.module_errors() {
+    exit_for_lockfile_error(error);
+  }
+}
+
+fn exit_for_lockfile_error(err: &ModuleError) {
+  if let Some(err_message) = enhanced_lockfile_error_message(err) {
+    log::error!("{} {}", colors::red("error:"), err_message);
+    std::process::exit(10);
   }
 }
 
@@ -449,7 +408,6 @@ impl ModuleGraphBuilder {
       }
     }
 
-    // todo(THIS PR): maybe clone from the lockfile then repopulate
     struct LockfileLocker<'a>(&'a Mutex<Lockfile>);
 
     impl<'a> deno_graph::source::Locker for LockfileLocker<'a> {
@@ -746,12 +704,13 @@ impl ModuleGraphBuilder {
   ) -> Result<(), AnyError> {
     graph_valid(
       graph,
-      self.fs.clone(),
+      &self.fs,
       roots,
       GraphValidOptions {
         is_vendoring: false,
         follow_type_only: self.options.type_check_mode().is_true(),
         check_js: self.options.check_js(),
+        exit_lockfile_errors: true,
       },
     )
   }
@@ -789,21 +748,99 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   message
 }
 
-fn sloppy_imports_error_message(
-  fs: Arc<dyn FileSystem>,
-  specifier: &ModuleSpecifier,
+fn enhanced_sloppy_imports_error_message(
+  fs: &Arc<dyn FileSystem>,
   error: &ModuleError,
-) -> String {
-  let additional_message = SloppyImportsResolver::new(fs)
-    .resolve(specifier, ResolutionMode::Execution)
-    .as_suggestion_message();
-  if let Some(message) = additional_message {
-    format!(
-      "{} {} or run with --unstable-sloppy-imports",
-      error, message
-    )
-  } else {
-    format!("{}", error)
+) -> Option<String> {
+  match error {
+    ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
+    | ModuleError::Missing(specifier, _) => {
+      let additional_message = SloppyImportsResolver::new(fs.clone())
+        .resolve(specifier, ResolutionMode::Execution)
+        .as_suggestion_message()?;
+      Some(format!(
+        "{} {} or run with --unstable-sloppy-imports",
+        error,
+        additional_message,
+      ))
+    }
+    _ => None,
+  }
+}
+
+fn enhanced_lockfile_error_message(err: &ModuleError) -> Option<String> {
+  match err {
+    ModuleError::LoadingErr(
+      specifier,
+      _,
+      ModuleLoadError::Jsr(JsrLoadError::ContentChecksumIntegrity(
+        checksum_err,
+      )),
+    ) => {
+      Some(format!(
+        concat!(
+          "Integrity check failed in package. The package may have been tampered with.\n\n",
+          "  Specifier: {}\n",
+          "  Actual: {}\n",
+          "  Expected: {}\n\n",
+          "If you modified your global cache, run again with the --reload flag to restore ",
+          "its state. If you want to modify dependencies locally run again with the ",
+          "--vendor flag or specify `\"vendor\": true` in a deno.json then modify the contents ",
+          "of the vendor/ folder."
+        ),
+        specifier,
+        checksum_err.actual,
+        checksum_err.expected,
+      ))
+    }
+    ModuleError::LoadingErr(
+      _specifier,
+      _,
+      ModuleLoadError::Jsr(
+        JsrLoadError::PackageVersionManifestChecksumIntegrity(
+          package_nv,
+          checksum_err,
+        ),
+      ),
+    ) => {
+      Some(format!(
+        concat!(
+          "Integrity check failed for package. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
+          "  Package: {}\n",
+          "  Actual: {}\n",
+          "  Expected: {}\n\n",
+          "This could be caused by:\n",
+          "  * the lock file may be corrupt\n",
+          "  * the source itself may be corrupt\n\n",
+          "Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server."
+        ),
+        package_nv,
+        checksum_err.actual,
+        checksum_err.expected,
+      ))
+    }
+    ModuleError::LoadingErr(
+      specifier,
+      _,
+      ModuleLoadError::HttpsChecksumIntegrity(checksum_err),
+    ) => {
+      Some(format!(
+        concat!(
+          "Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
+          "  Specifier: {}\n",
+          "  Actual: {}\n",
+          "  Expected: {}\n\n",
+          "This could be caused by:\n",
+          "  * the lock file may be corrupt\n",
+          "  * the source itself may be corrupt\n\n",
+          "Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server."
+        ),
+        specifier,
+        checksum_err.actual,
+        checksum_err.expected,
+      ))
+    }
+    _ => None,
   }
 }
 

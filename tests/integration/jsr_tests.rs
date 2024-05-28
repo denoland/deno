@@ -351,7 +351,7 @@ console.log(add);"#,
   // test it properly checks the checksum on download
   test_context
     .new_command()
-    .args("run  main.ts")
+    .args("run main.ts")
     .run()
     .assert_matches_text(
       "Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/meta.json

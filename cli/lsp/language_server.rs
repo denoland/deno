@@ -248,12 +248,13 @@ impl LanguageServer {
         .await?;
       graph_util::graph_valid(
         &graph,
-        factory.fs().clone(),
+        factory.fs(),
         &roots,
         graph_util::GraphValidOptions {
           is_vendoring: false,
           follow_type_only: true,
           check_js: false,
+          exit_lockfile_errors: false,
         },
       )?;
 
