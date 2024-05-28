@@ -332,9 +332,18 @@ async fn sync_resolution_with_fs(
           join_package_name(&sub_node_modules, &package.id.nv.name);
         let cache_folder =
           cache.package_folder_for_name_and_version(&package.id.nv);
-        clone_dir_recursive(&cache_folder, &package_path)?;
-        // write out a file that indicates this folder has been initialized
-        fs::write(initialized_file, "")?;
+
+        deno_core::unsync::spawn_blocking({
+          let package_path = package_path.clone();
+          move || {
+            clone_dir_recursive(&cache_folder, &package_path)?;
+            // write out a file that indicates this folder has been initialized
+            fs::write(initialized_file, "")?;
+
+            Ok::<_, AnyError>(())
+          }
+        })
+        .await??;
 
         if package.bin.is_some() {
           bin_entries_to_setup
@@ -374,6 +383,7 @@ async fn sync_resolution_with_fs(
           .join("node_modules"),
         &package.id.nv.name,
       );
+
       clone_dir_recursive(&source_path, &package_path)?;
       // write out a file that indicates this folder has been initialized
       fs::write(initialized_file, "")?;
