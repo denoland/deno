@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import * as http2 from "node:http2";
+import { Buffer } from "node:buffer";
 import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert/mod.ts";
 import { curlRequest } from "../unit/test_util.ts";
@@ -173,7 +174,7 @@ Deno.test("[node/http2 client] write buffer on request stream works", async () =
   client.on("error", (err) => console.error(err));
 
   const req = client.request({ ":method": "POST", ":path": "/echo_server" });
-  req.write(new Uint8Array(new TextEncoder().encode("amazing")), "binary");
+  req.write(Buffer.from("amazing"));
 
   let receivedData = "";
   req.setEncoding("utf8");
