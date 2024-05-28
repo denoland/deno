@@ -126,7 +126,7 @@ impl GraphDiagnosticsCollector {
     let options = WalkOptions {
       check_js: true,
       follow_dynamic: true,
-      // this being disabled will cause it to follow everything in the graph
+      // search the entire graph and not just the fast check subset
       prefer_fast_check_graph: false,
       follow_type_only: true,
     };
