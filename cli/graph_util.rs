@@ -566,16 +566,24 @@ impl ModuleGraphBuilder {
 
     graph.build(roots, loader, options).await;
 
-    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-      // ensure that the top level package.json is installed if a
-      // specifier was matched in the package.json
-      if self.resolver.found_package_json_dep() {
-        npm_resolver.ensure_top_level_package_json_install().await?;
-      }
+    let has_npm_packages_changed =
+      graph.npm_packages.len() != initial_npm_packages;
+    // skip installing npm packages if we don't have to
+    if is_first_execution
+      && self.npm_resolver.root_node_modules_path().is_some()
+      || has_npm_packages_changed
+    {
+      if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+        // ensure that the top level package.json is installed if a
+        // specifier was matched in the package.json
+        if self.resolver.found_package_json_dep() {
+          npm_resolver.ensure_top_level_package_json_install().await?;
+        }
 
-      // resolve the dependencies of any pending dependencies
-      // that were inserted by building the graph
-      npm_resolver.resolve_pending().await?;
+        // resolve the dependencies of any pending dependencies
+        // that were inserted by building the graph
+        npm_resolver.resolve_pending().await?;
+      }
     }
 
     let has_redirects_changed = graph.redirects.len() != initial_redirects_len;
@@ -583,8 +591,6 @@ impl ModuleGraphBuilder {
       graph.packages.package_deps_sum() != initial_package_deps_len;
     let has_jsr_package_mappings_changed =
       graph.packages.mappings().len() != initial_package_mappings_len;
-    let has_npm_packages_changed =
-      graph.npm_packages.len() != initial_npm_packages;
 
     if has_redirects_changed
       || has_jsr_package_deps_changed
