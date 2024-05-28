@@ -17,6 +17,7 @@ use crate::cache::CACHE_PERM;
 use crate::npm::cache_dir::mixed_case_package_name_decode;
 use crate::util::fs::atomic_write_file;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
+use crate::util::fs::clone_dir_recursive;
 use crate::util::fs::symlink_dir;
 use crate::util::fs::LaxSingleProcessFsFlag;
 use crate::util::progress_bar::ProgressBar;
@@ -44,8 +45,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::npm::cache_dir::mixed_case_package_name_encode;
-use crate::util::fs::copy_dir_recursive;
-use crate::util::fs::hard_link_dir_recursive;
 
 use super::super::super::common::types_package_name;
 use super::super::cache::NpmCache;
@@ -331,16 +330,9 @@ async fn sync_resolution_with_fs(
         let sub_node_modules = folder_path.join("node_modules");
         let package_path =
           join_package_name(&sub_node_modules, &package.id.nv.name);
-        fs::create_dir_all(&package_path)
-          .with_context(|| format!("Creating '{}'", folder_path.display()))?;
         let cache_folder =
           cache.package_folder_for_name_and_version(&package.id.nv);
-        if hard_link_dir_recursive(&cache_folder, &package_path).is_err() {
-          // Fallback to copying the directory.
-          //
-          // Also handles EXDEV when when trying to hard link across volumes.
-          copy_dir_recursive(&cache_folder, &package_path)?;
-        }
+        clone_dir_recursive(&cache_folder, &package_path)?;
         // write out a file that indicates this folder has been initialized
         fs::write(initialized_file, "")?;
 
@@ -373,9 +365,7 @@ async fn sync_resolution_with_fs(
       let sub_node_modules = destination_path.join("node_modules");
       let package_path =
         join_package_name(&sub_node_modules, &package.id.nv.name);
-      fs::create_dir_all(&package_path).with_context(|| {
-        format!("Creating '{}'", destination_path.display())
-      })?;
+
       let source_path = join_package_name(
         &deno_local_registry_dir
           .join(get_package_folder_id_folder_name(
@@ -384,7 +374,7 @@ async fn sync_resolution_with_fs(
           .join("node_modules"),
         &package.id.nv.name,
       );
-      hard_link_dir_recursive(&source_path, &package_path)?;
+      clone_dir_recursive(&source_path, &package_path)?;
       // write out a file that indicates this folder has been initialized
       fs::write(initialized_file, "")?;
     }
