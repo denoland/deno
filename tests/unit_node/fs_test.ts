@@ -7,6 +7,7 @@ import {
   constants,
   createWriteStream,
   existsSync,
+  lstatSync,
   mkdtempSync,
   promises,
   readFileSync,
@@ -156,3 +157,11 @@ Deno.test("[node/fs createWriteStream", async () => {
     await Deno.remove(tempDir, { recursive: true });
   }
 });
+
+Deno.test(
+  "[node/fs lstatSync] supports throwIfNoEntry option",
+  () => {
+    const result = lstatSync("non-existing-path", { throwIfNoEntry: false });
+    assertEquals(result, undefined);
+  },
+);
