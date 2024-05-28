@@ -224,7 +224,7 @@ async function ensureNoNewITests() {
     "run_tests.rs": 372,
     "shared_library_tests.rs": 0,
     "task_tests.rs": 30,
-    "test_tests.rs": 78,
+    "test_tests.rs": 77,
     "upgrade_tests.rs": 0,
     "vendor_tests.rs": 1,
     "watcher_tests.rs": 0,
