@@ -175,8 +175,7 @@ impl ModuleLoadPreparer {
 
     // write the lockfile if there is one
     if let Some(lockfile) = &self.lockfile {
-      let lockfile = lockfile.lock();
-      write_lockfile_if_has_changes(&lockfile)?;
+      write_lockfile_if_has_changes(&lockfile.lock())?;
     }
 
     drop(_pb_clear_guard);
@@ -816,9 +815,6 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
       let graph = update_permit.graph_mut();
-      // if is_dynamic && graph.contains(&specifier) {
-      //   return Ok(());
-      // }
       module_load_preparer
         .prepare_module_load(
           graph,

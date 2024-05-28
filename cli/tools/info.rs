@@ -67,10 +67,9 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
       .create_graph_with_loader(GraphKind::All, vec![specifier], &mut loader)
       .await?;
 
-    // If there is a lockfile...
+    // write out the lockfile if there is one
     if let Some(lockfile) = &maybe_lockfile {
-      let lockfile = lockfile.lock();
-      write_lockfile_if_has_changes(&lockfile)?;
+      write_lockfile_if_has_changes(&lockfile.lock())?;
     }
 
     if info_flags.json {

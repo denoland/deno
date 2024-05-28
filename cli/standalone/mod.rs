@@ -180,7 +180,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     if original_specifier.scheme() == "data" {
       let data_url_text =
         match deno_graph::source::RawDataUrl::parse(original_specifier)
-          .and_then(|url| url.decode().map_err(|err| err.into()))
+          .and_then(|url| url.decode())
         {
           Ok(response) => response,
           Err(err) => {

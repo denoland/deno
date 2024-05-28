@@ -450,9 +450,9 @@ impl ModuleGraphBuilder {
     }
 
     // todo(THIS PR): maybe clone from the lockfile then repopulate
-    struct LockfileLocker(Arc<Mutex<Lockfile>>);
+    struct LockfileLocker<'a>(&'a Mutex<Lockfile>);
 
-    impl deno_graph::source::Locker for LockfileLocker {
+    impl<'a> deno_graph::source::Locker for LockfileLocker<'a> {
       fn get_remote_checksum(
         &self,
         specifier: &deno_ast::ModuleSpecifier,
@@ -512,9 +512,8 @@ impl ModuleGraphBuilder {
     }
 
     let maybe_imports = self.options.to_maybe_imports()?;
-    let analyzer = self
-      .module_info_cache
-      .as_module_analyzer(self.parsed_source_cache.clone());
+    let parser = self.parsed_source_cache.as_capturing_parser();
+    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
     let mut loader = match options.loader {
       Some(loader) => MutLoaderRef::Borrowed(loader),
       None => MutLoaderRef::Owned(self.create_graph_loader()),
@@ -531,7 +530,7 @@ impl ModuleGraphBuilder {
     let mut locker = self
       .lockfile
       .as_ref()
-      .map(|lockfile| LockfileLocker(lockfile.clone()));
+      .map(|lockfile| LockfileLocker(lockfile));
     self
       .build_graph_with_npm_resolution_and_build_options(
         graph,

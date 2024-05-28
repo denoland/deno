@@ -73,6 +73,8 @@ pub fn write_lockfile_if_has_changes(
   let Some(bytes) = lockfile.resolve_write_bytes() else {
     return Ok(()); // nothing to do
   };
+  // do an atomic write to reduce the chance of multiple deno
+  // processes corrupting the file
   atomic_write_file(&lockfile.filename, bytes, cache::CACHE_PERM)
     .context("Failed writing lockfile.")
 }
