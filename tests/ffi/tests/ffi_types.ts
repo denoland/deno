@@ -160,7 +160,7 @@ let r_1: number | bigint = result;
 const result2 = remote.symbols.method17();
 // @ts-expect-error: Invalid argument
 result2.then((_0: string) => {});
-result2.then((_1: number | bigint) => {});
+result2.then((_1: bigint) => {});
 
 const result3 = remote.symbols.method18();
 // @ts-expect-error: Invalid argument
@@ -430,7 +430,7 @@ type __Tests__ = [
       symbols: {
         foo: (
           ...args: (number | Deno.PointerValue | null)[]
-        ) => number | bigint;
+        ) => bigint;
       };
       close(): void;
     },

@@ -3170,14 +3170,8 @@
       "owning-type-message-port.any.worker.html": false,
       "owning-type.any.html": false,
       "owning-type.any.worker.html": false,
-      "from.any.html": [
-        "ReadableStream.from accepts a sync iterable of values",
-        "ReadableStream.from accepts a sync iterable of promises"
-      ],
-      "from.any.worker.html": [
-        "ReadableStream.from accepts a sync iterable of values",
-        "ReadableStream.from accepts a sync iterable of promises"
-      ]
+      "from.any.html": true,
+      "from.any.worker.html": true
     },
     "transform-streams": {
       "backpressure.any.html": true,
@@ -7162,9 +7156,6 @@
         "response-blob-realm.any.html": [
           "realm of the Uint8Array from Response bytes()"
         ],
-        "response-blob-realm.any.worker.html": [
-          "realm of the Uint8Array from Response bytes()"
-        ],
         "response-init-001.any.html": true,
         "response-init-001.any.worker.html": true,
         "response-init-002.any.html": true,
@@ -8716,14 +8707,8 @@
             "dynamic-import-with-assertion-argument.any.worker.html": true
           },
           "json-module": {
-            "charset-bom.any.html": [
-              "UTF-16BE BOM should result in parse error in JSON module script",
-              "UTF-16LE BOM should result in parse error in JSON module script"
-            ],
-            "charset-bom.any.worker.html": [
-              "UTF-16BE BOM should result in parse error in JSON module script",
-              "UTF-16LE BOM should result in parse error in JSON module script"
-            ],
+            "charset-bom.any.html": true,
+            "charset-bom.any.worker.html": true,
             "invalid-content-type.any.html": true,
             "invalid-content-type.any.worker.html": true,
             "non-object.any.html": true,

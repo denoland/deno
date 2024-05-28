@@ -85,6 +85,7 @@ use super::tsc::TsServer;
 use super::urls;
 use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
+use crate::args::write_lockfile_if_has_changes;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
@@ -247,12 +248,13 @@ impl LanguageServer {
         .await?;
       graph_util::graph_valid(
         &graph,
-        factory.fs().clone(),
+        factory.fs(),
         &roots,
         graph_util::GraphValidOptions {
           is_vendoring: false,
           follow_type_only: true,
           check_js: false,
+          exit_lockfile_errors: false,
         },
       )?;
 
@@ -260,8 +262,8 @@ impl LanguageServer {
       // found after caching
       if let Some(lockfile) = cli_options.maybe_lockfile() {
         let lockfile = lockfile.lock();
-        if let Err(err) = lockfile.write() {
-          lsp_warn!("Error writing lockfile: {:#}", err);
+        if let Err(err) = write_lockfile_if_has_changes(&lockfile) {
+          lsp_warn!("{:#}", err);
         }
       }
 

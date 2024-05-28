@@ -34,8 +34,9 @@ pub use deno_config::TsConfigType;
 pub use deno_config::TsTypeLib;
 pub use deno_config::WorkspaceConfig;
 pub use flags::*;
+pub use lockfile::read_lockfile_at_path;
+pub use lockfile::write_lockfile_if_has_changes;
 pub use lockfile::Lockfile;
-pub use lockfile::LockfileError;
 pub use package_json::PackageJsonDepsProvider;
 
 use deno_ast::ModuleSpecifier;
@@ -857,13 +858,17 @@ impl CliOptions {
       };
 
     if let Some(env_file_name) = &flags.env_file {
-      if (from_filename(env_file_name)).is_err() {
-        log::info!(
-          "{} The `--env` flag was used, but the dotenv file '{}' was not found.",
-          colors::yellow("Warning"),
-          env_file_name
-        );
-      }
+      match from_filename(env_file_name) {
+          Ok(_) => (),
+          Err(error) => {
+            match error {
+              dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
+              dotenvy::Error::Io(_)=> log::info!("{} The `--env` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
+              dotenvy::Error::EnvVar(_)=>log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
+              _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+            }
+          }
+        }
     }
 
     let disable_deprecated_api_warning = flags.log_level
@@ -1351,7 +1356,7 @@ impl CliOptions {
     } else if self.maybe_package_json.is_some() {
       Ok(Default::default())
     } else {
-      bail!("No config file found")
+      bail!("deno task couldn't find deno.json(c). See https://deno.land/manual@v{}/getting_started/configuration_file", env!("CARGO_PKG_VERSION"))
     }
   }
 
@@ -1750,6 +1755,15 @@ impl CliOptions {
       .unwrap_or_default();
 
     from_config_file.extend_from_slice(&self.flags.unstable_config.features);
+
+    if *DENO_FUTURE {
+      from_config_file.extend_from_slice(&[
+        deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string(),
+        deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string(),
+        deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME.to_string(),
+      ]);
+    }
+
     from_config_file
   }
 

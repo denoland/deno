@@ -387,6 +387,7 @@ pub struct TestCommandBuilder {
   args_text: String,
   args_vec: Vec<String>,
   split_output: bool,
+  debug_output: bool,
 }
 
 impl TestCommandBuilder {
@@ -406,6 +407,7 @@ impl TestCommandBuilder {
       command_name: "deno".to_string(),
       args_text: "".to_string(),
       args_vec: Default::default(),
+      debug_output: false,
     }
   }
 
@@ -479,6 +481,16 @@ impl TestCommandBuilder {
     self
       .envs_remove
       .insert(key.as_ref().to_string_lossy().to_string());
+    self
+  }
+
+  /// Set this to enable streaming the output of the command to stderr.
+  ///
+  /// Not deprecated, this is just here so you don't accidentally
+  /// commit code with this enabled.
+  #[deprecated]
+  pub fn debug_output(mut self) -> Self {
+    self.debug_output = true;
     self
   }
 
@@ -606,10 +618,27 @@ impl TestCommandBuilder {
   }
 
   pub fn run(&self) -> TestCommandOutput {
-    fn read_pipe_to_string(mut pipe: os_pipe::PipeReader) -> String {
-      let mut output = String::new();
-      pipe.read_to_string(&mut output).unwrap();
-      output
+    fn read_pipe_to_string(
+      mut pipe: os_pipe::PipeReader,
+      output_to_stderr: bool,
+    ) -> String {
+      if output_to_stderr {
+        let mut buffer = vec![0; 512];
+        let mut final_data = Vec::new();
+        loop {
+          let size = pipe.read(&mut buffer).unwrap();
+          if size == 0 {
+            break;
+          }
+          final_data.extend(&buffer[..size]);
+          std::io::stderr().write_all(&buffer[..size]).unwrap();
+        }
+        String::from_utf8_lossy(&final_data).to_string()
+      } else {
+        let mut output = String::new();
+        pipe.read_to_string(&mut output).unwrap();
+        output
+      }
     }
 
     fn sanitize_output(text: String, args: &[OsString]) -> String {
@@ -633,11 +662,16 @@ impl TestCommandBuilder {
       let (stderr_reader, stderr_writer) = pipe().unwrap();
       command.stdout(stdout_writer);
       command.stderr(stderr_writer);
+      let debug_output = self.debug_output;
       (
         None,
         Some((
-          std::thread::spawn(move || read_pipe_to_string(stdout_reader)),
-          std::thread::spawn(move || read_pipe_to_string(stderr_reader)),
+          std::thread::spawn(move || {
+            read_pipe_to_string(stdout_reader, debug_output)
+          }),
+          std::thread::spawn(move || {
+            read_pipe_to_string(stderr_reader, debug_output)
+          }),
         )),
       )
     } else {
@@ -660,8 +694,9 @@ impl TestCommandBuilder {
     // and dropping it closes them.
     drop(command);
 
-    let combined = combined_reader
-      .map(|pipe| sanitize_output(read_pipe_to_string(pipe), &args));
+    let combined = combined_reader.map(|pipe| {
+      sanitize_output(read_pipe_to_string(pipe, self.debug_output), &args)
+    });
 
     let status = process.wait().unwrap();
     let std_out_err = std_out_err_handle.map(|(stdout, stderr)| {

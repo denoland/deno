@@ -637,7 +637,7 @@ await dylib.symbols.call_fn_ptr_return_u8_thread_safe(returnU8Callback.pointer);
 
 // Test statics
 assertEquals(dylib.symbols.static_u32, 42);
-assertEquals(dylib.symbols.static_i64, -1242464576485);
+assertEquals(dylib.symbols.static_i64, -1242464576485n);
 assert(
   typeof dylib.symbols.static_ptr === "object"
 );

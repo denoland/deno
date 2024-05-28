@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -48,6 +47,7 @@ use deno_terminal::colors;
 use tokio::select;
 
 use crate::args::package_json::PackageJsonDeps;
+use crate::args::write_lockfile_if_has_changes;
 use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
 use crate::errors;
@@ -533,10 +533,7 @@ impl CliMainWorkerFactory {
         // For npm binary commands, ensure that the lockfile gets updated
         // so that we can re-use the npm resolution the next time it runs
         // for better performance
-        lockfile
-          .lock()
-          .write()
-          .context("Failed writing lockfile.")?;
+        write_lockfile_if_has_changes(&lockfile.lock())?;
       }
 
       (node_resolution.into_url(), is_main_cjs)

@@ -49,3 +49,27 @@ Deno.test({
     assertEquals(decoder.decode(data), "hello");
   },
 });
+
+Deno.test({
+  name: "Data is padded if position > length",
+  async fn() {
+    const tempFile: string = Deno.makeTempFileSync();
+
+    using file = await Deno.open(tempFile, {
+      create: true,
+      write: true,
+      read: true,
+    });
+
+    const str = "hello world";
+    const buffer = Buffer.from(str);
+    const bytesWritten = writeSync(file.rid, buffer, 0, str.length, 4);
+
+    const data = Deno.readFileSync(tempFile);
+    Deno.removeSync(tempFile);
+
+    assertEquals(bytesWritten, str.length);
+    // Check if result is padded
+    assertEquals(decoder.decode(data), "\x00\x00\x00\x00hello world");
+  },
+});
