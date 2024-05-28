@@ -1462,7 +1462,7 @@ declare namespace Deno {
    * Deno.exit(5);
    * ```
    *
-   * @category Runtime Environment
+   * @category Runtime
    */
   export function exit(code?: number): never;
 
@@ -1479,7 +1479,7 @@ declare namespace Deno {
    * console.log(Deno.exitCode); //-> 1
    * ```
    *
-   * @category Runtime Environment
+   * @category Runtime
    */
   export var exitCode: number;
 
