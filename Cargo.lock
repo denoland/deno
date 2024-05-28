@@ -1081,7 +1081,6 @@ dependencies = [
  "bincode",
  "bytes",
  "cache_control",
- "cfg-if",
  "chrono",
  "clap",
  "clap_complete",
