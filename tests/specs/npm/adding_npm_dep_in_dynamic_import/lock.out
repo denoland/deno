@@ -7,11 +7,11 @@
     },
     "npm": {
       "@denotest/add@1.0.0": {
-        "integrity": "sha512-KgwwXAkEQYoTmHAWGukagTXTISHua3DPnKtUwd2ju4/+IFtgkztqku1ZZg9y6mfKOCrkja+yZyky/ktQB7/9ZQ==",
+        "integrity": "[WILDLINE]",
         "dependencies": {}
       },
       "@denotest/subtract@1.0.0": {
-        "integrity": "sha512-JCkFYOt0KisCeT7+TtQaGPEqAPSs2tNlv5GZDCbSxPw1YVzWBbjj1YbUORAgtaXBZK0d7aUMvaIcuNKFDb9GIQ==",
+        "integrity": "[WILDLINE]",
         "dependencies": {}
       }
     }
