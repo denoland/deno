@@ -187,7 +187,7 @@ impl ModuleLoadPreparer {
       )
       .await?;
 
-    self.module_graph_builder.graph_roots_valid(graph, &roots)?;
+    self.module_graph_builder.graph_roots_valid(graph, roots)?;
 
     // write the lockfile if there is one
     if let Some(lockfile) = &self.lockfile {
