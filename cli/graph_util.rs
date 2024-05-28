@@ -472,7 +472,7 @@ impl ModuleGraphBuilder {
     let maybe_imports = self.options.to_maybe_imports()?;
     let analyzer = self
       .module_info_cache
-      .as_module_analyzer(self.parsed_source_cache.clone());
+      .as_module_analyzer(&self.parsed_source_cache);
     let mut loader = match options.loader {
       Some(loader) => MutLoaderRef::Borrowed(loader),
       None => MutLoaderRef::Owned(self.create_graph_loader()),

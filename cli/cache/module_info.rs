@@ -136,7 +136,7 @@ impl ModuleInfoCache {
 
   pub fn as_module_analyzer<'a>(
     &'a self,
-    parsed_source_cache: Arc<ParsedSourceCache>,
+    parsed_source_cache: &'a Arc<ParsedSourceCache>,
   ) -> ModuleInfoCacheModuleAnalyzer<'a> {
     ModuleInfoCacheModuleAnalyzer {
       module_info_cache: self,
@@ -147,7 +147,7 @@ impl ModuleInfoCache {
 
 pub struct ModuleInfoCacheModuleAnalyzer<'a> {
   module_info_cache: &'a ModuleInfoCache,
-  parsed_source_cache: Arc<ParsedSourceCache>,
+  parsed_source_cache: &'a Arc<ParsedSourceCache>,
 }
 
 #[async_trait::async_trait(?Send)]
