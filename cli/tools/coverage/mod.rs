@@ -68,10 +68,14 @@ impl crate::worker::CoverageCollector for CoverageCollector {
 
     let script_coverages = self.take_precise_coverage().await?.result;
     for script_coverage in script_coverages {
-      // Filter out internal JS files from being included in coverage reports
+      // Filter out internal and http/https JS files and eval'd scripts
+      // from being included in coverage reports
       if script_coverage.url.starts_with("ext:")
         || script_coverage.url.starts_with("[ext:")
+        || script_coverage.url.starts_with("http:")
+        || script_coverage.url.starts_with("https:")
         || script_coverage.url.starts_with("node:")
+        || script_coverage.url.is_empty()
       {
         continue;
       }
@@ -397,11 +401,7 @@ fn collect_coverages(
         )?
       }
     }),
-    exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
-      initial_cwd,
-      &files.ignore,
-    )
-    .context("Invalid ignore pattern.")?,
+    exclude: PathOrPatternSet::new(vec![]),
   };
   let file_paths = FileCollector::new(|e| {
     e.path.extension().map(|ext| ext == "json").unwrap_or(false)
@@ -411,12 +411,28 @@ fn collect_coverages(
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
   .collect_file_patterns(file_patterns)?;
 
+  let coverage_patterns = FilePatterns {
+    base: initial_cwd.to_path_buf(),
+    include: None,
+    exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
+      initial_cwd,
+      &files.ignore,
+    )
+    .context("Invalid ignore pattern.")?,
+  };
+
   for file_path in file_paths {
     let new_coverage = fs::read_to_string(file_path.as_path())
       .map_err(AnyError::from)
-      .and_then(|json| serde_json::from_str(&json).map_err(AnyError::from))
+      .and_then(|json| {
+        serde_json::from_str::<cdp::ScriptCoverage>(&json)
+          .map_err(AnyError::from)
+      })
       .with_context(|| format!("Failed reading '{}'", file_path.display()))?;
-    coverages.push(new_coverage);
+    let url = Url::parse(&new_coverage.url)?;
+    if coverage_patterns.matches_specifier(&url) {
+      coverages.push(new_coverage);
+    }
   }
 
   coverages.sort_by_key(|k| k.url.clone());
