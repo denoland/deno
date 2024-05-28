@@ -407,7 +407,7 @@ fn collect_coverages(
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
   .collect_file_patterns(file_patterns)?;
 
-  let exclude_patterns = FilePatterns {
+  let coverage_patterns = FilePatterns {
     base: initial_cwd.to_path_buf(),
     include: None,
     exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
@@ -426,7 +426,7 @@ fn collect_coverages(
       })
       .with_context(|| format!("Failed reading '{}'", file_path.display()))?;
     let url = Url::parse(&new_coverage.url)?;
-    if exclude_patterns.matches_specifier(&url) {
+    if coverage_patterns.matches_specifier(&url) {
       coverages.push(new_coverage);
     }
   }
