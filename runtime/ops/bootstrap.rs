@@ -42,9 +42,9 @@ pub struct SnapshotOptions {
 
 impl Default for SnapshotOptions {
   fn default() -> Self {
-    let arch = std::env::consts::ARCH.to_owned();
-    let platform = std::env::consts::OS.to_owned();
-    let target = match platform.as_str() {
+    let arch = std::env::consts::ARCH;
+    let platform = std::env::consts::OS;
+    let target = match platform {
       "macos" => format!("{}-apple-darwin", arch),
       "linux" => format!("{}-unknown-linux-gnu", arch),
       "windows" => format!("{}-pc-windows-msvc", arch),
