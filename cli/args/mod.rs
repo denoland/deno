@@ -1355,7 +1355,7 @@ impl CliOptions {
     } else if self.maybe_package_json.is_some() {
       Ok(Default::default())
     } else {
-      bail!("No config file found")
+      bail!("deno task couldn't find deno.json(c). See https://deno.land/manual@v{}/getting_started/configuration_file", env!("CARGO_PKG_VERSION"))
     }
   }
 
@@ -1754,6 +1754,15 @@ impl CliOptions {
       .unwrap_or_default();
 
     from_config_file.extend_from_slice(&self.flags.unstable_config.features);
+
+    if *DENO_FUTURE {
+      from_config_file.extend_from_slice(&[
+        deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string(),
+        deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string(),
+        deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME.to_string(),
+      ]);
+    }
+
     from_config_file
   }
 

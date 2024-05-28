@@ -27,6 +27,7 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::npm::CliNpmResolver;
 use crate::tsc;
 use crate::tsc::Diagnostics;
+use crate::util::path::to_percent_decoded_str;
 use crate::version;
 
 /// Options for performing a check of a module graph. Note that the decision to
@@ -154,7 +155,11 @@ impl TypeChecker {
 
     for root in &graph.roots {
       let root_str = root.as_str();
-      log::info!("{} {}", colors::green("Check"), root_str);
+      log::info!(
+        "{} {}",
+        colors::green("Check"),
+        to_percent_decoded_str(root_str)
+      );
     }
 
     let check_js = ts_config.get_check_js();
