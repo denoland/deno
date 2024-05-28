@@ -4032,7 +4032,7 @@ Deno.test(
     await promise;
     const e = await execCode3("/usr/bin/sh", [
       "-c",
-      `curl --stderr - -N --no-progress-meter http://localhost:${servePort}`,
+      `curl --stderr - -N --compressed --no-progress-meter http://localhost:${servePort}`,
     ]);
     await e.waitStdoutText("It is ");
     clearTimeout(timer);
