@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "run --allow-read=. main.ts",
+    "output": "main.out"
+  }, {
+    "args": "task --quiet cat deno.lock",
+    "output": "lock.out"
+  }, {
+    "args": "task rm_node_modules",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run --allow-read=. main.ts",
+    "output": "main2.out"
+  }, {
+    "args": "task --quiet cat deno.lock",
+    "output": "lock.out"
+  }]
+}
