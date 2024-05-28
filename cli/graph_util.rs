@@ -567,6 +567,7 @@ impl ModuleGraphBuilder {
 
     let has_npm_packages_changed =
       graph.npm_packages.len() != initial_npm_packages;
+    // skip installing npm packages if we don't have to
     if is_first_execution
       && self.npm_resolver.root_node_modules_path().is_some()
       || has_npm_packages_changed
