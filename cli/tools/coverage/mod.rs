@@ -71,6 +71,8 @@ impl crate::worker::CoverageCollector for CoverageCollector {
       // Filter out internal JS files from being included in coverage reports
       if script_coverage.url.starts_with("ext:")
         || script_coverage.url.starts_with("[ext:")
+        || script_coverage.url.starts_with("http:")
+        || script_coverage.url.starts_with("https:")
         || script_coverage.url.starts_with("node:")
       {
         continue;
