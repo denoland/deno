@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::logging::lsp_log;
+use crate::args::read_lockfile_at_path;
 use crate::args::ConfigFile;
 use crate::args::FmtOptions;
 use crate::args::LintOptions;
@@ -15,7 +16,6 @@ use deno_ast::MediaType;
 use deno_config::FmtOptionsConfig;
 use deno_config::TsConfig;
 use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Deserialize;
@@ -1686,13 +1686,7 @@ fn resolve_node_modules_dir(
 }
 
 fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<Lockfile> {
-  let result = std::fs::read_to_string(&lockfile_path)
-    .map_err(AnyError::from)
-    .and_then(|text| {
-      Lockfile::with_lockfile_content(lockfile_path, &text, false)
-        .map_err(AnyError::from)
-    });
-  match result {
+  match read_lockfile_at_path(lockfile_path) {
     Ok(value) => {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename) {
         lsp_log!("  Resolved lockfile: \"{}\"", specifier);

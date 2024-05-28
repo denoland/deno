@@ -59,12 +59,21 @@ pub fn discover(
   let lockfile = if flags.lock_write {
     Lockfile::new_empty(filename, true)
   } else {
-    let file_text = std::fs::read_to_string(&filename).with_context(|| {
-      format!("Failed reading lockfile '{}'", filename.display())
-    })?;
-    Lockfile::with_lockfile_content(filename, &file_text, false)?
+    read_lockfile_at_path(filename)?
   };
   Ok(Some(lockfile))
+}
+
+pub fn read_lockfile_at_path(filename: PathBuf) -> Result<Lockfile, AnyError> {
+  match std::fs::read_to_string(&filename) {
+    Ok(text) => Ok(Lockfile::with_lockfile_content(filename, &text, false)?),
+    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+      Ok(Lockfile::new_empty(filename, false))
+    }
+    Err(err) => Err(err).with_context(|| {
+      format!("Failed reading lockfile '{}'", filename.display())
+    }),
+  }
 }
 
 pub fn write_lockfile_if_has_changes(
