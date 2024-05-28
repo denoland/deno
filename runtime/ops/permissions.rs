@@ -64,7 +64,7 @@ pub fn op_query_permission(
     "net" => permissions.net.query(
       match args.host.as_deref() {
         None => None,
-        Some(h) => Some(NetDescriptor::from_str(h)?),
+        Some(h) => Some(NetDescriptor::from_cli_arg(h)?),
       }
       .as_ref(),
     ),
@@ -99,7 +99,7 @@ pub fn op_revoke_permission(
     "net" => permissions.net.revoke(
       match args.host.as_deref() {
         None => None,
-        Some(h) => Some(NetDescriptor::from_str(h)?),
+        Some(h) => Some(NetDescriptor::from_cli_arg(h)?),
       }
       .as_ref(),
     ),
@@ -134,7 +134,7 @@ pub fn op_request_permission(
     "net" => permissions.net.request(
       match args.host.as_deref() {
         None => None,
-        Some(h) => Some(NetDescriptor::from_str(h)?),
+        Some(h) => Some(NetDescriptor::from_cli_arg(h)?),
       }
       .as_ref(),
     ),

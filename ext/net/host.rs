@@ -1,3 +1,4 @@
+use std::fmt;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use fqdn::FQDN;
@@ -13,7 +14,7 @@ pub enum Host {
 }
 
 impl Host {
-  pub fn from_str(host: &str, origin_host: &str) -> Result<Self, AnyError> {
+  pub fn from_host_and_origin_host(host: &str, origin_host: &str) -> Result<Self, AnyError> {
     if let Ok(ipv6) = host.parse::<Ipv6Addr>() {
       return Ok(Host::Ipv6(ipv6));
     }
@@ -26,14 +27,16 @@ impl Host {
       return Ok(Host::Ipv4(ipv4));
     }
 
-    return Ok(Host::FQDN(host));
+    Ok(Host::FQDN(host))
   }
+}
 
-  pub fn to_string(&self) -> String {
+impl fmt::Display for Host {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      Host::FQDN(fqdn) => fqdn.to_string(),
-      Host::Ipv4(ipv4) => ipv4.to_string(),
-      Host::Ipv6(ipv6) => format!("[{}]", ipv6.to_string()),
+      Host::FQDN(fqdn) => write!(f, "{}", fqdn),
+      Host::Ipv4(ipv4) => write!(f, "{}", ipv4),
+      Host::Ipv6(ipv6) => write!(f, "[{}]", ipv6),
     }
   }
 }
@@ -42,7 +45,7 @@ pub fn split_host_port(s: &str) -> Result<(String, Option<u16>), AnyError> {
   let mut host = s.to_string();
   let mut port = None;
 
-  let have_port = (&host).contains(":") && !(&host).contains("[");
+  let have_port = host.contains(':') && !host.contains('[');
 
   if host.starts_with('[') && host.contains(']') {
     if host.ends_with("]:") {

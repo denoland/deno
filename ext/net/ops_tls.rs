@@ -310,7 +310,7 @@ where
   };
 
   {
-    let host = NetPermissionHost::from_str(hostname, Some(0))?;
+    let host = NetPermissionHost::from_host_and_maybe_port(hostname, Some(0))?;
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
     permissions.check_net(&host, "Deno.startTls()")?;
@@ -398,7 +398,7 @@ where
     .and_then(|it| it.0.clone());
 
   {
-    let host = NetPermissionHost::from_str(&addr.hostname, Some(addr.port))?;
+    let host = NetPermissionHost::from_host_and_maybe_port(&addr.hostname, Some(addr.port))?;
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
     permissions.check_net(&host, "Deno.connectTls()")?;
@@ -504,7 +504,7 @@ where
   }
 
   {
-    let host = NetPermissionHost::from_str(&addr.hostname, Some(addr.port))?;
+    let host = NetPermissionHost::from_host_and_maybe_port(&addr.hostname, Some(addr.port))?;
     let permissions = state.borrow_mut::<NP>();
     permissions.check_net(&host, "Deno.listenTls()")?;
   }

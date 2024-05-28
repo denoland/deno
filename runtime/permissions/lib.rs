@@ -16,9 +16,9 @@ use deno_core::url;
 use deno_core::url::ParseError;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_net::net::extract_host;
-use deno_net::net::split_host_port;
-use deno_net::net::Host;
+use deno_net::host::extract_host;
+use deno_net::host::split_host_port;
+use deno_net::host::Host;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -696,7 +696,7 @@ pub struct NetDescriptor(pub Host, pub Option<u16>);
 impl NetDescriptor {
   pub fn from_url(url: &Url) -> Result<Self, AnyError> {
     let hostname = url.host_str().ok_or(ParseError::EmptyHost)?.to_string();
-    let host = Host::from_str(&hostname, &hostname.clone())?;
+    let host = Host::from_host_and_origin_host(hostname.as_str(), hostname.as_str())?;
     let port = url.port_or_known_default();
     Ok(NetDescriptor(host, port))
   }
@@ -706,11 +706,10 @@ impl NetDescriptor {
   /// # Errors
   ///
   /// Returns an `AnyError` if the input string cannot be parsed.
-  pub fn from_str(s: &str) -> Result<Self, AnyError> {
+  pub fn from_cli_arg(s: &str) -> Result<Self, AnyError> {
     let extracted_host = extract_host(s);
-    let tmp_host = &extracted_host.clone();
-    let (host_str, port) = split_host_port(&extracted_host)?;
-    let host = Host::from_str(&host_str, &tmp_host)?;
+    let (host_str, port) = split_host_port(extracted_host.as_str())?;
+    let host = Host::from_host_and_origin_host(host_str.as_str(), extracted_host.as_str())?;
     Ok(NetDescriptor(host, port))
   }
 
@@ -760,7 +759,7 @@ impl FromStr for NetDescriptor {
   type Err = AnyError;
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
-    Self::from_str(s)
+    Self::from_cli_arg(s)
   }
 }
 
@@ -1830,7 +1829,7 @@ fn parse_net_list(
 ) -> Result<HashSet<NetDescriptor>, AnyError> {
   if let Some(v) = list {
     v.iter()
-      .map(|x| NetDescriptor::from_str(x))
+      .map(|x| NetDescriptor::from_cli_arg(x))
       .collect::<Result<HashSet<NetDescriptor>, AnyError>>()
   } else {
     Ok(HashSet::new())
@@ -2372,7 +2371,7 @@ mod tests {
         perms
           .net
           .check(
-            &NetDescriptor(Host::from_str(host, "").unwrap(), Some(port)),
+            &NetDescriptor(Host::from_host_and_origin_host(host, "").unwrap(), Some(port)),
             None
           )
           .is_ok(),
@@ -2418,7 +2417,7 @@ mod tests {
       assert!(perms
         .net
         .check(
-          &NetDescriptor(Host::from_str(host, "").unwrap(), Some(port)),
+          &NetDescriptor(Host::from_host_and_origin_host(host, "").unwrap(), Some(port)),
           None
         )
         .is_ok());
@@ -2460,7 +2459,7 @@ mod tests {
       assert!(perms
         .net
         .check(
-          &NetDescriptor(Host::from_str(host, "").unwrap(), Some(port)),
+          &NetDescriptor(Host::from_host_and_origin_host(host, "").unwrap(), Some(port)),
           None
         )
         .is_err());
@@ -2739,14 +2738,14 @@ mod tests {
       assert_eq!(perms4.ffi.query(Some(Path::new("/foo/bar"))), PermissionState::Denied);
       assert_eq!(perms4.ffi.query(Some(Path::new("/bar"))), PermissionState::Granted);
       assert_eq!(perms1.net.query(None), PermissionState::Granted);
-      assert_eq!(perms1.net.query(Some(&NetDescriptor(Host::from_str("127.0.0.1","").unwrap(), None))), PermissionState::Granted);
+      assert_eq!(perms1.net.query(Some(&NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), None))), PermissionState::Granted);
       assert_eq!(perms2.net.query(None), PermissionState::Prompt);
-      assert_eq!(perms2.net.query(Some(&NetDescriptor(Host::from_str("127.0.0.1","").unwrap(), Some(8000)))), PermissionState::Granted);
+      assert_eq!(perms2.net.query(Some(&NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8000)))), PermissionState::Granted);
       assert_eq!(perms3.net.query(None), PermissionState::Prompt);
-      assert_eq!(perms3.net.query(Some(&NetDescriptor(Host::from_str("127.0.0.1","").unwrap(), Some(8000)))), PermissionState::Denied);
+      assert_eq!(perms3.net.query(Some(&NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8000)))), PermissionState::Denied);
       assert_eq!(perms4.net.query(None), PermissionState::GrantedPartial);
-      assert_eq!(perms4.net.query(Some(&NetDescriptor(Host::from_str("127.0.0.1","").unwrap(), Some(8000)))), PermissionState::Denied);
-      assert_eq!(perms4.net.query(Some(&NetDescriptor(Host::from_str("192.168.0.1","").unwrap(), Some(8000)))), PermissionState::Granted);
+      assert_eq!(perms4.net.query(Some(&NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8000)))), PermissionState::Denied);
+      assert_eq!(perms4.net.query(Some(&NetDescriptor(Host::from_host_and_origin_host("192.168.0.1", "").unwrap(), Some(8000)))), PermissionState::Granted);
       assert_eq!(perms1.env.query(None), PermissionState::Granted);
       assert_eq!(perms1.env.query(Some("HOME")), PermissionState::Granted);
       assert_eq!(perms2.env.query(None), PermissionState::Prompt);
@@ -2804,9 +2803,9 @@ mod tests {
       prompt_value.set(true);
       assert_eq!(perms.ffi.request(None), PermissionState::Denied);
       prompt_value.set(true);
-      assert_eq!(perms.net.request(Some(&NetDescriptor(Host::from_str("127.0.0.1","").unwrap(), None))), PermissionState::Granted);
+      assert_eq!(perms.net.request(Some(&NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), None))), PermissionState::Granted);
       prompt_value.set(false);
-      assert_eq!(perms.net.request(Some(&NetDescriptor(Host::from_str("127.0.0.1","").unwrap(), Some(8000)))), PermissionState::Granted);
+      assert_eq!(perms.net.request(Some(&NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8000)))), PermissionState::Granted);
       prompt_value.set(true);
       assert_eq!(perms.env.request(Some("HOME")), PermissionState::Granted);
       assert_eq!(perms.env.query(None), PermissionState::Prompt);
@@ -2875,9 +2874,9 @@ mod tests {
       assert_eq!(perms.ffi.revoke(Some(Path::new("/foo/bar"))), PermissionState::Prompt);
       assert_eq!(perms.ffi.query(Some(Path::new("/foo"))), PermissionState::Prompt);
       assert_eq!(perms.ffi.query(Some(Path::new("/foo/baz"))), PermissionState::Granted);
-      assert_eq!(perms.net.revoke(Some(&NetDescriptor(Host::from_str("127.0.0.1","").unwrap(), Some(9000)))), PermissionState::Prompt);
-      assert_eq!(perms.net.query(Some(&NetDescriptor(Host::from_str("127.0.0.1","").unwrap(), None))), PermissionState::Prompt);
-      assert_eq!(perms.net.query(Some(&NetDescriptor(Host::from_str("127.0.0.1","").unwrap(), Some(8000)))), PermissionState::Granted);
+      assert_eq!(perms.net.revoke(Some(&NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(9000)))), PermissionState::Prompt);
+      assert_eq!(perms.net.query(Some(&NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), None))), PermissionState::Prompt);
+      assert_eq!(perms.net.query(Some(&NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8000)))), PermissionState::Granted);
       assert_eq!(perms.env.revoke(Some("HOME")), PermissionState::Prompt);
       assert_eq!(perms.env.revoke(Some("hostname")), PermissionState::Prompt);
       assert_eq!(perms.run.revoke(Some("deno")), PermissionState::Prompt);
@@ -2913,7 +2912,7 @@ mod tests {
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("127.0.0.1", "").unwrap(), Some(8000)),
+        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8000)),
         None
       )
       .is_ok());
@@ -2921,35 +2920,35 @@ mod tests {
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("127.0.0.1", "").unwrap(), Some(8000)),
+        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8000)),
         None
       )
       .is_ok());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("127.0.0.1", "").unwrap(), Some(8001)),
+        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8001)),
         None
       )
       .is_err());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("127.0.0.1", "").unwrap(), None),
+        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), None),
         None
       )
       .is_err());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("deno.land", "").unwrap(), Some(8000)),
+        &NetDescriptor(Host::from_host_and_origin_host("deno.land", "").unwrap(), Some(8000)),
         None
       )
       .is_err());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("deno.land", "").unwrap(), None),
+        &NetDescriptor(Host::from_host_and_origin_host("deno.land", "").unwrap(), None),
         None
       )
       .is_err());
@@ -3009,7 +3008,7 @@ mod tests {
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("127.0.0.1", "").unwrap(), Some(8000)),
+        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8000)),
         None
       )
       .is_err());
@@ -3017,21 +3016,21 @@ mod tests {
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("127.0.0.1", "").unwrap(), Some(8000)),
+        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8000)),
         None
       )
       .is_err());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("127.0.0.1", "").unwrap(), Some(8001)),
+        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8001)),
         None
       )
       .is_ok());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("deno.land", "").unwrap(), Some(8000)),
+        &NetDescriptor(Host::from_host_and_origin_host("deno.land", "").unwrap(), Some(8000)),
         None
       )
       .is_ok());
@@ -3039,14 +3038,14 @@ mod tests {
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("127.0.0.1", "").unwrap(), Some(8001)),
+        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8001)),
         None
       )
       .is_ok());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("deno.land", "").unwrap(), Some(8000)),
+        &NetDescriptor(Host::from_host_and_origin_host("deno.land", "").unwrap(), Some(8000)),
         None
       )
       .is_ok());
@@ -3141,28 +3140,28 @@ mod tests {
     perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("allowed.domain.", "").unwrap(), None),
+        &NetDescriptor(Host::from_host_and_origin_host("allowed.domain.", "").unwrap(), None),
         None,
       )
       .unwrap();
     perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("1.1.1.1.", "").unwrap(), None),
+        &NetDescriptor(Host::from_host_and_origin_host("1.1.1.1.", "").unwrap(), None),
         None,
       )
       .unwrap();
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("denied.domain.", "").unwrap(), None),
+        &NetDescriptor(Host::from_host_and_origin_host("denied.domain.", "").unwrap(), None),
         None
       )
       .is_err());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_str("2.2.2.2.", "").unwrap(), None),
+        &NetDescriptor(Host::from_host_and_origin_host("2.2.2.2.", "").unwrap(), None),
         None
       )
       .is_err());
@@ -3456,29 +3455,29 @@ mod tests {
   fn test_net_descriptor_parsing() {
     // Parsing host address without a port
     assert_eq!(
-      NetDescriptor::from_str("deno.land.").unwrap(),
+      NetDescriptor::from_cli_arg("deno.land.").unwrap(),
       NetDescriptor(Host::FQDN(FQDN::from_str("deno.land").unwrap()), None)
     );
     // Parsing host address with a port
     assert_eq!(
-      NetDescriptor::from_str("deno.land:80").unwrap(),
+      NetDescriptor::from_cli_arg("deno.land:80").unwrap(),
       NetDescriptor(Host::FQDN(FQDN::from_str("deno.land").unwrap()), Some(80))
     );
 
     // Parsing an IPv4 address
     assert_eq!(
-      NetDescriptor::from_str("127.0.0.1").unwrap(),
+      NetDescriptor::from_cli_arg("127.0.0.1").unwrap(),
       NetDescriptor(Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)), None)
     );
     // Parsing an IPv4 address with a port
     assert_eq!(
-      NetDescriptor::from_str("127.0.0.1:80").unwrap(),
+      NetDescriptor::from_cli_arg("127.0.0.1:80").unwrap(),
       NetDescriptor(Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)), Some(80))
     );
 
     // Parsing an IPv6 address
     assert_eq!(
-      NetDescriptor::from_str("[2606:4700:4700::1111]").unwrap(),
+      NetDescriptor::from_cli_arg("[2606:4700:4700::1111]").unwrap(),
       NetDescriptor(
         Host::Ipv6(Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111)),
         None
@@ -3486,7 +3485,7 @@ mod tests {
     );
     // Parsing an IPv6 address with a port
     assert_eq!(
-      NetDescriptor::from_str("[2606:4700:4700::1111]:80").unwrap(),
+      NetDescriptor::from_cli_arg("[2606:4700:4700::1111]:80").unwrap(),
       NetDescriptor(
         Host::Ipv6(Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111)),
         Some(80)
@@ -3495,12 +3494,12 @@ mod tests {
 
     // Parsing a URL with a host
     assert_eq!(
-      NetDescriptor::from_str("https://github.com/denoland/").unwrap(),
+      NetDescriptor::from_cli_arg("https://github.com/denoland/").unwrap(),
       NetDescriptor(Host::FQDN(FQDN::from_str("github.com").unwrap()), None)
     );
     // Parsing a URL with a host & port
     assert_eq!(
-      NetDescriptor::from_str("https://github.com:443/denoland/").unwrap(),
+      NetDescriptor::from_cli_arg("https://github.com:443/denoland/").unwrap(),
       NetDescriptor(
         Host::FQDN(FQDN::from_str("github.com").unwrap()),
         Some(443)
@@ -3509,18 +3508,18 @@ mod tests {
 
     // Parsing a URL with an IPv4 address
     assert_eq!(
-      NetDescriptor::from_str("https://127.0.0.1").unwrap(),
+      NetDescriptor::from_cli_arg("https://127.0.0.1").unwrap(),
       NetDescriptor(Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)), None)
     );
     // Parsing a URL with an IPv4 address & port
     assert_eq!(
-      NetDescriptor::from_str("https://127.0.0.1:80").unwrap(),
+      NetDescriptor::from_cli_arg("https://127.0.0.1:80").unwrap(),
       NetDescriptor(Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)), Some(80))
     );
 
     // Parsing a URL with an IPv6 address
     assert_eq!(
-      NetDescriptor::from_str("https://[2606:4700:4700::1111]").unwrap(),
+      NetDescriptor::from_cli_arg("https://[2606:4700:4700::1111]").unwrap(),
       NetDescriptor(
         Host::Ipv6(Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111)),
         None
@@ -3528,7 +3527,7 @@ mod tests {
     );
     // Parsing a URL with an IPv6 address & port
     assert_eq!(
-      NetDescriptor::from_str("https://[2606:4700:4700::1111]:80").unwrap(),
+      NetDescriptor::from_cli_arg("https://[2606:4700:4700::1111]:80").unwrap(),
       NetDescriptor(
         Host::Ipv6(Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111)),
         Some(80)
@@ -3537,25 +3536,25 @@ mod tests {
 
     // Parsing invalid URL/host with special characters
     assert_eq!(
-      NetDescriptor::from_str("foo@bar.com.")
+      NetDescriptor::from_cli_arg("foo@bar.com.")
         .unwrap_err()
         .to_string(),
       "Failed to parse host: foo@bar.com.\n"
     );
     assert_eq!(
-      NetDescriptor::from_str("http://foo@bar.com.:80")
+      NetDescriptor::from_cli_arg("http://foo@bar.com.:80")
         .unwrap_err()
         .to_string(),
       "Failed to parse host: foo@bar.com.:80\n"
     );
     assert_eq!(
-      NetDescriptor::from_str("http://foo@bar.com.:")
+      NetDescriptor::from_cli_arg("http://foo@bar.com.:")
         .unwrap_err()
         .to_string(),
       "No port specified after ':'"
     );
     assert_eq!(
-      NetDescriptor::from_str("https://[2606:4700:4700::1111]:")
+      NetDescriptor::from_cli_arg("https://[2606:4700:4700::1111]:")
         .unwrap_err()
         .to_string(),
       "Invalid format: [ipv6]:port"
