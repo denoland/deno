@@ -440,6 +440,39 @@ fn no_internal_node_code() {
 }
 
 #[test]
+fn no_http_coverage_data() {
+  let _http_server_guard = test_util::http_server();
+  let context = TestContext::default();
+  let tempdir = context.temp_dir();
+  let tempdir = tempdir.path().join("cov");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      "--no-check".to_string(),
+      format!("--coverage={}", tempdir),
+      "coverage/no_http_coverage_data_test.ts".to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  // Check that coverage files contain no http urls
+  let paths = tempdir.read_dir();
+  for path in paths {
+    let unwrapped = PathRef::new(path.unwrap().path());
+    let data = unwrapped.read_to_string();
+
+    let value: serde_json::Value = serde_json::from_str(&data).unwrap();
+    let url = value["url"].as_str().unwrap();
+    assert_starts_with!(url, "file:");
+  }
+}
+
+#[test]
 fn test_html_reporter() {
   // This test case generates a html coverage report of test cases in /tests/testdata/coverage/multisource
   // You can get the same reports in ./cov_html by running the following command:
