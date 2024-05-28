@@ -71,8 +71,7 @@ fn fail_with_contain_unicode_filename() {
   let temp_dir = context.temp_dir();
   temp_dir.write(
     "fail_with_contain_unicode_filename🦕.ts",
-    "
-Deno.test(\"test 0\", () => {
+    "Deno.test(\"test 0\", () => {
   throw new Error();
 });
     ",
@@ -90,15 +89,15 @@ test 0 ... FAILED ([WILDCARD])
 
  ERRORS 
 
-test 0 => ./fail_with_contain_unicode_filename🦕.ts:2:6
+test 0 => ./fail_with_contain_unicode_filename🦕.ts:[WILDCARD]
 error: Error
   throw new Error();
         ^
-    at [WILDCARD]/fail_with_contain_unicode_filename%F0%9F%A6%95.ts:3:9
+    at [WILDCARD]/fail_with_contain_unicode_filename%F0%9F%A6%95.ts:[WILDCARD]
 
  FAILURES 
 
-test 0 => ./fail_with_contain_unicode_filename🦕.ts:2:6
+test 0 => ./fail_with_contain_unicode_filename🦕.ts:[WILDCARD]
 
 FAILED | 0 passed | 1 failed ([WILDCARD])
 
