@@ -151,11 +151,9 @@ impl ModuleLoadPreparer {
     lib: TsTypeLib,
     permissions: PermissionsContainer,
   ) -> Result<(), AnyError> {
-    if !graph.roots.is_empty() && roots.iter().all(|s| graph.get(s).is_some()) {
-      // all roots are already in the graph
-      log::debug!(
-        "Skipping prepare module load because all roots are already in graph."
-      );
+    if roots.iter().all(|s| graph.get(s).is_some()) {
+      // all roots already in graph
+      log::debug!("Skipping prepare module load.");
       return Ok(());
     }
 
