@@ -154,6 +154,16 @@ impl ModuleLoadPreparer {
     if roots.iter().all(|s| graph.get(s).is_some()) {
       // all roots already in graph
       log::debug!("Skipping prepare module load.");
+      let roots = roots
+        .into_iter()
+        .filter(|r| !graph.roots.contains(r))
+        .map(|s| s.clone())
+        .collect::<Vec<_>>();
+      if !roots.is_empty() {
+        // fast version of the code below
+        self.module_graph_builder.graph_roots_valid(graph, &roots)?;
+        graph.roots.extend(roots);
+      }
       return Ok(());
     }
 
@@ -177,7 +187,7 @@ impl ModuleLoadPreparer {
       )
       .await?;
 
-    self.module_graph_builder.graph_roots_valid(graph, roots)?;
+    self.module_graph_builder.graph_roots_valid(graph, &roots)?;
 
     // write the lockfile if there is one
     if let Some(lockfile) = &self.lockfile {
