@@ -89,7 +89,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   let module_info_cache = factory.module_info_cache()?;
   let parsed_source_cache = factory.parsed_source_cache();
   let capturing_parser = parsed_source_cache.as_capturing_parser();
-  let analyzer = module_info_cache.as_module_analyzer(&capturing_parser);
+  let analyzer = module_info_cache.as_module_analyzer(parsed_source_cache);
 
   let doc_nodes_by_url = match doc_flags.source_files {
     DocSourceFileFlag::Builtin => {
