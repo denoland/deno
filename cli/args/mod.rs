@@ -1355,7 +1355,7 @@ impl CliOptions {
     } else if self.maybe_package_json.is_some() {
       Ok(Default::default())
     } else {
-      bail!("No config file found")
+      bail!("deno task couldn't find deno.json(c). See https://deno.land/manual@v{}/getting_started/configuration_file", env!("CARGO_PKG_VERSION"))
     }
   }
 

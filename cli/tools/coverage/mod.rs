@@ -68,12 +68,14 @@ impl crate::worker::CoverageCollector for CoverageCollector {
 
     let script_coverages = self.take_precise_coverage().await?.result;
     for script_coverage in script_coverages {
-      // Filter out internal and http/https JS files from being included in coverage reports
+      // Filter out internal and http/https JS files and eval'd scripts
+      // from being included in coverage reports
       if script_coverage.url.starts_with("ext:")
         || script_coverage.url.starts_with("[ext:")
         || script_coverage.url.starts_with("http:")
         || script_coverage.url.starts_with("https:")
         || script_coverage.url.starts_with("node:")
+        || script_coverage.url.is_empty()
       {
         continue;
       }
