@@ -456,6 +456,7 @@ fn test_html_reporter() {
     .args_vec(vec![
       "test".to_string(),
       "--quiet".to_string(),
+      "--allow-read".to_string(),
       format!("--coverage={}", tempdir),
       "coverage/multisource".to_string(),
     ])

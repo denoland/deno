@@ -20,3 +20,8 @@ Deno.test("qux", () => {
 Deno.test("quux", () => {
   quux(false);
 });
+
+// This caused anomaly in coverage report
+// See https://github.com/denoland/deno/issues/24004
+// This call ensures that is not happening anymore
+Deno.statSync(".");
