@@ -155,9 +155,9 @@ impl ModuleLoadPreparer {
       // all roots already in graph
       log::debug!("Skipping prepare module load.");
       let roots = roots
-        .into_iter()
+        .iter()
         .filter(|r| !graph.roots.contains(r))
-        .map(|s| s.clone())
+        .cloned()
         .collect::<Vec<_>>();
       if !roots.is_empty() {
         // fast version of the code below
