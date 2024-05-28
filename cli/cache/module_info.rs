@@ -7,7 +7,6 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_graph::ModuleInfo;
-use deno_graph::ModuleParser;
 use deno_graph::ParserModuleAnalyzer;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
@@ -15,6 +14,7 @@ use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheFailure;
 use super::FastInsecureHasher;
+use super::ParsedSourceCache;
 
 const SELECT_MODULE_INFO: &str = "
 SELECT
@@ -87,23 +87,6 @@ impl ModuleInfoCache {
     }
   }
 
-  pub fn get_module_source_hash(
-    &self,
-    specifier: &ModuleSpecifier,
-    media_type: MediaType,
-  ) -> Result<Option<ModuleInfoCacheSourceHash>, AnyError> {
-    let query = "SELECT source_hash FROM moduleinfocache WHERE specifier=?1 AND media_type=?2";
-    let res = self.conn.query_row(
-      query,
-      params![specifier.as_str(), serialize_media_type(media_type)],
-      |row| {
-        let source_hash: String = row.get(0)?;
-        Ok(ModuleInfoCacheSourceHash(source_hash))
-      },
-    )?;
-    Ok(res)
-  }
-
   pub fn get_module_info(
     &self,
     specifier: &ModuleSpecifier,
@@ -153,22 +136,23 @@ impl ModuleInfoCache {
 
   pub fn as_module_analyzer<'a>(
     &'a self,
-    parser: &'a dyn ModuleParser,
+    parsed_source_cache: &'a Arc<ParsedSourceCache>,
   ) -> ModuleInfoCacheModuleAnalyzer<'a> {
     ModuleInfoCacheModuleAnalyzer {
       module_info_cache: self,
-      parser,
+      parsed_source_cache,
     }
   }
 }
 
 pub struct ModuleInfoCacheModuleAnalyzer<'a> {
   module_info_cache: &'a ModuleInfoCache,
-  parser: &'a dyn ModuleParser,
+  parsed_source_cache: &'a Arc<ParsedSourceCache>,
 }
 
+#[async_trait::async_trait(?Send)]
 impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
-  fn analyze(
+  async fn analyze(
     &self,
     specifier: &ModuleSpecifier,
     source: Arc<str>,
@@ -193,8 +177,17 @@ impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
     }
 
     // otherwise, get the module info from the parsed source cache
-    let analyzer = ParserModuleAnalyzer::new(self.parser);
-    let module_info = analyzer.analyze(specifier, source, media_type)?;
+    let module_info = deno_core::unsync::spawn_blocking({
+      let cache = self.parsed_source_cache.clone();
+      let specifier = specifier.clone();
+      move || {
+        let parser = cache.as_capturing_parser();
+        let analyzer = ParserModuleAnalyzer::new(&parser);
+        analyzer.analyze_sync(&specifier, source, media_type)
+      }
+    })
+    .await
+    .unwrap()?;
 
     // then attempt to cache it
     if let Err(err) = self.module_info_cache.set_module_info(

@@ -1,0 +1,5 @@
+{
+  "args": "run --lock=lock_v2_check_err2.json http://localhost:4545/run/019_media_types.ts",
+  "output": "lock_v2_check_err2.out",
+  "exitCode": 10
+}

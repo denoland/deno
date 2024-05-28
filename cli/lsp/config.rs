@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::logging::lsp_log;
+use crate::args::read_lockfile_at_path;
 use crate::args::ConfigFile;
 use crate::args::FmtOptions;
 use crate::args::LintOptions;
@@ -24,6 +25,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_lockfile::Lockfile;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_runtime::permissions::PermissionsContainer;
@@ -1090,6 +1092,7 @@ pub struct ConfigData {
   pub vendor_dir: Option<PathBuf>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub package_json: Option<Arc<PackageJson>>,
+  pub npmrc: Option<Arc<ResolvedNpmRc>>,
   pub import_map: Option<Arc<ImportMap>>,
   pub import_map_from_settings: bool,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
@@ -1274,6 +1277,8 @@ impl ConfigData {
 
     // Load package.json
     let mut package_json = None;
+    // TODO(bartlomieju): support discovering .npmrc
+    let npmrc = None;
     if let Ok(path) = specifier_to_file_path(scope) {
       let path = path.join("package.json");
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&path) {
@@ -1429,6 +1434,7 @@ impl ConfigData {
       vendor_dir,
       lockfile: lockfile.map(Mutex::new).map(Arc::new),
       package_json: package_json.map(Arc::new),
+      npmrc: npmrc.map(Arc::new),
       import_map: import_map.map(Arc::new),
       import_map_from_settings,
       watched_files,
@@ -1680,7 +1686,7 @@ fn resolve_node_modules_dir(
 }
 
 fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<Lockfile> {
-  match Lockfile::new(lockfile_path, false) {
+  match read_lockfile_at_path(lockfile_path) {
     Ok(value) => {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename) {
         lsp_log!("  Resolved lockfile: \"{}\"", specifier);

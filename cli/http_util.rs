@@ -17,6 +17,8 @@ use deno_runtime::deno_fetch::reqwest::header::LOCATION;
 use deno_runtime::deno_fetch::reqwest::Response;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use reqwest::header::HeaderName;
+use reqwest::header::HeaderValue;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -294,7 +296,7 @@ impl HttpClient {
     &self,
     url: U,
   ) -> Result<Vec<u8>, AnyError> {
-    let maybe_bytes = self.inner_download(url, None).await?;
+    let maybe_bytes = self.inner_download(url, None, None).await?;
     match maybe_bytes {
       Some(bytes) => Ok(bytes),
       None => Err(custom_error("Http", "Not found.")),
@@ -304,17 +306,21 @@ impl HttpClient {
   pub async fn download_with_progress<U: reqwest::IntoUrl>(
     &self,
     url: U,
+    maybe_header: Option<(HeaderName, HeaderValue)>,
     progress_guard: &UpdateGuard,
   ) -> Result<Option<Vec<u8>>, AnyError> {
-    self.inner_download(url, Some(progress_guard)).await
+    self
+      .inner_download(url, maybe_header, Some(progress_guard))
+      .await
   }
 
   async fn inner_download<U: reqwest::IntoUrl>(
     &self,
     url: U,
+    maybe_header: Option<(HeaderName, HeaderValue)>,
     progress_guard: Option<&UpdateGuard>,
   ) -> Result<Option<Vec<u8>>, AnyError> {
-    let response = self.get_redirected_response(url).await?;
+    let response = self.get_redirected_response(url, maybe_header).await?;
 
     if response.status() == 404 {
       return Ok(None);
@@ -339,15 +345,30 @@ impl HttpClient {
   pub async fn get_redirected_response<U: reqwest::IntoUrl>(
     &self,
     url: U,
+    mut maybe_header: Option<(HeaderName, HeaderValue)>,
   ) -> Result<Response, AnyError> {
     let mut url = url.into_url()?;
-    let mut response = self.get_no_redirect(url.clone())?.send().await?;
+
+    let mut builder = self.get_no_redirect(url.clone())?;
+    if let Some((header_name, header_value)) = maybe_header.as_ref() {
+      builder = builder.header(header_name, header_value);
+    }
+    let mut response = builder.send().await?;
     let status = response.status();
     if status.is_redirection() {
       for _ in 0..5 {
         let new_url = resolve_redirect_from_response(&url, &response)?;
-        let new_response =
-          self.get_no_redirect(new_url.clone())?.send().await?;
+        let mut builder = self.get_no_redirect(new_url.clone())?;
+
+        if new_url.origin() == url.origin() {
+          if let Some((header_name, header_value)) = maybe_header.as_ref() {
+            builder = builder.header(header_name, header_value);
+          }
+        } else {
+          maybe_header = None;
+        }
+
+        let new_response = builder.send().await?;
         let status = new_response.status();
         if status.is_redirection() {
           response = new_response;

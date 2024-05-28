@@ -8,6 +8,8 @@ use phf::phf_map;
 use std::borrow::Cow;
 use std::ops::AddAssign;
 
+use crate::util::path::to_percent_decoded_str;
+
 use super::*;
 
 pub fn to_relative_path_or_remote_url(cwd: &Url, path_or_url: &str) -> String {
@@ -19,7 +21,7 @@ pub fn to_relative_path_or_remote_url(cwd: &Url, path_or_url: &str) -> String {
       if !r.starts_with("../") {
         r = format!("./{r}");
       }
-      return r;
+      return to_percent_decoded_str(&r);
     }
   }
   path_or_url.to_string()

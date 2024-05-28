@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::resolve_no_prompt;
+use crate::args::write_lockfile_if_has_changes;
 use crate::args::AddFlags;
 use crate::args::CaData;
 use crate::args::Flags;
@@ -139,7 +140,7 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
 
   if url.path() == "/" {
     let client = HttpClient::new(None, None);
-    if let Ok(res) = client.get_redirected_response(url.clone()).await {
+    if let Ok(res) = client.get_redirected_response(url.clone(), None).await {
       url = res.url().clone();
     }
   }
@@ -264,6 +265,10 @@ async fn install_local(
 
   let factory = CliFactory::from_flags(flags)?;
   crate::module_loader::load_top_level_deps(&factory).await?;
+
+  if let Some(lockfile) = factory.cli_options().maybe_lockfile() {
+    write_lockfile_if_has_changes(&lockfile.lock())?;
+  }
 
   Ok(())
 }
