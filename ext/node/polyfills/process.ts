@@ -439,16 +439,38 @@ Object.defineProperty(Process.prototype, "exitCode", {
     return ProcessExitCode;
   },
   set(code: number | string | null | undefined) {
-    if (code) {
+    let parsedCode;
+
+    if (typeof code === "number") {
+      if (Number.isNaN(code)) {
+        parsedCode = 1;
+        denoOs.setExitCode(parsedCode);
+        ProcessExitCode = parsedCode;
+        return;
+      }
+
       // This is looser than `denoOs.setExitCode` which requires exit code
       // to be decimal or string of a decimal, but Node accept eg. 0x10.
-      code = parseInt(code) || 0;
-      denoOs.setExitCode(code);
-    } else if (Number.isNaN(code)) {
-      code = 1;
-      denoOs.setExitCode(code);
+      parsedCode = parseInt(code);
+      denoOs.setExitCode(parsedCode);
+      ProcessExitCode = parsedCode;
+      return;
     }
-    // invalid string would have thrown
+
+    if (typeof code === "string") {
+      parsedCode = parseInt(code);
+      if (Number.isNaN(parsedCode)) {
+        throw new TypeError(
+          `The "code" argument must be of type number. Received type ${typeof code} (${code})`,
+        );
+      }
+      denoOs.setExitCode(parsedCode);
+      ProcessExitCode = parsedCode;
+      return;
+    }
+
+    // TODO(bartlomieju): hope for the best here. This should be further tightened.
+    denoOs.setExitCode(code);
     ProcessExitCode = code;
   },
 });
