@@ -370,9 +370,8 @@ impl ManagedCliNpmResolver {
     self.fs_resolver.cache_packages().await?;
 
     // If there's a lock file, update it with all discovered npm packages
-    if let Some(lockfile_mutex) = &self.maybe_lockfile {
-      let mut lockfile = lockfile_mutex.lock();
-      self.lock(&mut lockfile)?;
+    if let Some(lockfile) = &self.maybe_lockfile {
+      self.lock(&mut lockfile.lock());
     }
 
     Ok(())
@@ -401,7 +400,7 @@ impl ManagedCliNpmResolver {
       .serialized_valid_snapshot_for_system(system_info)
   }
 
-  pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
+  pub fn lock(&self, lockfile: &mut Lockfile) {
     self.resolution.lock(lockfile)
   }
 

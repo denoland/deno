@@ -59,8 +59,8 @@ impl GraphDiagnosticsCollector {
                   let maybe_version = graph
                     .packages
                     .mappings()
-                    .find(|(req, _)| *req == jsr_req_ref.req())
-                    .map(|(_, nv)| nv.version.clone());
+                    .get(jsr_req_ref.req())
+                    .map(|nv| nv.version.clone());
                   diagnostics_collector.push(
                     PublishDiagnostic::MissingConstraint {
                       specifier: resolution.specifier.clone(),

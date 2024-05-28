@@ -310,7 +310,7 @@ impl Document {
     let (maybe_parsed_source, maybe_module) =
       if media_type_is_diagnosable(media_type) {
         parse_and_analyze_module(
-          &specifier,
+          specifier.clone(),
           text_info.clone(),
           maybe_headers.as_ref(),
           media_type,
@@ -370,10 +370,13 @@ impl Document {
     let maybe_parsed_source;
     let maybe_test_module_fut;
     if media_type != self.media_type {
-      let parsed_source_result =
-        parse_source(&self.specifier, self.text_info.clone(), media_type);
+      let parsed_source_result = parse_source(
+        self.specifier.clone(),
+        self.text_info.clone(),
+        media_type,
+      );
       let maybe_module = analyze_module(
-        &self.specifier,
+        self.specifier.clone(),
         &parsed_source_result,
         self.maybe_headers.as_ref(),
         self.file_referrer.as_ref(),
@@ -481,7 +484,7 @@ impl Document {
       .unwrap_or(false)
     {
       parse_and_analyze_module(
-        &self.specifier,
+        self.specifier.clone(),
         text_info.clone(),
         self.maybe_headers.as_ref(),
         media_type,
@@ -1455,14 +1458,15 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
 }
 
 fn parse_and_analyze_module(
-  specifier: &ModuleSpecifier,
+  specifier: ModuleSpecifier,
   text_info: SourceTextInfo,
   maybe_headers: Option<&HashMap<String, String>>,
   media_type: MediaType,
   file_referrer: Option<&ModuleSpecifier>,
   resolver: &LspResolver,
 ) -> (Option<ParsedSourceResult>, Option<ModuleResult>) {
-  let parsed_source_result = parse_source(specifier, text_info, media_type);
+  let parsed_source_result =
+    parse_source(specifier.clone(), text_info, media_type);
   let module_result = analyze_module(
     specifier,
     &parsed_source_result,
@@ -1474,12 +1478,12 @@ fn parse_and_analyze_module(
 }
 
 fn parse_source(
-  specifier: &ModuleSpecifier,
+  specifier: ModuleSpecifier,
   text_info: SourceTextInfo,
   media_type: MediaType,
 ) -> ParsedSourceResult {
   deno_ast::parse_module(deno_ast::ParseParams {
-    specifier: specifier.clone(),
+    specifier,
     text_info,
     media_type,
     capture_tokens: true,
@@ -1489,7 +1493,7 @@ fn parse_source(
 }
 
 fn analyze_module(
-  specifier: &ModuleSpecifier,
+  specifier: ModuleSpecifier,
   parsed_source_result: &ParsedSourceResult,
   maybe_headers: Option<&HashMap<String, String>>,
   file_referrer: Option<&ModuleSpecifier>,
@@ -1511,7 +1515,7 @@ fn analyze_module(
       },
     )),
     Err(err) => Err(deno_graph::ModuleGraphError::ModuleError(
-      deno_graph::ModuleError::ParseErr(specifier.clone(), err.clone()),
+      deno_graph::ModuleError::ParseErr(specifier, err.clone()),
     )),
   }
 }

@@ -8,7 +8,7 @@ use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::display::write_to_stdout_ignore_sigpipe;
 use crate::factory::CliFactory;
-use crate::graph_util::graph_lock_or_exit;
+use crate::graph_util::graph_exit_lock_errors;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
 use deno_ast::diagnostics::Diagnostic;
@@ -62,6 +62,7 @@ async fn generate_doc_nodes_for_builtin_types(
         executor: Default::default(),
         file_system: &NullFileSystem,
         jsr_url_provider: Default::default(),
+        locker: None,
         module_analyzer: analyzer,
         npm_resolver: None,
         reporter: None,
@@ -121,8 +122,8 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
         .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
         .await?;
 
-      if let Some(lockfile) = maybe_lockfile {
-        graph_lock_or_exit(&graph, &mut lockfile.lock());
+      if maybe_lockfile.is_some() {
+        graph_exit_lock_errors(&graph);
       }
 
       let doc_parser = doc::DocParser::new(

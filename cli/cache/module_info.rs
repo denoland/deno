@@ -150,8 +150,9 @@ pub struct ModuleInfoCacheModuleAnalyzer<'a> {
   parser: &'a dyn ModuleParser,
 }
 
+#[async_trait::async_trait(?Send)]
 impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
-  fn analyze(
+  async fn analyze(
     &self,
     specifier: &ModuleSpecifier,
     source: Arc<str>,
@@ -176,8 +177,9 @@ impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
     }
 
     // otherwise, get the module info from the parsed source cache
+    // todo(23858): take advantage of this being async
     let analyzer = ParserModuleAnalyzer::new(self.parser);
-    let module_info = analyzer.analyze(specifier, source, media_type)?;
+    let module_info = analyzer.analyze(specifier, source, media_type).await?;
 
     // then attempt to cache it
     if let Err(err) = self.module_info_cache.set_module_info(

@@ -34,8 +34,9 @@ pub use deno_config::TsConfigType;
 pub use deno_config::TsTypeLib;
 pub use deno_config::WorkspaceConfig;
 pub use flags::*;
+pub use lockfile::read_lockfile_at_path;
+pub use lockfile::write_lockfile_if_has_changes;
 pub use lockfile::Lockfile;
-pub use lockfile::LockfileError;
 pub use package_json::PackageJsonDepsProvider;
 
 use deno_ast::ModuleSpecifier;

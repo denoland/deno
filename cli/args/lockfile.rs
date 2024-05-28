@@ -2,10 +2,13 @@
 
 use std::path::PathBuf;
 
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_runtime::deno_node::PackageJson;
 
 use crate::args::ConfigFile;
+use crate::cache;
+use crate::util::fs::atomic_write_file;
 use crate::Flags;
 
 use super::DenoSubcommand;
@@ -13,7 +16,6 @@ use super::InstallFlags;
 use super::InstallKind;
 
 pub use deno_lockfile::Lockfile;
-pub use deno_lockfile::LockfileError;
 
 pub fn discover(
   flags: &Flags,
@@ -54,6 +56,34 @@ pub fn discover(
     },
   };
 
-  let lockfile = Lockfile::new(filename, flags.lock_write)?;
+  let lockfile = if flags.lock_write {
+    Lockfile::new_empty(filename, true)
+  } else {
+    read_lockfile_at_path(filename)?
+  };
   Ok(Some(lockfile))
+}
+
+pub fn read_lockfile_at_path(filename: PathBuf) -> Result<Lockfile, AnyError> {
+  match std::fs::read_to_string(&filename) {
+    Ok(text) => Ok(Lockfile::with_lockfile_content(filename, &text, false)?),
+    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+      Ok(Lockfile::new_empty(filename, false))
+    }
+    Err(err) => Err(err).with_context(|| {
+      format!("Failed reading lockfile '{}'", filename.display())
+    }),
+  }
+}
+
+pub fn write_lockfile_if_has_changes(
+  lockfile: &Lockfile,
+) -> Result<(), AnyError> {
+  let Some(bytes) = lockfile.resolve_write_bytes() else {
+    return Ok(()); // nothing to do
+  };
+  // do an atomic write to reduce the chance of multiple deno
+  // processes corrupting the file
+  atomic_write_file(&lockfile.filename, bytes, cache::CACHE_PERM)
+    .context("Failed writing lockfile.")
 }
