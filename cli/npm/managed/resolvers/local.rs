@@ -383,16 +383,10 @@ async fn sync_resolution_with_fs(
           .join("node_modules"),
         &package.id.nv.name,
       );
-      deno_core::unsync::spawn_blocking({
-        move || {
-          clone_dir_recursive(&source_path, &package_path)?;
-          // write out a file that indicates this folder has been initialized
-          fs::write(initialized_file, "")?;
 
-          Ok::<_, AnyError>(())
-        }
-      })
-      .await??;
+      clone_dir_recursive(&source_path, &package_path)?;
+      // write out a file that indicates this folder has been initialized
+      fs::write(initialized_file, "")?;
     }
   }
 
