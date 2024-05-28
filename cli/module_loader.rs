@@ -9,6 +9,7 @@ use std::str;
 use std::sync::Arc;
 
 use crate::args::jsr_url;
+use crate::args::write_lockfile_if_has_changes;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
@@ -20,7 +21,6 @@ use crate::factory::CliFactory;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node;
@@ -173,13 +173,9 @@ impl ModuleLoadPreparer {
 
     self.module_graph_builder.graph_roots_valid(graph, roots)?;
 
-    // If there is a lockfile...
+    // write the lockfile if there is one
     if let Some(lockfile) = &self.lockfile {
-      let mut lockfile = lockfile.lock();
-      // validate the integrity of all the modules
-      graph_lock_or_exit(graph, &mut lockfile);
-      // update it with anything new
-      lockfile.write().context("Failed writing lockfile.")?;
+      write_lockfile_if_has_changes(&lockfile.lock())?;
     }
 
     drop(_pb_clear_guard);

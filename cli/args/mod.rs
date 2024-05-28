@@ -34,8 +34,9 @@ pub use deno_config::TsConfigType;
 pub use deno_config::TsTypeLib;
 pub use deno_config::WorkspaceConfig;
 pub use flags::*;
+pub use lockfile::read_lockfile_at_path;
+pub use lockfile::write_lockfile_if_has_changes;
 pub use lockfile::Lockfile;
-pub use lockfile::LockfileError;
 pub use package_json::PackageJsonDepsProvider;
 
 use deno_ast::ModuleSpecifier;
@@ -1355,7 +1356,7 @@ impl CliOptions {
     } else if self.maybe_package_json.is_some() {
       Ok(Default::default())
     } else {
-      bail!("No config file found")
+      bail!("deno task couldn't find deno.json(c). See https://deno.land/manual@v{}/getting_started/configuration_file", env!("CARGO_PKG_VERSION"))
     }
   }
 
@@ -1757,7 +1758,9 @@ impl CliOptions {
 
     if *DENO_FUTURE {
       from_config_file.extend_from_slice(&[
+        deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string(),
         deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string(),
+        deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME.to_string(),
       ]);
     }
 

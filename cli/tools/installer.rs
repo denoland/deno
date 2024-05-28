@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::resolve_no_prompt;
+use crate::args::write_lockfile_if_has_changes;
 use crate::args::AddFlags;
 use crate::args::CaData;
 use crate::args::Flags;
@@ -266,7 +267,7 @@ async fn install_local(
   crate::module_loader::load_top_level_deps(&factory).await?;
 
   if let Some(lockfile) = factory.cli_options().maybe_lockfile() {
-    lockfile.lock().write()?;
+    write_lockfile_if_has_changes(&lockfile.lock())?;
   }
 
   Ok(())

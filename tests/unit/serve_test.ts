@@ -11,6 +11,7 @@ import {
   curlRequest,
   curlRequestWithStdErr,
   execCode,
+  execCode3,
   fail,
   tmpUnixSocketPath,
 } from "./test_util.ts";
@@ -3983,5 +3984,61 @@ Deno.test(
     ac.abort();
     await server.finished;
     assert(respText === "Internal Server Error");
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true, run: true, read: true },
+    ignore: Deno.build.os !== "linux",
+  },
+  async function gzipFlushResponseStream() {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    console.log("Starting server", servePort);
+    let timer: number | undefined = undefined;
+    let _controller;
+
+    const server = Deno.serve(
+      {
+        port: servePort,
+        onListen: onListen(resolve),
+        signal: ac.signal,
+      },
+      () => {
+        const body = new ReadableStream({
+          start(controller) {
+            timer = setInterval(() => {
+              const message = `It is ${new Date().toISOString()}\n`;
+              controller.enqueue(new TextEncoder().encode(message));
+            }, 1000);
+            _controller = controller;
+          },
+          cancel() {
+            if (timer !== undefined) {
+              clearInterval(timer);
+            }
+          },
+        });
+        return new Response(body, {
+          headers: {
+            "content-type": "text/plain",
+            "x-content-type-options": "nosniff",
+          },
+        });
+      },
+    );
+    await promise;
+    const e = await execCode3("/usr/bin/sh", [
+      "-c",
+      `curl --stderr - -N --compressed --no-progress-meter http://localhost:${servePort}`,
+    ]);
+    await e.waitStdoutText("It is ");
+    clearTimeout(timer);
+    _controller!.close();
+    await e.finished();
+    ac.abort();
+    await server.finished;
   },
 );
