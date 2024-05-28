@@ -72,7 +72,7 @@ impl crate::worker::CoverageCollector for CoverageCollector {
       if script_coverage.url.starts_with("ext:")
         || script_coverage.url.starts_with("[ext:")
         || script_coverage.url.starts_with("node:")
-        || script_coverage.url.is_empty()
+        || script_coverage.url.is_empty() // coverage from eval scripts
       {
         continue;
       }

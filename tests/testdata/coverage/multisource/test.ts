@@ -21,7 +21,6 @@ Deno.test("quux", () => {
   quux(false);
 });
 
-// This caused anomaly in coverage report
-// See https://github.com/denoland/deno/issues/24004
-// This call ensures that is not happening anymore
-Deno.statSync(".");
+// Function constructor or eval function generates a new script source internally.
+// This call ensures that the coverage data for the eval script source is not generated.
+eval("console.log(1)");
