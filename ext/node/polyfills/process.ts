@@ -87,18 +87,18 @@ export const exit = (code?: number | string) => {
     denoOs.setExitCode(1);
   }
 
-  const exitCode = ProcessExitCode || denoOs.getExitCode();
+  ProcessExitCode = denoOs.getExitCode();
   if (!process._exiting) {
     process._exiting = true;
     // FIXME(bartlomieju): this is wrong, we won't be using syscall to exit
     // and thus the `unload` event will not be emitted to properly trigger "emit"
     // event on `process`.
-    process.emit("exit", exitCode);
+    process.emit("exit", ProcessExitCode);
   }
 
   // Any valid thing `process.exitCode` set is already held in Deno.exitCode.
   // At this point, we don't have to pass around Node's raw/string exit value.
-  process.reallyExit(exitCode);
+  process.reallyExit(ProcessExitCode);
 };
 
 /** https://nodejs.org/api/process.html#processumaskmask */

@@ -168,8 +168,8 @@ fn op_set_exit_code(state: &mut OpState, #[smi] code: i32) {
 
 #[op2(fast)]
 #[smi]
-fn op_get_exit_code(state: &mut OpState) {
-  state.borrow_mut::<ExitCode>().get();
+fn op_get_exit_code(state: &mut OpState) -> i32 {
+  state.borrow_mut::<ExitCode>().get()
 }
 
 #[op2(fast)]

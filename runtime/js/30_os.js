@@ -102,7 +102,7 @@ function getExitCode() {
 }
 
 function setExitCode(value) {
-  const code = NumberParseInt(value, 10) || undefined;
+  const code = NumberParseInt(value, 10);
   if (typeof code !== "number") {
     throw new TypeError(
       `Exit code must be a number, got: ${code} (${typeof code}).`,
