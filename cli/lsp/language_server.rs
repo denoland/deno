@@ -439,7 +439,7 @@ impl LanguageServer {
       (
         inner.client.clone(),
         inner.config.workspace_folders.clone(),
-        inner.config.client_capabilities.workspace_configuration,
+        inner.config.workspace_configuration_capable(),
       )
     };
     if capable {
@@ -769,7 +769,7 @@ impl Inner {
           vec![],
         );
       }
-      self.config.update_capabilities(&params.capabilities);
+      self.config.set_client_capabilities(params.capabilities);
     }
 
     self.diagnostics_server.start();
@@ -802,6 +802,10 @@ impl Inner {
   }
 
   fn walk_workspace(config: &Config) -> (BTreeSet<ModuleSpecifier>, bool) {
+    if !config.workspace_capable() {
+      log::debug!("Skipped workspace walk due to client incapability.");
+      return (Default::default(), false);
+    }
     let mut workspace_files = Default::default();
     let entry_limit = 1000;
     let mut pending = VecDeque::new();
@@ -1664,10 +1668,10 @@ impl Inner {
         .map(CodeActionOrCommand::CodeAction),
     );
 
-    let code_action_disabled_support =
-      self.config.client_capabilities.code_action_disabled_support;
+    let code_action_disabled_capable =
+      self.config.code_action_disabled_capable();
     let actions: Vec<CodeActionOrCommand> = all_actions.into_iter().filter(|ca| {
-      code_action_disabled_support
+      code_action_disabled_capable
         || matches!(ca, CodeActionOrCommand::CodeAction(ca) if ca.disabled.is_none())
     }).collect();
     let response = if actions.is_empty() {
@@ -2318,7 +2322,7 @@ impl Inner {
             span.to_folding_range(
               asset_or_doc.line_index(),
               asset_or_doc.text().as_bytes(),
-              self.config.client_capabilities.line_folding_only,
+              self.config.line_folding_only_capable(),
             )
           })
           .collect::<Vec<FoldingRange>>(),
@@ -2887,11 +2891,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       inner.refresh_documents_config().await;
       inner.task_queue.start(self.clone());
       self.init_flag.raise();
-      if inner
-        .config
-        .client_capabilities
-        .workspace_did_change_watched_files
-      {
+      if inner.config.did_change_watched_files_capable() {
         // we are going to watch all the JSON files in the workspace, and the
         // notification handler will pick up any of the changes of those files we
         // are interested in.
@@ -2909,7 +2909,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
           register_options: Some(serde_json::to_value(options).unwrap()),
         });
       }
-      if inner.config.client_capabilities.workspace_will_rename_files {
+      if inner.config.will_rename_files_capable() {
         let options = FileOperationRegistrationOptions {
           filters: vec![FileOperationFilter {
             scheme: Some("file".to_string()),
@@ -2927,7 +2927,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         });
       }
 
-      if inner.config.client_capabilities.testing_api {
+      if inner.config.testing_api_capable() {
         let test_server = testing::TestServer::new(
           inner.client.clone(),
           inner.performance.clone(),
@@ -3051,7 +3051,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     };
     self.refresh_configuration().await;
     let mut inner = self.inner.write().await;
-    if !inner.config.client_capabilities.workspace_configuration {
+    if !inner.config.workspace_configuration_capable() {
       let config = params.settings.as_object().map(|settings| {
         let deno =
           serde_json::to_value(settings.get(SETTINGS_SECTION)).unwrap();
@@ -3726,6 +3726,10 @@ mod tests {
       temp_dir.uri().join("root2/").unwrap(),
       temp_dir.uri().join("root3/").unwrap(),
     ]);
+    config.set_client_capabilities(ClientCapabilities {
+      workspace: Some(Default::default()),
+      ..Default::default()
+    });
     config.set_workspace_settings(
       Default::default(),
       vec![
