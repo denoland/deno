@@ -3725,6 +3725,10 @@ mod tests {
       temp_dir.uri().join("root2/").unwrap(),
       temp_dir.uri().join("root3/").unwrap(),
     ]);
+    config.set_client_capabilities(ClientCapabilities {
+      workspace: Some(Default::default()),
+      ..Default::default()
+    });
     config.set_workspace_settings(
       Default::default(),
       vec![
