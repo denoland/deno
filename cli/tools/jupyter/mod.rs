@@ -23,8 +23,8 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
 
-use runtimelib::jupyter::ConnectionInfo;
-use runtimelib::messaging::StreamContent;
+use jupyter_runtime::jupyter::ConnectionInfo;
+use jupyter_runtime::messaging::StreamContent;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 

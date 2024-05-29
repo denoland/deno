@@ -248,7 +248,7 @@ fn get_maybe_hash(
 }
 
 fn get_hash(source: &str, hash_data: u64) -> String {
-  FastInsecureHasher::new()
+  FastInsecureHasher::new_without_deno_version()
     .write_str(source)
     .write_u64(hash_data)
     .finish()

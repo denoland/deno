@@ -34,7 +34,7 @@ impl Emitter {
     emit_options: deno_ast::EmitOptions,
   ) -> Self {
     let transpile_and_emit_options_hash = {
-      let mut hasher = FastInsecureHasher::default();
+      let mut hasher = FastInsecureHasher::new_without_deno_version();
       hasher.write_hashable(&transpile_options);
       hasher.write_hashable(&emit_options);
       hasher.finish()
@@ -188,7 +188,7 @@ impl Emitter {
   /// options then generates a string hash which can be stored to
   /// determine if the cached emit is valid or not.
   fn get_source_hash(&self, source_text: &str) -> u64 {
-    FastInsecureHasher::new()
+    FastInsecureHasher::new_without_deno_version() // stored in the transpile_and_emit_options_hash
       .write_str(source_text)
       .write_u64(self.transpile_and_emit_options_hash)
       .finish()
