@@ -1,0 +1,16 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "run add.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "task --quiet cat deno.lock",
+    "output": "lock01.out"
+  }, {
+    "args": "run subtract.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "task --quiet cat deno.lock",
+    "output": "lock02.out"
+  }]
+}

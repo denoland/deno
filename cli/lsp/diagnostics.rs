@@ -1629,9 +1629,8 @@ mod tests {
       .unwrap();
       config.tree.inject_config_file(config_file).await;
     }
-    let resolver = LspResolver::default()
-      .with_new_config(&config, &cache, None)
-      .await;
+    let resolver =
+      Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let mut documents = Documents::default();
     documents.update_config(&config, &resolver, &cache, &Default::default());
     for (specifier, source, version, language_id) in sources {

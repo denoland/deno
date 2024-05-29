@@ -16,6 +16,7 @@ use hyper::Request;
 use hyper::Response;
 use hyper_util::rt::TokioIo;
 use std::io::BufRead;
+use std::process::ChildStderr;
 use std::time::Duration;
 use test_util as util;
 use tokio::net::TcpStream;
@@ -71,11 +72,69 @@ async fn connect_to_ws(
     .unwrap()
 }
 
+fn ignore_script_parsed(msg: &str) -> bool {
+  !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
+}
+
+struct StdErrLines {
+  reader: Box<dyn Iterator<Item = String>>,
+  check_lines: Vec<String>,
+}
+
+impl StdErrLines {
+  pub fn new(stderr: ChildStderr) -> Self {
+    Self {
+      reader: Box::new(std::io::BufReader::new(stderr).lines().map(|r| {
+        let line = r.unwrap();
+        eprintln!("STDERR: {}", line);
+        line
+      })),
+      check_lines: Default::default(),
+    }
+  }
+
+  pub fn next(&mut self) -> Option<String> {
+    loop {
+      let line = util::strip_ansi_codes(&self.reader.next()?).to_string();
+      if line.starts_with("Check") || line.starts_with("Download") {
+        self.check_lines.push(line);
+      } else {
+        return Some(line);
+      }
+    }
+  }
+
+  pub fn assert_lines(&mut self, expected_lines: &[&str]) {
+    let mut expected_index = 0;
+
+    loop {
+      let line = self.next().unwrap();
+
+      assert_eq!(line, expected_lines[expected_index]);
+      expected_index += 1;
+
+      if expected_index >= expected_lines.len() {
+        break;
+      }
+    }
+  }
+
+  pub fn extract_ws_url(&mut self) -> url::Url {
+    let stderr_first_line = self.next().unwrap();
+    assert_starts_with!(&stderr_first_line, "Debugger listening on ");
+    let v: Vec<_> = stderr_first_line.match_indices("ws:").collect();
+    assert_eq!(v.len(), 1);
+    let ws_url_index = v[0].0;
+    let ws_url = &stderr_first_line[ws_url_index..];
+    url::Url::parse(ws_url).unwrap()
+  }
+}
+
 struct InspectorTester {
   socket: FragmentCollector<TokioIo<Upgraded>>,
   notification_filter: Box<dyn FnMut(&str) -> bool + 'static>,
   child: DenoChild,
-  stderr_lines: Box<dyn Iterator<Item = String>>,
+  stderr_lines: StdErrLines,
   stdout_lines: Box<dyn Iterator<Item = String>>,
 }
 
@@ -83,10 +142,6 @@ impl Drop for InspectorTester {
   fn drop(&mut self) {
     _ = self.child.kill();
   }
-}
-
-fn ignore_script_parsed(msg: &str) -> bool {
-  !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
 }
 
 impl InspectorTester {
@@ -102,13 +157,9 @@ impl InspectorTester {
     });
 
     let stderr = child.stderr.take().unwrap();
-    let mut stderr_lines = std::io::BufReader::new(stderr).lines().map(|r| {
-      let line = r.unwrap();
-      eprintln!("STDERR: {}", line);
-      line
-    });
+    let mut stderr_lines = StdErrLines::new(stderr);
 
-    let uri = extract_ws_url_from_stderr(&mut stderr_lines);
+    let uri = stderr_lines.extract_ws_url();
 
     let (socket, response) = connect_to_ws(uri).await;
 
@@ -118,7 +169,7 @@ impl InspectorTester {
       socket: FragmentCollector::new(socket),
       notification_filter: Box::new(notification_filter),
       child,
-      stderr_lines: Box::new(stderr_lines),
+      stderr_lines,
       stdout_lines: Box::new(stdout_lines),
     }
   }
@@ -148,7 +199,7 @@ impl InspectorTester {
           stdout.push(line);
         }
         let mut stderr = vec![];
-        for line in self.stderr_lines.by_ref() {
+        while let Some(line) = self.stderr_lines.next() {
           stderr.push(line);
         }
         let stdout = stdout.join("\n");
@@ -223,38 +274,16 @@ impl InspectorTester {
   }
 
   fn assert_stderr_for_inspect(&mut self) {
-    assert_stderr(
-      &mut self.stderr_lines,
-      &["Visit chrome://inspect to connect to the debugger."],
-    );
+    self
+      .stderr_lines
+      .assert_lines(&["Visit chrome://inspect to connect to the debugger."]);
   }
 
   fn assert_stderr_for_inspect_brk(&mut self) {
-    assert_stderr(
-      &mut self.stderr_lines,
-      &[
-        "Visit chrome://inspect to connect to the debugger.",
-        "Deno is waiting for debugger to connect.",
-      ],
-    );
-  }
-}
-
-fn assert_stderr(
-  stderr_lines: &mut impl std::iter::Iterator<Item = String>,
-  expected_lines: &[&str],
-) {
-  let mut expected_index = 0;
-
-  loop {
-    let line = skip_check_line(stderr_lines);
-
-    assert_eq!(line, expected_lines[expected_index]);
-    expected_index += 1;
-
-    if expected_index >= expected_lines.len() {
-      break;
-    }
+    self.stderr_lines.assert_lines(&[
+      "Visit chrome://inspect to connect to the debugger.",
+      "Deno is waiting for debugger to connect.",
+    ]);
   }
 }
 
@@ -264,33 +293,6 @@ fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
   static PORT: AtomicU16 = AtomicU16::new(9229);
   let port = PORT.fetch_add(1, Ordering::Relaxed);
   format!("{flag_prefix}=127.0.0.1:{port}")
-}
-
-fn extract_ws_url_from_stderr(
-  stderr_lines: &mut impl std::iter::Iterator<Item = String>,
-) -> url::Url {
-  let stderr_first_line = skip_check_line(stderr_lines);
-  assert_starts_with!(&stderr_first_line, "Debugger listening on ");
-  let v: Vec<_> = stderr_first_line.match_indices("ws:").collect();
-  assert_eq!(v.len(), 1);
-  let ws_url_index = v[0].0;
-  let ws_url = &stderr_first_line[ws_url_index..];
-  url::Url::parse(ws_url).unwrap()
-}
-
-fn skip_check_line(
-  stderr_lines: &mut impl std::iter::Iterator<Item = String>,
-) -> String {
-  loop {
-    let mut line = stderr_lines.next().unwrap();
-    line = util::strip_ansi_codes(&line).to_string();
-
-    if line.starts_with("Check") || line.starts_with("Download") {
-      continue;
-    }
-
-    return line;
-  }
 }
 
 #[tokio::test]
@@ -304,10 +306,9 @@ async fn inspector_connect() {
     .spawn()
     .unwrap();
 
-  let stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines =
-    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let stderr = child.stderr.take().unwrap();
+  let mut stderr_lines = StdErrLines::new(stderr);
+  let ws_url = stderr_lines.extract_ws_url();
 
   let (_socket, response) = connect_to_ws(ws_url).await;
   assert_eq!("101 Switching Protocols", response.status().to_string());
@@ -453,11 +454,9 @@ async fn inspector_port_collision() {
     .spawn()
     .unwrap();
 
-  let stderr_1 = child1.stderr.as_mut().unwrap();
-  let mut stderr_1_lines = std::io::BufReader::new(stderr_1)
-    .lines()
-    .map(|r| r.unwrap());
-  let _ = extract_ws_url_from_stderr(&mut stderr_1_lines);
+  let stderr_1 = child1.stderr.take().unwrap();
+  let mut stderr_1_lines = StdErrLines::new(stderr_1);
+  let _ = stderr_1_lines.extract_ws_url();
 
   let mut child2 = util::deno_cmd()
     .arg("run")
@@ -582,10 +581,9 @@ async fn inspector_without_brk_runs_code() {
     .spawn()
     .unwrap();
 
-  let stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines =
-    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-  let _ = extract_ws_url_from_stderr(&mut stderr_lines);
+  let stderr = child.stderr.take().unwrap();
+  let mut stderr_lines = StdErrLines::new(stderr);
+  let _ = stderr_lines.extract_ws_url();
 
   // Check that inspector actually runs code without waiting for inspector
   // connection.
@@ -718,10 +716,9 @@ async fn inspector_json() {
     .spawn()
     .unwrap();
 
-  let stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines =
-    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let stderr = child.stderr.take().unwrap();
+  let mut stderr_lines = StdErrLines::new(stderr);
+  let ws_url = stderr_lines.extract_ws_url();
   let mut url = ws_url.clone();
   let _ = url.set_scheme("http");
   url.set_path("/json");
@@ -768,10 +765,9 @@ async fn inspector_json_list() {
     .spawn()
     .unwrap();
 
-  let stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines =
-    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let stderr = child.stderr.take().unwrap();
+  let mut stderr_lines = StdErrLines::new(stderr);
+  let ws_url = stderr_lines.extract_ws_url();
   let mut url = ws_url.clone();
   let _ = url.set_scheme("http");
   url.set_path("/json/list");
@@ -799,10 +795,9 @@ async fn inspector_connect_non_ws() {
     .spawn()
     .unwrap();
 
-  let stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines =
-    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-  let mut ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let stderr = child.stderr.take().unwrap();
+  let mut stderr_lines = StdErrLines::new(stderr);
+  let mut ws_url = stderr_lines.extract_ws_url();
   // Change scheme to URL and try send a request. We're not interested
   // in the request result, just that the process doesn't panic.
   ws_url.set_scheme("http").unwrap();
@@ -1013,12 +1008,11 @@ async fn inspector_with_ts_files() {
     )
     .await;
 
-  let line = tester.stderr_line();
-  assert_contains!(test_util::strip_ansi_codes(&line), "Check");
   assert_eq!(
     &tester.stderr_line(),
     "Program finished. Waiting for inspector to disconnect to exit the process..."
   );
+  assert!(!tester.stderr_lines.check_lines.is_empty());
 
   tester.child.kill().unwrap();
   tester.child.wait().unwrap();

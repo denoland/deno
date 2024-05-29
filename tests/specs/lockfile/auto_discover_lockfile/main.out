@@ -1,0 +1,13 @@
+Download http://localhost:4545/subdir/mod2.ts
+Download http://localhost:4545/subdir/print_hello.ts
+error: Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.
+
+  Specifier: http://localhost:4545/subdir/print_hello.ts
+  Actual: fa6692c8f9ff3fb107e773c3ece5274e9d08be282867a1e3ded1d9c00fcaa63c
+  Expected: foobar
+
+This could be caused by:
+  * the lock file may be corrupt
+  * the source itself may be corrupt
+
+Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server.
