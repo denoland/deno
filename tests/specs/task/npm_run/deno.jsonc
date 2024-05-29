@@ -7,6 +7,6 @@
     // haven't implemented the flags for `npm run` yet
     "test_using_npm": "npm run non_existent -- --ignore-scripts",
     "npm_run": "npm run",
-    "npm_run_args": "npm run -s echo"
+    "npm_run_args": "npm run -d echo"
   }
 }

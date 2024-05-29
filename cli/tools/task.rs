@@ -344,20 +344,15 @@ impl ShellCommand for NpmCommand {
     mut context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     if context.args.first().map(|s| s.as_str()) == Some("run")
-      && !context.args.iter().any(|s| s == "--")
-      && context.args.get(1).is_some()
+      && context.args.len() > 2
+      // for now, don't run any npm scripts that have a flag because
+      // we don't handle stuff like `--workspaces` properly
+      && !context.args.iter().any(|s| s.starts_with('-'))
     {
       // run with deno task instead
-      let mut args = vec!["task".to_string()];
-
-      for arg in context.args.iter().skip(1) {
-        // Skip arguments to `npm run` for now.
-        if arg.starts_with('-') {
-          continue;
-        }
-
-        args.push(arg.to_string());
-      }
+      let mut args = Vec::with_capacity(context.args.len());
+      args.push("task".to_string());
+      args.extend(context.args.iter().skip(1).cloned());
 
       let mut state = context.state;
       state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");

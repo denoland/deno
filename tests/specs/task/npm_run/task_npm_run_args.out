@@ -1,3 +1,5 @@
-Task npm_run_args npm run -s echo
-Task echo echo
+Task npm_run_args npm run -d echo
+npm info using[WILDCARD]
 
+> echo
+[WILDCARD]
