@@ -108,7 +108,9 @@ function assertExit(fn, isTest) {
       const exitCode = DenoNs.exitCode;
       if (exitCode !== 0) {
         throw new Error(
-          `${isTest ? "Test case" : "Bench"} set the exit code to ${exitCode}.`,
+          `${
+            isTest ? "Test case" : "Bench"
+          } finishes with exit code set to ${exitCode}.`,
         );
       }
       if (innerResult) {
