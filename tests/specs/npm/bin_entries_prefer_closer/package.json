@@ -1,7 +1,7 @@
 {
   "name": "bin_entries_prefer_closer",
   "dependencies": {
-    "@denotest/bin": "2.0.0",
+    "@denotest/bin": "0.7.0",
     "@denotest/transitive-bin": "1.0.0"
   },
 
