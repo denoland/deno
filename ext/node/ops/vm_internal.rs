@@ -70,9 +70,9 @@ impl ContextifyContext {
     scope: &mut v8::HandleScope,
     sandbox_obj: v8::Local<v8::Object>,
   ) {
-    init_global_template(scope);
+    let tmp = init_global_template(scope, true);
 
-    let context = create_v8_context(scope);
+    let context = create_v8_context(scope, tmp, true);
     Self::from_context(scope, context, sandbox_obj);
   }
 
@@ -88,7 +88,8 @@ impl ContextifyContext {
       .clone();
 
     v8_context.set_security_token(main_context.get_security_token(scope));
-    v8_context.set_slot(scope, context_state);
+    // This segfaults :(
+    // v8_context.set_slot(scope, context_state);
 
     let context = v8::Global::new(scope, v8_context);
     let sandbox = v8::Global::new(scope, sandbox_obj);
@@ -165,6 +166,9 @@ impl ContextifyContext {
     let context = object.get_creation_context(scope)?;
 
     let context_ptr = context.get_aligned_pointer_from_embedder_data(1);
+    if context_ptr.is_null() {
+      return None;
+    }
     // SAFETY: We are storing a pointer to the ContextifyContext
     // in the embedder data of the v8::Context during creation.
     Some(unsafe { &*(context_ptr as *const ContextifyContext) })
@@ -173,36 +177,54 @@ impl ContextifyContext {
 
 pub const VM_CONTEXT_INDEX: usize = 0;
 
-fn create_v8_context<'a>(
-  scope: &mut v8::HandleScope<'a>,
+pub fn create_v8_context<'a>(
+  scope: &mut v8::HandleScope<'a, ()>,
+  object_template: v8::Local<v8::ObjectTemplate>,
+  use_snapshot: bool,
 ) -> v8::Local<'a, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
-  let context = v8::Context::from_snapshot(scope, VM_CONTEXT_INDEX)
-    .expect("Failed to create VM context from snapshot");
+
+  let context = if use_snapshot {
+    v8::Context::from_snapshot(scope, VM_CONTEXT_INDEX).unwrap()
+  } else {
+    let ctx = v8::Context::new_from_template(scope, object_template);
+    // ContextifyContexts will update this to a pointer to the native object
+    unsafe { ctx.set_aligned_pointer_in_embedder_data(1, std::ptr::null_mut()) };
+    ctx
+  };
+
   scope.escape(context)
 }
 
 #[derive(Debug, Clone)]
 struct SlotContextifyGlobalTemplate(v8::Global<v8::ObjectTemplate>);
 
-fn init_global_template<'a>(
-  scope: &mut v8::HandleScope<'a>,
+pub fn init_global_template<'a>(
+  scope: &mut v8::HandleScope<'a, ()>,
+  cache: bool,
 ) -> v8::Local<'a, v8::ObjectTemplate> {
   let mut maybe_object_template_slot =
     scope.get_slot::<SlotContextifyGlobalTemplate>();
 
   if maybe_object_template_slot.is_none() {
-    init_global_template_inner(scope);
-    maybe_object_template_slot =
-      scope.get_slot::<SlotContextifyGlobalTemplate>();
-  }
+    let global_object_template = init_global_template_inner(scope);
+
+    if cache {
+    let contextify_global_template_slot = SlotContextifyGlobalTemplate(
+      v8::Global::new(scope, global_object_template),
+    );
+    scope.set_slot(contextify_global_template_slot);
+    }
+    global_object_template
+  } else {
   let object_template_slot = maybe_object_template_slot
     .expect("ContextifyGlobalTemplate slot should be already populated.")
     .clone();
   v8::Local::new(scope, object_template_slot.0)
+  }
 }
 
-extern "C" fn c_noop(_: *const v8::FunctionCallbackInfo) {}
+pub extern "C" fn c_noop(_: *const v8::FunctionCallbackInfo) {}
 
 // Using thread_local! to get around compiler bug.
 //
@@ -224,7 +246,9 @@ thread_local! {
   pub static INDEXED_DESCRIPTOR_MAP_FN: v8::IndexedPropertyGetterCallback<'static> = indexed_property_descriptor.map_fn_to();
 }
 
-fn init_global_template_inner(scope: &mut v8::HandleScope) {
+pub fn init_global_template_inner<'a>(
+  scope: &mut v8::HandleScope<'a, ()>,
+) -> v8::Local<'a, v8::ObjectTemplate> {
   let global_func_template =
     v8::FunctionTemplate::builder_raw(c_noop).build(scope);
   let global_object_template = global_func_template.instance_template(scope);
@@ -250,16 +274,16 @@ fn init_global_template_inner(scope: &mut v8::HandleScope) {
     let mut config = v8::IndexedPropertyHandlerConfiguration::new()
       .flags(v8::PropertyHandlerFlags::HAS_NO_SIDE_EFFECT);
 
-    config = INDEXED_GETTER_MAP_FN.with(|getter| config.getter_raw(*getter));
-    config = INDEXED_SETTER_MAP_FN.with(|setter| config.setter_raw(*setter));
-    config =
-      INDEXED_DELETER_MAP_FN.with(|deleter| config.deleter_raw(*deleter));
-    config =
-      ENUMERATOR_MAP_FN.with(|enumerator| config.enumerator_raw(*enumerator));
-    config =
-      INDEXED_DEFINER_MAP_FN.with(|definer| config.definer_raw(*definer));
-    config = INDEXED_DESCRIPTOR_MAP_FN
-      .with(|descriptor| config.descriptor_raw(*descriptor));
+//   config = INDEXED_GETTER_MAP_FN.with(|getter| config.getter_raw(*getter));
+//   config = INDEXED_SETTER_MAP_FN.with(|setter| config.setter_raw(*setter));
+//   config =
+//     INDEXED_DELETER_MAP_FN.with(|deleter| config.deleter_raw(*deleter));
+//   config =
+//     ENUMERATOR_MAP_FN.with(|enumerator| config.enumerator_raw(*enumerator));
+//   config =
+//     INDEXED_DEFINER_MAP_FN.with(|definer| config.definer_raw(*definer));
+//   config = INDEXED_DESCRIPTOR_MAP_FN
+//     .with(|descriptor| config.descriptor_raw(*descriptor));
 
     config
   };
@@ -268,10 +292,8 @@ fn init_global_template_inner(scope: &mut v8::HandleScope) {
     .set_named_property_handler(named_property_handler_config);
   global_object_template
     .set_indexed_property_handler(indexed_property_handler_config);
-  let contextify_global_template_slot = SlotContextifyGlobalTemplate(
-    v8::Global::new(scope, global_object_template),
-  );
-  scope.set_slot(contextify_global_template_slot);
+
+  global_object_template
 }
 
 fn property_getter<'s>(
@@ -280,7 +302,7 @@ fn property_getter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut ret: v8::ReturnValue,
 ) {
-  let ctx = ContextifyContext::get(scope, args.this()).unwrap();
+  let Some(ctx) = ContextifyContext::get(scope, args.this()) else { return; };
 
   let sandbox = ctx.sandbox(scope);
 
@@ -311,7 +333,7 @@ fn property_setter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  let ctx = ContextifyContext::get(scope, args.this()).unwrap();
+  let Some(ctx) = ContextifyContext::get(scope, args.this()) else { return; };
 
   let (attributes, is_declared_on_global_proxy) = match ctx
     .global_proxy(scope)
@@ -399,7 +421,7 @@ fn property_deleter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  let ctx = ContextifyContext::get(scope, args.this()).unwrap();
+  let Some(ctx) = ContextifyContext::get(scope, args.this()) else { return; };
 
   let context = ctx.context(scope);
   let sandbox = ctx.sandbox(scope);
@@ -416,7 +438,7 @@ fn property_enumerator<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  let ctx = ContextifyContext::get(scope, args.this()).unwrap();
+  let Some(ctx) = ContextifyContext::get(scope, args.this()) else { return; };
 
   let context = ctx.context(scope);
   let sandbox = ctx.sandbox(scope);
@@ -437,7 +459,7 @@ fn property_definer<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   _: v8::ReturnValue,
 ) {
-  let ctx = ContextifyContext::get(scope, args.this()).unwrap();
+  let Some(ctx) = ContextifyContext::get(scope, args.this()) else { return; };
 
   let context = ctx.context(scope);
   let (attributes, is_declared) = match ctx
@@ -513,7 +535,7 @@ fn property_descriptor<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  let ctx = ContextifyContext::get(scope, args.this()).unwrap();
+  let Some(ctx) = ContextifyContext::get(scope, args.this()) else { return; };
 
   let context = ctx.context(scope);
   let sandbox = ctx.sandbox(scope);
@@ -562,7 +584,7 @@ fn indexed_property_deleter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  let ctx = ContextifyContext::get(scope, args.this()).unwrap();
+  let Some(ctx) = ContextifyContext::get(scope, args.this()) else { return; };
 
   let context = ctx.context(scope);
   let sandbox = ctx.sandbox(scope);

@@ -285,8 +285,12 @@ pub fn create_runtime_snapshot(
         let isolate = rt.v8_isolate();
         let scope = &mut v8::HandleScope::new(isolate);
 
-        let ctx = v8::Context::new(scope);
-        assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
+    //    let main_context = v8::Context::new(scope);
+    //    scope.add_context(main_context);
+
+        let tmpl = deno_node::init_global_template(scope, false);
+        let ctx = deno_node::create_v8_context(scope, tmpl, false);
+        assert_eq!(scope.add_context(ctx), 0);
       })),
       skip_op_registration: false,
     },

@@ -7,6 +7,8 @@ use deno_core::v8;
 
 use super::vm_internal as i;
 
+pub use i::*;
+
 pub struct Script {
   inner: i::ContextifyScript,
 }
