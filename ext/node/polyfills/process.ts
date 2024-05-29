@@ -10,7 +10,6 @@ import {
   op_geteuid,
   op_node_process_kill,
   op_process_abort,
-  op_set_exit_code,
 } from "ext:core/ops";
 
 import { warnNotImplemented } from "ext:deno_node/_utils.ts";
@@ -49,6 +48,7 @@ import {
 } from "ext:deno_node/_next_tick.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
+import * as denoOs from "ext:runtime/30_os.js";
 
 export let argv0 = "";
 
@@ -74,28 +74,31 @@ const notImplementedEvents = [
 ];
 
 export const argv: string[] = ["", ""];
-let globalProcessExitCode: number | undefined = undefined;
+
+// In Node, `process.exitCode` is initially `undefined` until set.
+// And retains any value as long as it's nullish or number-ish.
+let ProcessExitCode: undefined | null | string | number;
 
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
   if (code || code === 0) {
-    if (typeof code === "string") {
-      const parsedCode = parseInt(code);
-      globalProcessExitCode = isNaN(parsedCode) ? undefined : parsedCode;
-    } else {
-      globalProcessExitCode = code;
-    }
+    denoOs.setExitCode(code);
+  } else if (Number.isNaN(code)) {
+    denoOs.setExitCode(1);
   }
 
+  ProcessExitCode = denoOs.getExitCode();
   if (!process._exiting) {
     process._exiting = true;
     // FIXME(bartlomieju): this is wrong, we won't be using syscall to exit
     // and thus the `unload` event will not be emitted to properly trigger "emit"
     // event on `process`.
-    process.emit("exit", process.exitCode || 0);
+    process.emit("exit", ProcessExitCode);
   }
 
-  process.reallyExit(process.exitCode || 0);
+  // Any valid thing `process.exitCode` set is already held in Deno.exitCode.
+  // At this point, we don't have to pass around Node's raw/string exit value.
+  process.reallyExit(ProcessExitCode);
 };
 
 /** https://nodejs.org/api/process.html#processumaskmask */
@@ -433,14 +436,42 @@ Process.prototype._exiting = _exiting;
 /** https://nodejs.org/api/process.html#processexitcode_1 */
 Object.defineProperty(Process.prototype, "exitCode", {
   get() {
-    return globalProcessExitCode;
+    return ProcessExitCode;
   },
-  set(code: number | undefined) {
-    globalProcessExitCode = code;
-    code = parseInt(code) || 0;
-    if (!isNaN(code)) {
-      op_set_exit_code(code);
+  set(code: number | string | null | undefined) {
+    let parsedCode;
+
+    if (typeof code === "number") {
+      if (Number.isNaN(code)) {
+        parsedCode = 1;
+        denoOs.setExitCode(parsedCode);
+        ProcessExitCode = parsedCode;
+        return;
+      }
+
+      // This is looser than `denoOs.setExitCode` which requires exit code
+      // to be decimal or string of a decimal, but Node accept eg. 0x10.
+      parsedCode = parseInt(code);
+      denoOs.setExitCode(parsedCode);
+      ProcessExitCode = parsedCode;
+      return;
     }
+
+    if (typeof code === "string") {
+      parsedCode = parseInt(code);
+      if (Number.isNaN(parsedCode)) {
+        throw new TypeError(
+          `The "code" argument must be of type number. Received type ${typeof code} (${code})`,
+        );
+      }
+      denoOs.setExitCode(parsedCode);
+      ProcessExitCode = parsedCode;
+      return;
+    }
+
+    // TODO(bartlomieju): hope for the best here. This should be further tightened.
+    denoOs.setExitCode(code);
+    ProcessExitCode = code;
   },
 });
 
