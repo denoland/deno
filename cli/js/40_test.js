@@ -28,6 +28,10 @@ const {
 
 import { setExitHandler } from "ext:runtime/30_os.js";
 
+// Capture `Deno` global so that users deleting or mangling it, won't
+// have impact on our sanitizers.
+const DenoNs = globalThis.Deno;
+
 /**
  * @typedef {{
  *   id: number,
@@ -101,7 +105,15 @@ function assertExit(fn, isTest) {
 
     try {
       const innerResult = await fn(...new SafeArrayIterator(params));
-      if (innerResult) return innerResult;
+      const exitCode = DenoNs.exitCode;
+      if (exitCode !== 0) {
+        throw new Error(
+          `${isTest ? "Test case" : "Bench"} set the exit code to ${exitCode}.`,
+        );
+      }
+      if (innerResult) {
+        return innerResult;
+      }
     } finally {
       setExitHandler(null);
     }
