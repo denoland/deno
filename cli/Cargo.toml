@@ -111,6 +111,7 @@ ignore = "0.4"
 import_map = { version = "=0.19.0", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser.workspace = true
+jupyter_runtime = { package = "runtimelib", version = "=0.11.0" }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
@@ -130,7 +131,6 @@ rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 reqwest.workspace = true
 ring.workspace = true
-runtimelib = "=0.9.0"
 rustyline.workspace = true
 rustyline-derive = "=0.7.0"
 serde.workspace = true
