@@ -99,7 +99,9 @@ Object.defineProperty(globalThis, "{0}", {{
     lastThrownError: undefined,
     inspectArgs: Deno[Deno.internal].inspectArgs,
     noColor: Deno.noColor,
-    closed: this.closed
+    get closed() {{
+      return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
+    }}
   }},
 }});
 Object.defineProperty(globalThis, "_", {{
