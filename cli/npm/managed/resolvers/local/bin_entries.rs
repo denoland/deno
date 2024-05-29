@@ -13,10 +13,9 @@ use std::path::PathBuf;
 
 #[derive(Default)]
 pub(super) struct BinEntries {
-  /// Whether there's a collision in bin names
-  /// (i.e. two packages with the same bin name)
-  has_collision: bool,
-  seen_names: HashSet<String>,
+  /// Packages that have colliding bin names
+  collisions: HashSet<NpmPackageId>,
+  seen_names: HashMap<String, NpmPackageId>,
   /// The bin entries
   entries: Vec<(NpmResolutionPackage, PathBuf)>,
 }
@@ -45,22 +44,25 @@ impl BinEntries {
   ) {
     // check for a new collision, if we haven't already
     // found one
-    if !self.has_collision {
-      match package.bin.as_ref().unwrap() {
-        deno_npm::registry::NpmPackageVersionBinEntry::String(_) => {
-          let bin_name = default_bin_name(&package);
-          if !self.seen_names.insert(bin_name.to_string()) {
-            self.has_collision = true;
-            self.seen_names.clear();
-          }
+    match package.bin.as_ref().unwrap() {
+      deno_npm::registry::NpmPackageVersionBinEntry::String(_) => {
+        let bin_name = default_bin_name(&package);
+
+        if let Some(other) = self
+          .seen_names
+          .insert(bin_name.to_string(), package.id.clone())
+        {
+          self.collisions.insert(package.id.clone());
+          self.collisions.insert(other);
         }
-        deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
-          for name in entries.keys() {
-            if !self.seen_names.insert(name.clone()) {
-              self.has_collision = true;
-              self.seen_names.clear();
-              break;
-            }
+      }
+      deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
+        for name in entries.keys() {
+          if let Some(other) =
+            self.seen_names.insert(name.to_string(), package.id.clone())
+          {
+            self.collisions.insert(package.id.clone());
+            self.collisions.insert(other);
           }
         }
       }
@@ -82,10 +84,10 @@ impl BinEntries {
       )?;
     }
 
-    if self.has_collision {
+    if !self.collisions.is_empty() {
       // walking the dependency tree to find out the depth of each package
       // is sort of expensive, so we only do it if there's a collision
-      sort_by_depth(snapshot, &mut self.entries);
+      sort_by_depth(snapshot, &mut self.entries, &mut self.collisions);
     }
 
     let mut seen = HashSet::new();
@@ -135,18 +137,16 @@ impl BinEntries {
 fn sort_by_depth(
   snapshot: &NpmResolutionSnapshot,
   bin_entries: &mut [(NpmResolutionPackage, PathBuf)],
+  collisions: &mut HashSet<NpmPackageId>,
 ) {
   enum Entry<'a> {
     Pkg(&'a NpmPackageId),
     IncreaseDepth,
   }
-  let mut want = bin_entries
-    .iter()
-    .map(|(p, _)| p.id.clone())
-    .collect::<HashSet<_>>();
+
   let mut seen = HashSet::new();
-  let mut depths: HashMap<NpmPackageId, u64> =
-    HashMap::with_capacity(want.len());
+  let mut depths: HashMap<&NpmPackageId, u64> =
+    HashMap::with_capacity(collisions.len());
 
   let mut queue = VecDeque::new();
   queue.extend(snapshot.top_level_packages().map(Entry::Pkg));
@@ -155,7 +155,7 @@ fn sort_by_depth(
   let mut current_depth = 0u64;
 
   while let Some(entry) = queue.pop_front() {
-    if want.is_empty() {
+    if collisions.is_empty() {
       break;
     }
     let id = match entry {
@@ -170,31 +170,22 @@ fn sort_by_depth(
       }
     };
     if let Some(package) = snapshot.package_from_id(id) {
-      if want.remove(&package.id) {
-        depths.insert(package.id.clone(), current_depth);
+      if collisions.remove(&package.id) {
+        depths.insert(&package.id, current_depth);
       }
-      seen.insert(package.id.clone());
-      queue.extend(
-        package
-          .dependencies
-          .values()
-          .filter(|p| !seen.contains(*p))
-          .map(Entry::Pkg),
-      );
+      for dep in package.dependencies.values() {
+        if seen.insert(dep) {
+          queue.push_back(Entry::Pkg(dep));
+        }
+      }
     }
   }
 
   bin_entries.sort_by(|(a, _), (b, _)| {
     depths
       .get(&a.id)
-      .unwrap_or_else(|| {
-        log::warn!("{} not found in dependency tree", a.id.nv);
-        &u64::MAX
-      })
-      .cmp(depths.get(&b.id).unwrap_or_else(|| {
-        log::warn!("{} not found in dependency tree", b.id.nv);
-        &u64::MAX
-      }))
+      .unwrap_or(&u64::MAX)
+      .cmp(depths.get(&b.id).unwrap_or(&u64::MAX))
       .then_with(|| a.id.nv.cmp(&b.id.nv).reverse())
   });
 }
@@ -258,40 +249,30 @@ fn symlink_bin_entry(
   package_path: &Path,
   bin_node_modules_dir_path: &Path,
 ) -> Result<(), AnyError> {
+  use std::io;
   use std::os::unix::fs::symlink;
   let link = bin_node_modules_dir_path.join(bin_name);
   let original = package_path.join(bin_script);
 
-  if !original.exists() {
-    log::warn!(
-      "{} Trying to set up '{}' bin for \"{}\", but the entry point \"{}\" doesn't exist.",
-      deno_terminal::colors::yellow("Warning"),
-      bin_name,
-      package_path.display(),
-      original.display()
-    );
-    return Ok(());
-  }
-
-  // Don't bother setting up another link if it already exists
-  if link.exists() {
-    let resolved = std::fs::read_link(&link).ok();
-    if let Some(resolved) = resolved {
-      if resolved != original {
+  use std::os::unix::fs::PermissionsExt;
+  let mut perms = match std::fs::metadata(&original) {
+    Ok(metadata) => metadata.permissions(),
+    Err(err) => {
+      if err.kind() == io::ErrorKind::NotFound {
         log::warn!(
-          "{} Trying to set up '{}' bin for \"{}\", but an entry pointing to \"{}\" already exists. Skipping...", 
-          deno_terminal::colors::yellow("Warning"), 
+          "{} Trying to set up '{}' bin for \"{}\", but the entry point \"{}\" doesn't exist.",
+          deno_terminal::colors::yellow("Warning"),
           bin_name,
-          resolved.display(),
+          package_path.display(),
           original.display()
         );
+        return Ok(());
       }
-      return Ok(());
+      return Err(err).with_context(|| {
+        format!("Can't set up '{}' bin at {}", bin_name, original.display())
+      });
     }
-  }
-
-  use std::os::unix::fs::PermissionsExt;
-  let mut perms = std::fs::metadata(&original).unwrap().permissions();
+  };
   if perms.mode() & 0o111 == 0 {
     // if the original file is not executable, make it executable
     perms.set_mode(perms.mode() | 0o111);
@@ -302,13 +283,31 @@ fn symlink_bin_entry(
   let original_relative =
     crate::util::path::relative_path(bin_node_modules_dir_path, &original)
       .unwrap_or(original);
-  symlink(&original_relative, &link).with_context(|| {
-    format!(
-      "Can't set up '{}' bin at {}",
-      bin_name,
-      original_relative.display()
-    )
-  })?;
+
+  if let Err(err) = symlink(&original_relative, &link) {
+    if err.kind() == io::ErrorKind::AlreadyExists {
+      let resolved = std::fs::read_link(&link).ok();
+      if let Some(resolved) = resolved {
+        if resolved != original_relative {
+          log::warn!(
+            "{} Trying to set up '{}' bin for \"{}\", but an entry pointing to \"{}\" already exists. Skipping...", 
+            deno_terminal::colors::yellow("Warning"), 
+            bin_name,
+            resolved.display(),
+            original_relative.display()
+          );
+        }
+        return Ok(());
+      }
+    }
+    return Err(err).with_context(|| {
+      format!(
+        "Can't set up '{}' bin at {}",
+        bin_name,
+        original_relative.display()
+      )
+    });
+  }
 
   Ok(())
 }
