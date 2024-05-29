@@ -175,7 +175,7 @@ export function getPrebuiltToolPath(toolName) {
   return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
 }
 
-const commitId = "968c366a94e42a09cd4a63681ada1c4f87e0e444";
+const commitId = "6acdfdd0d9a7192d75e10e56eec1d4594bef7b40";
 const downloadUrl =
   `https://raw.githubusercontent.com/denoland/deno_third_party/${commitId}/prebuilt/${platformDirName}`;
 
