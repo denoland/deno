@@ -382,7 +382,9 @@ impl<TGraphContainer: ModuleGraphContainer>
 
     let code_cache = if module_type == ModuleType::JavaScript {
       self.shared.code_cache.as_ref().map(|cache| {
-        let code_hash = FastInsecureHasher::hash(&code);
+        let code_hash = FastInsecureHasher::new_deno_versioned()
+          .write_hashable(&code)
+          .finish();
         let data = cache
           .get_sync(specifier, code_cache::CodeCacheType::EsModule, code_hash)
           .map(Cow::from)

@@ -807,7 +807,7 @@ impl Settings {
   }
 
   pub fn enable_settings_hash(&self) -> u64 {
-    let mut hasher = FastInsecureHasher::default();
+    let mut hasher = FastInsecureHasher::new_without_deno_version();
     let unscoped = self.get_unscoped();
     hasher.write_hashable(unscoped.enable);
     hasher.write_hashable(&unscoped.enable_paths);
