@@ -142,10 +142,10 @@ fn compute_emit_hash(bytes: &[u8], cli_version: &str) -> u64 {
   // it's ok to use an insecure hash here because
   // if someone can change the emit source then they
   // can also change the version hash
-  FastInsecureHasher::new_without_deno_version()
+  FastInsecureHasher::new_without_deno_version() // use cli_version param instead
     .write(bytes)
     // emit should not be re-used between cli versions
-    .write(cli_version.as_bytes())
+    .write_str(cli_version)
     .finish()
 }
 
