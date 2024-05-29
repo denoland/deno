@@ -191,10 +191,9 @@ fn op_set_raw(
         /* Wait for read thread to acknowledge the cancellation to ensure that nothing
         interferes with the screen state.
         NOTE: `wait_while` automatically unlocks stdin_state */
-        let _unused = cvar
-          .wait_while(&mut stdin_state, |state: &mut WinTtyState| {
-            state.cancelled
-          });
+        cvar.wait_while(&mut stdin_state, |state: &mut WinTtyState| {
+          state.cancelled
+        });
       }
     }
 
