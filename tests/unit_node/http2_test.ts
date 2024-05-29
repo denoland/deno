@@ -2,6 +2,10 @@
 
 import * as http2 from "node:http2";
 import { Buffer } from "node:buffer";
+import fs from "node:fs";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert/mod.ts";
 import { curlRequest } from "../unit/test_util.ts";
@@ -173,13 +177,21 @@ Deno.test("[node/http2 client] write buffer on request stream works", async () =
   const client = http2.connect(url)
   client.on("error", (err) => console.error(err));
 
+  const imagePath = join(import.meta.dirname!, "testdata", "green.jpg");
+  console.log({ imagePath })
+  const buffer = await readFile(imagePath);
+  console.log({ bufferLength: buffer.length })
+  // const imageLength = buffer.length;
+  // console.log({ imageLength });
   const req = client.request({ ":method": "POST", ":path": "/echo_server" });
-  req.write(Buffer.from("amazing"));
+  // req.write(new Uint8Array([1, 2, 3, 4]), (err) => console.error("write cb", err));
+  req.write(buffer, (err) => console.error("write cb", err));
 
-  let receivedData = "";
-  req.setEncoding("utf8");
+  let chunks: Buffer;
   req.on("data", (chunk) => {
-    receivedData += chunk;
+    console.log("chunk receivedData", chunk);
+    // receivedData = Buffer.concat([receivedData, chunk]);
+    chunks = chunk;
   });
   req.end();
 
@@ -194,5 +206,8 @@ Deno.test("[node/http2 client] write buffer on request stream works", async () =
   }, 2000);
 
   await endPromise.promise;
-  assertEquals(receivedData, "amazing");
+  console.log("compare", buffer.compare(chunks!) === 0, buffer.length, chunks!.length)
+  // console.log("receivedData", receivedData);
+  // const expectedBuffer = fs.readFileSync("/Users/sr/c/denoland/deno/cat_dog.webp");
+  assertEquals(chunks!, buffer);
 });
