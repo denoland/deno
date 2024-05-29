@@ -1,0 +1,8 @@
+Download http://localhost:4260/@denotest/add
+Download http://localhost:4260/@denotest/add/1.0.0.tgz
+Initialize @denotest/add@1.0.0
+3
+Download http://localhost:4260/@denotest/subtract
+Download http://localhost:4260/@denotest/subtract/1.0.0.tgz
+Initialize @denotest/subtract@1.0.0
+1

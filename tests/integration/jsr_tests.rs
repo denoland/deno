@@ -14,7 +14,7 @@ fn fast_check_cache() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let deno_dir = test_context.deno_dir();
   let temp_dir = test_context.temp_dir();
-  let type_check_cache_path = deno_dir.path().join("check_cache_v1");
+  let type_check_cache_path = deno_dir.path().join("check_cache_v2");
 
   temp_dir.write(
     "main.ts",
@@ -128,7 +128,7 @@ fn specifiers_in_lockfile() {
 
   temp_dir.write(
     "main.ts",
-    r#"import version from "jsr:@denotest/no_module_graph@0.1";
+    r#"import version from "jsr:@denotest/no-module-graph@0.1";
 
 console.log(version);"#,
   );
@@ -141,13 +141,18 @@ console.log(version);"#,
     .assert_matches_text("0.1.1\n");
 
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = Lockfile::new(lockfile_path.to_path_buf(), false).unwrap();
+  let mut lockfile = Lockfile::with_lockfile_content(
+    lockfile_path.to_path_buf(),
+    &lockfile_path.read_to_string(),
+    false,
+  )
+  .unwrap();
   *lockfile
     .content
     .packages
     .specifiers
-    .get_mut("jsr:@denotest/no_module_graph@0.1")
-    .unwrap() = "jsr:@denotest/no_module_graph@0.1.0".to_string();
+    .get_mut("jsr:@denotest/no-module-graph@0.1")
+    .unwrap() = "jsr:@denotest/no-module-graph@0.1.0".to_string();
   lockfile_path.write(lockfile.as_json_string());
 
   test_context
@@ -214,7 +219,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
     .args("run --cached-only main.ts")
     .run();
   output.assert_exit_code(1);
-  output.assert_matches_text("error: Failed to resolve version constraint. Try running again without --cached-only
+  output.assert_matches_text("error: JSR package manifest for '@denotest/add' failed to load. Could not resolve version constraint using only cached data. Try running again without --cached-only
     at file:///[WILDCARD]main.ts:1:21
 ");
 
@@ -238,7 +243,7 @@ fn lockfile_bad_package_integrity() {
 
   temp_dir.write(
     "main.ts",
-    r#"import version from "jsr:@denotest/no_module_graph@0.1";
+    r#"import version from "jsr:@denotest/no-module-graph@0.1";
 
 console.log(version);"#,
   );
@@ -251,26 +256,37 @@ console.log(version);"#,
     .assert_matches_text("0.1.1\n");
 
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = Lockfile::new(lockfile_path.to_path_buf(), false).unwrap();
-  let pkg_name = "@denotest/no_module_graph@0.1.1";
+  let mut lockfile = Lockfile::with_lockfile_content(
+    lockfile_path.to_path_buf(),
+    &lockfile_path.read_to_string(),
+    false,
+  )
+  .unwrap();
+  let pkg_name = "@denotest/no-module-graph@0.1.1";
   let original_integrity = get_lockfile_pkg_integrity(&lockfile, pkg_name);
   set_lockfile_pkg_integrity(&mut lockfile, pkg_name, "bad_integrity");
   lockfile_path.write(lockfile.as_json_string());
 
   let actual_integrity =
-    test_context.get_jsr_package_integrity("@denotest/no_module_graph/0.1.1");
-  let integrity_check_failed_msg = format!("error: Integrity check failed for http://127.0.0.1:4250/@denotest/no_module_graph/0.1.1_meta.json
+    test_context.get_jsr_package_integrity("@denotest/no-module-graph/0.1.1");
+  let integrity_check_failed_msg = format!("[WILDCARD]Integrity check failed for package. The source code is invalid, as it does not match the expected hash in the lock file.
 
-Actual: {}
-Expected: bad_integrity
-    at file:///[WILDCARD]/main.ts:1:21
+  Package: @denotest/no-module-graph@0.1.1
+  Actual: {}
+  Expected: bad_integrity
+
+This could be caused by:
+  * the lock file may be corrupt
+  * the source itself may be corrupt
+
+Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server.
 ", actual_integrity);
   test_context
     .new_command()
     .args("run --quiet main.ts")
     .run()
     .assert_matches_text(&integrity_check_failed_msg)
-    .assert_exit_code(1);
+    .assert_exit_code(10);
 
   // now try with a vendor folder
   temp_dir
@@ -284,7 +300,7 @@ Expected: bad_integrity
     .args("run --quiet main.ts")
     .run()
     .assert_matches_text(&integrity_check_failed_msg)
-    .assert_exit_code(1);
+    .assert_exit_code(10);
 
   // now update to the correct integrity
   set_lockfile_pkg_integrity(&mut lockfile, pkg_name, &original_integrity);
@@ -318,7 +334,7 @@ Expected: bad_integrity
     .args("run --quiet main.ts")
     .run()
     .assert_matches_text(&integrity_check_failed_msg)
-    .assert_exit_code(1);
+    .assert_exit_code(10);
 }
 
 #[test]
@@ -335,39 +351,39 @@ console.log(add);"#,
   // test it properly checks the checksum on download
   test_context
     .new_command()
-    .args("run  main.ts")
+    .args("run main.ts")
     .run()
     .assert_matches_text(
       "Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/meta.json
 Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0_meta.json
 Download http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0/mod.ts
-error: Integrity check failed.
+error: Integrity check failed in package. The package may have been tampered with.
 
-Actual: 9a30ac96b5d5c1b67eca69e1e2cf0798817d9578c8d7d904a81a67b983b35cba
-Expected: bad-checksum
-    at file:///[WILDCARD]main.ts:1:21
+  Specifier: http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0/mod.ts
+  Actual: 9a30ac96b5d5c1b67eca69e1e2cf0798817d9578c8d7d904a81a67b983b35cba
+  Expected: bad-checksum
+
+If you modified your global cache, run again with the --reload flag to restore its state. If you want to modify dependencies locally run again with the --vendor flag or specify `\"vendor\": true` in a deno.json then modify the contents of the vendor/ folder.
 ",
     )
-    .assert_exit_code(1);
+    .assert_exit_code(10);
 
   // test it properly checks the checksum when loading from the cache
   test_context
     .new_command()
-    .args("run  main.ts")
+    .args("run main.ts")
     .run()
     .assert_matches_text(
-      // ideally the two error messages would be the same... this one comes from
-      // deno_cache and the one above comes from deno_graph. The thing is, in deno_cache
-      // (source of this error) it makes sense to include the url in the error message
-      // because it's not always used in the context of deno_graph
-      "error: Integrity check failed for http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0/mod.ts
+      "error: Integrity check failed in package. The package may have been tampered with.
 
-Actual: 9a30ac96b5d5c1b67eca69e1e2cf0798817d9578c8d7d904a81a67b983b35cba
-Expected: bad-checksum
-    at file:///[WILDCARD]main.ts:1:21
+  Specifier: http://127.0.0.1:4250/@denotest/bad-manifest-checksum/1.0.0/mod.ts
+  Actual: 9a30ac96b5d5c1b67eca69e1e2cf0798817d9578c8d7d904a81a67b983b35cba
+  Expected: bad-checksum
+
+If you modified your global cache, run again with the --reload flag to restore its state. If you want to modify dependencies locally run again with the --vendor flag or specify `\"vendor\": true` in a deno.json then modify the contents of the vendor/ folder.
 ",
     )
-    .assert_exit_code(1);
+    .assert_exit_code(10);
 }
 
 fn get_lockfile_pkg_integrity(lockfile: &Lockfile, pkg_name: &str) -> String {

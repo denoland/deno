@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::client::Client;
-use super::config::ConfigSnapshot;
+use super::config::Config;
 use super::config::WorkspaceSettings;
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
@@ -15,7 +15,7 @@ use super::tsc;
 use crate::jsr::JsrFetchResolver;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
-use crate::util::path::specifier_to_file_path;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::SourceTextInfo;
@@ -148,7 +148,7 @@ fn to_narrow_lsp_range(
 pub async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
-  config: &ConfigSnapshot,
+  config: &Config,
   client: &Client,
   module_registries: &ModuleRegistry,
   jsr_search_api: &CliJsrSearchApi,
@@ -157,6 +157,7 @@ pub async fn get_import_completions(
   maybe_import_map: Option<&ImportMap>,
 ) -> Option<lsp::CompletionResponse> {
   let document = documents.get(specifier)?;
+  let file_referrer = document.file_referrer();
   let (text, _, range) = document.get_maybe_dependency(position)?;
   let range = to_narrow_lsp_range(&document.text_info(), &range);
   if let Some(completion_list) = get_import_map_completions(
@@ -209,8 +210,8 @@ pub async fn get_import_completions(
       0
     };
     let maybe_list = module_registries
-      .get_completions(&text, offset, &range, |specifier| {
-        documents.exists(specifier)
+      .get_completions(&text, offset, &range, |s| {
+        documents.exists(s, file_referrer)
       })
       .await;
     let list = maybe_list.unwrap_or_else(|| lsp::CompletionList {
@@ -799,58 +800,46 @@ fn get_workspace_completions(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
+  use crate::lsp::cache::LspCache;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::search::tests::TestPackageSearchApi;
   use deno_core::resolve_url;
   use deno_graph::Range;
   use std::collections::HashMap;
-  use std::path::Path;
-  use std::sync::Arc;
   use test_util::TempDir;
 
-  fn mock_documents(
-    fixtures: &[(&str, &str, i32, LanguageId)],
-    source_fixtures: &[(&str, &str)],
-    location: &Path,
+  fn setup(
+    open_sources: &[(&str, &str, i32, LanguageId)],
+    fs_sources: &[(&str, &str)],
   ) -> Documents {
-    let cache = Arc::new(GlobalHttpCache::new(
-      location.to_path_buf(),
-      crate::cache::RealDenoCacheEnv,
-    ));
-    let mut documents = Documents::new(cache);
-    for (specifier, source, version, language_id) in fixtures {
-      let specifier =
-        resolve_url(specifier).expect("failed to create specifier");
-      documents.open(specifier, *version, *language_id, (*source).into());
-    }
-    let http_cache = GlobalHttpCache::new(
-      location.to_path_buf(),
-      crate::cache::RealDenoCacheEnv,
+    let temp_dir = TempDir::new();
+    let cache = LspCache::new(Some(temp_dir.uri()));
+    let mut documents = Documents::default();
+    documents.update_config(
+      &Default::default(),
+      &Default::default(),
+      &cache,
+      &Default::default(),
     );
-    for (specifier, source) in source_fixtures {
+    for (specifier, source, version, language_id) in open_sources {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      http_cache
+      documents.open(specifier, *version, *language_id, (*source).into(), None);
+    }
+    for (specifier, source) in fs_sources {
+      let specifier =
+        resolve_url(specifier).expect("failed to create specifier");
+      cache
+        .global()
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
-      assert!(
-        documents.get(&specifier).is_some(),
-        "source could not be setup"
-      );
+      let document =
+        documents.get_or_load(&specifier, &temp_dir.uri().join("$").unwrap());
+      assert!(document.is_some(), "source could not be setup");
     }
     documents
-  }
-
-  fn setup(
-    temp_dir: &TempDir,
-    documents: &[(&str, &str, i32, LanguageId)],
-    sources: &[(&str, &str)],
-  ) -> Documents {
-    let location = temp_dir.path().join("deps");
-    mock_documents(documents, sources, location.as_path())
   }
 
   #[test]
@@ -936,9 +925,7 @@ mod tests {
         character: 21,
       },
     };
-    let temp_dir = TempDir::new();
     let documents = setup(
-      &temp_dir,
       &[
         (
           "file:///a/b/c.ts",

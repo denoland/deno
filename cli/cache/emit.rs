@@ -14,8 +14,8 @@ use super::FastInsecureHasher;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct EmitMetadata {
-  pub source_hash: String,
-  pub emit_hash: String,
+  pub source_hash: u64,
+  pub emit_hash: u64,
 }
 
 /// The cache that stores previously emitted files.
@@ -52,7 +52,7 @@ impl EmitCache {
     // load and verify the meta data file is for this source and CLI version
     let bytes = self.disk_cache.get(&meta_filename).ok()?;
     let meta: EmitMetadata = serde_json::from_slice(&bytes).ok()?;
-    if meta.source_hash != expected_source_hash.to_string() {
+    if meta.source_hash != expected_source_hash {
       return None;
     }
 
@@ -112,7 +112,7 @@ impl EmitCache {
 
     // save the metadata
     let metadata = EmitMetadata {
-      source_hash: source_hash.to_string(),
+      source_hash,
       emit_hash: compute_emit_hash(code.as_bytes(), self.cli_version),
     };
     self
@@ -138,16 +138,15 @@ impl EmitCache {
   }
 }
 
-fn compute_emit_hash(bytes: &[u8], cli_version: &str) -> String {
+fn compute_emit_hash(bytes: &[u8], cli_version: &str) -> u64 {
   // it's ok to use an insecure hash here because
   // if someone can change the emit source then they
   // can also change the version hash
-  FastInsecureHasher::new()
+  FastInsecureHasher::new_without_deno_version() // use cli_version param instead
     .write(bytes)
     // emit should not be re-used between cli versions
-    .write(cli_version.as_bytes())
+    .write_str(cli_version)
     .finish()
-    .to_string()
 }
 
 #[cfg(test)]

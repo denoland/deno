@@ -112,11 +112,17 @@ impl TestLoader {
 
 impl Loader for TestLoader {
   fn load(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     _options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
-    let specifier = self.redirects.get(specifier).unwrap_or(specifier);
+    if let Some(redirect) = self.redirects.get(specifier) {
+      return Box::pin(futures::future::ready(Ok(Some(
+        LoadResponse::Redirect {
+          specifier: redirect.clone(),
+        },
+      ))));
+    }
     let result = self.files.get(specifier).map(|result| match result {
       Ok(result) => Ok(LoadResponse::Module {
         specifier: specifier.clone(),
@@ -252,7 +258,6 @@ impl VendorTestBuilder {
       parsed_source_cache: &parsed_source_cache,
       output_dir: &output_dir,
       maybe_original_import_map: self.original_import_map.as_ref(),
-      maybe_lockfile: None,
       maybe_jsx_import_source: self.jsx_import_source_config.as_ref(),
       resolver: resolver.as_graph_resolver(),
       environment: &self.environment,
@@ -298,7 +303,7 @@ fn build_resolver(
 
 async fn build_test_graph(
   roots: Vec<ModuleSpecifier>,
-  mut loader: TestLoader,
+  loader: TestLoader,
   resolver: &dyn deno_graph::source::Resolver,
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
@@ -306,7 +311,7 @@ async fn build_test_graph(
   graph
     .build(
       roots,
-      &mut loader,
+      &loader,
       deno_graph::BuildOptions {
         resolver: Some(resolver),
         module_analyzer: analyzer,

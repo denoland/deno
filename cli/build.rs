@@ -289,7 +289,7 @@ mod ts {
 
     // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
     // ~45s on M1 MacBook Pro; without compression it took ~1s.
-    // Thus we're not not using compressed snapshot, trading off
+    // Thus we're not using compressed snapshot, trading off
     // a lot of build time for some startup time in debug build.
     let mut file = std::fs::File::create(snapshot_path).unwrap();
     if cfg!(debug_assertions) {
@@ -346,6 +346,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
   deno_runtime::snapshot::create_runtime_snapshot(
     snapshot_path,
     snapshot_options,
+    vec![],
   );
 }
 
@@ -452,7 +453,7 @@ fn main() {
   );
 
   let ts_version = ts::version();
-  debug_assert_eq!(ts_version, "5.4.3"); // bump this assertion when it changes
+  debug_assert_eq!(ts_version, "5.4.5"); // bump this assertion when it changes
   println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 

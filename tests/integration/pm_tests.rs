@@ -50,6 +50,26 @@ fn add_basic_no_deno_json() {
 }
 
 #[test]
+fn add_basic_with_empty_deno_json() {
+  let context = pm_context_builder().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", "");
+
+  let output = context.new_command().args("add @denotest/add").run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "Add @denotest/add");
+  temp_dir
+    .path()
+    .join("deno.json")
+    .assert_matches_json(json!({
+      "imports": {
+        "@denotest/add": "jsr:@denotest/add@^1.0.0"
+      }
+    }));
+}
+
+#[test]
 fn add_version_contraint() {
   let context = pm_context_builder().build();
   let temp_dir = context.temp_dir().path();

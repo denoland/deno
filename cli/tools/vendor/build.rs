@@ -9,7 +9,6 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
-use deno_core::parking_lot::Mutex;
 use deno_graph::source::ResolutionMode;
 use deno_graph::JsModule;
 use deno_graph::Module;
@@ -19,10 +18,8 @@ use import_map::ImportMap;
 use import_map::SpecifierMap;
 
 use crate::args::JsxImportSourceConfig;
-use crate::args::Lockfile;
 use crate::cache::ParsedSourceCache;
 use crate::graph_util;
-use crate::graph_util::graph_lock_or_exit;
 use crate::tools::vendor::import_map::BuildImportMapInput;
 
 use super::analyze::has_default_export;
@@ -62,7 +59,6 @@ pub struct BuildInput<
   pub parsed_source_cache: &'a ParsedSourceCache,
   pub output_dir: &'a Path,
   pub maybe_original_import_map: Option<&'a ImportMap>,
-  pub maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_jsx_import_source: Option<&'a JsxImportSourceConfig>,
   pub resolver: &'a dyn deno_graph::source::Resolver,
   pub environment: &'a TEnvironment,
@@ -86,7 +82,6 @@ pub async fn build<
     parsed_source_cache,
     output_dir,
     maybe_original_import_map: original_import_map,
-    maybe_lockfile,
     maybe_jsx_import_source: jsx_import_source,
     resolver,
     environment,
@@ -118,20 +113,17 @@ pub async fn build<
 
   let graph = build_graph(entry_points).await?;
 
-  // check the lockfile
-  if let Some(lockfile) = maybe_lockfile {
-    graph_lock_or_exit(&graph, &mut lockfile.lock());
-  }
-
   // surface any errors
+  let real_fs = Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>;
   graph_util::graph_valid(
     &graph,
-    &deno_fs::RealFs,
+    &real_fs,
     &graph.roots,
     graph_util::GraphValidOptions {
       is_vendoring: true,
       check_js: true,
       follow_type_only: true,
+      exit_lockfile_errors: true,
     },
   )?;
 
@@ -1205,6 +1197,7 @@ mod test {
     builder.add_entry_point("/mod.tsx");
     builder.set_jsx_import_source_config(JsxImportSourceConfig {
       default_specifier: Some("preact".to_string()),
+      default_types_specifier: None,
       module: "jsx-runtime".to_string(),
       base_url: builder.resolve_to_url("/deno.json"),
     });
@@ -1254,6 +1247,7 @@ mod test {
     builder.add_entry_point("/mod.ts");
     builder.set_jsx_import_source_config(JsxImportSourceConfig {
       default_specifier: Some("preact".to_string()),
+      default_types_specifier: None,
       module: "jsx-runtime".to_string(),
       base_url: builder.resolve_to_url("/deno.json"),
     });

@@ -21,6 +21,7 @@ use fqdn::FQDN;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::fmt;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -912,7 +913,7 @@ impl Descriptor for SysDescriptor {
 pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
   match kind {
     "hostname" | "osRelease" | "osUptime" | "loadavg" | "networkInterfaces"
-    | "systemMemoryInfo" | "uid" | "gid" | "cpus" => Ok(kind),
+    | "systemMemoryInfo" | "uid" | "gid" | "cpus" | "homedir" => Ok(kind),
     _ => Err(type_error(format!("unknown system info kind \"{kind}\""))),
   }
 }
@@ -1639,6 +1640,127 @@ impl PermissionsContainer {
   #[inline(always)]
   pub fn check_env_all(&mut self) -> Result<(), AnyError> {
     self.0.lock().env.check_all()
+  }
+
+  #[inline(always)]
+  pub fn check_sys_all(&mut self) -> Result<(), AnyError> {
+    self.0.lock().sys.check_all()
+  }
+
+  #[inline(always)]
+  pub fn check_ffi_all(&mut self) -> Result<(), AnyError> {
+    self.0.lock().ffi.check_all()
+  }
+
+  /// This checks to see if the allow-all flag was passed, not whether all
+  /// permissions are enabled!
+  #[inline(always)]
+  pub fn check_was_allow_all_flag_passed(&mut self) -> Result<(), AnyError> {
+    self.0.lock().all.check()
+  }
+
+  /// Checks special file access, returning the failed permission type if
+  /// not successful.
+  pub fn check_special_file(
+    &mut self,
+    path: &Path,
+    _api_name: &str,
+  ) -> Result<(), &'static str> {
+    let error_all = |_| "all";
+
+    // Safe files with no major additional side-effects. While there's a small risk of someone
+    // draining system entropy by just reading one of these files constantly, that's not really
+    // something we worry about as they already have --allow-read to /dev.
+    if cfg!(unix)
+      && (path == OsStr::new("/dev/random")
+        || path == OsStr::new("/dev/urandom")
+        || path == OsStr::new("/dev/zero")
+        || path == OsStr::new("/dev/null"))
+    {
+      return Ok(());
+    }
+
+    /// We'll allow opening /proc/self/fd/{n} without additional permissions under the following conditions:
+    ///
+    /// 1. n > 2. This allows for opening bash-style redirections, but not stdio
+    /// 2. the fd referred to by n is a pipe
+    #[cfg(unix)]
+    fn is_fd_file_is_pipe(path: &Path) -> bool {
+      if let Some(fd) = path.file_name() {
+        if let Ok(s) = std::str::from_utf8(fd.as_encoded_bytes()) {
+          if let Ok(n) = s.parse::<i32>() {
+            if n > 2 {
+              // SAFETY: This is proper use of the stat syscall
+              unsafe {
+                let mut stat = std::mem::zeroed::<libc::stat>();
+                if libc::fstat(n, &mut stat as _) == 0
+                  && ((stat.st_mode & libc::S_IFMT) & libc::S_IFIFO) != 0
+                {
+                  return true;
+                }
+              };
+            }
+          }
+        }
+      }
+      false
+    }
+
+    // On unixy systems, we allow opening /dev/fd/XXX for valid FDs that
+    // are pipes.
+    #[cfg(unix)]
+    if path.starts_with("/dev/fd") && is_fd_file_is_pipe(path) {
+      return Ok(());
+    }
+
+    if cfg!(target_os = "linux") {
+      // On Linux, we also allow opening /proc/self/fd/XXX for valid FDs that
+      // are pipes.
+      #[cfg(unix)]
+      if path.starts_with("/proc/self/fd") && is_fd_file_is_pipe(path) {
+        return Ok(());
+      }
+      if path.starts_with("/dev")
+        || path.starts_with("/proc")
+        || path.starts_with("/sys")
+      {
+        if path.ends_with("/environ") {
+          self.check_env_all().map_err(|_| "env")?;
+        } else {
+          self.check_was_allow_all_flag_passed().map_err(error_all)?;
+        }
+      }
+    } else if cfg!(unix) {
+      if path.starts_with("/dev") {
+        self.check_was_allow_all_flag_passed().map_err(error_all)?;
+      }
+    } else if cfg!(target_os = "windows") {
+      // \\.\nul is allowed
+      let s = path.as_os_str().as_encoded_bytes();
+      if s.eq_ignore_ascii_case(br#"\\.\nul"#) {
+        return Ok(());
+      }
+
+      fn is_normalized_windows_drive_path(path: &Path) -> bool {
+        let s = path.as_os_str().as_encoded_bytes();
+        // \\?\X:\
+        if s.len() < 7 {
+          false
+        } else if s.starts_with(br#"\\?\"#) {
+          s[4].is_ascii_alphabetic() && s[5] == b':' && s[6] == b'\\'
+        } else {
+          false
+        }
+      }
+
+      // If this is a normalized drive path, accept it
+      if !is_normalized_windows_drive_path(path) {
+        self.check_was_allow_all_flag_passed().map_err(error_all)?;
+      }
+    } else {
+      unimplemented!()
+    }
+    Ok(())
   }
 
   #[inline(always)]
@@ -2795,7 +2917,6 @@ mod tests {
   fn test_check_fail() {
     set_prompter(Box::new(TestPrompter));
     let mut perms = Permissions::none_with_prompt();
-
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
 
     prompt_value.set(false);

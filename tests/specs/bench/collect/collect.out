@@ -1,0 +1,18 @@
+Check [WILDCARD]/collect/bench.ts
+Check [WILDCARD]/collect/include/2_bench.ts
+Check [WILDCARD]/collect/include/bench.ts
+cpu: [WILDCARD]
+runtime: deno [WILDCARD] ([WILDCARD])
+
+[WILDCARD]/collect/bench.ts
+benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
+--------------------------------------------------------------- -----------------------------
+
+[WILDCARD]/collect/include/2_bench.ts
+benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
+--------------------------------------------------------------- -----------------------------
+
+[WILDCARD]/collect/include/bench.ts
+benchmark      time (avg)        iter/s             (min … max)       p75       p99      p995
+--------------------------------------------------------------- -----------------------------
+

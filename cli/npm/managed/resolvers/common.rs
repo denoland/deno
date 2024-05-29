@@ -9,6 +9,7 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::unsync::spawn;
@@ -42,11 +43,6 @@ pub trait NpmPackageFsResolver: Send + Sync {
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
-
-  fn resolve_package_folder_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError>;
 
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
@@ -91,29 +87,31 @@ impl RegistryReadPermissionChecker {
 
     if is_path_in_node_modules {
       let mut cache = self.cache.lock().unwrap();
-      let registry_path_canon = match cache.get(&self.registry_path) {
-        Some(canon) => canon.clone(),
-        None => {
-          let canon = self.fs.realpath_sync(&self.registry_path)?;
-          cache.insert(self.registry_path.to_path_buf(), canon.clone());
-          canon
-        }
-      };
-
-      let path_canon = match cache.get(path) {
-        Some(canon) => canon.clone(),
-        None => {
-          let canon = self.fs.realpath_sync(path);
-          if let Err(e) = &canon {
-            if e.kind() == ErrorKind::NotFound {
-              return Ok(());
-            }
+      let mut canonicalize =
+        |path: &Path| -> Result<Option<PathBuf>, AnyError> {
+          match cache.get(path) {
+            Some(canon) => Ok(Some(canon.clone())),
+            None => match self.fs.realpath_sync(path) {
+              Ok(canon) => {
+                cache.insert(path.to_path_buf(), canon.clone());
+                Ok(Some(canon))
+              }
+              Err(e) => {
+                if e.kind() == ErrorKind::NotFound {
+                  return Ok(None);
+                }
+                Err(AnyError::from(e)).with_context(|| {
+                  format!("failed canonicalizing '{}'", path.display())
+                })
+              }
+            },
           }
-
-          let canon = canon?;
-          cache.insert(path.to_path_buf(), canon.clone());
-          canon
-        }
+        };
+      let Some(registry_path_canon) = canonicalize(&self.registry_path)? else {
+        return Ok(()); // not exists, allow reading
+      };
+      let Some(path_canon) = canonicalize(path)? else {
+        return Ok(()); // not exists, allow reading
       };
 
       if path_canon.starts_with(registry_path_canon) {
@@ -129,16 +127,12 @@ impl RegistryReadPermissionChecker {
 pub async fn cache_packages(
   packages: Vec<NpmResolutionPackage>,
   cache: &Arc<NpmCache>,
-  registry_url: &Url,
 ) -> Result<(), AnyError> {
   let mut handles = Vec::with_capacity(packages.len());
   for package in packages {
     let cache = cache.clone();
-    let registry_url = registry_url.clone();
     let handle = spawn(async move {
-      cache
-        .ensure_package(&package.id.nv, &package.dist, &registry_url)
-        .await
+      cache.ensure_package(&package.id.nv, &package.dist).await
     });
     handles.push(handle);
   }

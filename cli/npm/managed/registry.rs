@@ -18,6 +18,8 @@ use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_npm::npm_rc::RegistryConfig;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
@@ -25,6 +27,7 @@ use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
+use crate::npm::common::maybe_auth_header_for_npm_registry;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::sync::AtomicFlag;
@@ -36,17 +39,17 @@ pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 
 impl CliNpmRegistryApi {
   pub fn new(
-    base_url: Url,
     cache: Arc<NpmCache>,
     http_client: Arc<HttpClient>,
+    npmrc: Arc<ResolvedNpmRc>,
     progress_bar: ProgressBar,
   ) -> Self {
     Self(Some(Arc::new(CliNpmRegistryApiInner {
-      base_url,
       cache,
       force_reload_flag: Default::default(),
       mem_cache: Default::default(),
       previously_reloaded_packages: Default::default(),
+      npmrc,
       http_client,
       progress_bar,
     })))
@@ -62,10 +65,6 @@ impl CliNpmRegistryApi {
     name: &str,
   ) -> Option<Arc<NpmPackageInfo>> {
     self.inner().get_cached_package_info(name)
-  }
-
-  pub fn base_url(&self) -> &Url {
-    &self.inner().base_url
   }
 
   fn inner(&self) -> &Arc<CliNpmRegistryApiInner> {
@@ -121,12 +120,12 @@ enum CacheItem {
 
 #[derive(Debug)]
 struct CliNpmRegistryApiInner {
-  base_url: Url,
   cache: Arc<NpmCache>,
   force_reload_flag: AtomicFlag,
   mem_cache: Mutex<HashMap<String, CacheItem>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
   http_client: Arc<HttpClient>,
+  npmrc: Arc<ResolvedNpmRc>,
   progress_bar: ProgressBar,
 }
 
@@ -143,24 +142,21 @@ impl CliNpmRegistryApiInner {
         }
         Some(CacheItem::Pending(future)) => (false, future.clone()),
         None => {
-          if (self.cache.cache_setting().should_use_for_npm_package(name) && !self.force_reload())
-            // if this has been previously reloaded, then try loading from the
-            // file system cache
-            || !self.previously_reloaded_packages.lock().insert(name.to_string())
-          {
-            // attempt to load from the file cache
-            if let Some(info) = self.load_file_cached_package_info(name) {
-              let result = Some(Arc::new(info));
-              mem_cache
-                .insert(name.to_string(), CacheItem::Resolved(result.clone()));
-              return Ok(result);
-            }
-          }
-
           let future = {
             let api = self.clone();
             let name = name.to_string();
             async move {
+              if (api.cache.cache_setting().should_use_for_npm_package(&name) && !api.force_reload())
+                // if this has been previously reloaded, then try loading from the
+                // file system cache
+                || !api.previously_reloaded_packages.lock().insert(name.to_string())
+              {
+                // attempt to load from the file cache
+                if let Some(info) = api.load_file_cached_package_info(&name).await {
+                  let result = Some(Arc::new(info));
+                  return Ok(result);
+                }
+              }
               api
                 .load_package_info_from_registry(&name)
                 .await
@@ -202,11 +198,11 @@ impl CliNpmRegistryApiInner {
     self.force_reload_flag.is_raised()
   }
 
-  fn load_file_cached_package_info(
+  async fn load_file_cached_package_info(
     &self,
     name: &str,
   ) -> Option<NpmPackageInfo> {
-    match self.load_file_cached_package_info_result(name) {
+    match self.load_file_cached_package_info_result(name).await {
       Ok(value) => value,
       Err(err) => {
         if cfg!(debug_assertions) {
@@ -218,18 +214,25 @@ impl CliNpmRegistryApiInner {
     }
   }
 
-  fn load_file_cached_package_info_result(
+  async fn load_file_cached_package_info_result(
     &self,
     name: &str,
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
     let file_cache_path = self.get_package_file_cache_path(name);
-    let file_text = match fs::read_to_string(file_cache_path) {
-      Ok(file_text) => file_text,
-      Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-      Err(err) => return Err(err.into()),
-    };
-    match serde_json::from_str(&file_text) {
-      Ok(package_info) => Ok(Some(package_info)),
+    let deserialization_result = deno_core::unsync::spawn_blocking(|| {
+      let file_text = match fs::read_to_string(file_cache_path) {
+        Ok(file_text) => file_text,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(err.into()),
+      };
+      serde_json::from_str(&file_text)
+        .map(Some)
+        .map_err(AnyError::from)
+    })
+    .await
+    .unwrap();
+    match deserialization_result {
+      Ok(maybe_package_info) => Ok(maybe_package_info),
       Err(err) => {
         // This scenario might mean we need to load more data from the
         // npm registry than before. So, just debug log while in debug
@@ -273,13 +276,20 @@ impl CliNpmRegistryApiInner {
     &self,
     name: &str,
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
+    let registry_url = self.npmrc.get_registry_url(name);
+    let registry_config = self.npmrc.get_registry_config(name);
+
     self
-      .load_package_info_from_registry_inner(name)
+      .load_package_info_from_registry_inner(
+        name,
+        registry_url,
+        registry_config,
+      )
       .await
       .with_context(|| {
         format!(
           "Error getting response at {} for package \"{}\"",
-          self.get_package_url(name),
+          self.get_package_url(name, registry_url),
           name
         )
       })
@@ -288,6 +298,8 @@ impl CliNpmRegistryApiInner {
   async fn load_package_info_from_registry_inner(
     &self,
     name: &str,
+    registry_url: &Url,
+    registry_config: &RegistryConfig,
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
     if *self.cache.cache_setting() == CacheSetting::Only {
       return Err(custom_error(
@@ -298,16 +310,21 @@ impl CliNpmRegistryApiInner {
       ));
     }
 
-    let package_url = self.get_package_url(name);
+    let package_url = self.get_package_url(name, registry_url);
     let guard = self.progress_bar.update(package_url.as_str());
+
+    let maybe_auth_header = maybe_auth_header_for_npm_registry(registry_config);
 
     let maybe_bytes = self
       .http_client
-      .download_with_progress(package_url, &guard)
+      .download_with_progress(package_url, maybe_auth_header, &guard)
       .await?;
     match maybe_bytes {
       Some(bytes) => {
-        let package_info = serde_json::from_slice(&bytes)?;
+        let package_info = deno_core::unsync::spawn_blocking(move || {
+          serde_json::from_slice(&bytes)
+        })
+        .await??;
         self.save_package_info_to_file_cache(name, &package_info);
         Ok(Some(package_info))
       }
@@ -315,7 +332,7 @@ impl CliNpmRegistryApiInner {
     }
   }
 
-  fn get_package_url(&self, name: &str) -> Url {
+  fn get_package_url(&self, name: &str, registry_url: &Url) -> Url {
     // list of all characters used in npm packages:
     //  !, ', (, ), *, -, ., /, [0-9], @, [A-Za-z], _, ~
     const ASCII_SET: percent_encoding::AsciiSet =
@@ -332,11 +349,11 @@ impl CliNpmRegistryApiInner {
         .remove(b'_')
         .remove(b'~');
     let name = percent_encoding::utf8_percent_encode(name, &ASCII_SET);
-    self.base_url.join(&name.to_string()).unwrap()
+    registry_url.join(&name.to_string()).unwrap()
   }
 
   fn get_package_file_cache_path(&self, name: &str) -> PathBuf {
-    let name_folder_path = self.cache.package_name_folder(name, &self.base_url);
+    let name_folder_path = self.cache.package_name_folder(name);
     name_folder_path.join("registry.json")
   }
 

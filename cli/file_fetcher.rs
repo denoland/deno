@@ -20,8 +20,6 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
-use deno_core::futures;
-use deno_core::futures::future::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
@@ -34,12 +32,11 @@ use deno_runtime::deno_fetch::reqwest::StatusCode;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::PermissionsContainer;
 use log::debug;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::future::Future;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -54,6 +51,12 @@ pub struct TextDecodedFile {
   pub specifier: ModuleSpecifier,
   /// The source of the file.
   pub source: Arc<str>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum FileOrRedirect {
+  File(File),
+  Redirect(ModuleSpecifier),
 }
 
 /// A structure representing a source file.
@@ -113,6 +116,10 @@ impl MemoryFiles {
   pub fn insert(&self, specifier: ModuleSpecifier, file: File) -> Option<File> {
     self.0.lock().insert(specifier, file)
   }
+
+  pub fn clear(&self) {
+    self.0.lock().clear();
+  }
 }
 
 /// Fetch a source file from the local file system.
@@ -145,10 +152,16 @@ fn get_validated_scheme(
 
 pub struct FetchOptions<'a> {
   pub specifier: &'a ModuleSpecifier,
-  pub permissions: PermissionsContainer,
+  pub permissions: &'a PermissionsContainer,
   pub maybe_accept: Option<&'a str>,
   pub maybe_cache_setting: Option<&'a CacheSetting>,
-  pub maybe_checksum: Option<LoaderChecksum>,
+}
+
+pub struct FetchNoFollowOptions<'a> {
+  pub fetch_options: FetchOptions<'a>,
+  /// This setting doesn't make sense to provide for `FetchOptions`
+  /// since the required checksum may change for a redirect.
+  pub maybe_checksum: Option<&'a LoaderChecksum>,
 }
 
 /// A structure for resolving, fetching and caching source files.
@@ -202,13 +215,34 @@ impl FileFetcher {
   pub fn fetch_cached(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_checksum: Option<LoaderChecksum>,
     redirect_limit: i64,
   ) -> Result<Option<File>, AnyError> {
-    debug!("FileFetcher::fetch_cached - specifier: {}", specifier);
-    if redirect_limit < 0 {
-      return Err(custom_error("Http", "Too many redirects."));
+    let mut specifier = Cow::Borrowed(specifier);
+    for _ in 0..=redirect_limit {
+      match self.fetch_cached_no_follow(&specifier, None)? {
+        Some(FileOrRedirect::File(file)) => {
+          return Ok(Some(file));
+        }
+        Some(FileOrRedirect::Redirect(redirect_specifier)) => {
+          specifier = Cow::Owned(redirect_specifier);
+        }
+        None => {
+          return Ok(None);
+        }
+      }
     }
+    Err(custom_error("Http", "Too many redirects."))
+  }
+
+  fn fetch_cached_no_follow(
+    &self,
+    specifier: &ModuleSpecifier,
+    maybe_checksum: Option<&LoaderChecksum>,
+  ) -> Result<Option<FileOrRedirect>, AnyError> {
+    debug!(
+      "FileFetcher::fetch_cached_no_follow - specifier: {}",
+      specifier
+    );
 
     let cache_key = self.http_cache.cache_item_key(specifier)?; // compute this once
     let Some(headers) = self.http_cache.read_headers(&cache_key)? else {
@@ -217,24 +251,39 @@ impl FileFetcher {
     if let Some(redirect_to) = headers.get("location") {
       let redirect =
         deno_core::resolve_import(redirect_to, specifier.as_str())?;
-      return self.fetch_cached(&redirect, maybe_checksum, redirect_limit - 1);
+      return Ok(Some(FileOrRedirect::Redirect(redirect)));
     }
-    let Some(bytes) = self.http_cache.read_file_bytes(
+    let result = self.http_cache.read_file_bytes(
       &cache_key,
       maybe_checksum
         .as_ref()
         .map(|c| deno_cache_dir::Checksum::new(c.as_str())),
       deno_cache_dir::GlobalToLocalCopy::Allow,
-    )?
-    else {
-      return Ok(None);
+    );
+    let bytes = match result {
+      Ok(Some(bytes)) => bytes,
+      Ok(None) => return Ok(None),
+      Err(err) => match err {
+        deno_cache_dir::CacheReadFileError::Io(err) => return Err(err.into()),
+        deno_cache_dir::CacheReadFileError::ChecksumIntegrity(err) => {
+          // convert to the equivalent deno_graph error so that it
+          // enhances it if this is passed to deno_graph
+          return Err(
+            deno_graph::source::ChecksumIntegrityError {
+              actual: err.actual,
+              expected: err.expected,
+            }
+            .into(),
+          );
+        }
+      },
     };
 
-    Ok(Some(File {
+    Ok(Some(FileOrRedirect::File(File {
       specifier: specifier.clone(),
       maybe_headers: Some(headers),
       source: Arc::from(bytes),
-    }))
+    })))
   }
 
   /// Convert a data URL into a file, resulting in an error if the URL is
@@ -280,51 +329,33 @@ impl FileFetcher {
     })
   }
 
-  /// Asynchronously fetch remote source file specified by the URL following
-  /// redirects.
-  ///
-  /// **Note** this is a recursive method so it can't be "async", but needs to
-  /// return a `Pin<Box<..>>`.
-  fn fetch_remote(
+  async fn fetch_remote_no_follow(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: PermissionsContainer,
-    redirect_limit: i64,
-    maybe_accept: Option<String>,
+    maybe_accept: Option<&str>,
     cache_setting: &CacheSetting,
-    maybe_checksum: Option<LoaderChecksum>,
-  ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
-    debug!("FileFetcher::fetch_remote() - specifier: {}", specifier);
-    if redirect_limit < 0 {
-      return futures::future::err(custom_error("Http", "Too many redirects."))
-        .boxed();
-    }
-
-    if let Err(err) = permissions.check_specifier(specifier) {
-      return futures::future::err(err).boxed();
-    }
+    maybe_checksum: Option<&LoaderChecksum>,
+  ) -> Result<FileOrRedirect, AnyError> {
+    debug!(
+      "FileFetcher::fetch_remote_no_follow - specifier: {}",
+      specifier
+    );
 
     if self.should_use_cache(specifier, cache_setting) {
-      match self.fetch_cached(specifier, maybe_checksum.clone(), redirect_limit)
+      if let Some(file_or_redirect) =
+        self.fetch_cached_no_follow(specifier, maybe_checksum)?
       {
-        Ok(Some(file)) => {
-          return futures::future::ok(file).boxed();
-        }
-        Ok(None) => {}
-        Err(err) => {
-          return futures::future::err(err).boxed();
-        }
+        return Ok(file_or_redirect);
       }
     }
 
     if *cache_setting == CacheSetting::Only {
-      return futures::future::err(custom_error(
+      return Err(custom_error(
         "NotCached",
         format!(
           "Specifier not found in cache: \"{specifier}\", --cached-only is specified."
         ),
-      ))
-      .boxed();
+      ));
     }
 
     let mut maybe_progress_guard = None;
@@ -346,12 +377,6 @@ impl FileFetcher {
       .and_then(|key| self.http_cache.read_headers(&key).ok().flatten())
       .and_then(|headers| headers.get("etag").cloned());
     let maybe_auth_token = self.auth_tokens.get(specifier);
-    let specifier = specifier.clone();
-    let client = self.http_client.clone();
-    let file_fetcher = self.clone();
-    let cache_setting = cache_setting.clone();
-    // A single pass of fetch either yields code or yields a redirect, server
-    // error causes a single retry to avoid crashing hard on intermittent failures.
 
     async fn handle_request_or_server_error(
       retried: &mut bool,
@@ -372,90 +397,75 @@ impl FileFetcher {
       }
     }
 
-    async move {
-      let mut maybe_etag = maybe_etag;
-      let mut retried = false;
-      let result = loop {
-        let result = match fetch_once(
-          &client,
-          FetchOnceArgs {
-            url: specifier.clone(),
-            maybe_accept: maybe_accept.clone(),
-            maybe_etag: maybe_etag.clone(),
-            maybe_auth_token: maybe_auth_token.clone(),
-            maybe_progress_guard: maybe_progress_guard.as_ref(),
-          },
-        )
-        .await?
-        {
-          FetchOnceResult::NotModified => {
-            let file = file_fetcher
-              .fetch_cached(&specifier, maybe_checksum.clone(), 10)?;
-            match file {
-              Some(file) => Ok(file),
-              None => {
-                // Someone may have deleted the body from the cache since
-                // it's currently stored in a separate file from the headers,
-                // so delete the etag and try again
-                if maybe_etag.is_some() {
-                  debug!("Cache body not found. Trying again without etag.");
-                  maybe_etag = None;
-                  continue;
-                } else {
-                  // should never happen
-                  bail!("Your deno cache directory is in an unrecoverable state. Please delete it and try again.")
-                }
+    let mut maybe_etag = maybe_etag;
+    let mut retried = false; // retry intermittent failures
+    let result = loop {
+      let result = match fetch_no_follow(
+        &self.http_client,
+        FetchOnceArgs {
+          url: specifier.clone(),
+          maybe_accept: maybe_accept.map(ToOwned::to_owned),
+          maybe_etag: maybe_etag.clone(),
+          maybe_auth_token: maybe_auth_token.clone(),
+          maybe_progress_guard: maybe_progress_guard.as_ref(),
+        },
+      )
+      .await?
+      {
+        FetchOnceResult::NotModified => {
+          let file_or_redirect =
+            self.fetch_cached_no_follow(specifier, maybe_checksum)?;
+          match file_or_redirect {
+            Some(file_or_redirect) => Ok(file_or_redirect),
+            None => {
+              // Someone may have deleted the body from the cache since
+              // it's currently stored in a separate file from the headers,
+              // so delete the etag and try again
+              if maybe_etag.is_some() {
+                debug!("Cache body not found. Trying again without etag.");
+                maybe_etag = None;
+                continue;
+              } else {
+                // should never happen
+                bail!("Your deno cache directory is in an unrecoverable state. Please delete it and try again.")
               }
             }
           }
-          FetchOnceResult::Redirect(redirect_url, headers) => {
-            file_fetcher.http_cache.set(&specifier, headers, &[])?;
-            file_fetcher
-              .fetch_remote(
-                &redirect_url,
-                permissions,
-                redirect_limit - 1,
-                maybe_accept,
-                &cache_setting,
-                maybe_checksum,
-              )
-              .await
+        }
+        FetchOnceResult::Redirect(redirect_url, headers) => {
+          self.http_cache.set(specifier, headers, &[])?;
+          Ok(FileOrRedirect::Redirect(redirect_url))
+        }
+        FetchOnceResult::Code(bytes, headers) => {
+          self.http_cache.set(specifier, headers.clone(), &bytes)?;
+          if let Some(checksum) = &maybe_checksum {
+            checksum.check_source(&bytes)?;
           }
-          FetchOnceResult::Code(bytes, headers) => {
-            file_fetcher
-              .http_cache
-              .set(&specifier, headers.clone(), &bytes)?;
-            if let Some(checksum) = &maybe_checksum {
-              checksum.check_source(&bytes)?;
-            }
-            Ok(File {
-              specifier,
-              maybe_headers: Some(headers),
-              source: Arc::from(bytes),
-            })
-          }
-          FetchOnceResult::RequestError(err) => {
-            handle_request_or_server_error(&mut retried, &specifier, err)
-              .await?;
-            continue;
-          }
-          FetchOnceResult::ServerError(status) => {
-            handle_request_or_server_error(
-              &mut retried,
-              &specifier,
-              status.to_string(),
-            )
-            .await?;
-            continue;
-          }
-        };
-        break result;
+          Ok(FileOrRedirect::File(File {
+            specifier: specifier.clone(),
+            maybe_headers: Some(headers),
+            source: Arc::from(bytes),
+          }))
+        }
+        FetchOnceResult::RequestError(err) => {
+          handle_request_or_server_error(&mut retried, specifier, err).await?;
+          continue;
+        }
+        FetchOnceResult::ServerError(status) => {
+          handle_request_or_server_error(
+            &mut retried,
+            specifier,
+            status.to_string(),
+          )
+          .await?;
+          continue;
+        }
       };
+      break result;
+    };
 
-      drop(maybe_progress_guard);
-      result
-    }
-    .boxed()
+    drop(maybe_progress_guard);
+    result
   }
 
   /// Returns if the cache should be used for a given specifier.
@@ -508,7 +518,7 @@ impl FileFetcher {
   pub async fn fetch(
     &self,
     specifier: &ModuleSpecifier,
-    permissions: PermissionsContainer,
+    permissions: &PermissionsContainer,
   ) -> Result<File, AnyError> {
     self
       .fetch_with_options(FetchOptions {
@@ -516,7 +526,6 @@ impl FileFetcher {
         permissions,
         maybe_accept: None,
         maybe_cache_setting: None,
-        maybe_checksum: None,
       })
       .await
   }
@@ -525,20 +534,68 @@ impl FileFetcher {
     &self,
     options: FetchOptions<'_>,
   ) -> Result<File, AnyError> {
+    self.fetch_with_options_and_max_redirect(options, 10).await
+  }
+
+  async fn fetch_with_options_and_max_redirect(
+    &self,
+    options: FetchOptions<'_>,
+    max_redirect: usize,
+  ) -> Result<File, AnyError> {
+    let mut specifier = Cow::Borrowed(options.specifier);
+    for _ in 0..=max_redirect {
+      match self
+        .fetch_no_follow_with_options(FetchNoFollowOptions {
+          fetch_options: FetchOptions {
+            specifier: &specifier,
+            permissions: options.permissions,
+            maybe_accept: options.maybe_accept,
+            maybe_cache_setting: options.maybe_cache_setting,
+          },
+          maybe_checksum: None,
+        })
+        .await?
+      {
+        FileOrRedirect::File(file) => {
+          return Ok(file);
+        }
+        FileOrRedirect::Redirect(redirect_specifier) => {
+          specifier = Cow::Owned(redirect_specifier);
+        }
+      }
+    }
+
+    Err(custom_error("Http", "Too many redirects."))
+  }
+
+  /// Fetches without following redirects.
+  pub async fn fetch_no_follow_with_options(
+    &self,
+    options: FetchNoFollowOptions<'_>,
+  ) -> Result<FileOrRedirect, AnyError> {
+    let maybe_checksum = options.maybe_checksum;
+    let options = options.fetch_options;
     let specifier = options.specifier;
-    debug!("FileFetcher::fetch() - specifier: {}", specifier);
+    // note: this debug output is used by the tests
+    debug!(
+      "FileFetcher::fetch_no_follow_with_options - specifier: {}",
+      specifier
+    );
     let scheme = get_validated_scheme(specifier)?;
     options.permissions.check_specifier(specifier)?;
     if let Some(file) = self.memory_files.get(specifier) {
-      Ok(file)
+      Ok(FileOrRedirect::File(file))
     } else if scheme == "file" {
       // we do not in memory cache files, as this would prevent files on the
       // disk changing effecting things like workers and dynamic imports.
-      fetch_local(specifier)
+      fetch_local(specifier).map(FileOrRedirect::File)
     } else if scheme == "data" {
-      self.fetch_data_url(specifier)
+      self.fetch_data_url(specifier).map(FileOrRedirect::File)
     } else if scheme == "blob" {
-      self.fetch_blob_url(specifier).await
+      self
+        .fetch_blob_url(specifier)
+        .await
+        .map(FileOrRedirect::File)
     } else if !self.allow_remote {
       Err(custom_error(
         "NoRemote",
@@ -546,13 +603,11 @@ impl FileFetcher {
       ))
     } else {
       self
-        .fetch_remote(
+        .fetch_remote_no_follow(
           specifier,
-          options.permissions,
-          10,
-          options.maybe_accept.map(String::from),
+          options.maybe_accept,
           options.maybe_cache_setting.unwrap_or(&self.cache_setting),
-          options.maybe_checksum,
+          maybe_checksum,
         )
         .await
     }
@@ -580,6 +635,10 @@ impl FileFetcher {
   pub fn insert_memory_files(&self, file: File) -> Option<File> {
     self.memory_files.insert(file.specifier.clone(), file)
   }
+
+  pub fn clear_memory_files(&self) {
+    self.memory_files.clear();
+  }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -605,7 +664,7 @@ struct FetchOnceArgs<'a> {
 /// yields Code(ResultPayload).
 /// If redirect occurs, does not follow and
 /// yields Redirect(url).
-async fn fetch_once<'a>(
+async fn fetch_no_follow<'a>(
   http_client: &HttpClient,
   args: FetchOnceArgs<'a>,
 ) -> Result<FetchOnceResult, AnyError> {
@@ -695,6 +754,8 @@ async fn fetch_once<'a>(
   Ok(FetchOnceResult::Code(body, result_headers))
 }
 
+#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
   use crate::cache::GlobalHttpCache;
@@ -753,25 +814,26 @@ mod tests {
   async fn test_fetch(specifier: &ModuleSpecifier) -> (File, FileFetcher) {
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result = file_fetcher
-      .fetch(specifier, PermissionsContainer::allow_all())
+      .fetch(specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     (result.unwrap(), file_fetcher)
   }
 
-  async fn test_fetch_remote(
+  async fn test_fetch_options_remote(
     specifier: &ModuleSpecifier,
   ) -> (File, HashMap<String, String>) {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result: Result<File, AnyError> = file_fetcher
-      .fetch_remote(
-        specifier,
-        PermissionsContainer::allow_all(),
+      .fetch_with_options_and_max_redirect(
+        FetchOptions {
+          specifier,
+          permissions: &PermissionsContainer::allow_all(),
+          maybe_accept: None,
+          maybe_cache_setting: Some(&file_fetcher.cache_setting),
+        },
         1,
-        None,
-        &file_fetcher.cache_setting,
-        None,
       )
       .await;
     let cache_key = file_fetcher.http_cache.cache_item_key(specifier).unwrap();
@@ -795,7 +857,7 @@ mod tests {
   ) {
     let url_str = format!("http://127.0.0.1:4545/encoding/{fixture}");
     let specifier = resolve_url(&url_str).unwrap();
-    let (file, headers) = test_fetch_remote(&specifier).await;
+    let (file, headers) = test_fetch_options_remote(&specifier).await;
     let (media_type, maybe_charset) =
       deno_graph::source::resolve_media_type_and_charset_from_headers(
         &specifier,
@@ -864,7 +926,7 @@ mod tests {
     file_fetcher.insert_memory_files(file.clone());
 
     let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let result_file = result.unwrap();
@@ -877,7 +939,7 @@ mod tests {
     let specifier = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -908,7 +970,7 @@ mod tests {
     );
 
     let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -930,7 +992,7 @@ mod tests {
       ModuleSpecifier::parse("http://localhost:4545/subdir/mod2.ts").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -950,7 +1012,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -976,7 +1038,7 @@ mod tests {
       .unwrap();
 
     let result = file_fetcher_02
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -1001,7 +1063,7 @@ mod tests {
       None,
     );
     let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -1034,7 +1096,7 @@ mod tests {
       );
 
       let result = file_fetcher
-        .fetch(&specifier, PermissionsContainer::allow_all())
+        .fetch(&specifier, &PermissionsContainer::allow_all())
         .await;
       assert!(result.is_ok());
       let cache_key =
@@ -1070,7 +1132,7 @@ mod tests {
         None,
       );
       let result = file_fetcher
-        .fetch(&specifier, PermissionsContainer::allow_all())
+        .fetch(&specifier, &PermissionsContainer::allow_all())
         .await;
       assert!(result.is_ok());
 
@@ -1109,7 +1171,7 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1150,7 +1212,7 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1210,7 +1272,7 @@ mod tests {
       );
 
       let result = file_fetcher
-        .fetch(&specifier, PermissionsContainer::allow_all())
+        .fetch(&specifier, &PermissionsContainer::allow_all())
         .await;
       assert!(result.is_ok());
 
@@ -1249,7 +1311,7 @@ mod tests {
         None,
       );
       let result = file_fetcher
-        .fetch(&redirected_specifier, PermissionsContainer::allow_all())
+        .fetch(&redirected_specifier, &PermissionsContainer::allow_all())
         .await;
       assert!(result.is_ok());
 
@@ -1287,33 +1349,35 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch_remote(
-        &specifier,
-        PermissionsContainer::allow_all(),
+      .fetch_with_options_and_max_redirect(
+        FetchOptions {
+          specifier: &specifier,
+          permissions: &PermissionsContainer::allow_all(),
+          maybe_accept: None,
+          maybe_cache_setting: Some(&file_fetcher.cache_setting),
+        },
         2,
-        None,
-        &file_fetcher.cache_setting,
-        None,
       )
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher
-      .fetch_remote(
-        &specifier,
-        PermissionsContainer::allow_all(),
+      .fetch_with_options_and_max_redirect(
+        FetchOptions {
+          specifier: &specifier,
+          permissions: &PermissionsContainer::allow_all(),
+          maybe_accept: None,
+          maybe_cache_setting: Some(&file_fetcher.cache_setting),
+        },
         1,
-        None,
-        &file_fetcher.cache_setting,
-        None,
       )
       .await;
     assert!(result.is_err());
 
-    let result = file_fetcher.fetch_cached(&specifier, None, 2);
+    let result = file_fetcher.fetch_cached(&specifier, 2);
     assert!(result.is_ok());
 
-    let result = file_fetcher.fetch_cached(&specifier, None, 1);
+    let result = file_fetcher.fetch_cached(&specifier, 1);
     assert!(result.is_err());
   }
 
@@ -1330,7 +1394,7 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1376,7 +1440,7 @@ mod tests {
       resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
     let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1409,7 +1473,7 @@ mod tests {
       resolve_url("http://localhost:4545/run/002_hello.ts").unwrap();
 
     let result = file_fetcher_01
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -1417,12 +1481,12 @@ mod tests {
     assert_eq!(get_custom_error_class(&err), Some("NotCached"));
 
     let result = file_fetcher_02
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher_01
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
   }
@@ -1434,7 +1498,7 @@ mod tests {
     let specifier = ModuleSpecifier::from_file_path(&fixture_path).unwrap();
     fs::write(fixture_path.clone(), r#"console.log("hello deno");"#).unwrap();
     let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -1442,7 +1506,7 @@ mod tests {
 
     fs::write(fixture_path, r#"console.log("goodbye deno");"#).unwrap();
     let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap().into_text_decoded().unwrap();
@@ -1458,7 +1522,7 @@ mod tests {
     let specifier =
       ModuleSpecifier::parse("http://localhost:4545/dynamic").unwrap();
     let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1467,7 +1531,7 @@ mod tests {
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1485,7 +1549,7 @@ mod tests {
     let specifier =
       ModuleSpecifier::parse("http://localhost:4545/dynamic_cache").unwrap();
     let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1494,7 +1558,7 @@ mod tests {
     let (file_fetcher, _) =
       setup(CacheSetting::RespectHeaders, Some(temp_dir.clone()));
     let result = file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
+      .fetch(&specifier, &PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
     let file = result.unwrap();
@@ -1571,7 +1635,7 @@ mod tests {
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4545/assets/fixture.json").unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1599,7 +1663,7 @@ mod tests {
     let url = Url::parse("http://127.0.0.1:4545/run/import_compression/gziped")
       .unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1628,7 +1692,7 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url: url.clone(),
@@ -1651,7 +1715,7 @@ mod tests {
       panic!();
     }
 
-    let res = fetch_once(
+    let res = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1672,7 +1736,7 @@ mod tests {
     let url = Url::parse("http://127.0.0.1:4545/run/import_compression/brotli")
       .unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1703,7 +1767,7 @@ mod tests {
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4545/echo_accept").unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1738,7 +1802,7 @@ mod tests {
     // Resolves to the test server address on localhost
     let url = Url::parse("http://google.com:4545/echo_accept").unwrap();
     let client = create_test_client_with_dns_resolver();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1757,7 +1821,7 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn test_fetch_once_with_redirect() {
+  async fn test_fetch_no_follow_with_redirect() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("http://127.0.0.1:4546/assets/fixture.json").unwrap();
@@ -1765,7 +1829,7 @@ mod tests {
     let target_url =
       Url::parse("http://localhost:4545/assets/fixture.json").unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1802,7 +1866,7 @@ mod tests {
       )
       .unwrap(),
     );
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1851,7 +1915,7 @@ mod tests {
         .unwrap(),
       );
 
-      let result = fetch_once(
+      let result = fetch_no_follow(
         &client,
         FetchOnceArgs {
           url,
@@ -1915,7 +1979,7 @@ mod tests {
       .unwrap(),
     );
 
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -1970,7 +2034,7 @@ mod tests {
       )
       .unwrap(),
     );
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -2013,7 +2077,7 @@ mod tests {
       )
       .unwrap(),
     );
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url: url.clone(),
@@ -2037,7 +2101,7 @@ mod tests {
       panic!();
     }
 
-    let res = fetch_once(
+    let res = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -2073,7 +2137,7 @@ mod tests {
       )
       .unwrap(),
     );
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -2104,7 +2168,7 @@ mod tests {
     let url_str = "http://127.0.0.1:4545/bad_redirect";
     let url = Url::parse(url_str).unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -2127,7 +2191,7 @@ mod tests {
     let url_str = "http://127.0.0.1:4545/server_error";
     let url = Url::parse(url_str).unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,
@@ -2152,7 +2216,7 @@ mod tests {
     let url_str = "http://127.0.0.1:9999/";
     let url = Url::parse(url_str).unwrap();
     let client = create_test_client();
-    let result = fetch_once(
+    let result = fetch_no_follow(
       &client,
       FetchOnceArgs {
         url,

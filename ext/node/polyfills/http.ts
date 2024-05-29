@@ -59,7 +59,7 @@ import {
   ERR_UNESCAPED_CHARACTERS,
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
-import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
+import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { timerId } from "ext:deno_web/03_abort_signal.js";
@@ -671,6 +671,9 @@ class ClientRequest extends OutgoingMessage {
     (async () => {
       try {
         const res = await op_fetch_send(this._req.requestRid);
+        if (this._req.cancelHandleRid !== null) {
+          core.tryClose(this._req.cancelHandleRid);
+        }
         try {
           cb?.();
         } catch (_) {
@@ -708,10 +711,6 @@ class ClientRequest extends OutgoingMessage {
           res.headers,
           Object.entries(res.headers).flat().length,
         );
-
-        if (this._req.cancelHandleRid !== null) {
-          core.tryClose(this._req.cancelHandleRid);
-        }
 
         if (incoming.upgrade) {
           if (this.listenerCount("upgrade") === 0) {
@@ -1332,7 +1331,7 @@ function onError(self, error, cb) {
 }
 
 export class ServerResponse extends NodeWritable {
-  statusCode?: number = undefined;
+  statusCode = 200;
   statusMessage?: string = undefined;
   #headers = new Headers({});
   #readable: ReadableStream;
@@ -1444,8 +1443,7 @@ export class ServerResponse extends NodeWritable {
   }
 
   #ensureHeaders(singleChunk?: Chunk) {
-    if (this.statusCode === undefined) {
-      this.statusCode = 200;
+    if (this.statusCode === 200 && this.statusMessage === undefined) {
       this.statusMessage = "OK";
     }
     if (
@@ -1460,7 +1458,7 @@ export class ServerResponse extends NodeWritable {
     this.headersSent = true;
     this.#ensureHeaders(singleChunk);
     let body = singleChunk ?? (final ? null : this.#readable);
-    if (ServerResponse.#bodyShouldBeNull(this.statusCode!)) {
+    if (ServerResponse.#bodyShouldBeNull(this.statusCode)) {
       body = null;
     }
     this.#resolve(
@@ -1820,6 +1818,8 @@ export function get(...args: any[]) {
   return req;
 }
 
+export const maxHeaderSize = 16_384;
+
 export {
   Agent,
   ClientRequest,
@@ -1848,4 +1848,5 @@ export default {
   get,
   validateHeaderName,
   validateHeaderValue,
+  maxHeaderSize,
 };

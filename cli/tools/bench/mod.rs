@@ -8,7 +8,6 @@ use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
 use crate::graph_util::has_graph_root_local_dependent_changed;
-use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
@@ -26,7 +25,6 @@ use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
-use deno_core::located_script_name;
 use deno_core::serde_v8;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
@@ -36,6 +34,7 @@ use deno_core::PollEventLoopOptions;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
+use deno_runtime::WorkerExecutionMode;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
@@ -145,24 +144,6 @@ fn create_reporter(
   Box::new(ConsoleReporter::new(show_output))
 }
 
-/// Type check a collection of module and document specifiers.
-async fn check_specifiers(
-  cli_options: &CliOptions,
-  module_load_preparer: &ModuleLoadPreparer,
-  specifiers: Vec<ModuleSpecifier>,
-) -> Result<(), AnyError> {
-  let lib = cli_options.ts_type_lib_window();
-  module_load_preparer
-    .prepare_module_load(
-      specifiers,
-      false,
-      lib,
-      PermissionsContainer::allow_all(),
-    )
-    .await?;
-  Ok(())
-}
-
 /// Run a single specifier as an executable bench module.
 async fn bench_specifier(
   worker_factory: Arc<CliMainWorkerFactory>,
@@ -205,6 +186,7 @@ async fn bench_specifier_inner(
 ) -> Result<(), AnyError> {
   let mut worker = worker_factory
     .create_custom_worker(
+      WorkerExecutionMode::Bench,
       specifier.clone(),
       PermissionsContainer::new(permissions),
       vec![ops::bench::deno_bench::init_ops(sender.clone())],
@@ -220,7 +202,7 @@ async fn bench_specifier_inner(
   // Ensure that there are no pending exceptions before we start running tests
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
-  worker.dispatch_load_event(located_script_name!())?;
+  worker.dispatch_load_event()?;
 
   let benchmarks = {
     let state_rc = worker.js_runtime.op_state();
@@ -269,8 +251,10 @@ async fn bench_specifier_inner(
 
   // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
   // event loop to continue beyond what's needed to await results.
-  worker.dispatch_beforeunload_event(located_script_name!())?;
-  worker.dispatch_unload_event(located_script_name!())?;
+  worker.dispatch_beforeunload_event()?;
+  worker.dispatch_process_beforeexit_event()?;
+  worker.dispatch_unload_event()?;
+  worker.dispatch_process_exit_event()?;
 
   // Ensure the worker has settled so we can catch any remaining unhandled rejections. We don't
   // want to wait forever here.
@@ -430,7 +414,7 @@ pub async fn run_benchmarks(
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
   let permissions =
-    Permissions::from_options(&cli_options.permissions_options())?;
+    Permissions::from_options(&cli_options.permissions_options()?)?;
 
   let specifiers = collect_specifiers(
     bench_options.files,
@@ -442,12 +426,8 @@ pub async fn run_benchmarks(
     return Err(generic_error("No bench modules found"));
   }
 
-  check_specifiers(
-    cli_options,
-    factory.module_load_preparer().await?,
-    specifiers.clone(),
-  )
-  .await?;
+  let main_graph_container = factory.main_module_graph_container().await?;
+  main_graph_container.check_specifiers(&specifiers).await?;
 
   if bench_options.no_run {
     return Ok(());
@@ -504,7 +484,6 @@ pub async fn run_benchmarks_with_watch(
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
         let module_graph_creator = factory.module_graph_creator().await?;
-        let module_load_preparer = factory.module_load_preparer().await?;
 
         let bench_modules = collect_specifiers(
           bench_options.files.clone(),
@@ -516,7 +495,7 @@ pub async fn run_benchmarks_with_watch(
         // `PermissionsContainer` - otherwise granting/revoking permissions in one
         // file would have impact on other files, which is undesirable.
         let permissions =
-          Permissions::from_options(&cli_options.permissions_options())?;
+          Permissions::from_options(&cli_options.permissions_options()?)?;
 
         let graph = module_graph_creator
           .create_graph(graph_kind, bench_modules)
@@ -556,7 +535,10 @@ pub async fn run_benchmarks_with_watch(
         .filter(|specifier| bench_modules_to_reload.contains(specifier))
         .collect::<Vec<ModuleSpecifier>>();
 
-        check_specifiers(cli_options, module_load_preparer, specifiers.clone())
+        factory
+          .main_module_graph_container()
+          .await?
+          .check_specifiers(&specifiers)
           .await?;
 
         if bench_options.no_run {

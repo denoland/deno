@@ -4,8 +4,6 @@ use crate::check_unstable;
 use crate::symbol::NativeType;
 use crate::FfiPermissions;
 use crate::ForeignFunction;
-use crate::MAX_SAFE_INTEGER;
-use crate::MIN_SAFE_INTEGER;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
@@ -176,7 +174,7 @@ unsafe extern "C" fn deno_ffi_callback(
         let tc_scope = &mut TryCatch::new(scope);
         args.run(tc_scope);
         if tc_scope.exception().is_some() {
-          eprintln!("Illegal unhandled exception in nonblocking callback.");
+          log::error!("Illegal unhandled exception in nonblocking callback.");
         }
       });
     }
@@ -243,20 +241,11 @@ unsafe fn do_ffi_callback(
       }
       NativeType::I64 | NativeType::ISize => {
         let result = *((*val) as *const i64);
-        if result > MAX_SAFE_INTEGER as i64 || result < MIN_SAFE_INTEGER as i64
-        {
-          v8::BigInt::new_from_i64(scope, result).into()
-        } else {
-          v8::Number::new(scope, result as f64).into()
-        }
+        v8::BigInt::new_from_i64(scope, result).into()
       }
       NativeType::U64 | NativeType::USize => {
         let result = *((*val) as *const u64);
-        if result > MAX_SAFE_INTEGER as u64 {
-          v8::BigInt::new_from_u64(scope, result).into()
-        } else {
-          v8::Number::new(scope, result as f64).into()
-        }
+        v8::BigInt::new_from_u64(scope, result).into()
       }
       NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
         let result = *((*val) as *const *mut c_void);

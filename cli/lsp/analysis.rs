@@ -4,13 +4,12 @@ use super::diagnostics::DenoDiagnostic;
 use super::diagnostics::DiagnosticSource;
 use super::documents::Documents;
 use super::language_server;
+use super::resolver::LspResolver;
 use super::tsc;
 
 use crate::args::jsr_url;
-use crate::npm::CliNpmResolver;
-use crate::resolver::CliNodeResolver;
 use crate::tools::lint::create_linter;
-use crate::util::path::specifier_to_file_path;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
@@ -27,7 +26,6 @@ use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::rules::LintRule;
 use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::jsr::JsrPackageNvReference;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -217,22 +215,19 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
   maybe_import_map: Option<&'a ImportMap>,
-  node_resolver: Option<&'a CliNodeResolver>,
-  npm_resolver: Option<&'a dyn CliNpmResolver>,
+  resolver: &'a LspResolver,
 }
 
 impl<'a> TsResponseImportMapper<'a> {
   pub fn new(
     documents: &'a Documents,
     maybe_import_map: Option<&'a ImportMap>,
-    node_resolver: Option<&'a CliNodeResolver>,
-    npm_resolver: Option<&'a dyn CliNpmResolver>,
+    resolver: &'a LspResolver,
   ) -> Self {
     Self {
       documents,
       maybe_import_map,
-      node_resolver,
-      npm_resolver,
+      resolver,
     }
   }
 
@@ -253,6 +248,8 @@ impl<'a> TsResponseImportMapper<'a> {
       }
     }
 
+    let file_referrer = self.documents.get_file_referrer(referrer);
+
     if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
     {
       let mut segments = jsr_path.split('/');
@@ -264,8 +261,11 @@ impl<'a> TsResponseImportMapper<'a> {
       let version = Version::parse_standard(segments.next()?).ok()?;
       let nv = PackageNv { name, version };
       let path = segments.collect::<Vec<_>>().join("/");
-      let jsr_resolver = self.documents.get_jsr_resolver();
-      let export = jsr_resolver.lookup_export_for_path(&nv, &path)?;
+      let export = self.resolver.jsr_lookup_export_for_path(
+        &nv,
+        &path,
+        file_referrer.as_deref(),
+      )?;
       let sub_path = (export != ".").then_some(export);
       let mut req = None;
       req = req.or_else(|| {
@@ -287,7 +287,11 @@ impl<'a> TsResponseImportMapper<'a> {
         }
         None
       });
-      req = req.or_else(|| jsr_resolver.lookup_req_for_nv(&nv));
+      req = req.or_else(|| {
+        self
+          .resolver
+          .jsr_lookup_req_for_nv(&nv, file_referrer.as_deref())
+      });
       let spec_str = if let Some(req) = req {
         let req_ref = PackageReqReference { req, sub_path };
         JsrPackageReqReference::new(req_ref).to_string()
@@ -304,8 +308,9 @@ impl<'a> TsResponseImportMapper<'a> {
       return Some(spec_str);
     }
 
-    if let Some(npm_resolver) =
-      self.npm_resolver.as_ref().and_then(|r| r.as_managed())
+    if let Some(npm_resolver) = self
+      .resolver
+      .maybe_managed_npm_resolver(file_referrer.as_deref())
     {
       if npm_resolver.in_npm_package(specifier) {
         if let Ok(Some(pkg_id)) =
@@ -370,9 +375,9 @@ impl<'a> TsResponseImportMapper<'a> {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    let node_resolver = self.node_resolver?;
-    let package_json = node_resolver
-      .get_closest_package_json(specifier, &PermissionsContainer::allow_all())
+    let package_json = self
+      .resolver
+      .get_closest_package_json(specifier)
       .ok()
       .flatten()?;
     let root_folder = package_json.path.parent()?;
@@ -552,7 +557,10 @@ fn fix_ts_import_action(
   action: &tsc::CodeFixAction,
   import_mapper: &TsResponseImportMapper,
 ) -> Result<tsc::CodeFixAction, AnyError> {
-  if action.fix_name == "import" {
+  if matches!(
+    action.fix_name.as_str(),
+    "import" | "fixMissingFunctionDeclaration"
+  ) {
     let change = action
       .changes
       .first()
@@ -1126,9 +1134,11 @@ impl CodeActionCollection {
 /// Prepend the whitespace characters found at the start of line_content to content.
 fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
   if let Some(line) = line_content {
-    let whitespaces =
-      line.chars().position(|c| !c.is_whitespace()).unwrap_or(0);
-    let whitespace = &line[0..whitespaces];
+    let whitespace_end = line
+      .char_indices()
+      .find_map(|(i, c)| (!c.is_whitespace()).then_some(i))
+      .unwrap_or(0);
+    let whitespace = &line[0..whitespace_end];
     format!("{}{}", &whitespace, content)
   } else {
     content
@@ -1269,6 +1279,15 @@ mod tests {
       )
       .unwrap(),
       "utils/sub_utils"
+    );
+  }
+
+  #[test]
+  fn test_prepend_whitespace() {
+    // Regression test for https://github.com/denoland/deno/issues/23361.
+    assert_eq!(
+      &prepend_whitespace("foo".to_string(), Some("\u{a0}bar".to_string())),
+      "\u{a0}foo"
     );
   }
 }

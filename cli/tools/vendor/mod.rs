@@ -24,7 +24,7 @@ use crate::tools::fmt::format_json;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::resolve_from_cwd;
 use crate::util::path::relative_specifier;
-use crate::util::path::specifier_to_file_path;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 mod analyze;
 mod build;
@@ -65,7 +65,6 @@ pub async fn vendor(
     parsed_source_cache: factory.parsed_source_cache(),
     output_dir: &output_dir,
     maybe_original_import_map: factory.maybe_import_map().await?.as_deref(),
-    maybe_lockfile: factory.maybe_lockfile().clone(),
     maybe_jsx_import_source: jsx_import_source.as_ref(),
     resolver: factory.resolver().await?.as_graph_resolver(),
     environment: &build::RealVendorEnvironment,
@@ -310,6 +309,7 @@ fn update_config_text(
 ) -> Result<ModifiedResult, AnyError> {
   use jsonc_parser::ast::ObjectProp;
   use jsonc_parser::ast::Value;
+  let text = if text.trim().is_empty() { "{}\n" } else { text };
   let ast =
     jsonc_parser::parse_to_ast(text, &Default::default(), &Default::default())?;
   let obj = match ast.value {

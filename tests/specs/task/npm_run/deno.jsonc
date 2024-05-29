@@ -1,0 +1,12 @@
+{
+  "tasks": {
+    "echo": "echo 'Hello, World!'",
+    // should use the task from package.json and not the one above
+    "test": "npm run echo hi there",
+    // currently this will execute using the actual `npm run` because we
+    // haven't implemented the flags for `npm run` yet
+    "test_using_npm": "npm run non_existent -- --ignore-scripts",
+    "npm_run": "npm run",
+    "npm_run_args": "npm run -d echo"
+  }
+}

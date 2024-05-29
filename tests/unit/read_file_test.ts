@@ -173,7 +173,7 @@ Deno.test(
       await Deno.readFile("tests/testdata/assets/");
     } catch (e) {
       if (Deno.build.os === "windows") {
-        assertEquals(e.code, "ENOENT");
+        assertEquals(e.code, "EPERM");
       } else {
         assertEquals(e.code, "EISDIR");
       }

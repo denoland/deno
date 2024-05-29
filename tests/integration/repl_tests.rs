@@ -786,7 +786,7 @@ fn pty_clear_function() {
       console.expect_raw_in_current_output("[1;1H");
     }
     console.expect("undefined"); // advance past the "clear()"'s undefined
-    console.expect("> ");
+    console.expect(">");
     console.write_line("const clear = 1234 + 2000;");
     console.expect("undefined");
     console.write_line("clear;");
@@ -895,11 +895,11 @@ fn repl_with_quiet_flag() {
   assert!(!out.contains("Deno"));
   assert!(!out.contains("exit using ctrl+d, ctrl+c, or close()"));
   assert_ends_with!(out, "\"done\"\n");
-  assert!(err.is_empty());
+  assert!(err.is_empty(), "Error: {}", err);
 }
 
 #[test]
-fn repl_unit_tests() {
+fn repl_deno_test() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line_raw(
       "\
@@ -919,7 +919,6 @@ fn repl_unit_tests() {
     console.expect("Hello again from outside of test!");
     // FIXME(nayeemrmn): REPL unit tests don't support output capturing.
     console.expect("Hello from inside of test!");
-    console.expect("test1 ...");
     console.expect("  step1 ... ok (");
     console.expect("test1 ... ok (");
     console.expect("test2 ... FAILED (");
@@ -960,7 +959,7 @@ fn npm_packages() {
     );
 
     assert_contains!(out, "hello");
-    assert!(err.is_empty());
+    assert!(err.is_empty(), "Error: {}", err);
   }
 
   {
@@ -976,7 +975,7 @@ fn npm_packages() {
     );
 
     assert_contains!(out, "hello");
-    assert!(err.is_empty());
+    assert!(err.is_empty(), "Error: {}", err);
   }
 
   {
@@ -990,7 +989,7 @@ fn npm_packages() {
 
     assert_contains!(out, "[Module: null prototype] {");
     assert_contains!(out, "Chalk: [class Chalk],");
-    assert!(err.is_empty());
+    assert!(err.is_empty(), "Error: {}", err);
   }
 
   {
@@ -1006,7 +1005,7 @@ fn npm_packages() {
       out,
       "error: npm package 'asdfawe52345asdf' does not exist"
     );
-    assert!(err.is_empty());
+    assert!(err.is_empty(), "Error: {}", err);
   }
 
   {
@@ -1022,7 +1021,7 @@ fn npm_packages() {
     );
 
     assert_contains!(out, "no");
-    assert!(err.is_empty());
+    assert!(err.is_empty(), "Error: {}", err);
   }
 }
 
@@ -1085,7 +1084,10 @@ fn closed_file_pre_load_does_not_occur() {
     .new_command()
     .args_vec(["repl", "-A", "--log-level=debug"])
     .with_pty(|console| {
-      assert_contains!(console.all_output(), "Skipped document preload.",);
+      assert_contains!(
+        console.all_output(),
+        "Skipped workspace walk due to client incapability.",
+      );
     });
 }
 

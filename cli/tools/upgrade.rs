@@ -10,7 +10,6 @@ use crate::http_util::HttpClient;
 use crate::standalone::binary::unpack_into_dir;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
-use crate::util::time;
 use crate::version;
 
 use async_trait::async_trait;
@@ -60,7 +59,7 @@ impl RealUpdateCheckerEnvironment {
     Self {
       cache_file_path,
       // cache the current time
-      current_time: time::utc_now(),
+      current_time: chrono::Utc::now(),
     }
   }
 }
@@ -274,23 +273,17 @@ pub fn check_for_upgrades(
   if let Some(upgrade_version) = update_checker.should_prompt() {
     if log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal() {
       if version::is_canary() {
-        eprint!(
-          "{} ",
-          colors::green("A new canary release of Deno is available.")
-        );
-        eprintln!(
-          "{}",
+        log::info!(
+          "{} {}",
+          colors::green("A new canary release of Deno is available."),
           colors::italic_gray("Run `deno upgrade --canary` to install it.")
         );
       } else {
-        eprint!(
-          "{} {} → {} ",
+        log::info!(
+          "{} {} → {} {}",
           colors::green("A new release of Deno is available:"),
           colors::cyan(version::deno()),
-          colors::cyan(&upgrade_version)
-        );
-        eprintln!(
-          "{}",
+          colors::cyan(&upgrade_version),
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
       }
@@ -626,7 +619,7 @@ async fn download_package(
     // text above which will stay alive after the progress bars are complete
     let progress = progress_bar.update("");
     client
-      .download_with_progress(download_url, &progress)
+      .download_with_progress(download_url, None, &progress)
       .await?
   };
   match maybe_bytes {
@@ -791,7 +784,7 @@ mod test {
         current_version: Default::default(),
         is_canary: Default::default(),
         latest_version: Rc::new(RefCell::new(Ok("".to_string()))),
-        time: Rc::new(RefCell::new(crate::util::time::utc_now())),
+        time: Rc::new(RefCell::new(chrono::Utc::now())),
       }
     }
 

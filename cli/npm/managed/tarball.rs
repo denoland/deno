@@ -2,12 +2,14 @@
 
 use std::collections::HashSet;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_npm::registry::NpmPackageVersionDistInfoIntegrity;
@@ -16,19 +18,76 @@ use flate2::read::GzDecoder;
 use tar::Archive;
 use tar::EntryType;
 
-use super::cache::with_folder_sync_lock;
+use crate::util::path::get_atomic_dir_path;
+
+#[derive(Debug, Copy, Clone)]
+pub enum TarballExtractionMode {
+  /// Overwrites the destination directory without deleting any files.
+  Overwrite,
+  /// Creates and writes to a sibling temporary directory. When done, moves
+  /// it to the final destination.
+  ///
+  /// This is more robust than `Overwrite` as it better handles multiple
+  /// processes writing to the directory at the same time.
+  SiblingTempDir,
+}
 
 pub fn verify_and_extract_tarball(
-  package: &PackageNv,
+  package_nv: &PackageNv,
   data: &[u8],
   dist_info: &NpmPackageVersionDistInfo,
   output_folder: &Path,
+  extraction_mode: TarballExtractionMode,
 ) -> Result<(), AnyError> {
-  verify_tarball_integrity(package, data, &dist_info.integrity())?;
+  verify_tarball_integrity(package_nv, data, &dist_info.integrity())?;
 
-  with_folder_sync_lock(package, output_folder, || {
-    extract_tarball(data, output_folder)
-  })
+  match extraction_mode {
+    TarballExtractionMode::Overwrite => extract_tarball(data, output_folder),
+    TarballExtractionMode::SiblingTempDir => {
+      let temp_dir = get_atomic_dir_path(output_folder);
+      extract_tarball(data, &temp_dir)?;
+      rename_with_retries(&temp_dir, output_folder)
+        .map_err(AnyError::from)
+        .context("Failed moving extracted tarball to final destination.")
+    }
+  }
+}
+
+fn rename_with_retries(
+  temp_dir: &Path,
+  output_folder: &Path,
+) -> Result<(), std::io::Error> {
+  fn already_exists(err: &std::io::Error, output_folder: &Path) -> bool {
+    // Windows will do an "Access is denied" error
+    err.kind() == ErrorKind::AlreadyExists || output_folder.exists()
+  }
+
+  let mut count = 0;
+  // renaming might be flaky if a lot of processes are trying
+  // to do this, so retry a few times
+  loop {
+    match fs::rename(temp_dir, output_folder) {
+      Ok(_) => return Ok(()),
+      Err(err) if already_exists(&err, output_folder) => {
+        // another process copied here, just cleanup
+        let _ = fs::remove_dir_all(temp_dir);
+        return Ok(());
+      }
+      Err(err) => {
+        count += 1;
+        if count > 5 {
+          // too many retries, cleanup and return the error
+          let _ = fs::remove_dir_all(temp_dir);
+          return Err(err);
+        }
+
+        // wait a bit before retrying... this should be very rare or only
+        // in error cases, so ok to sleep a bit
+        let sleep_ms = std::cmp::min(100, 20 * count);
+        std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
+      }
+    }
+  }
 }
 
 fn verify_tarball_integrity(
@@ -150,6 +209,7 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
 #[cfg(test)]
 mod test {
   use deno_semver::Version;
+  use test_util::TempDir;
 
   use super::*;
 
@@ -239,5 +299,26 @@ mod test {
       &NpmPackageVersionDistInfoIntegrity::LegacySha1Hex(actual_hex),
     )
     .is_ok());
+  }
+
+  #[test]
+  fn rename_with_retries_succeeds_exists() {
+    let temp_dir = TempDir::new();
+    let folder_1 = temp_dir.path().join("folder_1");
+    let folder_2 = temp_dir.path().join("folder_2");
+
+    folder_1.create_dir_all();
+    folder_1.join("a.txt").write("test");
+    folder_2.create_dir_all();
+    // this will not end up in the output as rename_with_retries assumes
+    // the folders ending up at the destination are the same
+    folder_2.join("b.txt").write("test2");
+
+    let dest_folder = temp_dir.path().join("dest_folder");
+
+    rename_with_retries(folder_1.as_path(), dest_folder.as_path()).unwrap();
+    rename_with_retries(folder_2.as_path(), dest_folder.as_path()).unwrap();
+    assert!(dest_folder.join("a.txt").exists());
+    assert!(!dest_folder.join("b.txt").exists());
   }
 }
