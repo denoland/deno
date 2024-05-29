@@ -77,7 +77,7 @@ pub fn read_lockfile_at_path(filename: PathBuf) -> Result<Lockfile, AnyError> {
 }
 
 pub fn write_lockfile_if_has_changes(
-  lockfile: &Lockfile,
+  lockfile: &mut Lockfile,
 ) -> Result<(), AnyError> {
   let Some(bytes) = lockfile.resolve_write_bytes() else {
     return Ok(()); // nothing to do
@@ -85,5 +85,7 @@ pub fn write_lockfile_if_has_changes(
   // do an atomic write to reduce the chance of multiple deno
   // processes corrupting the file
   atomic_write_file(&lockfile.filename, bytes, cache::CACHE_PERM)
-    .context("Failed writing lockfile.")
+    .context("Failed writing lockfile.")?;
+  lockfile.has_content_changed = false;
+  Ok(())
 }

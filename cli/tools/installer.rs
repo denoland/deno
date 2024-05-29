@@ -267,7 +267,7 @@ async fn install_local(
   crate::module_loader::load_top_level_deps(&factory).await?;
 
   if let Some(lockfile) = factory.cli_options().maybe_lockfile() {
-    write_lockfile_if_has_changes(&lockfile.lock())?;
+    write_lockfile_if_has_changes(&mut lockfile.lock())?;
   }
 
   Ok(())
