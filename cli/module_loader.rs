@@ -818,13 +818,14 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       if is_dynamic {
         // When the specifier is already in the graph then it means it
         // was previously loaded, so we can skip that and only check if
-        // this part of the graph is valid. This doesn't acquire a graph
-        // update permit because that will clone the graph which is a
-        // bit slow.
+        // this part of the graph is valid.
+        //
+        // This doesn't acquire a graph update permit because that will
+        // clone the graph which is a bit slow.
         let graph = graph_container.graph();
         if !graph.roots.is_empty() && graph.get(&specifier).is_some() {
           log::debug!("Skipping prepare module load.");
-          // roots were already checked
+          // roots are already validated so we can skip those
           if !graph.roots.contains(&specifier) {
             module_load_preparer.graph_roots_valid(&graph, &[specifier])?;
           }
