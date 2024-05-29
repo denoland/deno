@@ -169,7 +169,7 @@ impl DenoDir {
 
 /// To avoid the poorly managed dirs crate
 #[cfg(not(windows))]
-mod dirs {
+pub mod dirs {
   use std::path::PathBuf;
 
   pub fn cache_dir() -> Option<PathBuf> {
