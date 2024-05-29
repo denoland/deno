@@ -27,6 +27,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn;
 use deno_core::unsync::JoinHandle;
 use deno_core::url::Url;
@@ -291,7 +292,7 @@ async fn sync_resolution_with_fs(
     Vec::with_capacity(package_partitions.packages.len());
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
-  let bin_entries = Arc::new(bin_entries::BinEntries::new());
+  let bin_entries = Arc::new(Mutex::new(bin_entries::BinEntries::new()));
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
       newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -345,7 +346,9 @@ async fn sync_resolution_with_fs(
         .await??;
 
         if package.bin.is_some() {
-          bin_entries_to_setup.add(package.clone(), package_path);
+          bin_entries_to_setup
+            .lock()
+            .add(package.clone(), package_path);
         }
 
         // finally stop showing the progress bar
@@ -479,6 +482,7 @@ async fn sync_resolution_with_fs(
 
   // 6. Set up `node_modules/.bin` entries for packages that need it.
   {
+    let bin_entries = std::mem::take(&mut *bin_entries.lock());
     bin_entries.finish(snapshot, &bin_node_modules_dir_path)?;
   }
 
