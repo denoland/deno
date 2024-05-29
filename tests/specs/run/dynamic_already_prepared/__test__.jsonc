@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "skips_prepare_module_load": {
+      "args": "run -A --log-level=debug main.ts",
+      "output": "main.out"
+    }
+  }
+}

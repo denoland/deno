@@ -29,6 +29,8 @@ use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
 
+const CODE_CACHE_DB_FILE_NAME: &str = "v8_code_cache_v2";
+
 itest!(stdout_write_all {
   args: "run --quiet run/stdout_write_all.ts",
   output: "run/stdout_write_all.out",
@@ -3142,6 +3144,20 @@ itest!(byte_order_mark {
 });
 
 #[test]
+#[cfg(windows)]
+fn process_stdin_read_unblock() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdin_unblock.mjs"])
+    .with_pty(|mut console| {
+      console.write_raw("b");
+      console.human_delay();
+      console.write_line_raw("s");
+      console.expect_all(&["1", "1"]);
+    });
+}
+
+#[test]
 fn issue9750() {
   TestContext::default()
     .new_command()
@@ -5052,7 +5068,7 @@ fn code_cache_test() {
     assert!(!output.stderr().contains("V8 code cache hit"));
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5143,7 +5159,7 @@ fn code_cache_npm_test() {
     assert!(!output.stderr().contains("V8 code cache hit"));
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5203,7 +5219,7 @@ fn code_cache_npm_with_require_test() {
     assert!(!output.stderr().contains("V8 code cache hit"));
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 

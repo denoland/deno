@@ -13,6 +13,7 @@ use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::cache::CacheDBHash;
 use crate::cache::NodeAnalysisCache;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
@@ -63,10 +64,9 @@ impl CliCjsCodeAnalyzer {
     specifier: &ModuleSpecifier,
     source: &str,
   ) -> Result<CliCjsAnalysis, AnyError> {
-    let source_hash = NodeAnalysisCache::compute_source_hash(source);
-    if let Some(analysis) = self
-      .cache
-      .get_cjs_analysis(specifier.as_str(), &source_hash)
+    let source_hash = CacheDBHash::from_source(source);
+    if let Some(analysis) =
+      self.cache.get_cjs_analysis(specifier.as_str(), source_hash)
     {
       return Ok(analysis);
     }
@@ -107,7 +107,7 @@ impl CliCjsCodeAnalyzer {
 
     self
       .cache
-      .set_cjs_analysis(specifier.as_str(), &source_hash, &analysis);
+      .set_cjs_analysis(specifier.as_str(), source_hash, &analysis);
 
     Ok(analysis)
   }
