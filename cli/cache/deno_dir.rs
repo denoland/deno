@@ -227,7 +227,7 @@ pub mod dirs {
 // https://github.com/dirs-dev/dirs-sys-rs/blob/ec7cee0b3e8685573d847f0a0f60aae3d9e07fa2/src/lib.rs#L140-L164
 // MIT license. Copyright (c) 2018-2019 dirs-rs contributors
 #[cfg(windows)]
-mod dirs {
+pub mod dirs {
   use std::ffi::OsString;
   use std::os::windows::ffi::OsStringExt;
   use std::path::PathBuf;
