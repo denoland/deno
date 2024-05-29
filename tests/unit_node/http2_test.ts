@@ -1,6 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import * as http2 from "node:http2";
+import { Buffer } from "node:buffer";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert/mod.ts";
 import { curlRequest } from "../unit/test_util.ts";
@@ -163,4 +166,40 @@ Deno.test("[node/http2.createServer()]", {
   // https://github.com/denoland/deno/blob/749b6e45e58ac87188027f79fe403d130f86bd73/ext/node/polyfills/net.ts#L2396-L2402
   // Issue: https://github.com/denoland/deno/issues/22764
   await new Promise<void>((resolve) => server.on("close", resolve));
+});
+
+Deno.test("[node/http2 client] write image buffer on request stream works", async () => {
+  const url = "https://localhost:5545";
+  const client = http2.connect(url);
+  client.on("error", (err) => console.error(err));
+
+  const imagePath = join(import.meta.dirname!, "testdata", "green.jpg");
+  const buffer = await readFile(imagePath);
+  const req = client.request({ ":method": "POST", ":path": "/echo_server" });
+  req.write(buffer, (err) => {
+    if (err) throw err;
+  });
+
+  let receivedData: Buffer;
+  req.on("data", (chunk) => {
+    if (!receivedData) {
+      receivedData = chunk;
+    } else {
+      receivedData = Buffer.concat([receivedData, chunk]);
+    }
+  });
+  req.end();
+
+  const endPromise = Promise.withResolvers<void>();
+  setTimeout(() => {
+    try {
+      client.close();
+    } catch (_) {
+      // pass
+    }
+    endPromise.resolve();
+  }, 2000);
+
+  await endPromise.promise;
+  assertEquals(receivedData!, buffer);
 });

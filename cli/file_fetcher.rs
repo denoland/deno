@@ -253,15 +253,30 @@ impl FileFetcher {
         deno_core::resolve_import(redirect_to, specifier.as_str())?;
       return Ok(Some(FileOrRedirect::Redirect(redirect)));
     }
-    let Some(bytes) = self.http_cache.read_file_bytes(
+    let result = self.http_cache.read_file_bytes(
       &cache_key,
       maybe_checksum
         .as_ref()
         .map(|c| deno_cache_dir::Checksum::new(c.as_str())),
       deno_cache_dir::GlobalToLocalCopy::Allow,
-    )?
-    else {
-      return Ok(None);
+    );
+    let bytes = match result {
+      Ok(Some(bytes)) => bytes,
+      Ok(None) => return Ok(None),
+      Err(err) => match err {
+        deno_cache_dir::CacheReadFileError::Io(err) => return Err(err.into()),
+        deno_cache_dir::CacheReadFileError::ChecksumIntegrity(err) => {
+          // convert to the equivalent deno_graph error so that it
+          // enhances it if this is passed to deno_graph
+          return Err(
+            deno_graph::source::ChecksumIntegrityError {
+              actual: err.actual,
+              expected: err.expected,
+            }
+            .into(),
+          );
+        }
+      },
     };
 
     Ok(Some(FileOrRedirect::File(File {

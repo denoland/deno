@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::logging::lsp_log;
+use crate::args::read_lockfile_at_path;
 use crate::args::ConfigFile;
 use crate::args::FmtOptions;
 use crate::args::LintOptions;
@@ -1685,7 +1686,7 @@ fn resolve_node_modules_dir(
 }
 
 fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<Lockfile> {
-  match Lockfile::new(lockfile_path, false) {
+  match read_lockfile_at_path(lockfile_path) {
     Ok(value) => {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename) {
         lsp_log!("  Resolved lockfile: \"{}\"", specifier);
