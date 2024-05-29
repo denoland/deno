@@ -31,6 +31,7 @@ use deno_runtime::fs_util::specifier_to_file_path;
 use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMap;
 use lsp::Url;
+use lsp_types::ClientCapabilities;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -39,21 +40,6 @@ use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
 pub const SETTINGS_SECTION: &str = "deno";
-
-#[derive(Debug, Clone, Default)]
-pub struct ClientCapabilities {
-  pub code_action_disabled_support: bool,
-  pub line_folding_only: bool,
-  pub snippet_support: bool,
-  pub status_notification: bool,
-  /// The client provides the `experimental.testingApi` capability, which is
-  /// built around VSCode's testing API. It indicates that the server should
-  /// send notifications about tests discovered in modules.
-  pub testing_api: bool,
-  pub workspace_configuration: bool,
-  pub workspace_did_change_watched_files: bool,
-  pub workspace_will_rename_files: bool,
-}
 
 fn is_true() -> bool {
   true
@@ -975,57 +961,73 @@ impl Config {
     &self.settings.unscoped.internal_inspect
   }
 
-  pub fn update_capabilities(
+  pub fn set_client_capabilities(
     &mut self,
-    capabilities: &lsp::ClientCapabilities,
+    client_capabilities: ClientCapabilities,
   ) {
-    if let Some(experimental) = &capabilities.experimental {
-      self.client_capabilities.status_notification = experimental
-        .get("statusNotification")
-        .and_then(|it| it.as_bool())
-        == Some(true);
-      self.client_capabilities.testing_api =
-        experimental.get("testingApi").and_then(|it| it.as_bool())
-          == Some(true);
-    }
+    self.client_capabilities = client_capabilities;
+  }
 
-    if let Some(workspace) = &capabilities.workspace {
-      self.client_capabilities.workspace_configuration =
-        workspace.configuration.unwrap_or(false);
-      self.client_capabilities.workspace_did_change_watched_files = workspace
-        .did_change_watched_files
-        .and_then(|it| it.dynamic_registration)
-        .unwrap_or(false);
-      if let Some(file_operations) = &workspace.file_operations {
-        if let Some(true) = file_operations.dynamic_registration {
-          self.client_capabilities.workspace_will_rename_files =
-            file_operations.will_rename.unwrap_or(false);
-        }
-      }
-    }
+  pub fn workspace_capable(&self) -> bool {
+    self.client_capabilities.workspace.is_some()
+  }
 
-    if let Some(text_document) = &capabilities.text_document {
-      self.client_capabilities.line_folding_only = text_document
-        .folding_range
-        .as_ref()
-        .and_then(|it| it.line_folding_only)
-        .unwrap_or(false);
-      self.client_capabilities.code_action_disabled_support = text_document
-        .code_action
-        .as_ref()
-        .and_then(|it| it.disabled_support)
-        .unwrap_or(false);
-      self.client_capabilities.snippet_support =
-        if let Some(completion) = &text_document.completion {
-          completion
-            .completion_item
-            .as_ref()
-            .and_then(|it| it.snippet_support)
-            .unwrap_or(false)
-        } else {
-          false
-        };
-    }
+  pub fn workspace_configuration_capable(&self) -> bool {
+    (|| self.client_capabilities.workspace.as_ref()?.configuration)()
+      .unwrap_or(false)
+  }
+
+  pub fn did_change_watched_files_capable(&self) -> bool {
+    (|| {
+      let workspace = self.client_capabilities.workspace.as_ref()?;
+      let did_change_watched_files =
+        workspace.did_change_watched_files.as_ref()?;
+      did_change_watched_files.dynamic_registration
+    })()
+    .unwrap_or(false)
+  }
+
+  pub fn will_rename_files_capable(&self) -> bool {
+    (|| {
+      let workspace = self.client_capabilities.workspace.as_ref()?;
+      let file_operations = workspace.file_operations.as_ref()?;
+      file_operations.dynamic_registration.filter(|d| *d)?;
+      file_operations.will_rename
+    })()
+    .unwrap_or(false)
+  }
+
+  pub fn line_folding_only_capable(&self) -> bool {
+    (|| {
+      let text_document = self.client_capabilities.text_document.as_ref()?;
+      text_document.folding_range.as_ref()?.line_folding_only
+    })()
+    .unwrap_or(false)
+  }
+
+  pub fn code_action_disabled_capable(&self) -> bool {
+    (|| {
+      let text_document = self.client_capabilities.text_document.as_ref()?;
+      text_document.code_action.as_ref()?.disabled_support
+    })()
+    .unwrap_or(false)
+  }
+
+  pub fn snippet_support_capable(&self) -> bool {
+    (|| {
+      let text_document = self.client_capabilities.text_document.as_ref()?;
+      let completion = text_document.completion.as_ref()?;
+      completion.completion_item.as_ref()?.snippet_support
+    })()
+    .unwrap_or(false)
+  }
+
+  pub fn testing_api_capable(&self) -> bool {
+    (|| {
+      let experimental = self.client_capabilities.experimental.as_ref()?;
+      experimental.get("testingApi")?.as_bool()
+    })()
+    .unwrap_or(false)
   }
 }
 
