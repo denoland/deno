@@ -320,13 +320,13 @@ impl PermissionPrompter for TtyPrompter {
     {
       let mut output = String::new();
       write!(&mut output, "┌ {PERMISSION_EMOJI}  ").unwrap();
-      write!(&mut output, "{}", colors::bold("Deno requests <example> ")).unwrap();
+      write!(&mut output, "{}", colors::bold("Deno requests ")).unwrap();
       write!(&mut output, "{}", colors::bold(message.clone())).unwrap();
       writeln!(&mut output, "{}", colors::bold(".")).unwrap();
       if let Some(api_name) = api_name.clone() {
         writeln!(&mut output, "├ Requested by `{api_name}` API.").unwrap();
       }
-      let msg = format!("<example>Run again with --allow-{name} to bypass this prompt.");
+      let msg = format!("Run again with --allow-{name} to bypass this prompt.");
       writeln!(&mut output, "├ {}", colors::italic(&msg)).unwrap();
       write!(&mut output, "└ {}", colors::bold("Allow?")).unwrap();
       write!(&mut output, " {opts} > ").unwrap();
