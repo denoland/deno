@@ -107,10 +107,13 @@ function assertExit(fn, isTest) {
       const innerResult = await fn(...new SafeArrayIterator(params));
       const exitCode = DenoNs.exitCode;
       if (exitCode !== 0) {
+        // Reset the code to allow other tests to run...
+        DenoNs.exitCode = 0;
+        // ...and fail the current test.
         throw new Error(
           `${
             isTest ? "Test case" : "Bench"
-          } finishes with exit code set to ${exitCode}.`,
+          } finished with exit code set to ${exitCode}.`,
         );
       }
       if (innerResult) {
