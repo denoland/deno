@@ -4679,7 +4679,7 @@ impl UserPreferences {
       // TODO(nayeemrmn): Investigate why we use `Index` here.
       import_module_specifier_ending: Some(ImportModuleSpecifierEnding::Index),
       include_completions_with_snippet_text: Some(
-        config.client_capabilities.snippet_support,
+        config.snippet_support_capable(),
       ),
       provide_refactor_not_applicable_reason: Some(true),
       quote_preference: Some(fmt_config.into()),
@@ -4717,7 +4717,7 @@ impl UserPreferences {
       include_completions_with_class_member_snippets: Some(
         language_settings.suggest.enabled
           && language_settings.suggest.class_member_snippets.enabled
-          && config.client_capabilities.snippet_support,
+          && config.snippet_support_capable(),
       ),
       include_completions_with_insert_text: Some(
         language_settings.suggest.enabled,
@@ -4728,7 +4728,7 @@ impl UserPreferences {
             .suggest
             .object_literal_method_snippets
             .enabled
-          && config.client_capabilities.snippet_support,
+          && config.snippet_support_capable(),
       ),
       import_module_specifier_preference: Some(
         language_settings.preferences.import_module_specifier,
@@ -5184,9 +5184,8 @@ mod tests {
         .unwrap(),
       )
       .await;
-    let resolver = LspResolver::default()
-      .with_new_config(&config, &cache, None)
-      .await;
+    let resolver =
+      Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let mut documents = Documents::default();
     documents.update_config(&config, &resolver, &cache, &Default::default());
     for (specifier, source, version, language_id) in sources {
