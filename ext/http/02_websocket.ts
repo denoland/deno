@@ -37,7 +37,7 @@ const _ws = Symbol("[[associated_ws]]");
 const websocketCvf = buildCaseInsensitiveCommaValueFinder("websocket");
 const upgradeCvf = buildCaseInsensitiveCommaValueFinder("upgrade");
 
-function upgradeWebSocket(request, options = {}) {
+function upgradeWebSocket(request, options = { __proto__: null }) {
   const inner = toInnerRequest(request);
   const upgrade = request.headers.get("upgrade");
   const upgradeHasWebSocketOption = upgrade !== null &&
@@ -91,7 +91,8 @@ function upgradeWebSocket(request, options = {}) {
   const socket = createWebSocketBranded(WebSocket);
   setEventTargetData(socket);
   socket[_server] = true;
-  socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;
+  // Nginx timeout is 60s, so default to a lower number: https://github.com/denoland/deno/pull/23985
+  socket[_idleTimeoutDuration] = options.idleTimeout ?? 30;
   socket[_idleTimeoutTimeout] = null;
 
   if (inner._wantsUpgrade) {

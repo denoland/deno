@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_runtime::code_cache;
 use deno_runtime::deno_webstorage::rusqlite::params;
@@ -21,7 +22,6 @@ pub static CODE_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   on_failure: CacheFailure::Blackhole,
 };
 
-#[derive(Clone)]
 pub struct CodeCache {
   inner: CodeCacheInner,
 }
@@ -52,28 +52,28 @@ impl CodeCache {
 
   pub fn get_sync(
     &self,
-    specifier: &str,
+    specifier: &ModuleSpecifier,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: &str,
+    source_hash: u64,
   ) -> Option<Vec<u8>> {
     Self::ensure_ok(self.inner.get_sync(
-      specifier,
+      specifier.as_str(),
       code_cache_type,
-      source_hash,
+      &source_hash.to_string(),
     ))
   }
 
   pub fn set_sync(
     &self,
-    specifier: &str,
+    specifier: &ModuleSpecifier,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: &str,
+    source_hash: u64,
     data: &[u8],
   ) {
     Self::ensure_ok(self.inner.set_sync(
-      specifier,
+      specifier.as_str(),
       code_cache_type,
-      source_hash,
+      &source_hash.to_string(),
       data,
     ));
   }
@@ -82,25 +82,24 @@ impl CodeCache {
 impl code_cache::CodeCache for CodeCache {
   fn get_sync(
     &self,
-    specifier: &str,
+    specifier: &ModuleSpecifier,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: &str,
+    source_hash: u64,
   ) -> Option<Vec<u8>> {
     self.get_sync(specifier, code_cache_type, source_hash)
   }
 
   fn set_sync(
     &self,
-    specifier: &str,
+    specifier: ModuleSpecifier,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: &str,
+    source_hash: u64,
     data: &[u8],
   ) {
-    self.set_sync(specifier, code_cache_type, source_hash, data);
+    self.set_sync(&specifier, code_cache_type, source_hash, data);
   }
 }
 
-#[derive(Clone)]
 struct CodeCacheInner {
   conn: CacheDB,
 }
@@ -135,7 +134,7 @@ impl CodeCacheInner {
     &self,
     specifier: &str,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: &str,
+    source_hash: &str, // use string because sqlite doesn't have a u64 type
     data: &[u8],
   ) -> Result<(), AnyError> {
     let sql = "

@@ -1,5 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// Allow unused code warnings because we share
+// code between the two bin targets.
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
+use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
 use crate::args::npm_pkg_req_ref_to_binary_command;
 use crate::args::CaData;
@@ -174,7 +180,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     if original_specifier.scheme() == "data" {
       let data_url_text =
         match deno_graph::source::RawDataUrl::parse(original_specifier)
-          .and_then(|url| url.decode().map_err(|err| err.into()))
+          .and_then(|url| url.decode())
         {
           Ok(response) => response,
           Err(err) => {
@@ -193,33 +199,33 @@ impl ModuleLoader for EmbeddedModuleLoader {
       ));
     }
 
-    let permissions = if is_dynamic {
-      &self.dynamic_permissions
-    } else {
-      &self.root_permissions
-    };
-    if let Some(result) =
-      self.shared.npm_module_loader.load_sync_if_in_npm_package(
-        original_specifier,
-        maybe_referrer,
-        permissions,
-      )
-    {
-      return match result {
-        Ok(code_source) => deno_core::ModuleLoadResponse::Sync(Ok(
-          deno_core::ModuleSource::new_with_redirect(
+    if self.shared.node_resolver.in_npm_package(original_specifier) {
+      let npm_module_loader = self.shared.npm_module_loader.clone();
+      let original_specifier = original_specifier.clone();
+      let maybe_referrer = maybe_referrer.cloned();
+      let permissions = if is_dynamic {
+        self.dynamic_permissions.clone()
+      } else {
+        self.root_permissions.clone()
+      };
+      return deno_core::ModuleLoadResponse::Async(
+        async move {
+          let code_source = npm_module_loader
+            .load(&original_specifier, maybe_referrer.as_ref(), &permissions)
+            .await?;
+          Ok(deno_core::ModuleSource::new_with_redirect(
             match code_source.media_type {
               MediaType::Json => ModuleType::Json,
               _ => ModuleType::JavaScript,
             },
             ModuleSourceCode::String(code_source.code),
-            original_specifier,
+            &original_specifier,
             &code_source.found_url,
             None,
-          ),
-        )),
-        Err(err) => deno_core::ModuleLoadResponse::Sync(Err(err)),
-      };
+          ))
+        }
+        .boxed_local(),
+      );
     }
 
     let Some(module) =
@@ -349,7 +355,8 @@ pub async fn run(
   let root_path = std::env::temp_dir()
     .join(format!("deno-compile-{}", current_exe_name))
     .join("node_modules");
-  let npm_cache_dir = NpmCacheDir::new(root_path.clone());
+  let npm_cache_dir =
+    NpmCacheDir::new(root_path.clone(), vec![npm_registry_url.clone()]);
   let npm_global_cache_dir = npm_cache_dir.get_cache_location();
   let cache_setting = CacheSetting::Only;
   let (package_json_deps_provider, fs, npm_resolver, maybe_vfs_root) =
@@ -363,7 +370,7 @@ pub async fn run(
         let vfs_root_dir_path = if node_modules_dir {
           root_path
         } else {
-          npm_cache_dir.registry_folder(&npm_registry_url)
+          npm_cache_dir.root_dir().to_owned()
         };
         let vfs = load_npm_vfs(vfs_root_dir_path.clone())
           .context("Failed to load npm vfs.")?;
@@ -392,8 +399,10 @@ pub async fn run(
               CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
                 package_json_deps_provider.clone(),
               ),
-            npm_registry_url,
             npm_system_info: Default::default(),
+            // Packages from different registries are already inlined in the ESZip,
+            // so no need to create actual `.npmrc` configuration.
+            npmrc: create_default_npmrc(),
           }),
         )
         .await?;
@@ -448,8 +457,10 @@ pub async fn run(
               CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
                 package_json_deps_provider.clone(),
               ),
-            npm_registry_url,
             npm_system_info: Default::default(),
+            // Packages from different registries are already inlined in the ESZip,
+            // so no need to create actual `.npmrc` configuration.
+            npmrc: create_default_npmrc(),
           }),
         )
         .await?;

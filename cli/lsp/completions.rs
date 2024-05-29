@@ -157,6 +157,7 @@ pub async fn get_import_completions(
   maybe_import_map: Option<&ImportMap>,
 ) -> Option<lsp::CompletionResponse> {
   let document = documents.get(specifier)?;
+  let file_referrer = document.file_referrer();
   let (text, _, range) = document.get_maybe_dependency(position)?;
   let range = to_narrow_lsp_range(&document.text_info(), &range);
   if let Some(completion_list) = get_import_map_completions(
@@ -209,8 +210,8 @@ pub async fn get_import_completions(
       0
     };
     let maybe_list = module_registries
-      .get_completions(&text, offset, &range, |specifier| {
-        documents.exists(specifier)
+      .get_completions(&text, offset, &range, |s| {
+        documents.exists(s, file_referrer)
       })
       .await;
     let list = maybe_list.unwrap_or_else(|| lsp::CompletionList {
@@ -825,7 +826,7 @@ mod tests {
     for (specifier, source, version, language_id) in open_sources {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(specifier, *version, *language_id, (*source).into());
+      documents.open(specifier, *version, *language_id, (*source).into(), None);
     }
     for (specifier, source) in fs_sources {
       let specifier =
@@ -834,10 +835,9 @@ mod tests {
         .global()
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
-      assert!(
-        documents.get(&specifier).is_some(),
-        "source could not be setup"
-      );
+      let document =
+        documents.get_or_load(&specifier, &temp_dir.uri().join("$").unwrap());
+      assert!(document.is_some(), "source could not be setup");
     }
     documents
   }

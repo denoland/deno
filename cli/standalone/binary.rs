@@ -537,7 +537,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
       self
         .client
-        .download_with_progress(download_url, &progress)
+        .download_with_progress(download_url, None, &progress)
         .await?
     };
     let bytes = match maybe_bytes {
@@ -670,9 +670,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         } else {
           // DO NOT include the user's registry url as it may contain credentials,
           // but also don't make this dependent on the registry url
-          let registry_url = npm_resolver.registry_base_url();
-          let root_path =
-            npm_resolver.registry_folder_in_global_cache(registry_url);
+          let root_path = npm_resolver.global_cache_root_folder();
           let mut builder = VfsBuilder::new(root_path)?;
           for package in npm_resolver.all_system_packages(&self.npm_system_info)
           {

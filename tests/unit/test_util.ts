@@ -35,14 +35,9 @@ export function execCode(code: string): Promise<readonly [number, string]> {
   return execCode2(code).finished();
 }
 
-export function execCode2(code: string) {
-  const command = new Deno.Command(Deno.execPath(), {
-    args: [
-      "eval",
-      "--unstable",
-      "--no-check",
-      code,
-    ],
+export function execCode3(cmd: string, args: string[]) {
+  const command = new Deno.Command(cmd, {
+    args,
     stdout: "piped",
     stderr: "inherit",
   });
@@ -80,6 +75,10 @@ export function execCode2(code: string) {
       return [status.code, output] as const;
     },
   };
+}
+
+export function execCode2(code: string) {
+  return execCode3(Deno.execPath(), ["eval", "--unstable", "--no-check", code]);
 }
 
 export function tmpUnixSocketPath(): string {

@@ -425,3 +425,21 @@ Deno.test(
     assertEquals(Deno.readFileSync(filename), new Uint8Array([1, 2]));
   },
 );
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function overwriteFileWithStream() {
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    await Deno.writeFile(filename, new Uint8Array([1, 2, 3, 4]));
+
+    const stream = new ReadableStream({
+      pull(controller) {
+        controller.enqueue(new Uint8Array([1]));
+        controller.enqueue(new Uint8Array([2]));
+        controller.close();
+      },
+    });
+    await Deno.writeFile(filename, stream);
+    assertEquals(Deno.readFileSync(filename), new Uint8Array([1, 2]));
+  },
+);

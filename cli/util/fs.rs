@@ -492,6 +492,74 @@ pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
   }
 }
 
+mod clone_dir_imp {
+
+  #[cfg(target_vendor = "apple")]
+  mod apple {
+    use super::super::copy_dir_recursive;
+    use deno_core::error::AnyError;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+    fn clonefile(from: &Path, to: &Path) -> std::io::Result<()> {
+      let from = std::ffi::CString::new(from.as_os_str().as_bytes())?;
+      let to = std::ffi::CString::new(to.as_os_str().as_bytes())?;
+      // SAFETY: `from` and `to` are valid C strings.
+      let ret = unsafe { libc::clonefile(from.as_ptr(), to.as_ptr(), 0) };
+      if ret != 0 {
+        return Err(std::io::Error::last_os_error());
+      }
+      Ok(())
+    }
+
+    pub fn clone_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+      if let Some(parent) = to.parent() {
+        std::fs::create_dir_all(parent)?;
+      }
+      // Try to clone the whole directory
+      if let Err(err) = clonefile(from, to) {
+        if err.kind() != std::io::ErrorKind::AlreadyExists {
+          log::warn!(
+            "Failed to clone dir {:?} to {:?} via clonefile: {}",
+            from,
+            to,
+            err
+          );
+        }
+        // clonefile won't overwrite existing files, so if the dir exists
+        // we need to handle it recursively.
+        copy_dir_recursive(from, to)?;
+      }
+
+      Ok(())
+    }
+  }
+
+  #[cfg(target_vendor = "apple")]
+  pub(super) use apple::clone_dir_recursive;
+
+  #[cfg(not(target_vendor = "apple"))]
+  pub(super) fn clone_dir_recursive(
+    from: &std::path::Path,
+    to: &std::path::Path,
+  ) -> Result<(), deno_core::error::AnyError> {
+    if let Err(e) = super::hard_link_dir_recursive(from, to) {
+      log::debug!("Failed to hard link dir {:?} to {:?}: {}", from, to, e);
+      super::copy_dir_recursive(from, to)?;
+    }
+
+    Ok(())
+  }
+}
+
+/// Clones a directory to another directory. The exact method
+/// is not guaranteed - it may be a hardlink, copy, or other platform-specific
+/// operation.
+///
+/// Note: Does not handle symlinks.
+pub fn clone_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+  clone_dir_imp::clone_dir_recursive(from, to)
+}
+
 /// Copies a directory to another directory.
 ///
 /// Note: Does not handle symlinks.

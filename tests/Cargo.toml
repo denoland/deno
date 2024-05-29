@@ -33,7 +33,7 @@ required-features = ["run"]
 
 [dev-dependencies]
 bytes.workspace = true
-chrono.workspace = true
+chrono = { workspace = true, features = ["now"] }
 deno_ast.workspace = true
 deno_bench_util.workspace = true
 deno_cache_dir = { workspace = true }

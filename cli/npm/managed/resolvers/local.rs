@@ -2,6 +2,8 @@
 
 //! Code for local node_modules resolution.
 
+mod bin_entries;
+
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -15,6 +17,7 @@ use crate::cache::CACHE_PERM;
 use crate::npm::cache_dir::mixed_case_package_name_decode;
 use crate::util::fs::atomic_write_file;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
+use crate::util::fs::clone_dir_recursive;
 use crate::util::fs::symlink_dir;
 use crate::util::fs::LaxSingleProcessFsFlag;
 use crate::util::progress_bar::ProgressBar;
@@ -24,6 +27,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn;
 use deno_core::unsync::JoinHandle;
 use deno_core::url::Url;
@@ -41,8 +45,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::npm::cache_dir::mixed_case_package_name_encode;
-use crate::util::fs::copy_dir_recursive;
-use crate::util::fs::hard_link_dir_recursive;
 
 use super::super::super::common::types_package_name;
 use super::super::cache::NpmCache;
@@ -58,7 +60,6 @@ pub struct LocalNpmPackageResolver {
   cache: Arc<NpmCache>,
   progress_bar: ProgressBar,
   resolution: Arc<NpmResolution>,
-  registry_url: Url,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
   system_info: NpmSystemInfo,
@@ -70,7 +71,6 @@ impl LocalNpmPackageResolver {
     fs: Arc<dyn deno_fs::FileSystem>,
     cache: Arc<NpmCache>,
     progress_bar: ProgressBar,
-    registry_url: Url,
     node_modules_folder: PathBuf,
     resolution: Arc<NpmResolution>,
     system_info: NpmSystemInfo,
@@ -80,7 +80,6 @@ impl LocalNpmPackageResolver {
       cache,
       progress_bar,
       resolution,
-      registry_url,
       root_node_modules_url: Url::from_directory_path(&node_modules_folder)
         .unwrap(),
       root_node_modules_path: node_modules_folder.clone(),
@@ -125,6 +124,17 @@ impl LocalNpmPackageResolver {
     canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())
       .map(Some)
       .map_err(|err| err.into())
+  }
+
+  fn resolve_package_folder_from_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<Option<PathBuf>, AnyError> {
+    let Some(local_path) = self.resolve_folder_for_specifier(specifier)? else {
+      return Ok(None);
+    };
+    let package_root_path = self.resolve_package_root(&local_path);
+    Ok(Some(package_root_path))
   }
 }
 
@@ -202,17 +212,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     );
   }
 
-  fn resolve_package_folder_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError> {
-    let Some(local_path) = self.resolve_folder_for_specifier(specifier)? else {
-      return Ok(None);
-    };
-    let package_root_path = self.resolve_package_root(&local_path);
-    Ok(Some(package_root_path))
-  }
-
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
@@ -231,7 +230,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       &self.resolution.snapshot(),
       &self.cache,
       &self.progress_bar,
-      &self.registry_url,
       &self.root_node_modules_path,
       &self.system_info,
     )
@@ -254,7 +252,6 @@ async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
   cache: &Arc<NpmCache>,
   progress_bar: &ProgressBar,
-  registry_url: &Url,
   root_node_modules_dir_path: &Path,
   system_info: &NpmSystemInfo,
 ) -> Result<(), AnyError> {
@@ -266,6 +263,10 @@ async fn sync_resolution_with_fs(
   let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
   fs::create_dir_all(&deno_node_modules_dir).with_context(|| {
     format!("Creating '{}'", deno_local_registry_dir.display())
+  })?;
+  let bin_node_modules_dir_path = root_node_modules_dir_path.join(".bin");
+  fs::create_dir_all(&bin_node_modules_dir_path).with_context(|| {
+    format!("Creating '{}'", bin_node_modules_dir_path.display())
   })?;
 
   let single_process_lock = LaxSingleProcessFsFlag::lock(
@@ -291,6 +292,7 @@ async fn sync_resolution_with_fs(
     Vec::with_capacity(package_partitions.packages.len());
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
+  let bin_entries_to_setup = Arc::new(Mutex::new(Vec::with_capacity(16)));
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
       newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -317,12 +319,10 @@ async fn sync_resolution_with_fs(
 
       let pb = progress_bar.clone();
       let cache = cache.clone();
-      let registry_url = registry_url.clone();
       let package = package.clone();
+      let bin_entries_to_setup = bin_entries_to_setup.clone();
       let handle = spawn(async move {
-        cache
-          .ensure_package(&package.id.nv, &package.dist, &registry_url)
-          .await?;
+        cache.ensure_package(&package.id.nv, &package.dist).await?;
         let pb_guard = pb.update_with_prompt(
           ProgressMessagePrompt::Initialize,
           &package.id.nv.to_string(),
@@ -330,18 +330,27 @@ async fn sync_resolution_with_fs(
         let sub_node_modules = folder_path.join("node_modules");
         let package_path =
           join_package_name(&sub_node_modules, &package.id.nv.name);
-        fs::create_dir_all(&package_path)
-          .with_context(|| format!("Creating '{}'", folder_path.display()))?;
-        let cache_folder = cache
-          .package_folder_for_name_and_version(&package.id.nv, &registry_url);
-        if hard_link_dir_recursive(&cache_folder, &package_path).is_err() {
-          // Fallback to copying the directory.
-          //
-          // Also handles EXDEV when when trying to hard link across volumes.
-          copy_dir_recursive(&cache_folder, &package_path)?;
+        let cache_folder =
+          cache.package_folder_for_name_and_version(&package.id.nv);
+
+        deno_core::unsync::spawn_blocking({
+          let package_path = package_path.clone();
+          move || {
+            clone_dir_recursive(&cache_folder, &package_path)?;
+            // write out a file that indicates this folder has been initialized
+            fs::write(initialized_file, "")?;
+
+            Ok::<_, AnyError>(())
+          }
+        })
+        .await??;
+
+        if package.bin.is_some() {
+          bin_entries_to_setup
+            .lock()
+            .push((package.clone(), package_path));
         }
-        // write out a file that indicates this folder has been initialized
-        fs::write(initialized_file, "")?;
+
         // finally stop showing the progress bar
         drop(pb_guard); // explicit for clarity
         Ok(())
@@ -365,9 +374,7 @@ async fn sync_resolution_with_fs(
       let sub_node_modules = destination_path.join("node_modules");
       let package_path =
         join_package_name(&sub_node_modules, &package.id.nv.name);
-      fs::create_dir_all(&package_path).with_context(|| {
-        format!("Creating '{}'", destination_path.display())
-      })?;
+
       let source_path = join_package_name(
         &deno_local_registry_dir
           .join(get_package_folder_id_folder_name(
@@ -376,7 +383,8 @@ async fn sync_resolution_with_fs(
           .join("node_modules"),
         &package.id.nv.name,
       );
-      hard_link_dir_recursive(&source_path, &package_path)?;
+
+      clone_dir_recursive(&source_path, &package_path)?;
       // write out a file that indicates this folder has been initialized
       fs::write(initialized_file, "")?;
     }
@@ -469,6 +477,50 @@ async fn sync_resolution_with_fs(
         &local_registry_package_path,
         &join_package_name(&deno_node_modules_dir, &package.id.nv.name),
       )?;
+    }
+  }
+
+  // 6. Set up `node_modules/.bin` entries for packages that need it.
+  {
+    let bin_entries = bin_entries_to_setup.lock();
+    if !bin_entries.is_empty() && !bin_node_modules_dir_path.exists() {
+      fs::create_dir_all(&bin_node_modules_dir_path).with_context(|| {
+        format!("Creating '{}'", bin_node_modules_dir_path.display())
+      })?;
+    }
+    for (package, package_path) in &*bin_entries {
+      let package = snapshot.package_from_id(&package.id).unwrap();
+      if let Some(bin_entries) = &package.bin {
+        match bin_entries {
+          deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
+            // the default bin name doesn't include the organization
+            let name = package
+              .id
+              .nv
+              .name
+              .rsplit_once('/')
+              .map_or(package.id.nv.name.as_str(), |(_, name)| name);
+            bin_entries::set_up_bin_entry(
+              package,
+              name,
+              script,
+              package_path,
+              &bin_node_modules_dir_path,
+            )?;
+          }
+          deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
+            for (name, script) in entries {
+              bin_entries::set_up_bin_entry(
+                package,
+                name,
+                script,
+                package_path,
+                &bin_node_modules_dir_path,
+              )?;
+            }
+          }
+        }
+      }
     }
   }
 

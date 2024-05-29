@@ -77,6 +77,8 @@ impl ParsedSourceCache {
       if parsed_source.media_type() == media_type
         && parsed_source.text_info().text_str() == source.as_ref()
       {
+        // note: message used tests
+        log::debug!("Removed parsed source: {}", specifier);
         return Ok(parsed_source);
       }
     }

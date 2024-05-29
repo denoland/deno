@@ -7153,6 +7153,9 @@
       "response": {
         "json.any.html": true,
         "json.any.worker.html": true,
+        "response-blob-realm.any.html": [
+          "realm of the Uint8Array from Response bytes()"
+        ],
         "response-init-001.any.html": true,
         "response-init-001.any.worker.html": true,
         "response-init-002.any.html": true,
@@ -8148,7 +8151,11 @@
         "HTTP/1.1 200 ",
         "HTTP/1.1 999 DOES IT MATTER "
       ],
-      "resources-with-0x00-in-header.window.html": false
+      "resources-with-0x00-in-header.window.html": [
+        "Expect network error for script with 0x00 in a header",
+        "Expect network error for frame navigation to resource with 0x00 in a header",
+        "Expect network error for image with 0x00 in a header"
+      ]
     },
     "range": {
       "general.any.html": [
@@ -8700,14 +8707,8 @@
             "dynamic-import-with-assertion-argument.any.worker.html": true
           },
           "json-module": {
-            "charset-bom.any.html": [
-              "UTF-16BE BOM should result in parse error in JSON module script",
-              "UTF-16LE BOM should result in parse error in JSON module script"
-            ],
-            "charset-bom.any.worker.html": [
-              "UTF-16BE BOM should result in parse error in JSON module script",
-              "UTF-16LE BOM should result in parse error in JSON module script"
-            ],
+            "charset-bom.any.html": true,
+            "charset-bom.any.worker.html": true,
             "invalid-content-type.any.html": true,
             "invalid-content-type.any.worker.html": true,
             "non-object.any.html": true,
@@ -10062,7 +10063,6 @@
     "Worker-replace-event-handler.any.worker.html": true,
     "Worker-replace-global-constructor.any.worker.html": true,
     "Worker-replace-self.any.worker.html": true,
-    "WorkerGlobalScope_requestAnimationFrame.tentative.worker.html": false,
     "WorkerLocation-origin.sub.window.html": false,
     "WorkerNavigator-hardware-concurrency.any.worker.html": true,
     "WorkerNavigator.any.worker.html": false,
@@ -10743,6 +10743,9 @@
   },
   "service-workers": {
     "idlharness.https.any.html": [
+      "ServiceWorkerContainer interface: operation register((TrustedScriptURL or USVString), optional RegistrationOptions)",
+      "ServiceWorkerContainer interface: navigator.serviceWorker must inherit property \"register((TrustedScriptURL or USVString), optional RegistrationOptions)\" with the proper type",
+      "ServiceWorkerContainer interface: calling register((TrustedScriptURL or USVString), optional RegistrationOptions) on navigator.serviceWorker with too few arguments must throw TypeError",
       "ServiceWorker interface: existence and properties of interface object",
       "ServiceWorker interface object length",
       "ServiceWorker interface object name",
@@ -10851,6 +10854,9 @@
       "idl_test setup"
     ],
     "idlharness.https.any.worker.html": [
+      "ServiceWorkerContainer interface: operation register((TrustedScriptURL or USVString), optional RegistrationOptions)",
+      "ServiceWorkerContainer interface: navigator.serviceWorker must inherit property \"register((TrustedScriptURL or USVString), optional RegistrationOptions)\" with the proper type",
+      "ServiceWorkerContainer interface: calling register((TrustedScriptURL or USVString), optional RegistrationOptions) on navigator.serviceWorker with too few arguments must throw TypeError",
       "ServiceWorker interface: existence and properties of interface object",
       "ServiceWorker interface object length",
       "ServiceWorker interface object name",
@@ -12825,8 +12831,6 @@
     "eventsource-onopen.any.worker.html": true,
     "eventsource-prototype.any.html": true,
     "eventsource-prototype.any.worker.html": true,
-    "eventsource-request-cancellation.window.any.html": false,
-    "eventsource-request-cancellation.window.any.worker.html": false,
     "eventsource-url.any.html": true,
     "eventsource-url.any.worker.html": true,
     "format-bom-2.any.html": true,
@@ -12883,6 +12887,12 @@
     "eventsource-constructor-stringify.window.html": false,
     "eventsource-cross-origin.window.html": false,
     "eventsource-reconnect.window.html": false,
-    "request-status-error.window.html": false
+    "request-status-error.window.html": false,
+    "eventsource-constructor-empty-url.any.serviceworker.html": false,
+    "eventsource-constructor-empty-url.any.sharedworker.html": false,
+    "eventsource-constructor-url-bogus.any.serviceworker.html": false,
+    "eventsource-constructor-url-bogus.any.sharedworker.html": false,
+    "request-credentials.window.html": false,
+    "request-redirect.window.html": false
   }
 }

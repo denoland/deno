@@ -399,7 +399,7 @@ impl CoverageReporter for HtmlCoverageReporter {
 
   fn done(&mut self, coverage_root: &Path) {
     let summary = self.collect_summary(&self.file_reports);
-    let now = crate::util::time::utc_now().to_rfc2822();
+    let now = chrono::Utc::now().to_rfc2822();
 
     for (node, stats) in &summary {
       let report_path =
@@ -633,7 +633,7 @@ impl HtmlCoverageReporter {
   ) -> String {
     let line_num = file_text.lines().count();
     let line_count = (1..line_num + 1)
-      .map(|i| format!("<a name='L{i}'></a><a href='#{i}'>{i}</a>"))
+      .map(|i| format!("<a name='L{i}'></a><a href='#L{i}'>{i}</a>"))
       .collect::<Vec<_>>()
       .join("\n");
     let line_coverage = (0..line_num)
@@ -644,7 +644,7 @@ impl HtmlCoverageReporter {
           if *count == 0 {
             "<span class='cline-any cline-no'>&nbsp</span>".to_string()
           } else {
-            format!("<span class='cline-any cline-yes'>x{count}</span>")
+            format!("<span class='cline-any cline-yes' title='This line is covered {count} time{}'>x{count}</span>", if *count > 1 { "s" } else { "" })
           }
         } else {
           "<span class='cline-any cline-neutral'>&nbsp</span>".to_string()

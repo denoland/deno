@@ -689,7 +689,7 @@ Deno.test({
 
     assert(worker);
     const response = await fetch("http://localhost:4506");
-    assert(await response.arrayBuffer());
+    assert(await response.bytes());
     worker.terminate();
   },
 });

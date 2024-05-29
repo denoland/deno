@@ -1,0 +1,9 @@
+{
+  "version": "3",
+  "redirects": {
+    "http://localhost:4546/welcome.ts": "http://localhost:4545/welcome.ts"
+  },
+  "remote": {
+    "http://localhost:4545/welcome.ts": "7353d5fcbc36c45d26bcbca478cf973092523b07c45999f41319820092b4de31"
+  }
+}
