@@ -171,7 +171,7 @@ impl ModuleLoadPreparer {
       )
       .await?;
 
-    self.module_graph_builder.graph_roots_valid(graph, roots)?;
+    self.graph_roots_valid(graph, roots)?;
 
     // write the lockfile if there is one
     if let Some(lockfile) = &self.lockfile {
@@ -204,6 +204,14 @@ impl ModuleLoadPreparer {
     log::debug!("Prepared module load.");
 
     Ok(())
+  }
+
+  pub fn graph_roots_valid(
+    &self,
+    graph: &ModuleGraph,
+    roots: &[ModuleSpecifier],
+  ) -> Result<(), AnyError> {
+    self.module_graph_builder.graph_roots_valid(graph, roots)
   }
 }
 
@@ -806,8 +814,26 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let inner = self.0.clone();
 
     async move {
-      let graph_container = inner.graph_container.clone();
-      let module_load_preparer = inner.shared.module_load_preparer.clone();
+      let graph_container = &inner.graph_container;
+      let module_load_preparer = &inner.shared.module_load_preparer;
+
+      if is_dynamic {
+        // When the specifier is already in the graph then it means it
+        // was previously loaded, so we can skip that and only check if
+        // this part of the graph is valid.
+        //
+        // This doesn't acquire a graph update permit because that will
+        // clone the graph which is a bit slow.
+        let graph = graph_container.graph();
+        if !graph.roots.is_empty() && graph.get(&specifier).is_some() {
+          log::debug!("Skipping prepare module load.");
+          // roots are already validated so we can skip those
+          if !graph.roots.contains(&specifier) {
+            module_load_preparer.graph_roots_valid(&graph, &[specifier])?;
+          }
+          return Ok(());
+        }
+      }
 
       let root_permissions = if is_dynamic {
         inner.dynamic_permissions.clone()
