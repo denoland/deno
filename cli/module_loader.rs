@@ -175,7 +175,7 @@ impl ModuleLoadPreparer {
 
     // write the lockfile if there is one
     if let Some(lockfile) = &self.lockfile {
-      write_lockfile_if_has_changes(&lockfile.lock())?;
+      write_lockfile_if_has_changes(&mut lockfile.lock())?;
     }
 
     drop(_pb_clear_guard);

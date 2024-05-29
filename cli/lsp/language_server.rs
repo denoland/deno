@@ -272,8 +272,8 @@ impl LanguageServer {
       // Update the lockfile on the file system with anything new
       // found after caching
       if let Some(lockfile) = cli_options.maybe_lockfile() {
-        let lockfile = lockfile.lock();
-        if let Err(err) = write_lockfile_if_has_changes(&lockfile) {
+        let mut lockfile = lockfile.lock();
+        if let Err(err) = write_lockfile_if_has_changes(&mut lockfile) {
           lsp_warn!("{:#}", err);
         }
       }

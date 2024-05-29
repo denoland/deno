@@ -533,7 +533,7 @@ impl CliMainWorkerFactory {
         // For npm binary commands, ensure that the lockfile gets updated
         // so that we can re-use the npm resolution the next time it runs
         // for better performance
-        write_lockfile_if_has_changes(&lockfile.lock())?;
+        write_lockfile_if_has_changes(&mut lockfile.lock())?;
       }
 
       (node_resolution.into_url(), is_main_cjs)
