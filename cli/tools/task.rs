@@ -346,10 +346,19 @@ impl ShellCommand for NpmCommand {
     if context.args.first().map(|s| s.as_str()) == Some("run")
       && !context.args.iter().any(|s| s == "--")
     {
-      if let Some(task_name) = context.args.get(1) {
+      if let Some(_) = context.args.get(1) {
         // run with deno task instead
-        let mut args = vec!["task".to_string(), task_name.to_string()];
-        args.extend(context.args.iter().skip(2).cloned());
+        let mut args = vec!["task".to_string()];
+
+        for arg in context.args.iter().skip(1) {
+          // Skip arguments to `npm run` for now.
+          if arg.starts_with("-") {
+            continue;
+          }
+
+          args.push(arg.to_string());
+        }
+
         let mut state = context.state;
         state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
         return ExecutableCommand::new(
@@ -647,7 +656,7 @@ esac
 
 if [ -x "$basedir/node" ]; then
   exec "$basedir/node"  "$basedir/../example/bin/example" "$@"
-else 
+else
   exec node  "$basedir/../example/bin/example" "$@"
 fi"#;
     assert_eq!(
