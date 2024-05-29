@@ -345,32 +345,31 @@ impl ShellCommand for NpmCommand {
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     if context.args.first().map(|s| s.as_str()) == Some("run")
       && !context.args.iter().any(|s| s == "--")
+      && context.args.get(1).is_some()
     {
-      if context.args.get(1).is_some() {
-        // run with deno task instead
-        let mut args = vec!["task".to_string()];
+      // run with deno task instead
+      let mut args = vec!["task".to_string()];
 
-        for arg in context.args.iter().skip(1) {
-          // Skip arguments to `npm run` for now.
-          if arg.starts_with('-') {
-            continue;
-          }
-
-          args.push(arg.to_string());
+      for arg in context.args.iter().skip(1) {
+        // Skip arguments to `npm run` for now.
+        if arg.starts_with('-') {
+          continue;
         }
 
-        let mut state = context.state;
-        state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
-        return ExecutableCommand::new(
-          "deno".to_string(),
-          std::env::current_exe().unwrap(),
-        )
-        .execute(ShellCommandContext {
-          args,
-          state,
-          ..context
-        });
+        args.push(arg.to_string());
       }
+
+      let mut state = context.state;
+      state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
+      return ExecutableCommand::new(
+        "deno".to_string(),
+        std::env::current_exe().unwrap(),
+      )
+      .execute(ShellCommandContext {
+        args,
+        state,
+        ..context
+      });
     }
 
     // fallback to running the real npm command
