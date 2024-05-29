@@ -455,7 +455,7 @@ impl JupyterServer {
             messaging::ExecuteReply {
               execution_count: self.execution_count,
               status: ReplyStatus::Error,
-              payload: None,
+              payload: Default::default(),
               user_expressions: None,
               error: None,
             }
@@ -481,7 +481,7 @@ impl JupyterServer {
             execution_count: self.execution_count,
             status: ReplyStatus::Ok,
             user_expressions: None,
-            payload: None,
+            payload: Default::default(),
             error: None,
           }
           .as_child_of(parent_message),
@@ -586,7 +586,7 @@ impl JupyterServer {
               traceback,
             }),
             user_expressions: None,
-            payload: None,
+            payload: Default::default(),
           }
           .as_child_of(parent_message),
         )

@@ -65,12 +65,9 @@ pub async fn op_jupyter_broadcast(
       err
     })?;
 
-    let mut jupyter_message = JupyterMessage::new(content, Some(&last_request));
-
-    jupyter_message.metadata = metadata;
-    jupyter_message.buffers =
-      buffers.into_iter().map(|b| b.to_vec().into()).collect();
-    jupyter_message.set_parent(last_request);
+    let jupyter_message = JupyterMessage::new(content, Some(&last_request))
+      .with_metadata(metadata)
+      .with_buffers(buffers.into_iter().map(|b| b.to_vec().into()).collect());
 
     (iopub_connection.lock().await)
       .send(jupyter_message)
