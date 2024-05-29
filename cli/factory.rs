@@ -665,7 +665,6 @@ impl CliFactory {
           self.options.clone(),
           self.npm_resolver().await?.clone(),
           self.module_graph_builder().await?.clone(),
-          self.maybe_lockfile().clone(),
           self.type_checker().await?.clone(),
         )))
       })

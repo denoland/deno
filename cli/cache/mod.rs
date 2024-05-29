@@ -228,7 +228,7 @@ impl Loader for FetchCacher {
         LoaderCacheSetting::Reload => {
           if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
             return Err(deno_core::anyhow::anyhow!(
-              "Failed to resolve version constraint. Try running again without --cached-only"
+              "Could not resolve version constraint using only cached data. Try running again without --cached-only"
             ));
           }
           Some(CacheSetting::ReloadAll)

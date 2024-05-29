@@ -8707,14 +8707,8 @@
             "dynamic-import-with-assertion-argument.any.worker.html": true
           },
           "json-module": {
-            "charset-bom.any.html": [
-              "UTF-16BE BOM should result in parse error in JSON module script",
-              "UTF-16LE BOM should result in parse error in JSON module script"
-            ],
-            "charset-bom.any.worker.html": [
-              "UTF-16BE BOM should result in parse error in JSON module script",
-              "UTF-16LE BOM should result in parse error in JSON module script"
-            ],
+            "charset-bom.any.html": true,
+            "charset-bom.any.worker.html": true,
             "invalid-content-type.any.html": true,
             "invalid-content-type.any.worker.html": true,
             "non-object.any.html": true,

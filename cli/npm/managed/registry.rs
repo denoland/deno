@@ -142,24 +142,21 @@ impl CliNpmRegistryApiInner {
         }
         Some(CacheItem::Pending(future)) => (false, future.clone()),
         None => {
-          if (self.cache.cache_setting().should_use_for_npm_package(name) && !self.force_reload())
-            // if this has been previously reloaded, then try loading from the
-            // file system cache
-            || !self.previously_reloaded_packages.lock().insert(name.to_string())
-          {
-            // attempt to load from the file cache
-            if let Some(info) = self.load_file_cached_package_info(name) {
-              let result = Some(Arc::new(info));
-              mem_cache
-                .insert(name.to_string(), CacheItem::Resolved(result.clone()));
-              return Ok(result);
-            }
-          }
-
           let future = {
             let api = self.clone();
             let name = name.to_string();
             async move {
+              if (api.cache.cache_setting().should_use_for_npm_package(&name) && !api.force_reload())
+                // if this has been previously reloaded, then try loading from the
+                // file system cache
+                || !api.previously_reloaded_packages.lock().insert(name.to_string())
+              {
+                // attempt to load from the file cache
+                if let Some(info) = api.load_file_cached_package_info(&name).await {
+                  let result = Some(Arc::new(info));
+                  return Ok(result);
+                }
+              }
               api
                 .load_package_info_from_registry(&name)
                 .await
@@ -201,11 +198,11 @@ impl CliNpmRegistryApiInner {
     self.force_reload_flag.is_raised()
   }
 
-  fn load_file_cached_package_info(
+  async fn load_file_cached_package_info(
     &self,
     name: &str,
   ) -> Option<NpmPackageInfo> {
-    match self.load_file_cached_package_info_result(name) {
+    match self.load_file_cached_package_info_result(name).await {
       Ok(value) => value,
       Err(err) => {
         if cfg!(debug_assertions) {
@@ -217,18 +214,25 @@ impl CliNpmRegistryApiInner {
     }
   }
 
-  fn load_file_cached_package_info_result(
+  async fn load_file_cached_package_info_result(
     &self,
     name: &str,
   ) -> Result<Option<NpmPackageInfo>, AnyError> {
     let file_cache_path = self.get_package_file_cache_path(name);
-    let file_text = match fs::read_to_string(file_cache_path) {
-      Ok(file_text) => file_text,
-      Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-      Err(err) => return Err(err.into()),
-    };
-    match serde_json::from_str(&file_text) {
-      Ok(package_info) => Ok(Some(package_info)),
+    let deserialization_result = deno_core::unsync::spawn_blocking(|| {
+      let file_text = match fs::read_to_string(file_cache_path) {
+        Ok(file_text) => file_text,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(err.into()),
+      };
+      serde_json::from_str(&file_text)
+        .map(Some)
+        .map_err(AnyError::from)
+    })
+    .await
+    .unwrap();
+    match deserialization_result {
+      Ok(maybe_package_info) => Ok(maybe_package_info),
       Err(err) => {
         // This scenario might mean we need to load more data from the
         // npm registry than before. So, just debug log while in debug
@@ -317,7 +321,10 @@ impl CliNpmRegistryApiInner {
       .await?;
     match maybe_bytes {
       Some(bytes) => {
-        let package_info = serde_json::from_slice(&bytes)?;
+        let package_info = deno_core::unsync::spawn_blocking(move || {
+          serde_json::from_slice(&bytes)
+        })
+        .await??;
         self.save_package_info_to_file_cache(name, &package_info);
         Ok(Some(package_info))
       }

@@ -280,11 +280,6 @@ fn exit_for_error(error: AnyError) -> ! {
 
   if let Some(e) = error.downcast_ref::<JsError>() {
     error_string = format_js_error(e);
-  } else if let Some(args::LockfileError::IntegrityCheckFailed(e)) =
-    error.downcast_ref::<args::LockfileError>()
-  {
-    error_string = e.to_string();
-    error_code = 10;
   } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
     error.downcast_ref::<SnapshotFromLockfileError>()
   {
