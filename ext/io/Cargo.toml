@@ -28,3 +28,4 @@ os_pipe.workspace = true
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winbase", "processenv", "errhandlingapi"] }
 rand.workspace = true
+parking_lot.workspace = true
