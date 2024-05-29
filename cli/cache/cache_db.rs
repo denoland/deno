@@ -39,7 +39,7 @@ impl rusqlite::types::ToSql for CacheDBHash {
   fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
     Ok(rusqlite::types::ToSqlOutput::Owned(
       // sqlite doesn't support u64, but it does support i64 so store
-      // this value "incorrectly" as i64 then convert back to u64 when done
+      // this value "incorrectly" as i64 then convert back to u64 on read
       rusqlite::types::Value::Integer(self.0 as i64),
     ))
   }
@@ -83,17 +83,16 @@ pub struct CacheDBConfiguration {
 impl CacheDBConfiguration {
   fn create_combined_sql(&self) -> String {
     format!(
-      "PRAGMA journal_mode=WAL;
-PRAGMA synchronous=NORMAL;
-PRAGMA temp_store=memory;
-PRAGMA page_size=4096;
-PRAGMA mmap_size=6000000;
-PRAGMA optimize;
-
-CREATE TABLE IF NOT EXISTS info (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-
-{}
-",
+      concat!(
+        "PRAGMA journal_mode=WAL;",
+        "PRAGMA synchronous=NORMAL;",
+        "PRAGMA temp_store=memory;",
+        "PRAGMA page_size=4096;",
+        "PRAGMA mmap_size=6000000;",
+        "PRAGMA optimize;",
+        "CREATE TABLE IF NOT EXISTS info (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        "{}",
+      ),
       self.table_initializer
     )
   }
