@@ -334,14 +334,12 @@ impl Resource for ChildStderrResource {
 }
 
 #[cfg(windows)]
-use winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO;
-
-#[cfg(windows)]
 #[derive(Default)]
 pub struct WinTtyState {
   pub cancelled: bool,
   pub reading: bool,
-  pub screen_buffer_info: Option<CONSOLE_SCREEN_BUFFER_INFO>,
+  pub screen_buffer_info:
+    Option<winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO>,
   pub cvar: Arc<Condvar>,
 }
 
