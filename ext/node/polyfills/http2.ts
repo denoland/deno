@@ -120,7 +120,7 @@ const SESSION_FLAGS_DESTROYED = 0x4;
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
 
-const debugHttp2Enabled = true;
+const debugHttp2Enabled = false;
 function debugHttp2(...args) {
   if (debugHttp2Enabled) {
     console.log(...args);
@@ -933,7 +933,7 @@ export class ClientHttp2Stream extends Duplex {
 
   // TODO(bartlomieju): clean up
   _write(chunk, encoding, callback?: () => void) {
-    debugHttp2(">>> _write", {encoding}, callback);
+    debugHttp2(">>> _write", encoding, callback);
     if (typeof encoding === "function") {
       callback = encoding;
       encoding = this.#encoding;
