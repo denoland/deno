@@ -150,6 +150,7 @@ fn sort_by_depth(
 
   let mut queue = VecDeque::new();
   queue.extend(snapshot.top_level_packages().map(Entry::Pkg));
+  seen.extend(snapshot.top_level_packages());
   queue.push_back(Entry::IncreaseDepth);
 
   let mut current_depth = 0u64;
