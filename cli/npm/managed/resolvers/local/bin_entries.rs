@@ -1,15 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::npm::managed::NpmResolutionPackage;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::{anyhow::Context, parking_lot::Mutex};
+use deno_core::parking_lot::Mutex;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
-use std::collections::{HashMap, VecDeque};
-use std::{
-  path::{Path, PathBuf},
-  sync::atomic::AtomicBool,
-};
+use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 
 #[derive(Default)]
 // just to put them under a single mutex
@@ -88,7 +89,7 @@ impl BinEntries {
     let mut bin_entries = self.entries.lock();
 
     if !bin_entries.entries.is_empty() && !bin_node_modules_dir_path.exists() {
-      std::fs::create_dir_all(&bin_node_modules_dir_path).with_context(
+      std::fs::create_dir_all(bin_node_modules_dir_path).with_context(
         || format!("Creating '{}'", bin_node_modules_dir_path.display()),
       )?;
     }
@@ -113,7 +114,7 @@ impl BinEntries {
               name,
               script,
               package_path,
-              &bin_node_modules_dir_path,
+              bin_node_modules_dir_path,
             )?;
           }
           deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
@@ -126,7 +127,7 @@ impl BinEntries {
                 name,
                 script,
                 package_path,
-                &bin_node_modules_dir_path,
+                bin_node_modules_dir_path,
               )?;
             }
           }
@@ -205,7 +206,7 @@ fn sort_by_depth(
         log::warn!("{} not found in dependency tree", a.id.nv);
         &u64::MAX
       })
-      .cmp(&depths.get(&b.id).unwrap_or_else(|| {
+      .cmp(depths.get(&b.id).unwrap_or_else(|| {
         log::warn!("{} not found in dependency tree", b.id.nv);
         &u64::MAX
       }))
