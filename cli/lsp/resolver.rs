@@ -3,7 +3,6 @@
 use crate::args::create_default_npmrc;
 use crate::args::package_json;
 use crate::args::CacheSetting;
-use crate::cache::FastInsecureHasher;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClient;
 use crate::jsr::JsrCacheResolver;
@@ -60,7 +59,6 @@ pub struct LspResolver {
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   node_resolver: Option<Arc<CliNodeResolver>>,
-  npm_config_hash: LspNpmConfigHash,
   redirect_resolver: Option<Arc<RedirectResolver>>,
   graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   config: Arc<Config>,
@@ -73,7 +71,6 @@ impl Default for LspResolver {
       jsr_resolver: None,
       npm_resolver: None,
       node_resolver: None,
-      npm_config_hash: LspNpmConfigHash(0),
       redirect_resolver: None,
       graph_imports: Default::default(),
       config: Default::default(),
@@ -82,26 +79,17 @@ impl Default for LspResolver {
 }
 
 impl LspResolver {
-  pub async fn with_new_config(
-    &self,
+  pub async fn from_config(
     config: &Config,
     cache: &LspCache,
     http_client: Option<&Arc<HttpClient>>,
-  ) -> Arc<Self> {
-    let npm_config_hash = LspNpmConfigHash::new(config, cache);
+  ) -> Self {
     let config_data = config.tree.root_data();
     let mut npm_resolver = None;
     let mut node_resolver = None;
-    if npm_config_hash != self.npm_config_hash {
-      if let (Some(http_client), Some(config_data)) = (http_client, config_data)
-      {
-        npm_resolver =
-          create_npm_resolver(config_data, cache, http_client).await;
-        node_resolver = create_node_resolver(npm_resolver.as_ref());
-      }
-    } else {
-      npm_resolver = self.npm_resolver.clone();
-      node_resolver = self.node_resolver.clone();
+    if let (Some(http_client), Some(config_data)) = (http_client, config_data) {
+      npm_resolver = create_npm_resolver(config_data, cache, http_client).await;
+      node_resolver = create_node_resolver(npm_resolver.as_ref());
     }
     let graph_resolver = create_graph_resolver(
       config_data,
@@ -136,16 +124,15 @@ impl LspResolver {
         )
       })
       .unwrap_or_default();
-    Arc::new(Self {
+    Self {
       graph_resolver,
       jsr_resolver,
       npm_resolver,
       node_resolver,
-      npm_config_hash,
       redirect_resolver,
       graph_imports,
       config: Arc::new(config.clone()),
-    })
+    }
   }
 
   pub fn snapshot(&self) -> Arc<Self> {
@@ -162,7 +149,6 @@ impl LspResolver {
       jsr_resolver: self.jsr_resolver.clone(),
       npm_resolver,
       node_resolver,
-      npm_config_hash: self.npm_config_hash.clone(),
       redirect_resolver: self.redirect_resolver.clone(),
       graph_imports: self.graph_imports.clone(),
       config: self.config.clone(),
@@ -336,7 +322,7 @@ async fn create_npm_resolver(
   let options = if config_data.byonm {
     CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
       fs: Arc::new(deno_fs::RealFs),
-      root_node_modules_dir: node_modules_dir,
+      root_node_modules_dir: node_modules_dir.clone(),
     })
   } else {
     CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
@@ -420,27 +406,6 @@ fn create_graph_resolver(
       SloppyImportsResolver::new_without_stat_cache(Arc::new(deno_fs::RealFs))
     }),
   }))
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct LspNpmConfigHash(u64);
-
-impl LspNpmConfigHash {
-  pub fn new(config: &Config, cache: &LspCache) -> Self {
-    let config_data = config.tree.root_data();
-    let scope = config_data.map(|d| &d.scope);
-    let node_modules_dir =
-      config_data.and_then(|d| d.node_modules_dir.as_ref());
-    let lockfile = config_data.and_then(|d| d.lockfile.as_ref());
-    let mut hasher = FastInsecureHasher::new();
-    hasher.write_hashable(scope);
-    hasher.write_hashable(node_modules_dir);
-    if let Some(lockfile) = lockfile {
-      hasher.write_hashable(&*lockfile.lock());
-    }
-    hasher.write_hashable(cache.deno_dir().npm_folder_path());
-    Self(hasher.finish())
-  }
 }
 
 #[derive(Debug, Eq, PartialEq)]

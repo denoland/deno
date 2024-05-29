@@ -1534,9 +1534,8 @@ mod tests {
     let temp_dir = TempDir::new();
     let cache = LspCache::new(Some(temp_dir.uri()));
     let config = Config::default();
-    let resolver = LspResolver::default()
-      .with_new_config(&config, &cache, None)
-      .await;
+    let resolver =
+      Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let mut documents = Documents::default();
     documents.update_config(&config, &resolver, &cache, &Default::default());
     (documents, cache, temp_dir)
@@ -1684,9 +1683,8 @@ console.log(b, "hello deno");
         )
         .await;
 
-      let resolver = LspResolver::default()
-        .with_new_config(&config, &cache, None)
-        .await;
+      let resolver =
+        Arc::new(LspResolver::from_config(&config, &cache, None).await);
       documents.update_config(&config, &resolver, &cache, &workspace_files);
 
       // open the document
@@ -1729,9 +1727,8 @@ console.log(b, "hello deno");
         )
         .await;
 
-      let resolver = LspResolver::default()
-        .with_new_config(&config, &cache, None)
-        .await;
+      let resolver =
+        Arc::new(LspResolver::from_config(&config, &cache, None).await);
       documents.update_config(&config, &resolver, &cache, &workspace_files);
 
       // check the document's dependencies
