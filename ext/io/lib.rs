@@ -49,11 +49,11 @@ use winapi::um::processenv::GetStdHandle;
 use winapi::um::winbase;
 
 #[cfg(windows)]
+use parking_lot::Condvar;
+#[cfg(windows)]
+use parking_lot::Mutex;
+#[cfg(windows)]
 use std::sync::Arc;
-#[cfg(windows)]
-use std::sync::Condvar;
-#[cfg(windows)]
-use std::sync::Mutex;
 
 pub mod fs;
 mod pipe;
@@ -774,13 +774,13 @@ impl crate::fs::File for StdFileResourceInner {
 
           let fut = self.with_inner_blocking_task(move |file| {
             /* Start reading, and set the reading flag to true */
-            state.lock().unwrap().reading = true;
+            state.lock().reading = true;
             let nread = match file.read(&mut buf) {
               Ok(nread) => nread,
               Err(e) => return Err((e.into(), buf)),
             };
 
-            let mut state = state.lock().unwrap();
+            let mut state = state.lock();
             state.reading = false;
 
             /* If we canceled the read by sending a VK_RETURN event, restore

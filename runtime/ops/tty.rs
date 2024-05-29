@@ -14,11 +14,11 @@ use rustyline::KeyEvent;
 use rustyline::Modifiers;
 
 #[cfg(windows)]
+use deno_core::parking_lot::Mutex;
+#[cfg(windows)]
 use deno_io::WinTtyState;
 #[cfg(windows)]
 use std::sync::Arc;
-#[cfg(windows)]
-use std::sync::Mutex;
 
 #[cfg(unix)]
 use deno_core::ResourceId;
@@ -125,7 +125,7 @@ fn op_set_raw(
     };
 
     let stdin_state = state.borrow::<Arc<Mutex<WinTtyState>>>();
-    let mut stdin_state = stdin_state.lock().unwrap();
+    let mut stdin_state = stdin_state.lock();
 
     if stdin_state.reading {
       let cvar = stdin_state.cvar.clone();
@@ -192,8 +192,9 @@ fn op_set_raw(
         interferes with the screen state.
         NOTE: `wait_while` automatically unlocks stdin_state */
         let _unused = cvar
-          .wait_while(stdin_state, |state| state.cancelled)
-          .unwrap();
+          .wait_while(&mut stdin_state, |state: &mut WinTtyState| {
+            state.cancelled
+          });
       }
     }
 
