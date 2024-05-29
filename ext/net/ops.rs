@@ -86,7 +86,11 @@ pub struct IpAddr {
 fn process_ip_addr(addr: &mut IpAddr) -> Result<(), AnyError> {
   let extracted_host = extract_host(addr.hostname.as_str());
   let (host_str, port) = split_host_port(extracted_host.as_str())?;
-  addr.hostname = Host::from_host_and_origin_host(host_str.as_str(), extracted_host.as_str())?.to_string();
+  addr.hostname = Host::from_host_and_origin_host(
+    host_str.as_str(),
+    extracted_host.as_str(),
+  )?
+  .to_string();
   if let Some(port) = port {
     addr.port = port;
   }
@@ -175,7 +179,10 @@ where
 {
   process_ip_addr(&mut addr)?;
   {
-    let host = NetPermissionHost::from_host_and_maybe_port(&addr.hostname, Some(addr.port))?;
+    let host = NetPermissionHost::from_host_and_maybe_port(
+      &addr.hostname,
+      Some(addr.port),
+    )?;
     let mut s = state.borrow_mut();
     s.borrow_mut::<NP>()
       .check_net(&host, "Deno.DatagramConn.send()")?;
@@ -345,7 +352,10 @@ where
   NP: NetPermissions + 'static,
 {
   {
-    let host = NetPermissionHost::from_host_and_maybe_port(&addr.hostname, Some(addr.port))?;
+    let host = NetPermissionHost::from_host_and_maybe_port(
+      &addr.hostname,
+      Some(addr.port),
+    )?;
     let mut state_ = state.borrow_mut();
     state_
       .borrow_mut::<NP>()
@@ -397,7 +407,10 @@ where
   if reuse_port {
     super::check_unstable(state, "Deno.listen({ reusePort: true })");
   }
-  let host = NetPermissionHost::from_host_and_maybe_port(&addr.hostname, Some(addr.port))?;
+  let host = NetPermissionHost::from_host_and_maybe_port(
+    &addr.hostname,
+    Some(addr.port),
+  )?;
   state.borrow_mut::<NP>().check_net(&host, "Deno.listen()")?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
@@ -420,7 +433,10 @@ fn net_listen_udp<NP>(
 where
   NP: NetPermissions + 'static,
 {
-  let host = NetPermissionHost::from_host_and_maybe_port(&addr.hostname, Some(addr.port))?;
+  let host = NetPermissionHost::from_host_and_maybe_port(
+    &addr.hostname,
+    Some(addr.port),
+  )?;
   state
     .borrow_mut::<NP>()
     .check_net(&host, "Deno.listenDatagram()")?;
@@ -1135,22 +1151,34 @@ mod tests {
 
   #[test]
   fn test_process_ip_addr() {
-    let mut ip_addr = IpAddr { hostname: "https://192.0.2.1/".to_string(), port: 80 };
+    let mut ip_addr = IpAddr {
+      hostname: "https://192.0.2.1/".to_string(),
+      port: 80,
+    };
     process_ip_addr(&mut ip_addr).unwrap();
     assert_eq!(ip_addr.hostname, "192.0.2.1");
     assert_eq!(ip_addr.port, 80);
 
-    let mut ip_addr = IpAddr { hostname: "https://golang.org/".to_string(), port: 80 };
+    let mut ip_addr = IpAddr {
+      hostname: "https://golang.org/".to_string(),
+      port: 80,
+    };
     process_ip_addr(&mut ip_addr).unwrap();
     assert_eq!(ip_addr.hostname, "golang.org");
     assert_eq!(ip_addr.port, 80);
 
-    let mut ip_addr = IpAddr { hostname: "https://192.0.2.1:90/".to_string(), port: 0 };
+    let mut ip_addr = IpAddr {
+      hostname: "https://192.0.2.1:90/".to_string(),
+      port: 0,
+    };
     process_ip_addr(&mut ip_addr).unwrap();
     assert_eq!(ip_addr.hostname, "192.0.2.1");
     assert_eq!(ip_addr.port, 90);
 
-    let mut ip_addr = IpAddr { hostname: "[::1]:".to_string(), port: 80 };
+    let mut ip_addr = IpAddr {
+      hostname: "[::1]:".to_string(),
+      port: 80,
+    };
     let result = process_ip_addr(&mut ip_addr);
     assert!(result.is_err());
   }

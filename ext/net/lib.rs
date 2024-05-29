@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-pub mod io;
 pub mod host;
+pub mod io;
 pub mod ops;
 pub mod ops_tls;
 #[cfg(unix)]
@@ -30,10 +30,16 @@ pub struct NetPermissionHost {
 }
 
 impl NetPermissionHost {
-  pub fn from_host_and_maybe_port(host: &str, port: Option<u16>) -> Result<Self, AnyError> {
+  pub fn from_host_and_maybe_port(
+    host: &str,
+    port: Option<u16>,
+  ) -> Result<Self, AnyError> {
     let extracted_host = extract_host(host);
     let (host_str, port_) = split_host_port(extracted_host.as_str())?;
-    let host = Host::from_host_and_origin_host(host_str.as_str(), extracted_host.as_str())?;
+    let host = Host::from_host_and_origin_host(
+      host_str.as_str(),
+      extracted_host.as_str(),
+    )?;
 
     let final_port = if let Some(port_) = port_ {
       Some(port_)
@@ -41,7 +47,10 @@ impl NetPermissionHost {
       port
     };
 
-    Ok(NetPermissionHost { host, port: final_port })
+    Ok(NetPermissionHost {
+      host,
+      port: final_port,
+    })
   }
 }
 
@@ -197,7 +206,8 @@ mod tests {
     );
     // Parsing host address with a port
     assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port("deno.land:80", None).unwrap(),
+      NetPermissionHost::from_host_and_maybe_port("deno.land:80", None)
+        .unwrap(),
       NetPermissionHost {
         host: Host::FQDN(FQDN::from_str("deno.land").unwrap()),
         port: Some(80)
@@ -214,7 +224,8 @@ mod tests {
     );
     // Parsing an IPv4 address with a port
     assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port("127.0.0.1:80", None).unwrap(),
+      NetPermissionHost::from_host_and_maybe_port("127.0.0.1:80", None)
+        .unwrap(),
       NetPermissionHost {
         host: Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)),
         port: Some(80)
@@ -223,7 +234,11 @@ mod tests {
 
     // Parsing an IPv6 address
     assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port("[2606:4700:4700::1111]", None).unwrap(),
+      NetPermissionHost::from_host_and_maybe_port(
+        "[2606:4700:4700::1111]",
+        None
+      )
+      .unwrap(),
       NetPermissionHost {
         host: Host::Ipv6(Ipv6Addr::new(
           0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111
@@ -233,7 +248,11 @@ mod tests {
     );
     // Parsing an IPv6 address with a port
     assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port("[2606:4700:4700::1111]:80", None).unwrap(),
+      NetPermissionHost::from_host_and_maybe_port(
+        "[2606:4700:4700::1111]:80",
+        None
+      )
+      .unwrap(),
       NetPermissionHost {
         host: Host::Ipv6(Ipv6Addr::new(
           0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111
@@ -244,8 +263,11 @@ mod tests {
 
     // Parsing a URL with a host
     assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port("https://github.com/denoland/", None)
-        .unwrap(),
+      NetPermissionHost::from_host_and_maybe_port(
+        "https://github.com/denoland/",
+        None
+      )
+      .unwrap(),
       NetPermissionHost {
         host: Host::FQDN(FQDN::from_str("github.com").unwrap()),
         port: None
@@ -253,8 +275,11 @@ mod tests {
     );
     // Parsing a URL with a host & port
     assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port("https://github.com:443/denoland/", None)
-        .unwrap(),
+      NetPermissionHost::from_host_and_maybe_port(
+        "https://github.com:443/denoland/",
+        None
+      )
+      .unwrap(),
       NetPermissionHost {
         host: Host::FQDN(FQDN::from_str("github.com").unwrap()),
         port: Some(443)
@@ -263,7 +288,8 @@ mod tests {
 
     // Parsing a URL with an IPv4 address
     assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port("https://127.0.0.1", None).unwrap(),
+      NetPermissionHost::from_host_and_maybe_port("https://127.0.0.1", None)
+        .unwrap(),
       NetPermissionHost {
         host: Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)),
         port: None
@@ -271,7 +297,8 @@ mod tests {
     );
     // Parsing a URL with an IPv4 address & port
     assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port("https://127.0.0.1:80", None).unwrap(),
+      NetPermissionHost::from_host_and_maybe_port("https://127.0.0.1:80", None)
+        .unwrap(),
       NetPermissionHost {
         host: Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)),
         port: Some(80)
@@ -280,8 +307,11 @@ mod tests {
 
     // Parsing a URL with an IPv6 address
     assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port("https://[2606:4700:4700::1111]", None)
-        .unwrap(),
+      NetPermissionHost::from_host_and_maybe_port(
+        "https://[2606:4700:4700::1111]",
+        None
+      )
+      .unwrap(),
       NetPermissionHost {
         host: Host::Ipv6(Ipv6Addr::new(
           0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111
@@ -291,8 +321,11 @@ mod tests {
     );
     // Parsing a URL with an IPv6 address & port
     assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port("https://[2606:4700:4700::1111]:80", None)
-        .unwrap(),
+      NetPermissionHost::from_host_and_maybe_port(
+        "https://[2606:4700:4700::1111]:80",
+        None
+      )
+      .unwrap(),
       NetPermissionHost {
         host: Host::Ipv6(Ipv6Addr::new(
           0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111
@@ -309,9 +342,12 @@ mod tests {
       "Failed to parse host: foo@bar.com.\n"
     );
     assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port("http://foo@bar.com.:80", None)
-        .unwrap_err()
-        .to_string(),
+      NetPermissionHost::from_host_and_maybe_port(
+        "http://foo@bar.com.:80",
+        None
+      )
+      .unwrap_err()
+      .to_string(),
       "Failed to parse host: foo@bar.com.:80\n"
     );
     assert_eq!(
@@ -321,9 +357,12 @@ mod tests {
       "No port specified after ':'"
     );
     assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port("https://[2606:4700:4700::1111]:", None)
-        .unwrap_err()
-        .to_string(),
+      NetPermissionHost::from_host_and_maybe_port(
+        "https://[2606:4700:4700::1111]:",
+        None
+      )
+      .unwrap_err()
+      .to_string(),
       "Invalid format: [ipv6]:port"
     );
   }

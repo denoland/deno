@@ -696,7 +696,8 @@ pub struct NetDescriptor(pub Host, pub Option<u16>);
 impl NetDescriptor {
   pub fn from_url(url: &Url) -> Result<Self, AnyError> {
     let hostname = url.host_str().ok_or(ParseError::EmptyHost)?.to_string();
-    let host = Host::from_host_and_origin_host(hostname.as_str(), hostname.as_str())?;
+    let host =
+      Host::from_host_and_origin_host(hostname.as_str(), hostname.as_str())?;
     let port = url.port_or_known_default();
     Ok(NetDescriptor(host, port))
   }
@@ -709,7 +710,10 @@ impl NetDescriptor {
   pub fn from_cli_arg(s: &str) -> Result<Self, AnyError> {
     let extracted_host = extract_host(s);
     let (host_str, port) = split_host_port(extracted_host.as_str())?;
-    let host = Host::from_host_and_origin_host(host_str.as_str(), extracted_host.as_str())?;
+    let host = Host::from_host_and_origin_host(
+      host_str.as_str(),
+      extracted_host.as_str(),
+    )?;
     Ok(NetDescriptor(host, port))
   }
 
@@ -2371,7 +2375,10 @@ mod tests {
         perms
           .net
           .check(
-            &NetDescriptor(Host::from_host_and_origin_host(host, "").unwrap(), Some(port)),
+            &NetDescriptor(
+              Host::from_host_and_origin_host(host, "").unwrap(),
+              Some(port)
+            ),
             None
           )
           .is_ok(),
@@ -2417,7 +2424,10 @@ mod tests {
       assert!(perms
         .net
         .check(
-          &NetDescriptor(Host::from_host_and_origin_host(host, "").unwrap(), Some(port)),
+          &NetDescriptor(
+            Host::from_host_and_origin_host(host, "").unwrap(),
+            Some(port)
+          ),
           None
         )
         .is_ok());
@@ -2459,7 +2469,10 @@ mod tests {
       assert!(perms
         .net
         .check(
-          &NetDescriptor(Host::from_host_and_origin_host(host, "").unwrap(), Some(port)),
+          &NetDescriptor(
+            Host::from_host_and_origin_host(host, "").unwrap(),
+            Some(port)
+          ),
           None
         )
         .is_err());
@@ -2912,7 +2925,10 @@ mod tests {
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8000)),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("127.0.0.1", "").unwrap(),
+          Some(8000)
+        ),
         None
       )
       .is_ok());
@@ -2920,35 +2936,50 @@ mod tests {
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8000)),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("127.0.0.1", "").unwrap(),
+          Some(8000)
+        ),
         None
       )
       .is_ok());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8001)),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("127.0.0.1", "").unwrap(),
+          Some(8001)
+        ),
         None
       )
       .is_err());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), None),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("127.0.0.1", "").unwrap(),
+          None
+        ),
         None
       )
       .is_err());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("deno.land", "").unwrap(), Some(8000)),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("deno.land", "").unwrap(),
+          Some(8000)
+        ),
         None
       )
       .is_err());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("deno.land", "").unwrap(), None),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("deno.land", "").unwrap(),
+          None
+        ),
         None
       )
       .is_err());
@@ -3008,7 +3039,10 @@ mod tests {
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8000)),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("127.0.0.1", "").unwrap(),
+          Some(8000)
+        ),
         None
       )
       .is_err());
@@ -3016,21 +3050,30 @@ mod tests {
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8000)),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("127.0.0.1", "").unwrap(),
+          Some(8000)
+        ),
         None
       )
       .is_err());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8001)),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("127.0.0.1", "").unwrap(),
+          Some(8001)
+        ),
         None
       )
       .is_ok());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("deno.land", "").unwrap(), Some(8000)),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("deno.land", "").unwrap(),
+          Some(8000)
+        ),
         None
       )
       .is_ok());
@@ -3038,14 +3081,20 @@ mod tests {
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("127.0.0.1", "").unwrap(), Some(8001)),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("127.0.0.1", "").unwrap(),
+          Some(8001)
+        ),
         None
       )
       .is_ok());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("deno.land", "").unwrap(), Some(8000)),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("deno.land", "").unwrap(),
+          Some(8000)
+        ),
         None
       )
       .is_ok());
@@ -3140,28 +3189,40 @@ mod tests {
     perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("allowed.domain.", "").unwrap(), None),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("allowed.domain.", "").unwrap(),
+          None,
+        ),
         None,
       )
       .unwrap();
     perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("1.1.1.1.", "").unwrap(), None),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("1.1.1.1.", "").unwrap(),
+          None,
+        ),
         None,
       )
       .unwrap();
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("denied.domain.", "").unwrap(), None),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("denied.domain.", "").unwrap(),
+          None
+        ),
         None
       )
       .is_err());
     assert!(perms
       .net
       .check(
-        &NetDescriptor(Host::from_host_and_origin_host("2.2.2.2.", "").unwrap(), None),
+        &NetDescriptor(
+          Host::from_host_and_origin_host("2.2.2.2.", "").unwrap(),
+          None
+        ),
         None
       )
       .is_err());

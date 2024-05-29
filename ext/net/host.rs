@@ -1,7 +1,7 @@
-use std::fmt;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use fqdn::FQDN;
+use std::fmt;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::str::FromStr;
@@ -14,7 +14,10 @@ pub enum Host {
 }
 
 impl Host {
-  pub fn from_host_and_origin_host(host: &str, origin_host: &str) -> Result<Self, AnyError> {
+  pub fn from_host_and_origin_host(
+    host: &str,
+    origin_host: &str,
+  ) -> Result<Self, AnyError> {
     if let Ok(ipv6) = host.parse::<Ipv6Addr>() {
       return Ok(Host::Ipv6(ipv6));
     }
