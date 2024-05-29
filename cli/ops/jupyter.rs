@@ -4,10 +4,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use runtimelib::JupyterMessage;
-use runtimelib::JupyterMessageContent;
-use runtimelib::KernelIoPubConnection;
-use runtimelib::StreamContent;
+use jupyter_runtime::JupyterMessage;
+use jupyter_runtime::JupyterMessageContent;
+use jupyter_runtime::KernelIoPubConnection;
+use jupyter_runtime::StreamContent;
 
 use deno_core::error::AnyError;
 use deno_core::op2;

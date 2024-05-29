@@ -19,19 +19,18 @@ use deno_core::CancelHandle;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 
-use runtimelib::ConnectionInfo;
-use runtimelib::KernelControlConnection;
-use runtimelib::KernelHeartbeatConnection;
-use runtimelib::KernelIoPubConnection;
-use runtimelib::KernelShellConnection;
-
-use runtimelib::messaging;
-use runtimelib::AsChildOf;
-use runtimelib::JupyterMessage;
-use runtimelib::JupyterMessageContent;
-use runtimelib::ReplyError;
-use runtimelib::ReplyStatus;
-use runtimelib::StreamContent;
+use jupyter_runtime::messaging;
+use jupyter_runtime::AsChildOf;
+use jupyter_runtime::ConnectionInfo;
+use jupyter_runtime::JupyterMessage;
+use jupyter_runtime::JupyterMessageContent;
+use jupyter_runtime::KernelControlConnection;
+use jupyter_runtime::KernelHeartbeatConnection;
+use jupyter_runtime::KernelIoPubConnection;
+use jupyter_runtime::KernelShellConnection;
+use jupyter_runtime::ReplyError;
+use jupyter_runtime::ReplyStatus;
+use jupyter_runtime::StreamContent;
 
 pub struct JupyterServer {
   execution_count: usize,
