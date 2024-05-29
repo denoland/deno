@@ -7,6 +7,7 @@ use deno_core::parking_lot::Mutex;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
@@ -15,15 +16,20 @@ use std::sync::atomic::AtomicBool;
 #[derive(Default)]
 // just to put them under a single mutex
 struct NamesAndEntries {
-  seen_names: std::collections::HashSet<String>,
+  seen_names: HashSet<String>,
   entries: Vec<(NpmResolutionPackage, PathBuf)>,
 }
 
 pub(super) struct BinEntries {
+  /// Whether there's a collision in bin names
+  /// (i.e. two packages with the same bin name)
   has_collision: AtomicBool,
+  /// The bin entries
   entries: Mutex<NamesAndEntries>,
 }
 
+/// Returns the name of the default binary for the given package.
+/// This is the package name without the organization (`@org/`), if any.
 fn default_bin_name(package: &NpmResolutionPackage) -> &str {
   package
     .id
@@ -47,6 +53,7 @@ impl BinEntries {
       .load(std::sync::atomic::Ordering::Relaxed)
   }
 
+  /// Add a new bin entry (package with a bin field)
   pub(super) fn add(
     &self,
     package: NpmResolutionPackage,
@@ -54,6 +61,8 @@ impl BinEntries {
   ) {
     let mut bin_entries = self.entries.lock();
 
+    // check for a new collision, if we haven't already
+    // found one
     if !self.has_collision() {
       match package.bin.as_ref().unwrap() {
         deno_npm::registry::NpmPackageVersionBinEntry::String(_) => {
@@ -72,6 +81,7 @@ impl BinEntries {
                 .has_collision
                 .store(true, std::sync::atomic::Ordering::Relaxed);
               bin_entries.seen_names.clear();
+              break;
             }
           }
         }
@@ -81,6 +91,8 @@ impl BinEntries {
     bin_entries.entries.push((package, package_path));
   }
 
+  /// Finish setting up the bin entries, writing the necessary files
+  /// to disk.
   pub(super) fn finish(
     &self,
     snapshot: &NpmResolutionSnapshot,
@@ -95,18 +107,20 @@ impl BinEntries {
     }
 
     if self.has_collision() {
+      // walking the dependency tree to find out the depth of each package
+      // is sort of expensive, so we only do it if there's a collision
       sort_by_depth(snapshot, &mut bin_entries.entries);
     }
 
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = HashSet::new();
 
     for (package, package_path) in &*bin_entries.entries {
       if let Some(bin_entries) = &package.bin {
         match bin_entries {
           deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
-            // the default bin name doesn't include the organization
             let name = default_bin_name(package);
             if !seen.insert(name) {
+              // we already set up a bin entry with this name
               continue;
             }
             set_up_bin_entry(
@@ -120,6 +134,7 @@ impl BinEntries {
           deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
             for (name, script) in entries {
               if !seen.insert(name) {
+                // we already set up a bin entry with this name
                 continue;
               }
               set_up_bin_entry(
@@ -158,8 +173,8 @@ fn sort_by_depth(
   let mut want = bin_entries
     .iter()
     .map(|(p, _)| p.id.clone())
-    .collect::<std::collections::HashSet<_>>();
-  let mut seen = std::collections::HashSet::new();
+    .collect::<HashSet<_>>();
+  let mut seen = HashSet::new();
   let mut depths: HashMap<NpmPackageId, u64> =
     HashMap::with_capacity(want.len());
 
