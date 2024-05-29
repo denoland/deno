@@ -1084,7 +1084,10 @@ fn closed_file_pre_load_does_not_occur() {
     .new_command()
     .args_vec(["repl", "-A", "--log-level=debug"])
     .with_pty(|console| {
-      assert_contains!(console.all_output(), "Skipped document preload.",);
+      assert_contains!(
+        console.all_output(),
+        "Skipped workspace walk due to client incapability.",
+      );
     });
 }
 

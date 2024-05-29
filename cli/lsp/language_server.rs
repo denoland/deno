@@ -803,6 +803,7 @@ impl Inner {
 
   fn walk_workspace(config: &Config) -> (BTreeSet<ModuleSpecifier>, bool) {
     if !config.workspace_capable() {
+      log::debug!("Skipped workspace walk due to client incapability.");
       return (Default::default(), false);
     }
     let mut workspace_files = Default::default();
