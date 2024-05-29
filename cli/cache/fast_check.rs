@@ -118,6 +118,7 @@ mod test {
   use std::collections::BTreeSet;
 
   use deno_ast::ModuleSpecifier;
+  use deno_graph::FastCheckCache as _;
   use deno_graph::FastCheckCacheModuleItem;
   use deno_graph::FastCheckCacheModuleItemDiagnostic;
   use deno_semver::package::PackageNv;
@@ -127,12 +128,14 @@ mod test {
   #[test]
   pub fn cache_general_use() {
     let conn = CacheDB::in_memory(&FAST_CHECK_CACHE_DB, "1.0.0");
-    let cache = FastCheckCacheInner::new(conn);
+    let cache = FastCheckCache::new(conn);
 
     let key = FastCheckCacheKey::build(
+      cache.hash_seed(),
       &PackageNv::from_str("@scope/a@1.0.0").unwrap(),
       &Default::default(),
     );
+    let cache = cache.inner;
     assert!(cache.get(key).unwrap().is_none());
     let value = FastCheckCacheItem {
       dependencies: BTreeSet::from([
