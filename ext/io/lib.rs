@@ -451,6 +451,84 @@ impl StdFileResourceInner {
       spawn_blocking(action).await.unwrap()
     }
   }
+
+  #[cfg(windows)]
+  async fn handle_stdin_read(
+    &self,
+    state: Arc<Mutex<WinTtyState>>,
+    mut buf: BufMutView,
+  ) -> FsResult<(usize, BufMutView)> {
+    loop {
+      let state = state.clone();
+
+      let fut = self.with_inner_blocking_task(move |file| {
+        /* Start reading, and set the reading flag to true */
+        state.lock().reading = true;
+        let nread = match file.read(&mut buf) {
+          Ok(nread) => nread,
+          Err(e) => return Err((e.into(), buf)),
+        };
+
+        let mut state = state.lock();
+        state.reading = false;
+
+        /* If we canceled the read by sending a VK_RETURN event, restore
+        the screen state to undo the visual effect of the VK_RETURN event */
+        if state.cancelled {
+          if let Some(screen_buffer_info) = state.screen_buffer_info {
+            // SAFETY: WinAPI calls to open conout$ and restore visual state.
+            unsafe {
+              let handle = winapi::um::fileapi::CreateFileW(
+                "conout$"
+                  .encode_utf16()
+                  .chain(Some(0))
+                  .collect::<Vec<_>>()
+                  .as_ptr(),
+                winapi::um::winnt::GENERIC_READ
+                  | winapi::um::winnt::GENERIC_WRITE,
+                winapi::um::winnt::FILE_SHARE_READ
+                  | winapi::um::winnt::FILE_SHARE_WRITE,
+                std::ptr::null_mut(),
+                winapi::um::fileapi::OPEN_EXISTING,
+                0,
+                std::ptr::null_mut(),
+              );
+
+              let mut pos = screen_buffer_info.dwCursorPosition;
+              /* If the cursor was at the bottom line of the screen buffer, the
+              VK_RETURN would have caused the buffer contents to scroll up by
+              one line. The right position to reset the cursor to is therefore one
+              line higher */
+              if pos.Y == screen_buffer_info.dwSize.Y - 1 {
+                pos.Y -= 1;
+              }
+
+              winapi::um::wincon::SetConsoleCursorPosition(handle, pos);
+              winapi::um::handleapi::CloseHandle(handle);
+            }
+          }
+
+          /* Reset the cancelled flag */
+          state.cancelled = false;
+
+          /* Unblock the main thread */
+          state.cvar.notify_one();
+
+          return Err((FsError::FileBusy, buf));
+        }
+
+        Ok((nread, buf))
+      });
+
+      match fut.await {
+        Err((FsError::FileBusy, b)) => {
+          buf = b;
+          continue;
+        }
+        other => return other.map_err(|(e, _)| e),
+      }
+    }
+  }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -769,76 +847,7 @@ impl crate::fs::File for StdFileResourceInner {
       /* On Windows, we need to handle special read cancellation logic for stdin */
       #[cfg(windows)]
       StdFileResourceKind::Stdin(state) => {
-        loop {
-          let state = state.clone();
-
-          let fut = self.with_inner_blocking_task(move |file| {
-            /* Start reading, and set the reading flag to true */
-            state.lock().reading = true;
-            let nread = match file.read(&mut buf) {
-              Ok(nread) => nread,
-              Err(e) => return Err((e.into(), buf)),
-            };
-
-            let mut state = state.lock();
-            state.reading = false;
-
-            /* If we canceled the read by sending a VK_RETURN event, restore
-            the screen state to undo the visual effect of the VK_RETURN event */
-            if state.cancelled {
-              if let Some(screen_buffer_info) = state.screen_buffer_info {
-                // SAFETY: WinAPI calls to open conout$ and restore visual state.
-                unsafe {
-                  let handle = winapi::um::fileapi::CreateFileW(
-                    "conout$"
-                      .encode_utf16()
-                      .chain(Some(0))
-                      .collect::<Vec<_>>()
-                      .as_ptr(),
-                    winapi::um::winnt::GENERIC_READ
-                      | winapi::um::winnt::GENERIC_WRITE,
-                    winapi::um::winnt::FILE_SHARE_READ
-                      | winapi::um::winnt::FILE_SHARE_WRITE,
-                    std::ptr::null_mut(),
-                    winapi::um::fileapi::OPEN_EXISTING,
-                    0,
-                    std::ptr::null_mut(),
-                  );
-
-                  let mut pos = screen_buffer_info.dwCursorPosition;
-                  /* If the cursor was at the bottom line of the screen buffer, the
-                  VK_RETURN would have caused the buffer contents to scroll up by
-                  one line. The right position to reset the cursor to is therefore one
-                  line higher */
-                  if pos.Y == screen_buffer_info.dwSize.Y - 1 {
-                    pos.Y -= 1;
-                  }
-
-                  winapi::um::wincon::SetConsoleCursorPosition(handle, pos);
-                  winapi::um::handleapi::CloseHandle(handle);
-                }
-              }
-
-              /* Reset the cancelled flag */
-              state.cancelled = false;
-
-              /* Unblock the main thread */
-              state.cvar.notify_one();
-
-              return Err((FsError::FileBusy, buf));
-            }
-
-            Ok((nread, buf))
-          });
-
-          match fut.await {
-            Err((FsError::FileBusy, b)) => {
-              buf = b;
-              continue;
-            }
-            other => return other.map_err(|(e, _)| e),
-          }
-        }
+        self.handle_stdin_read(state.clone(), buf).await
       }
       _ => {
         self
