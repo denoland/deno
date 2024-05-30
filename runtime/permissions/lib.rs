@@ -20,6 +20,7 @@ use deno_net::host::extract_host;
 use deno_net::host::split_host_port;
 use deno_net::host::Host;
 use deno_terminal::colors;
+use global_flags::global_flags::is_running_from_binary;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -133,14 +134,20 @@ impl PermissionState {
   }
 
   fn error(name: &str, info: impl FnOnce() -> Option<String>) -> AnyError {
-    custom_error(
-      "PermissionDenied",
+    let msg = if is_running_from_binary() {
       format!(
         "Requires {}, run again with the --allow-{} flag",
         Self::fmt_access(name, info),
         name
-      ),
-    )
+      )
+    } else {
+      format!(
+        "Requires {}, specify the required permissions during compilation using `deno compile --allow-{}`",
+        Self::fmt_access(name, info),
+        name
+      )
+    };
+    custom_error("PermissionDenied", msg)
   }
 
   /// Check the permission state. bool is whether a prompt was issued.
