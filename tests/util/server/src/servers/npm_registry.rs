@@ -51,7 +51,7 @@ pub fn private_npm_registry1(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
 pub fn private_npm_registry2(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
   run_npm_server(
     port,
-    "npm private registry server error",
+    "npm private registry 2 server error",
     private_npm_registry2_handler,
   )
 }
@@ -105,9 +105,12 @@ async fn private_npm_registry1_handler(
     .get("authorization")
     .and_then(|x| x.to_str().ok())
     .unwrap_or_default();
+  eprintln!("req uri {}", req.uri().path());
+  eprintln!("autho {}", auth);
   if auth != format!("Bearer {}", PRIVATE_NPM_REGISTRY_AUTH_TOKEN)
     && auth != format!("Basic {}", PRIVATE_NPM_REGISTRY_AUTH_BASE64)
   {
+    eprintln!("returning 401");
     return Ok(
       Response::builder()
         .status(StatusCode::UNAUTHORIZED)
@@ -147,6 +150,7 @@ async fn handle_req_for_registry(
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
   let root_dir = test_npm_registry.root_dir();
 
+  eprintln!("Hello there");
   // serve the registry package files
   let uri_path = req.uri().path();
   let mut file_path = root_dir.to_path_buf();
