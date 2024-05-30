@@ -4,10 +4,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use runtimelib::JupyterMessage;
-use runtimelib::JupyterMessageContent;
-use runtimelib::KernelIoPubConnection;
-use runtimelib::StreamContent;
+use jupyter_runtime::JupyterMessage;
+use jupyter_runtime::JupyterMessageContent;
+use jupyter_runtime::KernelIoPubConnection;
+use jupyter_runtime::StreamContent;
 
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -65,12 +65,9 @@ pub async fn op_jupyter_broadcast(
       err
     })?;
 
-    let mut jupyter_message = JupyterMessage::new(content, Some(&last_request));
-
-    jupyter_message.metadata = metadata;
-    jupyter_message.buffers =
-      buffers.into_iter().map(|b| b.to_vec().into()).collect();
-    jupyter_message.set_parent(last_request);
+    let jupyter_message = JupyterMessage::new(content, Some(&last_request))
+      .with_metadata(metadata)
+      .with_buffers(buffers.into_iter().map(|b| b.to_vec().into()).collect());
 
     (iopub_connection.lock().await)
       .send(jupyter_message)

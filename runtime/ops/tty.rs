@@ -13,6 +13,13 @@ use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
 
+#[cfg(windows)]
+use deno_core::parking_lot::Mutex;
+#[cfg(windows)]
+use deno_io::WinTtyState;
+#[cfg(windows)]
+use std::sync::Arc;
+
 #[cfg(unix)]
 use deno_core::ResourceId;
 #[cfg(unix)]
@@ -94,6 +101,7 @@ fn op_set_raw(
   #[cfg(windows)]
   {
     use winapi::shared::minwindef::FALSE;
+
     use winapi::um::consoleapi;
 
     let handle = handle_or_fd;
@@ -115,6 +123,79 @@ fn op_set_raw(
     } else {
       mode_raw_input_off(original_mode)
     };
+
+    let stdin_state = state.borrow::<Arc<Mutex<WinTtyState>>>();
+    let mut stdin_state = stdin_state.lock();
+
+    if stdin_state.reading {
+      let cvar = stdin_state.cvar.clone();
+
+      /* Trick to unblock an ongoing line-buffered read operation if not already pending.
+      See https://github.com/libuv/libuv/pull/866 for prior art */
+      if original_mode & COOKED_MODE != 0 && !stdin_state.cancelled {
+        // SAFETY: Write enter key event to force the console wait to return.
+        let record = unsafe {
+          let mut record: wincon::INPUT_RECORD = std::mem::zeroed();
+          record.EventType = wincon::KEY_EVENT;
+          record.Event.KeyEvent_mut().wVirtualKeyCode =
+            winapi::um::winuser::VK_RETURN as u16;
+          record.Event.KeyEvent_mut().bKeyDown = 1;
+          record.Event.KeyEvent_mut().wRepeatCount = 1;
+          *record.Event.KeyEvent_mut().uChar.UnicodeChar_mut() = '\r' as u16;
+          record.Event.KeyEvent_mut().dwControlKeyState = 0;
+          record.Event.KeyEvent_mut().wVirtualScanCode =
+            winapi::um::winuser::MapVirtualKeyW(
+              winapi::um::winuser::VK_RETURN as u32,
+              winapi::um::winuser::MAPVK_VK_TO_VSC,
+            ) as u16;
+          record
+        };
+        stdin_state.cancelled = true;
+
+        // SAFETY: winapi call to open conout$ and save screen state.
+        let active_screen_buffer = unsafe {
+          /* Save screen state before sending the VK_RETURN event */
+          let handle = winapi::um::fileapi::CreateFileW(
+            "conout$"
+              .encode_utf16()
+              .chain(Some(0))
+              .collect::<Vec<_>>()
+              .as_ptr(),
+            winapi::um::winnt::GENERIC_READ | winapi::um::winnt::GENERIC_WRITE,
+            winapi::um::winnt::FILE_SHARE_READ
+              | winapi::um::winnt::FILE_SHARE_WRITE,
+            std::ptr::null_mut(),
+            winapi::um::fileapi::OPEN_EXISTING,
+            0,
+            std::ptr::null_mut(),
+          );
+
+          let mut active_screen_buffer = std::mem::zeroed();
+          winapi::um::wincon::GetConsoleScreenBufferInfo(
+            handle,
+            &mut active_screen_buffer,
+          );
+          winapi::um::handleapi::CloseHandle(handle);
+          active_screen_buffer
+        };
+        stdin_state.screen_buffer_info = Some(active_screen_buffer);
+
+        // SAFETY: winapi call to write the VK_RETURN event.
+        if unsafe {
+          winapi::um::wincon::WriteConsoleInputW(handle, &record, 1, &mut 0)
+        } == FALSE
+        {
+          return Err(Error::last_os_error().into());
+        }
+
+        /* Wait for read thread to acknowledge the cancellation to ensure that nothing
+        interferes with the screen state.
+        NOTE: `wait_while` automatically unlocks stdin_state */
+        cvar.wait_while(&mut stdin_state, |state: &mut WinTtyState| {
+          state.cancelled
+        });
+      }
+    }
 
     // SAFETY: winapi call
     if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
