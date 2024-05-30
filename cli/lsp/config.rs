@@ -24,6 +24,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_lint::linter::LintConfig;
 use deno_lockfile::Lockfile;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_runtime::deno_node::PackageJson;
@@ -1055,6 +1056,9 @@ impl Default for LspTsConfig {
         "target": "esnext",
         "useDefineForClassFields": true,
         "useUnknownInCatchVariables": false,
+        "jsx": "react",
+        "jsxFactory": "React.createElement",
+        "jsxFragmentFactory": "React.Fragment",
       })),
     }
   }
@@ -1087,6 +1091,7 @@ pub struct ConfigData {
   pub config_file: Option<Arc<ConfigFile>>,
   pub fmt_options: Arc<FmtOptions>,
   pub lint_options: Arc<LintOptions>,
+  pub lint_config: LintConfig,
   pub lint_rules: Arc<ConfiguredRules>,
   pub ts_config: Arc<LspTsConfig>,
   pub byonm: bool,
@@ -1252,6 +1257,28 @@ impl ConfigData {
     });
 
     let ts_config = LspTsConfig::new(config_file.as_ref());
+
+    let lint_config = if ts_config.inner.0.get("jsx").and_then(|v| v.as_str())
+      == Some("react")
+    {
+      let default_jsx_factory =
+        ts_config.inner.0.get("jsxFactory").and_then(|v| v.as_str());
+      let default_jsx_fragment_factory = ts_config
+        .inner
+        .0
+        .get("jsxFragmentFactory")
+        .and_then(|v| v.as_str());
+      deno_lint::linter::LintConfig {
+        default_jsx_factory: default_jsx_factory.map(String::from),
+        default_jsx_fragment_factory: default_jsx_fragment_factory
+          .map(String::from),
+      }
+    } else {
+      deno_lint::linter::LintConfig {
+        default_jsx_factory: None,
+        default_jsx_fragment_factory: None,
+      }
+    };
 
     let vendor_dir = config_file.as_ref().and_then(|c| c.vendor_dir_path());
 
@@ -1429,6 +1456,7 @@ impl ConfigData {
       config_file: config_file.map(Arc::new),
       fmt_options,
       lint_options,
+      lint_config,
       lint_rules,
       ts_config: Arc::new(ts_config),
       byonm,
