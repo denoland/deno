@@ -1,13 +1,21 @@
 {
-  "envs": {
-    "DENO_FUTURE": "1"
-  },
   "tempDir": true,
-  "steps": [{
-    "args": "install",
-    "output": "install.out"
-  }, {
-    "args": "run -A main.js",
-    "output": "main.out"
-  }]
+  "tests": {
+    "deno_install": {
+      "envs": {
+        "DENO_FUTURE": "1"
+      },
+      "steps": [{
+        "args": "install",
+        "output": "install.out"
+      }, {
+        "args": "run -A main.js",
+        "output": "main.out"
+      }]
+    },
+    "run_node_modules_dir": {
+      "args": "run --node-modules-dir -A --quiet main.js",
+      "output": "main.out"
+    }
+  }
 }

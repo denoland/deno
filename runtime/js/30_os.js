@@ -7,6 +7,7 @@ import {
   op_exec_path,
   op_exit,
   op_get_env,
+  op_get_exit_code,
   op_gid,
   op_hostname,
   op_loadavg,
@@ -21,7 +22,9 @@ import {
 const {
   Error,
   FunctionPrototypeBind,
+  NumberParseInt,
   SymbolFor,
+  TypeError,
 } = primordials;
 
 import { Event, EventTarget } from "ext:deno_web/02_event.js";
@@ -75,7 +78,7 @@ function exit(code) {
   if (typeof code === "number") {
     op_set_exit_code(code);
   } else {
-    code = 0;
+    code = op_get_exit_code();
   }
 
   // Dispatches `unload` only when it's not dispatched yet.
@@ -92,6 +95,20 @@ function exit(code) {
 
   op_exit();
   throw new Error("Code not reachable");
+}
+
+function getExitCode() {
+  return op_get_exit_code();
+}
+
+function setExitCode(value) {
+  const code = NumberParseInt(value, 10);
+  if (typeof code !== "number") {
+    throw new TypeError(
+      `Exit code must be a number, got: ${code} (${typeof code}).`,
+    );
+  }
+  op_set_exit_code(code);
 }
 
 function setEnv(key, value) {
@@ -126,12 +143,14 @@ export {
   env,
   execPath,
   exit,
+  getExitCode,
   gid,
   hostname,
   loadavg,
   networkInterfaces,
   osRelease,
   osUptime,
+  setExitCode,
   setExitHandler,
   systemMemoryInfo,
   uid,
