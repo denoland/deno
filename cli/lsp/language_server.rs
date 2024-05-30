@@ -2105,6 +2105,7 @@ impl Inner {
         &self.jsr_search_api,
         &self.npm_search_api,
         &self.documents,
+        self.resolver.as_ref(),
         self.config.tree.root_import_map().map(|i| i.as_ref()),
       )
       .await;
