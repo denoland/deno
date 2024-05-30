@@ -8870,6 +8870,13 @@ fn lsp_npmrc() {
     .build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
+    temp_dir.path().join("deno.json"),
+    json!({
+      "nodeModulesDir": true,
+    })
+    .to_string(),
+  );
+  temp_dir.write(
     temp_dir.path().join("package.json"),
     json!({
       "name": "npmrc_test",
@@ -8884,10 +8891,9 @@ fn lsp_npmrc() {
     temp_dir.path().join(".npmrc"),
     "\
 @denotest:registry=http://127.0.0.1:4261/
-//127.0.0.1:4261/:_authToken=private-reg-token
+//127.0.0.1:4261/denotest/:_authToken=private-reg-token
 ",
   );
-  context.run_npm("install");
   let file = source_file(
     temp_dir.path().join("main.ts"),
     r#"
