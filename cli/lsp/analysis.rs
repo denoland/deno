@@ -9,6 +9,7 @@ use super::tsc;
 
 use crate::args::jsr_url;
 use crate::tools::lint::create_linter;
+use deno_lint::linter::LintConfig;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::SourceRange;
@@ -169,9 +170,10 @@ fn as_lsp_range(
 pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
   lint_rules: Vec<&'static dyn LintRule>,
+  lint_config: LintConfig,
 ) -> Result<Vec<Reference>, AnyError> {
   let linter = create_linter(lint_rules);
-  let lint_diagnostics = linter.lint_with_ast(parsed_source);
+  let lint_diagnostics = linter.lint_with_ast(parsed_source, lint_config);
 
   Ok(
     lint_diagnostics

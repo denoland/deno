@@ -32,6 +32,7 @@ deno_core::extension!(
     op_os_uptime,
     op_set_env,
     op_set_exit_code,
+    op_get_exit_code,
     op_system_memory_info,
     op_uid,
     op_runtime_memory_usage,
@@ -60,12 +61,13 @@ deno_core::extension!(
     op_os_uptime,
     op_set_env,
     op_set_exit_code,
+    op_get_exit_code,
     op_system_memory_info,
     op_uid,
     op_runtime_memory_usage,
   ],
   middleware = |op| match op.name {
-    "op_exit" | "op_set_exit_code" =>
+    "op_exit" | "op_set_exit_code" | "op_get_exit_code" =>
       op.with_implementation_from(&deno_core::op_void_sync()),
     _ => op,
   },
@@ -162,6 +164,12 @@ fn op_delete_env(
 #[op2(fast)]
 fn op_set_exit_code(state: &mut OpState, #[smi] code: i32) {
   state.borrow_mut::<ExitCode>().set(code);
+}
+
+#[op2(fast)]
+#[smi]
+fn op_get_exit_code(state: &mut OpState) -> i32 {
+  state.borrow_mut::<ExitCode>().get()
 }
 
 #[op2(fast)]

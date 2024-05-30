@@ -226,7 +226,7 @@ fn get_maybe_test_module_fut(
   maybe_parsed_source: Option<&ParsedSourceResult>,
   config: &Config,
 ) -> Option<TestModuleFut> {
-  if !config.client_capabilities.testing_api {
+  if !config.testing_api_capable() {
     return None;
   }
   let parsed_source = maybe_parsed_source?.as_ref().ok()?.clone();
