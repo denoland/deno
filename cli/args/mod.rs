@@ -554,12 +554,12 @@ fn discover_package_json(
 ///
 /// In the future we will need to support it in user directory or global directory
 /// as per https://docs.npmjs.com/cli/v10/configuring-npm/npmrc#files.
-fn discover_npmrc(
+pub fn discover_npmrc(
   maybe_package_json_path: Option<PathBuf>,
   maybe_deno_json_path: Option<PathBuf>,
-) -> Result<Arc<ResolvedNpmRc>, AnyError> {
+) -> Result<(Arc<ResolvedNpmRc>, Option<PathBuf>), AnyError> {
   if !*DENO_FUTURE {
-    return Ok(create_default_npmrc());
+    return Ok((create_default_npmrc(), None));
   }
 
   const NPMRC_NAME: &str = ".npmrc";
@@ -599,7 +599,7 @@ fn discover_npmrc(
   if let Some(package_json_path) = maybe_package_json_path {
     if let Some(package_json_dir) = package_json_path.parent() {
       if let Some((source, path)) = try_to_read_npmrc(package_json_dir)? {
-        return try_to_parse_npmrc(source, &path);
+        return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
       }
     }
   }
@@ -607,13 +607,13 @@ fn discover_npmrc(
   if let Some(deno_json_path) = maybe_deno_json_path {
     if let Some(deno_json_dir) = deno_json_path.parent() {
       if let Some((source, path)) = try_to_read_npmrc(deno_json_dir)? {
-        return try_to_parse_npmrc(source, &path);
+        return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
       }
     }
   }
 
   log::debug!("No .npmrc file found");
-  Ok(create_default_npmrc())
+  Ok((create_default_npmrc(), None))
 }
 
 pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
@@ -938,7 +938,7 @@ impl CliOptions {
     } else {
       maybe_package_json = discover_package_json(&flags, None, &initial_cwd)?;
     }
-    let npmrc = discover_npmrc(
+    let (npmrc, _) = discover_npmrc(
       maybe_package_json.as_ref().map(|p| p.path.clone()),
       maybe_config_file.as_ref().and_then(|cf| {
         if cf.specifier.scheme() == "file" {

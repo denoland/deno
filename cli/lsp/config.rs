@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::logging::lsp_log;
+use crate::args::discover_npmrc;
 use crate::args::read_lockfile_at_path;
 use crate::args::ConfigFile;
 use crate::args::FmtOptions;
@@ -1175,10 +1176,12 @@ impl ConfigData {
         .entry(config_file.specifier.clone())
         .or_insert(ConfigWatchedFileType::DenoJson);
     }
-    let config_file_canonicalized_specifier = config_file
+    let config_file_path = config_file
       .as_ref()
-      .and_then(|c| c.specifier.to_file_path().ok())
-      .and_then(|p| canonicalize_path_maybe_not_exists(&p).ok())
+      .and_then(|c| specifier_to_file_path(&c.specifier).ok());
+    let config_file_canonicalized_specifier = config_file_path
+      .as_ref()
+      .and_then(|p| canonicalize_path_maybe_not_exists(p).ok())
       .and_then(|p| ModuleSpecifier::from_file_path(p).ok());
     if let Some(specifier) = config_file_canonicalized_specifier {
       watched_files
@@ -1306,17 +1309,17 @@ impl ConfigData {
 
     // Load package.json
     let mut package_json = None;
-    // TODO(bartlomieju): support discovering .npmrc
-    let npmrc = None;
-    if let Ok(path) = specifier_to_file_path(scope) {
-      let path = path.join("package.json");
-      if let Ok(specifier) = ModuleSpecifier::from_file_path(&path) {
+    let package_json_path = specifier_to_file_path(scope)
+      .ok()
+      .map(|p| p.join("package.json"));
+    if let Some(path) = &package_json_path {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
         watched_files
           .entry(specifier)
           .or_insert(ConfigWatchedFileType::PackageJson);
       }
       let package_json_canonicalized_specifier =
-        canonicalize_path_maybe_not_exists(&path)
+        canonicalize_path_maybe_not_exists(path)
           .ok()
           .and_then(|p| ModuleSpecifier::from_file_path(p).ok());
       if let Some(specifier) = package_json_canonicalized_specifier {
@@ -1324,7 +1327,7 @@ impl ConfigData {
           .entry(specifier)
           .or_insert(ConfigWatchedFileType::PackageJson);
       }
-      if let Ok(source) = std::fs::read_to_string(&path) {
+      if let Ok(source) = std::fs::read_to_string(path) {
         match PackageJson::load_from_string(path.clone(), source) {
           Ok(result) => {
             lsp_log!("  Resolved package.json: \"{}\"", path.display());
@@ -1340,6 +1343,17 @@ impl ConfigData {
         }
       }
     }
+    let npmrc = discover_npmrc(package_json_path, config_file_path)
+      .inspect(|(_, path)| {
+        if let Some(path) = path {
+          lsp_log!("  Resolved .npmrc: \"{}\"", path.display());
+        }
+      })
+      .inspect_err(|err| {
+        lsp_warn!("  Couldn't read .npmrc for \"{scope}\": {err}");
+      })
+      .map(|(r, _)| r)
+      .ok();
     let byonm = std::env::var("DENO_UNSTABLE_BYONM").is_ok()
       || config_file
         .as_ref()
@@ -1464,7 +1478,7 @@ impl ConfigData {
       vendor_dir,
       lockfile: lockfile.map(Mutex::new).map(Arc::new),
       package_json: package_json.map(Arc::new),
-      npmrc: npmrc.map(Arc::new),
+      npmrc,
       import_map: import_map.map(Arc::new),
       import_map_from_settings,
       watched_files,
