@@ -19,19 +19,18 @@ use deno_core::CancelHandle;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 
-use runtimelib::ConnectionInfo;
-use runtimelib::KernelControlConnection;
-use runtimelib::KernelHeartbeatConnection;
-use runtimelib::KernelIoPubConnection;
-use runtimelib::KernelShellConnection;
-
-use runtimelib::messaging;
-use runtimelib::AsChildOf;
-use runtimelib::JupyterMessage;
-use runtimelib::JupyterMessageContent;
-use runtimelib::ReplyError;
-use runtimelib::ReplyStatus;
-use runtimelib::StreamContent;
+use jupyter_runtime::messaging;
+use jupyter_runtime::AsChildOf;
+use jupyter_runtime::ConnectionInfo;
+use jupyter_runtime::JupyterMessage;
+use jupyter_runtime::JupyterMessageContent;
+use jupyter_runtime::KernelControlConnection;
+use jupyter_runtime::KernelHeartbeatConnection;
+use jupyter_runtime::KernelIoPubConnection;
+use jupyter_runtime::KernelShellConnection;
+use jupyter_runtime::ReplyError;
+use jupyter_runtime::ReplyStatus;
+use jupyter_runtime::StreamContent;
 
 pub struct JupyterServer {
   execution_count: usize,
@@ -455,7 +454,7 @@ impl JupyterServer {
             messaging::ExecuteReply {
               execution_count: self.execution_count,
               status: ReplyStatus::Error,
-              payload: None,
+              payload: Default::default(),
               user_expressions: None,
               error: None,
             }
@@ -481,7 +480,7 @@ impl JupyterServer {
             execution_count: self.execution_count,
             status: ReplyStatus::Ok,
             user_expressions: None,
-            payload: None,
+            payload: Default::default(),
             error: None,
           }
           .as_child_of(parent_message),
@@ -586,7 +585,7 @@ impl JupyterServer {
               traceback,
             }),
             user_expressions: None,
-            payload: None,
+            payload: Default::default(),
           }
           .as_child_of(parent_message),
         )
