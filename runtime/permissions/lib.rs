@@ -728,7 +728,7 @@ impl NetDescriptor {
     let mut host = self.0.to_string();
     match self.1 {
       Some(port) => {
-        host.push_str(":");
+        host.push(':');
         host.push_str(&port.to_string());
         host
       }
@@ -758,7 +758,7 @@ impl Descriptor for NetDescriptor {
   }
 
   fn name(&self) -> Cow<str> {
-    Cow::from(format!("{}", self.to_string_with_port()))
+    Cow::from(format!("{}", self.to_string_with_port().to_string()))
   }
 
   fn stronger_than(&self, other: &Self) -> bool {
