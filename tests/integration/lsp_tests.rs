@@ -8866,7 +8866,6 @@ fn lsp_npmrc() {
     .use_http_server()
     .use_temp_cwd()
     .add_npm_env_vars()
-    .env("DENO_FUTURE", "1")
     .build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
