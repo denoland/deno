@@ -92,11 +92,11 @@ Deno.test({ permissions: { ffi: true } }, function pointerOf() {
   const uint8AddressOffset = Deno.UnsafePointer.value(
     Deno.UnsafePointer.of(new Uint8Array(buffer, 100)),
   );
-  assertEquals(Number(baseAddress) + 100, uint8AddressOffset);
+  assertEquals(baseAddress + 100n, uint8AddressOffset);
   const float64AddressOffset = Deno.UnsafePointer.value(
     Deno.UnsafePointer.of(new Float64Array(buffer, 80)),
   );
-  assertEquals(Number(baseAddress) + 80, float64AddressOffset);
+  assertEquals(baseAddress + 80n, float64AddressOffset);
 });
 
 Deno.test({ permissions: { ffi: true } }, function callWithError() {
