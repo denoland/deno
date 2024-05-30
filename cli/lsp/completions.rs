@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::path::PathBuf;
-
 use super::client::Client;
 use super::config::Config;
 use super::config::WorkspaceSettings;
@@ -383,11 +381,8 @@ fn get_local_completions(
     )
     .ok()?;
   let resolved_parent_path = specifier_to_file_path(&resolved_parent).ok()?;
-  let raw_parent_path = if text.ends_with('/') {
-    PathBuf::from(text)
-  } else {
-    PathBuf::from(text).parent()?.to_path_buf()
-  };
+  let raw_parent =
+    &text[..text.char_indices().rfind(|(_, c)| *c == '/')?.0 + 1];
   if resolved_parent_path.is_dir() {
     let cwd = std::env::current_dir().ok()?;
     let items = std::fs::read_dir(resolved_parent_path).ok()?;
@@ -400,16 +395,12 @@ fn get_local_completions(
           if entry_specifier == *base {
             return None;
           }
-          let full_text = format!("{}{label}", raw_parent_path.display());
+          let full_text = format!("{raw_parent}{label}");
           let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
             range: *range,
             new_text: full_text.clone(),
           }));
-          let filter_text = if full_text.starts_with(text) {
-            Some(full_text)
-          } else {
-            Some(format!("{text}{label}"))
-          };
+          let filter_text = Some(full_text);
           match de.file_type() {
             Ok(file_type) if file_type.is_dir() => Some(lsp::CompletionItem {
               label,
