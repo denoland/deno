@@ -1143,7 +1143,7 @@ dependencies = [
  "quick-junit",
  "rand",
  "regex",
- "reqwest 0.12.4",
+ "reqwest",
  "ring",
  "runtimelib",
  "rustyline",
@@ -1436,7 +1436,7 @@ dependencies = [
  "dyn-clone",
  "http 0.2.12",
  "http 1.1.0",
- "reqwest 0.12.4",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -1569,6 +1569,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.21.7",
+ "bytes",
  "chrono",
  "deno_core",
  "deno_fetch",
@@ -1578,6 +1579,7 @@ dependencies = [
  "denokv_remote",
  "denokv_sqlite",
  "faster-hex",
+ "http 1.1.0",
  "log",
  "num-bigint",
  "prost",
@@ -1713,7 +1715,7 @@ dependencies = [
  "pin-project-lite",
  "rand",
  "regex",
- "reqwest 0.12.4",
+ "reqwest",
  "ring",
  "ripemd",
  "rsa",
@@ -2001,8 +2003,7 @@ dependencies = [
 [[package]]
 name = "denokv_proto"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd644ad038e7b6e8453463e96c278ba378e8bdc9f557959d511ac830ea0ec969"
+source = "git+https://github.com/denoland/denokv?branch=main#7e6aa784034a29fba5826a49b27e438c2bbc40fb"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2010,7 +2011,6 @@ dependencies = [
  "futures",
  "num-bigint",
  "prost",
- "prost-build",
  "serde",
  "uuid",
 ]
@@ -2018,8 +2018,7 @@ dependencies = [
 [[package]]
 name = "denokv_remote"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23cfa4786f9c609711aab89ce173232ceda0617167881e58fd5e0b78868a6932"
+source = "git+https://github.com/denoland/denokv?branch=main#7e6aa784034a29fba5826a49b27e438c2bbc40fb"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -2028,10 +2027,10 @@ dependencies = [
  "chrono",
  "denokv_proto",
  "futures",
+ "http 1.1.0",
  "log",
  "prost",
  "rand",
- "reqwest 0.11.27",
  "serde",
  "serde_json",
  "tokio",
@@ -2043,8 +2042,7 @@ dependencies = [
 [[package]]
 name = "denokv_sqlite"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f36c1c54cda2de93d0f4ded0392d0b6917bcd9b1d13c056dd7c309668aa43e17"
+source = "git+https://github.com/denoland/denokv?branch=main#7e6aa784034a29fba5826a49b27e438c2bbc40fb"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -5244,44 +5242,6 @@ checksum = "e898588f33fdd5b9420719948f9f2a32c922a246964576f71ba7f24f80610fbc"
 
 [[package]]
 name = "reqwest"
-version = "0.11.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd67538700a17451e7cba03ac727fb961abb7607553461627b97de0b89cf4a62"
-dependencies = [
- "base64 0.21.7",
- "bytes",
- "encoding_rs",
- "futures-core",
- "futures-util",
- "h2 0.3.26",
- "http 0.2.12",
- "http-body 0.4.6",
- "hyper 0.14.28",
- "ipnet",
- "js-sys",
- "log",
- "mime",
- "once_cell",
- "percent-encoding",
- "pin-project-lite",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "sync_wrapper",
- "system-configuration",
- "tokio",
- "tokio-util",
- "tower-service",
- "url",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-streams",
- "web-sys",
- "winreg 0.50.0",
-]
-
-[[package]]
-name = "reqwest"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "566cafdd92868e0939d3fb961bd0dc25fcfaaed179291093b3d43e6b3150ea10"
@@ -6681,27 +6641,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "system-configuration"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba3a3adc5c275d719af8cb4272ea1c4a6d668a777f37e115f6d11ddbc1c8e0e7"
-dependencies = [
- "bitflags 1.3.2",
- "core-foundation",
- "system-configuration-sys",
-]
-
-[[package]]
-name = "system-configuration-sys"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a75fb188eb626b924683e3b95e3a48e63551fcfb51949de2f06a9d91dbee93c9"
-dependencies = [
- "core-foundation-sys",
- "libc",
-]
-
-[[package]]
 name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6800,7 +6739,7 @@ dependencies = [
  "prost",
  "prost-build",
  "regex",
- "reqwest 0.12.4",
+ "reqwest",
  "rustls-pemfile 1.0.4",
  "rustls-tokio-stream",
  "semver 1.0.14",
