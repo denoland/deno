@@ -42,6 +42,7 @@ pub enum Stdio {
   Inherit,
   Piped,
   Null,
+  Ipc,
 }
 
 impl Stdio {
@@ -50,6 +51,7 @@ impl Stdio {
       Stdio::Inherit => std::process::Stdio::inherit(),
       Stdio::Piped => std::process::Stdio::piped(),
       Stdio::Null => std::process::Stdio::null(),
+      _ => unreachable!(),
     }
   }
 }
@@ -72,6 +74,7 @@ impl<'de> Deserialize<'de> for StdioOrRid {
         "inherit" => Ok(StdioOrRid::Stdio(Stdio::Inherit)),
         "piped" => Ok(StdioOrRid::Stdio(Stdio::Piped)),
         "null" => Ok(StdioOrRid::Stdio(Stdio::Null)),
+        "ipc" => Ok(StdioOrRid::Stdio(Stdio::Ipc)),
         val => Err(serde::de::Error::unknown_variant(
           val,
           &["inherit", "piped", "null"],
@@ -101,6 +104,10 @@ impl StdioOrRid {
         FileResource::with_file(state, *rid, |file| Ok(file.as_stdio()?))
       }
     }
+  }
+
+  pub fn is_ipc(&self) -> bool {
+    matches!(self, StdioOrRid::Stdio(Stdio::Ipc))
   }
 }
 
@@ -150,9 +157,9 @@ pub struct SpawnArgs {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChildStdio {
-  stdin: Stdio,
-  stdout: Stdio,
-  stderr: Stdio,
+  stdin: StdioOrRid,
+  stdout: StdioOrRid,
+  stderr: StdioOrRid,
 }
 
 #[derive(Serialize)]
@@ -210,7 +217,7 @@ type CreateCommand = (std::process::Command, Option<ResourceId>);
 
 fn create_command(
   state: &mut OpState,
-  args: SpawnArgs,
+  mut args: SpawnArgs,
   api_name: &str,
 ) -> Result<CreateCommand, AnyError> {
   state
@@ -249,14 +256,18 @@ fn create_command(
     command.uid(uid);
   }
 
-  command.stdin(args.stdio.stdin.as_stdio());
+  if args.stdio.stdin.is_ipc() {
+    args.ipc = Some(0);
+  } else {
+    command.stdin(args.stdio.stdin.as_stdio(state)?);
+  }
   command.stdout(match args.stdio.stdout {
-    Stdio::Inherit => StdioOrRid::Rid(1).as_stdio(state)?,
-    value => value.as_stdio(),
+    StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(1).as_stdio(state)?,
+    value => value.as_stdio(state)?,
   });
   command.stderr(match args.stdio.stderr {
-    Stdio::Inherit => StdioOrRid::Rid(2).as_stdio(state)?,
-    value => value.as_stdio(),
+    StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(2).as_stdio(state)?,
+    value => value.as_stdio(state)?,
   });
 
   #[cfg(unix)]
@@ -608,8 +619,8 @@ fn op_spawn_sync(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
 ) -> Result<SpawnOutput, AnyError> {
-  let stdout = matches!(args.stdio.stdout, Stdio::Piped);
-  let stderr = matches!(args.stdio.stderr, Stdio::Piped);
+  let stdout = matches!(args.stdio.stdout, StdioOrRid::Stdio(Stdio::Piped));
+  let stderr = matches!(args.stdio.stderr, StdioOrRid::Stdio(Stdio::Piped));
   let (mut command, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
   let output = command.output().with_context(|| {
