@@ -1,7 +1,16 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 pub use deno_native_certs;
+use deno_native_certs::load_native_certs;
 pub use rustls;
+use rustls::pki_types::CertificateDer;
+use rustls::pki_types::Der;
+use rustls::pki_types::PrivateKeyDer;
+use rustls::pki_types::PrivatePkcs1KeyDer;
+use rustls::pki_types::PrivatePkcs8KeyDer;
+use rustls::pki_types::PrivateSec1KeyDer;
+use rustls::pki_types::ServerName;
+use rustls::pki_types::TrustAnchor;
 pub use rustls_pemfile;
 pub use rustls_tokio_stream::*;
 pub use webpki;
@@ -11,14 +20,13 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 
-use rustls::client::HandshakeSignatureValid;
-use rustls::client::ServerCertVerified;
-use rustls::client::ServerCertVerifier;
-use rustls::client::WebPkiVerifier;
+use rustls::client::danger::HandshakeSignatureValid;
+use rustls::client::danger::ServerCertVerified;
+use rustls::client::danger::ServerCertVerifier;
+use rustls::client::WebPkiServerVerifier;
 use rustls::ClientConfig;
 use rustls::DigitallySignedStruct;
 use rustls::Error;
-use rustls::ServerName;
 use rustls_pemfile::certs;
 use rustls_pemfile::ec_private_keys;
 use rustls_pemfile::pkcs8_private_keys;
@@ -27,14 +35,11 @@ use serde::Deserialize;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Cursor;
+use std::net::IpAddr;
 use std::sync::Arc;
-use std::time::SystemTime;
 
-mod tls_key;
-pub use tls_key::*;
-
-pub type Certificate = rustls::Certificate;
-pub type PrivateKey = rustls::PrivateKey;
+pub type Certificate = rustls::pki_types::CertificateDer<'static>;
+pub type PrivateKey = rustls::pki_types::PrivateKeyDer<'static>;
 pub type RootCertStore = rustls::RootCertStore;
 
 /// Lazily resolves the root cert store.
@@ -48,40 +53,68 @@ pub trait RootCertStoreProvider: Send + Sync {
 // This extension has no runtime apis, it only exports some shared native functions.
 deno_core::extension!(deno_tls);
 
+#[derive(Debug)]
 struct DefaultSignatureVerification;
 
 impl ServerCertVerifier for DefaultSignatureVerification {
+  fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+    vec![]
+  }
   fn verify_server_cert(
     &self,
-    _end_entity: &Certificate,
-    _intermediates: &[Certificate],
-    _server_name: &ServerName,
-    _scts: &mut dyn Iterator<Item = &[u8]>,
+    _end_entity: &rustls::pki_types::CertificateDer<'_>,
+    _intermediates: &[rustls::pki_types::CertificateDer<'_>],
+    _server_name: &rustls::pki_types::ServerName<'_>,
     _ocsp_response: &[u8],
-    _now: SystemTime,
+    _now: rustls::pki_types::UnixTime,
   ) -> Result<ServerCertVerified, Error> {
+    Err(Error::General("Should not be used".to_string()))
+  }
+  fn verify_tls12_signature(
+    &self,
+    _message: &[u8],
+    _cert: &rustls::pki_types::CertificateDer<'_>,
+    _dss: &DigitallySignedStruct,
+  ) -> Result<HandshakeSignatureValid, Error> {
+    Err(Error::General("Should not be used".to_string()))
+  }
+  fn verify_tls13_signature(
+    &self,
+    _message: &[u8],
+    _cert: &rustls::pki_types::CertificateDer<'_>,
+    _dss: &DigitallySignedStruct,
+  ) -> Result<HandshakeSignatureValid, Error> {
     Err(Error::General("Should not be used".to_string()))
   }
 }
 
+#[derive(Debug)]
 pub struct NoCertificateVerification(pub Vec<String>);
 
 impl ServerCertVerifier for NoCertificateVerification {
+  fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+    let root_store = create_default_root_cert_store();
+    let verifier = WebPkiServerVerifier::builder(root_store.into())
+      .build()
+      .unwrap();
+    verifier.supported_verify_schemes()
+  }
   fn verify_server_cert(
     &self,
-    end_entity: &Certificate,
-    intermediates: &[Certificate],
-    server_name: &ServerName,
-    scts: &mut dyn Iterator<Item = &[u8]>,
+    end_entity: &rustls::pki_types::CertificateDer<'_>,
+    intermediates: &[rustls::pki_types::CertificateDer<'_>],
+    server_name: &rustls::pki_types::ServerName<'_>,
     ocsp_response: &[u8],
-    now: SystemTime,
+    now: rustls::pki_types::UnixTime,
   ) -> Result<ServerCertVerified, Error> {
     if self.0.is_empty() {
       return Ok(ServerCertVerified::assertion());
     }
     let dns_name_or_ip_address = match server_name {
       ServerName::DnsName(dns_name) => dns_name.as_ref().to_owned(),
-      ServerName::IpAddress(ip_address) => ip_address.to_string(),
+      ServerName::IpAddress(ip_address) => {
+        Into::<IpAddr>::into(*ip_address).to_string()
+      }
       _ => {
         // NOTE(bartlomieju): `ServerName` is a non-exhaustive enum
         // so we have this catch all errors here.
@@ -92,12 +125,13 @@ impl ServerCertVerifier for NoCertificateVerification {
       Ok(ServerCertVerified::assertion())
     } else {
       let root_store = create_default_root_cert_store();
-      let verifier = WebPkiVerifier::new(root_store, None);
+      let verifier = WebPkiServerVerifier::builder(root_store.into())
+        .build()
+        .unwrap();
       verifier.verify_server_cert(
         end_entity,
         intermediates,
         server_name,
-        scts,
         ocsp_response,
         now,
       )
@@ -107,7 +141,7 @@ impl ServerCertVerifier for NoCertificateVerification {
   fn verify_tls12_signature(
     &self,
     message: &[u8],
-    cert: &rustls::Certificate,
+    cert: &rustls::pki_types::CertificateDer,
     dss: &DigitallySignedStruct,
   ) -> Result<HandshakeSignatureValid, Error> {
     if self.0.is_empty() {
@@ -121,7 +155,7 @@ impl ServerCertVerifier for NoCertificateVerification {
   fn verify_tls13_signature(
     &self,
     message: &[u8],
-    cert: &rustls::Certificate,
+    cert: &rustls::pki_types::CertificateDer,
     dss: &DigitallySignedStruct,
   ) -> Result<HandshakeSignatureValid, Error> {
     if self.0.is_empty() {
@@ -150,16 +184,23 @@ pub struct BasicAuth {
 
 pub fn create_default_root_cert_store() -> RootCertStore {
   let mut root_cert_store = RootCertStore::empty();
-  // TODO(@justinmchase): Consider also loading the system keychain here
-  root_cert_store.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(
-    |ta| {
-      rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-        ta.subject,
-        ta.spki,
-        ta.name_constraints,
-      )
-    },
-  ));
+  for ta in webpki_roots::TLS_SERVER_ROOTS {
+    root_cert_store.roots.push(ta.clone());
+  }
+  debug_assert!(!root_cert_store.is_empty());
+  root_cert_store
+}
+
+pub fn create_platform_cert_store() -> RootCertStore {
+  let mut root_cert_store = RootCertStore::empty();
+  let roots: Vec<deno_native_certs::Certificate> =
+    load_native_certs().expect("could not load platform certs");
+  for root in roots {
+    root_cert_store
+      .add(Certificate::from(root.0))
+      .expect("Failed to add platform cert to root cert store");
+  }
+  debug_assert!(!root_cert_store.is_empty());
   root_cert_store
 }
 
@@ -178,12 +219,12 @@ pub fn create_client_config(
   root_cert_store: Option<RootCertStore>,
   ca_certs: Vec<Vec<u8>>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  maybe_cert_chain_and_key: TlsKeys,
+  maybe_cert_chain_and_key: Option<TlsKey>,
   socket_use: SocketUse,
 ) -> Result<ClientConfig, AnyError> {
   if let Some(ic_allowlist) = unsafely_ignore_certificate_errors {
     let client_config = ClientConfig::builder()
-      .with_safe_defaults()
+      .dangerous()
       .with_custom_certificate_verifier(Arc::new(NoCertificateVerification(
         ic_allowlist,
       )));
@@ -192,49 +233,51 @@ pub fn create_client_config(
     // However it's not really feasible to deduplicate it as the `client_config` instances
     // are not type-compatible - one wants "client cert", the other wants "transparency policy
     // or client cert".
-    let mut client = match maybe_cert_chain_and_key {
-      TlsKeys::Static(TlsKey(cert_chain, private_key)) => client_config
-        .with_client_auth_cert(cert_chain, private_key)
-        .expect("invalid client key or certificate"),
-      TlsKeys::Null => client_config.with_no_client_auth(),
-      TlsKeys::Resolver(_) => unimplemented!(),
-    };
+    let mut client =
+      if let Some(TlsKey(cert_chain, private_key)) = maybe_cert_chain_and_key {
+        client_config
+          .with_client_auth_cert(cert_chain, private_key)
+          .expect("invalid client key or certificate")
+      } else {
+        client_config.with_no_client_auth()
+      };
 
     add_alpn(&mut client, socket_use);
     return Ok(client);
   }
 
-  let client_config = ClientConfig::builder()
-    .with_safe_defaults()
-    .with_root_certificates({
-      let mut root_cert_store =
-        root_cert_store.unwrap_or_else(create_default_root_cert_store);
-      // If custom certs are specified, add them to the store
-      for cert in ca_certs {
-        let reader = &mut BufReader::new(Cursor::new(cert));
-        // This function does not return specific errors, if it fails give a generic message.
-        match rustls_pemfile::certs(reader) {
-          Ok(certs) => {
-            root_cert_store.add_parsable_certificates(&certs);
-          }
-          Err(e) => {
-            return Err(anyhow!(
-              "Unable to add pem file to certificate store: {}",
-              e
-            ));
+  let client_config = ClientConfig::builder().with_root_certificates({
+    let mut root_cert_store =
+      root_cert_store.unwrap_or_else(create_default_root_cert_store);
+    // If custom certs are specified, add them to the store
+    for cert in ca_certs {
+      let reader = &mut BufReader::new(Cursor::new(cert));
+      // This function does not return specific errors, if it fails give a generic message.
+      match rustls_pemfile::certs(reader) {
+        Ok(certs) => {
+          for cert in certs {
+            root_cert_store.add(CertificateDer::from(cert))?;
           }
         }
+        Err(e) => {
+          return Err(anyhow!(
+            "Unable to add pem file to certificate store: {}",
+            e
+          ));
+        }
       }
-      root_cert_store
-    });
+    }
+    root_cert_store
+  });
 
-  let mut client = match maybe_cert_chain_and_key {
-    TlsKeys::Static(TlsKey(cert_chain, private_key)) => client_config
-      .with_client_auth_cert(cert_chain, private_key)
-      .expect("invalid client key or certificate"),
-    TlsKeys::Null => client_config.with_no_client_auth(),
-    TlsKeys::Resolver(_) => unimplemented!(),
-  };
+  let mut client =
+    if let Some(TlsKey(cert_chain, private_key)) = maybe_cert_chain_and_key {
+      client_config
+        .with_client_auth_cert(cert_chain, private_key)
+        .expect("invalid client key or certificate")
+    } else {
+      client_config.with_no_client_auth()
+    };
 
   add_alpn(&mut client, socket_use);
   Ok(client)
@@ -265,7 +308,7 @@ pub fn load_certs(
     return Err(cert_not_found_err());
   }
 
-  Ok(certs.into_iter().map(rustls::Certificate).collect())
+  Ok(certs.into_iter().map(CertificateDer::from).collect())
 }
 
 fn key_decode_err() -> AnyError {
@@ -283,19 +326,34 @@ fn cert_not_found_err() -> AnyError {
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
 fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = rsa_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
-  Ok(keys.into_iter().map(rustls::PrivateKey).collect())
+  Ok(
+    keys
+      .into_iter()
+      .map(|x| PrivateKeyDer::Pkcs1(PrivatePkcs1KeyDer::from(x)))
+      .collect(),
+  )
 }
 
 /// Starts with -----BEGIN EC PRIVATE KEY-----
 fn load_ec_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = ec_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
-  Ok(keys.into_iter().map(rustls::PrivateKey).collect())
+  Ok(
+    keys
+      .into_iter()
+      .map(|x| PrivateKeyDer::Sec1(PrivateSec1KeyDer::from(x)))
+      .collect(),
+  )
 }
 
 /// Starts with -----BEGIN PRIVATE KEY-----
 fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   let keys = pkcs8_private_keys(&mut bytes).map_err(|_| key_decode_err())?;
-  Ok(keys.into_iter().map(rustls::PrivateKey).collect())
+  Ok(
+    keys
+      .into_iter()
+      .map(|x| PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(x)))
+      .collect(),
+  )
 }
 
 fn filter_invalid_encoding_err(
@@ -309,7 +367,9 @@ fn filter_invalid_encoding_err(
   }
 }
 
-pub fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+pub fn load_private_keys(
+  bytes: &[u8],
+) -> Result<Vec<PrivateKeyDer<'static>>, AnyError> {
   let mut keys = load_rsa_keys(bytes)?;
 
   if keys.is_empty() {
@@ -325,4 +385,22 @@ pub fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
   }
 
   Ok(keys)
+}
+
+/// A loaded key.
+// FUTURE(mmastrac): add resolver enum value to support dynamic SNI
+pub enum TlsKeys {
+  // TODO(mmastrac): We need Option<&T> for cppgc -- this is a workaround
+  Null,
+  Static(TlsKey),
+}
+
+/// A TLS certificate/private key pair.
+#[derive(Debug)]
+pub struct TlsKey(pub Vec<CertificateDer<'static>>, pub PrivateKeyDer<'static>);
+
+impl Clone for TlsKey {
+  fn clone(&self) -> Self {
+    Self(self.0.clone(), self.1.clone_key())
+  }
 }
