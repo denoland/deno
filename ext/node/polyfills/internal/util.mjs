@@ -15,6 +15,10 @@ import {
 } from "ext:deno_node/internal/primordials.mjs";
 import { ERR_UNKNOWN_SIGNAL } from "ext:deno_node/internal/errors.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
+import { primordials } from "ext:core/mod.js";
+const {
+  SafeWeakRef,
+} = primordials;
 
 export const customInspectSymbol = Symbol.for("nodejs.util.inspect.custom");
 export const kEnumerableProperty = Object.create(null);
@@ -133,6 +137,38 @@ export function convertToValidSignal(signal) {
   }
 
   throw new ERR_UNKNOWN_SIGNAL(signal);
+}
+
+export class WeakReference {
+  #weak = null;
+  #strong = null;
+  #refCount = 0;
+  constructor(object) {
+    this.#weak = new SafeWeakRef(object);
+  }
+
+  incRef() {
+    this.#refCount++;
+    if (this.#refCount === 1) {
+      const derefed = this.#weak.deref();
+      if (derefed !== undefined) {
+        this.#strong = derefed;
+      }
+    }
+    return this.#refCount;
+  }
+
+  decRef() {
+    this.#refCount--;
+    if (this.#refCount === 0) {
+      this.#strong = null;
+    }
+    return this.#refCount;
+  }
+
+  get() {
+    return this.#weak.deref();
+  }
 }
 
 promisify.custom = kCustomPromisifiedSymbol;
