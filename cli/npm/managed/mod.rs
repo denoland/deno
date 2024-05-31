@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_cache_dir::HttpCache;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -24,6 +25,7 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use http_registry_info::HttpNpmRegistryInfoApi;
 
 use crate::args::Lockfile;
 use crate::args::NpmProcessState;
@@ -45,6 +47,8 @@ use super::InnerCliNpmResolverRef;
 use super::NpmCacheDir;
 
 mod cache;
+mod http_registry_info;
+mod http_registry_tarballs;
 mod installer;
 mod registry;
 mod resolution;
@@ -65,7 +69,6 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub snapshot: CliNpmResolverManagedSnapshotOption,
   pub maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
-  pub http_client: Arc<crate::http_util::HttpClient>,
   pub npm_global_cache_dir: PathBuf,
   pub cache_setting: crate::args::CacheSetting,
   pub text_only_progress_bar: crate::util::progress_bar::ProgressBar,
@@ -177,7 +180,6 @@ fn create_cache(options: &CliNpmResolverManagedCreateOptions) -> Arc<NpmCache> {
     ),
     options.cache_setting.clone(),
     options.fs.clone(),
-    options.http_client.clone(),
     options.text_only_progress_bar.clone(),
     options.npmrc.clone(),
   ))
@@ -189,9 +191,11 @@ fn create_api(
 ) -> Arc<CliNpmRegistryApi> {
   Arc::new(CliNpmRegistryApi::new(
     npm_cache.clone(),
-    options.http_client.clone(),
-    options.npmrc.clone(),
-    options.text_only_progress_bar.clone(),
+    HttpNpmRegistryInfoApi::new(
+      npm_cache,
+      options.npmrc.clone(),
+      options.text_only_progress_bar.clone(),
+    ),
   ))
 }
 
@@ -210,8 +214,6 @@ async fn resolve_snapshot(
               lockfile.lock().filename.display()
             )
           })?;
-        // clear the memory cache to reduce memory usage
-        api.clear_memory_cache();
         Ok(Some(snapshot))
       } else {
         Ok(None)

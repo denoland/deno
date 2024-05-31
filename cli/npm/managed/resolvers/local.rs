@@ -330,8 +330,7 @@ async fn sync_resolution_with_fs(
         let sub_node_modules = folder_path.join("node_modules");
         let package_path =
           join_package_name(&sub_node_modules, &package.id.nv.name);
-        let cache_folder =
-          cache.package_folder_for_name_and_version(&package.id.nv);
+        let cache_folder = cache.package_folder_for_nv(&package.id.nv);
 
         deno_core::unsync::spawn_blocking({
           let package_path = package_path.clone();
