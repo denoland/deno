@@ -307,22 +307,28 @@ Deno.test("Deno.exitCode getter and setter", () => {
   // Initial value is 0
   assertEquals(Deno.exitCode, 0);
 
-  // Set a new value
-  Deno.exitCode = 5;
-  assertEquals(Deno.exitCode, 5);
+  try {
+    // Set a new value
+    Deno.exitCode = 5;
+    assertEquals(Deno.exitCode, 5);
+  } finally {
+    // Reset to initial value
+    Deno.exitCode = 0;
+  }
 
-  // Reset to initial value
-  Deno.exitCode = 0;
   assertEquals(Deno.exitCode, 0);
 });
 
-Deno.test("Setting Deno.exitCode to NaN throws TypeError", () => {
-  // @ts-expect-error;
-  Deno.exitCode = "123";
-  assertEquals(Deno.exitCode, 123);
+Deno.test("Setting Deno.exitCode to non-integer throws TypeError", () => {
+  try {
+    // @ts-expect-error;
+    Deno.exitCode = "123";
+    assertEquals(Deno.exitCode, 123);
+  } finally {
+    // Reset
+    Deno.exitCode = 0;
+  }
 
-  // Reset
-  Deno.exitCode = 0;
   assertEquals(Deno.exitCode, 0);
 
   // Throws on non-number values
@@ -332,64 +338,45 @@ Deno.test("Setting Deno.exitCode to NaN throws TypeError", () => {
       Deno.exitCode = "not a number";
     },
     TypeError,
-    "Exit code must be a number.",
+    "Exit code must be a integer, got: not a number (string)",
   );
+
+  // Throws on non-integer values
+  assertThrows(
+    () => {
+      Deno.exitCode = 3.14;
+    },
+    TypeError,
+    "Exit code must be a integer, got: 3.14 (number)",
+  );
+
+  // Throws on bigint values
+  assertThrows(
+    () => {
+      // @ts-expect-error Testing for runtime error
+      Deno.exitCode = 1n;
+    },
+    TypeError,
+    "Cannot convert a BigInt value to a number",
+  );
+
+  assertEquals(Deno.exitCode, 0);
 });
 
 Deno.test("Setting Deno.exitCode does not cause an immediate exit", () => {
   let exited = false;
-  const originalExit = Deno.exit;
 
+  const originalExit = Deno.exit;
   // @ts-expect-error; read-only
   Deno.exit = () => {
     exited = true;
   };
 
-  Deno.exitCode = 1;
-  assertEquals(exited, false);
-
-  // @ts-expect-error; read-only
-  Deno.exit = originalExit;
-});
-
-Deno.test("Running Deno.exit(value) overrides Deno.exitCode", () => {
-  let args: unknown[] | undefined;
-
-  const originalExit = Deno.exit;
-  // @ts-expect-error; read-only
-  Deno.exit = (...x) => {
-    args = x;
-  };
-
-  Deno.exitCode = 42;
-  Deno.exit(0);
-
-  assertEquals(args, [0]);
-  // @ts-expect-error; read-only
-  Deno.exit = originalExit;
-});
-
-Deno.test("Running Deno.exit() uses Deno.exitCode as fallback", () => {
-  let args: unknown[] | undefined;
-
-  const originalExit = Deno.exit;
-  // @ts-expect-error; read-only
-  Deno.exit = (...x) => {
-    args = x;
-  };
-
-  Deno.exitCode = 42;
-  Deno.exit();
-
-  assertEquals(args, [42]);
-  // @ts-expect-error; read-only
-  Deno.exit = originalExit;
-});
-
-Deno.test("Retrieving the set exit code before process termination", () => {
-  Deno.exitCode = 42;
-  assertEquals(Deno.exitCode, 42);
-
-  // Reset to initial value
-  Deno.exitCode = 0;
+  try {
+    Deno.exitCode = 1;
+    assertEquals(exited, false);
+  } finally {
+    Deno.exit = originalExit;
+    Deno.exitCode = 0;
+  }
 });

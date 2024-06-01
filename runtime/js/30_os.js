@@ -22,7 +22,7 @@ import {
 const {
   Error,
   FunctionPrototypeBind,
-  NumberParseInt,
+  NumberIsInteger,
   SymbolFor,
   TypeError,
 } = primordials;
@@ -102,10 +102,10 @@ function getExitCode() {
 }
 
 function setExitCode(value) {
-  const code = NumberParseInt(value, 10);
-  if (typeof code !== "number") {
+  const code = +value;
+  if (!NumberIsInteger(code)) {
     throw new TypeError(
-      `Exit code must be a number, got: ${code} (${typeof code}).`,
+      `Exit code must be a integer, got: ${value} (${typeof value})`,
     );
   }
   op_set_exit_code(code);
