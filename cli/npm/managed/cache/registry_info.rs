@@ -187,8 +187,8 @@ impl RegistryInfoDownloader {
     &self,
     name: &str,
   ) -> Result<NpmPackageInfo, AnyError> {
-    // this scenario failing should be exceptionally rare and let's deal with
-    // improving it if anyone runs into this issue
+    // this scenario failing should be exceptionally rare so let's
+    // deal with improving it only when anyone runs into an issue
     let maybe_package_info = deno_core::unsync::spawn_blocking({
       let cache = self.cache.clone();
       let name = name.to_string();

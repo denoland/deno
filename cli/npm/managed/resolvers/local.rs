@@ -327,7 +327,7 @@ async fn sync_resolution_with_fs(
       // are forced to be recreated
       setup_cache.remove_dep(&package_folder_name);
 
-      let bin_entries = bin_entries.clone();
+      let bin_entries_to_setup = bin_entries.clone();
       cache_futures.push(async move {
         tarball_cache
           .ensure_package(&package.id.nv, &package.dist, http_client)
@@ -354,7 +354,9 @@ async fn sync_resolution_with_fs(
         .await??;
 
         if package.bin.is_some() {
-          bin_entries.lock().add(package.clone(), package_path);
+          bin_entries_to_setup
+            .lock()
+            .add(package.clone(), package_path);
         }
 
         // finally stop showing the progress bar
