@@ -23,10 +23,12 @@ use crate::http_util::HttpClient;
 use crate::npm::common::maybe_auth_header_for_npm_registry;
 use crate::util::progress_bar::ProgressBar;
 
-use super::cache::NpmCache;
+use super::NpmCache;
+
+// todo(dsherret): create seams and unit test this
 
 #[derive(Debug, Clone)]
-enum CacheItem {
+enum MemoryCacheItem {
   /// The cache item hasn't loaded yet.
   PendingFuture(Shared<PendingRegistryLoadFuture>),
   /// The item has loaded in the past and was stored in the file system cache.
@@ -48,18 +50,18 @@ enum FutureResult {
 type PendingRegistryLoadFuture =
   BoxFuture<'static, Result<FutureResult, Arc<AnyError>>>;
 
-/// Loads packages from the npm registry.
+/// Downloads packuments from the npm registry.
 ///
 /// This is shared amongst all the workers.
 #[derive(Debug)]
-pub struct HttpNpmRegistryInfoApi {
+pub struct RegistryInfoDownloader {
   cache: Arc<NpmCache>,
   npmrc: Arc<ResolvedNpmRc>,
   progress_bar: ProgressBar,
-  memory_cache: Mutex<HashMap<String, CacheItem>>,
+  memory_cache: Mutex<HashMap<String, MemoryCacheItem>>,
 }
 
-impl HttpNpmRegistryInfoApi {
+impl RegistryInfoDownloader {
   pub fn new(
     cache: Arc<NpmCache>,
     npmrc: Arc<ResolvedNpmRc>,
@@ -125,47 +127,47 @@ impl HttpNpmRegistryInfoApi {
           registry_config,
           current_runtime_http_client,
         );
-        let cache_item = CacheItem::PendingFuture(future);
+        let cache_item = MemoryCacheItem::PendingFuture(future);
         mem_cache.insert(name.to_string(), cache_item.clone());
         (true, cache_item)
       }
     };
     match cache_item {
-      CacheItem::FsCached => {
+      MemoryCacheItem::FsCached => {
         // this struct previously loaded from the registry, so we can load it from the file system cache
         self
           .load_file_cached_package_info(name)
           .await
           .map(|info| Some(Arc::new(info)))
       }
-      CacheItem::MemoryCached(maybe_info) => {
+      MemoryCacheItem::MemoryCached(maybe_info) => {
         maybe_info.clone().map_err(|e| anyhow!("{}", e))
       }
-      CacheItem::PendingFuture(future) => {
+      MemoryCacheItem::PendingFuture(future) => {
         if created {
           match future.await {
             Ok(FutureResult::SavedFsCache(info)) => {
               // return back the future and mark this package as having
               // been saved in the cache for next time it's requested
               *self.memory_cache.lock().get_mut(name).unwrap() =
-                CacheItem::FsCached;
+                MemoryCacheItem::FsCached;
               Ok(Some(info))
             }
             Ok(FutureResult::ErroredFsCache(info)) => {
               // since saving to the fs cache failed, keep the package information in memory
               *self.memory_cache.lock().get_mut(name).unwrap() =
-                CacheItem::MemoryCached(Ok(Some(info.clone())));
+                MemoryCacheItem::MemoryCached(Ok(Some(info.clone())));
               Ok(Some(info))
             }
             Ok(FutureResult::PackageNotExists) => {
               *self.memory_cache.lock().get_mut(name).unwrap() =
-                CacheItem::MemoryCached(Ok(None));
+                MemoryCacheItem::MemoryCached(Ok(None));
               Ok(None)
             }
             Err(err) => {
               let return_err = anyhow!("{}", err);
               *self.memory_cache.lock().get_mut(name).unwrap() =
-                CacheItem::MemoryCached(Err(err));
+                MemoryCacheItem::MemoryCached(Err(err));
               Err(return_err)
             }
           }

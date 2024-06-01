@@ -10,38 +10,34 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
-use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_npm::NpmPackageCacheFolderId;
-use deno_runtime::deno_fs;
 use deno_semver::package::PackageNv;
 
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
-use crate::http_util::HttpClient;
-use crate::npm::common::maybe_auth_header_for_npm_registry;
 use crate::npm::NpmCacheDir;
 use crate::util::fs::atomic_write_file;
 use crate::util::fs::hard_link_dir_recursive;
-use crate::util::progress_bar::ProgressBar;
 
-use super::tarball::verify_and_extract_tarball;
-use super::tarball::TarballExtractionMode;
+mod registry_info;
+mod tarball;
+mod tarball_extract;
+
+pub use registry_info::RegistryInfoDownloader;
+pub use tarball::TarballCache;
 
 /// Stores a single copy of npm packages in a cache.
 #[derive(Debug)]
 pub struct NpmCache {
   cache_dir: NpmCacheDir,
   cache_setting: CacheSetting,
-  fs: Arc<dyn deno_fs::FileSystem>,
-  progress_bar: ProgressBar,
-  pub(crate) npmrc: Arc<ResolvedNpmRc>,
+  npmrc: Arc<ResolvedNpmRc>,
   /// ensures a package is only downloaded once per run
   previously_reloaded_packages: Mutex<HashSet<PackageNv>>,
 }
@@ -50,15 +46,11 @@ impl NpmCache {
   pub fn new(
     cache_dir: NpmCacheDir,
     cache_setting: CacheSetting,
-    fs: Arc<dyn deno_fs::FileSystem>,
-    progress_bar: ProgressBar,
     npmrc: Arc<ResolvedNpmRc>,
   ) -> Self {
     Self {
       cache_dir,
       cache_setting,
-      fs,
-      progress_bar,
       previously_reloaded_packages: Default::default(),
       npmrc,
     }
@@ -167,7 +159,7 @@ impl NpmCache {
       Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
       Err(err) => return Err(err.into()),
     };
-    Ok(serde_json::from_str(&file_text).map_err(AnyError::from)?)
+    Ok(serde_json::from_str(&file_text)?)
   }
 
   pub fn save_package_info(
