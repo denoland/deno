@@ -22,7 +22,7 @@ use deno_semver::package::PackageNv;
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
 use crate::npm::NpmCacheDir;
-use crate::util::fs::atomic_write_file;
+use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::hard_link_dir_recursive;
 
 mod registry_info;
@@ -169,7 +169,7 @@ impl NpmCache {
   ) -> Result<(), AnyError> {
     let file_cache_path = self.get_registry_package_info_file_cache_path(name);
     let file_text = serde_json::to_string(&package_info)?;
-    atomic_write_file(&file_cache_path, file_text, CACHE_PERM)?;
+    atomic_write_file_with_retries(&file_cache_path, file_text, CACHE_PERM)?;
     Ok(())
   }
 
