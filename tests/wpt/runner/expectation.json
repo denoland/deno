@@ -8075,20 +8075,20 @@
         "request-referrer.any.html": false,
         "request-referrer.any.worker.html": false,
         "error-after-response.any.html": false,
-        "mode-no-cors.sub.any.html": [
-          "Fetch https://web-platform.test:8443/fetch/api/resources/top.txt with no-cors mode",
-          "Fetch http://web-platform.test:64166/fetch/api/resources/top.txt with no-cors mode"
-        ],
-        "mode-no-cors.sub.any.worker.html": [
-          "Fetch https://web-platform.test:8443/fetch/api/resources/top.txt with no-cors mode",
-          "Fetch http://web-platform.test:64166/fetch/api/resources/top.txt with no-cors mode"
-        ],
+        "mode-no-cors.sub.any.html": {
+          "ignore": true
+        },
+        "mode-no-cors.sub.any.worker.html": {
+          "ignore": true
+        },
         "request-private-network-headers.tentative.any.html": false,
         "request-private-network-headers.tentative.any.worker.html": false,
-        "response-null-body.any.html": true,
-        "response-null-body.any.worker.html": [
-          "Response.body is null for responses with method=HEAD"
-        ],
+        "response-null-body.any.html": {
+          "ignore": true
+        },
+        "response-null-body.any.worker.html": {
+          "ignore": true
+        },
         "accept-header.any.serviceworker.html": false,
         "accept-header.any.sharedworker.html": false,
         "block-mime-as-script.html": false,
@@ -9696,10 +9696,9 @@
       "importscripts.html": false,
       "script.html": false,
       "stylesheet.html": false,
-      "worker.html": [
-        "URL query: ?type=text/ecmascript",
-        "URL query: ?type=text/ecmascript;yay"
-      ]
+      "worker.html": {
+        "ignore": true
+      }
     },
     "orb": {
       "tentative": {
@@ -12176,35 +12175,7 @@
           "008.html?wss": false
         },
         "send": {
-          "001.html?default": true,
-          "001.html?wss": true,
-          "002.html?default": true,
-          "002.html?wss": true,
-          "003.html?default": true,
-          "003.html?wss": true,
-          "004.html?default": true,
-          "004.html?wss": true,
-          "005.html?default": true,
-          "005.html?wss": false,
-          "006.html?default": true,
-          "006.html?wpt_flags=h2": false,
-          "006.html?wss": false,
-          "007.html?default": false,
-          "007.html?wpt_flags=h2": false,
-          "007.html?wss": false,
-          "008.html?default": false,
-          "008.html?wss": false,
-          "009.html?default": false,
-          "009.html?wpt_flags=h2": false,
-          "009.html?wss": false,
-          "010.html?default": false,
-          "010.html?wss": false,
-          "011.html?default": true,
-          "011.html?wpt_flags=h2": false,
-          "011.html?wss": false,
-          "012.html?default": true,
-          "012.html?wpt_flags=h2": false,
-          "012.html?wss": false
+          "ignore": true
         },
         "url": {
           "001.html?default": true,
@@ -12467,12 +12438,24 @@
       }
     },
     "modules": {
-      "dedicated-worker-import-blob-url.any.html": true,
-      "dedicated-worker-import-blob-url.any.worker.html": true,
-      "dedicated-worker-import-data-url.any.html": true,
-      "dedicated-worker-import-data-url.any.worker.html": true,
-      "dedicated-worker-import.any.html": true,
-      "dedicated-worker-import.any.worker.html": true,
+      "dedicated-worker-import-blob-url.any.html": {
+        "ignore": true
+      },
+      "dedicated-worker-import-blob-url.any.worker.html": {
+        "ignore": true
+      },
+      "dedicated-worker-import-data-url.any.html": {
+        "ignore": true
+      },
+      "dedicated-worker-import-data-url.any.worker.html": {
+        "ignore": true
+      },
+      "dedicated-worker-import.any.html": {
+        "ignore": true
+      },
+      "dedicated-worker-import.any.worker.html": {
+        "ignore": true
+      },
       "shared-worker-import-blob-url.window.html": false,
       "shared-worker-import-data-url.window.html": false,
       "shared-worker-import.window.html": false,
