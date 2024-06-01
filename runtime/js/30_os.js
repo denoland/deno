@@ -23,6 +23,7 @@ const {
   Error,
   FunctionPrototypeBind,
   NumberIsInteger,
+  RangeError,
   SymbolFor,
   TypeError,
 } = primordials;
@@ -102,13 +103,17 @@ function getExitCode() {
 }
 
 function setExitCode(value) {
-  const code = +value;
-  if (!NumberIsInteger(code)) {
+  if (typeof value !== "number") {
     throw new TypeError(
-      `Exit code must be a integer, got: ${value} (${typeof value})`,
+      `Exit code must be a number, got: ${value} (${typeof value})`,
     );
   }
-  op_set_exit_code(code);
+  if (!NumberIsInteger(value)) {
+    throw new RangeError(
+      `Exit code must be an integer, got: ${value}`,
+    );
+  }
+  op_set_exit_code(value);
 }
 
 function setEnv(key, value) {

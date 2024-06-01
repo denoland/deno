@@ -319,35 +319,15 @@ Deno.test("Deno.exitCode getter and setter", () => {
   assertEquals(Deno.exitCode, 0);
 });
 
-Deno.test("Setting Deno.exitCode to non-integer throws TypeError", () => {
-  try {
-    // @ts-expect-error;
-    Deno.exitCode = "123";
-    assertEquals(Deno.exitCode, 123);
-  } finally {
-    // Reset
-    Deno.exitCode = 0;
-  }
-
-  assertEquals(Deno.exitCode, 0);
-
+Deno.test("Setting Deno.exitCode to non-number throws TypeError", () => {
   // Throws on non-number values
   assertThrows(
     () => {
       // @ts-expect-error Testing for runtime error
-      Deno.exitCode = "not a number";
+      Deno.exitCode = "123";
     },
     TypeError,
-    "Exit code must be a integer, got: not a number (string)",
-  );
-
-  // Throws on non-integer values
-  assertThrows(
-    () => {
-      Deno.exitCode = 3.14;
-    },
-    TypeError,
-    "Exit code must be a integer, got: 3.14 (number)",
+    "Exit code must be a number, got: 123 (string)",
   );
 
   // Throws on bigint values
@@ -357,10 +337,19 @@ Deno.test("Setting Deno.exitCode to non-integer throws TypeError", () => {
       Deno.exitCode = 1n;
     },
     TypeError,
-    "Cannot convert a BigInt value to a number",
+    "Exit code must be a number, got: 1 (bigint)",
   );
+});
 
-  assertEquals(Deno.exitCode, 0);
+Deno.test("Setting Deno.exitCode to non-integer throws RangeError", () => {
+  // Throws on non-integer values
+  assertThrows(
+    () => {
+      Deno.exitCode = 3.14;
+    },
+    RangeError,
+    "Exit code must be an integer, got: 3.14",
+  );
 });
 
 Deno.test("Setting Deno.exitCode does not cause an immediate exit", () => {
