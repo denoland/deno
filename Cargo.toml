@@ -29,6 +29,7 @@ members = [
   "ext/webstorage",
   "runtime",
   "runtime/permissions",
+  "global_flags",
   "tests",
   "tests/ffi",
   "tests/napi",
@@ -112,6 +113,7 @@ flate2 = { version = "1.0.26", default-features = false }
 fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
+global_flags = { path = "global_flags" }
 h2 = "0.4.4"
 http = "1.0"
 http-body-util = "0.1"
