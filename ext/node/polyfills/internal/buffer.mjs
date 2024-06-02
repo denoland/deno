@@ -2294,9 +2294,22 @@ export function boundsError(value, length, type) {
   );
 }
 
-export function validateNumber(value, name) {
+export function validateNumber(value, name, min = undefined, max) {
   if (typeof value !== "number") {
     throw new codes.ERR_INVALID_ARG_TYPE(name, "number", value);
+  }
+
+  if (
+    (min != null && value < min) || (max != null && value > max) ||
+    ((min != null || max != null) && Number.isNaN(value))
+  ) {
+    throw new codes.ERR_OUT_OF_RANGE(
+      name,
+      `${min != null ? `>= ${min}` : ""}${
+        min != null && max != null ? " && " : ""
+      }${max != null ? `<= ${max}` : ""}`,
+      value,
+    );
   }
 }
 
