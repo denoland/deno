@@ -18,7 +18,6 @@ use deno_core::ModuleSpecifier;
 use deno_terminal::colors;
 use fqdn::fqdn;
 use fqdn::FQDN;
-use global_flags::global_flags::is_running_from_binary;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -132,20 +131,14 @@ impl PermissionState {
   }
 
   fn error(name: &str, info: impl FnOnce() -> Option<String>) -> AnyError {
-    let msg = if is_running_from_binary() {
+    custom_error(
+      "PermissionDenied",
       format!(
         "Requires {}, run again with the --allow-{} flag",
         Self::fmt_access(name, info),
         name
-      )
-    } else {
-      format!(
-        "Requires {}, specify the required permissions during compilation using `deno compile --allow-{}`",
-        Self::fmt_access(name, info),
-        name
-      )
-    };
-    custom_error("PermissionDenied", msg)
+      ),
+    )
   }
 
   /// Check the permission state. bool is whether a prompt was issued.
