@@ -32,7 +32,7 @@ import {
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { validateBuffer } from "ext:deno_node/internal/validators.mjs";
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
-import { ERR_INVALID_STATE } from "ext:deno_node/internal/errors.ts";
+import { ERR_INVALID_STATE, NodeError } from "ext:deno_node/internal/errors.ts";
 import {
   forgivingBase64Encode,
   forgivingBase64UrlEncode,
@@ -849,7 +849,14 @@ function _base64Slice(buf, start, end) {
 const decoder = new TextDecoder();
 
 function _utf8Slice(buf, start, end) {
-  return decoder.decode(buf.slice(start, end));
+  try {
+    return decoder.decode(buf.slice(start, end));
+  } catch (err) {
+    if (err instanceof TypeError) {
+      throw new NodeError("ERR_STRING_TOO_LONG", "String too long");
+    }
+    throw err;
+  }
 }
 
 function _latin1Slice(buf, start, end) {
