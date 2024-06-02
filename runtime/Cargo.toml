@@ -98,6 +98,7 @@ deno_webstorage.workspace = true
 dlopen2.workspace = true
 encoding_rs.workspace = true
 fastwebsockets.workspace = true
+global_flags.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
