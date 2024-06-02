@@ -9696,10 +9696,9 @@
       "importscripts.html": false,
       "script.html": false,
       "stylesheet.html": false,
-      "worker.html": [
-        "URL query: ?type=text/ecmascript",
-        "URL query: ?type=text/ecmascript;yay"
-      ]
+      "worker.html": {
+        "ignore": true
+      }
     },
     "orb": {
       "tentative": {
