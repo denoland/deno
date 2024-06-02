@@ -93,6 +93,7 @@
       "test-stdin-from-file-spawn.js",
       "test-stream-duplex-from.js",
       "test-ttywrap-invalid-fd.js",
+      "test-url-parse-invalid-input.js",
       "test-url-urltooptions.js",
       "test-util-format.js",
       "test-util-inspect-namespace.js",

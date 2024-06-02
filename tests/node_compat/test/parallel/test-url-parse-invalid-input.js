@@ -82,6 +82,8 @@ if (common.hasIntl) {
                 'parsing http://\u00AD/bad.com/');
 }
 
+/*
+ FIXME(kt3k): node -e <script> doesn't work in deno
 {
   const badURLs = [
     'https://evil.com:.example.com',
@@ -108,3 +110,4 @@ if (common.hasIntl) {
     url.parse(badURL);
   });
 }
+*/
