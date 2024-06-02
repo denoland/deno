@@ -447,7 +447,7 @@ function insertExpectation(
   assert(segment, "segments array must never be empty");
   if (segments.length > 0) {
     if (
-      !currentExpectation[segment] ||
+      currentExpectation[segment] === undefined ||
       Array.isArray(currentExpectation[segment]) ||
       typeof currentExpectation[segment] === "boolean"
     ) {
@@ -460,6 +460,7 @@ function insertExpectation(
     );
   } else {
     if (
+      currentExpectation[segment] === undefined ||
       Array.isArray(currentExpectation[segment]) ||
       typeof currentExpectation[segment] === "boolean" ||
       (currentExpectation[segment] as { ignore: boolean })?.ignore !== true
