@@ -8,6 +8,7 @@ use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::tcp::TcpListener;
 use crate::DefaultTlsOptions;
+use crate::NetPermissionHost;
 use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
 use deno_core::anyhow::anyhow;
@@ -309,9 +310,10 @@ where
   };
 
   {
+    let host = NetPermissionHost::from_host_and_maybe_port(hostname, Some(0))?;
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
-    permissions.check_net(&(hostname, Some(0)), "Deno.startTls()")?;
+    permissions.check_net(&host, "Deno.startTls()")?;
   }
 
   let ca_certs = args
@@ -396,10 +398,13 @@ where
     .and_then(|it| it.0.clone());
 
   {
+    let host = NetPermissionHost::from_host_and_maybe_port(
+      &addr.hostname,
+      Some(addr.port),
+    )?;
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
-    permissions
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connectTls()")?;
+    permissions.check_net(&host, "Deno.connectTls()")?;
     if let Some(path) = cert_file {
       permissions.check_read(Path::new(path), "Deno.connectTls()")?;
     }
@@ -502,9 +507,12 @@ where
   }
 
   {
+    let host = NetPermissionHost::from_host_and_maybe_port(
+      &addr.hostname,
+      Some(addr.port),
+    )?;
     let permissions = state.borrow_mut::<NP>();
-    permissions
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenTls()")?;
+    permissions.check_net(&host, "Deno.listenTls()")?;
   }
 
   let bind_addr = resolve_addr_sync(&addr.hostname, addr.port)?
