@@ -9696,9 +9696,10 @@
       "importscripts.html": false,
       "script.html": false,
       "stylesheet.html": false,
-      "worker.html": {
-        "ignore": true
-      }
+      "worker.html": [
+        "URL query: ?type=text/ecmascript",
+        "URL query: ?type=text/ecmascript;yay"
+      ]
     },
     "orb": {
       "tentative": {
@@ -12175,7 +12176,35 @@
           "008.html?wss": false
         },
         "send": {
-          "ignore": true
+          "001.html?default": true,
+          "001.html?wss": true,
+          "002.html?default": true,
+          "002.html?wss": true,
+          "003.html?default": true,
+          "003.html?wss": true,
+          "004.html?default": true,
+          "004.html?wss": true,
+          "005.html?default": true,
+          "005.html?wss": false,
+          "006.html?default": true,
+          "006.html?wpt_flags=h2": false,
+          "006.html?wss": false,
+          "007.html?default": false,
+          "007.html?wpt_flags=h2": false,
+          "007.html?wss": false,
+          "008.html?default": false,
+          "008.html?wss": false,
+          "009.html?default": false,
+          "009.html?wpt_flags=h2": false,
+          "009.html?wss": false,
+          "010.html?default": false,
+          "010.html?wss": false,
+          "011.html?default": true,
+          "011.html?wpt_flags=h2": false,
+          "011.html?wss": false,
+          "012.html?default": true,
+          "012.html?wpt_flags=h2": false,
+          "012.html?wss": false
         },
         "url": {
           "001.html?default": true,
@@ -12438,24 +12467,12 @@
       }
     },
     "modules": {
-      "dedicated-worker-import-blob-url.any.html": {
-        "ignore": true
-      },
-      "dedicated-worker-import-blob-url.any.worker.html": {
-        "ignore": true
-      },
-      "dedicated-worker-import-data-url.any.html": {
-        "ignore": true
-      },
-      "dedicated-worker-import-data-url.any.worker.html": {
-        "ignore": true
-      },
-      "dedicated-worker-import.any.html": {
-        "ignore": true
-      },
-      "dedicated-worker-import.any.worker.html": {
-        "ignore": true
-      },
+      "dedicated-worker-import-blob-url.any.html": true,
+      "dedicated-worker-import-blob-url.any.worker.html": true,
+      "dedicated-worker-import-data-url.any.html": true,
+      "dedicated-worker-import-data-url.any.worker.html": true,
+      "dedicated-worker-import.any.html": true,
+      "dedicated-worker-import.any.worker.html": true,
       "shared-worker-import-blob-url.window.html": false,
       "shared-worker-import-data-url.window.html": false,
       "shared-worker-import.window.html": false,
