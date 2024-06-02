@@ -90,7 +90,7 @@ export function getExpectation(): Expectation {
 export function saveExpectation(expectation: Expectation) {
   Deno.writeTextFileSync(
     EXPECTATION_PATH,
-    JSON.stringify(expectation, undefined, "  "),
+    JSON.stringify(expectation, undefined, "  ") + "\n",
   );
 }
 
@@ -99,7 +99,7 @@ export function getExpectFailForCase(
   caseName: string,
 ): boolean {
   if (noIgnore) return false;
-  if (typeof expectation == "boolean") {
+  if (typeof expectation === "boolean") {
     return !expectation;
   }
   return expectation.includes(caseName);

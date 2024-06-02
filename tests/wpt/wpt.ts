@@ -246,12 +246,12 @@ async function run() {
       };
       minifiedResults.push(minified);
     }
-    await Deno.writeTextFile(json, JSON.stringify(minifiedResults));
+    await Deno.writeTextFile(json, JSON.stringify(minifiedResults) + "\n");
   }
 
   if (wptreport) {
     const report = await generateWptReport(results, startTime, endTime);
-    await Deno.writeTextFile(wptreport, JSON.stringify(report));
+    await Deno.writeTextFile(wptreport, JSON.stringify(report) + "\n");
   }
 
   const code = reportFinal(results, endTime - startTime);
@@ -385,7 +385,7 @@ async function update() {
   const endTime = new Date().getTime();
 
   if (json) {
-    await Deno.writeTextFile(json, JSON.stringify(results));
+    await Deno.writeTextFile(json, JSON.stringify(results) + "\n");
   }
 
   const resultTests: Record<
