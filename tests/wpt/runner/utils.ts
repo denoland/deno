@@ -79,7 +79,7 @@ export function getManifest(): Manifest {
 const EXPECTATION_PATH = join(ROOT_PATH, "./tests/wpt/runner/expectation.json");
 
 export interface Expectation {
-  [key: string]: Expectation | boolean | string[];
+  [key: string]: Expectation | boolean | string[] | { ignore: boolean };
 }
 
 export function getExpectation(): Expectation {

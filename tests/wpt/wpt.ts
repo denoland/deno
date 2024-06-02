@@ -459,7 +459,13 @@ function insertExpectation(
       finalExpectation,
     );
   } else {
-    currentExpectation[segment] = finalExpectation;
+    if (
+      Array.isArray(currentExpectation[segment]) ||
+      typeof currentExpectation[segment] === "boolean" ||
+      (currentExpectation[segment] as { ignore: boolean })?.ignore !== true
+    ) {
+      currentExpectation[segment] = finalExpectation;
+    }
   }
 }
 
