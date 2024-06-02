@@ -9789,4 +9789,43 @@ mod tests {
       }
     );
   }
+
+  #[test]
+  fn wildcard_flags() {
+    #[rustfmt::skip]
+    let r = flags_from_vec(svec![
+        "deno",
+        "run",
+        "--allow-read",
+        "--allow-write=notion-next",
+        "--allow-net=api.notion.com,*.amazonaws.com",
+        "--allow-env",
+        "script.ts"
+    ]);
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string()
+        )),
+        permissions: PermissionFlags {
+          allow_env: Some(vec![],),
+          allow_net: Some(vec![
+            "api.notion.com".to_string(),
+            "*.amazonaws.com".to_string(),
+          ],),
+          allow_read: Some(vec![],),
+          allow_write: Some(vec!["notion-next".to_string(),],),
+          ..Default::default()
+        },
+        unstable_config: UnstableConfig {
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
 }

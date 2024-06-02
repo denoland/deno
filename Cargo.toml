@@ -109,6 +109,7 @@ faster-hex = "0.9"
 fastwebsockets = { version = "0.6", features = ["upgrade", "unstable-split"] }
 filetime = "0.2.16"
 flate2 = { version = "1.0.26", default-features = false }
+fqdn = "0.3.4"
 fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"

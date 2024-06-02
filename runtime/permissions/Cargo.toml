@@ -15,8 +15,9 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
+deno_net.workspace = true
 deno_terminal.workspace = true
-fqdn = "0.3.4"
+fqdn.workspace = true
 libc.workspace = true
 log.workspace = true
 once_cell.workspace = true

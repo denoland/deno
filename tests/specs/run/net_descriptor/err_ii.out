@@ -1,0 +1,7 @@
+error: invalid value '[::1*]:1' for '--allow-net[=<IP_OR_HOSTNAME>...]': Bad host:port pair: [::1*]:1
+
+For more information, try '--help'.
+
+
+Caused by:
+    Bad host:port pair: [::1*]:1

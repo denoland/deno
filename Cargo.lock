@@ -1653,6 +1653,7 @@ version = "0.146.0"
 dependencies = [
  "deno_core",
  "deno_tls",
+ "fqdn",
  "pin-project",
  "rustls-tokio-stream",
  "serde",
@@ -1771,6 +1772,7 @@ name = "deno_permissions"
 version = "0.14.0"
 dependencies = [
  "deno_core",
+ "deno_net",
  "deno_terminal",
  "fqdn",
  "libc",

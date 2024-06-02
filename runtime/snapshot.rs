@@ -104,9 +104,9 @@ impl deno_node::NodePermissions for Permissions {
 }
 
 impl deno_net::NetPermissions for Permissions {
-  fn check_net<T: AsRef<str>>(
+  fn check_net(
     &mut self,
-    _host: &(T, Option<u16>),
+    _host: &deno_net::NetPermissionHost,
     _api_name: &str,
   ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
