@@ -167,10 +167,7 @@ Object.setPrototypeOf(Buffer.prototype, Uint8Array.prototype);
 Object.setPrototypeOf(Buffer, Uint8Array);
 
 function assertSize(size) {
-  validateNumber(size, "size");
-  if (!(size >= 0 && size <= kMaxLength)) {
-    throw new codes.ERR_INVALID_ARG_VALUE.RangeError("size", size);
-  }
+  validateNumber(size, "size", 0, kMaxLength);
 }
 
 function _alloc(size, fill, encoding) {
