@@ -684,15 +684,15 @@ impl<TGraphContainer: ModuleGraphContainer>
         ..
       })) => {
         let code: ModuleCodeString = match media_type {
-          MediaType::JavaScript
-          | MediaType::Unknown
+          MediaType::Unknown
           | MediaType::Cjs
           | MediaType::Mjs
           | MediaType::Json => source.clone().into(),
           MediaType::Dts | MediaType::Dcts | MediaType::Dmts => {
             Default::default()
           }
-          MediaType::TypeScript
+          MediaType::JavaScript
+          | MediaType::TypeScript
           | MediaType::Mts
           | MediaType::Cts
           | MediaType::Jsx
