@@ -286,7 +286,7 @@ impl Loader for FetchCacher {
           }
         })
     }
-    .boxed()
+    .boxed_local()
   }
 
   fn cache_module_info(

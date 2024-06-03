@@ -944,6 +944,7 @@ impl Inner {
       None,
     );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
+    let file_fetcher = Arc::new(file_fetcher);
     self
       .config
       .tree
@@ -1108,7 +1109,7 @@ impl Inner {
   async fn refresh_npm_specifiers(&mut self) {
     let package_reqs = self.documents.npm_package_reqs();
     let resolver = self.resolver.clone();
-    // spawn to avoid the LSP's Send requirements
+    // spawn due to the lsp's `Send` requirement
     let handle =
       spawn(async move { resolver.set_npm_package_reqs(&package_reqs).await });
     if let Err(err) = handle.await.unwrap() {

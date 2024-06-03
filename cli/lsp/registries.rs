@@ -417,7 +417,7 @@ enum VariableItems {
 pub struct ModuleRegistry {
   origins: HashMap<String, Vec<RegistryConfiguration>>,
   pub location: PathBuf,
-  pub file_fetcher: FileFetcher,
+  pub file_fetcher: Arc<FileFetcher>,
   http_cache: Arc<GlobalHttpCache>,
 }
 
@@ -441,7 +441,7 @@ impl ModuleRegistry {
     Self {
       origins: HashMap::new(),
       location,
-      file_fetcher,
+      file_fetcher: Arc::new(file_fetcher),
       http_cache,
     }
   }
@@ -512,15 +512,21 @@ impl ModuleRegistry {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
-    let fetch_result = self
-      .file_fetcher
-      .fetch_with_options(FetchOptions {
-        specifier,
-        permissions: &PermissionsContainer::allow_all(),
-        maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
-        maybe_cache_setting: None,
-      })
-      .await;
+    // spawn due to the lsp's `Send` requirement
+    let fetch_result = deno_core::unsync::spawn({
+      let file_fetcher = self.file_fetcher.clone();
+      let specifier = specifier.clone();
+      async move {
+        file_fetcher
+        .fetch_with_options(FetchOptions {
+          specifier: &specifier,
+          permissions: &PermissionsContainer::allow_all(),
+          maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
+          maybe_cache_setting: None,
+        })
+        .await
+      }
+    }).await?;
     // if there is an error fetching, we will cache an empty file, so that
     // subsequent requests they are just an empty doc which will error without
     // needing to connect to the remote URL. We will cache it for 1 week.
@@ -612,13 +618,20 @@ impl ModuleRegistry {
           None,
         )
         .ok()?;
-        let file = self
-          .file_fetcher
-          .fetch(&endpoint, &PermissionsContainer::allow_all())
-          .await
-          .ok()?
-          .into_text_decoded()
-          .ok()?;
+        let file_fetcher = self.file_fetcher.clone();
+        // spawn due to the lsp's `Send` requirement
+        let file = deno_core::unsync::spawn({
+          async move {
+            file_fetcher
+              .fetch(&endpoint, &PermissionsContainer::allow_all())
+              .await
+              .ok()?
+              .into_text_decoded()
+              .ok()
+          }
+        })
+        .await
+        .ok()??;
         let documentation: lsp::Documentation =
           serde_json::from_str(&file.source).ok()?;
         return match documentation {
@@ -978,13 +991,18 @@ impl ModuleRegistry {
     url: &str,
   ) -> Option<lsp::Documentation> {
     let specifier = Url::parse(url).ok()?;
-    let file = self
-      .file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
-      .await
-      .ok()?
-      .into_text_decoded()
-      .ok()?;
+    let file_fetcher = self.file_fetcher.clone();
+    // spawn due to the lsp's `Send` requirement
+    let file = deno_core::unsync::spawn(async move {
+      file_fetcher
+        .fetch(&specifier, &PermissionsContainer::allow_all())
+        .await
+        .ok()?
+        .into_text_decoded()
+        .ok()
+    })
+    .await
+    .ok()??;
     serde_json::from_str(&file.source).ok()
   }
 
@@ -1037,19 +1055,27 @@ impl ModuleRegistry {
 
   async fn get_items(&self, url: &str) -> Option<VariableItems> {
     let specifier = ModuleSpecifier::parse(url).ok()?;
-    let file = self
-      .file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
-      .await
-      .map_err(|err| {
-        error!(
-          "Internal error fetching endpoint \"{}\". {}",
-          specifier, err
-        );
-      })
-      .ok()?
-      .into_text_decoded()
-      .ok()?;
+    // spawn due to the lsp's `Send` requirement
+    let file = deno_core::unsync::spawn({
+      let file_fetcher = self.file_fetcher.clone();
+      let specifier = specifier.clone();
+      async move {
+        file_fetcher
+          .fetch(&specifier, &PermissionsContainer::allow_all())
+          .await
+          .map_err(|err| {
+            error!(
+              "Internal error fetching endpoint \"{}\". {}",
+              specifier, err
+            );
+          })
+          .ok()?
+          .into_text_decoded()
+          .ok()
+      }
+    })
+    .await
+    .ok()??;
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
         error!(
@@ -1075,19 +1101,27 @@ impl ModuleRegistry {
           error!("Internal error mapping endpoint \"{}\". {}", url, err);
         })
         .ok()?;
-    let file = self
-      .file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
-      .await
-      .map_err(|err| {
-        error!(
-          "Internal error fetching endpoint \"{}\". {}",
-          specifier, err
-        );
-      })
-      .ok()?
-      .into_text_decoded()
-      .ok()?;
+    // spawn due to the lsp's `Send` requirement
+    let file = deno_core::unsync::spawn({
+      let file_fetcher = self.file_fetcher.clone();
+      let specifier = specifier.clone();
+      async move {
+        file_fetcher
+          .fetch(&specifier, &PermissionsContainer::allow_all())
+          .await
+          .map_err(|err| {
+            error!(
+              "Internal error fetching endpoint \"{}\". {}",
+              specifier, err
+            );
+          })
+          .ok()?
+          .into_text_decoded()
+          .ok()
+      }
+    })
+    .await
+    .ok()??;
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
         error!(
