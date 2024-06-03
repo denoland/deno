@@ -96,7 +96,6 @@ pub async fn op_webgpu_buffer_get_map_async(
       *done_.lock().unwrap() = Some(status);
     });
 
-    // TODO(lucacasonato): error handling
     let maybe_err = gfx_select!(buffer => instance.buffer_map_async(
       buffer,
       offset,
@@ -117,16 +116,22 @@ pub async fn op_webgpu_buffer_get_map_async(
     }
   }
 
-  while done.lock().unwrap().is_none() {
-    {
-      let state = state.borrow();
-      let instance = state.borrow::<super::Instance>();
-      gfx_select!(device => instance.device_poll(device, wgpu_types::Maintain::Poll)).unwrap();
+  loop {
+    match done.lock().unwrap().take() {
+      Some(Ok(())) => return Ok(WebGpuResult::empty()),
+      Some(Err(e)) => {
+        return Err(DomExceptionOperationError::new(&e.to_string()).into())
+      }
+      None => {
+        {
+          let state = state.borrow();
+          let instance = state.borrow::<super::Instance>();
+          gfx_select!(device => instance.device_poll(device, wgpu_types::Maintain::Poll)).unwrap();
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+      }
     }
-    tokio::time::sleep(Duration::from_millis(10)).await;
   }
-
-  Ok(WebGpuResult::empty())
 }
 
 #[op2]
