@@ -20,8 +20,11 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
+use crate::http_util::HttpClient;
+
 use super::super::super::common::types_package_name;
 use super::super::cache::NpmCache;
+use super::super::cache::TarballCache;
 use super::super::resolution::NpmResolution;
 use super::common::cache_packages;
 use super::common::NpmPackageFsResolver;
@@ -31,6 +34,7 @@ use super::common::RegistryReadPermissionChecker;
 #[derive(Debug)]
 pub struct GlobalNpmPackageResolver {
   cache: Arc<NpmCache>,
+  tarball_cache: Arc<TarballCache>,
   resolution: Arc<NpmResolution>,
   system_info: NpmSystemInfo,
   registry_read_permission_checker: RegistryReadPermissionChecker,
@@ -38,19 +42,21 @@ pub struct GlobalNpmPackageResolver {
 
 impl GlobalNpmPackageResolver {
   pub fn new(
-    fs: Arc<dyn FileSystem>,
     cache: Arc<NpmCache>,
+    fs: Arc<dyn FileSystem>,
+    tarball_cache: Arc<TarballCache>,
     resolution: Arc<NpmResolution>,
     system_info: NpmSystemInfo,
   ) -> Self {
     Self {
-      cache: cache.clone(),
-      resolution,
-      system_info,
       registry_read_permission_checker: RegistryReadPermissionChecker::new(
         fs,
         cache.root_folder(),
       ),
+      cache,
+      tarball_cache,
+      resolution,
+      system_info,
     }
   }
 
@@ -123,12 +129,20 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     )
   }
 
-  async fn cache_packages(&self) -> Result<(), AnyError> {
+  async fn cache_packages(
+    &self,
+    http_client: &Arc<HttpClient>,
+  ) -> Result<(), AnyError> {
     let package_partitions = self
       .resolution
       .all_system_packages_partitioned(&self.system_info);
 
-    cache_packages(package_partitions.packages, &self.cache).await?;
+    cache_packages(
+      package_partitions.packages,
+      &self.tarball_cache,
+      http_client,
+    )
+    .await?;
 
     // create the copy package folders
     for copy in package_partitions.copy_packages {
