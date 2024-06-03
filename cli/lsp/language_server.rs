@@ -475,10 +475,10 @@ impl LanguageServer {
 impl Inner {
   fn new(client: Client) -> Self {
     let cache = LspCache::default();
-    let http_client = Arc::new(HttpClientProvider::new(None, None));
+    let http_client_provider = Arc::new(HttpClientProvider::new(None, None));
     let module_registry = ModuleRegistry::new(
       cache.deno_dir().registries_folder_path(),
-      http_client.clone(),
+      http_client_provider.clone(),
     );
     let jsr_search_api =
       CliJsrSearchApi::new(module_registry.file_fetcher.clone());
@@ -508,7 +508,7 @@ impl Inner {
       diagnostics_state,
       diagnostics_server,
       documents,
-      http_client_provider: http_client,
+      http_client_provider,
       initial_cwd: initial_cwd.clone(),
       jsr_search_api,
       project_version: 0,
