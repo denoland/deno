@@ -22,7 +22,8 @@ import {
 const {
   Error,
   FunctionPrototypeBind,
-  NumberParseInt,
+  NumberIsInteger,
+  RangeError,
   SymbolFor,
   TypeError,
 } = primordials;
@@ -102,13 +103,17 @@ function getExitCode() {
 }
 
 function setExitCode(value) {
-  const code = NumberParseInt(value, 10);
-  if (typeof code !== "number") {
+  if (typeof value !== "number") {
     throw new TypeError(
-      `Exit code must be a number, got: ${code} (${typeof code}).`,
+      `Exit code must be a number, got: ${value} (${typeof value})`,
     );
   }
-  op_set_exit_code(code);
+  if (!NumberIsInteger(value)) {
+    throw new RangeError(
+      `Exit code must be an integer, got: ${value}`,
+    );
+  }
+  op_set_exit_code(value);
 }
 
 function setEnv(key, value) {
