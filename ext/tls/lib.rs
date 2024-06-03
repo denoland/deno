@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 pub use deno_native_certs;
-use deno_native_certs::load_native_certs;
 pub use rustls;
 use rustls::pki_types::CertificateDer;
 use rustls::pki_types::PrivateKeyDer;
@@ -21,6 +20,7 @@ use rustls::client::WebPkiServerVerifier;
 use rustls::ClientConfig;
 use rustls::DigitallySignedStruct;
 use rustls::Error;
+use rustls::RootCertStore;
 use rustls_pemfile::certs;
 use rustls_pemfile::ec_private_keys;
 use rustls_pemfile::pkcs8_private_keys;
@@ -34,10 +34,6 @@ use std::sync::Arc;
 
 mod tls_key;
 pub use tls_key::*;
-
-// pub type Certificate = rustls::pki_types::CertificateDer<'static>;
-// pub type PrivateKey = rustls::pki_types::PrivateKeyDer<'static>;
-pub type RootCertStore = rustls::RootCertStore;
 
 /// Lazily resolves the root cert store.
 ///
@@ -187,19 +183,6 @@ pub fn create_default_root_cert_store() -> RootCertStore {
   root_cert_store
 }
 
-pub fn create_platform_cert_store() -> RootCertStore {
-  let mut root_cert_store = RootCertStore::empty();
-  let roots: Vec<deno_native_certs::Certificate> =
-    load_native_certs().expect("could not load platform certs");
-  for root in roots {
-    root_cert_store
-      .add(CertificateDer::from(root.0))
-      .expect("Failed to add platform cert to root cert store");
-  }
-  debug_assert!(!root_cert_store.is_empty());
-  root_cert_store
-}
-
 pub enum SocketUse {
   /// General SSL: No ALPN
   GeneralSsl,
@@ -241,29 +224,29 @@ pub fn create_client_config(
     return Ok(client);
   }
 
-  let client_config = ClientConfig::builder().with_root_certificates({
-    let mut root_cert_store =
-      root_cert_store.unwrap_or_else(create_default_root_cert_store);
-    // If custom certs are specified, add them to the store
-    for cert in ca_certs {
-      let reader = &mut BufReader::new(Cursor::new(cert));
-      // This function does not return specific errors, if it fails give a generic message.
-      for r in rustls_pemfile::certs(reader) {
-        match r {
-          Ok(cert) => {
-            root_cert_store.add(cert)?;
-          }
-          Err(e) => {
-            return Err(anyhow!(
-              "Unable to add pem file to certificate store: {}",
-              e
-            ));
-          }
+  let mut root_cert_store =
+    root_cert_store.unwrap_or_else(create_default_root_cert_store);
+  // If custom certs are specified, add them to the store
+  for cert in ca_certs {
+    let reader = &mut BufReader::new(Cursor::new(cert));
+    // This function does not return specific errors, if it fails give a generic message.
+    for r in rustls_pemfile::certs(reader) {
+      match r {
+        Ok(cert) => {
+          root_cert_store.add(cert)?;
+        }
+        Err(e) => {
+          return Err(anyhow!(
+            "Unable to add pem file to certificate store: {}",
+            e
+          ));
         }
       }
     }
-    root_cert_store
-  });
+  }
+
+  let client_config =
+    ClientConfig::builder().with_root_certificates(root_cert_store);
 
   let mut client = match maybe_cert_chain_and_key {
     TlsKeys::Static(TlsKey(cert_chain, private_key)) => client_config
@@ -304,7 +287,7 @@ pub fn load_certs(
     return Err(cert_not_found_err());
   }
 
-  Ok(certs.into_iter().map(|x| x.into_owned()).collect())
+  Ok(certs)
 }
 
 fn key_decode_err() -> AnyError {

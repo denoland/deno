@@ -1434,7 +1434,6 @@ dependencies = [
  "deno_core",
  "deno_tls",
  "dyn-clone",
- "http 0.2.12",
  "http 1.1.0",
  "reqwest",
  "serde",

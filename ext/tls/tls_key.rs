@@ -257,8 +257,6 @@ impl TlsKeyLookup {
 pub mod tests {
   use super::*;
   use deno_core::unsync::spawn;
-  use webpki::types::CertificateDer;
-  use webpki::types::PrivateKeyDer;
 
   fn tls_key_for_test(sni: &str) -> TlsKey {
     TlsKey(
