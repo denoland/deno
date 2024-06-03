@@ -17,11 +17,13 @@ use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::future::LocalBoxFuture;
+use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
+use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::unsync::JoinSet;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fs::FileSystem;
 use deno_terminal::colors;
@@ -524,8 +526,8 @@ pub enum Permission<'s> {
 
 async fn get_auth_headers(
   client: &reqwest::Client,
-  registry_url: String,
-  packages: Vec<Rc<PreparedPublishPackage>>,
+  registry_url: &Url,
+  packages: &[Rc<PreparedPublishPackage>],
   auth_method: AuthMethod,
 ) -> Result<HashMap<(String, String, String), Rc<str>>, AnyError> {
   let permissions = packages
@@ -600,7 +602,7 @@ async fn get_auth_headers(
               colors::cyan(res.user.name)
             );
             let authorization: Rc<str> = format!("Bearer {}", res.token).into();
-            for pkg in &packages {
+            for pkg in packages {
               authorizations.insert(
                 (pkg.scope.clone(), pkg.package.clone(), pkg.version.clone()),
                 authorization.clone(),
@@ -620,7 +622,7 @@ async fn get_auth_headers(
     }
     AuthMethod::Token(token) => {
       let authorization: Rc<str> = format!("Bearer {}", token).into();
-      for pkg in &packages {
+      for pkg in packages {
         authorizations.insert(
           (pkg.scope.clone(), pkg.package.clone(), pkg.version.clone()),
           authorization.clone(),
@@ -683,8 +685,8 @@ async fn get_auth_headers(
 /// a URL to the management panel to create them.
 async fn check_if_scope_and_package_exist(
   client: &reqwest::Client,
-  registry_api_url: &str,
-  registry_manage_url: &str,
+  registry_api_url: &Url,
+  registry_manage_url: &Url,
   scope: &str,
   package: &str,
 ) -> Result<Option<String>, AnyError> {
@@ -715,17 +717,17 @@ async fn check_if_scope_and_package_exist(
 
 async fn ensure_scopes_and_packages_exist(
   client: &reqwest::Client,
-  registry_api_url: String,
-  registry_manage_url: String,
-  packages: Vec<Rc<PreparedPublishPackage>>,
+  registry_api_url: &Url,
+  registry_manage_url: &Url,
+  packages: &[Rc<PreparedPublishPackage>],
 ) -> Result<(), AnyError> {
   if !std::io::stdin().is_terminal() {
     let mut missing_packages_lines = vec![];
     for package in packages {
       let maybe_create_package_url = check_if_scope_and_package_exist(
         client,
-        &registry_api_url,
-        &registry_manage_url,
+        registry_api_url,
+        registry_manage_url,
         &package.scope,
         &package.package,
       )
@@ -748,8 +750,8 @@ async fn ensure_scopes_and_packages_exist(
   for package in packages {
     let maybe_create_package_url = check_if_scope_and_package_exist(
       client,
-      &registry_api_url,
-      &registry_manage_url,
+      registry_api_url,
+      registry_manage_url,
       &package.scope,
       &package.package,
     )
@@ -770,7 +772,7 @@ async fn ensure_scopes_and_packages_exist(
     let _ = open::that_detached(&create_package_url);
 
     let package_api_url = api::get_package_api_url(
-      &registry_api_url,
+      registry_api_url,
       &package.scope,
       &package.package,
     );
@@ -790,15 +792,15 @@ async fn ensure_scopes_and_packages_exist(
 }
 
 async fn perform_publish(
-  http_client: &Arc<HttpClient>,
+  http_client: &HttpClient,
   mut publish_order_graph: PublishOrderGraph,
   mut prepared_package_by_name: HashMap<String, Rc<PreparedPublishPackage>>,
   auth_method: AuthMethod,
   provenance: bool,
 ) -> Result<(), AnyError> {
   let client = http_client.client()?;
-  let registry_api_url = jsr_api_url().to_string();
-  let registry_url = jsr_url().to_string();
+  let registry_api_url = jsr_api_url();
+  let registry_url = jsr_url();
 
   let packages = prepared_package_by_name
     .values()
@@ -807,18 +809,18 @@ async fn perform_publish(
 
   ensure_scopes_and_packages_exist(
     client,
-    registry_api_url.clone(),
-    registry_url.clone(),
-    packages.clone(),
+    registry_api_url,
+    registry_url,
+    &packages,
   )
   .await?;
 
   let mut authorizations =
-    get_auth_headers(client, registry_api_url.clone(), packages, auth_method)
-      .await?;
+    get_auth_headers(client, registry_api_url, &packages, auth_method).await?;
 
   assert_eq!(prepared_package_by_name.len(), authorizations.len());
-  let mut futures: JoinSet<Result<String, AnyError>> = JoinSet::default();
+  let mut futures: FuturesUnordered<LocalBoxFuture<Result<String, AnyError>>> =
+    Default::default();
   loop {
     let next_batch = publish_order_graph.next();
 
@@ -844,32 +846,32 @@ async fn perform_publish(
           package.version.clone(),
         ))
         .unwrap();
-      let registry_api_url = registry_api_url.clone();
-      let registry_url = registry_url.clone();
-      let http_client = http_client.clone();
-      futures.spawn(async move {
-        let display_name = package.display_name();
-        publish_package(
-          &http_client,
-          package,
-          &registry_api_url,
-          &registry_url,
-          &authorization,
-          provenance,
-        )
-        .await
-        .with_context(|| format!("Failed to publish {}", display_name))?;
-        Ok(package_name)
-      });
+      futures.push(
+        async move {
+          let display_name = package.display_name();
+          publish_package(
+            http_client,
+            package,
+            registry_api_url,
+            registry_url,
+            &authorization,
+            provenance,
+          )
+          .await
+          .with_context(|| format!("Failed to publish {}", display_name))?;
+          Ok(package_name)
+        }
+        .boxed_local(),
+      );
     }
 
-    let Some(result) = futures.join_next().await else {
+    let Some(result) = futures.next().await else {
       // done, ensure no circular dependency
       publish_order_graph.ensure_no_pending()?;
       break;
     };
 
-    let package_name = result??;
+    let package_name = result?;
     publish_order_graph.finish_package(&package_name);
   }
 
@@ -879,8 +881,8 @@ async fn perform_publish(
 async fn publish_package(
   http_client: &HttpClient,
   package: Rc<PreparedPublishPackage>,
-  registry_api_url: &str,
-  registry_url: &str,
+  registry_api_url: &Url,
+  registry_url: &Url,
   authorization: &str,
   provenance: bool,
 ) -> Result<(), AnyError> {
