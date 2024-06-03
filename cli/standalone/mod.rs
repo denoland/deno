@@ -15,7 +15,7 @@ use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
 use crate::cache::DenoDirProvider;
 use crate::cache::NodeAnalysisCache;
-use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::create_cli_npm_resolver;
 use crate::npm::CliNpmResolverByonmCreateOptions;
@@ -346,7 +346,7 @@ pub async fn run(
     cell: Default::default(),
   });
   let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
-  let http_client = Arc::new(HttpClient::new(
+  let http_client_provider = Arc::new(HttpClientProvider::new(
     Some(root_cert_store_provider.clone()),
     metadata.unsafely_ignore_certificate_errors.clone(),
   ));
@@ -390,7 +390,7 @@ pub async fn run(
             snapshot: CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot)),
             maybe_lockfile: None,
             fs: fs.clone(),
-            http_client: http_client.clone(),
+            http_client_provider: http_client_provider.clone(),
             npm_global_cache_dir,
             cache_setting,
             text_only_progress_bar: progress_bar,
@@ -448,7 +448,7 @@ pub async fn run(
             snapshot: CliNpmResolverManagedSnapshotOption::Specified(None),
             maybe_lockfile: None,
             fs: fs.clone(),
-            http_client: http_client.clone(),
+            http_client_provider: http_client_provider.clone(),
             npm_global_cache_dir,
             cache_setting,
             text_only_progress_bar: progress_bar,

@@ -17,7 +17,7 @@ use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
 use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FileFetcher;
-use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -422,7 +422,10 @@ pub struct ModuleRegistry {
 }
 
 impl ModuleRegistry {
-  pub fn new(location: PathBuf, http_client: Arc<HttpClient>) -> Self {
+  pub fn new(
+    location: PathBuf,
+    http_client_provider: Arc<HttpClientProvider>,
+  ) -> Self {
     // the http cache should always be the global one for registry completions
     let http_cache = Arc::new(GlobalHttpCache::new(
       location.clone(),
@@ -432,7 +435,7 @@ impl ModuleRegistry {
       http_cache.clone(),
       CacheSetting::RespectHeaders,
       true,
-      http_client,
+      http_client_provider,
       Default::default(),
       None,
     );
@@ -1298,8 +1301,10 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
-    let mut module_registry =
-      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
+    let mut module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
     module_registry.enable("http://localhost:4545/").await;
     let range = lsp::Range {
       start: lsp::Position {
@@ -1356,8 +1361,10 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
-    let mut module_registry =
-      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
+    let mut module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
     module_registry.enable("http://localhost:4545/").await;
     let range = lsp::Range {
       start: lsp::Position {
@@ -1576,8 +1583,10 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
-    let mut module_registry =
-      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
+    let mut module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-key-first.json")
       .await
@@ -1646,8 +1655,10 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
-    let mut module_registry =
-      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
+    let mut module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-complex.json")
       .await
@@ -1697,8 +1708,10 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
-    let module_registry =
-      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
+    let module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
     let result = module_registry.check_origin("http://localhost:4545").await;
     assert!(result.is_ok());
   }
@@ -1708,8 +1721,10 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
-    let module_registry =
-      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
+    let module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
     let result = module_registry.check_origin("https://example.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();

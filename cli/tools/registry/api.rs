@@ -6,6 +6,8 @@ use deno_runtime::deno_fetch::reqwest;
 use lsp_types::Url;
 use serde::de::DeserializeOwned;
 
+use crate::http_util::HttpClient;
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateAuthorizationResponse {
@@ -116,7 +118,7 @@ pub async fn parse_response<T: DeserializeOwned>(
 }
 
 pub async fn get_scope(
-  client: &reqwest::Client,
+  client: &HttpClient,
   registry_api_url: &Url,
   scope: &str,
 ) -> Result<reqwest::Response, AnyError> {
@@ -134,7 +136,7 @@ pub fn get_package_api_url(
 }
 
 pub async fn get_package(
-  client: &reqwest::Client,
+  client: &HttpClient,
   registry_api_url: &Url,
   scope: &str,
   package: &str,

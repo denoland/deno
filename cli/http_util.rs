@@ -12,6 +12,7 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::reqwest;
@@ -24,10 +25,9 @@ use deno_runtime::deno_fetch::reqwest::header::LOCATION;
 use deno_runtime::deno_fetch::reqwest::StatusCode;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::Arc;
+use std::thread::ThreadId;
 use std::time::Duration;
 use std::time::SystemTime;
 
@@ -202,84 +202,96 @@ pub struct FetchOnceArgs<'a> {
   pub maybe_progress_guard: Option<&'a UpdateGuard>,
 }
 
-#[derive(Debug, Default)]
-struct HttpClientsThreadLocalData {
-  clients: HashMap<usize, Rc<reqwest::Client>>,
-}
-
-static NEXT_INDEX: std::sync::atomic::AtomicUsize =
-  std::sync::atomic::AtomicUsize::new(0);
-
-thread_local! {
-  static THREAD_LOCAL_DATA: RefCell<HttpClientsThreadLocalData> = Default::default();
-}
-
-pub struct HttpClient {
-  client_index: usize,
+pub struct HttpClientProvider {
   options: CreateHttpClientOptions,
   root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
+  // it's not safe to share a reqwest::Client across tokio runtimes,
+  // so we store these Clients keyed by thread id
+  // https://github.com/seanmonstar/reqwest/issues/1148#issuecomment-910868788
+  #[allow(clippy::disallowed_types)] // reqwest::Client allowed here
+  clients_by_thread_id: Mutex<HashMap<ThreadId, reqwest::Client>>,
 }
 
-impl std::fmt::Debug for HttpClient {
+impl std::fmt::Debug for HttpClientProvider {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("HttpClient")
-      .field("client_index", &self.client_index)
       .field("options", &self.options)
       .finish()
   }
 }
 
-impl HttpClient {
+impl HttpClientProvider {
   pub fn new(
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
   ) -> Self {
     Self {
-      client_index: NEXT_INDEX
-        .fetch_add(1, std::sync::atomic::Ordering::SeqCst),
       options: CreateHttpClientOptions {
         unsafely_ignore_certificate_errors,
         ..Default::default()
       },
       root_cert_store_provider,
+      clients_by_thread_id: Default::default(),
     }
   }
 
-  #[cfg(test)]
-  pub fn from_client(client: reqwest::Client) -> Self {
-    let result = Self::new(None, None);
-    THREAD_LOCAL_DATA.with(|data| {
-      data
-        .borrow_mut()
-        .clients
-        .insert(result.client_index, Rc::new(client));
-    });
-    result
+  // todo(dsherret): improve/revamp `HttpClient`'s api in order to
+  // remove this and make `ReqwestClient`
+  pub fn client(&self) -> Result<HttpClient, AnyError> {
+    use std::collections::hash_map::Entry;
+    let thread_id = std::thread::current().id();
+    let mut clients = self.clients_by_thread_id.lock();
+    let entry = clients.entry(thread_id);
+    match entry {
+      Entry::Occupied(entry) => Ok(HttpClient::new(entry.get().clone())),
+      Entry::Vacant(entry) => {
+        let client = create_http_client(
+          get_user_agent(),
+          CreateHttpClientOptions {
+            root_cert_store: match &self.root_cert_store_provider {
+              Some(provider) => Some(provider.get_or_try_init()?.clone()),
+              None => None,
+            },
+            ..self.options.clone()
+          },
+        )?;
+        entry.insert(client.clone());
+        Ok(HttpClient::new(client))
+      }
+    }
+  }
+}
+
+#[derive(Debug)]
+pub struct HttpClient {
+  #[allow(clippy::disallowed_types)] // reqwest::Client allowed here
+  client: reqwest::Client,
+  // don't allow sending this across threads because then
+  // it might be shared accidentally across tokio runtimes
+  // which will cause issues
+  // https://github.com/seanmonstar/reqwest/issues/1148#issuecomment-910868788
+  _unsend_marker: deno_core::unsync::UnsendMarker,
+}
+
+impl HttpClient {
+  // DO NOT make this public. You should always be creating one of these from
+  // the HttpClientProvider
+  #[allow(clippy::disallowed_types)] // reqwest::Client allowed here
+  fn new(client: reqwest::Client) -> Self {
+    Self {
+      client,
+      _unsend_marker: deno_core::unsync::UnsendMarker::default(),
+    }
   }
 
-  pub fn client(&self) -> Result<Rc<reqwest::Client>, AnyError> {
-    use std::collections::hash_map::Entry;
-    THREAD_LOCAL_DATA.with(|data| {
-      let mut data = data.borrow_mut();
-      let entry = data.clients.entry(self.client_index);
-      match entry {
-        Entry::Occupied(entry) => Ok(entry.get().clone()),
-        Entry::Vacant(entry) => {
-          let client = Rc::new(create_http_client(
-            get_user_agent(),
-            CreateHttpClientOptions {
-              root_cert_store: match &self.root_cert_store_provider {
-                Some(provider) => Some(provider.get_or_try_init()?.clone()),
-                None => None,
-              },
-              ..self.options.clone()
-            },
-          )?);
-          entry.insert(client.clone());
-          Ok(client)
-        }
-      }
-    })
+  // todo(dsherret): don't expose `reqwest::RequestBuilder` because it
+  // is `Sync` and could accidentally be shared with multiple tokio runtimes
+  pub fn get(&self, url: impl reqwest::IntoUrl) -> reqwest::RequestBuilder {
+    self.client.get(url)
+  }
+
+  pub fn post(&self, url: impl reqwest::IntoUrl) -> reqwest::RequestBuilder {
+    self.client.post(url)
   }
 
   /// Asynchronously fetches the given HTTP URL one pass only.
@@ -291,62 +303,7 @@ impl HttpClient {
     &self,
     args: FetchOnceArgs<'a>,
   ) -> Result<FetchOnceResult, AnyError> {
-    let client = ReqwestClient(self.client()?);
-    client.fetch_no_follow(args).await
-  }
-
-  pub async fn download_text(
-    &self,
-    url: impl reqwest::IntoUrl,
-  ) -> Result<String, AnyError> {
-    let bytes = self.download(url).await?;
-    Ok(String::from_utf8(bytes)?)
-  }
-
-  pub async fn download(
-    &self,
-    url: impl reqwest::IntoUrl,
-  ) -> Result<Vec<u8>, AnyError> {
-    let client = ReqwestClient(self.client()?);
-    let maybe_bytes = client.download(url, None, None).await?;
-    match maybe_bytes {
-      Some(bytes) => Ok(bytes),
-      None => Err(custom_error("Http", "Not found.")),
-    }
-  }
-
-  pub async fn download_with_progress(
-    &self,
-    url: impl reqwest::IntoUrl,
-    maybe_header: Option<(HeaderName, HeaderValue)>,
-    progress_guard: &UpdateGuard,
-  ) -> Result<Option<Vec<u8>>, AnyError> {
-    let client = ReqwestClient(self.client()?);
-    client
-      .download(url, maybe_header, Some(progress_guard))
-      .await
-  }
-
-  pub async fn get_redirected_url(
-    &self,
-    url: impl reqwest::IntoUrl,
-    maybe_header: Option<(HeaderName, HeaderValue)>,
-  ) -> Result<Url, AnyError> {
-    let client = ReqwestClient(self.client()?);
-    let response = client.get_redirected_response(url, maybe_header).await?;
-    Ok(response.url().clone())
-  }
-}
-
-#[derive(Debug, Clone)]
-struct ReqwestClient(Rc<reqwest::Client>);
-
-impl ReqwestClient {
-  pub async fn fetch_no_follow<'a>(
-    &self,
-    args: FetchOnceArgs<'a>,
-  ) -> Result<FetchOnceResult, AnyError> {
-    let mut request = self.get_no_redirect(args.url.clone());
+    let mut request = self.client.get(args.url.clone());
 
     if let Some(etag) = args.maybe_etag {
       let if_none_match_val = HeaderValue::from_str(&etag)?;
@@ -430,7 +387,46 @@ impl ReqwestClient {
     Ok(FetchOnceResult::Code(body, result_headers))
   }
 
+  pub async fn download_text(
+    &self,
+    url: impl reqwest::IntoUrl,
+  ) -> Result<String, AnyError> {
+    let bytes = self.download(url).await?;
+    Ok(String::from_utf8(bytes)?)
+  }
+
   pub async fn download(
+    &self,
+    url: impl reqwest::IntoUrl,
+  ) -> Result<Vec<u8>, AnyError> {
+    let maybe_bytes = self.download_inner(url, None, None).await?;
+    match maybe_bytes {
+      Some(bytes) => Ok(bytes),
+      None => Err(custom_error("Http", "Not found.")),
+    }
+  }
+
+  pub async fn download_with_progress(
+    &self,
+    url: impl reqwest::IntoUrl,
+    maybe_header: Option<(HeaderName, HeaderValue)>,
+    progress_guard: &UpdateGuard,
+  ) -> Result<Option<Vec<u8>>, AnyError> {
+    self
+      .download_inner(url, maybe_header, Some(progress_guard))
+      .await
+  }
+
+  pub async fn get_redirected_url(
+    &self,
+    url: impl reqwest::IntoUrl,
+    maybe_header: Option<(HeaderName, HeaderValue)>,
+  ) -> Result<Url, AnyError> {
+    let response = self.get_redirected_response(url, maybe_header).await?;
+    Ok(response.url().clone())
+  }
+
+  async fn download_inner(
     &self,
     url: impl reqwest::IntoUrl,
     maybe_header: Option<(HeaderName, HeaderValue)>,
@@ -458,14 +454,13 @@ impl ReqwestClient {
       .map(Some)
   }
 
-  #[allow(clippy::disallowed_types)] // allow reqwest::Response
   async fn get_redirected_response(
     &self,
     url: impl reqwest::IntoUrl,
     mut maybe_header: Option<(HeaderName, HeaderValue)>,
   ) -> Result<reqwest::Response, AnyError> {
     let mut url = url.into_url()?;
-    let mut builder = self.get_no_redirect(url.clone());
+    let mut builder = self.get(url.clone());
     if let Some((header_name, header_value)) = maybe_header.as_ref() {
       builder = builder.header(header_name, header_value);
     }
@@ -474,7 +469,7 @@ impl ReqwestClient {
     if status.is_redirection() {
       for _ in 0..5 {
         let new_url = resolve_redirect_from_response(&url, &response)?;
-        let mut builder = self.get_no_redirect(new_url.clone());
+        let mut builder = self.get(new_url.clone());
 
         if new_url.origin() == url.origin() {
           if let Some((header_name, header_value)) = maybe_header.as_ref() {
@@ -497,12 +492,6 @@ impl ReqwestClient {
     } else {
       Ok(response)
     }
-  }
-
-  // allow reqwest::RequestBuilder because this is internal to HttpClient
-  #[allow(clippy::disallowed_types)]
-  fn get_no_redirect(&self, url: Url) -> reqwest::RequestBuilder {
-    self.0.get(url)
   }
 }
 
@@ -589,7 +578,7 @@ mod test {
   #[tokio::test]
   async fn test_http_client_download_redirect() {
     let _http_server_guard = test_util::http_server();
-    let client = HttpClient::new(None, None);
+    let client = HttpClientProvider::new(None, None).client().unwrap();
 
     // make a request to the redirect server
     let text = client
@@ -646,7 +635,7 @@ mod test {
   }
 
   fn create_test_client() -> HttpClient {
-    HttpClient::from_client(
+    HttpClient::new(
       create_http_client("test_client", CreateHttpClientOptions::default())
         .unwrap(),
     )
@@ -827,7 +816,7 @@ mod test {
     // Relies on external http server. See target/debug/test_server
     let url = Url::parse("https://localhost:5545/assets/fixture.json").unwrap();
 
-    let client = HttpClient::from_client(
+    let client = HttpClient::new(
       create_http_client(
         version::get_user_agent(),
         CreateHttpClientOptions {
@@ -879,7 +868,7 @@ mod test {
       let url = Url::parse(url).unwrap();
       eprintln!("Attempting to fetch {url}...");
 
-      let client = HttpClient::from_client(
+      let client = HttpClient::new(
         create_http_client(
           version::get_user_agent(),
           CreateHttpClientOptions::default(),
@@ -938,7 +927,7 @@ mod test {
     let url = Url::parse(url).unwrap();
     eprintln!("Attempting to fetch {url}...");
 
-    let client = HttpClient::from_client(
+    let client = HttpClient::new(
       create_http_client(
         version::get_user_agent(),
         CreateHttpClientOptions {
@@ -987,7 +976,7 @@ mod test {
     let url =
       Url::parse("https://localhost:5545/run/import_compression/gziped")
         .unwrap();
-    let client = HttpClient::from_client(
+    let client = HttpClient::new(
       create_http_client(
         version::get_user_agent(),
         CreateHttpClientOptions {
@@ -1028,7 +1017,7 @@ mod test {
   async fn test_fetch_with_cafile_with_etag() {
     let _http_server_guard = test_util::http_server();
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
-    let client = HttpClient::from_client(
+    let client = HttpClient::new(
       create_http_client(
         version::get_user_agent(),
         CreateHttpClientOptions {
@@ -1084,7 +1073,7 @@ mod test {
     let url =
       Url::parse("https://localhost:5545/run/import_compression/brotli")
         .unwrap();
-    let client = HttpClient::from_client(
+    let client = HttpClient::new(
       create_http_client(
         version::get_user_agent(),
         CreateHttpClientOptions {

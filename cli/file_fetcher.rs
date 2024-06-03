@@ -7,7 +7,7 @@ use crate::colors;
 use crate::http_util::CacheSemantics;
 use crate::http_util::FetchOnceArgs;
 use crate::http_util::FetchOnceResult;
-use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 use crate::util::progress_bar::ProgressBar;
 
 use deno_ast::MediaType;
@@ -165,7 +165,7 @@ pub struct FileFetcher {
   memory_files: MemoryFiles,
   cache_setting: CacheSetting,
   http_cache: Arc<dyn HttpCache>,
-  http_client: Arc<HttpClient>,
+  http_client_provider: Arc<HttpClientProvider>,
   blob_store: Arc<BlobStore>,
   download_log_level: log::Level,
   progress_bar: Option<ProgressBar>,
@@ -176,7 +176,7 @@ impl FileFetcher {
     http_cache: Arc<dyn HttpCache>,
     cache_setting: CacheSetting,
     allow_remote: bool,
-    http_client: Arc<HttpClient>,
+    http_client_provider: Arc<HttpClientProvider>,
     blob_store: Arc<BlobStore>,
     progress_bar: Option<ProgressBar>,
   ) -> Self {
@@ -186,7 +186,7 @@ impl FileFetcher {
       memory_files: Default::default(),
       cache_setting,
       http_cache,
-      http_client,
+      http_client_provider,
       blob_store,
       download_log_level: log::Level::Info,
       progress_bar,
@@ -394,7 +394,8 @@ impl FileFetcher {
     let mut retried = false; // retry intermittent failures
     let result = loop {
       let result = match self
-        .http_client
+        .http_client_provider
+        .client()?
         .fetch_no_follow(FetchOnceArgs {
           url: specifier.clone(),
           maybe_accept: maybe_accept.map(ToOwned::to_owned),
@@ -637,7 +638,7 @@ impl FileFetcher {
 mod tests {
   use crate::cache::GlobalHttpCache;
   use crate::cache::RealDenoCacheEnv;
-  use crate::http_util::HttpClient;
+  use crate::http_util::HttpClientProvider;
 
   use super::*;
   use deno_core::error::get_custom_error_class;
@@ -666,7 +667,7 @@ mod tests {
       Arc::new(GlobalHttpCache::new(location, RealDenoCacheEnv)),
       cache_setting,
       true,
-      Arc::new(HttpClient::new(None, None)),
+      Arc::new(HttpClientProvider::new(None, None)),
       blob_store.clone(),
       None,
     );
@@ -920,7 +921,7 @@ mod tests {
       )),
       CacheSetting::ReloadAll,
       true,
-      Arc::new(HttpClient::new(None, None)),
+      Arc::new(HttpClientProvider::new(None, None)),
       Default::default(),
       None,
     );
@@ -952,7 +953,7 @@ mod tests {
         )),
         CacheSetting::Use,
         true,
-        Arc::new(HttpClient::new(None, None)),
+        Arc::new(HttpClientProvider::new(None, None)),
         Default::default(),
         None,
       );
@@ -989,7 +990,7 @@ mod tests {
         )),
         CacheSetting::Use,
         true,
-        Arc::new(HttpClient::new(None, None)),
+        Arc::new(HttpClientProvider::new(None, None)),
         Default::default(),
         None,
       );
@@ -1128,7 +1129,7 @@ mod tests {
         )),
         CacheSetting::Use,
         true,
-        Arc::new(HttpClient::new(None, None)),
+        Arc::new(HttpClientProvider::new(None, None)),
         Default::default(),
         None,
       );
@@ -1168,7 +1169,7 @@ mod tests {
         )),
         CacheSetting::Use,
         true,
-        Arc::new(HttpClient::new(None, None)),
+        Arc::new(HttpClientProvider::new(None, None)),
         Default::default(),
         None,
       );
@@ -1294,7 +1295,7 @@ mod tests {
       )),
       CacheSetting::Use,
       false,
-      Arc::new(HttpClient::new(None, None)),
+      Arc::new(HttpClientProvider::new(None, None)),
       Default::default(),
       None,
     );
@@ -1319,7 +1320,7 @@ mod tests {
       Arc::new(GlobalHttpCache::new(location.clone(), RealDenoCacheEnv)),
       CacheSetting::Only,
       true,
-      Arc::new(HttpClient::new(None, None)),
+      Arc::new(HttpClientProvider::new(None, None)),
       Default::default(),
       None,
     );
@@ -1327,7 +1328,7 @@ mod tests {
       Arc::new(GlobalHttpCache::new(location, RealDenoCacheEnv)),
       CacheSetting::Use,
       true,
-      Arc::new(HttpClient::new(None, None)),
+      Arc::new(HttpClientProvider::new(None, None)),
       Default::default(),
       None,
     );

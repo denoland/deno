@@ -188,7 +188,7 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   }
   let config_file_path = config_specifier.to_file_path().unwrap();
 
-  let http_client = cli_factory.http_client();
+  let http_client = cli_factory.http_client_provider();
 
   let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());

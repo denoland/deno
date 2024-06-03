@@ -156,7 +156,7 @@ pub async fn publish(
   }
 
   perform_publish(
-    cli_factory.http_client(),
+    &cli_factory.http_client_provider().client()?,
     prepared_data.publish_order_graph,
     prepared_data.package_by_name,
     auth_method,
@@ -525,7 +525,7 @@ pub enum Permission<'s> {
 }
 
 async fn get_auth_headers(
-  client: &reqwest::Client,
+  client: &HttpClient,
   registry_url: &Url,
   packages: &[Rc<PreparedPublishPackage>],
   auth_method: AuthMethod,
@@ -684,7 +684,7 @@ async fn get_auth_headers(
 /// Check if both `scope` and `package` already exist, if not return
 /// a URL to the management panel to create them.
 async fn check_if_scope_and_package_exist(
-  client: &reqwest::Client,
+  client: &HttpClient,
   registry_api_url: &Url,
   registry_manage_url: &Url,
   scope: &str,
@@ -716,7 +716,7 @@ async fn check_if_scope_and_package_exist(
 }
 
 async fn ensure_scopes_and_packages_exist(
-  client: &reqwest::Client,
+  client: &HttpClient,
   registry_api_url: &Url,
   registry_manage_url: &Url,
   packages: &[Rc<PreparedPublishPackage>],
@@ -798,7 +798,6 @@ async fn perform_publish(
   auth_method: AuthMethod,
   provenance: bool,
 ) -> Result<(), AnyError> {
-  let client = http_client.client()?;
   let registry_api_url = jsr_api_url();
   let registry_url = jsr_url();
 
@@ -808,7 +807,7 @@ async fn perform_publish(
     .collect::<Vec<_>>();
 
   ensure_scopes_and_packages_exist(
-    &client,
+    http_client,
     registry_api_url,
     registry_url,
     &packages,
@@ -816,7 +815,8 @@ async fn perform_publish(
   .await?;
 
   let mut authorizations =
-    get_auth_headers(&client, registry_api_url, &packages, auth_method).await?;
+    get_auth_headers(http_client, registry_api_url, &packages, auth_method)
+      .await?;
 
   assert_eq!(prepared_package_by_name.len(), authorizations.len());
   let mut futures: FuturesUnordered<LocalBoxFuture<Result<String, AnyError>>> =
@@ -886,7 +886,6 @@ async fn publish_package(
   authorization: &str,
   provenance: bool,
 ) -> Result<(), AnyError> {
-  let client = http_client.client()?;
   log::info!(
     "{} @{}/{}@{} ...",
     colors::intense_blue("Publishing"),
@@ -904,7 +903,7 @@ async fn publish_package(
     package.config
   );
 
-  let response = client
+  let response = http_client
     .post(url)
     .header(reqwest::header::AUTHORIZATION, authorization)
     .header(reqwest::header::CONTENT_ENCODING, "gzip")
@@ -952,7 +951,7 @@ async fn publish_package(
   let interval = std::time::Duration::from_secs(2);
   while task.status != "success" && task.status != "failure" {
     tokio::time::sleep(interval).await;
-    let resp = client
+    let resp = http_client
       .get(format!("{}publish_status/{}", registry_api_url, task.id))
       .send()
       .await
@@ -1002,7 +1001,7 @@ async fn publish_package(
       package.scope, package.package, package.version
     ))?;
 
-    let meta_bytes = client.get(meta_url).send().await?.bytes().await?;
+    let meta_bytes = http_client.get(meta_url).send().await?.bytes().await?;
 
     if std::env::var("DISABLE_JSR_MANIFEST_VERIFICATION_FOR_TESTING").is_err() {
       verify_version_manifest(&meta_bytes, &package)?;
@@ -1017,7 +1016,7 @@ async fn publish_package(
         sha256: faster_hex::hex_string(&sha2::Sha256::digest(&meta_bytes)),
       },
     };
-    let bundle = provenance::generate_provenance(subject).await?;
+    let bundle = provenance::generate_provenance(http_client, subject).await?;
 
     let tlog_entry = &bundle.verification_material.tlog_entries[0];
     log::info!("{}",
@@ -1032,7 +1031,7 @@ async fn publish_package(
       "{}scopes/{}/packages/{}/versions/{}/provenance",
       registry_api_url, package.scope, package.package, package.version
     );
-    client
+    http_client
       .post(provenance_url)
       .header(reqwest::header::AUTHORIZATION, authorization)
       .json(&json!({ "bundle": bundle }))

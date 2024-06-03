@@ -12,7 +12,7 @@ use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UninstallKind;
 use crate::factory::CliFactory;
-use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 use deno_config::ConfigFlag;
@@ -134,7 +134,7 @@ fn get_installer_root() -> Result<PathBuf, io::Error> {
 }
 
 pub async fn infer_name_from_url(
-  http_client: &HttpClient,
+  http_client_provider: &HttpClientProvider,
   url: &Url,
 ) -> Option<String> {
   // If there's an absolute url with no path, eg. https://my-cli.com
@@ -142,10 +142,12 @@ pub async fn infer_name_from_url(
   let mut url = url.clone();
 
   if url.path() == "/" {
-    if let Ok(redirected_url) =
-      http_client.get_redirected_url(url.clone(), None).await
-    {
-      url = redirected_url;
+    if let Ok(client) = http_client_provider.client() {
+      if let Ok(redirected_url) =
+        client.get_redirected_url(url.clone(), None).await
+      {
+        url = redirected_url;
+      }
     }
   }
 
@@ -299,19 +301,20 @@ pub async fn install_command(
     .await?
     .load_and_type_check_files(&[install_flags_global.module_url.clone()])
     .await?;
-  let http_client = factory.http_client();
+  let http_client = factory.http_client_provider();
 
   // create the install shim
   create_install_shim(http_client, flags, install_flags_global).await
 }
 
 async fn create_install_shim(
-  http_client: &HttpClient,
+  http_client_provider: &HttpClientProvider,
   flags: Flags,
   install_flags_global: InstallFlagsGlobal,
 ) -> Result<(), AnyError> {
   let shim_data =
-    resolve_shim_data(http_client, &flags, &install_flags_global).await?;
+    resolve_shim_data(http_client_provider, &flags, &install_flags_global)
+      .await?;
 
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&shim_data.installation_dir) {
@@ -362,7 +365,7 @@ struct ShimData {
 }
 
 async fn resolve_shim_data(
-  http_client: &HttpClient,
+  http_client_provider: &HttpClientProvider,
   flags: &Flags,
   install_flags_global: &InstallFlagsGlobal,
 ) -> Result<ShimData, AnyError> {
@@ -380,7 +383,7 @@ async fn resolve_shim_data(
   let name = if install_flags_global.name.is_some() {
     install_flags_global.name.clone()
   } else {
-    infer_name_from_url(http_client, &module_url).await
+    infer_name_from_url(http_client_provider, &module_url).await
   };
 
   let name = match name {
@@ -569,7 +572,7 @@ mod tests {
 
   #[tokio::test]
   async fn install_infer_name_from_url() {
-    let http_client = HttpClient::new(None, None);
+    let http_client = HttpClientProvider::new(None, None);
     assert_eq!(
       infer_name_from_url(
         &http_client,
@@ -764,7 +767,7 @@ mod tests {
     std::fs::create_dir(&bin_dir).unwrap();
 
     create_install_shim(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       Flags {
         unstable_config: UnstableConfig {
           legacy_flag_enabled: true,
@@ -805,7 +808,7 @@ mod tests {
   #[tokio::test]
   async fn install_inferred_name() {
     let shim_data = resolve_shim_data(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       &Flags::default(),
       &InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
@@ -828,7 +831,7 @@ mod tests {
   #[tokio::test]
   async fn install_unstable_legacy() {
     let shim_data = resolve_shim_data(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       &Flags {
         unstable_config: UnstableConfig {
           legacy_flag_enabled: true,
@@ -862,7 +865,7 @@ mod tests {
   #[tokio::test]
   async fn install_unstable_features() {
     let shim_data = resolve_shim_data(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       &Flags {
         unstable_config: UnstableConfig {
           features: vec!["kv".to_string(), "cron".to_string()],
@@ -897,7 +900,7 @@ mod tests {
   #[tokio::test]
   async fn install_inferred_name_from_parent() {
     let shim_data = resolve_shim_data(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       &Flags::default(),
       &InstallFlagsGlobal {
         module_url: "http://localhost:4545/subdir/main.ts".to_string(),
@@ -921,7 +924,7 @@ mod tests {
   async fn install_inferred_name_after_redirect_for_no_path_url() {
     let _http_server_guard = test_util::http_server();
     let shim_data = resolve_shim_data(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       &Flags::default(),
       &InstallFlagsGlobal {
         module_url: "http://localhost:4550/?redirect_to=/subdir/redirects/a.ts"
@@ -949,7 +952,7 @@ mod tests {
   #[tokio::test]
   async fn install_custom_dir_option() {
     let shim_data = resolve_shim_data(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       &Flags::default(),
       &InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
@@ -972,7 +975,7 @@ mod tests {
   #[tokio::test]
   async fn install_with_flags() {
     let shim_data = resolve_shim_data(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       &Flags {
         permissions: PermissionFlags {
           allow_net: Some(vec![]),
@@ -1012,7 +1015,7 @@ mod tests {
   #[tokio::test]
   async fn install_prompt() {
     let shim_data = resolve_shim_data(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       &Flags {
         permissions: PermissionFlags {
           no_prompt: true,
@@ -1045,7 +1048,7 @@ mod tests {
   #[tokio::test]
   async fn install_allow_all() {
     let shim_data = resolve_shim_data(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       &Flags {
         permissions: PermissionFlags {
           allow_all: true,
@@ -1079,7 +1082,7 @@ mod tests {
   async fn install_npm_lockfile_default() {
     let temp_dir = canonicalize_path(&env::temp_dir()).unwrap();
     let shim_data = resolve_shim_data(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       &Flags {
         permissions: PermissionFlags {
           allow_all: true,
@@ -1116,7 +1119,7 @@ mod tests {
   #[tokio::test]
   async fn install_npm_no_lock() {
     let shim_data = resolve_shim_data(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       &Flags {
         permissions: PermissionFlags {
           allow_all: true,
@@ -1159,7 +1162,7 @@ mod tests {
     let local_module_str = local_module.to_string_lossy();
 
     create_install_shim(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       Flags::default(),
       InstallFlagsGlobal {
         module_url: local_module_str.to_string(),
@@ -1189,7 +1192,7 @@ mod tests {
     std::fs::create_dir(&bin_dir).unwrap();
 
     create_install_shim(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       Flags::default(),
       InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
@@ -1210,7 +1213,7 @@ mod tests {
 
     // No force. Install failed.
     let no_force_result = create_install_shim(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       Flags::default(),
       InstallFlagsGlobal {
         module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
@@ -1232,7 +1235,7 @@ mod tests {
 
     // Force. Install success.
     let force_result = create_install_shim(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       Flags::default(),
       InstallFlagsGlobal {
         module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
@@ -1260,7 +1263,7 @@ mod tests {
     assert!(result.is_ok());
 
     let result = create_install_shim(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       Flags {
         config_flag: ConfigFlag::Path(config_file_path.to_string()),
         ..Flags::default()
@@ -1293,7 +1296,7 @@ mod tests {
     std::fs::create_dir(&bin_dir).unwrap();
 
     create_install_shim(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       Flags::default(),
       InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
@@ -1334,7 +1337,7 @@ mod tests {
     std::fs::write(&local_module, "// Some JavaScript I guess").unwrap();
 
     create_install_shim(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       Flags::default(),
       InstallFlagsGlobal {
         module_url: local_module_str.to_string(),
@@ -1376,7 +1379,7 @@ mod tests {
     assert!(result.is_ok());
 
     let result = create_install_shim(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       Flags {
         import_map_path: Some(import_map_path.to_string()),
         ..Flags::default()
@@ -1422,7 +1425,7 @@ mod tests {
     assert!(file_module_string.starts_with("file:///"));
 
     let result = create_install_shim(
-      &HttpClient::new(None, None),
+      &HttpClientProvider::new(None, None),
       Flags::default(),
       InstallFlagsGlobal {
         module_url: file_module_string.to_string(),
