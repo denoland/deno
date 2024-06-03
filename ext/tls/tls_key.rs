@@ -11,8 +11,6 @@
 //! key lookup can handle closing one end of the pair, in which case they will just
 //! attempt to clean up the associated resources.
 
-use crate::Certificate;
-use crate::PrivateKey;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
@@ -32,13 +30,18 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use webpki::types::CertificateDer;
+use webpki::types::PrivateKeyDer;
 
 type ErrorType = Rc<AnyError>;
 
 /// A TLS certificate/private key pair.
 /// see https://docs.rs/rustls-pki-types/latest/rustls_pki_types/#cloning-private-keys
-#[derive(Debug, PartialEq, Eq)]
-pub struct TlsKey(pub Vec<Certificate>, pub PrivateKey);
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TlsKey(
+  pub Vec<CertificateDer<'static>>,
+  pub Rc<PrivateKeyDer<'static>>,
+);
 
 #[derive(Debug, Default)]
 pub enum TlsKeys {
@@ -111,7 +114,7 @@ impl TlsKeyResolver {
 
     let mut tls_config = ServerConfig::builder()
       .with_no_client_auth()
-      .with_single_cert(key.0, key.1)?;
+      .with_single_cert(key.0, key.1.clone_key())?;
     tls_config.alpn_protocols = alpn;
     Ok(tls_config.into())
   }
@@ -251,13 +254,15 @@ impl TlsKeyLookup {
 pub mod tests {
   use super::*;
   use deno_core::unsync::spawn;
-  use rustls::Certificate;
-  use rustls::PrivateKey;
+  use webpki::types::CertificateDer;
+  use webpki::types::PrivateKeyDer;
 
   fn tls_key_for_test(sni: &str) -> TlsKey {
     TlsKey(
-      vec![Certificate(format!("{sni}-cert").into_bytes())],
-      PrivateKey(format!("{sni}-key").into_bytes()),
+      vec![CertificateDer::from(format!("{sni}-cert").into_bytes())],
+      Rc::new(
+        PrivateKeyDer::try_from(format!("{sni}-key").into_bytes()).unwrap(),
+      ),
     )
   }
 

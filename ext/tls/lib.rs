@@ -1,17 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-mod tls_key;
-
 pub use deno_native_certs;
 use deno_native_certs::load_native_certs;
 pub use rustls;
 use rustls::pki_types::CertificateDer;
-use rustls::pki_types::Der;
 use rustls::pki_types::PrivateKeyDer;
-use rustls::pki_types::PrivatePkcs1KeyDer;
-use rustls::pki_types::PrivatePkcs8KeyDer;
-use rustls::pki_types::PrivateSec1KeyDer;
 use rustls::pki_types::ServerName;
-use rustls::pki_types::TrustAnchor;
 pub use rustls_pemfile;
 pub use rustls_tokio_stream::*;
 pub use webpki;
@@ -39,8 +32,11 @@ use std::io::Cursor;
 use std::net::IpAddr;
 use std::sync::Arc;
 
-pub type Certificate = rustls::pki_types::CertificateDer<'static>;
-pub type PrivateKey = rustls::pki_types::PrivateKeyDer<'static>;
+mod tls_key;
+pub use tls_key::*;
+
+// pub type Certificate = rustls::pki_types::CertificateDer<'static>;
+// pub type PrivateKey = rustls::pki_types::PrivateKeyDer<'static>;
 pub type RootCertStore = rustls::RootCertStore;
 
 /// Lazily resolves the root cert store.
@@ -185,7 +181,7 @@ pub struct BasicAuth {
 
 pub fn create_default_root_cert_store() -> RootCertStore {
   let root_cert_store = rustls::RootCertStore {
-    roots: webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect(),
+    roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
   };
   debug_assert!(!root_cert_store.is_empty());
   root_cert_store
@@ -197,7 +193,7 @@ pub fn create_platform_cert_store() -> RootCertStore {
     load_native_certs().expect("could not load platform certs");
   for root in roots {
     root_cert_store
-      .add(Certificate::from(root.0))
+      .add(CertificateDer::from(root.0))
       .expect("Failed to add platform cert to root cert store");
   }
   debug_assert!(!root_cert_store.is_empty());
@@ -256,7 +252,7 @@ pub fn create_client_config(
       for r in rustls_pemfile::certs(reader) {
         match r {
           Ok(cert) => {
-            root_cert_store.add(CertificateDer::from(cert))?;
+            root_cert_store.add(cert)?;
           }
           Err(e) => {
             return Err(anyhow!(
@@ -300,7 +296,7 @@ fn add_alpn(client: &mut ClientConfig, socket_use: SocketUse) {
 
 pub fn load_certs(
   reader: &mut dyn BufRead,
-) -> Result<Vec<Certificate>, AnyError> {
+) -> Result<Vec<CertificateDer>, AnyError> {
   let certs: Result<Vec<_>, _> = certs(reader).collect();
 
   let certs = certs
@@ -326,41 +322,26 @@ fn cert_not_found_err() -> AnyError {
 }
 
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
-fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKeyDer>, AnyError> {
   let keys: Result<Vec<_>, _> = rsa_private_keys(&mut bytes).collect();
   let keys = keys.map_err(|_| key_decode_err())?;
-  Ok(
-    keys
-      .into_iter()
-      .map(|x| PrivateKeyDer::Pkcs1(PrivatePkcs1KeyDer::from(x)))
-      .collect(),
-  )
+  Ok(keys.into_iter().map(PrivateKeyDer::Pkcs1).collect())
 }
 
 /// Starts with -----BEGIN EC PRIVATE KEY-----
-fn load_ec_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+fn load_ec_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKeyDer>, AnyError> {
   let keys: Result<Vec<_>, std::io::Error> =
     ec_private_keys(&mut bytes).collect();
   let keys2 = keys.map_err(|_| key_decode_err())?;
-  Ok(
-    keys2
-      .into_iter()
-      .map(|x| PrivateKeyDer::Sec1(PrivateSec1KeyDer::from(x)))
-      .collect(),
-  )
+  Ok(keys2.into_iter().map(PrivateKeyDer::Sec1).collect())
 }
 
 /// Starts with -----BEGIN PRIVATE KEY-----
-fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKey>, AnyError> {
+fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKeyDer>, AnyError> {
   let keys: Result<Vec<_>, std::io::Error> =
     pkcs8_private_keys(&mut bytes).collect();
   let keys2 = keys.map_err(|_| key_decode_err())?;
-  Ok(
-    keys2
-      .into_iter()
-      .map(|x| PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(x)))
-      .collect(),
-  )
+  Ok(keys2.into_iter().map(PrivateKeyDer::Pkcs8).collect())
 }
 
 fn filter_invalid_encoding_err(
@@ -374,9 +355,7 @@ fn filter_invalid_encoding_err(
   }
 }
 
-pub fn load_private_keys(
-  bytes: &[u8],
-) -> Result<Vec<PrivateKeyDer<'static>>, AnyError> {
+pub fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKeyDer>, AnyError> {
   let mut keys = load_rsa_keys(bytes)?;
 
   if keys.is_empty() {
