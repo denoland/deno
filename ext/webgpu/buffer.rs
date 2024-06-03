@@ -117,7 +117,8 @@ pub async fn op_webgpu_buffer_get_map_async(
   }
 
   loop {
-    match done.lock().unwrap().take() {
+    let result = done.lock().unwrap().take();
+    match result {
       Some(Ok(())) => return Ok(WebGpuResult::empty()),
       Some(Err(e)) => {
         return Err(DomExceptionOperationError::new(&e.to_string()).into())
