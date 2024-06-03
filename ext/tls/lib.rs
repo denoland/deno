@@ -215,7 +215,7 @@ pub fn create_client_config(
   root_cert_store: Option<RootCertStore>,
   ca_certs: Vec<Vec<u8>>,
   unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  maybe_cert_chain_and_key: Option<TlsKey>,
+  maybe_cert_chain_and_key: TlsKeys,
   socket_use: SocketUse,
 ) -> Result<ClientConfig, AnyError> {
   if let Some(ic_allowlist) = unsafely_ignore_certificate_errors {
@@ -229,14 +229,13 @@ pub fn create_client_config(
     // However it's not really feasible to deduplicate it as the `client_config` instances
     // are not type-compatible - one wants "client cert", the other wants "transparency policy
     // or client cert".
-    let mut client =
-      if let Some(TlsKey(cert_chain, private_key)) = maybe_cert_chain_and_key {
-        client_config
-          .with_client_auth_cert(cert_chain, private_key)
-          .expect("invalid client key or certificate")
-      } else {
-        client_config.with_no_client_auth()
-      };
+    let mut client = match maybe_cert_chain_and_key {
+      TlsKeys::Static(TlsKey(cert_chain, private_key)) => client_config
+        .with_client_auth_cert(cert_chain, private_key.clone_key())
+        .expect("invalid client key or certificate"),
+      TlsKeys::Null => client_config.with_no_client_auth(),
+      TlsKeys::Resolver(_) => unimplemented!(),
+    };
 
     add_alpn(&mut client, socket_use);
     return Ok(client);
@@ -266,14 +265,13 @@ pub fn create_client_config(
     root_cert_store
   });
 
-  let mut client =
-    if let Some(TlsKey(cert_chain, private_key)) = maybe_cert_chain_and_key {
-      client_config
-        .with_client_auth_cert(cert_chain, private_key)
-        .expect("invalid client key or certificate")
-    } else {
-      client_config.with_no_client_auth()
-    };
+  let mut client = match maybe_cert_chain_and_key {
+    TlsKeys::Static(TlsKey(cert_chain, private_key)) => client_config
+      .with_client_auth_cert(cert_chain, private_key.clone_key())
+      .expect("invalid client key or certificate"),
+    TlsKeys::Null => client_config.with_no_client_auth(),
+    TlsKeys::Resolver(_) => unimplemented!(),
+  };
 
   add_alpn(&mut client, socket_use);
   Ok(client)
@@ -296,7 +294,7 @@ fn add_alpn(client: &mut ClientConfig, socket_use: SocketUse) {
 
 pub fn load_certs(
   reader: &mut dyn BufRead,
-) -> Result<Vec<CertificateDer>, AnyError> {
+) -> Result<Vec<CertificateDer<'static>>, AnyError> {
   let certs: Result<Vec<_>, _> = certs(reader).collect();
 
   let certs = certs
@@ -306,7 +304,7 @@ pub fn load_certs(
     return Err(cert_not_found_err());
   }
 
-  Ok(certs.into_iter().map(CertificateDer::from).collect())
+  Ok(certs.into_iter().map(|x| x.into_owned()).collect())
 }
 
 fn key_decode_err() -> AnyError {
@@ -322,14 +320,18 @@ fn cert_not_found_err() -> AnyError {
 }
 
 /// Starts with -----BEGIN RSA PRIVATE KEY-----
-fn load_rsa_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKeyDer>, AnyError> {
+fn load_rsa_keys(
+  mut bytes: &[u8],
+) -> Result<Vec<PrivateKeyDer<'static>>, AnyError> {
   let keys: Result<Vec<_>, _> = rsa_private_keys(&mut bytes).collect();
   let keys = keys.map_err(|_| key_decode_err())?;
   Ok(keys.into_iter().map(PrivateKeyDer::Pkcs1).collect())
 }
 
 /// Starts with -----BEGIN EC PRIVATE KEY-----
-fn load_ec_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKeyDer>, AnyError> {
+fn load_ec_keys(
+  mut bytes: &[u8],
+) -> Result<Vec<PrivateKeyDer<'static>>, AnyError> {
   let keys: Result<Vec<_>, std::io::Error> =
     ec_private_keys(&mut bytes).collect();
   let keys2 = keys.map_err(|_| key_decode_err())?;
@@ -337,7 +339,9 @@ fn load_ec_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKeyDer>, AnyError> {
 }
 
 /// Starts with -----BEGIN PRIVATE KEY-----
-fn load_pkcs8_keys(mut bytes: &[u8]) -> Result<Vec<PrivateKeyDer>, AnyError> {
+fn load_pkcs8_keys(
+  mut bytes: &[u8],
+) -> Result<Vec<PrivateKeyDer<'static>>, AnyError> {
   let keys: Result<Vec<_>, std::io::Error> =
     pkcs8_private_keys(&mut bytes).collect();
   let keys2 = keys.map_err(|_| key_decode_err())?;
@@ -355,7 +359,9 @@ fn filter_invalid_encoding_err(
   }
 }
 
-pub fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKeyDer>, AnyError> {
+pub fn load_private_keys(
+  bytes: &[u8],
+) -> Result<Vec<PrivateKeyDer<'static>>, AnyError> {
   let mut keys = load_rsa_keys(bytes)?;
 
   if keys.is_empty() {
@@ -371,22 +377,4 @@ pub fn load_private_keys(bytes: &[u8]) -> Result<Vec<PrivateKeyDer>, AnyError> {
   }
 
   Ok(keys)
-}
-
-/// A loaded key.
-// FUTURE(mmastrac): add resolver enum value to support dynamic SNI
-pub enum TlsKeys {
-  // TODO(mmastrac): We need Option<&T> for cppgc -- this is a workaround
-  Null,
-  Static(TlsKey),
-}
-
-/// A TLS certificate/private key pair.
-#[derive(Debug)]
-pub struct TlsKey(pub Vec<CertificateDer<'static>>, pub PrivateKeyDer<'static>);
-
-impl Clone for TlsKey {
-  fn clone(&self) -> Self {
-    Self(self.0.clone(), self.1.clone_key())
-  }
 }

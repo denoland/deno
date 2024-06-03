@@ -37,13 +37,16 @@ type ErrorType = Rc<AnyError>;
 
 /// A TLS certificate/private key pair.
 /// see https://docs.rs/rustls-pki-types/latest/rustls_pki_types/#cloning-private-keys
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TlsKey(
-  pub Vec<CertificateDer<'static>>,
-  pub Rc<PrivateKeyDer<'static>>,
-);
+#[derive(Debug, PartialEq, Eq)]
+pub struct TlsKey(pub Vec<CertificateDer<'static>>, pub PrivateKeyDer<'static>);
 
-#[derive(Debug, Default)]
+impl Clone for TlsKey {
+  fn clone(&self) -> Self {
+    Self(self.0.clone(), self.1.clone_key())
+  }
+}
+
+#[derive(Clone, Debug, Default)]
 pub enum TlsKeys {
   // TODO(mmastrac): We need Option<&T> for cppgc -- this is a workaround
   #[default]
@@ -260,9 +263,7 @@ pub mod tests {
   fn tls_key_for_test(sni: &str) -> TlsKey {
     TlsKey(
       vec![CertificateDer::from(format!("{sni}-cert").into_bytes())],
-      Rc::new(
-        PrivateKeyDer::try_from(format!("{sni}-key").into_bytes()).unwrap(),
-      ),
+      PrivateKeyDer::try_from(format!("{sni}-key").into_bytes()).unwrap(),
     )
   }
 

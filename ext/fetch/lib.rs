@@ -960,10 +960,7 @@ pub fn create_http_client(
     }
   }
 
-  builder.build().map_err(|e| {
-    eprintln!("error building a client {:#?}", e);
-    e.into()
-  })
+  builder.build().map_err(|e| e.into())
 }
 
 #[op2]

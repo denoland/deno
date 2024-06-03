@@ -70,9 +70,7 @@ pub fn get_tls_config(
 
   let certs_result: Result<Vec<CertificateDer<'static>>, io::Error> = {
     let mut cert_reader = io::BufReader::new(cert_file);
-    rustls_pemfile::certs(&mut cert_reader)
-      .into_iter()
-      .collect()
+    rustls_pemfile::certs(&mut cert_reader).collect()
   };
   let certs = certs_result?;
 
@@ -83,15 +81,19 @@ pub fn get_tls_config(
 
   let mut key_reader = io::BufReader::new(key_file);
   let key = {
-    let pkcs8_keys =
-      rustls_pemfile::pkcs8_private_keys(&mut key_reader).collect::<Vec<_>>();
-    let rsa_keys =
-      rustls_pemfile::rsa_private_keys(&mut key_reader).collect::<Vec<_>>();
+    let pkcs8_keys_result = rustls_pemfile::pkcs8_private_keys(&mut key_reader)
+      .collect::<Result<Vec<_>, _>>();
+    let pkcs8_keys = pkcs8_keys_result?;
+
+    let rsa_keys_result = rustls_pemfile::rsa_private_keys(&mut key_reader)
+      .collect::<Result<Vec<_>, _>>();
+    let rsa_keys = rsa_keys_result?;
+
     if !pkcs8_keys.is_empty() {
-      let key = pkcs8_keys[0]?.clone_key();
+      let key = pkcs8_keys[0].clone_key();
       Some(PrivateKeyDer::from(key))
     } else if !rsa_keys.is_empty() {
-      let key = rsa_keys[0]?.clone_key();
+      let key = rsa_keys[0].clone_key();
       Some(PrivateKeyDer::from(key))
     } else {
       None
@@ -104,13 +106,15 @@ pub fn get_tls_config(
       root_cert_store.add(ca_cert).unwrap();
 
       // Allow (but do not require) client authentication.
+      let client_verifier = rustls::server::WebPkiClientVerifier::builder(
+        Arc::new(root_cert_store),
+      )
+      .allow_unauthenticated()
+      .build()
+      .unwrap();
 
       let mut config = rustls::ServerConfig::builder()
-        .with_client_cert_verifier(Arc::new(
-          rustls::server::AllowAnyAnonymousOrAuthenticatedClient::new(
-            root_cert_store,
-          ),
-        ))
+        .with_client_cert_verifier(client_verifier)
         .with_single_cert(certs, key)
         .map_err(|e| anyhow!("Error setting cert: {:?}", e))
         .unwrap();
