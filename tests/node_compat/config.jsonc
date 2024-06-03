@@ -72,6 +72,7 @@
       "test-fs-mkdir.js",
       "test-fs-open.js",
       "test-fs-opendir.js",
+      "test-fs-read-stream.js",
       "test-fs-rmdir-recursive.js",
       "test-fs-write-file.js",
       "test-fs-write.js",
