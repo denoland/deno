@@ -36,10 +36,11 @@ use tokio::sync::oneshot;
 type ErrorType = Rc<AnyError>;
 
 /// A TLS certificate/private key pair.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// see https://docs.rs/rustls-pki-types/latest/rustls_pki_types/#cloning-private-keys
+#[derive(Debug, PartialEq, Eq)]
 pub struct TlsKey(pub Vec<Certificate>, pub PrivateKey);
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub enum TlsKeys {
   // TODO(mmastrac): We need Option<&T> for cppgc -- this is a workaround
   #[default]
@@ -109,7 +110,6 @@ impl TlsKeyResolver {
     let key = self.resolve(sni).await?;
 
     let mut tls_config = ServerConfig::builder()
-      .with_safe_defaults()
       .with_no_client_auth()
       .with_single_cert(key.0, key.1)?;
     tls_config.alpn_protocols = alpn;

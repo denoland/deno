@@ -1893,9 +1893,9 @@ dependencies = [
  "deno_core",
  "deno_native_certs",
  "rustls",
- "rustls-pemfile 1.0.4",
+ "rustls-pemfile 2.1.2",
  "rustls-tokio-stream",
- "rustls-webpki 0.101.7",
+ "rustls-webpki",
  "serde",
  "tokio",
  "webpki-roots",
@@ -5460,7 +5460,7 @@ dependencies = [
  "log",
  "ring",
  "rustls-pki-types",
- "rustls-webpki 0.102.4",
+ "rustls-webpki",
  "subtle",
  "zeroize",
 ]
@@ -5512,16 +5512,6 @@ dependencies = [
  "rustls",
  "socket2",
  "tokio",
-]
-
-[[package]]
-name = "rustls-webpki"
-version = "0.101.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b6275d1ee7a1cd780b64aca7726599a1dbc893b1e64144529e55c3c2f745765"
-dependencies = [
- "ring",
- "untrusted",
 ]
 
 [[package]]
@@ -6718,7 +6708,7 @@ dependencies = [
  "prost-build",
  "regex",
  "reqwest",
- "rustls-pemfile 1.0.4",
+ "rustls-pemfile 2.1.2",
  "rustls-tokio-stream",
  "semver 1.0.14",
  "serde",
