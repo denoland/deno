@@ -183,10 +183,9 @@ pub struct BasicAuth {
 }
 
 pub fn create_default_root_cert_store() -> RootCertStore {
-  let mut root_cert_store = RootCertStore::empty();
-  for ta in webpki_roots::TLS_SERVER_ROOTS {
-    root_cert_store.roots.push(ta.clone());
-  }
+  let root_cert_store = rustls::RootCertStore {
+    roots: webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect(),
+  };
   debug_assert!(!root_cert_store.is_empty());
   root_cert_store
 }
