@@ -18,7 +18,7 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_semver::package::PackageNv;
 
 use crate::args::CacheSetting;
-use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 use crate::npm::common::maybe_auth_header_for_npm_registry;
 use crate::util::progress_bar::ProgressBar;
 
@@ -46,6 +46,7 @@ enum MemoryCacheItem {
 pub struct TarballCache {
   cache: Arc<NpmCache>,
   fs: Arc<dyn FileSystem>,
+  http_client_provider: Arc<HttpClientProvider>,
   npmrc: Arc<ResolvedNpmRc>,
   progress_bar: ProgressBar,
   memory_cache: Mutex<HashMap<PackageNv, MemoryCacheItem>>,
@@ -55,12 +56,14 @@ impl TarballCache {
   pub fn new(
     cache: Arc<NpmCache>,
     fs: Arc<dyn FileSystem>,
+    http_client_provider: Arc<HttpClientProvider>,
     npmrc: Arc<ResolvedNpmRc>,
     progress_bar: ProgressBar,
   ) -> Self {
     Self {
       cache,
       fs,
+      http_client_provider,
       npmrc,
       progress_bar,
       memory_cache: Default::default(),
@@ -71,11 +74,9 @@ impl TarballCache {
     &self,
     package: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
-    // it's not safe to share these across runtimes
-    http_client_for_runtime: &Arc<HttpClient>,
   ) -> Result<(), AnyError> {
     self
-      .ensure_package_inner(package, dist, http_client_for_runtime)
+      .ensure_package_inner(package, dist)
       .await
       .with_context(|| format!("Failed caching npm package '{}'.", package))
   }
@@ -84,18 +85,13 @@ impl TarballCache {
     &self,
     package_nv: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
-    http_client_for_runtime: &Arc<HttpClient>,
   ) -> Result<(), AnyError> {
     let (created, cache_item) = {
       let mut mem_cache = self.memory_cache.lock();
       if let Some(cache_item) = mem_cache.get(package_nv) {
         (false, cache_item.clone())
       } else {
-        let future = self.create_setup_future(
-          package_nv.clone(),
-          dist.clone(),
-          http_client_for_runtime.clone(),
-        );
+        let future = self.create_setup_future(package_nv.clone(), dist.clone());
         let cache_item = MemoryCacheItem::PendingFuture(future);
         mem_cache.insert(package_nv.clone(), cache_item.clone());
         (true, cache_item)
@@ -131,7 +127,6 @@ impl TarballCache {
     &self,
     package_nv: PackageNv,
     dist: NpmPackageVersionDistInfo,
-    http_client_for_runtime: Arc<HttpClient>,
   ) -> Shared<BoxFuture<'static, Result<(), Arc<AnyError>>>> {
     let registry_url = self.npmrc.get_registry_url(&package_nv.name);
     let registry_config =
@@ -142,6 +137,7 @@ impl TarballCache {
     let progress_bar = self.progress_bar.clone();
     let package_folder =
       cache.package_folder_for_nv_and_url(&package_nv, registry_url);
+    let http_client_provider = self.http_client_provider.clone();
 
     deno_core::unsync::spawn(async move {
       let should_use_cache = cache.should_use_cache_for_package(&package_nv);
@@ -167,7 +163,7 @@ impl TarballCache {
         maybe_auth_header_for_npm_registry(&registry_config);
 
       let guard = progress_bar.update(&dist.tarball);
-      let maybe_bytes = http_client_for_runtime
+      let maybe_bytes = http_client_provider.get_or_create()?
         .download_with_progress(&dist.tarball, maybe_auth_header, &guard)
         .await?;
       match maybe_bytes {
