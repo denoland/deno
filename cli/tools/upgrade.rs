@@ -126,7 +126,7 @@ impl VersionProvider for RealVersionProvider {
 
   async fn latest_version(&self) -> Result<String, AnyError> {
     get_latest_version(
-      &self.http_client_provider.client()?,
+      &self.http_client_provider.get_or_create()?,
       self.release_kind(),
       self.check_kind,
     )
@@ -375,7 +375,7 @@ pub async fn upgrade(
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags)?;
-  let client = factory.http_client_provider().client()?;
+  let client = factory.http_client_provider().get_or_create()?;
   let current_exe_path = std::env::current_exe()?;
   let full_path_output_flag = upgrade_flags
     .output

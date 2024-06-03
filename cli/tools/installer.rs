@@ -142,7 +142,7 @@ pub async fn infer_name_from_url(
   let mut url = url.clone();
 
   if url.path() == "/" {
-    if let Ok(client) = http_client_provider.client() {
+    if let Ok(client) = http_client_provider.get_or_create() {
       if let Ok(redirected_url) =
         client.get_redirected_url(url.clone(), None).await
       {

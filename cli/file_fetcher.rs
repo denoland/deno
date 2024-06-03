@@ -395,7 +395,7 @@ impl FileFetcher {
     let result = loop {
       let result = match self
         .http_client_provider
-        .client()?
+        .get_or_create()?
         .fetch_no_follow(FetchOnceArgs {
           url: specifier.clone(),
           maybe_accept: maybe_accept.map(ToOwned::to_owned),

@@ -220,7 +220,7 @@ impl RegistryInfoDownloader {
     // causing the future to never be polled
     deno_core::unsync::spawn(async move {
       let maybe_bytes = http_client_provider
-        .client()?
+        .get_or_create()?
         .download_with_progress(package_url, maybe_auth_header, &guard)
         .await?;
       match maybe_bytes {

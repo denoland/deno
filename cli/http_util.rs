@@ -235,9 +235,7 @@ impl HttpClientProvider {
     }
   }
 
-  // todo(dsherret): improve/revamp `HttpClient`'s api in order to
-  // remove this and make `ReqwestClient`
-  pub fn client(&self) -> Result<HttpClient, AnyError> {
+  pub fn get_or_create(&self) -> Result<HttpClient, AnyError> {
     use std::collections::hash_map::Entry;
     let thread_id = std::thread::current().id();
     let mut clients = self.clients_by_thread_id.lock();
@@ -578,7 +576,7 @@ mod test {
   #[tokio::test]
   async fn test_http_client_download_redirect() {
     let _http_server_guard = test_util::http_server();
-    let client = HttpClientProvider::new(None, None).client().unwrap();
+    let client = HttpClientProvider::new(None, None).get_or_create().unwrap();
 
     // make a request to the redirect server
     let text = client

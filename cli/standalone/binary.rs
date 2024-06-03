@@ -537,7 +537,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
       self
         .http_client_provider
-        .client()?
+        .get_or_create()?
         .download_with_progress(download_url, None, &progress)
         .await?
     };

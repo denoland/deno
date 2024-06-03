@@ -163,7 +163,7 @@ impl TarballCache {
         maybe_auth_header_for_npm_registry(&registry_config);
 
       let guard = progress_bar.update(&dist.tarball);
-      let maybe_bytes = http_client_provider.client()?
+      let maybe_bytes = http_client_provider.get_or_create()?
         .download_with_progress(&dist.tarball, maybe_auth_header, &guard)
         .await?;
       match maybe_bytes {

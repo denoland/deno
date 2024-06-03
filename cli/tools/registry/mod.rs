@@ -156,7 +156,7 @@ pub async fn publish(
   }
 
   perform_publish(
-    &cli_factory.http_client_provider().client()?,
+    &cli_factory.http_client_provider().get_or_create()?,
     prepared_data.publish_order_graph,
     prepared_data.package_by_name,
     auth_method,
