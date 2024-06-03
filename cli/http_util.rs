@@ -19,7 +19,9 @@ use deno_runtime::deno_fetch::CreateHttpClientOptions;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
@@ -221,15 +223,28 @@ impl CacheSemantics {
   }
 }
 
+#[derive(Debug, Default)]
+struct HttpClientsThreadLocalData {
+  clients: HashMap<usize, Rc<reqwest::Client>>,
+}
+
+static NEXT_INDEX: std::sync::atomic::AtomicUsize =
+  std::sync::atomic::AtomicUsize::new(0);
+
+thread_local! {
+  static THREAD_LOCAL_DATA: RefCell<HttpClientsThreadLocalData> = Default::default();
+}
+
 pub struct HttpClient {
+  client_index: usize,
   options: CreateHttpClientOptions,
   root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
-  cell: once_cell::sync::OnceCell<reqwest::Client>,
 }
 
 impl std::fmt::Debug for HttpClient {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("HttpClient")
+      .field("client_index", &self.client_index)
       .field("options", &self.options)
       .finish()
   }
@@ -241,38 +256,50 @@ impl HttpClient {
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
   ) -> Self {
     Self {
+      client_index: NEXT_INDEX
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst),
       options: CreateHttpClientOptions {
         unsafely_ignore_certificate_errors,
         ..Default::default()
       },
       root_cert_store_provider,
-      cell: Default::default(),
     }
   }
 
   #[cfg(test)]
   pub fn from_client(client: reqwest::Client) -> Self {
-    let result = Self {
-      options: Default::default(),
-      root_cert_store_provider: Default::default(),
-      cell: Default::default(),
-    };
-    result.cell.set(client).unwrap();
+    let result = Self::new(None, None);
+    THREAD_LOCAL_DATA.with(|data| {
+      data
+        .borrow_mut()
+        .clients
+        .insert(result.client_index, Rc::new(client));
+    });
     result
   }
 
-  pub(crate) fn client(&self) -> Result<&reqwest::Client, AnyError> {
-    self.cell.get_or_try_init(|| {
-      create_http_client(
-        get_user_agent(),
-        CreateHttpClientOptions {
-          root_cert_store: match &self.root_cert_store_provider {
-            Some(provider) => Some(provider.get_or_try_init()?.clone()),
-            None => None,
-          },
-          ..self.options.clone()
-        },
-      )
+  pub(crate) fn client(&self) -> Result<Rc<reqwest::Client>, AnyError> {
+    use std::collections::hash_map::Entry;
+    THREAD_LOCAL_DATA.with(|data| {
+      let mut data = data.borrow_mut();
+      let entry = data.clients.entry(self.client_index);
+      match entry {
+        Entry::Occupied(entry) => Ok(entry.get().clone()),
+        Entry::Vacant(entry) => {
+          let client = Rc::new(create_http_client(
+            get_user_agent(),
+            CreateHttpClientOptions {
+              root_cert_store: match &self.root_cert_store_provider {
+                Some(provider) => Some(provider.get_or_try_init()?.clone()),
+                None => None,
+              },
+              ..self.options.clone()
+            },
+          )?);
+          entry.insert(client.clone());
+          Ok(client)
+        }
+      }
     })
   }
 

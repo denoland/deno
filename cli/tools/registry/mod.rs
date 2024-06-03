@@ -808,7 +808,7 @@ async fn perform_publish(
     .collect::<Vec<_>>();
 
   ensure_scopes_and_packages_exist(
-    client,
+    &client,
     registry_api_url,
     registry_url,
     &packages,
@@ -816,7 +816,7 @@ async fn perform_publish(
   .await?;
 
   let mut authorizations =
-    get_auth_headers(client, registry_api_url, &packages, auth_method).await?;
+    get_auth_headers(&client, registry_api_url, &packages, auth_method).await?;
 
   assert_eq!(prepared_package_by_name.len(), authorizations.len());
   let mut futures: FuturesUnordered<LocalBoxFuture<Result<String, AnyError>>> =

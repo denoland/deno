@@ -28,15 +28,10 @@ pub fn create_npm_fs_resolver(
   npm_rc: Arc<ResolvedNpmRc>,
   progress_bar: &ProgressBar,
   resolution: Arc<NpmResolution>,
+  tarball_cache: Arc<TarballCache>,
   maybe_node_modules_path: Option<PathBuf>,
   system_info: NpmSystemInfo,
 ) -> Arc<dyn NpmPackageFsResolver> {
-  let tarball_cache = Arc::new(TarballCache::new(
-    npm_cache.clone(),
-    fs.clone(),
-    npm_rc,
-    progress_bar.clone(),
-  ));
   match maybe_node_modules_path {
     Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
       npm_cache,

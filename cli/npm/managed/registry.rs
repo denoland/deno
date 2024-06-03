@@ -22,7 +22,7 @@ use crate::util::sync::AtomicFlag;
 use super::cache::NpmCache;
 use super::cache::RegistryInfoDownloader;
 
-// todo(dsherret): make this per worker and make HttpClient an Rc<HttpClient>
+// todo(dsherret): make this per worker
 #[derive(Debug)]
 pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 
