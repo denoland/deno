@@ -372,6 +372,7 @@ pub struct TestOptions {
   pub trace_leaks: bool,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
+  pub hide_traces: bool,
 }
 
 impl TestOptions {
@@ -400,6 +401,7 @@ impl TestOptions {
       trace_leaks: test_flags.trace_leaks,
       reporter: test_flags.reporter,
       junit_path: test_flags.junit_path,
+      hide_traces: test_flags.hide_traces,
     })
   }
 }

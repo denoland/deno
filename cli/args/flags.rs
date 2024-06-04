@@ -344,6 +344,7 @@ pub struct TestFlags {
   pub watch: Option<WatchFlags>,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
+  pub hide_traces: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2683,6 +2684,12 @@ Note: running multiple `deno test --clean` calls in series or parallel for the s
         .help("Select reporter to use. Default to 'pretty'.")
         .value_parser(["pretty", "dot", "junit", "tap"])
     )
+    .arg(
+      Arg::new("hide-traces")
+        .long("hide-traces")
+        .help("Hide stack traces for errors in failure test results.")
+        .action(ArgAction::SetTrue)
+    )
     .arg(env_file_arg())
   )
 }
@@ -4331,6 +4338,8 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     flags.log_level = Some(Level::Error);
   }
 
+  let hide_traces = matches.get_flag("hide-traces");
+
   flags.subcommand = DenoSubcommand::Test(TestFlags {
     no_run,
     doc,
@@ -4346,6 +4355,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     watch: watch_arg_parse(matches),
     reporter,
     junit_path,
+    hide_traces,
   });
 }
 
@@ -8222,6 +8232,7 @@ mod tests {
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
+          hide_traces: false,
         }),
         unstable_config: UnstableConfig {
           legacy_flag_enabled: true,
@@ -8309,6 +8320,7 @@ mod tests {
           clean: false,
           watch: Default::default(),
           junit_path: None,
+          hide_traces: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         permissions: PermissionFlags {
@@ -8347,6 +8359,7 @@ mod tests {
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
+          hide_traces: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         permissions: PermissionFlags {
@@ -8389,6 +8402,7 @@ mod tests {
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
+          hide_traces: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -8525,6 +8539,7 @@ mod tests {
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
+          hide_traces: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -8560,6 +8575,7 @@ mod tests {
           watch: Some(Default::default()),
           reporter: Default::default(),
           junit_path: None,
+          hide_traces: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -8594,6 +8610,7 @@ mod tests {
           watch: Some(Default::default()),
           reporter: Default::default(),
           junit_path: None,
+          hide_traces: false,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -8634,6 +8651,7 @@ mod tests {
           }),
           reporter: Default::default(),
           junit_path: None,
+          hide_traces: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         permissions: PermissionFlags {
@@ -8653,6 +8671,26 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Test(TestFlags {
           coverage_dir: Some("coverage".to_string()),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_hide_traces() {
+    let r = flags_from_vec(svec!["deno", "test", "--hide-traces"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          hide_traces: true,
           ..TestFlags::default()
         }),
         type_check_mode: TypeCheckMode::Local,
