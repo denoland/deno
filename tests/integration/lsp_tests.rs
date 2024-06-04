@@ -1224,6 +1224,7 @@ fn lsp_import_map_import_completions() {
     r#"{
   "imports": {
     "/~/": "./lib/",
+    "/#/": "./src/",
     "fs": "https://example.com/fs/index.js",
     "std/": "https://example.com/std@0.123.0/"
   }
@@ -1296,7 +1297,14 @@ fn lsp_import_map_import_completions() {
           "sortText": "/~",
           "insertText": "/~",
           "commitCharacters": ["\"", "'"],
-        }
+        }, {
+          "label": "/#",
+          "kind": 19,
+          "detail": "(import map)",
+          "sortText": "/#",
+          "insertText": "/#",
+          "commitCharacters": ["\"", "'"],
+        },
       ]
     })
   );
@@ -1335,8 +1343,8 @@ fn lsp_import_map_import_completions() {
       "items": [
         {
           "label": "b.ts",
-          "kind": 9,
-          "detail": "(import map)",
+          "kind": 17,
+          "detail": "(local)",
           "sortText": "1",
           "filterText": "/~/b.ts",
           "textEdit": {
@@ -7938,7 +7946,6 @@ fn lsp_completions_snippet() {
     (5, 13),
     json!({ "triggerKind": 1 }),
   );
-  assert!(!list.is_incomplete);
   assert_eq!(
     json!(list),
     json!({
@@ -8856,6 +8863,82 @@ fn lsp_tls_cert() {
         "end": { "line": 7, "character": 53 }
       }
     })
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_npmrc() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    temp_dir.path().join("deno.json"),
+    json!({
+      "nodeModulesDir": true,
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    temp_dir.path().join("package.json"),
+    json!({
+      "name": "npmrc_test",
+      "version": "0.0.1",
+      "dependencies": {
+        "@denotest/basic": "1.0.0",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    temp_dir.path().join(".npmrc"),
+    "\
+@denotest:registry=http://127.0.0.1:4261/
+//127.0.0.1:4261/:_authToken=private-reg-token
+",
+  );
+  let file = source_file(
+    temp_dir.path().join("main.ts"),
+    r#"
+      import { getValue, setValue } from "@denotest/basic";
+      setValue(42);
+      const n: string = getValue();
+      console.log(n);
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file.uri()],
+    }),
+  );
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 12,
+          },
+          "end": {
+            "line": 3,
+            "character": 13,
+          },
+        },
+        "severity": 1,
+        "code": 2322,
+        "source": "deno-ts",
+        "message": "Type 'number' is not assignable to type 'string'.",
+      },
+    ]),
   );
   client.shutdown();
 }

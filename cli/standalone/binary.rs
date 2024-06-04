@@ -40,7 +40,7 @@ use crate::args::PermissionFlags;
 use crate::args::UnstableConfig;
 use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
-use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::util::progress_bar::ProgressBar;
@@ -417,9 +417,9 @@ pub fn unpack_into_dir(
   Ok(exe_path)
 }
 pub struct DenoCompileBinaryWriter<'a> {
-  file_fetcher: &'a FileFetcher,
-  client: &'a HttpClient,
   deno_dir: &'a DenoDir,
+  file_fetcher: &'a FileFetcher,
+  http_client_provider: &'a HttpClientProvider,
   npm_resolver: &'a dyn CliNpmResolver,
   npm_system_info: NpmSystemInfo,
   package_json_deps_provider: &'a PackageJsonDepsProvider,
@@ -428,17 +428,17 @@ pub struct DenoCompileBinaryWriter<'a> {
 impl<'a> DenoCompileBinaryWriter<'a> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    file_fetcher: &'a FileFetcher,
-    client: &'a HttpClient,
     deno_dir: &'a DenoDir,
+    file_fetcher: &'a FileFetcher,
+    http_client_provider: &'a HttpClientProvider,
     npm_resolver: &'a dyn CliNpmResolver,
     npm_system_info: NpmSystemInfo,
     package_json_deps_provider: &'a PackageJsonDepsProvider,
   ) -> Self {
     Self {
-      file_fetcher,
-      client,
       deno_dir,
+      file_fetcher,
+      http_client_provider,
       npm_resolver,
       npm_system_info,
       package_json_deps_provider,
@@ -536,7 +536,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       let progress = progress_bars.update(&download_url);
 
       self
-        .client
+        .http_client_provider
+        .get_or_create()?
         .download_with_progress(download_url, None, &progress)
         .await?
     };
