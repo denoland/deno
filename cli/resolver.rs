@@ -333,18 +333,19 @@ impl NpmModuleLoader {
     let code = if self.cjs_resolutions.contains(specifier) {
       // translate cjs to esm if it's cjs and inject node globals
       let code = String::from_utf8(code)?;
-      self
-        .node_code_translator
-        .translate_cjs_to_esm(specifier, Some(code), permissions)
-        .await?
-        .into_bytes()
-        .into_boxed_slice()
+      ModuleSourceCode::String(
+        self
+          .node_code_translator
+          .translate_cjs_to_esm(specifier, Some(code), permissions)
+          .await?
+          .into(),
+      )
     } else {
       // esm and json code is untouched
-      code.into_boxed_slice()
+      ModuleSourceCode::Bytes(code.into_boxed_slice().into())
     };
     Ok(ModuleCodeStringSource {
-      code: ModuleSourceCode::Bytes(code.into()),
+      code,
       found_url: specifier.clone(),
       media_type: MediaType::from_specifier(specifier),
     })
