@@ -237,7 +237,7 @@ impl BenchReporter for ConsoleReporter {
             &desc.name,
             &mitata::reporter::Error {
               stack: None,
-              message: format_test_error(js_error),
+              message: format_test_error(js_error, None),
             },
             options
           )
@@ -292,7 +292,7 @@ impl BenchReporter for ConsoleReporter {
     println!(
       "{}: {}",
       colors::red_bold("error"),
-      format_test_error(&error)
+      format_test_error(&error, None)
     );
     println!("This error was not caught from a benchmark and caused the bench runner to fail on the referenced module.");
     println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");
