@@ -16,20 +16,18 @@ use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 
 use crate::args::CacheSetting;
-use crate::http_util::HttpClient;
 use crate::util::sync::AtomicFlag;
 
 use super::cache::NpmCache;
 use super::cache::RegistryInfoDownloader;
 
-// todo(dsherret): make this per worker and make HttpClient an Rc<HttpClient>
+// todo(dsherret): make this per worker
 #[derive(Debug)]
 pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 
 impl CliNpmRegistryApi {
   pub fn new(
     cache: Arc<NpmCache>,
-    http_client: Arc<HttpClient>,
     registry_info_downloader: RegistryInfoDownloader,
   ) -> Self {
     Self(Some(Arc::new(CliNpmRegistryApiInner {
@@ -37,7 +35,6 @@ impl CliNpmRegistryApi {
       force_reload_flag: Default::default(),
       mem_cache: Default::default(),
       previously_reloaded_packages: Default::default(),
-      http_client,
       registry_info_downloader,
     })))
   }
@@ -111,7 +108,6 @@ struct CliNpmRegistryApiInner {
   force_reload_flag: AtomicFlag,
   mem_cache: Mutex<HashMap<String, CacheItem>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
-  http_client: Arc<HttpClient>,
   registry_info_downloader: RegistryInfoDownloader,
 }
 
@@ -144,7 +140,7 @@ impl CliNpmRegistryApiInner {
                 }
               }
               api.registry_info_downloader
-                .load_package_info(&name, &api.http_client)
+                .load_package_info(&name)
                 .await
                 .map_err(Arc::new)
             }

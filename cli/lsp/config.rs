@@ -1112,7 +1112,7 @@ impl ConfigData {
     scope: &ModuleSpecifier,
     parent: Option<(&ModuleSpecifier, &ConfigData)>,
     settings: &Settings,
-    file_fetcher: Option<&FileFetcher>,
+    file_fetcher: Option<&Arc<FileFetcher>>,
   ) -> Self {
     if let Some(specifier) = config_file_specifier {
       match ConfigFile::from_specifier(
@@ -1167,7 +1167,7 @@ impl ConfigData {
     scope: &ModuleSpecifier,
     parent: Option<(&ModuleSpecifier, &ConfigData)>,
     settings: &Settings,
-    file_fetcher: Option<&FileFetcher>,
+    file_fetcher: Option<&Arc<FileFetcher>>,
   ) -> Self {
     let (settings, workspace_folder) = settings.get_for_specifier(scope);
     let mut watched_files = HashMap::with_capacity(6);
@@ -1411,9 +1411,18 @@ impl ConfigData {
       }
       if import_map_value.is_none() {
         if let Some(file_fetcher) = file_fetcher {
-          let fetch_result = file_fetcher
-            .fetch(specifier, &PermissionsContainer::allow_all())
-            .await;
+          // spawn due to the lsp's `Send` requirement
+          let fetch_result = deno_core::unsync::spawn({
+            let file_fetcher = file_fetcher.clone();
+            let specifier = specifier.clone();
+            async move {
+              file_fetcher
+                .fetch(&specifier, &PermissionsContainer::allow_all())
+                .await
+            }
+          })
+          .await
+          .unwrap();
           let value_result = fetch_result.and_then(|f| {
             serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())
           });
@@ -1601,7 +1610,7 @@ impl ConfigTree {
     &mut self,
     settings: &Settings,
     workspace_files: &BTreeSet<ModuleSpecifier>,
-    file_fetcher: &FileFetcher,
+    file_fetcher: &Arc<FileFetcher>,
   ) {
     lsp_log!("Refreshing configuration tree...");
     let mut scopes = BTreeMap::new();

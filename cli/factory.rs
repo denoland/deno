@@ -25,7 +25,7 @@ use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphCreator;
-use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 use crate::module_loader::CliModuleLoaderFactory;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::node::CliCjsCodeAnalyzer;
@@ -152,7 +152,7 @@ struct CliFactoryServices {
   file_fetcher: Deferred<Arc<FileFetcher>>,
   global_http_cache: Deferred<Arc<GlobalHttpCache>>,
   http_cache: Deferred<Arc<dyn HttpCache>>,
-  http_client: Deferred<Arc<HttpClient>>,
+  http_client_provider: Deferred<Arc<HttpClientProvider>>,
   emit_cache: Deferred<EmitCache>,
   emitter: Deferred<Arc<Emitter>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
@@ -279,9 +279,9 @@ impl CliFactory {
     })
   }
 
-  pub fn http_client(&self) -> &Arc<HttpClient> {
-    self.services.http_client.get_or_init(|| {
-      Arc::new(HttpClient::new(
+  pub fn http_client_provider(&self) -> &Arc<HttpClientProvider> {
+    self.services.http_client_provider.get_or_init(|| {
+      Arc::new(HttpClientProvider::new(
         Some(self.root_cert_store_provider().clone()),
         self.options.unsafely_ignore_certificate_errors().clone(),
       ))
@@ -294,7 +294,7 @@ impl CliFactory {
         self.http_cache()?.clone(),
         self.options.cache_setting(),
         !self.options.no_remote(),
-        self.http_client().clone(),
+        self.http_client_provider().clone(),
         self.blob_store().clone(),
         Some(self.text_only_progress_bar().clone()),
       )))
@@ -436,7 +436,7 @@ impl CliFactory {
             },
             maybe_lockfile: self.maybe_lockfile().as_ref().cloned(),
             fs: fs.clone(),
-            http_client: self.http_client().clone(),
+            http_client_provider: self.http_client_provider().clone(),
             npm_global_cache_dir: self.deno_dir()?.npm_folder_path(),
             cache_setting: self.options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
@@ -760,9 +760,9 @@ impl CliFactory {
     &self,
   ) -> Result<DenoCompileBinaryWriter, AnyError> {
     Ok(DenoCompileBinaryWriter::new(
-      self.file_fetcher()?,
-      self.http_client(),
       self.deno_dir()?,
+      self.file_fetcher()?,
+      self.http_client_provider(),
       self.npm_resolver().await?.as_ref(),
       self.options.npm_system_info(),
       self.package_json_deps_provider(),
