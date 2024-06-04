@@ -1,0 +1,23 @@
+!
+
+ ERRORS 
+
+assert a b => ./main.js:3:6
+error: AssertionError: Values are not equal.
+
+
+    [Diff] Actual / Expected
+
+
+-   foo
++   bar
+
+
+
+ FAILURES 
+
+assert a b => ./main.js:3:6
+
+FAILED | 0 passed | 1 failed ([WILDCARD])
+
+error: Test failed

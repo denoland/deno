@@ -1,0 +1,8 @@
+TAP version 14
+# ./main.js
+not ok 1 - assert a b
+  ---
+  {"message":"AssertionError: Values are not equal.\n\n\n    [Diff] Actual / Expected\n\n\n-   foo\n+   bar\n\n","severity":"fail","at":{"file":"./main.js","line":3}}
+  ...
+1..1
+error: Test failed
