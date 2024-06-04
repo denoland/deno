@@ -38,6 +38,7 @@ mod module_info;
 mod node;
 mod parsed_source;
 
+pub use cache_db::CacheDBHash;
 pub use caches::Caches;
 pub use check::TypeCheckCache;
 pub use code_cache::CodeCache;
@@ -100,8 +101,6 @@ pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<RealDenoCacheEnv>;
 pub type LocalLspHttpCache =
   deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
 pub use deno_cache_dir::HttpCache;
-
-use self::module_info::ModuleInfoCacheSourceHash;
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
@@ -228,7 +227,7 @@ impl Loader for FetchCacher {
         LoaderCacheSetting::Reload => {
           if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
             return Err(deno_core::anyhow::anyhow!(
-              "Failed to resolve version constraint. Try running again without --cached-only"
+              "Could not resolve version constraint using only cached data. Try running again without --cached-only"
             ));
           }
           Some(CacheSetting::ReloadAll)
@@ -287,7 +286,7 @@ impl Loader for FetchCacher {
           }
         })
     }
-    .boxed()
+    .boxed_local()
   }
 
   fn cache_module_info(
@@ -297,11 +296,11 @@ impl Loader for FetchCacher {
     module_info: &deno_graph::ModuleInfo,
   ) {
     log::debug!("Caching module info for {}", specifier);
-    let source_hash = ModuleInfoCacheSourceHash::from_source(source);
+    let source_hash = CacheDBHash::from_source(source);
     let result = self.module_info_cache.set_module_info(
       specifier,
       MediaType::from_specifier(specifier),
-      &source_hash,
+      source_hash,
       module_info,
     );
     if let Err(err) = result {

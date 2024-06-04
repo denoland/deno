@@ -42,20 +42,14 @@ const {
   ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeMap,
   ArrayPrototypeJoin,
+  BigInt,
   DataViewPrototypeGetByteLength,
   ObjectDefineProperty,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
-  Number,
-  NumberIsSafeInteger,
-  TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypeError,
   Uint8Array,
-  Int32Array,
-  Uint32Array,
-  BigInt64Array,
-  BigUint64Array,
   Function,
   ReflectHas,
   PromisePrototypeThen,
@@ -80,9 +74,6 @@ function getBufferSourceByteLength(source) {
   }
   return ArrayBufferPrototypeGetByteLength(source);
 }
-const U32_BUFFER = new Uint32Array(2);
-const U64_BUFFER = new BigUint64Array(TypedArrayPrototypeGetBuffer(U32_BUFFER));
-const I64_BUFFER = new BigInt64Array(TypedArrayPrototypeGetBuffer(U32_BUFFER));
 class UnsafePointerView {
   pointer;
 
@@ -140,21 +131,21 @@ class UnsafePointerView {
   }
 
   getBigUint64(offset = 0) {
-    op_ffi_read_u64(
+    return op_ffi_read_u64(
       this.pointer,
-      offset,
-      U32_BUFFER,
+      // We return a BigInt, so the turbocall
+      // is forced to use BigInts everywhere.
+      BigInt(offset),
     );
-    return U64_BUFFER[0];
   }
 
   getBigInt64(offset = 0) {
-    op_ffi_read_i64(
+    return op_ffi_read_i64(
       this.pointer,
-      offset,
-      U32_BUFFER,
+      // We return a BigInt, so the turbocall
+      // is forced to use BigInts everywhere.
+      BigInt(offset),
     );
-    return I64_BUFFER[0];
   }
 
   getFloat32(offset = 0) {
@@ -227,10 +218,6 @@ class UnsafePointerView {
   }
 }
 
-const OUT_BUFFER = new Uint32Array(2);
-const OUT_BUFFER_64 = new BigInt64Array(
-  TypedArrayPrototypeGetBuffer(OUT_BUFFER),
-);
 const POINTER_TO_BUFFER_WEAK_MAP = new SafeWeakMap();
 class UnsafePointer {
   static create(value) {
@@ -280,12 +267,7 @@ class UnsafePointer {
     if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
       value = value.pointer;
     }
-    op_ffi_ptr_value(value, OUT_BUFFER);
-    const result = OUT_BUFFER[0] + 2 ** 32 * OUT_BUFFER[1];
-    if (NumberIsSafeInteger(result)) {
-      return result;
-    }
-    return OUT_BUFFER_64[0];
+    return op_ffi_ptr_value(value);
   }
 }
 
@@ -341,15 +323,6 @@ class UnsafeFnPointer {
       }
     }
   }
-}
-
-function isReturnedAsBigInt(type) {
-  return type === "u64" || type === "i64" ||
-    type === "usize" || type === "isize";
-}
-
-function isI64(type) {
-  return type === "i64" || type === "isize";
 }
 
 function isStruct(type) {
@@ -475,7 +448,7 @@ const UnsafeCallbackPrototype = UnsafeCallback.prototype;
 
 class DynamicLibrary {
   #rid;
-  symbols = {};
+  symbols = { __proto__: null };
 
   constructor(path, symbols) {
     ({ 0: this.#rid, 1: this.symbols } = op_ffi_load({ path, symbols }));
@@ -522,7 +495,6 @@ class DynamicLibrary {
       const structSize = isStructResult
         ? getTypeSizeAndAlignment(resultType)[0]
         : 0;
-      const needsUnpacking = isReturnedAsBigInt(resultType);
 
       const isNonBlocking = symbols[symbol].nonblocking;
       if (isNonBlocking) {
@@ -558,37 +530,7 @@ class DynamicLibrary {
         );
       }
 
-      if (needsUnpacking && !isNonBlocking) {
-        const call = this.symbols[symbol];
-        const parameters = symbols[symbol].parameters;
-        const vi = new Int32Array(2);
-        const vui = new Uint32Array(TypedArrayPrototypeGetBuffer(vi));
-        const b = new BigInt64Array(TypedArrayPrototypeGetBuffer(vi));
-
-        const params = ArrayPrototypeJoin(
-          ArrayPrototypeMap(parameters, (_, index) => `p${index}`),
-          ", ",
-        );
-        // Make sure V8 has no excuse to not optimize this function.
-        this.symbols[symbol] = new Function(
-          "vi",
-          "vui",
-          "b",
-          "call",
-          "NumberIsSafeInteger",
-          "Number",
-          `return function (${params}) {
-            call(${params}${parameters.length > 0 ? ", " : ""}vi);
-            ${
-            isI64(resultType)
-              ? `const n1 = Number(b[0])`
-              : `const n1 = vui[0] + 2 ** 32 * vui[1]` // Faster path for u64
-          };
-            if (NumberIsSafeInteger(n1)) return n1;
-            return b[0];
-          }`,
-        )(vi, vui, b, call, NumberIsSafeInteger, Number);
-      } else if (isStructResult && !isNonBlocking) {
+      if (isStructResult && !isNonBlocking) {
         const call = this.symbols[symbol];
         const parameters = symbols[symbol].parameters;
         const params = ArrayPrototypeJoin(

@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::num::NonZeroU16;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -8,7 +7,6 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -49,6 +47,7 @@ use deno_terminal::colors;
 use tokio::select;
 
 use crate::args::package_json::PackageJsonDeps;
+use crate::args::write_lockfile_if_has_changes;
 use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
 use crate::errors;
@@ -58,20 +57,23 @@ use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
 use crate::version;
 
+pub struct ModuleLoaderAndSourceMapGetter {
+  pub module_loader: Rc<dyn ModuleLoader>,
+  pub source_map_getter: Option<Rc<dyn SourceMapGetter>>,
+}
+
 pub trait ModuleLoaderFactory: Send + Sync {
   fn create_for_main(
     &self,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader>;
+  ) -> ModuleLoaderAndSourceMapGetter;
 
   fn create_for_worker(
     &self,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader>;
-
-  fn create_source_map_getter(&self) -> Option<Rc<dyn SourceMapGetter>>;
+  ) -> ModuleLoaderAndSourceMapGetter;
 }
 
 #[async_trait::async_trait(?Send)]
@@ -145,7 +147,7 @@ struct SharedWorkerState {
   disable_deprecated_api_warning: bool,
   verbose_deprecated_api_warning: bool,
   code_cache: Option<Arc<dyn code_cache::CodeCache>>,
-  serve_port: Option<NonZeroU16>,
+  serve_port: Option<u16>,
   serve_host: Option<String>,
 }
 
@@ -415,7 +417,7 @@ impl CliMainWorkerFactory {
     feature_checker: Arc<FeatureChecker>,
     options: CliMainWorkerOptions,
     node_ipc: Option<i64>,
-    serve_port: Option<NonZeroU16>,
+    serve_port: Option<u16>,
     serve_host: Option<String>,
     enable_future_features: bool,
     disable_deprecated_api_warning: bool,
@@ -531,10 +533,7 @@ impl CliMainWorkerFactory {
         // For npm binary commands, ensure that the lockfile gets updated
         // so that we can re-use the npm resolution the next time it runs
         // for better performance
-        lockfile
-          .lock()
-          .write()
-          .context("Failed writing lockfile.")?;
+        write_lockfile_if_has_changes(&mut lockfile.lock())?;
       }
 
       (node_resolution.into_url(), is_main_cjs)
@@ -549,11 +548,12 @@ impl CliMainWorkerFactory {
       (main_module, false)
     };
 
-    let module_loader = shared
+    let ModuleLoaderAndSourceMapGetter {
+      module_loader,
+      source_map_getter,
+    } = shared
       .module_loader_factory
       .create_for_main(PermissionsContainer::allow_all(), permissions.clone());
-    let maybe_source_map_getter =
-      shared.module_loader_factory.create_source_map_getter();
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
     let create_web_worker_cb =
@@ -601,7 +601,8 @@ impl CliMainWorkerFactory {
         locale: deno_core::v8::icu::get_language_tag(),
         location: shared.options.location.clone(),
         no_color: !colors::use_color(),
-        is_tty: deno_terminal::is_stdout_tty(),
+        is_stdout_tty: deno_terminal::is_stdout_tty(),
+        is_stderr_tty: deno_terminal::is_stderr_tty(),
         unstable: shared.options.unstable,
         unstable_features,
         user_agent: version::get_user_agent().to_string(),
@@ -626,7 +627,7 @@ impl CliMainWorkerFactory {
         .clone(),
       root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       seed: shared.options.seed,
-      source_map_getter: maybe_source_map_getter,
+      source_map_getter,
       format_js_error_fn: Some(Arc::new(format_js_error)),
       create_web_worker_cb,
       maybe_inspector_server,
@@ -768,12 +769,13 @@ fn create_web_worker_callback(
   Arc::new(move |args| {
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
-    let module_loader = shared.module_loader_factory.create_for_worker(
+    let ModuleLoaderAndSourceMapGetter {
+      module_loader,
+      source_map_getter,
+    } = shared.module_loader_factory.create_for_worker(
       args.parent_permissions.clone(),
       args.permissions.clone(),
     );
-    let maybe_source_map_getter =
-      shared.module_loader_factory.create_source_map_getter();
     let create_web_worker_cb =
       create_web_worker_callback(mode, shared.clone(), stdio.clone());
 
@@ -811,7 +813,8 @@ fn create_web_worker_callback(
         locale: deno_core::v8::icu::get_language_tag(),
         location: Some(args.main_module.clone()),
         no_color: !colors::use_color(),
-        is_tty: deno_terminal::is_stdout_tty(),
+        is_stdout_tty: deno_terminal::is_stdout_tty(),
+        is_stderr_tty: deno_terminal::is_stderr_tty(),
         unstable: shared.options.unstable,
         unstable_features,
         user_agent: version::get_user_agent().to_string(),
@@ -837,7 +840,7 @@ fn create_web_worker_callback(
       seed: shared.options.seed,
       create_web_worker_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
-      source_map_getter: maybe_source_map_getter,
+      source_map_getter,
       module_loader,
       fs: shared.fs.clone(),
       npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),

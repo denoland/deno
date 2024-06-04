@@ -100,7 +100,7 @@ function checkForInvalidValueChars(value) {
   return true;
 }
 
-let HEADER_NAME_CACHE = {};
+let HEADER_NAME_CACHE = { __proto__: null };
 let HEADER_CACHE_SIZE = 0;
 const HEADER_NAME_CACHE_SIZE_BOUNDARY = 4096;
 function checkHeaderNameForHttpTokenCodePoint(name) {
@@ -112,7 +112,7 @@ function checkHeaderNameForHttpTokenCodePoint(name) {
   const valid = RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name);
 
   if (HEADER_CACHE_SIZE > HEADER_NAME_CACHE_SIZE_BOUNDARY) {
-    HEADER_NAME_CACHE = {};
+    HEADER_NAME_CACHE = { __proto__: null };
     HEADER_CACHE_SIZE = 0;
   }
   HEADER_CACHE_SIZE++;
@@ -241,7 +241,7 @@ class Headers {
 
     // The order of steps are not similar to the ones suggested by the
     // spec but produce the same result.
-    const seenHeaders = {};
+    const seenHeaders = { __proto__: null };
     const entries = [];
     for (let i = 0; i < list.length; ++i) {
       const entry = list[i];

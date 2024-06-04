@@ -52,7 +52,12 @@ pub trait CoverageReporter {
     file_reports: &'a Vec<(CoverageReport, String)>,
   ) -> CoverageSummary {
     let urls = file_reports.iter().map(|rep| &rep.0.url).collect();
-    let root = util::find_root(urls).unwrap().to_file_path().unwrap();
+    let root = match util::find_root(urls)
+      .and_then(|root_path| root_path.to_file_path().ok())
+    {
+      Some(path) => path,
+      None => return HashMap::new(),
+    };
     // summary by file or directory
     // tuple of (line hit, line miss, branch hit, branch miss, parent)
     let mut summary = HashMap::new();
@@ -394,7 +399,7 @@ impl CoverageReporter for HtmlCoverageReporter {
 
   fn done(&mut self, coverage_root: &Path) {
     let summary = self.collect_summary(&self.file_reports);
-    let now = crate::util::time::utc_now().to_rfc2822();
+    let now = chrono::Utc::now().to_rfc2822();
 
     for (node, stats) in &summary {
       let report_path =
@@ -628,7 +633,7 @@ impl HtmlCoverageReporter {
   ) -> String {
     let line_num = file_text.lines().count();
     let line_count = (1..line_num + 1)
-      .map(|i| format!("<a name='L{i}'></a><a href='#{i}'>{i}</a>"))
+      .map(|i| format!("<a name='L{i}'></a><a href='#L{i}'>{i}</a>"))
       .collect::<Vec<_>>()
       .join("\n");
     let line_coverage = (0..line_num)
@@ -639,7 +644,7 @@ impl HtmlCoverageReporter {
           if *count == 0 {
             "<span class='cline-any cline-no'>&nbsp</span>".to_string()
           } else {
-            format!("<span class='cline-any cline-yes'>x{count}</span>")
+            format!("<span class='cline-any cline-yes' title='This line is covered {count} time{}'>x{count}</span>", if *count > 1 { "s" } else { "" })
           }
         } else {
           "<span class='cline-any cline-neutral'>&nbsp</span>".to_string()

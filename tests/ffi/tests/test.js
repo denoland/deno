@@ -420,7 +420,7 @@ function addU32Fast(a, b) {
 testOptimized(addU32Fast, () => addU32Fast(123, 456));
 
 function addU64Fast(a, b) { return add_usize_fast(a, b); };
-testOptimized(addU64Fast, () => addU64Fast(2, 3));
+testOptimized(addU64Fast, () => addU64Fast(2n, 3n));
 
 console.log(dylib.symbols.add_i32(123, 456));
 console.log(dylib.symbols.add_u64(0xffffffffn, 0xffffffffn));
@@ -578,7 +578,7 @@ function logManyParametersFast(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q
 testOptimized(
   logManyParametersFast,
   () => logManyParametersFast(
-    255, 65535, 4294967295, 4294967296, 123.456, 789.876, -1, -2, -3, -4, -1000, 1000,
+    255, 65535, 4294967295, 4294967296n, 123.456, 789.876, -1n, -2, -3, -4, -1000n, 1000n,
     12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910, 12345.678910
   )
 );
@@ -637,7 +637,7 @@ await dylib.symbols.call_fn_ptr_return_u8_thread_safe(returnU8Callback.pointer);
 
 // Test statics
 assertEquals(dylib.symbols.static_u32, 42);
-assertEquals(dylib.symbols.static_i64, -1242464576485);
+assertEquals(dylib.symbols.static_i64, -1242464576485n);
 assert(
   typeof dylib.symbols.static_ptr === "object"
 );
@@ -703,17 +703,17 @@ assertEquals(view.getUint32(), 55);
   const createdPointer = Deno.UnsafePointer.create(1);
   assertNotEquals(createdPointer, null);
   assertEquals(typeof createdPointer, "object");
-  assertEquals(Deno.UnsafePointer.value(null), 0);
-  assertEquals(Deno.UnsafePointer.value(createdPointer), 1);
+  assertEquals(Deno.UnsafePointer.value(null), 0n);
+  assertEquals(Deno.UnsafePointer.value(createdPointer), 1n);
   assert(Deno.UnsafePointer.equals(null, null));
   assertFalse(Deno.UnsafePointer.equals(null, createdPointer));
   assertFalse(Deno.UnsafePointer.equals(Deno.UnsafePointer.create(2), createdPointer));
   // Do not allow offsetting from null, `create` function should be used instead.
   assertThrows(() => Deno.UnsafePointer.offset(null, 5));
   const offsetPointer = Deno.UnsafePointer.offset(createdPointer, 5);
-  assertEquals(Deno.UnsafePointer.value(offsetPointer), 6);
+  assertEquals(Deno.UnsafePointer.value(offsetPointer), 6n);
   const zeroPointer = Deno.UnsafePointer.offset(offsetPointer, -6);
-  assertEquals(Deno.UnsafePointer.value(zeroPointer), 0);
+  assertEquals(Deno.UnsafePointer.value(zeroPointer), 0n);
   assertEquals(zeroPointer, null);
 }
 

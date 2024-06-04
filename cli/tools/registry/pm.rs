@@ -188,7 +188,7 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   }
   let config_file_path = config_specifier.to_file_path().unwrap();
 
-  let http_client = cli_factory.http_client();
+  let http_client = cli_factory.http_client_provider();
 
   let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
@@ -227,6 +227,7 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     None,
   );
   deps_file_fetcher.set_download_log_level(log::Level::Trace);
+  let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
   let npm_resolver = Arc::new(NpmFetchResolver::new(deps_file_fetcher));
 

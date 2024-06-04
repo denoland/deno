@@ -359,7 +359,7 @@ class GPU {
    * @param {GPURequestAdapterOptions} options
    */
   // deno-lint-ignore require-await
-  async requestAdapter(options = {}) {
+  async requestAdapter(options = { __proto__: null }) {
     webidl.assertBranded(this, GPUPrototype);
     options = webidl.converters.GPURequestAdapterOptions(
       options,
@@ -450,7 +450,7 @@ class GPUAdapter {
    * @returns {Promise<GPUDevice>}
    */
   // deno-lint-ignore require-await
-  async requestDevice(descriptor = {}) {
+  async requestDevice(descriptor = { __proto__: null }) {
     webidl.assertBranded(this, GPUAdapterPrototype);
     const prefix = "Failed to execute 'requestDevice' on 'GPUAdapter'";
     descriptor = webidl.converters.GPUDeviceDescriptor(
@@ -1175,7 +1175,7 @@ class GPUDevice extends EventTarget {
    * @param {GPUSamplerDescriptor} descriptor
    * @returns {GPUSampler}
    */
-  createSampler(descriptor = {}) {
+  createSampler(descriptor = { __proto__: null }) {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix = "Failed to execute 'createSampler' on 'GPUDevice'";
     descriptor = webidl.converters.GPUSamplerDescriptor(
@@ -1688,7 +1688,7 @@ class GPUDevice extends EventTarget {
    * @param {GPUCommandEncoderDescriptor} descriptor
    * @returns {GPUCommandEncoder}
    */
-  createCommandEncoder(descriptor = {}) {
+  createCommandEncoder(descriptor = { __proto__: null }) {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix = "Failed to execute 'createCommandEncoder' on 'GPUDevice'";
     descriptor = webidl.converters.GPUCommandEncoderDescriptor(
@@ -1843,7 +1843,7 @@ defineEventHandler(GPUDevice.prototype, "uncapturederror");
 class GPUPipelineError extends DOMException {
   #reason;
 
-  constructor(message = "", options = {}) {
+  constructor(message = "", options = { __proto__: null }) {
     const prefix = "Failed to construct 'GPUPipelineError'";
     message = webidl.converters.DOMString(message, prefix, "Argument 1");
     options = webidl.converters.GPUPipelineErrorInit(
@@ -2501,7 +2501,7 @@ class GPUTexture {
   /**
    * @param {GPUTextureViewDescriptor} descriptor
    */
-  createView(descriptor = {}) {
+  createView(descriptor = { __proto__: null }) {
     webidl.assertBranded(this, GPUTexturePrototype);
     const prefix = "Failed to execute 'createView' on 'GPUTexture'";
     webidl.requiredArguments(arguments.length, 0, prefix);
@@ -3308,7 +3308,7 @@ class GPUCommandEncoder {
   /**
    * @param {GPUComputePassDescriptor} descriptor
    */
-  beginComputePass(descriptor = {}) {
+  beginComputePass(descriptor = { __proto__: null }) {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix =
       "Failed to execute 'beginComputePass' on 'GPUCommandEncoder'";
@@ -3759,7 +3759,7 @@ class GPUCommandEncoder {
    * @param {GPUCommandBufferDescriptor} descriptor
    * @returns {GPUCommandBuffer}
    */
-  finish(descriptor = {}) {
+  finish(descriptor = { __proto__: null }) {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix = "Failed to execute 'finish' on 'GPUCommandEncoder'";
     descriptor = webidl.converters.GPUCommandBufferDescriptor(
@@ -4776,7 +4776,7 @@ class GPURenderBundleEncoder {
   /**
    * @param {GPURenderBundleDescriptor} descriptor
    */
-  finish(descriptor = {}) {
+  finish(descriptor = { __proto__: null }) {
     webidl.assertBranded(this, GPURenderBundleEncoderPrototype);
     const prefix = "Failed to execute 'finish' on 'GPURenderBundleEncoder'";
     descriptor = webidl.converters.GPURenderBundleDescriptor(

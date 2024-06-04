@@ -38,6 +38,7 @@ use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_lint::linter::LintConfig;
 use deno_lint::rules::LintRule;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
@@ -800,16 +801,31 @@ fn generate_lint_diagnostics(
       break;
     }
     // ignore any npm package files
-    if snapshot.resolver.in_npm_package(specifier) {
+    if snapshot.resolver.in_node_modules(specifier) {
       continue;
     }
     let version = document.maybe_lsp_version();
-    let (lint_options, lint_rules) = config
+    let (lint_options, lint_config, lint_rules) = config
       .tree
       .scope_for_specifier(specifier)
       .and_then(|s| config_data_by_scope.get(s))
-      .map(|d| (d.lint_options.clone(), d.lint_rules.clone()))
-      .unwrap_or_default();
+      .map(|d| {
+        (
+          d.lint_options.clone(),
+          d.lint_config.clone(),
+          d.lint_rules.clone(),
+        )
+      })
+      .unwrap_or_else(|| {
+        (
+          Arc::default(),
+          LintConfig {
+            default_jsx_factory: None,
+            default_jsx_fragment_factory: None,
+          },
+          Arc::default(),
+        )
+      });
     diagnostics_vec.push(DiagnosticRecord {
       specifier: specifier.clone(),
       versioned: VersionedDiagnostics {
@@ -817,6 +833,7 @@ fn generate_lint_diagnostics(
         diagnostics: generate_document_lint_diagnostics(
           &document,
           &lint_options,
+          lint_config,
           lint_rules.rules.clone(),
         ),
       },
@@ -828,6 +845,7 @@ fn generate_lint_diagnostics(
 fn generate_document_lint_diagnostics(
   document: &Document,
   lint_options: &LintOptions,
+  lint_config: LintConfig,
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Vec<lsp::Diagnostic> {
   if !lint_options.files.matches_specifier(document.specifier()) {
@@ -836,7 +854,7 @@ fn generate_document_lint_diagnostics(
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
       if let Ok(references) =
-        analysis::get_lint_references(&parsed_source, lint_rules)
+        analysis::get_lint_references(&parsed_source, lint_rules, lint_config)
       {
         references
           .into_iter()
@@ -1231,7 +1249,7 @@ impl DenoDiagnostic {
       Self::NoCacheJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing jsr package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
-        let sloppy_resolution = SloppyImportsResolver::resolve_with_fs(&deno_fs::RealFs, specifier, ResolutionMode::Execution);
+        let sloppy_resolution = SloppyImportsResolver::new(Arc::new(deno_fs::RealFs)).resolve(specifier, ResolutionMode::Execution);
         let data = sloppy_resolution.as_lsp_quick_fix_message().map(|message| {
           json!({
             "specifier": specifier,
@@ -1294,6 +1312,7 @@ fn diagnose_resolution(
   resolution: &Resolution,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
+  referrer_doc: &Document,
   import_map: Option<&ImportMap>,
 ) -> Vec<DenoDiagnostic> {
   fn check_redirect_diagnostic(
@@ -1327,13 +1346,21 @@ fn diagnose_resolution(
   match resolution {
     Resolution::Ok(resolved) => {
       let specifier = &resolved.specifier;
-      let managed_npm_resolver = snapshot.resolver.maybe_managed_npm_resolver();
-      for (_, headers) in snapshot.resolver.redirect_chain_headers(specifier) {
+      let managed_npm_resolver = snapshot
+        .resolver
+        .maybe_managed_npm_resolver(referrer_doc.file_referrer());
+      for (_, headers) in snapshot
+        .resolver
+        .redirect_chain_headers(specifier, referrer_doc.file_referrer())
+      {
         if let Some(message) = headers.get("x-deno-warning") {
           diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
         }
       }
-      if let Some(doc) = snapshot.documents.get(specifier) {
+      if let Some(doc) = snapshot
+        .documents
+        .get_or_load(specifier, referrer_doc.specifier())
+      {
         if let Some(headers) = doc.maybe_headers() {
           if let Some(message) = headers.get("x-deno-warning") {
             diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
@@ -1430,11 +1457,12 @@ fn diagnose_resolution(
 fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   snapshot: &language_server::StateSnapshot,
-  referrer: &ModuleSpecifier,
+  referrer_doc: &Document,
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
-  if snapshot.resolver.in_npm_package(referrer) {
+  let referrer = referrer_doc.specifier();
+  if snapshot.resolver.in_node_modules(referrer) {
     return; // ignore, surface typescript errors instead
   }
 
@@ -1488,6 +1516,7 @@ fn diagnose_dependency(
       },
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
+      referrer_doc,
       import_map.map(|i| i.as_ref()),
     )
     .iter()
@@ -1511,6 +1540,7 @@ fn diagnose_dependency(
         &dependency.maybe_type,
         dependency.is_dynamic,
         dependency.maybe_attribute_type.as_deref(),
+        referrer_doc,
         import_map.map(|i| i.as_ref()),
       )
       .iter()
@@ -1543,7 +1573,7 @@ fn generate_deno_diagnostics(
         diagnose_dependency(
           &mut diagnostics,
           snapshot,
-          specifier,
+          &document,
           dependency_key,
           dependency,
         );
@@ -1617,9 +1647,8 @@ mod tests {
       .unwrap();
       config.tree.inject_config_file(config_file).await;
     }
-    let resolver = LspResolver::default()
-      .with_new_config(&config, &cache, None)
-      .await;
+    let resolver =
+      Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let mut documents = Documents::default();
     documents.update_config(&config, &resolver, &cache, &Default::default());
     for (specifier, source, version, language_id) in sources {
@@ -1630,11 +1659,12 @@ mod tests {
         *version,
         *language_id,
         (*source).into(),
+        None,
       );
     }
     StateSnapshot {
       project_version: 0,
-      documents,
+      documents: Arc::new(documents),
       assets: Default::default(),
       config: Arc::new(config),
       resolver,

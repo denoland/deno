@@ -1,0 +1,26 @@
+{
+  "envs": {
+    "DENO_FUTURE": "1"
+  },
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "install.out"
+    },
+    {
+      "args": "task run-esm",
+      "output": "Task run-esm cli-esm hello world\n@denotest/bin 0.7.0\n"
+    },
+    {
+      "args": "task run-cjs",
+      // @denotest/bin 0.7.0 doesn't have a cli-cjs, so it should use the one from @denotest/transitive-bin
+      // because it's closer than the one from @denotest/bin 1.0.0
+      "output": "Task run-cjs cli-cjs hello world\n@denotest/transitive-bin 1.0.0\n"
+    },
+    {
+      "args": "task run-no-ext",
+      "output": "Task run-no-ext cli-no-ext hello world\n@denotest/bin 0.7.0\n"
+    }
+  ]
+}

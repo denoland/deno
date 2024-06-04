@@ -1,10 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::create_default_npmrc;
 use crate::args::package_json;
 use crate::args::CacheSetting;
-use crate::cache::FastInsecureHasher;
 use crate::graph_util::CliJsrUrlProvider;
-use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 use crate::jsr::JsrCacheResolver;
 use crate::lsp::config::Config;
 use crate::lsp::config::ConfigData;
@@ -19,11 +19,11 @@ use crate::npm::ManagedCliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
-use crate::resolver::SloppyImportsFsEntry;
 use crate::resolver::SloppyImportsResolver;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use dashmap::DashMap;
+use deno_ast::MediaType;
 use deno_cache_dir::HttpCache;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -31,7 +31,6 @@ use deno_graph::source::NpmResolver;
 use deno_graph::source::Resolver;
 use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
-use deno_graph::Resolution;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolution;
@@ -60,11 +59,9 @@ pub struct LspResolver {
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   node_resolver: Option<Arc<CliNodeResolver>>,
-  npm_config_hash: LspNpmConfigHash,
   redirect_resolver: Option<Arc<RedirectResolver>>,
   graph_imports: Arc<IndexMap<ModuleSpecifier, GraphImport>>,
   config: Arc<Config>,
-  unstable_sloppy_imports: bool,
 }
 
 impl Default for LspResolver {
@@ -74,36 +71,27 @@ impl Default for LspResolver {
       jsr_resolver: None,
       npm_resolver: None,
       node_resolver: None,
-      npm_config_hash: LspNpmConfigHash(0),
       redirect_resolver: None,
       graph_imports: Default::default(),
       config: Default::default(),
-      unstable_sloppy_imports: false,
     }
   }
 }
 
 impl LspResolver {
-  pub async fn with_new_config(
-    &self,
+  pub async fn from_config(
     config: &Config,
     cache: &LspCache,
-    http_client: Option<&Arc<HttpClient>>,
-  ) -> Arc<Self> {
-    let npm_config_hash = LspNpmConfigHash::new(config, cache);
+    http_client_provider: Option<&Arc<HttpClientProvider>>,
+  ) -> Self {
     let config_data = config.tree.root_data();
     let mut npm_resolver = None;
     let mut node_resolver = None;
-    if npm_config_hash != self.npm_config_hash {
-      if let (Some(http_client), Some(config_data)) = (http_client, config_data)
-      {
-        npm_resolver =
-          create_npm_resolver(config_data, cache, http_client).await;
-        node_resolver = create_node_resolver(npm_resolver.as_ref());
-      }
-    } else {
-      npm_resolver = self.npm_resolver.clone();
-      node_resolver = self.node_resolver.clone();
+    if let (Some(http_client), Some(config_data)) =
+      (http_client_provider, config_data)
+    {
+      npm_resolver = create_npm_resolver(config_data, cache, http_client).await;
+      node_resolver = create_node_resolver(npm_resolver.as_ref());
     }
     let graph_resolver = create_graph_resolver(
       config_data,
@@ -138,20 +126,15 @@ impl LspResolver {
         )
       })
       .unwrap_or_default();
-    Arc::new(Self {
+    Self {
       graph_resolver,
       jsr_resolver,
       npm_resolver,
       node_resolver,
-      npm_config_hash,
       redirect_resolver,
       graph_imports,
-      unstable_sloppy_imports: config_data
-        .and_then(|d| d.config_file.as_ref())
-        .map(|cf| cf.has_unstable("sloppy-imports"))
-        .unwrap_or(false),
       config: Arc::new(config.clone()),
-    })
+    }
   }
 
   pub fn snapshot(&self) -> Arc<Self> {
@@ -168,11 +151,9 @@ impl LspResolver {
       jsr_resolver: self.jsr_resolver.clone(),
       npm_resolver,
       node_resolver,
-      npm_config_hash: self.npm_config_hash.clone(),
       redirect_resolver: self.redirect_resolver.clone(),
       graph_imports: self.graph_imports.clone(),
       config: self.config.clone(),
-      unstable_sloppy_imports: self.unstable_sloppy_imports,
     })
   }
 
@@ -192,20 +173,49 @@ impl LspResolver {
     Ok(())
   }
 
-  pub fn as_graph_resolver(&self) -> LspGraphResolver {
-    LspGraphResolver {
-      inner: &self.graph_resolver,
-      unstable_sloppy_imports: self.unstable_sloppy_imports,
-    }
+  pub fn as_graph_resolver(
+    &self,
+    _file_referrer: Option<&ModuleSpecifier>,
+  ) -> &dyn Resolver {
+    self.graph_resolver.as_ref()
   }
 
-  pub fn as_graph_npm_resolver(&self) -> &dyn NpmResolver {
+  pub fn as_graph_npm_resolver(
+    &self,
+    _file_referrer: Option<&ModuleSpecifier>,
+  ) -> &dyn NpmResolver {
     self.graph_resolver.as_ref()
+  }
+
+  pub fn maybe_managed_npm_resolver(
+    &self,
+    _file_referrer: Option<&ModuleSpecifier>,
+  ) -> Option<&ManagedCliNpmResolver> {
+    self.npm_resolver.as_ref().and_then(|r| r.as_managed())
+  }
+
+  pub fn graph_imports_by_referrer(
+    &self,
+  ) -> IndexMap<&ModuleSpecifier, Vec<&ModuleSpecifier>> {
+    self
+      .graph_imports
+      .iter()
+      .map(|(s, i)| {
+        (
+          s,
+          i.dependencies
+            .values()
+            .flat_map(|d| d.get_type().or_else(|| d.get_code()))
+            .collect(),
+        )
+      })
+      .collect()
   }
 
   pub fn jsr_to_registry_url(
     &self,
     req_ref: &JsrPackageReqReference,
+    _file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<ModuleSpecifier> {
     self.jsr_resolver.as_ref()?.jsr_to_registry_url(req_ref)
   }
@@ -214,89 +224,54 @@ impl LspResolver {
     &self,
     nv: &PackageNv,
     path: &str,
+    _file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<String> {
     self.jsr_resolver.as_ref()?.lookup_export_for_path(nv, path)
   }
 
-  pub fn jsr_lookup_req_for_nv(&self, nv: &PackageNv) -> Option<PackageReq> {
+  pub fn jsr_lookup_req_for_nv(
+    &self,
+    nv: &PackageNv,
+    _file_referrer: Option<&ModuleSpecifier>,
+  ) -> Option<PackageReq> {
     self.jsr_resolver.as_ref()?.lookup_req_for_nv(nv)
   }
 
-  pub fn maybe_managed_npm_resolver(&self) -> Option<&ManagedCliNpmResolver> {
-    self.npm_resolver.as_ref().and_then(|r| r.as_managed())
-  }
-
-  pub fn graph_import_specifiers(
+  pub fn npm_to_file_url(
     &self,
-  ) -> impl Iterator<Item = &ModuleSpecifier> {
-    self
-      .graph_imports
-      .values()
-      .flat_map(|i| i.dependencies.values())
-      .flat_map(|value| value.get_type().or_else(|| value.get_code()))
+    req_ref: &NpmPackageReqReference,
+    referrer: &ModuleSpecifier,
+    _file_referrer: Option<&ModuleSpecifier>,
+  ) -> Option<(ModuleSpecifier, MediaType)> {
+    let node_resolver = self.node_resolver.as_ref()?;
+    Some(NodeResolution::into_specifier_and_media_type(
+      node_resolver
+        .resolve_req_reference(
+          req_ref,
+          &PermissionsContainer::allow_all(),
+          referrer,
+          NodeResolutionMode::Types,
+        )
+        .ok(),
+    ))
   }
 
-  pub fn resolve_graph_import(&self, specifier: &str) -> Option<&Resolution> {
-    for graph_imports in self.graph_imports.values() {
-      let maybe_dep = graph_imports.dependencies.get(specifier);
-      if maybe_dep.is_some() {
-        return maybe_dep.map(|d| &d.maybe_type);
-      }
-    }
-    None
-  }
-
-  pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
+  pub fn in_node_modules(&self, specifier: &ModuleSpecifier) -> bool {
     if let Some(npm_resolver) = &self.npm_resolver {
       return npm_resolver.in_npm_package(specifier);
     }
     false
   }
 
-  pub fn node_resolve(
+  pub fn node_media_type(
     &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
-  ) -> Result<Option<NodeResolution>, AnyError> {
-    let Some(node_resolver) = self.node_resolver.as_ref() else {
-      return Ok(None);
-    };
-    node_resolver.resolve(
-      specifier,
-      referrer,
-      mode,
-      &PermissionsContainer::allow_all(),
-    )
-  }
-
-  pub fn resolve_npm_req_reference(
-    &self,
-    req_ref: &NpmPackageReqReference,
-    referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
-  ) -> Result<Option<NodeResolution>, AnyError> {
-    let Some(node_resolver) = self.node_resolver.as_ref() else {
-      return Ok(None);
-    };
-    node_resolver
-      .resolve_req_reference(
-        req_ref,
-        &PermissionsContainer::allow_all(),
-        referrer,
-        mode,
-      )
-      .map(Some)
-  }
-
-  pub fn url_to_node_resolution(
-    &self,
-    specifier: ModuleSpecifier,
-  ) -> Result<Option<NodeResolution>, AnyError> {
-    let Some(node_resolver) = self.node_resolver.as_ref() else {
-      return Ok(None);
-    };
-    node_resolver.url_to_node_resolution(specifier).map(Some)
+    specifier: &ModuleSpecifier,
+  ) -> Option<MediaType> {
+    let node_resolver = self.node_resolver.as_ref()?;
+    let resolution = node_resolver
+      .url_to_node_resolution(specifier.clone())
+      .ok()?;
+    Some(NodeResolution::into_specifier_and_media_type(Some(resolution)).1)
   }
 
   pub fn get_closest_package_json(
@@ -313,6 +288,7 @@ impl LspResolver {
   pub fn resolve_redirects(
     &self,
     specifier: &ModuleSpecifier,
+    _file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<ModuleSpecifier> {
     let Some(redirect_resolver) = self.redirect_resolver.as_ref() else {
       return Some(specifier.clone());
@@ -323,6 +299,7 @@ impl LspResolver {
   pub fn redirect_chain_headers(
     &self,
     specifier: &ModuleSpecifier,
+    _file_referrer: Option<&ModuleSpecifier>,
   ) -> Vec<(ModuleSpecifier, Arc<HashMap<String, String>>)> {
     let Some(redirect_resolver) = self.redirect_resolver.as_ref() else {
       return vec![];
@@ -335,72 +312,10 @@ impl LspResolver {
   }
 }
 
-#[derive(Debug)]
-pub struct LspGraphResolver<'a> {
-  inner: &'a CliGraphResolver,
-  unstable_sloppy_imports: bool,
-}
-
-impl<'a> Resolver for LspGraphResolver<'a> {
-  fn default_jsx_import_source(&self) -> Option<String> {
-    self.inner.default_jsx_import_source()
-  }
-
-  fn default_jsx_import_source_types(&self) -> Option<String> {
-    self.inner.default_jsx_import_source_types()
-  }
-
-  fn jsx_import_source_module(&self) -> &str {
-    self.inner.jsx_import_source_module()
-  }
-
-  fn resolve(
-    &self,
-    specifier_text: &str,
-    referrer_range: &deno_graph::Range,
-    mode: deno_graph::source::ResolutionMode,
-  ) -> Result<deno_ast::ModuleSpecifier, deno_graph::source::ResolveError> {
-    let specifier = self.inner.resolve(specifier_text, referrer_range, mode)?;
-    if self.unstable_sloppy_imports && specifier.scheme() == "file" {
-      Ok(
-        SloppyImportsResolver::resolve_with_stat_sync(
-          &specifier,
-          mode,
-          |path| {
-            path.metadata().ok().and_then(|m| {
-              if m.is_file() {
-                Some(SloppyImportsFsEntry::File)
-              } else if m.is_dir() {
-                Some(SloppyImportsFsEntry::Dir)
-              } else {
-                None
-              }
-            })
-          },
-        )
-        .into_specifier()
-        .into_owned(),
-      )
-    } else {
-      Ok(specifier)
-    }
-  }
-
-  fn resolve_types(
-    &self,
-    specifier: &deno_ast::ModuleSpecifier,
-  ) -> Result<
-    Option<(deno_ast::ModuleSpecifier, Option<deno_graph::Range>)>,
-    deno_graph::source::ResolveError,
-  > {
-    self.inner.resolve_types(specifier)
-  }
-}
-
 async fn create_npm_resolver(
   config_data: &ConfigData,
   cache: &LspCache,
-  http_client: &Arc<HttpClient>,
+  http_client_provider: &Arc<HttpClientProvider>,
 ) -> Option<Arc<dyn CliNpmResolver>> {
   let node_modules_dir = config_data
     .node_modules_dir
@@ -409,11 +324,11 @@ async fn create_npm_resolver(
   let options = if config_data.byonm {
     CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
       fs: Arc::new(deno_fs::RealFs),
-      root_node_modules_dir: node_modules_dir,
+      root_node_modules_dir: node_modules_dir.clone(),
     })
   } else {
     CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
-      http_client: http_client.clone(),
+      http_client_provider: http_client_provider.clone(),
       snapshot: match config_data.lockfile.as_ref() {
         Some(lockfile) => {
           CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
@@ -437,7 +352,10 @@ async fn create_npm_resolver(
       // do not install while resolving in the lsp—leave that to the cache command
       package_json_installer:
         CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
-      npm_registry_url: crate::args::npm_registry_url().to_owned(),
+      npmrc: config_data
+        .npmrc
+        .clone()
+        .unwrap_or_else(create_default_npmrc),
       npm_system_info: NpmSystemInfo::default(),
     })
   };
@@ -467,6 +385,8 @@ fn create_graph_resolver(
   node_resolver: Option<&Arc<CliNodeResolver>>,
 ) -> Arc<CliGraphResolver> {
   let config_file = config_data.and_then(|d| d.config_file.as_deref());
+  let unstable_sloppy_imports =
+    config_file.is_some_and(|cf| cf.has_unstable("sloppy-imports"));
   Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
     node_resolver: node_resolver.cloned(),
     npm_resolver: npm_resolver.cloned(),
@@ -484,30 +404,10 @@ fn create_graph_resolver(
     bare_node_builtins_enabled: config_file
       .map(|cf| cf.has_unstable("bare-node-builtins"))
       .unwrap_or(false),
-    // not used in the LSP as the LspGraphResolver handles this
-    sloppy_imports_resolver: None,
+    sloppy_imports_resolver: unstable_sloppy_imports.then(|| {
+      SloppyImportsResolver::new_without_stat_cache(Arc::new(deno_fs::RealFs))
+    }),
   }))
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct LspNpmConfigHash(u64);
-
-impl LspNpmConfigHash {
-  pub fn new(config: &Config, cache: &LspCache) -> Self {
-    let config_data = config.tree.root_data();
-    let scope = config_data.map(|d| &d.scope);
-    let node_modules_dir =
-      config_data.and_then(|d| d.node_modules_dir.as_ref());
-    let lockfile = config_data.and_then(|d| d.lockfile.as_ref());
-    let mut hasher = FastInsecureHasher::new();
-    hasher.write_hashable(scope);
-    hasher.write_hashable(node_modules_dir);
-    if let Some(lockfile) = lockfile {
-      hasher.write_hashable(&*lockfile.lock());
-    }
-    hasher.write_hashable(cache.deno_dir().npm_folder_path());
-    Self(hasher.finish())
-  }
 }
 
 #[derive(Debug, Eq, PartialEq)]

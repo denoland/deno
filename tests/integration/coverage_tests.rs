@@ -440,7 +440,46 @@ fn no_internal_node_code() {
 }
 
 #[test]
+fn no_http_coverage_data() {
+  let _http_server_guard = test_util::http_server();
+  let context = TestContext::default();
+  let tempdir = context.temp_dir();
+  let tempdir = tempdir.path().join("cov");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      "--no-check".to_string(),
+      format!("--coverage={}", tempdir),
+      "coverage/no_http_coverage_data_test.ts".to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  // Check that coverage files contain no http urls
+  let paths = tempdir.read_dir();
+  for path in paths {
+    let unwrapped = PathRef::new(path.unwrap().path());
+    let data = unwrapped.read_to_string();
+
+    let value: serde_json::Value = serde_json::from_str(&data).unwrap();
+    let url = value["url"].as_str().unwrap();
+    assert_starts_with!(url, "file:");
+  }
+}
+
+#[test]
 fn test_html_reporter() {
+  // This test case generates a html coverage report of test cases in /tests/testdata/coverage/multisource
+  // You can get the same reports in ./cov_html by running the following command:
+  // ```
+  // ./target/debug/deno test --coverage=cov_html tests/testdata/coverage/multisource
+  // ./target/debug/deno coverage --html cov_html
+  // ```
   let context = TestContext::default();
   let tempdir = context.temp_dir();
   let tempdir = tempdir.path().join("cov");
@@ -481,11 +520,17 @@ fn test_html_reporter() {
 
   let foo_ts_html = tempdir.join("html").join("foo.ts.html").read_to_string();
   assert_contains!(foo_ts_html, "<h1>Coverage report for foo.ts</h1>");
+  // Check that line count has correct title attribute
+  assert_contains!(foo_ts_html, "<span class='cline-any cline-yes' title='This line is covered 1 time'>x1</span>");
+  assert_contains!(foo_ts_html, "<span class='cline-any cline-yes' title='This line is covered 3 times'>x3</span>");
 
   let bar_ts_html = tempdir.join("html").join("bar.ts.html").read_to_string();
   assert_contains!(bar_ts_html, "<h1>Coverage report for bar.ts</h1>");
   // Check <T> in source code is escaped to &lt;T&gt;
   assert_contains!(bar_ts_html, "&lt;T&gt;");
+  // Check that line anchors are correctly referenced by line number links
+  assert_contains!(bar_ts_html, "<a name='L1'></a>");
+  assert_contains!(bar_ts_html, "<a href='#L1'>1</a>");
 
   let baz_index_html = tempdir
     .join("html")
@@ -535,14 +580,15 @@ fn test_summary_reporter() {
   output.assert_exit_code(0);
   output.skip_output_check();
 
-  let output = context
-    .new_command()
-    .args_vec(vec!["coverage".to_string(), format!("{}/", tempdir)])
-    .run();
+  {
+    let output = context
+      .new_command()
+      .args_vec(vec!["coverage".to_string(), format!("{}/", tempdir)])
+      .run();
 
-  output.assert_exit_code(0);
-  output.assert_matches_text(
-    "----------------------------------
+    output.assert_exit_code(0);
+    output.assert_matches_text(
+      "----------------------------------
 File         | Branch % | Line % |
 ----------------------------------
  bar.ts      |      0.0 |   57.1 |
@@ -553,5 +599,85 @@ File         | Branch % | Line % |
  All files   |     40.0 |   61.0 |
 ----------------------------------
 ",
+    );
+  }
+
+  // test --ignore flag works
+  {
+    let output = context
+      .new_command()
+      .args_vec(vec![
+        "coverage".to_string(),
+        format!("{}/", tempdir),
+        "--ignore=**/bar.ts,**/quux.ts".to_string(),
+      ])
+      .run();
+
+    output.assert_exit_code(0);
+    output.assert_matches_text(
+      "---------------------------------
+File        | Branch % | Line % |
+---------------------------------
+ baz/qux.ts |    100.0 |  100.0 |
+ foo.ts     |     50.0 |   76.9 |
+---------------------------------
+ All files  |     66.7 |   85.0 |
+---------------------------------
+",
+    );
+  }
+}
+
+#[test]
+fn test_collect_summary_with_no_matches() {
+  let context: TestContext = TestContext::default();
+  let temp_dir: &TempDir = context.temp_dir();
+  let temp_dir_path: PathRef = PathRef::new(temp_dir.path().join("cov"));
+
+  let empty_test_dir: PathRef = temp_dir_path.join("empty_dir");
+  empty_test_dir.create_dir_all();
+
+  let output: util::TestCommandOutput = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      "--allow-read".to_string(),
+      format!("--coverage={}", temp_dir_path.as_path().display()),
+      empty_test_dir.as_path().to_str().unwrap().to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(1);
+
+  let actual: &str = output.combined_output();
+  let expected_message: &str = "error: No test modules found";
+  assert_contains!(actual, expected_message);
+
+  // Check the contents of the coverage directory, ignoring 'empty_dir'
+  let mut unexpected_contents: Vec<std::path::PathBuf> = Vec::new();
+  for entry in std::fs::read_dir(temp_dir_path.as_path())
+    .unwrap()
+    .flatten()
+  {
+    if entry.file_name() != "empty_dir" {
+      // Ignore the 'empty_dir'
+      unexpected_contents.push(entry.path());
+    }
+  }
+
+  // Report unexpected contents
+  if !unexpected_contents.is_empty() {
+    eprintln!("Unexpected files or directories in the coverage directory:");
+    for path in &unexpected_contents {
+      eprintln!("{:?}", path);
+    }
+  }
+
+  // Assert that the coverage directory is otherwise empty
+  assert!(
+    unexpected_contents.is_empty(),
+    "Expected the coverage directory to be empty except for 'empty_dir', but found: {:?}",
+    unexpected_contents
   );
 }

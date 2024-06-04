@@ -29,6 +29,8 @@ use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
 
+const CODE_CACHE_DB_FILE_NAME: &str = "v8_code_cache_v2";
+
 itest!(stdout_write_all {
   args: "run --quiet run/stdout_write_all.ts",
   output: "run/stdout_write_all.out",
@@ -232,12 +234,6 @@ itest!(_044_bad_resource {
   args: "run --quiet --reload --allow-read run/044_bad_resource.ts",
   output: "run/044_bad_resource.ts.out",
   exit_code: 1,
-});
-
-itest!(_045_proxy {
-  args: "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet run/045_proxy_test.ts",
-  output: "run/045_proxy_test.ts.out",
-  http_server: true,
 });
 
 itest!(_046_tsx {
@@ -827,40 +823,6 @@ itest!(lock_check_ok2 {
   http_server: true,
 });
 
-itest!(lock_dynamic_imports {
-  args: "run --lock=run/lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/run/013_dynamic_import.ts",
-  output: "run/lock_dynamic_imports.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_check_err {
-  args: "run --lock=run/lock_check_err.json http://127.0.0.1:4545/run/003_relative_import.ts",
-  output: "run/lock_check_err.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_check_err2 {
-  args: "run --lock=run/lock_check_err2.json run/019_media_types.ts",
-  output: "run/lock_check_err2.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(config_file_lock_path {
-  args: "run --config=run/config_file_lock_path.json run/019_media_types.ts",
-  output: "run/config_file_lock_path.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_flag_overrides_config_file_lock_path {
-  args: "run --lock=run/lock_check_ok2.json --config=run/config_file_lock_path.json run/019_media_types.ts",
-  output: "run/019_media_types.ts.out",
-  http_server: true,
-});
-
 itest!(lock_v2_check_ok {
   args:
     "run --quiet --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
@@ -871,33 +833,6 @@ itest!(lock_v2_check_ok {
 itest!(lock_v2_check_ok2 {
   args: "run --lock=run/lock_v2_check_ok2.json run/019_media_types.ts",
   output: "run/019_media_types.ts.out",
-  http_server: true,
-});
-
-itest!(lock_v2_dynamic_imports {
-  args: "run --lock=run/lock_v2_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/run/013_dynamic_import.ts",
-  output: "run/lock_v2_dynamic_imports.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_v2_check_err {
-  args: "run --lock=run/lock_v2_check_err.json http://127.0.0.1:4545/run/003_relative_import.ts",
-  output: "run/lock_v2_check_err.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_v2_check_err2 {
-  args: "run --lock=run/lock_v2_check_err2.json run/019_media_types.ts",
-  output: "run/lock_v2_check_err2.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_only_http_and_https {
-  args: "run --lock=run/lock_only_http_and_https/deno.lock run/lock_only_http_and_https/main.ts",
-  output: "run/lock_only_http_and_https/main.out",
   http_server: true,
 });
 
@@ -3209,6 +3144,20 @@ itest!(byte_order_mark {
 });
 
 #[test]
+#[cfg(windows)]
+fn process_stdin_read_unblock() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdin_unblock.mjs"])
+    .with_pty(|mut console| {
+      console.write_raw("b");
+      console.human_delay();
+      console.write_line_raw("s");
+      console.expect_all(&["1", "1"]);
+    });
+}
+
+#[test]
 fn issue9750() {
   TestContext::default()
     .new_command()
@@ -4568,32 +4517,11 @@ async fn websocket_server_idletimeout() {
   assert_eq!(child.wait().unwrap().code(), Some(123));
 }
 
-itest!(auto_discover_lockfile {
-  args: "run run/auto_discover_lockfile/main.ts",
-  output: "run/auto_discover_lockfile/main.out",
-  http_server: true,
-  exit_code: 10,
-});
-
 itest!(no_lock_flag {
   args: "run --no-lock run/no_lock_flag/main.ts",
   output: "run/no_lock_flag/main.out",
   http_server: true,
   exit_code: 0,
-});
-
-itest!(config_file_lock_false {
-  args: "run --config=run/config_file_lock_boolean/false.json run/config_file_lock_boolean/main.ts",
-  output: "run/config_file_lock_boolean/false.main.out",
-  http_server: true,
-  exit_code: 0,
-});
-
-itest!(config_file_lock_true {
-  args: "run --config=run/config_file_lock_boolean/true.json run/config_file_lock_boolean/main.ts",
-  output: "run/config_file_lock_boolean/true.main.out",
-  http_server: true,
-  exit_code: 10,
 });
 
 itest!(permission_args {
@@ -4616,8 +4544,8 @@ fn file_fetcher_preserves_permissions() {
     .args("repl --quiet")
     .with_pty(|mut console| {
       console.write_line(
-      "const a = await import('http://localhost:4545/run/019_media_types.ts');",
-    );
+        "const a = await import('http://localhost:4545/run/019_media_types.ts');",
+      );
       console.expect("Allow?");
       console.human_delay();
       console.write_line_raw("y");
@@ -4818,21 +4746,17 @@ console.log(returnsHi());"#,
     .join("mod1.ts");
   mod1_file.write("export function returnsHi() { return 'bye bye bye'; }");
 
-  // won't match the lockfile now
-  deno_run_cmd
-    .run()
-    .assert_matches_text(r#"error: The source code is invalid, as it does not match the expected hash in the lock file.
-  Specifier: http://localhost:4545/subdir/mod1.ts
-  Lock file: [WILDCARD]deno.lock
-"#)
-    .assert_exit_code(10);
+  // this is fine with a lockfile because users are supposed to be able
+  // to modify the vendor folder
+  deno_run_cmd.run().assert_matches_text("bye bye bye\n");
 
   // try updating by deleting the lockfile
   let lockfile = temp_dir.path().join("deno.lock");
   lockfile.remove_file();
   cache_command.run();
 
-  // now it should run
+  // should still run and the lockfile should be recreated
+  // (though with the checksum from the vendor folder)
   deno_run_cmd.run().assert_matches_text("bye bye bye\n");
   assert!(lockfile.exists());
 
@@ -5144,7 +5068,7 @@ fn code_cache_test() {
     assert!(!output.stderr().contains("V8 code cache hit"));
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5235,7 +5159,7 @@ fn code_cache_npm_test() {
     assert!(!output.stderr().contains("V8 code cache hit"));
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5295,7 +5219,7 @@ fn code_cache_npm_with_require_test() {
     assert!(!output.stderr().contains("V8 code cache hit"));
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 

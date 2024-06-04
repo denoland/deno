@@ -70,14 +70,8 @@ for (const file of project.getSourceFiles()) {
     }
 
     if (unstableFiles.includes(file)) {
-      const tagsTag = tags.find((tag) => tag.getTagName() === "tags");
-      if (
-        !(tagsTag?.getComment() &&
-          tagsTag.getCommentText().includes("unstable"))
-      ) {
-        errors.push(
-          getErrorPrefix(node) + "JSDoc @tags tag with value 'unstable'",
-        );
+      if (!tags.find((tag) => tag.getTagName() === "experimental")) {
+        errors.push(getErrorPrefix(node) + "JSDoc @experimental tag");
       }
     }
   }

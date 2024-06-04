@@ -822,7 +822,7 @@ export class ClientHttp2Stream extends Duplex {
         session[kDenoClientRid],
         this.#rid,
       );
-      const response = await op_http2_client_get_response(
+      const [response, endStream] = await op_http2_client_get_response(
         this.#rid,
       );
       debugHttp2(">>> after get response", response);
@@ -831,7 +831,13 @@ export class ClientHttp2Stream extends Duplex {
         ...Object.fromEntries(response.headers),
       };
       debugHttp2(">>> emitting response", headers);
-      this.emit("response", headers, 0);
+      this.emit(
+        "response",
+        headers,
+        endStream
+          ? constants.NGHTTP2_FLAG_END_STREAM
+          : constants.NGHTTP2_FLAG_NONE,
+      );
       this[kDenoResponse] = response;
       this.emit("ready");
     })();
@@ -927,25 +933,23 @@ export class ClientHttp2Stream extends Duplex {
 
   // TODO(bartlomieju): clean up
   _write(chunk, encoding, callback?: () => void) {
-    debugHttp2(">>> _write", callback);
+    debugHttp2(">>> _write", encoding, callback);
     if (typeof encoding === "function") {
       callback = encoding;
-      encoding = "utf8";
+      encoding = this.#encoding;
     }
     let data;
-    if (typeof encoding === "string") {
+    if (encoding === "utf8") {
       data = ENCODER.encode(chunk);
-    } else {
+    } else if (encoding === "buffer") {
+      this.#encoding = encoding;
       data = chunk.buffer;
     }
 
     this.#requestPromise
       .then(() => {
         debugHttp2(">>> _write", this.#rid, data, encoding, callback);
-        return op_http2_client_send_data(
-          this.#rid,
-          data,
-        );
+        return op_http2_client_send_data(this.#rid, new Uint8Array(data));
       })
       .then(() => {
         callback?.();
@@ -1001,9 +1005,14 @@ export class ClientHttp2Stream extends Duplex {
     debugHttp2(">>> read");
 
     (async () => {
-      const [chunk, finished] = await op_http2_client_get_response_body_chunk(
-        this[kDenoResponse].bodyRid,
-      );
+      const [chunk, finished, cancelled] =
+        await op_http2_client_get_response_body_chunk(
+          this[kDenoResponse].bodyRid,
+        );
+
+      if (cancelled) {
+        return;
+      }
 
       debugHttp2(">>> chunk", chunk, finished, this[kDenoResponse].bodyRid);
       if (chunk === null) {
