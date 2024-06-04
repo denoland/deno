@@ -14,6 +14,11 @@
       "args": "test --hide-traces main.js",
       "output": "pretty.out",
       "exitCode": 1
+    },
+    "reporter_tap": {
+      "args": "test --hide-traces --reporter=tap main.js",
+      "output": "tap.out",
+      "exitCode": 1
     }
   }
 }
