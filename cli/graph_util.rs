@@ -78,7 +78,7 @@ pub fn graph_valid(
 
   let mut errors = graph
     .walk(
-      roots,
+      roots.iter(),
       deno_graph::WalkOptions {
         check_js: options.check_js,
         follow_type_only: options.follow_type_only,
@@ -696,7 +696,10 @@ impl ModuleGraphBuilder {
   /// so. Returns `Err(_)` if there is a known module graph or resolution
   /// error statically reachable from `roots` and not a dynamic import.
   pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), AnyError> {
-    self.graph_roots_valid(graph, &graph.roots)
+    self.graph_roots_valid(
+      graph,
+      &graph.roots.iter().cloned().collect::<Vec<_>>(),
+    )
   }
 
   pub fn graph_roots_valid(
@@ -886,9 +889,8 @@ pub fn has_graph_root_local_dependent_changed(
   root: &ModuleSpecifier,
   canonicalized_changed_paths: &HashSet<PathBuf>,
 ) -> bool {
-  let roots = vec![root.clone()];
   let mut dependent_specifiers = graph.walk(
-    &roots,
+    std::iter::once(root),
     deno_graph::WalkOptions {
       follow_dynamic: true,
       follow_type_only: true,

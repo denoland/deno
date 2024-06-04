@@ -107,7 +107,7 @@ mod test {
       maybe_syntax: None,
       media_type: MediaType::TypeScript,
       scope_analysis: false,
-      text_info: SourceTextInfo::from_string(text.to_string()),
+      text: text.into(),
     })
     .unwrap()
   }

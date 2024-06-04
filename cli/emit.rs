@@ -10,7 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::ModuleCodeString;
+use deno_core::ModuleCodeBytes;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use deno_graph::Module;
@@ -90,7 +90,7 @@ impl Emitter {
     &self,
     specifier: &ModuleSpecifier,
     source: &str,
-  ) -> Option<String> {
+  ) -> Option<Vec<u8>> {
     let source_hash = self.get_source_hash(source);
     self.emit_cache.get_emit_code(specifier, source_hash)
   }
@@ -100,7 +100,7 @@ impl Emitter {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     source: &Arc<str>,
-  ) -> Result<ModuleCodeString, AnyError> {
+  ) -> Result<ModuleCodeBytes, AnyError> {
     // Note: keep this in sync with the sync version below
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(specifier, source) {
@@ -139,7 +139,7 @@ impl Emitter {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     source: &Arc<str>,
-  ) -> Result<ModuleCodeString, AnyError> {
+  ) -> Result<ModuleCodeBytes, AnyError> {
     // Note: keep this in sync with the async version above
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(specifier, source) {
@@ -180,7 +180,8 @@ impl Emitter {
     options.source_map = SourceMapOption::None;
     let transpiled_source = parsed_source
       .transpile(&self.transpile_and_emit_options.0, &options)?
-      .into_source();
+      .into_source()
+      .into_string()?;
     Ok(transpiled_source.text)
   }
 
@@ -196,7 +197,7 @@ impl Emitter {
 }
 
 enum PreEmitResult {
-  Cached(ModuleCodeString),
+  Cached(ModuleCodeBytes),
   NotCached { source_hash: u64 },
 }
 
@@ -214,7 +215,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
     if let Some(emit_code) =
       self.0.emit_cache.get_emit_code(specifier, source_hash)
     {
-      PreEmitResult::Cached(emit_code.into())
+      PreEmitResult::Cached(emit_code.into_boxed_slice().into())
     } else {
       PreEmitResult::NotCached { source_hash }
     }
@@ -240,7 +241,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
     specifier: &ModuleSpecifier,
     transpile_result: TranspileResult,
     source_hash: u64,
-  ) -> ModuleCodeString {
+  ) -> ModuleCodeBytes {
     let transpiled_source = match transpile_result {
       TranspileResult::Owned(source) => source,
       TranspileResult::Cloned(source) => {
@@ -252,8 +253,8 @@ impl<'a> EmitParsedSourceHelper<'a> {
     self.0.emit_cache.set_emit_code(
       specifier,
       source_hash,
-      &transpiled_source.text,
+      &transpiled_source.source,
     );
-    transpiled_source.text.into()
+    transpiled_source.source.into_boxed_slice().into()
   }
 }

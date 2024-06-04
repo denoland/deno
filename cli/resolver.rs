@@ -10,7 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
-use deno_core::ModuleCodeString;
+use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
@@ -63,7 +63,7 @@ pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
 }
 
 pub struct ModuleCodeStringSource {
-  pub code: ModuleCodeString,
+  pub code: ModuleSourceCode,
   pub found_url: ModuleSpecifier,
   pub media_type: MediaType,
 }
@@ -296,7 +296,7 @@ impl NpmModuleLoader {
     let file_path = specifier.to_file_path().unwrap();
     let code = self
       .fs
-      .read_text_file_async(file_path.clone(), None)
+      .read_file_async(file_path.clone(), None)
       .await
       .map_err(AnyError::from)
       .with_context(|| {
@@ -332,16 +332,19 @@ impl NpmModuleLoader {
 
     let code = if self.cjs_resolutions.contains(specifier) {
       // translate cjs to esm if it's cjs and inject node globals
+      let code = String::from_utf8(code)?;
       self
         .node_code_translator
         .translate_cjs_to_esm(specifier, Some(code), permissions)
         .await?
+        .into_bytes()
+        .into_boxed_slice()
     } else {
       // esm and json code is untouched
-      code
+      code.into_boxed_slice()
     };
     Ok(ModuleCodeStringSource {
-      code: code.into(),
+      code: ModuleSourceCode::Bytes(code.into()),
       found_url: specifier.clone(),
       media_type: MediaType::from_specifier(specifier),
     })

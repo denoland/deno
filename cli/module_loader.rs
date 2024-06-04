@@ -31,7 +31,6 @@ use crate::resolver::NpmModuleLoader;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
-use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
 use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
@@ -366,15 +365,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     } else {
       self.load_prepared_module(specifier, maybe_referrer).await?
     };
-    let code = if self.shared.is_inspecting {
-      // we need the code with the source map in order for
-      // it to work with --inspect or --inspect-brk
-      code_source.code
-    } else {
-      // reduce memory and throw away the source map
-      // because we don't need it
-      code_without_source_map(code_source.code)
-    };
+    let code = code_source.code;
     let module_type = match code_source.media_type {
       MediaType::Json => ModuleType::Json,
       _ => ModuleType::JavaScript,
@@ -391,7 +382,11 @@ impl<TGraphContainer: ModuleGraphContainer>
     let code_cache = if module_type == ModuleType::JavaScript {
       self.shared.code_cache.as_ref().map(|cache| {
         let code_hash = FastInsecureHasher::new_deno_versioned()
-          .write_hashable(&code)
+          // todo(https://github.com/denoland/deno_core/pull/765): pass &code directly
+          .write_hashable(match &code {
+            ModuleSourceCode::String(s) => s.as_bytes(),
+            ModuleSourceCode::Bytes(b) => b.as_bytes(),
+          })
           .finish();
         let data = cache
           .get_sync(specifier, code_cache::CodeCacheType::EsModule, code_hash)
@@ -413,7 +408,7 @@ impl<TGraphContainer: ModuleGraphContainer>
 
     Ok(ModuleSource::new_with_redirect(
       module_type,
-      ModuleSourceCode::String(code),
+      code,
       specifier,
       &code_source.found_url,
       code_cache,
@@ -612,7 +607,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         self.parsed_source_cache.free(specifier);
 
         Ok(ModuleCodeStringSource {
-          code: transpile_result,
+          code: ModuleSourceCode::Bytes(transpile_result),
           found_url: specifier.clone(),
           media_type,
         })
@@ -647,7 +642,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         self.parsed_source_cache.free(specifier);
 
         Ok(ModuleCodeStringSource {
-          code: transpile_result,
+          code: ModuleSourceCode::Bytes(transpile_result),
           found_url: specifier.clone(),
           media_type,
         })
@@ -673,7 +668,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         specifier,
         ..
       })) => Ok(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-        code: source.clone().into(),
+        code: ModuleSourceCode::String(source.clone().into()),
         found_url: specifier.clone(),
         media_type: *media_type,
       })),
@@ -712,7 +707,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         self.parsed_source_cache.free(specifier);
 
         Ok(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-          code,
+          code: ModuleSourceCode::String(code),
           found_url: specifier.clone(),
           media_type: *media_type,
         }))
@@ -892,7 +887,11 @@ impl<TGraphContainer: ModuleGraphContainer> SourceMapGetter
       _ => return None,
     }
     let source = self.0.load_prepared_module_sync(&specifier, None).ok()?;
-    source_map_from_code(&source.code)
+    // todo(https://github.com/denoland/deno_core/pull/764): use .as_bytes() helper
+    source_map_from_code(match &source.code {
+      ModuleSourceCode::String(s) => s.as_bytes(),
+      ModuleSourceCode::Bytes(b) => b.as_bytes(),
+    })
   }
 
   fn get_source_line(
