@@ -143,6 +143,8 @@ class OffscreenCanvas extends EventTarget {
       );
     }
 
+    this[_fillCanvasBitmapHook]?.();
+
     let image = webidl.createBranded(ImageBitmap);
     image[_bitmapData] = this[_canvasBitmap].data;
     image[_width] = this[_width];
@@ -159,6 +161,9 @@ class OffscreenCanvas extends EventTarget {
       prefix,
       "Argument 1",
     );
+
+    this[_context][_fillCanvasBitmapHook]?.();
+
 
     // TODO: If the value of this OffscreenCanvas object's [[Detached]] internal slot is set to true, then return a promise rejected with an "InvalidStateError" DOMException.
 
@@ -242,6 +247,7 @@ const _configuration = Symbol("[[configuration]]");
 const _textureDescriptor = Symbol("[[textureDescriptor]]");
 const _currentTexture = Symbol("[[currentTexture]]");
 const _drawingBuffer = Symbol("[[drawingBuffer]]");
+const _fillCanvasBitmapHook = Symbol("[[fillCanvasBitmapHook]]");
 class GPUCanvasContext {
   [_configuration];
   /** @type {GPUTexture | undefined} */
@@ -258,6 +264,8 @@ class GPUCanvasContext {
   }
 
   configure(configuration) {
+    loadWebGPU();
+
     webidl.assertBranded(this, GPUCanvasContextPrototype);
     const prefix = "Failed to execute 'configure' on 'GPUCanvasContext'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -307,6 +315,10 @@ class GPUCanvasContext {
     return this[_currentTexture];
   }
 
+  [_fillCanvasBitmapHook]() {
+    this[_canvas][_canvasBitmap].data = getCopyOfImageContent(this);
+  }
+
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
       createFilteredInspectProxy({
@@ -335,6 +347,8 @@ function getTextureDescriptorForCanvasAndConfiguration(canvas, configuration) {
 function replaceDrawingBuffer(context) {
   expireCurrentTexture(context);
 
+
+
   // TODO
 }
 
@@ -343,6 +357,76 @@ function expireCurrentTexture(context) {
     context[_currentTexture].destroy();
     context[_currentTexture] = null;
   }
+}
+
+function getCopyOfImageContent(context) {
+  const texture = context[_currentTexture];
+  const device = context[_configuration].device;
+  const { padded, unpadded } = getRowPadding(context[_canvas][_width]);
+
+  console.log(padded * context[_canvas][_height], unpadded * context[_canvas][_height]);
+
+  const encoder = device.createCommandEncoder({
+    label: "GPUCanvasCopyCommandEncoder"
+  });
+  const outputBuffer = device.createBuffer({
+    label: "GPUCanvasCopyBuffer",
+    size: unpadded * context[_canvas][_height],
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+
+
+  encoder.copyTextureToBuffer(
+    {
+      texture,
+    },
+    {
+      buffer: outputBuffer,
+      bytesPerRow: unpadded,
+    },
+    {
+      width: context[_canvas][_width],
+      height: context[_canvas][_height],
+    },
+  );
+
+  device.queue.onSubmittedWorkDone().then(() => console.log("foo"));
+
+  device.queue.submit([encoder.finish()]);
+
+  await outputBuffer.mapAsync(1);
+
+
+  const x = new Uint8Array(outputBuffer.getMappedRange());
+
+  Deno.writeTextFileSync("./debug.txt", JSON.stringify(Array.from(x), null, 2));
+
+  return x.slice();
+}
+
+
+/** Buffer-Texture copies must have [`bytes_per_row`] aligned to this number. */
+export const COPY_BYTES_PER_ROW_ALIGNMENT = 256;
+
+/** Number of bytes per pixel. */
+export const BYTES_PER_PIXEL = 3;
+
+export function getRowPadding(width) {
+  // It is a WebGPU requirement that
+  // GPUImageCopyBuffer.layout.bytesPerRow % COPY_BYTES_PER_ROW_ALIGNMENT == 0
+  // So we calculate paddedBytesPerRow by rounding unpaddedBytesPerRow
+  // up to the next multiple of COPY_BYTES_PER_ROW_ALIGNMENT.
+
+  const unpaddedBytesPerRow = width * BYTES_PER_PIXEL;
+  const paddedBytesPerRowPadding = (COPY_BYTES_PER_ROW_ALIGNMENT -
+      (unpaddedBytesPerRow % COPY_BYTES_PER_ROW_ALIGNMENT)) %
+    COPY_BYTES_PER_ROW_ALIGNMENT;
+  const paddedBytesPerRow = unpaddedBytesPerRow + paddedBytesPerRowPadding;
+
+  return {
+    unpadded: unpaddedBytesPerRow,
+    padded: paddedBytesPerRow,
+  };
 }
 
 // ENUM: OffscreenRenderingContextId

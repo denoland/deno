@@ -211,6 +211,7 @@ deno_core::extension!(
     queue::op_webgpu_queue_submit,
     queue::op_webgpu_write_buffer,
     queue::op_webgpu_write_texture,
+    queue::op_webgpu_queue_on_submitted_work_done,
     // shader
     shader::op_webgpu_create_shader_module,
     // surface

@@ -87,6 +87,7 @@ import {
   op_webgpu_request_device,
   op_webgpu_write_buffer,
   op_webgpu_write_texture,
+  op_webgpu_queue_on_submitted_work_done,
 } from "ext:core/ops";
 const {
   ArrayBuffer,
@@ -1933,7 +1934,8 @@ class GPUQueue {
 
   onSubmittedWorkDone() {
     webidl.assertBranded(this, GPUQueuePrototype);
-    return PromiseResolve();
+
+    return op_webgpu_queue_on_submitted_work_done(this[_rid]);
   }
 
   /**

@@ -4,10 +4,11 @@ use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
 use image::imageops::FilterType;
-use image::ColorType;
+use image::ExtendedColorType;
 use image::GenericImageView;
 use image::ImageEncoder;
 use image::Pixel;
+use image::RgbImage;
 use image::RgbaImage;
 use serde::Deserialize;
 use serde::Serialize;
@@ -44,15 +45,14 @@ fn op_image_process(
   #[buffer] buf: &[u8],
   #[serde] args: ImageProcessArgs,
 ) -> Result<ToJsBuffer, AnyError> {
-  let view =
-    RgbaImage::from_vec(args.width, args.height, buf.to_vec()).unwrap();
+  let view = RgbImage::from_vec(args.width, args.height, buf.to_vec()).unwrap();
 
   let surface = if !(args.width == args.surface_width
     && args.height == args.surface_height
     && args.input_x == 0
     && args.input_y == 0)
   {
-    let mut surface = RgbaImage::new(args.surface_width, args.surface_height);
+    let mut surface = RgbImage::new(args.surface_width, args.surface_height);
 
     image::imageops::overlay(&mut surface, &view, args.input_x, args.input_y);
 
@@ -118,7 +118,7 @@ struct DecodedPng {
 #[op2]
 #[serde]
 fn op_image_decode_png(#[buffer] buf: &[u8]) -> Result<DecodedPng, AnyError> {
-  let reader = std::io::BufReader::new(buf);
+  let reader = std::io::BufReader::new(std::io::Cursor::new(buf));
   let decoder = image::codecs::png::PngDecoder::new(reader)?;
   let image = image::DynamicImage::from_decoder(decoder)?;
   let (width, height) = image.dimensions();
@@ -139,8 +139,9 @@ fn op_image_encode_png(
 ) -> Result<Option<ToJsBuffer>, AnyError> {
   let mut out = vec![];
   let png = image::codecs::png::PngEncoder::new(&mut out);
+
   if png
-    .write_image(buf, width, height, ColorType::Rgba8)
+    .write_image(buf, width, height, ExtendedColorType::Rgb8)
     .is_err()
   {
     return Ok(None);
