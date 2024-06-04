@@ -64,7 +64,6 @@ mod test {
   use deno_ast::ModuleSpecifier;
   use deno_ast::ParseParams;
   use deno_ast::ParsedSource;
-  use deno_ast::SourceTextInfo;
 
   use super::has_default_export;
 

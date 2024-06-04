@@ -31,6 +31,7 @@ use crate::resolver::NpmModuleLoader;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
 use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
@@ -365,7 +366,17 @@ impl<TGraphContainer: ModuleGraphContainer>
     } else {
       self.load_prepared_module(specifier, maybe_referrer).await?
     };
-    let code = code_source.code;
+    // todo(dsherret): we should store the source maps non-inline
+    // so that we don't don't have to potentially allocate another
+    // large string when stripping the source map here
+    let code = if self.shared.is_inspecting {
+      // we need the code with the source map in order for
+      // it to work with --inspect or --inspect-brk
+      code_source.code
+    } else {
+      // v8 is slower when source maps are present, so we strip them
+      code_without_source_map(code_source.code)
+    };
     let module_type = match code_source.media_type {
       MediaType::Json => ModuleType::Json,
       _ => ModuleType::JavaScript,

@@ -172,17 +172,38 @@ impl Emitter {
       ModuleSpecifier::to_file_path(specifier).unwrap(),
     )
     .await?;
-    let source_arc: Arc<str> = source_code.into();
-    let parsed_source = self
-      .parsed_source_cache
-      .remove_or_parse_module(specifier, source_arc, media_type)?;
-    let mut options = self.transpile_and_emit_options.1.clone();
-    options.source_map = SourceMapOption::None;
-    let transpiled_source = parsed_source
-      .transpile(&self.transpile_and_emit_options.0, &options)?
-      .into_source()
-      .into_string()?;
-    Ok(transpiled_source.text)
+    match media_type {
+      MediaType::TypeScript
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Jsx
+      | MediaType::Tsx => {
+        let source_arc: Arc<str> = source_code.into();
+        let parsed_source = self
+          .parsed_source_cache
+          .remove_or_parse_module(specifier, source_arc, media_type)?;
+        // HMR doesn't work with embedded source maps for some reason, so set
+        // the option to not use them
+        let mut options = self.transpile_and_emit_options.1.clone();
+        options.source_map = SourceMapOption::None;
+        let transpiled_source = parsed_source
+          .transpile(&self.transpile_and_emit_options.0, &options)?
+          .into_source()
+          .into_string()?;
+        Ok(transpiled_source.text)
+      }
+      MediaType::JavaScript
+      | MediaType::Mjs
+      | MediaType::Cjs
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Json
+      | MediaType::Wasm
+      | MediaType::TsBuildInfo
+      | MediaType::SourceMap
+      | MediaType::Unknown => Ok(source_code),
+    }
   }
 
   /// A hashing function that takes the source code and uses the global emit
