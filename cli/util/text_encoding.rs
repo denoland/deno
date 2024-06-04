@@ -112,6 +112,12 @@ mod tests {
       ).map(to_string),
       Some("testingtesting".to_string())
     );
+    assert_eq!(
+      source_map_from_code(
+        b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=\n  test\n",
+      ),
+      None
+    );
   }
 
   #[test]
