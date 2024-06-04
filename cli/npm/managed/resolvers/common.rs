@@ -21,7 +21,6 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
-use crate::http_util::HttpClient;
 use crate::npm::managed::cache::TarballCache;
 
 /// Part of the resolution that interacts with the file system.
@@ -50,10 +49,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
     specifier: &ModuleSpecifier,
   ) -> Result<Option<NpmPackageCacheFolderId>, AnyError>;
 
-  async fn cache_packages(
-    &self,
-    http_client: &Arc<HttpClient>,
-  ) -> Result<(), AnyError>;
+  async fn cache_packages(&self) -> Result<(), AnyError>;
 
   fn ensure_read_permission(
     &self,
@@ -131,13 +127,12 @@ impl RegistryReadPermissionChecker {
 pub async fn cache_packages(
   packages: Vec<NpmResolutionPackage>,
   tarball_cache: &Arc<TarballCache>,
-  http_client: &Arc<HttpClient>,
 ) -> Result<(), AnyError> {
   let mut futures_unordered = futures::stream::FuturesUnordered::new();
   for package in packages {
     futures_unordered.push(async move {
       tarball_cache
-        .ensure_package(&package.id.nv, &package.dist, http_client)
+        .ensure_package(&package.id.nv, &package.dist)
         .await
     });
   }
