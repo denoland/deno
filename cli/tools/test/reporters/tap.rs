@@ -48,6 +48,7 @@ impl TapTestReporter {
     indent: usize,
     failure: &TestFailure,
     location: DiagnosticLocation,
+    options: Option<&TestFailureFormatOptions>,
   ) {
     // Unspecified behaviour:
     // The diagnostic schema is not specified by the TAP spec,
@@ -56,7 +57,7 @@ impl TapTestReporter {
     // YAML is a superset of JSON, so we can avoid a YAML dependency here.
     // This makes the output less readable though.
     let diagnostic = serde_json::to_string(&json!({
-      "message": failure.to_string(),
+      "message": failure.format(options),
       "severity": "fail".to_string(),
       "at": location,
     }))
@@ -88,6 +89,7 @@ impl TapTestReporter {
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
+    options: Option<&TestFailureFormatOptions>,
   ) {
     if self.step_n == 0 {
       println!("# Subtest: {}", desc.root_name)
@@ -109,6 +111,7 @@ impl TapTestReporter {
           file: to_relative_path_or_remote_url(&self.cwd, &desc.origin),
           line: desc.location.line_number,
         },
+        options,
       );
     }
   }
@@ -148,11 +151,12 @@ impl TestReporter for TapTestReporter {
     description: &TestDescription,
     result: &TestResult,
     _elapsed: u64,
+    options: Option<&TestFailureFormatOptions>,
   ) {
     if self.is_concurrent {
       let results = self.step_results.remove(&description.id);
       for (desc, result) in results.iter().flat_map(|v| v.iter()) {
-        self.print_step_result(desc, result);
+        self.print_step_result(desc, result, options);
       }
     }
 
@@ -178,6 +182,7 @@ impl TestReporter for TapTestReporter {
           file: to_relative_path_or_remote_url(&self.cwd, &description.origin),
           line: description.location.line_number,
         },
+        options,
       );
     }
   }
@@ -198,6 +203,7 @@ impl TestReporter for TapTestReporter {
     _elapsed: u64,
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
+    options: Option<&TestFailureFormatOptions>,
   ) {
     if self.is_concurrent {
       // All subtests must be reported immediately before the parent test.
@@ -211,7 +217,7 @@ impl TestReporter for TapTestReporter {
       return;
     }
 
-    self.print_step_result(desc, result);
+    self.print_step_result(desc, result, options);
   }
 
   fn report_summary(
@@ -219,6 +225,7 @@ impl TestReporter for TapTestReporter {
     _elapsed: &Duration,
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
+    _options: Option<&TestFailureFormatOptions>,
   ) {
     println!("1..{}", self.planned);
   }
@@ -228,6 +235,7 @@ impl TestReporter for TapTestReporter {
     tests_pending: &HashSet<usize>,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
+    _options: Option<&TestFailureFormatOptions>,
   ) {
     println!("Bail out! SIGINT received.");
     common::report_sigint(

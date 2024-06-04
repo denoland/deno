@@ -103,6 +103,7 @@ impl TestReporter for DotTestReporter {
     description: &TestDescription,
     result: &TestResult,
     _elapsed: u64,
+    _options: Option<&TestFailureFormatOptions>,
   ) {
     match &result {
       TestResult::Ok => {
@@ -154,6 +155,7 @@ impl TestReporter for DotTestReporter {
     _elapsed: u64,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
+    _options: Option<&TestFailureFormatOptions>,
   ) {
     match &result {
       TestStepResult::Ok => {
@@ -184,12 +186,14 @@ impl TestReporter for DotTestReporter {
     elapsed: &Duration,
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
+    options: Option<&TestFailureFormatOptions>,
   ) {
     common::report_summary(
       &mut std::io::stdout(),
       &self.cwd,
       &self.summary,
       elapsed,
+      options,
     );
     println!();
   }
@@ -199,6 +203,7 @@ impl TestReporter for DotTestReporter {
     tests_pending: &HashSet<usize>,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
+    _options: Option<&TestFailureFormatOptions>,
   ) {
     common::report_sigint(
       &mut std::io::stdout(),

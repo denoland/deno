@@ -245,6 +245,7 @@ impl TestReporter for PrettyTestReporter {
     description: &TestDescription,
     result: &TestResult,
     elapsed: u64,
+    _options: Option<&TestFailureFormatOptions>,
   ) {
     match &result {
       TestResult::Ok => {
@@ -332,6 +333,7 @@ impl TestReporter for PrettyTestReporter {
     elapsed: u64,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
+    _options: Option<&TestFailureFormatOptions>,
   ) {
     match &result {
       TestStepResult::Ok => {
@@ -393,9 +395,16 @@ impl TestReporter for PrettyTestReporter {
     elapsed: &Duration,
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
+    options: Option<&TestFailureFormatOptions>,
   ) {
     self.write_output_end();
-    common::report_summary(&mut self.writer, &self.cwd, &self.summary, elapsed);
+    common::report_summary(
+      &mut self.writer,
+      &self.cwd,
+      &self.summary,
+      elapsed,
+      options,
+    );
     if !self.repl {
       writeln!(&mut self.writer).unwrap();
     }
@@ -407,6 +416,7 @@ impl TestReporter for PrettyTestReporter {
     tests_pending: &HashSet<usize>,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
+    _options: Option<&TestFailureFormatOptions>,
   ) {
     common::report_sigint(
       &mut self.writer,
