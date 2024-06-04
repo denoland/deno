@@ -397,7 +397,7 @@ impl Document {
       let graph_resolver =
         resolver.as_graph_resolver(self.file_referrer.as_ref());
       let npm_resolver =
-        resolver.as_graph_npm_resolver(self.file_referrer.as_ref());
+        resolver.create_graph_npm_resolver(self.file_referrer.as_ref());
       dependencies = Arc::new(
         self
           .dependencies
@@ -409,7 +409,7 @@ impl Document {
                 s,
                 &CliJsrUrlProvider,
                 Some(graph_resolver),
-                Some(npm_resolver),
+                Some(&npm_resolver),
               ),
             )
           })
@@ -419,7 +419,7 @@ impl Document {
         Arc::new(d.with_new_resolver(
           &CliJsrUrlProvider,
           Some(graph_resolver),
-          Some(npm_resolver),
+          Some(&npm_resolver),
         ))
       });
       maybe_parsed_source = self.maybe_parsed_source();
@@ -1500,20 +1500,23 @@ fn analyze_module(
   resolver: &LspResolver,
 ) -> ModuleResult {
   match parsed_source_result {
-    Ok(parsed_source) => Ok(deno_graph::parse_module_from_ast(
-      deno_graph::ParseModuleFromAstOptions {
-        graph_kind: deno_graph::GraphKind::TypesOnly,
-        specifier,
-        maybe_headers,
-        parsed_source,
-        // use a null file system because there's no need to bother resolving
-        // dynamic imports like import(`./dir/${something}`) in the LSP
-        file_system: &deno_graph::source::NullFileSystem,
-        jsr_url_provider: &CliJsrUrlProvider,
-        maybe_resolver: Some(resolver.as_graph_resolver(file_referrer)),
-        maybe_npm_resolver: Some(resolver.as_graph_npm_resolver(file_referrer)),
-      },
-    )),
+    Ok(parsed_source) => {
+      let npm_resolver = resolver.create_graph_npm_resolver(file_referrer);
+      Ok(deno_graph::parse_module_from_ast(
+        deno_graph::ParseModuleFromAstOptions {
+          graph_kind: deno_graph::GraphKind::TypesOnly,
+          specifier,
+          maybe_headers,
+          parsed_source,
+          // use a null file system because there's no need to bother resolving
+          // dynamic imports like import(`./dir/${something}`) in the LSP
+          file_system: &deno_graph::source::NullFileSystem,
+          jsr_url_provider: &CliJsrUrlProvider,
+          maybe_resolver: Some(resolver.as_graph_resolver(file_referrer)),
+          maybe_npm_resolver: Some(&npm_resolver),
+        },
+      ))
+    }
     Err(err) => Err(deno_graph::ModuleGraphError::ModuleError(
       deno_graph::ModuleError::ParseErr(specifier, err.clone()),
     )),

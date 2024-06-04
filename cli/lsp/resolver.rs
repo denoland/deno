@@ -20,6 +20,7 @@ use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
 use crate::resolver::SloppyImportsResolver;
+use crate::resolver::WorkerCliNpmGraphResolver;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use dashmap::DashMap;
@@ -27,7 +28,6 @@ use deno_ast::MediaType;
 use deno_cache_dir::HttpCache;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use deno_graph::source::NpmResolver;
 use deno_graph::source::Resolver;
 use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
@@ -105,6 +105,7 @@ impl LspResolver {
     let redirect_resolver = Some(Arc::new(RedirectResolver::new(
       cache.root_vendor_or_global(),
     )));
+    let npm_graph_resolver = graph_resolver.create_graph_npm_resolver();
     let graph_imports = config_data
       .and_then(|d| d.config_file.as_ref())
       .and_then(|cf| cf.to_maybe_imports().ok())
@@ -118,7 +119,7 @@ impl LspResolver {
                 imports,
                 &CliJsrUrlProvider,
                 Some(graph_resolver.as_ref()),
-                Some(graph_resolver.as_ref()),
+                Some(&npm_graph_resolver),
               );
               (referrer, graph_import)
             })
@@ -180,11 +181,11 @@ impl LspResolver {
     self.graph_resolver.as_ref()
   }
 
-  pub fn as_graph_npm_resolver(
+  pub fn create_graph_npm_resolver(
     &self,
     _file_referrer: Option<&ModuleSpecifier>,
-  ) -> &dyn NpmResolver {
-    self.graph_resolver.as_ref()
+  ) -> WorkerCliNpmGraphResolver {
+    self.graph_resolver.create_graph_npm_resolver()
   }
 
   pub fn maybe_managed_npm_resolver(
