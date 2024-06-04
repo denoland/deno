@@ -259,10 +259,16 @@ pub mod tests {
   use deno_core::unsync::spawn;
 
   fn tls_key_for_test(sni: &str) -> TlsKey {
-    TlsKey(
-      vec![CertificateDer::from(format!("{sni}-cert").into_bytes())],
-      PrivateKeyDer::try_from(format!("{sni}-key").into_bytes()).unwrap(),
-    )
+    let manifest_dir =
+      std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let sni = sni.replace(".com", "");
+    let cert_file = manifest_dir.join(format!("testdata/{}_cert.der", sni));
+    let prikey_file = manifest_dir.join(format!("testdata/{}_prikey.der", sni));
+    let cert = std::fs::read(cert_file).unwrap();
+    let prikey = std::fs::read(prikey_file).unwrap();
+    let cert = CertificateDer::from(cert);
+    let prikey = PrivateKeyDer::try_from(prikey).unwrap();
+    TlsKey(vec![cert], prikey)
   }
 
   #[tokio::test]
@@ -274,8 +280,8 @@ pub mod tests {
       }
     });
 
-    let key = resolver.resolve("example.com".to_owned()).await.unwrap();
-    assert_eq!(tls_key_for_test("example.com"), key);
+    let key = resolver.resolve("example1.com".to_owned()).await.unwrap();
+    assert_eq!(tls_key_for_test("example1.com"), key);
     drop(resolver);
 
     task.await.unwrap();
@@ -290,13 +296,13 @@ pub mod tests {
       }
     });
 
-    let f1 = resolver.resolve("example.com".to_owned());
-    let f2 = resolver.resolve("example.com".to_owned());
+    let f1 = resolver.resolve("example1.com".to_owned());
+    let f2 = resolver.resolve("example1.com".to_owned());
 
     let key = f1.await.unwrap();
-    assert_eq!(tls_key_for_test("example.com"), key);
+    assert_eq!(tls_key_for_test("example1.com"), key);
     let key = f2.await.unwrap();
-    assert_eq!(tls_key_for_test("example.com"), key);
+    assert_eq!(tls_key_for_test("example1.com"), key);
     drop(resolver);
 
     task.await.unwrap();
