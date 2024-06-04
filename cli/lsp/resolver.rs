@@ -4,7 +4,7 @@ use crate::args::create_default_npmrc;
 use crate::args::package_json;
 use crate::args::CacheSetting;
 use crate::graph_util::CliJsrUrlProvider;
-use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 use crate::jsr::JsrCacheResolver;
 use crate::lsp::config::Config;
 use crate::lsp::config::ConfigData;
@@ -82,12 +82,14 @@ impl LspResolver {
   pub async fn from_config(
     config: &Config,
     cache: &LspCache,
-    http_client: Option<&Arc<HttpClient>>,
+    http_client_provider: Option<&Arc<HttpClientProvider>>,
   ) -> Self {
     let config_data = config.tree.root_data();
     let mut npm_resolver = None;
     let mut node_resolver = None;
-    if let (Some(http_client), Some(config_data)) = (http_client, config_data) {
+    if let (Some(http_client), Some(config_data)) =
+      (http_client_provider, config_data)
+    {
       npm_resolver = create_npm_resolver(config_data, cache, http_client).await;
       node_resolver = create_node_resolver(npm_resolver.as_ref());
     }
@@ -313,7 +315,7 @@ impl LspResolver {
 async fn create_npm_resolver(
   config_data: &ConfigData,
   cache: &LspCache,
-  http_client: &Arc<HttpClient>,
+  http_client_provider: &Arc<HttpClientProvider>,
 ) -> Option<Arc<dyn CliNpmResolver>> {
   let node_modules_dir = config_data
     .node_modules_dir
@@ -326,7 +328,7 @@ async fn create_npm_resolver(
     })
   } else {
     CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
-      http_client: http_client.clone(),
+      http_client_provider: http_client_provider.clone(),
       snapshot: match config_data.lockfile.as_ref() {
         Some(lockfile) => {
           CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
