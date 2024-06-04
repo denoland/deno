@@ -14,7 +14,7 @@ export { delay } from "../tests/util/std/async/delay.ts";
 
 // [toolName] --version output
 const versions = {
-  "dlint": "dlint 0.52.2",
+  "dlint": "dlint 0.60.0",
 };
 
 const compressed = new Set(["ld64.lld", "rcodesign"]);
@@ -175,7 +175,7 @@ export function getPrebuiltToolPath(toolName) {
   return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
 }
 
-const commitId = "5f2097d8247c7fbe30ba227f894d70ae5c1524c7";
+const commitId = "b8aac22e0cd7c1c6557a56a813fe0c25486fafee";
 const downloadUrl =
   `https://raw.githubusercontent.com/denoland/deno_third_party/${commitId}/prebuilt/${platformDirName}`;
 
