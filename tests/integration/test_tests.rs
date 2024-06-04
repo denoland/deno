@@ -569,6 +569,30 @@ itest!(report_error {
   exit_code: 1,
 });
 
+itest!(hide_traces_dot {
+  args: "test --hide-traces --reporter=dot test/hide_traces.ts",
+  output: "test/hide_traces_dot.out",
+  exit_code: 1,
+});
+
+itest!(hide_traces_junit {
+  args: "test --hide-traces --reporter=junit test/hide_traces.ts",
+  output: "test/hide_traces_junit.out",
+  exit_code: 1,
+});
+
+itest!(hide_traces_pretty {
+  args: "test --hide-traces test/hide_traces.ts",
+  output: "test/hide_traces_pretty.out",
+  exit_code: 1,
+});
+
+itest!(hide_traces_tap {
+  args: "test --hide-traces --reporter=tap test/hide_traces.ts",
+  output: "test/hide_traces_tap.out",
+  exit_code: 1,
+});
+
 itest!(check_local_by_default {
   args: "test --quiet test/check_local_by_default.ts",
   output: "test/check_local_by_default.out",
