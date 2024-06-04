@@ -14,7 +14,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::cache::CACHE_PERM;
-use crate::http_util::HttpClient;
 use crate::npm::cache_dir::mixed_case_package_name_decode;
 use crate::util::fs::atomic_write_file;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
@@ -229,14 +228,10 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     Ok(get_package_folder_id_from_folder_name(&folder_name))
   }
 
-  async fn cache_packages(
-    &self,
-    http_client: &Arc<HttpClient>,
-  ) -> Result<(), AnyError> {
+  async fn cache_packages(&self) -> Result<(), AnyError> {
     sync_resolution_with_fs(
       &self.resolution.snapshot(),
       &self.cache,
-      http_client,
       &self.progress_bar,
       &self.tarball_cache,
       &self.root_node_modules_path,
@@ -260,7 +255,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
 async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
   cache: &Arc<NpmCache>,
-  http_client: &Arc<HttpClient>,
   progress_bar: &ProgressBar,
   tarball_cache: &Arc<TarballCache>,
   root_node_modules_dir_path: &Path,
@@ -330,7 +324,7 @@ async fn sync_resolution_with_fs(
       let bin_entries_to_setup = bin_entries.clone();
       cache_futures.push(async move {
         tarball_cache
-          .ensure_package(&package.id.nv, &package.dist, http_client)
+          .ensure_package(&package.id.nv, &package.dist)
           .await?;
         let pb_guard = progress_bar.update_with_prompt(
           ProgressMessagePrompt::Initialize,

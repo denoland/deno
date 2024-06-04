@@ -20,8 +20,6 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
-use crate::http_util::HttpClient;
-
 use super::super::super::common::types_package_name;
 use super::super::cache::NpmCache;
 use super::super::cache::TarballCache;
@@ -129,20 +127,12 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     )
   }
 
-  async fn cache_packages(
-    &self,
-    http_client: &Arc<HttpClient>,
-  ) -> Result<(), AnyError> {
+  async fn cache_packages(&self) -> Result<(), AnyError> {
     let package_partitions = self
       .resolution
       .all_system_packages_partitioned(&self.system_info);
 
-    cache_packages(
-      package_partitions.packages,
-      &self.tarball_cache,
-      http_client,
-    )
-    .await?;
+    cache_packages(package_partitions.packages, &self.tarball_cache).await?;
 
     // create the copy package folders
     for copy in package_partitions.copy_packages {
