@@ -1638,8 +1638,9 @@ dependencies = [
 
 [[package]]
 name = "deno_native_certs"
-version = "0.2.0"
-source = "git+https://github.com/denoland/deno_native_certs?branch=upgrade-pemfile2#e77d8fda3a4ec4cff11d50c140551d33bdb5f430"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c867603d2a5dfea31f55cecebb572554caa395437786d058faa9a2814c8d6eb9"
 dependencies = [
  "dlopen2",
  "dlopen2_derive",
