@@ -1639,14 +1639,13 @@ dependencies = [
 [[package]]
 name = "deno_native_certs"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4785d0bdc13819b665b71e4fb7e119d859568471e4c245ec5610857e70c9345"
+source = "git+https://github.com/denoland/deno_native_certs?branch=upgrade-pemfile2#e77d8fda3a4ec4cff11d50c140551d33bdb5f430"
 dependencies = [
  "dlopen2",
  "dlopen2_derive",
  "once_cell",
  "rustls-native-certs",
- "rustls-pemfile 1.0.4",
+ "rustls-pemfile",
 ]
 
 [[package]]
@@ -1892,7 +1891,7 @@ dependencies = [
  "deno_core",
  "deno_native_certs",
  "rustls",
- "rustls-pemfile 2.1.2",
+ "rustls-pemfile",
  "rustls-tokio-stream",
  "rustls-webpki",
  "serde",
@@ -5265,7 +5264,7 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "rustls",
- "rustls-pemfile 2.1.2",
+ "rustls-pemfile",
  "rustls-pki-types",
  "serde",
  "serde_json",
@@ -5466,23 +5465,15 @@ dependencies = [
 
 [[package]]
 name = "rustls-native-certs"
-version = "0.6.3"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9aace74cb666635c918e9c12bc0d348266037aa8eb599b5cba565709a8dff00"
+checksum = "8f1fb85efa936c42c6d5fc28d2629bb51e4b2f4b8a5211e297d599cc5a093792"
 dependencies = [
  "openssl-probe",
- "rustls-pemfile 1.0.4",
+ "rustls-pemfile",
+ "rustls-pki-types",
  "schannel",
  "security-framework",
-]
-
-[[package]]
-name = "rustls-pemfile"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c74cae0a4cf6ccbbf5f359f08efdf8ee7e1dc532573bf0db71968cb56b1448c"
-dependencies = [
- "base64 0.21.7",
 ]
 
 [[package]]
@@ -6707,7 +6698,7 @@ dependencies = [
  "prost-build",
  "regex",
  "reqwest",
- "rustls-pemfile 2.1.2",
+ "rustls-pemfile",
  "rustls-tokio-stream",
  "semver 1.0.14",
  "serde",

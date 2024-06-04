@@ -15,7 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
-deno_native_certs = "0.2.0"
+deno_native_certs = { git = "https://github.com/denoland/deno_native_certs", branch = "upgrade-pemfile2" }
 rustls.workspace = true
 rustls-pemfile.workspace = true
 rustls-tokio-stream.workspace = true
