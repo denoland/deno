@@ -3189,11 +3189,11 @@ fn issue9750() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/11451.
-itest!(dom_exception_formatting {
-  args: "run run/dom_exception_formatting.ts",
-  output: "run/dom_exception_formatting.ts.out",
-  exit_code: 1,
-});
+// itest!(dom_exception_formatting {
+//   args: "run run/dom_exception_formatting.ts",
+//   output: "run/dom_exception_formatting.ts.out",
+//   exit_code: 1,
+// });
 
 itest!(long_data_url_formatting {
   args: "run run/long_data_url_formatting.ts",

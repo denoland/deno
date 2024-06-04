@@ -371,4 +371,4 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-deno_core = { git = "https://github.com/denoland/deno_core.git" }
+deno_core = { git = "https://github.com/nathanwhit/deno_core.git", branch = "dynamic-prepare-batching" }

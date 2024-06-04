@@ -1304,7 +1304,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.283.0"
-source = "git+https://github.com/denoland/deno_core.git#478931c55a5a453ebdf56c29b8cf2ad09141d600"
+source = "git+https://github.com/nathanwhit/deno_core.git?branch=dynamic-prepare-batching#9c3bd511f3da444391039a0a42f6682c00804a8b"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1753,7 +1753,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.159.0"
-source = "git+https://github.com/denoland/deno_core.git#478931c55a5a453ebdf56c29b8cf2ad09141d600"
+source = "git+https://github.com/nathanwhit/deno_core.git?branch=dynamic-prepare-batching#9c3bd511f3da444391039a0a42f6682c00804a8b"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5753,7 +5753,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.192.0"
-source = "git+https://github.com/denoland/deno_core.git#478931c55a5a453ebdf56c29b8cf2ad09141d600"
+source = "git+https://github.com/nathanwhit/deno_core.git?branch=dynamic-prepare-batching#9c3bd511f3da444391039a0a42f6682c00804a8b"
 dependencies = [
  "num-bigint",
  "serde",

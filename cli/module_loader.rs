@@ -802,15 +802,23 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
   fn prepare_load(
     &self,
-    specifier: &ModuleSpecifier,
+    specifiers: &[ModuleSpecifier],
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
-    if self.0.shared.node_resolver.in_npm_package(specifier) {
+    let mut only_npm_packages = true;
+    for specifier in specifiers {
+      if !self.0.shared.node_resolver.in_npm_package(specifier) {
+        only_npm_packages = false;
+        break;
+      }
+    }
+
+    if only_npm_packages {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
-    let specifier = specifier.clone();
+    let specifiers = specifiers.to_vec();
     let inner = self.0.clone();
 
     async move {
@@ -825,13 +833,27 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         // This doesn't acquire a graph update permit because that will
         // clone the graph which is a bit slow.
         let graph = graph_container.graph();
-        if !graph.roots.is_empty() && graph.get(&specifier).is_some() {
-          log::debug!("Skipping prepare module load.");
-          // roots are already validated so we can skip those
-          if !graph.roots.contains(&specifier) {
-            module_load_preparer.graph_roots_valid(&graph, &[specifier])?;
+        if !graph.roots.is_empty() {
+          let graph_has_all_modules_loaded =
+            specifiers.iter().fold(true, |mut acc, specifier| {
+              acc &= graph.get(specifier).is_some();
+              acc
+            });
+
+          if graph_has_all_modules_loaded {
+            log::debug!("Skipping prepare module load.");
+            // roots are already validated so we can skip those
+            let has_all_roots =
+              specifiers.iter().fold(true, |mut acc, specifier| {
+                acc &= graph.roots.contains(specifier);
+                acc
+              });
+
+            if !has_all_roots {
+              module_load_preparer.graph_roots_valid(&graph, &specifiers)?;
+            }
+            return Ok(());
           }
-          return Ok(());
         }
       }
 
@@ -846,7 +868,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       module_load_preparer
         .prepare_module_load(
           graph,
-          &[specifier],
+          &specifiers,
           is_dynamic,
           lib,
           root_permissions,
