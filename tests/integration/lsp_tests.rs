@@ -8896,8 +8896,8 @@ fn lsp_npmrc() {
   temp_dir.write(
     temp_dir.path().join(".npmrc"),
     "\
-@denotest:registry=http://127.0.0.1:4261/
-//127.0.0.1:4261/:_authToken=private-reg-token
+@denotest:registry=http://localhost:4261/
+//localhost:4261/:_authToken=private-reg-token
 ",
   );
   let file = source_file(
