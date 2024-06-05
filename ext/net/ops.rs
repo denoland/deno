@@ -587,7 +587,7 @@ where
     }
   }
 
-  let resolver = AsyncResolver::tokio(config, opts)?;
+  let resolver = AsyncResolver::tokio(config, opts);
 
   let lookup_fut = resolver.lookup(query, record_type);
 
