@@ -867,33 +867,33 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
   ) -> NpmPackageReqsResolution {
     match &self.npm_resolver {
       Some(npm_resolver) => {
-        match npm_resolver.as_inner() {
-          InnerCliNpmResolverRef::Managed(npm_resolver) => {
-            let reqs_with_package_infos = {
-              let memory_cache = self.memory_cache.borrow();
-              package_reqs
-                .iter()
-                .map(|package_req| {
-                  let package_info = memory_cache
-                    .get(&package_req.name)
-                    .unwrap() // ok because deno_graph would have called load_and_cache_npm_package_info
-                    .clone();
-                  (*package_req, package_info)
-                })
-                .collect::<Vec<_>>()
-            };
-            let result = npm_resolver
-              .resolve_npm_for_deno_graph(&reqs_with_package_infos)
-              .await;
-            if matches!(result, NpmPackageReqsResolution::ReloadRegistryInfo) {
-              self.memory_cache.borrow_mut().clear();
-            }
-            result
-          }
+        let npm_resolver = match npm_resolver.as_inner() {
+          InnerCliNpmResolverRef::Managed(npm_resolver) => npm_resolver,
           // if we are using byonm, then this should never be called because
           // we don't use deno_graph's npm resolution in this case
           InnerCliNpmResolverRef::Byonm(_) => unreachable!(),
+        };
+
+        let reqs_with_package_infos = {
+          let memory_cache = self.memory_cache.borrow();
+          package_reqs
+            .iter()
+            .map(|package_req| {
+              let package_info = memory_cache
+                .get(&package_req.name)
+                .unwrap() // ok because deno_graph would have called load_and_cache_npm_package_info
+                .clone();
+              (*package_req, package_info)
+            })
+            .collect::<Vec<_>>()
+        };
+        let result = npm_resolver
+          .resolve_npm_for_deno_graph(&reqs_with_package_infos)
+          .await;
+        if matches!(result, NpmPackageReqsResolution::ReloadRegistryInfo) {
+          self.memory_cache.borrow_mut().clear();
         }
+        result
       }
       None => NpmPackageReqsResolution::Resolutions(
         package_reqs
