@@ -28,6 +28,7 @@ use crate::util::fs::hard_link_dir_recursive;
 mod registry_info;
 mod tarball;
 mod tarball_extract;
+mod value_creator;
 
 pub use registry_info::RegistryInfoDownloader;
 pub use tarball::TarballCache;

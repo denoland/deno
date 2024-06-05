@@ -668,7 +668,7 @@ impl LintReporter for PrettyLintReporter {
       }
     }
 
-    log::error!("{}", d.display());
+    log::error!("{}\n", d.display());
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {

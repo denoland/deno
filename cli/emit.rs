@@ -202,7 +202,11 @@ impl Emitter {
       | MediaType::Wasm
       | MediaType::TsBuildInfo
       | MediaType::SourceMap
-      | MediaType::Unknown => Ok(source_code),
+      | MediaType::Unknown => {
+        // clear this specifier from the parsed source cache as it's now out of date
+        self.parsed_source_cache.free(specifier);
+        Ok(source_code)
+      }
     }
   }
 

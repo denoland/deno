@@ -27,7 +27,7 @@ pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 impl CliNpmRegistryApi {
   pub fn new(
     cache: Arc<NpmCache>,
-    registry_info_downloader: RegistryInfoDownloader,
+    registry_info_downloader: Arc<RegistryInfoDownloader>,
   ) -> Self {
     Self(Some(Arc::new(CliNpmRegistryApiInner {
       cache,
@@ -87,7 +87,7 @@ struct CliNpmRegistryApiInner {
   force_reload_flag: AtomicFlag,
   mem_cache: Mutex<HashMap<String, CacheItem>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
-  registry_info_downloader: RegistryInfoDownloader,
+  registry_info_downloader: Arc<RegistryInfoDownloader>,
 }
 
 impl CliNpmRegistryApiInner {

@@ -204,12 +204,12 @@ fn create_api(
 ) -> Arc<CliNpmRegistryApi> {
   Arc::new(CliNpmRegistryApi::new(
     npm_cache.clone(),
-    RegistryInfoDownloader::new(
+    Arc::new(RegistryInfoDownloader::new(
       npm_cache,
       options.http_client_provider.clone(),
       options.npmrc.clone(),
       options.text_only_progress_bar.clone(),
-    ),
+    )),
   ))
 }
 
