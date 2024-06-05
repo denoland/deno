@@ -100,11 +100,11 @@ pub trait CliNpmResolver: NpmResolver {
 pub struct NpmFetchResolver {
   nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
   info_by_name: DashMap<String, Option<Arc<NpmPackageInfo>>>,
-  file_fetcher: FileFetcher,
+  file_fetcher: Arc<FileFetcher>,
 }
 
 impl NpmFetchResolver {
-  pub fn new(file_fetcher: FileFetcher) -> Self {
+  pub fn new(file_fetcher: Arc<FileFetcher>) -> Self {
     Self {
       nv_by_req: Default::default(),
       info_by_name: Default::default(),
@@ -140,11 +140,16 @@ impl NpmFetchResolver {
     }
     let fetch_package_info = || async {
       let info_url = npm_registry_url().join(name).ok()?;
-      let file = self
-        .file_fetcher
-        .fetch(&info_url, &PermissionsContainer::allow_all())
-        .await
-        .ok()?;
+      let file_fetcher = self.file_fetcher.clone();
+      // spawn due to the lsp's `Send` requirement
+      let file = deno_core::unsync::spawn(async move {
+        file_fetcher
+          .fetch(&info_url, &PermissionsContainer::allow_all())
+          .await
+          .ok()
+      })
+      .await
+      .ok()??;
       serde_json::from_slice::<NpmPackageInfo>(&file.source).ok()
     };
     let info = fetch_package_info().await.map(Arc::new);

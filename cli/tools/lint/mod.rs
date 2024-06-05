@@ -244,7 +244,7 @@ async fn lint_files(
               incremental_cache.update_file(
                 &file_path,
                 // ensure the returned text is used here as it may have been modified via --fix
-                file_source.text_info().text_str(),
+                file_source.text(),
               )
             }
           }
@@ -396,7 +396,7 @@ fn lint_file_and_fix(
       media_type,
       linter,
       config.clone(),
-      source.text_info(),
+      source.text_info_lazy(),
       &diagnostics,
     )?;
     match change {
@@ -423,7 +423,7 @@ fn lint_file_and_fix(
 
   if fix_iterations > 0 {
     // everything looks good and the file still parses, so write it out
-    fs::write(file_path, source.text_info().text_str())
+    fs::write(file_path, source.text().as_ref())
       .context("Failed writing fix to file.")?;
   }
 
@@ -668,7 +668,7 @@ impl LintReporter for PrettyLintReporter {
       }
     }
 
-    log::error!("{}", d.display());
+    log::error!("{}\n", d.display());
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {

@@ -76,9 +76,7 @@ Or if you want to run several tests at the same time:
 
 ### Top level properties
 
-- `base` - The base config to use for the test. Options:
-  - `jsr` - Uses env vars for jsr.
-  - `npm` - Uses env vars for npm.
+- `repeat` (number) - Number of times to repeat a test.
 - `tempDir` (boolean) - Copy all the non-test files to a temporary directory and
   execute the command in that temporary directory.
   - By default, tests are executed with a current working directory of the test,
