@@ -619,6 +619,7 @@ pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
       config: Default::default(),
     },
     scopes: Default::default(),
+    registry_configs: Default::default(),
   })
 }
 

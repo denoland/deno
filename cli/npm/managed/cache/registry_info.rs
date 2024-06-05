@@ -13,7 +13,6 @@ use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_npm::npm_rc::RegistryConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 
@@ -21,24 +20,14 @@ use crate::args::CacheSetting;
 use crate::http_util::HttpClientProvider;
 use crate::npm::common::maybe_auth_header_for_npm_registry;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::sync::MultiRuntimeAsyncValueCreator;
 
-use super::value_creator::MultiRuntimeAsyncValueCreator;
 use super::NpmCache;
 
 // todo(dsherret): create seams and unit test this
 
-#[derive(Debug, Clone)]
-enum MemoryCacheItem {
-  /// The cache item hasn't loaded yet.
-  Pending(Arc<MultiRuntimeAsyncValueCreator<FutureResult>>),
-  /// The item has loaded in the past and was stored in the file system cache.
-  /// There is no reason to request this package from the npm registry again
-  /// for the duration of execution.
-  FsCached,
-  /// An item is memory cached when it fails saving to the file system cache
-  /// or the package does not exist.
-  MemoryCached(Result<Option<Arc<NpmPackageInfo>>, Arc<AnyError>>),
-}
+type LoadResult = Result<FutureResult, Arc<AnyError>>;
+type LoadFuture = LocalBoxFuture<'static, LoadResult>;
 
 #[derive(Debug, Clone)]
 enum FutureResult {
@@ -47,8 +36,18 @@ enum FutureResult {
   ErroredFsCache(Arc<NpmPackageInfo>),
 }
 
-type PendingRegistryLoadFuture =
-  LocalBoxFuture<'static, Result<FutureResult, AnyError>>;
+#[derive(Debug, Clone)]
+enum MemoryCacheItem {
+  /// The cache item hasn't loaded yet.
+  Pending(Arc<MultiRuntimeAsyncValueCreator<LoadResult>>),
+  /// The item has loaded in the past and was stored in the file system cache.
+  /// There is no reason to request this package from the npm registry again
+  /// for the duration of execution.
+  FsCached,
+  /// An item is memory cached when it fails saving to the file system cache
+  /// or the package does not exist.
+  MemoryCached(Result<Option<Arc<NpmPackageInfo>>, Arc<AnyError>>),
+}
 
 /// Downloads packuments from the npm registry.
 ///
@@ -82,26 +81,18 @@ impl RegistryInfoDownloader {
     self: &Arc<Self>,
     name: &str,
   ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
-    let registry_url = self.npmrc.get_registry_url(name);
-    let registry_config = self.npmrc.get_registry_config(name);
-
-    self
-      .load_package_info_inner(name, registry_url, registry_config)
-      .await
-      .with_context(|| {
-        format!(
-          "Error getting response at {} for package \"{}\"",
-          self.get_package_url(name, registry_url),
-          name
-        )
-      })
+    self.load_package_info_inner(name).await.with_context(|| {
+      format!(
+        "Error getting response at {} for package \"{}\"",
+        self.get_package_url(name),
+        name
+      )
+    })
   }
 
   async fn load_package_info_inner(
     self: &Arc<Self>,
     name: &str,
-    registry_url: &Url,
-    registry_config: &RegistryConfig,
   ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
     if *self.cache.cache_setting() == CacheSetting::Only {
       return Err(custom_error(
@@ -117,9 +108,11 @@ impl RegistryInfoDownloader {
       if let Some(cache_item) = mem_cache.get(name) {
         cache_item.clone()
       } else {
-        let future =
-          self.create_load_future(name, registry_url, registry_config);
-        let value_creator = MultiRuntimeAsyncValueCreator::new(future);
+        let value_creator = MultiRuntimeAsyncValueCreator::new({
+          let downloader = self.clone();
+          let name = name.to_string();
+          Box::new(move || downloader.create_load_future(&name))
+        });
         let cache_item = MemoryCacheItem::Pending(Arc::new(value_creator));
         mem_cache.insert(name.to_string(), cache_item.clone());
         cache_item
@@ -138,11 +131,7 @@ impl RegistryInfoDownloader {
         maybe_info.clone().map_err(|e| anyhow!("{}", e))
       }
       MemoryCacheItem::Pending(value_creator) => {
-        let downloader = self.clone();
-        let future = value_creator.get(move || {
-          downloader.create_load_future(name, registry_url, registry_config)
-        });
-        match future.await {
+        match value_creator.get().await {
           Ok(FutureResult::SavedFsCache(info)) => {
             // return back the future and mark this package as having
             // been saved in the cache for next time it's requested
@@ -199,14 +188,10 @@ impl RegistryInfoDownloader {
     }
   }
 
-  fn create_load_future(
-    self: &Arc<Self>,
-    name: &str,
-    registry_url: &Url,
-    registry_config: &RegistryConfig,
-  ) -> PendingRegistryLoadFuture {
+  fn create_load_future(self: &Arc<Self>, name: &str) -> LoadFuture {
     let downloader = self.clone();
-    let package_url = self.get_package_url(name, registry_url);
+    let package_url = self.get_package_url(name);
+    let registry_config = self.npmrc.get_registry_config(name);
     let maybe_auth_header = maybe_auth_header_for_npm_registry(registry_config);
     let guard = self.progress_bar.update(package_url.as_str());
     let name = name.to_string();
@@ -242,10 +227,12 @@ impl RegistryInfoDownloader {
         None => Ok(FutureResult::PackageNotExists),
       }
     }
+    .map(|r| r.map_err(Arc::new))
     .boxed_local()
   }
 
-  fn get_package_url(&self, name: &str, registry_url: &Url) -> Url {
+  fn get_package_url(&self, name: &str) -> Url {
+    let registry_url = self.npmrc.get_registry_url(name);
     // list of all characters used in npm packages:
     //  !, ', (, ), *, -, ., /, [0-9], @, [A-Za-z], _, ~
     const ASCII_SET: percent_encoding::AsciiSet =

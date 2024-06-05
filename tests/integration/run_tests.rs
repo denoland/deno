@@ -4011,11 +4011,8 @@ async fn test_resolve_dns() {
     )
     .unwrap();
     let lexer = Lexer::new(&zone_file);
-    let records = Parser::new().parse(
-      lexer,
-      Some(Name::from_str("example.com").unwrap()),
-      None,
-    );
+    let records =
+      Parser::new().parse(lexer, Some(Name::from_str("example.com").unwrap()));
     if records.is_err() {
       panic!("failed to parse: {:?}", records.err())
     }
