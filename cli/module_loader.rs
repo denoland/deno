@@ -469,99 +469,86 @@ impl<TGraphContainer: ModuleGraphContainer>
     }
 
     let graph = self.graph_container.graph();
-    let maybe_resolved = match graph.get(referrer) {
-      Some(Module::Js(module)) => {
-        module.dependencies.get(specifier).map(|d| &d.maybe_code)
-      }
-      _ => None,
+    let resolution = match graph.get(referrer) {
+      Some(Module::Js(module)) => module
+        .dependencies
+        .get(specifier)
+        .map(|d| &d.maybe_code)
+        .unwrap_or(&Resolution::None),
+      _ => &Resolution::None,
     };
 
-    match maybe_resolved {
-      Some(Resolution::Ok(resolved)) => {
-        let specifier = &resolved.specifier;
-        let specifier = match graph.get(specifier) {
-          Some(Module::Npm(module)) => {
-            let package_folder = self
-              .shared
-              .node_resolver
-              .npm_resolver
-              .as_managed()
-              .unwrap() // byonm won't create a Module::Npm
-              .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
-            let maybe_resolution = self
-              .shared
-              .node_resolver
-              .resolve_package_sub_path_from_deno_module(
-                &package_folder,
-                module.nv_reference.sub_path(),
-                referrer,
-                NodeResolutionMode::Execution,
-                permissions,
-              )
-              .with_context(|| {
-                format!("Could not resolve '{}'.", module.nv_reference)
-              })?;
-            match maybe_resolution {
-              Some(res) => res.into_url(),
-              None => return Err(generic_error("not found")),
-            }
-          }
-          Some(Module::Node(module)) => module.specifier.clone(),
-          Some(Module::Js(module)) => module.specifier.clone(),
-          Some(Module::Json(module)) => module.specifier.clone(),
-          Some(Module::External(module)) => {
-            node::resolve_specifier_into_node_modules(&module.specifier)
-          }
-          None => specifier.clone(),
-        };
-        return Ok(specifier);
-      }
-      Some(Resolution::Err(err)) => {
+    let specifier = match resolution {
+      Resolution::Ok(resolved) => Cow::Borrowed(&resolved.specifier),
+      Resolution::Err(err) => {
         return Err(custom_error(
           "TypeError",
           format!("{}\n", err.to_string_with_range()),
-        ))
+        ));
       }
-      Some(Resolution::None) | None => {}
-    }
-
-    // FIXME(bartlomieju): this is another hack way to provide NPM specifier
-    // support in REPL. This should be fixed.
-    let resolution = self.shared.resolver.resolve(
-      specifier,
-      &deno_graph::Range {
-        specifier: referrer.clone(),
-        start: deno_graph::Position::zeroed(),
-        end: deno_graph::Position::zeroed(),
-      },
-      ResolutionMode::Execution,
-    );
+      Resolution::None => Cow::Owned(self.shared.resolver.resolve(
+        specifier,
+        &deno_graph::Range {
+          specifier: referrer.clone(),
+          start: deno_graph::Position::zeroed(),
+          end: deno_graph::Position::zeroed(),
+        },
+        ResolutionMode::Execution,
+      )?),
+    };
 
     if self.shared.is_repl {
-      let specifier = resolution
-        .as_ref()
-        .ok()
-        .map(Cow::Borrowed)
-        .or_else(|| ModuleSpecifier::parse(specifier).ok().map(Cow::Owned));
-      if let Some(specifier) = specifier {
-        if let Ok(reference) =
-          NpmPackageReqReference::from_specifier(&specifier)
-        {
-          return self
-            .shared
-            .node_resolver
-            .resolve_req_reference(
-              &reference,
-              permissions,
-              referrer,
-              NodeResolutionMode::Execution,
-            )
-            .map(|res| res.into_url());
-        }
+      if let Ok(reference) = NpmPackageReqReference::from_specifier(&specifier)
+      {
+        return self
+          .shared
+          .node_resolver
+          .resolve_req_reference(
+            &reference,
+            permissions,
+            referrer,
+            NodeResolutionMode::Execution,
+          )
+          .map(|res| res.into_url());
       }
     }
 
-    resolution.map_err(|err| err.into())
+    let specifier = match graph.get(&specifier) {
+      Some(Module::Npm(module)) => {
+        let package_folder = self
+          .shared
+          .node_resolver
+          .npm_resolver
+          .as_managed()
+          .unwrap() // byonm won't create a Module::Npm
+          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
+        let maybe_resolution = self
+          .shared
+          .node_resolver
+          .resolve_package_sub_path_from_deno_module(
+            &package_folder,
+            module.nv_reference.sub_path(),
+            referrer,
+            NodeResolutionMode::Execution,
+            permissions,
+          )
+          .with_context(|| {
+            format!("Could not resolve '{}'.", module.nv_reference)
+          })?;
+        match maybe_resolution {
+          Some(res) => res.into_url(),
+          None => return Err(generic_error("not found")),
+        }
+      }
+      Some(Module::Node(module)) => module.specifier.clone(),
+      Some(Module::Js(module)) => module.specifier.clone(),
+      Some(Module::Json(module)) => module.specifier.clone(),
+      Some(Module::External(module)) => {
+        node::resolve_specifier_into_node_modules(&module.specifier)
+      }
+      None => specifier.into_owned(),
+    };
+    Ok(specifier)
   }
 
   async fn load_prepared_module(
