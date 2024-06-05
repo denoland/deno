@@ -276,7 +276,6 @@ export class ChildProcess extends EventEmitter {
       })();
     } catch (err) {
       let e = err;
-      console.log(e);
       if (e instanceof Deno.errors.NotFound) {
         e = _createSpawnSyncError("ENOENT", command, args);
       }
@@ -395,7 +394,7 @@ function toDenoStdio(
     case "inherit":
       return "inherit";
     case "ipc":
-      return "ipc";
+      return "ipc_for_internal_use";
     default:
       notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
   }
@@ -1095,7 +1094,7 @@ function toDenoArgs(args: string[]): string[] {
   if (useRunArgs) {
     // -A is not ideal, but needed to propagate permissions.
     // --unstable is needed for Node compat.
-    denoArgs.unshift("run", "-A", "--unstable");
+    denoArgs.unshift("run", "-A");
   }
 
   return denoArgs;

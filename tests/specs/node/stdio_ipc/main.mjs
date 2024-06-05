@@ -4,7 +4,7 @@ import process from "node:process";
 if (process.argv[2] === "child") {
   process.send("hahah");
 } else {
-  const proc = spawn(process.execPath, ["./test.mjs", "child"], {
+  const proc = spawn(process.execPath, ["./main.mjs", "child"], {
     stdio: ["ipc", "inherit", "inherit"],
   });
 

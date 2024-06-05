@@ -37,12 +37,12 @@ use std::os::unix::process::CommandExt;
 pub const UNSTABLE_FEATURE_NAME: &str = "process";
 
 #[derive(Copy, Clone, Eq, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub enum Stdio {
   Inherit,
   Piped,
   Null,
-  Ipc,
+  IpcForInternalUse,
 }
 
 impl Stdio {
@@ -74,7 +74,7 @@ impl<'de> Deserialize<'de> for StdioOrRid {
         "inherit" => Ok(StdioOrRid::Stdio(Stdio::Inherit)),
         "piped" => Ok(StdioOrRid::Stdio(Stdio::Piped)),
         "null" => Ok(StdioOrRid::Stdio(Stdio::Null)),
-        "ipc" => Ok(StdioOrRid::Stdio(Stdio::Ipc)),
+        "ipc_for_internal_use" => Ok(StdioOrRid::Stdio(Stdio::IpcForInternalUse)),
         val => Err(serde::de::Error::unknown_variant(
           val,
           &["inherit", "piped", "null"],
@@ -107,7 +107,7 @@ impl StdioOrRid {
   }
 
   pub fn is_ipc(&self) -> bool {
-    matches!(self, StdioOrRid::Stdio(Stdio::Ipc))
+    matches!(self, StdioOrRid::Stdio(Stdio::IpcForInternalUse))
   }
 }
 
@@ -261,6 +261,7 @@ fn create_command(
   } else {
     command.stdin(args.stdio.stdin.as_stdio(state)?);
   }
+
   command.stdout(match args.stdio.stdout {
     StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(1).as_stdio(state)?,
     value => value.as_stdio(state)?,
