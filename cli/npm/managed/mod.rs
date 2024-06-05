@@ -11,8 +11,9 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_graph::NpmPackageReqResolution;
+use deno_graph::NpmPackageReqsResolution;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
@@ -203,12 +204,12 @@ fn create_api(
 ) -> Arc<CliNpmRegistryApi> {
   Arc::new(CliNpmRegistryApi::new(
     npm_cache.clone(),
-    RegistryInfoDownloader::new(
+    Arc::new(RegistryInfoDownloader::new(
       npm_cache,
       options.http_client_provider.clone(),
       options.npmrc.clone(),
       options.text_only_progress_bar.clone(),
-    ),
+    )),
   ))
 }
 
@@ -387,11 +388,6 @@ impl ManagedCliNpmResolver {
     self.resolution.add_package_reqs(packages).await?;
     self.fs_resolver.cache_packages().await?;
 
-    // If there's a lock file, update it with all discovered npm packages
-    if let Some(lockfile) = &self.maybe_lockfile {
-      self.lock(&mut lockfile.lock());
-    }
-
     Ok(())
   }
 
@@ -418,10 +414,6 @@ impl ManagedCliNpmResolver {
       .serialized_valid_snapshot_for_system(system_info)
   }
 
-  pub fn lock(&self, lockfile: &mut Lockfile) {
-    self.resolution.lock(lockfile)
-  }
-
   pub async fn inject_synthetic_types_node_package(
     &self,
   ) -> Result<(), AnyError> {
@@ -442,25 +434,33 @@ impl ManagedCliNpmResolver {
     self.fs_resolver.cache_packages().await
   }
 
-  /// Resolves a package requirement for deno graph. This should only be
-  /// called by deno_graph's NpmResolver or for resolving packages in
-  /// a package.json
-  pub fn resolve_npm_for_deno_graph(
+  /// Resolves package requirements for deno graph.
+  pub async fn resolve_npm_for_deno_graph(
     &self,
-    pkg_req: &PackageReq,
-  ) -> NpmPackageReqResolution {
-    let result = self.resolution.resolve_pkg_req_as_pending(pkg_req);
-    match result {
-      Ok(nv) => NpmPackageReqResolution::Ok(nv),
-      Err(err) => {
-        if self.npm_api.mark_force_reload() {
-          log::debug!("Restarting npm specifier resolution to check for new registry information. Error: {:#}", err);
-          NpmPackageReqResolution::ReloadRegistryInfo(err.into())
-        } else {
-          NpmPackageReqResolution::Err(err.into())
+    reqs_with_pkg_infos: &[(&PackageReq, Arc<NpmPackageInfo>)],
+  ) -> NpmPackageReqsResolution {
+    let results = self
+      .resolution
+      .resolve_pkg_reqs_as_pending_with_info(reqs_with_pkg_infos)
+      .await;
+
+    let mut resolutions = Vec::with_capacity(results.len());
+    for result in results {
+      match result {
+        Ok(nv) => {
+          resolutions.push(Ok(nv));
+        }
+        Err(err) => {
+          if self.npm_api.mark_force_reload() {
+            log::debug!("Restarting npm specifier resolution to check for new registry information. Error: {:#}", err);
+            return NpmPackageReqsResolution::ReloadRegistryInfo;
+          } else {
+            resolutions.push(Err(Arc::new(err.into())));
+          }
         }
       }
     }
+    NpmPackageReqsResolution::Resolutions(resolutions)
   }
 
   pub fn resolve_pkg_folder_from_deno_module(
@@ -490,13 +490,12 @@ impl ManagedCliNpmResolver {
   pub async fn cache_package_info(
     &self,
     package_name: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<Arc<NpmPackageInfo>, AnyError> {
     // this will internally cache the package information
     self
       .npm_api
       .package_info(package_name)
       .await
-      .map(|_| ())
       .map_err(|err| err.into())
   }
 

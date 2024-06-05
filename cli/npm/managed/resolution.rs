@@ -223,32 +223,40 @@ impl NpmResolution {
   /// Resolves a package requirement for deno graph. This should only be
   /// called by deno_graph's NpmResolver or for resolving packages in
   /// a package.json
-  pub fn resolve_pkg_req_as_pending(
+  pub async fn resolve_pkg_req_as_pending_with_info(
     &self,
     pkg_req: &PackageReq,
+    pkg_info: &NpmPackageInfo,
   ) -> Result<PackageNv, NpmPackageVersionResolutionError> {
-    // we should always have this because it should have been cached before here
-    let package_info = self.api.get_cached_package_info(&pkg_req.name).unwrap();
-    self.resolve_pkg_req_as_pending_with_info(pkg_req, &package_info)
-  }
-
-  /// Resolves a package requirement for deno graph. This should only be
-  /// called by deno_graph's NpmResolver or for resolving packages in
-  /// a package.json
-  pub fn resolve_pkg_req_as_pending_with_info(
-    &self,
-    pkg_req: &PackageReq,
-    package_info: &NpmPackageInfo,
-  ) -> Result<PackageNv, NpmPackageVersionResolutionError> {
-    debug_assert_eq!(pkg_req.name, package_info.name);
+    debug_assert_eq!(pkg_req.name, pkg_info.name);
+    let _permit = self.update_queue.acquire().await;
     let mut snapshot = self.snapshot.write();
     let pending_resolver = get_npm_pending_resolver(&self.api);
     let nv = pending_resolver.resolve_package_req_as_pending(
       &mut snapshot,
       pkg_req,
-      package_info,
+      pkg_info,
     )?;
     Ok(nv)
+  }
+
+  pub async fn resolve_pkg_reqs_as_pending_with_info(
+    &self,
+    reqs_with_pkg_infos: &[(&PackageReq, Arc<NpmPackageInfo>)],
+  ) -> Vec<Result<PackageNv, NpmPackageVersionResolutionError>> {
+    let _permit = self.update_queue.acquire().await;
+    let mut snapshot = self.snapshot.write();
+    let pending_resolver = get_npm_pending_resolver(&self.api);
+    let mut results = Vec::with_capacity(reqs_with_pkg_infos.len());
+    for (pkg_req, pkg_info) in reqs_with_pkg_infos {
+      debug_assert_eq!(pkg_req.name, pkg_info.name);
+      results.push(pending_resolver.resolve_package_req_as_pending(
+        &mut snapshot,
+        pkg_req,
+        pkg_info,
+      ));
+    }
+    results
   }
 
   pub fn package_reqs(&self) -> HashMap<PackageReq, PackageNv> {
@@ -290,11 +298,6 @@ impl NpmResolution {
       .snapshot
       .read()
       .as_valid_serialized_for_system(system_info)
-  }
-
-  pub fn lock(&self, lockfile: &mut Lockfile) {
-    let snapshot = self.snapshot.read();
-    populate_lockfile_from_snapshot(lockfile, &snapshot)
   }
 }
 
@@ -370,6 +373,7 @@ fn populate_lockfile_from_snapshot(
   lockfile: &mut Lockfile,
   snapshot: &NpmResolutionSnapshot,
 ) {
+  assert!(!snapshot.has_pending());
   for (package_req, nv) in snapshot.package_reqs() {
     lockfile.insert_package_specifier(
       format!("npm:{}", package_req),

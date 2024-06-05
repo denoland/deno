@@ -69,6 +69,9 @@
               "type": "string"
             }
           },
+          "repeat": {
+            "type": "number"
+          },
           "steps": {
             "type": "array",
             "items": {
@@ -111,6 +114,9 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "repeat": {
+          "type": "number"
         },
         "tests": {
           "type": "object",

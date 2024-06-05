@@ -371,8 +371,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       // it to work with --inspect or --inspect-brk
       code_source.code
     } else {
-      // reduce memory and throw away the source map
-      // because we don't need it
+      // v8 is slower when source maps are present, so we strip them
       code_without_source_map(code_source.code)
     };
     let module_type = match code_source.media_type {
@@ -413,7 +412,7 @@ impl<TGraphContainer: ModuleGraphContainer>
 
     Ok(ModuleSource::new_with_redirect(
       module_type,
-      ModuleSourceCode::String(code),
+      code,
       specifier,
       &code_source.found_url,
       code_cache,
@@ -424,26 +423,6 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
-    // todo(https://github.com/denoland/deno_core/pull/741): use function from deno_core
-    fn specifier_has_uri_scheme(specifier: &str) -> bool {
-      let mut chars = specifier.chars();
-      let mut len = 0usize;
-      // The first character must be a letter.
-      match chars.next() {
-        Some(c) if c.is_ascii_alphabetic() => len += 1,
-        _ => return false,
-      }
-      // Second and following characters must be either a letter, number,
-      // plus sign, minus sign, or dot.
-      loop {
-        match chars.next() {
-          Some(c) if c.is_ascii_alphanumeric() || "+-.".contains(c) => len += 1,
-          Some(':') if len >= 2 => return true,
-          _ => return false,
-        }
-      }
-    }
-
     let referrer = if referrer.is_empty() && self.shared.is_repl {
       // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
       // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
@@ -452,7 +431,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       referrer
     };
 
-    if specifier_has_uri_scheme(referrer) {
+    if deno_core::specifier_has_uri_scheme(referrer) {
       deno_core::resolve_url(referrer).map_err(|e| e.into())
     } else if referrer == "." {
       // main module, use the initial cwd
@@ -612,7 +591,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         self.parsed_source_cache.free(specifier);
 
         Ok(ModuleCodeStringSource {
-          code: transpile_result,
+          code: ModuleSourceCode::Bytes(transpile_result),
           found_url: specifier.clone(),
           media_type,
         })
@@ -647,7 +626,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         self.parsed_source_cache.free(specifier);
 
         Ok(ModuleCodeStringSource {
-          code: transpile_result,
+          code: ModuleSourceCode::Bytes(transpile_result),
           found_url: specifier.clone(),
           media_type,
         })
@@ -673,7 +652,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         specifier,
         ..
       })) => Ok(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-        code: source.clone().into(),
+        code: ModuleSourceCode::String(source.clone().into()),
         found_url: specifier.clone(),
         media_type: *media_type,
       })),
@@ -712,7 +691,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         self.parsed_source_cache.free(specifier);
 
         Ok(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-          code,
+          code: ModuleSourceCode::String(code),
           found_url: specifier.clone(),
           media_type: *media_type,
         }))
@@ -892,7 +871,7 @@ impl<TGraphContainer: ModuleGraphContainer> SourceMapGetter
       _ => return None,
     }
     let source = self.0.load_prepared_module_sync(&specifier, None).ok()?;
-    source_map_from_code(&source.code)
+    source_map_from_code(source.code.as_bytes())
   }
 
   fn get_source_line(

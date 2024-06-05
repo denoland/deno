@@ -14,6 +14,7 @@ error[private-type-ref]: public type 'MyClass.prototype.prop' references private
   | 
 1 | interface MyInterface {
   | - this is the referenced type
+  | 
 
   info: to ensure documentation is complete all types that are exposed in the public API must be public
 
