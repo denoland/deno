@@ -13,9 +13,7 @@ pub fn source_map_from_code(code: &[u8]) -> Option<Vec<u8>> {
   let range = find_source_map_range(code)?;
   let source_map_range = &code[range];
   let input = source_map_range.split_at(SOURCE_MAP_PREFIX.len()).1;
-  let decoded_map = BASE64_STANDARD
-    .decode(input)
-    .expect("Unable to decode source map from emitted file.");
+  let decoded_map = BASE64_STANDARD.decode(input).ok()?;
   Some(decoded_map)
 }
 
@@ -115,6 +113,15 @@ mod tests {
     assert_eq!(
       source_map_from_code(
         b"test\n//# sourceMappingURL=data:application/json;base64,dGVzdGluZ3Rlc3Rpbmc=\n  test\n",
+      ),
+      None
+    );
+    assert_eq!(
+      source_map_from_code(
+        b"\"use strict\";
+
+throw new Error(\"Hello world!\");
+//# sourceMappingURL=data:application/json;base64,{",
       ),
       None
     );
