@@ -5,7 +5,7 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category DOM APIs */
+/** @category Platform */
 declare interface DomIterable<K, V> {
   keys(): IterableIterator<K>;
   values(): IterableIterator<V>;
@@ -17,7 +17,7 @@ declare interface DomIterable<K, V> {
   ): void;
 }
 
-/** @category Fetch API */
+/** @category Fetch */
 declare type FormDataEntryValue = File | string;
 
 /** Provides a way to easily construct a set of key/value pairs representing
@@ -25,7 +25,7 @@ declare type FormDataEntryValue = File | string;
  * XMLHttpRequest.send() method. It uses the same format a form would use if the
  * encoding type were set to "multipart/form-data".
  *
- * @category Fetch API
+ * @category Fetch
  */
 declare interface FormData extends DomIterable<string, FormDataEntryValue> {
   append(name: string, value: string | Blob, fileName?: string): void;
@@ -36,13 +36,13 @@ declare interface FormData extends DomIterable<string, FormDataEntryValue> {
   set(name: string, value: string | Blob, fileName?: string): void;
 }
 
-/** @category Fetch API */
+/** @category Fetch */
 declare var FormData: {
   readonly prototype: FormData;
   new (): FormData;
 };
 
-/** @category Fetch API */
+/** @category Fetch */
 declare interface Body {
   /** A simple getter used to expose a `ReadableStream` of the body contents. */
   readonly body: ReadableStream<Uint8Array> | null;
@@ -59,6 +59,10 @@ declare interface Body {
    */
   blob(): Promise<Blob>;
   /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with a `Uint8Array`.
+   */
+  bytes(): Promise<Uint8Array>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
    * that resolves with a `FormData` object.
    */
   formData(): Promise<FormData>;
@@ -72,7 +76,7 @@ declare interface Body {
   text(): Promise<string>;
 }
 
-/** @category Fetch API */
+/** @category Fetch */
 declare type HeadersInit = Iterable<string[]> | Record<string, string>;
 
 /** This Fetch API interface allows you to perform various actions on HTTP
@@ -83,7 +87,7 @@ declare type HeadersInit = Iterable<string[]> | Record<string, string>;
  * methods of this interface, header names are matched by case-insensitive byte
  * sequence.
  *
- * @category Fetch API
+ * @category Fetch
  */
 declare interface Headers extends DomIterable<string, string> {
   /** Appends a new value onto an existing header inside a `Headers` object, or
@@ -118,16 +122,16 @@ declare interface Headers extends DomIterable<string, string> {
  * methods of this interface, header names are matched by case-insensitive byte
  * sequence.
  *
- * @category Fetch API
+ * @category Fetch
  */
 declare var Headers: {
   readonly prototype: Headers;
   new (init?: HeadersInit): Headers;
 };
 
-/** @category Fetch API */
+/** @category Fetch */
 declare type RequestInfo = Request | string;
-/** @category Fetch API */
+/** @category Fetch */
 declare type RequestCache =
   | "default"
   | "force-cache"
@@ -135,13 +139,13 @@ declare type RequestCache =
   | "no-store"
   | "only-if-cached"
   | "reload";
-/** @category Fetch API */
+/** @category Fetch */
 declare type RequestCredentials = "include" | "omit" | "same-origin";
-/** @category Fetch API */
+/** @category Fetch */
 declare type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
-/** @category Fetch API */
+/** @category Fetch */
 declare type RequestRedirect = "error" | "follow" | "manual";
-/** @category Fetch API */
+/** @category Fetch */
 declare type ReferrerPolicy =
   | ""
   | "no-referrer"
@@ -152,7 +156,7 @@ declare type ReferrerPolicy =
   | "strict-origin"
   | "strict-origin-when-cross-origin"
   | "unsafe-url";
-/** @category Fetch API */
+/** @category Fetch */
 declare type BodyInit =
   | Blob
   | BufferSource
@@ -160,7 +164,7 @@ declare type BodyInit =
   | URLSearchParams
   | ReadableStream<Uint8Array>
   | string;
-/** @category Fetch API */
+/** @category Fetch */
 declare type RequestDestination =
   | ""
   | "audio"
@@ -181,7 +185,7 @@ declare type RequestDestination =
   | "worker"
   | "xslt";
 
-/** @category Fetch API */
+/** @category Fetch */
 declare interface RequestInit {
   /**
    * A BodyInit object or null to set request's body.
@@ -248,7 +252,7 @@ declare interface RequestInit {
 
 /** This Fetch API interface represents a resource request.
  *
- * @category Fetch API
+ * @category Fetch
  */
 declare interface Request extends Body {
   /**
@@ -338,21 +342,21 @@ declare interface Request extends Body {
 
 /** This Fetch API interface represents a resource request.
  *
- * @category Fetch API
+ * @category Fetch
  */
 declare var Request: {
   readonly prototype: Request;
   new (input: RequestInfo | URL, init?: RequestInit): Request;
 };
 
-/** @category Fetch API */
+/** @category Fetch */
 declare interface ResponseInit {
   headers?: HeadersInit;
   status?: number;
   statusText?: string;
 }
 
-/** @category Fetch API */
+/** @category Fetch */
 declare type ResponseType =
   | "basic"
   | "cors"
@@ -363,7 +367,7 @@ declare type ResponseType =
 
 /** This Fetch API interface represents the response to a request.
  *
- * @category Fetch API
+ * @category Fetch
  */
 declare interface Response extends Body {
   readonly headers: Headers;
@@ -378,7 +382,7 @@ declare interface Response extends Body {
 
 /** This Fetch API interface represents the response to a request.
  *
- * @category Fetch API
+ * @category Fetch
  */
 declare var Response: {
   readonly prototype: Response;
@@ -399,7 +403,7 @@ declare var Response: {
  * ```
  *
  * @tags allow-net, allow-read
- * @category Fetch API
+ * @category Fetch
  */
 declare function fetch(
   input: URL | Request | string,
@@ -407,14 +411,14 @@ declare function fetch(
 ): Promise<Response>;
 
 /**
- * @category Fetch API
+ * @category Fetch
  */
 declare interface EventSourceInit {
   withCredentials?: boolean;
 }
 
 /**
- * @category Fetch API
+ * @category Fetch
  */
 declare interface EventSourceEventMap {
   "error": Event;
@@ -423,7 +427,7 @@ declare interface EventSourceEventMap {
 }
 
 /**
- * @category Fetch API
+ * @category Fetch
  */
 declare interface EventSource extends EventTarget {
   onerror: ((this: EventSource, ev: Event) => any) | null;
@@ -481,7 +485,7 @@ declare interface EventSource extends EventTarget {
 }
 
 /**
- * @category Fetch API
+ * @category Fetch
  */
 declare var EventSource: {
   prototype: EventSource;

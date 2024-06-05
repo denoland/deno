@@ -1,0 +1,20 @@
+{
+  "steps": [
+    {
+      // Notice `--unstable-*` flags are not needed anymore
+      "args": "run -A main.js",
+      "output": "main.out",
+      "envs": {
+        "DENO_FUTURE": "1"
+      }
+    },
+    {
+      // Notice `--unstable-*` flags are not needed anymore
+      "args": "run -A worker.js",
+      "output": "main.out",
+      "envs": {
+        "DENO_FUTURE": "1"
+      }
+    }
+  ]
+}

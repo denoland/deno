@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
+
 use pretty_assertions::assert_eq;
 use std::process::Command;
 use test_util::deno_cmd;
@@ -73,10 +76,10 @@ fn basic() {
     5\n\
     5\n\
     579\n\
-    8589934590\n\
-    -8589934590\n\
-    8589934590\n\
-    -8589934590\n\
+    8589934590n\n\
+    -8589934590n\n\
+    8589934590n\n\
+    -8589934590n\n\
     9007199254740992n\n\
     9007199254740992n\n\
     -9007199254740992n\n\
@@ -107,7 +110,7 @@ fn basic() {
     Before\n\
     After\n\
     logCallback\n\
-    1 -1 2 -2 3 -3 4 -4 0.5 -0.5 1 2 3 4 5 6 7 8\n\
+    1 -1 2 -2 3 -3 4n -4n 0.5 -0.5 1 2 3 4 5 6 7 8\n\
     u8: 8\n\
     buf: [1, 2, 3, 4, 5, 6, 7, 8]\n\
     logCallback\n\

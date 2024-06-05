@@ -4964,11 +4964,11 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
       return PromiseResolve({ value: undefined, done: true });
     };
 
-    const returnPromise = reader[_iteratorNext]
+    reader[_iteratorNext] = reader[_iteratorNext]
       ? PromisePrototypeThen(reader[_iteratorNext], returnSteps, returnSteps)
       : returnSteps();
     return PromisePrototypeThen(
-      returnPromise,
+      reader[_iteratorNext],
       () => ({ value: arg, done: true }),
     );
   },
@@ -5088,28 +5088,32 @@ function initializeCountSizeFunction(globalObject) {
   WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
 }
 
-async function* createAsyncFromSyncIterator(syncIterator) {
-  // deno-lint-ignore prefer-primordials
-  yield* syncIterator;
-}
-
 // Ref: https://tc39.es/ecma262/#sec-getiterator
-function getIterator(obj, async = false) {
-  if (async) {
-    if (obj[SymbolAsyncIterator] === undefined) {
-      if (obj[SymbolIterator] === undefined) {
-        throw new TypeError("No iterator found");
-      }
-      return createAsyncFromSyncIterator(obj[SymbolIterator]());
-    } else {
-      return obj[SymbolAsyncIterator]();
+function getAsyncOrSyncIterator(obj) {
+  let iterator;
+  if (obj[SymbolAsyncIterator] != null) {
+    iterator = obj[SymbolAsyncIterator]();
+    if (!isObject(iterator)) {
+      throw new TypeError(
+        "[Symbol.asyncIterator] returned a non-object value",
+      );
+    }
+  } else if (obj[SymbolIterator] != null) {
+    iterator = obj[SymbolIterator]();
+    if (!isObject(iterator)) {
+      throw new TypeError("[Symbol.iterator] returned a non-object value");
     }
   } else {
-    if (obj[SymbolIterator] === undefined) {
-      throw new TypeError("No iterator found");
-    }
-    return obj[SymbolIterator]();
+    throw new TypeError("No iterator found");
   }
+  if (typeof iterator.next !== "function") {
+    throw new TypeError("iterator.next is not a function");
+  }
+  return iterator;
+}
+
+function isObject(x) {
+  return (typeof x === "object" && x != null) || typeof x === "function";
 }
 
 const _resourceBacking = Symbol("[[resourceBacking]]");
@@ -5204,26 +5208,29 @@ class ReadableStream {
     );
     asyncIterable = webidl.converters.any(asyncIterable);
 
-    const iterator = getIterator(asyncIterable, true);
+    const iterator = getAsyncOrSyncIterator(asyncIterable);
 
     const stream = createReadableStream(noop, async () => {
       // deno-lint-ignore prefer-primordials
       const res = await iterator.next();
-      if (typeof res !== "object") {
+      if (!isObject(res)) {
         throw new TypeError("iterator.next value is not an object");
       }
       if (res.done) {
         readableStreamDefaultControllerClose(stream[_controller]);
       } else {
-        readableStreamDefaultControllerEnqueue(stream[_controller], res.value);
+        readableStreamDefaultControllerEnqueue(
+          stream[_controller],
+          await res.value,
+        );
       }
     }, async (reason) => {
-      if (typeof iterator.return === "undefined") {
+      if (iterator.return == null) {
         return undefined;
       } else {
         // deno-lint-ignore prefer-primordials
         const res = await iterator.return(reason);
-        if (typeof res !== "object") {
+        if (!isObject(res)) {
           throw new TypeError("iterator.return value is not an object");
         } else {
           return undefined;
@@ -5274,7 +5281,7 @@ class ReadableStream {
         "Argument 1",
       );
     } else {
-      options = {};
+      options = { __proto__: null };
     }
     if (options.mode === undefined) {
       return acquireReadableStreamDefaultReader(this);
@@ -5290,7 +5297,7 @@ class ReadableStream {
    * @param {PipeOptions=} options
    * @returns {ReadableStream<T>}
    */
-  pipeThrough(transform, options = {}) {
+  pipeThrough(transform, options = { __proto__: null }) {
     webidl.assertBranded(this, ReadableStreamPrototype);
     const prefix = "Failed to execute 'pipeThrough' on 'ReadableStream'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -5329,7 +5336,7 @@ class ReadableStream {
    * @param {PipeOptions=} options
    * @returns {Promise<void>}
    */
-  pipeTo(destination, options = {}) {
+  pipeTo(destination, options = { __proto__: null }) {
     try {
       webidl.assertBranded(this, ReadableStreamPrototype);
       const prefix = "Failed to execute 'pipeTo' on 'ReadableStream'";
@@ -5567,7 +5574,7 @@ class ReadableStreamBYOBReader {
    * @param {ReadableStreamBYOBReaderReadOptions} options
    *  @returns {Promise<ReadableStreamBYOBReadResult>}
    */
-  read(view, options = {}) {
+  read(view, options = { __proto__: null }) {
     try {
       webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
       const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
@@ -6151,8 +6158,8 @@ class TransformStream {
    */
   constructor(
     transformer = undefined,
-    writableStrategy = {},
-    readableStrategy = {},
+    writableStrategy = { __proto__: null },
+    readableStrategy = { __proto__: null },
   ) {
     const prefix = "Failed to construct 'TransformStream'";
     if (transformer !== undefined) {

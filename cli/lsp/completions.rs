@@ -9,17 +9,19 @@ use super::jsr::CliJsrSearchApi;
 use super::lsp_custom;
 use super::npm::CliNpmSearchApi;
 use super::registries::ModuleRegistry;
+use super::resolver::LspResolver;
 use super::search::PackageSearchApi;
 use super::tsc;
 
 use crate::jsr::JsrFetchResolver;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
+use deno_graph::source::ResolutionMode;
+use deno_graph::Range;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::SourceTextInfo;
-use deno_core::normalize_path;
 use deno_core::resolve_path;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
@@ -30,6 +32,8 @@ use deno_core::ModuleSpecifier;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use import_map::ImportMap;
+use indexmap::IndexSet;
+use lsp_types::CompletionList;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use tower_lsp::lsp_types as lsp;
@@ -154,45 +158,53 @@ pub async fn get_import_completions(
   jsr_search_api: &CliJsrSearchApi,
   npm_search_api: &CliNpmSearchApi,
   documents: &Documents,
+  resolver: &LspResolver,
   maybe_import_map: Option<&ImportMap>,
 ) -> Option<lsp::CompletionResponse> {
   let document = documents.get(specifier)?;
+  let file_referrer = document.file_referrer();
   let (text, _, range) = document.get_maybe_dependency(position)?;
   let range = to_narrow_lsp_range(&document.text_info(), &range);
-  if let Some(completion_list) = get_import_map_completions(
+  let resolved = resolver
+    .as_graph_resolver(file_referrer)
+    .resolve(
+      &text,
+      &Range {
+        specifier: specifier.clone(),
+        start: deno_graph::Position::zeroed(),
+        end: deno_graph::Position::zeroed(),
+      },
+      ResolutionMode::Execution,
+    )
+    .ok();
+  if let Some(completion_list) = get_jsr_completions(
     specifier,
     &text,
     &range,
-    maybe_import_map,
-    documents,
-  ) {
+    resolved.as_ref(),
+    jsr_search_api,
+    Some(jsr_search_api.get_resolver()),
+  )
+  .await
+  {
+    Some(lsp::CompletionResponse::List(completion_list))
+  } else if let Some(completion_list) =
+    get_npm_completions(specifier, &text, &range, npm_search_api).await
+  {
+    Some(lsp::CompletionResponse::List(completion_list))
+  } else if let Some(completion_list) =
+    get_import_map_completions(specifier, &text, &range, maybe_import_map)
+  {
     // completions for import map specifiers
     Some(lsp::CompletionResponse::List(completion_list))
-  } else if text.starts_with("./") || text.starts_with("../") {
+  } else if text.starts_with("./")
+    || text.starts_with("../")
+    || text.starts_with('/')
+  {
     // completions for local relative modules
-    Some(lsp::CompletionResponse::List(lsp::CompletionList {
+    Some(lsp::CompletionResponse::List(CompletionList {
       is_incomplete: false,
-      items: get_local_completions(specifier, &text, &range)?,
-    }))
-  } else if text.starts_with("jsr:") {
-    let items = get_jsr_completions(
-      specifier,
-      &text,
-      &range,
-      jsr_search_api,
-      Some(jsr_search_api.get_resolver()),
-    )
-    .await?;
-    Some(lsp::CompletionResponse::List(lsp::CompletionList {
-      is_incomplete: !items.is_empty(),
-      items,
-    }))
-  } else if text.starts_with("npm:") {
-    let items =
-      get_npm_completions(specifier, &text, &range, npm_search_api).await?;
-    Some(lsp::CompletionResponse::List(lsp::CompletionList {
-      is_incomplete: !items.is_empty(),
-      items,
+      items: get_local_completions(specifier, &text, &range, resolver)?,
     }))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
@@ -209,11 +221,11 @@ pub async fn get_import_completions(
       0
     };
     let maybe_list = module_registries
-      .get_completions(&text, offset, &range, |specifier| {
-        documents.exists(specifier)
+      .get_completions(&text, offset, &range, |s| {
+        documents.exists(s, file_referrer)
       })
       .await;
-    let list = maybe_list.unwrap_or_else(|| lsp::CompletionList {
+    let list = maybe_list.unwrap_or_else(|| CompletionList {
       items: get_workspace_completions(specifier, &text, &range, documents),
       is_incomplete: false,
     });
@@ -245,7 +257,7 @@ pub async fn get_import_completions(
       is_incomplete = origin_items.is_incomplete;
       items.extend(origin_items.items);
     }
-    Some(lsp::CompletionResponse::List(lsp::CompletionList {
+    Some(lsp::CompletionResponse::List(CompletionList {
       is_incomplete,
       items,
     }))
@@ -297,15 +309,14 @@ fn get_base_import_map_completions(
 /// that the path post the `/` should be appended to resolved specifier. This
 /// handles both cases, pulling any completions from the workspace completions.
 fn get_import_map_completions(
-  specifier: &ModuleSpecifier,
+  _specifier: &ModuleSpecifier,
   text: &str,
   range: &lsp::Range,
   maybe_import_map: Option<&ImportMap>,
-  documents: &Documents,
-) -> Option<lsp::CompletionList> {
+) -> Option<CompletionList> {
   if !text.is_empty() {
     if let Some(import_map) = maybe_import_map {
-      let mut items = Vec::new();
+      let mut specifiers = IndexSet::new();
       for key in import_map.imports().keys() {
         // for some reason, the import_map stores keys that begin with `/` as
         // `file:///` in its index, so we have to reverse that here
@@ -314,71 +325,32 @@ fn get_import_map_completions(
         } else {
           key.to_string()
         };
-        if text.starts_with(&key) && key.ends_with('/') {
-          if let Ok(resolved) = import_map.resolve(&key, specifier) {
-            let resolved = resolved.to_string();
-            let workspace_items: Vec<lsp::CompletionItem> = documents
-              .documents(DocumentsFilter::AllDiagnosable)
-              .into_iter()
-              .filter_map(|d| {
-                let specifier_str = d.specifier().to_string();
-                let new_text = specifier_str.replace(&resolved, &key);
-                if specifier_str.starts_with(&resolved) {
-                  let label = specifier_str.replace(&resolved, "");
-                  let text_edit =
-                    Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-                      range: *range,
-                      new_text: new_text.clone(),
-                    }));
-                  Some(lsp::CompletionItem {
-                    label,
-                    kind: Some(lsp::CompletionItemKind::MODULE),
-                    detail: Some("(import map)".to_string()),
-                    sort_text: Some("1".to_string()),
-                    filter_text: Some(new_text),
-                    text_edit,
-                    commit_characters: Some(
-                      IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
-                    ),
-                    ..Default::default()
-                  })
-                } else {
-                  None
-                }
-              })
-              .collect();
-            items.extend(workspace_items);
-          }
-        } else if key.starts_with(text) && text != key {
-          let mut label = key.to_string();
-          let kind = if key.ends_with('/') {
-            label.pop();
-            Some(lsp::CompletionItemKind::FOLDER)
-          } else {
-            Some(lsp::CompletionItemKind::MODULE)
-          };
-          let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range: *range,
-            new_text: label.clone(),
-          }));
-          items.push(lsp::CompletionItem {
-            label,
-            kind,
+        if key.starts_with(text) && key != text {
+          specifiers.insert(key.trim_end_matches('/').to_string());
+        }
+      }
+      if !specifiers.is_empty() {
+        let items = specifiers
+          .into_iter()
+          .map(|specifier| lsp::CompletionItem {
+            label: specifier.clone(),
+            kind: Some(lsp::CompletionItemKind::FILE),
             detail: Some("(import map)".to_string()),
             sort_text: Some("1".to_string()),
-            text_edit,
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range: *range,
+              new_text: specifier,
+            })),
             commit_characters: Some(
               IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
             ),
             ..Default::default()
-          });
-        }
-        if !items.is_empty() {
-          return Some(lsp::CompletionList {
-            items,
-            is_incomplete: false,
-          });
-        }
+          })
+          .collect();
+        return Some(CompletionList {
+          items,
+          is_incomplete: false,
+        });
       }
     }
   }
@@ -388,27 +360,32 @@ fn get_import_map_completions(
 /// Return local completions that are relative to the base specifier.
 fn get_local_completions(
   base: &ModuleSpecifier,
-  current: &str,
+  text: &str,
   range: &lsp::Range,
+  resolver: &LspResolver,
 ) -> Option<Vec<lsp::CompletionItem>> {
   if base.scheme() != "file" {
     return None;
   }
-
-  let mut base_path = specifier_to_file_path(base).ok()?;
-  base_path.pop();
-  let mut current_path = normalize_path(base_path.join(current));
-  // if the current text does not end in a `/` then we are still selecting on
-  // the parent and should show all completions from there.
-  let is_parent = if !current.ends_with('/') {
-    current_path.pop();
-    true
-  } else {
-    false
-  };
-  let cwd = std::env::current_dir().ok()?;
-  if current_path.is_dir() {
-    let items = std::fs::read_dir(current_path).ok()?;
+  let parent = base.join(text).ok()?.join(".").ok()?;
+  let resolved_parent = resolver
+    .as_graph_resolver(Some(base))
+    .resolve(
+      parent.as_str(),
+      &Range {
+        specifier: base.clone(),
+        start: deno_graph::Position::zeroed(),
+        end: deno_graph::Position::zeroed(),
+      },
+      ResolutionMode::Execution,
+    )
+    .ok()?;
+  let resolved_parent_path = specifier_to_file_path(&resolved_parent).ok()?;
+  let raw_parent =
+    &text[..text.char_indices().rfind(|(_, c)| *c == '/')?.0 + 1];
+  if resolved_parent_path.is_dir() {
+    let cwd = std::env::current_dir().ok()?;
+    let items = std::fs::read_dir(resolved_parent_path).ok()?;
     Some(
       items
         .filter_map(|de| {
@@ -418,27 +395,17 @@ fn get_local_completions(
           if entry_specifier == *base {
             return None;
           }
-          let full_text = relative_specifier(base, &entry_specifier)?;
-          // this weeds out situations where we are browsing in the parent, but
-          // we want to filter out non-matches when the completion is manually
-          // invoked by the user, but still allows for things like `../src/../`
-          // which is silly, but no reason to not allow it.
-          if is_parent && !full_text.starts_with(current) {
-            return None;
-          }
+          let full_text = format!("{raw_parent}{label}");
           let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
             range: *range,
             new_text: full_text.clone(),
           }));
-          let filter_text = if full_text.starts_with(current) {
-            Some(full_text)
-          } else {
-            Some(format!("{current}{label}"))
-          };
+          let filter_text = Some(full_text);
           match de.file_type() {
             Ok(file_type) if file_type.is_dir() => Some(lsp::CompletionItem {
               label,
               kind: Some(lsp::CompletionItemKind::FOLDER),
+              detail: Some("(local)".to_string()),
               filter_text,
               sort_text: Some("1".to_string()),
               text_edit,
@@ -516,11 +483,15 @@ async fn get_jsr_completions(
   referrer: &ModuleSpecifier,
   specifier: &str,
   range: &lsp::Range,
+  resolved: Option<&ModuleSpecifier>,
   jsr_search_api: &impl PackageSearchApi,
   jsr_resolver: Option<&JsrFetchResolver>,
-) -> Option<Vec<lsp::CompletionItem>> {
+) -> Option<CompletionList> {
   // First try to match `jsr:some-package@some-version/<export-to-complete>`.
-  if let Ok(req_ref) = JsrPackageReqReference::from_str(specifier) {
+  let req_ref = resolved
+    .and_then(|s| JsrPackageReqReference::from_specifier(s).ok())
+    .or_else(|| JsrPackageReqReference::from_str(specifier).ok());
+  if let Some(req_ref) = req_ref {
     let sub_path = req_ref.sub_path();
     if sub_path.is_some() || specifier.ends_with('/') {
       let export_prefix = sub_path.unwrap_or("");
@@ -542,7 +513,10 @@ async fn get_jsr_completions(
           if !export.starts_with(export_prefix) {
             return None;
           }
-          let specifier = format!("jsr:{}/{}", req_ref.req(), export);
+          let specifier = format!(
+            "{}/{export}",
+            specifier.strip_suffix(export_prefix)?.trim_end_matches('/')
+          );
           let command = Some(lsp::Command {
             title: "".to_string(),
             command: "deno.cache".to_string(),
@@ -570,7 +544,10 @@ async fn get_jsr_completions(
           })
         })
         .collect();
-      return Some(items);
+      return Some(CompletionList {
+        is_incomplete: false,
+        items,
+      });
     }
   }
 
@@ -617,7 +594,10 @@ async fn get_jsr_completions(
         })
       })
       .collect();
-    return Some(items);
+    return Some(CompletionList {
+      is_incomplete: false,
+      items,
+    });
   }
 
   // Otherwise match `jsr:<package-to-complete>`.
@@ -654,7 +634,10 @@ async fn get_jsr_completions(
       }
     })
     .collect();
-  Some(items)
+  Some(CompletionList {
+    is_incomplete: true,
+    items,
+  })
 }
 
 /// Get completions for `npm:` specifiers.
@@ -663,7 +646,7 @@ async fn get_npm_completions(
   specifier: &str,
   range: &lsp::Range,
   npm_search_api: &impl PackageSearchApi,
-) -> Option<Vec<lsp::CompletionItem>> {
+) -> Option<CompletionList> {
   // First try to match `npm:some-package@<version-to-complete>`.
   let bare_specifier = specifier.strip_prefix("npm:")?;
   if let Some(v_index) = parse_bare_specifier_version_index(bare_specifier) {
@@ -706,7 +689,10 @@ async fn get_npm_completions(
         })
       })
       .collect();
-    return Some(items);
+    return Some(CompletionList {
+      is_incomplete: false,
+      items,
+    });
   }
 
   // Otherwise match `npm:<package-to-complete>`.
@@ -743,7 +729,10 @@ async fn get_npm_completions(
       }
     })
     .collect();
-  Some(items)
+  Some(CompletionList {
+    is_incomplete: true,
+    items,
+  })
 }
 
 /// Get workspace completions that include modules in the Deno cache which match
@@ -799,58 +788,47 @@ fn get_workspace_completions(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
+  use crate::lsp::cache::LspCache;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::search::tests::TestPackageSearchApi;
   use deno_core::resolve_url;
   use deno_graph::Range;
+  use pretty_assertions::assert_eq;
   use std::collections::HashMap;
-  use std::path::Path;
-  use std::sync::Arc;
   use test_util::TempDir;
 
-  fn mock_documents(
-    fixtures: &[(&str, &str, i32, LanguageId)],
-    source_fixtures: &[(&str, &str)],
-    location: &Path,
+  fn setup(
+    open_sources: &[(&str, &str, i32, LanguageId)],
+    fs_sources: &[(&str, &str)],
   ) -> Documents {
-    let cache = Arc::new(GlobalHttpCache::new(
-      location.to_path_buf(),
-      crate::cache::RealDenoCacheEnv,
-    ));
-    let mut documents = Documents::new(cache);
-    for (specifier, source, version, language_id) in fixtures {
-      let specifier =
-        resolve_url(specifier).expect("failed to create specifier");
-      documents.open(specifier, *version, *language_id, (*source).into());
-    }
-    let http_cache = GlobalHttpCache::new(
-      location.to_path_buf(),
-      crate::cache::RealDenoCacheEnv,
+    let temp_dir = TempDir::new();
+    let cache = LspCache::new(Some(temp_dir.uri()));
+    let mut documents = Documents::default();
+    documents.update_config(
+      &Default::default(),
+      &Default::default(),
+      &cache,
+      &Default::default(),
     );
-    for (specifier, source) in source_fixtures {
+    for (specifier, source, version, language_id) in open_sources {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      http_cache
+      documents.open(specifier, *version, *language_id, (*source).into(), None);
+    }
+    for (specifier, source) in fs_sources {
+      let specifier =
+        resolve_url(specifier).expect("failed to create specifier");
+      cache
+        .global()
         .set(&specifier, HashMap::default(), source.as_bytes())
         .expect("could not cache file");
-      assert!(
-        documents.get(&specifier).is_some(),
-        "source could not be setup"
-      );
+      let document =
+        documents.get_or_load(&specifier, &temp_dir.uri().join("$").unwrap());
+      assert!(document.is_some(), "source could not be setup");
     }
     documents
-  }
-
-  fn setup(
-    temp_dir: &TempDir,
-    documents: &[(&str, &str, i32, LanguageId)],
-    sources: &[(&str, &str)],
-  ) -> Documents {
-    let location = temp_dir.path().join("deps");
-    mock_documents(documents, sources, location.as_path())
   }
 
   #[test]
@@ -908,6 +886,7 @@ mod tests {
           character: 22,
         },
       },
+      &Default::default(),
     );
     assert!(actual.is_some());
     let actual = actual.unwrap();
@@ -936,9 +915,7 @@ mod tests {
         character: 21,
       },
     };
-    let temp_dir = TempDir::new();
     let documents = setup(
-      &temp_dir,
       &[
         (
           "file:///a/b/c.ts",
@@ -1025,60 +1002,69 @@ mod tests {
       },
     };
     let referrer = ModuleSpecifier::parse("file:///referrer.ts").unwrap();
-    let actual =
-      get_jsr_completions(&referrer, "jsr:as", &range, &jsr_search_api, None)
-        .await
-        .unwrap();
+    let actual = get_jsr_completions(
+      &referrer,
+      "jsr:as",
+      &range,
+      None,
+      &jsr_search_api,
+      None,
+    )
+    .await
+    .unwrap();
     assert_eq!(
       actual,
-      vec![
-        lsp::CompletionItem {
-          label: "jsr:@std/assert".to_string(),
-          kind: Some(lsp::CompletionItemKind::FILE),
-          detail: Some("(jsr)".to_string()),
-          sort_text: Some("0000000001".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range,
-            new_text: "jsr:@std/assert".to_string(),
-          })),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![
-              json!(["jsr:@std/assert"]),
-              json!(&referrer),
-              json!({ "forceGlobalCache": true })
-            ])
-          }),
-          commit_characters: Some(
-            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
-          ),
-          ..Default::default()
-        },
-        lsp::CompletionItem {
-          label: "jsr:@std/async".to_string(),
-          kind: Some(lsp::CompletionItemKind::FILE),
-          detail: Some("(jsr)".to_string()),
-          sort_text: Some("0000000002".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range,
-            new_text: "jsr:@std/async".to_string(),
-          })),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![
-              json!(["jsr:@std/async"]),
-              json!(&referrer),
-              json!({ "forceGlobalCache": true })
-            ])
-          }),
-          commit_characters: Some(
-            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
-          ),
-          ..Default::default()
-        },
-      ]
+      CompletionList {
+        is_incomplete: true,
+        items: vec![
+          lsp::CompletionItem {
+            label: "jsr:@std/assert".to_string(),
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(jsr)".to_string()),
+            sort_text: Some("0000000001".to_string()),
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range,
+              new_text: "jsr:@std/assert".to_string(),
+            })),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!(["jsr:@std/assert"]),
+                json!(&referrer),
+                json!({ "forceGlobalCache": true })
+              ])
+            }),
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+            ),
+            ..Default::default()
+          },
+          lsp::CompletionItem {
+            label: "jsr:@std/async".to_string(),
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(jsr)".to_string()),
+            sort_text: Some("0000000002".to_string()),
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range,
+              new_text: "jsr:@std/async".to_string(),
+            })),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!(["jsr:@std/async"]),
+                json!(&referrer),
+                json!({ "forceGlobalCache": true })
+              ])
+            }),
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+            ),
+            ..Default::default()
+          },
+        ],
+      }
     );
   }
 
@@ -1103,6 +1089,7 @@ mod tests {
       &referrer,
       "jsr:@std/assert@",
       &range,
+      None,
       &jsr_search_api,
       None,
     )
@@ -1110,77 +1097,80 @@ mod tests {
     .unwrap();
     assert_eq!(
       actual,
-      vec![
-        lsp::CompletionItem {
-          label: "jsr:@std/assert@0.5.0".to_string(),
-          kind: Some(lsp::CompletionItemKind::FILE),
-          detail: Some("(jsr)".to_string()),
-          sort_text: Some("0000000001".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range,
-            new_text: "jsr:@std/assert@0.5.0".to_string(),
-          })),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![
-              json!(["jsr:@std/assert@0.5.0"]),
-              json!(&referrer),
-              json!({ "forceGlobalCache": true }),
-            ])
-          }),
-          commit_characters: Some(
-            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
-          ),
-          ..Default::default()
-        },
-        lsp::CompletionItem {
-          label: "jsr:@std/assert@0.4.0".to_string(),
-          kind: Some(lsp::CompletionItemKind::FILE),
-          detail: Some("(jsr)".to_string()),
-          sort_text: Some("0000000002".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range,
-            new_text: "jsr:@std/assert@0.4.0".to_string(),
-          })),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![
-              json!(["jsr:@std/assert@0.4.0"]),
-              json!(&referrer),
-              json!({ "forceGlobalCache": true }),
-            ])
-          }),
-          commit_characters: Some(
-            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
-          ),
-          ..Default::default()
-        },
-        lsp::CompletionItem {
-          label: "jsr:@std/assert@0.3.0".to_string(),
-          kind: Some(lsp::CompletionItemKind::FILE),
-          detail: Some("(jsr)".to_string()),
-          sort_text: Some("0000000003".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range,
-            new_text: "jsr:@std/assert@0.3.0".to_string(),
-          })),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![
-              json!(["jsr:@std/assert@0.3.0"]),
-              json!(&referrer),
-              json!({ "forceGlobalCache": true }),
-            ])
-          }),
-          commit_characters: Some(
-            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
-          ),
-          ..Default::default()
-        },
-      ]
+      CompletionList {
+        is_incomplete: false,
+        items: vec![
+          lsp::CompletionItem {
+            label: "jsr:@std/assert@0.5.0".to_string(),
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(jsr)".to_string()),
+            sort_text: Some("0000000001".to_string()),
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range,
+              new_text: "jsr:@std/assert@0.5.0".to_string(),
+            })),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!(["jsr:@std/assert@0.5.0"]),
+                json!(&referrer),
+                json!({ "forceGlobalCache": true }),
+              ])
+            }),
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+            ),
+            ..Default::default()
+          },
+          lsp::CompletionItem {
+            label: "jsr:@std/assert@0.4.0".to_string(),
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(jsr)".to_string()),
+            sort_text: Some("0000000002".to_string()),
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range,
+              new_text: "jsr:@std/assert@0.4.0".to_string(),
+            })),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!(["jsr:@std/assert@0.4.0"]),
+                json!(&referrer),
+                json!({ "forceGlobalCache": true }),
+              ])
+            }),
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+            ),
+            ..Default::default()
+          },
+          lsp::CompletionItem {
+            label: "jsr:@std/assert@0.3.0".to_string(),
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(jsr)".to_string()),
+            sort_text: Some("0000000003".to_string()),
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range,
+              new_text: "jsr:@std/assert@0.3.0".to_string(),
+            })),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!(["jsr:@std/assert@0.3.0"]),
+                json!(&referrer),
+                json!({ "forceGlobalCache": true }),
+              ])
+            }),
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+            ),
+            ..Default::default()
+          },
+        ],
+      }
     );
   }
 
@@ -1206,6 +1196,7 @@ mod tests {
       &referrer,
       "jsr:@std/path@0.1.0/co",
       &range,
+      None,
       &jsr_search_api,
       None,
     )
@@ -1213,21 +1204,106 @@ mod tests {
     .unwrap();
     assert_eq!(
       actual,
-      vec![
-        lsp::CompletionItem {
-          label: "jsr:@std/path@0.1.0/common".to_string(),
+      CompletionList {
+        is_incomplete: false,
+        items: vec![
+          lsp::CompletionItem {
+            label: "jsr:@std/path@0.1.0/common".to_string(),
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(jsr)".to_string()),
+            sort_text: Some("0000000003".to_string()),
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range,
+              new_text: "jsr:@std/path@0.1.0/common".to_string(),
+            })),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!(["jsr:@std/path@0.1.0/common"]),
+                json!(&referrer),
+                json!({ "forceGlobalCache": true }),
+              ])
+            }),
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+            ),
+            ..Default::default()
+          },
+          lsp::CompletionItem {
+            label: "jsr:@std/path@0.1.0/constants".to_string(),
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(jsr)".to_string()),
+            sort_text: Some("0000000004".to_string()),
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range,
+              new_text: "jsr:@std/path@0.1.0/constants".to_string(),
+            })),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!(["jsr:@std/path@0.1.0/constants"]),
+                json!(&referrer),
+                json!({ "forceGlobalCache": true }),
+              ])
+            }),
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+            ),
+            ..Default::default()
+          },
+        ],
+      }
+    );
+  }
+
+  #[tokio::test]
+  async fn test_get_jsr_completions_for_exports_import_mapped() {
+    let jsr_search_api = TestPackageSearchApi::default().with_package_version(
+      "@std/path",
+      "0.1.0",
+      &[".", "./common"],
+    );
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 23,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 45,
+      },
+    };
+    let referrer = ModuleSpecifier::parse("file:///referrer.ts").unwrap();
+    let actual = get_jsr_completions(
+      &referrer,
+      "@std/path/co",
+      &range,
+      Some(&ModuleSpecifier::parse("jsr:@std/path@0.1.0/co").unwrap()),
+      &jsr_search_api,
+      None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+      actual,
+      CompletionList {
+        is_incomplete: false,
+        items: vec![lsp::CompletionItem {
+          label: "@std/path/common".to_string(),
           kind: Some(lsp::CompletionItemKind::FILE),
           detail: Some("(jsr)".to_string()),
-          sort_text: Some("0000000003".to_string()),
+          sort_text: Some("0000000002".to_string()),
           text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
             range,
-            new_text: "jsr:@std/path@0.1.0/common".to_string(),
+            new_text: "@std/path/common".to_string(),
           })),
           command: Some(lsp::Command {
             title: "".to_string(),
             command: "deno.cache".to_string(),
             arguments: Some(vec![
-              json!(["jsr:@std/path@0.1.0/common"]),
+              json!(["@std/path/common"]),
               json!(&referrer),
               json!({ "forceGlobalCache": true }),
             ])
@@ -1236,31 +1312,8 @@ mod tests {
             IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
           ),
           ..Default::default()
-        },
-        lsp::CompletionItem {
-          label: "jsr:@std/path@0.1.0/constants".to_string(),
-          kind: Some(lsp::CompletionItemKind::FILE),
-          detail: Some("(jsr)".to_string()),
-          sort_text: Some("0000000004".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range,
-            new_text: "jsr:@std/path@0.1.0/constants".to_string(),
-          })),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![
-              json!(["jsr:@std/path@0.1.0/constants"]),
-              json!(&referrer),
-              json!({ "forceGlobalCache": true }),
-            ])
-          }),
-          commit_characters: Some(
-            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
-          ),
-          ..Default::default()
-        },
-      ]
+        },],
+      }
     );
   }
 
@@ -1288,100 +1341,103 @@ mod tests {
         .unwrap();
     assert_eq!(
       actual,
-      vec![
-        lsp::CompletionItem {
-          label: "npm:puppeteer".to_string(),
-          kind: Some(lsp::CompletionItemKind::FILE),
-          detail: Some("(npm)".to_string()),
-          sort_text: Some("0000000001".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range,
-            new_text: "npm:puppeteer".to_string(),
-          })),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![
-              json!(["npm:puppeteer"]),
-              json!(&referrer),
-              json!({ "forceGlobalCache": true }),
-            ])
-          }),
-          commit_characters: Some(
-            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
-          ),
-          ..Default::default()
-        },
-        lsp::CompletionItem {
-          label: "npm:puppeteer-core".to_string(),
-          kind: Some(lsp::CompletionItemKind::FILE),
-          detail: Some("(npm)".to_string()),
-          sort_text: Some("0000000002".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range,
-            new_text: "npm:puppeteer-core".to_string(),
-          })),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![
-              json!(["npm:puppeteer-core"]),
-              json!(&referrer),
-              json!({ "forceGlobalCache": true }),
-            ])
-          }),
-          commit_characters: Some(
-            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
-          ),
-          ..Default::default()
-        },
-        lsp::CompletionItem {
-          label: "npm:puppeteer-extra-plugin".to_string(),
-          kind: Some(lsp::CompletionItemKind::FILE),
-          detail: Some("(npm)".to_string()),
-          sort_text: Some("0000000003".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range,
-            new_text: "npm:puppeteer-extra-plugin".to_string(),
-          })),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![
-              json!(["npm:puppeteer-extra-plugin"]),
-              json!(&referrer),
-              json!({ "forceGlobalCache": true }),
-            ])
-          }),
-          commit_characters: Some(
-            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
-          ),
-          ..Default::default()
-        },
-        lsp::CompletionItem {
-          label: "npm:puppeteer-extra-plugin-stealth".to_string(),
-          kind: Some(lsp::CompletionItemKind::FILE),
-          detail: Some("(npm)".to_string()),
-          sort_text: Some("0000000004".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range,
-            new_text: "npm:puppeteer-extra-plugin-stealth".to_string(),
-          })),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![
-              json!(["npm:puppeteer-extra-plugin-stealth"]),
-              json!(&referrer),
-              json!({ "forceGlobalCache": true }),
-            ])
-          }),
-          commit_characters: Some(
-            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
-          ),
-          ..Default::default()
-        },
-      ]
+      CompletionList {
+        is_incomplete: true,
+        items: vec![
+          lsp::CompletionItem {
+            label: "npm:puppeteer".to_string(),
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(npm)".to_string()),
+            sort_text: Some("0000000001".to_string()),
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range,
+              new_text: "npm:puppeteer".to_string(),
+            })),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!(["npm:puppeteer"]),
+                json!(&referrer),
+                json!({ "forceGlobalCache": true }),
+              ])
+            }),
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+            ),
+            ..Default::default()
+          },
+          lsp::CompletionItem {
+            label: "npm:puppeteer-core".to_string(),
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(npm)".to_string()),
+            sort_text: Some("0000000002".to_string()),
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range,
+              new_text: "npm:puppeteer-core".to_string(),
+            })),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!(["npm:puppeteer-core"]),
+                json!(&referrer),
+                json!({ "forceGlobalCache": true }),
+              ])
+            }),
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+            ),
+            ..Default::default()
+          },
+          lsp::CompletionItem {
+            label: "npm:puppeteer-extra-plugin".to_string(),
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(npm)".to_string()),
+            sort_text: Some("0000000003".to_string()),
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range,
+              new_text: "npm:puppeteer-extra-plugin".to_string(),
+            })),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!(["npm:puppeteer-extra-plugin"]),
+                json!(&referrer),
+                json!({ "forceGlobalCache": true }),
+              ])
+            }),
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+            ),
+            ..Default::default()
+          },
+          lsp::CompletionItem {
+            label: "npm:puppeteer-extra-plugin-stealth".to_string(),
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(npm)".to_string()),
+            sort_text: Some("0000000004".to_string()),
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range,
+              new_text: "npm:puppeteer-extra-plugin-stealth".to_string(),
+            })),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!(["npm:puppeteer-extra-plugin-stealth"]),
+                json!(&referrer),
+                json!({ "forceGlobalCache": true }),
+              ])
+            }),
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+            ),
+            ..Default::default()
+          },
+        ],
+      }
     );
   }
 
@@ -1409,100 +1465,103 @@ mod tests {
         .unwrap();
     assert_eq!(
       actual,
-      vec![
-        lsp::CompletionItem {
-          label: "npm:puppeteer@21.0.2".to_string(),
-          kind: Some(lsp::CompletionItemKind::FILE),
-          detail: Some("(npm)".to_string()),
-          sort_text: Some("0000000001".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range,
-            new_text: "npm:puppeteer@21.0.2".to_string(),
-          })),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![
-              json!(["npm:puppeteer@21.0.2"]),
-              json!(&referrer),
-              json!({ "forceGlobalCache": true }),
-            ])
-          }),
-          commit_characters: Some(
-            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
-          ),
-          ..Default::default()
-        },
-        lsp::CompletionItem {
-          label: "npm:puppeteer@21.0.1".to_string(),
-          kind: Some(lsp::CompletionItemKind::FILE),
-          detail: Some("(npm)".to_string()),
-          sort_text: Some("0000000002".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range,
-            new_text: "npm:puppeteer@21.0.1".to_string(),
-          })),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![
-              json!(["npm:puppeteer@21.0.1"]),
-              json!(&referrer),
-              json!({ "forceGlobalCache": true }),
-            ])
-          }),
-          commit_characters: Some(
-            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
-          ),
-          ..Default::default()
-        },
-        lsp::CompletionItem {
-          label: "npm:puppeteer@21.0.0".to_string(),
-          kind: Some(lsp::CompletionItemKind::FILE),
-          detail: Some("(npm)".to_string()),
-          sort_text: Some("0000000003".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range,
-            new_text: "npm:puppeteer@21.0.0".to_string(),
-          })),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![
-              json!(["npm:puppeteer@21.0.0"]),
-              json!(&referrer),
-              json!({ "forceGlobalCache": true }),
-            ])
-          }),
-          commit_characters: Some(
-            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
-          ),
-          ..Default::default()
-        },
-        lsp::CompletionItem {
-          label: "npm:puppeteer@20.9.0".to_string(),
-          kind: Some(lsp::CompletionItemKind::FILE),
-          detail: Some("(npm)".to_string()),
-          sort_text: Some("0000000004".to_string()),
-          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range,
-            new_text: "npm:puppeteer@20.9.0".to_string(),
-          })),
-          command: Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![
-              json!(["npm:puppeteer@20.9.0"]),
-              json!(&referrer),
-              json!({ "forceGlobalCache": true }),
-            ])
-          }),
-          commit_characters: Some(
-            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
-          ),
-          ..Default::default()
-        },
-      ]
+      CompletionList {
+        is_incomplete: false,
+        items: vec![
+          lsp::CompletionItem {
+            label: "npm:puppeteer@21.0.2".to_string(),
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(npm)".to_string()),
+            sort_text: Some("0000000001".to_string()),
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range,
+              new_text: "npm:puppeteer@21.0.2".to_string(),
+            })),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!(["npm:puppeteer@21.0.2"]),
+                json!(&referrer),
+                json!({ "forceGlobalCache": true }),
+              ])
+            }),
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+            ),
+            ..Default::default()
+          },
+          lsp::CompletionItem {
+            label: "npm:puppeteer@21.0.1".to_string(),
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(npm)".to_string()),
+            sort_text: Some("0000000002".to_string()),
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range,
+              new_text: "npm:puppeteer@21.0.1".to_string(),
+            })),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!(["npm:puppeteer@21.0.1"]),
+                json!(&referrer),
+                json!({ "forceGlobalCache": true }),
+              ])
+            }),
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+            ),
+            ..Default::default()
+          },
+          lsp::CompletionItem {
+            label: "npm:puppeteer@21.0.0".to_string(),
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(npm)".to_string()),
+            sort_text: Some("0000000003".to_string()),
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range,
+              new_text: "npm:puppeteer@21.0.0".to_string(),
+            })),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!(["npm:puppeteer@21.0.0"]),
+                json!(&referrer),
+                json!({ "forceGlobalCache": true }),
+              ])
+            }),
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+            ),
+            ..Default::default()
+          },
+          lsp::CompletionItem {
+            label: "npm:puppeteer@20.9.0".to_string(),
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(npm)".to_string()),
+            sort_text: Some("0000000004".to_string()),
+            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+              range,
+              new_text: "npm:puppeteer@20.9.0".to_string(),
+            })),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!(["npm:puppeteer@20.9.0"]),
+                json!(&referrer),
+                json!({ "forceGlobalCache": true }),
+              ])
+            }),
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+            ),
+            ..Default::default()
+          },
+        ],
+      }
     );
   }
 

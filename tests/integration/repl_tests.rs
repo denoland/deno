@@ -895,7 +895,7 @@ fn repl_with_quiet_flag() {
   assert!(!out.contains("Deno"));
   assert!(!out.contains("exit using ctrl+d, ctrl+c, or close()"));
   assert_ends_with!(out, "\"done\"\n");
-  assert!(err.is_empty());
+  assert!(err.is_empty(), "Error: {}", err);
 }
 
 #[test]
@@ -959,7 +959,7 @@ fn npm_packages() {
     );
 
     assert_contains!(out, "hello");
-    assert!(err.is_empty());
+    assert!(err.is_empty(), "Error: {}", err);
   }
 
   {
@@ -975,7 +975,7 @@ fn npm_packages() {
     );
 
     assert_contains!(out, "hello");
-    assert!(err.is_empty());
+    assert!(err.is_empty(), "Error: {}", err);
   }
 
   {
@@ -989,7 +989,7 @@ fn npm_packages() {
 
     assert_contains!(out, "[Module: null prototype] {");
     assert_contains!(out, "Chalk: [class Chalk],");
-    assert!(err.is_empty());
+    assert!(err.is_empty(), "Error: {}", err);
   }
 
   {
@@ -1005,7 +1005,7 @@ fn npm_packages() {
       out,
       "error: npm package 'asdfawe52345asdf' does not exist"
     );
-    assert!(err.is_empty());
+    assert!(err.is_empty(), "Error: {}", err);
   }
 
   {
@@ -1021,7 +1021,7 @@ fn npm_packages() {
     );
 
     assert_contains!(out, "no");
-    assert!(err.is_empty());
+    assert!(err.is_empty(), "Error: {}", err);
   }
 }
 
@@ -1084,7 +1084,10 @@ fn closed_file_pre_load_does_not_occur() {
     .new_command()
     .args_vec(["repl", "-A", "--log-level=debug"])
     .with_pty(|console| {
-      assert_contains!(console.all_output(), "Skipped document preload.",);
+      assert_contains!(
+        console.all_output(),
+        "Skipped workspace walk due to client incapability.",
+      );
     });
 }
 

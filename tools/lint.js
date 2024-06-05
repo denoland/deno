@@ -52,19 +52,21 @@ async function dlint() {
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tsc/dts/**",
     ":!:target/",
+    ":!:tests/registry/**",
     ":!:tests/specs/**",
     ":!:tests/testdata/encoding/**",
     ":!:tests/testdata/error_syntax.js",
     ":!:tests/testdata/file_extensions/ts_with_js_extension.js",
     ":!:tests/testdata/fmt/**",
-    ":!:tests/testdata/npm/**",
     ":!:tests/testdata/lint/**",
+    ":!:tests/testdata/npm/**",
     ":!:tests/testdata/run/**",
     ":!:tests/testdata/tsc/**",
     ":!:tests/testdata/test/glob/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
     ":!:tests/wpt/suite/**",
+    ":!:tests/wpt/runner/**",
   ]);
 
   if (!sourceFiles.length) {
@@ -161,6 +163,12 @@ async function clippy() {
       "warnings",
       "--deny",
       "clippy::unused_async",
+      // generally prefer the `log` crate, but ignore
+      // these print_* rules if necessary
+      "--deny",
+      "clippy::print_stderr",
+      "--deny",
+      "clippy::print_stdout",
     ],
     stdout: "inherit",
     stderr: "inherit",
@@ -188,7 +196,7 @@ async function ensureNoNewITests() {
   // replace them with spec tests.
   const iTestCounts = {
     "bench_tests.rs": 0,
-    "bundle_tests.rs": 12,
+    "bundle_tests.rs": 11,
     "cache_tests.rs": 0,
     "cert_tests.rs": 0,
     "check_tests.rs": 23,
@@ -209,12 +217,12 @@ async function ensureNoNewITests() {
     // Read the comment above. Please don't increase these numbers!
     "lsp_tests.rs": 0,
     "node_compat_tests.rs": 4,
-    "node_unit_tests.rs": 3,
-    "npm_tests.rs": 98,
+    "node_unit_tests.rs": 2,
+    "npm_tests.rs": 97,
     "pm_tests.rs": 0,
     "publish_tests.rs": 0,
     "repl_tests.rs": 0,
-    "run_tests.rs": 373,
+    "run_tests.rs": 360,
     "shared_library_tests.rs": 0,
     "task_tests.rs": 30,
     "test_tests.rs": 77,

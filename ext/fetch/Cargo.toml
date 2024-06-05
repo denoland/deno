@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fetch"
-version = "0.173.0"
+version = "0.178.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,7 +20,6 @@ deno_core.workspace = true
 deno_tls.workspace = true
 dyn-clone = "1"
 http_v02.workspace = true
-pin-project.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

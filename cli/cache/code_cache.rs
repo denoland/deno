@@ -1,27 +1,30 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_runtime::code_cache;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
+use super::cache_db::CacheDBHash;
 use super::cache_db::CacheFailure;
 
 pub static CODE_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
-  table_initializer: "CREATE TABLE IF NOT EXISTS codecache (
-      specifier TEXT NOT NULL,
-      type TEXT NOT NULL,
-      source_hash TEXT NOT NULL,
-      data BLOB NOT NULL,
-      PRIMARY KEY (specifier, type)
-    );",
+  table_initializer: concat!(
+    "CREATE TABLE IF NOT EXISTS codecache (",
+    "specifier TEXT NOT NULL,",
+    "type INTEGER NOT NULL,",
+    "source_hash INTEGER NOT NULL,",
+    "data BLOB NOT NULL,",
+    "PRIMARY KEY (specifier, type)",
+    ");"
+  ),
   on_version_change: "DELETE FROM codecache;",
   preheat_queries: &[],
   on_failure: CacheFailure::Blackhole,
 };
 
-#[derive(Clone)]
 pub struct CodeCache {
   inner: CodeCacheInner,
 }
@@ -52,28 +55,28 @@ impl CodeCache {
 
   pub fn get_sync(
     &self,
-    specifier: &str,
+    specifier: &ModuleSpecifier,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: &str,
+    source_hash: u64,
   ) -> Option<Vec<u8>> {
     Self::ensure_ok(self.inner.get_sync(
-      specifier,
+      specifier.as_str(),
       code_cache_type,
-      source_hash,
+      CacheDBHash::new(source_hash),
     ))
   }
 
   pub fn set_sync(
     &self,
-    specifier: &str,
+    specifier: &ModuleSpecifier,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: &str,
+    source_hash: u64,
     data: &[u8],
   ) {
     Self::ensure_ok(self.inner.set_sync(
-      specifier,
+      specifier.as_str(),
       code_cache_type,
-      source_hash,
+      CacheDBHash::new(source_hash),
       data,
     ));
   }
@@ -82,25 +85,24 @@ impl CodeCache {
 impl code_cache::CodeCache for CodeCache {
   fn get_sync(
     &self,
-    specifier: &str,
+    specifier: &ModuleSpecifier,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: &str,
+    source_hash: u64,
   ) -> Option<Vec<u8>> {
     self.get_sync(specifier, code_cache_type, source_hash)
   }
 
   fn set_sync(
     &self,
-    specifier: &str,
+    specifier: ModuleSpecifier,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: &str,
+    source_hash: u64,
     data: &[u8],
   ) {
-    self.set_sync(specifier, code_cache_type, source_hash, data);
+    self.set_sync(&specifier, code_cache_type, source_hash, data);
   }
 }
 
-#[derive(Clone)]
 struct CodeCacheInner {
   conn: CacheDB,
 }
@@ -114,7 +116,7 @@ impl CodeCacheInner {
     &self,
     specifier: &str,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: &str,
+    source_hash: CacheDBHash,
   ) -> Result<Option<Vec<u8>>, AnyError> {
     let query = "
       SELECT
@@ -124,7 +126,11 @@ impl CodeCacheInner {
       WHERE
         specifier=?1 AND type=?2 AND source_hash=?3
       LIMIT 1";
-    let params = params![specifier, code_cache_type.as_str(), source_hash,];
+    let params = params![
+      specifier,
+      serialize_code_cache_type(code_cache_type),
+      source_hash,
+    ];
     self.conn.query_row(query, params, |row| {
       let value: Vec<u8> = row.get(0)?;
       Ok(value)
@@ -135,7 +141,7 @@ impl CodeCacheInner {
     &self,
     specifier: &str,
     code_cache_type: code_cache::CodeCacheType,
-    source_hash: &str,
+    source_hash: CacheDBHash,
     data: &[u8],
   ) -> Result<(), AnyError> {
     let sql = "
@@ -143,10 +149,23 @@ impl CodeCacheInner {
         codecache (specifier, type, source_hash, data)
       VALUES
         (?1, ?2, ?3, ?4)";
-    let params =
-      params![specifier, code_cache_type.as_str(), source_hash, data];
+    let params = params![
+      specifier,
+      serialize_code_cache_type(code_cache_type),
+      source_hash,
+      data
+    ];
     self.conn.execute(sql, params)?;
     Ok(())
+  }
+}
+
+fn serialize_code_cache_type(
+  code_cache_type: code_cache::CodeCacheType,
+) -> i64 {
+  match code_cache_type {
+    code_cache::CodeCacheType::Script => 0,
+    code_cache::CodeCacheType::EsModule => 1,
   }
 }
 
@@ -163,7 +182,7 @@ mod test {
       .get_sync(
         "file:///foo/bar.js",
         code_cache::CodeCacheType::EsModule,
-        "hash",
+        CacheDBHash::new(1),
       )
       .unwrap()
       .is_none());
@@ -172,7 +191,7 @@ mod test {
       .set_sync(
         "file:///foo/bar.js",
         code_cache::CodeCacheType::EsModule,
-        "hash",
+        CacheDBHash::new(1),
         &data_esm,
       )
       .unwrap();
@@ -181,7 +200,7 @@ mod test {
         .get_sync(
           "file:///foo/bar.js",
           code_cache::CodeCacheType::EsModule,
-          "hash",
+          CacheDBHash::new(1),
         )
         .unwrap()
         .unwrap(),
@@ -192,7 +211,7 @@ mod test {
       .get_sync(
         "file:///foo/bar.js",
         code_cache::CodeCacheType::Script,
-        "hash",
+        CacheDBHash::new(1),
       )
       .unwrap()
       .is_none());
@@ -201,7 +220,7 @@ mod test {
       .set_sync(
         "file:///foo/bar.js",
         code_cache::CodeCacheType::Script,
-        "hash",
+        CacheDBHash::new(1),
         &data_script,
       )
       .unwrap();
@@ -210,7 +229,7 @@ mod test {
         .get_sync(
           "file:///foo/bar.js",
           code_cache::CodeCacheType::Script,
-          "hash",
+          CacheDBHash::new(1),
         )
         .unwrap()
         .unwrap(),
@@ -221,7 +240,7 @@ mod test {
         .get_sync(
           "file:///foo/bar.js",
           code_cache::CodeCacheType::EsModule,
-          "hash",
+          CacheDBHash::new(1),
         )
         .unwrap()
         .unwrap(),

@@ -1,5 +1,5 @@
-Download http://localhost:4545/npm/registry/@denotest/check-error
-Download http://localhost:4545/npm/registry/@denotest/check-error/1.0.0.tgz
+Download http://localhost:4260/@denotest/check-error
+Download http://localhost:4260/@denotest/check-error/1.0.0.tgz
 Check file:///[WILDCARD]/check_errors/main.ts
 error: TS2506 [ERROR]: 'Class1' is referenced directly or indirectly in its own base expression.
 export class Class1 extends Class2 {

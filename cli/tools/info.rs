@@ -7,7 +7,6 @@ use std::fmt::Write;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
@@ -26,11 +25,12 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_terminal::colors;
 
+use crate::args::write_lockfile_if_has_changes;
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
 use crate::factory::CliFactory;
-use crate::graph_util::graph_lock_or_exit;
+use crate::graph_util::graph_exit_lock_errors;
 use crate::npm::CliNpmResolver;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;
@@ -68,13 +68,10 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
       .create_graph_with_loader(GraphKind::All, vec![specifier], &mut loader)
       .await?;
 
-    // If there is a lockfile...
+    // write out the lockfile if there is one
     if let Some(lockfile) = &maybe_lockfile {
-      let mut lockfile = lockfile.lock();
-      // validate the integrity of all the modules
-      graph_lock_or_exit(&graph, &mut lockfile);
-      // update it with anything new
-      lockfile.write().context("Failed writing lockfile.")?;
+      graph_exit_lock_errors(&graph);
+      write_lockfile_if_has_changes(&mut lockfile.lock())?;
     }
 
     if info_flags.json {
@@ -97,6 +94,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
+#[allow(clippy::print_stdout)]
 fn print_cache_info(
   factory: &CliFactory,
   json: bool,
@@ -667,18 +665,6 @@ impl<'a> GraphDisplayContext<'a> {
       }
       ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
         self.build_error_msg(specifier, "(missing)")
-      }
-      ModuleError::MissingWorkspaceMemberExports { .. } => {
-        self.build_error_msg(specifier, "(missing exports)")
-      }
-      ModuleError::UnknownExport { .. } => {
-        self.build_error_msg(specifier, "(unknown export)")
-      }
-      ModuleError::UnknownPackage { .. } => {
-        self.build_error_msg(specifier, "(unknown package)")
-      }
-      ModuleError::UnknownPackageReq { .. } => {
-        self.build_error_msg(specifier, "(unknown package constraint)")
       }
     }
   }

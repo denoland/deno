@@ -156,14 +156,27 @@ const {
   Uint8Array,
 } = primordials;
 
-let noColor = () => false;
+let noColorStdout = () => false;
+let noColorStderr = () => false;
 
-function setNoColorFn(fn) {
-  noColor = fn;
+function setNoColorFns(stdoutFn, stderrFn) {
+  noColorStdout = stdoutFn;
+  noColorStderr = stderrFn;
 }
 
-function getNoColor() {
-  return noColor();
+function getStdoutNoColor() {
+  return noColorStdout();
+}
+
+function getStderrNoColor() {
+  return noColorStderr();
+}
+
+class AssertionError extends Error {
+  name = "AssertionError";
+  constructor(message) {
+    super(message);
+  }
 }
 
 function assert(cond, msg = "Assertion failed.") {
@@ -2924,9 +2937,10 @@ function cssToAnsi(css, prevCss = null) {
   return ansi;
 }
 
-function inspectArgs(args, inspectOptions = {}) {
+function inspectArgs(args, inspectOptions = { __proto__: null }) {
   const ctx = {
     ...getDefaultInspectOptions(),
+    colors: inspectOptions.colors ?? !noColorStdout(),
     ...inspectOptions,
   };
   if (inspectOptions.iterableLimit !== undefined) {
@@ -2939,7 +2953,7 @@ function inspectArgs(args, inspectOptions = {}) {
   if (ctx.maxArrayLength === null) ctx.maxArrayLength = Infinity;
   if (ctx.maxStringLength === null) ctx.maxStringLength = Infinity;
 
-  const noColor = getNoColor();
+  const noColor = !ctx.colors;
   const first = args[0];
   let a = 0;
   let string = "";
@@ -3053,12 +3067,12 @@ const countMap = new SafeMap();
 const timerMap = new SafeMap();
 const isConsoleInstance = Symbol("isConsoleInstance");
 
-function getConsoleInspectOptions() {
-  const color = !getNoColor();
+/** @param noColor {boolean} */
+function getConsoleInspectOptions(noColor) {
   return {
     ...getDefaultInspectOptions(),
-    colors: color,
-    stylize: color ? createStylizeWithColor(styles, colors) : stylizeNoColor,
+    colors: !noColor,
+    stylize: noColor ? stylizeNoColor : createStylizeWithColor(styles, colors),
   };
 }
 
@@ -3090,7 +3104,7 @@ class Console {
   log = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(),
+        ...getConsoleInspectOptions(noColorStdout()),
         indentLevel: this.indentLevel,
       }) + "\n",
       1,
@@ -3100,7 +3114,7 @@ class Console {
   debug = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(),
+        ...getConsoleInspectOptions(noColorStdout()),
         indentLevel: this.indentLevel,
       }) + "\n",
       0,
@@ -3110,17 +3124,19 @@ class Console {
   info = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(),
+        ...getConsoleInspectOptions(noColorStdout()),
         indentLevel: this.indentLevel,
       }) + "\n",
       1,
     );
   };
 
-  dir = (obj = undefined, options = {}) => {
+  dir = (obj = undefined, options = { __proto__: null }) => {
     this.#printFunc(
-      inspectArgs([obj], { ...getConsoleInspectOptions(), ...options }) +
-        "\n",
+      inspectArgs([obj], {
+        ...getConsoleInspectOptions(noColorStdout()),
+        ...options,
+      }) + "\n",
       1,
     );
   };
@@ -3130,7 +3146,7 @@ class Console {
   warn = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(),
+        ...getConsoleInspectOptions(noColorStderr()),
         indentLevel: this.indentLevel,
       }) + "\n",
       2,
@@ -3140,7 +3156,7 @@ class Console {
   error = (...args) => {
     this.#printFunc(
       inspectArgs(args, {
-        ...getConsoleInspectOptions(),
+        ...getConsoleInspectOptions(noColorStderr()),
         indentLevel: this.indentLevel,
       }) + "\n",
       3,
@@ -3223,7 +3239,7 @@ class Console {
       resultData = [...new SafeSetIterator(data)];
     } else if (isMapObject) {
       let idx = 0;
-      resultData = {};
+      resultData = { __proto__: null };
 
       MapPrototypeForEach(data, (v, k) => {
         resultData[idx] = { Key: k, Values: v };
@@ -3353,7 +3369,10 @@ class Console {
   trace = (...args) => {
     const message = inspectArgs(
       args,
-      { ...getConsoleInspectOptions(), indentLevel: 0 },
+      {
+        ...getConsoleInspectOptions(noColorStderr()),
+        indentLevel: 0,
+      },
     );
     const err = {
       name: "Trace",
@@ -3378,7 +3397,7 @@ const customInspect = SymbolFor("Deno.customInspect");
 
 function inspect(
   value,
-  inspectOptions = {},
+  inspectOptions = { __proto__: null },
 ) {
   // Default options
   const ctx = {
@@ -3473,10 +3492,11 @@ export {
   formatNumber,
   formatValue,
   getDefaultInspectOptions,
-  getNoColor,
+  getStderrNoColor,
+  getStdoutNoColor,
   inspect,
   inspectArgs,
   quoteString,
-  setNoColorFn,
+  setNoColorFns,
   styles,
 };

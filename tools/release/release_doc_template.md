@@ -2,33 +2,62 @@
 
 ## Pre-flight
 
-- Forks and local clones of
-  [`denoland/deno`](https://github.com/denoland/deno/),
-  [`denoland/dotcom`](https://github.com/denoland/dotcom/),
-  [`denoland/deno_docker`](https://github.com/denoland/deno_docker/),
-  [`denoland/deno-docs`](https://github.com/denoland/deno-docs)
+**During this process $BRANCH_NAME branch should be frozen and no commits should
+land until the release is finished.**
 
-**During this process `main` branch (or any other branch that you're creating
-release from) should be frozen and no commits should land until the release is
-cut.**
-
+- [ ] Ensure forks and local clones of:
+  - [`denoland/deno`](https://github.com/denoland/deno/),
+  - [`denoland/dotcom`](https://github.com/denoland/dotcom/),
+  - [`denoland/deno_docker`](https://github.com/denoland/deno_docker/),
+  - [`denoland/deno-docs`](https://github.com/denoland/deno-docs)
 - [ ] Check https://deno.land/benchmarks?-100 and ensure there's no recent
       regressions.
-- [ ] Write a message in company's #cli channel:
-      `:lock: deno is now locked (<LINK TO THIS FORKED GIST GOES HERE>)`
+- [ ] Write a message in company's `#cli` channel:
+
+```
+:lock: 
+
+@here
+
+Deno v$VERSION is now getting released.
+
+[`denoland/deno`](https://github.com/denoland/deno) is now locked.
+
+**DO NOT LAND ANY PRs** 
+
+Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
+```
 
 ## Patch release preparation
 
 **If you are cutting a patch release**: First you need to sync commits to the
-relevant minor branch in the `deno` repo, so if you are cutting a `v1.17.3`
-release you need to sync `v1.17` branch.
+relevant minor branch in the `deno` repo, so if you are cutting a `v1.43.3`
+release you need to sync `v1.43` branch.
 
-To do that, you need to cherry-pick commits from the main branch to the `v1.17`
-branch. For patch releases we want to cherry-pick all commits that do not add
-features to the CLI. This generally means to filter out `feat` commits but not
-necessarily (ex. `feat(core): ...`). Check what was the last commit on `v1.17`
-branch before the previous release and start cherry-picking newer commits from
-the `main`.
+To do that, you need to cherry-pick commits from the main branch to the `v1.43`
+branch. If the branch doesn't exist yet, create one from the latest minor tag:
+
+```
+# checkout latest minor release
+$ git checkout v1.43.0
+
+# create a branch
+$ git checkout v1.43
+
+# push the branch to the `denoland/deno` repository
+$ git push upstream v1.43
+```
+
+For patch releases we want to cherry-pick all commits that do not add features
+to the CLI. This generally means to filter out `feat` commits.
+
+Check what was the last commit on `v1.43` branch before the previous release and
+start cherry-picking newer commits from the `main`.
+
+<!--
+      TODO: we should add sample deno program that does that for you,
+      and then provides a complete `git` command to run.
+-->
 
 Once all relevant commits are cherry-picked, push the branch to the upstream and
 verify on GitHub that everything looks correct.
@@ -37,15 +66,11 @@ verify on GitHub that everything looks correct.
   `vx.xx` branch. If you have accidentally created a `vx.xx.x`-like branch then
   delete it as tagging the CLI will fail otherwise.
 
-- [ ] Unstable `feat` commits were merged.
-- [ ] Internal API commits like `feat(core)` were merged.
-
 ## Updating `deno`
 
 ### Phase 1: Bumping versions
 
-- [ ] After releasing deno_std, go to the "version_bump" workflow in the CLI
-      repo's actions:
+- [ ] Go to the "version_bump" workflow in the CLI repo's actions:
       https://github.com/denoland/deno/actions/workflows/version_bump.yml
   1. Click on the "Run workflow" button.
   1. In the drop down, select the minor branch (ex. `vx.xx`) if doing a patch
@@ -151,4 +176,15 @@ script generates the symbols based on the latest tags.
 ## All done!
 
 - [ ] Write a message in company's #cli channel:
-      `:unlock: deno is now unlocked`.
+
+```
+:unlock:
+
+@channel 
+
+[`denoland/deno`](https://github.com/denoland/deno) is now unlocked.
+
+**You can land PRs now**
+
+Deno v$VERSION has been released.
+```

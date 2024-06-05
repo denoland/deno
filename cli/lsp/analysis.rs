@@ -9,6 +9,7 @@ use super::tsc;
 
 use crate::args::jsr_url;
 use crate::tools::lint::create_linter;
+use deno_lint::linter::LintConfig;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::SourceRange;
@@ -169,9 +170,10 @@ fn as_lsp_range(
 pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
   lint_rules: Vec<&'static dyn LintRule>,
+  lint_config: LintConfig,
 ) -> Result<Vec<Reference>, AnyError> {
   let linter = create_linter(lint_rules);
-  let lint_diagnostics = linter.lint_with_ast(parsed_source);
+  let lint_diagnostics = linter.lint_with_ast(parsed_source, lint_config);
 
   Ok(
     lint_diagnostics
@@ -248,6 +250,8 @@ impl<'a> TsResponseImportMapper<'a> {
       }
     }
 
+    let file_referrer = self.documents.get_file_referrer(referrer);
+
     if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
     {
       let mut segments = jsr_path.split('/');
@@ -259,8 +263,11 @@ impl<'a> TsResponseImportMapper<'a> {
       let version = Version::parse_standard(segments.next()?).ok()?;
       let nv = PackageNv { name, version };
       let path = segments.collect::<Vec<_>>().join("/");
-      let jsr_resolver = self.documents.get_jsr_resolver();
-      let export = jsr_resolver.lookup_export_for_path(&nv, &path)?;
+      let export = self.resolver.jsr_lookup_export_for_path(
+        &nv,
+        &path,
+        file_referrer.as_deref(),
+      )?;
       let sub_path = (export != ".").then_some(export);
       let mut req = None;
       req = req.or_else(|| {
@@ -282,7 +289,11 @@ impl<'a> TsResponseImportMapper<'a> {
         }
         None
       });
-      req = req.or_else(|| jsr_resolver.lookup_req_for_nv(&nv));
+      req = req.or_else(|| {
+        self
+          .resolver
+          .jsr_lookup_req_for_nv(&nv, file_referrer.as_deref())
+      });
       let spec_str = if let Some(req) = req {
         let req_ref = PackageReqReference { req, sub_path };
         JsrPackageReqReference::new(req_ref).to_string()
@@ -299,7 +310,10 @@ impl<'a> TsResponseImportMapper<'a> {
       return Some(spec_str);
     }
 
-    if let Some(npm_resolver) = self.resolver.maybe_managed_npm_resolver() {
+    if let Some(npm_resolver) = self
+      .resolver
+      .maybe_managed_npm_resolver(file_referrer.as_deref())
+    {
       if npm_resolver.in_npm_package(specifier) {
         if let Ok(Some(pkg_id)) =
           npm_resolver.resolve_pkg_id_from_specifier(specifier)
@@ -545,7 +559,10 @@ fn fix_ts_import_action(
   action: &tsc::CodeFixAction,
   import_mapper: &TsResponseImportMapper,
 ) -> Result<tsc::CodeFixAction, AnyError> {
-  if action.fix_name == "import" {
+  if matches!(
+    action.fix_name.as_str(),
+    "import" | "fixMissingFunctionDeclaration"
+  ) {
     let change = action
       .changes
       .first()

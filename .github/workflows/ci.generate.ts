@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 87;
+const cacheVersion = 94;
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
@@ -86,7 +86,7 @@ ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && s
 (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
 echo "Decompressing sysroot..."
-wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240207/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
+wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240528/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
 cd /
 xzcat /tmp/sysroot.tar.xz | sudo tar -x
 sudo mount --rbind /dev /sysroot/dev
@@ -95,21 +95,23 @@ sudo mount --rbind /home /sysroot/home
 sudo mount -t proc /proc /sysroot/proc
 cd
 
-if [[ \`uname -m\` == "aarch64" ]]; then
-  echo "Copying libdl.a"
-  sudo cp /sysroot/usr/lib/aarch64-linux-gnu/libdl.a /sysroot/lib/aarch64-linux-gnu/libdl.a
-  echo "Copying libdl.so"
-  sudo cp /sysroot/lib/aarch64-linux-gnu/libdl.so.2 /sysroot/lib/aarch64-linux-gnu/libdl.so
-else
-  echo "Copying libdl.a"
-  sudo cp /sysroot/usr/lib/x86_64-linux-gnu/libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
-  echo "Copying libdl.so"
-  sudo cp /sysroot/lib/x86_64-linux-gnu/libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
-fi
+echo "Done."
 
 # Configure the build environment. Both Rust and Clang will produce
 # llvm bitcode only, so we can use lld's incremental LTO support.
-cat >> $GITHUB_ENV << __0
+
+# Load the sysroot's env vars
+echo "sysroot env:"
+cat /sysroot/.env
+. /sysroot/.env
+
+# Important notes:
+#   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
+#      to be in the Rust default flags in the smoketest, so uncertain why we need
+#      to be explicit here.
+#   2. RUSTFLAGS and RUSTDOCFLAGS must be specified, otherwise the doctests fail
+#      to build because the object formats are not compatible.
+echo "
 CARGO_PROFILE_BENCH_INCREMENTAL=false
 CARGO_PROFILE_BENCH_LTO=false
 CARGO_PROFILE_RELEASE_INCREMENTAL=false
@@ -118,28 +120,27 @@ RUSTFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
-  -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   --cfg tokio_unstable
-  \${{ env.RUSTFLAGS }}
+  $RUSTFLAGS
 __1
 RUSTDOCFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
-  -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-  \${{ env.RUSTFLAGS }}
+  --cfg tokio_unstable
+  $RUSTFLAGS
 __1
 CC=/usr/bin/clang-${llvmVersion}
-CFLAGS=-flto=thin --sysroot=/sysroot
-__0`,
+CFLAGS=-flto=thin $CFLAGS
+" > $GITHUB_ENV`,
 };
 
 const installBenchTools = "./tools/install_prebuilt.js wrk hyperfine";
@@ -338,10 +339,11 @@ const ci = {
         ...cloneRepoStep,
         {
           id: "check",
+          if: "!contains(github.event.pull_request.labels.*.name, 'ci-draft')",
           run: [
             "GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})",
             "echo Commit message: $GIT_MESSAGE",
-            "echo $GIT_MESSAGE | grep '\\[ci\\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)",
+            "echo $GIT_MESSAGE | grep '\\[ci\\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass or add the ci-draft label.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)",
           ].join("\n"),
         },
       ]),
@@ -489,8 +491,7 @@ const ci = {
           )
         ),
         {
-          // only necessary for benchmarks
-          if: "matrix.job == 'bench'",
+          if: "matrix.job == 'bench' || matrix.job == 'test'",
           ...installNodeStep,
         },
         installProtocStep,
@@ -712,6 +713,24 @@ const ci = {
           ].join("\n"),
         },
         {
+          // Run a minimal check to ensure that binary is not corrupted, regardless
+          // of our build mode
+          name: "Check deno binary",
+          if: "matrix.job == 'test'",
+          run:
+            'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3',
+          env: {
+            NO_COLOR: 1,
+          },
+        },
+        {
+          // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
+          name: "Check deno binary (in sysroot)",
+          if: "matrix.job == 'test' && matrix.use_sysroot",
+          run:
+            'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version',
+        },
+        {
           name: "Upload PR artifact (linux)",
           if: [
             "matrix.job == 'test' &&",
@@ -845,25 +864,6 @@ const ci = {
             "!startsWith(github.ref, 'refs/tags/')))",
           ].join("\n"),
           run: "cargo test --release --locked",
-        },
-        {
-          // Since all tests are skipped when we're building a tagged commit
-          // this is a minimal check to ensure that binary is not corrupted
-          name: "Check deno binary",
-          if:
-            "matrix.profile == 'release' && startsWith(github.ref, 'refs/tags/')",
-          run: 'target/release/deno eval "console.log(1+2)" | grep 3',
-          env: {
-            NO_COLOR: 1,
-          },
-        },
-        {
-          // Verify that the binary actually works in the Ubuntu-16.04 sysroot.
-          // TODO(mmastrac): make this work for aarch64 as well
-          name: "Check deno binary (in sysroot)",
-          if:
-            "matrix.profile == 'release' && matrix.use_sysroot && matrix.arch != 'aarch64'",
-          run: 'sudo chroot /sysroot "$(pwd)/target/release/deno" --version',
         },
         {
           name: "Configure hosts file for WPT",
