@@ -15,8 +15,11 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_semver::package::PackageNv;
+use reqwest::StatusCode;
+use reqwest::Url;
 
 use crate::args::CacheSetting;
+use crate::http_util::DownloadError;
 use crate::http_util::HttpClientProvider;
 use crate::npm::common::maybe_auth_header_for_npm_registry;
 use crate::util::progress_bar::ProgressBar;
@@ -138,8 +141,6 @@ impl TarballCache {
     let tarball_cache = self.clone();
     async move {
       let registry_url = tarball_cache.npmrc.get_registry_url(&package_nv.name);
-      let registry_config =
-        tarball_cache.npmrc.get_registry_config(&package_nv.name).clone();
       let package_folder =
         tarball_cache.cache.package_folder_for_nv_and_url(&package_nv, registry_url);
       let should_use_cache = tarball_cache.cache.should_use_cache_for_package(&package_nv);
@@ -161,14 +162,40 @@ impl TarballCache {
         bail!("Tarball URL was empty.");
       }
 
-      let maybe_auth_header =
-        maybe_auth_header_for_npm_registry(&registry_config);
+      // IMPORTANT: npm registries may specify tarball URLs at different URLS than the
+      // registry, so we MUST get the auth for the tarball URL and not the registry URL.
+      let tarball_uri = Url::parse(&dist.tarball)?;
+      let maybe_registry_config =
+        tarball_cache.npmrc.tarball_config(&tarball_uri);
+      let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_for_npm_registry(c));
 
       let guard = tarball_cache.progress_bar.update(&dist.tarball);
-      let maybe_bytes = tarball_cache.http_client_provider
+      let result = tarball_cache.http_client_provider
         .get_or_create()?
-        .download_with_progress(&dist.tarball, maybe_auth_header, &guard)
-        .await?;
+        .download_with_progress(tarball_uri, maybe_auth_header, &guard)
+        .await;
+      let maybe_bytes = match result {
+        Ok(maybe_bytes) => maybe_bytes,
+        Err(DownloadError::BadResponse(err)) => {
+          if err.status_code == StatusCode::UNAUTHORIZED
+            && maybe_registry_config.is_none()
+            && tarball_cache.npmrc.get_registry_config(&package_nv.name).auth_token.is_some()
+          {
+            bail!(
+              concat!(
+                "No auth for tarball URI, but present for scoped registry.\n\n",
+                "Tarball URI: {}\n",
+                "Scope URI: {}\n\n",
+                "More info here: https://github.com/npm/cli/wiki/%22No-auth-for-URI,-but-auth-present-for-scoped-registry%22"
+              ),
+              dist.tarball,
+              registry_url,
+            )
+          }
+          return Err(err.into())
+        },
+        Err(err) => return Err(err.into()),
+      };
       match maybe_bytes {
         Some(bytes) => {
           let extraction_mode = if should_use_cache || !package_folder_exists {
