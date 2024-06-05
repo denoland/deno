@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::parking_lot::RwLock;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::registry::NpmPackageInfo;
@@ -31,7 +30,7 @@ use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
 
 use crate::args::Lockfile;
-use crate::util::sync::TaskQueue;
+use crate::util::sync::SyncReadAsyncWriteLock;
 
 use super::CliNpmRegistryApi;
 
@@ -42,8 +41,7 @@ use super::CliNpmRegistryApi;
 /// This does not interact with the file system.
 pub struct NpmResolution {
   api: Arc<CliNpmRegistryApi>,
-  snapshot: RwLock<NpmResolutionSnapshot>,
-  update_queue: TaskQueue,
+  snapshot: SyncReadAsyncWriteLock<NpmResolutionSnapshot>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
 
@@ -74,8 +72,7 @@ impl NpmResolution {
   ) -> Self {
     Self {
       api,
-      snapshot: RwLock::new(initial_snapshot),
-      update_queue: Default::default(),
+      snapshot: SyncReadAsyncWriteLock::new(initial_snapshot),
       maybe_lockfile,
     }
   }
@@ -85,16 +82,16 @@ impl NpmResolution {
     package_reqs: &[PackageReq],
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
-    let _permit = self.update_queue.acquire().await;
+    let snapshot_lock = self.snapshot.acquire().await;
     let snapshot = add_package_reqs_to_snapshot(
       &self.api,
       package_reqs,
       self.maybe_lockfile.clone(),
-      || self.snapshot.read().clone(),
+      || snapshot_lock.read().clone(),
     )
     .await?;
 
-    *self.snapshot.write() = snapshot;
+    *snapshot_lock.write() = snapshot;
     Ok(())
   }
 
@@ -103,7 +100,7 @@ impl NpmResolution {
     package_reqs: &[PackageReq],
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
-    let _permit = self.update_queue.acquire().await;
+    let snapshot_lock = self.snapshot.acquire().await;
 
     let reqs_set = package_reqs.iter().collect::<HashSet<_>>();
     let snapshot = add_package_reqs_to_snapshot(
@@ -111,7 +108,7 @@ impl NpmResolution {
       package_reqs,
       self.maybe_lockfile.clone(),
       || {
-        let snapshot = self.snapshot.read().clone();
+        let snapshot = snapshot_lock.read().clone();
         let has_removed_package = !snapshot
           .package_reqs()
           .keys()
@@ -126,24 +123,24 @@ impl NpmResolution {
     )
     .await?;
 
-    *self.snapshot.write() = snapshot;
+    *snapshot_lock.write() = snapshot;
 
     Ok(())
   }
 
   pub async fn resolve_pending(&self) -> Result<(), AnyError> {
     // only allow one thread in here at a time
-    let _permit = self.update_queue.acquire().await;
+    let snapshot_lock = self.snapshot.acquire().await;
 
     let snapshot = add_package_reqs_to_snapshot(
       &self.api,
       &Vec::new(),
       self.maybe_lockfile.clone(),
-      || self.snapshot.read().clone(),
+      || snapshot_lock.read().clone(),
     )
     .await?;
 
-    *self.snapshot.write() = snapshot;
+    *snapshot_lock.write() = snapshot;
 
     Ok(())
   }
@@ -229,8 +226,10 @@ impl NpmResolution {
     pkg_info: &NpmPackageInfo,
   ) -> Result<PackageNv, NpmPackageVersionResolutionError> {
     debug_assert_eq!(pkg_req.name, pkg_info.name);
-    let _permit = self.update_queue.acquire().await;
-    let mut snapshot = self.snapshot.write();
+    // only allow one thread in here at a time
+    let snapshot_lock = self.snapshot.acquire().await;
+
+    let mut snapshot = snapshot_lock.write();
     let pending_resolver = get_npm_pending_resolver(&self.api);
     let nv = pending_resolver.resolve_package_req_as_pending(
       &mut snapshot,
@@ -244,8 +243,10 @@ impl NpmResolution {
     &self,
     reqs_with_pkg_infos: &[(&PackageReq, Arc<NpmPackageInfo>)],
   ) -> Vec<Result<PackageNv, NpmPackageVersionResolutionError>> {
-    let _permit = self.update_queue.acquire().await;
-    let mut snapshot = self.snapshot.write();
+    // only allow one thread in here at a time
+    let snapshot_lock = self.snapshot.acquire().await;
+
+    let mut snapshot = snapshot_lock.write();
     let pending_resolver = get_npm_pending_resolver(&self.api);
     let mut results = Vec::with_capacity(reqs_with_pkg_infos.len());
     for (pkg_req, pkg_info) in reqs_with_pkg_infos {
