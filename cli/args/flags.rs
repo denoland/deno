@@ -1042,7 +1042,7 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
     <g>DENO_FUTURE</>          Set to "1" to enable APIs that will take effect in
                          Deno 2
 
-    <g>DENO_CERT</>            Load certificate authority from PEM encoded file
+    <g>DENO_CERT</>            Load certificate authorities from PEM encoded file
 
     <g>DENO_DIR</>             Set the cache directory
 

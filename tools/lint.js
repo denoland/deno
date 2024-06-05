@@ -66,6 +66,7 @@ async function dlint() {
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
     ":!:tests/wpt/suite/**",
+    ":!:tests/wpt/runner/**",
   ]);
 
   if (!sourceFiles.length) {
