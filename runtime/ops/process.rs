@@ -74,7 +74,9 @@ impl<'de> Deserialize<'de> for StdioOrRid {
         "inherit" => Ok(StdioOrRid::Stdio(Stdio::Inherit)),
         "piped" => Ok(StdioOrRid::Stdio(Stdio::Piped)),
         "null" => Ok(StdioOrRid::Stdio(Stdio::Null)),
-        "ipc_for_internal_use" => Ok(StdioOrRid::Stdio(Stdio::IpcForInternalUse)),
+        "ipc_for_internal_use" => {
+          Ok(StdioOrRid::Stdio(Stdio::IpcForInternalUse))
+        }
         val => Err(serde::de::Error::unknown_variant(
           val,
           &["inherit", "piped", "null"],
