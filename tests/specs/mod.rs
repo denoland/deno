@@ -183,7 +183,7 @@ pub fn main() {
   file_test_runner::run_tests(
     &root_category,
     file_test_runner::RunOptions {
-      parallel: !NO_CAPTURE,
+      parallel: !*NO_CAPTURE,
     },
     run_test,
   );
