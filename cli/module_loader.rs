@@ -366,9 +366,6 @@ impl<TGraphContainer: ModuleGraphContainer>
     } else {
       self.load_prepared_module(specifier, maybe_referrer).await?
     };
-    // todo(dsherret): we should store the source maps non-inline
-    // so that we don't don't have to potentially allocate another
-    // large string when stripping the source map here
     let code = if self.shared.is_inspecting {
       // we need the code with the source map in order for
       // it to work with --inspect or --inspect-brk
