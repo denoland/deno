@@ -6,6 +6,7 @@ error[banned-triple-slash-directives]: triple slash directives that modify globa
   | 
 1 | /// <reference lib="deno.ns" />
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the triple slash directive
+  | 
   = hint: remove the triple slash directive
 
   info: instead instruct the user of your package to specify these directives
@@ -17,6 +18,7 @@ error[banned-triple-slash-directives]: triple slash directives that modify globa
   | 
 2 | /// <reference no-default-lib="true" />
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the triple slash directive
+  | 
   = hint: remove the triple slash directive
 
   info: instead instruct the user of your package to specify these directives

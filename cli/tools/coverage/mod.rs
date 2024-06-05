@@ -25,7 +25,6 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
-use deno_core::ModuleCodeString;
 use regex::Regex;
 use std::fs;
 use std::fs::File;
@@ -565,7 +564,7 @@ pub async fn cover_files(
       | MediaType::Cjs
       | MediaType::Mjs
       | MediaType::Json => None,
-      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(String::new()),
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(Vec::new()),
       MediaType::TypeScript
       | MediaType::Jsx
       | MediaType::Mts
@@ -586,11 +585,13 @@ pub async fn cover_files(
         unreachable!()
       }
     };
-    let runtime_code: ModuleCodeString = transpiled_code
-      .map(|c| c.into())
-      .unwrap_or_else(|| original_source.clone().into());
+    let runtime_code: String = match transpiled_code {
+      Some(code) => String::from_utf8(code)
+        .with_context(|| format!("Failed decoding {}", file.specifier))?,
+      None => original_source.to_string(),
+    };
 
-    let source_map = source_map_from_code(&runtime_code);
+    let source_map = source_map_from_code(runtime_code.as_bytes());
     let coverage_report = generate_coverage_report(
       &script_coverage,
       runtime_code.as_str().to_owned(),

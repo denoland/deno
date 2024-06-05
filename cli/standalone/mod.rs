@@ -218,7 +218,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
               MediaType::Json => ModuleType::Json,
               _ => ModuleType::JavaScript,
             },
-            ModuleSourceCode::String(code_source.code),
+            code_source.code,
             &original_specifier,
             &code_source.found_url,
             None,
