@@ -20,18 +20,21 @@ use crate::args::CacheSetting;
 use crate::http_util::HttpClientProvider;
 use crate::npm::common::maybe_auth_header_for_npm_registry;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::sync::MultiRuntimeAsyncValueCreator;
 
 use super::tarball_extract::verify_and_extract_tarball;
 use super::tarball_extract::TarballExtractionMode;
-use super::value_creator::MultiRuntimeAsyncValueCreator;
 use super::NpmCache;
 
 // todo(dsherret): create seams and unit test this
 
+type LoadResult = Result<(), Arc<AnyError>>;
+type LoadFuture = LocalBoxFuture<'static, LoadResult>;
+
 #[derive(Debug, Clone)]
 enum MemoryCacheItem {
   /// The cache item hasn't finished yet.
-  Pending(Arc<MultiRuntimeAsyncValueCreator<()>>),
+  Pending(Arc<MultiRuntimeAsyncValueCreator<LoadResult>>),
   /// The result errored.
   Errored(Arc<AnyError>),
   /// This package has already been cached.
@@ -91,8 +94,14 @@ impl TarballCache {
       if let Some(cache_item) = mem_cache.get(package_nv) {
         cache_item.clone()
       } else {
-        let future = self.create_setup_future(package_nv.clone(), dist.clone());
-        let value_creator = MultiRuntimeAsyncValueCreator::new(future);
+        let value_creator = MultiRuntimeAsyncValueCreator::new({
+          let tarball_cache = self.clone();
+          let package_nv = package_nv.clone();
+          let dist = dist.clone();
+          Box::new(move || {
+            tarball_cache.create_setup_future(package_nv.clone(), dist.clone())
+          })
+        });
         let cache_item = MemoryCacheItem::Pending(Arc::new(value_creator));
         mem_cache.insert(package_nv.clone(), cache_item.clone());
         cache_item
@@ -103,12 +112,7 @@ impl TarballCache {
       MemoryCacheItem::Cached => Ok(()),
       MemoryCacheItem::Errored(err) => Err(anyhow!("{}", err)),
       MemoryCacheItem::Pending(creator) => {
-        let tarball_cache = self.clone();
-        let result = creator
-          .get(move || {
-            tarball_cache.create_setup_future(package_nv.clone(), dist.clone())
-          })
-          .await;
+        let result = creator.get().await;
         match result {
           Ok(_) => {
             *self.memory_cache.lock().get_mut(package_nv).unwrap() =
@@ -130,7 +134,7 @@ impl TarballCache {
     self: &Arc<Self>,
     package_nv: PackageNv,
     dist: NpmPackageVersionDistInfo,
-  ) -> LocalBoxFuture<'static, Result<(), AnyError>> {
+  ) -> LoadFuture {
     let tarball_cache = self.clone();
     async move {
       let registry_url = tarball_cache.npmrc.get_registry_url(&package_nv.name);
@@ -197,6 +201,8 @@ impl TarballCache {
           bail!("Could not find npm package tarball at: {}", dist.tarball);
         }
       }
-    }.boxed_local()
+    }
+    .map(|r| r.map_err(Arc::new))
+    .boxed_local()
   }
 }
