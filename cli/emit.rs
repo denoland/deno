@@ -183,7 +183,8 @@ impl Emitter {
           .parsed_source_cache
           .remove_or_parse_module(specifier, source_arc, media_type)?;
         // HMR doesn't work with embedded source maps for some reason, so set
-        // the option to not use them
+        // the option to not use them (though you should test this out because
+        // this statement is probably wrong)
         let mut options = self.transpile_and_emit_options.1.clone();
         options.source_map = SourceMapOption::None;
         let transpiled_source = parsed_source
