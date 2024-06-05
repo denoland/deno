@@ -227,6 +227,12 @@ export async function downloadPrebuilt(toolName) {
       );
     }
     spinner.text = `Successfully downloaded: ${toolName}`;
+    try {
+      // necessary on Windows it seems
+      await Deno.remove(toolPath);
+    } catch {
+      // ignore
+    }
     await Deno.rename(tempFile, toolPath);
   } catch (e) {
     spinner.fail();
