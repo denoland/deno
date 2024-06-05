@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-// deno-lint-ignore-file no-window-prefix
+
+// deno-lint-ignore-file no-window-prefix no-window
 import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 Deno.test(function globalThisExists() {

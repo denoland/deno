@@ -1,6 +1,5 @@
 {
-  thrown: DOMException: foo
-    at new DOMException (ext:deno_web/01_dom_exception.js:[WILDCARD])
+  thrown: Error: foo
     at [WILDCARD]
     at Object.evalContext (ext:core/01_core.js:[WILDCARD])
     at file:///[WILDCARD]/eval_context_throw_dom_exception.js:1:48,

@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-// deno-lint-ignore-file no-window-prefix
+
 import { assertEquals, assertThrows } from "./test_util.ts";
 
 Deno.test(function addEventListenerTest() {
@@ -134,18 +134,18 @@ Deno.test(function eventTargetThisShouldDefaultToWindow() {
   };
 
   addEventListener("hello", listener);
-  window.dispatchEvent(event);
+  globalThis.dispatchEvent(event);
   assertEquals(n, 2);
   n = 1;
   removeEventListener("hello", listener);
-  window.dispatchEvent(event);
+  globalThis.dispatchEvent(event);
   assertEquals(n, 1);
 
-  window.addEventListener("hello", listener);
+  globalThis.addEventListener("hello", listener);
   dispatchEvent(event);
   assertEquals(n, 2);
   n = 1;
-  window.removeEventListener("hello", listener);
+  globalThis.removeEventListener("hello", listener);
   dispatchEvent(event);
   assertEquals(n, 1);
 });
