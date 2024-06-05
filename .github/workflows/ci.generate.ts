@@ -339,10 +339,11 @@ const ci = {
         ...cloneRepoStep,
         {
           id: "check",
+          if: "!contains(github.event.pull_request.labels.*.name, 'ci-draft')",
           run: [
             "GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})",
             "echo Commit message: $GIT_MESSAGE",
-            "echo $GIT_MESSAGE | grep '\\[ci\\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)",
+            "echo $GIT_MESSAGE | grep '\\[ci\\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass or add the ci-draft label.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)",
           ].join("\n"),
         },
       ]),
