@@ -37,11 +37,11 @@ jobs:
           submodules: false
         if: github.event.pull_request.draft == true
       - id: check
+        if: 'github.event.pull_request.draft == true && (!contains(github.event.pull_request.labels.*.name, ''ci-draft''))'
         run: |-
           GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})
           echo Commit message: $GIT_MESSAGE
-          echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)
-        if: github.event.pull_request.draft == true
+          echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass or add the ci-draft label.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)
   build:
     name: '${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
     needs:
