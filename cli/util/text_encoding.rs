@@ -173,11 +173,7 @@ mod tests {
       ];
       for form in forms {
         let result = code_without_source_map(form);
-        // todo(https://github.com/denoland/deno_core/pull/764): use as_bytes()
-        let bytes = match &result {
-          ModuleSourceCode::String(s) => s.as_bytes(),
-          ModuleSourceCode::Bytes(b) => b.as_bytes(),
-        };
+        let bytes = result.as_bytes();
         assert_eq!(bytes, output.as_bytes());
       }
     }

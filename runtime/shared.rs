@@ -87,8 +87,7 @@ pub fn maybe_transpile_source(
 
   let parsed = deno_ast::parse_module(ParseParams {
     specifier: deno_core::url::Url::parse(&name).unwrap(),
-    // todo(https://github.com/denoland/deno_core/pull/763): don't clone here
-    text: source.to_string().into(),
+    text: source.into(),
     media_type,
     capture_tokens: false,
     scope_analysis: false,
