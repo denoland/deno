@@ -339,7 +339,7 @@ function getTextureDescriptorForCanvasAndConfiguration(canvas, configuration) {
     label: "GPUCanvasContextConfigurationTexture",
     size: [canvas[_width], canvas[_height], 1],
     format: configuration.format,
-    usage: configuration.usage,
+    usage: configuration.usage | GPUTextureUsage.COPY_SRC,
     viewFormats: configuration.viewFormats,
   };
 }
@@ -364,17 +364,14 @@ function getCopyOfImageContent(context) {
   const device = context[_configuration].device;
   const { padded, unpadded } = getRowPadding(context[_canvas][_width]);
 
-  console.log(padded * context[_canvas][_height], unpadded * context[_canvas][_height]);
-
   const encoder = device.createCommandEncoder({
     label: "GPUCanvasCopyCommandEncoder"
   });
   const outputBuffer = device.createBuffer({
     label: "GPUCanvasCopyBuffer",
-    size: unpadded * context[_canvas][_height],
+    size: padded * context[_canvas][_height],
     usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
   });
-
 
   encoder.copyTextureToBuffer(
     {
@@ -382,7 +379,7 @@ function getCopyOfImageContent(context) {
     },
     {
       buffer: outputBuffer,
-      bytesPerRow: unpadded,
+      bytesPerRow: padded,
     },
     {
       width: context[_canvas][_width],
@@ -390,18 +387,29 @@ function getCopyOfImageContent(context) {
     },
   );
 
-  device.queue.onSubmittedWorkDone().then(() => console.log("foo"));
-
   device.queue.submit([encoder.finish()]);
 
-  await outputBuffer.mapAsync(1);
+  const { _mapBlocking } = loadWebGPU();
 
+  outputBuffer[_mapBlocking](1);
 
-  const x = new Uint8Array(outputBuffer.getMappedRange());
+  const buf = new Uint8Array(unpadded * context[_canvas][_height]);
+  const mappedBuffer = new Uint8Array(outputBuffer.getMappedRange());
 
-  Deno.writeTextFileSync("./debug.txt", JSON.stringify(Array.from(x), null, 2));
+  for (let i = 0; i < context[_canvas][_height]; i++) {
+    const slice = mappedBuffer
+      .slice(i * padded, (i + 1) * padded)
+      .slice(0, unpadded);
 
-  return x.slice();
+    buf.set(slice, i * unpadded);
+  }
+
+  outputBuffer.unmap();
+  outputBuffer.destroy();
+
+  // TODO: alphaMode
+
+  return buf;
 }
 
 
@@ -409,7 +417,7 @@ function getCopyOfImageContent(context) {
 export const COPY_BYTES_PER_ROW_ALIGNMENT = 256;
 
 /** Number of bytes per pixel. */
-export const BYTES_PER_PIXEL = 3;
+export const BYTES_PER_PIXEL = 4;
 
 export function getRowPadding(width) {
   // It is a WebGPU requirement that

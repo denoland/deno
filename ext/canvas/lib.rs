@@ -141,7 +141,7 @@ fn op_image_encode_png(
   let png = image::codecs::png::PngEncoder::new(&mut out);
 
   if png
-    .write_image(buf, width, height, ExtendedColorType::Rgb8)
+    .write_image(buf, width, height, ExtendedColorType::Rgba8)
     .is_err()
   {
     return Ok(None);

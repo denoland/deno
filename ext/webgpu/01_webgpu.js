@@ -13,6 +13,7 @@ const {
 } = core;
 import {
   op_webgpu_buffer_get_map_async,
+  op_webgpu_buffer_get_map_blocking,
   op_webgpu_buffer_get_mapped_range,
   op_webgpu_buffer_unmap,
   op_webgpu_command_encoder_begin_compute_pass,
@@ -162,6 +163,7 @@ const _dimension = Symbol("[[dimension]]");
 const _format = Symbol("[[format]]");
 const _type = Symbol("[[type]]");
 const _count = Symbol("[[count]]");
+const _mapBlocking = Symbol("[[mapBlocking]]");
 
 /**
  * @param {any} self
@@ -2240,6 +2242,27 @@ class GPUBuffer {
     }
     this[_state] = "mapped";
     this[_mappingRange] = [offset, offset + rangeSize];
+    /** @type {[ArrayBuffer, number, number][] | null} */
+    this[_mappedRanges] = [];
+  }
+
+  [_mapBlocking](mode) {
+    const device = assertDevice(this, "", "this");
+    const bufferRid = assertResource(this, "", "this");
+
+    const rangeSize = MathMax(0, this[_size]);
+
+    this[_mapMode] = mode;
+    op_webgpu_buffer_get_map_blocking(
+      bufferRid,
+      device.rid,
+      mode,
+      0,
+      rangeSize,
+    );
+
+    this[_state] = "mapped";
+    this[_mappingRange] = [0, rangeSize];
     /** @type {[ArrayBuffer, number, number][] | null} */
     this[_mappedRanges] = [];
   }
@@ -7440,6 +7463,7 @@ webidl.converters["GPUCanvasConfiguration"] = webidl
 const gpu = webidl.createBranded(GPU);
 export {
   _device,
+  _mapBlocking,
   assertDevice,
   createGPUTexture,
   GPU,

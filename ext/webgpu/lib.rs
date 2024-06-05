@@ -134,6 +134,7 @@ deno_core::extension!(
     buffer::op_webgpu_create_buffer,
     buffer::op_webgpu_buffer_get_mapped_range,
     buffer::op_webgpu_buffer_unmap,
+    buffer::op_webgpu_buffer_get_map_blocking,
     // buffer async
     buffer::op_webgpu_buffer_get_map_async,
     // remaining sync ops

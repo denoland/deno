@@ -137,6 +137,55 @@ pub async fn op_webgpu_buffer_get_map_async(
 
 #[op2]
 #[serde]
+pub fn op_webgpu_buffer_get_map_blocking(
+  state: &mut OpState,
+  #[smi] buffer_rid: ResourceId,
+  #[smi] device_rid: ResourceId,
+  mode: u32,
+  #[number] offset: u64,
+  #[number] size: u64,
+) -> Result<WebGpuResult, AnyError> {
+  let instance = state.borrow::<super::Instance>();
+  let buffer_resource = state.resource_table.get::<WebGpuBuffer>(buffer_rid)?;
+  let buffer = buffer_resource.1;
+  let device_resource = state
+    .resource_table
+    .get::<super::WebGpuDevice>(device_rid)?;
+  let device = device_resource.1;
+
+  let maybe_err = gfx_select!(buffer => instance.buffer_map_async(
+    buffer,
+    offset,
+    Some(size),
+    wgpu_core::resource::BufferMapOperation {
+      host: match mode {
+        1 => wgpu_core::device::HostMap::Read,
+        2 => wgpu_core::device::HostMap::Write,
+        _ => unreachable!(),
+      },
+      callback: None,
+    }
+  ))
+  .err();
+
+  if maybe_err.is_some() {
+    return Ok(WebGpuResult::maybe_err(maybe_err));
+  }
+
+  /*match gfx_select!(device => instance.device_poll(device, wgpu_types::Maintain::Wait)).unwrap() {
+    Ok(_) => Ok(WebGpuResult::empty()),
+    Err(e) => {
+      Err(DomExceptionOperationError::new(&e.to_string()).into())
+    }
+  }*/
+
+  gfx_select!(device => instance.device_poll(device, wgpu_types::Maintain::Wait)).unwrap();
+
+  Ok(WebGpuResult::empty())
+}
+
+#[op2]
+#[serde]
 pub fn op_webgpu_buffer_get_mapped_range(
   state: &mut OpState,
   #[smi] buffer_rid: ResourceId,
