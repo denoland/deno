@@ -7,8 +7,6 @@ use deno_core::parking_lot::RwLockWriteGuard;
 use super::TaskQueue;
 use super::TaskQueuePermit;
 
-// todo(dsherret): add unit tests
-
 /// A lock that can be read synchronously at any time (including when
 /// being written to), but must write asynchronously.
 pub struct SyncReadAsyncWriteLockWriteGuard<'a, T: Send + Sync> {
