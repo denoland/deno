@@ -1,5 +1,5 @@
 {
   "tempDir": true,
-  "args": "run -A --log-level=debug --lock=deno.lock main.ts",
+  "args": "run -A --lock=deno.lock main.ts",
   "output": "main.out"
 }
