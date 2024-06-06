@@ -1,5 +1,5 @@
 {
-  thrown: Error: foo
+  thrown: DOMException: foo
     at [WILDCARD]
     at Object.evalContext (ext:core/01_core.js:[WILDCARD])
     at file:///[WILDCARD]/eval_context_throw_dom_exception.js:1:48,

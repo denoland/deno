@@ -134,6 +134,11 @@ class DOMException {
     if (ObjectHasOwn(this, "stack")) {
       const stack = this.stack;
       if (typeof stack === "string") {
+        // NOTE(bartlomieju): nasty hack to keep formatting aligned with browsers
+        const prefix = `${this.name}: `;
+        if (stack.startsWith(prefix)) {
+          return `DOMException: ${stack.slice(prefix.length)}`;
+        }
         return stack;
       }
     }
