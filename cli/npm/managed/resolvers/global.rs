@@ -146,7 +146,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
 
   fn ensure_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     self

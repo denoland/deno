@@ -3,8 +3,8 @@
 use std::io::Read;
 
 use deno_core::error::AnyError;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 
 use crate::args::EvalFlags;
