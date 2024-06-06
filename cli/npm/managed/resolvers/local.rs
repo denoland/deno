@@ -5,12 +5,14 @@
 mod bin_entries;
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::cache::CACHE_PERM;
@@ -29,7 +31,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
@@ -141,7 +142,7 @@ impl LocalNpmPackageResolver {
   }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl NpmPackageFsResolver for LocalNpmPackageResolver {
   fn root_dir_url(&self) -> &Url {
     &self.root_node_modules_url
@@ -296,7 +297,7 @@ async fn sync_resolution_with_fs(
   let mut cache_futures = FuturesUnordered::new();
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
-  let bin_entries = Arc::new(Mutex::new(bin_entries::BinEntries::new()));
+  let bin_entries = Rc::new(RefCell::new(bin_entries::BinEntries::new()));
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
       newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -349,7 +350,7 @@ async fn sync_resolution_with_fs(
 
         if package.bin.is_some() {
           bin_entries_to_setup
-            .lock()
+            .borrow_mut()
             .add(package.clone(), package_path);
         }
 
@@ -482,7 +483,7 @@ async fn sync_resolution_with_fs(
 
   // 6. Set up `node_modules/.bin` entries for packages that need it.
   {
-    let bin_entries = std::mem::take(&mut *bin_entries.lock());
+    let bin_entries = std::mem::take(&mut *bin_entries.borrow_mut());
     bin_entries.finish(snapshot, &bin_node_modules_dir_path)?;
   }
 
