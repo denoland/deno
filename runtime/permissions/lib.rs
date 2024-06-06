@@ -751,7 +751,7 @@ impl Descriptor for NetDescriptor {
   }
 
   fn name(&self) -> Cow<str> {
-    Cow::from(format!("{}", self.to_string_with_port().to_string()))
+    Cow::from(self.to_string_with_port())
   }
 
   fn stronger_than(&self, other: &Self) -> bool {

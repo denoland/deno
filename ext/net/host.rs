@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use fqdn::FQDN;
