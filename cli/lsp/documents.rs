@@ -1056,7 +1056,7 @@ impl Documents {
       Cow::Owned(
         self
           .resolver
-          .jsr_to_registry_url(&jsr_req_ref, file_referrer)?,
+          .jsr_to_resource_url(&jsr_req_ref, file_referrer)?,
       )
     } else {
       Cow::Borrowed(specifier)
