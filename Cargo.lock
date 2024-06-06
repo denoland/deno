@@ -1304,7 +1304,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.284.0"
-source = "git+https://github.com/denoland/deno_core.git?branch=main#eeecea22b05ec4e7e26036a4ba5c8e2efe1ec94e"
+source = "git+https://github.com/denoland/deno_core.git?branch=main#68c4885b171380b23bd3576c2fb841c965da4155"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1753,7 +1753,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.160.0"
-source = "git+https://github.com/denoland/deno_core.git?branch=main#eeecea22b05ec4e7e26036a4ba5c8e2efe1ec94e"
+source = "git+https://github.com/denoland/deno_core.git?branch=main#68c4885b171380b23bd3576c2fb841c965da4155"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5754,7 +5754,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.193.0"
-source = "git+https://github.com/denoland/deno_core.git?branch=main#eeecea22b05ec4e7e26036a4ba5c8e2efe1ec94e"
+source = "git+https://github.com/denoland/deno_core.git?branch=main#68c4885b171380b23bd3576c2fb841c965da4155"
 dependencies = [
  "num-bigint",
  "serde",
@@ -7548,7 +7548,7 @@ dependencies = [
  "log",
  "naga",
  "once_cell",
- "parking_lot 0.12.1",
+ "parking_lot 0.11.2",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -7590,7 +7590,7 @@ dependencies = [
  "ndk-sys",
  "objc",
  "once_cell",
- "parking_lot 0.12.1",
+ "parking_lot 0.11.2",
  "profiling",
  "range-alloc",
  "raw-window-handle",
