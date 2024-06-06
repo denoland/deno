@@ -10,6 +10,7 @@ if (process.argv[2] === "child") {
 
   proc.on("message", function (msg) {
     console.log(`msg: ${msg}`);
+    proc.kill();
     Deno.exit(0);
   });
 }
