@@ -165,6 +165,12 @@ fn get_npm_package(
   local_path: &str,
   package_name: &str,
 ) -> Result<Option<CustomNpmPackage>> {
+  let registry_hostname = if package_name == "@denotest/tarballs-privateserver2"
+  {
+    "http://localhost:4262"
+  } else {
+    registry_hostname
+  };
   let package_folder = tests_path()
     .join("registry")
     .join(local_path)

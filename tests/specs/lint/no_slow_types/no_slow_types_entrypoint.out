@@ -3,6 +3,7 @@ error[no-slow-types]: missing explicit return type in the public API
   | 
 1 | export function add(a: number, b: number) {
   |                 ^^^ this function is missing an explicit return type
+  | 
   = hint: add an explicit return type to the function
 
   info: all functions in the public API must have an explicit return type
@@ -14,6 +15,7 @@ error[no-slow-types]: missing explicit return type in the public API
   | 
 1 | export function addB(a: number, b: number) {
   |                 ^^^^ this function is missing an explicit return type
+  | 
   = hint: add an explicit return type to the function
 
   info: all functions in the public API must have an explicit return type
@@ -25,6 +27,7 @@ error[no-slow-types]: missing explicit return type in the public API
   | 
 2 | export function addD(a: number, b: number) {
   |                 ^^^^ this function is missing an explicit return type
+  | 
   = hint: add an explicit return type to the function
 
   info: all functions in the public API must have an explicit return type

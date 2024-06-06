@@ -172,6 +172,13 @@ function getStderrNoColor() {
   return noColorStderr();
 }
 
+class AssertionError extends Error {
+  name = "AssertionError";
+  constructor(message) {
+    super(message);
+  }
+}
+
 function assert(cond, msg = "Assertion failed.") {
   if (!cond) {
     throw new AssertionError(msg);

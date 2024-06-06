@@ -17,7 +17,7 @@ land until the release is finished.**
 ```
 :lock: 
 
-@channel
+@here
 
 Deno v$VERSION is now getting released.
 

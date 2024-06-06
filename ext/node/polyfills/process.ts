@@ -19,6 +19,7 @@ import { report } from "ext:deno_node/internal/process/report.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_INVALID_ARG_TYPE,
+  ERR_OUT_OF_RANGE,
   ERR_UNKNOWN_SIGNAL,
   errnoException,
 } from "ext:deno_node/internal/errors.ts";
@@ -439,38 +440,22 @@ Object.defineProperty(Process.prototype, "exitCode", {
     return ProcessExitCode;
   },
   set(code: number | string | null | undefined) {
-    let parsedCode;
-
-    if (typeof code === "number") {
-      if (Number.isNaN(code)) {
-        parsedCode = 1;
-        denoOs.setExitCode(parsedCode);
-        ProcessExitCode = parsedCode;
-        return;
-      }
-
-      // This is looser than `denoOs.setExitCode` which requires exit code
-      // to be decimal or string of a decimal, but Node accept eg. 0x10.
-      parsedCode = parseInt(code);
-      denoOs.setExitCode(parsedCode);
-      ProcessExitCode = parsedCode;
-      return;
+    let parsedCode: number;
+    if (code == null) {
+      parsedCode = 0;
+    } else if (typeof code === "number") {
+      parsedCode = code;
+    } else if (typeof code === "string") {
+      parsedCode = Number(code);
+    } else {
+      throw new ERR_INVALID_ARG_TYPE("code", "number", code);
     }
 
-    if (typeof code === "string") {
-      parsedCode = parseInt(code);
-      if (Number.isNaN(parsedCode)) {
-        throw new TypeError(
-          `The "code" argument must be of type number. Received type ${typeof code} (${code})`,
-        );
-      }
-      denoOs.setExitCode(parsedCode);
-      ProcessExitCode = parsedCode;
-      return;
+    if (!Number.isInteger(parsedCode)) {
+      throw new ERR_OUT_OF_RANGE("code", "an integer", parsedCode);
     }
 
-    // TODO(bartlomieju): hope for the best here. This should be further tightened.
-    denoOs.setExitCode(code);
+    denoOs.setExitCode(parsedCode);
     ProcessExitCode = code;
   },
 });

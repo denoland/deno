@@ -6,6 +6,18 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.44.1 / 2024.06.05
+
+- fix(console): add missing AssertionError to js (#22358)
+- fix(docs): update Deno.Command docs (#24097)
+- fix(lsp): complete exports for import mapped jsr specifiers (#24054)
+- fix(npm): use configured auth for tarball urls instead of scope auth (#24111)
+- fix: better handling of npm resolution occurring on workers (#24094)
+- fix: retry writing lockfile on failure (#24052)
+- fix: support importing statically unanalyzable npm specifiers (#24107)
+- fix: update deno_npm (#24065)
+- fix: validate integer values in `Deno.exitCode` setter (#24068)
+
 ### 1.44.0 / 2024.05.30
 
 - BREAKING(ffi/unstable): always return u64 as bigint (#23981)

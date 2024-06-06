@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use async_trait::async_trait;
 use dashmap::DashMap;
 use dashmap::DashSet;
 use deno_ast::MediaType;
@@ -9,15 +10,15 @@ use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
-use deno_core::ModuleCodeString;
+use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
-use deno_graph::source::NpmPackageReqResolution;
-use deno_graph::source::NpmResolver;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
+use deno_graph::NpmPackageReqsResolution;
+use deno_npm::registry::NpmPackageInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
@@ -34,6 +35,8 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -60,7 +63,7 @@ pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
 }
 
 pub struct ModuleCodeStringSource {
-  pub code: ModuleCodeString,
+  pub code: ModuleSourceCode,
   pub found_url: ModuleSpecifier,
   pub media_type: MediaType,
 }
@@ -293,7 +296,7 @@ impl NpmModuleLoader {
     let file_path = specifier.to_file_path().unwrap();
     let code = self
       .fs
-      .read_text_file_async(file_path.clone(), None)
+      .read_file_async(file_path.clone(), None)
       .await
       .map_err(AnyError::from)
       .with_context(|| {
@@ -329,16 +332,20 @@ impl NpmModuleLoader {
 
     let code = if self.cjs_resolutions.contains(specifier) {
       // translate cjs to esm if it's cjs and inject node globals
-      self
-        .node_code_translator
-        .translate_cjs_to_esm(specifier, Some(code), permissions)
-        .await?
+      let code = String::from_utf8(code)?;
+      ModuleSourceCode::String(
+        self
+          .node_code_translator
+          .translate_cjs_to_esm(specifier, Some(code), permissions)
+          .await?
+          .into(),
+      )
     } else {
       // esm and json code is untouched
-      code
+      ModuleSourceCode::Bytes(code.into_boxed_slice().into())
     };
     Ok(ModuleCodeStringSource {
-      code: code.into(),
+      code,
       found_url: specifier.clone(),
       media_type: MediaType::from_specifier(specifier),
     })
@@ -498,8 +505,12 @@ impl CliGraphResolver {
     self
   }
 
-  pub fn as_graph_npm_resolver(&self) -> &dyn NpmResolver {
-    self
+  pub fn create_graph_npm_resolver(&self) -> WorkerCliNpmGraphResolver {
+    WorkerCliNpmGraphResolver {
+      npm_resolver: self.npm_resolver.as_ref(),
+      memory_cache: Default::default(),
+      bare_node_builtins_enabled: self.bare_node_builtins_enabled,
+    }
   }
 
   pub fn found_package_json_dep(&self) -> bool {
@@ -782,7 +793,17 @@ fn resolve_package_json_dep(
   Ok(None)
 }
 
-impl NpmResolver for CliGraphResolver {
+#[derive(Debug)]
+pub struct WorkerCliNpmGraphResolver<'a> {
+  npm_resolver: Option<&'a Arc<dyn CliNpmResolver>>,
+  // use a cache per worker so that another worker doesn't clear the
+  // cache of another worker
+  memory_cache: Rc<RefCell<HashMap<String, Arc<NpmPackageInfo>>>>,
+  bare_node_builtins_enabled: bool,
+}
+
+#[async_trait(?Send)]
+impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
   fn resolve_builtin_node_module(
     &self,
     specifier: &ModuleSpecifier,
@@ -818,17 +839,20 @@ impl NpmResolver for CliGraphResolver {
     &self,
     package_name: &str,
   ) -> LocalBoxFuture<'static, Result<(), AnyError>> {
-    match &self.npm_resolver {
+    match self.npm_resolver {
       Some(npm_resolver) if npm_resolver.as_managed().is_some() => {
-        let package_name = package_name.to_string();
         let npm_resolver = npm_resolver.clone();
+        let package_name = package_name.to_string();
+        let memory_cache = self.memory_cache.clone();
         async move {
           if let Some(managed) = npm_resolver.as_managed() {
-            managed.cache_package_info(&package_name).await?;
+            let package_info =
+              managed.cache_package_info(&package_name).await?;
+            memory_cache.borrow_mut().insert(package_name, package_info);
           }
           Ok(())
         }
-        .boxed()
+        .boxed_local()
       }
       _ => {
         // return it succeeded and error at the import site below
@@ -837,19 +861,50 @@ impl NpmResolver for CliGraphResolver {
     }
   }
 
-  fn resolve_npm(&self, package_req: &PackageReq) -> NpmPackageReqResolution {
+  async fn resolve_pkg_reqs(
+    &self,
+    package_reqs: &[&PackageReq],
+  ) -> NpmPackageReqsResolution {
     match &self.npm_resolver {
-      Some(npm_resolver) => match npm_resolver.as_inner() {
-        InnerCliNpmResolverRef::Managed(npm_resolver) => {
-          npm_resolver.resolve_npm_for_deno_graph(package_req)
+      Some(npm_resolver) => {
+        let npm_resolver = match npm_resolver.as_inner() {
+          InnerCliNpmResolverRef::Managed(npm_resolver) => npm_resolver,
+          // if we are using byonm, then this should never be called because
+          // we don't use deno_graph's npm resolution in this case
+          InnerCliNpmResolverRef::Byonm(_) => unreachable!(),
+        };
+
+        let reqs_with_package_infos = {
+          let memory_cache = self.memory_cache.borrow();
+          package_reqs
+            .iter()
+            .map(|package_req| {
+              let package_info = memory_cache
+                .get(&package_req.name)
+                .unwrap() // ok because deno_graph would have called load_and_cache_npm_package_info
+                .clone();
+              (*package_req, package_info)
+            })
+            .collect::<Vec<_>>()
+        };
+        let result = npm_resolver
+          .resolve_npm_for_deno_graph(&reqs_with_package_infos)
+          .await;
+        if matches!(result, NpmPackageReqsResolution::ReloadRegistryInfo) {
+          self.memory_cache.borrow_mut().clear();
         }
-        // if we are using byonm, then this should never be called because
-        // we don't use deno_graph's npm resolution in this case
-        InnerCliNpmResolverRef::Byonm(_) => unreachable!(),
-      },
-      None => NpmPackageReqResolution::Err(anyhow!(
-        "npm specifiers were requested; but --no-npm is specified"
-      )),
+        result
+      }
+      None => NpmPackageReqsResolution::Resolutions(
+        package_reqs
+          .iter()
+          .map(|_| {
+            Err(Arc::new(anyhow!(
+              "npm specifiers were requested; but --no-npm is specified"
+            )))
+          })
+          .collect(),
+      ),
     }
   }
 
