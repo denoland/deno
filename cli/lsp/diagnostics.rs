@@ -854,7 +854,7 @@ fn generate_document_lint_diagnostics(
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
       if let Ok(references) =
-        analysis::get_lint_references(&parsed_source, lint_rules, lint_config)
+        analysis::get_lint_references(parsed_source, lint_rules, lint_config)
       {
         references
           .into_iter()

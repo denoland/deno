@@ -371,8 +371,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       // it to work with --inspect or --inspect-brk
       code_source.code
     } else {
-      // reduce memory and throw away the source map
-      // because we don't need it
+      // v8 is slower when source maps are present, so we strip them
       code_without_source_map(code_source.code)
     };
     let module_type = match code_source.media_type {
@@ -413,7 +412,7 @@ impl<TGraphContainer: ModuleGraphContainer>
 
     Ok(ModuleSource::new_with_redirect(
       module_type,
-      ModuleSourceCode::String(code),
+      code,
       specifier,
       &code_source.found_url,
       code_cache,
@@ -424,26 +423,6 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     referrer: &str,
   ) -> Result<ModuleSpecifier, AnyError> {
-    // todo(https://github.com/denoland/deno_core/pull/741): use function from deno_core
-    fn specifier_has_uri_scheme(specifier: &str) -> bool {
-      let mut chars = specifier.chars();
-      let mut len = 0usize;
-      // The first character must be a letter.
-      match chars.next() {
-        Some(c) if c.is_ascii_alphabetic() => len += 1,
-        _ => return false,
-      }
-      // Second and following characters must be either a letter, number,
-      // plus sign, minus sign, or dot.
-      loop {
-        match chars.next() {
-          Some(c) if c.is_ascii_alphanumeric() || "+-.".contains(c) => len += 1,
-          Some(':') if len >= 2 => return true,
-          _ => return false,
-        }
-      }
-    }
-
     let referrer = if referrer.is_empty() && self.shared.is_repl {
       // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
       // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
@@ -452,7 +431,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       referrer
     };
 
-    if specifier_has_uri_scheme(referrer) {
+    if deno_core::specifier_has_uri_scheme(referrer) {
       deno_core::resolve_url(referrer).map_err(|e| e.into())
     } else if referrer == "." {
       // main module, use the initial cwd
@@ -490,99 +469,86 @@ impl<TGraphContainer: ModuleGraphContainer>
     }
 
     let graph = self.graph_container.graph();
-    let maybe_resolved = match graph.get(referrer) {
-      Some(Module::Js(module)) => {
-        module.dependencies.get(specifier).map(|d| &d.maybe_code)
-      }
-      _ => None,
+    let resolution = match graph.get(referrer) {
+      Some(Module::Js(module)) => module
+        .dependencies
+        .get(specifier)
+        .map(|d| &d.maybe_code)
+        .unwrap_or(&Resolution::None),
+      _ => &Resolution::None,
     };
 
-    match maybe_resolved {
-      Some(Resolution::Ok(resolved)) => {
-        let specifier = &resolved.specifier;
-        let specifier = match graph.get(specifier) {
-          Some(Module::Npm(module)) => {
-            let package_folder = self
-              .shared
-              .node_resolver
-              .npm_resolver
-              .as_managed()
-              .unwrap() // byonm won't create a Module::Npm
-              .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
-            let maybe_resolution = self
-              .shared
-              .node_resolver
-              .resolve_package_sub_path_from_deno_module(
-                &package_folder,
-                module.nv_reference.sub_path(),
-                referrer,
-                NodeResolutionMode::Execution,
-                permissions,
-              )
-              .with_context(|| {
-                format!("Could not resolve '{}'.", module.nv_reference)
-              })?;
-            match maybe_resolution {
-              Some(res) => res.into_url(),
-              None => return Err(generic_error("not found")),
-            }
-          }
-          Some(Module::Node(module)) => module.specifier.clone(),
-          Some(Module::Js(module)) => module.specifier.clone(),
-          Some(Module::Json(module)) => module.specifier.clone(),
-          Some(Module::External(module)) => {
-            node::resolve_specifier_into_node_modules(&module.specifier)
-          }
-          None => specifier.clone(),
-        };
-        return Ok(specifier);
-      }
-      Some(Resolution::Err(err)) => {
+    let specifier = match resolution {
+      Resolution::Ok(resolved) => Cow::Borrowed(&resolved.specifier),
+      Resolution::Err(err) => {
         return Err(custom_error(
           "TypeError",
           format!("{}\n", err.to_string_with_range()),
-        ))
+        ));
       }
-      Some(Resolution::None) | None => {}
-    }
-
-    // FIXME(bartlomieju): this is another hack way to provide NPM specifier
-    // support in REPL. This should be fixed.
-    let resolution = self.shared.resolver.resolve(
-      specifier,
-      &deno_graph::Range {
-        specifier: referrer.clone(),
-        start: deno_graph::Position::zeroed(),
-        end: deno_graph::Position::zeroed(),
-      },
-      ResolutionMode::Execution,
-    );
+      Resolution::None => Cow::Owned(self.shared.resolver.resolve(
+        specifier,
+        &deno_graph::Range {
+          specifier: referrer.clone(),
+          start: deno_graph::Position::zeroed(),
+          end: deno_graph::Position::zeroed(),
+        },
+        ResolutionMode::Execution,
+      )?),
+    };
 
     if self.shared.is_repl {
-      let specifier = resolution
-        .as_ref()
-        .ok()
-        .map(Cow::Borrowed)
-        .or_else(|| ModuleSpecifier::parse(specifier).ok().map(Cow::Owned));
-      if let Some(specifier) = specifier {
-        if let Ok(reference) =
-          NpmPackageReqReference::from_specifier(&specifier)
-        {
-          return self
-            .shared
-            .node_resolver
-            .resolve_req_reference(
-              &reference,
-              permissions,
-              referrer,
-              NodeResolutionMode::Execution,
-            )
-            .map(|res| res.into_url());
-        }
+      if let Ok(reference) = NpmPackageReqReference::from_specifier(&specifier)
+      {
+        return self
+          .shared
+          .node_resolver
+          .resolve_req_reference(
+            &reference,
+            permissions,
+            referrer,
+            NodeResolutionMode::Execution,
+          )
+          .map(|res| res.into_url());
       }
     }
 
-    resolution.map_err(|err| err.into())
+    let specifier = match graph.get(&specifier) {
+      Some(Module::Npm(module)) => {
+        let package_folder = self
+          .shared
+          .node_resolver
+          .npm_resolver
+          .as_managed()
+          .unwrap() // byonm won't create a Module::Npm
+          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
+        let maybe_resolution = self
+          .shared
+          .node_resolver
+          .resolve_package_sub_path_from_deno_module(
+            &package_folder,
+            module.nv_reference.sub_path(),
+            referrer,
+            NodeResolutionMode::Execution,
+            permissions,
+          )
+          .with_context(|| {
+            format!("Could not resolve '{}'.", module.nv_reference)
+          })?;
+        match maybe_resolution {
+          Some(res) => res.into_url(),
+          None => return Err(generic_error("not found")),
+        }
+      }
+      Some(Module::Node(module)) => module.specifier.clone(),
+      Some(Module::Js(module)) => module.specifier.clone(),
+      Some(Module::Json(module)) => module.specifier.clone(),
+      Some(Module::External(module)) => {
+        node::resolve_specifier_into_node_modules(&module.specifier)
+      }
+      None => specifier.into_owned(),
+    };
+    Ok(specifier)
   }
 
   async fn load_prepared_module(
@@ -612,7 +578,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         self.parsed_source_cache.free(specifier);
 
         Ok(ModuleCodeStringSource {
-          code: transpile_result,
+          code: ModuleSourceCode::Bytes(transpile_result),
           found_url: specifier.clone(),
           media_type,
         })
@@ -647,7 +613,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         self.parsed_source_cache.free(specifier);
 
         Ok(ModuleCodeStringSource {
-          code: transpile_result,
+          code: ModuleSourceCode::Bytes(transpile_result),
           found_url: specifier.clone(),
           media_type,
         })
@@ -673,7 +639,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         specifier,
         ..
       })) => Ok(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-        code: source.clone().into(),
+        code: ModuleSourceCode::String(source.clone().into()),
         found_url: specifier.clone(),
         media_type: *media_type,
       })),
@@ -712,7 +678,7 @@ impl<TGraphContainer: ModuleGraphContainer>
         self.parsed_source_cache.free(specifier);
 
         Ok(CodeOrDeferredEmit::Code(ModuleCodeStringSource {
-          code,
+          code: ModuleSourceCode::String(code),
           found_url: specifier.clone(),
           media_type: *media_type,
         }))
@@ -892,7 +858,7 @@ impl<TGraphContainer: ModuleGraphContainer> SourceMapGetter
       _ => return None,
     }
     let source = self.0.load_prepared_module_sync(&specifier, None).ok()?;
-    source_map_from_code(&source.code)
+    source_map_from_code(source.code.as_bytes())
   }
 
   fn get_source_line(

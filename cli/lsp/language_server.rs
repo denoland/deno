@@ -1317,7 +1317,7 @@ impl Inner {
       move || {
         let format_result = match document.maybe_parsed_source() {
           Some(Ok(parsed_source)) => {
-            format_parsed_source(&parsed_source, &fmt_options)
+            format_parsed_source(parsed_source, &fmt_options)
           }
           Some(Err(err)) => Err(anyhow!("{:#}", err)),
           None => {
@@ -1330,12 +1330,12 @@ impl Inner {
               .map(|ext| file_path.with_extension(ext))
               .unwrap_or(file_path);
             // it's not a js/ts file, so attempt to format its contents
-            format_file(&file_path, &document.content(), &fmt_options)
+            format_file(&file_path, document.content(), &fmt_options)
           }
         };
         match format_result {
           Ok(Some(new_text)) => Some(text::get_edits(
-            &document.content(),
+            document.content(),
             &new_text,
             document.line_index().as_ref(),
           )),
@@ -1605,7 +1605,9 @@ impl Inner {
               &specifier,
               diagnostic,
               asset_or_doc.document().map(|d| d.text_info()),
-              asset_or_doc.maybe_parsed_source().and_then(|r| r.ok()),
+              asset_or_doc
+                .maybe_parsed_source()
+                .and_then(|r| r.as_ref().ok()),
             )
             .map_err(|err| {
               error!("Unable to fix lint error: {:#}", err);
