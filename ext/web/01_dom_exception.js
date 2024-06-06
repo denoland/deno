@@ -17,6 +17,8 @@ const {
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
   Symbol,
   SymbolFor,
 } = primordials;
@@ -136,8 +138,8 @@ class DOMException {
       if (typeof stack === "string") {
         // NOTE(bartlomieju): nasty hack to keep formatting aligned with browsers
         const prefix = `${this.name}: `;
-        if (stack.startsWith(prefix)) {
-          return `DOMException: ${stack.slice(prefix.length)}`;
+        if (StringPrototypeStartsWith(stack, prefix)) {
+          return `DOMException: ${StringPrototypeSlice(stack, prefix.length)}`;
         }
         return stack;
       }
