@@ -164,7 +164,7 @@ pub async fn get_import_completions(
   let document = documents.get(specifier)?;
   let file_referrer = document.file_referrer();
   let (text, _, range) = document.get_maybe_dependency(position)?;
-  let range = to_narrow_lsp_range(&document.text_info(), &range);
+  let range = to_narrow_lsp_range(document.text_info(), &range);
   let resolved = resolver
     .as_graph_resolver(file_referrer)
     .resolve(

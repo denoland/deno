@@ -1249,7 +1249,7 @@ fn extract_files_from_source_comments(
 ) -> Result<Vec<File>, AnyError> {
   let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
     specifier: specifier.clone(),
-    text_info: deno_ast::SourceTextInfo::new(source),
+    text: source,
     media_type,
     capture_tokens: false,
     maybe_syntax: None,
@@ -1273,7 +1273,7 @@ fn extract_files_from_source_comments(
         specifier,
         &comment.text,
         media_type,
-        parsed_source.text_info().line_index(comment.start()),
+        parsed_source.text_info_lazy().line_index(comment.start()),
         blocks_regex,
         lines_regex,
       )
@@ -1877,7 +1877,7 @@ pub async fn run_tests_with_watch(
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
-          let mut result = Vec::new();
+          let mut result = IndexSet::with_capacity(test_modules.len());
           let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
           for test_module_specifier in test_modules {
             if has_graph_root_local_dependent_changed(
@@ -1885,7 +1885,7 @@ pub async fn run_tests_with_watch(
               test_module_specifier,
               &changed_paths,
             ) {
-              result.push(test_module_specifier.clone());
+              result.insert(test_module_specifier.clone());
             }
           }
           result

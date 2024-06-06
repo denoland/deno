@@ -105,7 +105,8 @@ impl PackageJsonDepsInstaller {
       let (req, info) = result?;
       let result = inner
         .npm_resolution
-        .resolve_pkg_req_as_pending_with_info(req, &info);
+        .resolve_pkg_req_as_pending_with_info(req, &info)
+        .await;
       if let Err(err) = result {
         if inner.npm_registry_api.mark_force_reload() {
           log::debug!("Failed to resolve package. Retrying. Error: {err:#}");
