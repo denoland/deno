@@ -115,6 +115,15 @@ class DOMException {
     this[webidl.brand] = webidl.brand;
 
     ErrorCaptureStackTrace(this, DOMException);
+    if (this.stack === "string") {
+      // NOTE(bartlomieju): nasty hack to keep formatting aligned with browsers
+      const prefix = `${this.name}: `;
+      if (StringPrototypeStartsWith(this.stack, prefix)) {
+        this.stack = `DOMException: ${
+          StringPrototypeSlice(this.stack, prefix.length)
+        }`;
+      }
+    }
   }
 
   get message() {
@@ -136,11 +145,6 @@ class DOMException {
     if (ObjectHasOwn(this, "stack")) {
       const stack = this.stack;
       if (typeof stack === "string") {
-        // NOTE(bartlomieju): nasty hack to keep formatting aligned with browsers
-        const prefix = `${this.name}: `;
-        if (StringPrototypeStartsWith(stack, prefix)) {
-          return `DOMException: ${StringPrototypeSlice(stack, prefix.length)}`;
-        }
         return stack;
       }
     }
