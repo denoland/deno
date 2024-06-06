@@ -18,14 +18,14 @@ use super::search::PackageSearchApi;
 
 #[derive(Debug)]
 pub struct CliNpmSearchApi {
-  file_fetcher: FileFetcher,
+  file_fetcher: Arc<FileFetcher>,
   resolver: NpmFetchResolver,
   search_cache: DashMap<String, Arc<Vec<String>>>,
   versions_cache: DashMap<String, Arc<Vec<Version>>>,
 }
 
 impl CliNpmSearchApi {
-  pub fn new(file_fetcher: FileFetcher) -> Self {
+  pub fn new(file_fetcher: Arc<FileFetcher>) -> Self {
     let resolver = NpmFetchResolver::new(file_fetcher.clone());
     Self {
       file_fetcher,
@@ -52,11 +52,14 @@ impl PackageSearchApi for CliNpmSearchApi {
     search_url
       .query_pairs_mut()
       .append_pair("text", &format!("{} boost-exact:false", query));
-    let file = self
-      .file_fetcher
-      .fetch(&search_url, &PermissionsContainer::allow_all())
-      .await?
-      .into_text_decoded()?;
+    let file_fetcher = self.file_fetcher.clone();
+    let file = deno_core::unsync::spawn(async move {
+      file_fetcher
+        .fetch(&search_url, &PermissionsContainer::allow_all())
+        .await?
+        .into_text_decoded()
+    })
+    .await??;
     let names = Arc::new(parse_npm_search_response(&file.source)?);
     self.search_cache.insert(query.to_string(), names.clone());
     Ok(names)

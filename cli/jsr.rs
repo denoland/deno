@@ -213,11 +213,11 @@ pub struct JsrFetchResolver {
   /// It can be large and we don't want to store it.
   info_by_nv: DashMap<PackageNv, Option<Arc<JsrPackageVersionInfo>>>,
   info_by_name: DashMap<String, Option<Arc<JsrPackageInfo>>>,
-  file_fetcher: FileFetcher,
+  file_fetcher: Arc<FileFetcher>,
 }
 
 impl JsrFetchResolver {
-  pub fn new(file_fetcher: FileFetcher) -> Self {
+  pub fn new(file_fetcher: Arc<FileFetcher>) -> Self {
     Self {
       nv_by_req: Default::default(),
       info_by_nv: Default::default(),
@@ -258,11 +258,16 @@ impl JsrFetchResolver {
     }
     let fetch_package_info = || async {
       let meta_url = jsr_url().join(&format!("{}/meta.json", name)).ok()?;
-      let file = self
-        .file_fetcher
-        .fetch(&meta_url, &PermissionsContainer::allow_all())
-        .await
-        .ok()?;
+      let file_fetcher = self.file_fetcher.clone();
+      // spawn due to the lsp's `Send` requirement
+      let file = deno_core::unsync::spawn(async move {
+        file_fetcher
+          .fetch(&meta_url, &PermissionsContainer::allow_all())
+          .await
+          .ok()
+      })
+      .await
+      .ok()??;
       serde_json::from_slice::<JsrPackageInfo>(&file.source).ok()
     };
     let info = fetch_package_info().await.map(Arc::new);
@@ -281,11 +286,16 @@ impl JsrFetchResolver {
       let meta_url = jsr_url()
         .join(&format!("{}/{}_meta.json", &nv.name, &nv.version))
         .ok()?;
-      let file = self
-        .file_fetcher
-        .fetch(&meta_url, &PermissionsContainer::allow_all())
-        .await
-        .ok()?;
+      let file_fetcher = self.file_fetcher.clone();
+      // spawn due to the lsp's `Send` requirement
+      let file = deno_core::unsync::spawn(async move {
+        file_fetcher
+          .fetch(&meta_url, &PermissionsContainer::allow_all())
+          .await
+          .ok()
+      })
+      .await
+      .ok()??;
       partial_jsr_package_version_info_from_slice(&file.source).ok()
     };
     let info = fetch_package_version_info().await.map(Arc::new);

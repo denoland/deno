@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -9,35 +10,34 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
+use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::npm_rc::ResolvedNpmRc;
-use deno_npm::registry::NpmPackageVersionDistInfo;
+use deno_npm::registry::NpmPackageInfo;
 use deno_npm::NpmPackageCacheFolderId;
-use deno_runtime::deno_fs;
 use deno_semver::package::PackageNv;
 
 use crate::args::CacheSetting;
-use crate::http_util::HttpClient;
-use crate::npm::common::maybe_auth_header_for_npm_registry;
+use crate::cache::CACHE_PERM;
 use crate::npm::NpmCacheDir;
+use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::hard_link_dir_recursive;
-use crate::util::progress_bar::ProgressBar;
 
-use super::tarball::verify_and_extract_tarball;
-use super::tarball::TarballExtractionMode;
+mod registry_info;
+mod tarball;
+mod tarball_extract;
+
+pub use registry_info::RegistryInfoDownloader;
+pub use tarball::TarballCache;
 
 /// Stores a single copy of npm packages in a cache.
 #[derive(Debug)]
 pub struct NpmCache {
   cache_dir: NpmCacheDir,
   cache_setting: CacheSetting,
-  fs: Arc<dyn deno_fs::FileSystem>,
-  http_client: Arc<HttpClient>,
-  progress_bar: ProgressBar,
-  pub(crate) npmrc: Arc<ResolvedNpmRc>,
+  npmrc: Arc<ResolvedNpmRc>,
   /// ensures a package is only downloaded once per run
   previously_reloaded_packages: Mutex<HashSet<PackageNv>>,
 }
@@ -46,17 +46,11 @@ impl NpmCache {
   pub fn new(
     cache_dir: NpmCacheDir,
     cache_setting: CacheSetting,
-    fs: Arc<dyn deno_fs::FileSystem>,
-    http_client: Arc<HttpClient>,
-    progress_bar: ProgressBar,
     npmrc: Arc<ResolvedNpmRc>,
   ) -> Self {
     Self {
       cache_dir,
       cache_setting,
-      fs,
-      http_client,
-      progress_bar,
       previously_reloaded_packages: Default::default(),
       npmrc,
     }
@@ -75,94 +69,12 @@ impl NpmCache {
   /// to ensure a package is only downloaded once per run of the CLI. This
   /// prevents downloads from re-occurring when someone has `--reload` and
   /// and imports a dynamic import that imports the same package again for example.
-  fn should_use_cache_for_package(&self, package: &PackageNv) -> bool {
+  pub fn should_use_cache_for_package(&self, package: &PackageNv) -> bool {
     self.cache_setting.should_use_for_npm_package(&package.name)
       || !self
         .previously_reloaded_packages
         .lock()
         .insert(package.clone())
-  }
-
-  pub async fn ensure_package(
-    &self,
-    package: &PackageNv,
-    dist: &NpmPackageVersionDistInfo,
-  ) -> Result<(), AnyError> {
-    self
-      .ensure_package_inner(package, dist)
-      .await
-      .with_context(|| format!("Failed caching npm package '{package}'."))
-  }
-
-  async fn ensure_package_inner(
-    &self,
-    package_nv: &PackageNv,
-    dist: &NpmPackageVersionDistInfo,
-  ) -> Result<(), AnyError> {
-    let registry_url = self.npmrc.get_registry_url(&package_nv.name);
-    let registry_config = self.npmrc.get_registry_config(&package_nv.name);
-
-    let package_folder = self
-      .cache_dir
-      .package_folder_for_name_and_version(package_nv, registry_url);
-    let should_use_cache = self.should_use_cache_for_package(package_nv);
-    let package_folder_exists = self.fs.exists_sync(&package_folder);
-    if should_use_cache && package_folder_exists {
-      return Ok(());
-    } else if self.cache_setting == CacheSetting::Only {
-      return Err(custom_error(
-        "NotCached",
-        format!(
-          "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
-          &package_nv.name
-        )
-      )
-      );
-    }
-
-    if dist.tarball.is_empty() {
-      bail!("Tarball URL was empty.");
-    }
-
-    let maybe_auth_header = maybe_auth_header_for_npm_registry(registry_config);
-
-    let guard = self.progress_bar.update(&dist.tarball);
-    let maybe_bytes = self
-      .http_client
-      .download_with_progress(&dist.tarball, maybe_auth_header, &guard)
-      .await?;
-    match maybe_bytes {
-      Some(bytes) => {
-        let extraction_mode = if should_use_cache || !package_folder_exists {
-          TarballExtractionMode::SiblingTempDir
-        } else {
-          // The user ran with `--reload`, so overwrite the package instead of
-          // deleting it since the package might get corrupted if a user kills
-          // their deno process while it's deleting a package directory
-          //
-          // We can't rename this folder and delete it because the folder
-          // may be in use by another process or may now contain hardlinks,
-          // which will cause windows to throw an "AccessDenied" error when
-          // renaming. So we settle for overwriting.
-          TarballExtractionMode::Overwrite
-        };
-        let dist = dist.clone();
-        let package_nv = package_nv.clone();
-        deno_core::unsync::spawn_blocking(move || {
-          verify_and_extract_tarball(
-            &package_nv,
-            &bytes,
-            &dist,
-            &package_folder,
-            extraction_mode,
-          )
-        })
-        .await?
-      }
-      None => {
-        bail!("Could not find npm package tarball at: {}", dist.tarball);
-      }
-    }
   }
 
   /// Ensures a copy of the package exists in the global cache.
@@ -190,7 +102,7 @@ impl NpmCache {
 
     let original_package_folder = self
       .cache_dir
-      .package_folder_for_name_and_version(&folder_id.nv, registry_url);
+      .package_folder_for_nv(&folder_id.nv, registry_url);
 
     // it seems Windows does an "AccessDenied" error when moving a
     // directory with hard links, so that's why this solution is done
@@ -205,14 +117,17 @@ impl NpmCache {
     self.cache_dir.package_folder_for_id(id, registry_url)
   }
 
-  pub fn package_folder_for_name_and_version(
+  pub fn package_folder_for_nv(&self, package: &PackageNv) -> PathBuf {
+    let registry_url = self.npmrc.get_registry_url(&package.name);
+    self.package_folder_for_nv_and_url(package, registry_url)
+  }
+
+  pub fn package_folder_for_nv_and_url(
     &self,
     package: &PackageNv,
+    registry_url: &Url,
   ) -> PathBuf {
-    let registry_url = self.npmrc.get_registry_url(&package.name);
-    self
-      .cache_dir
-      .package_folder_for_name_and_version(package, registry_url)
+    self.cache_dir.package_folder_for_nv(package, registry_url)
   }
 
   pub fn package_name_folder(&self, name: &str) -> PathBuf {
@@ -231,6 +146,36 @@ impl NpmCache {
     self
       .cache_dir
       .resolve_package_folder_id_from_specifier(specifier)
+  }
+
+  pub fn load_package_info(
+    &self,
+    name: &str,
+  ) -> Result<Option<NpmPackageInfo>, AnyError> {
+    let file_cache_path = self.get_registry_package_info_file_cache_path(name);
+
+    let file_text = match fs::read_to_string(file_cache_path) {
+      Ok(file_text) => file_text,
+      Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+      Err(err) => return Err(err.into()),
+    };
+    Ok(serde_json::from_str(&file_text)?)
+  }
+
+  pub fn save_package_info(
+    &self,
+    name: &str,
+    package_info: &NpmPackageInfo,
+  ) -> Result<(), AnyError> {
+    let file_cache_path = self.get_registry_package_info_file_cache_path(name);
+    let file_text = serde_json::to_string(&package_info)?;
+    atomic_write_file_with_retries(&file_cache_path, file_text, CACHE_PERM)?;
+    Ok(())
+  }
+
+  fn get_registry_package_info_file_cache_path(&self, name: &str) -> PathBuf {
+    let name_folder_path = self.package_name_folder(name);
+    name_folder_path.join("registry.json")
   }
 }
 
