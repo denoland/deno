@@ -19,12 +19,16 @@ use file_test_runner::collection::CollectedTest;
 use file_test_runner::collection::CollectedTestCategory;
 use file_test_runner::SubTestResult;
 use file_test_runner::TestResult;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use test_util::tests_path;
 use test_util::PathRef;
 use test_util::TestContextBuilder;
 
 const MANIFEST_FILE_NAME: &str = "__test__.jsonc";
+
+static NO_CAPTURE: Lazy<bool> =
+  Lazy::new(|| std::env::args().any(|arg| arg == "--nocapture"));
 
 #[derive(Clone, Deserialize)]
 #[serde(untagged)]
@@ -178,7 +182,9 @@ pub fn main() {
   let _http_guard = test_util::http_server();
   file_test_runner::run_tests(
     &root_category,
-    file_test_runner::RunOptions { parallel: true },
+    file_test_runner::RunOptions {
+      parallel: !*NO_CAPTURE,
+    },
     run_test,
   );
 }
@@ -372,6 +378,12 @@ fn run_step(
   let command = match &step.command_name {
     Some(command_name) => command.name(command_name),
     None => command,
+  };
+  let command = match *NO_CAPTURE {
+    // deprecated is only to prevent use, so this is fine here
+    #[allow(deprecated)]
+    true => command.show_output(),
+    false => command,
   };
   let output = command.run();
   if step.output.ends_with(".out") {
