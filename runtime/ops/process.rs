@@ -648,8 +648,6 @@ fn op_spawn_kill(
 }
 
 mod deprecated {
-  use deno_permissions::PermissionsContainer;
-
   use super::*;
 
   #[derive(Deserialize)]
