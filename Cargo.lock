@@ -1920,7 +1920,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.186.0"
+version = "0.187.0"
 dependencies = [
  "async-trait",
  "base64-simd 0.8.0",

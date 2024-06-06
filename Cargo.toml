@@ -78,7 +78,7 @@ deno_net = { version = "0.147.0", path = "./ext/net" }
 deno_node = { version = "0.92.0", path = "./ext/node" }
 deno_tls = { version = "0.142.0", path = "./ext/tls" }
 deno_url = { version = "0.155.0", path = "./ext/url" }
-deno_web = { version = "0.186.0", path = "./ext/web" }
+deno_web = { version = "0.187.0", path = "./ext/web" }
 deno_webgpu = { version = "0.122.0", path = "./ext/webgpu" }
 deno_webidl = { version = "0.155.0", path = "./ext/webidl" }
 deno_websocket = { version = "0.160.0", path = "./ext/websocket" }
