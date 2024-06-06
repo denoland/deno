@@ -1,29 +1,31 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::{jsr_api_url, jsr_url};
+use crate::args::jsr_api_url;
+use crate::args::jsr_url;
 use crate::file_fetcher::FileFetcher;
-use crate::jsr::{
-  partial_jsr_package_version_info_from_slice, JsrFetchResolver,
-};
+use crate::jsr::partial_jsr_package_version_info_from_slice;
+use crate::jsr::JsrFetchResolver;
 use dashmap::DashMap;
 use deno_cache_dir::HttpCache;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_graph::packages::{
-  JsrPackageInfo, JsrPackageInfoVersion, JsrPackageVersionInfo,
-};
+use deno_graph::packages::JsrPackageInfo;
+use deno_graph::packages::JsrPackageInfoVersion;
+use deno_graph::packages::JsrPackageVersionInfo;
 use deno_graph::ModuleSpecifier;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::jsr::JsrPackageReqReference;
-use deno_semver::package::{PackageNv, PackageReq};
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use deno_semver::Version;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::config::{Config, ConfigData};
+use super::config::Config;
+use super::config::ConfigData;
 use super::search::PackageSearchApi;
 
 /// Keep in sync with `JsrFetchResolver`!
