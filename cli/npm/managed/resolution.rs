@@ -130,7 +130,9 @@ impl NpmResolution {
 
   pub async fn resolve_pending(&self) -> Result<(), AnyError> {
     // only allow one thread in here at a time
+    eprintln!("{:?} - 4.3 - Acquiring lock", std::thread::current().id());
     let snapshot_lock = self.snapshot.acquire().await;
+    eprintln!("{:?} - 4.4 - Acquired lock", std::thread::current().id());
 
     let snapshot = add_package_reqs_to_snapshot(
       &self.api,

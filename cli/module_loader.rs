@@ -151,7 +151,11 @@ impl ModuleLoadPreparer {
     lib: TsTypeLib,
     permissions: PermissionsContainer,
   ) -> Result<(), AnyError> {
-    eprintln!("{:?} - LOADING: {}", std::thread::current().id(), roots[0]);
+    eprintln!(
+      "{:?} - LOADING: {:?}",
+      std::thread::current().id(),
+      roots.iter().map(|r| r.to_string()).collect::<Vec<_>>()
+    );
 
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
@@ -160,6 +164,11 @@ impl ModuleLoadPreparer {
     log::debug!("Building module graph.");
     let has_type_checked = !graph.roots.is_empty();
 
+    eprintln!(
+      "{:?} - ENTERING: {:?}",
+      std::thread::current().id(),
+      roots.iter().map(|r| r.to_string()).collect::<Vec<_>>()
+    );
     self
       .module_graph_builder
       .build_graph_with_npm_resolution(
@@ -172,6 +181,11 @@ impl ModuleLoadPreparer {
         },
       )
       .await?;
+    eprintln!(
+      "{:?} - EXITED: {:?}",
+      std::thread::current().id(),
+      roots.iter().map(|r| r.to_string()).collect::<Vec<_>>()
+    );
 
     self.graph_roots_valid(graph, roots)?;
 
@@ -204,6 +218,7 @@ impl ModuleLoadPreparer {
     }
 
     log::debug!("Prepared module load.");
+    eprintln!("{:?} - DONE: {}", std::thread::current().id(), roots[0]);
 
     Ok(())
   }

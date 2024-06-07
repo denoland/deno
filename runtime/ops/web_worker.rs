@@ -54,6 +54,7 @@ async fn op_worker_recv_message(
 
 #[op2(fast)]
 fn op_worker_close(state: &mut OpState) {
+  eprintln!("{:?} - WORKER EXITING", std::thread::current().id());
   // Notify parent that we're finished
   let mut handle = state.borrow_mut::<WebWorkerInternalHandle>().clone();
 

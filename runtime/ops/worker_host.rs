@@ -214,12 +214,14 @@ fn op_create_worker(
     // is using `worker.internal_channels`.
     //
     // Host can already push messages and interact with worker.
-    run_web_worker(
+    let result = run_web_worker(
       worker,
       module_specifier,
       maybe_source_code,
       format_js_error_fn.0,
-    )
+    );
+    eprintln!("{:?} - Shut down", std::thread::current().id());
+    result
   })?;
 
   // Receive WebWorkerHandle from newly created worker

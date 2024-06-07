@@ -92,8 +92,18 @@ impl TarballCache {
     package_nv: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
   ) -> Result<(), AnyError> {
+    eprintln!(
+      "{:?} - ENTERING LOCK FOR: {}",
+      std::thread::current().id(),
+      package_nv.to_string()
+    );
     let cache_item = {
       let mut mem_cache = self.memory_cache.lock();
+      eprintln!(
+        "{:?} - ENTERED LOCK FOR: {}",
+        std::thread::current().id(),
+        package_nv.to_string()
+      );
       if let Some(cache_item) = mem_cache.get(package_nv) {
         cache_item.clone()
       } else {
@@ -102,6 +112,11 @@ impl TarballCache {
           let package_nv = package_nv.clone();
           let dist = dist.clone();
           Box::new(move || {
+            eprintln!(
+              "{:?} - Creating future for: {}",
+              std::thread::current().id(),
+              package_nv.to_string()
+            );
             tarball_cache.create_setup_future(package_nv.clone(), dist.clone())
           })
         });
@@ -110,11 +125,21 @@ impl TarballCache {
         cache_item
       }
     };
+    eprintln!(
+      "{:?} - RELEASED LOCK FOR: {}",
+      std::thread::current().id(),
+      package_nv.to_string()
+    );
 
-    match cache_item {
+    let result = match cache_item {
       MemoryCacheItem::Cached => Ok(()),
       MemoryCacheItem::Errored(err) => Err(anyhow!("{}", err)),
       MemoryCacheItem::Pending(creator) => {
+        eprintln!(
+          "{:?} - PENDING: {}",
+          std::thread::current().id(),
+          package_nv.to_string()
+        );
         let result = creator.get().await;
         match result {
           Ok(_) => {
@@ -130,7 +155,13 @@ impl TarballCache {
           }
         }
       }
-    }
+    };
+    eprintln!(
+      "{:?} - EXITING: {}",
+      std::thread::current().id(),
+      package_nv.to_string()
+    );
+    result
   }
 
   fn create_setup_future(
