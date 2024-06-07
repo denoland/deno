@@ -70,7 +70,7 @@ impl GlobalNpmPackageResolver {
   }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn root_dir_url(&self) -> &Url {
     self.cache.root_dir_url()
