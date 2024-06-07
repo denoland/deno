@@ -83,13 +83,22 @@ impl ContextifyContext {
   ) {
     let main_context = scope.get_current_context();
     let context_state = main_context
-      .get_slot::<Rc<deno_core::ContextState>>(scope)
-      .unwrap()
-      .clone();
+      .get_aligned_pointer_from_embedder_data(1);
+    let module_map = main_context
+      .get_aligned_pointer_from_embedder_data(2);
 
     v8_context.set_security_token(main_context.get_security_token(scope));
-    // This segfaults :(
-    // v8_context.set_slot(scope, context_state);
+    // SAFETY: set embedder data from the creation context
+    unsafe {
+      v8_context.set_aligned_pointer_in_embedder_data(
+        1,
+        context_state,
+      );
+      v8_context.set_aligned_pointer_in_embedder_data(
+        2,
+        module_map,
+      );
+    }
 
     let context = v8::Global::new(scope, v8_context);
     let sandbox = v8::Global::new(scope, sandbox_obj);
@@ -103,7 +112,7 @@ impl ContextifyContext {
     // lives longer than the execution context, so this should be safe.
     unsafe {
       v8_context.set_aligned_pointer_in_embedder_data(
-        1,
+        3,
         ptr as *const ContextifyContext as _,
       );
     }
@@ -165,7 +174,7 @@ impl ContextifyContext {
   ) -> Option<&'c ContextifyContext> {
     let context = object.get_creation_context(scope)?;
 
-    let context_ptr = context.get_aligned_pointer_from_embedder_data(1);
+    let context_ptr = context.get_aligned_pointer_from_embedder_data(3);
     if context_ptr.is_null() {
       return None;
     }
@@ -190,6 +199,8 @@ pub fn create_v8_context<'a>(
     let ctx = v8::Context::new_from_template(scope, object_template);
     // ContextifyContexts will update this to a pointer to the native object
     unsafe { ctx.set_aligned_pointer_in_embedder_data(1, std::ptr::null_mut()) };
+    unsafe { ctx.set_aligned_pointer_in_embedder_data(2, std::ptr::null_mut()) };
+    unsafe { ctx.set_aligned_pointer_in_embedder_data(3, std::ptr::null_mut()) };
     ctx
   };
 
