@@ -1091,7 +1091,7 @@ static DENO_HELP: &str = concat!(
   color_print::cstr!("<g>A modern JavaScript and TypeScript runtime</>"),
   "
 
-Docs: https://deno.land/manual@v",
+Docs: https://deno.land/manual",
   env!("CARGO_PKG_VERSION"),
   color_print::cstr!(
     "
