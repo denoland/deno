@@ -550,7 +550,7 @@ impl NpmResolver for ManagedCliNpmResolver {
 
   fn ensure_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     self.fs_resolver.ensure_read_permission(permissions, path)

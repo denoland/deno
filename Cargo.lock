@@ -1432,6 +1432,7 @@ dependencies = [
  "bytes",
  "data-url",
  "deno_core",
+ "deno_permissions",
  "deno_tls",
  "dyn-clone",
  "http 0.2.12",
@@ -1447,6 +1448,7 @@ name = "deno_ffi"
 version = "0.142.0"
 dependencies = [
  "deno_core",
+ "deno_permissions",
  "dlopen2",
  "dynasmrt",
  "libffi",
@@ -1466,6 +1468,7 @@ dependencies = [
  "base32",
  "deno_core",
  "deno_io",
+ "deno_permissions",
  "filetime",
  "junction",
  "libc",
@@ -1572,6 +1575,7 @@ dependencies = [
  "deno_core",
  "deno_fetch",
  "deno_node",
+ "deno_permissions",
  "deno_tls",
  "denokv_proto",
  "denokv_remote",
@@ -1631,6 +1635,7 @@ name = "deno_napi"
 version = "0.85.0"
 dependencies = [
  "deno_core",
+ "deno_permissions",
  "libloading 0.7.4",
 ]
 
@@ -1652,6 +1657,7 @@ name = "deno_net"
 version = "0.147.0"
 dependencies = [
  "deno_core",
+ "deno_permissions",
  "deno_tls",
  "pin-project",
  "rustls-tokio-stream",
@@ -1928,6 +1934,7 @@ dependencies = [
  "deno_bench_util",
  "deno_console",
  "deno_core",
+ "deno_permissions",
  "deno_url",
  "deno_webidl",
  "encoding_rs",
@@ -1965,6 +1972,7 @@ dependencies = [
  "bytes",
  "deno_core",
  "deno_net",
+ "deno_permissions",
  "deno_tls",
  "fastwebsockets",
  "h2 0.4.4",

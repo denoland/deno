@@ -2,7 +2,6 @@
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::ops::worker_host::WorkersTable;
-use crate::permissions::PermissionsContainer;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
@@ -45,6 +44,8 @@ use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_node::NodeResolver;
+use deno_permissions::PermissionsContainer;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
@@ -364,6 +365,7 @@ pub struct WebWorkerOptions {
   pub seed: Option<u64>,
   pub fs: Arc<dyn FileSystem>,
   pub module_loader: Rc<dyn ModuleLoader>,
+  pub node_resolver: Option<Arc<NodeResolver>>,
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
@@ -411,7 +413,6 @@ impl WebWorker {
         enable_testing_features: bool,
       },
       state = |state, options| {
-        state.put::<deno_permissions::PermissionsContainer>(options.permissions.0.clone());
         state.put::<PermissionsContainer>(options.permissions);
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
@@ -491,6 +492,7 @@ impl WebWorker {
         options.fs.clone(),
       ),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
+        options.node_resolver,
         options.npm_resolver,
         options.fs,
       ),

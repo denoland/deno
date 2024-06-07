@@ -1,9 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops::TestingFeaturesEnabled;
-use crate::permissions::create_child_permissions;
-use crate::permissions::ChildPermissionsArg;
-use crate::permissions::PermissionsContainer;
 use crate::web_worker::run_web_worker;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
@@ -20,6 +17,9 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_permissions::create_child_permissions;
+use deno_permissions::ChildPermissionsArg;
+use deno_permissions::PermissionsContainer;
 use deno_web::deserialize_js_transferables;
 use deno_web::JsMessageData;
 use log::debug;
@@ -156,7 +156,7 @@ fn op_create_worker(
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
-    let mut parent_permissions = parent_permissions.0 .0.lock();
+    let mut parent_permissions = parent_permissions.0.lock();
     let perms =
       create_child_permissions(&mut parent_permissions, child_permissions_arg)?;
     PermissionsContainer::new(perms)
