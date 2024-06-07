@@ -83,19 +83,19 @@ impl ContextifyContext {
   ) {
     let main_context = scope.get_current_context();
     let context_state = main_context
-      .get_aligned_pointer_from_embedder_data(1);
+      .get_aligned_pointer_from_embedder_data(deno_core::CONTEXT_STATE_SLOT_INDEX);
     let module_map = main_context
-      .get_aligned_pointer_from_embedder_data(2);
+      .get_aligned_pointer_from_embedder_data(deno_core::MODULE_MAP_SLOT_INDEX);
 
     v8_context.set_security_token(main_context.get_security_token(scope));
     // SAFETY: set embedder data from the creation context
     unsafe {
       v8_context.set_aligned_pointer_in_embedder_data(
-        1,
+        deno_core::CONTEXT_STATE_SLOT_INDEX,
         context_state,
       );
       v8_context.set_aligned_pointer_in_embedder_data(
-        2,
+        deno_core::MODULE_MAP_SLOT_INDEX,
         module_map,
       );
     }
