@@ -100,4 +100,43 @@ Where:
 ## Dependencies
 - **deno_webidl**: Provided by the `deno_webidl` crate
 - **deno_console**: Provided by the `deno_console` crate
-_ **deno_url**: Provided by the `deno_url` crate
+- **deno_url**: Provided by the `deno_url` crate
+
+## Provided ops
+Following ops are provided, which can be accessed through `Deno.ops`:
+
+- op_base64_decode,
+- op_base64_encode,
+- op_base64_atob,
+- op_base64_btoa,
+- op_encoding_normalize_label,
+- op_encoding_decode_single,
+- op_encoding_decode_utf8,
+- op_encoding_new_decoder,
+- op_encoding_decode,
+- op_encoding_encode_into,
+- op_blob_create_part,
+- op_blob_slice_part,
+- op_blob_read_part,
+- op_blob_remove_part,
+- op_blob_create_object_url,
+- op_blob_revoke_object_url,
+- op_blob_from_object_url,
+- op_message_port_create_entangled,
+- op_message_port_post_message,
+- op_message_port_recv_message,
+- op_message_port_recv_message_sync,
+- op_compression_new,
+- op_compression_write,
+- op_compression_finish,
+- op_now,
+- op_defer,
+- op_transfer_arraybuffer,
+- op_readable_stream_resource_allocate,
+- op_readable_stream_resource_allocate_sized,
+- op_readable_stream_resource_get_sink,
+- op_readable_stream_resource_write_error,
+- op_readable_stream_resource_write_buf,
+- op_readable_stream_resource_write_sync,
+- op_readable_stream_resource_close,
+- op_readable_stream_resource_await_close,
