@@ -102,7 +102,7 @@ pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
 });
 
 deno_core::extension!(deno_io,
-  deps = [ deno_web ],
+  deps = [ deno_web, deno_tty ],
   esm = [ "12_io.js" ],
   options = {
     stdio: Option<Stdio>,
