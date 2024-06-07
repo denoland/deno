@@ -65,7 +65,7 @@ impl PackageJson {
   pub fn load(
     fs: &dyn deno_fs::FileSystem,
     resolver: &dyn NpmResolver,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: PathBuf,
   ) -> Result<Rc<PackageJson>, AnyError> {
     resolver.ensure_read_permission(permissions, &path)?;

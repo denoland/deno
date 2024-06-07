@@ -53,10 +53,10 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
@@ -112,16 +112,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
       })?
     };
 
-    let permissions = if matches!(kind, ResolutionKind::DynamicImport) {
-      &self.dynamic_permissions
-    } else {
-      &self.root_permissions
-    };
     if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
       specifier,
       &referrer,
       NodeResolutionMode::Execution,
-      permissions,
     ) {
       return match result? {
         Some(res) => Ok(res.into_url()),
@@ -146,7 +140,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .node_resolver
         .resolve_req_reference(
           &reference,
-          permissions,
           &referrer,
           NodeResolutionMode::Execution,
         )
@@ -174,7 +167,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     &self,
     original_specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-    is_dynamic: bool,
+    _is_dynamic: bool,
     _requested_module_type: RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
     if original_specifier.scheme() == "data" {
@@ -203,15 +196,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
       let npm_module_loader = self.shared.npm_module_loader.clone();
       let original_specifier = original_specifier.clone();
       let maybe_referrer = maybe_referrer.cloned();
-      let permissions = if is_dynamic {
-        self.dynamic_permissions.clone()
-      } else {
-        self.root_permissions.clone()
-      };
       return deno_core::ModuleLoadResponse::Async(
         async move {
           let code_source = npm_module_loader
-            .load(&original_specifier, maybe_referrer.as_ref(), &permissions)
+            .load(&original_specifier, maybe_referrer.as_ref())
             .await?;
           Ok(deno_core::ModuleSource::new_with_redirect(
             match code_source.media_type {
