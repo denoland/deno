@@ -6,7 +6,6 @@
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
@@ -46,6 +45,7 @@ pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;
 pub use resolution::NodeResolver;
+use resolution::NodeResolverRc;
 
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
@@ -57,23 +57,23 @@ pub trait NodePermissions {
     api_name: &str,
   ) -> Result<(), AnyError>;
   #[inline(always)]
-  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
+  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
     self.check_read_with_api_name(path, None)
   }
   fn check_read_with_api_name(
-    &self,
+    &mut self,
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError>;
-  fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError>;
+  fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError>;
   fn check_write_with_api_name(
-    &self,
+    &mut self,
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError>;
 }
 
-pub(crate) struct AllowAllNodePermissions;
+pub struct AllowAllNodePermissions;
 
 impl NodePermissions for AllowAllNodePermissions {
   fn check_net_url(
@@ -84,21 +84,62 @@ impl NodePermissions for AllowAllNodePermissions {
     Ok(())
   }
   fn check_read_with_api_name(
-    &self,
+    &mut self,
     _path: &Path,
     _api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     Ok(())
   }
   fn check_write_with_api_name(
-    &self,
+    &mut self,
     _path: &Path,
     _api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     Ok(())
   }
-  fn check_sys(&self, _kind: &str, _api_name: &str) -> Result<(), AnyError> {
+  fn check_sys(
+    &mut self,
+    _kind: &str,
+    _api_name: &str,
+  ) -> Result<(), AnyError> {
     Ok(())
+  }
+}
+
+impl NodePermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+  }
+
+  #[inline(always)]
+  fn check_read_with_api_name(
+    &mut self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_read_with_api_name(
+      self, path, api_name,
+    )
+  }
+
+  #[inline(always)]
+  fn check_write_with_api_name(
+    &mut self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_write_with_api_name(
+      self, path, api_name,
+    )
+  }
+
+  fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_sys(self, kind, api_name)
   }
 }
 
@@ -146,7 +187,7 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
 
   fn ensure_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
 }
@@ -582,18 +623,21 @@ deno_core::extension!(deno_node,
     "node:zlib" = "zlib.ts",
   ],
   options = {
+    maybe_node_resolver: Option<NodeResolverRc>,
     maybe_npm_resolver: Option<NpmResolverRc>,
     fs: deno_fs::FileSystemRc,
   },
   state = |state, options| {
-    let fs = options.fs;
-    state.put(fs.clone());
-    if let Some(npm_resolver) = options.maybe_npm_resolver {
+    // you should provide both of these or neither
+    debug_assert_eq!(options.maybe_node_resolver.is_some(), options.maybe_npm_resolver.is_some());
+
+    state.put(options.fs.clone());
+
+    if let Some(node_resolver) = &options.maybe_node_resolver {
+      state.put(node_resolver.clone());
+    }
+    if let Some(npm_resolver) = &options.maybe_npm_resolver {
       state.put(npm_resolver.clone());
-      state.put(Rc::new(NodeResolver::new(
-        fs,
-        npm_resolver,
-      )))
     }
   },
   global_template_middleware = global_template_middleware,

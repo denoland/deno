@@ -17,7 +17,7 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;

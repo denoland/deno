@@ -30,7 +30,6 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::NpmResolver as DenoNodeNpmResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fs_util::specifier_to_file_path;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
@@ -100,7 +99,7 @@ impl CliNodeResolver {
   pub fn get_closest_package_json(
     &self,
     referrer: &ModuleSpecifier,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
   ) -> Result<Option<Rc<PackageJson>>, AnyError> {
     self
       .node_resolver
@@ -112,11 +111,10 @@ impl CliNodeResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-    permissions: &PermissionsContainer,
   ) -> Option<Result<Option<NodeResolution>, AnyError>> {
     if self.in_npm_package(referrer) {
       // we're in an npm package, so use node resolution
-      Some(self.resolve(specifier, referrer, mode, permissions))
+      Some(self.resolve(specifier, referrer, mode))
     } else {
       None
     }
@@ -127,20 +125,15 @@ impl CliNodeResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-    permissions: &PermissionsContainer,
   ) -> Result<Option<NodeResolution>, AnyError> {
-    self.handle_node_resolve_result(self.node_resolver.resolve(
-      specifier,
-      referrer,
-      mode,
-      permissions,
-    ))
+    self.handle_node_resolve_result(
+      self.node_resolver.resolve(specifier, referrer, mode),
+    )
   }
 
   pub fn resolve_req_reference(
     &self,
     req_ref: &NpmPackageReqReference,
-    permissions: &PermissionsContainer,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<NodeResolution, AnyError> {
@@ -152,7 +145,6 @@ impl CliNodeResolver {
       req_ref.sub_path(),
       referrer,
       mode,
-      permissions,
     )?;
     match maybe_resolution {
       Some(resolution) => Ok(resolution),
@@ -181,7 +173,6 @@ impl CliNodeResolver {
     sub_path: Option<&str>,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-    permissions: &PermissionsContainer,
   ) -> Result<Option<NodeResolution>, AnyError> {
     self.handle_node_resolve_result(
       self.node_resolver.resolve_package_subpath_from_deno_module(
@@ -189,7 +180,6 @@ impl CliNodeResolver {
         sub_path,
         referrer,
         mode,
-        permissions,
       ),
     )
   }
@@ -278,10 +268,9 @@ impl NpmModuleLoader {
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-    permissions: &PermissionsContainer,
   ) -> Option<Result<ModuleCodeStringSource, AnyError>> {
     if self.node_resolver.in_npm_package(specifier) {
-      Some(self.load(specifier, maybe_referrer, permissions).await)
+      Some(self.load(specifier, maybe_referrer).await)
     } else {
       None
     }
@@ -291,7 +280,6 @@ impl NpmModuleLoader {
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-    permissions: &PermissionsContainer,
   ) -> Result<ModuleCodeStringSource, AnyError> {
     let file_path = specifier.to_file_path().unwrap();
     let code = self
@@ -336,7 +324,7 @@ impl NpmModuleLoader {
       ModuleSourceCode::String(
         self
           .node_code_translator
-          .translate_cjs_to_esm(specifier, Some(code), permissions)
+          .translate_cjs_to_esm(specifier, Some(code))
           .await?
           .into(),
       )
@@ -638,12 +626,7 @@ impl Resolver for CliGraphResolver {
           {
             let node_resolver = self.node_resolver.as_ref().unwrap();
             return node_resolver
-              .resolve_req_reference(
-                &npm_req_ref,
-                &PermissionsContainer::allow_all(),
-                referrer,
-                to_node_mode(mode),
-              )
+              .resolve_req_reference(&npm_req_ref, referrer, to_node_mode(mode))
               .map(|res| res.into_url())
               .map_err(|err| err.into());
           }
@@ -651,12 +634,8 @@ impl Resolver for CliGraphResolver {
         Err(_) => {
           if referrer.scheme() == "file" {
             if let Some(node_resolver) = &self.node_resolver {
-              let node_result = node_resolver.resolve(
-                specifier,
-                referrer,
-                to_node_mode(mode),
-                &PermissionsContainer::allow_all(),
-              );
+              let node_result =
+                node_resolver.resolve(specifier, referrer, to_node_mode(mode));
               match node_result {
                 Ok(Some(res)) => {
                   return Ok(res.into_url());
@@ -694,7 +673,6 @@ impl Resolver for CliGraphResolver {
           specifier,
           referrer,
           to_node_mode(mode),
-          &PermissionsContainer::allow_all(),
         );
         if let Some(Ok(Some(res))) = node_result {
           return Ok(res.into_url());

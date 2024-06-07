@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::check_unstable;
-use crate::permissions::PermissionsContainer;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -18,6 +17,7 @@ use deno_io::fs::FileResource;
 use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
 use deno_io::ChildStdoutResource;
+use deno_permissions::PermissionsContainer;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
