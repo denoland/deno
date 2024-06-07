@@ -1105,7 +1105,7 @@ To start the REPL:
 
 To execute a script:
 
-  <g>deno run https://examples.deno.land/hello-world.ts</>
+  <g>deno run https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/hello-world.ts</>
 
 To evaluate code in the shell:
 
