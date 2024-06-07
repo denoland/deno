@@ -1093,7 +1093,6 @@ function toDenoArgs(args: string[]): string[] {
 
   if (useRunArgs) {
     // -A is not ideal, but needed to propagate permissions.
-    // --unstable is needed for Node compat.
     denoArgs.unshift("run", "-A");
   }
 
