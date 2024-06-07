@@ -42,11 +42,20 @@ pub struct SnapshotOptions {
 
 impl Default for SnapshotOptions {
   fn default() -> Self {
+    let arch = std::env::consts::ARCH;
+    let platform = std::env::consts::OS;
+    let target = match platform {
+      "macos" => format!("{}-apple-darwin", arch),
+      "linux" => format!("{}-unknown-linux-gnu", arch),
+      "windows" => format!("{}-pc-windows-msvc", arch),
+      rest => format!("{}-{}", arch, rest),
+    };
+
     Self {
       deno_version: "dev".to_owned(),
       ts_version: "n/a".to_owned(),
       v8_version: deno_core::v8_version(),
-      target: std::env::consts::ARCH.to_owned(),
+      target,
     }
   }
 }

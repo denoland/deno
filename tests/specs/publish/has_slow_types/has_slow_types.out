@@ -5,6 +5,7 @@ error[missing-explicit-return-type]: missing explicit return type in the public 
   | 
 2 | export function getRandom() {
   |                 ^^^^^^^^^ this function is missing an explicit return type
+  | 
   = hint: add an explicit return type to the function
 
   info: all functions in the public API must have an explicit return type

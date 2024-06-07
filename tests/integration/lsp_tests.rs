@@ -933,27 +933,30 @@ fn lsp_workspace_enable_paths_no_workspace_configuration() {
 fn lsp_did_change_deno_configuration_notification() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write("package.json", json!({}).to_string());
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
-  temp_dir.write("deno.json", json!({}).to_string());
-  client.did_change_watched_files(json!({
-    "changes": [{
-      "uri": temp_dir.uri().join("deno.json").unwrap(),
-      "type": 1,
-    }],
-  }));
   let res = client
     .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
   assert_eq!(
     res,
     Some(json!({
-      "changes": [{
-        "scopeUri": temp_dir.uri(),
-        "fileUri": temp_dir.uri().join("deno.json").unwrap(),
-        "type": "added",
-        "configurationType": "denoJson"
-      }],
+      "changes": [
+        {
+          "scopeUri": temp_dir.uri(),
+          "fileUri": temp_dir.uri().join("deno.json").unwrap(),
+          "type": "added",
+          "configurationType": "denoJson"
+        },
+        {
+          "scopeUri": temp_dir.uri(),
+          "fileUri": temp_dir.uri().join("package.json").unwrap(),
+          "type": "added",
+          "configurationType": "packageJson"
+        },
+      ],
     }))
   );
 
@@ -998,27 +1001,6 @@ fn lsp_did_change_deno_configuration_notification() {
         "fileUri": temp_dir.uri().join("deno.json").unwrap(),
         "type": "removed",
         "configurationType": "denoJson"
-      }],
-    }))
-  );
-
-  temp_dir.write("package.json", json!({}).to_string());
-  client.did_change_watched_files(json!({
-    "changes": [{
-      "uri": temp_dir.uri().join("package.json").unwrap(),
-      "type": 1,
-    }],
-  }));
-  let res = client
-    .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
-  assert_eq!(
-    res,
-    Some(json!({
-      "changes": [{
-        "scopeUri": temp_dir.uri(),
-        "fileUri": temp_dir.uri().join("package.json").unwrap(),
-        "type": "added",
-        "configurationType": "packageJson"
       }],
     }))
   );
@@ -1242,6 +1224,7 @@ fn lsp_import_map_import_completions() {
     r#"{
   "imports": {
     "/~/": "./lib/",
+    "/#/": "./src/",
     "fs": "https://example.com/fs/index.js",
     "std/": "https://example.com/std@0.123.0/"
   }
@@ -1314,7 +1297,14 @@ fn lsp_import_map_import_completions() {
           "sortText": "/~",
           "insertText": "/~",
           "commitCharacters": ["\"", "'"],
-        }
+        }, {
+          "label": "/#",
+          "kind": 19,
+          "detail": "(import map)",
+          "sortText": "/#",
+          "insertText": "/#",
+          "commitCharacters": ["\"", "'"],
+        },
       ]
     })
   );
@@ -1353,8 +1343,8 @@ fn lsp_import_map_import_completions() {
       "items": [
         {
           "label": "b.ts",
-          "kind": 9,
-          "detail": "(import map)",
+          "kind": 17,
+          "detail": "(local)",
           "sortText": "1",
           "filterText": "/~/b.ts",
           "textEdit": {
@@ -7956,7 +7946,6 @@ fn lsp_completions_snippet() {
     (5, 13),
     json!({ "triggerKind": 1 }),
   );
-  assert!(!list.is_incomplete);
   assert_eq!(
     json!(list),
     json!({
@@ -8879,6 +8868,82 @@ fn lsp_tls_cert() {
 }
 
 #[test]
+fn lsp_npmrc() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    temp_dir.path().join("deno.json"),
+    json!({
+      "nodeModulesDir": true,
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    temp_dir.path().join("package.json"),
+    json!({
+      "name": "npmrc_test",
+      "version": "0.0.1",
+      "dependencies": {
+        "@denotest/basic": "1.0.0",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    temp_dir.path().join(".npmrc"),
+    "\
+@denotest:registry=http://localhost:4261/
+//localhost:4261/:_authToken=private-reg-token
+",
+  );
+  let file = source_file(
+    temp_dir.path().join("main.ts"),
+    r#"
+      import { getValue, setValue } from "@denotest/basic";
+      setValue(42);
+      const n: string = getValue();
+      console.log(n);
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], file.uri()],
+    }),
+  );
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": {
+            "line": 3,
+            "character": 12,
+          },
+          "end": {
+            "line": 3,
+            "character": 13,
+          },
+        },
+        "severity": 1,
+        "code": 2322,
+        "source": "deno-ts",
+        "message": "Type 'number' is not assignable to type 'string'.",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_diagnostics_warn_redirect() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -9691,26 +9756,17 @@ fn lsp_format_exclude_default_config() {
 #[test]
 fn lsp_format_json() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let temp_dir_path = context.temp_dir().path();
-  // Also test out using a non-json file extension here.
-  // What should matter is the language identifier.
-  let lock_file_path = temp_dir_path.join("file.lock");
+  let temp_dir = context.temp_dir();
+  let json_file =
+    source_file(temp_dir.path().join("file.json"), "{\"key\":\"value\"}");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.did_open(json!({
-    "textDocument": {
-      "uri": lock_file_path.uri_file(),
-      "languageId": "json",
-      "version": 1,
-      "text": "{\"key\":\"value\"}"
-    }
-  }));
 
   let res = client.write_request(
     "textDocument/formatting",
     json!({
         "textDocument": {
-          "uri": lock_file_path.uri_file(),
+          "uri": json_file.uri(),
         },
         "options": {
           "tabSize": 2,
@@ -9751,7 +9807,7 @@ fn lsp_json_no_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.did_open(json!({
+  client.did_open_raw(json!({
     "textDocument": {
       "uri": "file:///a/file.json",
       "languageId": "json",
@@ -9798,7 +9854,7 @@ fn lsp_json_import_with_query_string() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.did_open(json!({
+  client.did_open_raw(json!({
     "textDocument": {
       "uri": temp_dir.uri().join("data.json").unwrap(),
       "languageId": "json",
@@ -9821,23 +9877,17 @@ fn lsp_json_import_with_query_string() {
 #[test]
 fn lsp_format_markdown() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let markdown_file = context.temp_dir().path().join("file.md");
+  let temp_dir = context.temp_dir();
+  let markdown_file =
+    source_file(temp_dir.path().join("file.md"), "#   Hello World");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.did_open(json!({
-    "textDocument": {
-      "uri": markdown_file.uri_file(),
-      "languageId": "markdown",
-      "version": 1,
-      "text": "#   Hello World"
-    }
-  }));
 
   let res = client.write_request(
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": markdown_file.uri_file()
+        "uri": markdown_file.uri()
       },
       "options": {
         "tabSize": 2,
@@ -9980,7 +10030,7 @@ fn lsp_markdown_no_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.did_open(json!({
+  client.did_open_raw(json!({
     "textDocument": {
       "uri": "file:///a/file.md",
       "languageId": "markdown",

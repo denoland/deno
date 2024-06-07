@@ -1,13 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::mem::MaybeUninit;
-use std::rc::Rc;
 
 use deno_core::v8;
 use deno_core::v8::GetPropertyNamesArgs;
 use deno_core::v8::MapFnTo;
 
-use crate::NodeResolver;
+use crate::resolution::NodeResolverRc;
 
 // NOTE(bartlomieju): somehow calling `.map_fn_to()` multiple times on a function
 // returns two different pointers. That shouldn't be the case as `.map_fn_to()`
@@ -271,7 +270,7 @@ fn current_mode(scope: &mut v8::HandleScope) -> Mode {
   };
   let op_state = deno_core::JsRuntime::op_state_from(scope);
   let op_state = op_state.borrow();
-  let Some(node_resolver) = op_state.try_borrow::<Rc<NodeResolver>>() else {
+  let Some(node_resolver) = op_state.try_borrow::<NodeResolverRc>() else {
     return Mode::Deno;
   };
   let mut buffer = [MaybeUninit::uninit(); 2048];

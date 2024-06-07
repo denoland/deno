@@ -644,7 +644,7 @@ impl HtmlCoverageReporter {
           if *count == 0 {
             "<span class='cline-any cline-no'>&nbsp</span>".to_string()
           } else {
-            format!("<span class='cline-any cline-yes'>x{count}</span>")
+            format!("<span class='cline-any cline-yes' title='This line is covered {count} time{}'>x{count}</span>", if *count > 1 { "s" } else { "" })
           }
         } else {
           "<span class='cline-any cline-neutral'>&nbsp</span>".to_string()

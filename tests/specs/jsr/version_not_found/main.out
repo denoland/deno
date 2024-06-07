@@ -1,5 +1,4 @@
 Download http://127.0.0.1:4250/@denotest/deps/meta.json
 Download http://127.0.0.1:4250/@denotest/deps/meta.json
-error: Could not find constraint in the list of versions: @denotest/deps@0.1.4
-  Specifier: jsr:@denotest/deps@0.1.4/mod.ts
+error: Could not find version of '@denotest/deps' that matches specified version constraint '0.1.4'
     at file:///[WILDCARD]/version_not_found/main.ts:1:19

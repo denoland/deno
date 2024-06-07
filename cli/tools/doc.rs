@@ -8,7 +8,7 @@ use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::display::write_to_stdout_ignore_sigpipe;
 use crate::factory::CliFactory;
-use crate::graph_util::graph_lock_or_exit;
+use crate::graph_util::graph_exit_lock_errors;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
 use deno_ast::diagnostics::Diagnostic;
@@ -62,6 +62,7 @@ async fn generate_doc_nodes_for_builtin_types(
         executor: Default::default(),
         file_system: &NullFileSystem,
         jsr_url_provider: Default::default(),
+        locker: None,
         module_analyzer: analyzer,
         npm_resolver: None,
         reporter: None,
@@ -88,7 +89,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   let module_info_cache = factory.module_info_cache()?;
   let parsed_source_cache = factory.parsed_source_cache();
   let capturing_parser = parsed_source_cache.as_capturing_parser();
-  let analyzer = module_info_cache.as_module_analyzer(&capturing_parser);
+  let analyzer = module_info_cache.as_module_analyzer(parsed_source_cache);
 
   let doc_nodes_by_url = match doc_flags.source_files {
     DocSourceFileFlag::Builtin => {
@@ -121,8 +122,8 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
         .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
         .await?;
 
-      if let Some(lockfile) = maybe_lockfile {
-        graph_lock_or_exit(&graph, &mut lockfile.lock());
+      if maybe_lockfile.is_some() {
+        graph_exit_lock_errors(&graph);
       }
 
       let doc_parser = doc::DocParser::new(
@@ -349,7 +350,7 @@ fn check_diagnostics(diagnostics: &[DocDiagnostic]) -> Result<(), AnyError> {
     for (_, diagnostics_by_col) in diagnostics_by_lc {
       for (_, diagnostics) in diagnostics_by_col {
         for diagnostic in diagnostics {
-          log::error!("{}", diagnostic.display());
+          log::error!("{}\n", diagnostic.display());
         }
       }
     }

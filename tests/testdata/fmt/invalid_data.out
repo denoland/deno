@@ -1,4 +1,4 @@
-error: [WILDCARD] is not a valid UTF-8 file
+Error checking: [WILDCARD] Line 1, column 1: Unexpected token
 
-Caused by:
-    invalid data
+[WILDCARD]
+error: Found 1 not formatted file in 1 file

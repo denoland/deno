@@ -1,0 +1,26 @@
+{
+  "version": "3",
+  "packages": {
+    "specifiers": {
+      "jsr:@denotest/add@1": "jsr:@denotest/add@1.0.0",
+      "jsr:@denotest/different-deps-per-export@1": "jsr:@denotest/different-deps-per-export@1.0.0"
+    },
+    "jsr": {
+      "@denotest/add@1.0.0": {
+        "integrity": "[WILDLINE]"
+      },
+      "@denotest/different-deps-per-export@1.0.0": {
+        "integrity": "[WILDLINE]",
+        "dependencies": [
+          "jsr:@denotest/add@1"
+        ]
+      }
+    }
+  },
+  "remote": {},
+  "workspace": {
+    "dependencies": [
+      "jsr:@denotest/different-deps-per-export@1"
+    ]
+  }
+}

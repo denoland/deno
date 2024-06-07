@@ -39,9 +39,6 @@ const _: () = {
   assert!(size_of::<*const ()>() == 8);
 };
 
-pub(crate) const MAX_SAFE_INTEGER: isize = 9007199254740991;
-pub(crate) const MIN_SAFE_INTEGER: isize = -9007199254740991;
-
 pub const UNSTABLE_FEATURE_NAME: &str = "ffi";
 
 fn check_unstable(state: &OpState, api_name: &str) {
@@ -54,6 +51,13 @@ fn check_unstable(state: &OpState, api_name: &str) {
 
 pub trait FfiPermissions {
   fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError>;
+}
+
+impl FfiPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_ffi_partial(self, path)
+  }
 }
 
 deno_core::extension!(deno_ffi,

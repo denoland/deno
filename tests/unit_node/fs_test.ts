@@ -7,6 +7,7 @@ import {
   constants,
   createWriteStream,
   existsSync,
+  lstatSync,
   mkdtempSync,
   promises,
   readFileSync,
@@ -14,7 +15,13 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { constants as fsPromiseConstants, cp } from "node:fs/promises";
+import {
+  constants as fsPromiseConstants,
+  cp,
+  FileHandle,
+  open,
+  writeFile,
+} from "node:fs/promises";
 import process from "node:process";
 import { pathToAbsoluteFileUrl } from "../unit/test_util.ts";
 
@@ -156,3 +163,41 @@ Deno.test("[node/fs createWriteStream", async () => {
     await Deno.remove(tempDir, { recursive: true });
   }
 });
+
+Deno.test(
+  "[node/fs lstatSync] supports throwIfNoEntry option",
+  () => {
+    const result = lstatSync("non-existing-path", { throwIfNoEntry: false });
+    assertEquals(result, undefined);
+  },
+);
+
+// Test for https://github.com/denoland/deno/issues/23707
+Deno.test(
+  "[node/fs/promises read] respect position argument",
+  async () => {
+    const file = mkdtempSync(join(tmpdir(), "foo-")) + "/test.bin";
+    await writeFile(file, "");
+
+    const res: number[] = [];
+    let fd: FileHandle | undefined;
+    try {
+      fd = await open(file, "r+");
+
+      for (let i = 0; i <= 5; i++) {
+        const buffer = new Uint8Array([i]);
+        await fd.write(buffer, 0, 1, i + 10);
+      }
+
+      for (let i = 10; i <= 15; i++) {
+        const buffer = new Uint8Array(1);
+        await fd.read(buffer, 0, 1, i);
+        res.push(Number(buffer.toString()));
+      }
+    } finally {
+      await fd?.close();
+    }
+
+    assertEquals(res, [0, 1, 2, 3, 4, 5]);
+  },
+);

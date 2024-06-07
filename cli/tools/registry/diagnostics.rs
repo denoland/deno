@@ -15,6 +15,7 @@ use deno_ast::diagnostics::DiagnosticSourcePos;
 use deno_ast::diagnostics::DiagnosticSourceRange;
 use deno_ast::swc::common::util::take::Take;
 use deno_ast::SourcePos;
+use deno_ast::SourceRange;
 use deno_ast::SourceRanged;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
@@ -39,11 +40,7 @@ impl PublishDiagnosticsCollector {
     diagnostics.sort_by_cached_key(|d| d.sorting_key());
 
     for diagnostic in diagnostics {
-      // todo(https://github.com/denoland/deno_ast/issues/245): use log crate here
-      #[allow(clippy::print_stderr)]
-      {
-        eprint!("{}", diagnostic.display());
-      }
+      log::error!("{}", diagnostic.display());
       if matches!(diagnostic.level(), DiagnosticLevel::Error) {
         errors += 1;
       }
@@ -115,6 +112,11 @@ pub enum PublishDiagnostic {
     text_info: SourceTextInfo,
     referrer: deno_graph::Range,
   },
+  BannedTripleSlashDirectives {
+    specifier: Url,
+    text_info: SourceTextInfo,
+    range: SourceRange,
+  },
 }
 
 impl PublishDiagnostic {
@@ -162,6 +164,7 @@ impl Diagnostic for PublishDiagnostic {
       UnsupportedJsxTsx { .. } => DiagnosticLevel::Warning,
       ExcludedModule { .. } => DiagnosticLevel::Error,
       MissingConstraint { .. } => DiagnosticLevel::Error,
+      BannedTripleSlashDirectives { .. } => DiagnosticLevel::Error,
     }
   }
 
@@ -177,6 +180,9 @@ impl Diagnostic for PublishDiagnostic {
       UnsupportedJsxTsx { .. } => Cow::Borrowed("unsupported-jsx-tsx"),
       ExcludedModule { .. } => Cow::Borrowed("excluded-module"),
       MissingConstraint { .. } => Cow::Borrowed("missing-constraint"),
+      BannedTripleSlashDirectives { .. } => {
+        Cow::Borrowed("banned-triple-slash-directives")
+      }
     }
   }
 
@@ -196,6 +202,7 @@ impl Diagnostic for PublishDiagnostic {
       UnsupportedJsxTsx { .. } => Cow::Borrowed("JSX and TSX files are currently not supported"),
       ExcludedModule { .. } => Cow::Borrowed("module in package's module graph was excluded from publishing"),
       MissingConstraint { specifier, .. } => Cow::Owned(format!("specifier '{}' is missing a version constraint", specifier)),
+      BannedTripleSlashDirectives { .. } => Cow::Borrowed("triple slash directives that modify globals are not allowed"),
     }
   }
 
@@ -253,6 +260,15 @@ impl Diagnostic for PublishDiagnostic {
         text_info,
         ..
       } => from_referrer_range(referrer, text_info),
+      BannedTripleSlashDirectives {
+        specifier,
+        range,
+        text_info,
+      } => DiagnosticLocation::ModulePosition {
+        specifier: Cow::Borrowed(specifier),
+        source_pos: DiagnosticSourcePos::SourcePos(range.start),
+        text_info: Cow::Borrowed(text_info),
+      },
     }
   }
 
@@ -267,7 +283,7 @@ impl Diagnostic for PublishDiagnostic {
 
       Some(DiagnosticSnippet {
         source: Cow::Borrowed(text_info),
-        highlight: DiagnosticSnippetHighlight {
+        highlights: vec![DiagnosticSnippetHighlight {
           style: DiagnosticSnippetHighlightStyle::Error,
           range: DiagnosticSourceRange {
             start: DiagnosticSourcePos::LineAndCol {
@@ -280,7 +296,7 @@ impl Diagnostic for PublishDiagnostic {
             },
           },
           description: Some("the specifier".into()),
-        },
+        }],
       })
     }
 
@@ -294,14 +310,14 @@ impl Diagnostic for PublishDiagnostic {
           ..
         } => Some(DiagnosticSnippet {
           source: Cow::Borrowed(text_info),
-          highlight: DiagnosticSnippetHighlight {
+          highlights: vec![DiagnosticSnippetHighlight {
             style: DiagnosticSnippetHighlightStyle::Warning,
             range: DiagnosticSourceRange {
               start: DiagnosticSourcePos::SourcePos(range.start),
               end: DiagnosticSourcePos::SourcePos(range.end),
             },
             description: Some("the unanalyzable dynamic import".into()),
-          },
+          }],
         }),
       },
       InvalidPath { .. } => None,
@@ -319,6 +335,19 @@ impl Diagnostic for PublishDiagnostic {
         text_info,
         ..
       } => from_range(text_info, referrer),
+      BannedTripleSlashDirectives {
+        range, text_info, ..
+      } => Some(DiagnosticSnippet {
+        source: Cow::Borrowed(text_info),
+        highlights: vec![DiagnosticSnippetHighlight {
+          style: DiagnosticSnippetHighlightStyle::Error,
+          range: DiagnosticSourceRange {
+            start: DiagnosticSourcePos::SourcePos(range.start),
+            end: DiagnosticSourcePos::SourcePos(range.end),
+          },
+          description: Some("the triple slash directive".into()),
+        }],
+      }),
     }
   }
 
@@ -348,6 +377,9 @@ impl Diagnostic for PublishDiagnostic {
           "specify a version constraint for the specifier in the import map"
         }))
       },
+      BannedTripleSlashDirectives { .. } => Some(
+        Cow::Borrowed("remove the triple slash directive"),
+      ),
     }
   }
 
@@ -362,14 +394,14 @@ impl Diagnostic for PublishDiagnostic {
             let end = replacement.line_end(0);
             Some(DiagnosticSnippet {
               source: Cow::Owned(replacement),
-              highlight: DiagnosticSnippetHighlight {
+              highlights: vec![DiagnosticSnippetHighlight {
                 style: DiagnosticSnippetHighlightStyle::Hint,
                 range: DiagnosticSourceRange {
                   start: DiagnosticSourcePos::SourcePos(start),
                   end: DiagnosticSourcePos::SourcePos(end),
                 },
                 description: Some("try this specifier".into()),
-              },
+              }],
             })
           }
           None => None,
@@ -420,6 +452,10 @@ impl Diagnostic for PublishDiagnostic {
         ),
         Cow::Borrowed("major version if one is published in the future and potentially break"),
       ]),
+      BannedTripleSlashDirectives { .. } => Cow::Borrowed(&[
+        Cow::Borrowed("instead instruct the user of your package to specify these directives"),
+        Cow::Borrowed("or set their 'lib' compiler option appropriately"),
+      ]),
     }
   }
 
@@ -449,6 +485,9 @@ impl Diagnostic for PublishDiagnostic {
       MissingConstraint { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/missing-constraint"))
       }
+      BannedTripleSlashDirectives { .. } => Some(Cow::Borrowed(
+        "https://jsr.io/go/banned-triple-slash-directives",
+      )),
     }
   }
 }

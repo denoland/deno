@@ -14,6 +14,7 @@ use deno_core::error::AnyError;
 use deno_graph::source::ResolveError;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraphError;
+use deno_graph::ModuleLoadError;
 use deno_graph::ResolutionError;
 use import_map::ImportMapError;
 use std::fmt::Write;
@@ -27,24 +28,56 @@ fn get_diagnostic_class(_: &ParseDiagnostic) -> &'static str {
 }
 
 fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
+  use deno_graph::JsrLoadError;
+  use deno_graph::NpmLoadError;
+  use deno_graph::WorkspaceLoadError;
+
   match err {
-    ModuleGraphError::ModuleError(err) => match err {
-      ModuleError::LoadingErr(_, _, err) => get_error_class_name(err.as_ref()),
-      ModuleError::InvalidTypeAssertion { .. } => "SyntaxError",
-      ModuleError::ParseErr(_, diagnostic) => get_diagnostic_class(diagnostic),
-      ModuleError::UnsupportedMediaType { .. }
-      | ModuleError::UnsupportedImportAttributeType { .. } => "TypeError",
-      ModuleError::Missing(_, _)
-      | ModuleError::MissingDynamic(_, _)
-      | ModuleError::MissingWorkspaceMemberExports { .. }
-      | ModuleError::UnknownExport { .. }
-      | ModuleError::UnknownPackage { .. }
-      | ModuleError::UnknownPackageReq { .. } => "NotFound",
-    },
     ModuleGraphError::ResolutionError(err)
     | ModuleGraphError::TypesResolutionError(err) => {
       get_resolution_error_class(err)
     }
+    ModuleGraphError::ModuleError(err) => match err {
+      ModuleError::InvalidTypeAssertion { .. } => "SyntaxError",
+      ModuleError::ParseErr(_, diagnostic) => get_diagnostic_class(diagnostic),
+      ModuleError::UnsupportedMediaType { .. }
+      | ModuleError::UnsupportedImportAttributeType { .. } => "TypeError",
+      ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
+        "NotFound"
+      }
+      ModuleError::LoadingErr(_, _, err) => match err {
+        ModuleLoadError::Loader(err) => get_error_class_name(err.as_ref()),
+        ModuleLoadError::HttpsChecksumIntegrity(_)
+        | ModuleLoadError::TooManyRedirects => "Error",
+        ModuleLoadError::NodeUnknownBuiltinModule(_) => "NotFound",
+        ModuleLoadError::Decode(_) => "TypeError",
+        ModuleLoadError::Npm(err) => match err {
+          NpmLoadError::NotSupportedEnvironment
+          | NpmLoadError::PackageReqResolution(_)
+          | NpmLoadError::RegistryInfo(_) => "Error",
+          NpmLoadError::PackageReqReferenceParse(_) => "TypeError",
+        },
+        ModuleLoadError::Jsr(err) => match err {
+          JsrLoadError::UnsupportedManifestChecksum
+          | JsrLoadError::PackageFormat(_) => "TypeError",
+          JsrLoadError::ContentLoadExternalSpecifier
+          | JsrLoadError::ContentLoad(_)
+          | JsrLoadError::ContentChecksumIntegrity(_)
+          | JsrLoadError::PackageManifestLoad(_, _)
+          | JsrLoadError::PackageVersionManifestChecksumIntegrity(..)
+          | JsrLoadError::PackageVersionManifestLoad(_, _)
+          | JsrLoadError::RedirectInPackage(_) => "Error",
+          JsrLoadError::PackageNotFound(_)
+          | JsrLoadError::PackageReqNotFound(_)
+          | JsrLoadError::PackageVersionNotFound(_)
+          | JsrLoadError::UnknownExport { .. } => "NotFound",
+        },
+        ModuleLoadError::Workspace(err) => match err {
+          WorkspaceLoadError::MemberInvalidExportPath { .. } => "TypeError",
+          WorkspaceLoadError::MissingMemberExports { .. } => "NotFound",
+        },
+      },
+    },
   }
 }
 
