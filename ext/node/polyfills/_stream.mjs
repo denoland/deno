@@ -4031,7 +4031,7 @@ var require_writable = __commonJS({
       }
       while (count-- > 0) {
         state.pendingcb--;
-        cb();
+        cb(null);
       }
       if (state.destroyed) {
         errorBuffer(state);
@@ -4158,8 +4158,10 @@ var require_writable = __commonJS({
         err = new ERR_STREAM_DESTROYED("end");
       }
       if (typeof cb === "function") {
-        if (err || state.finished) {
+        if (err) {
           process.nextTick(cb, err);
+        } else if (state.finished) {
+          process.nextTick(cb, null);
         } else {
           state[kOnFinished].push(cb);
         }
@@ -4246,7 +4248,7 @@ var require_writable = __commonJS({
       state.finished = true;
       const onfinishCallbacks = state[kOnFinished].splice(0);
       for (let i = 0; i < onfinishCallbacks.length; i++) {
-        onfinishCallbacks[i]();
+        onfinishCallbacks[i](null);
       }
       stream.emit("finish");
       if (state.autoDestroy) {
