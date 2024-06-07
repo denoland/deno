@@ -35,4 +35,16 @@ Object.defineProperty(globalThis, "URLSearchParams", {
 Then from rust, provide `deno_url::deno_url::init_ops_and_esm()` in the `extensions` field of your `RuntimeOptions`
 
 ## Dependencies
-**deno_webidl**: Provided by the `deno_webidl` crate
+- **deno_webidl**: Provided by the `deno_webidl` crate
+
+## Provided ops
+Following ops are provided, which can be accessed through `Deno.ops`:
+
+- op_url_reparse,
+- op_url_parse,
+- op_url_get_serialization,
+- op_url_parse_with_base,
+- op_url_parse_search_params,
+- op_url_stringify_search_params,
+- op_urlpattern_parse,
+- op_urlpattern_process_match_input

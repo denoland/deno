@@ -12,5 +12,5 @@ Then from rust, provide `deno_io::deno_io::init_ops_and_esm(Option<deno_io::Stdi
 Where `deno_io::Stdio` implements `Default`, and can therefore be provided as `Some(deno_io::Stdio::default())`
 
 ## Dependencies
-**deno_web**: Provided by the `deno_web` crate
-**deno_tty**: Provided in `deno/runtime/ops/tty.rs`
+- **deno_web**: Provided by the `deno_web` crate
+- **deno_tty**: Provided in `deno/runtime/ops/tty.rs`

@@ -98,6 +98,6 @@ Where:
 - `Option<Url>` provides an optional base URL for certain ops
 
 ## Dependencies
-**deno_webidl**: Provided by the `deno_webidl` crate
-**deno_console**: Provided by the `deno_console` crate
-**deno_url**: Provided by the `deno_url` crate
+- **deno_webidl**: Provided by the `deno_webidl` crate
+- **deno_console**: Provided by the `deno_console` crate
+_ **deno_url**: Provided by the `deno_url` crate
