@@ -81,21 +81,21 @@ impl deno_node::NodePermissions for Permissions {
     unreachable!("snapshotting!")
   }
   fn check_read_with_api_name(
-    &self,
+    &mut self,
     _p: &Path,
     _api_name: Option<&str>,
   ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
   fn check_write_with_api_name(
-    &self,
+    &mut self,
     _p: &Path,
     _api_name: Option<&str>,
   ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
   fn check_sys(
-    &self,
+    &mut self,
     _kind: &str,
     _api_name: &str,
   ) -> Result<(), deno_core::error::AnyError> {
@@ -254,7 +254,7 @@ pub fn create_runtime_snapshot(
     deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
     deno_io::deno_io::init_ops_and_esm(Default::default()),
     deno_fs::deno_fs::init_ops_and_esm::<Permissions>(fs.clone()),
-    deno_node::deno_node::init_ops_and_esm::<Permissions>(None, fs),
+    deno_node::deno_node::init_ops_and_esm::<Permissions>(None, None, fs),
     runtime::init_ops_and_esm(),
     ops::runtime::deno_runtime::init_ops("deno:runtime".parse().unwrap()),
     ops::worker_host::deno_worker_host::init_ops(

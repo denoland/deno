@@ -1,0 +1,5 @@
+{
+  "args": "lint mod.ts",
+  "exitCode": 1,
+  "output": "mod.out"
+}

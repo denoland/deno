@@ -53,7 +53,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
 
   fn ensure_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
 }
@@ -76,7 +76,7 @@ impl RegistryReadPermissionChecker {
 
   pub fn ensure_registry_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     // allow reading if it's in the node_modules
