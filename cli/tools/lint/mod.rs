@@ -230,7 +230,7 @@ async fn lint_files(
     deno_core::unsync::spawn(async move {
       run_parallelized(paths, {
         move |file_path| {
-          let file_text = fs::read_to_string(&file_path)?;
+          let file_text = deno_ast::strip_bom(fs::read_to_string(&file_path)?);
 
           // don't bother rechecking this file if it didn't have any diagnostics before
           if incremental_cache.is_file_same(&file_path, &file_text) {
@@ -510,7 +510,7 @@ fn lint_stdin(
   linter
     .lint_file(LintFileOptions {
       specifier: specifier_from_file_path(file_path)?,
-      source_code: source_code.clone(),
+      source_code: deno_ast::strip_bom(source_code),
       media_type: MediaType::TypeScript,
       config,
     })
