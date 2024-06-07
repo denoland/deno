@@ -215,12 +215,12 @@ extern "C" fn c_noop(_: *const v8::FunctionCallbackInfo) {}
 //
 // See NOTE in ext/node/global.rs#L12
 thread_local! {
-  pub static GETTER_MAP_FN: v8::GenericNamedPropertyGetterCallback<'static> = property_getter.map_fn_to();
-  pub static SETTER_MAP_FN: v8::GenericNamedPropertySetterCallback<'static> = property_setter.map_fn_to();
-  pub static DELETER_MAP_FN: v8::GenericNamedPropertyGetterCallback<'static> = property_deleter.map_fn_to();
-  pub static ENUMERATOR_MAP_FN: v8::GenericNamedPropertyEnumeratorCallback<'static> = property_enumerator.map_fn_to();
-  pub static DEFINER_MAP_FN: v8::GenericNamedPropertyDefinerCallback<'static> = property_definer.map_fn_to();
-  pub static DESCRIPTOR_MAP_FN: v8::GenericNamedPropertyGetterCallback<'static> = property_descriptor.map_fn_to();
+  pub static GETTER_MAP_FN: v8::NamedPropertyGetterCallback<'static> = property_getter.map_fn_to();
+  pub static SETTER_MAP_FN: v8::NamedPropertySetterCallback<'static> = property_setter.map_fn_to();
+  pub static DELETER_MAP_FN: v8::NamedPropertyGetterCallback<'static> = property_deleter.map_fn_to();
+  pub static ENUMERATOR_MAP_FN: v8::NamedPropertyEnumeratorCallback<'static> = property_enumerator.map_fn_to();
+  pub static DEFINER_MAP_FN: v8::NamedPropertyDefinerCallback<'static> = property_definer.map_fn_to();
+  pub static DESCRIPTOR_MAP_FN: v8::NamedPropertyGetterCallback<'static> = property_descriptor.map_fn_to();
 }
 
 thread_local! {
@@ -286,7 +286,7 @@ fn property_getter<'s>(
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut ret: v8::ReturnValue,
-) {
+) -> v8::Intercepted {
   let ctx = ContextifyContext::get(scope, args.this()).unwrap();
 
   let sandbox = ctx.sandbox(scope);
@@ -308,7 +308,10 @@ fn property_getter<'s>(
     }
 
     ret.set(rv);
+    return v8::Intercepted::Yes;
   }
+
+  v8::Intercepted::No
 }
 
 fn property_setter<'s>(
@@ -317,7 +320,7 @@ fn property_setter<'s>(
   value: v8::Local<'s, v8::Value>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
-) {
+) -> v8::Intercepted {
   let ctx = ContextifyContext::get(scope, args.this()).unwrap();
 
   let (attributes, is_declared_on_global_proxy) = match ctx
@@ -339,7 +342,7 @@ fn property_setter<'s>(
   read_only |= attributes.is_read_only();
 
   if read_only {
-    return;
+    return v8::Intercepted::No;
   }
 
   // true for x = 5
@@ -363,15 +366,15 @@ fn property_setter<'s>(
     && is_contextual_store
     && !is_function
   {
-    return;
+    return v8::Intercepted::No;
   }
 
   if !is_declared && key.is_symbol() {
-    return;
+    return v8::Intercepted::No;
   };
 
   if ctx.sandbox(scope).set(scope, key.into(), value).is_none() {
-    return;
+    return v8::Intercepted::No;
   }
 
   if is_declared_on_sandbox {
@@ -394,10 +397,13 @@ fn property_setter<'s>(
             .unwrap_or(false)
         {
           rv.set(value);
+          return v8::Intercepted::Yes;
         }
       }
     }
   }
+
+  v8::Intercepted::No
 }
 
 fn property_deleter<'s>(
@@ -405,17 +411,18 @@ fn property_deleter<'s>(
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
-) {
+) -> v8::Intercepted {
   let ctx = ContextifyContext::get(scope, args.this()).unwrap();
 
   let context = ctx.context(scope);
   let sandbox = ctx.sandbox(scope);
   let context_scope = &mut v8::ContextScope::new(scope, context);
   if !sandbox.delete(context_scope, key.into()).unwrap_or(false) {
-    return;
+    return v8::Intercepted::No;
   }
 
   rv.set_bool(false);
+  v8::Intercepted::Yes
 }
 
 fn property_enumerator<'s>(
@@ -443,7 +450,7 @@ fn property_definer<'s>(
   desc: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
   _: v8::ReturnValue,
-) {
+) -> v8::Intercepted {
   let ctx = ContextifyContext::get(scope, args.this()).unwrap();
 
   let context = ctx.context(scope);
@@ -461,7 +468,7 @@ fn property_definer<'s>(
   // If the property is set on the global as read_only, don't change it on
   // the global or sandbox.
   if is_declared && read_only && dont_delete {
-    return;
+    return v8::Intercepted::No;
   }
 
   let sandbox = ctx.sandbox(scope);
@@ -512,6 +519,8 @@ fn property_definer<'s>(
       define_prop_on_sandbox(scope, &mut desc_for_sandbox);
     }
   }
+
+  v8::Intercepted::Yes
 }
 
 fn property_descriptor<'s>(
@@ -519,7 +528,7 @@ fn property_descriptor<'s>(
   key: v8::Local<'s, v8::Name>,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
-) {
+) -> v8::Intercepted {
   let ctx = ContextifyContext::get(scope, args.this()).unwrap();
 
   let context = ctx.context(scope);
@@ -529,8 +538,11 @@ fn property_descriptor<'s>(
   if sandbox.has_own_property(scope, key).unwrap_or(false) {
     if let Some(desc) = sandbox.get_own_property_descriptor(scope, key) {
       rv.set(desc);
+      return v8::Intercepted::Yes;
     }
   }
+
+  v8::Intercepted::No
 }
 
 fn uint32_to_name<'s>(
@@ -547,9 +559,9 @@ fn indexed_property_getter<'s>(
   index: u32,
   args: v8::PropertyCallbackArguments<'s>,
   rv: v8::ReturnValue,
-) {
+) -> v8::Intercepted {
   let key = uint32_to_name(scope, index);
-  property_getter(scope, key, args, rv);
+  property_getter(scope, key, args, rv)
 }
 
 fn indexed_property_setter<'s>(
@@ -558,9 +570,9 @@ fn indexed_property_setter<'s>(
   value: v8::Local<'s, v8::Value>,
   args: v8::PropertyCallbackArguments<'s>,
   rv: v8::ReturnValue,
-) {
+) -> v8::Intercepted {
   let key = uint32_to_name(scope, index);
-  property_setter(scope, key, value, args, rv);
+  property_setter(scope, key, value, args, rv)
 }
 
 fn indexed_property_deleter<'s>(
@@ -568,19 +580,20 @@ fn indexed_property_deleter<'s>(
   index: u32,
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
-) {
+) -> v8::Intercepted {
   let ctx = ContextifyContext::get(scope, args.this()).unwrap();
 
   let context = ctx.context(scope);
   let sandbox = ctx.sandbox(scope);
   let context_scope = &mut v8::ContextScope::new(scope, context);
   if !sandbox.delete_index(context_scope, index).unwrap_or(false) {
-    return;
+    return v8::Intercepted::No;
   }
 
   // Delete failed on the sandbox, intercept and do not delete on
   // the global object.
   rv.set_bool(false);
+  v8::Intercepted::No
 }
 
 fn indexed_property_definer<'s>(
@@ -589,9 +602,9 @@ fn indexed_property_definer<'s>(
   descriptor: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
   rv: v8::ReturnValue,
-) {
+) -> v8::Intercepted {
   let key = uint32_to_name(scope, index);
-  property_definer(scope, key, descriptor, args, rv);
+  property_definer(scope, key, descriptor, args, rv)
 }
 
 fn indexed_property_descriptor<'s>(
@@ -599,7 +612,7 @@ fn indexed_property_descriptor<'s>(
   index: u32,
   args: v8::PropertyCallbackArguments<'s>,
   rv: v8::ReturnValue,
-) {
+) -> v8::Intercepted {
   let key = uint32_to_name(scope, index);
-  property_descriptor(scope, key, args, rv);
+  property_descriptor(scope, key, args, rv)
 }
