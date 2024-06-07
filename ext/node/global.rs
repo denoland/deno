@@ -415,7 +415,7 @@ pub fn deleter<'s>(
     let message = v8::String::new(scope, "Cannot delete property").unwrap();
     let exception = v8::Exception::type_error(scope, message);
     scope.throw_exception(exception);
-    return v8::Intercepted::No;
+    return v8::Intercepted::Yes;
   }
 
   rv.set_bool(success);
@@ -455,7 +455,7 @@ pub fn definer<'s>(
   key: v8::Local<'s, v8::Name>,
   descriptor: &v8::PropertyDescriptor,
   args: v8::PropertyCallbackArguments<'s>,
-  mut rv: v8::ReturnValue,
+  _rv: v8::ReturnValue,
 ) -> v8::Intercepted {
   if !is_managed_key(scope, key) {
     return v8::Intercepted::No;
@@ -478,10 +478,8 @@ pub fn definer<'s>(
     let message = v8::String::new(scope, "Cannot define property").unwrap();
     let exception = v8::Exception::type_error(scope, message);
     scope.throw_exception(exception);
-    return v8::Intercepted::No;
   }
 
-  rv.set_bool(success);
   v8::Intercepted::Yes
 }
 
@@ -508,7 +506,7 @@ pub fn descriptor<'s>(
 
   let Some(descriptor) = inner.get_own_property_descriptor(scope, key) else {
     scope.rethrow().expect("to have caught an exception");
-    return v8::Intercepted::No;
+    return v8::Intercepted::Yes;
   };
 
   if descriptor.is_undefined() {
