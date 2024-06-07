@@ -1303,9 +1303,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.284.0"
+version = "0.285.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4a5c809e81be26fcfbbce4275573251f6a156137b67059889e9e38f73e75b63"
+checksum = "1b2df681c5746ff035671d98a3aa906f818024bb1bb9b8f9122a38cdc6a1b6e4"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1759,9 +1759,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.160.0"
+version = "0.161.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "517e54d41a2da6a69b8f534294334d79d9115ddd43aea88a5ceefdb717e6d85e"
+checksum = "504faf12efd80bdef6dc4d693072479dd916f397a151893963db66fb061f0c9d"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5763,9 +5763,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.193.0"
+version = "0.194.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21ec612dfc7ab70330b5405e8015b25e637bbfe1d79c4bd173557933aea66e76"
+checksum = "c56fad5568bad7902594c0b2fd33f7b97c1eb539837cc9a7f9d7742ca1c77883"
 dependencies = [
  "num-bigint",
  "serde",
@@ -7337,9 +7337,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.92.0"
+version = "0.93.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "234589219e37a7496cbce73d971586db8369871be2420372c45a579b6a919b15"
+checksum = "abc3ff12243d345cc697c151b29fbb8ad1f898e3f8b7aa1386701ff9f2c7cbbf"
 dependencies = [
  "bitflags 2.5.0",
  "fslock",
@@ -7347,7 +7347,7 @@ dependencies = [
  "home",
  "miniz_oxide",
  "once_cell",
- "which 5.0.0",
+ "which 6.0.1",
 ]
 
 [[package]]
@@ -7640,15 +7640,14 @@ dependencies = [
 
 [[package]]
 name = "which"
-version = "5.0.0"
+version = "6.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9bf3ea8596f3a0dd5980b46430f2058dfe2c36a27ccfbb1845d6fbfcd9ba6e14"
+checksum = "8211e4f58a2b2805adfbefbc07bab82958fc91e3836339b1ab7ae32465dce0d7"
 dependencies = [
  "either",
  "home",
- "once_cell",
  "rustix",
- "windows-sys 0.48.0",
+ "winsafe",
 ]
 
 [[package]]
@@ -7887,6 +7886,12 @@ checksum = "b68db261ef59e9e52806f688020631e987592bd83619edccda9c47d42cde4f6c"
 dependencies = [
  "toml 0.5.11",
 ]
+
+[[package]]
+name = "winsafe"
+version = "0.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
 
 [[package]]
 name = "wtf8"
