@@ -4,7 +4,6 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
-use std::rc::Rc;
 
 pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
   v8::String::create_external_onebyte_const(b"node:contextify:context");
@@ -82,8 +81,9 @@ impl ContextifyContext {
     sandbox_obj: v8::Local<v8::Object>,
   ) {
     let main_context = scope.get_current_context();
-    let context_state = main_context
-      .get_aligned_pointer_from_embedder_data(deno_core::CONTEXT_STATE_SLOT_INDEX);
+    let context_state = main_context.get_aligned_pointer_from_embedder_data(
+      deno_core::CONTEXT_STATE_SLOT_INDEX,
+    );
     let module_map = main_context
       .get_aligned_pointer_from_embedder_data(deno_core::MODULE_MAP_SLOT_INDEX);
 
@@ -198,7 +198,9 @@ pub fn create_v8_context<'a>(
   } else {
     let ctx = v8::Context::new_from_template(scope, object_template);
     // ContextifyContexts will update this to a pointer to the native object
-    unsafe { ctx.set_aligned_pointer_in_embedder_data(3, std::ptr::null_mut()) };
+    unsafe {
+      ctx.set_aligned_pointer_in_embedder_data(3, std::ptr::null_mut())
+    };
     ctx
   };
 
@@ -212,24 +214,24 @@ pub fn init_global_template<'a>(
   scope: &mut v8::HandleScope<'a, ()>,
   cache: bool,
 ) -> v8::Local<'a, v8::ObjectTemplate> {
-  let mut maybe_object_template_slot =
+  let maybe_object_template_slot =
     scope.get_slot::<SlotContextifyGlobalTemplate>();
 
   if maybe_object_template_slot.is_none() {
     let global_object_template = init_global_template_inner(scope);
 
     if cache {
-    let contextify_global_template_slot = SlotContextifyGlobalTemplate(
-      v8::Global::new(scope, global_object_template),
-    );
-    scope.set_slot(contextify_global_template_slot);
+      let contextify_global_template_slot = SlotContextifyGlobalTemplate(
+        v8::Global::new(scope, global_object_template),
+      );
+      scope.set_slot(contextify_global_template_slot);
     }
     global_object_template
   } else {
-  let object_template_slot = maybe_object_template_slot
-    .expect("ContextifyGlobalTemplate slot should be already populated.")
-    .clone();
-  v8::Local::new(scope, object_template_slot.0)
+    let object_template_slot = maybe_object_template_slot
+      .expect("ContextifyGlobalTemplate slot should be already populated.")
+      .clone();
+    v8::Local::new(scope, object_template_slot.0)
   }
 }
 
@@ -283,16 +285,16 @@ pub fn init_global_template_inner<'a>(
     let mut config = v8::IndexedPropertyHandlerConfiguration::new()
       .flags(v8::PropertyHandlerFlags::HAS_NO_SIDE_EFFECT);
 
-//   config = INDEXED_GETTER_MAP_FN.with(|getter| config.getter_raw(*getter));
-//   config = INDEXED_SETTER_MAP_FN.with(|setter| config.setter_raw(*setter));
-//   config =
-//     INDEXED_DELETER_MAP_FN.with(|deleter| config.deleter_raw(*deleter));
-//   config =
-//     ENUMERATOR_MAP_FN.with(|enumerator| config.enumerator_raw(*enumerator));
-//   config =
-//     INDEXED_DEFINER_MAP_FN.with(|definer| config.definer_raw(*definer));
-//   config = INDEXED_DESCRIPTOR_MAP_FN
-//     .with(|descriptor| config.descriptor_raw(*descriptor));
+    config = INDEXED_GETTER_MAP_FN.with(|getter| config.getter_raw(*getter));
+    config = INDEXED_SETTER_MAP_FN.with(|setter| config.setter_raw(*setter));
+    config =
+      INDEXED_DELETER_MAP_FN.with(|deleter| config.deleter_raw(*deleter));
+    config =
+      ENUMERATOR_MAP_FN.with(|enumerator| config.enumerator_raw(*enumerator));
+    config =
+      INDEXED_DEFINER_MAP_FN.with(|definer| config.definer_raw(*definer));
+    config = INDEXED_DESCRIPTOR_MAP_FN
+      .with(|descriptor| config.descriptor_raw(*descriptor));
 
     config
   };
@@ -311,7 +313,9 @@ fn property_getter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut ret: v8::ReturnValue,
 ) {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else { return; };
+  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
+    return;
+  };
 
   let sandbox = ctx.sandbox(scope);
 
@@ -342,7 +346,9 @@ fn property_setter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else { return; };
+  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
+    return;
+  };
 
   let (attributes, is_declared_on_global_proxy) = match ctx
     .global_proxy(scope)
@@ -430,7 +436,9 @@ fn property_deleter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else { return; };
+  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
+    return;
+  };
 
   let context = ctx.context(scope);
   let sandbox = ctx.sandbox(scope);
@@ -447,7 +455,9 @@ fn property_enumerator<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else { return; };
+  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
+    return;
+  };
 
   let context = ctx.context(scope);
   let sandbox = ctx.sandbox(scope);
@@ -468,7 +478,9 @@ fn property_definer<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   _: v8::ReturnValue,
 ) {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else { return; };
+  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
+    return;
+  };
 
   let context = ctx.context(scope);
   let (attributes, is_declared) = match ctx
@@ -544,7 +556,9 @@ fn property_descriptor<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else { return; };
+  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
+    return;
+  };
 
   let context = ctx.context(scope);
   let sandbox = ctx.sandbox(scope);
@@ -593,7 +607,9 @@ fn indexed_property_deleter<'s>(
   args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  let Some(ctx) = ContextifyContext::get(scope, args.this()) else { return; };
+  let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
+    return;
+  };
 
   let context = ctx.context(scope);
   let sandbox = ctx.sandbox(scope);

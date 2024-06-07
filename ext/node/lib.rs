@@ -32,10 +32,10 @@ mod path;
 mod polyfill;
 mod resolution;
 
-use ops::vm;
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
 pub use ops::v8::VM_CONTEXT_INDEX;
+use ops::vm;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 pub use package_json::PackageJson;
@@ -647,10 +647,10 @@ deno_core::extension!(deno_node,
   global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
     let mut external_references = Vec::with_capacity(14);
-    use deno_core::v8::MapFnTo;
       external_references.push(ExternalReference {
           function: vm::c_noop
       });
+
     vm::GETTER_MAP_FN.with(|getter| {
       external_references.push(ExternalReference {
         named_getter: *getter,
@@ -679,6 +679,32 @@ deno_core::extension!(deno_node,
     vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
       external_references.push(ExternalReference {
         named_getter: *descriptor,
+      });
+    });
+
+    vm::INDEXED_GETTER_MAP_FN.with(|getter| {
+      external_references.push(ExternalReference {
+        indexed_getter: *getter,
+      });
+    });
+    vm::INDEXED_SETTER_MAP_FN.with(|setter| {
+      external_references.push(ExternalReference {
+        indexed_setter: *setter,
+      });
+    });
+    vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
+      external_references.push(ExternalReference {
+        indexed_getter: *deleter,
+      });
+    });
+    vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
+      external_references.push(ExternalReference {
+        indexed_definer: *definer,
+      });
+    });
+    vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
+      external_references.push(ExternalReference {
+        indexed_getter: *descriptor,
       });
     });
 
