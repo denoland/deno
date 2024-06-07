@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use crate::cache::CACHE_PERM;
 use crate::npm::cache_dir::mixed_case_package_name_decode;
-use crate::util::fs::atomic_write_file;
+use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::fs::clone_dir_recursive;
 use crate::util::fs::symlink_dir;
@@ -550,7 +550,7 @@ impl SetupCache {
     }
 
     bincode::serialize(&self.current).ok().and_then(|data| {
-      atomic_write_file(&self.file_path, data, CACHE_PERM).ok()
+      atomic_write_file_with_retries(&self.file_path, data, CACHE_PERM).ok()
     });
     true
   }
