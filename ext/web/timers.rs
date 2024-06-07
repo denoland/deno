@@ -10,6 +10,13 @@ pub trait TimersPermission {
   fn allow_hrtime(&mut self) -> bool;
 }
 
+impl TimersPermission for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn allow_hrtime(&mut self) -> bool {
+    deno_permissions::PermissionsContainer::allow_hrtime(self)
+  }
+}
+
 pub type StartTime = Instant;
 
 // Returns a milliseconds and nanoseconds subsec

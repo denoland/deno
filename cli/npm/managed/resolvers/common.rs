@@ -24,7 +24,7 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use crate::npm::managed::cache::TarballCache;
 
 /// Part of the resolution that interacts with the file system.
-#[async_trait]
+#[async_trait(?Send)]
 pub trait NpmPackageFsResolver: Send + Sync {
   /// Specifier for the root directory.
   fn root_dir_url(&self) -> &Url;
@@ -53,7 +53,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
 
   fn ensure_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
 }
@@ -76,7 +76,7 @@ impl RegistryReadPermissionChecker {
 
   pub fn ensure_registry_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     // allow reading if it's in the node_modules

@@ -53,6 +53,13 @@ pub trait FfiPermissions {
   fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError>;
 }
 
+impl FfiPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_ffi_partial(self, path)
+  }
+}
+
 deno_core::extension!(deno_ffi,
   deps = [ deno_web ],
   parameters = [P: FfiPermissions],

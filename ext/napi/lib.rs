@@ -432,6 +432,15 @@ pub trait NapiPermissions {
     -> std::result::Result<(), AnyError>;
 }
 
+// NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
+// change in the future.
+impl NapiPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_ffi(self, path)
+  }
+}
+
 /// # Safety
 ///
 /// This function is unsafe because it dereferences raw pointer Env.
