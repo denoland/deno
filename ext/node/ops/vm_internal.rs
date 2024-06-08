@@ -263,7 +263,7 @@ pub fn init_global_template_inner<'a>(
   let global_func_template =
     v8::FunctionTemplate::builder_raw(c_noop).build(scope);
   let global_object_template = global_func_template.instance_template(scope);
-  global_object_template.set_internal_field_count(2);
+  global_object_template.set_internal_field_count(3);
 
   let named_property_handler_config = {
     let mut config = v8::NamedPropertyHandlerConfiguration::new()
@@ -316,7 +316,7 @@ fn property_getter<'s>(
   let Some(ctx) = ContextifyContext::get(scope, args.this()) else {
     return;
   };
-
+  
   let sandbox = ctx.sandbox(scope);
 
   let tc_scope = &mut v8::TryCatch::new(scope);
@@ -334,6 +334,8 @@ fn property_getter<'s>(
     if rv == sandbox {
       rv = ctx.global_proxy(tc_scope).into();
     }
+
+    println!("property_getter: {:?}", rv.to_rust_string_lossy(tc_scope));
 
     ret.set(rv);
   }

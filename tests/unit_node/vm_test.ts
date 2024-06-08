@@ -148,3 +148,12 @@ reject().catch(() => {})
     script.runInNewContext();
   },
 });
+
+Deno.test({
+	name: "vm runInNewContext module loader",
+	fn() {
+		const code = "import('node:process')";
+		const script = new Script(code);
+		script.runInNewContext();
+	},
+});
