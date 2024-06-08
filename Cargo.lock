@@ -1304,6 +1304,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.287.0"
+source = "git+https://github.com/denoland/deno_core.git?branch=no_slots#2e2a8645e2b580f9583deec59414332614640661"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1758,6 +1759,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.163.0"
+source = "git+https://github.com/denoland/deno_core.git?branch=no_slots#2e2a8645e2b580f9583deec59414332614640661"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5760,6 +5762,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.196.0"
+source = "git+https://github.com/denoland/deno_core.git?branch=no_slots#2e2a8645e2b580f9583deec59414332614640661"
 dependencies = [
  "num-bigint",
  "serde",
