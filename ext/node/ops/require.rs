@@ -198,7 +198,6 @@ pub fn op_require_resolve_deno_dir(
       &ModuleSpecifier::from_file_path(&parent_filename).unwrap_or_else(|_| {
         panic!("Url::from_file_path: [{:?}]", parent_filename)
       }),
-      NodeResolutionMode::Execution,
     )
     .ok()
     .map(|p| p.to_string_lossy().to_string())
