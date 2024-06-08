@@ -1,0 +1,6 @@
+{
+  "name": "@denotest/lossy-utf8-script",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "dependencies": {}
+}
