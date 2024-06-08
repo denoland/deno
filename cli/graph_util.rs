@@ -469,15 +469,6 @@ impl ModuleGraphBuilder {
       }
     }
 
-    eprintln!(
-      "{:?} - 1 {:?}",
-      std::thread::current().id(),
-      options
-        .roots
-        .iter()
-        .map(|r| r.to_string())
-        .collect::<Vec<_>>()
-    );
     let maybe_imports = self.options.to_maybe_imports()?;
     let analyzer = self
       .module_info_cache
@@ -499,15 +490,6 @@ impl ModuleGraphBuilder {
       .lockfile
       .as_ref()
       .map(|lockfile| LockfileLocker(lockfile));
-    eprintln!(
-      "{:?} - 2 {:?}",
-      std::thread::current().id(),
-      options
-        .roots
-        .iter()
-        .map(|r| r.to_string())
-        .collect::<Vec<_>>()
-    );
     self
       .build_graph_with_npm_resolution_and_build_options(
         graph,
@@ -545,11 +527,6 @@ impl ModuleGraphBuilder {
         npm_resolver.ensure_top_level_package_json_install().await?;
       }
     }
-    eprintln!(
-      "{:?} - 3 {:?}",
-      std::thread::current().id(),
-      roots.iter().map(|r| r.to_string()).collect::<Vec<_>>()
-    );
 
     // fill the graph with the information from the lockfile
     let is_first_execution = graph.roots.is_empty();
@@ -588,7 +565,6 @@ impl ModuleGraphBuilder {
     let initial_npm_packages = graph.npm_packages.len();
 
     graph.build(roots, loader, options).await;
-    eprintln!("{:?} - 4", std::thread::current().id());
 
     let has_npm_packages_changed =
       graph.npm_packages.len() != initial_npm_packages;
@@ -609,8 +585,6 @@ impl ModuleGraphBuilder {
         npm_resolver.resolve_pending().await?;
       }
     }
-
-    eprintln!("{:?} - 5", std::thread::current().id());
 
     let has_redirects_changed = graph.redirects.len() != initial_redirects_len;
     let has_jsr_package_deps_changed =
@@ -652,7 +626,6 @@ impl ModuleGraphBuilder {
       }
     }
 
-    eprintln!("{:?} - 6", std::thread::current().id());
     Ok(())
   }
 

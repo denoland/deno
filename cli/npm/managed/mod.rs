@@ -431,12 +431,8 @@ impl ManagedCliNpmResolver {
   }
 
   pub async fn resolve_pending(&self) -> Result<(), AnyError> {
-    eprintln!("{:?} - 4.2", std::thread::current().id());
     self.resolution.resolve_pending().await?;
-    eprintln!("{:?} - 4.7", std::thread::current().id());
-    let result = self.cache_packages().await;
-    eprintln!("{:?} - 4.8", std::thread::current().id());
-    result
+    self.cache_packages().await
   }
 
   pub async fn cache_packages(&self) -> Result<(), AnyError> {

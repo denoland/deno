@@ -14,12 +14,6 @@ pub struct SyncReadAsyncWriteLockWriteGuard<'a, T: Send + Sync> {
   data: &'a RwLock<T>,
 }
 
-impl<'a, T: Send + Sync> Drop for SyncReadAsyncWriteLockWriteGuard<'a, T> {
-  fn drop(&mut self) {
-    eprintln!("{:?} - Dropping lock", std::thread::current().id());
-  }
-}
-
 impl<'a, T: Send + Sync> SyncReadAsyncWriteLockWriteGuard<'a, T> {
   pub fn read(&self) -> RwLockReadGuard<'_, T> {
     self.data.read()
