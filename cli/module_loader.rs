@@ -151,8 +151,6 @@ impl ModuleLoadPreparer {
     lib: TsTypeLib,
     permissions: PermissionsContainer,
   ) -> Result<(), AnyError> {
-    eprintln!("{:?} - LOADING: {}", std::thread::current().id(), roots[0]);
-
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
