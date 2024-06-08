@@ -977,7 +977,7 @@ export class ClientHttp2Stream extends Duplex {
       return;
     }
 
-    shutdownWritable(this, cb);
+    shutdownWritable(this, cb, this.#rid);
   }
 
   // TODO(bartlomieju): needs a proper cleanup
@@ -1175,15 +1175,17 @@ export class ClientHttp2Stream extends Duplex {
   }
 }
 
-function shutdownWritable(stream, callback) {
+function shutdownWritable(stream, callback, streamRid) {
   debugHttp2(">>> shutdownWritable", callback);
   const state = stream[kState];
   if (state.shutdownWritableCalled) {
+    debugHttp2(">>> shutdownWritable() already called");
     return callback();
   }
   state.shutdownWritableCalled = true;
-  onStreamTrailers(stream);
-  callback();
+  op_http2_client_send_data(streamRid, new Uint8Array(), true)
+    .then(() => callback())
+    .catch((e) => callback(e));
   // TODO(bartlomieju): might have to add "finish" event listener here,
   // check it.
 }
