@@ -9,6 +9,7 @@
 _Note: Testing for text encoding is done via WPT in cli/._
 
 ## Usage Example
+
 From javascript, include the extension's source:
 ```javascript
 import * as infra from "ext:deno_web/00_infra.js";

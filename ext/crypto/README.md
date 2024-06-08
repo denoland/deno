@@ -5,6 +5,7 @@
 Spec: https://www.w3.org/TR/WebCryptoAPI/
 
 ## Usage Example
+
 From javascript, include the extension's source, and assign `CryptoKey`,
 `crypto`, `Crypto`, and `SubtleCrypto` to the global scope:
 

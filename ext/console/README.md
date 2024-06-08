@@ -5,6 +5,7 @@
 Spec: https://console.spec.whatwg.org/
 
 ## Usage Example
+
 From javascript, include the extension's source, and assign a console to the
 global scope:
 
