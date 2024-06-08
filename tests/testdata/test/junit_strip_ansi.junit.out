@@ -16,10 +16,7 @@ Check file:///[WILDCARD]/test/fail_color.ts
     throw new Error(`RedMessage: \x1b[31mThis should be red text\x1b[39m`);
           ^
     at file:///[WILDCARD]/test/fail_color.ts:8:11
-    at innerWrapped (ext:cli/40_test.js:174:11)
-    at exitSanitizer (ext:cli/40_test.js:103:33)
-    at Object.outerWrapped [as fn] (ext:cli/40_test.js:117:20)
-    at TestContext.step (ext:cli/40_test.js:475:37)
+    at [WILDCARD]
     at file:///[WILDCARD]/test/fail_color.ts:7:11</failure>
         </testcase>
     </testsuite>

@@ -3,13 +3,10 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
 
-use lazy_regex::Lazy;
+use console_static_text::ansi::strip_ansi_codes;
 
 use super::fmt::to_relative_path_or_remote_url;
 use super::*;
-
-static ANSI_ESCAPE_REMOVE: Lazy<Regex> =
-  lazy_regex::lazy_regex!(r#"\x1b\[([\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e])"#);
 
 pub struct JunitTestReporter {
   cwd: Url,
@@ -39,10 +36,8 @@ impl JunitTestReporter {
       TestResult::Failed(failure) => {
         let message = failure.overview();
         let detail = failure.detail();
-        let message_stripped =
-          ANSI_ESCAPE_REMOVE.replace_all(message.as_str(), "");
-        let detail_stripped =
-          ANSI_ESCAPE_REMOVE.replace_all(detail.as_str(), "");
+        let message_stripped = strip_ansi_codes(message.as_str());
+        let detail_stripped = strip_ansi_codes(detail.as_str());
         quick_junit::TestCaseStatus::NonSuccess {
           kind: quick_junit::NonSuccessKind::Failure,
           message: Some(message_stripped.into()),
@@ -70,10 +65,8 @@ impl JunitTestReporter {
       TestStepResult::Failed(failure) => {
         let message = failure.overview();
         let detail = failure.detail();
-        let message_stripped =
-          ANSI_ESCAPE_REMOVE.replace_all(message.as_str(), "");
-        let detail_stripped =
-          ANSI_ESCAPE_REMOVE.replace_all(detail.as_str(), "");
+        let message_stripped = strip_ansi_codes(message.as_str());
+        let detail_stripped = strip_ansi_codes(detail.as_str());
         quick_junit::TestCaseStatus::NonSuccess {
           kind: quick_junit::NonSuccessKind::Failure,
           message: Some(message_stripped.into()),
