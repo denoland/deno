@@ -387,14 +387,9 @@ class Blob {
   }
 
   /**
-   * @returns {Promise<string>}
+   * @param {number} size
+   * @returns {Promise<Uint8Array>}
    */
-  async text() {
-    webidl.assertBranded(this, BlobPrototype);
-    const buffer = await this.#u8Array(this.size);
-    return core.decode(buffer);
-  }
-
   async #u8Array(size) {
     const bytes = new Uint8Array(size);
     const partIterator = toIterator(this[_parts]);
@@ -411,6 +406,15 @@ class Blob {
       }
     }
     return bytes;
+  }
+
+  /**
+   * @returns {Promise<string>}
+   */
+  async text() {
+    webidl.assertBranded(this, BlobPrototype);
+    const buffer = await this.#u8Array(this.size);
+    return core.decode(buffer);
   }
 
   /**
