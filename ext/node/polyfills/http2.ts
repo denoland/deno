@@ -1183,9 +1183,22 @@ function shutdownWritable(stream, callback, streamRid) {
     return callback();
   }
   state.shutdownWritableCalled = true;
-  op_http2_client_send_data(streamRid, new Uint8Array(), true)
-    .then(() => callback())
-    .catch((e) => callback(e));
+  if (state.flags & STREAM_FLAGS_HAS_TRAILERS) {
+    onStreamTrailers(stream);
+    callback();
+  } else {
+    op_http2_client_send_data(streamRid, new Uint8Array(), true)
+      .then(() => {
+        callback();
+        stream[kMaybeDestroy]();
+        core.tryClose(streamRid);
+      })
+      .catch((e) => {
+        callback(e);
+        core.tryClose(streamRid);
+        stream._destroy(e);
+      });
+  }
   // TODO(bartlomieju): might have to add "finish" event listener here,
   // check it.
 }
