@@ -426,6 +426,14 @@ class Blob {
     return TypedArrayPrototypeGetBuffer(buf);
   }
 
+  /**
+   * @returns {Promise<Uint8Array>}
+   */
+  async bytes() {
+    webidl.assertBranded(this, BlobPrototype);
+    return await this.#u8Array(this.size);
+  }
+
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
       createFilteredInspectProxy({
