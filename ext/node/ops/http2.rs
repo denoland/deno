@@ -357,22 +357,6 @@ pub async fn op_http2_client_send_data(
 }
 
 #[op2(async)]
-pub async fn op_http2_client_end_stream(
-  state: Rc<RefCell<OpState>>,
-  #[smi] stream_rid: ResourceId,
-) -> Result<(), AnyError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<Http2ClientStream>(stream_rid)?;
-  let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
-
-  // TODO(bartlomieju): handle end of stream
-  stream.send_data(BufView::empty(), true)?;
-  Ok(())
-}
-
-#[op2(async)]
 pub async fn op_http2_client_reset_stream(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,

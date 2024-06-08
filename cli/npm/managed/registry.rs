@@ -50,7 +50,7 @@ impl CliNpmRegistryApi {
   }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl NpmRegistryApi for CliNpmRegistryApi {
   async fn package_info(
     &self,
