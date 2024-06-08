@@ -2440,7 +2440,7 @@ fn run_subcommand() -> Command {
 By default all programs are run in sandbox without access to disk, network or
 ability to spawn subprocesses.
 
-  deno run https://examples.deno.land/hello-world.ts
+  deno run https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/hello-world.ts
 
 Grant all permissions:
 
@@ -2456,7 +2456,7 @@ Grant permission to read allow-listed files from disk:
 
 Specifying the filename '-' to read the file from stdin.
 
-  curl https://examples.deno.land/hello-world.ts | deno run -",
+  curl https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/hello-world.ts | deno run -",
     )
 }
 
