@@ -4,7 +4,6 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
-use std::rc::Rc;
 
 pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
   v8::String::create_external_onebyte_const(b"node:contextify:context");
