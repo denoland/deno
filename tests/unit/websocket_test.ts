@@ -706,6 +706,31 @@ Deno.test("echo arraybuffer with binaryType arraybuffer", async () => {
   await promise;
 });
 
+Deno.test("echo blob mixed with string", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const ws = new WebSocket("ws://localhost:4242");
+  ws.binaryType = "arraybuffer";
+  const blob = new Blob(["foo"]);
+  ws.onerror = () => fail();
+  ws.onopen = () => {
+    ws.send(blob);
+    ws.send("bar");
+  };
+  const messages: (ArrayBuffer | string)[] = [];
+  ws.onmessage = (e) => {
+    messages.push(e.data);
+    if (messages.length === 2) {
+      assertEquals(messages[0], new Uint8Array([102, 111, 111]).buffer);
+      assertEquals(messages[1], "bar");
+      ws.close();
+    }
+  };
+  ws.onclose = () => {
+    resolve();
+  };
+  await promise;
+});
+
 Deno.test("Event Handlers order", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const ws = new WebSocket("ws://localhost:4242");
