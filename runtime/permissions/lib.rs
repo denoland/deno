@@ -1833,7 +1833,13 @@ fn parse_net_list(
 ) -> Result<HashSet<NetDescriptor>, AnyError> {
   if let Some(v) = list {
     v.iter()
-      .map(|x| NetDescriptor::from_cli_arg(x))
+      .map(|x| {
+        if x.is_empty() {
+          Err(AnyError::msg("Empty host is not allowed"))
+        } else {
+          NetDescriptor::from_cli_arg(x)
+        }
+      })
       .collect::<Result<HashSet<NetDescriptor>, AnyError>>()
   } else {
     Ok(HashSet::new())

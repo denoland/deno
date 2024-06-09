@@ -63,7 +63,7 @@ pub struct IpAddr {
   pub port: u16,
 }
 
-/// Processes and validates the hostname and port in the given `IpAddr` structure.
+/// Normalize and validates the hostname and port in the given `IpAddr` structure.
 ///
 /// This function extracts the hostname and port from the provided `IpAddr` structure,
 /// validates them, and updates the structure with the correctly formatted hostname and port.
@@ -83,7 +83,7 @@ pub struct IpAddr {
 ///
 /// This function will return an error if the hostname cannot be parsed or if any validation fails.
 ///
-fn process_ip_addr(addr: &mut IpAddr) -> Result<(), AnyError> {
+fn normalize_ip_addr(addr: &mut IpAddr) -> Result<(), AnyError> {
   let extracted_host = extract_host(addr.hostname.as_str());
   let (host_str, port) = split_host_port(extracted_host.as_str())?;
   addr.hostname = Host::from_host_and_origin_host(
@@ -177,7 +177,7 @@ pub async fn op_net_send_udp<NP>(
 where
   NP: NetPermissions + 'static,
 {
-  process_ip_addr(&mut addr)?;
+  normalize_ip_addr(&mut addr)?;
   {
     let host = NetPermissionHost::from_host_and_maybe_port(
       &addr.hostname,
@@ -339,7 +339,7 @@ pub async fn op_net_connect_tcp<NP>(
 where
   NP: NetPermissions + 'static,
 {
-  process_ip_addr(&mut addr)?;
+  normalize_ip_addr(&mut addr)?;
   op_net_connect_tcp_inner::<NP>(state, addr).await
 }
 
@@ -403,7 +403,7 @@ pub fn op_net_listen_tcp<NP>(
 where
   NP: NetPermissions + 'static,
 {
-  process_ip_addr(&mut addr)?;
+  normalize_ip_addr(&mut addr)?;
   if reuse_port {
     super::check_unstable(state, "Deno.listen({ reusePort: true })");
   }
@@ -506,7 +506,7 @@ pub fn op_net_listen_udp<NP>(
 where
   NP: NetPermissions + 'static,
 {
-  process_ip_addr(&mut addr)?;
+  normalize_ip_addr(&mut addr)?;
   super::check_unstable(state, "Deno.listenDatagram");
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
@@ -522,7 +522,7 @@ pub fn op_node_unstable_net_listen_udp<NP>(
 where
   NP: NetPermissions + 'static,
 {
-  process_ip_addr(&mut addr)?;
+  normalize_ip_addr(&mut addr)?;
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
@@ -1161,7 +1161,7 @@ mod tests {
       hostname: "https://192.0.2.1/".to_string(),
       port: 80,
     };
-    process_ip_addr(&mut ip_addr).unwrap();
+    normalize_ip_addr(&mut ip_addr).unwrap();
     assert_eq!(ip_addr.hostname, "192.0.2.1");
     assert_eq!(ip_addr.port, 80);
 
@@ -1169,7 +1169,7 @@ mod tests {
       hostname: "https://golang.org/".to_string(),
       port: 80,
     };
-    process_ip_addr(&mut ip_addr).unwrap();
+    normalize_ip_addr(&mut ip_addr).unwrap();
     assert_eq!(ip_addr.hostname, "golang.org");
     assert_eq!(ip_addr.port, 80);
 
@@ -1177,7 +1177,7 @@ mod tests {
       hostname: "https://192.0.2.1:90/".to_string(),
       port: 0,
     };
-    process_ip_addr(&mut ip_addr).unwrap();
+    normalize_ip_addr(&mut ip_addr).unwrap();
     assert_eq!(ip_addr.hostname, "192.0.2.1");
     assert_eq!(ip_addr.port, 90);
 
@@ -1185,7 +1185,7 @@ mod tests {
       hostname: "[::1]:".to_string(),
       port: 80,
     };
-    let result = process_ip_addr(&mut ip_addr);
+    let result = normalize_ip_addr(&mut ip_addr);
     assert!(result.is_err());
   }
 }
