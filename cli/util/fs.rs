@@ -32,6 +32,12 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
 
+/// Writes the file to the file system at a temporary path, then
+/// renames it to the destination in a single sys call in order
+/// to never leave the file system in a corrupted state.
+///
+/// This also handles creating the directory if a NotFound error
+/// occurs.
 pub fn atomic_write_file_with_retries<T: AsRef<[u8]>>(
   file_path: &Path,
   data: T,
@@ -60,7 +66,7 @@ pub fn atomic_write_file_with_retries<T: AsRef<[u8]>>(
 ///
 /// This also handles creating the directory if a NotFound error
 /// occurs.
-pub fn atomic_write_file<T: AsRef<[u8]>>(
+fn atomic_write_file<T: AsRef<[u8]>>(
   file_path: &Path,
   data: T,
   mode: u32,

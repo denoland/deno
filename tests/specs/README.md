@@ -26,6 +26,13 @@ Or just the following, though it might run other tests:
 cargo test test_name
 ```
 
+To run showing the output of every test use `-- --nocapture` (note: this will
+cause tests to run sequentially instead of in parallel):
+
+```
+cargo test test_name -- --nocapture
+```
+
 ## `__test__.json` file
 
 This file describes the test(s) to execute and the steps to execute. A basic

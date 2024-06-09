@@ -38,7 +38,6 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fs_util::specifier_to_file_path;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -247,12 +246,7 @@ impl LspResolver {
     let node_resolver = self.node_resolver.as_ref()?;
     Some(NodeResolution::into_specifier_and_media_type(
       node_resolver
-        .resolve_req_reference(
-          req_ref,
-          &PermissionsContainer::allow_all(),
-          referrer,
-          NodeResolutionMode::Types,
-        )
+        .resolve_req_reference(req_ref, referrer, NodeResolutionMode::Types)
         .ok(),
     ))
   }
@@ -282,8 +276,10 @@ impl LspResolver {
     let Some(node_resolver) = self.node_resolver.as_ref() else {
       return Ok(None);
     };
-    node_resolver
-      .get_closest_package_json(referrer, &PermissionsContainer::allow_all())
+    node_resolver.get_closest_package_json(
+      referrer,
+      &mut deno_runtime::deno_node::AllowAllNodePermissions,
+    )
   }
 
   pub fn resolve_redirects(
