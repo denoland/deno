@@ -193,26 +193,8 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
 
-  for package_name in add_flags.packages.iter() {
-    let req = if package_name.starts_with("npm:") {
-      let pkg_req = NpmPackageReqReference::from_str(&format!(
-        "npm:{}",
-        package_name.strip_prefix("npm:").unwrap_or(package_name)
-      ))
-      .with_context(|| {
-        format!("Failed to parse package required: {}", package_name)
-      })?;
-      AddPackageReq::Npm(pkg_req)
-    } else {
-      let pkg_req = JsrPackageReqReference::from_str(&format!(
-        "jsr:{}",
-        package_name.strip_prefix("jsr:").unwrap_or(package_name)
-      ))
-      .with_context(|| {
-        format!("Failed to parse package required: {}", package_name)
-      })?;
-      AddPackageReq::Jsr(pkg_req)
-    };
+  for entry_text in add_flags.packages.iter() {
+    let req = AddPackageReq::parse(entry_text)?;
 
     package_reqs.push(req);
   }
@@ -351,8 +333,8 @@ async fn find_package_and_select_version_for_req(
   npm_resolver: Arc<NpmFetchResolver>,
   add_package_req: AddPackageReq,
 ) -> Result<PackageAndVersion, AnyError> {
-  match add_package_req {
-    AddPackageReq::Jsr(pkg_ref) => {
+  match add_package_req.value {
+    AddPackageReqValue::Jsr(pkg_ref) => {
       let req = pkg_ref.req();
       let jsr_prefixed_name = format!("jsr:{}", &req.name);
       let Some(nv) = jsr_resolver.req_to_nv(req).await else {
@@ -364,12 +346,12 @@ async fn find_package_and_select_version_for_req(
         '^'
       };
       Ok(PackageAndVersion::Selected(SelectedPackage {
-        import_name: req.name.to_string(),
+        import_name: add_package_req.alias,
         package_name: jsr_prefixed_name,
         version_req: format!("{}{}", range_symbol, &nv.version),
       }))
     }
-    AddPackageReq::Npm(pkg_ref) => {
+    AddPackageReqValue::Npm(pkg_ref) => {
       let req = pkg_ref.req();
       let npm_prefixed_name = format!("npm:{}", &req.name);
       let Some(nv) = npm_resolver.req_to_nv(req).await else {
@@ -381,7 +363,7 @@ async fn find_package_and_select_version_for_req(
         '^'
       };
       Ok(PackageAndVersion::Selected(SelectedPackage {
-        import_name: req.name.to_string(),
+        import_name: add_package_req.alias,
         package_name: npm_prefixed_name,
         version_req: format!("{}{}", range_symbol, &nv.version),
       }))
@@ -389,9 +371,69 @@ async fn find_package_and_select_version_for_req(
   }
 }
 
-enum AddPackageReq {
+enum AddPackageReqValue {
   Jsr(JsrPackageReqReference),
   Npm(NpmPackageReqReference),
+}
+
+struct AddPackageReq {
+  alias: String,
+  value: AddPackageReqValue,
+}
+
+impl AddPackageReq {
+  pub fn parse(entry_text: &str) -> Result<Self, AnyError> {
+    // parse the following:
+    // - alias@npm:<package_name>
+    // - other_alias@npm:<package_name>
+    // - @alias/other@jsr:<package_name>
+    fn parse_alias(entry_text: &str) -> Option<(&str, &str)> {
+      for prefix in ["npm:", "jsr:"] {
+        let Some(location) = entry_text.find(prefix) else {
+          continue;
+        };
+        if location == 0 {
+          continue;
+        }
+        let prefix = &entry_text[..location];
+        if let Some(alias) = prefix.strip_suffix('@') {
+          return Some((alias, &entry_text[location..]));
+        }
+      }
+      None
+    }
+
+    let (maybe_alias, entry_text) = parse_alias(entry_text)
+      .map(|(alias, text)| (Some(alias.to_string()), text))
+      .unwrap_or((None, entry_text));
+    if entry_text.starts_with("npm:") {
+      let pkg_req_ref = NpmPackageReqReference::from_str(&format!(
+        "npm:{}",
+        entry_text.strip_prefix("npm:").unwrap_or(entry_text)
+      ))
+      .with_context(|| {
+        format!("Failed to parse package required: {}", entry_text)
+      })?;
+      Ok(AddPackageReq {
+        alias: maybe_alias
+          .unwrap_or_else(|| pkg_req_ref.req().name.to_string()),
+        value: AddPackageReqValue::Npm(pkg_req_ref),
+      })
+    } else {
+      let pkg_req_ref = JsrPackageReqReference::from_str(&format!(
+        "jsr:{}",
+        entry_text.strip_prefix("jsr:").unwrap_or(entry_text)
+      ))
+      .with_context(|| {
+        format!("Failed to parse package required: {}", entry_text)
+      })?;
+      Ok(AddPackageReq {
+        alias: maybe_alias
+          .unwrap_or_else(|| pkg_req_ref.req().name.to_string()),
+        value: AddPackageReqValue::Jsr(pkg_req_ref),
+      })
+    }
+  }
 }
 
 fn generate_imports(packages_to_version: Vec<(String, String)>) -> String {
