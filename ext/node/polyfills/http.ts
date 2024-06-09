@@ -756,9 +756,11 @@ class ClientRequest extends OutgoingMessage {
           {
             incoming._bodyRid = res.responseRid;
           }
+          console.log("response", incoming);
           this.emit("response", incoming);
         }
       } catch (err) {
+        console.log("fetch failed", err);
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
         }
@@ -1717,7 +1719,10 @@ export class ServerImpl extends EventEmitter {
     if (this.#unref) {
       this.#server.unref();
     }
-    this.#server.finished.then(() => this.#serveDeferred!.resolve());
+    this.#server.finished.then(() => {
+      console.log("server finished, resolving serveDeferred");
+      this.#serveDeferred!.resolve();
+    });
   }
 
   setTimeout() {
@@ -1754,8 +1759,11 @@ export class ServerImpl extends EventEmitter {
     }
 
     if (listening && this.#ac) {
-      this.#ac.abort();
-      this.#ac = undefined;
+      console.log("shutting down the server");
+      this.#server.shutdown();
+      // TODO(bartlomieju): this should be called for `Server.closeAllConnections()`
+      // this.#ac.abort();
+      // this.#ac = undefined;
     } else {
       this.#serveDeferred!.resolve();
     }

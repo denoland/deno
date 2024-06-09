@@ -49,5 +49,5 @@ server.listen(0, function() {
   const testURL = url.parse(`http://localhost:${this.address().port}/asdf`);
 
   // make the request
-  setTimeout(() => http.request(testURL).end(), 10);
+  http.request(testURL).end();
 });
