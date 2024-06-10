@@ -160,7 +160,7 @@ pub fn graph_valid(
   if let Some(error) = errors.next() {
     Err(error)
   } else {
-    // finally, surface the npm resolution result
+    // finally surface the npm resolution result
     if let Err(err) = &graph.npm_dep_graph_result {
       return Err(custom_error(get_error_class_name(err), format!("{}", err)));
     }
