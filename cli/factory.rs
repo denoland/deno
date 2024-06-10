@@ -35,7 +35,6 @@ use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
-use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::resolver::CjsResolutionStore;
 use crate::resolver::CliGraphResolver;
@@ -441,10 +440,8 @@ impl CliFactory {
             cache_setting: self.options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
             maybe_node_modules_path: self.options.node_modules_dir_path().cloned(),
-            package_json_installer:
-              CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
+            package_json_deps_provider:
                 self.package_json_deps_provider().clone(),
-              ),
             npm_system_info: self.options.npm_system_info(),
             npmrc: self.options.npmrc().clone()
           })

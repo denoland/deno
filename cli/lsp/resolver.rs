@@ -12,7 +12,6 @@ use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
-use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::ManagedCliNpmResolver;
 use crate::resolver::CliGraphResolver;
@@ -347,9 +346,11 @@ async fn create_npm_resolver(
       cache_setting: CacheSetting::Only,
       text_only_progress_bar: ProgressBar::new(ProgressBarStyle::TextOnly),
       maybe_node_modules_path: config_data.node_modules_dir.clone(),
-      // do not install while resolving in the lsp—leave that to the cache command
-      package_json_installer:
-        CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
+      package_json_deps_provider: Arc::new(PackageJsonDepsProvider::new(
+        config_data.package_json.as_ref().map(|package_json| {
+          package_json::get_local_package_json_version_reqs(package_json)
+        }),
+      )),
       npmrc: config_data
         .npmrc
         .clone()

@@ -12868,14 +12868,10 @@ fn lsp_uses_lockfile_for_npm_initialization() {
   client.initialize_default();
   let mut skipping_count = 0;
   client.wait_until_stderr_line(|line| {
-    if line.contains("Skipping pending npm resolution.") {
+    if line.contains("Skipping npm resolution.") {
       skipping_count += 1;
     }
-    assert!(
-      !line.contains("Running pending npm resolution."),
-      "Line: {}",
-      line
-    );
+    assert!(!line.contains("Running npm resolution."), "Line: {}", line);
     line.contains("Server ready.")
   });
   assert_eq!(skipping_count, 1);
