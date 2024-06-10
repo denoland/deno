@@ -37,6 +37,19 @@ where
   }
 }
 
+impl<'s, T> From<Option<v8::Local<'s, T>>> for napi_value<'s>
+where
+  v8::Local<'s, T>: Into<v8::Local<'s, v8::Value>>,
+{
+  fn from(v: Option<v8::Local<'s, T>>) -> Self {
+    if let Some(v) = v {
+      NapiValue::from(v)
+    } else {
+      Self(None, std::marker::PhantomData)
+    }
+  }
+}
+
 const _: () = {
   assert!(
     std::mem::size_of::<napi_value>() == std::mem::size_of::<*mut c_void>()
