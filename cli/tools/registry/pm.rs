@@ -551,11 +551,20 @@ mod test {
       }
     );
     assert_eq!(
-      AddPackageReq::parse("@alias/pkg@tag").unwrap(),
+      AddPackageReq::parse("alias@jsr:foo@^1.5.0").unwrap(),
       AddPackageReq {
-        alias: "@alias/pkg".to_string(),
+        alias: "alias".to_string(),
+        value: AddPackageReqValue::Jsr(
+          PackageReq::from_str("foo@^1.5.0").unwrap()
+        )
+      }
+    );
+    assert_eq!(
+      AddPackageReq::parse("@scope/pkg@tag").unwrap(),
+      AddPackageReq {
+        alias: "@scope/pkg".to_string(),
         value: AddPackageReqValue::Jsr(PackageReq {
-          name: "@alias/pkg".to_string(),
+          name: "@scope/pkg".to_string(),
           // this is a tag
           version_req: VersionReq::parse_from_specifier("tag").unwrap(),
         }),
