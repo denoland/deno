@@ -1,10 +1,14 @@
 # deno_fetch
+
 **This crate implements the Fetch API.**
 
 Spec: https://fetch.spec.whatwg.org/
 
 ## Usage Example
-From javascript, include the extension's source, and assign the following properties to the global scope:
+
+From javascript, include the extension's source, and assign the following
+properties to the global scope:
+
 ```javascript
 import * as headers from "ext:deno_fetch/20_headers.js";
 import * as formData from "ext:deno_fetch/21_formdata.js";
@@ -52,23 +56,28 @@ Object.defineProperty(globalThis, "FormData", {
 });
 ```
 
-Then from rust, provide `deno_fetch::deno_fetch::init_ops_and_esm<Permissions>(Default::default())` in the `extensions` field of your `RuntimeOptions`
+Then from rust, provide
+`deno_fetch::deno_fetch::init_ops_and_esm<Permissions>(Default::default())`
+in the `extensions` field of your `RuntimeOptions`
 
 Where: 
+
 - Permissions: a struct implementing `deno_fetch::FetchPermissions`
 - Options: `deno_fetch::Options`, which implements `Default`
 
 ## Dependencies
+
 - **deno_webidl**: Provided by the `deno_webidl` crate
 - **deno_web**: Provided by the `deno_web` crate
 - **deno_url**: Provided by the `deno_url` crate
 - **deno_console**: Provided by the `deno_console` crate
 
 ## Provided ops
+
 Following ops are provided, which can be accessed through `Deno.ops`:
 
-- op_fetch,
-- op_fetch_send,
-- op_fetch_response_upgrade,
-- op_utf8_to_byte_string,
-- op_fetch_custom_client,
+- op_fetch
+- op_fetch_send
+- op_fetch_response_upgrade
+- op_utf8_to_byte_string
+- op_fetch_custom_client
