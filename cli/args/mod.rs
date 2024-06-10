@@ -47,13 +47,13 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_runtime::permissions::PermissionsOptions;
 use deno_terminal::colors;
 use dotenvy::from_filename;
 use once_cell::sync::Lazy;
@@ -197,7 +197,7 @@ pub fn ts_config_to_transpile_and_emit_options(
     },
     deno_ast::EmitOptions {
       inline_sources: options.inline_sources,
-      keep_comments: true,
+      remove_comments: false,
       source_map,
       source_map_file: None,
     },
@@ -619,6 +619,7 @@ pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
       config: Default::default(),
     },
     scopes: Default::default(),
+    registry_configs: Default::default(),
   })
 }
 

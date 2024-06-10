@@ -31,8 +31,8 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::PollEventLoopOptions;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::WorkerExecutionMode;
 use indexmap::IndexMap;
@@ -506,14 +506,14 @@ pub async fn run_benchmarks_with_watch(
         let bench_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
           let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
-          let mut result = Vec::new();
+          let mut result = IndexSet::with_capacity(bench_modules.len());
           for bench_module_specifier in bench_modules {
             if has_graph_root_local_dependent_changed(
               &graph,
               bench_module_specifier,
               &changed_paths,
             ) {
-              result.push(bench_module_specifier.clone());
+              result.insert(bench_module_specifier.clone());
             }
           }
           result

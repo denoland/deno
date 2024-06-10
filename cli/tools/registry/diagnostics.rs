@@ -40,11 +40,7 @@ impl PublishDiagnosticsCollector {
     diagnostics.sort_by_cached_key(|d| d.sorting_key());
 
     for diagnostic in diagnostics {
-      // todo(https://github.com/denoland/deno_ast/issues/245): use log crate here
-      #[allow(clippy::print_stderr)]
-      {
-        eprint!("{}", diagnostic.display());
-      }
+      log::error!("{}", diagnostic.display());
       if matches!(diagnostic.level(), DiagnosticLevel::Error) {
         errors += 1;
       }
@@ -287,7 +283,7 @@ impl Diagnostic for PublishDiagnostic {
 
       Some(DiagnosticSnippet {
         source: Cow::Borrowed(text_info),
-        highlight: DiagnosticSnippetHighlight {
+        highlights: vec![DiagnosticSnippetHighlight {
           style: DiagnosticSnippetHighlightStyle::Error,
           range: DiagnosticSourceRange {
             start: DiagnosticSourcePos::LineAndCol {
@@ -300,7 +296,7 @@ impl Diagnostic for PublishDiagnostic {
             },
           },
           description: Some("the specifier".into()),
-        },
+        }],
       })
     }
 
@@ -314,14 +310,14 @@ impl Diagnostic for PublishDiagnostic {
           ..
         } => Some(DiagnosticSnippet {
           source: Cow::Borrowed(text_info),
-          highlight: DiagnosticSnippetHighlight {
+          highlights: vec![DiagnosticSnippetHighlight {
             style: DiagnosticSnippetHighlightStyle::Warning,
             range: DiagnosticSourceRange {
               start: DiagnosticSourcePos::SourcePos(range.start),
               end: DiagnosticSourcePos::SourcePos(range.end),
             },
             description: Some("the unanalyzable dynamic import".into()),
-          },
+          }],
         }),
       },
       InvalidPath { .. } => None,
@@ -343,14 +339,14 @@ impl Diagnostic for PublishDiagnostic {
         range, text_info, ..
       } => Some(DiagnosticSnippet {
         source: Cow::Borrowed(text_info),
-        highlight: DiagnosticSnippetHighlight {
+        highlights: vec![DiagnosticSnippetHighlight {
           style: DiagnosticSnippetHighlightStyle::Error,
           range: DiagnosticSourceRange {
             start: DiagnosticSourcePos::SourcePos(range.start),
             end: DiagnosticSourcePos::SourcePos(range.end),
           },
           description: Some("the triple slash directive".into()),
-        },
+        }],
       }),
     }
   }
@@ -398,14 +394,14 @@ impl Diagnostic for PublishDiagnostic {
             let end = replacement.line_end(0);
             Some(DiagnosticSnippet {
               source: Cow::Owned(replacement),
-              highlight: DiagnosticSnippetHighlight {
+              highlights: vec![DiagnosticSnippetHighlight {
                 style: DiagnosticSnippetHighlightStyle::Hint,
                 range: DiagnosticSourceRange {
                   start: DiagnosticSourcePos::SourcePos(start),
                   end: DiagnosticSourcePos::SourcePos(end),
                 },
                 description: Some("try this specifier".into()),
-              },
+              }],
             })
           }
           None => None,

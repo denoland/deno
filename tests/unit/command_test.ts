@@ -269,8 +269,6 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  // deno lint bug, see https://github.com/denoland/deno_lint/issues/1206
-  // deno-lint-ignore require-await
   async function childProcessExplicitResourceManagement() {
     let dead = undefined;
     {

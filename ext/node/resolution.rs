@@ -154,7 +154,6 @@ impl NodeResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-    permissions: &dyn NodePermissions,
   ) -> Result<Option<NodeResolution>, AnyError> {
     // Note: if we are here, then the referrer is an esm module
     // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
@@ -187,13 +186,8 @@ impl NodeResolver {
       }
     }
 
-    let url = self.module_resolve(
-      specifier,
-      referrer,
-      DEFAULT_CONDITIONS,
-      mode,
-      permissions,
-    )?;
+    let url =
+      self.module_resolve(specifier, referrer, DEFAULT_CONDITIONS, mode)?;
     let url = match url {
       Some(url) => url,
       None => return Ok(None),
@@ -204,12 +198,8 @@ impl NodeResolver {
         let path = url.to_file_path().unwrap();
         // todo(16370): the module kind is not correct here. I think we need
         // typescript to tell us if the referrer is esm or cjs
-        let maybe_decl_url = self.path_to_declaration_url(
-          path,
-          referrer,
-          NodeModuleKind::Esm,
-          permissions,
-        )?;
+        let maybe_decl_url =
+          self.path_to_declaration_url(path, referrer, NodeModuleKind::Esm)?;
         match maybe_decl_url {
           Some(url) => url,
           None => return Ok(None),
@@ -229,7 +219,6 @@ impl NodeResolver {
     referrer: &ModuleSpecifier,
     conditions: &[&str],
     mode: NodeResolutionMode,
-    permissions: &dyn NodePermissions,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     // note: if we're here, the referrer is an esm module
     let url = if should_be_treated_as_relative_or_absolute_path(specifier) {
@@ -242,13 +231,13 @@ impl NodeResolver {
           file_path,
           referrer,
           NodeModuleKind::Esm,
-          permissions,
         )?
       } else {
         Some(resolved_specifier)
       }
     } else if specifier.starts_with('#') {
-      let pkg_config = self.get_closest_package_json(referrer, permissions)?;
+      let pkg_config = self
+        .get_closest_package_json(referrer, &mut AllowAllNodePermissions)?;
       Some(self.package_imports_resolve(
         specifier,
         referrer,
@@ -256,7 +245,6 @@ impl NodeResolver {
         pkg_config.as_deref(),
         conditions,
         mode,
-        permissions,
       )?)
     } else if let Ok(resolved) = Url::parse(specifier) {
       Some(resolved)
@@ -267,7 +255,6 @@ impl NodeResolver {
         NodeModuleKind::Esm,
         conditions,
         mode,
-        permissions,
       )?
     };
     Ok(match url {
@@ -337,11 +324,12 @@ impl NodeResolver {
     package_subpath: Option<&str>,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-    permissions: &dyn NodePermissions,
   ) -> Result<Option<NodeResolution>, AnyError> {
     let package_json_path = package_dir.join("package.json");
-    let package_json =
-      self.load_package_json(permissions, package_json_path.clone())?;
+    let package_json = self.load_package_json(
+      &mut AllowAllNodePermissions,
+      package_json_path.clone(),
+    )?;
     let node_module_kind = NodeModuleKind::Esm;
     let package_subpath = package_subpath
       .map(|s| format!("./{s}"))
@@ -354,7 +342,6 @@ impl NodeResolver {
         node_module_kind,
         DEFAULT_CONDITIONS,
         mode,
-        permissions,
       )
       .with_context(|| {
         format!(
@@ -376,7 +363,6 @@ impl NodeResolver {
             path,
             referrer,
             node_module_kind,
-            permissions,
           )? {
             Some(url) => url,
             None => return Ok(None),
@@ -397,8 +383,10 @@ impl NodeResolver {
     package_folder: &Path,
   ) -> Result<Vec<String>, AnyError> {
     let package_json_path = package_folder.join("package.json");
-    let package_json = self
-      .load_package_json(&AllowAllNodePermissions, package_json_path.clone())?;
+    let package_json = self.load_package_json(
+      &mut AllowAllNodePermissions,
+      package_json_path.clone(),
+    )?;
 
     Ok(match &package_json.bin {
       Some(Value::String(_)) => {
@@ -420,8 +408,10 @@ impl NodeResolver {
     sub_path: Option<&str>,
   ) -> Result<NodeResolution, AnyError> {
     let package_json_path = package_folder.join("package.json");
-    let package_json = self
-      .load_package_json(&AllowAllNodePermissions, package_json_path.clone())?;
+    let package_json = self.load_package_json(
+      &mut AllowAllNodePermissions,
+      package_json_path.clone(),
+    )?;
     let bin_entry = resolve_bin_entry_value(&package_json, sub_path)?;
     let url = to_file_specifier(&package_folder.join(bin_entry));
 
@@ -440,7 +430,7 @@ impl NodeResolver {
       Ok(NodeResolution::Esm(url))
     } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
       let maybe_package_config =
-        self.get_closest_package_json(&url, &AllowAllNodePermissions)?;
+        self.get_closest_package_json(&url, &mut AllowAllNodePermissions)?;
       match maybe_package_config {
         Some(c) if c.typ == "module" => Ok(NodeResolution::Esm(url)),
         Some(_) => Ok(NodeResolution::CommonJs(url)),
@@ -467,7 +457,6 @@ impl NodeResolver {
     path: PathBuf,
     referrer: &ModuleSpecifier,
     referrer_kind: NodeModuleKind,
-    permissions: &dyn NodePermissions,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     fn probe_extensions(
       fs: &dyn deno_fs::FileSystem,
@@ -528,7 +517,7 @@ impl NodeResolver {
     if self.fs.is_dir_sync(&path) {
       let package_json_path = path.join("package.json");
       if let Ok(pkg_json) =
-        self.load_package_json(permissions, package_json_path)
+        self.load_package_json(&mut AllowAllNodePermissions, package_json_path)
       {
         let maybe_resolution = self.resolve_package_subpath(
           &pkg_json,
@@ -540,7 +529,6 @@ impl NodeResolver {
             NodeModuleKind::Cjs => REQUIRE_CONDITIONS,
           },
           NodeResolutionMode::Types,
-          permissions,
         )?;
         if let Some(resolution) = maybe_resolution {
           return Ok(Some(resolution));
@@ -572,7 +560,6 @@ impl NodeResolver {
     referrer_pkg_json: Option<&PackageJson>,
     conditions: &[&str],
     mode: NodeResolutionMode,
-    permissions: &dyn NodePermissions,
   ) -> Result<ModuleSpecifier, AnyError> {
     if name == "#" || name.starts_with("#/") || name.ends_with('/') {
       let reason = "is not a valid internal imports specifier name";
@@ -601,7 +588,6 @@ impl NodeResolver {
               true,
               conditions,
               mode,
-              permissions,
             )?;
             if let Some(resolved) = maybe_resolved {
               return Ok(resolved);
@@ -644,7 +630,6 @@ impl NodeResolver {
                 true,
                 conditions,
                 mode,
-                permissions,
               )?;
               if let Some(resolved) = maybe_resolved {
                 return Ok(resolved);
@@ -675,7 +660,6 @@ impl NodeResolver {
     internal: bool,
     conditions: &[&str],
     mode: NodeResolutionMode,
-    permissions: &dyn NodePermissions,
   ) -> Result<ModuleSpecifier, AnyError> {
     if !subpath.is_empty() && !pattern && !target.ends_with('/') {
       return Err(throw_invalid_package_target(
@@ -715,7 +699,6 @@ impl NodeResolver {
               referrer_kind,
               conditions,
               mode,
-              permissions,
             ) {
               Ok(Some(url)) => Ok(url),
               Ok(None) => Err(generic_error("not found")),
@@ -804,7 +787,6 @@ impl NodeResolver {
     internal: bool,
     conditions: &[&str],
     mode: NodeResolutionMode,
-    permissions: &dyn NodePermissions,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     if let Some(target) = target.as_str() {
       let url = self.resolve_package_target_string(
@@ -818,16 +800,10 @@ impl NodeResolver {
         internal,
         conditions,
         mode,
-        permissions,
       )?;
       if mode.is_types() && url.scheme() == "file" {
         let path = url.to_file_path().unwrap();
-        return self.path_to_declaration_url(
-          path,
-          referrer,
-          referrer_kind,
-          permissions,
-        );
+        return self.path_to_declaration_url(path, referrer, referrer_kind);
       } else {
         return Ok(Some(url));
       }
@@ -849,7 +825,6 @@ impl NodeResolver {
           internal,
           conditions,
           mode,
-          permissions,
         );
 
         match resolved_result {
@@ -898,7 +873,6 @@ impl NodeResolver {
             internal,
             conditions,
             mode,
-            permissions,
           )?;
           match resolved {
             Some(resolved) => return Ok(Some(resolved)),
@@ -931,7 +905,6 @@ impl NodeResolver {
     referrer_kind: NodeModuleKind,
     conditions: &[&str],
     mode: NodeResolutionMode,
-    permissions: &dyn NodePermissions,
   ) -> Result<ModuleSpecifier, AnyError> {
     if package_exports.contains_key(package_subpath)
       && package_subpath.find('*').is_none()
@@ -949,7 +922,6 @@ impl NodeResolver {
         false,
         conditions,
         mode,
-        permissions,
       )?;
       return match resolved {
         Some(resolved) => Ok(resolved),
@@ -1009,7 +981,6 @@ impl NodeResolver {
         false,
         conditions,
         mode,
-        permissions,
       )?;
       if let Some(resolved) = maybe_resolved {
         return Ok(resolved);
@@ -1038,13 +1009,12 @@ impl NodeResolver {
     referrer_kind: NodeModuleKind,
     conditions: &[&str],
     mode: NodeResolutionMode,
-    permissions: &dyn NodePermissions,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     let (package_name, package_subpath, _is_scoped) =
       parse_npm_pkg_name(specifier, referrer)?;
 
     let Some(package_config) =
-      self.get_closest_package_json(referrer, permissions)?
+      self.get_closest_package_json(referrer, &mut AllowAllNodePermissions)?
     else {
       return Ok(None);
     };
@@ -1062,15 +1032,50 @@ impl NodeResolver {
             referrer_kind,
             conditions,
             mode,
-            permissions,
           )
           .map(Some);
       }
     }
 
+    let result = self.resolve_package_subpath_for_package(
+      &package_name,
+      &package_subpath,
+      referrer,
+      referrer_kind,
+      conditions,
+      mode,
+    );
+    if mode.is_types() && !matches!(result, Ok(Some(_))) {
+      // try to resolve with the @types/node package
+      let package_name = types_package_name(&package_name);
+      if let Ok(Some(result)) = self.resolve_package_subpath_for_package(
+        &package_name,
+        &package_subpath,
+        referrer,
+        referrer_kind,
+        conditions,
+        mode,
+      ) {
+        return Ok(Some(result));
+      }
+    }
+
+    result
+  }
+
+  #[allow(clippy::too_many_arguments)]
+  fn resolve_package_subpath_for_package(
+    &self,
+    package_name: &str,
+    package_subpath: &str,
+    referrer: &ModuleSpecifier,
+    referrer_kind: NodeModuleKind,
+    conditions: &[&str],
+    mode: NodeResolutionMode,
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
     let package_dir_path = self
       .npm_resolver
-      .resolve_package_folder_from_package(&package_name, referrer, mode)?;
+      .resolve_package_folder_from_package(package_name, referrer)?;
     let package_json_path = package_dir_path.join("package.json");
 
     // todo: error with this instead when can't find package
@@ -1087,16 +1092,15 @@ impl NodeResolver {
     // ))
 
     // Package match.
-    let package_json =
-      self.load_package_json(permissions, package_json_path)?;
+    let package_json = self
+      .load_package_json(&mut AllowAllNodePermissions, package_json_path)?;
     self.resolve_package_subpath(
       &package_json,
-      &package_subpath,
+      package_subpath,
       referrer,
       referrer_kind,
       conditions,
       mode,
-      permissions,
     )
   }
 
@@ -1109,7 +1113,6 @@ impl NodeResolver {
     referrer_kind: NodeModuleKind,
     conditions: &[&str],
     mode: NodeResolutionMode,
-    permissions: &dyn NodePermissions,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     if let Some(exports) = &package_json.exports {
       let result = self.package_exports_resolve(
@@ -1120,7 +1123,6 @@ impl NodeResolver {
         referrer_kind,
         conditions,
         mode,
-        permissions,
       );
       match result {
         Ok(found) => return Ok(Some(found)),
@@ -1131,7 +1133,6 @@ impl NodeResolver {
               referrer,
               referrer_kind,
               mode,
-              permissions,
             );
           }
           return Err(exports_err);
@@ -1144,18 +1145,12 @@ impl NodeResolver {
         referrer,
         referrer_kind,
         mode,
-        permissions,
       );
     }
 
     let file_path = package_json.path.parent().unwrap().join(package_subpath);
     if mode.is_types() {
-      self.path_to_declaration_url(
-        file_path,
-        referrer,
-        referrer_kind,
-        permissions,
-      )
+      self.path_to_declaration_url(file_path, referrer, referrer_kind)
     } else {
       Ok(Some(to_file_specifier(&file_path)))
     }
@@ -1164,7 +1159,7 @@ impl NodeResolver {
   pub fn get_closest_package_json(
     &self,
     url: &ModuleSpecifier,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
   ) -> Result<Option<Rc<PackageJson>>, AnyError> {
     let Ok(file_path) = url.to_file_path() else {
       return Ok(None);
@@ -1175,7 +1170,7 @@ impl NodeResolver {
   pub fn get_closest_package_json_from_path(
     &self,
     file_path: &Path,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
   ) -> Result<Option<Rc<PackageJson>>, AnyError> {
     let Some(package_json_path) =
       self.get_closest_package_json_path(file_path)?
@@ -1212,7 +1207,7 @@ impl NodeResolver {
 
   pub(super) fn load_package_json(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     package_json_path: PathBuf,
   ) -> Result<Rc<PackageJson>, AnyError> {
     PackageJson::load(
@@ -1229,7 +1224,6 @@ impl NodeResolver {
     referrer: &ModuleSpecifier,
     referrer_kind: NodeModuleKind,
     mode: NodeResolutionMode,
-    permissions: &dyn NodePermissions,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     let maybe_main = if mode.is_types() {
       match package_json.types.as_ref() {
@@ -1239,12 +1233,8 @@ impl NodeResolver {
           // a corresponding declaration file
           if let Some(main) = package_json.main(referrer_kind) {
             let main = package_json.path.parent().unwrap().join(main).clean();
-            let maybe_decl_url = self.path_to_declaration_url(
-              main,
-              referrer,
-              referrer_kind,
-              permissions,
-            )?;
+            let maybe_decl_url =
+              self.path_to_declaration_url(main, referrer, referrer_kind)?;
             if let Some(path) = maybe_decl_url {
               return Ok(Some(path));
             }
@@ -1646,6 +1636,14 @@ fn pattern_key_compare(a: &str, b: &str) -> i32 {
   0
 }
 
+/// Gets the corresponding @types package for the provided package name.
+fn types_package_name(package_name: &str) -> String {
+  debug_assert!(!package_name.starts_with("@types/"));
+  // Scoped packages will get two underscores for each slash
+  // https://github.com/DefinitelyTyped/DefinitelyTyped/tree/15f1ece08f7b498f4b9a2147c2a46e94416ca777#what-about-scoped-packages
+  format!("@types/{}", package_name.replace('/', "__"))
+}
+
 #[cfg(test)]
 mod tests {
   use deno_core::serde_json::json;
@@ -1825,5 +1823,14 @@ mod tests {
       let actual = with_known_extension(&PathBuf::from(path), ext);
       assert_eq!(actual.to_string_lossy(), *expected);
     }
+  }
+
+  #[test]
+  fn test_types_package_name() {
+    assert_eq!(types_package_name("name"), "@types/name");
+    assert_eq!(
+      types_package_name("@scoped/package"),
+      "@types/@scoped__package"
+    );
   }
 }

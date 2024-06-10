@@ -12,19 +12,18 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
-use deno_core::unsync::spawn;
+use deno_core::futures::StreamExt;
 use deno_core::url::Url;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeResolutionMode;
 
-use super::super::cache::NpmCache;
+use crate::npm::managed::cache::TarballCache;
 
 /// Part of the resolution that interacts with the file system.
-#[async_trait]
+#[async_trait(?Send)]
 pub trait NpmPackageFsResolver: Send + Sync {
   /// Specifier for the root directory.
   fn root_dir_url(&self) -> &Url;
@@ -41,7 +40,6 @@ pub trait NpmPackageFsResolver: Send + Sync {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_cache_folder_id_from_specifier(
@@ -53,7 +51,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
 
   fn ensure_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
 }
@@ -76,7 +74,7 @@ impl RegistryReadPermissionChecker {
 
   pub fn ensure_registry_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     // allow reading if it's in the node_modules
@@ -126,20 +124,19 @@ impl RegistryReadPermissionChecker {
 /// Caches all the packages in parallel.
 pub async fn cache_packages(
   packages: Vec<NpmResolutionPackage>,
-  cache: &Arc<NpmCache>,
+  tarball_cache: &Arc<TarballCache>,
 ) -> Result<(), AnyError> {
-  let mut handles = Vec::with_capacity(packages.len());
+  let mut futures_unordered = futures::stream::FuturesUnordered::new();
   for package in packages {
-    let cache = cache.clone();
-    let handle = spawn(async move {
-      cache.ensure_package(&package.id.nv, &package.dist).await
+    futures_unordered.push(async move {
+      tarball_cache
+        .ensure_package(&package.id.nv, &package.dist)
+        .await
     });
-    handles.push(handle);
   }
-  let results = futures::future::join_all(handles).await;
-  for result in results {
+  while let Some(result) = futures_unordered.next().await {
     // surface the first error
-    result??;
+    result?;
   }
   Ok(())
 }

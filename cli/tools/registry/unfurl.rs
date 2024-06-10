@@ -121,16 +121,15 @@ impl<'a> SpecifierUnfurler<'a> {
   fn try_unfurl_dynamic_dep(
     &self,
     module_url: &lsp_types::Url,
-    parsed_source: &ParsedSource,
+    text_info: &SourceTextInfo,
     dep: &deno_graph::DynamicDependencyDescriptor,
     text_changes: &mut Vec<deno_ast::TextChange>,
   ) -> bool {
     match &dep.argument {
       deno_graph::DynamicArgument::String(specifier) => {
-        let range = to_range(parsed_source, &dep.argument_range);
-        let maybe_relative_index = parsed_source.text_info().text_str()
-          [range.start..range.end]
-          .find(specifier);
+        let range = to_range(text_info, &dep.argument_range);
+        let maybe_relative_index =
+          text_info.text_str()[range.start..range.end].find(specifier);
         let Some(relative_index) = maybe_relative_index else {
           return true; // always say it's analyzable for a string
         };
@@ -159,9 +158,9 @@ impl<'a> SpecifierUnfurler<'a> {
           let Some(unfurled) = unfurled else {
             return true; // nothing to unfurl
           };
-          let range = to_range(parsed_source, &dep.argument_range);
+          let range = to_range(text_info, &dep.argument_range);
           let maybe_relative_index =
-            parsed_source.text_info().text_str()[range.start..].find(specifier);
+            text_info.text_str()[range.start..].find(specifier);
           let Some(relative_index) = maybe_relative_index else {
             return false;
           };
@@ -192,6 +191,7 @@ impl<'a> SpecifierUnfurler<'a> {
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
   ) -> String {
     let mut text_changes = Vec::new();
+    let text_info = parsed_source.text_info_lazy();
     let module_info = ParserModuleAnalyzer::module_info(parsed_source);
     let analyze_specifier =
       |specifier: &str,
@@ -199,7 +199,7 @@ impl<'a> SpecifierUnfurler<'a> {
        text_changes: &mut Vec<deno_ast::TextChange>| {
         if let Some(unfurled) = self.unfurl_specifier(url, specifier) {
           text_changes.push(deno_ast::TextChange {
-            range: to_range(parsed_source, range),
+            range: to_range(text_info, range),
             new_text: unfurled,
           });
         }
@@ -214,27 +214,19 @@ impl<'a> SpecifierUnfurler<'a> {
           );
         }
         DependencyDescriptor::Dynamic(dep) => {
-          let success = self.try_unfurl_dynamic_dep(
-            url,
-            parsed_source,
-            dep,
-            &mut text_changes,
-          );
+          let success =
+            self.try_unfurl_dynamic_dep(url, text_info, dep, &mut text_changes);
 
           if !success {
-            let start_pos = parsed_source
-              .text_info()
-              .line_start(dep.argument_range.start.line)
+            let start_pos = text_info.line_start(dep.argument_range.start.line)
               + dep.argument_range.start.character;
-            let end_pos = parsed_source
-              .text_info()
-              .line_start(dep.argument_range.end.line)
+            let end_pos = text_info.line_start(dep.argument_range.end.line)
               + dep.argument_range.end.character;
             diagnostic_reporter(
               SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport {
                 specifier: url.to_owned(),
                 range: SourceRange::new(start_pos, end_pos),
-                text_info: parsed_source.text_info().clone(),
+                text_info: text_info.clone(),
               },
             );
           }
@@ -267,10 +259,8 @@ impl<'a> SpecifierUnfurler<'a> {
       );
     }
 
-    let rewritten_text = deno_ast::apply_text_changes(
-      parsed_source.text_info().text_str(),
-      text_changes,
-    );
+    let rewritten_text =
+      deno_ast::apply_text_changes(text_info.text_str(), text_changes);
     rewritten_text
   }
 }
@@ -295,13 +285,13 @@ fn relative_url(
 }
 
 fn to_range(
-  parsed_source: &ParsedSource,
+  text_info: &SourceTextInfo,
   range: &deno_graph::PositionRange,
 ) -> std::ops::Range<usize> {
   let mut range = range
-    .as_source_range(parsed_source.text_info())
-    .as_byte_range(parsed_source.text_info().range().start);
-  let text = &parsed_source.text_info().text_str()[range.clone()];
+    .as_source_range(text_info)
+    .as_byte_range(text_info.range().start);
+  let text = &text_info.text_str()[range.clone()];
   if text.starts_with('"') || text.starts_with('\'') {
     range.start += 1;
   }
@@ -338,7 +328,7 @@ mod tests {
       capture_tokens: false,
       maybe_syntax: None,
       scope_analysis: false,
-      text_info: deno_ast::SourceTextInfo::new(source_code.into()),
+      text: source_code.into(),
     })
     .unwrap()
   }
