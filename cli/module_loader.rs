@@ -68,7 +68,7 @@ use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 
 pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
@@ -104,7 +104,7 @@ pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
         &roots,
         false,
         factory.cli_options().ts_type_lib_window(),
-        deno_runtime::permissions::PermissionsContainer::allow_all(),
+        deno_runtime::deno_permissions::PermissionsContainer::allow_all(),
       )
       .await?;
   }
@@ -348,18 +348,12 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-    is_dynamic: bool,
     requested_module_type: RequestedModuleType,
   ) -> Result<ModuleSource, AnyError> {
-    let permissions = if is_dynamic {
-      &self.dynamic_permissions
-    } else {
-      &self.root_permissions
-    };
     let code_source = if let Some(result) = self
       .shared
       .npm_module_loader
-      .load_if_in_npm_package(specifier, maybe_referrer, permissions)
+      .load_if_in_npm_package(specifier, maybe_referrer)
       .await
     {
       result?
@@ -448,19 +442,11 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-    kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
-    let permissions = if matches!(kind, ResolutionKind::DynamicImport) {
-      &self.dynamic_permissions
-    } else {
-      &self.root_permissions
-    };
-
     if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
       specifier,
       referrer,
       NodeResolutionMode::Execution,
-      permissions,
     ) {
       return match result? {
         Some(res) => Ok(res.into_url()),
@@ -505,7 +491,6 @@ impl<TGraphContainer: ModuleGraphContainer>
           .node_resolver
           .resolve_req_reference(
             &reference,
-            permissions,
             referrer,
             NodeResolutionMode::Execution,
           )
@@ -530,7 +515,6 @@ impl<TGraphContainer: ModuleGraphContainer>
             module.nv_reference.sub_path(),
             referrer,
             NodeResolutionMode::Execution,
-            permissions,
           )
           .with_context(|| {
             format!("Could not resolve '{}'.", module.nv_reference)
@@ -720,7 +704,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &str,
     referrer: &str,
-    kind: ResolutionKind,
+    _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
     fn ensure_not_jsr_non_jsr_remote_import(
       specifier: &ModuleSpecifier,
@@ -736,7 +720,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     }
 
     let referrer = self.0.resolve_referrer(referrer)?;
-    let specifier = self.0.inner_resolve(specifier, &referrer, kind)?;
+    let specifier = self.0.inner_resolve(specifier, &referrer)?;
     ensure_not_jsr_non_jsr_remote_import(&specifier, &referrer)?;
     Ok(specifier)
   }
@@ -745,7 +729,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-    is_dynamic: bool,
+    _is_dynamic: bool,
     requested_module_type: RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
     let inner = self.0.clone();
@@ -757,7 +741,6 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           .load_inner(
             &specifier,
             maybe_referrer.as_ref(),
-            is_dynamic,
             requested_module_type,
           )
           .await
