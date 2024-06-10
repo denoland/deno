@@ -837,7 +837,7 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
         let result = npm_resolver.add_package_reqs_raw(package_reqs).await;
 
         NpmResolvePkgReqsResult {
-          resolutions: result
+          results: result
             .results
             .into_iter()
             .map(|r| {
@@ -854,7 +854,7 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
               })
             })
             .collect(),
-          dependencies: match top_level_result {
+          dep_graph_result: match top_level_result {
             Ok(()) => result.dependencies_result.map_err(Arc::new),
             Err(err) => Err(Arc::new(err)),
           },
@@ -865,11 +865,11 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
           "npm specifiers were requested; but --no-npm is specified"
         ));
         NpmResolvePkgReqsResult {
-          resolutions: package_reqs
+          results: package_reqs
             .iter()
             .map(|_| Err(NpmLoadError::RegistryInfo(err.clone())))
             .collect(),
-          dependencies: Err(err),
+          dep_graph_result: Err(err),
         }
       }
     }

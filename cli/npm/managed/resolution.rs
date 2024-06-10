@@ -101,7 +101,7 @@ impl NpmResolution {
 
     AddPkgReqsResult {
       results: result.results,
-      dependencies_result: match result.dependencies_result {
+      dependencies_result: match result.dep_graph_result {
         Ok(snapshot) => {
           *snapshot_lock.write() = snapshot;
           Ok(())
@@ -138,7 +138,7 @@ impl NpmResolution {
       },
     )
     .await
-    .dependencies_result?;
+    .into_result()?;
 
     *snapshot_lock.write() = snapshot;
 
@@ -276,7 +276,7 @@ async fn add_package_reqs_to_snapshot(
         .iter()
         .map(|req| Ok(snapshot.package_reqs().get(req).unwrap().clone()))
         .collect(),
-      dependencies_result: Ok(snapshot),
+      dep_graph_result: Ok(snapshot),
     };
   }
   log::debug!(
@@ -286,7 +286,7 @@ async fn add_package_reqs_to_snapshot(
   let pending_resolver = get_npm_pending_resolver(api);
   let result = pending_resolver.add_pkg_reqs(snapshot, package_reqs).await;
   api.clear_memory_cache();
-  let result = match &result.dependencies_result {
+  let result = match &result.dep_graph_result {
     Err(NpmResolutionError::Resolution(err)) if api.mark_force_reload() => {
       log::debug!("{err:#}");
       log::debug!("npm resolution failed. Trying again...");
@@ -300,7 +300,7 @@ async fn add_package_reqs_to_snapshot(
     _ => result,
   };
 
-  if let Ok(snapshot) = &result.dependencies_result {
+  if let Ok(snapshot) = &result.dep_graph_result {
     if let Some(lockfile_mutex) = maybe_lockfile {
       let mut lockfile = lockfile_mutex.lock();
       populate_lockfile_from_snapshot(&mut lockfile, snapshot);
