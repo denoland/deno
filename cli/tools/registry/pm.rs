@@ -419,17 +419,17 @@ impl AddPackageReq {
     let (maybe_prefix, entry_text) = parse_prefix(entry_text);
     let (prefix, maybe_alias, entry_text) = match maybe_prefix {
       Some(prefix) => (prefix, None, entry_text),
-      None => {
-        let (maybe_alias, entry_text) = parse_alias(entry_text)
-          .map(|(alias, text)| (Some(alias.to_string()), text))
-          .unwrap_or((None, entry_text));
-        let (maybe_prefix, entry_text) = if maybe_alias.is_some() {
-          parse_prefix(entry_text)
-        } else {
-          (None, entry_text)
-        };
-        (maybe_prefix.unwrap_or(Prefix::Jsr), maybe_alias, entry_text)
-      }
+      None => match parse_alias(entry_text) {
+        Some((alias, text)) => {
+          let (maybe_prefix, entry_text) = parse_prefix(text);
+          (
+            maybe_prefix.unwrap_or(Prefix::Jsr),
+            Some(alias.to_string()),
+            entry_text,
+          )
+        }
+        None => (Prefix::Jsr, None, entry_text),
+      },
     };
 
     match prefix {
