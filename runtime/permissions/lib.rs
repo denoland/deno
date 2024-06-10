@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+pub mod host;
+
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
@@ -16,9 +18,6 @@ use deno_core::url;
 use deno_core::url::ParseError;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_net::host::extract_host;
-use deno_net::host::split_host_port;
-use deno_net::host::Host;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -39,6 +38,9 @@ use prompter::permission_prompt;
 use prompter::PromptResponse;
 use prompter::PERMISSION_EMOJI;
 
+use crate::host::extract_host;
+use crate::host::split_host_port;
+use crate::host::Host;
 pub use prompter::set_prompt_callbacks;
 pub use prompter::PromptCallback;
 

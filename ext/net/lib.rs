@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-pub mod host;
 pub mod io;
 pub mod ops;
 pub mod ops_tls;
@@ -10,11 +9,12 @@ pub mod raw;
 pub mod resolve_addr;
 mod tcp;
 
-use crate::host::extract_host;
-use crate::host::split_host_port;
-use crate::host::Host;
 use deno_core::error::AnyError;
 use deno_core::OpState;
+use deno_permissions::host::extract_host;
+use deno_permissions::host::split_host_port;
+use deno_permissions::host::Host;
+use deno_permissions::NetDescriptor;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::RootCertStoreProvider;
 use std::path::Path;
@@ -67,12 +67,18 @@ pub trait NetPermissions {
 
 impl NetPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check_net<T: AsRef<str>>(
+  fn check_net(
     &mut self,
-    host: &(T, Option<u16>),
+    host: &NetPermissionHost,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    deno_permissions::PermissionsContainer::check_net(self, host, api_name)
+    let _host = host.clone().host;
+    let _port = host.clone().port;
+    deno_permissions::PermissionsContainer::check_net(
+      self,
+      &NetDescriptor(_host, _port),
+      api_name,
+    )
   }
 
   #[inline(always)]
@@ -217,7 +223,7 @@ mod ops_unix {
 #[cfg(test)]
 mod tests {
   use super::NetPermissionHost;
-  use crate::host::Host;
+  use deno_permissions::host::Host;
   use fqdn::FQDN;
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
