@@ -1149,6 +1149,10 @@ impl CliOptions {
     }
   }
 
+  pub fn get_env_file_name(&self) -> Option<String> {
+    self.flags.env_file.clone()
+  }
+
   pub fn enable_future_features(&self) -> bool {
     *DENO_FUTURE
   }

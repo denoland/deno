@@ -143,6 +143,7 @@ pub struct Metadata {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub maybe_import_map: Option<(Url, String)>,
   pub entrypoint: ModuleSpecifier,
+  pub env_file: Option<String>,
   pub node_modules: Option<NodeModules>,
   pub disable_deprecated_api_warning: bool,
   pub unstable_config: UnstableConfig,
@@ -631,6 +632,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       ca_stores: cli_options.ca_stores().clone(),
       ca_data,
       entrypoint: entrypoint.clone(),
+      env_file: cli_options.get_env_file_name(),
       maybe_import_map,
       node_modules,
       disable_deprecated_api_warning: cli_options

@@ -29,6 +29,7 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
+use dotenvy::from_filename;
 
 use std::borrow::Cow;
 use std::env;
@@ -70,6 +71,22 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   }
 }
 
+fn load_env_variables_from_env_file(filename: Option<&String>) {
+  if let Some(env_file_name) = filename {
+    match from_filename(env_file_name) {
+      Ok(_) => (),
+      Err(error) => {
+        match error {
+            dotenvy::Error::LineParse(line, index)=> eprintln!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
+            dotenvy::Error::Io(_)=> eprintln!("{} The `--env` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
+            dotenvy::Error::EnvVar(_)=> eprintln!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
+            _ => eprintln!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+          }
+      }
+    }
+  }
+}
+
 fn main() {
   let args: Vec<_> = env::args_os().collect();
   let current_exe_path = current_exe().unwrap();
@@ -79,6 +96,7 @@ fn main() {
     match standalone {
       Ok(Some(future)) => {
         let (metadata, eszip) = future.await?;
+        load_env_variables_from_env_file(metadata.env_file.as_ref());
         let exit_code = standalone::run(eszip, metadata).await?;
         std::process::exit(exit_code);
       }
