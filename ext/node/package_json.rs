@@ -65,7 +65,7 @@ impl PackageJson {
   pub fn load(
     fs: &dyn deno_fs::FileSystem,
     resolver: &dyn NpmResolver,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: PathBuf,
   ) -> Result<Rc<PackageJson>, AnyError> {
     resolver.ensure_read_permission(permissions, &path)?;
@@ -82,7 +82,7 @@ impl PackageJson {
       return Ok(CACHE.with(|cache| cache.borrow()[&path].clone()));
     }
 
-    let source = match fs.read_text_file_sync(&path, None) {
+    let source = match fs.read_text_file_lossy_sync(&path, None) {
       Ok(source) => source,
       Err(err) if err.kind() == ErrorKind::NotFound => {
         return Ok(Rc::new(PackageJson::empty(path)));

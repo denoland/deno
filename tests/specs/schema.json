@@ -93,6 +93,9 @@
               "additionalProperties": {
                 "type": "string"
               }
+            },
+            "repeat": {
+              "type": "number"
             }
           }
         }, {

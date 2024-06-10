@@ -5,6 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, primordials } from "ext:core/mod.js";
+const { internalRidSymbol } = core;
 import {
   op_http2_client_get_response,
   op_http2_client_get_response_body_chunk,
@@ -405,7 +406,7 @@ export class ClientHttp2Session extends Http2Session {
     const connPromise = new Promise((resolve) => {
       const eventName = url.startsWith("https") ? "secureConnect" : "connect";
       socket.once(eventName, () => {
-        const rid = socket[kHandle][kStreamBaseField].rid;
+        const rid = socket[kHandle][kStreamBaseField][internalRidSymbol];
         nextTick(() => {
           resolve(rid);
         });

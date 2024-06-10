@@ -23,7 +23,6 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -83,26 +82,31 @@ pub async fn create_managed_npm_resolver_for_lsp(
 ) -> Arc<dyn CliNpmResolver> {
   let npm_cache = create_cache(&options);
   let npm_api = create_api(&options, npm_cache.clone());
-  let snapshot = match resolve_snapshot(&npm_api, options.snapshot).await {
-    Ok(snapshot) => snapshot,
-    Err(err) => {
-      log::warn!("failed to resolve snapshot: {}", err);
-      None
-    }
-  };
-  create_inner(
-    options.fs,
-    options.http_client_provider,
-    options.maybe_lockfile,
-    npm_api,
-    npm_cache,
-    options.npmrc,
-    options.package_json_installer,
-    options.text_only_progress_bar,
-    options.maybe_node_modules_path,
-    options.npm_system_info,
-    snapshot,
-  )
+  // spawn due to the lsp's `Send` requirement
+  deno_core::unsync::spawn(async move {
+    let snapshot = match resolve_snapshot(&npm_api, options.snapshot).await {
+      Ok(snapshot) => snapshot,
+      Err(err) => {
+        log::warn!("failed to resolve snapshot: {}", err);
+        None
+      }
+    };
+    create_inner(
+      options.fs,
+      options.http_client_provider,
+      options.maybe_lockfile,
+      npm_api,
+      npm_cache,
+      options.npmrc,
+      options.package_json_installer,
+      options.text_only_progress_bar,
+      options.maybe_node_modules_path,
+      options.npm_system_info,
+      snapshot,
+    )
+  })
+  .await
+  .unwrap()
 }
 
 pub async fn create_managed_npm_resolver(
@@ -526,11 +530,10 @@ impl NpmResolver for ManagedCliNpmResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let path = self
       .fs_resolver
-      .resolve_package_folder_from_package(name, referrer, mode)?;
+      .resolve_package_folder_from_package(name, referrer)?;
     let path =
       canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())?;
     log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
@@ -545,7 +548,7 @@ impl NpmResolver for ManagedCliNpmResolver {
 
   fn ensure_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     self.fs_resolver.ensure_read_permission(permissions, path)
