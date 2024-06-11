@@ -9,7 +9,6 @@
 const common = require('../common');
 const tmpdir = require('../common/tmpdir');
 const fs = require('fs');
-const path = require('path');
 
 tmpdir.refresh();
 
@@ -22,7 +21,7 @@ tmpdir.refresh();
     'DEP0147'
   );
   fs.rmdir(
-    path.join(tmpdir.path, 'noexist.txt'),
+    tmpdir.resolve('noexist.txt'),
     { recursive: true },
     common.mustCall()
   );
