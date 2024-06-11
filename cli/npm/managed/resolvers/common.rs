@@ -19,7 +19,6 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeResolutionMode;
 
 use crate::npm::managed::cache::TarballCache;
 
@@ -41,7 +40,6 @@ pub trait NpmPackageFsResolver: Send + Sync {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_cache_folder_id_from_specifier(
