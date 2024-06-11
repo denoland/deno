@@ -31,7 +31,6 @@ interface Writer {
 
 export function writeFile(
   pathOrRid: string | number | URL,
-  // deno-lint-ignore ban-types
   data: string | Uint8Array,
   optOrCallback: Encodings | CallbackWithError | WriteFileOptions | undefined,
   callback?: CallbackWithError,
@@ -97,14 +96,12 @@ export function writeFile(
 
 export const writeFilePromise = promisify(writeFile) as (
   pathOrRid: string | number | URL,
-  // deno-lint-ignore ban-types
   data: string | Uint8Array,
   options?: Encodings | WriteFileOptions,
 ) => Promise<void>;
 
 export function writeFileSync(
   pathOrRid: string | number | URL,
-  // deno-lint-ignore ban-types
   data: string | Uint8Array,
   options?: Encodings | WriteFileOptions,
 ) {
