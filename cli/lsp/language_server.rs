@@ -844,6 +844,8 @@ impl Inner {
       }
     }
     while let Some((parent_path, read_dir)) = pending.pop_front() {
+      // Sort entries from each dir for consistency on macos.
+      let mut dir_files = BTreeSet::new();
       for entry in read_dir {
         let Ok(entry) = entry else {
           continue;
@@ -918,9 +920,10 @@ impl Inner {
               }
             }
           }
-          workspace_files.insert(specifier);
+          dir_files.insert(specifier);
         }
       }
+      workspace_files.extend(dir_files);
     }
     (workspace_files, false)
   }
