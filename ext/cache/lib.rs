@@ -206,9 +206,7 @@ where
   let mut state = state.borrow_mut();
   if let Some(cache) = state.try_borrow::<CA>() {
     Ok(cache.clone())
-  } else if let Some(create_cache) =
-    state.try_borrow::<CreateCache<CA>>().clone()
-  {
+  } else if let Some(create_cache) = state.try_borrow::<CreateCache<CA>>() {
     let cache = create_cache.0();
     state.put(cache);
     Ok(state.borrow::<CA>().clone())
