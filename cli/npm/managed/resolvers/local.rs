@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use crate::cache::CACHE_PERM;
 use crate::npm::cache_dir::mixed_case_package_name_decode;
-use crate::util::fs::atomic_write_file;
+use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::fs::clone_dir_recursive;
 use crate::util::fs::symlink_dir;
@@ -39,14 +39,12 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeResolutionMode;
 use deno_semver::package::PackageNv;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::npm::cache_dir::mixed_case_package_name_encode;
 
-use super::super::super::common::types_package_name;
 use super::super::cache::NpmCache;
 use super::super::cache::TarballCache;
 use super::super::resolution::NpmResolution;
@@ -175,7 +173,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let Some(local_path) = self.resolve_folder_for_specifier(referrer)? else {
       bail!("could not find npm package for '{}'", referrer);
@@ -189,15 +186,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       } else {
         Cow::Owned(current_folder.join("node_modules"))
       };
-
-      // attempt to resolve the types package first, then fallback to the regular package
-      if mode.is_types() && !name.starts_with("@types/") {
-        let sub_dir =
-          join_package_name(&node_modules_folder, &types_package_name(name));
-        if self.fs.is_dir_sync(&sub_dir) {
-          return Ok(sub_dir);
-        }
-      }
 
       let sub_dir = join_package_name(&node_modules_folder, name);
       if self.fs.is_dir_sync(&sub_dir) {
@@ -550,7 +538,7 @@ impl SetupCache {
     }
 
     bincode::serialize(&self.current).ok().and_then(|data| {
-      atomic_write_file(&self.file_path, data, CACHE_PERM).ok()
+      atomic_write_file_with_retries(&self.file_path, data, CACHE_PERM).ok()
     });
     true
   }

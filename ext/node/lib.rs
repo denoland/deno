@@ -165,7 +165,6 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
@@ -343,7 +342,6 @@ deno_core::extension!(deno_node,
     ops::http2::op_http2_client_get_response,
     ops::http2::op_http2_client_get_response_body_chunk,
     ops::http2::op_http2_client_send_data,
-    ops::http2::op_http2_client_end_stream,
     ops::http2::op_http2_client_reset_stream,
     ops::http2::op_http2_client_send_trailers,
     ops::http2::op_http2_client_get_response_trailers,
