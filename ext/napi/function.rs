@@ -27,9 +27,10 @@ impl CallbackInfo {
 }
 
 extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
-  let info = unsafe { &*info };
-  let args = v8::FunctionCallbackArguments::from_function_callback_info(info);
-  let mut rv = v8::ReturnValue::from_function_callback_info(info);
+  let callback_info = unsafe { &*info };
+  let args =
+    v8::FunctionCallbackArguments::from_function_callback_info(callback_info);
+  let mut rv = v8::ReturnValue::from_function_callback_info(callback_info);
   // SAFETY: create_function guarantees that the data is a CallbackInfo external.
   let info_ptr: *mut CallbackInfo = unsafe {
     let external_value = v8::Local::<v8::External>::cast(args.data());
@@ -43,19 +44,29 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
   if let Some(f) = info.cb {
     // SAFETY: calling user provided function pointer.
     let value = unsafe { f(info.env, info_ptr as *mut _) };
-    // SAFETY: napi_value is represented as v8::Local<v8::Value> internally.
-    rv.set(unsafe { transmute::<napi_value, v8::Local<v8::Value>>(value) });
+    if let Some(exc) = unsafe { &mut *(info.env as *mut Env) }
+      .last_exception
+      .take()
+    {
+      let scope = unsafe { &mut v8::CallbackScope::new(callback_info) };
+      let exc = v8::Local::new(scope, exc);
+      scope.throw_exception(exc);
+    }
+    if let Some(value) = *value {
+      rv.set(value);
+    }
   }
 }
 
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub fn create_function<'a>(
+/// # Safety
+/// env_ptr must be valid
+pub unsafe fn create_function<'a>(
   env_ptr: *mut Env,
   name: Option<v8::Local<v8::String>>,
   cb: napi_callback,
   cb_info: napi_callback_info,
 ) -> v8::Local<'a, v8::Function> {
-  let env: &mut Env = unsafe { &mut *env_ptr };
+  let env = unsafe { &mut *env_ptr };
   let scope = &mut env.scope();
 
   let external = v8::External::new(
@@ -74,14 +85,15 @@ pub fn create_function<'a>(
   function
 }
 
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub fn create_function_template<'a>(
+/// # Safety
+/// env_ptr must be valid
+pub unsafe fn create_function_template<'a>(
   env_ptr: *mut Env,
-  name: Option<&str>,
+  name: Option<v8::Local<v8::String>>,
   cb: napi_callback,
   cb_info: napi_callback_info,
 ) -> v8::Local<'a, v8::FunctionTemplate> {
-  let env: &mut Env = unsafe { &mut *env_ptr };
+  let env = unsafe { &mut *env_ptr };
   let scope = &mut env.scope();
 
   let external = v8::External::new(
@@ -92,8 +104,7 @@ pub fn create_function_template<'a>(
     .data(external.into())
     .build(scope);
 
-  if let Some(name) = name {
-    let v8str = v8::String::new(scope, name).unwrap();
+  if let Some(v8str) = name {
     function.set_class_name(v8str);
   }
 
