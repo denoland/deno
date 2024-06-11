@@ -8,8 +8,8 @@ if (prTitle == null) {
 console.log("PR title:", prTitle);
 
 if (
-  prTitle.startsWith("chore:") && prTitle.contains("deno_core") &&
-  (prTitle.contains("upgrade") || prTitle.contains("update"))
+  prTitle.startsWith("chore:") && prTitle.includes("deno_core") &&
+  (prTitle.includes("upgrade") || prTitle.includes("update"))
 ) {
   console.error([
     "Please categorize this deno_core upgrade as a 'feat:', 'fix:' or a ",
