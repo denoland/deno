@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+import { Buffer } from "node:buffer";
 import { assert, assertEquals, loadTestLibrary } from "./common.js";
 
 const objectWrap = loadTestLibrary();
@@ -30,7 +31,7 @@ Deno.test("napi external finalizer", function () {
 
 Deno.test("napi external buffer", function () {
   let buf = objectWrap.test_external_buffer();
-  assertEquals(buf, new Uint8Array([1, 2, 3]));
+  assertEquals(buf, new Buffer([1, 2, 3]));
   buf = null;
 });
 

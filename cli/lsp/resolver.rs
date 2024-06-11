@@ -5,7 +5,6 @@ use crate::args::package_json;
 use crate::args::CacheSetting;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
-use crate::jsr::JsrCacheResolver;
 use crate::lsp::config::Config;
 use crate::lsp::config::ConfigData;
 use crate::npm::create_cli_npm_resolver_for_lsp;
@@ -51,6 +50,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use super::cache::LspCache;
+use super::jsr::JsrCacheResolver;
 
 #[derive(Debug, Clone)]
 pub struct LspResolver {
@@ -99,7 +99,8 @@ impl LspResolver {
     );
     let jsr_resolver = Some(Arc::new(JsrCacheResolver::new(
       cache.root_vendor_or_global(),
-      config_data.and_then(|d| d.lockfile.clone()),
+      config_data,
+      config,
     )));
     let redirect_resolver = Some(Arc::new(RedirectResolver::new(
       cache.root_vendor_or_global(),
@@ -212,12 +213,12 @@ impl LspResolver {
       .collect()
   }
 
-  pub fn jsr_to_registry_url(
+  pub fn jsr_to_resource_url(
     &self,
     req_ref: &JsrPackageReqReference,
     _file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<ModuleSpecifier> {
-    self.jsr_resolver.as_ref()?.jsr_to_registry_url(req_ref)
+    self.jsr_resolver.as_ref()?.jsr_to_resource_url(req_ref)
   }
 
   pub fn jsr_lookup_export_for_path(
