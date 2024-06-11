@@ -3852,10 +3852,12 @@ var require_writable = __commonJS({
       const state = stream._writableState;
       if (typeof encoding === "function") {
         cb = encoding;
-        encoding = state.defaultEncoding;
+        // Simulates https://github.com/nodejs/node/commit/dbed0319ac438dcbd6e92483f3280b1dc6767e00
+        encoding = state.objectMode ? undefined : state.defaultEncoding;
       } else {
         if (!encoding) {
-          encoding = state.defaultEncoding;
+          // Simulates https://github.com/nodejs/node/commit/dbed0319ac438dcbd6e92483f3280b1dc6767e00
+          encoding = state.objectMode ? undefined : state.defaultEncoding;
         } else if (encoding !== "buffer" && !Buffer2.isEncoding(encoding)) {
           throw new ERR_UNKNOWN_ENCODING(encoding);
         }
