@@ -4,7 +4,6 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
-use std::rc::Rc;
 
 pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
   v8::String::create_external_onebyte_const(b"node:contextify:context");
@@ -82,13 +81,18 @@ impl ContextifyContext {
     sandbox_obj: v8::Local<v8::Object>,
   ) {
     let main_context = scope.get_current_context();
-    let context_state = main_context
-      .get_slot::<Rc<deno_core::ContextState>>(scope)
-      .unwrap()
-      .clone();
+    let context_state = main_context.get_aligned_pointer_from_embedder_data(
+      deno_core::CONTEXT_STATE_SLOT_INDEX,
+    );
 
     v8_context.set_security_token(main_context.get_security_token(scope));
-    v8_context.set_slot(scope, context_state);
+    // SAFETY: set embedder data from the creation context
+    unsafe {
+      v8_context.set_aligned_pointer_in_embedder_data(
+        deno_core::CONTEXT_STATE_SLOT_INDEX,
+        context_state,
+      );
+    }
 
     let context = v8::Global::new(scope, v8_context);
     let sandbox = v8::Global::new(scope, sandbox_obj);
@@ -102,7 +106,7 @@ impl ContextifyContext {
     // lives longer than the execution context, so this should be safe.
     unsafe {
       v8_context.set_aligned_pointer_in_embedder_data(
-        1,
+        2,
         ptr as *const ContextifyContext as _,
       );
     }
@@ -164,7 +168,7 @@ impl ContextifyContext {
   ) -> Option<&'c ContextifyContext> {
     let context = object.get_creation_context(scope)?;
 
-    let context_ptr = context.get_aligned_pointer_from_embedder_data(1);
+    let context_ptr = context.get_aligned_pointer_from_embedder_data(2);
     // SAFETY: We are storing a pointer to the ContextifyContext
     // in the embedder data of the v8::Context during creation.
     Some(unsafe { &*(context_ptr as *const ContextifyContext) })
