@@ -25,7 +25,6 @@ pub use self::byonm::ByonmCliNpmResolver;
 pub use self::byonm::CliNpmResolverByonmCreateOptions;
 pub use self::cache_dir::NpmCacheDir;
 pub use self::managed::CliNpmResolverManagedCreateOptions;
-pub use self::managed::CliNpmResolverManagedPackageJsonInstallerOption;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 
