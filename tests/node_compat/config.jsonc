@@ -75,7 +75,6 @@
       "test-fs-read-stream.js",
       "test-fs-rmdir-recursive.js",
       "test-fs-write-file.js",
-      "test-fs-write.js",
       "test-http-url.parse-https.request.js",
       "test-net-better-error-messages-path.js",
       "test-net-connect-buffer.js",
