@@ -1352,12 +1352,16 @@ function getPathFromURLPosix(url: URL): string {
  *        setter.
  *  - TAB: The tab character is also stripped out by the `pathname` setter.
  */
-function encodePathChars(filepath: string): string {
+function encodePathChars(
+  filepath: string,
+  options: { windows?: boolean },
+): string {
+  const windows = options.windows;
   if (filepath.includes("%")) {
     filepath = filepath.replace(percentRegEx, "%25");
   }
   // In posix, backslash is a valid character in paths:
-  if (!isWindows && filepath.includes("\\")) {
+  if (!(windows ?? isWindows) && filepath.includes("\\")) {
     filepath = filepath.replace(backslashRegEx, "%5C");
   }
   if (filepath.includes("\n")) {
@@ -1376,11 +1380,17 @@ function encodePathChars(filepath: string): string {
  * This function ensures that `filepath` is resolved absolutely, and that the URL control characters are correctly encoded when converting into a File URL.
  * @see Tested in `parallel/test-url-pathtofileurl.js`.
  * @param filepath The file path string to convert to a file URL.
+ * @param options The options.
  * @returns The file URL object.
  */
-export function pathToFileURL(filepath: string): URL {
+export function pathToFileURL(
+  filepath: string,
+  options: { windows?: boolean } = {},
+): URL {
+  validateString(filepath, "path");
+  const windows = options?.windows;
   const outURL = new URL("file://");
-  if (isWindows && filepath.startsWith("\\\\")) {
+  if ((windows ?? isWindows) && filepath.startsWith("\\\\")) {
     // UNC path format: \\server\share\resource
     const paths = filepath.split("\\");
     if (paths.length <= 3) {
@@ -1400,20 +1410,22 @@ export function pathToFileURL(filepath: string): URL {
     }
 
     outURL.hostname = idnaToASCII(hostname);
-    outURL.pathname = encodePathChars(paths.slice(3).join("/"));
+    outURL.pathname = encodePathChars(paths.slice(3).join("/"), { windows });
   } else {
-    let resolved = path.resolve(filepath);
+    let resolved = (windows ?? isWindows)
+      ? path.win32.resolve(filepath)
+      : path.posix.resolve(filepath);
     // path.resolve strips trailing slashes so we must add them back
     const filePathLast = filepath.charCodeAt(filepath.length - 1);
     if (
       (filePathLast === CHAR_FORWARD_SLASH ||
-        (isWindows && filePathLast === CHAR_BACKWARD_SLASH)) &&
+        ((windows ?? isWindows) && filePathLast === CHAR_BACKWARD_SLASH)) &&
       resolved[resolved.length - 1] !== path.sep
     ) {
       resolved += "/";
     }
 
-    outURL.pathname = encodePathChars(resolved);
+    outURL.pathname = encodePathChars(resolved, { windows });
   }
   return outURL;
 }
