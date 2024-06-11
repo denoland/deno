@@ -778,13 +778,9 @@ impl Settings {
     specifier: &ModuleSpecifier,
   ) -> (&WorkspaceSettings, Option<&ModuleSpecifier>) {
     let Ok(path) = specifier_to_file_path(specifier) else {
-      return (&self.unscoped, None);
+      return (&self.unscoped, self.first_folder.as_ref());
     };
     for (folder_uri, settings) in self.by_workspace_folder.iter().rev() {
-      let mut settings = settings.as_ref();
-      if self.first_folder.as_ref() == Some(folder_uri) {
-        settings = settings.or(Some(&self.unscoped));
-      }
       if let Some(settings) = settings {
         let Ok(folder_path) = specifier_to_file_path(folder_uri) else {
           continue;
@@ -794,7 +790,7 @@ impl Settings {
         }
       }
     }
-    (&self.unscoped, None)
+    (&self.unscoped, self.first_folder.as_ref())
   }
 
   pub fn enable_settings_hash(&self) -> u64 {
@@ -1572,6 +1568,10 @@ pub struct ConfigTree {
 }
 
 impl ConfigTree {
+  pub fn root_scope(&self) -> Option<&ModuleSpecifier> {
+    self.first_folder.as_ref()
+  }
+
   pub fn root_data(&self) -> Option<&ConfigData> {
     self.first_folder.as_ref().and_then(|s| self.scopes.get(s))
   }
@@ -1581,10 +1581,6 @@ impl ConfigTree {
       .root_data()
       .map(|d| d.ts_config.clone())
       .unwrap_or_default()
-  }
-
-  pub fn root_lockfile(&self) -> Option<&Arc<Mutex<Lockfile>>> {
-    self.root_data().and_then(|d| d.lockfile.as_ref())
   }
 
   pub fn root_import_map(&self) -> Option<&Arc<ImportMap>> {
