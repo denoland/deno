@@ -1027,8 +1027,8 @@ Deno.test("[node/http] ServerResponse getHeaders", () => {
   const res = new http.ServerResponse(req);
   res.setHeader("foo", "bar");
   res.setHeader("bar", "baz");
-  assertEquals(res.getHeaderNames(), ["bar", "foo"]);
-  assertEquals(res.getHeaders(), { "bar": "baz", "foo": "bar" });
+  assertEquals(res.getHeaderNames(), ["foo", "bar"]);
+  assertEquals(res.getHeaders(), { "foo": "bar", "bar": "baz" });
 });
 
 Deno.test("[node/http] ServerResponse default status code 200", () => {
