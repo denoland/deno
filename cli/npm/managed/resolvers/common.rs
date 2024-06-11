@@ -19,13 +19,11 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeResolutionMode;
 
-use crate::http_util::HttpClient;
 use crate::npm::managed::cache::TarballCache;
 
 /// Part of the resolution that interacts with the file system.
-#[async_trait]
+#[async_trait(?Send)]
 pub trait NpmPackageFsResolver: Send + Sync {
   /// Specifier for the root directory.
   fn root_dir_url(&self) -> &Url;
@@ -42,7 +40,6 @@ pub trait NpmPackageFsResolver: Send + Sync {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_cache_folder_id_from_specifier(
@@ -50,14 +47,11 @@ pub trait NpmPackageFsResolver: Send + Sync {
     specifier: &ModuleSpecifier,
   ) -> Result<Option<NpmPackageCacheFolderId>, AnyError>;
 
-  async fn cache_packages(
-    &self,
-    http_client: &Arc<HttpClient>,
-  ) -> Result<(), AnyError>;
+  async fn cache_packages(&self) -> Result<(), AnyError>;
 
   fn ensure_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
 }
@@ -80,7 +74,7 @@ impl RegistryReadPermissionChecker {
 
   pub fn ensure_registry_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     // allow reading if it's in the node_modules
@@ -131,13 +125,12 @@ impl RegistryReadPermissionChecker {
 pub async fn cache_packages(
   packages: Vec<NpmResolutionPackage>,
   tarball_cache: &Arc<TarballCache>,
-  http_client: &Arc<HttpClient>,
 ) -> Result<(), AnyError> {
   let mut futures_unordered = futures::stream::FuturesUnordered::new();
   for package in packages {
     futures_unordered.push(async move {
       tarball_cache
-        .ensure_package(&package.id.nv, &package.dist, http_client)
+        .ensure_package(&package.id.nv, &package.dist)
         .await
     });
   }

@@ -85,7 +85,7 @@ impl CliCjsCodeAnalyzer {
       move || -> Result<_, deno_ast::ParseDiagnostic> {
         let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
           specifier,
-          text_info: deno_ast::SourceTextInfo::new(source),
+          text: source,
           media_type,
           capture_tokens: true,
           scope_analysis: false,
@@ -125,7 +125,7 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
       None => {
         self
           .fs
-          .read_text_file_async(specifier.to_file_path().unwrap(), None)
+          .read_text_file_lossy_async(specifier.to_file_path().unwrap(), None)
           .await?
       }
     };

@@ -81,3 +81,33 @@ if (common.hasIntl) {
                 (e) => e.code === 'ERR_INVALID_URL',
                 'parsing http://\u00AD/bad.com/');
 }
+
+/*
+ FIXME(kt3k): node -e <script> doesn't work in deno
+{
+  const badURLs = [
+    'https://evil.com:.example.com',
+    'git+ssh://git@github.com:npm/npm',
+  ];
+  badURLs.forEach((badURL) => {
+    common.spawnPromisified(process.execPath, ['-e', `url.parse(${JSON.stringify(badURL)})`])
+      .then(common.mustCall(({ code, stdout, stderr }) => {
+        assert.strictEqual(code, 0);
+        assert.strictEqual(stdout, '');
+        assert.match(stderr, /\[DEP0170\] DeprecationWarning:/);
+      }));
+  });
+
+  // Warning should only happen once per process.
+  const expectedWarning = [
+    `The URL ${badURLs[0]} is invalid. Future versions of Node.js will throw an error.`,
+    'DEP0170',
+  ];
+  common.expectWarning({
+    DeprecationWarning: expectedWarning,
+  });
+  badURLs.forEach((badURL) => {
+    url.parse(badURL);
+  });
+}
+*/

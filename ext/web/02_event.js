@@ -1230,7 +1230,7 @@ class MessageEvent extends Event {
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
-  [SymbolToStringTag] = "CloseEvent";
+  [SymbolToStringTag] = "MessageEvent";
 }
 
 const MessageEventPrototype = MessageEvent.prototype;

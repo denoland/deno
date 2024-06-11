@@ -15,8 +15,7 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_node;
-use deno_semver::jsr::JsrPackageReqReference;
-use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use jsonc_parser::ast::ObjectProp;
 use jsonc_parser::ast::Value;
@@ -188,31 +187,15 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   }
   let config_file_path = config_specifier.to_file_path().unwrap();
 
-  let http_client = cli_factory.http_client();
+  let http_client = cli_factory.http_client_provider();
 
   let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
 
-  for package_name in add_flags.packages.iter() {
-    let req = if package_name.starts_with("npm:") {
-      let pkg_req = NpmPackageReqReference::from_str(&format!(
-        "npm:{}",
-        package_name.strip_prefix("npm:").unwrap_or(package_name)
-      ))
-      .with_context(|| {
-        format!("Failed to parse package required: {}", package_name)
-      })?;
-      AddPackageReq::Npm(pkg_req)
-    } else {
-      let pkg_req = JsrPackageReqReference::from_str(&format!(
-        "jsr:{}",
-        package_name.strip_prefix("jsr:").unwrap_or(package_name)
-      ))
-      .with_context(|| {
-        format!("Failed to parse package required: {}", package_name)
-      })?;
-      AddPackageReq::Jsr(pkg_req)
-    };
+  for entry_text in add_flags.packages.iter() {
+    let req = AddPackageReq::parse(entry_text).with_context(|| {
+      format!("Failed to parse package required: {}", entry_text)
+    })?;
 
     package_reqs.push(req);
   }
@@ -227,6 +210,7 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     None,
   );
   deps_file_fetcher.set_download_log_level(log::Level::Trace);
+  let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
   let npm_resolver = Arc::new(NpmFetchResolver::new(deps_file_fetcher));
 
@@ -350,11 +334,10 @@ async fn find_package_and_select_version_for_req(
   npm_resolver: Arc<NpmFetchResolver>,
   add_package_req: AddPackageReq,
 ) -> Result<PackageAndVersion, AnyError> {
-  match add_package_req {
-    AddPackageReq::Jsr(pkg_ref) => {
-      let req = pkg_ref.req();
+  match add_package_req.value {
+    AddPackageReqValue::Jsr(req) => {
       let jsr_prefixed_name = format!("jsr:{}", &req.name);
-      let Some(nv) = jsr_resolver.req_to_nv(req).await else {
+      let Some(nv) = jsr_resolver.req_to_nv(&req).await else {
         return Ok(PackageAndVersion::NotFound(jsr_prefixed_name));
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
@@ -363,15 +346,14 @@ async fn find_package_and_select_version_for_req(
         '^'
       };
       Ok(PackageAndVersion::Selected(SelectedPackage {
-        import_name: req.name.to_string(),
+        import_name: add_package_req.alias,
         package_name: jsr_prefixed_name,
         version_req: format!("{}{}", range_symbol, &nv.version),
       }))
     }
-    AddPackageReq::Npm(pkg_ref) => {
-      let req = pkg_ref.req();
+    AddPackageReqValue::Npm(req) => {
       let npm_prefixed_name = format!("npm:{}", &req.name);
-      let Some(nv) = npm_resolver.req_to_nv(req).await else {
+      let Some(nv) = npm_resolver.req_to_nv(&req).await else {
         return Ok(PackageAndVersion::NotFound(npm_prefixed_name));
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
@@ -380,7 +362,7 @@ async fn find_package_and_select_version_for_req(
         '^'
       };
       Ok(PackageAndVersion::Selected(SelectedPackage {
-        import_name: req.name.to_string(),
+        import_name: add_package_req.alias,
         package_name: npm_prefixed_name,
         version_req: format!("{}{}", range_symbol, &nv.version),
       }))
@@ -388,9 +370,85 @@ async fn find_package_and_select_version_for_req(
   }
 }
 
-enum AddPackageReq {
-  Jsr(JsrPackageReqReference),
-  Npm(NpmPackageReqReference),
+#[derive(Debug, PartialEq, Eq)]
+enum AddPackageReqValue {
+  Jsr(PackageReq),
+  Npm(PackageReq),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct AddPackageReq {
+  alias: String,
+  value: AddPackageReqValue,
+}
+
+impl AddPackageReq {
+  pub fn parse(entry_text: &str) -> Result<Self, AnyError> {
+    enum Prefix {
+      Jsr,
+      Npm,
+    }
+
+    fn parse_prefix(text: &str) -> (Option<Prefix>, &str) {
+      if let Some(text) = text.strip_prefix("jsr:") {
+        (Some(Prefix::Jsr), text)
+      } else if let Some(text) = text.strip_prefix("npm:") {
+        (Some(Prefix::Npm), text)
+      } else {
+        (None, text)
+      }
+    }
+
+    // parse the following:
+    // - alias@npm:<package_name>
+    // - other_alias@npm:<package_name>
+    // - @alias/other@jsr:<package_name>
+    fn parse_alias(entry_text: &str) -> Option<(&str, &str)> {
+      for prefix in ["npm:", "jsr:"] {
+        let Some(location) = entry_text.find(prefix) else {
+          continue;
+        };
+        let prefix = &entry_text[..location];
+        if let Some(alias) = prefix.strip_suffix('@') {
+          return Some((alias, &entry_text[location..]));
+        }
+      }
+      None
+    }
+
+    let (maybe_prefix, entry_text) = parse_prefix(entry_text);
+    let (prefix, maybe_alias, entry_text) = match maybe_prefix {
+      Some(prefix) => (prefix, None, entry_text),
+      None => match parse_alias(entry_text) {
+        Some((alias, text)) => {
+          let (maybe_prefix, entry_text) = parse_prefix(text);
+          (
+            maybe_prefix.unwrap_or(Prefix::Jsr),
+            Some(alias.to_string()),
+            entry_text,
+          )
+        }
+        None => (Prefix::Jsr, None, entry_text),
+      },
+    };
+
+    match prefix {
+      Prefix::Jsr => {
+        let package_req = PackageReq::from_str(entry_text)?;
+        Ok(AddPackageReq {
+          alias: maybe_alias.unwrap_or_else(|| package_req.name.to_string()),
+          value: AddPackageReqValue::Jsr(package_req),
+        })
+      }
+      Prefix::Npm => {
+        let package_req = PackageReq::from_str(entry_text)?;
+        Ok(AddPackageReq {
+          alias: maybe_alias.unwrap_or_else(|| package_req.name.to_string()),
+          value: AddPackageReqValue::Npm(package_req),
+        })
+      }
+    }
+  }
 }
 
 fn generate_imports(packages_to_version: Vec<(String, String)>) -> String {
@@ -454,4 +512,63 @@ fn update_config_file_content(
   .ok()
   .map(|formatted_text| formatted_text.unwrap_or_else(|| new_text.clone()))
   .unwrap_or(new_text)
+}
+
+#[cfg(test)]
+mod test {
+  use deno_semver::VersionReq;
+
+  use super::*;
+
+  #[test]
+  fn test_parse_add_package_req() {
+    assert_eq!(
+      AddPackageReq::parse("jsr:foo").unwrap(),
+      AddPackageReq {
+        alias: "foo".to_string(),
+        value: AddPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
+      }
+    );
+    assert_eq!(
+      AddPackageReq::parse("alias@jsr:foo").unwrap(),
+      AddPackageReq {
+        alias: "alias".to_string(),
+        value: AddPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
+      }
+    );
+    assert_eq!(
+      AddPackageReq::parse("@alias/pkg@npm:foo").unwrap(),
+      AddPackageReq {
+        alias: "@alias/pkg".to_string(),
+        value: AddPackageReqValue::Npm(PackageReq::from_str("foo").unwrap())
+      }
+    );
+    assert_eq!(
+      AddPackageReq::parse("@alias/pkg@jsr:foo").unwrap(),
+      AddPackageReq {
+        alias: "@alias/pkg".to_string(),
+        value: AddPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
+      }
+    );
+    assert_eq!(
+      AddPackageReq::parse("alias@jsr:foo@^1.5.0").unwrap(),
+      AddPackageReq {
+        alias: "alias".to_string(),
+        value: AddPackageReqValue::Jsr(
+          PackageReq::from_str("foo@^1.5.0").unwrap()
+        )
+      }
+    );
+    assert_eq!(
+      AddPackageReq::parse("@scope/pkg@tag").unwrap(),
+      AddPackageReq {
+        alias: "@scope/pkg".to_string(),
+        value: AddPackageReqValue::Jsr(PackageReq {
+          name: "@scope/pkg".to_string(),
+          // this is a tag
+          version_req: VersionReq::parse_from_specifier("tag").unwrap(),
+        }),
+      }
+    );
+  }
 }

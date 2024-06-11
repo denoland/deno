@@ -281,6 +281,26 @@ pub trait FetchPermissions {
   fn check_read(&mut self, _p: &Path, api_name: &str) -> Result<(), AnyError>;
 }
 
+impl FetchPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+  }
+
+  #[inline(always)]
+  fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_read(self, path, api_name)
+  }
+}
+
 #[op2]
 #[serde]
 #[allow(clippy::too_many_arguments)]

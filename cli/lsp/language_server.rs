@@ -92,7 +92,7 @@ use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
-use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
@@ -191,7 +191,7 @@ pub struct Inner {
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
   pub documents: Documents,
-  http_client: Arc<HttpClient>,
+  http_client_provider: Arc<HttpClientProvider>,
   initial_cwd: PathBuf,
   jsr_search_api: CliJsrSearchApi,
   /// Handles module registries, which allow discovery of modules
@@ -475,10 +475,10 @@ impl LanguageServer {
 impl Inner {
   fn new(client: Client) -> Self {
     let cache = LspCache::default();
-    let http_client = Arc::new(HttpClient::new(None, None));
+    let http_client_provider = Arc::new(HttpClientProvider::new(None, None));
     let module_registry = ModuleRegistry::new(
       cache.deno_dir().registries_folder_path(),
-      http_client.clone(),
+      http_client_provider.clone(),
     );
     let jsr_search_api =
       CliJsrSearchApi::new(module_registry.file_fetcher.clone());
@@ -508,7 +508,7 @@ impl Inner {
       diagnostics_state,
       diagnostics_server,
       documents,
-      http_client,
+      http_client_provider,
       initial_cwd: initial_cwd.clone(),
       jsr_search_api,
       project_version: 0,
@@ -652,7 +652,7 @@ impl Inner {
     .unwrap_or_else(|_| RootCertStore::empty());
     let root_cert_store_provider =
       Arc::new(LspRootCertStoreProvider(root_cert_store));
-    self.http_client = Arc::new(HttpClient::new(
+    self.http_client_provider = Arc::new(HttpClientProvider::new(
       Some(root_cert_store_provider),
       workspace_settings
         .unsafely_ignore_certificate_errors
@@ -660,7 +660,7 @@ impl Inner {
     ));
     self.module_registry = ModuleRegistry::new(
       deno_dir.registries_folder_path(),
-      self.http_client.clone(),
+      self.http_client_provider.clone(),
     );
     let workspace_settings = self.config.workspace_settings();
     for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
@@ -939,11 +939,12 @@ impl Inner {
       self.cache.global().clone(),
       CacheSetting::RespectHeaders,
       true,
-      self.http_client.clone(),
+      self.http_client_provider.clone(),
       Default::default(),
       None,
     );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
+    let file_fetcher = Arc::new(file_fetcher);
     self
       .config
       .tree
@@ -983,7 +984,7 @@ impl Inner {
       LspResolver::from_config(
         &self.config,
         &self.cache,
-        Some(&self.http_client),
+        Some(&self.http_client_provider),
       )
       .await,
     );
@@ -1108,7 +1109,7 @@ impl Inner {
   async fn refresh_npm_specifiers(&mut self) {
     let package_reqs = self.documents.npm_package_reqs();
     let resolver = self.resolver.clone();
-    // spawn to avoid the LSP's Send requirements
+    // spawn due to the lsp's `Send` requirement
     let handle =
       spawn(async move { resolver.set_npm_package_reqs(&package_reqs).await });
     if let Err(err) = handle.await.unwrap() {
@@ -1316,7 +1317,7 @@ impl Inner {
       move || {
         let format_result = match document.maybe_parsed_source() {
           Some(Ok(parsed_source)) => {
-            format_parsed_source(&parsed_source, &fmt_options)
+            format_parsed_source(parsed_source, &fmt_options)
           }
           Some(Err(err)) => Err(anyhow!("{:#}", err)),
           None => {
@@ -1329,12 +1330,12 @@ impl Inner {
               .map(|ext| file_path.with_extension(ext))
               .unwrap_or(file_path);
             // it's not a js/ts file, so attempt to format its contents
-            format_file(&file_path, &document.content(), &fmt_options)
+            format_file(&file_path, document.content(), &fmt_options)
           }
         };
         match format_result {
           Ok(Some(new_text)) => Some(text::get_edits(
-            &document.content(),
+            document.content(),
             &new_text,
             document.line_index().as_ref(),
           )),
@@ -1470,7 +1471,7 @@ impl Inner {
             {
               if let Some(url) = self
                 .resolver
-                .jsr_to_registry_url(&jsr_req_ref, file_referrer)
+                .jsr_to_resource_url(&jsr_req_ref, file_referrer)
               {
                 result = format!("{result} (<{url}>)");
               }
@@ -1604,7 +1605,9 @@ impl Inner {
               &specifier,
               diagnostic,
               asset_or_doc.document().map(|d| d.text_info()),
-              asset_or_doc.maybe_parsed_source().and_then(|r| r.ok()),
+              asset_or_doc
+                .maybe_parsed_source()
+                .and_then(|r| r.as_ref().ok()),
             )
             .map_err(|err| {
               error!("Unable to fix lint error: {:#}", err);
@@ -2105,6 +2108,7 @@ impl Inner {
         &self.jsr_search_api,
         &self.npm_search_api,
         &self.documents,
+        self.resolver.as_ref(),
         self.config.tree.root_import_map().map(|i| i.as_ref()),
       )
       .await;
@@ -2965,7 +2969,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
           );
       }
 
-      (inner.client.clone(), inner.http_client.clone())
+      (inner.client.clone(), inner.http_client_provider.clone())
     };
 
     for registration in registrations {
