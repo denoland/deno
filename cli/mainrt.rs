@@ -22,6 +22,7 @@ mod util;
 mod version;
 mod worker;
 
+use crate::args::load_env_variables_from_env_file;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -67,22 +68,6 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
       }
 
       exit_with_message(&error_string, 1);
-    }
-  }
-}
-
-fn load_env_variables_from_env_file(filename: Option<&String>) {
-  if let Some(env_file_name) = filename {
-    match from_filename(env_file_name) {
-      Ok(_) => (),
-      Err(error) => {
-        match error {
-            dotenvy::Error::LineParse(line, index)=> eprintln!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
-            dotenvy::Error::Io(_)=> eprintln!("{} The `--env` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
-            dotenvy::Error::EnvVar(_)=> eprintln!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
-            _ => eprintln!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
-          }
-      }
     }
   }
 }
