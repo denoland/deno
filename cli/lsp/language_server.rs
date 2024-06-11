@@ -806,7 +806,7 @@ impl Inner {
       log::debug!("Skipped workspace walk due to client incapability.");
       return (Default::default(), false);
     }
-    let mut workspace_files = Default::default();
+    let mut workspace_files = BTreeSet::default();
     let entry_limit = 1000;
     let mut pending = VecDeque::new();
     let mut entry_count = 0;
@@ -816,10 +816,30 @@ impl Inner {
       .filter_map(|p| specifier_to_file_path(&p.0).ok())
       .collect::<Vec<_>>();
     roots.sort();
-    for i in 0..roots.len() {
-      if i == 0 || !roots[i].starts_with(&roots[i - 1]) {
-        if let Ok(read_dir) = std::fs::read_dir(&roots[i]) {
-          pending.push_back((roots[i].clone(), read_dir));
+    let roots = roots
+      .iter()
+      .enumerate()
+      .filter(|(i, root)| *i == 0 || !root.starts_with(&roots[i - 1]))
+      .map(|(_, r)| r.clone())
+      .collect::<Vec<_>>();
+    let mut root_ancestors = BTreeSet::new();
+    for root in roots {
+      for ancestor in root.ancestors().skip(1) {
+        if root_ancestors.insert(ancestor.to_path_buf()) {
+          break;
+        }
+      }
+      if let Ok(read_dir) = std::fs::read_dir(&root) {
+        pending.push_back((root, read_dir));
+      }
+    }
+    for root_ancestor in root_ancestors {
+      for deno_json in ["deno.json", "deno.jsonc"] {
+        let path = root_ancestor.join(deno_json);
+        if path.exists() {
+          if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+            workspace_files.insert(specifier);
+          }
         }
       }
     }
@@ -836,17 +856,15 @@ impl Inner {
         let Ok(specifier) = ModuleSpecifier::from_file_path(&path) else {
           continue;
         };
-        // TODO(nayeemrmn): Don't walk folders that are `None` here and aren't
-        // in a `deno.json` scope.
-        if config.settings.specifier_enabled(&specifier) == Some(false) {
-          continue;
-        }
         let Ok(file_type) = entry.file_type() else {
           continue;
         };
         let Some(file_name) = path.file_name() else {
           continue;
         };
+        if config.settings.specifier_enabled(&specifier) == Some(false) {
+          continue;
+        }
         if file_type.is_dir() {
           let dir_name = file_name.to_string_lossy().to_lowercase();
           // We ignore these directories by default because there is a
@@ -1107,11 +1125,11 @@ impl Inner {
   }
 
   async fn refresh_npm_specifiers(&mut self) {
-    let package_reqs = self.documents.npm_package_reqs();
+    let package_reqs = self.documents.npm_reqs_by_scope();
     let resolver = self.resolver.clone();
     // spawn due to the lsp's `Send` requirement
     let handle =
-      spawn(async move { resolver.set_npm_package_reqs(&package_reqs).await });
+      spawn(async move { resolver.set_npm_reqs(&package_reqs).await });
     if let Err(err) = handle.await.unwrap() {
       lsp_warn!("Could not set npm package requirements. {:#}", err);
     }
@@ -3428,7 +3446,10 @@ impl Inner {
     roots.extend(
       self
         .documents
-        .npm_package_reqs()
+        .npm_reqs_by_scope()
+        .values()
+        .flatten()
+        .collect::<BTreeSet<_>>()
         .iter()
         .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
     );
@@ -3714,6 +3735,7 @@ mod tests {
 
     temp_dir.create_dir_all("root2/folder");
     temp_dir.create_dir_all("root2/sub_folder");
+    temp_dir.create_dir_all("root2/root2.1");
     temp_dir.write("root2/file1.ts", ""); // yes, enabled
     temp_dir.write("root2/file2.ts", ""); // no, not enabled
     temp_dir.write("root2/folder/main.ts", ""); // yes, enabled
@@ -3721,14 +3743,21 @@ mod tests {
     temp_dir.write("root2/sub_folder/a.js", ""); // no, not enabled
     temp_dir.write("root2/sub_folder/b.ts", ""); // no, not enabled
     temp_dir.write("root2/sub_folder/c.js", ""); // no, not enabled
+    temp_dir.write("root2/root2.1/main.ts", ""); // yes, enabled as separate root
 
     temp_dir.create_dir_all("root3/");
     temp_dir.write("root3/mod.ts", ""); // no, not enabled
 
+    temp_dir.create_dir_all("root4_parent/root4");
+    temp_dir.write("root4_parent/deno.json", ""); // yes, enabled as deno.json above root
+    temp_dir.write("root4_parent/root4/main.ts", ""); // yes, enabled
+
     let mut config = Config::new_with_roots(vec![
       temp_dir.uri().join("root1/").unwrap(),
       temp_dir.uri().join("root2/").unwrap(),
+      temp_dir.uri().join("root2/root2.1/").unwrap(),
       temp_dir.uri().join("root3/").unwrap(),
+      temp_dir.uri().join("root4_parent/root4/").unwrap(),
     ]);
     config.set_client_capabilities(ClientCapabilities {
       workspace: Some(Default::default()),
@@ -3757,9 +3786,23 @@ mod tests {
           },
         ),
         (
+          temp_dir.uri().join("root2/root2.1/").unwrap(),
+          WorkspaceSettings {
+            enable: Some(true),
+            ..Default::default()
+          },
+        ),
+        (
           temp_dir.uri().join("root3/").unwrap(),
           WorkspaceSettings {
             enable: Some(false),
+            ..Default::default()
+          },
+        ),
+        (
+          temp_dir.uri().join("root4_parent/root4/").unwrap(),
+          WorkspaceSettings {
+            enable: Some(true),
             ..Default::default()
           },
         ),
@@ -3784,6 +3827,9 @@ mod tests {
         temp_dir.uri().join("root1/sub_dir/mod.ts").unwrap(),
         temp_dir.uri().join("root2/file1.ts").unwrap(),
         temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+        temp_dir.uri().join("root2/root2.1/main.ts").unwrap(),
+        temp_dir.uri().join("root4_parent/deno.json").unwrap(),
+        temp_dir.uri().join("root4_parent/root4/main.ts").unwrap(),
       ])
     );
   }
