@@ -3754,7 +3754,14 @@ var require_writable = __commonJS({
       this.destroyed = false;
       const noDecode = !!(options && options.decodeStrings === false);
       this.decodeStrings = !noDecode;
-      this.defaultEncoding = options && options.defaultEncoding || "utf8";
+      const defaultEncoding = options?.defaultEncoding;
+      if (defaultEncoding == null) {
+        this.defaultEncoding = 'utf8';
+      } else if (Buffer2.isEncoding(defaultEncoding)) {
+        this.defaultEncoding = defaultEncoding;
+      } else {
+        throw new ERR_UNKNOWN_ENCODING(defaultEncoding);
+      }
       this.length = 0;
       this.writing = false;
       this.corked = 0;
