@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials ban-untagged-todo
 
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
@@ -26,154 +26,6 @@ const {
   SymbolHasInstance,
 } = primordials;
 import { WeakReference } from "ext:deno_node/internal/util.mjs";
-
-// const { triggerUncaughtException } = internalBinding('errors');
-
-// export class Channel {
-//   _subscribers: Subscriber[];
-//   name: string;
-//   constructor(name: string) {
-//     this._subscribers = [];
-//     this.name = name;
-//   }
-
-//   publish(message: unknown) {
-//     for (const subscriber of this._subscribers) {
-//       try {
-//         subscriber(message, this.name);
-//       } catch (err) {
-//         nextTick(() => {
-//           throw err;
-//         });
-//       }
-//     }
-//   }
-
-//   subscribe(subscription: Subscriber) {
-//     validateFunction(subscription, "subscription");
-
-//     this._subscribers.push(subscription);
-//   }
-
-//   unsubscribe(subscription: Subscriber) {
-//     if (!this._subscribers.includes(subscription)) {
-//       return false;
-//     }
-
-//     this._subscribers.splice(this._subscribers.indexOf(subscription), 1);
-
-//     return true;
-//   }
-
-//   get hasSubscribers() {
-//     return this._subscribers.length > 0;
-//   }
-// }
-
-// const channels: Record<string, Channel> = {};
-
-// export function channel(name: string) {
-//   if (typeof name !== "string" && typeof name !== "symbol") {
-//     throw new ERR_INVALID_ARG_TYPE("channel", ["string", "symbol"], name);
-//   }
-
-//   if (!Object.hasOwn(channels, name)) {
-//     channels[name] = new Channel(name);
-//   }
-
-//   return channels[name];
-// }
-
-// export function hasSubscribers(name: string) {
-//   if (!Object.hasOwn(channels, name)) {
-//     return false;
-//   }
-
-//   return channels[name].hasSubscribers;
-// }
-
-// export function subscribe(name: string, subscription: Subscriber) {
-//   const c = channel(name);
-
-//   return c.subscribe(subscription);
-// }
-
-// export function unsubscribe(name: string, subscription: Subscriber) {
-//   const c = channel(name);
-
-//   return c.unsubscribe(subscription);
-// }
-
-// class AstiveChannel {
-//   subscribe(subscription) {
-//     validateFunction(subscription, "subscription");
-//     ArrayPrototypePush(this._subscribers, subscription);
-//     channels.incRef(this.name);
-//   }
-
-//   unsubscribe(subscription) {
-//     const index = ArrayPrototypeIndexOf(this._subscribers, subscription);
-//     if (index === -1) return false;
-
-//     ArrayPrototypeSplice(this._subscribers, index, 1);
-
-//     channels.decRef(this.name);
-//     maybeMarkInactive(this);
-
-//     return true;
-//   }
-
-//   bindStore(store, transform) {
-//     const replacing = this._stores.has(store);
-//     if (!replacing) channels.incRef(this.name);
-//     this._stores.set(store, transform);
-//   }
-
-//   unbindStore(store) {
-//     if (!this._stores.has(store)) {
-//       return false;
-//     }
-
-//     this._stores.delete(store);
-
-//     channels.decRef(this.name);
-//     maybeMarkInactive(this);
-
-//     return true;
-//   }
-
-//   get hasSubscribers() {
-//     return true;
-//   }
-
-//   publish(data) {
-//     for (let i = 0; i < (this._subscribers?.length || 0); i++) {
-//       try {
-//         const onMessage = this._subscribers[i];
-//         onMessage(data, this.name);
-//       } catch (err) {
-//         process.nextTick(() => {
-//           triggerUncaughtException(err, false);
-//         });
-//       }
-//     }
-//   }
-
-//   runStores(data, fn, thisArg, ...args) {
-//     let run = () => {
-//       this.publish(data);
-//       return ReflectApply(fn, thisArg, args);
-//     };
-
-//     for (const entry of this._stores.entries()) {
-//       const store = entry[0];
-//       const transform = entry[1];
-//       run = wrapStoreRun(store, data, run, transform);
-//     }
-
-//     return run();
-//   }
-// }
 
 // Can't delete when weakref count reaches 0 as it could increment again.
 // Only GC can be used as a valid time to clean up the channels map.
@@ -348,7 +200,7 @@ class Channel {
 
   publish() {}
 
-  runStores(data, fn, thisArg, ...args) {
+  runStores(_data, fn, thisArg, ...args) {
     return ReflectApply(fn, thisArg, args);
   }
 }
