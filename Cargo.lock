@@ -1304,8 +1304,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.287.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8659fd7969621bea436a6d214589120c1fe22483753e19b009b7110e987e0acf"
+source = "git+https://github.com/svix-aaron1011/deno_core.git?branch=reapply-drop#40525a2838291b15347abc18e38643cc3b4d5a3f"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1760,8 +1759,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.163.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdc9fd52e5fca85a834cc040ae1c6c675d8b718db5e14bbbf76996486dcc17fa"
+source = "git+https://github.com/svix-aaron1011/deno_core.git?branch=reapply-drop#40525a2838291b15347abc18e38643cc3b4d5a3f"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -5764,8 +5762,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.196.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "411789e6a59e2169c1bc198562de15241a368dde8961cb18dd1bddbba5e2e5f5"
+source = "git+https://github.com/svix-aaron1011/deno_core.git?branch=reapply-drop#40525a2838291b15347abc18e38643cc3b4d5a3f"
 dependencies = [
  "num-bigint",
  "serde",
