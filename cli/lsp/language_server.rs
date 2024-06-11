@@ -20,6 +20,7 @@ use indexmap::IndexSet;
 use log::error;
 use serde::Deserialize;
 use serde_json::from_value;
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -844,8 +845,9 @@ impl Inner {
       }
     }
     while let Some((parent_path, read_dir)) = pending.pop_front() {
-      // Sort entries from each dir for consistency on macos.
+      // Sort entries from each dir for consistency across operating systems.
       let mut dir_files = BTreeSet::new();
+      let mut dir_subdirs = BTreeMap::new();
       for entry in read_dir {
         let Ok(entry) = entry else {
           continue;
@@ -885,7 +887,7 @@ impl Inner {
             continue;
           }
           if let Ok(read_dir) = std::fs::read_dir(&path) {
-            pending.push_back((path, read_dir));
+            dir_subdirs.insert(specifier, (path, read_dir));
           }
         } else if file_type.is_file()
           || file_type.is_symlink()
@@ -924,6 +926,7 @@ impl Inner {
         }
       }
       workspace_files.extend(dir_files);
+      pending.extend(dir_subdirs.into_values());
     }
     (workspace_files, false)
   }
