@@ -12355,7 +12355,7 @@
           "return-value.worker.html": true,
           "event-ports-dedicated.html": true,
           "imagedata-cloned-canvas-in-array.html": false,
-          "message-event.html": false,
+          "message-event.html": true,
           "second-argument-dictionary.html": true,
           "second-argument-null-in-array.html": true,
           "second-argument-null.html": true,

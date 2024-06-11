@@ -23,7 +23,6 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -531,11 +530,10 @@ impl NpmResolver for ManagedCliNpmResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let path = self
       .fs_resolver
-      .resolve_package_folder_from_package(name, referrer, mode)?;
+      .resolve_package_folder_from_package(name, referrer)?;
     let path =
       canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())?;
     log::debug!("Resolved {} from {} to {}", name, referrer, path.display());

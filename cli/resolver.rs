@@ -320,7 +320,12 @@ impl NpmModuleLoader {
 
     let code = if self.cjs_resolutions.contains(specifier) {
       // translate cjs to esm if it's cjs and inject node globals
-      let code = String::from_utf8(code)?;
+      let code = match String::from_utf8_lossy(&code) {
+        Cow::Owned(code) => code,
+        // SAFETY: `String::from_utf8_lossy` guarantees that the result is valid
+        // UTF-8 if `Cow::Borrowed` is returned.
+        Cow::Borrowed(_) => unsafe { String::from_utf8_unchecked(code) },
+      };
       ModuleSourceCode::String(
         self
           .node_code_translator
@@ -509,14 +514,11 @@ impl CliGraphResolver {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
     original_err: AnyError,
     resolver: &ByonmCliNpmResolver,
   ) -> Result<(), AnyError> {
     if let Ok((pkg_name, _, _)) = parse_npm_pkg_name(specifier, referrer) {
-      match resolver
-        .resolve_package_folder_from_package(&pkg_name, referrer, mode)
-      {
+      match resolver.resolve_package_folder_from_package(&pkg_name, referrer) {
         Ok(_) => {
           return Err(original_err);
         }
@@ -645,7 +647,6 @@ impl Resolver for CliGraphResolver {
                     .check_surface_byonm_node_error(
                       specifier,
                       referrer,
-                      to_node_mode(mode),
                       anyhow!("Cannot find \"{}\"", specifier),
                       resolver,
                     )
@@ -654,11 +655,7 @@ impl Resolver for CliGraphResolver {
                 Err(err) => {
                   self
                     .check_surface_byonm_node_error(
-                      specifier,
-                      referrer,
-                      to_node_mode(mode),
-                      err,
-                      resolver,
+                      specifier, referrer, err, resolver,
                     )
                     .map_err(ResolveError::Other)?;
                 }
