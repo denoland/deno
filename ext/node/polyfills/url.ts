@@ -1387,9 +1387,10 @@ export function pathToFileURL(
   filepath: string,
   options: { windows?: boolean } = {},
 ): URL {
+  validateString(filepath, "path");
   const windows = options?.windows;
   const outURL = new URL("file://");
-  if (isWindows && filepath.startsWith("\\\\")) {
+  if ((windows ?? isWindows) && filepath.startsWith("\\\\")) {
     // UNC path format: \\server\share\resource
     const paths = filepath.split("\\");
     if (paths.length <= 3) {
