@@ -35,10 +35,10 @@ use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;
 use import_map::ImportMap;
+use indexmap::IndexSet;
 use lsp::Url;
 use lsp_types::ClientCapabilities;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -1675,7 +1675,7 @@ impl ConfigTree {
   pub async fn refresh(
     &mut self,
     settings: &Settings,
-    workspace_files: &BTreeSet<ModuleSpecifier>,
+    workspace_files: &IndexSet<ModuleSpecifier>,
     file_fetcher: &Arc<FileFetcher>,
   ) {
     lsp_log!("Refreshing configuration tree...");

@@ -33,6 +33,7 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
+use indexmap::IndexSet;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -1261,7 +1262,7 @@ impl Documents {
     config: &Config,
     resolver: &Arc<LspResolver>,
     cache: &LspCache,
-    workspace_files: &BTreeSet<ModuleSpecifier>,
+    workspace_files: &IndexSet<ModuleSpecifier>,
   ) {
     self.config = Arc::new(config.clone());
     self.cache = Arc::new(cache.clone());
@@ -1691,7 +1692,7 @@ console.log(b, "hello deno");
       [&file1_specifier, &file2_specifier, &file3_specifier]
         .into_iter()
         .cloned()
-        .collect::<BTreeSet<_>>();
+        .collect::<IndexSet<_>>();
 
     // set the initial import map and point to file 2
     {
