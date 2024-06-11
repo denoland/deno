@@ -15,8 +15,6 @@
 //! 2. Add the function's identifier to this JSON list.
 //! 3. Finally, run `tools/napi/generate_symbols_list.js` to update `cli/napi/generated_symbol_exports_list_*.def`.
 
-pub mod r#async;
-pub mod env;
 pub mod js_native_api;
-pub mod threadsafe_functions;
+pub mod node_api;
 pub mod util;
