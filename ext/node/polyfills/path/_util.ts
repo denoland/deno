@@ -107,7 +107,7 @@ export function normalizeString(
 }
 
 function formatExt(ext) {
-  return ext ? `${ext[0] === '.' ? '' : '.'}${ext}` : '';
+  return ext ? `${ext[0] === "." ? "" : "."}${ext}` : "";
 }
 
 export function _format(
