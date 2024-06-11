@@ -198,7 +198,6 @@ pub fn op_require_resolve_deno_dir(
       &ModuleSpecifier::from_file_path(&parent_filename).unwrap_or_else(|_| {
         panic!("Url::from_file_path: [{:?}]", parent_filename)
       }),
-      NodeResolutionMode::Execution,
     )
     .ok()
     .map(|p| p.to_string_lossy().to_string())
@@ -451,7 +450,7 @@ where
   let file_path = PathBuf::from(file_path);
   ensure_read_permission::<P>(state, &file_path)?;
   let fs = state.borrow::<FileSystemRc>();
-  Ok(fs.read_text_file_sync(&file_path, None)?)
+  Ok(fs.read_text_file_lossy_sync(&file_path, None)?)
 }
 
 #[op2]

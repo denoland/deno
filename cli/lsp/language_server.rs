@@ -1471,7 +1471,7 @@ impl Inner {
             {
               if let Some(url) = self
                 .resolver
-                .jsr_to_registry_url(&jsr_req_ref, file_referrer)
+                .jsr_to_resource_url(&jsr_req_ref, file_referrer)
               {
                 result = format!("{result} (<{url}>)");
               }
