@@ -1118,7 +1118,6 @@ dependencies = [
  "fs3",
  "glibc_version",
  "glob",
- "global_flags",
  "ignore",
  "import_map",
  "indexmap",
@@ -1471,7 +1470,6 @@ dependencies = [
  "deno_io",
  "deno_permissions",
  "filetime",
- "global_flags",
  "junction",
  "libc",
  "nix 0.26.2",
@@ -1781,7 +1779,6 @@ dependencies = [
  "deno_core",
  "deno_terminal",
  "fqdn",
- "global_flags",
  "libc",
  "log",
  "once_cell",
@@ -1824,7 +1821,6 @@ dependencies = [
  "encoding_rs",
  "fastwebsockets",
  "flate2",
- "global_flags",
  "http 1.1.0",
  "http-body-util",
  "hyper 0.14.28",
@@ -2993,13 +2989,6 @@ name = "glob"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
-
-[[package]]
-name = "global_flags"
-version = "0.1.0"
-dependencies = [
- "lazy_static",
-]
 
 [[package]]
 name = "globset"

@@ -23,7 +23,6 @@ deno_core.workspace = true
 deno_io.workspace = true
 deno_permissions.workspace = true
 filetime.workspace = true
-global_flags.workspace = true
 libc.workspace = true
 rand.workspace = true
 rayon = "1.8.0"

@@ -1,9 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::IsStandaloneBinary;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_terminal::colors;
-use global_flags::global_flags::is_running_from_binary;
 use once_cell::sync::Lazy;
 use std::fmt::Write;
 use std::io::BufRead;
@@ -277,7 +277,8 @@ impl PermissionPrompter for TtyPrompter {
     api_name: Option<&str>,
     mut is_unary: bool,
   ) -> PromptResponse {
-    is_unary = is_unary && !is_running_from_binary();
+    is_unary = is_unary
+      && !IsStandaloneBinary::get_instance(false).is_standalone_binary();
     if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
       return PromptResponse::Deny;
     };

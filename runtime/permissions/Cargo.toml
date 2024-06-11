@@ -17,7 +17,6 @@ path = "lib.rs"
 deno_core.workspace = true
 deno_terminal.workspace = true
 fqdn = "0.3.4"
-global_flags.workspace = true
 libc.workspace = true
 log.workspace = true
 once_cell.workspace = true

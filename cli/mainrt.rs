@@ -30,7 +30,7 @@ use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
 
-use global_flags::global_flags::set_running_from_binary;
+use deno_runtime::deno_permissions::IsStandaloneBinary;
 use std::borrow::Cow;
 use std::env;
 use std::env::current_exe;
@@ -72,8 +72,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 }
 
 fn main() {
-  let running_from_binary = true;
-  set_running_from_binary(running_from_binary);
+  IsStandaloneBinary::get_instance(true).is_standalone_binary();
   let args: Vec<_> = env::args_os().collect();
   let current_exe_path = current_exe().unwrap();
   let standalone =

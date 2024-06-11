@@ -18,7 +18,6 @@ use deno_core::ModuleSpecifier;
 use deno_terminal::colors;
 use fqdn::fqdn;
 use fqdn::FQDN;
-use global_flags::global_flags::is_running_from_binary;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -31,6 +30,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::string::ToString;
 use std::sync::Arc;
+use std::sync::Once;
 use which::which;
 
 pub mod prompter;
@@ -132,7 +132,8 @@ impl PermissionState {
   }
 
   fn error(name: &str, info: impl FnOnce() -> Option<String>) -> AnyError {
-    let msg = if is_running_from_binary() {
+    let msg = if !IsStandaloneBinary::get_instance(false).is_standalone_binary()
+    {
       format!(
         "Requires {}, run again with the --allow-{} flag",
         Self::fmt_access(name, info),
@@ -2206,6 +2207,46 @@ pub fn create_child_permissions(
     .create_child_permissions(ChildUnitPermissionArg::Inherit)?;
 
   Ok(worker_perms)
+}
+
+#[derive(Clone, Debug)]
+pub struct IsStandaloneBinary(bool);
+
+static mut SINGLETON: Option<IsStandaloneBinary> = None;
+static INIT: Once = Once::new();
+
+impl IsStandaloneBinary {
+  pub fn new() -> Self {
+    Self(false)
+  }
+
+  pub fn new_for_standalone_binary() -> Self {
+    Self(true)
+  }
+
+  pub fn is_standalone_binary(&self) -> bool {
+    self.0
+  }
+
+  pub fn get_instance(standalone: bool) -> &'static IsStandaloneBinary {
+    // SAFETY: runtime calls
+    unsafe {
+      INIT.call_once(|| {
+        if standalone {
+          SINGLETON = Some(IsStandaloneBinary::new_for_standalone_binary());
+        } else {
+          SINGLETON = Some(IsStandaloneBinary::new());
+        }
+      });
+      SINGLETON.as_ref().unwrap()
+    }
+  }
+}
+
+impl Default for IsStandaloneBinary {
+  fn default() -> Self {
+    Self::new()
+  }
 }
 
 #[cfg(test)]

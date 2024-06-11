@@ -21,7 +21,7 @@ use deno_core::ToJsBuffer;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsError;
 use deno_io::fs::FsStat;
-use global_flags::global_flags::is_running_from_binary;
+use deno_permissions::IsStandaloneBinary;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
 use rand::Rng;
@@ -68,7 +68,9 @@ fn map_permission_error(
       } else {
         (path.as_str(), "")
       };
-      let msg = if !is_running_from_binary() {
+      let msg = if !IsStandaloneBinary::get_instance(false)
+        .is_standalone_binary()
+      {
         format!(
           "Requires {err} access to {path}{truncated}, run again with the --allow-{err} flag")
       } else {
