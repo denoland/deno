@@ -34,6 +34,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -903,7 +904,8 @@ pub struct Documents {
   /// settings.
   resolver: Arc<LspResolver>,
   /// The npm package requirements found in npm specifiers.
-  npm_specifier_reqs: Arc<Vec<PackageReq>>,
+  npm_reqs_by_scope:
+    Arc<BTreeMap<Option<ModuleSpecifier>, BTreeSet<PackageReq>>>,
   /// Gets if any document had a node: specifier such that a @types/node package
   /// should be injected.
   has_injected_types_node_package: bool,
@@ -1093,10 +1095,11 @@ impl Documents {
     false
   }
 
-  /// Returns a collection of npm package requirements.
-  pub fn npm_package_reqs(&mut self) -> Arc<Vec<PackageReq>> {
+  pub fn npm_reqs_by_scope(
+    &mut self,
+  ) -> Arc<BTreeMap<Option<ModuleSpecifier>, BTreeSet<PackageReq>>> {
     self.calculate_npm_reqs_if_dirty();
-    self.npm_specifier_reqs.clone()
+    self.npm_reqs_by_scope.clone()
   }
 
   /// Returns if a @types/node package was injected into the npm
@@ -1322,31 +1325,36 @@ impl Documents {
   /// document and the value is a set of specifiers that depend on that
   /// document.
   fn calculate_npm_reqs_if_dirty(&mut self) {
-    let mut npm_reqs = HashSet::new();
-    let mut has_node_builtin_specifier = false;
+    let mut npm_reqs_by_scope: BTreeMap<_, BTreeSet<_>> = Default::default();
+    let mut scopes_with_node_builtin_specifier = HashSet::new();
     let is_fs_docs_dirty = self.file_system_docs.set_dirty(false);
     if !is_fs_docs_dirty && !self.dirty {
       return;
     }
     let mut visit_doc = |doc: &Arc<Document>| {
+      let scope = doc
+        .file_referrer()
+        .and_then(|r| self.config.tree.scope_for_specifier(r))
+        .or(self.config.tree.root_scope());
+      let reqs = npm_reqs_by_scope.entry(scope.cloned()).or_default();
       for dependency in doc.dependencies().values() {
         if let Some(dep) = dependency.get_code() {
           if dep.scheme() == "node" {
-            has_node_builtin_specifier = true;
+            scopes_with_node_builtin_specifier.insert(scope.cloned());
           }
           if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-            npm_reqs.insert(reference.into_inner().req);
+            reqs.insert(reference.into_inner().req);
           }
         }
         if let Some(dep) = dependency.get_type() {
           if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-            npm_reqs.insert(reference.into_inner().req);
+            reqs.insert(reference.into_inner().req);
           }
         }
       }
       if let Some(dep) = doc.maybe_types_dependency().maybe_specifier() {
         if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-          npm_reqs.insert(reference.into_inner().req);
+          reqs.insert(reference.into_inner().req);
         }
       }
     };
@@ -1358,12 +1366,21 @@ impl Documents {
     }
 
     // fill the reqs from the lockfile
-    if let Some(lockfile) = self.config.tree.root_lockfile() {
+    // TODO(nayeemrmn): Iterate every lockfile here for multi-deno.json.
+    if let Some(lockfile) = self
+      .config
+      .tree
+      .root_data()
+      .and_then(|d| d.lockfile.as_ref())
+    {
+      let reqs = npm_reqs_by_scope
+        .entry(self.config.tree.root_scope().cloned())
+        .or_default();
       let lockfile = lockfile.lock();
       for key in lockfile.content.packages.specifiers.keys() {
         if let Some(key) = key.strip_prefix("npm:") {
           if let Ok(req) = PackageReq::from_str(key) {
-            npm_reqs.insert(req);
+            reqs.insert(req);
           }
         }
       }
@@ -1372,17 +1389,15 @@ impl Documents {
     // Ensure a @types/node package exists when any module uses a node: specifier.
     // Unlike on the command line, here we just add @types/node to the npm package
     // requirements since this won't end up in the lockfile.
-    self.has_injected_types_node_package = has_node_builtin_specifier
-      && !npm_reqs.iter().any(|r| r.name == "@types/node");
-    if self.has_injected_types_node_package {
-      npm_reqs.insert(PackageReq::from_str("@types/node").unwrap());
+    for scope in scopes_with_node_builtin_specifier {
+      let reqs = npm_reqs_by_scope.entry(scope).or_default();
+      if !reqs.iter().any(|r| r.name == "@types/node") {
+        self.has_injected_types_node_package = true;
+        reqs.insert(PackageReq::from_str("@types/node").unwrap());
+      }
     }
 
-    self.npm_specifier_reqs = Arc::new({
-      let mut reqs = npm_reqs.into_iter().collect::<Vec<_>>();
-      reqs.sort();
-      reqs
-    });
+    self.npm_reqs_by_scope = Arc::new(npm_reqs_by_scope);
     self.dirty = false;
   }
 
