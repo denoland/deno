@@ -2009,8 +2009,9 @@ dependencies = [
 
 [[package]]
 name = "denokv_proto"
-version = "0.7.0"
-source = "git+https://github.com/denoland/denokv?branch=main#7e6aa784034a29fba5826a49b27e438c2bbc40fb"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3f6e8d662ace097c9909a13e2af1a4fae16cb90214f859027c5a6308cf306bd"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2024,8 +2025,9 @@ dependencies = [
 
 [[package]]
 name = "denokv_remote"
-version = "0.7.0"
-source = "git+https://github.com/denoland/denokv?branch=main#7e6aa784034a29fba5826a49b27e438c2bbc40fb"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ca69a2ef676e68c6b98b673b67a2cbeb33e56b354c2592ae3bb90cfd5a11337"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -2048,8 +2050,9 @@ dependencies = [
 
 [[package]]
 name = "denokv_sqlite"
-version = "0.7.0"
-source = "git+https://github.com/denoland/denokv?branch=main#7e6aa784034a29fba5826a49b27e438c2bbc40fb"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c5427d4ed9b3c2257e60ec8d963086d7cf7b05546385b3501a4e0d2555744929"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -6900,7 +6903,10 @@ dependencies = [
  "futures-core",
  "futures-io",
  "futures-sink",
+ "futures-util",
+ "hashbrown",
  "pin-project-lite",
+ "slab",
  "tokio",
  "tracing",
 ]
