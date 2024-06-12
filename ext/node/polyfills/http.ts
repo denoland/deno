@@ -1775,7 +1775,7 @@ export class ServerImpl extends EventEmitter {
     }
 
     if (listening && this.#ac) {
-      this.#ac.abort();
+      this.#server.shutdown();
       this.#ac = undefined;
     } else {
       this.#serveDeferred!.resolve();
