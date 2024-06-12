@@ -15,10 +15,11 @@ impl<T> SendPtr<T> {
 unsafe impl<T> Send for SendPtr<T> {}
 unsafe impl<T> Sync for SendPtr<T> {}
 
-pub fn get_array_buffer_ptr(ab: v8::Local<v8::ArrayBuffer>) -> *mut u8 {
-  // SAFETY: Thanks to the null pointer optimization, NonNull<T> and Option<NonNull<T>> are guaranteed
-  // to have the same size and alignment.
-  unsafe { std::mem::transmute(ab.data()) }
+pub fn get_array_buffer_ptr(ab: v8::Local<v8::ArrayBuffer>) -> *mut c_void {
+  match ab.data() {
+    Some(p) => p.as_ptr(),
+    None => std::ptr::null_mut(),
+  }
 }
 
 struct BufferFinalizer {
@@ -216,10 +217,6 @@ impl<'s> Nullable for napi_value<'s> {
   }
 }
 
-// TODO: replace Nullable with some sort of "CheckedUnwrap" trait
-// *mut T -> &mut MaybeUninit<T>
-// Option<T> -> T
-// napi_value -> Local<Value>
 #[macro_export]
 macro_rules! check_arg {
   ($env: expr, $ptr: expr) => {
