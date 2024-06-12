@@ -755,7 +755,7 @@ function serveHttpOn(context, addr, callback) {
 
     try {
       if (!context.closing && !context.closed) {
-        context.closing = op_http_close(rid, false);
+        context.closing = await op_http_close(rid, false);
         context.close();
       }
 
@@ -782,7 +782,7 @@ function serveHttpOn(context, addr, callback) {
       try {
         if (!context.closing && !context.closed) {
           // Shut this HTTP server down gracefully
-          context.closing = await op_http_close(context.serverRid, true);
+          context.closing = op_http_close(context.serverRid, true);
         }
 
         await context.closing;
