@@ -43,6 +43,8 @@ use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use package_json::PackageJsonDepsProvider;
 use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -161,13 +163,20 @@ impl LspResolver {
     self.jsr_resolver.as_ref().inspect(|r| r.did_cache());
   }
 
-  pub async fn set_npm_package_reqs(
+  pub async fn set_npm_reqs(
     &self,
-    reqs: &[PackageReq],
+    reqs: &BTreeMap<Option<ModuleSpecifier>, BTreeSet<PackageReq>>,
   ) -> Result<(), AnyError> {
+    let reqs = reqs
+      .values()
+      .flatten()
+      .collect::<BTreeSet<_>>()
+      .into_iter()
+      .cloned()
+      .collect::<Vec<_>>();
     if let Some(npm_resolver) = self.npm_resolver.as_ref() {
       if let Some(npm_resolver) = npm_resolver.as_managed() {
-        return npm_resolver.set_package_reqs(reqs).await;
+        return npm_resolver.set_package_reqs(&reqs).await;
       }
     }
     Ok(())
