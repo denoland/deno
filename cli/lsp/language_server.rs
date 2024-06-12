@@ -1331,12 +1331,14 @@ impl Inner {
 
     // spawn a blocking task to allow doing other work while this is occurring
     let text_edits = deno_core::unsync::spawn_blocking({
-      let fmt_options = self
+      let mut fmt_options = self
         .config
         .tree
         .fmt_options_for_specifier(&specifier)
         .options
         .clone();
+      fmt_options.use_tabs = Some(!params.options.insert_spaces);
+      fmt_options.indent_width = Some(params.options.tab_size as u8);
       let document = document.clone();
       move || {
         let format_result = match document.maybe_parsed_source() {
