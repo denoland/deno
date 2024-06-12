@@ -47,51 +47,29 @@ pub trait RootCertStoreProvider: Send + Sync {
 deno_core::extension!(deno_tls);
 
 #[derive(Debug)]
-struct DefaultSignatureVerification;
+pub struct NoCertificateVerification {
+  pub ic_allowlist: Vec<String>,
+  default_verifier: Arc<WebPkiServerVerifier>,
+}
 
-impl ServerCertVerifier for DefaultSignatureVerification {
-  fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-    vec![]
-  }
-  fn verify_server_cert(
-    &self,
-    _end_entity: &rustls::pki_types::CertificateDer<'_>,
-    _intermediates: &[rustls::pki_types::CertificateDer<'_>],
-    _server_name: &rustls::pki_types::ServerName<'_>,
-    _ocsp_response: &[u8],
-    _now: rustls::pki_types::UnixTime,
-  ) -> Result<ServerCertVerified, Error> {
-    Err(Error::General("Should not be used".to_string()))
-  }
-  fn verify_tls12_signature(
-    &self,
-    _message: &[u8],
-    _cert: &rustls::pki_types::CertificateDer<'_>,
-    _dss: &DigitallySignedStruct,
-  ) -> Result<HandshakeSignatureValid, Error> {
-    Err(Error::General("Should not be used".to_string()))
-  }
-  fn verify_tls13_signature(
-    &self,
-    _message: &[u8],
-    _cert: &rustls::pki_types::CertificateDer<'_>,
-    _dss: &DigitallySignedStruct,
-  ) -> Result<HandshakeSignatureValid, Error> {
-    Err(Error::General("Should not be used".to_string()))
+impl NoCertificateVerification {
+  pub fn new(ic_allowlist: Vec<String>) -> Self {
+    Self {
+      ic_allowlist,
+      default_verifier: WebPkiServerVerifier::builder(
+        create_default_root_cert_store().into(),
+      )
+      .build()
+      .unwrap(),
+    }
   }
 }
 
-#[derive(Debug)]
-pub struct NoCertificateVerification(pub Vec<String>);
-
 impl ServerCertVerifier for NoCertificateVerification {
   fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-    let root_store = create_default_root_cert_store();
-    let verifier = WebPkiServerVerifier::builder(root_store.into())
-      .build()
-      .unwrap();
-    verifier.supported_verify_schemes()
+    self.default_verifier.supported_verify_schemes()
   }
+
   fn verify_server_cert(
     &self,
     end_entity: &rustls::pki_types::CertificateDer<'_>,
@@ -100,7 +78,7 @@ impl ServerCertVerifier for NoCertificateVerification {
     ocsp_response: &[u8],
     now: rustls::pki_types::UnixTime,
   ) -> Result<ServerCertVerified, Error> {
-    if self.0.is_empty() {
+    if self.ic_allowlist.is_empty() {
       return Ok(ServerCertVerified::assertion());
     }
     let dns_name_or_ip_address = match server_name {
@@ -114,14 +92,10 @@ impl ServerCertVerifier for NoCertificateVerification {
         return Err(Error::General("Unknown `ServerName` variant".to_string()));
       }
     };
-    if self.0.contains(&dns_name_or_ip_address) {
+    if self.ic_allowlist.contains(&dns_name_or_ip_address) {
       Ok(ServerCertVerified::assertion())
     } else {
-      let root_store = create_default_root_cert_store();
-      let verifier = WebPkiServerVerifier::builder(root_store.into())
-        .build()
-        .unwrap();
-      verifier.verify_server_cert(
+      self.default_verifier.verify_server_cert(
         end_entity,
         intermediates,
         server_name,
@@ -137,11 +111,13 @@ impl ServerCertVerifier for NoCertificateVerification {
     cert: &rustls::pki_types::CertificateDer,
     dss: &DigitallySignedStruct,
   ) -> Result<HandshakeSignatureValid, Error> {
-    if self.0.is_empty() {
+    if self.ic_allowlist.is_empty() {
       return Ok(HandshakeSignatureValid::assertion());
     }
     filter_invalid_encoding_err(
-      DefaultSignatureVerification.verify_tls12_signature(message, cert, dss),
+      self
+        .default_verifier
+        .verify_tls12_signature(message, cert, dss),
     )
   }
 
@@ -151,11 +127,13 @@ impl ServerCertVerifier for NoCertificateVerification {
     cert: &rustls::pki_types::CertificateDer,
     dss: &DigitallySignedStruct,
   ) -> Result<HandshakeSignatureValid, Error> {
-    if self.0.is_empty() {
+    if self.ic_allowlist.is_empty() {
       return Ok(HandshakeSignatureValid::assertion());
     }
     filter_invalid_encoding_err(
-      DefaultSignatureVerification.verify_tls13_signature(message, cert, dss),
+      self
+        .default_verifier
+        .verify_tls13_signature(message, cert, dss),
     )
   }
 }
@@ -204,9 +182,9 @@ pub fn create_client_config(
   if let Some(ic_allowlist) = unsafely_ignore_certificate_errors {
     let client_config = ClientConfig::builder()
       .dangerous()
-      .with_custom_certificate_verifier(Arc::new(NoCertificateVerification(
-        ic_allowlist,
-      )));
+      .with_custom_certificate_verifier(Arc::new(
+        NoCertificateVerification::new(ic_allowlist),
+      ));
 
     // NOTE(bartlomieju): this if/else is duplicated at the end of the body of this function.
     // However it's not really feasible to deduplicate it as the `client_config` instances
