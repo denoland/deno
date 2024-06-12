@@ -1091,7 +1091,7 @@ static DENO_HELP: &str = concat!(
   color_print::cstr!("<g>A modern JavaScript and TypeScript runtime</>"),
   "
 
-Docs: https://deno.land/manual",
+Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   color_print::cstr!(
     "
@@ -2271,7 +2271,7 @@ use this subcommand directly. For example, 'deno lsp' can provide IDEs with
 go-to-definition support and automatic code formatting.
 
 How to connect various editors and IDEs to 'deno lsp':
-https://deno.land/manual",
+https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/getting_started/setup_your_environment#editors-and-ides",
 );
@@ -2866,7 +2866,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
 
 static ALLOW_READ_HELP: &str = concat!(
   "Allow file system read access. Optionally specify allowed paths.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n",
   "Examples:\n",
@@ -2876,7 +2876,7 @@ static ALLOW_READ_HELP: &str = concat!(
 
 static DENY_READ_HELP: &str = concat!(
   "Deny file system read access. Optionally specify denied paths.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n",
   "Examples:\n",
@@ -2886,7 +2886,7 @@ static DENY_READ_HELP: &str = concat!(
 
 static ALLOW_WRITE_HELP: &str = concat!(
   "Allow file system write access. Optionally specify allowed paths.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n",
   "Examples:\n",
@@ -2896,7 +2896,7 @@ static ALLOW_WRITE_HELP: &str = concat!(
 
 static DENY_WRITE_HELP: &str = concat!(
   "Deny file system write access. Optionally specify denied paths.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n",
   "Examples:\n",
@@ -2906,7 +2906,7 @@ static DENY_WRITE_HELP: &str = concat!(
 
 static ALLOW_NET_HELP: &str = concat!(
   "Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n",
   "Examples:\n",
@@ -2916,7 +2916,7 @@ static ALLOW_NET_HELP: &str = concat!(
 
 static DENY_NET_HELP: &str = concat!(
   "Deny network access. Optionally specify denied IP addresses and host names, with ports as necessary.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n",
   "Examples:\n",
@@ -2926,7 +2926,7 @@ static DENY_NET_HELP: &str = concat!(
 
 static ALLOW_ENV_HELP: &str = concat!(
   "Allow access to system environment information. Optionally specify accessible environment variables.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n",
   "Examples:\n",
@@ -2936,7 +2936,7 @@ static ALLOW_ENV_HELP: &str = concat!(
 
 static DENY_ENV_HELP: &str = concat!(
   "Deny access to system environment information. Optionally specify accessible environment variables.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n",
   "Examples:\n",
@@ -2946,7 +2946,7 @@ static DENY_ENV_HELP: &str = concat!(
 
 static ALLOW_SYS_HELP: &str = concat!(
   "Allow access to OS information. Optionally allow specific APIs by function name.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n",
   "Examples:\n",
@@ -2956,7 +2956,7 @@ static ALLOW_SYS_HELP: &str = concat!(
 
 static DENY_SYS_HELP: &str = concat!(
   "Deny access to OS information. Optionally deny specific APIs by function name.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n",
   "Examples:\n",
@@ -2966,7 +2966,7 @@ static DENY_SYS_HELP: &str = concat!(
 
 static ALLOW_RUN_HELP: &str = concat!(
   "Allow running subprocesses. Optionally specify allowed runnable program names.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n",
   "Examples:\n",
@@ -2976,7 +2976,7 @@ static ALLOW_RUN_HELP: &str = concat!(
 
 static DENY_RUN_HELP: &str = concat!(
   "Deny running subprocesses. Optionally specify denied runnable program names.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n",
   "Examples:\n",
@@ -2986,7 +2986,7 @@ static DENY_RUN_HELP: &str = concat!(
 
 static ALLOW_FFI_HELP: &str = concat!(
   "(Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n",
   "Examples:\n",
@@ -2996,7 +2996,7 @@ static ALLOW_FFI_HELP: &str = concat!(
 
 static DENY_FFI_HELP: &str = concat!(
   "(Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n",
   "Examples:\n",
@@ -3006,21 +3006,21 @@ static DENY_FFI_HELP: &str = concat!(
 
 static ALLOW_HRTIME_HELP: &str = concat!(
   "Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n"
 );
 
 static DENY_HRTIME_HELP: &str = concat!(
   "Deny high-resolution time measurement. Note: this can prevent timing attacks and fingerprinting.\n",
-  "Docs: https://deno.land/manual",
+  "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n"
 );
 
 static ALLOW_ALL_HELP: &str = concat!(
   "Allow all permissions. Learn more about permissions in Deno:\n",
-  "https://deno.land/manual",
+  "https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n"
 );
@@ -3590,7 +3590,7 @@ static CONFIG_HELP: &str = concat!(
 deno including TypeScript, linting, and code formatting. Typically the
 configuration file will be called `deno.json` or `deno.jsonc` and
 automatically detected; in that case this flag is not necessary.
-See https://deno.land/manual",
+See https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/getting_started/configuration_file"
 );
