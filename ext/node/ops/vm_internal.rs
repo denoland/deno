@@ -69,9 +69,9 @@ impl ContextifyContext {
     scope: &mut v8::HandleScope,
     sandbox_obj: v8::Local<v8::Object>,
   ) {
-    let tmp = init_global_template(scope, true);
+    let tmp = init_global_template(scope, ContextInitMode::UseSnapshot);
 
-    let context = create_v8_context(scope, tmp, true);
+    let context = create_v8_context(scope, tmp, ContextInitMode::UseSnapshot);
     Self::from_context(scope, context, sandbox_obj);
   }
 
@@ -186,14 +186,20 @@ impl ContextifyContext {
 
 pub const VM_CONTEXT_INDEX: usize = 0;
 
+#[derive(PartialEq)]
+pub enum ContextInitMode {
+  ForSnapshot,
+  UseSnapshot,
+}
+
 pub fn create_v8_context<'a>(
   scope: &mut v8::HandleScope<'a, ()>,
   object_template: v8::Local<v8::ObjectTemplate>,
-  use_snapshot: bool,
+  mode: ContextInitMode,
 ) -> v8::Local<'a, v8::Context> {
   let scope = &mut v8::EscapableHandleScope::new(scope);
 
-  let context = if use_snapshot {
+  let context = if mode == ContextInitMode::UseSnapshot {
     v8::Context::from_snapshot(scope, VM_CONTEXT_INDEX).unwrap()
   } else {
     let ctx = v8::Context::new_from_template(scope, object_template);
@@ -215,7 +221,7 @@ struct SlotContextifyGlobalTemplate(v8::Global<v8::ObjectTemplate>);
 
 pub fn init_global_template<'a>(
   scope: &mut v8::HandleScope<'a, ()>,
-  cache: bool,
+  mode: ContextInitMode,
 ) -> v8::Local<'a, v8::ObjectTemplate> {
   let maybe_object_template_slot =
     scope.get_slot::<SlotContextifyGlobalTemplate>();
@@ -223,7 +229,7 @@ pub fn init_global_template<'a>(
   if maybe_object_template_slot.is_none() {
     let global_object_template = init_global_template_inner(scope);
 
-    if cache {
+    if mode == ContextInitMode::UseSnapshot {
       let contextify_global_template_slot = SlotContextifyGlobalTemplate(
         v8::Global::new(scope, global_object_template),
       );
