@@ -199,7 +199,10 @@ pub fn create_v8_context<'a>(
     let ctx = v8::Context::new_from_template(scope, object_template);
     // ContextifyContexts will update this to a pointer to the native object
     unsafe {
-      ctx.set_aligned_pointer_in_embedder_data(3, std::ptr::null_mut())
+      ctx.set_aligned_pointer_in_embedder_data(1, std::ptr::null_mut());
+      ctx.set_aligned_pointer_in_embedder_data(2, std::ptr::null_mut());
+      ctx.set_aligned_pointer_in_embedder_data(3, std::ptr::null_mut());
+      ctx.clear_all_slots(scope);
     };
     ctx
   };
@@ -334,8 +337,6 @@ fn property_getter<'s>(
     if rv == sandbox {
       rv = ctx.global_proxy(tc_scope).into();
     }
-
-    println!("property_getter: {:?}", rv.to_rust_string_lossy(tc_scope));
 
     ret.set(rv);
     return v8::Intercepted::Yes;
