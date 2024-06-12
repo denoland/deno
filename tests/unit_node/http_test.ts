@@ -95,11 +95,13 @@ Deno.test("[node/http close]", async () => {
     const deferred2 = Promise.withResolvers<void>();
     const server = http.createServer().listen().close((err) => {
       assertEquals(err, undefined);
+      console.log("close");
       deferred1.resolve();
     });
     // deno-lint-ignore no-explicit-any
     server.on("close", (err: any) => {
       assertEquals(err, undefined);
+      console.log("close2");
       deferred2.resolve();
     });
     server.on("listening", () => {
