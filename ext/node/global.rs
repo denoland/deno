@@ -275,7 +275,7 @@ fn current_mode(scope: &mut v8::HandleScope) -> Mode {
   };
   let mut buffer = [MaybeUninit::uninit(); 2048];
   let str = v8_string.to_rust_cow_lossy(scope, &mut buffer);
-  if node_resolver.in_npm_package_with_cache(str) {
+  if str.starts_with("node:") || node_resolver.in_npm_package_with_cache(str) {
     Mode::Node
   } else {
     Mode::Deno
