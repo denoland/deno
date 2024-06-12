@@ -187,12 +187,10 @@ pub struct napi_type_tag {
   pub upper: u64,
 }
 
-pub type napi_callback = Option<
-  unsafe extern "C" fn(
-    env: napi_env,
-    info: napi_callback_info,
-  ) -> napi_value<'static>,
->;
+pub type napi_callback = unsafe extern "C" fn(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value<'static>;
 
 pub type napi_finalize = unsafe extern "C" fn(
   env: napi_env,
@@ -213,8 +211,10 @@ pub type napi_threadsafe_function_call_js = unsafe extern "C" fn(
   data: *mut c_void,
 );
 
-pub type napi_async_cleanup_hook =
-  unsafe extern "C" fn(env: napi_env, data: *mut c_void);
+pub type napi_async_cleanup_hook = unsafe extern "C" fn(
+  handle: napi_async_cleanup_hook_handle,
+  data: *mut c_void,
+);
 
 pub type napi_cleanup_hook = unsafe extern "C" fn(data: *mut c_void);
 
@@ -235,9 +235,9 @@ pub const napi_default_jsproperty: napi_property_attributes =
 pub struct napi_property_descriptor<'a> {
   pub utf8name: *const c_char,
   pub name: napi_value<'a>,
-  pub method: napi_callback,
-  pub getter: napi_callback,
-  pub setter: napi_callback,
+  pub method: Option<napi_callback>,
+  pub getter: Option<napi_callback>,
+  pub setter: Option<napi_callback>,
   pub value: napi_value<'a>,
   pub attributes: napi_property_attributes,
   pub data: *mut c_void,
@@ -348,13 +348,13 @@ pub struct Env {
   pub open_handle_scopes: usize,
   pub shared: *mut EnvShared,
   pub async_work_sender: V8CrossThreadTaskSpawner,
-  pub cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
-  pub external_ops_tracker: ExternalOpsTracker,
+  cleanup_hooks: Rc<RefCell<Vec<(napi_cleanup_hook, *mut c_void)>>>,
+  external_ops_tracker: ExternalOpsTracker,
   pub last_error: napi_extended_error_info,
   pub last_exception: Option<v8::Global<v8::Value>>,
-  pub global: NonNull<v8::Value>,
-  pub buffer_constructor: NonNull<v8::Function>,
-  pub report_error: NonNull<v8::Function>,
+  pub global: v8::Global<v8::Object>,
+  pub buffer_constructor: v8::Global<v8::Function>,
+  pub report_error: v8::Global<v8::Function>,
 }
 
 unsafe impl Send for Env {}
@@ -365,7 +365,7 @@ impl Env {
   pub fn new(
     isolate_ptr: *mut v8::OwnedIsolate,
     context: v8::Global<v8::Context>,
-    global: v8::Global<v8::Value>,
+    global: v8::Global<v8::Object>,
     buffer_constructor: v8::Global<v8::Function>,
     report_error: v8::Global<v8::Function>,
     sender: V8CrossThreadTaskSpawner,
@@ -375,9 +375,9 @@ impl Env {
     Self {
       isolate_ptr,
       context: context.into_raw(),
-      global: global.into_raw(),
-      buffer_constructor: buffer_constructor.into_raw(),
-      report_error: report_error.into_raw(),
+      global,
+      buffer_constructor,
+      report_error,
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
       async_work_sender: sender,
@@ -435,6 +435,35 @@ impl Env {
   pub fn threadsafe_function_unref(&mut self) {
     self.external_ops_tracker.unref_op();
   }
+
+  pub fn add_cleanup_hook(
+    &mut self,
+    hook: napi_cleanup_hook,
+    data: *mut c_void,
+  ) {
+    let mut hooks = self.cleanup_hooks.borrow_mut();
+    if hooks.iter().any(|pair| pair.0 == hook && pair.1 == data) {
+      panic!("Cannot register cleanup hook with same data twice");
+    }
+    hooks.push((hook, data));
+  }
+
+  pub fn remove_cleanup_hook(
+    &mut self,
+    hook: napi_cleanup_hook,
+    data: *mut c_void,
+  ) {
+    let mut hooks = self.cleanup_hooks.borrow_mut();
+    match hooks
+      .iter()
+      .rposition(|&pair| pair.0 == hook && pair.1 == data)
+    {
+      Some(index) => {
+        hooks.remove(index);
+      }
+      None => panic!("Cannot remove cleanup hook which was not registered"),
+    }
+  }
 }
 
 deno_core::extension!(deno_napi,
@@ -468,7 +497,7 @@ fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   op_state: Rc<RefCell<OpState>>,
   #[string] path: String,
-  global: v8::Local<'scope, v8::Value>,
+  global: v8::Local<'scope, v8::Object>,
   buffer_constructor: v8::Local<'scope, v8::Function>,
   report_error: v8::Local<'scope, v8::Function>,
 ) -> std::result::Result<v8::Local<'scope, v8::Value>, AnyError>
@@ -498,9 +527,6 @@ where
   let type_tag_name = v8::String::new(scope, "type_tag").unwrap();
   let type_tag = v8::Private::new(scope, Some(type_tag_name));
   let type_tag = v8::Global::new(scope, type_tag);
-
-  // The `module.exports` object.
-  let exports = v8::Object::new(scope);
 
   let env_shared = EnvShared::new(napi_wrap, type_tag, path.clone());
 
@@ -541,6 +567,9 @@ where
     let mut slot = cell.borrow_mut();
     slot.take()
   });
+
+  // The `module.exports` object.
+  let exports = v8::Object::new(scope);
 
   let maybe_exports = if let Some(module_to_register) = maybe_module {
     // SAFETY: napi_register_module guarantees that `module_to_register` is valid.
