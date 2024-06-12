@@ -238,8 +238,6 @@ pub fn init_global_template<'a>(
   }
 }
 
-pub extern "C" fn c_noop(_: *const v8::FunctionCallbackInfo) {}
-
 // Using thread_local! to get around compiler bug.
 //
 // See NOTE in ext/node/global.rs#L12
@@ -263,9 +261,7 @@ thread_local! {
 pub fn init_global_template_inner<'a>(
   scope: &mut v8::HandleScope<'a, ()>,
 ) -> v8::Local<'a, v8::ObjectTemplate> {
-  let global_func_template =
-    v8::FunctionTemplate::builder_raw(c_noop).build(scope);
-  let global_object_template = global_func_template.instance_template(scope);
+  let global_object_template = v8::ObjectTemplate::new(scope);
   global_object_template.set_internal_field_count(3);
 
   let named_property_handler_config = {

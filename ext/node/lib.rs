@@ -645,9 +645,6 @@ deno_core::extension!(deno_node,
   global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
     let mut external_references = Vec::with_capacity(14);
-      external_references.push(ExternalReference {
-          function: vm::c_noop
-      });
 
     vm::GETTER_MAP_FN.with(|getter| {
       external_references.push(ExternalReference {
