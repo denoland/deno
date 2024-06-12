@@ -40,7 +40,6 @@ fn get_env_var_error_class(error: &env::VarError) -> &'static str {
 
 fn get_io_error_class(error: &io::Error) -> &'static str {
   use io::ErrorKind::*;
-
   match error.kind() {
     NotFound => "NotFound",
     PermissionDenied => "PermissionDenied",
