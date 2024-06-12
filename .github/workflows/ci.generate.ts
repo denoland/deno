@@ -692,7 +692,7 @@ const ci = {
           name: "Setup tmate session",
           if: [
             "(matrix.job == 'test' || matrix.job == 'bench') &&",
-            "matrix.profile == 'debug' && (matrix.use_sysroot ||",
+            "matrix.profile == 'release' && (matrix.use_sysroot ||",
             "github.repository == 'denoland/deno')",
           ].join("\n"),
           uses: "mxschmitt/action-tmate@v3",
