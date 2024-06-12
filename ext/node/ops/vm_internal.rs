@@ -197,10 +197,8 @@ pub fn create_v8_context<'a>(
     v8::Context::from_snapshot(scope, VM_CONTEXT_INDEX).unwrap()
   } else {
     let ctx = v8::Context::new_from_template(scope, object_template);
-    // ContextifyContexts will update this to a pointer to the native object
+    // SAFETY: ContextifyContexts will update this to a pointer to the native object
     unsafe {
-      ctx.set_aligned_pointer_in_embedder_data(1, std::ptr::null_mut());
-      ctx.set_aligned_pointer_in_embedder_data(2, std::ptr::null_mut());
       ctx.set_aligned_pointer_in_embedder_data(3, std::ptr::null_mut());
       ctx.clear_all_slots(scope);
     };
