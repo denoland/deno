@@ -1077,11 +1077,6 @@ impl LspTsConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct LspWorkspaceConfig {
-  pub members: Vec<ModuleSpecifier>,
-}
-
-#[derive(Debug, Clone)]
 pub struct LspPackageConfig {
   pub nv: PackageNv,
   pub exports: Value,

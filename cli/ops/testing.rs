@@ -19,7 +19,6 @@ use deno_core::OpState;
 use deno_runtime::deno_permissions::create_child_permissions;
 use deno_runtime::deno_permissions::ChildPermissionsArg;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use serde::Serialize;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use uuid::Uuid;
@@ -92,13 +91,6 @@ pub fn op_restore_test_permissions(
   } else {
     Err(generic_error("no permissions to restore"))
   }
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TestRegisterResult {
-  id: usize,
-  origin: String,
 }
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
