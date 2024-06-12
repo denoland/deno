@@ -7,6 +7,23 @@ use deno_core::v8;
 
 use super::vm_internal as i;
 
+pub use i::create_v8_context;
+pub use i::init_global_template;
+pub use i::ContextInitMode;
+
+pub use i::DEFINER_MAP_FN;
+pub use i::DELETER_MAP_FN;
+pub use i::DESCRIPTOR_MAP_FN;
+pub use i::ENUMERATOR_MAP_FN;
+pub use i::GETTER_MAP_FN;
+pub use i::SETTER_MAP_FN;
+
+pub use i::INDEXED_DEFINER_MAP_FN;
+pub use i::INDEXED_DELETER_MAP_FN;
+pub use i::INDEXED_DESCRIPTOR_MAP_FN;
+pub use i::INDEXED_GETTER_MAP_FN;
+pub use i::INDEXED_SETTER_MAP_FN;
+
 pub struct Script {
   inner: i::ContextifyScript,
 }

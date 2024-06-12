@@ -35,6 +35,10 @@ mod resolution;
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
 pub use ops::v8::VM_CONTEXT_INDEX;
+use ops::vm;
+pub use ops::vm::create_v8_context;
+pub use ops::vm::init_global_template;
+pub use ops::vm::ContextInitMode;
 pub use package_json::PackageJson;
 pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
@@ -641,7 +645,64 @@ deno_core::extension!(deno_node,
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
-    let mut external_references = Vec::with_capacity(7);
+    let mut external_references = Vec::with_capacity(14);
+
+    vm::GETTER_MAP_FN.with(|getter| {
+      external_references.push(ExternalReference {
+        named_getter: *getter,
+      });
+    });
+    vm::SETTER_MAP_FN.with(|setter| {
+      external_references.push(ExternalReference {
+        named_setter: *setter,
+      });
+    });
+    vm::DELETER_MAP_FN.with(|deleter| {
+      external_references.push(ExternalReference {
+        named_getter: *deleter,
+      },);
+    });
+    vm::ENUMERATOR_MAP_FN.with(|enumerator| {
+      external_references.push(ExternalReference {
+        enumerator: *enumerator,
+      });
+    });
+    vm::DEFINER_MAP_FN.with(|definer| {
+      external_references.push(ExternalReference {
+        named_definer: *definer,
+      });
+    });
+    vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
+      external_references.push(ExternalReference {
+        named_getter: *descriptor,
+      });
+    });
+
+    vm::INDEXED_GETTER_MAP_FN.with(|getter| {
+      external_references.push(ExternalReference {
+        indexed_getter: *getter,
+      });
+    });
+    vm::INDEXED_SETTER_MAP_FN.with(|setter| {
+      external_references.push(ExternalReference {
+        indexed_setter: *setter,
+      });
+    });
+    vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
+      external_references.push(ExternalReference {
+        indexed_getter: *deleter,
+      });
+    });
+    vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
+      external_references.push(ExternalReference {
+        indexed_definer: *definer,
+      });
+    });
+    vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
+      external_references.push(ExternalReference {
+        indexed_getter: *descriptor,
+      });
+    });
 
     global::GETTER_MAP_FN.with(|getter| {
       external_references.push(ExternalReference {
