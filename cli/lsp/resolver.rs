@@ -5,7 +5,6 @@ use crate::args::package_json;
 use crate::args::CacheSetting;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
-use crate::jsr::JsrCacheResolver;
 use crate::lsp::config::Config;
 use crate::lsp::config::ConfigData;
 use crate::npm::create_cli_npm_resolver_for_lsp;
@@ -13,7 +12,6 @@ use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
-use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::ManagedCliNpmResolver;
 use crate::resolver::CliGraphResolver;
@@ -45,12 +43,15 @@ use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use package_json::PackageJsonDepsProvider;
 use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use super::cache::LspCache;
+use super::jsr::JsrCacheResolver;
 
 #[derive(Debug, Clone)]
 pub struct LspResolver {
@@ -99,7 +100,8 @@ impl LspResolver {
     );
     let jsr_resolver = Some(Arc::new(JsrCacheResolver::new(
       cache.root_vendor_or_global(),
-      config_data.and_then(|d| d.lockfile.clone()),
+      config_data,
+      config,
     )));
     let redirect_resolver = Some(Arc::new(RedirectResolver::new(
       cache.root_vendor_or_global(),
@@ -161,13 +163,20 @@ impl LspResolver {
     self.jsr_resolver.as_ref().inspect(|r| r.did_cache());
   }
 
-  pub async fn set_npm_package_reqs(
+  pub async fn set_npm_reqs(
     &self,
-    reqs: &[PackageReq],
+    reqs: &BTreeMap<Option<ModuleSpecifier>, BTreeSet<PackageReq>>,
   ) -> Result<(), AnyError> {
+    let reqs = reqs
+      .values()
+      .flatten()
+      .collect::<BTreeSet<_>>()
+      .into_iter()
+      .cloned()
+      .collect::<Vec<_>>();
     if let Some(npm_resolver) = self.npm_resolver.as_ref() {
       if let Some(npm_resolver) = npm_resolver.as_managed() {
-        return npm_resolver.set_package_reqs(reqs).await;
+        return npm_resolver.set_package_reqs(&reqs).await;
       }
     }
     Ok(())
@@ -212,12 +221,12 @@ impl LspResolver {
       .collect()
   }
 
-  pub fn jsr_to_registry_url(
+  pub fn jsr_to_resource_url(
     &self,
     req_ref: &JsrPackageReqReference,
     _file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<ModuleSpecifier> {
-    self.jsr_resolver.as_ref()?.jsr_to_registry_url(req_ref)
+    self.jsr_resolver.as_ref()?.jsr_to_resource_url(req_ref)
   }
 
   pub fn jsr_lookup_export_for_path(
@@ -346,9 +355,11 @@ async fn create_npm_resolver(
       cache_setting: CacheSetting::Only,
       text_only_progress_bar: ProgressBar::new(ProgressBarStyle::TextOnly),
       maybe_node_modules_path: config_data.node_modules_dir.clone(),
-      // do not install while resolving in the lsp—leave that to the cache command
-      package_json_installer:
-        CliNpmResolverManagedPackageJsonInstallerOption::NoInstall,
+      package_json_deps_provider: Arc::new(PackageJsonDepsProvider::new(
+        config_data.package_json.as_ref().map(|package_json| {
+          package_json::get_local_package_json_version_reqs(package_json)
+        }),
+      )),
       npmrc: config_data
         .npmrc
         .clone()

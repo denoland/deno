@@ -34,6 +34,7 @@ _napi_create_external
 _napi_get_threadsafe_function_context
 _napi_get_null
 _napi_create_string_utf16
+_node_api_create_external_string_utf16
 _napi_get_value_bigint_uint64
 _napi_module_register
 _napi_is_typedarray
@@ -74,6 +75,7 @@ _napi_adjust_external_memory
 _napi_release_threadsafe_function
 _napi_delete_async_work
 _napi_create_string_latin1
+_node_api_create_external_string_latin1
 _napi_is_array
 _napi_unref_threadsafe_function
 _napi_throw_error
@@ -137,8 +139,15 @@ _napi_create_uint32
 _napi_has_element
 _napi_create_external_arraybuffer
 _napi_create_symbol
+_node_api_symbol_for
 _napi_coerce_to_string
 _napi_create_type_error
 _napi_fatal_exception
 _napi_create_async_work
 _napi_async_init
+_node_api_create_property_key_utf16
+_napi_type_tag_object
+_napi_check_object_type_tag
+_node_api_post_finalizer
+_napi_add_async_cleanup_hook
+_napi_remove_async_cleanup_hook
