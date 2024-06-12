@@ -1043,7 +1043,7 @@ Deno.test("[node/http] maxHeaderSize is defined", () => {
 });
 
 Deno.test("[node/http] server graceful close", async () => {
-  const server = http.createServer(function (request, response) {
+  const server = http.createServer(function (_, response) {
     response.writeHead(200, {});
     response.end("ok");
     server.close();
