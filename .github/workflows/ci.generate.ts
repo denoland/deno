@@ -689,6 +689,15 @@ const ci = {
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
+          name: "Setup tmate session",
+          if: [
+            "(matrix.job == 'test' || matrix.job == 'bench') &&",
+            "matrix.profile == 'debug' && (matrix.use_sysroot ||",
+            "github.repository == 'denoland/deno')",
+          ].join("\n"),
+          uses: "mxschmitt/action-tmate@v3",
+        },
+        {
           name: "Build release",
           if: [
             "(matrix.job == 'test' || matrix.job == 'bench') &&",
