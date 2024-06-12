@@ -11,9 +11,9 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
-use deno_runtime::permissions::create_child_permissions;
-use deno_runtime::permissions::ChildPermissionsArg;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::create_child_permissions;
+use deno_runtime::deno_permissions::ChildPermissionsArg;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
@@ -61,7 +61,7 @@ pub fn op_pledge_test_permissions(
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = {
-    let mut parent_permissions = parent_permissions.0 .0.lock();
+    let mut parent_permissions = parent_permissions.0.lock();
     let perms = create_child_permissions(&mut parent_permissions, args)?;
     PermissionsContainer::new(perms)
   };

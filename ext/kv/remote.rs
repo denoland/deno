@@ -48,6 +48,22 @@ pub trait RemoteDbHandlerPermissions {
   ) -> Result<(), AnyError>;
 }
 
+impl RemoteDbHandlerPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_env(&mut self, var: &str) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_env(self, var)
+  }
+
+  #[inline(always)]
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+  }
+}
+
 pub struct RemoteDbHandler<P: RemoteDbHandlerPermissions + 'static> {
   http_options: HttpOptions,
   _p: std::marker::PhantomData<P>,

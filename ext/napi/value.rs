@@ -31,9 +31,20 @@ where
   v8::Local<'s, T>: Into<v8::Local<'s, v8::Value>>,
 {
   fn from(v: v8::Local<'s, T>) -> Self {
-    // SAFETY: It is safe to cast v8::Local<T> that implements Into<v8::Local<v8::Value>>.
-    //         `fn into(self)` transmutes anyways.
-    Self(unsafe { transmute(v) }, std::marker::PhantomData)
+    Self(Some(NonNull::from(&*v.into())), std::marker::PhantomData)
+  }
+}
+
+impl<'s, T> From<Option<v8::Local<'s, T>>> for napi_value<'s>
+where
+  v8::Local<'s, T>: Into<v8::Local<'s, v8::Value>>,
+{
+  fn from(v: Option<v8::Local<'s, T>>) -> Self {
+    if let Some(v) = v {
+      NapiValue::from(v)
+    } else {
+      Self(None, std::marker::PhantomData)
+    }
   }
 }
 

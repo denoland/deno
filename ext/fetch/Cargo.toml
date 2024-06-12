@@ -17,6 +17,7 @@ path = "lib.rs"
 bytes.workspace = true
 data-url.workspace = true
 deno_core.workspace = true
+deno_permissions.workspace = true
 deno_tls.workspace = true
 dyn-clone = "1"
 http_v02.workspace = true

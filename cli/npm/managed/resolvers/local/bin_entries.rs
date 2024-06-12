@@ -226,15 +226,6 @@ fn set_up_bin_shim(
 
   cmd_shim.set_extension("cmd");
   let shim = format!("@deno run -A npm:{}/{bin_name} %*", package.id.nv);
-  if cmd_shim.exists() {
-    if let Ok(contents) = fs::read_to_string(cmd_shim) {
-      if contents == shim {
-        // up to date
-        return Ok(());
-      }
-    }
-    return Ok(());
-  }
   fs::write(&cmd_shim, shim).with_context(|| {
     format!("Can't set up '{}' bin at {}", bin_name, cmd_shim.display())
   })?;
@@ -287,19 +278,21 @@ fn symlink_bin_entry(
 
   if let Err(err) = symlink(&original_relative, &link) {
     if err.kind() == io::ErrorKind::AlreadyExists {
-      let resolved = std::fs::read_link(&link).ok();
-      if let Some(resolved) = resolved {
-        if resolved != original_relative {
-          log::warn!(
-            "{} Trying to set up '{}' bin for \"{}\", but an entry pointing to \"{}\" already exists. Skipping...", 
-            deno_terminal::colors::yellow("Warning"), 
-            bin_name,
-            resolved.display(),
-            original_relative.display()
-          );
-        }
-        return Ok(());
-      }
+      // remove and retry
+      std::fs::remove_file(&link).with_context(|| {
+        format!(
+          "Failed to remove existing bin symlink at {}",
+          link.display()
+        )
+      })?;
+      symlink(&original_relative, &link).with_context(|| {
+        format!(
+          "Can't set up '{}' bin at {}",
+          bin_name,
+          original_relative.display()
+        )
+      })?;
+      return Ok(());
     }
     return Err(err).with_context(|| {
       format!(
