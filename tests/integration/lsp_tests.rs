@@ -6072,6 +6072,78 @@ export class DuckConfig {
 }
 
 #[test]
+fn lsp_code_actions_imports_dts() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  source_file(
+    temp_dir.path().join("decl.d.ts"),
+    "export type SomeType = 1;\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        const a: SomeType = 1;
+        console.log(a);
+      "#,
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("file.ts").unwrap(),
+      },
+      "range": {
+        "start": { "line": 1, "character": 17 },
+        "end": { "line": 1, "character": 25 },
+      },
+      "context": {
+        "diagnostics": diagnostics.all(),
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Add import from \"./decl.d.ts\"",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 17 },
+          "end": { "line": 1, "character": 25 },
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'SomeType'.",
+      }],
+      "edit": {
+        "documentChanges": [{
+          "textDocument": {
+            "uri": temp_dir.uri().join("file.ts").unwrap(),
+            "version": 1,
+          },
+          "edits": [{
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "newText": "import { SomeType } from \"./decl.d.ts\";\n",
+          }],
+        }],
+      },
+    }])
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_code_actions_refactor() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
