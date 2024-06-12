@@ -2,6 +2,7 @@
 
 import EventEmitter from "node:events";
 import http, { type RequestOptions } from "node:http";
+import url from "node:url";
 import https from "node:https";
 import net from "node:net";
 import { assert, assertEquals, fail } from "@std/assert/mod.ts";
@@ -1039,4 +1040,31 @@ Deno.test("[node/http] ServerResponse default status code 200", () => {
 
 Deno.test("[node/http] maxHeaderSize is defined", () => {
   assertEquals(http.maxHeaderSize, 16_384);
+});
+
+Deno.test("[node/http] server graceful close", async () => {
+  const server = http.createServer(function (request, response) {
+    response.writeHead(200, {});
+    response.end("ok");
+    server.close();
+  });
+
+  const { promise, resolve } = Promise.withResolvers<void>();
+  server.listen(0, function () {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+    const testURL = url.parse(
+      `http://localhost:${port}`,
+    );
+
+    http.request(testURL, function (response) {
+      assertEquals(response.statusCode, 200);
+      response.on("data", function () {});
+      response.on("end", function () {
+        resolve();
+      });
+    }).end();
+  });
+
+  await promise;
 });
