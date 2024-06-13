@@ -5295,17 +5295,19 @@ async fn listen_tls_alpn() {
   let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
     "../testdata/tls/RootCA.crt"
   )));
-  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let certs = rustls_pemfile::certs(&mut reader)
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap();
   let mut root_store = rustls::RootCertStore::empty();
-  root_store.add_parsable_certificates(&certs);
+  root_store.add_parsable_certificates(certs);
   let mut cfg = rustls::ClientConfig::builder()
-    .with_safe_defaults()
     .with_root_certificates(root_store)
     .with_no_client_auth();
   cfg.alpn_protocols.push(b"foobar".to_vec());
   let cfg = Arc::new(cfg);
 
-  let hostname = rustls::ServerName::try_from("localhost").unwrap();
+  let hostname =
+    rustls::pki_types::ServerName::try_from("localhost".to_string()).unwrap();
 
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
     .await
@@ -5347,17 +5349,18 @@ async fn listen_tls_alpn_fail() {
   let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
     "../testdata/tls/RootCA.crt"
   )));
-  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let certs = rustls_pemfile::certs(&mut reader)
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap();
   let mut root_store = rustls::RootCertStore::empty();
-  root_store.add_parsable_certificates(&certs);
+  root_store.add_parsable_certificates(certs);
   let mut cfg = rustls::ClientConfig::builder()
-    .with_safe_defaults()
     .with_root_certificates(root_store)
     .with_no_client_auth();
   cfg.alpn_protocols.push(b"boofar".to_vec());
   let cfg = Arc::new(cfg);
 
-  let hostname = rustls::ServerName::try_from("localhost").unwrap();
+  let hostname = rustls::pki_types::ServerName::try_from("localhost").unwrap();
 
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
     .await

@@ -21,9 +21,9 @@ land until the release is finished.**
 
 Deno v$VERSION is now getting released.
 
-[`denoland/deno`](https://github.com/denoland/deno) is now locked.
+`denoland/deno` is now locked.
 
-**DO NOT LAND ANY PRs** 
+*DO NOT LAND ANY PRs*
 
 Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 ```
@@ -180,11 +180,11 @@ script generates the symbols based on the latest tags.
 ```
 :unlock:
 
-@channel 
+@here 
 
-[`denoland/deno`](https://github.com/denoland/deno) is now unlocked.
+`denoland/deno` is now unlocked.
 
-**You can land PRs now**
+*You can land PRs now*
 
 Deno v$VERSION has been released.
 ```
