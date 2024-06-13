@@ -21,7 +21,6 @@ use crate::npm::create_cli_npm_resolver;
 use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
-use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::NpmCacheDir;
 use crate::resolver::CjsResolutionStore;
@@ -373,27 +372,27 @@ pub async fn run(
           ));
         let fs = Arc::new(DenoCompileFileSystem::new(vfs))
           as Arc<dyn deno_fs::FileSystem>;
-        let npm_resolver = create_cli_npm_resolver(
-          CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
-            snapshot: CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot)),
-            maybe_lockfile: None,
-            fs: fs.clone(),
-            http_client_provider: http_client_provider.clone(),
-            npm_global_cache_dir,
-            cache_setting,
-            text_only_progress_bar: progress_bar,
-            maybe_node_modules_path,
-            package_json_installer:
-              CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
-                package_json_deps_provider.clone(),
-              ),
-            npm_system_info: Default::default(),
-            // Packages from different registries are already inlined in the ESZip,
-            // so no need to create actual `.npmrc` configuration.
-            npmrc: create_default_npmrc(),
-          }),
-        )
-        .await?;
+        let npm_resolver =
+          create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
+            CliNpmResolverManagedCreateOptions {
+              snapshot: CliNpmResolverManagedSnapshotOption::Specified(Some(
+                snapshot,
+              )),
+              maybe_lockfile: None,
+              fs: fs.clone(),
+              http_client_provider: http_client_provider.clone(),
+              npm_global_cache_dir,
+              cache_setting,
+              text_only_progress_bar: progress_bar,
+              maybe_node_modules_path,
+              package_json_deps_provider: package_json_deps_provider.clone(),
+              npm_system_info: Default::default(),
+              // Packages from different registries are already inlined in the ESZip,
+              // so no need to create actual `.npmrc` configuration.
+              npmrc: create_default_npmrc(),
+            },
+          ))
+          .await?;
         (
           package_json_deps_provider,
           fs,
@@ -431,27 +430,25 @@ pub async fn run(
         let package_json_deps_provider =
           Arc::new(PackageJsonDepsProvider::new(None));
         let fs = Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>;
-        let npm_resolver = create_cli_npm_resolver(
-          CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
-            snapshot: CliNpmResolverManagedSnapshotOption::Specified(None),
-            maybe_lockfile: None,
-            fs: fs.clone(),
-            http_client_provider: http_client_provider.clone(),
-            npm_global_cache_dir,
-            cache_setting,
-            text_only_progress_bar: progress_bar,
-            maybe_node_modules_path: None,
-            package_json_installer:
-              CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
-                package_json_deps_provider.clone(),
-              ),
-            npm_system_info: Default::default(),
-            // Packages from different registries are already inlined in the ESZip,
-            // so no need to create actual `.npmrc` configuration.
-            npmrc: create_default_npmrc(),
-          }),
-        )
-        .await?;
+        let npm_resolver =
+          create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
+            CliNpmResolverManagedCreateOptions {
+              snapshot: CliNpmResolverManagedSnapshotOption::Specified(None),
+              maybe_lockfile: None,
+              fs: fs.clone(),
+              http_client_provider: http_client_provider.clone(),
+              npm_global_cache_dir,
+              cache_setting,
+              text_only_progress_bar: progress_bar,
+              maybe_node_modules_path: None,
+              package_json_deps_provider: package_json_deps_provider.clone(),
+              npm_system_info: Default::default(),
+              // Packages from different registries are already inlined in the ESZip,
+              // so no need to create actual `.npmrc` configuration.
+              npmrc: create_default_npmrc(),
+            },
+          ))
+          .await?;
         (package_json_deps_provider, fs, npm_resolver, None)
       }
     };

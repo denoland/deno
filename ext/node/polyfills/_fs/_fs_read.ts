@@ -88,10 +88,6 @@ export function read(
     if (
       !(opt.buffer instanceof Buffer) && !(opt.buffer instanceof Uint8Array)
     ) {
-      if (opt.buffer === null) {
-        // @ts-ignore: Intentionally create TypeError for passing test-fs-read.js#L87
-        length = opt.buffer.byteLength;
-      }
       throw new ERR_INVALID_ARG_TYPE("buffer", [
         "Buffer",
         "TypedArray",

@@ -6072,6 +6072,78 @@ export class DuckConfig {
 }
 
 #[test]
+fn lsp_code_actions_imports_dts() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  source_file(
+    temp_dir.path().join("decl.d.ts"),
+    "export type SomeType = 1;\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        const a: SomeType = 1;
+        console.log(a);
+      "#,
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("file.ts").unwrap(),
+      },
+      "range": {
+        "start": { "line": 1, "character": 17 },
+        "end": { "line": 1, "character": 25 },
+      },
+      "context": {
+        "diagnostics": diagnostics.all(),
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Add import from \"./decl.d.ts\"",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 17 },
+          "end": { "line": 1, "character": 25 },
+        },
+        "severity": 1,
+        "code": 2304,
+        "source": "deno-ts",
+        "message": "Cannot find name 'SomeType'.",
+      }],
+      "edit": {
+        "documentChanges": [{
+          "textDocument": {
+            "uri": temp_dir.uri().join("file.ts").unwrap(),
+            "version": 1,
+          },
+          "edits": [{
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "newText": "import { SomeType } from \"./decl.d.ts\";\n",
+          }],
+        }],
+      },
+    }])
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_code_actions_refactor() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -9765,13 +9837,13 @@ fn lsp_format_json() {
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-        "textDocument": {
-          "uri": json_file.uri(),
-        },
-        "options": {
-          "tabSize": 2,
-          "insertSpaces": true
-        }
+      "textDocument": {
+        "uri": json_file.uri(),
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true
+      }
     }),
   );
 
@@ -9797,6 +9869,67 @@ fn lsp_format_json() {
         },
         "newText": " }\n"
       }
+    ])
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_format_editor_options() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let file = source_file(
+    temp_dir.path().join("file.ts"),
+    "if (true) {\n  console.log();\n}\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": file.uri(),
+      },
+      "options": {
+        "tabSize": 4,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 1, "character": 0 },
+          "end": { "line": 1, "character": 0 },
+        },
+        "newText": "  ",
+      },
+    ])
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": file.uri(),
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": false,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 1, "character": 0 },
+          "end": { "line": 1, "character": 2 },
+        },
+        "newText": "\t",
+      },
     ])
   );
   client.shutdown();
@@ -9964,7 +10097,7 @@ fn lsp_format_with_config() {
       },
       "options": {
         "tabSize": 2,
-        "insertSpaces": true
+        "insertSpaces": false
       }
     }),
   );
@@ -12868,14 +13001,10 @@ fn lsp_uses_lockfile_for_npm_initialization() {
   client.initialize_default();
   let mut skipping_count = 0;
   client.wait_until_stderr_line(|line| {
-    if line.contains("Skipping pending npm resolution.") {
+    if line.contains("Skipping npm resolution.") {
       skipping_count += 1;
     }
-    assert!(
-      !line.contains("Running pending npm resolution."),
-      "Line: {}",
-      line
-    );
+    assert!(!line.contains("Running npm resolution."), "Line: {}", line);
     line.contains("Server ready.")
   });
   assert_eq!(skipping_count, 1);

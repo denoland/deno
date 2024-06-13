@@ -182,6 +182,33 @@ Deno.test("[node/http] server can respond with 101, 204, 205, 304 status", async
   }
 });
 
+Deno.test("[node/http] multiple set-cookie headers", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const server = http.createServer((_req, res) => {
+    res.setHeader("Set-Cookie", ["foo=bar", "bar=foo"]);
+    assertEquals(res.getHeader("Set-Cookie"), ["foo=bar", "bar=foo"]);
+    res.end();
+  });
+
+  server.listen(async () => {
+    const res = await fetch(
+      // deno-lint-ignore no-explicit-any
+      `http://127.0.0.1:${(server.address() as any).port}/`,
+    );
+    assert(res.ok);
+
+    const setCookieHeaders = res.headers.getSetCookie();
+    assertEquals(setCookieHeaders, ["foo=bar", "bar=foo"]);
+
+    await res.body!.cancel();
+
+    server.close(() => resolve());
+  });
+
+  await promise;
+});
+
 Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
 
@@ -1000,8 +1027,8 @@ Deno.test("[node/http] ServerResponse getHeaders", () => {
   const res = new http.ServerResponse(req);
   res.setHeader("foo", "bar");
   res.setHeader("bar", "baz");
-  assertEquals(res.getHeaderNames(), ["bar", "foo"]);
-  assertEquals(res.getHeaders(), { "bar": "baz", "foo": "bar" });
+  assertEquals(res.getHeaderNames(), ["foo", "bar"]);
+  assertEquals(res.getHeaders(), { "foo": "bar", "bar": "baz" });
 });
 
 Deno.test("[node/http] ServerResponse default status code 200", () => {

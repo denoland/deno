@@ -8,9 +8,7 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
-use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
-use deno_npm::resolution::NpmPackageVersionResolutionError;
 use deno_npm::resolution::NpmPackagesPartitioned;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
@@ -33,6 +31,16 @@ use crate::args::Lockfile;
 use crate::util::sync::SyncReadAsyncWriteLock;
 
 use super::CliNpmRegistryApi;
+
+pub struct AddPkgReqsResult {
+  /// Results from adding the individual packages.
+  ///
+  /// The indexes of the results correspond to the indexes of the provided
+  /// package requirements.
+  pub results: Vec<Result<PackageNv, NpmResolutionError>>,
+  /// The final result of resolving and caching all the package requirements.
+  pub dependencies_result: Result<(), AnyError>,
+}
 
 /// Handles updating and storing npm resolution in memory where the underlying
 /// snapshot can be updated concurrently. Additionally handles updating the lockfile
@@ -80,19 +88,27 @@ impl NpmResolution {
   pub async fn add_package_reqs(
     &self,
     package_reqs: &[PackageReq],
-  ) -> Result<(), AnyError> {
+  ) -> AddPkgReqsResult {
     // only allow one thread in here at a time
     let snapshot_lock = self.snapshot.acquire().await;
-    let snapshot = add_package_reqs_to_snapshot(
+    let result = add_package_reqs_to_snapshot(
       &self.api,
       package_reqs,
       self.maybe_lockfile.clone(),
       || snapshot_lock.read().clone(),
     )
-    .await?;
+    .await;
 
-    *snapshot_lock.write() = snapshot;
-    Ok(())
+    AddPkgReqsResult {
+      results: result.results,
+      dependencies_result: match result.dep_graph_result {
+        Ok(snapshot) => {
+          *snapshot_lock.write() = snapshot;
+          Ok(())
+        }
+        Err(err) => Err(err.into()),
+      },
+    }
   }
 
   pub async fn set_package_reqs(
@@ -121,24 +137,8 @@ impl NpmResolution {
         }
       },
     )
-    .await?;
-
-    *snapshot_lock.write() = snapshot;
-
-    Ok(())
-  }
-
-  pub async fn resolve_pending(&self) -> Result<(), AnyError> {
-    // only allow one thread in here at a time
-    let snapshot_lock = self.snapshot.acquire().await;
-
-    let snapshot = add_package_reqs_to_snapshot(
-      &self.api,
-      &Vec::new(),
-      self.maybe_lockfile.clone(),
-      || snapshot_lock.read().clone(),
-    )
-    .await?;
+    .await
+    .into_result()?;
 
     *snapshot_lock.write() = snapshot;
 
@@ -217,49 +217,6 @@ impl NpmResolution {
       .map(|pkg| pkg.id.clone())
   }
 
-  /// Resolves a package requirement for deno graph. This should only be
-  /// called by deno_graph's NpmResolver or for resolving packages in
-  /// a package.json
-  pub async fn resolve_pkg_req_as_pending_with_info(
-    &self,
-    pkg_req: &PackageReq,
-    pkg_info: &NpmPackageInfo,
-  ) -> Result<PackageNv, NpmPackageVersionResolutionError> {
-    debug_assert_eq!(pkg_req.name, pkg_info.name);
-    // only allow one thread in here at a time
-    let snapshot_lock = self.snapshot.acquire().await;
-
-    let mut snapshot = snapshot_lock.write();
-    let pending_resolver = get_npm_pending_resolver(&self.api);
-    let nv = pending_resolver.resolve_package_req_as_pending(
-      &mut snapshot,
-      pkg_req,
-      pkg_info,
-    )?;
-    Ok(nv)
-  }
-
-  pub async fn resolve_pkg_reqs_as_pending_with_info(
-    &self,
-    reqs_with_pkg_infos: &[(&PackageReq, Arc<NpmPackageInfo>)],
-  ) -> Vec<Result<PackageNv, NpmPackageVersionResolutionError>> {
-    // only allow one thread in here at a time
-    let snapshot_lock = self.snapshot.acquire().await;
-
-    let mut snapshot = snapshot_lock.write();
-    let pending_resolver = get_npm_pending_resolver(&self.api);
-    let mut results = Vec::with_capacity(reqs_with_pkg_infos.len());
-    for (pkg_req, pkg_info) in reqs_with_pkg_infos {
-      debug_assert_eq!(pkg_req.name, pkg_info.name);
-      results.push(pending_resolver.resolve_package_req_as_pending(
-        &mut snapshot,
-        pkg_req,
-        pkg_info,
-      ));
-    }
-    results
-  }
-
   pub fn package_reqs(&self) -> HashMap<PackageReq, PackageNv> {
     self.snapshot.read().package_reqs().clone()
   }
@@ -307,52 +264,50 @@ async fn add_package_reqs_to_snapshot(
   package_reqs: &[PackageReq],
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   get_new_snapshot: impl Fn() -> NpmResolutionSnapshot,
-) -> Result<NpmResolutionSnapshot, AnyError> {
+) -> deno_npm::resolution::AddPkgReqsResult {
   let snapshot = get_new_snapshot();
-  let snapshot = if !snapshot.has_pending()
-    && package_reqs
-      .iter()
-      .all(|req| snapshot.package_reqs().contains_key(req))
+  if package_reqs
+    .iter()
+    .all(|req| snapshot.package_reqs().contains_key(req))
   {
-    log::debug!(
-      "Snapshot already up to date. Skipping pending npm resolution."
-    );
-    snapshot
-  } else {
-    log::debug!(
-      /* this string is used in tests!! */
-      "Running pending npm resolution."
-    );
-    let pending_resolver = get_npm_pending_resolver(api);
-    let result = pending_resolver
-      .resolve_pending(snapshot, package_reqs)
-      .await;
-    api.clear_memory_cache();
-    match result {
-      Ok(snapshot) => snapshot,
-      Err(NpmResolutionError::Resolution(err)) if api.mark_force_reload() => {
-        log::debug!("{err:#}");
-        log::debug!("npm resolution failed. Trying again...");
+    log::debug!("Snapshot already up to date. Skipping npm resolution.");
+    return deno_npm::resolution::AddPkgReqsResult {
+      results: package_reqs
+        .iter()
+        .map(|req| Ok(snapshot.package_reqs().get(req).unwrap().clone()))
+        .collect(),
+      dep_graph_result: Ok(snapshot),
+    };
+  }
+  log::debug!(
+    /* this string is used in tests */
+    "Running npm resolution."
+  );
+  let pending_resolver = get_npm_pending_resolver(api);
+  let result = pending_resolver.add_pkg_reqs(snapshot, package_reqs).await;
+  api.clear_memory_cache();
+  let result = match &result.dep_graph_result {
+    Err(NpmResolutionError::Resolution(err)) if api.mark_force_reload() => {
+      log::debug!("{err:#}");
+      log::debug!("npm resolution failed. Trying again...");
 
-        // try again
-        let snapshot = get_new_snapshot();
-        let result = pending_resolver
-          .resolve_pending(snapshot, package_reqs)
-          .await;
-        api.clear_memory_cache();
-        // now surface the result after clearing the cache
-        result?
-      }
-      Err(err) => return Err(err.into()),
+      // try again
+      let snapshot = get_new_snapshot();
+      let result = pending_resolver.add_pkg_reqs(snapshot, package_reqs).await;
+      api.clear_memory_cache();
+      result
     }
+    _ => result,
   };
 
-  if let Some(lockfile_mutex) = maybe_lockfile {
-    let mut lockfile = lockfile_mutex.lock();
-    populate_lockfile_from_snapshot(&mut lockfile, &snapshot);
+  if let Ok(snapshot) = &result.dep_graph_result {
+    if let Some(lockfile_mutex) = maybe_lockfile {
+      let mut lockfile = lockfile_mutex.lock();
+      populate_lockfile_from_snapshot(&mut lockfile, snapshot);
+    }
   }
 
-  Ok(snapshot)
+  result
 }
 
 fn get_npm_pending_resolver(
@@ -374,7 +329,6 @@ fn populate_lockfile_from_snapshot(
   lockfile: &mut Lockfile,
   snapshot: &NpmResolutionSnapshot,
 ) {
-  assert!(!snapshot.has_pending());
   for (package_req, nv) in snapshot.package_reqs() {
     lockfile.insert_package_specifier(
       format!("npm:{}", package_req),
