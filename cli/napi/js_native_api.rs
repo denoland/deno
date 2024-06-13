@@ -179,14 +179,15 @@ fn napi_get_last_error_info(
 }
 
 #[napi_sym]
-fn napi_create_function(
-  env: &mut Env,
+fn napi_create_function<'s>(
+  env: &'s mut Env,
   name: *const c_char,
   length: usize,
-  cb: napi_callback,
+  cb: Option<napi_callback>,
   cb_info: napi_callback_info,
-  result: *mut napi_value,
+  result: *mut napi_value<'s>,
 ) -> napi_status {
+  let env_ptr = env as *mut Env;
   check_arg!(env, result);
   check_arg!(env, cb);
 
@@ -200,7 +201,9 @@ fn napi_create_function(
   };
 
   unsafe {
-    *result = create_function(env, name, cb, cb_info).into();
+    *result =
+      create_function(&mut env.scope(), env_ptr, name, cb.unwrap(), cb_info)
+        .into();
   }
 
   napi_ok
@@ -212,12 +215,13 @@ fn napi_define_class<'s>(
   env: &'s mut Env,
   utf8name: *const c_char,
   length: usize,
-  constructor: napi_callback,
+  constructor: Option<napi_callback>,
   callback_data: *mut c_void,
   property_count: usize,
   properties: *const napi_property_descriptor,
   result: *mut napi_value<'s>,
 ) -> napi_status {
+  let env_ptr = env as *mut Env;
   check_arg!(env, result);
   check_arg!(env, constructor);
 
@@ -230,9 +234,13 @@ fn napi_define_class<'s>(
     Err(status) => return status,
   };
 
-  let tpl = unsafe {
-    create_function_template(env, Some(name), constructor, callback_data)
-  };
+  let tpl = create_function_template(
+    &mut env.scope(),
+    env_ptr,
+    Some(name),
+    constructor.unwrap(),
+    callback_data,
+  );
 
   let napi_properties: &[napi_property_descriptor] = if property_count > 0 {
     unsafe { std::slice::from_raw_parts(properties, property_count) }
@@ -248,28 +256,18 @@ fn napi_define_class<'s>(
       continue;
     }
 
-    let name = match unsafe { v8_name_from_property_descriptor(env, p) } {
+    let name = match unsafe { v8_name_from_property_descriptor(env_ptr, p) } {
       Ok(name) => name,
       Err(status) => return status,
     };
 
-    let method = p.method;
-    let getter = p.getter;
-    let setter = p.setter;
-
-    if getter.is_some() || setter.is_some() {
-      let getter: Option<v8::Local<v8::FunctionTemplate>> = if getter.is_some()
-      {
-        Some(unsafe { create_function_template(env, None, p.getter, p.data) })
-      } else {
-        None
-      };
-      let setter: Option<v8::Local<v8::FunctionTemplate>> = if setter.is_some()
-      {
-        Some(unsafe { create_function_template(env, None, p.setter, p.data) })
-      } else {
-        None
-      };
+    if p.getter.is_some() || p.setter.is_some() {
+      let getter = p.getter.map(|g| {
+        create_function_template(&mut env.scope(), env_ptr, None, g, p.data)
+      });
+      let setter = p.setter.map(|s| {
+        create_function_template(&mut env.scope(), env_ptr, None, s, p.data)
+      });
 
       let mut accessor_property = v8::PropertyAttribute::NONE;
       if getter.is_some()
@@ -290,9 +288,14 @@ fn napi_define_class<'s>(
 
       let proto = tpl.prototype_template(&mut env.scope());
       proto.set_accessor_property(name, getter, setter, accessor_property);
-    } else if method.is_some() {
-      let function =
-        unsafe { create_function_template(env, None, p.method, p.data) };
+    } else if let Some(method) = p.method {
+      let function = create_function_template(
+        &mut env.scope(),
+        env_ptr,
+        None,
+        method,
+        p.data,
+      );
       let proto = tpl.prototype_template(&mut env.scope());
       proto.set(name, function.into());
     } else {
@@ -301,7 +304,6 @@ fn napi_define_class<'s>(
     }
   }
 
-  let env_ptr = env as *mut Env;
   let value: v8::Local<v8::Value> =
     tpl.get_function(&mut env.scope()).unwrap().into();
 
@@ -781,17 +783,19 @@ fn napi_define_properties(
     let configurable = property.attributes & napi_configurable != 0;
 
     if property.getter.is_some() || property.setter.is_some() {
-      let local_getter: v8::Local<v8::Value> = if property.getter.is_some() {
-        unsafe {
-          create_function(env_ptr, None, property.getter, property.data).into()
-        }
+      let local_getter: v8::Local<v8::Value> = if let Some(getter) =
+        property.getter
+      {
+        create_function(&mut env.scope(), env_ptr, None, getter, property.data)
+          .into()
       } else {
         v8::undefined(scope).into()
       };
-      let local_setter: v8::Local<v8::Value> = if property.setter.is_some() {
-        unsafe {
-          create_function(env_ptr, None, property.setter, property.data).into()
-        }
+      let local_setter: v8::Local<v8::Value> = if let Some(setter) =
+        property.setter
+      {
+        create_function(&mut env.scope(), env_ptr, None, setter, property.data)
+          .into()
       } else {
         v8::undefined(scope).into()
       };
@@ -807,11 +811,15 @@ fn napi_define_properties(
       {
         return napi_invalid_arg;
       }
-    } else if property.method.is_some() {
+    } else if let Some(method) = property.method {
       let method: v8::Local<v8::Value> = {
-        let function = unsafe {
-          create_function(env_ptr, None, property.method, property.data)
-        };
+        let function = create_function(
+          &mut env.scope(),
+          env_ptr,
+          None,
+          method,
+          property.data,
+        );
         function.into()
       };
 
@@ -1692,18 +1700,16 @@ fn napi_call_function(
 }
 
 #[napi_sym]
-fn napi_get_global(env: *mut Env, result: *mut napi_value) -> napi_status {
-  let env = check_env!(env);
+fn napi_get_global(env_ptr: *mut Env, result: *mut napi_value) -> napi_status {
+  let env = check_env!(env_ptr);
   check_arg!(env, result);
 
+  let global = v8::Local::new(&mut env.scope(), &env.global);
   unsafe {
-    *result = std::mem::transmute::<NonNull<v8::Value>, v8::Local<v8::Value>>(
-      env.global,
-    )
-    .into();
+    *result = global.into();
   }
 
-  return napi_clear_last_error(env);
+  return napi_clear_last_error(env_ptr);
 }
 
 #[napi_sym]
@@ -2869,7 +2875,7 @@ fn napi_create_arraybuffer<'s>(
 
   if !data.is_null() {
     unsafe {
-      *data = get_array_buffer_ptr(buffer) as _;
+      *data = get_array_buffer_ptr(buffer);
     }
   }
 
@@ -2915,7 +2921,7 @@ fn napi_create_external_arraybuffer<'s>(
 fn napi_get_arraybuffer_info(
   env: *mut Env,
   value: napi_value,
-  data: *mut *mut u8,
+  data: *mut *mut c_void,
   length: *mut usize,
 ) -> napi_status {
   let env = check_env!(env);
@@ -3121,7 +3127,7 @@ fn napi_get_typedarray_info(
 fn napi_create_dataview<'s>(
   env: &'s mut Env,
   byte_length: usize,
-  arraybuffer: napi_value,
+  arraybuffer: napi_value<'s>,
   byte_offset: usize,
   result: *mut napi_value<'s>,
 ) -> napi_status {
@@ -3144,26 +3150,8 @@ fn napi_create_dataview<'s>(
     }
   }
 
-  // let dataview = v8::DataView::new(&mut env, buffer, byte_offset, byte_length);
-  let dataview = {
-    let context = &mut env.scope().get_current_context();
-    let global = context.global(&mut env.scope());
-    let data_view_name = v8::String::new(&mut env.scope(), "DataView").unwrap();
-    let data_view =
-      global.get(&mut env.scope(), data_view_name.into()).unwrap();
-    let Ok(data_view) = v8::Local::<v8::Function>::try_from(data_view) else {
-      return napi_function_expected;
-    };
-    let byte_offset = v8::Number::new(&mut env.scope(), byte_offset as f64);
-    let byte_length = v8::Number::new(&mut env.scope(), byte_length as f64);
-    let Some(dv) = data_view.new_instance(
-      &mut env.scope(),
-      &[buffer.into(), byte_offset.into(), byte_length.into()],
-    ) else {
-      return napi_generic_failure;
-    };
-    dv
-  };
+  let dataview =
+    v8::DataView::new(&mut env.scope(), buffer, byte_offset, byte_length);
 
   unsafe {
     *result = dataview.into();
