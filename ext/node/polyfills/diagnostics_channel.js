@@ -262,7 +262,7 @@ function tracingChannelFrom(nameOrChannels, name) {
   throw new ERR_INVALID_ARG_TYPE("nameOrChannels", [
     "string",
     "object",
-    "TracingChannel",
+    "Channel",
   ], nameOrChannels);
 }
 
