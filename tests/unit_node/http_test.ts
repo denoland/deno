@@ -1070,7 +1070,7 @@ Deno.test("[node/http] server graceful close", async () => {
 });
 
 Deno.test("[node/http] server closeAllConnections shutdown", async () => {
-  const server = http.createServer((req, res) => {
+  const server = http.createServer((_req, res) => {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({
       data: "Hello World!",
@@ -1088,7 +1088,7 @@ Deno.test("[node/http] server closeAllConnections shutdown", async () => {
 });
 
 Deno.test("[node/http] server closeIdleConnections shutdown", async () => {
-  const server = http.createServer({ keepAliveTimeout: 60000 }, (req, res) => {
+  const server = http.createServer({ keepAliveTimeout: 60000 }, (_req, res) => {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({
       data: "Hello World!",
