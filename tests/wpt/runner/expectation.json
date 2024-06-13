@@ -3654,7 +3654,6 @@
     "parts": {
       "basic-dom-part-declarative-brace-syntax-innerhtml.tentative.html": false,
       "basic-dom-part-declarative-brace-syntax.tentative.html": false,
-      "basic-dom-part-declarative-pi-syntax.tentative.html": false,
       "basic-dom-part-objects.tentative.html": false,
       "dom-parts-parseparts-on-body.tentative.html": false,
       "dom-parts-parseparts-on-head.tentative.html": false,
@@ -4029,7 +4028,13 @@
       "strategies.any.html": true,
       "strategies.any.worker.html": true,
       "terminate.any.html": true,
-      "terminate.any.worker.html": true
+      "terminate.any.worker.html": true,
+      "cancel.any.html": [
+        "readable.cancel() and a parallel writable.close() should reject if a transformer.cancel() calls controller.error()"
+      ],
+      "cancel.any.worker.html": [
+        "readable.cancel() and a parallel writable.close() should reject if a transformer.cancel() calls controller.error()"
+      ]
     },
     "writable-streams": {
       "aborting.any.html": true,
@@ -4064,7 +4069,18 @@
     "queuing-strategies-size-function-per-global.window.html": false,
     "transferable": {
       "deserialize-error.window.html": false,
-      "transfer-with-messageport.window.html": false
+      "transfer-with-messageport.window.html": false,
+      "readable-stream.html": false,
+      "reason.html": false,
+      "service-worker.https.html": false,
+      "shared-worker.html": false,
+      "transform-stream-members.any.html": true,
+      "transform-stream-members.any.shadowrealm.html": false,
+      "transform-stream-members.any.worker.html": true,
+      "transform-stream.html": false,
+      "window.html": false,
+      "worker.html": false,
+      "writable-stream.html": false
     },
     "idlharness-shadowrealm.window.html": false
   },
@@ -5877,6 +5893,7 @@
       "Parsing origin: <west://x:0> against <about:blank>"
     ],
     "a-element.html?exclude=(file|javascript|mailto)": [
+      "Test that embedded 0x0A is stripped",
       "Parsing: <http://example\t.\norg> against <http://example.org/foo/bar>",
       "Parsing: <http://user:pass@foo:21/bar;par?b#c> against <http://example.org/foo/bar>",
       "Parsing: <https://test:@test> against <about:blank>",
@@ -6560,6 +6577,7 @@
       "Parsing: </\\/\\//example.org/../path> against <http://example.org/>"
     ],
     "a-element.html?include=file": [
+      "Test that embedded 0x0A is stripped",
       "Parsing: <file:/example.com/> against <http://example.org/foo/bar>",
       "Parsing: <file://example:1/> against <about:blank>",
       "Parsing: <file://example:test/> against <about:blank>",
@@ -6692,6 +6710,7 @@
       "Parsing: <//a/../> against <file:///>"
     ],
     "a-element.html?include=javascript": [
+      "Test that embedded 0x0A is stripped",
       "Parsing: <javascript:/example.com/> against <http://example.org/foo/bar>",
       "Parsing: <javascript:example.com/> against <http://example.org/foo/bar>",
       "Parsing: <javascript:/example.com/> against <about:blank>",
@@ -6706,6 +6725,7 @@
       "Parsing: <javascript://[:1]> against <about:blank>"
     ],
     "a-element.html?include=mailto": [
+      "Test that embedded 0x0A is stripped",
       "Parsing: <mailto:/example.com/> against <http://example.org/foo/bar>",
       "Parsing: <mailto:example.com/> against <http://example.org/foo/bar>",
       "Parsing: <mailto:/example.com/> against <about:blank>",
@@ -10163,6 +10183,9 @@
       "filereader_result.any.worker.html": true
     },
     "idlharness.any.html": [
+      "Blob interface: operation bytes()",
+      "Blob interface: new Blob([\"TEST\"]) must inherit property \"bytes()\" with the proper type",
+      "Blob interface: new File([\"myFileBits\"], \"myFileName\") must inherit property \"bytes()\" with the proper type",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
@@ -10173,6 +10196,9 @@
       "FileList interface: attribute length"
     ],
     "idlharness.any.worker.html": [
+      "Blob interface: operation bytes()",
+      "Blob interface: new Blob([\"TEST\"]) must inherit property \"bytes()\" with the proper type",
+      "Blob interface: new File([\"myFileBits\"], \"myFileName\") must inherit property \"bytes()\" with the proper type",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
@@ -10194,6 +10220,7 @@
     ],
     "FileReaderSync.worker.html": false,
     "idlharness.worker.html": [
+      "Blob interface: operation bytes()",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
@@ -10238,6 +10265,7 @@
       "Service worker test setup"
     ],
     "idlharness.html": [
+      "Blob interface: operation bytes()",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
