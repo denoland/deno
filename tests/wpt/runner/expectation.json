@@ -5893,6 +5893,7 @@
       "Parsing origin: <west://x:0> against <about:blank>"
     ],
     "a-element.html?exclude=(file|javascript|mailto)": [
+      "Test that embedded 0x0A is stripped",
       "Parsing: <http://example\t.\norg> against <http://example.org/foo/bar>",
       "Parsing: <http://user:pass@foo:21/bar;par?b#c> against <http://example.org/foo/bar>",
       "Parsing: <https://test:@test> against <about:blank>",
@@ -6576,6 +6577,7 @@
       "Parsing: </\\/\\//example.org/../path> against <http://example.org/>"
     ],
     "a-element.html?include=file": [
+      "Test that embedded 0x0A is stripped",
       "Parsing: <file:/example.com/> against <http://example.org/foo/bar>",
       "Parsing: <file://example:1/> against <about:blank>",
       "Parsing: <file://example:test/> against <about:blank>",
@@ -6708,6 +6710,7 @@
       "Parsing: <//a/../> against <file:///>"
     ],
     "a-element.html?include=javascript": [
+      "Test that embedded 0x0A is stripped",
       "Parsing: <javascript:/example.com/> against <http://example.org/foo/bar>",
       "Parsing: <javascript:example.com/> against <http://example.org/foo/bar>",
       "Parsing: <javascript:/example.com/> against <about:blank>",
@@ -6722,6 +6725,7 @@
       "Parsing: <javascript://[:1]> against <about:blank>"
     ],
     "a-element.html?include=mailto": [
+      "Test that embedded 0x0A is stripped",
       "Parsing: <mailto:/example.com/> against <http://example.org/foo/bar>",
       "Parsing: <mailto:example.com/> against <http://example.org/foo/bar>",
       "Parsing: <mailto:/example.com/> against <about:blank>",
@@ -10179,6 +10183,9 @@
       "filereader_result.any.worker.html": true
     },
     "idlharness.any.html": [
+      "Blob interface: operation bytes()",
+      "Blob interface: new Blob([\"TEST\"]) must inherit property \"bytes()\" with the proper type",
+      "Blob interface: new File([\"myFileBits\"], \"myFileName\") must inherit property \"bytes()\" with the proper type",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
@@ -10189,6 +10196,9 @@
       "FileList interface: attribute length"
     ],
     "idlharness.any.worker.html": [
+      "Blob interface: operation bytes()",
+      "Blob interface: new Blob([\"TEST\"]) must inherit property \"bytes()\" with the proper type",
+      "Blob interface: new File([\"myFileBits\"], \"myFileName\") must inherit property \"bytes()\" with the proper type",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
@@ -10210,6 +10220,7 @@
     ],
     "FileReaderSync.worker.html": false,
     "idlharness.worker.html": [
+      "Blob interface: operation bytes()",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
@@ -10254,6 +10265,7 @@
       "Service worker test setup"
     ],
     "idlharness.html": [
+      "Blob interface: operation bytes()",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
