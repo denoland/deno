@@ -208,7 +208,7 @@ mod test {
     let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
     package_json.dependencies = Some(IndexMap::from([(
       "test".to_string(),
-      "1.x - 1.3".to_string(),
+      "%*(#$%()".to_string(),
     )]));
     let map = get_local_package_json_version_reqs_for_tests(&package_json);
     assert_eq!(
@@ -217,12 +217,32 @@ mod test {
         "test".to_string(),
         Err(
           concat!(
-            "Invalid specifier version requirement. Unexpected character.\n",
-            "   - 1.3\n",
+            "Invalid npm version requirement. Unexpected character.\n",
+            "  %*(#$%()\n",
             "  ~"
           )
           .to_string()
         )
+      )])
+    );
+  }
+
+  #[test]
+  fn test_get_local_package_json_version_reqs_range() {
+    let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
+    package_json.dependencies = Some(IndexMap::from([(
+      "test".to_string(),
+      "1.x - 1.3".to_string(),
+    )]));
+    let map = get_local_package_json_version_reqs_for_tests(&package_json);
+    assert_eq!(
+      map,
+      IndexMap::from([(
+        "test".to_string(),
+        Ok(PackageReq {
+          name: "test".to_string(),
+          version_req: VersionReq::parse_from_npm("1.x - 1.3").unwrap()
+        })
       )])
     );
   }
