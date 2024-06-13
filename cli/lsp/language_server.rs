@@ -446,7 +446,7 @@ impl LanguageServer {
     if capable {
       let mut scopes = Vec::with_capacity(folders.len() + 1);
       scopes.push(None);
-      for (_, folder) in &folders {
+      for (_, folder) in folders.as_ref() {
         scopes.push(Some(folder.uri.clone()));
       }
       let configs = client
@@ -461,7 +461,7 @@ impl LanguageServer {
         let mut configs = configs.into_iter();
         let unscoped = configs.next().unwrap();
         let mut folder_settings = Vec::with_capacity(folders.len());
-        for (folder_uri, _) in &folders {
+        for (folder_uri, _) in folders.as_ref() {
           folder_settings.push((folder_uri.clone(), configs.next().unwrap()));
         }
         let mut inner = self.inner.write().await;
@@ -3146,7 +3146,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
           )
         })
         .collect::<Vec<(ModuleSpecifier, WorkspaceFolder)>>();
-      for (specifier, folder) in &inner.config.workspace_folders {
+      for (specifier, folder) in inner.config.workspace_folders.as_ref() {
         if !params.event.removed.is_empty()
           && params.event.removed.iter().any(|f| f.uri == folder.uri)
         {
