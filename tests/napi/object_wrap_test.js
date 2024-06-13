@@ -40,3 +40,11 @@ Deno.test("napi external arraybuffer", function () {
   assertEquals(new Uint8Array(buf), new Uint8Array([1, 2, 3]));
   buf = null;
 });
+
+Deno.test("napi object wrap userland owned", function () {
+  let obj = new objectWrap.NapiObjectOwned(1);
+  assertEquals(obj.get_value(), 1);
+  obj = null;
+  // force finalize callback to get called
+  globalThis.gc();
+});
