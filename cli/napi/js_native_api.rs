@@ -54,7 +54,7 @@ impl Reference {
     finalize_data: *mut c_void,
     finalize_hint: *mut c_void,
   ) -> Box<Self> {
-    let isolate = unsafe { &mut *(*env).isolate_ptr };
+    let isolate = unsafe { (*env).isolate() };
 
     let mut reference = Box::new(Reference {
       env,
@@ -100,7 +100,7 @@ impl Reference {
 
   fn set_strong(&mut self) {
     if let ReferenceState::Weak(w) = &self.state {
-      let isolate = unsafe { &mut *(*self.env).isolate_ptr };
+      let isolate = unsafe { (*self.env).isolate() };
       if let Some(g) = w.to_global(isolate) {
         self.state = ReferenceState::Strong(g);
       }
@@ -113,7 +113,7 @@ impl Reference {
       let cb = Box::new(move |_: &mut v8::Isolate| {
         Reference::weak_callback(reference)
       });
-      let isolate = unsafe { &mut *(*self.env).isolate_ptr };
+      let isolate = unsafe { (*self.env).isolate() };
       self.state =
         ReferenceState::Weak(v8::Weak::with_finalizer(isolate, g, cb));
     }
@@ -2105,7 +2105,7 @@ fn napi_get_value_string_utf8(
   if buf.is_null() {
     check_arg!(env, result);
     unsafe {
-      *result = value.length();
+      *result = value.utf8_length(env.isolate());
     }
   } else if bufsize != 0 {
     let buffer =
@@ -3274,10 +3274,9 @@ fn napi_resolve_deferred(
   check_arg!(env, result);
   check_arg!(env, deferred);
 
-  let isolate = unsafe { &mut *env.isolate_ptr };
   let deferred_ptr =
     unsafe { NonNull::new_unchecked(deferred as *mut v8::PromiseResolver) };
-  let global = unsafe { v8::Global::from_raw(isolate, deferred_ptr) };
+  let global = unsafe { v8::Global::from_raw(env.isolate(), deferred_ptr) };
   let resolver = v8::Local::new(&mut env.scope(), global);
 
   if !resolver
@@ -3299,10 +3298,9 @@ fn napi_reject_deferred(
   check_arg!(env, result);
   check_arg!(env, deferred);
 
-  let isolate = unsafe { &mut *env.isolate_ptr };
   let deferred_ptr =
     unsafe { NonNull::new_unchecked(deferred as *mut v8::PromiseResolver) };
-  let global = unsafe { v8::Global::from_raw(isolate, deferred_ptr) };
+  let global = unsafe { v8::Global::from_raw(env.isolate(), deferred_ptr) };
   let resolver = v8::Local::new(&mut env.scope(), global);
 
   if !resolver
@@ -3481,11 +3479,10 @@ fn napi_adjust_external_memory(
   let env = check_env!(env);
   check_arg!(env, adjusted_value);
 
-  let isolate = unsafe { &mut *env.isolate_ptr };
-
   unsafe {
-    *adjusted_value =
-      isolate.adjust_amount_of_external_allocated_memory(change_in_bytes);
+    *adjusted_value = env
+      .isolate()
+      .adjust_amount_of_external_allocated_memory(change_in_bytes);
   }
 
   napi_clear_last_error(env)
