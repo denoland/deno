@@ -10,6 +10,7 @@ use super::vm_internal as i;
 pub use i::create_v8_context;
 pub use i::init_global_template;
 pub use i::ContextInitMode;
+pub use i::VM_CONTEXT_INDEX;
 
 pub use i::DEFINER_MAP_FN;
 pub use i::DELETER_MAP_FN;
