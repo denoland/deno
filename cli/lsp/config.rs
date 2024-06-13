@@ -722,8 +722,9 @@ impl WorkspaceSettings {
 
 #[derive(Debug, Default, Clone)]
 pub struct Settings {
-  pub unscoped: WorkspaceSettings,
-  pub by_workspace_folder: BTreeMap<ModuleSpecifier, Option<WorkspaceSettings>>,
+  pub unscoped: Arc<WorkspaceSettings>,
+  pub by_workspace_folder:
+    BTreeMap<ModuleSpecifier, Option<Arc<WorkspaceSettings>>>,
   pub first_folder: Option<ModuleSpecifier>,
 }
 
@@ -815,9 +816,9 @@ impl Settings {
 
 #[derive(Clone, Debug, Default)]
 pub struct Config {
-  pub client_capabilities: ClientCapabilities,
-  pub settings: Settings,
-  pub workspace_folders: Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>,
+  pub client_capabilities: Arc<ClientCapabilities>,
+  pub settings: Arc<Settings>,
+  pub workspace_folders: Arc<Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>>,
   pub tree: ConfigTree,
 }
 
@@ -845,10 +846,15 @@ impl Config {
     &mut self,
     folders: Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>,
   ) {
-    self.settings.by_workspace_folder =
-      folders.iter().map(|(s, _)| (s.clone(), None)).collect();
-    self.settings.first_folder = folders.first().map(|(s, _)| s.clone());
-    self.workspace_folders = folders;
+    self.settings = Arc::new(Settings {
+      unscoped: self.settings.unscoped.clone(),
+      by_workspace_folder: folders
+        .iter()
+        .map(|(s, _)| (s.clone(), None))
+        .collect(),
+      first_folder: folders.first().map(|(s, _)| s.clone()),
+    });
+    self.workspace_folders = Arc::new(folders);
   }
 
   pub fn set_workspace_settings(
@@ -856,14 +862,17 @@ impl Config {
     unscoped: WorkspaceSettings,
     folder_settings: Vec<(ModuleSpecifier, WorkspaceSettings)>,
   ) {
-    self.settings.unscoped = unscoped;
-    for (folder_uri, settings) in folder_settings.into_iter() {
-      if let Some(settings_) =
-        self.settings.by_workspace_folder.get_mut(&folder_uri)
-      {
-        *settings_ = Some(settings);
-      }
-    }
+    let mut by_folder = folder_settings.into_iter().collect::<HashMap<_, _>>();
+    self.settings = Arc::new(Settings {
+      unscoped: Arc::new(unscoped),
+      by_workspace_folder: self
+        .settings
+        .by_workspace_folder
+        .keys()
+        .map(|s| (s.clone(), by_folder.remove(s).map(Arc::new)))
+        .collect(),
+      first_folder: self.settings.first_folder.clone(),
+    });
   }
 
   pub fn workspace_settings(&self) -> &WorkspaceSettings {
@@ -966,7 +975,7 @@ impl Config {
     &mut self,
     client_capabilities: ClientCapabilities,
   ) {
-    self.client_capabilities = client_capabilities;
+    self.client_capabilities = Arc::new(client_capabilities);
   }
 
   pub fn workspace_capable(&self) -> bool {
@@ -1906,10 +1915,15 @@ mod tests {
   fn test_config_specifier_disabled_path() {
     let root_uri = resolve_url("file:///root/").unwrap();
     let mut config = Config::new_with_roots(vec![root_uri.clone()]);
-    config.settings.unscoped.enable = Some(true);
-    config.settings.unscoped.enable_paths =
-      Some(vec!["mod1.ts".to_string(), "mod2.ts".to_string()]);
-    config.settings.unscoped.disable_paths = vec!["mod2.ts".to_string()];
+    config.set_workspace_settings(
+      WorkspaceSettings {
+        enable: Some(true),
+        enable_paths: Some(vec!["mod1.ts".to_string(), "mod2.ts".to_string()]),
+        disable_paths: vec!["mod2.ts".to_string()],
+        ..Default::default()
+      },
+      vec![],
+    );
 
     assert!(config.specifier_enabled(&root_uri.join("mod1.ts").unwrap()));
     assert!(!config.specifier_enabled(&root_uri.join("mod2.ts").unwrap()));
@@ -2107,7 +2121,6 @@ mod tests {
   async fn config_enable_via_config_file_detection() {
     let root_uri = resolve_url("file:///root/").unwrap();
     let mut config = Config::new_with_roots(vec![root_uri.clone()]);
-    config.settings.unscoped.enable = None;
     assert!(!config.specifier_enabled(&root_uri));
 
     config
@@ -2129,7 +2142,13 @@ mod tests {
   fn config_specifier_enabled_matches_by_path_component() {
     let root_uri = resolve_url("file:///root/").unwrap();
     let mut config = Config::new_with_roots(vec![root_uri.clone()]);
-    config.settings.unscoped.enable_paths = Some(vec!["mo".to_string()]);
+    config.set_workspace_settings(
+      WorkspaceSettings {
+        enable_paths: Some(vec!["mo".to_string()]),
+        ..Default::default()
+      },
+      vec![],
+    );
     assert!(!config.specifier_enabled(&root_uri.join("mod.ts").unwrap()));
   }
 
@@ -2137,11 +2156,13 @@ mod tests {
   async fn config_specifier_enabled_for_test() {
     let root_uri = resolve_url("file:///root/").unwrap();
     let mut config = Config::new_with_roots(vec![root_uri.clone()]);
-    config.settings.unscoped.enable = Some(true);
-
-    config.settings.unscoped.enable_paths =
-      Some(vec!["mod1.ts".to_string(), "mod2.ts".to_string()]);
-    config.settings.unscoped.disable_paths = vec!["mod2.ts".to_string()];
+    let mut settings = WorkspaceSettings {
+      enable: Some(true),
+      enable_paths: Some(vec!["mod1.ts".to_string(), "mod2.ts".to_string()]),
+      disable_paths: vec!["mod2.ts".to_string()],
+      ..Default::default()
+    };
+    config.set_workspace_settings(settings.clone(), vec![]);
     assert!(
       config.specifier_enabled_for_test(&root_uri.join("mod1.ts").unwrap())
     );
@@ -2151,7 +2172,8 @@ mod tests {
     assert!(
       !config.specifier_enabled_for_test(&root_uri.join("mod3.ts").unwrap())
     );
-    config.settings.unscoped.enable_paths = None;
+    settings.enable_paths = None;
+    config.set_workspace_settings(settings, vec![]);
 
     config
       .tree
