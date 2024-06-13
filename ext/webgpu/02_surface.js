@@ -190,6 +190,7 @@ class UnsafeWindowSurface {
     }
 
     this.#surfaceRid = op_webgpu_surface_create(system, win, display);
+    this.#options = options;
   }
 
   getContext(context) {
