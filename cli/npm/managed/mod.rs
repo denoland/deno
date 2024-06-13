@@ -11,7 +11,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_graph::NpmPackageReqsResolution;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
@@ -23,10 +22,10 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use resolution::AddPkgReqsResult;
 
 use crate::args::Lockfile;
 use crate::args::NpmProcessState;
@@ -36,9 +35,9 @@ use crate::cache::FastInsecureHasher;
 use crate::http_util::HttpClientProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::sync::AtomicFlag;
 
 use self::cache::NpmCache;
-use self::installer::PackageJsonDepsInstaller;
 use self::registry::CliNpmRegistryApi;
 use self::resolution::NpmResolution;
 use self::resolvers::create_npm_fs_resolver;
@@ -49,7 +48,6 @@ use super::InnerCliNpmResolverRef;
 use super::NpmCacheDir;
 
 mod cache;
-mod installer;
 mod registry;
 mod resolution;
 mod resolvers;
@@ -57,11 +55,6 @@ mod resolvers;
 pub enum CliNpmResolverManagedSnapshotOption {
   ResolveFromLockfile(Arc<Mutex<Lockfile>>),
   Specified(Option<ValidSerializedNpmResolutionSnapshot>),
-}
-
-pub enum CliNpmResolverManagedPackageJsonInstallerOption {
-  ConditionalInstall(Arc<PackageJsonDepsProvider>),
-  NoInstall,
 }
 
 pub struct CliNpmResolverManagedCreateOptions {
@@ -74,7 +67,7 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   pub maybe_node_modules_path: Option<PathBuf>,
   pub npm_system_info: NpmSystemInfo,
-  pub package_json_installer: CliNpmResolverManagedPackageJsonInstallerOption,
+  pub package_json_deps_provider: Arc<PackageJsonDepsProvider>,
   pub npmrc: Arc<ResolvedNpmRc>,
 }
 
@@ -99,7 +92,7 @@ pub async fn create_managed_npm_resolver_for_lsp(
       npm_api,
       npm_cache,
       options.npmrc,
-      options.package_json_installer,
+      options.package_json_deps_provider,
       options.text_only_progress_bar,
       options.maybe_node_modules_path,
       options.npm_system_info,
@@ -123,7 +116,7 @@ pub async fn create_managed_npm_resolver(
     npm_api,
     npm_cache,
     options.npmrc,
-    options.package_json_installer,
+    options.package_json_deps_provider,
     options.text_only_progress_bar,
     options.maybe_node_modules_path,
     options.npm_system_info,
@@ -139,7 +132,7 @@ fn create_inner(
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
   npm_rc: Arc<ResolvedNpmRc>,
-  package_json_installer: CliNpmResolverManagedPackageJsonInstallerOption,
+  package_json_deps_provider: Arc<PackageJsonDepsProvider>,
   text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   node_modules_dir_path: Option<PathBuf>,
   npm_system_info: NpmSystemInfo,
@@ -166,25 +159,13 @@ fn create_inner(
     node_modules_dir_path,
     npm_system_info.clone(),
   );
-  let package_json_deps_installer = match package_json_installer {
-    CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
-      provider,
-    ) => Arc::new(PackageJsonDepsInstaller::new(
-      provider,
-      npm_api.clone(),
-      resolution.clone(),
-    )),
-    CliNpmResolverManagedPackageJsonInstallerOption::NoInstall => {
-      Arc::new(PackageJsonDepsInstaller::no_op())
-    }
-  };
   Arc::new(ManagedCliNpmResolver::new(
     fs,
     fs_resolver,
     maybe_lockfile,
     npm_api,
     npm_cache,
-    package_json_deps_installer,
+    package_json_deps_provider,
     resolution,
     tarball_cache,
     text_only_progress_bar,
@@ -272,11 +253,12 @@ pub struct ManagedCliNpmResolver {
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
-  package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
+  package_json_deps_provider: Arc<PackageJsonDepsProvider>,
   resolution: Arc<NpmResolution>,
   tarball_cache: Arc<TarballCache>,
   text_only_progress_bar: ProgressBar,
   npm_system_info: NpmSystemInfo,
+  top_level_install_flag: AtomicFlag,
 }
 
 impl std::fmt::Debug for ManagedCliNpmResolver {
@@ -295,7 +277,7 @@ impl ManagedCliNpmResolver {
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     npm_api: Arc<CliNpmRegistryApi>,
     npm_cache: Arc<NpmCache>,
-    package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
+    package_json_deps_provider: Arc<PackageJsonDepsProvider>,
     resolution: Arc<NpmResolution>,
     tarball_cache: Arc<TarballCache>,
     text_only_progress_bar: ProgressBar,
@@ -307,11 +289,12 @@ impl ManagedCliNpmResolver {
       maybe_lockfile,
       npm_api,
       npm_cache,
-      package_json_deps_installer,
+      package_json_deps_provider,
       text_only_progress_bar,
       resolution,
       tarball_cache,
       npm_system_info,
+      top_level_install_flag: Default::default(),
     }
   }
 
@@ -386,14 +369,28 @@ impl ManagedCliNpmResolver {
     &self,
     packages: &[PackageReq],
   ) -> Result<(), AnyError> {
+    let result = self.add_package_reqs_raw(packages).await;
+    result.dependencies_result
+  }
+
+  pub async fn add_package_reqs_raw(
+    &self,
+    packages: &[PackageReq],
+  ) -> AddPkgReqsResult {
     if packages.is_empty() {
-      return Ok(());
+      return AddPkgReqsResult {
+        dependencies_result: Ok(()),
+        results: vec![],
+      };
     }
 
-    self.resolution.add_package_reqs(packages).await?;
-    self.fs_resolver.cache_packages().await?;
+    let mut result = self.resolution.add_package_reqs(packages).await;
+    if result.dependencies_result.is_ok() {
+      result.dependencies_result =
+        self.cache_packages().await.map_err(AnyError::from);
+    }
 
-    Ok(())
+    result
   }
 
   /// Sets package requirements to the resolver, removing old requirements and adding new ones.
@@ -423,49 +420,15 @@ impl ManagedCliNpmResolver {
     &self,
   ) -> Result<(), AnyError> {
     // add and ensure this isn't added to the lockfile
-    let package_reqs = vec![PackageReq::from_str("@types/node").unwrap()];
-    self.resolution.add_package_reqs(&package_reqs).await?;
-    self.cache_packages().await?;
+    self
+      .add_package_reqs(&[PackageReq::from_str("@types/node").unwrap()])
+      .await?;
 
     Ok(())
   }
 
-  pub async fn resolve_pending(&self) -> Result<(), AnyError> {
-    self.resolution.resolve_pending().await?;
-    self.cache_packages().await
-  }
-
   pub async fn cache_packages(&self) -> Result<(), AnyError> {
     self.fs_resolver.cache_packages().await
-  }
-
-  /// Resolves package requirements for deno graph.
-  pub async fn resolve_npm_for_deno_graph(
-    &self,
-    reqs_with_pkg_infos: &[(&PackageReq, Arc<NpmPackageInfo>)],
-  ) -> NpmPackageReqsResolution {
-    let results = self
-      .resolution
-      .resolve_pkg_reqs_as_pending_with_info(reqs_with_pkg_infos)
-      .await;
-
-    let mut resolutions = Vec::with_capacity(results.len());
-    for result in results {
-      match result {
-        Ok(nv) => {
-          resolutions.push(Ok(nv));
-        }
-        Err(err) => {
-          if self.npm_api.mark_force_reload() {
-            log::debug!("Restarting npm specifier resolution to check for new registry information. Error: {:#}", err);
-            return NpmPackageReqsResolution::ReloadRegistryInfo;
-          } else {
-            resolutions.push(Err(Arc::new(err.into())));
-          }
-        }
-      }
-    }
-    NpmPackageReqsResolution::Resolutions(resolutions)
   }
 
   pub fn resolve_pkg_folder_from_deno_module(
@@ -486,10 +449,26 @@ impl ManagedCliNpmResolver {
   pub async fn ensure_top_level_package_json_install(
     &self,
   ) -> Result<(), AnyError> {
-    self
-      .package_json_deps_installer
-      .ensure_top_level_install()
-      .await
+    let Some(reqs) = self.package_json_deps_provider.reqs() else {
+      return Ok(());
+    };
+    if !self.top_level_install_flag.raise() {
+      return Ok(()); // already did this
+    }
+    // check if something needs resolving before bothering to load all
+    // the package information (which is slow)
+    if reqs
+      .iter()
+      .all(|req| self.resolution.resolve_pkg_id_from_pkg_req(req).is_ok())
+    {
+      log::debug!(
+        "All package.json deps resolvable. Skipping top level install."
+      );
+      return Ok(()); // everything is already resolvable
+    }
+
+    let reqs = reqs.into_iter().cloned().collect::<Vec<_>>();
+    self.add_package_reqs(&reqs).await
   }
 
   pub async fn cache_package_info(
@@ -531,11 +510,10 @@ impl NpmResolver for ManagedCliNpmResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let path = self
       .fs_resolver
-      .resolve_package_folder_from_package(name, referrer, mode)?;
+      .resolve_package_folder_from_package(name, referrer)?;
     let path =
       canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())?;
     log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
@@ -584,7 +562,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       self.maybe_lockfile.clone(),
       self.npm_api.clone(),
       self.npm_cache.clone(),
-      self.package_json_deps_installer.clone(),
+      self.package_json_deps_provider.clone(),
       npm_resolution,
       self.tarball_cache.clone(),
       self.text_only_progress_bar.clone(),

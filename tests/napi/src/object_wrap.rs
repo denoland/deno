@@ -11,7 +11,6 @@ use std::ptr;
 
 pub struct NapiObject {
   counter: i32,
-  _wrapper: napi_ref,
 }
 
 impl NapiObject {
@@ -33,18 +32,14 @@ impl NapiObject {
 
       assert_napi_ok!(napi_get_value_int32(env, args[0], &mut value));
 
-      let mut wrapper: napi_ref = ptr::null_mut();
-      let obj = Box::new(Self {
-        counter: value,
-        _wrapper: wrapper,
-      });
+      let obj = Box::new(Self { counter: value });
       assert_napi_ok!(napi_wrap(
         env,
         this,
         Box::into_raw(obj) as *mut c_void,
         None,
         ptr::null_mut(),
-        &mut wrapper,
+        ptr::null_mut(),
       ));
 
       return this;

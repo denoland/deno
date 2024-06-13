@@ -307,7 +307,6 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     let module_dir = self.npm_resolver.resolve_package_folder_from_package(
       package_specifier.as_str(),
       referrer,
-      mode,
     )?;
 
     let package_json_path = module_dir.join("package.json");

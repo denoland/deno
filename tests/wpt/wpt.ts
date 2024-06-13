@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run
+#!/usr/bin/env -S deno run --allow-write --allow-read --allow-net --allow-env --allow-run
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This script is used to run WPT tests for Deno.

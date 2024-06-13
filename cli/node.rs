@@ -125,7 +125,7 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
       None => {
         self
           .fs
-          .read_text_file_async(specifier.to_file_path().unwrap(), None)
+          .read_text_file_lossy_async(specifier.to_file_path().unwrap(), None)
           .await?
       }
     };

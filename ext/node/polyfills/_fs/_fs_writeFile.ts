@@ -20,7 +20,6 @@ import {
   denoErrorToNodeError,
 } from "ext:deno_node/internal/errors.ts";
 import {
-  showStringCoercionDeprecation,
   validateStringAfterArrayBufferView,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
@@ -32,8 +31,7 @@ interface Writer {
 
 export function writeFile(
   pathOrRid: string | number | URL,
-  // deno-lint-ignore ban-types
-  data: string | Uint8Array | Object,
+  data: string | Uint8Array,
   optOrCallback: Encodings | CallbackWithError | WriteFileOptions | undefined,
   callback?: CallbackWithError,
 ) {
@@ -61,10 +59,7 @@ export function writeFile(
 
   if (!ArrayBuffer.isView(data)) {
     validateStringAfterArrayBufferView(data, "data");
-    if (typeof data !== "string") {
-      showStringCoercionDeprecation();
-    }
-    data = Buffer.from(String(data), encoding);
+    data = Buffer.from(data, encoding);
   }
 
   const isRid = typeof pathOrRid === "number";
@@ -101,15 +96,13 @@ export function writeFile(
 
 export const writeFilePromise = promisify(writeFile) as (
   pathOrRid: string | number | URL,
-  // deno-lint-ignore ban-types
-  data: string | Uint8Array | Object,
+  data: string | Uint8Array,
   options?: Encodings | WriteFileOptions,
 ) => Promise<void>;
 
 export function writeFileSync(
   pathOrRid: string | number | URL,
-  // deno-lint-ignore ban-types
-  data: string | Uint8Array | Object,
+  data: string | Uint8Array,
   options?: Encodings | WriteFileOptions,
 ) {
   pathOrRid = pathOrRid instanceof URL ? pathFromURL(pathOrRid) : pathOrRid;
@@ -127,10 +120,7 @@ export function writeFileSync(
 
   if (!ArrayBuffer.isView(data)) {
     validateStringAfterArrayBufferView(data, "data");
-    if (typeof data !== "string") {
-      showStringCoercionDeprecation();
-    }
-    data = Buffer.from(String(data), encoding);
+    data = Buffer.from(data, encoding);
   }
 
   const isRid = typeof pathOrRid === "number";

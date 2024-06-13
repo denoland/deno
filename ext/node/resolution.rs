@@ -1037,9 +1037,45 @@ impl NodeResolver {
       }
     }
 
+    let result = self.resolve_package_subpath_for_package(
+      &package_name,
+      &package_subpath,
+      referrer,
+      referrer_kind,
+      conditions,
+      mode,
+    );
+    if mode.is_types() && !matches!(result, Ok(Some(_))) {
+      // try to resolve with the @types/node package
+      let package_name = types_package_name(&package_name);
+      if let Ok(Some(result)) = self.resolve_package_subpath_for_package(
+        &package_name,
+        &package_subpath,
+        referrer,
+        referrer_kind,
+        conditions,
+        mode,
+      ) {
+        return Ok(Some(result));
+      }
+    }
+
+    result
+  }
+
+  #[allow(clippy::too_many_arguments)]
+  fn resolve_package_subpath_for_package(
+    &self,
+    package_name: &str,
+    package_subpath: &str,
+    referrer: &ModuleSpecifier,
+    referrer_kind: NodeModuleKind,
+    conditions: &[&str],
+    mode: NodeResolutionMode,
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
     let package_dir_path = self
       .npm_resolver
-      .resolve_package_folder_from_package(&package_name, referrer, mode)?;
+      .resolve_package_folder_from_package(package_name, referrer)?;
     let package_json_path = package_dir_path.join("package.json");
 
     // todo: error with this instead when can't find package
@@ -1060,7 +1096,7 @@ impl NodeResolver {
       .load_package_json(&mut AllowAllNodePermissions, package_json_path)?;
     self.resolve_package_subpath(
       &package_json,
-      &package_subpath,
+      package_subpath,
       referrer,
       referrer_kind,
       conditions,
@@ -1600,6 +1636,14 @@ fn pattern_key_compare(a: &str, b: &str) -> i32 {
   0
 }
 
+/// Gets the corresponding @types package for the provided package name.
+fn types_package_name(package_name: &str) -> String {
+  debug_assert!(!package_name.starts_with("@types/"));
+  // Scoped packages will get two underscores for each slash
+  // https://github.com/DefinitelyTyped/DefinitelyTyped/tree/15f1ece08f7b498f4b9a2147c2a46e94416ca777#what-about-scoped-packages
+  format!("@types/{}", package_name.replace('/', "__"))
+}
+
 #[cfg(test)]
 mod tests {
   use deno_core::serde_json::json;
@@ -1779,5 +1823,14 @@ mod tests {
       let actual = with_known_extension(&PathBuf::from(path), ext);
       assert_eq!(actual.to_string_lossy(), *expected);
     }
+  }
+
+  #[test]
+  fn test_types_package_name() {
+    assert_eq!(types_package_name("name"), "@types/name");
+    assert_eq!(
+      types_package_name("@scoped/package"),
+      "@types/@scoped__package"
+    );
   }
 }

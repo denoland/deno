@@ -17,6 +17,7 @@ use deno_ast::MediaType;
 use deno_config::FmtOptionsConfig;
 use deno_config::TsConfig;
 use deno_core::anyhow::anyhow;
+use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Deserialize;
@@ -31,11 +32,13 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fs_util::specifier_to_file_path;
+use deno_semver::package::PackageNv;
+use deno_semver::Version;
 use import_map::ImportMap;
+use indexmap::IndexSet;
 use lsp::Url;
 use lsp_types::ClientCapabilities;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -775,13 +778,9 @@ impl Settings {
     specifier: &ModuleSpecifier,
   ) -> (&WorkspaceSettings, Option<&ModuleSpecifier>) {
     let Ok(path) = specifier_to_file_path(specifier) else {
-      return (&self.unscoped, None);
+      return (&self.unscoped, self.first_folder.as_ref());
     };
     for (folder_uri, settings) in self.by_workspace_folder.iter().rev() {
-      let mut settings = settings.as_ref();
-      if self.first_folder.as_ref() == Some(folder_uri) {
-        settings = settings.or(Some(&self.unscoped));
-      }
       if let Some(settings) = settings {
         let Ok(folder_path) = specifier_to_file_path(folder_uri) else {
           continue;
@@ -791,7 +790,7 @@ impl Settings {
         }
       }
     }
-    (&self.unscoped, None)
+    (&self.unscoped, self.first_folder.as_ref())
   }
 
   pub fn enable_settings_hash(&self) -> u64 {
@@ -1077,6 +1076,12 @@ impl LspTsConfig {
   }
 }
 
+#[derive(Debug, Clone)]
+pub struct LspPackageConfig {
+  pub nv: PackageNv,
+  pub exports: Value,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfigWatchedFileType {
   DenoJson,
@@ -1103,6 +1108,14 @@ pub struct ConfigData {
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
   pub import_map: Option<Arc<ImportMap>>,
   pub import_map_from_settings: bool,
+  pub package_config: Option<Arc<LspPackageConfig>>,
+  pub is_workspace_root: bool,
+  /// Workspace member directories. For a workspace root this will be a list of
+  /// members. For a member this will be the same list, representing self and
+  /// siblings. For a solitary package this will be `vec![self.scope]`. These
+  /// are the list of packages to override with local resolutions for this
+  /// config scope.
+  pub workspace_members: Arc<Vec<ModuleSpecifier>>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
 }
 
@@ -1110,7 +1123,7 @@ impl ConfigData {
   async fn load(
     config_file_specifier: Option<&ModuleSpecifier>,
     scope: &ModuleSpecifier,
-    parent: Option<(&ModuleSpecifier, &ConfigData)>,
+    workspace_root: Option<(&ModuleSpecifier, &ConfigData)>,
     settings: &Settings,
     file_fetcher: Option<&Arc<FileFetcher>>,
   ) -> Self {
@@ -1127,7 +1140,7 @@ impl ConfigData {
           Self::load_inner(
             Some(config_file),
             scope,
-            parent,
+            workspace_root,
             settings,
             file_fetcher,
           )
@@ -1139,8 +1152,14 @@ impl ConfigData {
             specifier.as_str(),
             err
           );
-          let mut data =
-            Self::load_inner(None, scope, parent, settings, file_fetcher).await;
+          let mut data = Self::load_inner(
+            None,
+            scope,
+            workspace_root,
+            settings,
+            file_fetcher,
+          )
+          .await;
           data
             .watched_files
             .insert(specifier.clone(), ConfigWatchedFileType::DenoJson);
@@ -1158,14 +1177,15 @@ impl ConfigData {
         }
       }
     } else {
-      Self::load_inner(None, scope, parent, settings, file_fetcher).await
+      Self::load_inner(None, scope, workspace_root, settings, file_fetcher)
+        .await
     }
   }
 
   async fn load_inner(
     config_file: Option<ConfigFile>,
     scope: &ModuleSpecifier,
-    parent: Option<(&ModuleSpecifier, &ConfigData)>,
+    workspace_root: Option<(&ModuleSpecifier, &ConfigData)>,
     settings: &Settings,
     file_fetcher: Option<&Arc<FileFetcher>>,
   ) -> Self {
@@ -1190,12 +1210,12 @@ impl ConfigData {
     }
 
     let mut fmt_options = None;
-    if let Some((_, parent_data)) = parent {
+    if let Some((_, workspace_data)) = workspace_root {
       let has_own_fmt_options = config_file
         .as_ref()
         .is_some_and(|config_file| config_file.json.fmt.is_some());
       if !has_own_fmt_options {
-        fmt_options = Some(parent_data.fmt_options.clone())
+        fmt_options = Some(workspace_data.fmt_options.clone())
       }
     }
     let fmt_options = fmt_options.unwrap_or_else(|| {
@@ -1221,14 +1241,14 @@ impl ConfigData {
     });
 
     let mut lint_options_rules = None;
-    if let Some((_, parent_data)) = parent {
+    if let Some((_, workspace_data)) = workspace_root {
       let has_own_lint_options = config_file
         .as_ref()
         .is_some_and(|config_file| config_file.json.lint.is_some());
       if !has_own_lint_options {
         lint_options_rules = Some((
-          parent_data.lint_options.clone(),
-          parent_data.lint_rules.clone(),
+          workspace_data.lint_options.clone(),
+          workspace_data.lint_rules.clone(),
         ))
       }
     }
@@ -1474,6 +1494,44 @@ impl ConfigData {
       }
     }
 
+    let package_config = config_file.as_ref().and_then(|c| {
+      Some(LspPackageConfig {
+        nv: PackageNv {
+          name: c.json.name.clone()?,
+          version: Version::parse_standard(c.json.version.as_ref()?).ok()?,
+        },
+        exports: c.json.exports.clone()?,
+      })
+    });
+
+    let is_workspace_root = config_file
+      .as_ref()
+      .is_some_and(|c| !c.json.workspaces.is_empty());
+    let workspace_members = if is_workspace_root {
+      Arc::new(
+        config_file
+          .as_ref()
+          .map(|c| {
+            c.json
+              .workspaces
+              .iter()
+              .flat_map(|p| {
+                let dir_specifier = c.specifier.join(p).ok()?;
+                let dir_path = specifier_to_file_path(&dir_specifier).ok()?;
+                Url::from_directory_path(normalize_path(dir_path)).ok()
+              })
+              .collect()
+          })
+          .unwrap_or_default(),
+      )
+    } else if let Some((_, workspace_data)) = workspace_root {
+      workspace_data.workspace_members.clone()
+    } else if config_file.as_ref().is_some_and(|c| c.json.name.is_some()) {
+      Arc::new(vec![scope.clone()])
+    } else {
+      Arc::new(vec![])
+    };
+
     ConfigData {
       scope: scope.clone(),
       config_file: config_file.map(Arc::new),
@@ -1490,6 +1548,9 @@ impl ConfigData {
       npmrc,
       import_map: import_map.map(Arc::new),
       import_map_from_settings,
+      package_config: package_config.map(Arc::new),
+      is_workspace_root,
+      workspace_members,
       watched_files,
     }
   }
@@ -1502,6 +1563,10 @@ pub struct ConfigTree {
 }
 
 impl ConfigTree {
+  pub fn root_scope(&self) -> Option<&ModuleSpecifier> {
+    self.first_folder.as_ref()
+  }
+
   pub fn root_data(&self) -> Option<&ConfigData> {
     self.first_folder.as_ref().and_then(|s| self.scopes.get(s))
   }
@@ -1511,10 +1576,6 @@ impl ConfigTree {
       .root_data()
       .map(|d| d.ts_config.clone())
       .unwrap_or_default()
-  }
-
-  pub fn root_lockfile(&self) -> Option<&Arc<Mutex<Lockfile>>> {
-    self.root_data().and_then(|d| d.lockfile.as_ref())
   }
 
   pub fn root_import_map(&self) -> Option<&Arc<ImportMap>> {
@@ -1609,7 +1670,7 @@ impl ConfigTree {
   pub async fn refresh(
     &mut self,
     settings: &Settings,
-    workspace_files: &BTreeSet<ModuleSpecifier>,
+    workspace_files: &IndexSet<ModuleSpecifier>,
     file_fetcher: &Arc<FileFetcher>,
   ) {
     lsp_log!("Refreshing configuration tree...");
@@ -1639,27 +1700,57 @@ impl ConfigTree {
     }
 
     for specifier in workspace_files {
-      if specifier.path().ends_with("/deno.json")
-        || specifier.path().ends_with("/deno.jsonc")
+      if !(specifier.path().ends_with("/deno.json")
+        || specifier.path().ends_with("/deno.jsonc"))
       {
-        if let Ok(scope) = specifier.join(".") {
-          if !scopes.contains_key(&scope) {
-            let parent = scopes
-              .iter()
-              .rev()
-              .find(|(s, _)| scope.as_str().starts_with(s.as_str()));
-            let data = ConfigData::load(
-              Some(specifier),
-              &scope,
-              parent,
-              settings,
-              Some(file_fetcher),
-            )
-            .await;
-            scopes.insert(scope, data);
+        continue;
+      }
+      let Ok(scope) = specifier.join(".") else {
+        continue;
+      };
+      if scopes.contains_key(&scope) {
+        continue;
+      }
+      let data = ConfigData::load(
+        Some(specifier),
+        &scope,
+        None,
+        settings,
+        Some(file_fetcher),
+      )
+      .await;
+      if data.is_workspace_root {
+        for member_scope in data.workspace_members.iter() {
+          if scopes.contains_key(member_scope) {
+            continue;
           }
+          let Ok(member_path) = specifier_to_file_path(member_scope) else {
+            continue;
+          };
+          let Some(config_file_path) = Some(member_path.join("deno.json"))
+            .filter(|p| p.exists())
+            .or_else(|| {
+              Some(member_path.join("deno.jsonc")).filter(|p| p.exists())
+            })
+          else {
+            continue;
+          };
+          let Ok(config_file_specifier) = Url::from_file_path(config_file_path)
+          else {
+            continue;
+          };
+          let member_data = ConfigData::load(
+            Some(&config_file_specifier),
+            member_scope,
+            Some((&scope, &data)),
+            settings,
+            Some(file_fetcher),
+          )
+          .await;
+          scopes.insert(member_scope.clone(), member_data);
         }
       }
+      scopes.insert(scope, data);
     }
 
     for folder_uri in settings.by_workspace_folder.keys() {
@@ -1741,8 +1832,11 @@ fn resolve_node_modules_dir(
 fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<Lockfile> {
   match read_lockfile_at_path(lockfile_path) {
     Ok(value) => {
-      if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename) {
-        lsp_log!("  Resolved lockfile: \"{}\"", specifier);
+      if value.filename.exists() {
+        if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)
+        {
+          lsp_log!("  Resolved lockfile: \"{}\"", specifier);
+        }
       }
       Some(value)
     }

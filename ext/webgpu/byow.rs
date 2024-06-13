@@ -24,7 +24,9 @@ pub fn op_webgpu_surface_create(
   p1: *const c_void,
   p2: *const c_void,
 ) -> Result<ResourceId, AnyError> {
-  let instance = state.borrow::<super::Instance>();
+  let instance = state.try_borrow::<super::Instance>().ok_or_else(|| {
+    type_error("Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?")
+  })?;
   // Security note:
   //
   // The `p1` and `p2` parameters are pointers to platform-specific window

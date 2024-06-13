@@ -7,9 +7,6 @@ use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::future;
-use deno_core::futures::future::LocalBoxFuture;
-use deno_core::futures::FutureExt;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
@@ -17,8 +14,9 @@ use deno_graph::source::ResolveError;
 use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
-use deno_graph::NpmPackageReqsResolution;
-use deno_npm::registry::NpmPackageInfo;
+use deno_graph::NpmLoadError;
+use deno_graph::NpmResolvePkgReqsResult;
+use deno_npm::resolution::NpmResolutionError;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
@@ -34,8 +32,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -320,7 +316,12 @@ impl NpmModuleLoader {
 
     let code = if self.cjs_resolutions.contains(specifier) {
       // translate cjs to esm if it's cjs and inject node globals
-      let code = String::from_utf8(code)?;
+      let code = match String::from_utf8_lossy(&code) {
+        Cow::Owned(code) => code,
+        // SAFETY: `String::from_utf8_lossy` guarantees that the result is valid
+        // UTF-8 if `Cow::Borrowed` is returned.
+        Cow::Borrowed(_) => unsafe { String::from_utf8_unchecked(code) },
+      };
       ModuleSourceCode::String(
         self
           .node_code_translator
@@ -435,7 +436,7 @@ pub struct CliGraphResolver {
   maybe_vendor_specifier: Option<ModuleSpecifier>,
   node_resolver: Option<Arc<CliNodeResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-  found_package_json_dep_flag: Arc<AtomicFlag>,
+  found_package_json_dep_flag: AtomicFlag,
   bare_node_builtins_enabled: bool,
 }
 
@@ -496,27 +497,20 @@ impl CliGraphResolver {
   pub fn create_graph_npm_resolver(&self) -> WorkerCliNpmGraphResolver {
     WorkerCliNpmGraphResolver {
       npm_resolver: self.npm_resolver.as_ref(),
-      memory_cache: Default::default(),
+      found_package_json_dep_flag: &self.found_package_json_dep_flag,
       bare_node_builtins_enabled: self.bare_node_builtins_enabled,
     }
-  }
-
-  pub fn found_package_json_dep(&self) -> bool {
-    self.found_package_json_dep_flag.is_raised()
   }
 
   fn check_surface_byonm_node_error(
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
     original_err: AnyError,
     resolver: &ByonmCliNpmResolver,
   ) -> Result<(), AnyError> {
     if let Ok((pkg_name, _, _)) = parse_npm_pkg_name(specifier, referrer) {
-      match resolver
-        .resolve_package_folder_from_package(&pkg_name, referrer, mode)
-      {
+      match resolver.resolve_package_folder_from_package(&pkg_name, referrer) {
         Ok(_) => {
           return Err(original_err);
         }
@@ -645,7 +639,6 @@ impl Resolver for CliGraphResolver {
                     .check_surface_byonm_node_error(
                       specifier,
                       referrer,
-                      to_node_mode(mode),
                       anyhow!("Cannot find \"{}\"", specifier),
                       resolver,
                     )
@@ -654,11 +647,7 @@ impl Resolver for CliGraphResolver {
                 Err(err) => {
                   self
                     .check_surface_byonm_node_error(
-                      specifier,
-                      referrer,
-                      to_node_mode(mode),
-                      err,
-                      resolver,
+                      specifier, referrer, err, resolver,
                     )
                     .map_err(ResolveError::Other)?;
                 }
@@ -774,9 +763,7 @@ fn resolve_package_json_dep(
 #[derive(Debug)]
 pub struct WorkerCliNpmGraphResolver<'a> {
   npm_resolver: Option<&'a Arc<dyn CliNpmResolver>>,
-  // use a cache per worker so that another worker doesn't clear the
-  // cache of another worker
-  memory_cache: Rc<RefCell<HashMap<String, Arc<NpmPackageInfo>>>>,
+  found_package_json_dep_flag: &'a AtomicFlag,
   bare_node_builtins_enabled: bool,
 }
 
@@ -813,36 +800,25 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
     }
   }
 
-  fn load_and_cache_npm_package_info(
-    &self,
-    package_name: &str,
-  ) -> LocalBoxFuture<'static, Result<(), AnyError>> {
+  fn load_and_cache_npm_package_info(&self, package_name: &str) {
     match self.npm_resolver {
       Some(npm_resolver) if npm_resolver.as_managed().is_some() => {
         let npm_resolver = npm_resolver.clone();
         let package_name = package_name.to_string();
-        let memory_cache = self.memory_cache.clone();
-        async move {
+        deno_core::unsync::spawn(async move {
           if let Some(managed) = npm_resolver.as_managed() {
-            let package_info =
-              managed.cache_package_info(&package_name).await?;
-            memory_cache.borrow_mut().insert(package_name, package_info);
+            let _ignore = managed.cache_package_info(&package_name).await;
           }
-          Ok(())
-        }
-        .boxed_local()
+        });
       }
-      _ => {
-        // return it succeeded and error at the import site below
-        Box::pin(future::ready(Ok(())))
-      }
+      _ => {}
     }
   }
 
   async fn resolve_pkg_reqs(
     &self,
-    package_reqs: &[&PackageReq],
-  ) -> NpmPackageReqsResolution {
+    package_reqs: &[PackageReq],
+  ) -> NpmResolvePkgReqsResult {
     match &self.npm_resolver {
       Some(npm_resolver) => {
         let npm_resolver = match npm_resolver.as_inner() {
@@ -852,37 +828,50 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
           InnerCliNpmResolverRef::Byonm(_) => unreachable!(),
         };
 
-        let reqs_with_package_infos = {
-          let memory_cache = self.memory_cache.borrow();
-          package_reqs
-            .iter()
-            .map(|package_req| {
-              let package_info = memory_cache
-                .get(&package_req.name)
-                .unwrap() // ok because deno_graph would have called load_and_cache_npm_package_info
-                .clone();
-              (*package_req, package_info)
-            })
-            .collect::<Vec<_>>()
+        let top_level_result = if self.found_package_json_dep_flag.is_raised() {
+          npm_resolver.ensure_top_level_package_json_install().await
+        } else {
+          Ok(())
         };
-        let result = npm_resolver
-          .resolve_npm_for_deno_graph(&reqs_with_package_infos)
-          .await;
-        if matches!(result, NpmPackageReqsResolution::ReloadRegistryInfo) {
-          self.memory_cache.borrow_mut().clear();
+
+        let result = npm_resolver.add_package_reqs_raw(package_reqs).await;
+
+        NpmResolvePkgReqsResult {
+          results: result
+            .results
+            .into_iter()
+            .map(|r| {
+              r.map_err(|err| match err {
+                NpmResolutionError::Registry(e) => {
+                  NpmLoadError::RegistryInfo(Arc::new(e.into()))
+                }
+                NpmResolutionError::Resolution(e) => {
+                  NpmLoadError::PackageReqResolution(Arc::new(e.into()))
+                }
+                NpmResolutionError::DependencyEntry(e) => {
+                  NpmLoadError::PackageReqResolution(Arc::new(e.into()))
+                }
+              })
+            })
+            .collect(),
+          dep_graph_result: match top_level_result {
+            Ok(()) => result.dependencies_result.map_err(Arc::new),
+            Err(err) => Err(Arc::new(err)),
+          },
         }
-        result
       }
-      None => NpmPackageReqsResolution::Resolutions(
-        package_reqs
-          .iter()
-          .map(|_| {
-            Err(Arc::new(anyhow!(
-              "npm specifiers were requested; but --no-npm is specified"
-            )))
-          })
-          .collect(),
-      ),
+      None => {
+        let err = Arc::new(anyhow!(
+          "npm specifiers were requested; but --no-npm is specified"
+        ));
+        NpmResolvePkgReqsResult {
+          results: package_reqs
+            .iter()
+            .map(|_| Err(NpmLoadError::RegistryInfo(err.clone())))
+            .collect(),
+          dep_graph_result: Err(err),
+        }
+      }
     }
   }
 

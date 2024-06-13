@@ -106,13 +106,17 @@ export function normalizeString(
   return res;
 }
 
+function formatExt(ext) {
+  return ext ? `${ext[0] === "." ? "" : "."}${ext}` : "";
+}
+
 export function _format(
   sep: string,
   pathObject: FormatInputPathObject,
 ): string {
   const dir: string | undefined = pathObject.dir || pathObject.root;
   const base: string = pathObject.base ||
-    (pathObject.name || "") + (pathObject.ext || "");
+    (pathObject.name || "") + formatExt(pathObject.ext);
   if (!dir) return base;
   if (dir === pathObject.root) return dir + base;
   return dir + sep + base;
