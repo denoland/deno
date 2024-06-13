@@ -6,6 +6,35 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.44.2 / 2024.06.13
+
+- FUTURE: support `deno install <alias>@npm:<package>` (#24156)
+- feat(lsp): respect editor indentation options (#24181)
+- feat(lsp): workspace jsr resolution (#24121)
+- fix(check): attempt to resolve types from pkg before `@types` pkg (#24152)
+- fix(cli): Explicitly cache NPM packages during `deno install` (#24190)
+- fix(cli): Overwrite existing bin entries in `node_modules` (#24123)
+- fix(ext/http): print `[]` around ipv6 addresses (#24150)
+- fix(ext/net): make node:http2 work with DENO_FUTURE=1 (#24144)
+- fix(ext/node): ServerResponse header array handling (#24149)
+- fix(ext/node): add crypto and zlib constants (#24151)
+- fix(ext/node): fix vm memory usage and context initialization (#23976)
+- fix(ext/node): lossy UTF-8 read node_modules files (#24140)
+- fix(ext/node): send data frame with end_stream flag on _final call (#24147)
+- fix(ext/node): support stdin child_process IPC & fd stdout/stderr (#24106)
+- fix(ext/web): correct string tag for MessageEvent (#24134)
+- fix(ext/websocket): correctly order messages when sending blobs (#24133)
+- fix(jupyter): Avoid panicking when `DEBUG` env var is set (#24168)
+- fix(lsp): don't sort workspace files (#24180)
+- fix(lsp): strip .js before probing for valid import fix (#24188)
+- fix(npm): resolve dynamic npm imports individually (#24170)
+- fix: Rewrite Node-API (#24101)
+- fix: clean up some node-api details (#24178)
+- fix: do not panic linting files with UTF-8 BOM (#24136)
+- fix: don't panic when cache is not available (#24175)
+- fix: make writing to the deps cache more reliable (#24135)
+- fix: upgrade deno_core (#24128)
+
 ### 1.44.1 / 2024.06.05
 
 - fix(console): add missing AssertionError to js (#22358)

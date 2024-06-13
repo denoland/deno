@@ -76,7 +76,10 @@ static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
 static IMPORT_SPECIFIER_RE: Lazy<Regex> =
   lazy_regex::lazy_regex!(r#"\sfrom\s+["']([^"']*)["']"#);
 
-const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
+const SUPPORTED_EXTENSIONS: &[&str] = &[
+  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts", ".cjs", ".cts", ".d.ts",
+  ".d.mts", ".d.cts",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DataQuickFixChange {
@@ -436,6 +439,7 @@ impl<'a> TsResponseImportMapper<'a> {
         return Some(specifier);
       }
     }
+    let specifier = specifier.strip_suffix(".js").unwrap_or(specifier);
     for ext in SUPPORTED_EXTENSIONS {
       let specifier_with_ext = format!("{specifier}{ext}");
       if self
