@@ -1068,3 +1068,39 @@ Deno.test("[node/http] server graceful close", async () => {
 
   await promise;
 });
+
+Deno.test("[node/http] server closeAllConnections shutdown", async () => {
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      data: "Hello World!",
+    }));
+  });
+
+  server.listen(0);
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(() => {
+    server.close(() => resolve());
+    server.closeAllConnections();
+  }, 2000);
+
+  await promise;
+});
+
+Deno.test("[node/http] server closeIdleConnections shutdown", async () => {
+  const server = http.createServer({ keepAliveTimeout: 60000 }, (req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      data: "Hello World!",
+    }));
+  });
+
+  server.listen(0);
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(() => {
+    server.close(() => resolve());
+    server.closeIdleConnections();
+  }, 2000);
+
+  await promise;
+});

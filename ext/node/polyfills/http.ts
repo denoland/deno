@@ -1789,6 +1789,26 @@ export class ServerImpl extends EventEmitter {
     return this;
   }
 
+  closeAllConnections() {
+    if (this.#hasClosed) {
+      return;
+    }
+    if (this.#ac) {
+      this.#ac.abort();
+      this.#ac = undefined;
+    }
+  }
+
+  closeIdleConnections() {
+    if (this.#hasClosed) {
+      return;
+    }
+
+    if (this.#server) {
+      this.#server.shutdown();
+    }
+  }
+
   address() {
     return {
       port: this.#addr.port,
