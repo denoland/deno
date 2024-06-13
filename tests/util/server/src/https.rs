@@ -81,13 +81,10 @@ pub fn get_tls_config(
 
   let mut key_reader = io::BufReader::new(key_file);
   let key = {
-    let pkcs8_keys_result = rustls_pemfile::pkcs8_private_keys(&mut key_reader)
-      .collect::<Result<Vec<_>, _>>();
-    let pkcs8_keys = pkcs8_keys_result?;
-
-    let rsa_keys_result = rustls_pemfile::rsa_private_keys(&mut key_reader)
-      .collect::<Result<Vec<_>, _>>();
-    let rsa_keys = rsa_keys_result?;
+    let pkcs8_keys = rustls_pemfile::pkcs8_private_keys(&mut key_reader)
+      .collect::<Result<Vec<_>, _>>()?;
+    let rsa_keys = rustls_pemfile::rsa_private_keys(&mut key_reader)
+      .collect::<Result<Vec<_>, _>>()?;
 
     if !pkcs8_keys.is_empty() {
       let key = pkcs8_keys[0].clone_key();
