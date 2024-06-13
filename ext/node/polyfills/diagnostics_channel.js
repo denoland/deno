@@ -140,7 +140,10 @@ class ActiveChannel {
         onMessage(data, this.name);
       } catch (err) {
         nextTick(() => {
-          triggerUncaughtException(err, false);
+          // TODO(bartlomieju): in Node.js this is using `triggerUncaughtException` API, need
+          // to clarify if we need that or if just throwing the error is enough here.
+          throw err;
+          // triggerUncaughtException(err, false);
         });
       }
     }
