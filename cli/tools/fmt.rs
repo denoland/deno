@@ -211,7 +211,7 @@ fn format_markdown(
           codeblock_config.line_width = line_width;
           dprint_plugin_typescript::format_text(
             &fake_filename,
-            text,
+            text.to_string(),
             &codeblock_config,
           )
         }
@@ -255,7 +255,11 @@ pub fn format_file(
     ),
     _ => {
       let config = get_resolved_typescript_config(fmt_options);
-      dprint_plugin_typescript::format_text(file_path, file_text, &config)
+      dprint_plugin_typescript::format_text(
+        file_path,
+        file_text.to_string(),
+        &config,
+      )
     }
   }
 }

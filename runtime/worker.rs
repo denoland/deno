@@ -39,6 +39,7 @@ use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_permissions::PermissionsContainer;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
 use deno_web::BlobStore;
@@ -48,7 +49,6 @@ use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::permissions::PermissionsContainer;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::BootstrapOptions;
@@ -156,6 +156,7 @@ pub struct WorkerOptions {
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
+  pub node_resolver: Option<Arc<deno_node::NodeResolver>>,
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
@@ -227,6 +228,7 @@ impl Default for WorkerOptions {
       broadcast_channel: Default::default(),
       source_map_getter: Default::default(),
       root_cert_store_provider: Default::default(),
+      node_resolver: Default::default(),
       npm_resolver: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
@@ -329,9 +331,6 @@ impl MainWorker {
         enable_testing_features: bool,
       },
       state = |state, options| {
-        // Save the permissions container and the wrapper.
-        state.put::<deno_permissions::PermissionsContainer>(options.permissions.0.clone());
-        // This is temporary until we migrate all exts/ to the deno_permissions crate.
         state.put::<PermissionsContainer>(options.permissions);
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
@@ -419,6 +418,7 @@ impl MainWorker {
         options.fs.clone(),
       ),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
+        options.node_resolver,
         options.npm_resolver,
         options.fs,
       ),

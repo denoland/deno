@@ -14,7 +14,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_npm::registry::NpmPackageInfo;
 use deno_runtime::deno_node::NpmResolver;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 
@@ -25,7 +25,6 @@ pub use self::byonm::ByonmCliNpmResolver;
 pub use self::byonm::CliNpmResolverByonmCreateOptions;
 pub use self::cache_dir::NpmCacheDir;
 pub use self::managed::CliNpmResolverManagedCreateOptions;
-pub use self::managed::CliNpmResolverManagedPackageJsonInstallerOption;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 

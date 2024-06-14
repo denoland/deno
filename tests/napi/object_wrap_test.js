@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+import { Buffer } from "node:buffer";
 import { assert, assertEquals, loadTestLibrary } from "./common.js";
 
 const objectWrap = loadTestLibrary();
@@ -30,7 +31,7 @@ Deno.test("napi external finalizer", function () {
 
 Deno.test("napi external buffer", function () {
   let buf = objectWrap.test_external_buffer();
-  assertEquals(buf, new Uint8Array([1, 2, 3]));
+  assertEquals(buf, new Buffer([1, 2, 3]));
   buf = null;
 });
 
@@ -38,4 +39,12 @@ Deno.test("napi external arraybuffer", function () {
   let buf = objectWrap.test_external_arraybuffer();
   assertEquals(new Uint8Array(buf), new Uint8Array([1, 2, 3]));
   buf = null;
+});
+
+Deno.test("napi object wrap userland owned", function () {
+  let obj = new objectWrap.NapiObjectOwned(1);
+  assertEquals(obj.get_value(), 1);
+  obj = null;
+  // force finalize callback to get called
+  globalThis.gc();
 });

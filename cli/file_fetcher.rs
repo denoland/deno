@@ -22,8 +22,8 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::LoaderChecksum;
 
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::PermissionsContainer;
 use log::debug;
 use std::borrow::Cow;
 use std::collections::HashMap;

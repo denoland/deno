@@ -31,11 +31,17 @@ async function getFilesFromGit(baseDir, args) {
     throw new Error("gitLsFiles failed");
   }
 
-  const files = output.split("\0").filter((line) => line.length > 0).map(
-    (filePath) => {
-      return Deno.realPathSync(join(baseDir, filePath));
-    },
-  );
+  const files = output
+    .split("\0")
+    .filter((line) => line.length > 0)
+    .map((filePath) => {
+      try {
+        return Deno.realPathSync(join(baseDir, filePath));
+      } catch {
+        return null;
+      }
+    })
+    .filter((filePath) => filePath !== null);
 
   return files;
 }
@@ -227,6 +233,12 @@ export async function downloadPrebuilt(toolName) {
       );
     }
     spinner.text = `Successfully downloaded: ${toolName}`;
+    try {
+      // necessary on Windows it seems
+      await Deno.remove(toolPath);
+    } catch {
+      // ignore
+    }
     await Deno.rename(tempFile, toolPath);
   } catch (e) {
     spinner.fail();

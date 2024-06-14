@@ -7,7 +7,6 @@ use crate::version::get_user_agent;
 use cache_control::Cachability;
 use cache_control::CacheControl;
 use chrono::DateTime;
-use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -30,6 +29,7 @@ use std::sync::Arc;
 use std::thread::ThreadId;
 use std::time::Duration;
 use std::time::SystemTime;
+use thiserror::Error;
 
 // TODO(ry) HTTP headers are not unique key, value pairs. There may be more than
 // one header line with the same key. This should be changed to something like
@@ -260,6 +260,27 @@ impl HttpClientProvider {
   }
 }
 
+#[derive(Debug, Error)]
+#[error("Bad response: {:?}{}", .status_code, .response_text.as_ref().map(|s| format!("\n\n{}", s)).unwrap_or_else(String::new))]
+pub struct BadResponseError {
+  pub status_code: StatusCode,
+  pub response_text: Option<String>,
+}
+
+#[derive(Debug, Error)]
+pub enum DownloadError {
+  #[error(transparent)]
+  Reqwest(#[from] reqwest::Error),
+  #[error(transparent)]
+  ToStr(#[from] reqwest::header::ToStrError),
+  #[error("Redirection from '{}' did not provide location header", .request_url)]
+  NoRedirectHeader { request_url: Url },
+  #[error("Too many redirects.")]
+  TooManyRedirects,
+  #[error(transparent)]
+  BadResponse(#[from] BadResponseError),
+}
+
 #[derive(Debug)]
 pub struct HttpClient {
   #[allow(clippy::disallowed_types)] // reqwest::Client allowed here
@@ -409,7 +430,7 @@ impl HttpClient {
     url: impl reqwest::IntoUrl,
     maybe_header: Option<(HeaderName, HeaderValue)>,
     progress_guard: &UpdateGuard,
-  ) -> Result<Option<Vec<u8>>, AnyError> {
+  ) -> Result<Option<Vec<u8>>, DownloadError> {
     self
       .download_inner(url, maybe_header, Some(progress_guard))
       .await
@@ -429,7 +450,7 @@ impl HttpClient {
     url: impl reqwest::IntoUrl,
     maybe_header: Option<(HeaderName, HeaderValue)>,
     progress_guard: Option<&UpdateGuard>,
-  ) -> Result<Option<Vec<u8>>, AnyError> {
+  ) -> Result<Option<Vec<u8>>, DownloadError> {
     let response = self.get_redirected_response(url, maybe_header).await?;
 
     if response.status() == 404 {
@@ -437,26 +458,25 @@ impl HttpClient {
     } else if !response.status().is_success() {
       let status = response.status();
       let maybe_response_text = response.text().await.ok();
-      bail!(
-        "Bad response: {:?}{}",
-        status,
-        match maybe_response_text {
-          Some(text) => format!("\n\n{text}"),
-          None => String::new(),
-        }
-      );
+      return Err(DownloadError::BadResponse(BadResponseError {
+        status_code: status,
+        response_text: maybe_response_text
+          .map(|s| s.trim().to_string())
+          .filter(|s| !s.is_empty()),
+      }));
     }
 
     get_response_body_with_progress(response, progress_guard)
       .await
       .map(Some)
+      .map_err(Into::into)
   }
 
   async fn get_redirected_response(
     &self,
     url: impl reqwest::IntoUrl,
     mut maybe_header: Option<(HeaderName, HeaderValue)>,
-  ) -> Result<reqwest::Response, AnyError> {
+  ) -> Result<reqwest::Response, DownloadError> {
     let mut url = url.into_url()?;
     let mut builder = self.get(url.clone());
     if let Some((header_name, header_value)) = maybe_header.as_ref() {
@@ -486,7 +506,7 @@ impl HttpClient {
           return Ok(new_response);
         }
       }
-      Err(custom_error("Http", "Too many redirects."))
+      Err(DownloadError::TooManyRedirects)
     } else {
       Ok(response)
     }
@@ -496,7 +516,7 @@ impl HttpClient {
 async fn get_response_body_with_progress(
   response: reqwest::Response,
   progress_guard: Option<&UpdateGuard>,
-) -> Result<Vec<u8>, AnyError> {
+) -> Result<Vec<u8>, reqwest::Error> {
   if let Some(progress_guard) = progress_guard {
     if let Some(total_size) = response.content_length() {
       progress_guard.set_total_size(total_size);
@@ -546,7 +566,7 @@ fn resolve_url_from_location(base_url: &Url, location: &str) -> Url {
 fn resolve_redirect_from_response(
   request_url: &Url,
   response: &reqwest::Response,
-) -> Result<Url, AnyError> {
+) -> Result<Url, DownloadError> {
   debug_assert!(response.status().is_redirection());
   if let Some(location) = response.headers().get(LOCATION) {
     let location_string = location.to_str()?;
@@ -554,9 +574,9 @@ fn resolve_redirect_from_response(
     let new_url = resolve_url_from_location(request_url, location_string);
     Ok(new_url)
   } else {
-    Err(generic_error(format!(
-      "Redirection from '{request_url}' did not provide location header"
-    )))
+    Err(DownloadError::NoRedirectHeader {
+      request_url: request_url.clone(),
+    })
   }
 }
 
@@ -567,7 +587,7 @@ mod test {
   use std::collections::HashSet;
   use std::hash::RandomState;
 
-  use deno_runtime::deno_tls::RootCertStore;
+  use deno_runtime::deno_tls::rustls::RootCertStore;
 
   use crate::version;
 

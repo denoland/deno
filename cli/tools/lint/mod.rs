@@ -230,7 +230,7 @@ async fn lint_files(
     deno_core::unsync::spawn(async move {
       run_parallelized(paths, {
         move |file_path| {
-          let file_text = fs::read_to_string(&file_path)?;
+          let file_text = deno_ast::strip_bom(fs::read_to_string(&file_path)?);
 
           // don't bother rechecking this file if it didn't have any diagnostics before
           if incremental_cache.is_file_same(&file_path, &file_text) {
@@ -244,7 +244,7 @@ async fn lint_files(
               incremental_cache.update_file(
                 &file_path,
                 // ensure the returned text is used here as it may have been modified via --fix
-                file_source.text_info().text_str(),
+                file_source.text(),
               )
             }
           }
@@ -396,7 +396,7 @@ fn lint_file_and_fix(
       media_type,
       linter,
       config.clone(),
-      source.text_info(),
+      source.text_info_lazy(),
       &diagnostics,
     )?;
     match change {
@@ -423,7 +423,7 @@ fn lint_file_and_fix(
 
   if fix_iterations > 0 {
     // everything looks good and the file still parses, so write it out
-    fs::write(file_path, source.text_info().text_str())
+    fs::write(file_path, source.text().as_ref())
       .context("Failed writing fix to file.")?;
   }
 
@@ -510,7 +510,7 @@ fn lint_stdin(
   linter
     .lint_file(LintFileOptions {
       specifier: specifier_from_file_path(file_path)?,
-      source_code: source_code.clone(),
+      source_code: deno_ast::strip_bom(source_code),
       media_type: MediaType::TypeScript,
       config,
     })
@@ -668,7 +668,7 @@ impl LintReporter for PrettyLintReporter {
       }
     }
 
-    log::error!("{}", d.display());
+    log::error!("{}\n", d.display());
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {

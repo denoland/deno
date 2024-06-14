@@ -76,7 +76,10 @@ static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
 static IMPORT_SPECIFIER_RE: Lazy<Regex> =
   lazy_regex::lazy_regex!(r#"\sfrom\s+["']([^"']*)["']"#);
 
-const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
+const SUPPORTED_EXTENSIONS: &[&str] = &[
+  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts", ".cjs", ".cts", ".d.ts",
+  ".d.mts", ".d.cts",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DataQuickFixChange {
@@ -436,6 +439,7 @@ impl<'a> TsResponseImportMapper<'a> {
         return Some(specifier);
       }
     }
+    let specifier = specifier.strip_suffix(".js").unwrap_or(specifier);
     for ext in SUPPORTED_EXTENSIONS {
       let specifier_with_ext = format!("{specifier}{ext}");
       if self
@@ -724,8 +728,8 @@ impl CodeActionCollection {
     &mut self,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
-    maybe_text_info: Option<SourceTextInfo>,
-    maybe_parsed_source: Option<deno_ast::ParsedSource>,
+    maybe_text_info: Option<&SourceTextInfo>,
+    maybe_parsed_source: Option<&deno_ast::ParsedSource>,
   ) -> Result<(), AnyError> {
     if let Some(data_quick_fixes) = diagnostic
       .data
@@ -774,8 +778,8 @@ impl CodeActionCollection {
     &mut self,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
-    maybe_text_info: Option<SourceTextInfo>,
-    maybe_parsed_source: Option<deno_ast::ParsedSource>,
+    maybe_text_info: Option<&SourceTextInfo>,
+    maybe_parsed_source: Option<&deno_ast::ParsedSource>,
   ) -> Result<(), AnyError> {
     let code = diagnostic
       .code
@@ -830,7 +834,7 @@ impl CodeActionCollection {
       .push(CodeActionKind::DenoLint(ignore_error_action));
 
     // Disable a lint error for the entire file.
-    let maybe_ignore_comment = maybe_parsed_source.clone().and_then(|ps| {
+    let maybe_ignore_comment = maybe_parsed_source.and_then(|ps| {
       // Note: we can use ps.get_leading_comments() but it doesn't
       // work when shebang is present at the top of the file.
       ps.comments().get_vec().iter().find_map(|c| {
@@ -861,9 +865,8 @@ impl CodeActionCollection {
     if let Some(ignore_comment) = maybe_ignore_comment {
       new_text = format!(" {code}");
       // Get the end position of the comment.
-      let line = maybe_parsed_source
+      let line = maybe_text_info
         .unwrap()
-        .text_info()
         .line_and_column_index(ignore_comment.end());
       let position = lsp::Position {
         line: line.line_index as u32,

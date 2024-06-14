@@ -4,7 +4,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use import_map::ImportMap;
 use import_map::ImportMapDiagnostic;
 use log::warn;

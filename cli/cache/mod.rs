@@ -7,7 +7,7 @@ use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
 use crate::npm::CliNpmResolver;
-use crate::util::fs::atomic_write_file;
+use crate::util::fs::atomic_write_file_with_retries;
 
 use deno_ast::MediaType;
 use deno_core::futures;
@@ -17,7 +17,7 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -74,7 +74,7 @@ impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
     path: &Path,
     bytes: &[u8],
   ) -> std::io::Result<()> {
-    atomic_write_file(path, bytes, CACHE_PERM)
+    atomic_write_file_with_retries(path, bytes, CACHE_PERM)
   }
 
   fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {

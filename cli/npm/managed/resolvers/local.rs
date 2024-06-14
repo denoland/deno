@@ -5,17 +5,19 @@
 mod bin_entries;
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::cache::CACHE_PERM;
 use crate::npm::cache_dir::mixed_case_package_name_decode;
-use crate::util::fs::atomic_write_file;
+use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::fs::clone_dir_recursive;
 use crate::util::fs::symlink_dir;
@@ -29,7 +31,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
@@ -38,14 +39,12 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeResolutionMode;
 use deno_semver::package::PackageNv;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::npm::cache_dir::mixed_case_package_name_encode;
 
-use super::super::super::common::types_package_name;
 use super::super::cache::NpmCache;
 use super::super::cache::TarballCache;
 use super::super::resolution::NpmResolution;
@@ -141,7 +140,7 @@ impl LocalNpmPackageResolver {
   }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl NpmPackageFsResolver for LocalNpmPackageResolver {
   fn root_dir_url(&self) -> &Url {
     &self.root_node_modules_url
@@ -174,7 +173,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let Some(local_path) = self.resolve_folder_for_specifier(referrer)? else {
       bail!("could not find npm package for '{}'", referrer);
@@ -188,15 +186,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       } else {
         Cow::Owned(current_folder.join("node_modules"))
       };
-
-      // attempt to resolve the types package first, then fallback to the regular package
-      if mode.is_types() && !name.starts_with("@types/") {
-        let sub_dir =
-          join_package_name(&node_modules_folder, &types_package_name(name));
-        if self.fs.is_dir_sync(&sub_dir) {
-          return Ok(sub_dir);
-        }
-      }
 
       let sub_dir = join_package_name(&node_modules_folder, name);
       if self.fs.is_dir_sync(&sub_dir) {
@@ -242,7 +231,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
 
   fn ensure_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     self
@@ -296,7 +285,7 @@ async fn sync_resolution_with_fs(
   let mut cache_futures = FuturesUnordered::new();
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
-  let bin_entries = Arc::new(Mutex::new(bin_entries::BinEntries::new()));
+  let bin_entries = Rc::new(RefCell::new(bin_entries::BinEntries::new()));
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
       newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -349,7 +338,7 @@ async fn sync_resolution_with_fs(
 
         if package.bin.is_some() {
           bin_entries_to_setup
-            .lock()
+            .borrow_mut()
             .add(package.clone(), package_path);
         }
 
@@ -482,7 +471,7 @@ async fn sync_resolution_with_fs(
 
   // 6. Set up `node_modules/.bin` entries for packages that need it.
   {
-    let bin_entries = std::mem::take(&mut *bin_entries.lock());
+    let bin_entries = std::mem::take(&mut *bin_entries.borrow_mut());
     bin_entries.finish(snapshot, &bin_node_modules_dir_path)?;
   }
 
@@ -549,7 +538,7 @@ impl SetupCache {
     }
 
     bincode::serialize(&self.current).ok().and_then(|data| {
-      atomic_write_file(&self.file_path, data, CACHE_PERM).ok()
+      atomic_write_file_with_retries(&self.file_path, data, CACHE_PERM).ok()
     });
     true
   }

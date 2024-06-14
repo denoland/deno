@@ -30,6 +30,35 @@ pub trait NetPermissions {
     -> Result<(), AnyError>;
 }
 
+impl NetPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_net<T: AsRef<str>>(
+    &mut self,
+    host: &(T, Option<u16>),
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_net(self, host, api_name)
+  }
+
+  #[inline(always)]
+  fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_read(self, path, api_name)
+  }
+
+  #[inline(always)]
+  fn check_write(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_write(self, path, api_name)
+  }
+}
+
 /// Helper for checking unstable features. Used for sync ops.
 fn check_unstable(state: &OpState, api_name: &str) {
   // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`

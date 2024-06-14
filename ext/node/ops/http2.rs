@@ -26,11 +26,11 @@ use deno_net::raw::NetworkStream;
 use h2;
 use h2::Reason;
 use h2::RecvStream;
-use http_v02;
-use http_v02::request::Parts;
-use http_v02::HeaderMap;
-use http_v02::Response;
-use http_v02::StatusCode;
+use http;
+use http::request::Parts;
+use http::HeaderMap;
+use http::Response;
+use http::StatusCode;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
 use url::Url;
@@ -311,7 +311,7 @@ pub async fn op_http2_client_request(
 
   let url = url.join(&pseudo_path)?;
 
-  let mut req = http_v02::Request::builder()
+  let mut req = http::Request::builder()
     .uri(url.as_str())
     .method(pseudo_method.as_str());
 
@@ -344,6 +344,7 @@ pub async fn op_http2_client_send_data(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
   #[buffer] data: JsBuffer,
+  end_of_stream: bool,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow()
@@ -351,24 +352,7 @@ pub async fn op_http2_client_send_data(
     .get::<Http2ClientStream>(stream_rid)?;
   let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
 
-  // TODO(bartlomieju): handle end of stream
-  stream.send_data(data.to_vec().into(), false)?;
-  Ok(())
-}
-
-#[op2(async)]
-pub async fn op_http2_client_end_stream(
-  state: Rc<RefCell<OpState>>,
-  #[smi] stream_rid: ResourceId,
-) -> Result<(), AnyError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<Http2ClientStream>(stream_rid)?;
-  let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
-
-  // TODO(bartlomieju): handle end of stream
-  stream.send_data(BufView::empty(), true)?;
+  stream.send_data(data.to_vec().into(), end_of_stream)?;
   Ok(())
 }
 
@@ -399,7 +383,7 @@ pub async fn op_http2_client_send_trailers(
     .get::<Http2ClientStream>(stream_rid)?;
   let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
 
-  let mut trailers_map = http_v02::HeaderMap::new();
+  let mut trailers_map = http::HeaderMap::new();
   for (name, value) in trailers {
     trailers_map.insert(
       HeaderName::from_bytes(&name).unwrap(),

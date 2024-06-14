@@ -47,8 +47,8 @@ use data_url::DataUrl;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
-use http_v02::header::CONTENT_LENGTH;
-use http_v02::Uri;
+use http::header::CONTENT_LENGTH;
+use http::Uri;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -281,6 +281,26 @@ pub trait FetchPermissions {
   fn check_read(&mut self, _p: &Path, api_name: &str) -> Result<(), AnyError>;
 }
 
+impl FetchPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+  }
+
+  #[inline(always)]
+  fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_read(self, path, api_name)
+  }
+}
+
 #[op2]
 #[serde]
 #[allow(clippy::too_many_arguments)]
@@ -429,12 +449,9 @@ where
         .decode_to_vec()
         .map_err(|e| type_error(format!("{e:?}")))?;
 
-      let response = http_v02::Response::builder()
-        .status(http_v02::StatusCode::OK)
-        .header(
-          http_v02::header::CONTENT_TYPE,
-          data_url.mime_type().to_string(),
-        )
+      let response = http::Response::builder()
+        .status(http::StatusCode::OK)
+        .header(http::header::CONTENT_TYPE, data_url.mime_type().to_string())
         .body(reqwest::Body::from(body))?;
 
       let fut = async move { Ok(Ok(Response::from(response))) };

@@ -641,14 +641,14 @@ pub mod tests {
 
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: specifier.clone(),
-      text_info: deno_ast::SourceTextInfo::new(source.into()),
+      text: source.into(),
       media_type: deno_ast::MediaType::TypeScript,
       capture_tokens: true,
       scope_analysis: true,
       maybe_syntax: None,
     })
     .unwrap();
-    let text_info = parsed_module.text_info().clone();
+    let text_info = parsed_module.text_info_lazy().clone();
     let mut collector = TestCollector::new(specifier, text_info);
     parsed_module.module().visit_with(&mut collector);
     collector.take()

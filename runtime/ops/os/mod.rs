@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::utils::into_string;
-use crate::permissions::PermissionsContainer;
 use crate::worker::ExitCode;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -10,6 +9,7 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::OpState;
 use deno_node::NODE_ENV_VAR_ALLOWLIST;
+use deno_permissions::PermissionsContainer;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::env;

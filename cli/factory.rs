@@ -35,7 +35,6 @@ use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
-use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::resolver::CjsResolutionStore;
 use crate::resolver::CliGraphResolver;
@@ -441,10 +440,8 @@ impl CliFactory {
             cache_setting: self.options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
             maybe_node_modules_path: self.options.node_modules_dir_path().cloned(),
-            package_json_installer:
-              CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
+            package_json_deps_provider:
                 self.package_json_deps_provider().clone(),
-              ),
             npm_system_info: self.options.npm_system_info(),
             npmrc: self.options.npmrc().clone()
           })
@@ -867,7 +864,6 @@ impl CliFactory {
       // integration.
       skip_op_registration: self.options.sub_command().is_run(),
       log_level: self.options.log_level().unwrap_or(log::Level::Info).into(),
-      coverage_dir: self.options.coverage_dir(),
       enable_op_summary_metrics: self.options.enable_op_summary_metrics(),
       enable_testing_features: self.options.enable_testing_features(),
       has_node_modules_dir: self.options.has_node_modules_dir(),
