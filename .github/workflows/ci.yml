@@ -261,14 +261,14 @@ jobs:
           sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-17.list
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-18.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install --no-install-recommends clang-17 lld-17 clang-tools-17 clang-format-17 clang-tidy-17 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends clang-17 lld-17 clang-tools-17 clang-format-17 clang-tidy-17
+          sudo apt-get install --no-install-recommends clang-18 lld-18 clang-tools-18 clang-format-18 clang-tidy-18 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends clang-18 lld-18 clang-tools-18 clang-format-18 clang-tidy-18
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
@@ -305,8 +305,8 @@ jobs:
           CARGO_PROFILE_RELEASE_LTO=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-17
-            -C link-arg=-fuse-ld=lld-17
+            -C linker=clang-18
+            -C link-arg=-fuse-ld=lld-18
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -316,8 +316,8 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-17
-            -C link-arg=-fuse-ld=lld-17
+            -C linker=clang-18
+            -C link-arg=-fuse-ld=lld-18
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -325,7 +325,7 @@ jobs:
             --cfg tokio_unstable
             $RUSTFLAGS
           __1
-          CC=/usr/bin/clang-17
+          CC=/usr/bin/clang-18
           CFLAGS=-flto=thin $CFLAGS
           " > $GITHUB_ENV
       - name: Remove macOS cURL --ipv4 flag
