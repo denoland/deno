@@ -127,13 +127,16 @@ impl Reference {
     let finalize_hint = reference.finalize_hint;
     reference.reset();
 
+    // copy this value before the finalize callback, since
+    // it might free the reference (which would be a UAF)
+    let ownership = reference.ownership;
     if let Some(finalize_cb) = finalize_cb {
       unsafe {
         finalize_cb(reference.env as _, finalize_data, finalize_hint);
       }
     }
 
-    if reference.ownership == ReferenceOwnership::Runtime {
+    if ownership == ReferenceOwnership::Runtime {
       unsafe { drop(Reference::from_raw(reference)) }
     }
   }
@@ -3440,7 +3443,6 @@ fn napi_add_finalizer(
   } else {
     ReferenceOwnership::Userland
   };
-
   let reference = Reference::new(
     env,
     value.into(),

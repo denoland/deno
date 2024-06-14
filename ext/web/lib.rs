@@ -28,7 +28,6 @@ use std::cell::RefCell;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::usize;
 
 use crate::blob::op_blob_create_object_url;
 use crate::blob::op_blob_create_part;

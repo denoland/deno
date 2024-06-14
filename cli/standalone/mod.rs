@@ -264,7 +264,9 @@ fn arc_u8_to_arc_str(
   // SAFETY: the string is valid UTF-8, and the layout Arc<[u8]> is the same as
   // Arc<str>. This is proven by the From<Arc<str>> impl for Arc<[u8]> from the
   // standard library.
-  Ok(unsafe { std::mem::transmute(arc_u8) })
+  Ok(unsafe {
+    std::mem::transmute::<std::sync::Arc<[u8]>, std::sync::Arc<str>>(arc_u8)
+  })
 }
 
 struct StandaloneModuleLoaderFactory {
@@ -548,7 +550,6 @@ pub async fn run(
     CliMainWorkerOptions {
       argv: metadata.argv,
       log_level: WorkerLogLevel::Info,
-      coverage_dir: None,
       enable_op_summary_metrics: false,
       enable_testing_features: false,
       has_node_modules_dir,
