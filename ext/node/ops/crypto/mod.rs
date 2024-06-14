@@ -25,7 +25,6 @@ use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs8;
 use rsa::pkcs8::der::asn1;
 use rsa::pkcs8::der::Decode;
-use rsa::pkcs8::der::Encode;
 use rsa::pkcs8::der::Reader;
 use std::future::Future;
 use std::rc::Rc;
@@ -1358,8 +1357,6 @@ const ID_SHA384_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.2");
 const ID_SHA512_OID: rsa::pkcs8::ObjectIdentifier =
   rsa::pkcs8::ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.3");
-const ID_MFG1: rsa::pkcs8::ObjectIdentifier =
-  rsa::pkcs8::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.8");
 pub const ID_SECP256R1_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.10045.3.1.7");
 pub const ID_SECP384R1_OID: const_oid::ObjectIdentifier =
@@ -1383,27 +1380,6 @@ static SHA1_HASH_ALGORITHM: Lazy<rsa::pkcs8::AlgorithmIdentifierRef<'static>> =
     parameters: Some(asn1::AnyRef::from(asn1::Null)),
   });
 
-// TODO(@littledivy): `pkcs8` should provide AlgorithmIdentifier to Any conversion.
-static ENCODED_SHA1_HASH_ALGORITHM: Lazy<Vec<u8>> =
-  Lazy::new(|| SHA1_HASH_ALGORITHM.to_der().unwrap());
-
-// Default MaskGenAlgrithm for RSASSA-PSS-params (mgf1SHA1)
-//
-// mgf1SHA1 MaskGenAlgorithm ::= {
-//   algorithm   id-mgf1,
-//   parameters  HashAlgorithm : sha1
-// }
-static MGF1_SHA1_MASK_ALGORITHM: Lazy<
-  rsa::pkcs8::AlgorithmIdentifierRef<'static>,
-> = Lazy::new(|| rsa::pkcs8::AlgorithmIdentifierRef {
-  // id-mgf1
-  oid: ID_MFG1,
-  // sha1
-  parameters: Some(
-    asn1::AnyRef::from_der(&ENCODED_SHA1_HASH_ALGORITHM).unwrap(),
-  ),
-});
-
 pub const RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
 pub const DH_KEY_AGREEMENT_OID: const_oid::ObjectIdentifier =
@@ -1424,17 +1400,12 @@ pub const EC_OID: const_oid::ObjectIdentifier =
 // }
 pub struct PssPrivateKeyParameters<'a> {
   pub hash_algorithm: rsa::pkcs8::AlgorithmIdentifierRef<'a>,
-  pub mask_gen_algorithm: rsa::pkcs8::AlgorithmIdentifierRef<'a>,
   pub salt_length: u32,
 }
 
 // Context-specific tag number for hashAlgorithm.
 const HASH_ALGORITHM_TAG: rsa::pkcs8::der::TagNumber =
   rsa::pkcs8::der::TagNumber::new(0);
-
-// Context-specific tag number for maskGenAlgorithm.
-const MASK_GEN_ALGORITHM_TAG: rsa::pkcs8::der::TagNumber =
-  rsa::pkcs8::der::TagNumber::new(1);
 
 // Context-specific tag number for saltLength.
 const SALT_LENGTH_TAG: rsa::pkcs8::der::TagNumber =
@@ -1458,15 +1429,6 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::AnyRef<'a>>
         .transpose()?
         .unwrap_or(*SHA1_HASH_ALGORITHM);
 
-      let mask_gen_algorithm = decoder
-        .context_specific::<rsa::pkcs8::AlgorithmIdentifierRef>(
-          MASK_GEN_ALGORITHM_TAG,
-          pkcs8::der::TagMode::Explicit,
-        )?
-        .map(TryInto::try_into)
-        .transpose()?
-        .unwrap_or(*MGF1_SHA1_MASK_ALGORITHM);
-
       let salt_length = decoder
         .context_specific::<u32>(
           SALT_LENGTH_TAG,
@@ -1478,7 +1440,6 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::AnyRef<'a>>
 
       Ok(Self {
         hash_algorithm,
-        mask_gen_algorithm,
         salt_length,
       })
     })

@@ -39,7 +39,7 @@ pub struct OidcTokenResponse {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishingTaskError {
-  pub code: String,
+  // pub code: String,
   pub message: String,
 }
 
