@@ -753,26 +753,52 @@ function serveHttpOn(context, addr, callback) {
       PromisePrototypeCatch(callback(req), promiseErrorHandler);
     }
 
-    if (!context.closing && !context.closed) {
-      context.closing = op_http_close(rid, false);
-      context.close();
-    }
+    try {
+      if (!context.closing && !context.closed) {
+        context.closing = await op_http_close(rid, false);
+        context.close();
+      }
 
-    await context.closing;
-    context.close();
-    context.closed = true;
+      await context.closing;
+    } catch (error) {
+      if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
+        return;
+      }
+      if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+        return;
+      }
+
+      throw error;
+    } finally {
+      context.close();
+      context.closed = true;
+    }
   })();
 
   return {
     addr,
     finished,
     async shutdown() {
-      if (!context.closing && !context.closed) {
-        // Shut this HTTP server down gracefully
-        context.closing = op_http_close(context.serverRid, true);
+      try {
+        if (!context.closing && !context.closed) {
+          // Shut this HTTP server down gracefully
+          context.closing = op_http_close(context.serverRid, true);
+        }
+
+        await context.closing;
+      } catch (error) {
+        // The server was interrupted
+        if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
+          return;
+        }
+        if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+          return;
+        }
+
+        throw error;
+      } finally {
+        context.closed = true;
       }
-      await context.closing;
-      context.closed = true;
     },
     ref() {
       ref = true;
