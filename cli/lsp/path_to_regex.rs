@@ -795,8 +795,6 @@ impl Compiler {
 
 #[derive(Debug)]
 pub struct MatchResult {
-  // pub path: String,
-  // pub index: usize,
   pub params: HashMap<StringOrNumber, StringOrVec>,
 }
 
