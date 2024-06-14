@@ -2,6 +2,7 @@
 
 import EventEmitter from "node:events";
 import http, { type RequestOptions } from "node:http";
+import url from "node:url";
 import https from "node:https";
 import net from "node:net";
 import { assert, assertEquals, fail } from "@std/assert/mod.ts";
@@ -1039,4 +1040,67 @@ Deno.test("[node/http] ServerResponse default status code 200", () => {
 
 Deno.test("[node/http] maxHeaderSize is defined", () => {
   assertEquals(http.maxHeaderSize, 16_384);
+});
+
+Deno.test("[node/http] server graceful close", async () => {
+  const server = http.createServer(function (_, response) {
+    response.writeHead(200, {});
+    response.end("ok");
+    server.close();
+  });
+
+  const { promise, resolve } = Promise.withResolvers<void>();
+  server.listen(0, function () {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+    const testURL = url.parse(
+      `http://localhost:${port}`,
+    );
+
+    http.request(testURL, function (response) {
+      assertEquals(response.statusCode, 200);
+      response.on("data", function () {});
+      response.on("end", function () {
+        resolve();
+      });
+    }).end();
+  });
+
+  await promise;
+});
+
+Deno.test("[node/http] server closeAllConnections shutdown", async () => {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      data: "Hello World!",
+    }));
+  });
+
+  server.listen(0);
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(() => {
+    server.close(() => resolve());
+    server.closeAllConnections();
+  }, 2000);
+
+  await promise;
+});
+
+Deno.test("[node/http] server closeIdleConnections shutdown", async () => {
+  const server = http.createServer({ keepAliveTimeout: 60000 }, (_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      data: "Hello World!",
+    }));
+  });
+
+  server.listen(0);
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(() => {
+    server.close(() => resolve());
+    server.closeIdleConnections();
+  }, 2000);
+
+  await promise;
 });
