@@ -14,7 +14,7 @@
 
 // -- QuartzCore.framework
 
-extern void *kCAGravityTopLeft = 0;
+void *kCAGravityTopLeft = 0;
 
 // -- Metal.framework
 
