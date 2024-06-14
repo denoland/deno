@@ -9534,8 +9534,6 @@ fn lsp_untitled_file_diagnostics() {
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceAverage {
   pub name: String,
-  pub count: u32,
-  pub average_duration: u32,
 }
 
 #[derive(Debug, Deserialize)]

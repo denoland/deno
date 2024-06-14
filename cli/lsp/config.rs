@@ -1780,7 +1780,7 @@ impl ConfigTree {
         );
       }
     }
-    self.first_folder = settings.first_folder.clone();
+    self.first_folder.clone_from(&settings.first_folder);
     self.scopes = Arc::new(scopes);
   }
 

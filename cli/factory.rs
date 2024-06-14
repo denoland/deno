@@ -864,7 +864,6 @@ impl CliFactory {
       // integration.
       skip_op_registration: self.options.sub_command().is_run(),
       log_level: self.options.log_level().unwrap_or(log::Level::Info).into(),
-      coverage_dir: self.options.coverage_dir(),
       enable_op_summary_metrics: self.options.enable_op_summary_metrics(),
       enable_testing_features: self.options.enable_testing_features(),
       has_node_modules_dir: self.options.has_node_modules_dir(),
