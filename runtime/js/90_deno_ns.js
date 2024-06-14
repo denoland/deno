@@ -264,9 +264,9 @@ const unstableIds = {
   workerOptions: 11,
 };
 
-const denoNsUnstableById = {};
+const denoNsUnstableById = { __proto__: null };
 
-// denoNsUnstableById[unstableIds.broadcastChannel] = {}
+// denoNsUnstableById[unstableIds.broadcastChannel] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.cron] = {
   cron: cron.cron,
@@ -308,13 +308,13 @@ denoNsUnstableById[unstableIds.net] = {
   ),
 };
 
-// denoNsUnstableById[unstableIds.unsafeProto] = {}
+// denoNsUnstableById[unstableIds.unsafeProto] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.webgpu] = {
   UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
 };
 
-// denoNsUnstableById[unstableIds.workerOptions] = {}
+// denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
 
 // when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js
 const denoNsUnstable = {

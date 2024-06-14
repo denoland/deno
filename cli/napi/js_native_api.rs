@@ -1855,11 +1855,11 @@ fn napi_get_element(
   check_env!(env);
   let env = unsafe { &mut *env };
   let object = napi_value_unchecked(object);
-  let Ok(array) = v8::Local::<v8::Array>::try_from(object) else {
+  let Ok(object) = v8::Local::<v8::Object>::try_from(object) else {
     return napi_invalid_arg;
   };
   let value: v8::Local<v8::Value> =
-    array.get_index(&mut env.scope(), index).unwrap();
+    object.get_index(&mut env.scope(), index).unwrap();
   *result = value.into();
   napi_ok
 }
@@ -2521,11 +2521,11 @@ fn napi_set_element(
   check_env!(env);
   let env = unsafe { &mut *env };
   let object = napi_value_unchecked(object);
-  let Ok(array) = v8::Local::<v8::Array>::try_from(object) else {
+  let Ok(object) = v8::Local::<v8::Object>::try_from(object) else {
     return napi_invalid_arg;
   };
   let value = napi_value_unchecked(value);
-  array.set_index(&mut env.scope(), index, value).unwrap();
+  object.set_index(&mut env.scope(), index, value).unwrap();
   napi_ok
 }
 

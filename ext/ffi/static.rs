@@ -2,8 +2,6 @@
 
 use crate::dlfcn::DynamicLibraryResource;
 use crate::symbol::NativeType;
-use crate::MAX_SAFE_INTEGER;
-use crate::MIN_SAFE_INTEGER;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -90,45 +88,29 @@ pub fn op_ffi_get_static<'scope>(
     NativeType::U64 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const u64) };
-      let integer: v8::Local<v8::Value> = if result > MAX_SAFE_INTEGER as u64 {
-        v8::BigInt::new_from_u64(scope, result).into()
-      } else {
-        v8::Number::new(scope, result as f64).into()
-      };
+      let integer: v8::Local<v8::Value> =
+        v8::BigInt::new_from_u64(scope, result).into();
       integer
     }
     NativeType::I64 => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const i64) };
-      let integer: v8::Local<v8::Value> = if result > MAX_SAFE_INTEGER as i64
-        || result < MIN_SAFE_INTEGER as i64
-      {
-        v8::BigInt::new_from_i64(scope, result).into()
-      } else {
-        v8::Number::new(scope, result as f64).into()
-      };
+      let integer: v8::Local<v8::Value> =
+        v8::BigInt::new_from_i64(scope, result).into();
       integer
     }
     NativeType::USize => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const usize) };
-      let integer: v8::Local<v8::Value> = if result > MAX_SAFE_INTEGER as usize
-      {
-        v8::BigInt::new_from_u64(scope, result as u64).into()
-      } else {
-        v8::Number::new(scope, result as f64).into()
-      };
+      let integer: v8::Local<v8::Value> =
+        v8::BigInt::new_from_u64(scope, result as u64).into();
       integer
     }
     NativeType::ISize => {
       // SAFETY: ptr is user provided
       let result = unsafe { ptr::read_unaligned(data_ptr as *const isize) };
       let integer: v8::Local<v8::Value> =
-        if !(MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&result) {
-          v8::BigInt::new_from_i64(scope, result as i64).into()
-        } else {
-          v8::Number::new(scope, result as f64).into()
-        };
+        v8::BigInt::new_from_i64(scope, result as i64).into();
       integer
     }
     NativeType::F32 => {

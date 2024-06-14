@@ -40,6 +40,7 @@ struct Repl {
   message_handler: RustylineSyncMessageHandler,
 }
 
+#[allow(clippy::print_stdout)]
 impl Repl {
   async fn run(&mut self) -> Result<(), AnyError> {
     loop {
@@ -61,7 +62,7 @@ impl Repl {
             break;
           }
 
-          println!("{output}");
+          println!("{}", output);
         }
         Err(ReadlineError::Interrupted) => {
           if self.editor.should_exit_on_interrupt() {
@@ -75,7 +76,7 @@ impl Repl {
           break;
         }
         Err(err) => {
-          println!("Error: {err:?}");
+          println!("Error: {:?}", err);
           break;
         }
       }
@@ -85,6 +86,7 @@ impl Repl {
   }
 }
 
+#[allow(clippy::print_stdout)]
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
   message_handler: &mut RustylineSyncMessageHandler,
@@ -152,12 +154,13 @@ async fn read_eval_file(
   Ok(file.into_text_decoded()?.source)
 }
 
+#[allow(clippy::print_stdout)]
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let main_module = cli_options.resolve_main_module()?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options(),
+    &cli_options.permissions_options()?,
   )?);
   let npm_resolver = factory.npm_resolver().await?.clone();
   let resolver = factory.resolver().await?.clone();

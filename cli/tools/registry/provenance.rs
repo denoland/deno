@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::http_util::HttpClient;
+
 use super::api::OidcTokenResponse;
 use super::auth::gha_oidc_token;
 use super::auth::is_gha;
@@ -13,7 +15,6 @@ use deno_core::serde_json;
 use once_cell::sync::Lazy;
 use p256::elliptic_curve;
 use p256::pkcs8::AssociatedOid;
-use reqwest::Client;
 use ring::rand::SystemRandom;
 use ring::signature::EcdsaKeyPair;
 use ring::signature::KeyPair;
@@ -291,6 +292,7 @@ pub struct ProvenanceBundle {
 }
 
 pub async fn generate_provenance(
+  http_client: &HttpClient,
   subject: Subject,
 ) -> Result<ProvenanceBundle, AnyError> {
   if !is_gha() {
@@ -306,19 +308,20 @@ pub async fn generate_provenance(
   let slsa = ProvenanceAttestation::new_github_actions(subject);
 
   let attestation = serde_json::to_string(&slsa)?;
-  let bundle = attest(&attestation, INTOTO_PAYLOAD_TYPE).await?;
+  let bundle = attest(http_client, &attestation, INTOTO_PAYLOAD_TYPE).await?;
 
   Ok(bundle)
 }
 
 pub async fn attest(
+  http_client: &HttpClient,
   data: &str,
   type_: &str,
 ) -> Result<ProvenanceBundle, AnyError> {
   // DSSE Pre-Auth Encoding (PAE) payload
   let pae = pre_auth_encoding(type_, data);
 
-  let signer = FulcioSigner::new()?;
+  let signer = FulcioSigner::new(http_client)?;
   let (signature, key_material) = signer.sign(&pae).await?;
 
   let content = SignatureBundle {
@@ -332,7 +335,8 @@ pub async fn attest(
       }],
     },
   };
-  let transparency_logs = testify(&content, &key_material.certificate).await?;
+  let transparency_logs =
+    testify(http_client, &content, &key_material.certificate).await?;
 
   // First log entry is the one we're interested in
   let (_, log_entry) = transparency_logs.iter().next().unwrap();
@@ -362,13 +366,6 @@ static DEFAULT_FULCIO_URL: Lazy<String> = Lazy::new(|| {
   env::var("FULCIO_URL")
     .unwrap_or_else(|_| "https://fulcio.sigstore.dev".to_string())
 });
-
-struct FulcioSigner {
-  // The ephemeral key pair used to sign.
-  ephemeral_signer: EcdsaKeyPair,
-  rng: SystemRandom,
-  client: Client,
-}
 
 static ALGORITHM: &ring::signature::EcdsaSigningAlgorithm =
   &ring::signature::ECDSA_P256_SHA256_ASN1_SIGNING;
@@ -424,8 +421,15 @@ struct SigningCertificateResponse {
   signed_certificate_detached_sct: Option<SignedCertificate>,
 }
 
-impl FulcioSigner {
-  pub fn new() -> Result<Self, AnyError> {
+struct FulcioSigner<'a> {
+  // The ephemeral key pair used to sign.
+  ephemeral_signer: EcdsaKeyPair,
+  rng: SystemRandom,
+  http_client: &'a HttpClient,
+}
+
+impl<'a> FulcioSigner<'a> {
+  pub fn new(http_client: &'a HttpClient) -> Result<Self, AnyError> {
     let rng = SystemRandom::new();
     let document = EcdsaKeyPair::generate_pkcs8(ALGORITHM, &rng)?;
     let ephemeral_signer =
@@ -434,7 +438,7 @@ impl FulcioSigner {
     Ok(Self {
       ephemeral_signer,
       rng,
-      client: Client::new(),
+      http_client,
     })
   }
 
@@ -443,7 +447,7 @@ impl FulcioSigner {
     data: &[u8],
   ) -> Result<(ring::signature::Signature, KeyMaterial), AnyError> {
     // Request token from GitHub Actions for audience "sigstore"
-    let token = gha_request_token("sigstore").await?;
+    let token = self.gha_request_token("sigstore").await?;
     // Extract the subject from the token
     let subject = extract_jwt_subject(&token)?;
 
@@ -498,7 +502,12 @@ impl FulcioSigner {
       },
     };
 
-    let response = self.client.post(url).json(&request_body).send().await?;
+    let response = self
+      .http_client
+      .post(url)
+      .json(&request_body)
+      .send()
+      .await?;
 
     let body: SigningCertificateResponse = response.json().await?;
 
@@ -507,6 +516,27 @@ impl FulcioSigner {
       .or(body.signed_certificate_detached_sct)
       .ok_or_else(|| anyhow::anyhow!("No certificate chain returned"))?;
     Ok(key.chain.certificates)
+  }
+
+  async fn gha_request_token(&self, aud: &str) -> Result<String, AnyError> {
+    let Ok(req_url) = env::var("ACTIONS_ID_TOKEN_REQUEST_URL") else {
+      bail!("Not running in GitHub Actions");
+    };
+
+    let Some(token) = gha_oidc_token() else {
+      bail!("No OIDC token available");
+    };
+
+    let res = self
+      .http_client
+      .get(&req_url)
+      .bearer_auth(token)
+      .query(&[("audience", aud)])
+      .send()
+      .await?
+      .json::<OidcTokenResponse>()
+      .await?;
+    Ok(res.value)
   }
 }
 
@@ -530,27 +560,6 @@ fn extract_jwt_subject(token: &str) -> Result<String, AnyError> {
     }
     _ => Ok(subject.sub),
   }
-}
-
-async fn gha_request_token(aud: &str) -> Result<String, AnyError> {
-  let Ok(req_url) = env::var("ACTIONS_ID_TOKEN_REQUEST_URL") else {
-    bail!("Not running in GitHub Actions");
-  };
-
-  let Some(token) = gha_oidc_token() else {
-    bail!("No OIDC token available");
-  };
-
-  let client = Client::new();
-  let res = client
-    .get(&req_url)
-    .bearer_auth(token)
-    .query(&[("audience", aud)])
-    .send()
-    .await?
-    .json::<OidcTokenResponse>()
-    .await?;
-  Ok(res.value)
 }
 
 static DEFAULT_REKOR_URL: Lazy<String> = Lazy::new(|| {
@@ -616,6 +625,7 @@ struct ProposedIntotoEntryHash {
 
 // Rekor witness
 async fn testify(
+  http_client: &HttpClient,
   content: &SignatureBundle,
   public_key: &str,
 ) -> Result<RekorEntry, AnyError> {
@@ -672,9 +682,8 @@ async fn testify(
     },
   };
 
-  let client = Client::new();
   let url = format!("{}/api/v1/log/entries", *DEFAULT_REKOR_URL);
-  let res = client
+  let res = http_client
     .post(&url)
     .json(&proposed_intoto_entry)
     .send()

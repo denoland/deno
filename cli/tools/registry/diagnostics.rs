@@ -15,11 +15,13 @@ use deno_ast::diagnostics::DiagnosticSourcePos;
 use deno_ast::diagnostics::DiagnosticSourceRange;
 use deno_ast::swc::common::util::take::Take;
 use deno_ast::SourcePos;
+use deno_ast::SourceRange;
 use deno_ast::SourceRanged;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_graph::FastCheckDiagnostic;
+use deno_semver::Version;
 use lsp_types::Url;
 
 use super::unfurl::SpecifierUnfurlerDiagnostic;
@@ -38,7 +40,11 @@ impl PublishDiagnosticsCollector {
     diagnostics.sort_by_cached_key(|d| d.sorting_key());
 
     for diagnostic in diagnostics {
-      eprint!("{}", diagnostic.display());
+      // todo(https://github.com/denoland/deno_ast/issues/245): use log crate here
+      #[allow(clippy::print_stderr)]
+      {
+        eprint!("{}", diagnostic.display());
+      }
       if matches!(diagnostic.level(), DiagnosticLevel::Error) {
         errors += 1;
       }
@@ -48,18 +54,18 @@ impl PublishDiagnosticsCollector {
     }
     if errors > 0 {
       if has_slow_types_errors {
-        eprintln!(
+        log::error!(
           "This package contains errors for slow types. Fixing these errors will:\n"
         );
-        eprintln!(
+        log::error!(
           "  1. Significantly improve your package users' type checking performance."
         );
-        eprintln!("  2. Improve the automatic documentation generation.");
-        eprintln!("  3. Enable automatic .d.ts generation for Node.js.");
-        eprintln!(
+        log::error!("  2. Improve the automatic documentation generation.");
+        log::error!("  3. Enable automatic .d.ts generation for Node.js.");
+        log::error!(
           "\nDon't want to bother? You can choose to skip this step by"
         );
-        eprintln!("providing the --allow-slow-types flag.\n");
+        log::error!("providing the --allow-slow-types flag.\n");
       }
 
       Err(anyhow!(
@@ -102,6 +108,18 @@ pub enum PublishDiagnostic {
   },
   ExcludedModule {
     specifier: Url,
+  },
+  MissingConstraint {
+    specifier: Url,
+    specifier_text: String,
+    resolved_version: Option<Version>,
+    text_info: SourceTextInfo,
+    referrer: deno_graph::Range,
+  },
+  BannedTripleSlashDirectives {
+    specifier: Url,
+    text_info: SourceTextInfo,
+    range: SourceRange,
   },
 }
 
@@ -149,6 +167,8 @@ impl Diagnostic for PublishDiagnostic {
       InvalidExternalImport { .. } => DiagnosticLevel::Error,
       UnsupportedJsxTsx { .. } => DiagnosticLevel::Warning,
       ExcludedModule { .. } => DiagnosticLevel::Error,
+      MissingConstraint { .. } => DiagnosticLevel::Error,
+      BannedTripleSlashDirectives { .. } => DiagnosticLevel::Error,
     }
   }
 
@@ -163,6 +183,10 @@ impl Diagnostic for PublishDiagnostic {
       InvalidExternalImport { .. } => Cow::Borrowed("invalid-external-import"),
       UnsupportedJsxTsx { .. } => Cow::Borrowed("unsupported-jsx-tsx"),
       ExcludedModule { .. } => Cow::Borrowed("excluded-module"),
+      MissingConstraint { .. } => Cow::Borrowed("missing-constraint"),
+      BannedTripleSlashDirectives { .. } => {
+        Cow::Borrowed("banned-triple-slash-directives")
+      }
     }
   }
 
@@ -181,10 +205,26 @@ impl Diagnostic for PublishDiagnostic {
       InvalidExternalImport { kind, .. } => Cow::Owned(format!("invalid import to a {kind} specifier")),
       UnsupportedJsxTsx { .. } => Cow::Borrowed("JSX and TSX files are currently not supported"),
       ExcludedModule { .. } => Cow::Borrowed("module in package's module graph was excluded from publishing"),
+      MissingConstraint { specifier, .. } => Cow::Owned(format!("specifier '{}' is missing a version constraint", specifier)),
+      BannedTripleSlashDirectives { .. } => Cow::Borrowed("triple slash directives that modify globals are not allowed"),
     }
   }
 
   fn location(&self) -> DiagnosticLocation {
+    fn from_referrer_range<'a>(
+      referrer: &'a deno_graph::Range,
+      text_info: &'a SourceTextInfo,
+    ) -> DiagnosticLocation<'a> {
+      DiagnosticLocation::ModulePosition {
+        specifier: Cow::Borrowed(&referrer.specifier),
+        text_info: Cow::Borrowed(text_info),
+        source_pos: DiagnosticSourcePos::LineAndCol {
+          line: referrer.start.line,
+          column: referrer.start.character,
+        },
+      }
+    }
+
     use PublishDiagnostic::*;
     match &self {
       FastCheck(diagnostic) => diagnostic.location(),
@@ -212,24 +252,58 @@ impl Diagnostic for PublishDiagnostic {
         referrer,
         text_info,
         ..
-      } => DiagnosticLocation::ModulePosition {
-        specifier: Cow::Borrowed(&referrer.specifier),
-        text_info: Cow::Borrowed(text_info),
-        source_pos: DiagnosticSourcePos::LineAndCol {
-          line: referrer.start.line,
-          column: referrer.start.character,
-        },
-      },
+      } => from_referrer_range(referrer, text_info),
       UnsupportedJsxTsx { specifier } => DiagnosticLocation::Module {
         specifier: Cow::Borrowed(specifier),
       },
       ExcludedModule { specifier } => DiagnosticLocation::Module {
         specifier: Cow::Borrowed(specifier),
       },
+      MissingConstraint {
+        referrer,
+        text_info,
+        ..
+      } => from_referrer_range(referrer, text_info),
+      BannedTripleSlashDirectives {
+        specifier,
+        range,
+        text_info,
+      } => DiagnosticLocation::ModulePosition {
+        specifier: Cow::Borrowed(specifier),
+        source_pos: DiagnosticSourcePos::SourcePos(range.start),
+        text_info: Cow::Borrowed(text_info),
+      },
     }
   }
 
   fn snippet(&self) -> Option<DiagnosticSnippet<'_>> {
+    fn from_range<'a>(
+      text_info: &'a SourceTextInfo,
+      referrer: &'a deno_graph::Range,
+    ) -> Option<DiagnosticSnippet<'a>> {
+      if referrer.start.line == 0 && referrer.start.character == 0 {
+        return None; // no range, probably a jsxImportSource import
+      }
+
+      Some(DiagnosticSnippet {
+        source: Cow::Borrowed(text_info),
+        highlight: DiagnosticSnippetHighlight {
+          style: DiagnosticSnippetHighlightStyle::Error,
+          range: DiagnosticSourceRange {
+            start: DiagnosticSourcePos::LineAndCol {
+              line: referrer.start.line,
+              column: referrer.start.character,
+            },
+            end: DiagnosticSourcePos::LineAndCol {
+              line: referrer.end.line,
+              column: referrer.end.character,
+            },
+          },
+          description: Some("the specifier".into()),
+        },
+      })
+    }
+
     use PublishDiagnostic::*;
     match &self {
       FastCheck(diagnostic) => diagnostic.snippet(),
@@ -257,25 +331,27 @@ impl Diagnostic for PublishDiagnostic {
         referrer,
         text_info,
         ..
+      } => from_range(text_info, referrer),
+      UnsupportedJsxTsx { .. } => None,
+      ExcludedModule { .. } => None,
+      MissingConstraint {
+        referrer,
+        text_info,
+        ..
+      } => from_range(text_info, referrer),
+      BannedTripleSlashDirectives {
+        range, text_info, ..
       } => Some(DiagnosticSnippet {
         source: Cow::Borrowed(text_info),
         highlight: DiagnosticSnippetHighlight {
           style: DiagnosticSnippetHighlightStyle::Error,
           range: DiagnosticSourceRange {
-            start: DiagnosticSourcePos::LineAndCol {
-              line: referrer.start.line,
-              column: referrer.start.character,
-            },
-            end: DiagnosticSourcePos::LineAndCol {
-              line: referrer.end.line,
-              column: referrer.end.character,
-            },
+            start: DiagnosticSourcePos::SourcePos(range.start),
+            end: DiagnosticSourcePos::SourcePos(range.end),
           },
-          description: Some("the specifier".into()),
+          description: Some("the triple slash directive".into()),
         },
       }),
-      UnsupportedJsxTsx { .. } => None,
-      ExcludedModule { .. } => None,
     }
   }
 
@@ -297,6 +373,16 @@ impl Diagnostic for PublishDiagnostic {
       UnsupportedJsxTsx { .. } => None,
       ExcludedModule { .. } => Some(
         Cow::Borrowed("remove the module from 'exclude' and/or 'publish.exclude' in the config file or use 'publish.exclude' with a negative glob to unexclude from gitignore"),
+      ),
+      MissingConstraint { specifier_text, .. } => {
+        Some(Cow::Borrowed(if specifier_text.starts_with("jsr:") || specifier_text.starts_with("npm:") {
+          "specify a version constraint for the specifier"
+        } else {
+          "specify a version constraint for the specifier in the import map"
+        }))
+      },
+      BannedTripleSlashDirectives { .. } => Some(
+        Cow::Borrowed("remove the triple slash directive"),
       ),
     }
   }
@@ -362,7 +448,18 @@ impl Diagnostic for PublishDiagnostic {
       ]),
       ExcludedModule { .. } => Cow::Owned(vec![
         Cow::Borrowed("excluded modules referenced via a package export will error at runtime due to not existing in the package"),
-      ])
+      ]),
+      MissingConstraint { resolved_version, .. } => Cow::Owned(vec![
+        Cow::Owned(format!(
+          "the specifier resolved to version {} today, but will resolve to a different",
+          resolved_version.as_ref().map(|v| v.to_string()).unwrap_or_else(|| "<unresolved>".to_string())),
+        ),
+        Cow::Borrowed("major version if one is published in the future and potentially break"),
+      ]),
+      BannedTripleSlashDirectives { .. } => Cow::Borrowed(&[
+        Cow::Borrowed("instead instruct the user of your package to specify these directives"),
+        Cow::Borrowed("or set their 'lib' compiler option appropriately"),
+      ]),
     }
   }
 
@@ -389,6 +486,12 @@ impl Diagnostic for PublishDiagnostic {
       ExcludedModule { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/excluded-module"))
       }
+      MissingConstraint { .. } => {
+        Some(Cow::Borrowed("https://jsr.io/go/missing-constraint"))
+      }
+      BannedTripleSlashDirectives { .. } => Some(Cow::Borrowed(
+        "https://jsr.io/go/banned-triple-slash-directives",
+      )),
     }
   }
 }

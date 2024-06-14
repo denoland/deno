@@ -21,11 +21,11 @@ use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::file_fetcher::FileFetcher;
+use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
-use crate::graph_util::ModuleGraphContainer;
 use crate::graph_util::ModuleGraphCreator;
-use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 use crate::module_loader::CliModuleLoaderFactory;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::node::CliCjsCodeAnalyzer;
@@ -60,7 +60,6 @@ use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::FeatureChecker;
 
-use deno_graph::GraphKind;
 use deno_lockfile::WorkspaceMemberConfig;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
@@ -153,11 +152,11 @@ struct CliFactoryServices {
   file_fetcher: Deferred<Arc<FileFetcher>>,
   global_http_cache: Deferred<Arc<GlobalHttpCache>>,
   http_cache: Deferred<Arc<dyn HttpCache>>,
-  http_client: Deferred<Arc<HttpClient>>,
+  http_client_provider: Deferred<Arc<HttpClientProvider>>,
   emit_cache: Deferred<EmitCache>,
   emitter: Deferred<Arc<Emitter>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
-  graph_container: Deferred<Arc<ModuleGraphContainer>>,
+  main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
   lockfile: Deferred<Option<Arc<Mutex<Lockfile>>>>,
   maybe_import_map: Deferred<Option<Arc<ImportMap>>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
@@ -280,9 +279,9 @@ impl CliFactory {
     })
   }
 
-  pub fn http_client(&self) -> &Arc<HttpClient> {
-    self.services.http_client.get_or_init(|| {
-      Arc::new(HttpClient::new(
+  pub fn http_client_provider(&self) -> &Arc<HttpClientProvider> {
+    self.services.http_client_provider.get_or_init(|| {
+      Arc::new(HttpClientProvider::new(
         Some(self.root_cert_store_provider().clone()),
         self.options.unsafely_ignore_certificate_errors().clone(),
       ))
@@ -295,7 +294,7 @@ impl CliFactory {
         self.http_cache()?.clone(),
         self.options.cache_setting(),
         !self.options.no_remote(),
-        self.http_client().clone(),
+        self.http_client_provider().clone(),
         self.blob_store().clone(),
         Some(self.text_only_progress_bar().clone()),
       )))
@@ -408,7 +407,8 @@ impl CliFactory {
       .npm_resolver
       .get_or_try_init_async(async {
         let fs = self.fs();
-        create_cli_npm_resolver(if self.options.use_byonm() {
+        // For `deno install` we want to force the managed resolver so it can set up `node_modules/` directory.
+        create_cli_npm_resolver(if self.options.use_byonm() && !matches!(self.options.sub_command(), DenoSubcommand::Install(_)) {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
             fs: fs.clone(),
             root_node_modules_dir: match self.options.node_modules_dir_path() {
@@ -436,7 +436,7 @@ impl CliFactory {
             },
             maybe_lockfile: self.maybe_lockfile().as_ref().cloned(),
             fs: fs.clone(),
-            http_client: self.http_client().clone(),
+            http_client_provider: self.http_client_provider().clone(),
             npm_global_cache_dir: self.deno_dir()?.npm_folder_path(),
             cache_setting: self.options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
@@ -446,7 +446,7 @@ impl CliFactory {
                 self.package_json_deps_provider().clone(),
               ),
             npm_system_info: self.options.npm_system_info(),
-            npm_registry_url: crate::args::npm_registry_url().to_owned(),
+            npmrc: self.options.npmrc().clone()
           })
         }).await
       }.boxed_local())
@@ -665,24 +665,25 @@ impl CliFactory {
           self.options.clone(),
           self.npm_resolver().await?.clone(),
           self.module_graph_builder().await?.clone(),
-          self.maybe_lockfile().clone(),
           self.type_checker().await?.clone(),
         )))
       })
       .await
   }
 
-  pub fn graph_container(&self) -> &Arc<ModuleGraphContainer> {
-    self.services.graph_container.get_or_init(|| {
-      let graph_kind = match self.options.sub_command() {
-        // todo(dsherret): ideally the graph container would not be used
-        // for deno cache because it doesn't dynamically load modules
-        DenoSubcommand::Cache(_) => GraphKind::All,
-        DenoSubcommand::Check(_) => GraphKind::TypesOnly,
-        _ => self.options.type_check_mode().as_graph_kind(),
-      };
-      Arc::new(ModuleGraphContainer::new(graph_kind))
-    })
+  pub async fn main_module_graph_container(
+    &self,
+  ) -> Result<&Arc<MainModuleGraphContainer>, AnyError> {
+    self
+      .services
+      .main_graph_container
+      .get_or_try_init_async(async {
+        Ok(Arc::new(MainModuleGraphContainer::new(
+          self.cli_options().clone(),
+          self.module_load_preparer().await?.clone(),
+        )))
+      })
+      .await
   }
 
   pub fn maybe_inspector_server(
@@ -705,7 +706,6 @@ impl CliFactory {
       .get_or_try_init_async(async {
         Ok(Arc::new(ModuleLoadPreparer::new(
           self.options.clone(),
-          self.graph_container().clone(),
           self.maybe_lockfile().clone(),
           self.module_graph_builder().await?.clone(),
           self.text_only_progress_bar().clone(),
@@ -760,9 +760,9 @@ impl CliFactory {
     &self,
   ) -> Result<DenoCompileBinaryWriter, AnyError> {
     Ok(DenoCompileBinaryWriter::new(
-      self.file_fetcher()?,
-      self.http_client(),
       self.deno_dir()?,
+      self.file_fetcher()?,
+      self.http_client_provider(),
       self.npm_resolver().await?.as_ref(),
       self.options.npm_system_info(),
       self.package_json_deps_provider(),
@@ -790,11 +790,14 @@ impl CliFactory {
       self.blob_store().clone(),
       Box::new(CliModuleLoaderFactory::new(
         &self.options,
+        if self.options.code_cache_enabled() {
+          Some(self.code_cache()?.clone())
+        } else {
+          None
+        },
         self.emitter()?.clone(),
-        self.graph_container().clone(),
+        self.main_module_graph_container().await?.clone(),
         self.module_load_preparer().await?.clone(),
-        self.parsed_source_cache().clone(),
-        self.resolver().await?.clone(),
         cli_node_resolver.clone(),
         NpmModuleLoader::new(
           self.cjs_resolutions().clone(),
@@ -802,12 +805,8 @@ impl CliFactory {
           fs.clone(),
           cli_node_resolver.clone(),
         ),
-        if self.options.code_cache_enabled() {
-          Some(self.code_cache()?.clone())
-        } else {
-          None
-        },
-        self.module_info_cache()?.clone(),
+        self.parsed_source_cache().clone(),
+        self.resolver().await?.clone(),
       )),
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
@@ -885,6 +884,7 @@ impl CliFactory {
         .options
         .take_binary_npm_command_name()
         .or(std::env::args().next()),
+      node_debug: std::env::var("NODE_DEBUG").ok(),
       origin_data_folder_path: Some(self.deno_dir()?.origin_data_folder_path()),
       seed: self.options.seed(),
       unsafely_ignore_certificate_errors: self

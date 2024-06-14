@@ -92,6 +92,7 @@ impl TestReporter for JunitTestReporter {
 
   fn report_plan(&mut self, _plan: &TestPlan) {}
 
+  fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
   fn report_wait(&mut self, _description: &TestDescription) {}
 
   fn report_output(&mut self, _output: &[u8]) {

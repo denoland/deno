@@ -218,11 +218,11 @@ impl TestRun {
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.
     let permissions =
-      Permissions::from_options(&factory.cli_options().permissions_options())?;
+      Permissions::from_options(&factory.cli_options().permissions_options()?)?;
+    let main_graph_container = factory.main_module_graph_container().await?;
     test::check_specifiers(
-      factory.cli_options(),
       factory.file_fetcher()?,
-      factory.module_load_preparer().await?,
+      main_graph_container,
       self
         .queue
         .iter()
@@ -352,6 +352,9 @@ impl TestRun {
             }
             test::TestEvent::Output(_, output) => {
               reporter.report_output(&output);
+            }
+            test::TestEvent::Slow(id, elapsed) => {
+              reporter.report_slow(tests.read().get(&id).unwrap(), elapsed);
             }
             test::TestEvent::Result(id, result, elapsed) => {
               if tests_with_result.insert(id) {
@@ -609,6 +612,8 @@ impl LspTestReporter {
     let test = desc.as_test_identifier(&self.tests);
     self.progress(lsp_custom::TestRunProgressMessage::Started { test });
   }
+
+  fn report_slow(&mut self, _desc: &test::TestDescription, _elapsed: u64) {}
 
   fn report_output(&mut self, output: &[u8]) {
     let test = self

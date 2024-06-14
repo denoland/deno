@@ -125,7 +125,10 @@ async fn bundle_action(
       );
     }
   } else {
-    println!("{}", bundle_output.code);
+    #[allow(clippy::print_stdout)]
+    {
+      println!("{}", bundle_output.code);
+    }
   }
   Ok(())
 }

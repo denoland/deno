@@ -505,6 +505,7 @@ pub fn collect_tsc(
           ));
         }
         tsc::ScriptElementKind::LocalFunctionElement
+        | tsc::ScriptElementKind::MemberFunctionElement
         | tsc::ScriptElementKind::MemberGetAccessorElement
         | tsc::ScriptElementKind::MemberSetAccessorElement
         | tsc::ScriptElementKind::ConstructorImplementationElement

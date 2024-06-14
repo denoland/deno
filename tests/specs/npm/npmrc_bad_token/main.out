@@ -1,0 +1,4 @@
+⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.
+Download http://127.0.0.1:4261/@denotest/basic
+error: Error getting response at http://127.0.0.1:4261/@denotest/basic for package "@denotest/basic": Bad response: 401
+[WILDCARD]

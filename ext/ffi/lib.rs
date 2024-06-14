@@ -39,9 +39,6 @@ const _: () = {
   assert!(size_of::<*const ()>() == 8);
 };
 
-pub(crate) const MAX_SAFE_INTEGER: isize = 9007199254740991;
-pub(crate) const MIN_SAFE_INTEGER: isize = -9007199254740991;
-
 pub const UNSTABLE_FEATURE_NAME: &str = "ffi";
 
 fn check_unstable(state: &OpState, api_name: &str) {

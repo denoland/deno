@@ -18,8 +18,9 @@ use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
-use crate::util::sync::TaskQueue;
-use crate::util::sync::TaskQueuePermit;
+use deno_emit::LoaderChecksum;
+use deno_graph::JsrLoadError;
+use deno_graph::ModuleLoadError;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_config::WorkspaceMemberConfig;
@@ -27,7 +28,6 @@ use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::Loader;
 use deno_graph::source::ResolutionMode;
@@ -54,6 +54,9 @@ pub struct GraphValidOptions {
   pub check_js: bool,
   pub follow_type_only: bool,
   pub is_vendoring: bool,
+  /// Whether to exit the process for lockfile errors.
+  /// Otherwise, surfaces lockfile errors as errors.
+  pub exit_lockfile_errors: bool,
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -65,10 +68,14 @@ pub struct GraphValidOptions {
 /// for the CLI.
 pub fn graph_valid(
   graph: &ModuleGraph,
-  fs: &dyn FileSystem,
+  fs: &Arc<dyn FileSystem>,
   roots: &[ModuleSpecifier],
   options: GraphValidOptions,
 ) -> Result<(), AnyError> {
+  if options.exit_lockfile_errors {
+    graph_exit_lock_errors(graph);
+  }
+
   let mut errors = graph
     .walk(
       roots,
@@ -98,8 +105,10 @@ pub fn graph_valid(
             enhanced_resolution_error_message(resolution_error)
           )
         }
-        ModuleGraphError::ModuleError(e) => {
-          enhanced_module_error_message(fs, e)
+        ModuleGraphError::ModuleError(error) => {
+          enhanced_lockfile_error_message(error)
+            .or_else(|| enhanced_sloppy_imports_error_message(fs, error))
+            .unwrap_or_else(|| format!("{}", error))
         }
       };
 
@@ -155,40 +164,16 @@ pub fn graph_valid(
   }
 }
 
-/// Checks the lockfile against the graph and exits on errors.
-pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
-  for module in graph.modules() {
-    let source = match module {
-      Module::Js(module) if module.media_type.is_declaration() => continue, // skip declaration files
-      Module::Js(module) => &module.source,
-      Module::Json(module) => &module.source,
-      Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
-    };
+pub fn graph_exit_lock_errors(graph: &ModuleGraph) {
+  for error in graph.module_errors() {
+    exit_for_lockfile_error(error);
+  }
+}
 
-    // skip over any specifiers in JSR packages because those
-    // are enforced via the integrity
-    if deno_graph::source::recommended_registry_package_url_to_nv(
-      jsr_url(),
-      module.specifier(),
-    )
-    .is_some()
-    {
-      continue;
-    }
-
-    if !lockfile.check_or_insert_remote(module.specifier().as_str(), source) {
-      let err = format!(
-        concat!(
-          "The source code is invalid, as it does not match the expected hash in the lock file.\n",
-          "  Specifier: {}\n",
-          "  Lock file: {}",
-        ),
-        module.specifier(),
-        lockfile.filename.display(),
-      );
-      log::error!("{} {}", colors::red("error:"), err);
-      std::process::exit(10);
-    }
+fn exit_for_lockfile_error(err: &ModuleError) {
+  if let Some(err_message) = enhanced_lockfile_error_message(err) {
+    log::error!("{} {}", colors::red("error:"), err_message);
+    std::process::exit(10);
   }
 }
 
@@ -204,7 +189,6 @@ pub struct ModuleGraphCreator {
   options: Arc<CliOptions>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
-  lockfile: Option<Arc<Mutex<Lockfile>>>,
   type_checker: Arc<TypeChecker>,
 }
 
@@ -213,13 +197,11 @@ impl ModuleGraphCreator {
     options: Arc<CliOptions>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
-    lockfile: Option<Arc<Mutex<Lockfile>>>,
     type_checker: Arc<TypeChecker>,
   ) -> Self {
     Self {
       options,
       npm_resolver,
-      lockfile,
       module_graph_builder,
       type_checker,
     }
@@ -320,9 +302,6 @@ impl ModuleGraphCreator {
       .await?;
 
     self.graph_valid(&graph)?;
-    if let Some(lockfile) = &self.lockfile {
-      graph_lock_or_exit(&graph, &mut lockfile.lock());
-    }
 
     if self.options.type_check_mode().is_true() {
       // provide the graph to the type checker, then get it back after it's done
@@ -429,9 +408,71 @@ impl ModuleGraphBuilder {
       }
     }
 
+    struct LockfileLocker<'a>(&'a Mutex<Lockfile>);
+
+    impl<'a> deno_graph::source::Locker for LockfileLocker<'a> {
+      fn get_remote_checksum(
+        &self,
+        specifier: &deno_ast::ModuleSpecifier,
+      ) -> Option<LoaderChecksum> {
+        self
+          .0
+          .lock()
+          .remote()
+          .get(specifier.as_str())
+          .map(|s| LoaderChecksum::new(s.clone()))
+      }
+
+      fn has_remote_checksum(
+        &self,
+        specifier: &deno_ast::ModuleSpecifier,
+      ) -> bool {
+        self.0.lock().remote().contains_key(specifier.as_str())
+      }
+
+      fn set_remote_checksum(
+        &mut self,
+        specifier: &deno_ast::ModuleSpecifier,
+        checksum: LoaderChecksum,
+      ) {
+        self
+          .0
+          .lock()
+          .insert_remote(specifier.to_string(), checksum.into_string())
+      }
+
+      fn get_pkg_manifest_checksum(
+        &self,
+        package_nv: &PackageNv,
+      ) -> Option<LoaderChecksum> {
+        self
+          .0
+          .lock()
+          .content
+          .packages
+          .jsr
+          .get(&package_nv.to_string())
+          .map(|s| LoaderChecksum::new(s.integrity.clone()))
+      }
+
+      fn set_pkg_manifest_checksum(
+        &mut self,
+        package_nv: &PackageNv,
+        checksum: LoaderChecksum,
+      ) {
+        // a value would only exist in here if two workers raced
+        // to insert the same package manifest checksum
+        self
+          .0
+          .lock()
+          .insert_package(package_nv.to_string(), checksum.into_string());
+      }
+    }
+
     let maybe_imports = self.options.to_maybe_imports()?;
-    let parser = self.parsed_source_cache.as_capturing_parser();
-    let analyzer = self.module_info_cache.as_module_analyzer(&parser);
+    let analyzer = self
+      .module_info_cache
+      .as_module_analyzer(&self.parsed_source_cache);
     let mut loader = match options.loader {
       Some(loader) => MutLoaderRef::Borrowed(loader),
       None => MutLoaderRef::Owned(self.create_graph_loader()),
@@ -445,6 +486,10 @@ impl ModuleGraphBuilder {
       .map(|r| r.as_reporter());
     let workspace_members =
       self.options.resolve_deno_graph_workspace_members()?;
+    let mut locker = self
+      .lockfile
+      .as_ref()
+      .map(|lockfile| LockfileLocker(lockfile));
     self
       .build_graph_with_npm_resolution_and_build_options(
         graph,
@@ -462,6 +507,7 @@ impl ModuleGraphBuilder {
           module_analyzer: &analyzer,
           reporter: maybe_file_watcher_reporter,
           resolver: Some(graph_resolver),
+          locker: locker.as_mut().map(|l| l as _),
         },
       )
       .await
@@ -471,7 +517,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &mut ModuleGraph,
     roots: Vec<ModuleSpecifier>,
-    loader: &mut dyn deno_graph::source::Loader,
+    loader: &'a mut dyn deno_graph::source::Loader,
     options: deno_graph::BuildOptions<'a>,
   ) -> Result<(), AnyError> {
     // ensure an "npm install" is done if the user has explicitly
@@ -482,8 +528,10 @@ impl ModuleGraphBuilder {
       }
     }
 
-    // add the lockfile redirects to the graph if it's the first time executing
-    if graph.redirects.is_empty() {
+    // fill the graph with the information from the lockfile
+    let is_first_execution = graph.roots.is_empty();
+    if is_first_execution {
+      // populate the information from the lockfile
       if let Some(lockfile) = &self.lockfile {
         let lockfile = lockfile.lock();
         for (from, to) in &lockfile.content.redirects {
@@ -495,13 +543,6 @@ impl ModuleGraphBuilder {
             }
           }
         }
-      }
-    }
-
-    // add the jsr specifiers to the graph if it's the first time executing
-    if graph.packages.is_empty() {
-      if let Some(lockfile) = &self.lockfile {
-        let lockfile = lockfile.lock();
         for (key, value) in &lockfile.content.packages.specifiers {
           if let Some(key) = key
             .strip_prefix("jsr:")
@@ -515,70 +556,79 @@ impl ModuleGraphBuilder {
             }
           }
         }
-        for (nv, value) in &lockfile.content.packages.jsr {
-          if let Ok(nv) = PackageNv::from_str(nv) {
-            graph
-              .packages
-              .add_manifest_checksum(nv, value.integrity.clone())
-              .map_err(|err| deno_lockfile::IntegrityCheckFailedError {
-                package_display_id: format!("jsr:{}", err.nv),
-                actual: err.actual,
-                expected: err.expected,
-                filename: lockfile.filename.display().to_string(),
-              })?;
-          }
-        }
       }
     }
+
+    let initial_redirects_len = graph.redirects.len();
+    let initial_package_deps_len = graph.packages.package_deps_sum();
+    let initial_package_mappings_len = graph.packages.mappings().len();
+    let initial_npm_packages = graph.npm_packages.len();
 
     graph.build(roots, loader, options).await;
 
-    // add the redirects in the graph to the lockfile
-    if !graph.redirects.is_empty() {
-      if let Some(lockfile) = &self.lockfile {
-        let graph_redirects = graph.redirects.iter().filter(|(from, _)| {
-          !matches!(from.scheme(), "npm" | "file" | "deno")
-        });
-        let mut lockfile = lockfile.lock();
-        for (from, to) in graph_redirects {
-          lockfile.insert_redirect(from.to_string(), to.to_string());
+    let has_npm_packages_changed =
+      graph.npm_packages.len() != initial_npm_packages;
+    // skip installing npm packages if we don't have to
+    if is_first_execution
+      && self.npm_resolver.root_node_modules_path().is_some()
+      || has_npm_packages_changed
+    {
+      if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+        // ensure that the top level package.json is installed if a
+        // specifier was matched in the package.json
+        if self.resolver.found_package_json_dep() {
+          npm_resolver.ensure_top_level_package_json_install().await?;
         }
+
+        // resolve the dependencies of any pending dependencies
+        // that were inserted by building the graph
+        npm_resolver.resolve_pending().await?;
       }
     }
 
-    // add the jsr specifiers in the graph to the lockfile
-    if !graph.packages.is_empty() {
+    let has_redirects_changed = graph.redirects.len() != initial_redirects_len;
+    let has_jsr_package_deps_changed =
+      graph.packages.package_deps_sum() != initial_package_deps_len;
+    let has_jsr_package_mappings_changed =
+      graph.packages.mappings().len() != initial_package_mappings_len;
+
+    if has_redirects_changed
+      || has_jsr_package_deps_changed
+      || has_jsr_package_mappings_changed
+      || has_npm_packages_changed
+    {
       if let Some(lockfile) = &self.lockfile {
-        let mappings = graph.packages.mappings();
         let mut lockfile = lockfile.lock();
-        for (from, to) in mappings {
-          lockfile.insert_package_specifier(
-            format!("jsr:{}", from),
-            format!("jsr:{}", to),
-          );
+        // https redirects
+        if has_redirects_changed {
+          let graph_redirects = graph.redirects.iter().filter(|(from, _)| {
+            !matches!(from.scheme(), "npm" | "file" | "deno")
+          });
+          for (from, to) in graph_redirects {
+            lockfile.insert_redirect(from.to_string(), to.to_string());
+          }
         }
-        for (name, checksum, deps) in
-          graph.packages.packages_with_checksum_and_deps()
-        {
-          lockfile.insert_package(
-            name.to_string(),
-            checksum.clone(),
-            deps.map(|s| s.to_string()),
-          );
+        // jsr package mappings
+        if has_jsr_package_mappings_changed {
+          for (from, to) in graph.packages.mappings() {
+            lockfile.insert_package_specifier(
+              format!("jsr:{}", from),
+              format!("jsr:{}", to),
+            );
+          }
+        }
+        // jsr packages
+        if has_jsr_package_deps_changed {
+          for (name, deps) in graph.packages.packages_with_deps() {
+            lockfile
+              .add_package_deps(&name.to_string(), deps.map(|s| s.to_string()));
+          }
+        }
+        // npm packages
+        if has_npm_packages_changed {
+          self.npm_resolver.as_managed().unwrap().lock(&mut lockfile);
         }
       }
-    }
-
-    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-      // ensure that the top level package.json is installed if a
-      // specifier was matched in the package.json
-      if self.resolver.found_package_json_dep() {
-        npm_resolver.ensure_top_level_package_json_install().await?;
-      }
-
-      // resolve the dependencies of any pending dependencies
-      // that were inserted by building the graph
-      npm_resolver.resolve_pending().await?;
     }
 
     Ok(())
@@ -661,12 +711,13 @@ impl ModuleGraphBuilder {
   ) -> Result<(), AnyError> {
     graph_valid(
       graph,
-      self.fs.as_ref(),
+      &self.fs,
       roots,
       GraphValidOptions {
         is_vendoring: false,
         follow_type_only: self.options.type_check_mode().is_true(),
         check_js: self.options.check_js(),
+        exit_lockfile_errors: true,
       },
     )
   }
@@ -704,29 +755,99 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   message
 }
 
-pub fn enhanced_module_error_message(
-  fs: &dyn FileSystem,
+fn enhanced_sloppy_imports_error_message(
+  fs: &Arc<dyn FileSystem>,
   error: &ModuleError,
-) -> String {
-  let additional_message = match error {
-    ModuleError::LoadingErr(specifier, _, _) // ex. "Is a directory" error
+) -> Option<String> {
+  match error {
+    ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
     | ModuleError::Missing(specifier, _) => {
-      SloppyImportsResolver::resolve_with_fs(
-        fs,
-        specifier,
-        ResolutionMode::Execution,
-      )
-      .as_suggestion_message()
+      let additional_message = SloppyImportsResolver::new(fs.clone())
+        .resolve(specifier, ResolutionMode::Execution)
+        .as_suggestion_message()?;
+      Some(format!(
+        "{} {} or run with --unstable-sloppy-imports",
+        error,
+        additional_message,
+      ))
     }
     _ => None,
-  };
-  if let Some(message) = additional_message {
-    format!(
-      "{} {} or run with --unstable-sloppy-imports",
-      error, message
-    )
-  } else {
-    format!("{}", error)
+  }
+}
+
+fn enhanced_lockfile_error_message(err: &ModuleError) -> Option<String> {
+  match err {
+    ModuleError::LoadingErr(
+      specifier,
+      _,
+      ModuleLoadError::Jsr(JsrLoadError::ContentChecksumIntegrity(
+        checksum_err,
+      )),
+    ) => {
+      Some(format!(
+        concat!(
+          "Integrity check failed in package. The package may have been tampered with.\n\n",
+          "  Specifier: {}\n",
+          "  Actual: {}\n",
+          "  Expected: {}\n\n",
+          "If you modified your global cache, run again with the --reload flag to restore ",
+          "its state. If you want to modify dependencies locally run again with the ",
+          "--vendor flag or specify `\"vendor\": true` in a deno.json then modify the contents ",
+          "of the vendor/ folder."
+        ),
+        specifier,
+        checksum_err.actual,
+        checksum_err.expected,
+      ))
+    }
+    ModuleError::LoadingErr(
+      _specifier,
+      _,
+      ModuleLoadError::Jsr(
+        JsrLoadError::PackageVersionManifestChecksumIntegrity(
+          package_nv,
+          checksum_err,
+        ),
+      ),
+    ) => {
+      Some(format!(
+        concat!(
+          "Integrity check failed for package. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
+          "  Package: {}\n",
+          "  Actual: {}\n",
+          "  Expected: {}\n\n",
+          "This could be caused by:\n",
+          "  * the lock file may be corrupt\n",
+          "  * the source itself may be corrupt\n\n",
+          "Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server."
+        ),
+        package_nv,
+        checksum_err.actual,
+        checksum_err.expected,
+      ))
+    }
+    ModuleError::LoadingErr(
+      specifier,
+      _,
+      ModuleLoadError::HttpsChecksumIntegrity(checksum_err),
+    ) => {
+      Some(format!(
+        concat!(
+          "Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
+          "  Specifier: {}\n",
+          "  Actual: {}\n",
+          "  Expected: {}\n\n",
+          "This could be caused by:\n",
+          "  * the lock file may be corrupt\n",
+          "  * the source itself may be corrupt\n\n",
+          "Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server."
+        ),
+        specifier,
+        checksum_err.actual,
+        checksum_err.expected,
+      ))
+    }
+    _ => None,
   }
 }
 
@@ -763,40 +884,6 @@ fn get_resolution_error_bare_specifier(
   }
 }
 
-/// Holds the `ModuleGraph` and what parts of it are type checked.
-pub struct ModuleGraphContainer {
-  // Allow only one request to update the graph data at a time,
-  // but allow other requests to read from it at any time even
-  // while another request is updating the data.
-  update_queue: Arc<TaskQueue>,
-  inner: Arc<RwLock<Arc<ModuleGraph>>>,
-}
-
-impl ModuleGraphContainer {
-  pub fn new(graph_kind: GraphKind) -> Self {
-    Self {
-      update_queue: Default::default(),
-      inner: Arc::new(RwLock::new(Arc::new(ModuleGraph::new(graph_kind)))),
-    }
-  }
-
-  /// Acquires a permit to modify the module graph without other code
-  /// having the chance to modify it. In the meantime, other code may
-  /// still read from the existing module graph.
-  pub async fn acquire_update_permit(&self) -> ModuleGraphUpdatePermit {
-    let permit = self.update_queue.acquire().await;
-    ModuleGraphUpdatePermit {
-      permit,
-      inner: self.inner.clone(),
-      graph: (**self.inner.read()).clone(),
-    }
-  }
-
-  pub fn graph(&self) -> Arc<ModuleGraph> {
-    self.inner.read().clone()
-  }
-}
-
 /// Gets if any of the specified root's "file:" dependents are in the
 /// provided changed set.
 pub fn has_graph_root_local_dependent_changed(
@@ -827,31 +914,6 @@ pub fn has_graph_root_local_dependent_changed(
     }
   }
   false
-}
-
-/// A permit for updating the module graph. When complete and
-/// everything looks fine, calling `.commit()` will store the
-/// new graph in the ModuleGraphContainer.
-pub struct ModuleGraphUpdatePermit<'a> {
-  permit: TaskQueuePermit<'a>,
-  inner: Arc<RwLock<Arc<ModuleGraph>>>,
-  graph: ModuleGraph,
-}
-
-impl<'a> ModuleGraphUpdatePermit<'a> {
-  /// Gets the module graph for mutation.
-  pub fn graph_mut(&mut self) -> &mut ModuleGraph {
-    &mut self.graph
-  }
-
-  /// Saves the mutated module graph in the container
-  /// and returns an Arc to the new module graph.
-  pub fn commit(self) -> Arc<ModuleGraph> {
-    let graph = Arc::new(self.graph);
-    *self.inner.write() = graph.clone();
-    drop(self.permit); // explicit drop for clarity
-    graph
-  }
 }
 
 #[derive(Clone, Debug)]

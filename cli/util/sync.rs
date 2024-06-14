@@ -8,6 +8,7 @@ use std::sync::Arc;
 use deno_core::futures::task::AtomicWaker;
 use deno_core::futures::Future;
 use deno_core::parking_lot::Mutex;
+use tokio_util::sync::CancellationToken;
 
 /// Simplifies the use of an atomic boolean as a flag.
 #[derive(Debug, Default)]
@@ -157,6 +158,23 @@ impl<'a> Future for TaskQueuePermitAcquireFuture<'a> {
       self.item.waker.register(cx.waker());
       std::task::Poll::Pending
     }
+  }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AsyncFlag(CancellationToken);
+
+impl AsyncFlag {
+  pub fn raise(&self) {
+    self.0.cancel();
+  }
+
+  pub fn is_raised(&self) -> bool {
+    self.0.is_cancelled()
+  }
+
+  pub fn wait_raised(&self) -> impl std::future::Future<Output = ()> + '_ {
+    self.0.cancelled()
   }
 }
 

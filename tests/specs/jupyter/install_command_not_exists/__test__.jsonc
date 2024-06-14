@@ -1,8 +1,0 @@
-{
-  "args": "jupyter --install",
-  "output": "install_command_not_exists.out",
-  "envs": {
-    "PATH": ""
-  },
-  "exitCode": 1
-}

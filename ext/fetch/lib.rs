@@ -46,6 +46,7 @@ use deno_tls::RootCertStoreProvider;
 use data_url::DataUrl;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeys;
+use deno_tls::TlsKeysHolder;
 use http_v02::header::CONTENT_LENGTH;
 use http_v02::Uri;
 use reqwest::header::HeaderMap;
@@ -80,7 +81,7 @@ pub struct Options {
   pub request_builder_hook:
     Option<fn(RequestBuilder) -> Result<RequestBuilder, AnyError>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub client_cert_chain_and_key: Option<TlsKey>,
+  pub client_cert_chain_and_key: TlsKeys,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
 }
 
@@ -101,7 +102,7 @@ impl Default for Options {
       proxy: None,
       request_builder_hook: None,
       unsafely_ignore_certificate_errors: None,
-      client_cert_chain_and_key: None,
+      client_cert_chain_and_key: TlsKeys::Null,
       file_fetch_handler: Rc::new(DefaultFileFetchHandler),
     }
   }
@@ -187,25 +188,35 @@ pub fn get_or_create_client_from_state(
     Ok(client.clone())
   } else {
     let options = state.borrow::<Options>();
-    let client = create_http_client(
-      &options.user_agent,
-      CreateHttpClientOptions {
-        root_cert_store: options.root_cert_store()?,
-        ca_certs: vec![],
-        proxy: options.proxy.clone(),
-        unsafely_ignore_certificate_errors: options
-          .unsafely_ignore_certificate_errors
-          .clone(),
-        client_cert_chain_and_key: options.client_cert_chain_and_key.clone(),
-        pool_max_idle_per_host: None,
-        pool_idle_timeout: None,
-        http1: true,
-        http2: true,
-      },
-    )?;
+    let client = create_client_from_options(options)?;
     state.put::<reqwest::Client>(client.clone());
     Ok(client)
   }
+}
+
+pub fn create_client_from_options(
+  options: &Options,
+) -> Result<reqwest::Client, AnyError> {
+  create_http_client(
+    &options.user_agent,
+    CreateHttpClientOptions {
+      root_cert_store: options.root_cert_store()?,
+      ca_certs: vec![],
+      proxy: options.proxy.clone(),
+      unsafely_ignore_certificate_errors: options
+        .unsafely_ignore_certificate_errors
+        .clone(),
+      client_cert_chain_and_key: options
+        .client_cert_chain_and_key
+        .clone()
+        .try_into()
+        .unwrap_or_default(),
+      pool_max_idle_per_host: None,
+      pool_idle_timeout: None,
+      http1: true,
+      http2: true,
+    },
+  )
 }
 
 #[allow(clippy::type_complexity)]
@@ -815,7 +826,7 @@ fn default_true() -> bool {
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   #[serde] args: CreateHttpClientArgs,
-  #[cppgc] tls_keys: &deno_tls::TlsKeys,
+  #[cppgc] tls_keys: &TlsKeysHolder,
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,
@@ -825,11 +836,6 @@ where
     let url = Url::parse(&proxy.url)?;
     permissions.check_net_url(&url, "Deno.createHttpClient()")?;
   }
-
-  let client_cert_chain_and_key = match tls_keys {
-    TlsKeys::Null => None,
-    TlsKeys::Static(key) => Some(key.clone()),
-  };
 
   let options = state.borrow::<Options>();
   let ca_certs = args
@@ -847,7 +853,7 @@ where
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
-      client_cert_chain_and_key,
+      client_cert_chain_and_key: tls_keys.take().try_into().unwrap(),
       pool_max_idle_per_host: args.pool_max_idle_per_host,
       pool_idle_timeout: args.pool_idle_timeout.and_then(
         |timeout| match timeout {
@@ -909,7 +915,7 @@ pub fn create_http_client(
     options.root_cert_store,
     options.ca_certs,
     options.unsafely_ignore_certificate_errors,
-    options.client_cert_chain_and_key,
+    options.client_cert_chain_and_key.into(),
     deno_tls::SocketUse::Http,
   )?;
 

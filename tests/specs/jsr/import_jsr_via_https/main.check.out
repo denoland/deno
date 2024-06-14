@@ -1,3 +1,3 @@
 error: Failed resolving types. Importing JSR packages via HTTPS specifiers for type checking is not supported for performance reasons. If you would like types, import via a `jsr:` specifier instead or else use a non-statically analyzable dynamic import.
-  Importing: http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
-    at file:///[WILDLINE]/import_jsr_via_https/main.ts:1:21
+  Importing: http://127.0.0.1:4250/@denotest/deps/1.0.0/mod.ts
+    at file:///[WILDLINE]/import_jsr_via_https/main.ts:1:18

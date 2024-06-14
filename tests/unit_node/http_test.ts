@@ -174,7 +174,7 @@ Deno.test("[node/http] server can respond with 101, 204, 205, 304 status", async
         // deno-lint-ignore no-explicit-any
         `http://127.0.0.1:${(server.address() as any).port}/`,
       );
-      await res.arrayBuffer();
+      await res.body?.cancel();
       assertEquals(res.status, status);
       server.close(() => resolve());
     });
@@ -380,7 +380,12 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   req.write("world");
   req.end();
 
-  await servePromise;
+  await Promise.all([
+    servePromise,
+    // wait 100ms because of the socket.setTimeout(100) above
+    // in order to not cause a flaky test sanitizer failure
+    await new Promise((resolve) => setTimeout(resolve, 100)),
+  ]);
 });
 
 Deno.test("[node/http] send request with chunked body", async () => {
@@ -997,6 +1002,12 @@ Deno.test("[node/http] ServerResponse getHeaders", () => {
   res.setHeader("bar", "baz");
   assertEquals(res.getHeaderNames(), ["bar", "foo"]);
   assertEquals(res.getHeaders(), { "bar": "baz", "foo": "bar" });
+});
+
+Deno.test("[node/http] ServerResponse default status code 200", () => {
+  const req = new http.IncomingMessage(new net.Socket());
+  const res = new http.ServerResponse(req);
+  assertEquals(res.statusCode, 200);
 });
 
 Deno.test("[node/http] maxHeaderSize is defined", () => {

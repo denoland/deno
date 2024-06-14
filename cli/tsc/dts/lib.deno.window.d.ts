@@ -7,14 +7,14 @@
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
 
-/** @category Web APIs */
+/** @category Platform */
 declare interface WindowEventMap {
   "error": ErrorEvent;
   "unhandledrejection": PromiseRejectionEvent;
   "rejectionhandled": PromiseRejectionEvent;
 }
 
-/** @category Web APIs */
+/** @category Platform */
 declare interface Window extends EventTarget {
   readonly window: Window & typeof globalThis;
   readonly self: Window & typeof globalThis;
@@ -71,40 +71,40 @@ declare interface Window extends EventTarget {
   ): void;
 }
 
-/** @category Web APIs */
+/** @category Platform */
 declare var Window: {
   readonly prototype: Window;
   new (): never;
 };
 
-/** @category Web APIs */
+/** @category Platform */
 declare var window: Window & typeof globalThis;
-/** @category Web APIs */
+/** @category Platform */
 declare var self: Window & typeof globalThis;
-/** @category Web APIs */
+/** @category Platform */
 declare var closed: boolean;
-/** @category Web APIs */
+/** @category Platform */
 declare function close(): void;
-/** @category DOM Events */
+/** @category Events */
 declare var onerror: ((this: Window, ev: ErrorEvent) => any) | null;
-/** @category DOM Events */
+/** @category Events */
 declare var onload: ((this: Window, ev: Event) => any) | null;
-/** @category DOM Events */
+/** @category Events */
 declare var onbeforeunload: ((this: Window, ev: Event) => any) | null;
-/** @category DOM Events */
+/** @category Events */
 declare var onunload: ((this: Window, ev: Event) => any) | null;
-/** @category Observability */
+/** @category Events */
 declare var onunhandledrejection:
   | ((this: Window, ev: PromiseRejectionEvent) => any)
   | null;
-/** @category Web Storage API */
+/** @category Storage */
 declare var localStorage: Storage;
-/** @category Web Storage API */
+/** @category Storage */
 declare var sessionStorage: Storage;
-/** @category Cache API */
+/** @category Cache */
 declare var caches: CacheStorage;
 
-/** @category Web APIs */
+/** @category Platform */
 declare interface Navigator {
   readonly gpu: GPU;
   readonly hardwareConcurrency: number;
@@ -113,13 +113,13 @@ declare interface Navigator {
   readonly languages: string[];
 }
 
-/** @category Web APIs */
+/** @category Platform */
 declare var Navigator: {
   readonly prototype: Navigator;
   new (): never;
 };
 
-/** @category Web APIs */
+/** @category Platform */
 declare var navigator: Navigator;
 
 /**
@@ -127,7 +127,7 @@ declare var navigator: Navigator;
  *
  * If the stdin is not interactive, it does nothing.
  *
- * @category Web APIs
+ * @category Platform
  *
  * @param message
  */
@@ -140,7 +140,7 @@ declare function alert(message?: string): void;
  *
  * If the stdin is not interactive, it returns false.
  *
- * @category Web APIs
+ * @category Platform
  *
  * @param message
  */
@@ -157,7 +157,7 @@ declare function confirm(message?: string): boolean;
  *
  * If the stdin is not interactive, it returns null.
  *
- * @category Web APIs
+ * @category Platform
  *
  * @param message
  * @param defaultValue
@@ -173,7 +173,7 @@ declare function prompt(message?: string, defaultValue?: string): string | null;
  * dispatchEvent(new Event('unload'));
  * ```
  *
- * @category DOM Events
+ * @category Events
  */
 declare function addEventListener<
   K extends keyof WindowEventMap,
@@ -182,7 +182,7 @@ declare function addEventListener<
   listener: (this: Window, ev: WindowEventMap[K]) => any,
   options?: boolean | AddEventListenerOptions,
 ): void;
-/** @category DOM Events */
+/** @category Events */
 declare function addEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,
@@ -197,7 +197,7 @@ declare function addEventListener(
  * removeEventListener('load', listener);
  * ```
  *
- * @category DOM Events
+ * @category Events
  */
 declare function removeEventListener<
   K extends keyof WindowEventMap,
@@ -206,7 +206,7 @@ declare function removeEventListener<
   listener: (this: Window, ev: WindowEventMap[K]) => any,
   options?: boolean | EventListenerOptions,
 ): void;
-/** @category DOM Events */
+/** @category Events */
 declare function removeEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,
@@ -219,7 +219,7 @@ declare function removeEventListener(
  * reflected on the object it relates to. Accessible via
  * `globalThis.location`.
  *
- * @category Web APIs
+ * @category Platform
  */
 declare interface Location {
   /** Returns a DOMStringList object listing the origins of the ancestor
@@ -289,7 +289,7 @@ declare interface Location {
  * reflected on the object it relates to. Accessible via
  * `globalThis.location`.
  *
- * @category Web APIs
+ * @category Platform
  */
 declare var Location: {
   readonly prototype: Location;
@@ -298,8 +298,8 @@ declare var Location: {
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
 // The types there must first be split into window, worker and global types.
-/** @category Web APIs */
+/** @category Platform */
 declare var location: Location;
 
-/** @category Web APIs */
+/** @category Platform */
 declare var name: string;

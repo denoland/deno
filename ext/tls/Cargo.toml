@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_tls"
-version = "0.136.0"
+version = "0.141.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,10 +16,10 @@ path = "lib.rs"
 [dependencies]
 deno_core.workspace = true
 deno_native_certs = "0.2.0"
-once_cell.workspace = true
 rustls = { workspace = true, features = ["dangerous_configuration"] }
 rustls-pemfile.workspace = true
 rustls-tokio-stream.workspace = true
 rustls-webpki.workspace = true
 serde.workspace = true
+tokio.workspace = true
 webpki-roots.workspace = true

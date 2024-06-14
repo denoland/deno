@@ -292,7 +292,7 @@ impl NpmResolution {
       .as_valid_serialized_for_system(system_info)
   }
 
-  pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
+  pub fn lock(&self, lockfile: &mut Lockfile) {
     let snapshot = self.snapshot.read();
     populate_lockfile_from_snapshot(lockfile, &snapshot)
   }
@@ -345,7 +345,7 @@ async fn add_package_reqs_to_snapshot(
 
   if let Some(lockfile_mutex) = maybe_lockfile {
     let mut lockfile = lockfile_mutex.lock();
-    populate_lockfile_from_snapshot(&mut lockfile, &snapshot)?;
+    populate_lockfile_from_snapshot(&mut lockfile, &snapshot);
   }
 
   Ok(snapshot)
@@ -369,7 +369,7 @@ fn get_npm_pending_resolver(
 fn populate_lockfile_from_snapshot(
   lockfile: &mut Lockfile,
   snapshot: &NpmResolutionSnapshot,
-) -> Result<(), AnyError> {
+) {
   for (package_req, nv) in snapshot.package_reqs() {
     lockfile.insert_package_specifier(
       format!("npm:{}", package_req),
@@ -384,10 +384,8 @@ fn populate_lockfile_from_snapshot(
     );
   }
   for package in snapshot.all_packages_for_every_system() {
-    lockfile
-      .check_or_insert_npm_package(npm_package_to_lockfile_info(package))?;
+    lockfile.insert_npm_package(npm_package_to_lockfile_info(package));
   }
-  Ok(())
 }
 
 fn npm_package_to_lockfile_info(
@@ -403,7 +401,6 @@ fn npm_package_to_lockfile_info(
     .collect();
 
   NpmPackageLockfileInfo {
-    display_id: pkg.id.nv.to_string(),
     serialized_id: pkg.id.as_serialized(),
     integrity: pkg.dist.integrity().for_lockfile(),
     dependencies,

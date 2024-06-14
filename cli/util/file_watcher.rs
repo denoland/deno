@@ -73,6 +73,7 @@ impl DebouncedReceiver {
   }
 }
 
+#[allow(clippy::print_stderr)]
 async fn error_handler<F>(watch_future: F) -> bool
 where
   F: Future<Output = Result<(), AnyError>>,
@@ -132,8 +133,9 @@ fn create_print_after_restart_fn(
   clear_screen: bool,
 ) -> impl Fn() {
   move || {
+    #[allow(clippy::print_stderr)]
     if clear_screen && std::io::stderr().is_terminal() {
-      eprint!("{CLEAR_SCREEN}");
+      eprint!("{}", CLEAR_SCREEN);
     }
     info!(
       "{} File change detected! Restarting!",

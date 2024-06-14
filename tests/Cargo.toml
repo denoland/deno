@@ -33,7 +33,7 @@ required-features = ["run"]
 
 [dev-dependencies]
 bytes.workspace = true
-chrono.workspace = true
+chrono = { workspace = true, features = ["now"] }
 deno_ast.workspace = true
 deno_bench_util.workspace = true
 deno_cache_dir = { workspace = true }
@@ -43,7 +43,7 @@ deno_lockfile.workspace = true
 deno_terminal.workspace = true
 deno_tls.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
-file_test_runner = "0.5.0"
+file_test_runner = "0.7.0"
 flaky_test = "=0.1.0"
 http.workspace = true
 http-body-util.workspace = true
@@ -52,11 +52,10 @@ hyper-util.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
 pretty_assertions.workspace = true
+regex.workspace = true
 serde.workspace = true
-serde_repr.workspace = true
 test_util.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
 tower-lsp.workspace = true
 trust-dns-client = "=0.22.0"
 trust-dns-server = "=0.22.1"

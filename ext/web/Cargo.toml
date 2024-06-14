@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_web"
-version = "0.180.0"
+version = "0.185.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,7 +24,6 @@ futures.workspace = true
 serde = "1.0.149"
 tokio.workspace = true
 uuid = { workspace = true, features = ["serde"] }
-windows-sys.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true

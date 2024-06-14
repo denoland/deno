@@ -2,7 +2,6 @@
 
 use std::collections::HashSet;
 use std::env::current_dir;
-use std::fmt::Write as FmtWrite;
 use std::fs::FileType;
 use std::fs::OpenOptions;
 use std::io::Error;
@@ -23,15 +22,37 @@ use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
-use deno_runtime::deno_crypto::rand;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::PathClean;
 
 use crate::util::gitignore::DirGitIgnores;
 use crate::util::gitignore::GitIgnoreTree;
+use crate::util::path::get_atomic_file_path;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
+
+pub fn atomic_write_file_with_retries<T: AsRef<[u8]>>(
+  file_path: &Path,
+  data: T,
+  mode: u32,
+) -> std::io::Result<()> {
+  let mut count = 0;
+  loop {
+    match atomic_write_file(file_path, data.as_ref(), mode) {
+      Ok(()) => return Ok(()),
+      Err(err) => {
+        if count >= 5 {
+          // too many retries, return the error
+          return Err(err);
+        }
+        count += 1;
+        let sleep_ms = std::cmp::min(50, 10 * count);
+        std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
+      }
+    }
+  }
+}
 
 /// Writes the file to the file system at a temporary path, then
 /// renames it to the destination in a single sys call in order
@@ -51,19 +72,15 @@ pub fn atomic_write_file<T: AsRef<[u8]>>(
     mode: u32,
   ) -> std::io::Result<()> {
     write_file(temp_file_path, data, mode)?;
-    std::fs::rename(temp_file_path, file_path)?;
-    Ok(())
+    std::fs::rename(temp_file_path, file_path).map_err(|err| {
+      // clean up the created temp file on error
+      let _ = std::fs::remove_file(temp_file_path);
+      err
+    })
   }
 
   fn inner(file_path: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
-    let temp_file_path = {
-      let rand: String = (0..4).fold(String::new(), |mut output, _| {
-        let _ = write!(output, "{:02x}", rand::random::<u8>());
-        output
-      });
-      let extension = format!("{rand}.tmp");
-      file_path.with_extension(extension)
-    };
+    let temp_file_path = get_atomic_file_path(file_path);
 
     if let Err(write_err) =
       atomic_write_file_raw(&temp_file_path, file_path, data, mode)
@@ -498,6 +515,74 @@ pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
     Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
     _ => result,
   }
+}
+
+mod clone_dir_imp {
+
+  #[cfg(target_vendor = "apple")]
+  mod apple {
+    use super::super::copy_dir_recursive;
+    use deno_core::error::AnyError;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+    fn clonefile(from: &Path, to: &Path) -> std::io::Result<()> {
+      let from = std::ffi::CString::new(from.as_os_str().as_bytes())?;
+      let to = std::ffi::CString::new(to.as_os_str().as_bytes())?;
+      // SAFETY: `from` and `to` are valid C strings.
+      let ret = unsafe { libc::clonefile(from.as_ptr(), to.as_ptr(), 0) };
+      if ret != 0 {
+        return Err(std::io::Error::last_os_error());
+      }
+      Ok(())
+    }
+
+    pub fn clone_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+      if let Some(parent) = to.parent() {
+        std::fs::create_dir_all(parent)?;
+      }
+      // Try to clone the whole directory
+      if let Err(err) = clonefile(from, to) {
+        if err.kind() != std::io::ErrorKind::AlreadyExists {
+          log::warn!(
+            "Failed to clone dir {:?} to {:?} via clonefile: {}",
+            from,
+            to,
+            err
+          );
+        }
+        // clonefile won't overwrite existing files, so if the dir exists
+        // we need to handle it recursively.
+        copy_dir_recursive(from, to)?;
+      }
+
+      Ok(())
+    }
+  }
+
+  #[cfg(target_vendor = "apple")]
+  pub(super) use apple::clone_dir_recursive;
+
+  #[cfg(not(target_vendor = "apple"))]
+  pub(super) fn clone_dir_recursive(
+    from: &std::path::Path,
+    to: &std::path::Path,
+  ) -> Result<(), deno_core::error::AnyError> {
+    if let Err(e) = super::hard_link_dir_recursive(from, to) {
+      log::debug!("Failed to hard link dir {:?} to {:?}: {}", from, to, e);
+      super::copy_dir_recursive(from, to)?;
+    }
+
+    Ok(())
+  }
+}
+
+/// Clones a directory to another directory. The exact method
+/// is not guaranteed - it may be a hardlink, copy, or other platform-specific
+/// operation.
+///
+/// Note: Does not handle symlinks.
+pub fn clone_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
+  clone_dir_imp::clone_dir_recursive(from, to)
 }
 
 /// Copies a directory to another directory.

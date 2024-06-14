@@ -47,6 +47,7 @@ use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
+use deno_tls::TlsKeys;
 use deno_web::create_entangled_message_port;
 use deno_web::serialize_transferables;
 use deno_web::BlobStore;
@@ -477,7 +478,7 @@ impl WebWorker {
             unsafely_ignore_certificate_errors: options
               .unsafely_ignore_certificate_errors
               .clone(),
-            client_cert_chain_and_key: None,
+            client_cert_chain_and_key: TlsKeys::Null,
             proxy: None,
           },
         ),
@@ -805,6 +806,7 @@ impl WebWorker {
 
         // TODO(mmastrac): we don't want to test this w/classic workers because
         // WPT triggers a failure here. This is only exposed via --enable-testing-features-do-not-use.
+        #[allow(clippy::print_stderr)]
         if self.worker_type == WebWorkerType::Module {
           panic!(
             "coding error: either js is polling or the worker is terminated"
@@ -878,6 +880,7 @@ impl WebWorker {
   }
 }
 
+#[allow(clippy::print_stderr)]
 fn print_worker_error(
   error: &AnyError,
   name: &str,

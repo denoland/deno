@@ -8,6 +8,7 @@ use std::marker::PhantomData;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 
@@ -18,8 +19,8 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::OpState;
 use deno_node::PathClean;
 pub use denokv_sqlite::SqliteBackendError;
+use denokv_sqlite::SqliteConfig;
 use denokv_sqlite::SqliteNotifier;
-use rand::RngCore;
 use rand::SeedableRng;
 use rusqlite::OpenFlags;
 
@@ -84,31 +85,39 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
 
     let path = path.clone();
     let default_storage_dir = self.default_storage_dir.clone();
-    let (conn, notifier_key) = spawn_blocking(move || {
+    type ConnGen =
+      Arc<dyn Fn() -> rusqlite::Result<rusqlite::Connection> + Send + Sync>;
+    let (conn_gen, notifier_key): (ConnGen, _) = spawn_blocking(move || {
       denokv_sqlite::sqlite_retry_loop(|| {
         let (conn, notifier_key) = match (path.as_deref(), &default_storage_dir)
         {
-          (Some(":memory:"), _) | (None, None) => {
-            (rusqlite::Connection::open_in_memory()?, None)
-          }
+          (Some(":memory:"), _) | (None, None) => (
+            Arc::new(rusqlite::Connection::open_in_memory) as ConnGen,
+            None,
+          ),
           (Some(path), _) => {
             let flags =
               OpenFlags::default().difference(OpenFlags::SQLITE_OPEN_URI);
             let resolved_path = canonicalize_path(&PathBuf::from(path))
               .map_err(anyhow::Error::from)?;
+            let path = path.to_string();
             (
-              rusqlite::Connection::open_with_flags(path, flags)?,
+              Arc::new(move || {
+                rusqlite::Connection::open_with_flags(&path, flags)
+              }) as ConnGen,
               Some(resolved_path),
             )
           }
           (None, Some(path)) => {
             std::fs::create_dir_all(path).map_err(anyhow::Error::from)?;
             let path = path.join("kv.sqlite3");
-            (rusqlite::Connection::open(path.clone())?, Some(path))
+            let path2 = path.clone();
+            (
+              Arc::new(move || rusqlite::Connection::open(&path2)) as ConnGen,
+              Some(path),
+            )
           }
         };
-
-        conn.pragma_update(None, "journal_mode", "wal")?;
 
         Ok::<_, SqliteBackendError>((conn, notifier_key))
       })
@@ -128,13 +137,28 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
       SqliteNotifier::default()
     };
 
-    let versionstamp_rng: Box<dyn RngCore + Send> =
-      match &self.versionstamp_rng_seed {
-        Some(seed) => Box::new(rand::rngs::StdRng::seed_from_u64(*seed)),
-        None => Box::new(rand::rngs::StdRng::from_entropy()),
-      };
+    let versionstamp_rng_seed = self.versionstamp_rng_seed;
 
-    denokv_sqlite::Sqlite::new(conn, notifier, versionstamp_rng)
+    let config = SqliteConfig {
+      batch_timeout: None,
+      num_workers: 1,
+    };
+
+    denokv_sqlite::Sqlite::new(
+      move || {
+        let conn = conn_gen()?;
+        conn.pragma_update(None, "journal_mode", "wal")?;
+        Ok((
+          conn,
+          match versionstamp_rng_seed {
+            Some(seed) => Box::new(rand::rngs::StdRng::seed_from_u64(seed)),
+            None => Box::new(rand::rngs::StdRng::from_entropy()),
+          },
+        ))
+      },
+      notifier,
+      config,
+    )
   }
 }
 

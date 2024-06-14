@@ -5,14 +5,14 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category Web Sockets */
+/** @category WebSockets */
 declare interface CloseEventInit extends EventInit {
   code?: number;
   reason?: string;
   wasClean?: boolean;
 }
 
-/** @category Web Sockets */
+/** @category WebSockets */
 declare interface CloseEvent extends Event {
   /**
    * Returns the WebSocket connection close code provided by the server.
@@ -28,13 +28,13 @@ declare interface CloseEvent extends Event {
   readonly wasClean: boolean;
 }
 
-/** @category Web Sockets */
+/** @category WebSockets */
 declare var CloseEvent: {
   readonly prototype: CloseEvent;
   new (type: string, eventInitDict?: CloseEventInit): CloseEvent;
 };
 
-/** @category Web Sockets */
+/** @category WebSockets */
 declare interface WebSocketEventMap {
   close: CloseEvent;
   error: Event;
@@ -50,7 +50,7 @@ declare interface WebSocketEventMap {
  * `Deno.upgradeWebSocket()`.
  *
  * @tags allow-net
- * @category Web Sockets
+ * @category WebSockets
  */
 declare interface WebSocket extends EventTarget {
   /**
@@ -119,7 +119,7 @@ declare interface WebSocket extends EventTarget {
   ): void;
 }
 
-/** @category Web Sockets */
+/** @category WebSockets */
 declare var WebSocket: {
   readonly prototype: WebSocket;
   new (url: string | URL, protocols?: string | string[]): WebSocket;
@@ -129,5 +129,5 @@ declare var WebSocket: {
   readonly OPEN: number;
 };
 
-/** @category Web Sockets */
+/** @category WebSockets */
 declare type BinaryType = "arraybuffer" | "blob";

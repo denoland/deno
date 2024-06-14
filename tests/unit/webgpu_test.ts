@@ -100,11 +100,6 @@ Deno.test({
   stagingBuffer.unmap();
 
   device.destroy();
-
-  // TODO(lucacasonato): webgpu spec should add a explicit destroy method for
-  // adapters.
-  const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
 });
 
 Deno.test({
@@ -210,11 +205,6 @@ Deno.test({
   outputBuffer.unmap();
 
   device.destroy();
-
-  // TODO(lucacasonato): webgpu spec should add a explicit destroy method for
-  // adapters.
-  const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
 });
 
 Deno.test({
@@ -223,8 +213,8 @@ Deno.test({
   const adapter = await navigator.gpu.requestAdapter();
   assert(adapter);
   assert(adapter.features);
-  const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
+  const device = await adapter.requestDevice();
+  device.destroy();
 });
 
 Deno.test({
@@ -243,13 +233,297 @@ Deno.test({
   );
 
   device.destroy();
-  const resources = Object.keys(Deno.resources());
-  Deno.close(Number(resources[resources.length - 1]));
 });
 
 Deno.test(function getPreferredCanvasFormat() {
   const preferredFormat = navigator.gpu.getPreferredCanvasFormat();
   assert(preferredFormat === "bgra8unorm" || preferredFormat === "rgba8unorm");
+});
+
+Deno.test({
+  ignore: isWsl || isLinuxOrMacCI,
+}, async function validateGPUColor() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const format = "rgba8unorm-srgb";
+  const encoder = device.createCommandEncoder();
+  const texture = device.createTexture({
+    size: [256, 256],
+    format,
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+  });
+  const view = texture.createView();
+  const storeOp = "store";
+  const loadOp = "clear";
+
+  // values for validating GPUColor
+  const invalidSize = [0, 0, 0];
+
+  const msgIncludes =
+    "A sequence of number used as a GPUColor must have exactly 4 elements.";
+
+  // validate the argument of descriptor.colorAttachments[@@iterator].clearValue property's length of GPUCommandEncoder.beginRenderPass when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-beginrenderpass
+  assertThrows(
+    () =>
+      encoder.beginRenderPass({
+        colorAttachments: [
+          {
+            view,
+            storeOp,
+            loadOp,
+            clearValue: invalidSize,
+          },
+        ],
+      }),
+    TypeError,
+    msgIncludes,
+  );
+  const renderPass = encoder.beginRenderPass({
+    colorAttachments: [
+      {
+        view,
+        storeOp,
+        loadOp,
+        clearValue: [0, 0, 0, 1],
+      },
+    ],
+  });
+  // validate the argument of color length of GPURenderPassEncoder.setBlendConstant when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpurenderpassencoder-setblendconstant
+  assertThrows(
+    () => renderPass.setBlendConstant(invalidSize),
+    TypeError,
+    msgIncludes,
+  );
+
+  device.destroy();
+});
+
+Deno.test({
+  ignore: isWsl || isLinuxOrMacCI,
+}, async function validateGPUExtent3D() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const format = "rgba8unorm-srgb";
+  const encoder = device.createCommandEncoder();
+  const buffer = device.createBuffer({
+    size: new Uint32Array([1, 4, 3, 295]).byteLength,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+  const usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC;
+  const texture = device.createTexture({
+    size: [256, 256],
+    format,
+    usage,
+  });
+
+  // values for validating GPUExtent3D
+  const belowSize: Array<number> = [];
+  const overSize = [256, 256, 1, 1];
+
+  const msgIncludes =
+    "A sequence of number used as a GPUExtent3D must have between 1 and 3 elements.";
+
+  // validate the argument of descriptor.size property's length of GPUDevice.createTexture when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpudevice-createtexture
+  assertThrows(
+    () => device.createTexture({ size: belowSize, format, usage }),
+    TypeError,
+    msgIncludes,
+  );
+  assertThrows(
+    () => device.createTexture({ size: overSize, format, usage }),
+    TypeError,
+    msgIncludes,
+  );
+  // validate the argument of copySize property's length of GPUCommandEncoder.copyBufferToTexture when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copybuffertotexture
+  assertThrows(
+    () => encoder.copyBufferToTexture({ buffer }, { texture }, belowSize),
+    TypeError,
+    msgIncludes,
+  );
+  assertThrows(
+    () => encoder.copyBufferToTexture({ buffer }, { texture }, overSize),
+    TypeError,
+    msgIncludes,
+  );
+  // validate the argument of copySize property's length of GPUCommandEncoder.copyTextureToBuffer when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copytexturetobuffer
+  assertThrows(
+    () => encoder.copyTextureToBuffer({ texture }, { buffer }, belowSize),
+    TypeError,
+    msgIncludes,
+  );
+  assertThrows(
+    () => encoder.copyTextureToBuffer({ texture }, { buffer }, overSize),
+    TypeError,
+    msgIncludes,
+  );
+  // validate the argument of copySize property's length of GPUCommandEncoder.copyTextureToTexture when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copytexturetotexture
+  assertThrows(
+    () => encoder.copyTextureToTexture({ texture }, { texture }, belowSize),
+    TypeError,
+    msgIncludes,
+  );
+  assertThrows(
+    () => encoder.copyTextureToTexture({ texture }, { texture }, overSize),
+    TypeError,
+    msgIncludes,
+  );
+  const data = new Uint8Array([1 * 255, 1 * 255, 1 * 255, 1 * 255]);
+  // validate the argument of size property's length of GPUQueue.writeTexture when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpuqueue-writetexture
+  assertThrows(
+    () => device.queue.writeTexture({ texture }, data, {}, belowSize),
+    TypeError,
+    msgIncludes,
+  );
+  assertThrows(
+    () => device.queue.writeTexture({ texture }, data, {}, overSize),
+    TypeError,
+    msgIncludes,
+  );
+  // NOTE: GPUQueue.copyExternalImageToTexture needs to be validated the argument of copySize property's length when its a sequence, but it is not implemented yet
+
+  device.destroy();
+});
+
+Deno.test({
+  ignore: true,
+}, async function validateGPUOrigin2D() {
+  // NOTE: GPUQueue.copyExternalImageToTexture needs to be validated the argument of source.origin property's length when its a sequence, but it is not implemented yet
+});
+
+Deno.test({
+  ignore: isWsl || isLinuxOrMacCI,
+}, async function validateGPUOrigin3D() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const format = "rgba8unorm-srgb";
+  const encoder = device.createCommandEncoder();
+  const buffer = device.createBuffer({
+    size: new Uint32Array([1, 4, 3, 295]).byteLength,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+  const usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC;
+  const size = [256, 256, 1];
+  const texture = device.createTexture({
+    size,
+    format,
+    usage,
+  });
+
+  // value for validating GPUOrigin3D
+  const overSize = [256, 256, 1, 1];
+
+  const msgIncludes =
+    "A sequence of number used as a GPUOrigin3D must have at most 3 elements.";
+
+  // validate the argument of destination.origin property's length of GPUCommandEncoder.copyBufferToTexture when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copybuffertotexture
+  assertThrows(
+    () =>
+      encoder.copyBufferToTexture(
+        { buffer },
+        { texture, origin: overSize },
+        size,
+      ),
+    TypeError,
+    msgIncludes,
+  );
+  // validate the argument of source.origin property's length of GPUCommandEncoder.copyTextureToBuffer when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copytexturetobuffer
+  assertThrows(
+    () =>
+      encoder.copyTextureToBuffer(
+        { texture, origin: overSize },
+        { buffer },
+        size,
+      ),
+    TypeError,
+    msgIncludes,
+  );
+  // validate the argument of source.origin property's length of GPUCommandEncoder.copyTextureToTexture when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpucommandencoder-copytexturetotexture
+  assertThrows(
+    () =>
+      encoder.copyTextureToTexture(
+        { texture, origin: overSize },
+        { texture },
+        size,
+      ),
+    TypeError,
+    msgIncludes,
+  );
+  // validate the argument of destination.origin property's length of GPUCommandEncoder.copyTextureToTexture when its a sequence
+  assertThrows(
+    () =>
+      encoder.copyTextureToTexture(
+        { texture },
+        { texture, origin: overSize },
+        size,
+      ),
+    TypeError,
+    msgIncludes,
+  );
+  // validate the argument of destination.origin property's length of GPUQueue.writeTexture when its a sequence
+  // https://www.w3.org/TR/2024/WD-webgpu-20240409/#dom-gpuqueue-writetexture
+  assertThrows(
+    () =>
+      device.queue.writeTexture(
+        { texture, origin: overSize },
+        new Uint8Array([1 * 255, 1 * 255, 1 * 255, 1 * 255]),
+        {},
+        size,
+      ),
+    TypeError,
+    msgIncludes,
+  );
+  // NOTE: GPUQueue.copyExternalImageToTexture needs to be validated the argument of destination.origin property's length when its a sequence, but it is not implemented yet
+
+  device.destroy();
+});
+
+Deno.test({
+  ignore: isWsl || isLinuxOrMacCI,
+}, async function beginRenderPassWithoutDepthClearValue() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const encoder = device.createCommandEncoder();
+
+  const depthTexture = device.createTexture({
+    size: [256, 256],
+    format: "depth32float",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  const depthView = depthTexture.createView();
+
+  const renderPass = encoder.beginRenderPass({
+    colorAttachments: [],
+    depthStencilAttachment: {
+      view: depthView,
+      depthLoadOp: "load",
+    },
+  });
+
+  assert(renderPass);
+
+  device.destroy();
 });
 
 async function checkIsWsl() {

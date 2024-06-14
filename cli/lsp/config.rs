@@ -1,6 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::logging::lsp_log;
+use crate::args::discover_npmrc;
+use crate::args::read_lockfile_at_path;
 use crate::args::ConfigFile;
 use crate::args::FmtOptions;
 use crate::args::LintOptions;
@@ -23,12 +25,15 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_lint::linter::LintConfig;
 use deno_lockfile::Lockfile;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMap;
 use lsp::Url;
+use lsp_types::ClientCapabilities;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -37,21 +42,6 @@ use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
 pub const SETTINGS_SECTION: &str = "deno";
-
-#[derive(Debug, Clone, Default)]
-pub struct ClientCapabilities {
-  pub code_action_disabled_support: bool,
-  pub line_folding_only: bool,
-  pub snippet_support: bool,
-  pub status_notification: bool,
-  /// The client provides the `experimental.testingApi` capability, which is
-  /// built around VSCode's testing API. It indicates that the server should
-  /// send notifications about tests discovered in modules.
-  pub testing_api: bool,
-  pub workspace_configuration: bool,
-  pub workspace_did_change_watched_files: bool,
-  pub workspace_will_rename_files: bool,
-}
 
 fn is_true() -> bool {
   true
@@ -805,7 +795,7 @@ impl Settings {
   }
 
   pub fn enable_settings_hash(&self) -> u64 {
-    let mut hasher = FastInsecureHasher::default();
+    let mut hasher = FastInsecureHasher::new_without_deno_version();
     let unscoped = self.get_unscoped();
     hasher.write_hashable(unscoped.enable);
     hasher.write_hashable(&unscoped.enable_paths);
@@ -973,57 +963,73 @@ impl Config {
     &self.settings.unscoped.internal_inspect
   }
 
-  pub fn update_capabilities(
+  pub fn set_client_capabilities(
     &mut self,
-    capabilities: &lsp::ClientCapabilities,
+    client_capabilities: ClientCapabilities,
   ) {
-    if let Some(experimental) = &capabilities.experimental {
-      self.client_capabilities.status_notification = experimental
-        .get("statusNotification")
-        .and_then(|it| it.as_bool())
-        == Some(true);
-      self.client_capabilities.testing_api =
-        experimental.get("testingApi").and_then(|it| it.as_bool())
-          == Some(true);
-    }
+    self.client_capabilities = client_capabilities;
+  }
 
-    if let Some(workspace) = &capabilities.workspace {
-      self.client_capabilities.workspace_configuration =
-        workspace.configuration.unwrap_or(false);
-      self.client_capabilities.workspace_did_change_watched_files = workspace
-        .did_change_watched_files
-        .and_then(|it| it.dynamic_registration)
-        .unwrap_or(false);
-      if let Some(file_operations) = &workspace.file_operations {
-        if let Some(true) = file_operations.dynamic_registration {
-          self.client_capabilities.workspace_will_rename_files =
-            file_operations.will_rename.unwrap_or(false);
-        }
-      }
-    }
+  pub fn workspace_capable(&self) -> bool {
+    self.client_capabilities.workspace.is_some()
+  }
 
-    if let Some(text_document) = &capabilities.text_document {
-      self.client_capabilities.line_folding_only = text_document
-        .folding_range
-        .as_ref()
-        .and_then(|it| it.line_folding_only)
-        .unwrap_or(false);
-      self.client_capabilities.code_action_disabled_support = text_document
-        .code_action
-        .as_ref()
-        .and_then(|it| it.disabled_support)
-        .unwrap_or(false);
-      self.client_capabilities.snippet_support =
-        if let Some(completion) = &text_document.completion {
-          completion
-            .completion_item
-            .as_ref()
-            .and_then(|it| it.snippet_support)
-            .unwrap_or(false)
-        } else {
-          false
-        };
-    }
+  pub fn workspace_configuration_capable(&self) -> bool {
+    (|| self.client_capabilities.workspace.as_ref()?.configuration)()
+      .unwrap_or(false)
+  }
+
+  pub fn did_change_watched_files_capable(&self) -> bool {
+    (|| {
+      let workspace = self.client_capabilities.workspace.as_ref()?;
+      let did_change_watched_files =
+        workspace.did_change_watched_files.as_ref()?;
+      did_change_watched_files.dynamic_registration
+    })()
+    .unwrap_or(false)
+  }
+
+  pub fn will_rename_files_capable(&self) -> bool {
+    (|| {
+      let workspace = self.client_capabilities.workspace.as_ref()?;
+      let file_operations = workspace.file_operations.as_ref()?;
+      file_operations.dynamic_registration.filter(|d| *d)?;
+      file_operations.will_rename
+    })()
+    .unwrap_or(false)
+  }
+
+  pub fn line_folding_only_capable(&self) -> bool {
+    (|| {
+      let text_document = self.client_capabilities.text_document.as_ref()?;
+      text_document.folding_range.as_ref()?.line_folding_only
+    })()
+    .unwrap_or(false)
+  }
+
+  pub fn code_action_disabled_capable(&self) -> bool {
+    (|| {
+      let text_document = self.client_capabilities.text_document.as_ref()?;
+      text_document.code_action.as_ref()?.disabled_support
+    })()
+    .unwrap_or(false)
+  }
+
+  pub fn snippet_support_capable(&self) -> bool {
+    (|| {
+      let text_document = self.client_capabilities.text_document.as_ref()?;
+      let completion = text_document.completion.as_ref()?;
+      completion.completion_item.as_ref()?.snippet_support
+    })()
+    .unwrap_or(false)
+  }
+
+  pub fn testing_api_capable(&self) -> bool {
+    (|| {
+      let experimental = self.client_capabilities.experimental.as_ref()?;
+      experimental.get("testingApi")?.as_bool()
+    })()
+    .unwrap_or(false)
   }
 }
 
@@ -1051,6 +1057,9 @@ impl Default for LspTsConfig {
         "target": "esnext",
         "useDefineForClassFields": true,
         "useUnknownInCatchVariables": false,
+        "jsx": "react",
+        "jsxFactory": "React.createElement",
+        "jsxFragmentFactory": "React.Fragment",
       })),
     }
   }
@@ -1083,6 +1092,7 @@ pub struct ConfigData {
   pub config_file: Option<Arc<ConfigFile>>,
   pub fmt_options: Arc<FmtOptions>,
   pub lint_options: Arc<LintOptions>,
+  pub lint_config: LintConfig,
   pub lint_rules: Arc<ConfiguredRules>,
   pub ts_config: Arc<LspTsConfig>,
   pub byonm: bool,
@@ -1090,6 +1100,7 @@ pub struct ConfigData {
   pub vendor_dir: Option<PathBuf>,
   pub lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub package_json: Option<Arc<PackageJson>>,
+  pub npmrc: Option<Arc<ResolvedNpmRc>>,
   pub import_map: Option<Arc<ImportMap>>,
   pub import_map_from_settings: bool,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
@@ -1101,7 +1112,7 @@ impl ConfigData {
     scope: &ModuleSpecifier,
     parent: Option<(&ModuleSpecifier, &ConfigData)>,
     settings: &Settings,
-    file_fetcher: Option<&FileFetcher>,
+    file_fetcher: Option<&Arc<FileFetcher>>,
   ) -> Self {
     if let Some(specifier) = config_file_specifier {
       match ConfigFile::from_specifier(
@@ -1156,7 +1167,7 @@ impl ConfigData {
     scope: &ModuleSpecifier,
     parent: Option<(&ModuleSpecifier, &ConfigData)>,
     settings: &Settings,
-    file_fetcher: Option<&FileFetcher>,
+    file_fetcher: Option<&Arc<FileFetcher>>,
   ) -> Self {
     let (settings, workspace_folder) = settings.get_for_specifier(scope);
     let mut watched_files = HashMap::with_capacity(6);
@@ -1165,10 +1176,12 @@ impl ConfigData {
         .entry(config_file.specifier.clone())
         .or_insert(ConfigWatchedFileType::DenoJson);
     }
-    let config_file_canonicalized_specifier = config_file
+    let config_file_path = config_file
       .as_ref()
-      .and_then(|c| c.specifier.to_file_path().ok())
-      .and_then(|p| canonicalize_path_maybe_not_exists(&p).ok())
+      .and_then(|c| specifier_to_file_path(&c.specifier).ok());
+    let config_file_canonicalized_specifier = config_file_path
+      .as_ref()
+      .and_then(|p| canonicalize_path_maybe_not_exists(p).ok())
       .and_then(|p| ModuleSpecifier::from_file_path(p).ok());
     if let Some(specifier) = config_file_canonicalized_specifier {
       watched_files
@@ -1248,6 +1261,28 @@ impl ConfigData {
 
     let ts_config = LspTsConfig::new(config_file.as_ref());
 
+    let lint_config = if ts_config.inner.0.get("jsx").and_then(|v| v.as_str())
+      == Some("react")
+    {
+      let default_jsx_factory =
+        ts_config.inner.0.get("jsxFactory").and_then(|v| v.as_str());
+      let default_jsx_fragment_factory = ts_config
+        .inner
+        .0
+        .get("jsxFragmentFactory")
+        .and_then(|v| v.as_str());
+      deno_lint::linter::LintConfig {
+        default_jsx_factory: default_jsx_factory.map(String::from),
+        default_jsx_fragment_factory: default_jsx_fragment_factory
+          .map(String::from),
+      }
+    } else {
+      deno_lint::linter::LintConfig {
+        default_jsx_factory: None,
+        default_jsx_fragment_factory: None,
+      }
+    };
+
     let vendor_dir = config_file.as_ref().and_then(|c| c.vendor_dir_path());
 
     // Load lockfile
@@ -1274,15 +1309,17 @@ impl ConfigData {
 
     // Load package.json
     let mut package_json = None;
-    if let Ok(path) = specifier_to_file_path(scope) {
-      let path = path.join("package.json");
-      if let Ok(specifier) = ModuleSpecifier::from_file_path(&path) {
+    let package_json_path = specifier_to_file_path(scope)
+      .ok()
+      .map(|p| p.join("package.json"));
+    if let Some(path) = &package_json_path {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
         watched_files
           .entry(specifier)
           .or_insert(ConfigWatchedFileType::PackageJson);
       }
       let package_json_canonicalized_specifier =
-        canonicalize_path_maybe_not_exists(&path)
+        canonicalize_path_maybe_not_exists(path)
           .ok()
           .and_then(|p| ModuleSpecifier::from_file_path(p).ok());
       if let Some(specifier) = package_json_canonicalized_specifier {
@@ -1290,7 +1327,7 @@ impl ConfigData {
           .entry(specifier)
           .or_insert(ConfigWatchedFileType::PackageJson);
       }
-      if let Ok(source) = std::fs::read_to_string(&path) {
+      if let Ok(source) = std::fs::read_to_string(path) {
         match PackageJson::load_from_string(path.clone(), source) {
           Ok(result) => {
             lsp_log!("  Resolved package.json: \"{}\"", path.display());
@@ -1306,6 +1343,17 @@ impl ConfigData {
         }
       }
     }
+    let npmrc = discover_npmrc(package_json_path, config_file_path)
+      .inspect(|(_, path)| {
+        if let Some(path) = path {
+          lsp_log!("  Resolved .npmrc: \"{}\"", path.display());
+        }
+      })
+      .inspect_err(|err| {
+        lsp_warn!("  Couldn't read .npmrc for \"{scope}\": {err}");
+      })
+      .map(|(r, _)| r)
+      .ok();
     let byonm = std::env::var("DENO_UNSTABLE_BYONM").is_ok()
       || config_file
         .as_ref()
@@ -1363,9 +1411,18 @@ impl ConfigData {
       }
       if import_map_value.is_none() {
         if let Some(file_fetcher) = file_fetcher {
-          let fetch_result = file_fetcher
-            .fetch(specifier, &PermissionsContainer::allow_all())
-            .await;
+          // spawn due to the lsp's `Send` requirement
+          let fetch_result = deno_core::unsync::spawn({
+            let file_fetcher = file_fetcher.clone();
+            let specifier = specifier.clone();
+            async move {
+              file_fetcher
+                .fetch(&specifier, &PermissionsContainer::allow_all())
+                .await
+            }
+          })
+          .await
+          .unwrap();
           let value_result = fetch_result.and_then(|f| {
             serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())
           });
@@ -1422,6 +1479,7 @@ impl ConfigData {
       config_file: config_file.map(Arc::new),
       fmt_options,
       lint_options,
+      lint_config,
       lint_rules,
       ts_config: Arc::new(ts_config),
       byonm,
@@ -1429,6 +1487,7 @@ impl ConfigData {
       vendor_dir,
       lockfile: lockfile.map(Mutex::new).map(Arc::new),
       package_json: package_json.map(Arc::new),
+      npmrc,
       import_map: import_map.map(Arc::new),
       import_map_from_settings,
       watched_files,
@@ -1452,10 +1511,6 @@ impl ConfigTree {
       .root_data()
       .map(|d| d.ts_config.clone())
       .unwrap_or_default()
-  }
-
-  pub fn root_vendor_dir(&self) -> Option<&PathBuf> {
-    self.root_data().and_then(|d| d.vendor_dir.as_ref())
   }
 
   pub fn root_lockfile(&self) -> Option<&Arc<Mutex<Lockfile>>> {
@@ -1555,7 +1610,7 @@ impl ConfigTree {
     &mut self,
     settings: &Settings,
     workspace_files: &BTreeSet<ModuleSpecifier>,
-    file_fetcher: &FileFetcher,
+    file_fetcher: &Arc<FileFetcher>,
   ) {
     lsp_log!("Refreshing configuration tree...");
     let mut scopes = BTreeMap::new();
@@ -1684,7 +1739,7 @@ fn resolve_node_modules_dir(
 }
 
 fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<Lockfile> {
-  match Lockfile::new(lockfile_path, false) {
+  match read_lockfile_at_path(lockfile_path) {
     Ok(value) => {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename) {
         lsp_log!("  Resolved lockfile: \"{}\"", specifier);

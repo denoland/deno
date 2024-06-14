@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use deno_core::anyhow::Context;
 use deno_core::serde_json;
@@ -174,7 +173,7 @@ pub fn main() {
   file_test_runner::run_tests(
     &root_category,
     file_test_runner::RunOptions { parallel: true },
-    Arc::new(run_test),
+    run_test,
   );
 }
 

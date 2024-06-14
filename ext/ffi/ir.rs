@@ -1,8 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::symbol::NativeType;
-use crate::MAX_SAFE_INTEGER;
-use crate::MIN_SAFE_INTEGER;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::v8;
@@ -100,46 +98,13 @@ impl NativeValue {
         v8::Integer::new_from_unsigned(scope, self.u32_value).into()
       }
       NativeType::I32 => v8::Integer::new(scope, self.i32_value).into(),
-      NativeType::U64 => {
-        let value = self.u64_value;
-        let local_value: v8::Local<v8::Value> =
-          if value > MAX_SAFE_INTEGER as u64 {
-            v8::BigInt::new_from_u64(scope, value).into()
-          } else {
-            v8::Number::new(scope, value as f64).into()
-          };
-        local_value
-      }
-      NativeType::I64 => {
-        let value = self.i64_value;
-        let local_value: v8::Local<v8::Value> =
-          if value > MAX_SAFE_INTEGER as i64 || value < MIN_SAFE_INTEGER as i64
-          {
-            v8::BigInt::new_from_i64(scope, self.i64_value).into()
-          } else {
-            v8::Number::new(scope, value as f64).into()
-          };
-        local_value
-      }
+      NativeType::U64 => v8::BigInt::new_from_u64(scope, self.u64_value).into(),
+      NativeType::I64 => v8::BigInt::new_from_i64(scope, self.i64_value).into(),
       NativeType::USize => {
-        let value = self.usize_value;
-        let local_value: v8::Local<v8::Value> =
-          if value > MAX_SAFE_INTEGER as usize {
-            v8::BigInt::new_from_u64(scope, value as u64).into()
-          } else {
-            v8::Number::new(scope, value as f64).into()
-          };
-        local_value
+        v8::BigInt::new_from_u64(scope, self.usize_value as u64).into()
       }
       NativeType::ISize => {
-        let value = self.isize_value;
-        let local_value: v8::Local<v8::Value> =
-          if !(MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&value) {
-            v8::BigInt::new_from_i64(scope, self.isize_value as i64).into()
-          } else {
-            v8::Number::new(scope, value as f64).into()
-          };
-        local_value
+        v8::BigInt::new_from_i64(scope, self.isize_value as i64).into()
       }
       NativeType::F32 => v8::Number::new(scope, self.f32_value as f64).into(),
       NativeType::F64 => v8::Number::new(scope, self.f64_value).into(),

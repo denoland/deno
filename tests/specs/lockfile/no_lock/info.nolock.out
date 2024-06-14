@@ -1,3 +1,4 @@
+Download http://localhost:4545/lockfile/basic/mod.ts
 local: [WILDLINE]main.ts
 type: TypeScript
 dependencies: 1 unique

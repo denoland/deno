@@ -11,6 +11,7 @@ use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -29,13 +30,18 @@ use deno_core::ResourceId;
 use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
+use deno_tls::new_resolver;
 use deno_tls::rustls::Certificate;
+use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls::PrivateKey;
 use deno_tls::rustls::ServerConfig;
 use deno_tls::rustls::ServerName;
+use deno_tls::ServerConfigProvider;
 use deno_tls::SocketUse;
 use deno_tls::TlsKey;
+use deno_tls::TlsKeyLookup;
 use deno_tls::TlsKeys;
+use deno_tls::TlsKeysHolder;
 use rustls_tokio_stream::TlsStreamRead;
 use rustls_tokio_stream::TlsStreamWrite;
 use serde::Deserialize;
@@ -63,14 +69,26 @@ pub(crate) const TLS_BUFFER_SIZE: Option<NonZeroUsize> =
 
 pub struct TlsListener {
   pub(crate) tcp_listener: TcpListener,
-  pub(crate) tls_config: Arc<ServerConfig>,
+  pub(crate) tls_config: Option<Arc<ServerConfig>>,
+  pub(crate) server_config_provider: Option<ServerConfigProvider>,
 }
 
 impl TlsListener {
   pub async fn accept(&self) -> std::io::Result<(TlsStream, SocketAddr)> {
     let (tcp, addr) = self.tcp_listener.accept().await?;
-    let tls =
-      TlsStream::new_server_side(tcp, self.tls_config.clone(), TLS_BUFFER_SIZE);
+    let tls = if let Some(provider) = &self.server_config_provider {
+      TlsStream::new_server_side_acceptor(
+        tcp,
+        provider.clone(),
+        TLS_BUFFER_SIZE,
+      )
+    } else {
+      TlsStream::new_server_side(
+        tcp,
+        self.tls_config.clone().unwrap(),
+        TLS_BUFFER_SIZE,
+      )
+    };
     Ok((tls, addr))
   }
   pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
@@ -164,6 +182,7 @@ pub struct ConnectTlsArgs {
   cert_file: Option<String>,
   ca_certs: Vec<String>,
   alpn_protocols: Option<Vec<String>>,
+  server_name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -179,7 +198,10 @@ pub struct StartTlsArgs {
 pub fn op_tls_key_null<'s>(
   scope: &mut v8::HandleScope<'s>,
 ) -> Result<v8::Local<'s, v8::Object>, AnyError> {
-  Ok(deno_core::cppgc::make_cppgc_object(scope, TlsKeys::Null))
+  Ok(deno_core::cppgc::make_cppgc_object(
+    scope,
+    TlsKeysHolder::from(TlsKeys::Null),
+  ))
 }
 
 #[op2]
@@ -195,7 +217,7 @@ pub fn op_tls_key_static<'s>(
     .unwrap();
   Ok(deno_core::cppgc::make_cppgc_object(
     scope,
-    TlsKeys::Static(TlsKey(cert, key)),
+    TlsKeysHolder::from(TlsKeys::Static(TlsKey(cert, key))),
   ))
 }
 
@@ -224,8 +246,51 @@ where
     .unwrap();
   Ok(deno_core::cppgc::make_cppgc_object(
     scope,
-    TlsKeys::Static(TlsKey(cert, key)),
+    TlsKeysHolder::from(TlsKeys::Static(TlsKey(cert, key))),
   ))
+}
+
+#[op2]
+pub fn op_tls_cert_resolver_create<'s>(
+  scope: &mut v8::HandleScope<'s>,
+) -> v8::Local<'s, v8::Array> {
+  let (resolver, lookup) = new_resolver();
+  let resolver = deno_core::cppgc::make_cppgc_object(
+    scope,
+    TlsKeysHolder::from(TlsKeys::Resolver(resolver)),
+  );
+  let lookup = deno_core::cppgc::make_cppgc_object(scope, lookup);
+  v8::Array::new_with_elements(scope, &[resolver.into(), lookup.into()])
+}
+
+#[op2(async)]
+#[string]
+pub async fn op_tls_cert_resolver_poll(
+  #[cppgc] lookup: &TlsKeyLookup,
+) -> Option<String> {
+  lookup.poll().await
+}
+
+#[op2(fast)]
+pub fn op_tls_cert_resolver_resolve(
+  #[cppgc] lookup: &TlsKeyLookup,
+  #[string] sni: String,
+  #[cppgc] key: &TlsKeysHolder,
+) -> Result<(), AnyError> {
+  let TlsKeys::Static(key) = key.take() else {
+    bail!("unexpected key type");
+  };
+  lookup.resolve(sni, Ok(key));
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_tls_cert_resolver_resolve_error(
+  #[cppgc] lookup: &TlsKeyLookup,
+  #[string] sni: String,
+  #[string] error: String,
+) {
+  lookup.resolve(sni, Err(anyhow!(error)))
 }
 
 #[op2]
@@ -287,7 +352,7 @@ where
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    None,
+    TlsKeys::Null,
     SocketUse::GeneralSsl,
   )?;
 
@@ -299,8 +364,7 @@ where
   let tls_config = Arc::new(tls_config);
   let tls_stream = TlsStream::new_client_side(
     tcp_stream,
-    tls_config,
-    hostname_dns,
+    ClientConnection::new(tls_config, hostname_dns)?,
     TLS_BUFFER_SIZE,
   );
 
@@ -320,7 +384,7 @@ pub async fn op_net_connect_tls<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: IpAddr,
   #[serde] args: ConnectTlsArgs,
-  #[cppgc] key_pair: &TlsKeys,
+  #[cppgc] key_pair: &TlsKeysHolder,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -357,8 +421,12 @@ where
     .borrow()
     .borrow::<DefaultTlsOptions>()
     .root_cert_store()?;
-  let hostname_dns = ServerName::try_from(&*addr.hostname)
-    .map_err(|_| invalid_hostname(&addr.hostname))?;
+  let hostname_dns = if let Some(server_name) = args.server_name {
+    ServerName::try_from(server_name.as_str())
+  } else {
+    ServerName::try_from(&*addr.hostname)
+  }
+  .map_err(|_| invalid_hostname(&addr.hostname))?;
   let connect_addr = resolve_addr(&addr.hostname, addr.port)
     .await?
     .next()
@@ -367,15 +435,11 @@ where
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
-  let cert_and_key = match key_pair {
-    TlsKeys::Null => None,
-    TlsKeys::Static(key) => Some(key.clone()),
-  };
   let mut tls_config = create_client_config(
     root_cert_store,
     ca_certs,
     unsafely_ignore_certificate_errors,
-    cert_and_key,
+    key_pair.take(),
     SocketUse::GeneralSsl,
   )?;
 
@@ -388,8 +452,7 @@ where
 
   let tls_stream = TlsStream::new_client_side(
     tcp_stream,
-    tls_config,
-    hostname_dns,
+    ClientConnection::new(tls_config, hostname_dns)?,
     TLS_BUFFER_SIZE,
   );
 
@@ -429,7 +492,7 @@ pub fn op_net_listen_tls<NP>(
   state: &mut OpState,
   #[serde] addr: IpAddr,
   #[serde] args: ListenTlsArgs,
-  #[cppgc] keys: &TlsKeys,
+  #[cppgc] keys: &TlsKeysHolder,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -444,36 +507,44 @@ where
       .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenTls()")?;
   }
 
-  let tls_config = ServerConfig::builder()
-    .with_safe_defaults()
-    .with_no_client_auth();
-
-  let mut tls_config = match keys {
-    TlsKeys::Null => Err(anyhow!("Deno.listenTls requires a key")),
-    TlsKeys::Static(TlsKey(cert, key)) => tls_config
-      .with_single_cert(cert.clone(), key.clone())
-      .map_err(|e| anyhow!(e)),
-  }
-  .map_err(|e| {
-    custom_error("InvalidData", "Error creating TLS certificate").context(e)
-  })?;
-
-  if let Some(alpn_protocols) = args.alpn_protocols {
-    tls_config.alpn_protocols =
-      alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
-  }
-
   let bind_addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
 
   let tcp_listener = TcpListener::bind_direct(bind_addr, args.reuse_port)?;
   let local_addr = tcp_listener.local_addr()?;
+  let alpn = args
+    .alpn_protocols
+    .unwrap_or_default()
+    .into_iter()
+    .map(|s| s.into_bytes())
+    .collect();
+  let listener = match keys.take() {
+    TlsKeys::Null => Err(anyhow!("Deno.listenTls requires a key")),
+    TlsKeys::Static(TlsKey(cert, key)) => {
+      let mut tls_config = ServerConfig::builder()
+        .with_safe_defaults()
+        .with_no_client_auth()
+        .with_single_cert(cert, key)
+        .map_err(|e| anyhow!(e))?;
+      tls_config.alpn_protocols = alpn;
+      Ok(TlsListener {
+        tcp_listener,
+        tls_config: Some(tls_config.into()),
+        server_config_provider: None,
+      })
+    }
+    TlsKeys::Resolver(resolver) => Ok(TlsListener {
+      tcp_listener,
+      tls_config: None,
+      server_config_provider: Some(resolver.into_server_config_provider(alpn)),
+    }),
+  }
+  .map_err(|e| {
+    custom_error("InvalidData", "Error creating TLS certificate").context(e)
+  })?;
 
-  let tls_listener_resource = NetworkListenerResource::new(TlsListener {
-    tcp_listener,
-    tls_config: tls_config.into(),
-  });
+  let tls_listener_resource = NetworkListenerResource::new(listener);
 
   let rid = state.resource_table.add(tls_listener_resource);
 

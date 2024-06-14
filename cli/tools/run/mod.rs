@@ -42,7 +42,7 @@ To grant permissions, set them before the script argument. For example:
   // map specified and bare specifier is used on the command line
   let factory = CliFactory::from_flags(flags)?;
   let deno_dir = factory.deno_dir()?;
-  let http_client = factory.http_client();
+  let http_client = factory.http_client_provider();
   let cli_options = factory.cli_options();
 
   if cli_options.unstable_sloppy_imports() {
@@ -65,7 +65,7 @@ To grant permissions, set them before the script argument. For example:
   maybe_npm_install(&factory).await?;
 
   let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options(),
+    &cli_options.permissions_options()?,
   )?);
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
@@ -86,7 +86,7 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let file_fetcher = factory.file_fetcher()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options(),
+    &cli_options.permissions_options()?,
   )?);
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -132,7 +132,7 @@ async fn run_with_watch(
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
         let permissions = PermissionsContainer::new(Permissions::from_options(
-          &cli_options.permissions_options(),
+          &cli_options.permissions_options()?,
         )?);
         let mut worker = factory
           .create_cli_main_worker_factory()
@@ -182,7 +182,7 @@ pub async fn eval_command(
   });
 
   let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options(),
+    &cli_options.permissions_options()?,
   )?);
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory

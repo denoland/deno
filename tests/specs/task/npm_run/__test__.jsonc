@@ -1,0 +1,21 @@
+{
+  "tests": {
+    "uses_deno_no_flags": {
+      "args": "task test",
+      "output": "task_test.out"
+    },
+    "uses_npm_flags": {
+      "args": "task test_using_npm",
+      "output": "task_test_using_npm.out",
+      "exitCode": 1
+    },
+    "npm_run": {
+      "args": "task npm_run",
+      "output": "task_npm_run.out"
+    },
+    "npm_run_args": {
+      "args": "task npm_run_args",
+      "output": "task_npm_run_args.out"
+    }
+  }
+}

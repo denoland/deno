@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::path::Prefix;
 use std::str;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DiskCache {
   pub location: PathBuf,
 }

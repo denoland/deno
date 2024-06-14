@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
+
 use std::process::Command;
 use test_util::deno_cmd;
 use test_util::deno_config_path;
@@ -80,8 +83,8 @@ fn napi_tests() {
 
   if !output.status.success() {
     eprintln!("exit code {:?}", output.status.code());
-    println!("stdout {stdout}");
-    println!("stderr {stderr}");
+    println!("stdout {}", stdout);
+    println!("stderr {}", stderr);
   }
   assert!(output.status.success());
 }

@@ -470,6 +470,7 @@ pub struct LspClientBuilder {
   use_diagnostic_sync: bool,
   deno_dir: TempDir,
   envs: HashMap<OsString, OsString>,
+  collect_perf: bool,
 }
 
 impl LspClientBuilder {
@@ -488,6 +489,7 @@ impl LspClientBuilder {
       use_diagnostic_sync: true,
       deno_dir,
       envs: Default::default(),
+      collect_perf: false,
     }
   }
 
@@ -511,6 +513,15 @@ impl LspClientBuilder {
 
   pub fn log_debug(mut self) -> Self {
     self.log_debug = true;
+    self
+  }
+
+  /// Whether to collect performance records (marks / measures, as emitted
+  /// by the lsp in the `performance` module).
+  /// Implies `capture_stderr`.
+  pub fn collect_perf(mut self) -> Self {
+    self.capture_stderr = true;
+    self.collect_perf = true;
     self
   }
 
@@ -577,10 +588,12 @@ impl LspClientBuilder {
     let stdin = child.stdin.take().unwrap();
     let writer = io::BufWriter::new(stdin);
 
-    let stderr_lines_rx = if self.capture_stderr {
+    let (stderr_lines_rx, perf_rx) = if self.capture_stderr {
       let stderr = child.stderr.take().unwrap();
       let print_stderr = self.print_stderr;
       let (tx, rx) = mpsc::channel::<String>();
+      let (perf_tx, perf_rx) =
+        self.collect_perf.then(mpsc::channel::<PerfRecord>).unzip();
       std::thread::spawn(move || {
         let stderr = BufReader::new(stderr);
         for line in stderr.lines() {
@@ -588,6 +601,22 @@ impl LspClientBuilder {
             Ok(line) => {
               if print_stderr {
                 eprintln!("{}", line);
+              }
+              if let Some(tx) = perf_tx.as_ref() {
+                // look for perf records
+                if line.starts_with('{') && line.ends_with("},") {
+                  match serde_json::from_str::<PerfRecord>(
+                    line.trim_end_matches(','),
+                  ) {
+                    Ok(record) => {
+                      tx.send(record).unwrap();
+                      continue;
+                    }
+                    Err(err) => {
+                      eprintln!("failed to parse perf record: {:#}", err);
+                    }
+                  }
+                }
               }
               tx.send(line).unwrap();
             }
@@ -597,9 +626,9 @@ impl LspClientBuilder {
           }
         }
       });
-      Some(rx)
+      (Some(rx), perf_rx)
     } else {
-      None
+      (None, None)
     };
 
     Ok(LspClient {
@@ -613,7 +642,91 @@ impl LspClientBuilder {
       stderr_lines_rx,
       config: json!("{}"),
       supports_workspace_configuration: false,
+      perf: perf_rx.map(Perf::new),
     })
+  }
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", tag = "type")]
+/// A performance record, emitted by the `lsp::performance`
+/// module.
+pub enum PerfRecord {
+  Mark(PerfMark),
+  Measure(PerfMeasure),
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerfMeasure {
+  name: String,
+  count: u32,
+  duration: f64,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerfMark {
+  name: String,
+  #[serde(default)]
+  count: Option<u32>,
+  #[serde(default)]
+  args: Option<Value>,
+}
+
+#[derive(Debug)]
+pub struct Perf {
+  records: Vec<PerfRecord>,
+  measures_counts: HashMap<String, u32>,
+  rx: mpsc::Receiver<PerfRecord>,
+}
+
+impl Perf {
+  fn new(rx: mpsc::Receiver<PerfRecord>) -> Self {
+    Self {
+      records: Default::default(),
+      measures_counts: Default::default(),
+      rx,
+    }
+  }
+  fn drain_until(&mut self, f: impl Fn(&PerfRecord) -> bool) {
+    let timeout_time =
+      Instant::now().checked_add(Duration::from_secs(5)).unwrap();
+    let mut found = false;
+    loop {
+      while let Ok(record) = self.rx.try_recv() {
+        if let PerfRecord::Measure(measure) = &record {
+          *self
+            .measures_counts
+            .entry(measure.name.clone())
+            .or_default() += 1;
+        }
+        if f(&record) {
+          found = true;
+        }
+        self.records.push(record);
+      }
+
+      if found {
+        break;
+      }
+
+      std::thread::sleep(Duration::from_millis(20));
+
+      if Instant::now() > timeout_time {
+        panic!("timed out waiting for perf record");
+      }
+    }
+  }
+  pub fn measures(&self) -> impl IntoIterator<Item = &PerfMeasure> {
+    self.records.iter().filter_map(|record| match record {
+      PerfRecord::Measure(measure) => Some(measure),
+      _ => None,
+    })
+  }
+
+  pub fn measure_count(&self, name: &str) -> u32 {
+    self.measures_counts.get(name).copied().unwrap_or_default()
   }
 }
 
@@ -628,6 +741,7 @@ pub struct LspClient {
   stderr_lines_rx: Option<mpsc::Receiver<String>>,
   config: serde_json::Value,
   supports_workspace_configuration: bool,
+  perf: Option<Perf>,
 }
 
 impl Drop for LspClient {
@@ -659,6 +773,17 @@ impl LspClient {
   pub fn queue_len(&self) -> usize {
     self.reader.output_pending_messages();
     self.reader.pending_len()
+  }
+
+  /// Collects performance records until a measure with the given name is
+  /// emitted.
+  pub fn perf_wait_for_measure(&mut self, name: &str) -> &Perf {
+    let perf = self
+      .perf
+      .as_mut()
+      .expect("must setup with client_builder.collect_perf()");
+    perf.drain_until(|record| matches!(record, PerfRecord::Measure(measure) if measure.name == name));
+    perf
   }
 
   #[track_caller]
@@ -707,8 +832,9 @@ impl LspClient {
         "cache": null,
         "certificateStores": null,
         "codeLens": {
-          "implementations": true,
-          "references": true,
+          "implementations": false,
+          "references": false,
+          "referencesAllFunctions": false,
           "test": true,
         },
         "config": null,
@@ -732,6 +858,9 @@ impl LspClient {
         "tlsCertificate": null,
         "unsafelyIgnoreCertificateErrors": null,
         "unstable": false,
+        // setting this causes performance records to be logged
+        // to stderr
+        "internalDebug": self.perf.is_some(),
       } }),
     )
   }
@@ -776,6 +905,12 @@ impl LspClient {
     if self.supports_workspace_configuration {
       self.handle_configuration_request();
     }
+  }
+
+  pub fn did_open_file(&mut self, file: &SourceFile) -> CollectedDiagnostics {
+    self.did_open(json!({
+        "textDocument": file.text_document(),
+    }))
   }
 
   pub fn did_open(&mut self, params: Value) -> CollectedDiagnostics {
@@ -1136,6 +1271,131 @@ impl CollectedDiagnostics {
       .map(ToOwned::to_owned)
       .unwrap()
   }
+}
+
+#[derive(Debug, Clone)]
+pub struct SourceFile {
+  path: PathRef,
+  src: String,
+  lang: &'static str,
+  version: i32,
+}
+
+impl SourceFile {
+  pub fn new(path: PathRef, src: String) -> Self {
+    path.write(&src);
+    Self::new_in_mem(path, src)
+  }
+
+  pub fn new_in_mem(path: PathRef, src: String) -> Self {
+    let lang = match path.as_path().extension().unwrap().to_str().unwrap() {
+      "js" => "javascript",
+      "ts" | "d.ts" => "typescript",
+      "json" => "json",
+      "md" => "markdown",
+      other => panic!("unsupported file extension: {other}"),
+    };
+    Self {
+      path,
+      src,
+      lang,
+      version: 1,
+    }
+  }
+
+  pub fn range_of(&self, text: &str) -> lsp::Range {
+    range_of(text, &self.src)
+  }
+
+  pub fn range_of_nth(&self, n: usize, text: &str) -> lsp::Range {
+    range_of_nth(n, text, &self.src)
+  }
+
+  pub fn uri(&self) -> lsp::Url {
+    self.path.uri_file()
+  }
+
+  pub fn text_document(&self) -> lsp::TextDocumentItem {
+    lsp::TextDocumentItem {
+      uri: self.uri(),
+      language_id: self.lang.to_string(),
+      version: self.version,
+      text: self.src.clone(),
+    }
+  }
+
+  pub fn identifier(&self) -> lsp::TextDocumentIdentifier {
+    lsp::TextDocumentIdentifier { uri: self.uri() }
+  }
+}
+
+/// Helper to create a `SourceFile` and write its contents to disk.
+pub fn source_file(path: PathRef, src: impl AsRef<str>) -> SourceFile {
+  SourceFile::new(path, src.as_ref().to_string())
+}
+
+/// Helper to create a `SourceFile` in memory without writing to disk.
+pub fn source_file_in_mem(path: PathRef, src: impl AsRef<str>) -> SourceFile {
+  SourceFile::new_in_mem(path, src.as_ref().to_string())
+}
+
+/// Helper to get the `lsp::Range` of the `n`th occurrence of
+/// `text` in `src`. `n` is zero-based, like most indexes.
+pub fn range_of_nth(
+  n: usize,
+  text: impl AsRef<str>,
+  src: impl AsRef<str>,
+) -> lsp::Range {
+  let text = text.as_ref();
+
+  let src = src.as_ref();
+
+  let start = src
+    .match_indices(text)
+    .nth(n)
+    .map(|(i, _)| i)
+    .unwrap_or_else(|| panic!("couldn't find text {text} in source {src}"));
+  let end = start + text.len();
+  let mut line = 0;
+  let mut col = 0;
+  let mut byte_idx = 0;
+
+  let pos = |line, col| lsp::Position {
+    line,
+    character: col,
+  };
+
+  let mut start_pos = None;
+  let mut end_pos = None;
+  for c in src.chars() {
+    if byte_idx == start {
+      start_pos = Some(pos(line, col));
+    }
+    if byte_idx == end {
+      end_pos = Some(pos(line, col));
+      break;
+    }
+    if c == '\n' {
+      line += 1;
+      col = 0;
+    } else {
+      col += c.len_utf16() as u32;
+    }
+    byte_idx += c.len_utf8();
+  }
+  if start_pos.is_some() && end_pos.is_none() {
+    // range extends to end of string
+    end_pos = Some(pos(line, col));
+  }
+
+  let (start, end) = (start_pos.unwrap(), end_pos.unwrap());
+  lsp::Range { start, end }
+}
+
+/// Helper to get the `lsp::Range` of the first occurrence of
+/// `text` in `src`. Equivalent to `range_of_nth(0, text, src)`.
+pub fn range_of(text: impl AsRef<str>, src: impl AsRef<str>) -> lsp::Range {
+  range_of_nth(0, text, src)
 }
 
 #[cfg(test)]

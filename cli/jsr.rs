@@ -111,12 +111,32 @@ impl JsrCacheResolver {
   ) -> Option<String> {
     let info = self.package_version_info(nv)?;
     let path = path.strip_prefix("./").unwrap_or(path);
+    let mut sloppy_fallback = None;
     for (export, path_) in info.exports() {
-      if path_.strip_prefix("./").unwrap_or(path_) == path {
+      let path_ = path_.strip_prefix("./").unwrap_or(path_);
+      if path_ == path {
         return Some(export.strip_prefix("./").unwrap_or(export).to_string());
       }
+      // TSC in some cases will suggest a `.js` import path for a `.d.ts` source
+      // file.
+      if sloppy_fallback.is_none() {
+        let path = path
+          .strip_suffix(".js")
+          .or_else(|| path.strip_suffix(".mjs"))
+          .or_else(|| path.strip_suffix(".cjs"))
+          .unwrap_or(path);
+        let path_ = path_
+          .strip_suffix(".d.ts")
+          .or_else(|| path_.strip_suffix(".d.mts"))
+          .or_else(|| path_.strip_suffix(".d.cts"))
+          .unwrap_or(path_);
+        if path_ == path {
+          sloppy_fallback =
+            Some(export.strip_prefix("./").unwrap_or(export).to_string());
+        }
+      }
     }
-    None
+    sloppy_fallback
   }
 
   pub fn lookup_req_for_nv(&self, nv: &PackageNv) -> Option<PackageReq> {
@@ -163,6 +183,12 @@ impl JsrCacheResolver {
     self.info_by_nv.insert(nv.clone(), info.clone());
     info
   }
+
+  pub fn did_cache(&self) {
+    self.nv_by_req.retain(|_, nv| nv.is_some());
+    self.info_by_nv.retain(|_, info| info.is_some());
+    self.info_by_name.retain(|_, info| info.is_some());
+  }
 }
 
 fn read_cached_url(
@@ -187,11 +213,11 @@ pub struct JsrFetchResolver {
   /// It can be large and we don't want to store it.
   info_by_nv: DashMap<PackageNv, Option<Arc<JsrPackageVersionInfo>>>,
   info_by_name: DashMap<String, Option<Arc<JsrPackageInfo>>>,
-  file_fetcher: FileFetcher,
+  file_fetcher: Arc<FileFetcher>,
 }
 
 impl JsrFetchResolver {
-  pub fn new(file_fetcher: FileFetcher) -> Self {
+  pub fn new(file_fetcher: Arc<FileFetcher>) -> Self {
     Self {
       nv_by_req: Default::default(),
       info_by_nv: Default::default(),
@@ -232,11 +258,16 @@ impl JsrFetchResolver {
     }
     let fetch_package_info = || async {
       let meta_url = jsr_url().join(&format!("{}/meta.json", name)).ok()?;
-      let file = self
-        .file_fetcher
-        .fetch(&meta_url, &PermissionsContainer::allow_all())
-        .await
-        .ok()?;
+      let file_fetcher = self.file_fetcher.clone();
+      // spawn due to the lsp's `Send` requirement
+      let file = deno_core::unsync::spawn(async move {
+        file_fetcher
+          .fetch(&meta_url, &PermissionsContainer::allow_all())
+          .await
+          .ok()
+      })
+      .await
+      .ok()??;
       serde_json::from_slice::<JsrPackageInfo>(&file.source).ok()
     };
     let info = fetch_package_info().await.map(Arc::new);
@@ -255,11 +286,16 @@ impl JsrFetchResolver {
       let meta_url = jsr_url()
         .join(&format!("{}/{}_meta.json", &nv.name, &nv.version))
         .ok()?;
-      let file = self
-        .file_fetcher
-        .fetch(&meta_url, &PermissionsContainer::allow_all())
-        .await
-        .ok()?;
+      let file_fetcher = self.file_fetcher.clone();
+      // spawn due to the lsp's `Send` requirement
+      let file = deno_core::unsync::spawn(async move {
+        file_fetcher
+          .fetch(&meta_url, &PermissionsContainer::allow_all())
+          .await
+          .ok()
+      })
+      .await
+      .ok()??;
       partial_jsr_package_version_info_from_slice(&file.source).ok()
     };
     let info = fetch_package_version_info().await.map(Arc::new);

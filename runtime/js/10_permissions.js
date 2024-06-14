@@ -268,7 +268,7 @@ const permissions = new Permissions(illegalConstructorKey);
 /** Converts all file URLs in FS allowlists to paths. */
 function serializePermissions(permissions) {
   if (typeof permissions == "object" && permissions != null) {
-    const serializedPermissions = {};
+    const serializedPermissions = { __proto__: null };
     for (
       const key of new SafeArrayIterator(["read", "write", "run", "ffi"])
     ) {

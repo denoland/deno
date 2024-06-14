@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
+
 use std::collections::HashMap;
 use std::env;
 use std::io::Write;
@@ -175,7 +178,7 @@ pub fn deno_config_path() -> PathRef {
 
 /// Test server registry url.
 pub fn npm_registry_url() -> String {
-  "http://localhost:4545/npm/registry/".to_string()
+  "http://localhost:4260/".to_string()
 }
 
 pub fn npm_registry_unset_url() -> String {
@@ -304,6 +307,8 @@ async fn get_tcp_listener_stream(
   futures::stream::select_all(listeners)
 }
 
+pub const TEST_SERVERS_COUNT: usize = 30;
+
 #[derive(Default)]
 struct HttpServerCount {
   count: usize,
@@ -358,7 +363,7 @@ impl Default for HttpServerStarter {
         if line.starts_with("ready:") {
           ready_count += 1;
         }
-        if ready_count == 12 {
+        if ready_count == TEST_SERVERS_COUNT {
           break;
         }
       } else {

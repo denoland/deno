@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_net"
-version = "0.141.0"
+version = "0.146.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,10 +16,6 @@ path = "lib.rs"
 [dependencies]
 deno_core.workspace = true
 deno_tls.workspace = true
-# Pinning to 0.5.1, because 0.5.2 breaks "cargo publish"
-# https://github.com/bluejekyll/enum-as-inner/pull/91
-enum-as-inner = "=0.5.1"
-log.workspace = true
 pin-project.workspace = true
 rustls-tokio-stream.workspace = true
 serde.workspace = true

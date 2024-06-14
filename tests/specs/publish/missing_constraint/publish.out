@@ -1,0 +1,37 @@
+[WILDCARD]
+Checking for slow types in the public API...
+Check file:///[WILDLINE]/mod.ts
+error[missing-constraint]: specifier 'jsr:@denotest/add' is missing a version constraint
+ --> [WILDLINE]mod.ts:[WILDLINE]
+  | 
+1 | import { add } from "add";
+  |                     ^^^^^ the specifier
+  = hint: specify a version constraint for the specifier in the import map
+
+  info: the specifier resolved to version 1.0.0 today, but will resolve to a different
+  info: major version if one is published in the future and potentially break
+  docs: https://jsr.io/go/missing-constraint
+
+error[missing-constraint]: specifier 'npm:@denotest/esm-basic' is missing a version constraint
+ --> [WILDLINE]mod.ts:[WILDLINE]
+  | 
+2 | import * as basic from "basic";
+  |                        ^^^^^^^ the specifier
+  = hint: specify a version constraint for the specifier in the import map
+
+  info: the specifier resolved to version 1.0.0 today, but will resolve to a different
+  info: major version if one is published in the future and potentially break
+  docs: https://jsr.io/go/missing-constraint
+
+error[missing-constraint]: specifier 'jsr:@denotest/deps' is missing a version constraint
+ --> [WILDLINE]mod.ts:[WILDLINE]
+  | 
+3 | import * as deps from "jsr:@denotest/deps";
+  |                       ^^^^^^^^^^^^^^^^^^^^ the specifier
+  = hint: specify a version constraint for the specifier
+
+  info: the specifier resolved to version 1.0.0 today, but will resolve to a different
+  info: major version if one is published in the future and potentially break
+  docs: https://jsr.io/go/missing-constraint
+
+error: Found 3 problems

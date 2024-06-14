@@ -576,22 +576,20 @@ fn vendor_npm_node_specifiers() {
   temp_dir.write("deno.json", "{}");
 
   let output = context.new_command().args("vendor my_app.ts").run();
-  output.assert_matches_text(
-    format!(
-      concat!(
-        "Download http://localhost:4545/vendor/npm_and_node_specifier.ts\n",
-        "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-        "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
-        "{}\n",
-        "Initialize @denotest/esm-basic@1.0.0\n",
-        "{}\n\n",
-        "{}\n",
-      ),
-      vendored_text("1 module", "vendor/"),
-      vendored_npm_package_text("1 npm package"),
-      success_text_updated_deno_json("vendor/")
-    )
-  );
+  output.assert_matches_text(format!(
+    concat!(
+      "Download http://localhost:4545/vendor/npm_and_node_specifier.ts\n",
+      "Download http://localhost:4260/@denotest/esm-basic\n",
+      "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
+      "{}\n",
+      "Initialize @denotest/esm-basic@1.0.0\n",
+      "{}\n\n",
+      "{}\n",
+    ),
+    vendored_text("1 module", "vendor/"),
+    vendored_npm_package_text("1 npm package"),
+    success_text_updated_deno_json("vendor/")
+  ));
   let output = context.new_command().args("run -A my_app.ts").run();
   output.assert_matches_text("true 5\n");
   assert!(temp_dir.path().join("node_modules").exists());
@@ -652,19 +650,17 @@ fn vendor_only_npm_specifiers() {
   temp_dir.write("deno.json", "{}");
 
   let output = context.new_command().args("vendor my_app.ts").run();
-  output.assert_matches_text(
-    format!(
-      concat!(
-        "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-        "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
-        "{}\n",
-        "Initialize @denotest/esm-basic@1.0.0\n",
-        "{}\n",
-      ),
-      vendored_text("0 modules", "vendor/"),
-      vendored_npm_package_text("1 npm package"),
-    )
-  );
+  output.assert_matches_text(format!(
+    concat!(
+      "Download http://localhost:4260/@denotest/esm-basic\n",
+      "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
+      "{}\n",
+      "Initialize @denotest/esm-basic@1.0.0\n",
+      "{}\n",
+    ),
+    vendored_text("0 modules", "vendor/"),
+    vendored_npm_package_text("1 npm package"),
+  ));
 }
 
 fn success_text(module_count: &str, dir: &str, has_import_map: bool) -> String {
