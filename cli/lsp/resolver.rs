@@ -502,7 +502,7 @@ impl RedirectResolver {
       }
     };
     for (specifier, mut entry) in chain {
-      entry.destination = destination.clone();
+      entry.destination.clone_from(&destination);
       self.entries.insert(specifier, Some(Arc::new(entry)));
     }
     destination
