@@ -67,7 +67,7 @@ impl DenoTestCollector {
 
   fn add_code_lenses<N: AsRef<str>>(&mut self, name: N, range: &SourceRange) {
     let range =
-      source_range_to_lsp_range(range, self.parsed_source.text_info());
+      source_range_to_lsp_range(range, self.parsed_source.text_info_lazy());
     self.add_code_lens(&name, range, "▶\u{fe0e} Run Test", false);
     self.add_code_lens(&name, range, "Debug", true);
   }
@@ -406,7 +406,7 @@ pub async fn resolve_code_lens(
 
 pub fn collect_test(
   specifier: &ModuleSpecifier,
-  parsed_source: ParsedSource,
+  parsed_source: &ParsedSource,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
   let mut collector =
     DenoTestCollector::new(specifier.clone(), parsed_source.clone());
@@ -537,7 +537,6 @@ pub fn collect_tsc(
 #[cfg(test)]
 mod tests {
   use deno_ast::MediaType;
-  use deno_ast::SourceTextInfo;
 
   use super::*;
 
@@ -562,7 +561,7 @@ mod tests {
     "#;
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
       specifier: specifier.clone(),
-      text_info: SourceTextInfo::new(source.into()),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: true,
       scope_analysis: true,

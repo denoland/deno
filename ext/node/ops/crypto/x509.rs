@@ -63,7 +63,9 @@ pub fn op_node_x509_parse<'s>(
     _buf: buf.to_vec(),
     // SAFETY: Extending the lifetime of the certificate. Backing buffer is
     // owned by the resource.
-    cert: unsafe { std::mem::transmute(cert) },
+    cert: unsafe {
+      std::mem::transmute::<X509Certificate<'_>, X509Certificate<'_>>(cert)
+    },
     pem,
   };
 

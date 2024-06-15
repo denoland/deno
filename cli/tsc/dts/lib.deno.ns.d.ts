@@ -4540,6 +4540,9 @@ declare namespace Deno {
    * If `stdin` is set to `"piped"`, the `stdin` {@linkcode WritableStream}
    * needs to be closed manually.
    *
+   * `Command` acts as a builder. Each call to {@linkcode Command.spawn} or
+   * {@linkcode Command.output} will spawn a new subprocess.
+   *
    * @example Spawn a subprocess and pipe the output to a file
    *
    * ```ts
@@ -4601,8 +4604,6 @@ declare namespace Deno {
     /**
      * Executes the {@linkcode Deno.Command}, waiting for it to finish and
      * collecting all of its output.
-     * If `spawn()` was called, calling this function will collect the remaining
-     * output.
      *
      * Will throw an error if `stdin: "piped"` is set.
      *

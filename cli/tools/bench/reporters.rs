@@ -169,7 +169,7 @@ impl BenchReporter for ConsoleReporter {
   fn report_register(&mut self, _desc: &BenchDescription) {}
 
   fn report_wait(&mut self, desc: &BenchDescription) {
-    self.name = desc.name.clone();
+    self.name.clone_from(&desc.name);
 
     match &desc.group {
       None => {}

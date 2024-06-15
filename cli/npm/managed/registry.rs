@@ -21,14 +21,13 @@ use crate::util::sync::AtomicFlag;
 use super::cache::NpmCache;
 use super::cache::RegistryInfoDownloader;
 
-// todo(dsherret): make this per worker
 #[derive(Debug)]
 pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 
 impl CliNpmRegistryApi {
   pub fn new(
     cache: Arc<NpmCache>,
-    registry_info_downloader: RegistryInfoDownloader,
+    registry_info_downloader: Arc<RegistryInfoDownloader>,
   ) -> Self {
     Self(Some(Arc::new(CliNpmRegistryApiInner {
       cache,
@@ -44,13 +43,6 @@ impl CliNpmRegistryApi {
     self.inner().clear_memory_cache();
   }
 
-  pub fn get_cached_package_info(
-    &self,
-    name: &str,
-  ) -> Option<Arc<NpmPackageInfo>> {
-    self.inner().get_cached_package_info(name)
-  }
-
   fn inner(&self) -> &Arc<CliNpmRegistryApiInner> {
     // this panicking indicates a bug in the code where this
     // wasn't initialized
@@ -58,7 +50,7 @@ impl CliNpmRegistryApi {
   }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl NpmRegistryApi for CliNpmRegistryApi {
   async fn package_info(
     &self,
@@ -76,20 +68,7 @@ impl NpmRegistryApi for CliNpmRegistryApi {
   }
 
   fn mark_force_reload(&self) -> bool {
-    // never force reload the registry information if reloading
-    // is disabled or if we're already reloading
-    if matches!(
-      self.inner().cache.cache_setting(),
-      CacheSetting::Only | CacheSetting::ReloadAll
-    ) {
-      return false;
-    }
-    if self.inner().force_reload_flag.raise() {
-      self.clear_memory_cache(); // clear the cache to force reloading
-      true
-    } else {
-      false
-    }
+    self.inner().mark_force_reload()
   }
 }
 
@@ -108,7 +87,7 @@ struct CliNpmRegistryApiInner {
   force_reload_flag: AtomicFlag,
   mem_cache: Mutex<HashMap<String, CacheItem>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
-  registry_info_downloader: RegistryInfoDownloader,
+  registry_info_downloader: Arc<RegistryInfoDownloader>,
 }
 
 impl CliNpmRegistryApiInner {
@@ -128,7 +107,7 @@ impl CliNpmRegistryApiInner {
             let api = self.clone();
             let name = name.to_string();
             async move {
-              if (api.cache.cache_setting().should_use_for_npm_package(&name) && !api.force_reload())
+              if (api.cache.cache_setting().should_use_for_npm_package(&name) && !api.force_reload_flag.is_raised())
                 // if this has been previously reloaded, then try loading from the
                 // file system cache
                 || !api.previously_reloaded_packages.lock().insert(name.to_string())
@@ -175,8 +154,21 @@ impl CliNpmRegistryApiInner {
     }
   }
 
-  fn force_reload(&self) -> bool {
-    self.force_reload_flag.is_raised()
+  fn mark_force_reload(&self) -> bool {
+    // never force reload the registry information if reloading
+    // is disabled or if we're already reloading
+    if matches!(
+      self.cache.cache_setting(),
+      CacheSetting::Only | CacheSetting::ReloadAll
+    ) {
+      return false;
+    }
+    if self.force_reload_flag.raise() {
+      self.clear_memory_cache();
+      true
+    } else {
+      false
+    }
   }
 
   async fn load_file_cached_package_info(
@@ -204,17 +196,5 @@ impl CliNpmRegistryApiInner {
 
   fn clear_memory_cache(&self) {
     self.mem_cache.lock().clear();
-  }
-
-  pub fn get_cached_package_info(
-    &self,
-    name: &str,
-  ) -> Option<Arc<NpmPackageInfo>> {
-    let mem_cache = self.mem_cache.lock();
-    if let Some(CacheItem::Resolved(maybe_info)) = mem_cache.get(name) {
-      maybe_info.clone()
-    } else {
-      None
-    }
   }
 }

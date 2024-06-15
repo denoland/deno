@@ -27,11 +27,10 @@ const renderRow = (row: string[], columnWidths: number[]) => {
   for (let i = 0; i < row.length; i++) {
     const cell = row[i];
     const len = getStringWidth(cell);
-    const needed = (columnWidths[i] - len) / 2;
+    const needed = columnWidths[i] - len;
     // round(needed) + ceil(needed) will always add up to the amount
     // of spaces we need while also left justifying the output.
-    out += " ".repeat(needed) + cell +
-      " ".repeat(Math.ceil(needed));
+    out += cell + " ".repeat(Math.ceil(needed));
     if (i !== row.length - 1) {
       out += tableChars.middle;
     }

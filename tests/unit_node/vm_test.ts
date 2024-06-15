@@ -148,3 +148,34 @@ reject().catch(() => {})
     script.runInNewContext();
   },
 });
+
+// https://github.com/denoland/deno/issues/22441
+Deno.test({
+  name: "vm runInNewContext module loader",
+  fn() {
+    const code = "import('node:process')";
+    const script = new Script(code);
+    script.runInNewContext();
+  },
+});
+
+// https://github.com/denoland/deno/issues/23913
+Deno.test({
+  name: "vm memory leak crash",
+  fn() {
+    const script = new Script("returnValue = 2+2");
+
+    for (let i = 0; i < 1000; i++) {
+      script.runInNewContext({}, { timeout: 10000 });
+    }
+  },
+});
+
+// https://github.com/denoland/deno/issues/23852
+Deno.test({
+  name: "vm runInThisContext global.foo",
+  fn() {
+    const result = runInThisContext(`global.foo = 1`);
+    assertEquals(result, 1);
+  },
+});

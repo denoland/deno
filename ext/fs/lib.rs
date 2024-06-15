@@ -23,9 +23,10 @@ use crate::ops::*;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_io::fs::FsError;
+use std::borrow::Cow;
 use std::path::Path;
 
-pub trait FsPermissions: Send + Sync {
+pub trait FsPermissions {
   fn check_open<'a>(
     &mut self,
     resolved: bool,
@@ -75,6 +76,92 @@ pub trait FsPermissions: Send + Sync {
       path,
       api_name,
     )
+  }
+}
+
+impl FsPermissions for deno_permissions::PermissionsContainer {
+  fn check_open<'a>(
+    &mut self,
+    resolved: bool,
+    read: bool,
+    write: bool,
+    path: &'a Path,
+    api_name: &str,
+  ) -> Result<Cow<'a, Path>, FsError> {
+    if resolved {
+      self.check_special_file(path, api_name).map_err(|_| {
+        std::io::Error::from(std::io::ErrorKind::PermissionDenied)
+      })?;
+      return Ok(Cow::Borrowed(path));
+    }
+
+    // If somehow read or write aren't specified, use read
+    let read = read || !write;
+    if read {
+      FsPermissions::check_read(self, path, api_name)
+        .map_err(|_| FsError::PermissionDenied("read"))?;
+    }
+    if write {
+      FsPermissions::check_write(self, path, api_name)
+        .map_err(|_| FsError::PermissionDenied("write"))?;
+    }
+    Ok(Cow::Borrowed(path))
+  }
+
+  fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_read(self, path, api_name)
+  }
+
+  fn check_read_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_read_blind(
+      self, path, display, api_name,
+    )
+  }
+
+  fn check_write(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_write(self, path, api_name)
+  }
+
+  fn check_write_partial(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_write_partial(
+      self, path, api_name,
+    )
+  }
+
+  fn check_write_blind(
+    &mut self,
+    p: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_write_blind(
+      self, p, display, api_name,
+    )
+  }
+
+  fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_read_all(self, api_name)
+  }
+
+  fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_write_all(self, api_name)
   }
 }
 

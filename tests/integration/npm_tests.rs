@@ -1822,6 +1822,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
       .run();
     output.assert_matches_text(concat!(
       "error: Could not find npm package '@denotest/esm-import-cjs-default' matching '1.0.0'.\n",
+      "    at file:///[WILDCARD]/main.ts:1:8\n",
     ));
     output.assert_exit_code(1);
 

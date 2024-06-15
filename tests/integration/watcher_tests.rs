@@ -1725,7 +1725,7 @@ globalThis.state = { i: 0 };
 
 function bar() {
   globalThis.state.i = 0;
-  console.log("got request1", globalThis.state.i);
+  console.error("got request1", globalThis.state.i);
 }
 
 function handler(_req) {
@@ -1738,8 +1738,14 @@ console.log("Listening...")
     "#,
   );
 
-  wait_contains("Failed to reload module", &mut stderr_lines).await;
-  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Replaced changed module", &mut stderr_lines).await;
+  util::deno_cmd()
+    .current_dir(t.path())
+    .arg("eval")
+    .arg("await fetch('http://localhost:11111');")
+    .spawn()
+    .unwrap();
+  wait_contains("got request1", &mut stderr_lines).await;
 
   check_alive_then_kill(child);
 }

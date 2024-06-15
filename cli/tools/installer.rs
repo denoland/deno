@@ -287,13 +287,20 @@ pub async fn install_command(
     log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
   }
 
-  let install_flags_global = match install_flags.kind {
-    InstallKind::Global(flags) => flags,
-    InstallKind::Local(maybe_add_flags) => {
-      return install_local(flags, maybe_add_flags).await
+  match install_flags.kind {
+    InstallKind::Global(global_flags) => {
+      install_global(flags, global_flags).await
     }
-  };
+    InstallKind::Local(maybe_add_flags) => {
+      install_local(flags, maybe_add_flags).await
+    }
+  }
+}
 
+async fn install_global(
+  flags: Flags,
+  install_flags_global: InstallFlagsGlobal,
+) -> Result<(), AnyError> {
   // ensure the module is cached
   let factory = CliFactory::from_flags(flags.clone())?;
   factory

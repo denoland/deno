@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 94;
+const cacheVersion = 97;
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
@@ -59,7 +59,7 @@ const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
 // Note that you may need to add more version to the `apt-get remove` line below if you change this
-const llvmVersion = 17;
+const llvmVersion = 18;
 const installPkgsCommand =
   `sudo apt-get install --no-install-recommends clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
@@ -339,10 +339,11 @@ const ci = {
         ...cloneRepoStep,
         {
           id: "check",
+          if: "!contains(github.event.pull_request.labels.*.name, 'ci-draft')",
           run: [
             "GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})",
             "echo Commit message: $GIT_MESSAGE",
-            "echo $GIT_MESSAGE | grep '\\[ci\\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)",
+            "echo $GIT_MESSAGE | grep '\\[ci\\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass or add the ci-draft label.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)",
           ].join("\n"),
         },
       ]),
@@ -353,7 +354,7 @@ const ci = {
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
-      "timeout-minutes": 120,
+      "timeout-minutes": 150,
       defaults: {
         run: {
           // GH actions does not fail fast by default on
@@ -687,6 +688,16 @@ const ci = {
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
+        // Uncomment for remote debugging
+        // {
+        //   name: "Setup tmate session",
+        //   if: [
+        //     "(matrix.job == 'test' || matrix.job == 'bench') &&",
+        //     "matrix.profile == 'release' && (matrix.use_sysroot ||",
+        //     "github.repository == 'denoland/deno')",
+        //   ].join("\n"),
+        //   uses: "mxschmitt/action-tmate@v3",
+        // },
         {
           name: "Build release",
           if: [

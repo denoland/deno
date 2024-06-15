@@ -1424,6 +1424,7 @@ pub const EC_OID: const_oid::ObjectIdentifier =
 // }
 pub struct PssPrivateKeyParameters<'a> {
   pub hash_algorithm: rsa::pkcs8::AlgorithmIdentifierRef<'a>,
+  #[allow(dead_code)]
   pub mask_gen_algorithm: rsa::pkcs8::AlgorithmIdentifierRef<'a>,
   pub salt_length: u32,
 }

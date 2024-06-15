@@ -1,4 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-deprecated-deno-api
+
 import { Buffer, BufReader, BufWriter } from "@std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
@@ -2094,7 +2097,6 @@ Deno.test({
         "--header",
         "Accept-Encoding: deflate, gzip",
       ];
-      // deno-lint-ignore no-deprecated-deno-api
       const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
       const status = await proc.status();
       assert(status.success);
@@ -2157,7 +2159,6 @@ Deno.test({
         "--header",
         "Accept-Encoding: deflate, gzip",
       ];
-      // deno-lint-ignore no-deprecated-deno-api
       const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
       const status = await proc.status();
       assert(status.success);
@@ -2573,7 +2574,7 @@ for (const compression of [true, false]) {
       assertEquals(result.value, new Uint8Array([65]));
       const err = await assertRejects(() => reader.read());
       assert(err instanceof TypeError);
-      assert(err.message.includes("unexpected EOF"));
+      assert(err.message.includes("error decoding response body"));
 
       const httpConn = await server;
       httpConn.close();
@@ -2609,7 +2610,7 @@ for (const compression of [true, false]) {
       assertEquals(result.value, new Uint8Array([65]));
       const err = await assertRejects(() => reader.read());
       assert(err instanceof TypeError);
-      assert(err.message.includes("unexpected internal error encountered"));
+      assert(err.message.includes("error decoding response body"));
 
       const httpConn = await server;
       httpConn.close();

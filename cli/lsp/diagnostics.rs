@@ -854,7 +854,7 @@ fn generate_document_lint_diagnostics(
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
       if let Ok(references) =
-        analysis::get_lint_references(&parsed_source, lint_rules, lint_config)
+        analysis::get_lint_references(parsed_source, lint_rules, lint_config)
       {
         references
           .into_iter()
@@ -1611,21 +1611,21 @@ mod tests {
   fn mock_config() -> Config {
     let root_uri = resolve_url("file:///").unwrap();
     Config {
-      settings: Settings {
-        unscoped: WorkspaceSettings {
+      settings: Arc::new(Settings {
+        unscoped: Arc::new(WorkspaceSettings {
           enable: Some(true),
           lint: true,
           ..Default::default()
-        },
+        }),
         ..Default::default()
-      },
-      workspace_folders: vec![(
+      }),
+      workspace_folders: Arc::new(vec![(
         root_uri.clone(),
         lsp::WorkspaceFolder {
           uri: root_uri,
           name: "".to_string(),
         },
-      )],
+      )]),
       ..Default::default()
     }
   }
@@ -1719,10 +1719,13 @@ let c: number = "a";
     // now test disabled specifier
     {
       let mut disabled_config = mock_config();
-      disabled_config.settings.unscoped = WorkspaceSettings {
-        enable: Some(false),
-        ..Default::default()
-      };
+      disabled_config.set_workspace_settings(
+        WorkspaceSettings {
+          enable: Some(false),
+          ..Default::default()
+        },
+        vec![],
+      );
 
       let diagnostics = generate_lint_diagnostics(
         &snapshot,

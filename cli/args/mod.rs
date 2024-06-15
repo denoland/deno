@@ -47,13 +47,13 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_runtime::permissions::PermissionsOptions;
 use deno_terminal::colors;
 use dotenvy::from_filename;
 use once_cell::sync::Lazy;
@@ -197,7 +197,7 @@ pub fn ts_config_to_transpile_and_emit_options(
     },
     deno_ast::EmitOptions {
       inline_sources: options.inline_sources,
-      keep_comments: true,
+      remove_comments: false,
       source_map,
       source_map_file: None,
     },
@@ -621,6 +621,7 @@ pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
       config: Default::default(),
     },
     scopes: Default::default(),
+    registry_configs: Default::default(),
   })
 }
 
@@ -697,21 +698,13 @@ pub fn get_root_cert_store(
   for store in ca_stores.iter() {
     match store.as_str() {
       "mozilla" => {
-        root_cert_store.add_trust_anchors(
-          webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
-            rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-              ta.subject,
-              ta.spki,
-              ta.name_constraints,
-            )
-          }),
-        );
+        root_cert_store.extend(webpki_roots::TLS_SERVER_ROOTS.to_vec());
       }
       "system" => {
         let roots = load_native_certs().expect("could not load platform certs");
         for root in roots {
           root_cert_store
-            .add(&rustls::Certificate(root.0))
+            .add(rustls::pki_types::CertificateDer::from(root.0))
             .expect("Failed to add platform cert to root cert store");
         }
       }
@@ -735,17 +728,17 @@ pub fn get_root_cert_store(
           RootCertStoreLoadError::CaFileOpenError(err.to_string())
         })?;
         let mut reader = BufReader::new(certfile);
-        rustls_pemfile::certs(&mut reader)
+        rustls_pemfile::certs(&mut reader).collect::<Result<Vec<_>, _>>()
       }
       CaData::Bytes(data) => {
         let mut reader = BufReader::new(Cursor::new(data));
-        rustls_pemfile::certs(&mut reader)
+        rustls_pemfile::certs(&mut reader).collect::<Result<Vec<_>, _>>()
       }
     };
 
     match result {
       Ok(certs) => {
-        root_cert_store.add_parsable_certificates(&certs);
+        root_cert_store.add_parsable_certificates(certs);
       }
       Err(e) => {
         return Err(RootCertStoreLoadError::FailedAddPemFile(e.to_string()));

@@ -26,7 +26,7 @@ use deno_core::parking_lot::RwLock;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -350,7 +350,7 @@ impl TestRun {
             test::TestEvent::Wait(id) => {
               reporter.report_wait(tests.read().get(&id).unwrap());
             }
-            test::TestEvent::Output(_, output) => {
+            test::TestEvent::Output(output) => {
               reporter.report_output(&output);
             }
             test::TestEvent::Slow(id, elapsed) => {
