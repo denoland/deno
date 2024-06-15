@@ -12,6 +12,7 @@ _Note: Testing for text encoding is done via WPT in cli/._
 ## Usage Example
 
 From javascript, include the extension's source:
+
 ```javascript
 import * as infra from "ext:deno_web/00_infra.js";
 import * as DOMException from "ext:deno_web/01_dom_exception.js";
@@ -34,6 +35,7 @@ import * as imageData from "ext:deno_web/16_image_data.js";
 ```
 
 Then assign the properties below to the global scope like this example:
+
 ```javascript
 Object.defineProperty(globalThis, "AbortController", {
   value: abortSignal.AbortController,
@@ -94,7 +96,6 @@ Object.defineProperty(globalThis, "AbortController", {
 | setInterval                      | timers.setInterval                       | true       | true         | true      |
 | setTimeout                       | timers.setTimeout                        | true       | true         | true      |
 | structuredClone                  | messagePort.structuredClone              | true       | true         | true      |
-
 
 Then from rust, provide:
 `deno_web::deno_web::init_ops_and_esm::<Permissions>(Arc<BlobStore>, Option<Url>)`
