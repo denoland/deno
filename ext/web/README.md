@@ -1,6 +1,7 @@
 # deno web
 
 **Implements timers, as well as the following APIs:**
+
 - Event
 - TextEncoder
 - TextDecoder
@@ -35,10 +36,10 @@ import * as imageData from "ext:deno_web/16_image_data.js";
 Then assign the properties below to the global scope like this example:
 ```javascript
 Object.defineProperty(globalThis, "AbortController", {
-	value: abortSignal.AbortController,
-	enumerable: false,
-	configurable: true,
-	writable: true,
+  value: abortSignal.AbortController,
+  enumerable: false,
+  configurable: true,
+  writable: true,
 });
 ```
 
@@ -100,6 +101,7 @@ Then from rust, provide:
 in the `extensions` field of your `RuntimeOptions`
 
 Where:
+
 - `Permissions` is a struct implementing `deno_web::TimersPermission`
 - `Arc<BlobStore>` can be provided by `Default::default()`
 - `Option<Url>` provides an optional base URL for certain ops

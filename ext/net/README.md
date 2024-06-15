@@ -5,6 +5,7 @@
 ## Usage Example
 
 From javascript, include the extension's source:
+
 ```javascript
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import * as net from "ext:deno_net/01_net.js";
@@ -12,9 +13,10 @@ import * as tls from "ext:deno_net/02_tls.js";
 ```
 
 Then from rust, provide:
-`deno_net::deno_net::init_ops_and_esm::<Permissions>(root_cert_store_provider, unsafely_ignore_certificate_errors)` 
+`deno_net::deno_net::init_ops_and_esm::<Permissions>(root_cert_store_provider, unsafely_ignore_certificate_errors)`
 
-Where: 
+Where:
+
 - root_cert_store_provider: `Option<Arc<dyn RootCertStoreProvider>>`
 - unsafely_ignore_certificate_errors: `Option<Vec<String>>`
 - Permissions: A struct implementing `deno_net::NetPermissions`

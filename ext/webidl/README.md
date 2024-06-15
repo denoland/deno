@@ -7,16 +7,16 @@ Spec: https://webidl.spec.whatwg.org/
 
 ## Usage Example
 
-From javascript, include the extension's source, and assign the following
-to the global scope:
+From javascript, include the extension's source, and assign the following to the
+global scope:
 
 ```javascript
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 Object.defineProperty(globalThis, webidl.brand, {
-	value: webidl.brand,
-	enumerable: false,
-	configurable: true,
-	writable: true,
+  value: webidl.brand,
+  enumerable: false,
+  configurable: true,
+  writable: true,
 });
 ```
 

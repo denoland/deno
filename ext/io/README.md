@@ -1,10 +1,12 @@
 # deno_io
 
-**This crate provides IO primitives for other Deno extensions, this includes stdio streams and abstraction over File System files.**
+**This crate provides IO primitives for other Deno extensions, this includes
+stdio streams and abstraction over File System files.**
 
 ## Usage Example
 
 From javascript, include the extension's source:
+
 ```javascript
 import * as io from "ext:deno_io/12_io.js";
 ```

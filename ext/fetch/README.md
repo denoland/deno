@@ -21,46 +21,46 @@ import * as eventSource from "ext:deno_fetch/27_eventsource.js";
 Deno.core.setWasmStreamingCallback(fetch.handleWasmStreaming);
 
 Object.defineProperty(globalThis, "fetch", {
-	value: fetch.fetch,
-	enumerable: true,
-	configurable: true,
-	writable: true,
+  value: fetch.fetch,
+  enumerable: true,
+  configurable: true,
+  writable: true,
 });
 
 Object.defineProperty(globalThis, "Request", {
-	value: request.Request,
-	enumerable: false,
-	configurable: true,
-	writable: true,
+  value: request.Request,
+  enumerable: false,
+  configurable: true,
+  writable: true,
 });
 
 Object.defineProperty(globalThis, "Response", {
-	value: response.Response,
-	enumerable: false,
-	configurable: true,
-	writable: true,
+  value: response.Response,
+  enumerable: false,
+  configurable: true,
+  writable: true,
 });
 
 Object.defineProperty(globalThis, "Headers", {
-	value: headers.Headers,
-	enumerable: false,
-	configurable: true,
-	writable: true,
+  value: headers.Headers,
+  enumerable: false,
+  configurable: true,
+  writable: true,
 });
 
 Object.defineProperty(globalThis, "FormData", {
-	value: formData.FormData,
-	enumerable: false,
-	configurable: true,
-	writable: true,
+  value: formData.FormData,
+  enumerable: false,
+  configurable: true,
+  writable: true,
 });
 ```
 
 Then from rust, provide
-`deno_fetch::deno_fetch::init_ops_and_esm<Permissions>(Default::default())`
-in the `extensions` field of your `RuntimeOptions`
+`deno_fetch::deno_fetch::init_ops_and_esm<Permissions>(Default::default())` in
+the `extensions` field of your `RuntimeOptions`
 
-Where: 
+Where:
 
 - Permissions: a struct implementing `deno_fetch::FetchPermissions`
 - Options: `deno_fetch::Options`, which implements `Default`
