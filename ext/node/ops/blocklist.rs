@@ -8,6 +8,7 @@ use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -39,25 +40,23 @@ pub fn op_socket_address_parse(
 ) -> Result<(IpAddr, u16, String), AnyError> {
   let ip = addr.parse::<IpAddr>()?;
   let family = family.to_lowercase();
-  let port = port;
   let parsed = SocketAddr::new(ip, port);
   if family == "ipv4" && parsed.is_ipv4()
     || family == "ipv6" && parsed.is_ipv6()
   {
-    return Ok((ip, port, family));
+    Ok((ip, port, family))
+  } else {
+    Err(anyhow!("Invalid address"))
   }
-
-  bail!("Invalid address");
 }
 
 #[op2(fast)]
 #[smi]
 pub fn op_blocklist_new(state: &mut OpState) -> ResourceId {
   let blocklist = BlockList::new();
-  let rid = state.resource_table.add(BlockListResource {
+  state.resource_table.add(BlockListResource {
     blocklist: RefCell::new(blocklist),
-  });
-  rid
+  })
 }
 
 #[op2(fast)]
@@ -194,22 +193,13 @@ impl BlockList {
 
   pub fn check(&self, addr: &str, r#type: String) -> Result<bool, AnyError> {
     let addr: IpAddr = addr.parse()?;
-    match r#type.to_lowercase().as_str() {
-      "ipv4" => {
-        if let IpAddr::V6(_) = addr {
-          return Ok(false);
-        }
-      }
-      "ipv6" => {
-        if let IpAddr::V4(_) = addr {
-          return Ok(false);
-        }
-      }
-      _ => {
-        bail!("Invalid type");
-      }
+    let family = r#type.to_lowercase();
+    if family == "ipv4" && addr.is_ipv4() || family == "ipv6" && addr.is_ipv6()
+    {
+      Ok(self.rules.iter().any(|net| net.contains(addr)))
+    } else {
+      Err(anyhow!("Invalid address"))
     }
-    Ok(self.rules.iter().any(|net| net.contains(addr)))
   }
 }
 

@@ -158,6 +158,7 @@ class SocketAddress {
     } = options;
 
     if (typeof family?.toLowerCase === "function") {
+      // deno-lint-ignore prefer-primordials
       family = family.toLowerCase();
     }
     switch (family) {
@@ -173,7 +174,7 @@ class SocketAddress {
     validatePort(port, "options.port");
     validateUint32(flowlabel, "options.flowlabel", false);
 
-    const [address_, port_, family_] = op_socket_address_parse(
+    const { 0: address_, 1: port_, 2: family_ } = op_socket_address_parse(
       address,
       port,
       family,
