@@ -33,7 +33,7 @@ import {
   listenerCount,
   setIsTrusted,
 } from "./02_event.js";
-import { refTimer, setTimeout, unrefTimer, clearTimeout } from "./02_timers.js";
+import { clearTimeout, refTimer, setTimeout, unrefTimer } from "./02_timers.js";
 
 // Since WeakSet is not a iterable, WeakRefSet class is provided to store and
 // iterate objects.
