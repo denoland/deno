@@ -1,0 +1,21 @@
+{
+  "envs": {
+    "DISABLE_JSR_PROVENANCE": "true",
+    "DENO_TESTING_DISABLE_GIT_CHECK": "1"
+  },
+  "tempDir": true,
+  "steps": [{
+    "args": "publish --token 'sadfasdf' --dry-run --unstable-sloppy-imports",
+    "output": "sloppy_imports.out"
+  }, {
+    "args": "publish --token 'sadfasdf' --dry-run",
+    "output": "sloppy_imports_not_enabled.out",
+    "exitCode": 1
+  }, {
+    "args": "publish --token 'sadfasdf' --dry-run --unstable-sloppy-imports",
+    "output": "sloppy_imports_no_warnings.out",
+    "envs": {
+      "DENO_DISABLE_PEDANTIC_NODE_WARNINGS": "1"
+    }
+  }]
+}

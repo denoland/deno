@@ -63,6 +63,49 @@ itest!(fail {
   output: "test/fail.out",
 });
 
+// GHA CI seems to have a problem with Emoji
+// https://github.com/denoland/deno/pull/23200#issuecomment-2134032695
+#[test]
+fn fail_with_contain_unicode_filename() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "fail_with_contain_unicode_filename🦕.ts",
+    "Deno.test(\"test 0\", () => {
+  throw new Error();
+});
+    ",
+  );
+  let output = context
+    .new_command()
+    .args("test fail_with_contain_unicode_filename🦕.ts")
+    .run();
+  output.skip_output_check();
+  output.assert_exit_code(1);
+  output.assert_matches_text(
+    "Check [WILDCARD]/fail_with_contain_unicode_filename🦕.ts
+running 1 test from ./fail_with_contain_unicode_filename🦕.ts
+test 0 ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+test 0 => ./fail_with_contain_unicode_filename🦕.ts:[WILDCARD]
+error: Error
+  throw new Error();
+        ^
+    at [WILDCARD]/fail_with_contain_unicode_filename%F0%9F%A6%95.ts:[WILDCARD]
+
+ FAILURES 
+
+test 0 => ./fail_with_contain_unicode_filename🦕.ts:[WILDCARD]
+
+FAILED | 0 passed | 1 failed ([WILDCARD])
+
+error: Test failed
+",
+  );
+}
+
 itest!(collect {
   args: "test --ignore=test/collect/ignore test/collect",
   exit_code: 0,
@@ -584,21 +627,6 @@ itest!(package_json_basic {
   exit_code: 0,
 });
 
-itest!(test_lock {
-  args: "test",
-  http_server: true,
-  cwd: Some("lockfile/basic"),
-  exit_code: 10,
-  output: "lockfile/basic/fail.out",
-});
-
-itest!(test_no_lock {
-  args: "test --no-lock",
-  http_server: true,
-  cwd: Some("lockfile/basic"),
-  output: "lockfile/basic/test.nolock.out",
-});
-
 itest!(test_replace_timers {
   args: "test test/replace_timers.js",
   output: "test/replace_timers.js.out",
@@ -675,12 +703,6 @@ fn conditionally_loads_type_graph() {
     .run();
   assert_not_contains!(output.combined_output(), "type_reference.d.ts");
 }
-
-itest!(test_include_relative_pattern_dot_slash {
-  args: "test",
-  output: "test/relative_pattern_dot_slash/output.out",
-  cwd: Some("test/relative_pattern_dot_slash"),
-});
 
 #[test]
 fn opt_out_top_level_exclude_via_test_unexclude() {

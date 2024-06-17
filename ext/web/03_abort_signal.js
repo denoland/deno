@@ -7,8 +7,8 @@ import { primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeEvery,
   ArrayPrototypePush,
+  FunctionPrototypeApply,
   ObjectPrototypeIsPrototypeOf,
-  SafeArrayIterator,
   SafeSet,
   SafeSetIterator,
   SafeWeakRef,
@@ -82,6 +82,14 @@ const timerId = Symbol("[[timerId]]");
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
 class AbortSignal extends EventTarget {
+  [abortReason] = undefined;
+  [abortAlgos] = null;
+  [dependent] = false;
+  [sourceSignals] = null;
+  [dependentSignals] = null;
+  [timerId] = null;
+  [webidl.brand] = webidl.brand;
+
   static any(signals) {
     const prefix = "Failed to execute 'AbortSignal.any'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -141,9 +149,11 @@ class AbortSignal extends EventTarget {
     const algos = this[abortAlgos];
     this[abortAlgos] = null;
 
-    const event = new Event("abort");
-    setIsTrusted(event, true);
-    super.dispatchEvent(event);
+    if (listenerCount(this, "abort") > 0) {
+      const event = new Event("abort");
+      setIsTrusted(event, true);
+      super.dispatchEvent(event);
+    }
     if (algos !== null) {
       for (const algorithm of new SafeSetIterator(algos)) {
         algorithm();
@@ -168,13 +178,6 @@ class AbortSignal extends EventTarget {
       throw new TypeError("Illegal constructor.");
     }
     super();
-    this[abortReason] = undefined;
-    this[abortAlgos] = null;
-    this[dependent] = false;
-    this[sourceSignals] = null;
-    this[dependentSignals] = null;
-    this[timerId] = null;
-    this[webidl.brand] = webidl.brand;
   }
 
   get aborted() {
@@ -199,8 +202,8 @@ class AbortSignal extends EventTarget {
   // `[add]` and `[remove]` don't ref and unref the timer because they can
   // only be used by Deno internals, which use it to essentially cancel async
   // ops which would block the event loop.
-  addEventListener(...args) {
-    super.addEventListener(...new SafeArrayIterator(args));
+  addEventListener() {
+    FunctionPrototypeApply(super.addEventListener, this, arguments);
     if (listenerCount(this, "abort") > 0) {
       if (this[timerId] !== null) {
         refTimer(this[timerId]);
@@ -216,8 +219,8 @@ class AbortSignal extends EventTarget {
     }
   }
 
-  removeEventListener(...args) {
-    super.removeEventListener(...new SafeArrayIterator(args));
+  removeEventListener() {
+    FunctionPrototypeApply(super.removeEventListener, this, arguments);
     if (listenerCount(this, "abort") === 0) {
       if (this[timerId] !== null) {
         unrefTimer(this[timerId]);

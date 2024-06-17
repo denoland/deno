@@ -7,12 +7,25 @@
 
 'use strict';
 
+const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const { isMainThread } = require('worker_threads');
 
-function rmSync(pathname) {
-  fs.rmSync(pathname, { maxRetries: 3, recursive: true, force: true });
+function rmSync(pathname, useSpawn) {
+  if (useSpawn) {
+    const escapedPath = pathname.replaceAll('\\', '\\\\');
+    spawnSync(
+      process.execPath,
+      [
+        '-e',
+        `require("fs").rmSync("${escapedPath}", { maxRetries: 3, recursive: true, force: true });`,
+      ],
+    );
+  } else {
+    fs.rmSync(pathname, { maxRetries: 3, recursive: true, force: true });
+  }
 }
 
 const testRoot = process.env.NODE_TEST_DIR ?
@@ -25,25 +38,27 @@ const tmpdirName = '.tmp.' +
 const tmpPath = path.join(testRoot, tmpdirName);
 
 let firstRefresh = true;
-function refresh() {
-  rmSync(tmpPath);
+function refresh(useSpawn = false) {
+  rmSync(tmpPath, useSpawn);
   fs.mkdirSync(tmpPath);
 
   if (firstRefresh) {
     firstRefresh = false;
     // Clean only when a test uses refresh. This allows for child processes to
     // use the tmpdir and only the parent will clean on exit.
-    process.on('exit', onexit);
+    process.on('exit', () => {
+      return onexit(useSpawn);
+    });
   }
 }
 
-function onexit() {
+function onexit(useSpawn) {
   // Change directory to avoid possible EBUSY
   if (isMainThread)
     process.chdir(testRoot);
 
   try {
-    rmSync(tmpPath);
+    rmSync(tmpPath, useSpawn);
   } catch (e) {
     console.error('Can\'t clean tmpdir:', tmpPath);
 
@@ -71,9 +86,17 @@ function hasEnoughSpace(size) {
   return bavail >= Math.ceil(size / bsize);
 }
 
+function fileURL(...paths) {
+  // When called without arguments, add explicit trailing slash
+  const fullPath = path.resolve(tmpPath + path.sep, ...paths);
+
+  return pathToFileURL(fullPath);
+}
+
 module.exports = {
+  fileURL,
+  hasEnoughSpace,
   path: tmpPath,
   refresh,
-  hasEnoughSpace,
   resolve,
 };

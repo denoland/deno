@@ -8,17 +8,23 @@ use std::sync::Arc;
 use crate::DatabaseHandler;
 use anyhow::Context;
 use async_trait::async_trait;
+use bytes::Bytes;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures::Stream;
+use deno_core::futures::TryStreamExt as _;
 use deno_core::OpState;
 use deno_fetch::create_http_client;
+use deno_fetch::reqwest;
 use deno_fetch::CreateHttpClientOptions;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
-use deno_tls::TlsKey;
+use deno_tls::TlsKeys;
 use denokv_remote::MetadataEndpoint;
 use denokv_remote::Remote;
+use denokv_remote::RemoteResponse;
+use denokv_remote::RemoteTransport;
 use url::Url;
 
 #[derive(Clone)]
@@ -27,7 +33,7 @@ pub struct HttpOptions {
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub proxy: Option<Proxy>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub client_cert_chain_and_key: Option<TlsKey>,
+  pub client_cert_chain_and_key: TlsKeys,
 }
 
 impl HttpOptions {
@@ -46,6 +52,22 @@ pub trait RemoteDbHandlerPermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
+}
+
+impl RemoteDbHandlerPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_env(&mut self, var: &str) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_env(self, var)
+  }
+
+  #[inline(always)]
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+  }
 }
 
 pub struct RemoteDbHandler<P: RemoteDbHandlerPermissions + 'static> {
@@ -86,11 +108,44 @@ impl<P: RemoteDbHandlerPermissions + 'static> denokv_remote::RemotePermissions
   }
 }
 
+#[derive(Clone)]
+pub struct ReqwestClient(reqwest::Client);
+pub struct ReqwestResponse(reqwest::Response);
+
+impl RemoteTransport for ReqwestClient {
+  type Response = ReqwestResponse;
+  async fn post(
+    &self,
+    url: Url,
+    headers: http::HeaderMap,
+    body: Bytes,
+  ) -> Result<(Url, http::StatusCode, Self::Response), anyhow::Error> {
+    let res = self.0.post(url).headers(headers).body(body).send().await?;
+    let url = res.url().clone();
+    let status = res.status();
+    Ok((url, status, ReqwestResponse(res)))
+  }
+}
+
+impl RemoteResponse for ReqwestResponse {
+  async fn bytes(self) -> Result<Bytes, anyhow::Error> {
+    Ok(self.0.bytes().await?)
+  }
+  fn stream(
+    self,
+  ) -> impl Stream<Item = Result<Bytes, anyhow::Error>> + Send + Sync {
+    self.0.bytes_stream().map_err(|e| e.into())
+  }
+  async fn text(self) -> Result<String, anyhow::Error> {
+    Ok(self.0.text().await?)
+  }
+}
+
 #[async_trait(?Send)]
 impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
   for RemoteDbHandler<P>
 {
-  type DB = Remote<PermissionChecker<P>>;
+  type DB = Remote<PermissionChecker<P>, ReqwestClient>;
 
   async fn open(
     &self,
@@ -135,20 +190,25 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
         unsafely_ignore_certificate_errors: options
           .unsafely_ignore_certificate_errors
           .clone(),
-        client_cert_chain_and_key: options.client_cert_chain_and_key.clone(),
+        client_cert_chain_and_key: options
+          .client_cert_chain_and_key
+          .clone()
+          .try_into()
+          .unwrap(),
         pool_max_idle_per_host: None,
         pool_idle_timeout: None,
         http1: false,
         http2: true,
       },
     )?;
+    let reqwest_client = ReqwestClient(client);
 
     let permissions = PermissionChecker {
       state: state.clone(),
       _permissions: PhantomData,
     };
 
-    let remote = Remote::new(client, permissions, metadata_endpoint);
+    let remote = Remote::new(reqwest_client, permissions, metadata_endpoint);
 
     Ok(remote)
   }

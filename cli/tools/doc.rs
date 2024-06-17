@@ -8,7 +8,7 @@ use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::display::write_to_stdout_ignore_sigpipe;
 use crate::factory::CliFactory;
-use crate::graph_util::graph_lock_or_exit;
+use crate::graph_util::graph_exit_lock_errors;
 use crate::tsc::get_types_declaration_file_text;
 use crate::util::fs::collect_specifiers;
 use deno_ast::diagnostics::Diagnostic;
@@ -18,6 +18,7 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_doc as doc;
+use deno_doc::html::UrlResolveKind;
 use deno_graph::source::NullFileSystem;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
@@ -35,7 +36,7 @@ async fn generate_doc_nodes_for_builtin_types(
   analyzer: &dyn ModuleAnalyzer,
 ) -> Result<IndexMap<ModuleSpecifier, Vec<doc::DocNode>>, AnyError> {
   let source_file_specifier =
-    ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
+    ModuleSpecifier::parse("file:///lib.deno.d.ts").unwrap();
   let content = get_types_declaration_file_text();
   let loader = deno_graph::source::MemoryLoader::new(
     vec![(
@@ -61,6 +62,7 @@ async fn generate_doc_nodes_for_builtin_types(
         executor: Default::default(),
         file_system: &NullFileSystem,
         jsr_url_provider: Default::default(),
+        locker: None,
         module_analyzer: analyzer,
         npm_resolver: None,
         reporter: None,
@@ -87,7 +89,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
   let module_info_cache = factory.module_info_cache()?;
   let parsed_source_cache = factory.parsed_source_cache();
   let capturing_parser = parsed_source_cache.as_capturing_parser();
-  let analyzer = module_info_cache.as_module_analyzer(&capturing_parser);
+  let analyzer = module_info_cache.as_module_analyzer(parsed_source_cache);
 
   let doc_nodes_by_url = match doc_flags.source_files {
     DocSourceFileFlag::Builtin => {
@@ -120,8 +122,8 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
         .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
         .await?;
 
-      if let Some(lockfile) = maybe_lockfile {
-        graph_lock_or_exit(&graph, &mut lockfile.lock());
+      if maybe_lockfile.is_some() {
+        graph_exit_lock_errors(&graph);
       }
 
       let doc_parser = doc::DocParser::new(
@@ -160,19 +162,25 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       .await?;
       let (_, deno_ns) = deno_ns.into_iter().next().unwrap();
 
+      let short_path = Rc::new(ShortPath::new(
+        ModuleSpecifier::parse("file:///lib.deno.d.ts").unwrap(),
+        None,
+        None,
+        None,
+      ));
+
       deno_doc::html::compute_namespaced_symbols(
-        deno_ns
+        &deno_ns
           .into_iter()
           .map(|node| deno_doc::html::DocNodeWithContext {
-            origin: Rc::new(ShortPath::from("deno".to_string())),
+            origin: short_path.clone(),
             ns_qualifiers: Rc::new(vec![]),
             kind_with_drilldown:
               deno_doc::html::DocNodeKindWithDrilldown::Other(node.kind),
             inner: std::sync::Arc::new(node),
             drilldown_parent_kind: None,
           })
-          .collect(),
-        &[],
+          .collect::<Vec<_>>(),
       )
     } else {
       Default::default()
@@ -205,10 +213,18 @@ struct DocResolver {
 }
 
 impl deno_doc::html::HrefResolver for DocResolver {
+  fn resolve_path(
+    &self,
+    current: UrlResolveKind,
+    target: UrlResolveKind,
+  ) -> String {
+    deno_doc::html::href_path_resolve(current, target)
+  }
+
   fn resolve_global_symbol(&self, symbol: &[String]) -> Option<String> {
     if self.deno_ns.contains(symbol) {
       Some(format!(
-        "https://deno.land/api@{}?s={}",
+        "https://deno.land/api@v{}?s={}",
         env!("CARGO_PKG_VERSION"),
         symbol.join(".")
       ))
@@ -232,12 +248,8 @@ impl deno_doc::html::HrefResolver for DocResolver {
     None
   }
 
-  fn resolve_usage(
-    &self,
-    _current_specifier: &ModuleSpecifier,
-    current_file: Option<&ShortPath>,
-  ) -> Option<String> {
-    current_file.map(|f| f.as_str().to_string())
+  fn resolve_usage(&self, current_resolve: UrlResolveKind) -> Option<String> {
+    current_resolve.get_file().map(|file| file.path.to_string())
   }
 
   fn resolve_source(&self, location: &deno_doc::Location) -> Option<String> {
@@ -254,13 +266,12 @@ fn generate_docs_directory(
   let output_dir_resolved = cwd.join(&html_options.output);
 
   let options = deno_doc::html::GenerateOptions {
-    package_name: Some(html_options.name.to_owned()),
+    package_name: html_options.name.clone(),
     main_entrypoint: None,
     rewrite_map: None,
-    hide_module_doc_title: false,
     href_resolver: Rc::new(DocResolver { deno_ns }),
-    sidebar_flatten_namespaces: false,
     usage_composer: None,
+    composable_output: false,
   };
 
   let files = deno_doc::html::generate(options, doc_nodes_by_url)
@@ -339,7 +350,7 @@ fn check_diagnostics(diagnostics: &[DocDiagnostic]) -> Result<(), AnyError> {
     for (_, diagnostics_by_col) in diagnostics_by_lc {
       for (_, diagnostics) in diagnostics_by_col {
         for diagnostic in diagnostics {
-          log::error!("{}", diagnostic.display());
+          log::error!("{}\n", diagnostic.display());
         }
       }
     }

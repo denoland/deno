@@ -88,6 +88,10 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
       return true; // success
     },
     has: (_target, prop) => typeof denoEnvGet(String(prop)) === "string",
+    deleteProperty(_target, key) {
+      Deno.env.delete(String(key));
+      return true;
+    },
   });
 
 /**

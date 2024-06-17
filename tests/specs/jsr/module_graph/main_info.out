@@ -1,8 +1,8 @@
-Download http://127.0.0.1:4250/@denotest/module_graph/meta.json
-Download http://127.0.0.1:4250/@denotest/module_graph/1.4.0_meta.json
+Download http://127.0.0.1:4250/@denotest/module-graph/meta.json
+Download http://127.0.0.1:4250/@denotest/module-graph/1.4.0_meta.json
 [UNORDERED_START]
-Download http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts
-Download http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts
+Download http://127.0.0.1:4250/@denotest/module-graph/1.4.0/mod.ts
+Download http://127.0.0.1:4250/@denotest/module-graph/1.4.0/other.ts
 [UNORDERED_END]
 local: [WILDCARD]main.ts
 type: TypeScript
@@ -10,5 +10,5 @@ dependencies: 2 unique
 size: [WILDCARD]
 
 file:///[WILDCARD]/module_graph/main.ts ([WILDCARD])
-└─┬ http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts ([WILDCARD])
-  └── http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts ([WILDCARD])
+└─┬ http://127.0.0.1:4250/@denotest/module-graph/1.4.0/mod.ts ([WILDCARD])
+  └── http://127.0.0.1:4250/@denotest/module-graph/1.4.0/other.ts ([WILDCARD])

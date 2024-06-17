@@ -2,7 +2,6 @@
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::ops::worker_host::WorkersTable;
-use crate::permissions::PermissionsContainer;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
@@ -45,8 +44,11 @@ use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_node::NodeResolver;
+use deno_permissions::PermissionsContainer;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
+use deno_tls::TlsKeys;
 use deno_web::create_entangled_message_port;
 use deno_web::serialize_transferables;
 use deno_web::BlobStore;
@@ -363,6 +365,7 @@ pub struct WebWorkerOptions {
   pub seed: Option<u64>,
   pub fs: Arc<dyn FileSystem>,
   pub module_loader: Rc<dyn ModuleLoader>,
+  pub node_resolver: Option<Arc<NodeResolver>>,
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
@@ -410,7 +413,6 @@ impl WebWorker {
         enable_testing_features: bool,
       },
       state = |state, options| {
-        state.put::<deno_permissions::PermissionsContainer>(options.permissions.0.clone());
         state.put::<PermissionsContainer>(options.permissions);
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
@@ -477,7 +479,7 @@ impl WebWorker {
             unsafely_ignore_certificate_errors: options
               .unsafely_ignore_certificate_errors
               .clone(),
-            client_cert_chain_and_key: None,
+            client_cert_chain_and_key: TlsKeys::Null,
             proxy: None,
           },
         ),
@@ -490,6 +492,7 @@ impl WebWorker {
         options.fs.clone(),
       ),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
+        options.node_resolver,
         options.npm_resolver,
         options.fs,
       ),
@@ -805,6 +808,7 @@ impl WebWorker {
 
         // TODO(mmastrac): we don't want to test this w/classic workers because
         // WPT triggers a failure here. This is only exposed via --enable-testing-features-do-not-use.
+        #[allow(clippy::print_stderr)]
         if self.worker_type == WebWorkerType::Module {
           panic!(
             "coding error: either js is polling or the worker is terminated"
@@ -878,6 +882,7 @@ impl WebWorker {
   }
 }
 
+#[allow(clippy::print_stderr)]
 fn print_worker_error(
   error: &AnyError,
   name: &str,

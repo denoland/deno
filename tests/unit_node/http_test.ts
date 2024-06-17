@@ -2,6 +2,7 @@
 
 import EventEmitter from "node:events";
 import http, { type RequestOptions } from "node:http";
+import url from "node:url";
 import https from "node:https";
 import net from "node:net";
 import { assert, assertEquals, fail } from "@std/assert/mod.ts";
@@ -174,12 +175,39 @@ Deno.test("[node/http] server can respond with 101, 204, 205, 304 status", async
         // deno-lint-ignore no-explicit-any
         `http://127.0.0.1:${(server.address() as any).port}/`,
       );
-      await res.arrayBuffer();
+      await res.body?.cancel();
       assertEquals(res.status, status);
       server.close(() => resolve());
     });
     await promise;
   }
+});
+
+Deno.test("[node/http] multiple set-cookie headers", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const server = http.createServer((_req, res) => {
+    res.setHeader("Set-Cookie", ["foo=bar", "bar=foo"]);
+    assertEquals(res.getHeader("Set-Cookie"), ["foo=bar", "bar=foo"]);
+    res.end();
+  });
+
+  server.listen(async () => {
+    const res = await fetch(
+      // deno-lint-ignore no-explicit-any
+      `http://127.0.0.1:${(server.address() as any).port}/`,
+    );
+    assert(res.ok);
+
+    const setCookieHeaders = res.headers.getSetCookie();
+    assertEquals(setCookieHeaders, ["foo=bar", "bar=foo"]);
+
+    await res.body!.cancel();
+
+    server.close(() => resolve());
+  });
+
+  await promise;
 });
 
 Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", async () => {
@@ -380,7 +408,12 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   req.write("world");
   req.end();
 
-  await servePromise;
+  await Promise.all([
+    servePromise,
+    // wait 100ms because of the socket.setTimeout(100) above
+    // in order to not cause a flaky test sanitizer failure
+    await new Promise((resolve) => setTimeout(resolve, 100)),
+  ]);
 });
 
 Deno.test("[node/http] send request with chunked body", async () => {
@@ -995,6 +1028,79 @@ Deno.test("[node/http] ServerResponse getHeaders", () => {
   const res = new http.ServerResponse(req);
   res.setHeader("foo", "bar");
   res.setHeader("bar", "baz");
-  assertEquals(res.getHeaderNames(), ["bar", "foo"]);
-  assertEquals(res.getHeaders(), { "bar": "baz", "foo": "bar" });
+  assertEquals(res.getHeaderNames(), ["foo", "bar"]);
+  assertEquals(res.getHeaders(), { "foo": "bar", "bar": "baz" });
+});
+
+Deno.test("[node/http] ServerResponse default status code 200", () => {
+  const req = new http.IncomingMessage(new net.Socket());
+  const res = new http.ServerResponse(req);
+  assertEquals(res.statusCode, 200);
+});
+
+Deno.test("[node/http] maxHeaderSize is defined", () => {
+  assertEquals(http.maxHeaderSize, 16_384);
+});
+
+Deno.test("[node/http] server graceful close", async () => {
+  const server = http.createServer(function (_, response) {
+    response.writeHead(200, {});
+    response.end("ok");
+    server.close();
+  });
+
+  const { promise, resolve } = Promise.withResolvers<void>();
+  server.listen(0, function () {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+    const testURL = url.parse(
+      `http://localhost:${port}`,
+    );
+
+    http.request(testURL, function (response) {
+      assertEquals(response.statusCode, 200);
+      response.on("data", function () {});
+      response.on("end", function () {
+        resolve();
+      });
+    }).end();
+  });
+
+  await promise;
+});
+
+Deno.test("[node/http] server closeAllConnections shutdown", async () => {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      data: "Hello World!",
+    }));
+  });
+
+  server.listen(0);
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(() => {
+    server.close(() => resolve());
+    server.closeAllConnections();
+  }, 2000);
+
+  await promise;
+});
+
+Deno.test("[node/http] server closeIdleConnections shutdown", async () => {
+  const server = http.createServer({ keepAliveTimeout: 60000 }, (_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      data: "Hello World!",
+    }));
+  });
+
+  server.listen(0);
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(() => {
+    server.close(() => resolve());
+    server.closeIdleConnections();
+  }, 2000);
+
+  await promise;
 });

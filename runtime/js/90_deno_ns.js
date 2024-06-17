@@ -13,7 +13,7 @@ import * as console from "ext:deno_console/01_console.js";
 import * as ffi from "ext:deno_ffi/00_ffi.js";
 import * as net from "ext:deno_net/01_net.js";
 import * as tls from "ext:deno_net/02_tls.js";
-import * as serve from "ext:deno_http/00_serve.js";
+import * as serve from "ext:deno_http/00_serve.ts";
 import * as http from "ext:deno_http/01_http.js";
 import * as websocket from "ext:deno_http/02_websocket.ts";
 import * as errors from "ext:runtime/01_errors.js";
@@ -245,7 +245,6 @@ const denoNs = {
   gid: os.gid,
   uid: os.uid,
   Command: process.Command,
-  // TODO(bartlomieju): why is this exported?
   ChildProcess: process.ChildProcess,
 };
 
@@ -258,15 +257,16 @@ const unstableIds = {
   http: 5,
   kv: 6,
   net: 7,
-  temporal: 8,
-  unsafeProto: 9,
-  webgpu: 10,
-  workerOptions: 11,
+  process: 8,
+  temporal: 9,
+  unsafeProto: 10,
+  webgpu: 11,
+  workerOptions: 12,
 };
 
-const denoNsUnstableById = {};
+const denoNsUnstableById = { __proto__: null };
 
-// denoNsUnstableById[unstableIds.broadcastChannel] = {}
+// denoNsUnstableById[unstableIds.broadcastChannel] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.cron] = {
   cron: cron.cron,
@@ -308,13 +308,13 @@ denoNsUnstableById[unstableIds.net] = {
   ),
 };
 
-// denoNsUnstableById[unstableIds.unsafeProto] = {}
+// denoNsUnstableById[unstableIds.unsafeProto] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.webgpu] = {
   UnsafeWindowSurface: webgpuSurface.UnsafeWindowSurface,
 };
 
-// denoNsUnstableById[unstableIds.workerOptions] = {}
+// denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
 
 // when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js
 const denoNsUnstable = {

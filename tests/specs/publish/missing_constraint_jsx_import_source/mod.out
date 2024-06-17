@@ -1,0 +1,17 @@
+[WILDCARD]
+Checking for slow types in the public API...
+Check file:///[WILDCARD]/mod.ts
+error[missing-constraint]: specifier 'npm:preact/jsx-runtime' is missing a version constraint
+ --> [WILDLINE]
+  = hint: specify a version constraint for the specifier
+
+  info: the specifier resolved to version 10.19.6 today, but will resolve to a different
+  info: major version if one is published in the future and potentially break
+  docs: https://jsr.io/go/missing-constraint
+
+warning[unsupported-jsx-tsx]: JSX and TSX files are currently not supported
+ --> [WILDLINE]foo.tsx
+
+  info: follow https://github.com/jsr-io/jsr/issues/24 for updates
+
+error: Found 1 problem

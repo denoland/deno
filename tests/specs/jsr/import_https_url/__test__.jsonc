@@ -1,12 +1,14 @@
 {
-  "steps": [{
-    "args": "run -A analyzable.ts",
-    "output": "analyzable.out",
-    "exitCode": 1
-  }, {
-    "cleanDenoDir": true,
-    "args": "run -A nonanalyzable.ts",
-    "output": "nonanalyzable.out",
-    "exitCode": 1
-  }]
+  "tests": {
+    "analyzable": {
+      "args": "run -A analyzable.ts",
+      "output": "analyzable.out",
+      "exitCode": 1
+    },
+    "non_analyzable": {
+      "args": "run -A nonanalyzable.ts",
+      "output": "nonanalyzable.out",
+      "exitCode": 1
+    }
+  }
 }

@@ -1,0 +1,4 @@
+{
+  "args": "cache --reload --check=all --log-level debug hello.ts",
+  "output": "performance_stats.out"
+}

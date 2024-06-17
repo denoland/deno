@@ -19,6 +19,7 @@ use crate::args::TsConfig;
 use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
+use crate::cache::CacheDBHash;
 use crate::cache::Caches;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
@@ -27,7 +28,7 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::npm::CliNpmResolver;
 use crate::tsc;
 use crate::tsc::Diagnostics;
-use crate::version;
+use crate::util::path::to_percent_decoded_str;
 
 /// Options for performing a check of a module graph. Note that the decision to
 /// emit or not is determined by the `ts_config` settings.
@@ -154,7 +155,11 @@ impl TypeChecker {
 
     for root in &graph.roots {
       let root_str = root.as_str();
-      log::info!("{} {}", colors::green("Check"), root_str);
+      log::info!(
+        "{} {}",
+        colors::green("Check"),
+        to_percent_decoded_str(root_str)
+      );
     }
 
     let check_js = ts_config.get_check_js();
@@ -169,9 +174,8 @@ impl TypeChecker {
     // to make tsc build info work, we need to consistently hash modules, so that
     // tsc can better determine if an emit is still valid or not, so we provide
     // that data here.
-    let hash_data = FastInsecureHasher::new()
+    let hash_data = FastInsecureHasher::new_deno_versioned()
       .write(&ts_config.as_bytes())
-      .write_str(version::deno())
       .finish();
 
     // add fast check to the graph before getting the roots
@@ -241,7 +245,7 @@ impl TypeChecker {
 }
 
 enum CheckHashResult {
-  Hash(u64),
+  Hash(CacheDBHash),
   NoFiles,
 }
 
@@ -253,7 +257,7 @@ fn get_check_hash(
   type_check_mode: TypeCheckMode,
   ts_config: &TsConfig,
 ) -> CheckHashResult {
-  let mut hasher = FastInsecureHasher::new();
+  let mut hasher = FastInsecureHasher::new_deno_versioned();
   hasher.write_u8(match type_check_mode {
     TypeCheckMode::All => 0,
     TypeCheckMode::Local => 1,
@@ -335,7 +339,7 @@ fn get_check_hash(
     // no files to type check
     CheckHashResult::NoFiles
   } else {
-    CheckHashResult::Hash(hasher.finish())
+    CheckHashResult::Hash(CacheDBHash::new(hasher.finish()))
   }
 }
 

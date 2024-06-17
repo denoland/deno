@@ -255,7 +255,7 @@ impl ReplSession {
     let (transpile_options, _) =
       crate::args::ts_config_to_transpile_and_emit_options(
         ts_config_for_emit.ts_config,
-      );
+      )?;
     let experimental_decorators = transpile_options.use_ts_decorators;
     let mut repl_session = ReplSession {
       npm_resolver,
@@ -637,11 +637,13 @@ impl ReplSession {
         },
         &deno_ast::EmitOptions {
           source_map: deno_ast::SourceMapOption::None,
+          source_map_file: None,
           inline_sources: false,
-          keep_comments: false,
+          remove_comments: false,
         },
       )?
       .into_source()
+      .into_string()?
       .text;
 
     let value = self
@@ -816,7 +818,7 @@ fn parse_source_as(
 
   let parsed = deno_ast::parse_module(deno_ast::ParseParams {
     specifier,
-    text_info: deno_ast::SourceTextInfo::from_string(source),
+    text: source.into(),
     media_type,
     capture_tokens: true,
     maybe_syntax: None,
@@ -883,7 +885,7 @@ fn analyze_jsx_pragmas(
           range: comment_source_to_position_range(
             c.start(),
             &m,
-            parsed_source.text_info(),
+            parsed_source.text_info_lazy(),
             true,
           ),
         });
@@ -897,7 +899,7 @@ fn analyze_jsx_pragmas(
           range: comment_source_to_position_range(
             c.start(),
             &m,
-            parsed_source.text_info(),
+            parsed_source.text_info_lazy(),
             false,
           ),
         });
@@ -911,7 +913,7 @@ fn analyze_jsx_pragmas(
           range: comment_source_to_position_range(
             c.start(),
             &m,
-            parsed_source.text_info(),
+            parsed_source.text_info_lazy(),
             false,
           ),
         });

@@ -10,6 +10,18 @@
 declare namespace Deno {
   export {}; // stop default export type behavior
 
+  /** Information for a HTTP request.
+   *
+   * @category HTTP Server
+   * @experimental
+   */
+  export interface ServeHandlerInfo {
+    /** The remote address of the connection. */
+    remoteAddr: Deno.NetAddr;
+    /** The completion promise */
+    completed: Promise<void>;
+  }
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Retrieve the process umask.  If `mask` is provided, sets the process umask.
@@ -27,6 +39,7 @@ declare namespace Deno {
    * *Note*: This API is not implemented on Windows
    *
    * @category File System
+   * @experimental
    */
   export function umask(mask?: number): number;
 
@@ -35,8 +48,9 @@ declare namespace Deno {
    * All plain number types for interfacing with foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativeNumberType =
+  export type NativeNumberType =
     | "u8"
     | "i8"
     | "u16"
@@ -51,8 +65,9 @@ declare namespace Deno {
    * All BigInt number types for interfacing with foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativeBigIntType =
+  export type NativeBigIntType =
     | "u64"
     | "i64"
     | "usize"
@@ -63,69 +78,102 @@ declare namespace Deno {
    * The native boolean type for interfacing to foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativeBooleanType = "bool";
+  export type NativeBooleanType = "bool";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native pointer type for interfacing to foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativePointerType = "pointer";
+  export type NativePointerType = "pointer";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native buffer type for interfacing to foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativeBufferType = "buffer";
+  export type NativeBufferType = "buffer";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native function type for interfacing with foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativeFunctionType = "function";
+  export type NativeFunctionType = "function";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native void type for interfacing with foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativeVoidType = "void";
+  export type NativeVoidType = "void";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native struct type for interfacing with foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativeStructType = { readonly struct: readonly NativeType[] };
+  export type NativeStructType = { readonly struct: readonly NativeType[] };
 
-  /** @category FFI */
-  const brand: unique symbol;
+  /**
+   * @category FFI
+   * @experimental
+   */
+  export const brand: unique symbol;
 
-  /** @category FFI */
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeU8Enum<T extends number> = "u8" & { [brand]: T };
-  /** @category FFI */
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeI8Enum<T extends number> = "i8" & { [brand]: T };
-  /** @category FFI */
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeU16Enum<T extends number> = "u16" & { [brand]: T };
-  /** @category FFI */
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeI16Enum<T extends number> = "i16" & { [brand]: T };
-  /** @category FFI */
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeU32Enum<T extends number> = "u32" & { [brand]: T };
-  /** @category FFI */
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeI32Enum<T extends number> = "i32" & { [brand]: T };
-  /** @category FFI */
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeTypedPointer<T extends PointerObject> = "pointer" & {
     [brand]: T;
   };
-  /** @category FFI */
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeTypedFunction<T extends UnsafeCallbackDefinition> =
     & "function"
     & {
@@ -137,6 +185,7 @@ declare namespace Deno {
    * All supported types for interfacing with foreign functions.
    *
    * @category FFI
+   * @experimental
    */
   export type NativeType =
     | NativeNumberType
@@ -150,6 +199,7 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category FFI
+   * @experimental
    */
   export type NativeResultType = NativeType | NativeVoidType;
 
@@ -159,8 +209,9 @@ declare namespace Deno {
    * types.
    *
    * @category FFI
+   * @experimental
    */
-  type ToNativeType<T extends NativeType = NativeType> = T extends
+  export type ToNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? BufferSource
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
@@ -169,7 +220,7 @@ declare namespace Deno {
       : T extends NativeU32Enum<infer U> ? U
       : T extends NativeI32Enum<infer U> ? U
       : number
-    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
       ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
@@ -184,34 +235,37 @@ declare namespace Deno {
    * Type conversion for unsafe callback return types.
    *
    * @category FFI
+   * @experimental
    */
-  type ToNativeResultType<T extends NativeResultType = NativeResultType> =
-    T extends NativeStructType ? BufferSource
-      : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-        : T extends NativeI8Enum<infer U> ? U
-        : T extends NativeU16Enum<infer U> ? U
-        : T extends NativeI16Enum<infer U> ? U
-        : T extends NativeU32Enum<infer U> ? U
-        : T extends NativeI32Enum<infer U> ? U
-        : number
-      : T extends NativeBigIntType ? number | bigint
-      : T extends NativeBooleanType ? boolean
-      : T extends NativePointerType
-        ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-      : T extends NativeFunctionType
-        ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-        : PointerValue
-      : T extends NativeBufferType ? BufferSource | null
-      : T extends NativeVoidType ? void
-      : never;
+  export type ToNativeResultType<
+    T extends NativeResultType = NativeResultType,
+  > = T extends NativeStructType ? BufferSource
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : T extends NativeBufferType ? BufferSource | null
+    : T extends NativeVoidType ? void
+    : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * A utility type for conversion of parameter types of foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type ToNativeParameterTypes<T extends readonly NativeType[]> =
+  export type ToNativeParameterTypes<T extends readonly NativeType[]> =
     //
     [(T[number])[]] extends [T] ? ToNativeType<T[number]>[]
       : [readonly (T[number])[]] extends [T]
@@ -227,8 +281,9 @@ declare namespace Deno {
    * parameters.
    *
    * @category FFI
+   * @experimental
    */
-  type FromNativeType<T extends NativeType = NativeType> = T extends
+  export type FromNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? Uint8Array
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
@@ -237,7 +292,7 @@ declare namespace Deno {
       : T extends NativeU32Enum<infer U> ? U
       : T extends NativeI32Enum<infer U> ? U
       : number
-    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
       ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
@@ -252,32 +307,35 @@ declare namespace Deno {
    * Type conversion for foreign symbol return types.
    *
    * @category FFI
+   * @experimental
    */
-  type FromNativeResultType<T extends NativeResultType = NativeResultType> =
-    T extends NativeStructType ? Uint8Array
-      : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-        : T extends NativeI8Enum<infer U> ? U
-        : T extends NativeU16Enum<infer U> ? U
-        : T extends NativeI16Enum<infer U> ? U
-        : T extends NativeU32Enum<infer U> ? U
-        : T extends NativeI32Enum<infer U> ? U
-        : number
-      : T extends NativeBigIntType ? number | bigint
-      : T extends NativeBooleanType ? boolean
-      : T extends NativePointerType
-        ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-      : T extends NativeBufferType ? PointerValue
-      : T extends NativeFunctionType
-        ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-        : PointerValue
-      : T extends NativeVoidType ? void
-      : never;
+  export type FromNativeResultType<
+    T extends NativeResultType = NativeResultType,
+  > = T extends NativeStructType ? Uint8Array
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeBufferType ? PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : T extends NativeVoidType ? void
+    : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category FFI
+   * @experimental
    */
-  type FromNativeParameterTypes<
+  export type FromNativeParameterTypes<
     T extends readonly NativeType[],
   > =
     //
@@ -295,6 +353,7 @@ declare namespace Deno {
    * types.
    *
    * @category FFI
+   * @experimental
    */
   export interface ForeignFunction<
     Parameters extends readonly NativeType[] = readonly NativeType[],
@@ -327,6 +386,7 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category FFI
+   * @experimental
    */
   export interface ForeignStatic<Type extends NativeType = NativeType> {
     /** Name of the symbol, defaults to the key name in symbols object. */
@@ -345,6 +405,7 @@ declare namespace Deno {
    * A foreign library interface descriptor.
    *
    * @category FFI
+   * @experimental
    */
   export interface ForeignLibraryInterface {
     [name: string]: ForeignFunction | ForeignStatic;
@@ -355,8 +416,9 @@ declare namespace Deno {
    * A utility type that infers a foreign symbol.
    *
    * @category FFI
+   * @experimental
    */
-  type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
+  export type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
     T extends ForeignFunction ? FromForeignFunction<T>
       : T extends ForeignStatic ? FromNativeType<T["type"]>
       : never;
@@ -364,25 +426,28 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    *  @category FFI
+   *  @experimental
    */
-  type FromForeignFunction<T extends ForeignFunction> = T["parameters"] extends
-    readonly [] ? () => StaticForeignSymbolReturnType<T>
-    : (
-      ...args: ToNativeParameterTypes<T["parameters"]>
-    ) => StaticForeignSymbolReturnType<T>;
+  export type FromForeignFunction<T extends ForeignFunction> =
+    T["parameters"] extends readonly [] ? () => StaticForeignSymbolReturnType<T>
+      : (
+        ...args: ToNativeParameterTypes<T["parameters"]>
+      ) => StaticForeignSymbolReturnType<T>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category FFI
+   * @experimental
    */
-  type StaticForeignSymbolReturnType<T extends ForeignFunction> =
+  export type StaticForeignSymbolReturnType<T extends ForeignFunction> =
     ConditionalAsync<T["nonblocking"], FromNativeResultType<T["result"]>>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category FFI
+   * @experimental
    */
-  type ConditionalAsync<IsAsync extends boolean | undefined, T> =
+  export type ConditionalAsync<IsAsync extends boolean | undefined, T> =
     IsAsync extends true ? Promise<T> : T;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -390,12 +455,14 @@ declare namespace Deno {
    * A utility type that infers a foreign library interface.
    *
    * @category FFI
+   * @experimental
    */
-  type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> = {
-    [K in keyof T]: T[K]["optional"] extends true
-      ? StaticForeignSymbol<T[K]> | null
-      : StaticForeignSymbol<T[K]>;
-  };
+  export type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> =
+    {
+      [K in keyof T]: T[K]["optional"] extends true
+        ? StaticForeignSymbol<T[K]> | null
+        : StaticForeignSymbol<T[K]>;
+    };
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -411,6 +478,7 @@ declare namespace Deno {
    * {@linkcode UnsafePointer} class.
    *
    * @category FFI
+   * @experimental
    */
   export type PointerObject<T = unknown> = { [brand]: T };
 
@@ -420,6 +488,7 @@ declare namespace Deno {
    * object or a `null` if the pointer is null.
    *
    * @category FFI
+   * @experimental
    */
   export type PointerValue<T = unknown> = null | PointerObject<T>;
 
@@ -428,10 +497,11 @@ declare namespace Deno {
    * A collection of static functions for interacting with pointer objects.
    *
    * @category FFI
+   * @experimental
    */
   export class UnsafePointer {
     /** Create a pointer from a numeric value. This one is <i>really</i> dangerous! */
-    static create<T = unknown>(value: number | bigint): PointerValue<T>;
+    static create<T = unknown>(value: bigint): PointerValue<T>;
     /** Returns `true` if the two pointers point to the same address. */
     static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
@@ -444,7 +514,7 @@ declare namespace Deno {
       offset: number,
     ): PointerValue<T>;
     /** Get the numeric value of a pointer */
-    static value(value: PointerValue): number | bigint;
+    static value(value: PointerValue): bigint;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -455,6 +525,7 @@ declare namespace Deno {
    * location (numbers, strings and raw bytes).
    *
    * @category FFI
+   * @experimental
    */
   export class UnsafePointerView {
     constructor(pointer: PointerObject);
@@ -483,10 +554,10 @@ declare namespace Deno {
     getInt32(offset?: number): number;
     /** Gets an unsigned 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigUint64(offset?: number): number | bigint;
+    getBigUint64(offset?: number): bigint;
     /** Gets a signed 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigInt64(offset?: number): number | bigint;
+    getBigInt64(offset?: number): bigint;
     /** Gets a signed 32-bit float at the specified byte offset from the
      * pointer. */
     getFloat32(offset?: number): number;
@@ -538,6 +609,7 @@ declare namespace Deno {
    * as symbols.
    *
    * @category FFI
+   * @experimental
    */
   export class UnsafeFnPointer<const Fn extends ForeignFunction> {
     /** The pointer to the function. */
@@ -558,6 +630,7 @@ declare namespace Deno {
    * Definition of a unsafe callback function.
    *
    * @category FFI
+   * @experimental
    */
   export interface UnsafeCallbackDefinition<
     Parameters extends readonly NativeType[] = readonly NativeType[],
@@ -574,8 +647,9 @@ declare namespace Deno {
    * An unsafe callback function.
    *
    * @category FFI
+   * @experimental
    */
-  type UnsafeCallbackFunction<
+  export type UnsafeCallbackFunction<
     Parameters extends readonly NativeType[] = readonly NativeType[],
     Result extends NativeResultType = NativeResultType,
   > = Parameters extends readonly [] ? () => ToNativeResultType<Result> : (
@@ -604,6 +678,7 @@ declare namespace Deno {
    * called from foreign threads.
    *
    * @category FFI
+   * @experimental
    */
   export class UnsafeCallback<
     const Definition extends UnsafeCallbackDefinition =
@@ -687,6 +762,7 @@ declare namespace Deno {
    * library and return this interface.
    *
    * @category FFI
+   * @experimental
    */
   export interface DynamicLibrary<S extends ForeignLibraryInterface> {
     /** All of the registered library along with functions for calling them. */
@@ -740,13 +816,14 @@ declare namespace Deno {
    * );
    *
    * // Call the symbol `add`
-   * const result = dylib.symbols.add(35, 34); // 69
+   * const result = dylib.symbols.add(35n, 34n); // 69n
    *
    * console.log(`Result from external addition of 35 and 34: ${result}`);
    * ```
    *
    * @tags allow-ffi
    * @category FFI
+   * @experimental
    */
   export function dlopen<const S extends ForeignLibraryInterface>(
     filename: string | URL,
@@ -765,12 +842,14 @@ declare namespace Deno {
    *  | "cocoa" (macOS)   | `NSView*`     | -               |
    *  | "win32" (Windows) | `HWND`        | `HINSTANCE`     |
    *  | "x11" (Linux)     | Xlib `Window` | Xlib `Display*` |
+   *  | "wayland" (Linux) | `wl_surface*` | `wl_display*`   |
    *
-   * @category WebGPU
+   * @category GPU
+   * @experimental
    */
   export class UnsafeWindowSurface {
     constructor(
-      system: "cocoa" | "win32" | "x11",
+      system: "cocoa" | "win32" | "x11" | "wayland",
       windowHandle: Deno.PointerValue<unknown>,
       displayHandle: Deno.PointerValue<unknown>,
     );
@@ -783,8 +862,9 @@ declare namespace Deno {
    * These are unstable options which can be used with {@linkcode Deno.run}.
    *
    * @category Sub Process
+   * @experimental
    */
-  interface UnstableRunOptions extends RunOptions {
+  export interface UnstableRunOptions extends RunOptions {
     /** If `true`, clears the environment variables before executing the
      * sub-process.
      *
@@ -845,6 +925,7 @@ declare namespace Deno {
    *
    * @tags allow-run
    * @category Sub Process
+   * @experimental
    */
   export function run<T extends UnstableRunOptions = UnstableRunOptions>(
     opt: T,
@@ -861,7 +942,8 @@ declare namespace Deno {
    * const req = await fetch("https://myserver.com", { client });
    * ```
    *
-   * @category Fetch API
+   * @category Fetch
+   * @experimental
    */
   export interface HttpClient extends Disposable {
     /** Close the HTTP client. */
@@ -872,7 +954,8 @@ declare namespace Deno {
    *
    * The options used when creating a {@linkcode Deno.HttpClient}.
    *
-   * @category Fetch API
+   * @category Fetch
+   * @experimental
    */
   export interface CreateHttpClientOptions {
     /** A list of root certificates that will be used in addition to the
@@ -910,7 +993,8 @@ declare namespace Deno {
    * The definition of a proxy when specifying
    * {@linkcode Deno.CreateHttpClientOptions}.
    *
-   * @category Fetch API
+   * @category Fetch
+   * @experimental
    */
   export interface Proxy {
     /** The string URL of the proxy server to use. */
@@ -924,7 +1008,8 @@ declare namespace Deno {
    * Basic authentication credentials to be used with a {@linkcode Deno.Proxy}
    * server when specifying {@linkcode Deno.CreateHttpClientOptions}.
    *
-   * @category Fetch API
+   * @category Fetch
+   * @experimental
    */
   export interface BasicAuth {
     /** The username to be used against the proxy server. */
@@ -952,7 +1037,8 @@ declare namespace Deno {
    * const response = await fetch("https://myserver.com", { client });
    * ```
    *
-   * @category Fetch API
+   * @category Fetch
+   * @experimental
    */
   export function createHttpClient(
     options: CreateHttpClientOptions,
@@ -973,7 +1059,8 @@ declare namespace Deno {
    * const response = await fetch("https://myserver.com", { client });
    * ```
    *
-   * @category Fetch API
+   * @category Fetch
+   * @experimental
    */
   export function createHttpClient(
     options: CreateHttpClientOptions & TlsCertifiedKeyOptions,
@@ -984,8 +1071,9 @@ declare namespace Deno {
    * Represents membership of a IPv4 multicast group.
    *
    * @category Network
+   * @experimental
    */
-  interface MulticastV4Membership {
+  export interface MulticastV4Membership {
     /** Leaves the multicast group. */
     leave: () => Promise<void>;
     /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
@@ -999,8 +1087,9 @@ declare namespace Deno {
    * Represents membership of a IPv6 multicast group.
    *
    * @category Network
+   * @experimental
    */
-  interface MulticastV6Membership {
+  export interface MulticastV6Membership {
     /** Leaves the multicast group. */
     leave: () => Promise<void>;
     /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
@@ -1012,6 +1101,7 @@ declare namespace Deno {
    * A generic transport listener for message-oriented protocols.
    *
    * @category Network
+   * @experimental
    */
   export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
     /** Joins an IPv4 multicast group. */
@@ -1045,6 +1135,7 @@ declare namespace Deno {
 
   /**
    * @category Network
+   * @experimental
    */
   export interface TcpListenOptions extends ListenOptions {
     /** When `true` the SO_REUSEPORT flag will be set on the listener. This
@@ -1067,6 +1158,7 @@ declare namespace Deno {
    * {@linkcode Deno.listenDatagram}.
    *
    * @category Network
+   * @experimental
    */
   export interface UdpListenOptions extends ListenOptions {
     /** When `true` the specified address will be reused, even if another
@@ -1102,6 +1194,7 @@ declare namespace Deno {
    *
    * @tags allow-net
    * @category Network
+   * @experimental
    */
   export function listenDatagram(
     options: UdpListenOptions & { transport: "udp" },
@@ -1122,6 +1215,7 @@ declare namespace Deno {
    *
    * @tags allow-read, allow-write
    * @category Network
+   * @experimental
    */
   export function listenDatagram(
     options: UnixListenOptions & { transport: "unixpacket" },
@@ -1133,6 +1227,7 @@ declare namespace Deno {
    *
    * @param [exclusive=false]
    * @category File System
+   * @experimental
    */
   export function flock(rid: number, exclusive?: boolean): Promise<void>;
 
@@ -1142,6 +1237,7 @@ declare namespace Deno {
    *
    * @param [exclusive=false]
    * @category File System
+   * @experimental
    */
   export function flockSync(rid: number, exclusive?: boolean): void;
 
@@ -1150,6 +1246,7 @@ declare namespace Deno {
    * Release an advisory file-system lock for the provided file.
    *
    * @category File System
+   * @experimental
    */
   export function funlock(rid: number): Promise<void>;
 
@@ -1158,6 +1255,7 @@ declare namespace Deno {
    * Release an advisory file-system lock for the provided file synchronously.
    *
    * @category File System
+   * @experimental
    */
   export function funlockSync(rid: number): void;
 
@@ -1175,7 +1273,8 @@ declare namespace Deno {
    * can be found in the Deno Manual.
    *
    * @tags allow-read, allow-write
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export function openKv(path?: string): Promise<Deno.Kv>;
 
@@ -1183,9 +1282,10 @@ declare namespace Deno {
    *
    * CronScheduleExpression is used as the type of `minute`, `hour`,
    * `dayOfMonth`, `month`, and `dayOfWeek` in {@linkcode CronSchedule}.
-   * @category Cron
+   * @category Cloud
+   * @experimental
    */
-  type CronScheduleExpression = number | { exact: number | number[] } | {
+  export type CronScheduleExpression = number | { exact: number | number[] } | {
     start?: number;
     end?: number;
     every?: number;
@@ -1195,7 +1295,8 @@ declare namespace Deno {
    *
    * CronSchedule is the interface used for JSON format
    * cron `schedule`.
-   * @category Cron
+   * @category Cloud
+   * @experimental
    */
   export interface CronSchedule {
     minute?: CronScheduleExpression;
@@ -1226,7 +1327,8 @@ declare namespace Deno {
    * as specified by interface {@linkcode CronSchedule}, where time is specified
    * using UTC time zone.
    *
-   * @category Cron
+   * @category Cloud
+   * @experimental
    */
   export function cron(
     name: string,
@@ -1257,7 +1359,8 @@ declare namespace Deno {
    * means that a failed execution will be retried at most 3 times, with 1
    * second, 5 seconds, and 10 seconds delay between each retry.
    *
-   * @category Cron
+   * @category Cloud
+   * @experimental
    */
   export function cron(
     name: string,
@@ -1281,7 +1384,8 @@ declare namespace Deno {
    * exceeds this limit, an error will be thrown on the operation that this key
    * was passed to.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export type KvKey = readonly KvKeyPart[];
 
@@ -1317,7 +1421,8 @@ declare namespace Deno {
    * `1.0` is a number and `0n` is a bigint, and type ordering has precedence
    * over the ordering of values within a type.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export type KvKeyPart =
     | Uint8Array
@@ -1334,7 +1439,8 @@ declare namespace Deno {
    * - `strong` - This operation must be strongly-consistent.
    * - `eventual` - Eventually-consistent behavior is allowed.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export type KvConsistencyLevel = "strong" | "eventual";
 
@@ -1348,7 +1454,8 @@ declare namespace Deno {
    * starting at a given key). A range selector selects all keys that are
    * lexicographically between the given start and end keys.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export type KvListSelector =
     | { prefix: KvKey }
@@ -1386,7 +1493,8 @@ declare namespace Deno {
    *   existing value must be of type `Deno.KvU64`. If the key does not exist,
    *   the value is set to the given value.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export type KvMutation =
     & { key: KvKey }
@@ -1405,7 +1513,8 @@ declare namespace Deno {
    * The cursor getter returns the cursor that can be used to resume the
    * iteration from the current position in the future.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export class KvListIterator<T> implements AsyncIterableIterator<KvEntry<T>> {
     /**
@@ -1427,7 +1536,8 @@ declare namespace Deno {
    * key-value pair. It can be used to perform atomic operations on the KV store
    * by passing it to the `check` method of a {@linkcode Deno.AtomicOperation}.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export type KvEntry<T> = { key: KvKey; value: T; versionstamp: string };
 
@@ -1439,7 +1549,8 @@ declare namespace Deno {
    * This is the same as a {@linkcode KvEntry}, but the `value` and `versionstamp`
    * fields may be `null` if no value exists for the given key in the KV store.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export type KvEntryMaybe<T> = KvEntry<T> | {
     key: KvKey;
@@ -1451,7 +1562,8 @@ declare namespace Deno {
    *
    * Options for listing key-value pairs in a {@linkcode Deno.Kv}.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export interface KvListOptions {
     /**
@@ -1504,14 +1616,20 @@ declare namespace Deno {
     batchSize?: number;
   }
 
-  /** @category KV */
+  /**
+   * @category Cloud
+   * @experimental
+   */
   export interface KvCommitResult {
     ok: true;
     /** The versionstamp of the value committed to KV. */
     versionstamp: string;
   }
 
-  /** @category KV */
+  /**
+   * @category Cloud
+   * @experimental
+   */
   export interface KvCommitError {
     ok: false;
   }
@@ -1523,7 +1641,8 @@ declare namespace Deno {
    * not match the given versionstamp. A check with a `null` versionstamp checks
    * that the key-value pair does not currently exist in the KV store.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export interface AtomicCheck {
     key: KvKey;
@@ -1563,9 +1682,9 @@ declare namespace Deno {
    * an exception will be thrown. If the operation succeeded, the return value
    * will be a {@linkcode Deno.KvCommitResult} object with a `ok: true` property
    * and the versionstamp of the value committed to KV.
-
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export class AtomicOperation {
     /**
@@ -1681,7 +1800,8 @@ declare namespace Deno {
    * of a JSON serialization of that same value. If theses limits are exceeded,
    * an exception will be thrown.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export class Kv implements Disposable {
     /**
@@ -1951,7 +2071,8 @@ declare namespace Deno {
    * Wrapper type for 64-bit unsigned integers for use as values in a
    * {@linkcode Deno.Kv}.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export class KvU64 {
     /** Create a new `KvU64` instance from the given bigint value. If the value
@@ -1966,17 +2087,25 @@ declare namespace Deno {
    *
    * When accessed outside of Jupyter notebook context an error will be thrown.
    *
-   * @category Jupyter */
+   * @category Jupyter
+   * @experimental
+   */
   export namespace jupyter {
-    /** @category Jupyter */
+    /**
+     * @category Jupyter
+     * @experimental
+     */
     export interface DisplayOptions {
       raw?: boolean;
       update?: boolean;
       display_id?: string;
     }
 
-    /** @category Jupyter */
-    type VegaObject = {
+    /**
+     * @category Jupyter
+     * @experimental
+     */
+    export type VegaObject = {
       $schema: string;
       [key: string]: unknown;
     };
@@ -1985,6 +2114,7 @@ declare namespace Deno {
      * A collection of supported media types and data for Jupyter frontends.
      *
      * @category Jupyter
+     * @experimental
      */
     export type MediaBundle = {
       "text/plain"?: string;
@@ -2014,10 +2144,16 @@ declare namespace Deno {
       [key: string]: string | object | undefined;
     };
 
-    /** @category Jupyter */
+    /**
+     * @category Jupyter
+     * @experimental
+     */
     export const $display: unique symbol;
 
-    /** @category Jupyter */
+    /**
+     * @category Jupyter
+     * @experimental
+     */
     export type Displayable = {
       [$display]: () => MediaBundle | Promise<MediaBundle>;
     };
@@ -2030,6 +2166,7 @@ declare namespace Deno {
      * @param obj - The object to be displayed
      * @param options - Display options with a default { raw: true }
      * @category Jupyter
+     * @experimental
      */
     export function display(obj: unknown, options?: DisplayOptions): void;
 
@@ -2054,6 +2191,7 @@ declare namespace Deno {
      * ```
      *
      * @category Jupyter
+     * @experimental
      */
     export function md(
       strings: TemplateStringsArray,
@@ -2073,6 +2211,7 @@ declare namespace Deno {
      * ```
      *
      * @category Jupyter
+     * @experimental
      */
     export function html(
       strings: TemplateStringsArray,
@@ -2091,6 +2230,7 @@ declare namespace Deno {
      *    </svg>`
      *
      * @category Jupyter
+     * @experimental
      */
     export function svg(
       strings: TemplateStringsArray,
@@ -2104,6 +2244,7 @@ declare namespace Deno {
      * @returns MediaBundle
      *
      * @category Jupyter
+     * @experimental
      */
     export function format(obj: unknown): MediaBundle;
 
@@ -2126,7 +2267,9 @@ declare namespace Deno {
      * });
      * ```
      *
-     * @category Jupyter */
+     * @category Jupyter
+     * @experimental
+     */
     export function broadcast(
       msgType: string,
       content: Record<string, unknown>,
@@ -2145,7 +2288,8 @@ declare namespace Deno {
  * way to connect via proxies and use custom TLS certificates.
  *
  * @tags allow-net, allow-read
- * @category Fetch API
+ * @category Fetch
+ * @experimental
  */
 declare function fetch(
   input: Request | URL | string,
@@ -2154,7 +2298,8 @@ declare function fetch(
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @category Web Workers
+ * @category Workers
+ * @experimental
  */
 declare interface WorkerOptions {
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -2194,7 +2339,8 @@ declare interface WorkerOptions {
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @category Web Sockets
+ * @category WebSockets
+ * @experimental
  */
 declare interface WebSocketStreamOptions {
   protocols?: string[];
@@ -2204,7 +2350,8 @@ declare interface WebSocketStreamOptions {
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @category Web Sockets
+ * @category WebSockets
+ * @experimental
  */
 declare interface WebSocketConnection {
   readable: ReadableStream<string | Uint8Array>;
@@ -2215,7 +2362,8 @@ declare interface WebSocketConnection {
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @category Web Sockets
+ * @category WebSockets
+ * @experimental
  */
 declare interface WebSocketCloseInfo {
   code?: number;
@@ -2225,7 +2373,8 @@ declare interface WebSocketCloseInfo {
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @tags allow-net
- * @category Web Sockets
+ * @category WebSockets
+ * @experimental
  */
 declare interface WebSocketStream {
   url: string;
@@ -2237,7 +2386,8 @@ declare interface WebSocketStream {
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @tags allow-net
- * @category Web Sockets
+ * @category WebSockets
+ * @experimental
  */
 declare var WebSocketStream: {
   readonly prototype: WebSocketStream;
@@ -2247,7 +2397,8 @@ declare var WebSocketStream: {
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @tags allow-net
- * @category Web Sockets
+ * @category WebSockets
+ * @experimental
  */
 declare interface WebSocketError extends DOMException {
   readonly closeCode: number;
@@ -2257,7 +2408,8 @@ declare interface WebSocketError extends DOMException {
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @tags allow-net
- * @category Web Sockets
+ * @category WebSockets
+ * @experimental
  */
 declare var WebSocketError: {
   readonly prototype: WebSocketError;
@@ -2270,11 +2422,18 @@ declare var WebSocketError: {
  * [Specification](https://tc39.es/proposal-temporal/docs/index.html)
  *
  * @category Temporal
+ * @experimental
  */
 declare namespace Temporal {
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type ComparisonResult = -1 | 0 | 1;
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type RoundingMode =
     | "ceil"
     | "floor"
@@ -2291,6 +2450,7 @@ declare namespace Temporal {
    * `from()`.
    *
    * @category Temporal
+   * @experimental
    */
   export type AssignmentOptions = {
     /**
@@ -2312,6 +2472,7 @@ declare namespace Temporal {
    * `Duration.prototype.add()` and `Duration.prototype.subtract()`.
    *
    * @category Temporal
+   * @experimental
    */
   export type DurationOptions = {
     /**
@@ -2331,6 +2492,7 @@ declare namespace Temporal {
    * Options for conversions of `Temporal.PlainDateTime` to `Temporal.Instant`
    *
    * @category Temporal
+   * @experimental
    */
   export type ToInstantOptions = {
     /**
@@ -2358,8 +2520,11 @@ declare namespace Temporal {
     disambiguation?: "compatible" | "earlier" | "later" | "reject";
   };
 
-  /** @category Temporal */
-  type OffsetDisambiguationOptions = {
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type OffsetDisambiguationOptions = {
     /**
      * Time zone definitions can change. If an application stores data about
      * events in the future, then stored data about future events may become
@@ -2395,7 +2560,10 @@ declare namespace Temporal {
     offset?: "use" | "prefer" | "ignore" | "reject";
   };
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type ZonedDateTimeAssignmentOptions = Partial<
     AssignmentOptions & ToInstantOptions & OffsetDisambiguationOptions
   >;
@@ -2404,6 +2572,7 @@ declare namespace Temporal {
    * Options for arithmetic operations like `add()` and `subtract()`
    *
    * @category Temporal
+   * @experimental
    */
   export type ArithmeticOptions = {
     /**
@@ -2417,9 +2586,15 @@ declare namespace Temporal {
     overflow?: "constrain" | "reject";
   };
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type DateUnit = "year" | "month" | "week" | "day";
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type TimeUnit =
     | "hour"
     | "minute"
@@ -2427,7 +2602,10 @@ declare namespace Temporal {
     | "millisecond"
     | "microsecond"
     | "nanosecond";
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type DateTimeUnit = DateUnit | TimeUnit;
 
   /**
@@ -2436,6 +2614,7 @@ declare namespace Temporal {
    * or 'hours' are aso accepted too.
    *
    * @category Temporal
+   * @experimental
    */
   export type PluralUnit<T extends DateTimeUnit> = {
     year: "years";
@@ -2450,17 +2629,27 @@ declare namespace Temporal {
     nanosecond: "nanoseconds";
   }[T];
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type LargestUnit<T extends DateTimeUnit> = "auto" | T | PluralUnit<T>;
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type SmallestUnit<T extends DateTimeUnit> = T | PluralUnit<T>;
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type TotalUnit<T extends DateTimeUnit> = T | PluralUnit<T>;
 
   /**
    * Options for outputting precision in toString() on types with seconds
    *
    * @category Temporal
+   * @experimental
    */
   export type ToStringPrecisionOptions = {
     fractionalSecondDigits?: "auto" | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
@@ -2485,17 +2674,26 @@ declare namespace Temporal {
     roundingMode?: RoundingMode;
   };
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type ShowCalendarOption = {
     calendarName?: "auto" | "always" | "never" | "critical";
   };
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type CalendarTypeToStringOptions = Partial<
     ToStringPrecisionOptions & ShowCalendarOption
   >;
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type ZonedDateTimeToStringOptions = Partial<
     CalendarTypeToStringOptions & {
       timeZoneName?: "auto" | "never" | "critical";
@@ -2503,7 +2701,10 @@ declare namespace Temporal {
     }
   >;
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type InstantToStringOptions = Partial<
     ToStringPrecisionOptions & {
       timeZone: TimeZoneLike;
@@ -2515,6 +2716,7 @@ declare namespace Temporal {
    * `Temporal` types.
    *
    * @category Temporal
+   * @experimental
    */
   export interface DifferenceOptions<T extends DateTimeUnit> {
     /**
@@ -2577,6 +2779,7 @@ declare namespace Temporal {
    * `smallestUnit` property value is that string.
    *
    * @category Temporal
+   * @experimental
    */
   export type RoundTo<T extends DateTimeUnit> =
     | SmallestUnit<T>
@@ -2622,6 +2825,7 @@ declare namespace Temporal {
    * object whose `smallestUnit` property value is that string.
    *
    * @category Temporal
+   * @experimental
    */
   export type DurationRoundTo =
     | SmallestUnit<DateTimeUnit>
@@ -2752,6 +2956,7 @@ declare namespace Temporal {
    * Options to control behavior of `Duration.prototype.total()`
    *
    * @category Temporal
+   * @experimental
    */
   export type DurationTotalOf =
     | TotalUnit<DateTimeUnit>
@@ -2796,6 +3001,7 @@ declare namespace Temporal {
    * `Duration.subtract()`
    *
    * @category Temporal
+   * @experimental
    */
   export interface DurationArithmeticOptions {
     /**
@@ -2826,7 +3032,10 @@ declare namespace Temporal {
       | string;
   }
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type DurationLike = {
     years?: number;
     months?: number;
@@ -2847,6 +3056,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/duration.html for more details.
    *
    * @category Temporal
+   * @experimental
    */
   export class Duration {
     static from(
@@ -2919,6 +3129,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/instant.html for more details.
    *
    * @category Temporal
+   * @experimental
    */
   export class Instant {
     static fromEpochSeconds(epochSeconds: number): Temporal.Instant;
@@ -2998,18 +3209,32 @@ declare namespace Temporal {
     readonly [Symbol.toStringTag]: "Temporal.Instant";
   }
 
-  /** @category Temporal */
-  type YearOrEraAndEraYear = { era: string; eraYear: number } | {
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type YearOrEraAndEraYear = { era: string; eraYear: number } | {
     year: number;
   };
-  /** @category Temporal */
-  type MonthCodeOrMonthAndYear = (YearOrEraAndEraYear & { month: number }) | {
-    monthCode: string;
-  };
-  /** @category Temporal */
-  type MonthOrMonthCode = { month: number } | { monthCode: string };
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type MonthCodeOrMonthAndYear =
+    | (YearOrEraAndEraYear & { month: number })
+    | {
+      monthCode: string;
+    };
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type MonthOrMonthCode = { month: number } | { monthCode: string };
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export interface CalendarProtocol {
     id: string;
     year(
@@ -3162,6 +3387,7 @@ declare namespace Temporal {
    * Any of these types can be passed to Temporal methods instead of a Temporal.Calendar.
    *
    * @category Temporal
+   * @experimental
    */
   export type CalendarLike =
     | string
@@ -3181,6 +3407,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/calendar.html for more details.
    *
    * @category Temporal
+   * @experimental
    */
   export class Calendar implements CalendarProtocol {
     static from(item: CalendarLike): Temporal.Calendar | CalendarProtocol;
@@ -3333,7 +3560,10 @@ declare namespace Temporal {
     readonly [Symbol.toStringTag]: "Temporal.Calendar";
   }
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type PlainDateLike = {
     era?: string | undefined;
     eraYear?: number | undefined;
@@ -3344,8 +3574,11 @@ declare namespace Temporal {
     calendar?: CalendarLike;
   };
 
-  /** @category Temporal */
-  type PlainDateISOFields = {
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type PlainDateISOFields = {
     isoYear: number;
     isoMonth: number;
     isoDay: number;
@@ -3362,6 +3595,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/date.html for more details.
    *
    * @category Temporal
+   * @experimental
    */
   export class PlainDate {
     static from(
@@ -3442,7 +3676,10 @@ declare namespace Temporal {
     readonly [Symbol.toStringTag]: "Temporal.PlainDate";
   }
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type PlainDateTimeLike = {
     era?: string | undefined;
     eraYear?: number | undefined;
@@ -3459,8 +3696,11 @@ declare namespace Temporal {
     calendar?: CalendarLike;
   };
 
-  /** @category Temporal */
-  type PlainDateTimeISOFields = {
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type PlainDateTimeISOFields = {
     isoYear: number;
     isoMonth: number;
     isoDay: number;
@@ -3484,6 +3724,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/datetime.html for more details.
    *
    * @category Temporal
+   * @experimental
    */
   export class PlainDateTime {
     static from(
@@ -3609,7 +3850,10 @@ declare namespace Temporal {
     readonly [Symbol.toStringTag]: "Temporal.PlainDateTime";
   }
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type PlainMonthDayLike = {
     era?: string | undefined;
     eraYear?: number | undefined;
@@ -3628,6 +3872,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/monthday.html for more details.
    *
    * @category Temporal
+   * @experimental
    */
   export class PlainMonthDay {
     static from(
@@ -3661,7 +3906,10 @@ declare namespace Temporal {
     readonly [Symbol.toStringTag]: "Temporal.PlainMonthDay";
   }
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type PlainTimeLike = {
     hour?: number;
     minute?: number;
@@ -3671,8 +3919,11 @@ declare namespace Temporal {
     nanosecond?: number;
   };
 
-  /** @category Temporal */
-  type PlainTimeISOFields = {
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type PlainTimeISOFields = {
     isoHour: number;
     isoMinute: number;
     isoSecond: number;
@@ -3697,6 +3948,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/time.html for more details.
    *
    * @category Temporal
+   * @experimental
    */
   export class PlainTime {
     static from(
@@ -3788,6 +4040,7 @@ declare namespace Temporal {
    * A plain object implementing the protocol for a custom time zone.
    *
    * @category Temporal
+   * @experimental
    */
   export interface TimeZoneProtocol {
     id: string;
@@ -3818,6 +4071,7 @@ declare namespace Temporal {
    * Any of these types can be passed to Temporal methods instead of a Temporal.TimeZone.
    *
    * @category Temporal
+   * @experimental
    */
   export type TimeZoneLike = string | TimeZoneProtocol | ZonedDateTime;
 
@@ -3836,6 +4090,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/timezone.html for more details.
    *
    * @category Temporal
+   * @experimental
    */
   export class TimeZone implements TimeZoneProtocol {
     static from(timeZone: TimeZoneLike): Temporal.TimeZone | TimeZoneProtocol;
@@ -3866,7 +4121,10 @@ declare namespace Temporal {
     readonly [Symbol.toStringTag]: "Temporal.TimeZone";
   }
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type PlainYearMonthLike = {
     era?: string | undefined;
     eraYear?: number | undefined;
@@ -3884,6 +4142,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/yearmonth.html for more details.
    *
    * @category Temporal
+   * @experimental
    */
   export class PlainYearMonth {
     static from(
@@ -3946,7 +4205,10 @@ declare namespace Temporal {
     readonly [Symbol.toStringTag]: "Temporal.PlainYearMonth";
   }
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export type ZonedDateTimeLike = {
     era?: string | undefined;
     eraYear?: number | undefined;
@@ -3965,8 +4227,11 @@ declare namespace Temporal {
     calendar?: CalendarLike;
   };
 
-  /** @category Temporal */
-  type ZonedDateTimeISOFields = {
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type ZonedDateTimeISOFields = {
     isoYear: number;
     isoMonth: number;
     isoDay: number;
@@ -3981,7 +4246,10 @@ declare namespace Temporal {
     calendar: string | CalendarProtocol;
   };
 
-  /** @category Temporal */
+  /**
+   * @category Temporal
+   * @experimental
+   */
   export class ZonedDateTime {
     static from(
       item: Temporal.ZonedDateTime | ZonedDateTimeLike | string,
@@ -4115,6 +4383,7 @@ declare namespace Temporal {
    * See https://tc39.es/proposal-temporal/docs/now.html for more details.
    *
    * @category Temporal
+   * @experimental
    */
   export const Now: {
     /**
@@ -4268,15 +4537,24 @@ declare namespace Temporal {
   };
 }
 
-interface Date {
-  /** @category Temporal */
+/**
+ * @category Temporal
+ * @experimental
+ */
+declare interface Date {
   toTemporalInstant(): Temporal.Instant;
 }
 
-/** @category Intl */
+/**
+ * @category Intl
+ * @experimental
+ */
 declare namespace Intl {
-  /** @category Intl */
-  type Formattable =
+  /**
+   * @category Intl
+   * @experimental
+   */
+  export type Formattable =
     | Date
     | Temporal.Instant
     | Temporal.ZonedDateTime
@@ -4286,12 +4564,18 @@ declare namespace Intl {
     | Temporal.PlainYearMonth
     | Temporal.PlainMonthDay;
 
-  /** @category Intl */
-  interface DateTimeFormatRangePart {
+  /**
+   * @category Intl
+   * @experimental
+   */
+  export interface DateTimeFormatRangePart {
     source: "shared" | "startRange" | "endRange";
   }
 
-  /** @category Intl */
+  /**
+   * @category Intl
+   * @experimental
+   */
   export interface DateTimeFormat {
     /**
      * Format a date into a string according to the locale and formatting
@@ -4340,11 +4624,560 @@ declare namespace Intl {
     ): DateTimeFormatRangePart[];
   }
 
-  /** @category Intl */
+  /**
+   * @category Intl
+   * @experimental
+   */
   export interface DateTimeFormatOptions {
     // TODO: remove the props below after TS lib declarations are updated
     dayPeriod?: "narrow" | "short" | "long";
     dateStyle?: "full" | "long" | "medium" | "short";
     timeStyle?: "full" | "long" | "medium" | "short";
   }
+}
+
+/**
+ * A typed array of 16-bit float values. The contents are initialized to 0. If the requested number
+ * of bytes could not be allocated an exception is raised.
+ *
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16Array {
+  /**
+   * The size in bytes of each element in the array.
+   */
+  readonly BYTES_PER_ELEMENT: number;
+
+  /**
+   * The ArrayBuffer instance referenced by the array.
+   */
+  readonly buffer: ArrayBufferLike;
+
+  /**
+   * The length in bytes of the array.
+   */
+  readonly byteLength: number;
+
+  /**
+   * The offset in bytes of the array.
+   */
+  readonly byteOffset: number;
+
+  /**
+   * Returns the this object after copying a section of the array identified by start and end
+   * to the same array starting at position target
+   * @param target If target is negative, it is treated as length+target where length is the
+   * length of the array.
+   * @param start If start is negative, it is treated as length+start. If end is negative, it
+   * is treated as length+end.
+   * @param end If not specified, length of the this object is used as its default value.
+   */
+  copyWithin(target: number, start: number, end?: number): this;
+
+  /**
+   * Determines whether all the members of an array satisfy the specified test.
+   * @param predicate A function that accepts up to three arguments. The every method calls
+   * the predicate function for each element in the array until the predicate returns a value
+   * which is coercible to the Boolean value false, or until the end of the array.
+   * @param thisArg An object to which the this keyword can refer in the predicate function.
+   * If thisArg is omitted, undefined is used as the this value.
+   */
+  every(
+    predicate: (value: number, index: number, array: Float16Array) => unknown,
+    thisArg?: any,
+  ): boolean;
+
+  /**
+   * Changes all array elements from `start` to `end` index to a static `value` and returns the modified array
+   * @param value value to fill array section with
+   * @param start index to start filling the array at. If start is negative, it is treated as
+   * length+start where length is the length of the array.
+   * @param end index to stop filling the array at. If end is negative, it is treated as
+   * length+end.
+   */
+  fill(value: number, start?: number, end?: number): this;
+
+  /**
+   * Returns the elements of an array that meet the condition specified in a callback function.
+   * @param predicate A function that accepts up to three arguments. The filter method calls
+   * the predicate function one time for each element in the array.
+   * @param thisArg An object to which the this keyword can refer in the predicate function.
+   * If thisArg is omitted, undefined is used as the this value.
+   */
+  filter(
+    predicate: (value: number, index: number, array: Float16Array) => any,
+    thisArg?: any,
+  ): Float16Array;
+
+  /**
+   * Returns the value of the first element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found, find
+   * immediately returns that element value. Otherwise, find returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  find(
+    predicate: (value: number, index: number, obj: Float16Array) => boolean,
+    thisArg?: any,
+  ): number | undefined;
+
+  /**
+   * Returns the index of the first element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findIndex immediately returns that element index. Otherwise, findIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findIndex(
+    predicate: (value: number, index: number, obj: Float16Array) => boolean,
+    thisArg?: any,
+  ): number;
+
+  /**
+   * Performs the specified action for each element in an array.
+   * @param callbackfn  A function that accepts up to three arguments. forEach calls the
+   * callbackfn function one time for each element in the array.
+   * @param thisArg  An object to which the this keyword can refer in the callbackfn function.
+   * If thisArg is omitted, undefined is used as the this value.
+   */
+  forEach(
+    callbackfn: (value: number, index: number, array: Float16Array) => void,
+    thisArg?: any,
+  ): void;
+
+  /**
+   * Returns the index of the first occurrence of a value in an array.
+   * @param searchElement The value to locate in the array.
+   * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
+   *  search starts at index 0.
+   */
+  indexOf(searchElement: number, fromIndex?: number): number;
+
+  /**
+   * Adds all the elements of an array separated by the specified separator string.
+   * @param separator A string used to separate one element of an array from the next in the
+   * resulting String. If omitted, the array elements are separated with a comma.
+   */
+  join(separator?: string): string;
+
+  /**
+   * Returns the index of the last occurrence of a value in an array.
+   * @param searchElement The value to locate in the array.
+   * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
+   * search starts at index 0.
+   */
+  lastIndexOf(searchElement: number, fromIndex?: number): number;
+
+  /**
+   * The length of the array.
+   */
+  readonly length: number;
+
+  /**
+   * Calls a defined callback function on each element of an array, and returns an array that
+   * contains the results.
+   * @param callbackfn A function that accepts up to three arguments. The map method calls the
+   * callbackfn function one time for each element in the array.
+   * @param thisArg An object to which the this keyword can refer in the callbackfn function.
+   * If thisArg is omitted, undefined is used as the this value.
+   */
+  map(
+    callbackfn: (value: number, index: number, array: Float16Array) => number,
+    thisArg?: any,
+  ): Float16Array;
+
+  /**
+   * Calls the specified callback function for all the elements in an array. The return value of
+   * the callback function is the accumulated result, and is provided as an argument in the next
+   * call to the callback function.
+   * @param callbackfn A function that accepts up to four arguments. The reduce method calls the
+   * callbackfn function one time for each element in the array.
+   * @param initialValue If initialValue is specified, it is used as the initial value to start
+   * the accumulation. The first call to the callbackfn function provides this value as an argument
+   * instead of an array value.
+   */
+  reduce(
+    callbackfn: (
+      previousValue: number,
+      currentValue: number,
+      currentIndex: number,
+      array: Float16Array,
+    ) => number,
+  ): number;
+  reduce(
+    callbackfn: (
+      previousValue: number,
+      currentValue: number,
+      currentIndex: number,
+      array: Float16Array,
+    ) => number,
+    initialValue: number,
+  ): number;
+
+  /**
+   * Calls the specified callback function for all the elements in an array. The return value of
+   * the callback function is the accumulated result, and is provided as an argument in the next
+   * call to the callback function.
+   * @param callbackfn A function that accepts up to four arguments. The reduce method calls the
+   * callbackfn function one time for each element in the array.
+   * @param initialValue If initialValue is specified, it is used as the initial value to start
+   * the accumulation. The first call to the callbackfn function provides this value as an argument
+   * instead of an array value.
+   */
+  reduce<U>(
+    callbackfn: (
+      previousValue: U,
+      currentValue: number,
+      currentIndex: number,
+      array: Float16Array,
+    ) => U,
+    initialValue: U,
+  ): U;
+
+  /**
+   * Calls the specified callback function for all the elements in an array, in descending order.
+   * The return value of the callback function is the accumulated result, and is provided as an
+   * argument in the next call to the callback function.
+   * @param callbackfn A function that accepts up to four arguments. The reduceRight method calls
+   * the callbackfn function one time for each element in the array.
+   * @param initialValue If initialValue is specified, it is used as the initial value to start
+   * the accumulation. The first call to the callbackfn function provides this value as an
+   * argument instead of an array value.
+   */
+  reduceRight(
+    callbackfn: (
+      previousValue: number,
+      currentValue: number,
+      currentIndex: number,
+      array: Float16Array,
+    ) => number,
+  ): number;
+  reduceRight(
+    callbackfn: (
+      previousValue: number,
+      currentValue: number,
+      currentIndex: number,
+      array: Float16Array,
+    ) => number,
+    initialValue: number,
+  ): number;
+
+  /**
+   * Calls the specified callback function for all the elements in an array, in descending order.
+   * The return value of the callback function is the accumulated result, and is provided as an
+   * argument in the next call to the callback function.
+   * @param callbackfn A function that accepts up to four arguments. The reduceRight method calls
+   * the callbackfn function one time for each element in the array.
+   * @param initialValue If initialValue is specified, it is used as the initial value to start
+   * the accumulation. The first call to the callbackfn function provides this value as an argument
+   * instead of an array value.
+   */
+  reduceRight<U>(
+    callbackfn: (
+      previousValue: U,
+      currentValue: number,
+      currentIndex: number,
+      array: Float16Array,
+    ) => U,
+    initialValue: U,
+  ): U;
+
+  /**
+   * Reverses the elements in an Array.
+   */
+  reverse(): Float16Array;
+
+  /**
+   * Sets a value or an array of values.
+   * @param array A typed or untyped array of values to set.
+   * @param offset The index in the current array at which the values are to be written.
+   */
+  set(array: ArrayLike<number>, offset?: number): void;
+
+  /**
+   * Returns a section of an array.
+   * @param start The beginning of the specified portion of the array.
+   * @param end The end of the specified portion of the array. This is exclusive of the element at the index 'end'.
+   */
+  slice(start?: number, end?: number): Float16Array;
+
+  /**
+   * Determines whether the specified callback function returns true for any element of an array.
+   * @param predicate A function that accepts up to three arguments. The some method calls
+   * the predicate function for each element in the array until the predicate returns a value
+   * which is coercible to the Boolean value true, or until the end of the array.
+   * @param thisArg An object to which the this keyword can refer in the predicate function.
+   * If thisArg is omitted, undefined is used as the this value.
+   */
+  some(
+    predicate: (value: number, index: number, array: Float16Array) => unknown,
+    thisArg?: any,
+  ): boolean;
+
+  /**
+   * Sorts an array.
+   * @param compareFn Function used to determine the order of the elements. It is expected to return
+   * a negative value if first argument is less than second argument, zero if they're equal and a positive
+   * value otherwise. If omitted, the elements are sorted in ascending order.
+   * ```ts
+   * [11,2,22,1].sort((a, b) => a - b)
+   * ```
+   */
+  sort(compareFn?: (a: number, b: number) => number): this;
+
+  /**
+   * Gets a new Float16Array view of the ArrayBuffer store for this array, referencing the elements
+   * at begin, inclusive, up to end, exclusive.
+   * @param begin The index of the beginning of the array.
+   * @param end The index of the end of the array.
+   */
+  subarray(begin?: number, end?: number): Float16Array;
+
+  /**
+   * Converts a number to a string by using the current locale.
+   */
+  toLocaleString(): string;
+
+  /**
+   * Returns a string representation of an array.
+   */
+  toString(): string;
+
+  /** Returns the primitive value of the specified object. */
+  valueOf(): Float16Array;
+
+  [index: number]: number;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16ArrayConstructor {
+  readonly prototype: Float16Array;
+  new (length: number): Float16Array;
+  new (array: ArrayLike<number> | ArrayBufferLike): Float16Array;
+  new (
+    buffer: ArrayBufferLike,
+    byteOffset?: number,
+    length?: number,
+  ): Float16Array;
+
+  /**
+   * The size in bytes of each element in the array.
+   */
+  readonly BYTES_PER_ELEMENT: number;
+
+  /**
+   * Returns a new array from a set of elements.
+   * @param items A set of elements to include in the new array object.
+   */
+  of(...items: number[]): Float16Array;
+
+  /**
+   * Creates an array from an array-like or iterable object.
+   * @param arrayLike An array-like or iterable object to convert to an array.
+   */
+  from(arrayLike: ArrayLike<number>): Float16Array;
+
+  /**
+   * Creates an array from an array-like or iterable object.
+   * @param arrayLike An array-like or iterable object to convert to an array.
+   * @param mapfn A mapping function to call on every element of the array.
+   * @param thisArg Value of 'this' used to invoke the mapfn.
+   */
+  from<T>(
+    arrayLike: ArrayLike<T>,
+    mapfn: (v: T, k: number) => number,
+    thisArg?: any,
+  ): Float16Array;
+}
+/**
+ * @category Platform
+ * @experimental
+ */
+declare var Float16Array: Float16ArrayConstructor;
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16 {
+  [Symbol.iterator](): IterableIterator<number>;
+  /**
+   * Returns an array of key, value pairs for every entry in the array
+   */
+  entries(): IterableIterator<[number, number]>;
+  /**
+   * Returns an list of keys in the array
+   */
+  keys(): IterableIterator<number>;
+  /**
+   * Returns an list of values in the array
+   */
+  values(): IterableIterator<number>;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16Constructor {
+  new (elements: Iterable<number>): Float16;
+
+  /**
+   * Creates an array from an array-like or iterable object.
+   * @param arrayLike An array-like or iterable object to convert to an array.
+   * @param mapfn A mapping function to call on every element of the array.
+   * @param thisArg Value of 'this' used to invoke the mapfn.
+   */
+  from(
+    arrayLike: Iterable<number>,
+    mapfn?: (v: number, k: number) => number,
+    thisArg?: any,
+  ): Float16;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16Array {
+  readonly [Symbol.toStringTag]: "Float16Array";
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16Array {
+  /**
+   * Determines whether an array includes a certain element, returning true or false as appropriate.
+   * @param searchElement The element to search for.
+   * @param fromIndex The position in this array at which to begin searching for searchElement.
+   */
+  includes(searchElement: number, fromIndex?: number): boolean;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16ArrayConstructor {
+  new (): Float16Array;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16Array {
+  /**
+   * Returns the item located at the specified index.
+   * @param index The zero-based index of the desired code unit. A negative index will count back from the last item.
+   */
+  at(index: number): number | undefined;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16Array {
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate findLast calls predicate once for each element of the array, in descending
+   * order, until it finds one where predicate returns true. If such an element is found, findLast
+   * immediately returns that element value. Otherwise, findLast returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast<S extends number>(
+    predicate: (
+      value: number,
+      index: number,
+      array: Float16Array,
+    ) => value is S,
+    thisArg?: any,
+  ): S | undefined;
+  findLast(
+    predicate: (
+      value: number,
+      index: number,
+      array: Float16Array,
+    ) => unknown,
+    thisArg?: any,
+  ): number | undefined;
+
+  /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate findLastIndex calls predicate once for each element of the array, in descending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findLastIndex immediately returns that element index. Otherwise, findLastIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLastIndex(
+    predicate: (
+      value: number,
+      index: number,
+      array: Float16Array,
+    ) => unknown,
+    thisArg?: any,
+  ): number;
+
+  /**
+   * Copies the array and returns the copy with the elements in reverse order.
+   */
+  toReversed(): Float16Array;
+
+  /**
+   * Copies and sorts the array.
+   * @param compareFn Function used to determine the order of the elements. It is expected to return
+   * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
+   * value otherwise. If omitted, the elements are sorted in ascending order.
+   * ```ts
+   * const myNums = Float16Array.from([11.25, 2, -22.5, 1]);
+   * myNums.toSorted((a, b) => a - b) // Float16Array(4) [-22.5, 1, 2, 11.5]
+   * ```
+   */
+  toSorted(compareFn?: (a: number, b: number) => number): Float16Array;
+
+  /**
+   * Copies the array and inserts the given number at the provided index.
+   * @param index The index of the value to overwrite. If the index is
+   * negative, then it replaces from the end of the array.
+   * @param value The value to insert into the copied array.
+   * @returns A copy of the original array with the inserted value.
+   */
+  with(index: number, value: number): Float16Array;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface DataView {
+  /**
+   * Gets the Float16 value at the specified byte offset from the start of the view. There is
+   * no alignment constraint; multi-byte values may be fetched from any offset.
+   * @param byteOffset The place in the buffer at which the value should be retrieved.
+   * @param littleEndian If false or undefined, a big-endian value should be read.
+   */
+  getFloat16(byteOffset: number, littleEndian?: boolean): number;
+
+  /**
+   * Stores an Float16 value at the specified byte offset from the start of the view.
+   * @param byteOffset The place in the buffer at which the value should be set.
+   * @param value The value to set.
+   * @param littleEndian If false or undefined, a big-endian value should be written.
+   */
+  setFloat16(byteOffset: number, value: number, littleEndian?: boolean): void;
 }

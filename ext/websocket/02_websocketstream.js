@@ -474,7 +474,7 @@ class WebSocketError extends DOMException {
   #closeCode;
   #reason;
 
-  constructor(message = "", init = {}) {
+  constructor(message = "", init = { __proto__: null }) {
     super(message, "WebSocketError");
     this[webidl.brand] = webidl.brand;
 

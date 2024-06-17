@@ -20,3 +20,7 @@ Deno.test("qux", () => {
 Deno.test("quux", () => {
   quux(false);
 });
+
+// Function constructor or eval function generates a new script source internally.
+// This call ensures that the coverage data for the eval script source is not generated.
+eval("console.log(1)");

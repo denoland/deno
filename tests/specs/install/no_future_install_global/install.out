@@ -1,0 +1,5 @@
+⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.
+Download http://localhost:4260/@denotest/esm-basic
+Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
+✅ Successfully installed deno-test-bin[WILDCARD]
+[WILDCARD]

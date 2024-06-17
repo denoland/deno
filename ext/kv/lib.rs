@@ -4,7 +4,6 @@ pub mod dynamic;
 mod interface;
 pub mod remote;
 pub mod sqlite;
-mod time;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -56,7 +55,6 @@ use denokv_proto::WatchStream;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
-use time::utc_now;
 
 pub use crate::interface::*;
 
@@ -536,7 +534,12 @@ fn mutation_from_v8(
   let kind = match (value.1.as_str(), value.2) {
     ("set", Some(value)) => MutationKind::Set(value.try_into()?),
     ("delete", None) => MutationKind::Delete,
-    ("sum", Some(value)) => MutationKind::Sum(value.try_into()?),
+    ("sum", Some(value)) => MutationKind::Sum {
+      value: value.try_into()?,
+      min_v8: vec![],
+      max_v8: vec![],
+      clamp: false,
+    },
     ("min", Some(value)) => MutationKind::Min(value.try_into()?),
     ("max", Some(value)) => MutationKind::Max(value.try_into()?),
     ("setSuffixVersionstampedKey", Some(value)) => {
@@ -772,7 +775,7 @@ async fn op_kv_atomic_write<DBH>(
 where
   DBH: DatabaseHandler + 'static,
 {
-  let current_timestamp = utc_now();
+  let current_timestamp = chrono::Utc::now();
   let db = {
     let state = state.borrow();
     let resource =

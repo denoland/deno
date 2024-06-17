@@ -39,6 +39,7 @@ macro_rules! bench_or_profile {
   };
 }
 
+#[allow(clippy::print_stdout)]
 pub fn run_profiles(opts: &TestOpts, tests: Vec<TestDescAndFn>) {
   let tests = filter_tests(opts, tests);
   // let decs = tests.iter().map(|t| t.desc.clone()).collect();

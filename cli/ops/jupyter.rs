@@ -4,9 +4,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::tools::jupyter::jupyter_msg::Connection;
-use crate::tools::jupyter::jupyter_msg::JupyterMessage;
-use crate::tools::jupyter::server::StdioMsg;
+use jupyter_runtime::JupyterMessage;
+use jupyter_runtime::JupyterMessageContent;
+use jupyter_runtime::KernelIoPubConnection;
+use jupyter_runtime::StreamContent;
+
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde_json;
@@ -19,7 +21,7 @@ deno_core::extension!(deno_jupyter,
     op_jupyter_broadcast,
   ],
   options = {
-    sender: mpsc::UnboundedSender<StdioMsg>,
+    sender: mpsc::UnboundedSender<StreamContent>,
   },
   middleware = |op| match op.name {
     "op_print" => op_print(),
@@ -38,24 +40,37 @@ pub async fn op_jupyter_broadcast(
   #[serde] metadata: serde_json::Value,
   #[serde] buffers: Vec<deno_core::JsBuffer>,
 ) -> Result<(), AnyError> {
-  let (iopub_socket, last_execution_request) = {
+  let (iopub_connection, last_execution_request) = {
     let s = state.borrow();
 
     (
-      s.borrow::<Arc<Mutex<Connection<zeromq::PubSocket>>>>()
-        .clone(),
+      s.borrow::<Arc<Mutex<KernelIoPubConnection>>>().clone(),
       s.borrow::<Rc<RefCell<Option<JupyterMessage>>>>().clone(),
     )
   };
 
   let maybe_last_request = last_execution_request.borrow().clone();
   if let Some(last_request) = maybe_last_request {
-    last_request
-      .new_message(&message_type)
-      .with_content(content)
+    let content = JupyterMessageContent::from_type_and_content(
+      &message_type,
+      content.clone(),
+    )
+    .map_err(|err| {
+      log::error!(
+          "Error deserializing content from jupyter.broadcast, message_type: {}:\n\n{}\n\n{}",
+          &message_type,
+          content,
+          err
+      );
+      err
+    })?;
+
+    let jupyter_message = JupyterMessage::new(content, Some(&last_request))
       .with_metadata(metadata)
-      .with_buffers(buffers.into_iter().map(|b| b.to_vec().into()).collect())
-      .send(&mut *iopub_socket.lock().await)
+      .with_buffers(buffers.into_iter().map(|b| b.to_vec().into()).collect());
+
+    (iopub_connection.lock().await)
+      .send(jupyter_message)
       .await?;
   }
 
@@ -68,17 +83,17 @@ pub fn op_print(
   #[string] msg: &str,
   is_err: bool,
 ) -> Result<(), AnyError> {
-  let sender = state.borrow_mut::<mpsc::UnboundedSender<StdioMsg>>();
+  let sender = state.borrow_mut::<mpsc::UnboundedSender<StreamContent>>();
 
   if is_err {
-    if let Err(err) = sender.send(StdioMsg::Stderr(msg.into())) {
-      eprintln!("Failed to send stderr message: {}", err);
+    if let Err(err) = sender.send(StreamContent::stderr(msg.into())) {
+      log::error!("Failed to send stderr message: {}", err);
     }
     return Ok(());
   }
 
-  if let Err(err) = sender.send(StdioMsg::Stdout(msg.into())) {
-    eprintln!("Failed to send stdout message: {}", err);
+  if let Err(err) = sender.send(StreamContent::stdout(msg.into())) {
+    log::error!("Failed to send stdout message: {}", err);
   }
   Ok(())
 }

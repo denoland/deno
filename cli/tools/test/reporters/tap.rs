@@ -22,6 +22,7 @@ pub struct TapTestReporter {
   step_results: HashMap<usize, Vec<(TestStepDescription, TestStepResult)>>,
 }
 
+#[allow(clippy::print_stdout)]
 impl TapTestReporter {
   pub fn new(cwd: Url, is_concurrent: bool) -> TapTestReporter {
     TapTestReporter {
@@ -113,6 +114,7 @@ impl TapTestReporter {
   }
 }
 
+#[allow(clippy::print_stdout)]
 impl TestReporter for TapTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
 
@@ -138,6 +140,7 @@ impl TestReporter for TapTestReporter {
     std::io::stdout().flush().unwrap();
   }
 
+  fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
   fn report_output(&mut self, _output: &[u8]) {}
 
   fn report_result(

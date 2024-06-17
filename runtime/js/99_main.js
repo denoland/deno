@@ -8,7 +8,8 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
   op_bootstrap_args,
-  op_bootstrap_is_tty,
+  op_bootstrap_is_stderr_tty,
+  op_bootstrap_is_stdout_tty,
   op_bootstrap_no_color,
   op_bootstrap_pid,
   op_main_module,
@@ -35,6 +36,7 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectHasOwn,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -52,6 +54,7 @@ const {
 const {
   isNativeError,
 } = core;
+import { registerDeclarativeServer } from "ext:deno_http/00_serve.ts";
 import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
@@ -60,10 +63,10 @@ import * as timers from "ext:deno_web/02_timers.js";
 import {
   customInspect,
   getDefaultInspectOptions,
-  getNoColor,
+  getStderrNoColor,
   inspectArgs,
   quoteString,
-  setNoColorFn,
+  setNoColorFns,
 } from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
@@ -94,8 +97,6 @@ import {
   SymbolDispose,
   SymbolMetadata,
 } from "ext:deno_web/00_infra.js";
-// deno-lint-ignore prefer-primordials
-if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
 // deno-lint-ignore prefer-primordials
 if (Symbol.asyncDispose) {
   throw "V8 supports Symbol.asyncDispose now, no need to shim it!";
@@ -249,7 +250,7 @@ function workerClose() {
   op_worker_close();
 }
 
-function postMessage(message, transferOrOptions = {}) {
+function postMessage(message, transferOrOptions = { __proto__: null }) {
   const prefix =
     "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
   webidl.requiredArguments(arguments.length, 1, prefix);
@@ -377,7 +378,10 @@ function importScripts(...urls) {
 
 const opArgs = memoizeLazy(() => op_bootstrap_args());
 const opPid = memoizeLazy(() => op_bootstrap_pid());
-setNoColorFn(() => op_bootstrap_no_color() || !op_bootstrap_is_tty());
+setNoColorFns(
+  () => op_bootstrap_no_color() || !op_bootstrap_is_stdout_tty(),
+  () => op_bootstrap_no_color() || !op_bootstrap_is_stderr_tty(),
+);
 
 function formatException(error) {
   if (
@@ -388,11 +392,11 @@ function formatException(error) {
   } else if (typeof error == "string") {
     return `Uncaught ${
       inspectArgs([quoteString(error, getDefaultInspectOptions())], {
-        colors: !getNoColor(),
+        colors: !getStderrNoColor(),
       })
     }`;
   } else {
-    return `Uncaught ${inspectArgs([error], { colors: !getNoColor() })}`;
+    return `Uncaught ${inspectArgs([error], { colors: !getStderrNoColor() })}`;
   }
 }
 
@@ -670,6 +674,14 @@ ObjectDefineProperties(finalDenoNs, {
       return internals.future ? undefined : customInspect;
     },
   },
+  exitCode: {
+    get() {
+      return os.getExitCode();
+    },
+    set(value) {
+      os.setExitCode(value);
+    },
+  },
 });
 
 const {
@@ -678,6 +690,18 @@ const {
   v8Version,
   target,
 } = op_snapshot_options();
+
+const executionModes = {
+  none: 0,
+  worker: 1,
+  run: 2,
+  repl: 3,
+  eval: 4,
+  test: 5,
+  bench: 6,
+  serve: 7,
+  jupyter: 8,
+};
 
 function bootstrapMainRuntime(runtimeOptions, warmup = false) {
   if (!warmup) {
@@ -692,10 +716,55 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       3: inspectFlag,
       5: hasNodeModulesDir,
       6: argv0,
-      7: shouldDisableDeprecatedApiWarning,
-      8: shouldUseVerboseDeprecatedApiWarning,
-      9: future,
+      7: nodeDebug,
+      8: shouldDisableDeprecatedApiWarning,
+      9: shouldUseVerboseDeprecatedApiWarning,
+      10: future,
+      11: mode,
+      12: servePort,
+      13: serveHost,
     } = runtimeOptions;
+
+    if (mode === executionModes.run || mode === executionModes.serve) {
+      let serve = undefined;
+      core.addMainModuleHandler((main) => {
+        if (ObjectHasOwn(main, "default")) {
+          try {
+            serve = registerDeclarativeServer(main.default);
+          } catch (e) {
+            if (mode === executionModes.serve) {
+              throw e;
+            }
+          }
+        }
+
+        if (mode === executionModes.serve && !serve) {
+          console.error(
+            `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
+            "color: yellow;",
+            "color: inherit;",
+            "font-weight: bold;",
+            "font-weight: normal;",
+          );
+          return;
+        }
+
+        if (serve) {
+          if (mode === executionModes.run) {
+            console.error(
+              `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
+              "color: yellow;",
+              "color: inherit;",
+              "font-weight: bold;",
+              "font-weight: normal;",
+            );
+          }
+          if (mode === executionModes.serve) {
+            serve({ servePort, serveHost });
+          }
+        }
+      });
+    }
 
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
     // class properties within constructors for classes that are not defined
@@ -801,7 +870,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
 
     if (nodeBootstrap) {
-      nodeBootstrap(hasNodeModulesDir, argv0, /* runningOnMainThread */ true);
+      nodeBootstrap({
+        usesLocalNodeModulesDir: hasNodeModulesDir,
+        runningOnMainThread: true,
+        argv0,
+        nodeDebug,
+      });
     }
     if (future) {
       delete globalThis.window;
@@ -859,9 +933,10 @@ function bootstrapWorkerRuntime(
       4: enableTestingFeaturesFlag,
       5: hasNodeModulesDir,
       6: argv0,
-      7: shouldDisableDeprecatedApiWarning,
-      8: shouldUseVerboseDeprecatedApiWarning,
-      9: future,
+      7: nodeDebug,
+      8: shouldDisableDeprecatedApiWarning,
+      9: shouldUseVerboseDeprecatedApiWarning,
+      10: future,
     } = runtimeOptions;
 
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
@@ -958,13 +1033,14 @@ function bootstrapWorkerRuntime(
       : undefined;
 
     if (nodeBootstrap) {
-      nodeBootstrap(
-        hasNodeModulesDir,
+      nodeBootstrap({
+        usesLocalNodeModulesDir: hasNodeModulesDir,
+        runningOnMainThread: false,
         argv0,
-        /* runningOnMainThread */ false,
         workerId,
-        workerMetadata,
-      );
+        maybeWorkerMetadata: workerMetadata,
+        nodeDebug,
+      });
     }
 
     if (future) {
@@ -1039,4 +1115,4 @@ bootstrapWorkerRuntime(
   undefined,
   true,
 );
-nodeBootstrap(undefined, undefined, undefined, undefined, undefined, true);
+nodeBootstrap({ warmup: true });

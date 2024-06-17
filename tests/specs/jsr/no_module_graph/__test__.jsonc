@@ -1,13 +1,16 @@
 {
-  "steps": [{
-    "args": "run main.ts",
-    "output": "main.out"
-  }, {
-    "cleanDenoDir": true,
-    "args": "info main.ts",
-    "output": "main_info.out"
-  }, {
-    "args": "run --quiet multiple.ts",
-    "output": "multiple.out"
-  }]
+  "tests": {
+    "single": {
+      "args": "run main.ts",
+      "output": "main.out"
+    },
+    "single_info": {
+      "args": "info main.ts",
+      "output": "main_info.out"
+    },
+    "multiple": {
+      "args": "run --quiet multiple.ts",
+      "output": "multiple.out"
+    }
+  }
 }

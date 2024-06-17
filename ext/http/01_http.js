@@ -38,10 +38,10 @@ import {
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
 import {
+  abortRequest,
   fromInnerRequest,
   newInnerRequest,
 } from "ext:deno_fetch/23_request.js";
-import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import {
   _eventLoop,
   _idleTimeoutDuration,
@@ -147,19 +147,17 @@ class HttpConn {
       body !== null ? new InnerBody(body) : null,
       false,
     );
-    const abortController = new AbortController();
     const request = fromInnerRequest(
       innerRequest,
-      abortController.signal,
       "immutable",
       false,
     );
 
     const respondWith = createRespondWith(
       this,
+      request,
       readStreamRid,
       writeStreamRid,
-      abortController,
     );
 
     return { request, respondWith };
@@ -200,9 +198,9 @@ class HttpConn {
 
 function createRespondWith(
   httpConn,
+  request,
   readStreamRid,
   writeStreamRid,
-  abortController,
 ) {
   return async function respondWith(resp) {
     try {
@@ -384,7 +382,7 @@ function createRespondWith(
         ws[_serverHandleIdleTimeout]();
       }
     } catch (error) {
-      abortController.abort(error);
+      abortRequest(request);
       throw error;
     } finally {
       if (deleteManagedResource(httpConn, readStreamRid)) {

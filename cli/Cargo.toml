@@ -2,10 +2,11 @@
 
 [package]
 name = "deno"
-version = "1.42.4"
+version = "1.44.2"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
+exclude = ["bench/testdata/lsp_benchdata/"]
 license.workspace = true
 repository.workspace = true
 description = "Provides the deno executable"
@@ -64,19 +65,19 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = { workspace = true }
-deno_config = "=0.16.1"
+deno_config = "=0.16.4"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.125.0", features = ["html"] }
-deno_emit = "=0.40.0"
-deno_graph = { version = "=0.73.1", features = ["tokio_executor"] }
-deno_lint = { version = "=0.58.3", features = ["docs"] }
+deno_doc = { version = "=0.139.0", features = ["html", "syntect"] }
+deno_emit = "=0.42.0"
+deno_graph = { version = "=0.78.1", features = ["tokio_executor"] }
+deno_lint = { version = "=0.60.0", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm = "=0.17.0"
+deno_npm = "=0.21.4"
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_semver = "=0.5.4"
-deno_task_shell = "=0.16.0"
+deno_semver = "=0.5.6"
+deno_task_shell = "=0.16.1"
 deno_terminal.workspace = true
-eszip = "=0.68.0"
+eszip = "=0.71.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -85,7 +86,7 @@ base64.workspace = true
 bincode = "=1.3.3"
 bytes.workspace = true
 cache_control.workspace = true
-chrono.workspace = true
+chrono = { workspace = true, features = ["now"] }
 clap = { version = "=4.4.17", features = ["env", "string"] }
 clap_complete = "=4.4.7"
 clap_complete_fig = "=4.4.2"
@@ -95,10 +96,10 @@ dashmap = "5.5.3"
 data-encoding.workspace = true
 dissimilar = "=1.0.4"
 dotenvy = "0.15.7"
-dprint-plugin-json = "=0.19.2"
+dprint-plugin-json = "=0.19.3"
 dprint-plugin-jupyter = "=0.1.3"
-dprint-plugin-markdown = "=0.16.4"
-dprint-plugin-typescript = "=0.90.3"
+dprint-plugin-markdown = "=0.17.1"
+dprint-plugin-typescript = "=0.91.1"
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
 faster-hex.workspace = true
@@ -110,6 +111,7 @@ ignore = "0.4"
 import_map = { version = "=0.19.0", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser.workspace = true
+jupyter_runtime = { package = "runtimelib", version = "=0.11.0" }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
@@ -120,11 +122,10 @@ monch.workspace = true
 notify.workspace = true
 once_cell.workspace = true
 open = "5.0.1"
-os_pipe.workspace = true
 p256.workspace = true
+pathdiff = "0.2.1"
 percent-encoding.workspace = true
 phf.workspace = true
-pin-project.workspace = true
 quick-junit = "^0.3.5"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
@@ -145,16 +146,14 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tower-lsp.workspace = true
-twox-hash = "=1.6.3"
+twox-hash.workspace = true
 typed-arena = "=2.0.1"
-unicode-width = "0.1"
 uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
 zeromq.workspace = true
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-fwdansi.workspace = true
 junction.workspace = true
 winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
 

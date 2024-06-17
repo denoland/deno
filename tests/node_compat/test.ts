@@ -104,8 +104,21 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
           ...envVars,
         },
         cwd,
-      });
+        stdout: "piped",
+        stderr: "piped",
+      }).spawn();
+      const warner = setTimeout(() => {
+        console.error(`Test is running slow: ${testCase}`);
+      }, 2 * 60_000);
+      const killer = setTimeout(() => {
+        console.error(
+          `Test ran far too long, terminating with extreme prejudice: ${testCase}`,
+        );
+        command.kill();
+      }, 10 * 60_000);
       const { code, stdout, stderr } = await command.output();
+      clearTimeout(warner);
+      clearTimeout(killer);
 
       if (code !== 0) {
         // If the test case failed, show the stdout, stderr, and instruction
@@ -115,7 +128,7 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
         }
         const stderrOutput = decoder.decode(stderr);
         const repeatCmd = magenta(
-          `./target/debug/deno test -A tests/node_compat/test.ts -- ${path}`,
+          `./target/debug/deno test --config tests/config/deno.json -A tests/node_compat/test.ts -- ${path}`,
         );
         const msg = `"${magenta(path)}" failed:
 

@@ -10,14 +10,16 @@ import "node:module";
 
 let initialized = false;
 
-function initialize(
-  usesLocalNodeModulesDir,
-  argv0,
-  runningOnMainThread,
-  workerId,
-  maybeWorkerMetadata,
-  warmup = false,
-) {
+function initialize(args) {
+  const {
+    usesLocalNodeModulesDir,
+    argv0,
+    runningOnMainThread,
+    workerId,
+    maybeWorkerMetadata,
+    nodeDebug,
+    warmup = false,
+  } = args;
   if (!warmup) {
     if (initialized) {
       throw Error("Node runtime already initialized");
@@ -29,7 +31,12 @@ function initialize(
 
     // FIXME(bartlomieju): not nice to depend on `Deno` namespace here
     // but it's the only way to get `args` and `version` and this point.
-    internals.__bootstrapNodeProcess(argv0, Deno.args, Deno.version);
+    internals.__bootstrapNodeProcess(
+      argv0,
+      Deno.args,
+      Deno.version,
+      nodeDebug ?? "",
+    );
     internals.__initWorkerThreads(
       runningOnMainThread,
       workerId,
@@ -40,7 +47,13 @@ function initialize(
     delete internals.requireImpl;
   } else {
     // Warm up the process module
-    internals.__bootstrapNodeProcess(undefined, undefined, undefined, true);
+    internals.__bootstrapNodeProcess(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true,
+    );
   }
 }
 

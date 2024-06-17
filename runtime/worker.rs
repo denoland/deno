@@ -32,22 +32,23 @@ use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::SourceCodeCacheInfo;
 use deno_core::SourceMapGetter;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_permissions::PermissionsContainer;
 use deno_tls::RootCertStoreProvider;
+use deno_tls::TlsKeys;
 use deno_web::BlobStore;
 use log::debug;
 
 use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
-use crate::fs_util::code_timestamp;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::permissions::PermissionsContainer;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::BootstrapOptions;
@@ -155,6 +156,7 @@ pub struct WorkerOptions {
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
+  pub node_resolver: Option<Arc<deno_node::NodeResolver>>,
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
@@ -226,6 +228,7 @@ impl Default for WorkerOptions {
       broadcast_channel: Default::default(),
       source_map_getter: Default::default(),
       root_cert_store_provider: Default::default(),
+      node_resolver: Default::default(),
       npm_resolver: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
@@ -279,6 +282,7 @@ pub fn create_op_metrics(
       max_len.set(max_len.get().max(decl.name.len()));
       let max_len = max_len.clone();
       Some(Rc::new(
+        #[allow(clippy::print_stderr)]
         move |op: &deno_core::_ops::OpCtx, event, source| {
           eprintln!(
             "[{: >10.3}] {name:max_len$}: {event:?} {source:?}",
@@ -304,51 +308,6 @@ pub fn create_op_metrics(
   (op_summary_metrics, op_metrics_factory_fn)
 }
 
-fn get_code_cache(
-  code_cache: Arc<dyn CodeCache>,
-  specifier: &str,
-) -> Option<Vec<u8>> {
-  // Code hashes are not maintained for op_eval_context scripts. Instead we use
-  // the modified timestamp from the local file system.
-  if let Ok(code_timestamp) = code_timestamp(specifier) {
-    code_cache
-      .get_sync(
-        specifier,
-        CodeCacheType::Script,
-        code_timestamp.to_string().as_str(),
-      )
-      .inspect(|_| {
-        // This log line is also used by tests.
-        log::debug!(
-          "V8 code cache hit for script: {specifier}, [{code_timestamp}]"
-        );
-      })
-  } else {
-    None
-  }
-}
-
-fn set_code_cache(
-  code_cache: Arc<dyn CodeCache>,
-  specifier: &str,
-  data: &[u8],
-) {
-  // Code hashes are not maintained for op_eval_context scripts. Instead we use
-  // the modified timestamp from the local file system.
-  if let Ok(code_timestamp) = code_timestamp(specifier) {
-    // This log line is also used by tests.
-    log::debug!(
-      "Updating V8 code cache for script: {specifier}, [{code_timestamp}]",
-    );
-    code_cache.set_sync(
-      specifier,
-      CodeCacheType::Script,
-      code_timestamp.to_string().as_str(),
-      data,
-    );
-  }
-}
-
 impl MainWorker {
   pub fn bootstrap_from_options(
     main_module: ModuleSpecifier,
@@ -372,9 +331,6 @@ impl MainWorker {
         enable_testing_features: bool,
       },
       state = |state, options| {
-        // Save the permissions container and the wrapper.
-        state.put::<deno_permissions::PermissionsContainer>(options.permissions.0.clone());
-        // This is temporary until we migrate all exts/ to the deno_permissions crate.
         state.put::<PermissionsContainer>(options.permissions);
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
@@ -449,7 +405,7 @@ impl MainWorker {
             unsafely_ignore_certificate_errors: options
               .unsafely_ignore_certificate_errors
               .clone(),
-            client_cert_chain_and_key: None,
+            client_cert_chain_and_key: TlsKeys::Null,
             proxy: None,
           },
         ),
@@ -462,6 +418,7 @@ impl MainWorker {
         options.fs.clone(),
       ),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
+        options.node_resolver,
         options.npm_resolver,
         options.fs,
       ),
@@ -518,7 +475,7 @@ impl MainWorker {
       if !has_notified_of_inspector_disconnect
         .swap(true, std::sync::atomic::Ordering::SeqCst)
       {
-        println!("Program finished. Waiting for inspector to disconnect to exit the process...");
+        log::info!("Program finished. Waiting for inspector to disconnect to exit the process...");
       }
     });
 
@@ -548,16 +505,41 @@ impl MainWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
-      enable_code_cache: options.v8_code_cache.is_some(),
       eval_context_code_cache_cbs: options.v8_code_cache.map(|cache| {
         let cache_clone = cache.clone();
         (
-          Box::new(move |specifier: &str| {
-            Ok(get_code_cache(cache.clone(), specifier).map(Cow::Owned))
-          }) as Box<dyn Fn(&_) -> _>,
-          Box::new(move |specifier: &str, data: &[u8]| {
-            set_code_cache(cache_clone.clone(), specifier, data);
-          }) as Box<dyn Fn(&_, &_)>,
+          Box::new(move |specifier: &ModuleSpecifier, code: &v8::String| {
+            let source_hash = {
+              use std::hash::Hash;
+              use std::hash::Hasher;
+              let mut hasher = twox_hash::XxHash64::default();
+              code.hash(&mut hasher);
+              hasher.finish()
+            };
+            let data = cache
+              .get_sync(specifier, CodeCacheType::Script, source_hash)
+              .inspect(|_| {
+                // This log line is also used by tests.
+                log::debug!("V8 code cache hit for script: {specifier}, [{source_hash}]");
+              })
+              .map(Cow::Owned);
+            Ok(SourceCodeCacheInfo {
+              data,
+              hash: source_hash,
+            })
+          }) as Box<dyn Fn(&_, &_) -> _>,
+          Box::new(
+            move |specifier: ModuleSpecifier, source_hash: u64, data: &[u8]| {
+              // This log line is also used by tests.
+              log::debug!("Updating V8 code cache for script: {specifier}, [{source_hash}]");
+              cache_clone.set_sync(
+                specifier,
+                CodeCacheType::Script,
+                source_hash,
+                data,
+              );
+            },
+          ) as Box<dyn Fn(_, _, &_)>,
         )
       }),
       ..Default::default()

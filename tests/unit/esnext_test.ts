@@ -48,3 +48,12 @@ Deno.test(function setUnion() {
   const union = a.union(b);
   assertEquals(union, new Set([1, 2, 3, 4, 5]));
 });
+
+Deno.test(function float16Array() {
+  const myNums = Float16Array.from([11.25, 2, -22.5, 1]);
+  const sorted = myNums.toSorted((a, b) => a - b);
+  assertEquals(sorted[0], -22.5);
+  assertEquals(sorted[1], 1);
+  assertEquals(sorted[2], 2);
+  assertEquals(sorted[3], 11.25);
+});

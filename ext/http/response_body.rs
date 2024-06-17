@@ -16,7 +16,6 @@ use deno_core::Resource;
 use flate2::write::GzEncoder;
 use hyper::body::Frame;
 use hyper::body::SizeHint;
-use hyper::header::HeaderMap;
 use pin_project::pin_project;
 
 /// Simplification for nested types we use for our streams. We provide a way to convert from
@@ -30,10 +29,6 @@ pub enum ResponseStreamResult {
   /// not register a waker and should be called again at the lowest level of this code. Generally this
   /// will only be returned from compression streams that require additional buffering.
   NoData,
-  /// Stream provided trailers.
-  // TODO(mmastrac): We are threading trailers through the response system to eventually support Grpc.
-  #[allow(unused)]
-  Trailers(HeaderMap),
   /// Stream failed.
   Error(AnyError),
 }
@@ -44,7 +39,6 @@ impl From<ResponseStreamResult> for Option<Result<Frame<BufView>, AnyError>> {
       ResponseStreamResult::EndOfStream => None,
       ResponseStreamResult::NonEmptyBuf(buf) => Some(Ok(Frame::data(buf))),
       ResponseStreamResult::Error(err) => Some(Err(err)),
-      ResponseStreamResult::Trailers(map) => Some(Ok(Frame::trailers(map))),
       // This result should be handled by retrying
       ResponseStreamResult::NoData => unimplemented!(),
     }
@@ -197,6 +191,11 @@ impl ResponseBytesInner {
       }
       _ => Self::Bytes(BufView::from(vec)),
     }
+  }
+
+  /// Did we complete this response successfully?
+  pub fn is_complete(&self) -> bool {
+    matches!(self, ResponseBytesInner::Done | ResponseBytesInner::Empty)
   }
 }
 
@@ -387,9 +386,7 @@ impl PollFrame for GZipResponseStream {
     let start_out = stm.total_out();
     let res = match frame {
       // Short-circuit these and just return
-      x @ (ResponseStreamResult::NoData
-      | ResponseStreamResult::Error(..)
-      | ResponseStreamResult::Trailers(..)) => {
+      x @ (ResponseStreamResult::NoData | ResponseStreamResult::Error(..)) => {
         return std::task::Poll::Ready(x)
       }
       ResponseStreamResult::EndOfStream => {
@@ -397,7 +394,7 @@ impl PollFrame for GZipResponseStream {
         stm.compress(&[], &mut buf, flate2::FlushCompress::Finish)
       }
       ResponseStreamResult::NonEmptyBuf(mut input) => {
-        let res = stm.compress(&input, &mut buf, flate2::FlushCompress::None);
+        let res = stm.compress(&input, &mut buf, flate2::FlushCompress::Sync);
         let len_in = (stm.total_in() - start_in) as usize;
         debug_assert!(len_in <= input.len());
         this.crc.update(&input[..len_in]);
@@ -628,6 +625,7 @@ impl PollFrame for BrotliResponseStream {
   }
 }
 
+#[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
   use super::*;

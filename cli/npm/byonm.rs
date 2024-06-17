@@ -12,7 +12,6 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::package::PackageReq;
@@ -23,7 +22,6 @@ use crate::args::NpmProcessStateKind;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use deno_runtime::fs_util::specifier_to_file_path;
 
-use super::common::types_package_name;
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
 
@@ -97,20 +95,13 @@ impl NpmResolver for ByonmCliNpmResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     fn inner(
       fs: &dyn FileSystem,
       name: &str,
       referrer: &ModuleSpecifier,
-      mode: NodeResolutionMode,
     ) -> Result<PathBuf, AnyError> {
       let referrer_file = specifier_to_file_path(referrer)?;
-      let types_pkg_name = if mode.is_types() && !name.starts_with("@types/") {
-        Some(types_package_name(name))
-      } else {
-        None
-      };
       let mut current_folder = referrer_file.parent().unwrap();
       loop {
         let node_modules_folder = if current_folder.ends_with("node_modules") {
@@ -118,14 +109,6 @@ impl NpmResolver for ByonmCliNpmResolver {
         } else {
           Cow::Owned(current_folder.join("node_modules"))
         };
-
-        // attempt to resolve the types package first, then fallback to the regular package
-        if let Some(types_pkg_name) = &types_pkg_name {
-          let sub_dir = join_package_name(&node_modules_folder, types_pkg_name);
-          if fs.is_dir_sync(&sub_dir) {
-            return Ok(sub_dir);
-          }
-        }
 
         let sub_dir = join_package_name(&node_modules_folder, name);
         if fs.is_dir_sync(&sub_dir) {
@@ -146,7 +129,7 @@ impl NpmResolver for ByonmCliNpmResolver {
       );
     }
 
-    let path = inner(&*self.fs, name, referrer, mode)?;
+    let path = inner(&*self.fs, name, referrer)?;
     Ok(self.fs.realpath_sync(&path)?)
   }
 
@@ -160,7 +143,7 @@ impl NpmResolver for ByonmCliNpmResolver {
 
   fn ensure_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     if !path

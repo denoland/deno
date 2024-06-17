@@ -3,9 +3,11 @@
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_fetch::reqwest;
 use pretty_assertions::assert_eq;
 use test_util as util;
 use test_util::itest;
+use url::Url;
 use util::assert_contains;
 use util::env_vars_for_npm_tests;
 use util::http_server;
@@ -212,19 +214,11 @@ itest!(cached_only {
 });
 
 itest!(import_map {
-    args: "run --allow-read --allow-env --import-map npm/import_map/import_map.json npm/import_map/main.js",
-    output: "npm/import_map/main.out",
-    envs: env_vars_for_npm_tests(),
-    http_server: true,
-  });
-
-itest!(lock_file_integrity_failure {
-    args: "run --allow-read --allow-env --lock npm/lock_file/lock.json npm/lock_file/main.js",
-    output: "npm/lock_file/main.out",
-    envs: env_vars_for_npm_tests(),
-    http_server: true,
-    exit_code: 10,
-  });
+  args: "run --allow-read --allow-env --import-map npm/import_map/import_map.json npm/import_map/main.js",
+  output: "npm/import_map/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
 
 itest!(sub_paths {
   args: "run -A --quiet npm/sub_paths/main.jsx",
@@ -919,9 +913,7 @@ fn node_modules_dir_cache() {
   let package_global_cache_dir = deno_dir
     .path()
     .join("npm")
-    .join("localhost_4545")
-    .join("npm")
-    .join("registry")
+    .join("localhost_4260")
     .join("@denotest")
     .join("dual-cjs-esm")
     .join("1.0.0");
@@ -951,7 +943,7 @@ fn node_modules_dir_cache() {
 #[test]
 fn ensure_registry_files_local() {
   // ensures the registry files all point at local tarballs
-  let registry_dir_path = util::testdata_path().join("npm").join("registry");
+  let registry_dir_path = util::tests_path().join("registry").join("npm");
   for entry in std::fs::read_dir(&registry_dir_path).unwrap() {
     let entry = entry.unwrap();
     if entry.metadata().unwrap().is_dir() {
@@ -1507,7 +1499,7 @@ fn auto_discover_lock_file() {
     .run();
   output
     .assert_matches_text(
-r#"Download http://localhost:4545/npm/registry/@denotest/bin
+r#"Download http://localhost:4260/@denotest/bin
 error: Integrity check failed for package: "npm:@denotest/bin@1.0.0". Unable to verify that the package
 is the same as when the lockfile was generated.
 
@@ -1518,7 +1510,7 @@ This could be caused by:
   * the lock file may be corrupt
   * the source itself may be corrupt
 
-Use "--lock-write" flag to regenerate the lockfile at "[WILDCARD]deno.lock".
+Use the --lock-write flag to regenerate the lockfile at "[WILDCARD]deno.lock".
 "#)
     .assert_exit_code(10);
 }
@@ -1546,9 +1538,7 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let grandchild_path = deno_dir
     .path()
     .join("npm")
-    .join("localhost_4545")
-    .join("npm")
-    .join("registry")
+    .join("localhost_4260")
     .join("@denotest")
     .join("peer-dep-test-grandchild");
   assert!(grandchild_path.join("1.0.0").exists());
@@ -1662,8 +1652,8 @@ itest!(non_existent_dep {
   exit_code: 1,
   output_str: Some(concat!(
     "[UNORDERED_START]\n",
-    "Download http://localhost:4545/npm/registry/@denotest/non-existent-dep\n",
-    "Download http://localhost:4545/npm/registry/@denotest/non-existent\n",
+    "Download http://localhost:4260/@denotest/non-existent-dep\n",
+    "Download http://localhost:4260/@denotest/non-existent\n",
     "[UNORDERED_END]\n",
     "error: npm package '@denotest/non-existent' does not exist.\n"
   )),
@@ -1676,14 +1666,8 @@ itest!(non_existent_dep_version {
   exit_code: 1,
   output_str: Some(concat!(
     "[UNORDERED_START]\n",
-    "Download http://localhost:4545/npm/registry/@denotest/non-existent-dep-version\n",
-    "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-    "[UNORDERED_END]\n",
-    // does two downloads because when failing once it max tries to
-    // get the latest version a second time
-    "[UNORDERED_START]\n",
-    "Download http://localhost:4545/npm/registry/@denotest/non-existent-dep-version\n",
-    "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+    "Download http://localhost:4260/@denotest/non-existent-dep-version\n",
+    "Download http://localhost:4260/@denotest/esm-basic\n",
     "[UNORDERED_END]\n",
     "error: Could not find npm package '@denotest/esm-basic' matching '=99.99.99'.\n"
   )),
@@ -1708,7 +1692,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
     version: &str,
   ) {
     let registry_json_path =
-      format!("npm/localhost_4545/npm/registry/{}/registry.json", package);
+      format!("npm/localhost_4260/{}/registry.json", package);
     let mut registry_json: Value =
       serde_json::from_str(&deno_dir.read_to_string(&registry_json_path))
         .unwrap();
@@ -1745,12 +1729,12 @@ fn reload_info_not_found_cache_but_exists_remote() {
     .run();
   output.assert_matches_text(concat!(
     "[UNORDERED_START]\n",
-    "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-    "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
-    "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
-    "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export/1.0.0.tgz\n",
-    "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
-    "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default/1.0.0.tgz\n",
+    "Download http://localhost:4260/@denotest/esm-basic\n",
+    "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
+    "Download http://localhost:4260/@denotest/cjs-default-export\n",
+    "Download http://localhost:4260/@denotest/cjs-default-export/1.0.0.tgz\n",
+    "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
+    "Download http://localhost:4260/@denotest/esm-import-cjs-default/1.0.0.tgz\n",
     "[UNORDERED_END]\n",
   ));
 
@@ -1775,8 +1759,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest/cjs-default-export\n",
       "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
@@ -1807,8 +1791,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest/cjs-default-export\n",
       "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
@@ -1838,6 +1822,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
       .run();
     output.assert_matches_text(concat!(
       "error: Could not find npm package '@denotest/esm-import-cjs-default' matching '1.0.0'.\n",
+      "    at file:///[WILDCARD]/main.ts:1:8\n",
     ));
     output.assert_exit_code(1);
 
@@ -1845,8 +1830,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest/cjs-default-export\n",
       "[UNORDERED_END]\n",
       "[UNORDERED_START]\n",
       "Initialize @denotest/cjs-default-export@1.0.0\n",
@@ -1882,9 +1867,9 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest/esm-basic\n",
+      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest/cjs-default-export\n",
       "[UNORDERED_END]\n",
       "Initialize @denotest/esm-basic@1.0.0\n",
       "Node esm importing node cjs\n[WILDCARD]",
@@ -1920,9 +1905,9 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest/esm-basic\n",
+      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
       "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
@@ -2101,13 +2086,11 @@ fn top_level_install_package_json_explicit_opt_in() {
 
   temp_dir.write("main.ts", "console.log(5);");
   let output = test_context.new_command().args("cache main.ts").run();
-  output.assert_matches_text(
-    concat!(
-      "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
-      "Initialize @denotest/esm-basic@1.0.0\n",
-    )
-  );
+  output.assert_matches_text(concat!(
+    "Download http://localhost:4260/@denotest/esm-basic\n",
+    "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
+    "Initialize @denotest/esm-basic@1.0.0\n",
+  ));
 
   rm_created_files();
   let output = test_context
@@ -2986,7 +2969,8 @@ fn cjs_export_analysis_import_cjs_directly_relative_import() {
 }
 
 itest!(imports_package_json {
-  args: "run --node-modules-dir=false npm/imports_package_json/main.js",
+  args:
+    "run --no-lock --node-modules-dir=false npm/imports_package_json/main.js",
   output: "npm/imports_package_json/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -2994,7 +2978,7 @@ itest!(imports_package_json {
 
 itest!(imports_package_json_import_not_defined {
   args:
-    "run --node-modules-dir=false npm/imports_package_json/import_not_defined.js",
+    "run --no-lock --node-modules-dir=false npm/imports_package_json/import_not_defined.js",
   output: "npm/imports_package_json/import_not_defined.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 1,
@@ -3003,7 +2987,7 @@ itest!(imports_package_json_import_not_defined {
 
 itest!(imports_package_json_sub_path_import_not_defined {
   args:
-    "run --node-modules-dir=false npm/imports_package_json/sub_path_import_not_defined.js",
+    "run --no-lock --node-modules-dir=false npm/imports_package_json/sub_path_import_not_defined.js",
   output: "npm/imports_package_json/sub_path_import_not_defined.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 1,
@@ -3011,7 +2995,7 @@ itest!(imports_package_json_sub_path_import_not_defined {
 });
 
 itest!(different_nested_dep_node_modules_dir_false {
-  args: "run --quiet --node-modules-dir=false npm/different_nested_dep/main.js",
+  args: "run --quiet --no-lock --node-modules-dir=false npm/different_nested_dep/main.js",
   output: "npm/different_nested_dep/main.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
@@ -3019,7 +3003,7 @@ itest!(different_nested_dep_node_modules_dir_false {
 });
 
 itest!(different_nested_dep_node_modules_dir_true {
-  args: "run --quiet --node-modules-dir=true main.js",
+  args: "run --no-lock --quiet --node-modules-dir=true main.js",
   output: "npm/different_nested_dep/main.out",
   copy_temp_dir: Some("npm/different_nested_dep/"),
   cwd: Some("npm/different_nested_dep/"),
@@ -3080,4 +3064,28 @@ fn run_cjs_in_node_modules_folder() {
     .args("run node_modules/package/main.js")
     .run()
     .assert_matches_text("hi\n");
+}
+
+#[tokio::test]
+async fn test_private_npm_registry() {
+  let _server = http_server();
+
+  // For now just check that private server rejects requests without proper
+  // auth header.
+
+  let client = reqwest::Client::new();
+
+  let url = Url::parse("http://127.0.0.1:4261/@denotest/basic").unwrap();
+
+  let req = reqwest::Request::new(reqwest::Method::GET, url.clone());
+  let resp = client.execute(req).await.unwrap();
+  assert_eq!(resp.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+  let mut req = reqwest::Request::new(reqwest::Method::GET, url.clone());
+  req.headers_mut().insert(
+    reqwest::header::AUTHORIZATION,
+    reqwest::header::HeaderValue::from_static("Bearer private-reg-token"),
+  );
+  let resp = client.execute(req).await.unwrap();
+  assert_eq!(resp.status(), reqwest::StatusCode::OK);
 }

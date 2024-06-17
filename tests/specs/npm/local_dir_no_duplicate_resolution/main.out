@@ -1,5 +1,5 @@
-[WILDCARD]Resolved preact from file:///[WILDLINE]/preact@10.19.6/node_modules/preact/jsx-runtime/dist/jsxRuntime.mjs to [WILDLINE]node_modules[WILDCHAR].deno[WILDCHAR]preact@10.19.6[WILDCHAR]node_modules[WILDCHAR]preact
-DEBUG RS - [WILDLINE] - Resolved preact from file:///[WILDLINE]/preact@10.19.6/node_modules/preact/hooks/dist/hooks.mjs to [WILDLINE]node_modules[WILDCHAR].deno[WILDCHAR]preact@10.19.6[WILDCHAR]node_modules[WILDCHAR]preact
 [# ensure that preact is resolving to .deno/preact@10.19.6/node_modules/preact and not .deno/preact-render-to-string@6.4.0/node_modules/preact]
-DEBUG RS - [WILDLINE] - Resolved preact from file:///[WILDLINE]/preact-render-to-string@6.4.0/node_modules/preact-render-to-string/dist/index.mjs to [WILDLINE]node_modules[WILDCHAR].deno[WILDCHAR]preact@10.19.6[WILDCHAR]node_modules[WILDCHAR]preact
+[WILDCARD]/preact-render-to-string@6.4.0/node_modules/preact-render-to-string/dist/index.mjs to [WILDLINE]node_modules[WILDCHAR].deno[WILDCHAR]preact@10.19.6[WILDCHAR]node_modules[WILDCHAR]preact
+[WILDCARD]/preact@10.19.6/node_modules/preact/hooks/dist/hooks.mjs to [WILDLINE]node_modules[WILDCHAR].deno[WILDCHAR]preact@10.19.6[WILDCHAR]node_modules[WILDCHAR]preact
+[WILDCARD]/preact@10.19.6/node_modules/preact/jsx-runtime/dist/jsxRuntime.mjs to [WILDLINE]node_modules[WILDCHAR].deno[WILDCHAR]preact@10.19.6[WILDCHAR]node_modules[WILDCHAR]preact
 [WILDCARD]

@@ -6,6 +6,7 @@ import process, {
   argv,
   argv0 as importedArgv0,
   env,
+  geteuid,
   pid as importedPid,
   platform as importedPlatform,
 } from "node:process";
@@ -242,6 +243,11 @@ Deno.test(
       args: ["eval", "setTimeout(() => {}, 10000)"],
     }).spawn();
 
+    // kill with signal 0 should keep the process alive in linux (true means no error happened)
+    // windows ignore signals
+    if (Deno.build.os !== "windows") {
+      assertEquals(process.kill(p.pid, 0), true);
+    }
     process.kill(p.pid);
     await p.status;
   },
@@ -416,6 +422,9 @@ Deno.test({
     assertEquals(process.env.HELLO, "false");
     process.env.HELLO = "WORLD";
     assertEquals(process.env.HELLO, "WORLD");
+
+    delete process.env.HELLO;
+    assertEquals(process.env.HELLO, undefined);
   },
 });
 
@@ -778,10 +787,10 @@ Deno.test("process.exitCode", () => {
   assertEquals(process.exitCode, undefined);
   process.exitCode = 127;
   assertEquals(process.exitCode, 127);
-  // deno-lint-ignore no-explicit-any
-  (process.exitCode as any) = "asdf";
-  // deno-lint-ignore no-explicit-any
-  assertEquals(process.exitCode as any, "asdf");
+  assertThrows(() => {
+    // deno-lint-ignore no-explicit-any
+    (process.exitCode as any) = "asdf";
+  });
   // deno-lint-ignore no-explicit-any
   (process.exitCode as any) = "10";
   process.exitCode = undefined; // reset
@@ -805,20 +814,12 @@ Deno.test("process.exitCode in should change exit code", async () => {
     127,
   );
   await exitCodeTest(
-    "import process from 'node:process'; process.exitCode = 2.5;",
-    2,
-  );
-  await exitCodeTest(
     "import process from 'node:process'; process.exitCode = '10';",
     10,
   );
   await exitCodeTest(
     "import process from 'node:process'; process.exitCode = '0x10';",
     16,
-  );
-  await exitCodeTest(
-    "import process from 'node:process'; process.exitCode = NaN;",
-    0,
   );
 });
 
@@ -876,6 +877,7 @@ Deno.test("process.geteuid", () => {
   if (Deno.build.os === "windows") {
     assertEquals(process.geteuid, undefined);
   } else {
+    assert(geteuid);
     assert(typeof process.geteuid?.() === "number");
   }
 });
@@ -1079,4 +1081,38 @@ Deno.test({
     // @ts-ignore: setSourceMapsEnabled is not available in the types yet.
     process.setSourceMapsEnabled(true); // noop
   },
+});
+
+// Regression test for https://github.com/denoland/deno/issues/23761
+Deno.test({
+  name: "process.uptime without this",
+  fn() {
+    const v = (0, process.uptime)();
+    assert(v >= 0);
+  },
+});
+
+// Test for https://github.com/denoland/deno/issues/23863
+Deno.test({
+  name: "instantiate process constructor without 'new' keyword",
+  fn() {
+    // This would throw
+    process.constructor.call({});
+  },
+});
+
+// Test for https://github.com/denoland/deno/issues/22892
+Deno.test("process.listeners - include SIG* events", () => {
+  const listener = () => console.log("SIGINT");
+  process.on("SIGINT", listener);
+  assertEquals(process.listeners("SIGINT").length, 1);
+
+  const listener2 = () => console.log("SIGINT");
+  process.prependListener("SIGINT", listener2);
+  assertEquals(process.listeners("SIGINT").length, 2);
+
+  process.off("SIGINT", listener);
+  assertEquals(process.listeners("SIGINT").length, 1);
+  process.off("SIGINT", listener2);
+  assertEquals(process.listeners("SIGINT").length, 0);
 });

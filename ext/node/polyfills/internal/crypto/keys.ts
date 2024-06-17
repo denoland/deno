@@ -7,6 +7,8 @@
 import {
   op_node_create_private_key,
   op_node_create_public_key,
+  op_node_export_rsa_public_pem,
+  op_node_export_rsa_spki_der,
 } from "ext:core/ops";
 
 import {
@@ -360,7 +362,7 @@ class AsymmetricKeyObject extends KeyObject {
   }
 }
 
-class PrivateKeyObject extends AsymmetricKeyObject {
+export class PrivateKeyObject extends AsymmetricKeyObject {
   constructor(handle: unknown, details: unknown) {
     super("private", handle, details);
   }
@@ -370,13 +372,35 @@ class PrivateKeyObject extends AsymmetricKeyObject {
   }
 }
 
-class PublicKeyObject extends AsymmetricKeyObject {
+export class PublicKeyObject extends AsymmetricKeyObject {
   constructor(handle: unknown, details: unknown) {
     super("public", handle, details);
   }
 
-  export(_options: unknown) {
-    notImplemented("crypto.PublicKeyObject.prototype.export");
+  export(options: unknown) {
+    const key = KEY_STORE.get(this[kHandle]);
+    switch (this.asymmetricKeyType) {
+      case "rsa":
+      case "rsa-pss": {
+        switch (options.format) {
+          case "pem":
+            return op_node_export_rsa_public_pem(key);
+          case "der": {
+            if (options.type == "pkcs1") {
+              return key;
+            } else {
+              return op_node_export_rsa_spki_der(key);
+            }
+          }
+          default:
+            throw new TypeError(`exporting ${options.type} is not implemented`);
+        }
+      }
+      default:
+        throw new TypeError(
+          `exporting ${this.asymmetricKeyType} is not implemented`,
+        );
+    }
   }
 }
 
@@ -414,4 +438,6 @@ export default {
   prepareSecretKey,
   setOwnedKey,
   SecretKeyObject,
+  PrivateKeyObject,
+  PublicKeyObject,
 };

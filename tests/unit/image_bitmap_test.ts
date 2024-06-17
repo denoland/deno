@@ -90,3 +90,14 @@ Deno.test(async function imageBitmapFlipY() {
     1, 0, 0, 1,   2, 0, 0, 1,   3, 0, 0, 1,
   ]));
 });
+
+Deno.test(async function imageBitmapFromBlob() {
+  const path = "tests/testdata/image/1x1-white.png";
+  const imageData = new Blob([await Deno.readFile(path)], {
+    type: "image/png",
+  });
+  const imageBitmap = await createImageBitmap(imageData);
+  // @ts-ignore: Deno[Deno.internal].core allowed
+  // deno-fmt-ignore
+  assertEquals(Deno[Deno.internal].getBitmapData(imageBitmap), new Uint8Array([255,255,255,255]));
+});

@@ -416,13 +416,6 @@ fn bundle_json_module_escape_sub() {
   );
 }
 
-itest!(lockfile_check_error {
-  args: "bundle --lock=bundle/lockfile/check_error.json http://127.0.0.1:4545/subdir/mod1.ts",
-  output: "bundle/lockfile/check_error.out",
-  exit_code: 10,
-  http_server: true,
-});
-
 itest!(bundle {
   args: "bundle subdir/mod1.ts",
   output: "bundle/bundle.test.out",

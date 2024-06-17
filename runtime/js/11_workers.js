@@ -91,7 +91,7 @@ class Worker extends EventTarget {
   // still be messages left to receive.
   #status = "RUNNING";
 
-  constructor(specifier, options = {}) {
+  constructor(specifier, options = { __proto__: null }) {
     super();
     specifier = String(specifier);
     const {
@@ -254,7 +254,7 @@ class Worker extends EventTarget {
     }
   };
 
-  postMessage(message, transferOrOptions = {}) {
+  postMessage(message, transferOrOptions = { __proto__: null }) {
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     message = webidl.converters.any(message);

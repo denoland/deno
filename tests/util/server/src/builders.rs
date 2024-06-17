@@ -387,6 +387,7 @@ pub struct TestCommandBuilder {
   args_text: String,
   args_vec: Vec<String>,
   split_output: bool,
+  show_output: bool,
 }
 
 impl TestCommandBuilder {
@@ -406,6 +407,7 @@ impl TestCommandBuilder {
       command_name: "deno".to_string(),
       args_text: "".to_string(),
       args_vec: Default::default(),
+      show_output: false,
     }
   }
 
@@ -482,6 +484,16 @@ impl TestCommandBuilder {
     self
   }
 
+  /// Set this to enable streaming the output of the command to stderr.
+  ///
+  /// Not deprecated, this is just here so you don't accidentally
+  /// commit code with this enabled.
+  #[deprecated]
+  pub fn show_output(mut self) -> Self {
+    self.show_output = true;
+    self
+  }
+
   pub fn stdin<T: Into<Stdio>>(mut self, cfg: T) -> Self {
     self.stdin = Some(StdioContainer::new(cfg.into()));
     self
@@ -546,9 +558,10 @@ impl TestCommandBuilder {
       return;
     }
 
-    let args = self.build_args();
+    let cwd = self.build_cwd();
+    let args = self.build_args(&cwd);
     let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
-    let mut envs = self.build_envs();
+    let mut envs = self.build_envs(&cwd);
     if !envs.contains_key("NO_COLOR") {
       // set this by default for pty tests
       envs.insert("NO_COLOR".to_string(), "1".to_string());
@@ -562,11 +575,6 @@ impl TestCommandBuilder {
       }
     }
 
-    let cwd = self
-      .cwd
-      .as_ref()
-      .map(PathBuf::from)
-      .unwrap_or_else(|| std::env::current_dir().unwrap());
     let command_path = self.build_command_path();
 
     self.diagnostic_logger.writeln(format!(
@@ -610,10 +618,27 @@ impl TestCommandBuilder {
   }
 
   pub fn run(&self) -> TestCommandOutput {
-    fn read_pipe_to_string(mut pipe: os_pipe::PipeReader) -> String {
-      let mut output = String::new();
-      pipe.read_to_string(&mut output).unwrap();
-      output
+    fn read_pipe_to_string(
+      mut pipe: os_pipe::PipeReader,
+      output_to_stderr: bool,
+    ) -> String {
+      if output_to_stderr {
+        let mut buffer = vec![0; 512];
+        let mut final_data = Vec::new();
+        loop {
+          let size = pipe.read(&mut buffer).unwrap();
+          if size == 0 {
+            break;
+          }
+          final_data.extend(&buffer[..size]);
+          std::io::stderr().write_all(&buffer[..size]).unwrap();
+        }
+        String::from_utf8_lossy(&final_data).to_string()
+      } else {
+        let mut output = String::new();
+        pipe.read_to_string(&mut output).unwrap();
+        output
+      }
     }
 
     fn sanitize_output(text: String, args: &[OsString]) -> String {
@@ -637,11 +662,16 @@ impl TestCommandBuilder {
       let (stderr_reader, stderr_writer) = pipe().unwrap();
       command.stdout(stdout_writer);
       command.stderr(stderr_writer);
+      let show_output = self.show_output;
       (
         None,
         Some((
-          std::thread::spawn(move || read_pipe_to_string(stdout_reader)),
-          std::thread::spawn(move || read_pipe_to_string(stderr_reader)),
+          std::thread::spawn(move || {
+            read_pipe_to_string(stdout_reader, show_output)
+          }),
+          std::thread::spawn(move || {
+            read_pipe_to_string(stderr_reader, show_output)
+          }),
         )),
       )
     } else {
@@ -664,8 +694,9 @@ impl TestCommandBuilder {
     // and dropping it closes them.
     drop(command);
 
-    let combined = combined_reader
-      .map(|pipe| sanitize_output(read_pipe_to_string(pipe), &args));
+    let combined = combined_reader.map(|pipe| {
+      sanitize_output(read_pipe_to_string(pipe, self.show_output), &args)
+    });
 
     let status = process.wait().unwrap();
     let std_out_err = std_out_err_handle.map(|(stdout, stderr)| {
@@ -699,19 +730,18 @@ impl TestCommandBuilder {
 
   fn build_command(&self) -> Command {
     let command_path = self.build_command_path();
-    let args = self.build_args();
+    let cwd = self.build_cwd();
+    let args = self.build_args(&cwd);
     self.diagnostic_logger.writeln(format!(
       "command {} {}",
       command_path,
       args.join(" ")
     ));
     let mut command = Command::new(command_path);
-    if let Some(cwd) = &self.cwd {
-      self
-        .diagnostic_logger
-        .writeln(format!("command cwd {}", cwd));
-      command.current_dir(cwd);
-    }
+    self
+      .diagnostic_logger
+      .writeln(format!("command cwd {}", cwd.display()));
+    command.current_dir(&cwd);
     if let Some(stdin) = &self.stdin {
       command.stdin(stdin.take());
     }
@@ -726,7 +756,7 @@ impl TestCommandBuilder {
     if self.env_clear {
       command.env_clear();
     }
-    let envs = self.build_envs();
+    let envs = self.build_envs(&cwd);
     command.envs(envs);
     command.stdin(Stdio::piped());
     command
@@ -740,12 +770,14 @@ impl TestCommandBuilder {
     };
     if command_name == "deno" {
       deno_exe_path()
+    } else if command_name.starts_with("./") && self.cwd.is_some() {
+      self.cwd.as_ref().unwrap().join(command_name)
     } else {
       PathRef::new(PathBuf::from(command_name))
     }
   }
 
-  fn build_args(&self) -> Vec<String> {
+  fn build_args(&self, cwd: &Path) -> Vec<String> {
     if self.args_vec.is_empty() {
       std::borrow::Cow::Owned(
         self
@@ -762,11 +794,19 @@ impl TestCommandBuilder {
       std::borrow::Cow::Borrowed(&self.args_vec)
     }
     .iter()
-    .map(|arg| arg.replace("$TESTDATA", &testdata_path().to_string_lossy()))
+    .map(|arg| self.replace_vars(arg, cwd))
     .collect::<Vec<_>>()
   }
 
-  fn build_envs(&self) -> HashMap<String, String> {
+  fn build_cwd(&self) -> PathBuf {
+    self
+      .cwd
+      .as_ref()
+      .map(PathBuf::from)
+      .unwrap_or_else(|| std::env::current_dir().unwrap())
+  }
+
+  fn build_envs(&self, cwd: &Path) -> HashMap<String, String> {
     let mut envs = self.envs.clone();
     if !envs.contains_key("DENO_DIR") {
       envs.insert("DENO_DIR".to_string(), self.deno_dir.path().to_string());
@@ -786,11 +826,18 @@ impl TestCommandBuilder {
 
     // update any test variables in the env value
     for value in envs.values_mut() {
-      *value =
-        value.replace("$DENO_DIR", &self.deno_dir.path().to_string_lossy());
+      *value = self.replace_vars(value, cwd);
     }
 
     envs
+  }
+
+  fn replace_vars(&self, text: &str, cwd: &Path) -> String {
+    // todo(dsherret): use monch to extract out the vars
+    text
+      .replace("$DENO_DIR", &self.deno_dir.path().to_string_lossy())
+      .replace("$TESTDATA", &testdata_path().to_string_lossy())
+      .replace("$PWD", &cwd.to_string_lossy())
   }
 }
 

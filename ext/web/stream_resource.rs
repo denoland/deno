@@ -66,6 +66,13 @@ impl Default for BoundedBufferChannelInner {
   }
 }
 
+impl Drop for BoundedBufferChannelInner {
+  fn drop(&mut self) {
+    // If any buffers remain in the ring, drop them here
+    self.drain(std::mem::drop);
+  }
+}
+
 impl std::fmt::Debug for BoundedBufferChannelInner {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.write_fmt(format_args!(
@@ -650,7 +657,13 @@ mod tests {
     // Slightly slower reader
     let b = deno_core::unsync::spawn(async move {
       for _ in 0..BUFFER_CHANNEL_SIZE * 2 {
-        tokio::time::sleep(Duration::from_millis(1)).await;
+        if cfg!(windows) {
+          // windows has ~15ms resolution on sleep, so just yield so
+          // this test doesn't take 30 seconds to run
+          tokio::task::yield_now().await;
+        } else {
+          tokio::time::sleep(Duration::from_millis(1)).await;
+        }
         poll_fn(|cx| channel.poll_read_ready(cx)).await;
         channel.read(BUFFER_AGGREGATION_LIMIT).unwrap();
       }

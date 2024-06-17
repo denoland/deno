@@ -21,9 +21,6 @@
             }
           }]
         },
-        "cleanDenoDir": {
-          "type": "boolean"
-        },
         "cwd": {
           "type": "string"
         },
@@ -36,6 +33,18 @@
             "type": "string"
           }
         },
+        "flaky": {
+          "type": "boolean"
+        },
+        "if": {
+          "type": "string",
+          "examples": [
+            "mac",
+            "linux",
+            "windows",
+            "unix"
+          ]
+        },
         "output": {
           "type": "string"
         },
@@ -43,32 +52,59 @@
           "type": "integer"
         }
       }
-    }
-  },
-  "oneOf": [{
-    "required": ["steps"],
-    "properties": {
-      "tempDir": {
-        "type": "boolean"
-      },
-      "base": {
-        "type": "string"
-      },
-      "envs": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "string"
+    },
+    "single_or_multi_step_test": {
+      "oneOf": [{
+        "required": ["steps"],
+        "properties": {
+          "tempDir": {
+            "type": "boolean"
+          },
+          "base": {
+            "type": "string"
+          },
+          "envs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "repeat": {
+            "type": "number"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/single_test"
+            }
+          }
         }
-      },
-      "steps": {
-        "type": "array",
-        "items": {
+      }, {
+        "allOf": [{
+          "properties": {
+            "tempDir": {
+              "type": "boolean"
+            },
+            "base": {
+              "type": "string"
+            },
+            "envs": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "repeat": {
+              "type": "number"
+            }
+          }
+        }, {
           "$ref": "#/definitions/single_test"
-        }
-      }
-    }
-  }, {
-    "allOf": [{
+        }]
+      }]
+    },
+    "multi_test": {
+      "required": ["tests"],
       "properties": {
         "tempDir": {
           "type": "boolean"
@@ -81,10 +117,22 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "repeat": {
+          "type": "number"
+        },
+        "tests": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/single_or_multi_step_test"
+          }
         }
       }
-    }, {
-      "$ref": "#/definitions/single_test"
-    }]
+    }
+  },
+  "oneOf": [{
+    "$ref": "#/definitions/single_or_multi_step_test"
+  }, {
+    "$ref": "#/definitions/multi_test"
   }]
 }

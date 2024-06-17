@@ -4,7 +4,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use import_map::ImportMap;
 use import_map::ImportMapDiagnostic;
 use log::warn;
@@ -95,4 +95,33 @@ fn print_import_map_diagnostics(diagnostics: &[ImportMapDiagnostic]) {
         .join("\n")
     );
   }
+}
+
+pub fn enhance_import_map_value_with_workspace_members(
+  mut import_map_value: serde_json::Value,
+  workspace_members: &[deno_config::WorkspaceMemberConfig],
+) -> serde_json::Value {
+  let mut imports =
+    if let Some(imports) = import_map_value.get("imports").as_ref() {
+      imports.as_object().unwrap().clone()
+    } else {
+      serde_json::Map::new()
+    };
+
+  for workspace_member in workspace_members {
+    let name = &workspace_member.package_name;
+    let version = &workspace_member.package_version;
+    // Don't override existings, explicit imports
+    if imports.contains_key(name) {
+      continue;
+    }
+
+    imports.insert(
+      name.to_string(),
+      serde_json::Value::String(format!("jsr:{}@^{}", name, version)),
+    );
+  }
+
+  import_map_value["imports"] = serde_json::Value::Object(imports);
+  ::import_map::ext::expand_import_map_value(import_map_value)
 }

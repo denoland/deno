@@ -1,3 +1,3 @@
-import { Test } from "jsr:@denotest/module_graph";
+import { Test } from "jsr:@denotest/module-graph";
 
 console.log(new Test());

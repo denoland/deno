@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_permissions"
-version = "0.7.0"
+version = "0.16.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,7 +14,6 @@ name = "deno_permissions"
 path = "lib.rs"
 
 [dependencies]
-console_static_text.workspace = true
 deno_core.workspace = true
 deno_terminal.workspace = true
 fqdn = "0.3.4"
@@ -22,8 +21,7 @@ libc.workspace = true
 log.workspace = true
 once_cell.workspace = true
 serde.workspace = true
-termcolor.workspace = true
 which = "4.2.5"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
+winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2", "processenv", "wincon", "wincontypes"] }

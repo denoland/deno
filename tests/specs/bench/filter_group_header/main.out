@@ -7,7 +7,7 @@ benchmark      time (avg)        iter/s             (min … max)       p75     
 --------------------------------------------------------------- -----------------------------
 
 group G1
-G1-B         [WILDCARD]
+G1-B       [WILDCARD]
 
 group G2
-G2-B         [WILDCARD]
+G2-B       [WILDCARD]
