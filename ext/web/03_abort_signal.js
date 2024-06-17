@@ -3,7 +3,7 @@
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeEvery,
   ArrayPrototypePush,
@@ -33,7 +33,7 @@ import {
   listenerCount,
   setIsTrusted,
 } from "./02_event.js";
-import { clearTimeout, refTimer, setTimeout, unrefTimer } from "./02_timers.js";
+import { clearTimeout, refTimer, unrefTimer } from "./02_timers.js";
 
 // Since WeakSet is not a iterable, WeakRefSet class is provided to store and
 // iterate objects.
@@ -118,7 +118,10 @@ class AbortSignal extends EventTarget {
     );
 
     const signal = new AbortSignal(illegalConstructorKey);
-    signal[timerId] = setTimeout(
+    signal[timerId] = core.queueSystemTimer(
+      undefined,
+      false,
+      millis,
       () => {
         clearTimeout(signal[timerId]);
         signal[timerId] = null;
@@ -126,7 +129,6 @@ class AbortSignal extends EventTarget {
           new DOMException("Signal timed out.", "TimeoutError"),
         );
       },
-      millis,
     );
     unrefTimer(signal[timerId]);
     return signal;
