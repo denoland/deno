@@ -225,7 +225,7 @@ class InnerRequest {
           const wsRid = await wsPromise;
 
           // We have to wait for the go-ahead signal
-          await goAhead;
+          await goAhead.promise;
 
           ws[_rid] = wsRid;
           ws[_readyState] = WebSocket.OPEN;
