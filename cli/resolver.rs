@@ -95,11 +95,8 @@ impl CliNodeResolver {
   pub fn get_closest_package_json(
     &self,
     referrer: &ModuleSpecifier,
-    permissions: &mut dyn NodePermissions,
-  ) -> Result<Option<Rc<PackageJson>>, AnyError> {
-    self
-      .node_resolver
-      .get_closest_package_json(referrer, permissions)
+  ) -> Result<Option<Arc<PackageJson>>, AnyError> {
+    self.node_resolver.get_closest_package_json(referrer)
   }
 
   pub fn resolve_if_in_npm_package(

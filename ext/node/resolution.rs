@@ -4,8 +4,9 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::sync::Arc;
 
+use deno_config::package_json::PackageJson;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -21,20 +22,13 @@ use crate::errors;
 use crate::is_builtin_node_module;
 use crate::path::to_file_specifier;
 use crate::polyfill::get_module_name_from_builtin_node_module_specifier;
-use crate::AllowAllNodePermissions;
-use crate::NodePermissions;
 use crate::NpmResolverRc;
-use crate::PackageJson;
 use crate::PathClean;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum NodeModuleKind {
-  Esm,
-  Cjs,
-}
+pub type NodeModuleKind = deno_config::package_json::NodeModuleKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeResolutionMode {
@@ -236,8 +230,7 @@ impl NodeResolver {
         Some(resolved_specifier)
       }
     } else if specifier.starts_with('#') {
-      let pkg_config = self
-        .get_closest_package_json(referrer, &mut AllowAllNodePermissions)?;
+      let pkg_config = self.get_closest_package_json(referrer)?;
       Some(self.package_imports_resolve(
         specifier,
         referrer,
@@ -326,10 +319,9 @@ impl NodeResolver {
     mode: NodeResolutionMode,
   ) -> Result<Option<NodeResolution>, AnyError> {
     let package_json_path = package_dir.join("package.json");
-    let package_json = self.load_package_json(
-      &mut AllowAllNodePermissions,
-      package_json_path.clone(),
-    )?;
+    let Some(package_json) = self.load_package_json(&package_json_path)? else {
+      return Ok(None);
+    };
     let node_module_kind = NodeModuleKind::Esm;
     let package_subpath = package_subpath
       .map(|s| format!("./{s}"))
@@ -383,10 +375,9 @@ impl NodeResolver {
     package_folder: &Path,
   ) -> Result<Vec<String>, AnyError> {
     let package_json_path = package_folder.join("package.json");
-    let package_json = self.load_package_json(
-      &mut AllowAllNodePermissions,
-      package_json_path.clone(),
-    )?;
+    let Some(package_json) = self.load_package_json(&package_json_path)? else {
+      return Ok(Vec::new());
+    };
 
     Ok(match &package_json.bin {
       Some(Value::String(_)) => {
@@ -408,10 +399,12 @@ impl NodeResolver {
     sub_path: Option<&str>,
   ) -> Result<NodeResolution, AnyError> {
     let package_json_path = package_folder.join("package.json");
-    let package_json = self.load_package_json(
-      &mut AllowAllNodePermissions,
-      package_json_path.clone(),
-    )?;
+    let Some(package_json) = self.load_package_json(&package_json_path)? else {
+      bail!(
+        "Failed resolving binary export. '{}' did not exist",
+        package_json_path.display(),
+      )
+    };
     let bin_entry = resolve_bin_entry_value(&package_json, sub_path)?;
     let url = to_file_specifier(&package_folder.join(bin_entry));
 
@@ -429,8 +422,7 @@ impl NodeResolver {
     if url_str.starts_with("http") || url_str.ends_with(".json") {
       Ok(NodeResolution::Esm(url))
     } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
-      let maybe_package_config =
-        self.get_closest_package_json(&url, &mut AllowAllNodePermissions)?;
+      let maybe_package_config = self.get_closest_package_json(&url)?;
       match maybe_package_config {
         Some(c) if c.typ == "module" => Ok(NodeResolution::Esm(url)),
         Some(_) => Ok(NodeResolution::CommonJs(url)),
@@ -516,9 +508,7 @@ impl NodeResolver {
     }
     if self.fs.is_dir_sync(&path) {
       let package_json_path = path.join("package.json");
-      if let Ok(pkg_json) =
-        self.load_package_json(&mut AllowAllNodePermissions, package_json_path)
-      {
+      if let Ok(Some(pkg_json)) = self.load_package_json(&package_json_path) {
         let maybe_resolution = self.resolve_package_subpath(
           &pkg_json,
           /* sub path */ ".",
@@ -572,68 +562,65 @@ impl NodeResolver {
 
     let mut package_json_path = None;
     if let Some(pkg_json) = &referrer_pkg_json {
-      if pkg_json.exists {
-        package_json_path = Some(pkg_json.path.clone());
-        if let Some(imports) = &pkg_json.imports {
-          if imports.contains_key(name) && !name.contains('*') {
-            let target = imports.get(name).unwrap();
+      package_json_path = Some(pkg_json.path.clone());
+      if let Some(imports) = &pkg_json.imports {
+        if imports.contains_key(name) && !name.contains('*') {
+          let target = imports.get(name).unwrap();
+          let maybe_resolved = self.resolve_package_target(
+            package_json_path.as_ref().unwrap(),
+            target,
+            "",
+            name,
+            referrer,
+            referrer_kind,
+            false,
+            true,
+            conditions,
+            mode,
+          )?;
+          if let Some(resolved) = maybe_resolved {
+            return Ok(resolved);
+          }
+        } else {
+          let mut best_match = "";
+          let mut best_match_subpath = None;
+          for key in imports.keys() {
+            let pattern_index = key.find('*');
+            if let Some(pattern_index) = pattern_index {
+              let key_sub = &key[0..=pattern_index];
+              if name.starts_with(key_sub) {
+                let pattern_trailer = &key[pattern_index + 1..];
+                if name.len() > key.len()
+                  && name.ends_with(&pattern_trailer)
+                  && pattern_key_compare(best_match, key) == 1
+                  && key.rfind('*') == Some(pattern_index)
+                {
+                  best_match = key;
+                  best_match_subpath = Some(
+                    name[pattern_index..=(name.len() - pattern_trailer.len())]
+                      .to_string(),
+                  );
+                }
+              }
+            }
+          }
+
+          if !best_match.is_empty() {
+            let target = imports.get(best_match).unwrap();
             let maybe_resolved = self.resolve_package_target(
               package_json_path.as_ref().unwrap(),
               target,
-              "",
-              name,
+              &best_match_subpath.unwrap(),
+              best_match,
               referrer,
               referrer_kind,
-              false,
+              true,
               true,
               conditions,
               mode,
             )?;
             if let Some(resolved) = maybe_resolved {
               return Ok(resolved);
-            }
-          } else {
-            let mut best_match = "";
-            let mut best_match_subpath = None;
-            for key in imports.keys() {
-              let pattern_index = key.find('*');
-              if let Some(pattern_index) = pattern_index {
-                let key_sub = &key[0..=pattern_index];
-                if name.starts_with(key_sub) {
-                  let pattern_trailer = &key[pattern_index + 1..];
-                  if name.len() > key.len()
-                    && name.ends_with(&pattern_trailer)
-                    && pattern_key_compare(best_match, key) == 1
-                    && key.rfind('*') == Some(pattern_index)
-                  {
-                    best_match = key;
-                    best_match_subpath = Some(
-                      name
-                        [pattern_index..=(name.len() - pattern_trailer.len())]
-                        .to_string(),
-                    );
-                  }
-                }
-              }
-            }
-
-            if !best_match.is_empty() {
-              let target = imports.get(best_match).unwrap();
-              let maybe_resolved = self.resolve_package_target(
-                package_json_path.as_ref().unwrap(),
-                target,
-                &best_match_subpath.unwrap(),
-                best_match,
-                referrer,
-                referrer_kind,
-                true,
-                true,
-                conditions,
-                mode,
-              )?;
-              if let Some(resolved) = maybe_resolved {
-                return Ok(resolved);
-              }
             }
           }
         }
@@ -1013,15 +1000,11 @@ impl NodeResolver {
     let (package_name, package_subpath, _is_scoped) =
       parse_npm_pkg_name(specifier, referrer)?;
 
-    let Some(package_config) =
-      self.get_closest_package_json(referrer, &mut AllowAllNodePermissions)?
-    else {
+    let Some(package_config) = self.get_closest_package_json(referrer)? else {
       return Ok(None);
     };
     // ResolveSelf
-    if package_config.exists
-      && package_config.name.as_ref() == Some(&package_name)
-    {
+    if package_config.name.as_ref() == Some(&package_name) {
       if let Some(exports) = &package_config.exports {
         return self
           .package_exports_resolve(
@@ -1092,8 +1075,9 @@ impl NodeResolver {
     // ))
 
     // Package match.
-    let package_json = self
-      .load_package_json(&mut AllowAllNodePermissions, package_json_path)?;
+    let Some(package_json) = self.load_package_json(&package_json_path)? else {
+      return Ok(None);
+    };
     self.resolve_package_subpath(
       &package_json,
       package_subpath,
@@ -1159,46 +1143,30 @@ impl NodeResolver {
   pub fn get_closest_package_json(
     &self,
     url: &ModuleSpecifier,
-    permissions: &mut dyn NodePermissions,
-  ) -> Result<Option<Rc<PackageJson>>, AnyError> {
+  ) -> Result<Option<Arc<PackageJson>>, AnyError> {
     let Ok(file_path) = url.to_file_path() else {
       return Ok(None);
     };
-    self.get_closest_package_json_from_path(&file_path, permissions)
+    self.get_closest_package_json_from_path(&file_path)
   }
 
   pub fn get_closest_package_json_from_path(
     &self,
     file_path: &Path,
-    permissions: &mut dyn NodePermissions,
-  ) -> Result<Option<Rc<PackageJson>>, AnyError> {
-    let Some(package_json_path) =
-      self.get_closest_package_json_path(file_path)?
-    else {
-      return Ok(None);
-    };
-    self
-      .load_package_json(permissions, package_json_path)
-      .map(Some)
-  }
-
-  fn get_closest_package_json_path(
-    &self,
-    file_path: &Path,
-  ) -> Result<Option<PathBuf>, AnyError> {
+  ) -> Result<Option<Arc<PackageJson>>, AnyError> {
     let current_dir = deno_core::strip_unc_prefix(
       self.fs.realpath_sync(file_path.parent().unwrap())?,
     );
     let mut current_dir = current_dir.as_path();
     let package_json_path = current_dir.join("package.json");
-    if self.fs.exists_sync(&package_json_path) {
-      return Ok(Some(package_json_path));
+    if let Some(pkg_json) = self.load_package_json(&package_json_path)? {
+      return Ok(Some(pkg_json));
     }
     while let Some(parent) = current_dir.parent() {
       current_dir = parent;
       let package_json_path = current_dir.join("package.json");
-      if self.fs.exists_sync(&package_json_path) {
-        return Ok(Some(package_json_path));
+      if let Some(pkg_json) = self.load_package_json(&package_json_path)? {
+        return Ok(Some(pkg_json));
       }
     }
 
@@ -1207,15 +1175,12 @@ impl NodeResolver {
 
   pub(super) fn load_package_json(
     &self,
-    permissions: &mut dyn NodePermissions,
-    package_json_path: PathBuf,
-  ) -> Result<Rc<PackageJson>, AnyError> {
-    PackageJson::load(
-      &*self.fs,
-      &*self.npm_resolver,
-      permissions,
-      package_json_path,
-    )
+    package_json_path: &Path,
+  ) -> Result<
+    Option<Arc<PackageJson>>,
+    deno_config::package_json::PackageJsonLoadError,
+  > {
+    crate::package_json::load_pkg_json(&*self.fs, package_json_path)
   }
 
   pub(super) fn legacy_main_resolve(

@@ -19,6 +19,7 @@ sync_fs = []
 [dependencies]
 async-trait.workspace = true
 base32.workspace = true
+deno_config = { workspace = true, default-features = false }
 deno_core.workspace = true
 deno_io.workspace = true
 deno_permissions.workspace = true

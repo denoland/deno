@@ -9,14 +9,21 @@ pub mod package_json;
 
 pub use self::import_map::resolve_import_map;
 use self::package_json::PackageJsonDeps;
+use deno_runtime::colors::yellow;
 use ::import_map::ImportMap;
 use deno_ast::SourceMapOption;
+use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceDiscoverOptions;
+use deno_config::workspace::WorkspaceDiscoverStart;
+use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
 use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
+use deno_runtime::deno_fs::DenoConfigFsAdapter;
+use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
@@ -789,12 +796,12 @@ pub struct CliOptions {
   initial_cwd: PathBuf,
   maybe_node_modules_folder: Option<PathBuf>,
   maybe_vendor_folder: Option<PathBuf>,
-  maybe_config_file: Option<ConfigFile>,
-  maybe_package_json: Option<PackageJson>,
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
+  // todo(THIS PR): REMOVE
   maybe_workspace_config: Option<WorkspaceConfig>,
+  workspace: Workspace,
   pub disable_deprecated_api_warning: bool,
   pub verbose_deprecated_api_warning: bool,
 }
@@ -803,10 +810,9 @@ impl CliOptions {
   pub fn new(
     flags: Flags,
     initial_cwd: PathBuf,
-    maybe_config_file: Option<ConfigFile>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
-    maybe_package_json: Option<PackageJson>,
     npmrc: Arc<ResolvedNpmRc>,
+    workspace: Workspace,
     force_global_cache: bool,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
@@ -827,20 +833,21 @@ impl CliOptions {
     }
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
+    let root_folder = workspace.root_folder().1;
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
-      maybe_config_file.as_ref(),
-      maybe_package_json.as_ref(),
+      root_folder.config.as_deref(),
+      root_folder.pkg_json.as_deref(),
     )
     .with_context(|| "Resolving node_modules folder.")?;
     let maybe_vendor_folder = if force_global_cache {
       None
     } else {
-      resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref())
+      resolve_vendor_folder(&initial_cwd, &flags, root_folder.config.as_deref())
     };
     let maybe_workspace_config =
-      if let Some(config_file) = maybe_config_file.as_ref() {
+      if let Some(config_file) = root_folder.config.as_ref() {
         config_file.to_workspace_config()?
       } else {
         None
@@ -870,14 +877,13 @@ impl CliOptions {
     Ok(Self {
       flags,
       initial_cwd,
-      maybe_config_file,
       maybe_lockfile,
-      maybe_package_json,
       npmrc,
       maybe_node_modules_folder,
       maybe_vendor_folder,
       overrides: Default::default(),
       maybe_workspace_config,
+      workspace,
       disable_deprecated_api_warning,
       verbose_deprecated_api_warning,
     })
@@ -886,50 +892,71 @@ impl CliOptions {
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
-    let additional_config_file_names =
+    let additional_config_file_names: &[&'static str] =
       if matches!(flags.subcommand, DenoSubcommand::Publish(..)) {
-        Some(vec!["jsr.json", "jsr.jsonc"])
+        &["jsr.json", "jsr.jsonc"]
       } else {
-        None
+        &[]
       };
-    let parse_options = deno_config::ParseOptions {
+    let parse_options = deno_config::ConfigParseOptions {
       include_task_comments: matches!(
         flags.subcommand,
         DenoSubcommand::Task(..)
       ),
     };
-    let maybe_config_file = ConfigFile::discover(
-      &flags.config_flag,
-      flags.config_path_args(&initial_cwd),
-      &initial_cwd,
-      additional_config_file_names,
-      &parse_options,
-    )?;
-
-    let mut maybe_package_json = None;
-    if flags.config_flag == deno_config::ConfigFlag::Disabled
-      || flags.no_npm
-      || has_flag_env_var("DENO_NO_PACKAGE_JSON")
-    {
-      log::debug!("package.json auto-discovery is disabled")
-    } else if let Some(config_file) = &maybe_config_file {
-      let specifier = config_file.specifier.clone();
-      if specifier.scheme() == "file" {
-        let maybe_stop_at = specifier
-          .to_file_path()
-          .unwrap()
-          .parent()
-          .map(|p| p.to_path_buf());
-
-        maybe_package_json =
-          discover_package_json(&flags, maybe_stop_at, &initial_cwd)?;
-      }
-    } else {
-      maybe_package_json = discover_package_json(&flags, None, &initial_cwd)?;
+    let discover_pkg_json = flags.config_flag
+      != deno_config::ConfigFlag::Disabled
+      && !flags.no_npm
+      && !has_flag_env_var("DENO_NO_PACKAGE_JSON");
+    if !discover_pkg_json {
+      log::debug!("package.json auto-discovery is disabled");
     }
+
+    let workspace = match &flags.config_flag {
+      deno_config::ConfigFlag::Discover => {
+        if let Some(start_dir) = flags.config_path_arg(&initial_cwd) {
+          Workspace::discover(&WorkspaceDiscoverOptions {
+            fs: &DenoConfigFsAdapter::new(&RealFs),
+            pkg_json_cache: Some(
+              &deno_runtime::deno_node::PackageJsonThreadLocalCache,
+            ),
+            start: WorkspaceDiscoverStart::Dir(&start_dir),
+            config_parse_options: &parse_options,
+            additional_config_file_names,
+            discover_pkg_json,
+          })?
+        } else {
+          Workspace::empty(
+            ModuleSpecifier::from_directory_path(&initial_cwd).unwrap(),
+          )
+        }
+      }
+      deno_config::ConfigFlag::Path(path) => {
+        let config_path = normalize_path(initial_cwd.join(path));
+        Workspace::discover(&WorkspaceDiscoverOptions {
+          fs: &DenoConfigFsAdapter::new(&RealFs),
+          pkg_json_cache: Some(
+            &deno_runtime::deno_node::PackageJsonThreadLocalCache,
+          ),
+          start: WorkspaceDiscoverStart::ConfigFile(&config_path),
+          config_parse_options: &parse_options,
+          additional_config_file_names,
+          discover_pkg_json,
+        })?
+      }
+      deno_config::ConfigFlag::Disabled => Workspace::empty(
+        ModuleSpecifier::from_directory_path(&initial_cwd).unwrap(),
+      ),
+    };
+
+    for diagnostic in workspace.diagnostics() {
+      log::warn!("{}", colors::yellow(diagnostic));
+    }
+
+    let root_folder = workspace.root_folder().1;
     let (npmrc, _) = discover_npmrc(
-      maybe_package_json.as_ref().map(|p| p.path.clone()),
-      maybe_config_file.as_ref().and_then(|cf| {
+      root_folder.pkg_json.as_ref().map(|p| p.path.clone()),
+      root_folder.config.as_ref().and_then(|cf| {
         if cf.specifier.scheme() == "file" {
           Some(cf.specifier.to_file_path().unwrap())
         } else {
@@ -940,16 +967,15 @@ impl CliOptions {
 
     let maybe_lock_file = lockfile::discover(
       &flags,
-      maybe_config_file.as_ref(),
-      maybe_package_json.as_ref(),
+      root_folder.config.as_deref(),
+      root_folder.pkg_json.as_deref(),
     )?;
     Self::new(
       flags,
       initial_cwd,
-      maybe_config_file,
       maybe_lock_file.map(|l| Arc::new(Mutex::new(l))),
-      maybe_package_json,
       npmrc,
+      workspace,
       false,
     )
   }
@@ -957,10 +983,6 @@ impl CliOptions {
   #[inline(always)]
   pub fn initial_cwd(&self) -> &Path {
     &self.initial_cwd
-  }
-
-  pub fn maybe_config_file_specifier(&self) -> Option<ModuleSpecifier> {
-    self.maybe_config_file.as_ref().map(|f| f.specifier.clone())
   }
 
   pub fn graph_kind(&self) -> GraphKind {
@@ -1048,7 +1070,7 @@ impl CliOptions {
       Some(maybe_url) => Ok(maybe_url),
       None => resolve_import_map_specifier(
         self.flags.import_map_path.as_deref(),
-        self.maybe_config_file.as_ref(),
+        self.workspace.root_folder().1.config.as_deref(),
         &self.initial_cwd,
       ),
     }
@@ -1058,6 +1080,7 @@ impl CliOptions {
     &self,
     file_fetcher: &FileFetcher,
   ) -> Result<Option<ImportMap>, AnyError> {
+    self.workspace.create_resolver()
     if let Some(workspace_config) = self.maybe_workspace_config.as_ref() {
       let root_config_file = self.maybe_config_file.as_ref().unwrap();
       let base_import_map_config = ::import_map::ext::ImportMapConfig {

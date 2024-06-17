@@ -14,6 +14,7 @@ use deno_config::ConfigFlag;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
@@ -833,30 +834,35 @@ impl Flags {
     args
   }
 
-  /// Extract path arguments for config search paths.
-  /// If it returns Some(vec), the config should be discovered
-  /// from the passed `current_dir` after trying to discover from each entry in
-  /// the returned vector.
-  /// If it returns None, the config file shouldn't be discovered at all.
-  pub fn config_path_args(&self, current_dir: &Path) -> Option<Vec<PathBuf>> {
+  /// Extract the directory path the config file should be discovered from.
+  ///
+  /// Returns `None` if the config file should not be auto-discovered.
+  pub fn config_path_arg(&self, current_dir: &Path) -> Option<PathBuf> {
     use DenoSubcommand::*;
-
     match &self.subcommand {
-      Fmt(FmtFlags { files, .. }) => {
-        Some(files.include.iter().map(|p| current_dir.join(p)).collect())
-      }
-      Lint(LintFlags { files, .. }) => {
-        Some(files.include.iter().map(|p| current_dir.join(p)).collect())
-      }
+      Fmt(FmtFlags { files, .. }) => Some(
+        files
+          .include
+          .iter()
+          .filter_map(|p| Some(normalize_path(current_dir.join(p).parent()?)))
+          .next(),
+      ),
+      Lint(LintFlags { files, .. }) => Some(
+        files
+          .include
+          .iter()
+          .filter_map(|p| Some(normalize_path(current_dir.join(p).parent()?)))
+          .next(),
+      ),
       Run(RunFlags { script, .. }) => {
         if let Ok(module_specifier) = resolve_url_or_path(script, current_dir) {
           if module_specifier.scheme() == "file"
             || module_specifier.scheme() == "npm"
           {
             if let Ok(p) = module_specifier.to_file_path() {
-              Some(vec![p])
+              Some(p)
             } else {
-              Some(vec![])
+              Some(current_dir.to_path_buf())
             }
           } else {
             // When the entrypoint doesn't have file: scheme (it's the remote
@@ -864,7 +870,7 @@ impl Flags {
             None
           }
         } else {
-          Some(vec![])
+          Some(current_dir.to_path_buf())
         }
       }
       Task(TaskFlags {
@@ -874,11 +880,11 @@ impl Flags {
         // attempt to resolve the config file from the task subcommand's
         // `--cwd` when specified
         match canonicalize_path(&PathBuf::from(path)) {
-          Ok(path) => Some(vec![path]),
-          Err(_) => Some(vec![]),
+          Ok(path) => Some(path),
+          Err(_) => Some(current_dir.to_path_buf()),
         }
       }
-      _ => Some(vec![]),
+      _ => Some(current_dir.to_path_buf()),
     }
   }
 
@@ -9191,27 +9197,27 @@ mod tests {
   fn test_config_path_args() {
     let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
     let cwd = std::env::current_dir().unwrap();
-    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.join("foo.js")]));
+    assert_eq!(flags.config_path_arg(&cwd), Some(vec![cwd.join("foo.js")]));
 
     let flags =
       flags_from_vec(svec!["deno", "run", "https://example.com/foo.js"])
         .unwrap();
-    assert_eq!(flags.config_path_args(&cwd), None);
+    assert_eq!(flags.config_path_arg(&cwd), None);
 
     let flags =
       flags_from_vec(svec!["deno", "lint", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
-      flags.config_path_args(&cwd),
+      flags.config_path_arg(&cwd),
       Some(vec![cwd.join("dir/a.js"), cwd.join("dir/b.js")])
     );
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
-    assert!(flags.config_path_args(&cwd).unwrap().is_empty());
+    assert!(flags.config_path_arg(&cwd).unwrap().is_empty());
 
     let flags =
       flags_from_vec(svec!["deno", "fmt", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
-      flags.config_path_args(&cwd),
+      flags.config_path_arg(&cwd),
       Some(vec![cwd.join("dir/a.js"), cwd.join("dir/b.js")])
     );
   }
