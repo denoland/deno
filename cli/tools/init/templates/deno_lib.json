@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "exports": {},
   "tasks": {
-    "dev": "deno run --watch main.ts"
+    "dev": "deno test --watch mod.ts"
   }
 }
