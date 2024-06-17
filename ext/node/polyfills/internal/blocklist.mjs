@@ -22,10 +22,7 @@ import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
 import { customInspectSymbol } from "ext:deno_node/internal/util.mjs";
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
 
-const {
-  Boolean,
-  Symbol,
-} = primordials;
+const { Symbol } = primordials;
 
 const internalBlockList = Symbol("blocklist");
 
