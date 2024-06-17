@@ -83,7 +83,7 @@ Deno.test({
       //
       assertStatsBigInt(
         fstatSync(file.rid, { bigint: true }),
-        Deno.fstatSync(file.rid),
+        file.statSync(),
       );
       //main
     } finally {
