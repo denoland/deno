@@ -28,6 +28,10 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::task::LocalSet;
 
+// WARNING: Do not depend on this env var in user code. It's not stable API.
+const USE_PKG_JSON_HIDDEN_ENV_VAR_NAME: &str =
+  "DENO_INTERNAL_TASK_USE_PKG_JSON";
+
 pub async fn execute_script(
   flags: Flags,
   task_flags: TaskFlags,
@@ -55,13 +59,20 @@ pub async fn execute_script(
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let env_vars = real_env_vars();
+  let force_use_pkg_json = std::env::var_os(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME)
+    .map(|v| {
+      // always remove so sub processes don't inherit this env var
+      std::env::remove_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME);
+      v == "1"
+    })
+    .unwrap_or(false);
 
   if let Some(
     deno_config::Task::Definition(script)
     | deno_config::Task::Commented {
       definition: script, ..
     },
-  ) = tasks_config.get(task_name)
+  ) = tasks_config.get(task_name).filter(|_| !force_use_pkg_json)
   {
     let config_file_url = cli_options.maybe_config_file_specifier().unwrap();
     let config_file_path = if config_file_url.scheme() == "file" {
@@ -70,22 +81,25 @@ pub async fn execute_script(
       bail!("Only local configuration files are supported")
     };
     let cwd = match task_flags.cwd {
-      Some(path) => canonicalize_path(&PathBuf::from(path))?,
+      Some(path) => canonicalize_path(&PathBuf::from(path))
+        .context("failed canonicalizing --cwd")?,
       None => config_file_path.parent().unwrap().to_owned(),
     };
 
     let custom_commands =
       resolve_custom_commands(npm_resolver.as_ref(), node_resolver)?;
-    run_task(
+    run_task(RunTaskOptions {
       task_name,
       script,
-      &cwd,
-      cli_options.initial_cwd(),
+      cwd: &cwd,
+      init_cwd: cli_options.initial_cwd(),
       env_vars,
-      cli_options.argv(),
+      argv: cli_options.argv(),
       custom_commands,
-      npm_resolver.root_node_modules_path().map(|p| p.as_path()),
-    )
+      root_node_modules_dir: npm_resolver
+        .root_node_modules_path()
+        .map(|p| p.as_path()),
+    })
     .await
   } else if package_json_scripts.contains_key(task_name) {
     let package_json_deps_provider = factory.package_json_deps_provider();
@@ -108,7 +122,6 @@ pub async fn execute_script(
     if cli_options.has_node_modules_dir() {
       if let Some(npm_resolver) = npm_resolver.as_managed() {
         npm_resolver.ensure_top_level_package_json_install().await?;
-        npm_resolver.resolve_pending().await?;
       }
     }
 
@@ -133,18 +146,20 @@ pub async fn execute_script(
     ];
     let custom_commands =
       resolve_custom_commands(npm_resolver.as_ref(), node_resolver)?;
-    for task_name in task_names {
-      if let Some(script) = package_json_scripts.get(&task_name) {
-        let exit_code = run_task(
-          &task_name,
+    for task_name in &task_names {
+      if let Some(script) = package_json_scripts.get(task_name) {
+        let exit_code = run_task(RunTaskOptions {
+          task_name,
           script,
-          &cwd,
-          cli_options.initial_cwd(),
-          env_vars.clone(),
-          cli_options.argv(),
-          custom_commands.clone(),
-          npm_resolver.root_node_modules_path().map(|p| p.as_path()),
-        )
+          cwd: &cwd,
+          init_cwd: cli_options.initial_cwd(),
+          env_vars: env_vars.clone(),
+          argv: cli_options.argv(),
+          custom_commands: custom_commands.clone(),
+          root_node_modules_dir: npm_resolver
+            .root_node_modules_path()
+            .map(|p| p.as_path()),
+        })
         .await?;
         if exit_code > 0 {
           return Ok(exit_code);
@@ -166,25 +181,31 @@ pub async fn execute_script(
   }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn run_task(
-  task_name: &str,
-  script: &str,
-  cwd: &Path,
-  init_cwd: &Path,
+struct RunTaskOptions<'a> {
+  task_name: &'a str,
+  script: &'a str,
+  cwd: &'a Path,
+  init_cwd: &'a Path,
   env_vars: HashMap<String, String>,
-  argv: &[String],
+  argv: &'a [String],
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
-  root_node_modules_dir: Option<&Path>,
-) -> Result<i32, AnyError> {
-  let script = get_script_with_args(script, argv);
-  output_task(task_name, &script);
+  root_node_modules_dir: Option<&'a Path>,
+}
+
+async fn run_task(opts: RunTaskOptions<'_>) -> Result<i32, AnyError> {
+  let script = get_script_with_args(opts.script, opts.argv);
+  output_task(opts.task_name, &script);
   let seq_list = deno_task_shell::parser::parse(&script)
-    .with_context(|| format!("Error parsing script '{}'.", task_name))?;
-  let env_vars = prepare_env_vars(env_vars, init_cwd, root_node_modules_dir);
+    .with_context(|| format!("Error parsing script '{}'.", opts.task_name))?;
+  let env_vars =
+    prepare_env_vars(opts.env_vars, opts.init_cwd, opts.root_node_modules_dir);
   let local = LocalSet::new();
-  let future =
-    deno_task_shell::execute(seq_list, env_vars, cwd, custom_commands);
+  let future = deno_task_shell::execute(
+    seq_list,
+    env_vars,
+    opts.cwd,
+    opts.custom_commands,
+  );
   Ok(local.run_until(future).await)
 }
 
@@ -314,6 +335,51 @@ fn print_available_tasks(
   Ok(())
 }
 
+struct NpmCommand;
+
+impl ShellCommand for NpmCommand {
+  fn execute(
+    &self,
+    mut context: ShellCommandContext,
+  ) -> LocalBoxFuture<'static, ExecuteResult> {
+    if context.args.first().map(|s| s.as_str()) == Some("run")
+      && context.args.len() > 2
+      // for now, don't run any npm scripts that have a flag because
+      // we don't handle stuff like `--workspaces` properly
+      && !context.args.iter().any(|s| s.starts_with('-'))
+    {
+      // run with deno task instead
+      let mut args = Vec::with_capacity(context.args.len());
+      args.push("task".to_string());
+      args.extend(context.args.iter().skip(1).cloned());
+
+      let mut state = context.state;
+      state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
+      return ExecutableCommand::new(
+        "deno".to_string(),
+        std::env::current_exe().unwrap(),
+      )
+      .execute(ShellCommandContext {
+        args,
+        state,
+        ..context
+      });
+    }
+
+    // fallback to running the real npm command
+    let npm_path = match context.resolve_command_path("npm") {
+      Ok(path) => path,
+      Err(err) => {
+        let _ = context.stderr.write_line(&format!("{}", err));
+        return Box::pin(futures::future::ready(
+          ExecuteResult::from_exit_code(err.exit_code()),
+        ));
+      }
+    };
+    ExecutableCommand::new("npm".to_string(), npm_path).execute(context)
+  }
+}
+
 struct NpxCommand;
 
 impl ShellCommand for NpxCommand {
@@ -412,15 +478,17 @@ fn resolve_custom_commands(
   npm_resolver: &dyn CliNpmResolver,
   node_resolver: &NodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
-  match npm_resolver.as_inner() {
+  let mut commands = match npm_resolver.as_inner() {
     InnerCliNpmResolverRef::Byonm(npm_resolver) => {
       let node_modules_dir = npm_resolver.root_node_modules_path().unwrap();
-      Ok(resolve_npm_commands_from_bin_dir(node_modules_dir))
+      resolve_npm_commands_from_bin_dir(node_modules_dir)
     }
     InnerCliNpmResolverRef::Managed(npm_resolver) => {
-      resolve_managed_npm_commands(npm_resolver, node_resolver)
+      resolve_managed_npm_commands(npm_resolver, node_resolver)?
     }
-  }
+  };
+  commands.insert("npm".to_string(), Rc::new(NpmCommand));
+  Ok(commands)
 }
 
 fn resolve_npm_commands_from_bin_dir(
@@ -581,7 +649,7 @@ esac
 
 if [ -x "$basedir/node" ]; then
   exec "$basedir/node"  "$basedir/../example/bin/example" "$@"
-else 
+else
   exec node  "$basedir/../example/bin/example" "$@"
 fi"#;
     assert_eq!(

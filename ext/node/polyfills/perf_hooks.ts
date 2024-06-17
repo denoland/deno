@@ -9,8 +9,15 @@ import {
   PerformanceEntry,
 } from "ext:deno_web/15_performance.js";
 
-// FIXME(bartlomieju)
-const PerformanceObserver = undefined;
+class PerformanceObserver {
+  observe() {
+    notImplemented("PerformanceObserver.observe");
+  }
+  disconnect() {
+    notImplemented("PerformanceObserver.disconnect");
+  }
+}
+
 const constants = {};
 
 const performance:

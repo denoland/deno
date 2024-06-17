@@ -214,19 +214,11 @@ itest!(cached_only {
 });
 
 itest!(import_map {
-    args: "run --allow-read --allow-env --import-map npm/import_map/import_map.json npm/import_map/main.js",
-    output: "npm/import_map/main.out",
-    envs: env_vars_for_npm_tests(),
-    http_server: true,
-  });
-
-itest!(lock_file_integrity_failure {
-    args: "run --allow-read --allow-env --lock npm/lock_file/lock.json npm/lock_file/main.js",
-    output: "npm/lock_file/main.out",
-    envs: env_vars_for_npm_tests(),
-    http_server: true,
-    exit_code: 10,
-  });
+  args: "run --allow-read --allow-env --import-map npm/import_map/import_map.json npm/import_map/main.js",
+  output: "npm/import_map/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
 
 itest!(sub_paths {
   args: "run -A --quiet npm/sub_paths/main.jsx",
@@ -1518,7 +1510,7 @@ This could be caused by:
   * the lock file may be corrupt
   * the source itself may be corrupt
 
-Use "--lock-write" flag to regenerate the lockfile at "[WILDCARD]deno.lock".
+Use the --lock-write flag to regenerate the lockfile at "[WILDCARD]deno.lock".
 "#)
     .assert_exit_code(10);
 }
@@ -1677,12 +1669,6 @@ itest!(non_existent_dep_version {
     "Download http://localhost:4260/@denotest/non-existent-dep-version\n",
     "Download http://localhost:4260/@denotest/esm-basic\n",
     "[UNORDERED_END]\n",
-    // does two downloads because when failing once it max tries to
-    // get the latest version a second time
-    "[UNORDERED_START]\n",
-    "Download http://localhost:4260/@denotest/non-existent-dep-version\n",
-    "Download http://localhost:4260/@denotest/esm-basic\n",
-    "[UNORDERED_END]\n",
     "error: Could not find npm package '@denotest/esm-basic' matching '=99.99.99'.\n"
   )),
 });
@@ -1836,6 +1822,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
       .run();
     output.assert_matches_text(concat!(
       "error: Could not find npm package '@denotest/esm-import-cjs-default' matching '1.0.0'.\n",
+      "    at file:///[WILDCARD]/main.ts:1:8\n",
     ));
     output.assert_exit_code(1);
 
@@ -2982,7 +2969,8 @@ fn cjs_export_analysis_import_cjs_directly_relative_import() {
 }
 
 itest!(imports_package_json {
-  args: "run --node-modules-dir=false npm/imports_package_json/main.js",
+  args:
+    "run --no-lock --node-modules-dir=false npm/imports_package_json/main.js",
   output: "npm/imports_package_json/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -2990,7 +2978,7 @@ itest!(imports_package_json {
 
 itest!(imports_package_json_import_not_defined {
   args:
-    "run --node-modules-dir=false npm/imports_package_json/import_not_defined.js",
+    "run --no-lock --node-modules-dir=false npm/imports_package_json/import_not_defined.js",
   output: "npm/imports_package_json/import_not_defined.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 1,
@@ -2999,7 +2987,7 @@ itest!(imports_package_json_import_not_defined {
 
 itest!(imports_package_json_sub_path_import_not_defined {
   args:
-    "run --node-modules-dir=false npm/imports_package_json/sub_path_import_not_defined.js",
+    "run --no-lock --node-modules-dir=false npm/imports_package_json/sub_path_import_not_defined.js",
   output: "npm/imports_package_json/sub_path_import_not_defined.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 1,
@@ -3007,7 +2995,7 @@ itest!(imports_package_json_sub_path_import_not_defined {
 });
 
 itest!(different_nested_dep_node_modules_dir_false {
-  args: "run --quiet --node-modules-dir=false npm/different_nested_dep/main.js",
+  args: "run --quiet --no-lock --node-modules-dir=false npm/different_nested_dep/main.js",
   output: "npm/different_nested_dep/main.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
@@ -3015,7 +3003,7 @@ itest!(different_nested_dep_node_modules_dir_false {
 });
 
 itest!(different_nested_dep_node_modules_dir_true {
-  args: "run --quiet --node-modules-dir=true main.js",
+  args: "run --no-lock --quiet --node-modules-dir=true main.js",
   output: "npm/different_nested_dep/main.out",
   copy_temp_dir: Some("npm/different_nested_dep/"),
   cwd: Some("npm/different_nested_dep/"),
@@ -3087,7 +3075,7 @@ async fn test_private_npm_registry() {
 
   let client = reqwest::Client::new();
 
-  let url = Url::parse("http://127.0.0.1:4261/@denotest2/basic").unwrap();
+  let url = Url::parse("http://127.0.0.1:4261/@denotest/basic").unwrap();
 
   let req = reqwest::Request::new(reqwest::Method::GET, url.clone());
   let resp = client.execute(req).await.unwrap();

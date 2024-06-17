@@ -223,7 +223,7 @@ class Blob {
    * @param {BlobPart[]} blobParts
    * @param {BlobPropertyBag} options
    */
-  constructor(blobParts = [], options = {}) {
+  constructor(blobParts = [], options = { __proto__: null }) {
     const prefix = "Failed to construct 'Blob'";
     blobParts = webidl.converters["sequence<BlobPart>"](
       blobParts,
@@ -500,7 +500,7 @@ class File extends Blob {
    * @param {string} fileName
    * @param {FilePropertyBag} options
    */
-  constructor(fileBits, fileName, options = {}) {
+  constructor(fileBits, fileName, options = { __proto__: null }) {
     const prefix = "Failed to construct 'File'";
     webidl.requiredArguments(arguments.length, 2, prefix);
 

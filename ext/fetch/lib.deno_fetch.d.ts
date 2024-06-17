@@ -59,6 +59,10 @@ declare interface Body {
    */
   blob(): Promise<Blob>;
   /** Takes a `Response` stream and reads it to completion. It returns a promise
+   * that resolves with a `Uint8Array`.
+   */
+  bytes(): Promise<Uint8Array>;
+  /** Takes a `Response` stream and reads it to completion. It returns a promise
    * that resolves with a `FormData` object.
    */
   formData(): Promise<FormData>;

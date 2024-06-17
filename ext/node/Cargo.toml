@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.88.0"
+version = "0.93.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,6 +16,7 @@ path = "lib.rs"
 [dependencies]
 aead-gcm-stream = "0.1"
 aes.workspace = true
+async-trait.workspace = true
 brotli.workspace = true
 bytes.workspace = true
 cbc.workspace = true
@@ -34,9 +35,10 @@ ecb.workspace = true
 elliptic-curve.workspace = true
 errno = "0.2.8"
 faster-hex.workspace = true
-h2 = { version = "0.3.26", features = ["unstable"] }
+h2.workspace = true
 hkdf.workspace = true
-http_v02.workspace = true
+home = "0.5.9"
+http.workspace = true
 idna = "0.3.0"
 indexmap.workspace = true
 k256 = "0.13.1"

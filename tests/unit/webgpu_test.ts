@@ -496,6 +496,36 @@ Deno.test({
   device.destroy();
 });
 
+Deno.test({
+  ignore: isWsl || isLinuxOrMacCI,
+}, async function beginRenderPassWithoutDepthClearValue() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const encoder = device.createCommandEncoder();
+
+  const depthTexture = device.createTexture({
+    size: [256, 256],
+    format: "depth32float",
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  const depthView = depthTexture.createView();
+
+  const renderPass = encoder.beginRenderPass({
+    colorAttachments: [],
+    depthStencilAttachment: {
+      view: depthView,
+      depthLoadOp: "load",
+    },
+  });
+
+  assert(renderPass);
+
+  device.destroy();
+});
+
 async function checkIsWsl() {
   return Deno.build.os === "linux" && await hasMicrosoftProcVersion();
 

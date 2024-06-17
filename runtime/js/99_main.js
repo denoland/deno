@@ -98,8 +98,6 @@ import {
   SymbolMetadata,
 } from "ext:deno_web/00_infra.js";
 // deno-lint-ignore prefer-primordials
-if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
-// deno-lint-ignore prefer-primordials
 if (Symbol.asyncDispose) {
   throw "V8 supports Symbol.asyncDispose now, no need to shim it!";
 }
@@ -252,7 +250,7 @@ function workerClose() {
   op_worker_close();
 }
 
-function postMessage(message, transferOrOptions = {}) {
+function postMessage(message, transferOrOptions = { __proto__: null }) {
   const prefix =
     "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
   webidl.requiredArguments(arguments.length, 1, prefix);
@@ -674,6 +672,14 @@ ObjectDefineProperties(finalDenoNs, {
         'Use `Symbol.for("Deno.customInspect")` instead.',
       );
       return internals.future ? undefined : customInspect;
+    },
+  },
+  exitCode: {
+    get() {
+      return os.getExitCode();
+    },
+    set(value) {
+      os.setExitCode(value);
     },
   },
 });

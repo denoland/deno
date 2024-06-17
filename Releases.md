@@ -6,6 +6,185 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.44.2 / 2024.06.13
+
+- FUTURE: support `deno install <alias>@npm:<package>` (#24156)
+- feat(lsp): respect editor indentation options (#24181)
+- feat(lsp): workspace jsr resolution (#24121)
+- fix(check): attempt to resolve types from pkg before `@types` pkg (#24152)
+- fix(cli): Explicitly cache NPM packages during `deno install` (#24190)
+- fix(cli): Overwrite existing bin entries in `node_modules` (#24123)
+- fix(ext/http): print `[]` around ipv6 addresses (#24150)
+- fix(ext/net): make node:http2 work with DENO_FUTURE=1 (#24144)
+- fix(ext/node): ServerResponse header array handling (#24149)
+- fix(ext/node): add crypto and zlib constants (#24151)
+- fix(ext/node): fix vm memory usage and context initialization (#23976)
+- fix(ext/node): lossy UTF-8 read node_modules files (#24140)
+- fix(ext/node): send data frame with end_stream flag on _final call (#24147)
+- fix(ext/node): support stdin child_process IPC & fd stdout/stderr (#24106)
+- fix(ext/web): correct string tag for MessageEvent (#24134)
+- fix(ext/websocket): correctly order messages when sending blobs (#24133)
+- fix(jupyter): Avoid panicking when `DEBUG` env var is set (#24168)
+- fix(lsp): don't sort workspace files (#24180)
+- fix(lsp): strip .js before probing for valid import fix (#24188)
+- fix(npm): resolve dynamic npm imports individually (#24170)
+- fix: Rewrite Node-API (#24101)
+- fix: clean up some node-api details (#24178)
+- fix: do not panic linting files with UTF-8 BOM (#24136)
+- fix: don't panic when cache is not available (#24175)
+- fix: make writing to the deps cache more reliable (#24135)
+- fix: upgrade deno_core (#24128)
+
+### 1.44.1 / 2024.06.05
+
+- fix(console): add missing AssertionError to js (#22358)
+- fix(docs): update Deno.Command docs (#24097)
+- fix(lsp): complete exports for import mapped jsr specifiers (#24054)
+- fix(npm): use configured auth for tarball urls instead of scope auth (#24111)
+- fix: better handling of npm resolution occurring on workers (#24094)
+- fix: retry writing lockfile on failure (#24052)
+- fix: support importing statically unanalyzable npm specifiers (#24107)
+- fix: update deno_npm (#24065)
+- fix: validate integer values in `Deno.exitCode` setter (#24068)
+
+### 1.44.0 / 2024.05.30
+
+- BREAKING(ffi/unstable): always return u64 as bigint (#23981)
+- BREAKING(ffi/unstable): use BigInt representation in turbocall (#23983)
+- FUTURE(ext/ffi,ext/webgpu): stabilize FFI and WebGPU APIs (#24011)
+- FUTURE(ext/fs): stabilize file system APIs (#23968)
+- FUTURE: initial support for .npmrc file (#23560)
+- feat(cli): Add slow test warning (#23874)
+- feat(cli/test): `deno test --clean` (#23519)
+- feat(ext/fetch): `Request.bytes()` and `Response.bytes()` (#23823)
+- feat(ext/fs): stabilize `Deno.FsFile.syncData[Sync]()` and
+  `Deno.FsFile.sync[Sync]()` (#23733)
+- feat(ext/fs): stabilize `Deno.FsFile.unlock[Sync]()` and
+  `Deno.FsFile.lock[Sync]()` (#23754)
+- feat(ext/webgpu): byow support for {Free,Open}BSD (#23832)
+- feat(lint): add `no-boolean-literal-for-arguments` rule and enable
+  `no-unused-vars` for jsx files (#24034)
+- feat(lsp): support .npmrc (#24042)
+- feat(node): buffer isUtf8/isAscii (#23928)
+- feat(serve): support `--port 0` to use an open port (#23846)
+- feat(task): run `npm run` commands with Deno more often (#23794)
+- feat(vendor): support modifying remote files in vendor folder without checksum
+  errors (#23979)
+- feat: Add `Deno.exitCode` API (#23609)
+- feat: add lowercase `-v` version flag (#23750)
+- feat: do not require `DENO_FUTURE=1` for npmrc support (#24043)
+- feat: enable pointer compression via deno_core bump (#23838)
+- fix(cli): Prefer npm bin entries provided by packages closer to the root
+  (#24024)
+- fix(cli): Support deno.lock with only package.json present + fix DENO_FUTURE
+  install interactions with lockfile (#23918)
+- fix(cli/test): decoding percent-encoding(non-ASCII) file path correctly
+  (#23200)
+- fix(coverage): add tooltip to line count in html report (#23971)
+- fix(coverage): do not generate script coverage with empty url (#24007)
+- fix(coverage): handle ignore patterns (#23974)
+- fix(coverage): skip generating coverage json for http(s) scripts (#24008)
+- fix(deno_task): more descriptive error message (#24001)
+- fix(ext/fs): truncate files when a ReadableStream is passed to writeFile
+  (#23330)
+- fix(ext/http): flush gzip streaming response (#23991)
+- fix(ext/node): add `throwIfNoEntry` option in `fs.lstatSync` (#24006)
+- fix(ext/node): add stubs for perf_hooks.PerformaceObserver (#23958)
+- fix(ext/node): don't encode buffer data as utf8 in http2 (#24016)
+- fix(ext/node): return cancelled flag in get_response_body_chunk op (#23962)
+- fix(ext/node): windows cancel stdin read in line mode (#23969)
+- fix(ext/node/fs): `position` argument not applied (#24009)
+- fix(ext/web): `ReadableStream.from()` allows `Iterable` instead of
+  `IterableIterator` (#23903)
+- fix(ext/web): `ReadableStream.from()` ignores null `Symbol.asyncIterator`
+  (#23910)
+- fix(ext/websocket): change default idleTimeout to 30s (#23985)
+- fix(lsp): don't discover deno.json in vendor dir (#24032)
+- fix(lsp): process Fenced Code Block in JSDoc on `completion` correctly
+  (#23822)
+- fix(node): set default http server response code 200 (#23977)
+- fix(npm): set up node_modules/.bin/ entries for package that provide bin
+  entrypoints (#23496)
+- fix(publish): raise diagnostics for triple-slash directives for `--dry-run`
+  instead of just `publish` (#23811)
+- fix(runtime): use more null proto objects (#23921)
+- fix(task): always use `npm` for `npm run` with flags (#24028)
+- fix: `--env` flag confusing message on syntax error (#23915)
+- fix: bump cache sqlite dbs to v2 for WAL journal mode change (#24030)
+- fix: empty `process.platform` with `__runtime_js_sources` (#24005)
+- fix: use hash of in-memory bytes only for code cache (#23966)
+- perf(cli): Improve concurrency when setting up `node_modules` and loading
+  cached npm package info (#24018)
+- perf(cli): Optimize setting up `node_modules` on macOS (#23980)
+- perf(lsp): lock out requests until init is complete (#23998)
+- perf(repl): don't walk workspace in repl language server (#24037)
+- perf(startup): use WAL journal for sqlite databases in DENO_DIR (#23955)
+- perf: avoid building module graph if dynamic specifier already in graph
+  (#24035)
+- perf: parse source files in parallel (#23858)
+- perf: skip npm install if graph has no new packages (#24017)
+
+### 1.43.6 / 2024.05.21
+
+- fix(cli): use CliNodeResolver::resolve() for managed node_modules (#23902)
+- fix(cli/coverage): invalid line id in html reporter (#23908)
+- fix(ext/web): fix potential leak of unread buffers (#23923)
+- fix(ext/webgpu): Allow `depthClearValue` to be undefined when `depthLoadOp` is
+  not "clear" (#23850)
+- fix(lsp): Fix display of JSDoc named examples (#23927)
+- fix(lsp): apply import fix to missing declaration code action (#23924)
+- fix(node): instantiating process class without new (#23865)
+- fix(node): patch MessagePort in worker_thread message (#23871)
+- fix(node): stub findSourceMap for `ava` (#23899)
+- fix(node): track `SIG*` listeners in `process.listeners` (#23890)
+- fix(task): do not error if node_modules folder not exists (#23920)
+- fix: add missing `URL.parse` types (#23893)
+- fix: handle signal 0 in process.kill (#23473)
+- fix: serve handler error with 0 arguments (#23652)
+- perf(cache): compile ts to js in parallel for `deno cache` (#23892)
+- perf: analyze cjs exports and emit typescript in parallel (#23856)
+- perf: analyze cjs re-exports in parallel (#23894)
+- perf: resolver - skip cwd lookup if able (#23851)
+
+### 1.43.5 / 2024.05.18
+
+- fix(npm): regression deserializing JSON for some npm packages (#23868)
+
+### 1.43.4 / 2024.05.16
+
+- fix(cli): panic with `deno coverage` (#23353)
+- fix(doc): --lint - private ref diagnostic was displaying incorrect information
+  (#23834)
+- fix(doc/publish): support expando properties (#23795)
+- fix(emit): regression - keep comments in emit (#23815)
+- fix(ext/node): export geteuid from node:process (#23840)
+- fix(ext/node): fix grpc error_handling example (#23755)
+- fix(ext/node): homedir() `getpwuid`/`SHGetKnownFolderPath` fallback (#23841)
+- fix(ext/node): process.uptime works without this (#23786)
+- fix(ext/web): update ongoing promise in async iterator `return()` method
+  (#23642)
+- fix(lsp): respect types dependencies for tsc roots (#23825)
+- fix(lsp): show reference code lens on methods (#23804)
+- fix(node): error when throwing `FS_EISDIR` (#23829)
+- fix(node): seperate worker module cache (#23634)
+- fix(node): stub `AsyncResource.emitDestroy()` (#23802)
+- fix(node): wrong `worker_threads.terminate()` return value (#23803)
+- fix(npm): handle null fields in npm registry JSON (#23785)
+- fix(npm): make tarball extraction more reliable (#23759)
+- fix(publish): always include config file when publishing (#23797)
+- fix(publish): error for missing version constraints on dry-publish instead of
+  just publish (#23798)
+- fix(runtime): output to stderr with colors if a tty and stdout is piped
+  (#23813)
+- fix: Add missing `"junction"` type for `SymlinkOptions.types` (#23756)
+- fix: update swc_ecma_parser to 0.114.1 (#23816)
+- fix: widen aarch64 linux minimum GLIBC version by improving sysroot build
+  (#23791)
+- perf(compile): Do not checksum eszip content (#23839)
+- perf(jsr): download metadata files as soon as possible and in parallel
+  (#23836)
+- perf(lsp): Cache semantic tokens for open documents (#23799)
+
 ### 1.43.3 / 2024.05.10
 
 - fix(ext/webgpu): invalidate GPUAdapter when a device is created (#23752)

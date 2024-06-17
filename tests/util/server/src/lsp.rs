@@ -1292,6 +1292,7 @@ impl SourceFile {
       "js" => "javascript",
       "ts" | "d.ts" => "typescript",
       "json" => "json",
+      "md" => "markdown",
       other => panic!("unsupported file extension: {other}"),
     };
     Self {

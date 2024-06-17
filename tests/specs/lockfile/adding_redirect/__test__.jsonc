@@ -1,0 +1,16 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "run 1.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "task --quiet cat deno.lock",
+    "output": "lock01.out"
+  }, {
+    "args": "run 2.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "task --quiet cat deno.lock",
+    "output": "lock02.out"
+  }]
+}

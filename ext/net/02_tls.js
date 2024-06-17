@@ -281,7 +281,7 @@ async function startTls(
     hostname = "127.0.0.1",
     caCerts = [],
     alpnProtocols = undefined,
-  } = {},
+  } = { __proto__: null },
 ) {
   const { 0: rid, 1: localAddr, 2: remoteAddr } = op_tls_start({
     rid: conn[internalRidSymbol],

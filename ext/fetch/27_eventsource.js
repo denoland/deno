@@ -144,7 +144,7 @@ class EventSource extends EventTarget {
     return this.#withCredentials;
   }
 
-  constructor(url, eventSourceInitDict = {}) {
+  constructor(url, eventSourceInitDict = { __proto__: null }) {
     super();
     this[webidl.brand] = webidl.brand;
     const prefix = "Failed to construct 'EventSource'";

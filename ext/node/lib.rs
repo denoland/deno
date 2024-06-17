@@ -6,7 +6,6 @@
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
@@ -35,7 +34,11 @@ mod resolution;
 
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
-pub use ops::v8::VM_CONTEXT_INDEX;
+use ops::vm;
+pub use ops::vm::create_v8_context;
+pub use ops::vm::init_global_template;
+pub use ops::vm::ContextInitMode;
+pub use ops::vm::VM_CONTEXT_INDEX;
 pub use package_json::PackageJson;
 pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
@@ -46,6 +49,7 @@ pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;
 pub use resolution::NodeResolver;
+use resolution::NodeResolverRc;
 
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
@@ -57,23 +61,23 @@ pub trait NodePermissions {
     api_name: &str,
   ) -> Result<(), AnyError>;
   #[inline(always)]
-  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
+  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
     self.check_read_with_api_name(path, None)
   }
   fn check_read_with_api_name(
-    &self,
+    &mut self,
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError>;
-  fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError>;
+  fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError>;
   fn check_write_with_api_name(
-    &self,
+    &mut self,
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError>;
 }
 
-pub(crate) struct AllowAllNodePermissions;
+pub struct AllowAllNodePermissions;
 
 impl NodePermissions for AllowAllNodePermissions {
   fn check_net_url(
@@ -84,21 +88,62 @@ impl NodePermissions for AllowAllNodePermissions {
     Ok(())
   }
   fn check_read_with_api_name(
-    &self,
+    &mut self,
     _path: &Path,
     _api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     Ok(())
   }
   fn check_write_with_api_name(
-    &self,
+    &mut self,
     _path: &Path,
     _api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     Ok(())
   }
-  fn check_sys(&self, _kind: &str, _api_name: &str) -> Result<(), AnyError> {
+  fn check_sys(
+    &mut self,
+    _kind: &str,
+    _api_name: &str,
+  ) -> Result<(), AnyError> {
     Ok(())
+  }
+}
+
+impl NodePermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+  }
+
+  #[inline(always)]
+  fn check_read_with_api_name(
+    &mut self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_read_with_api_name(
+      self, path, api_name,
+    )
+  }
+
+  #[inline(always)]
+  fn check_write_with_api_name(
+    &mut self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_write_with_api_name(
+      self, path, api_name,
+    )
+  }
+
+  fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_sys(self, kind, api_name)
   }
 }
 
@@ -121,7 +166,6 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
@@ -146,7 +190,7 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
 
   fn ensure_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
 }
@@ -186,6 +230,8 @@ deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   parameters = [P: NodePermissions],
   ops = [
+    ops::buffer::op_is_ascii,
+    ops::buffer::op_is_utf8,
     ops::crypto::op_node_create_decipheriv,
     ops::crypto::op_node_cipheriv_encrypt,
     ops::crypto::op_node_cipheriv_final,
@@ -297,7 +343,6 @@ deno_core::extension!(deno_node,
     ops::http2::op_http2_client_get_response,
     ops::http2::op_http2_client_get_response_body_chunk,
     ops::http2::op_http2_client_send_data,
-    ops::http2::op_http2_client_end_stream,
     ops::http2::op_http2_client_reset_stream,
     ops::http2::op_http2_client_send_trailers,
     ops::http2::op_http2_client_get_response_trailers,
@@ -309,6 +354,7 @@ deno_core::extension!(deno_node,
     ops::os::op_node_os_username<P>,
     ops::os::op_geteuid<P>,
     ops::os::op_cpus<P>,
+    ops::os::op_homedir<P>,
     op_node_build_os,
     op_node_is_promise_rejected,
     op_npm_process_state,
@@ -537,7 +583,7 @@ deno_core::extension!(deno_node,
     "node:constants" = "constants.ts",
     "node:crypto" = "crypto.ts",
     "node:dgram" = "dgram.ts",
-    "node:diagnostics_channel" = "diagnostics_channel.ts",
+    "node:diagnostics_channel" = "diagnostics_channel.js",
     "node:dns" = "dns.ts",
     "node:dns/promises" = "dns/promises.ts",
     "node:domain" = "domain.ts",
@@ -579,24 +625,84 @@ deno_core::extension!(deno_node,
     "node:zlib" = "zlib.ts",
   ],
   options = {
+    maybe_node_resolver: Option<NodeResolverRc>,
     maybe_npm_resolver: Option<NpmResolverRc>,
     fs: deno_fs::FileSystemRc,
   },
   state = |state, options| {
-    let fs = options.fs;
-    state.put(fs.clone());
-    if let Some(npm_resolver) = options.maybe_npm_resolver {
+    // you should provide both of these or neither
+    debug_assert_eq!(options.maybe_node_resolver.is_some(), options.maybe_npm_resolver.is_some());
+
+    state.put(options.fs.clone());
+
+    if let Some(node_resolver) = &options.maybe_node_resolver {
+      state.put(node_resolver.clone());
+    }
+    if let Some(npm_resolver) = &options.maybe_npm_resolver {
       state.put(npm_resolver.clone());
-      state.put(Rc::new(NodeResolver::new(
-        fs,
-        npm_resolver,
-      )))
     }
   },
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
-    let mut external_references = Vec::with_capacity(7);
+    let mut external_references = Vec::with_capacity(14);
+
+    vm::GETTER_MAP_FN.with(|getter| {
+      external_references.push(ExternalReference {
+        named_getter: *getter,
+      });
+    });
+    vm::SETTER_MAP_FN.with(|setter| {
+      external_references.push(ExternalReference {
+        named_setter: *setter,
+      });
+    });
+    vm::DELETER_MAP_FN.with(|deleter| {
+      external_references.push(ExternalReference {
+        named_getter: *deleter,
+      },);
+    });
+    vm::ENUMERATOR_MAP_FN.with(|enumerator| {
+      external_references.push(ExternalReference {
+        enumerator: *enumerator,
+      });
+    });
+    vm::DEFINER_MAP_FN.with(|definer| {
+      external_references.push(ExternalReference {
+        named_definer: *definer,
+      });
+    });
+    vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
+      external_references.push(ExternalReference {
+        named_getter: *descriptor,
+      });
+    });
+
+    vm::INDEXED_GETTER_MAP_FN.with(|getter| {
+      external_references.push(ExternalReference {
+        indexed_getter: *getter,
+      });
+    });
+    vm::INDEXED_SETTER_MAP_FN.with(|setter| {
+      external_references.push(ExternalReference {
+        indexed_setter: *setter,
+      });
+    });
+    vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
+      external_references.push(ExternalReference {
+        indexed_getter: *deleter,
+      });
+    });
+    vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
+      external_references.push(ExternalReference {
+        indexed_definer: *definer,
+      });
+    });
+    vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
+      external_references.push(ExternalReference {
+        indexed_getter: *descriptor,
+      });
+    });
 
     global::GETTER_MAP_FN.with(|getter| {
       external_references.push(ExternalReference {

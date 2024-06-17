@@ -20,6 +20,7 @@ use indexmap::IndexSet;
 use log::error;
 use serde::Deserialize;
 use serde_json::from_value;
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -31,7 +32,6 @@ use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types::request::*;
@@ -83,7 +83,9 @@ use super::tsc::ChangeKind;
 use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
+use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
+use crate::args::write_lockfile_if_has_changes;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
@@ -91,7 +93,7 @@ use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
-use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
@@ -103,6 +105,7 @@ use crate::tools::upgrade::upgrade_check_enabled;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::is_importable_ext;
 use crate::util::path::to_percent_decoded_str;
+use crate::util::sync::AsyncFlag;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 struct LspRootCertStoreProvider(RootCertStore);
@@ -114,7 +117,17 @@ impl RootCertStoreProvider for LspRootCertStoreProvider {
 }
 
 #[derive(Debug, Clone)]
-pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>, CancellationToken);
+pub struct LanguageServer {
+  pub inner: Arc<tokio::sync::RwLock<Inner>>,
+  /// This is used to block out standard request handling until the complete
+  /// user configuration has been fetched. This is done in the `initialized`
+  /// handler which normally may occur concurrently with those other requests.
+  /// TODO(nayeemrmn): This wouldn't be necessary if LSP allowed
+  /// `workspace/configuration` requests in the `initialize` handler. See:
+  /// https://github.com/Microsoft/language-server-protocol/issues/567#issuecomment-2085131917
+  init_flag: AsyncFlag,
+  shutdown_flag: AsyncFlag,
+}
 
 /// Snapshot of the state used by TSC.
 #[derive(Clone, Debug, Default)]
@@ -122,7 +135,7 @@ pub struct StateSnapshot {
   pub project_version: usize,
   pub assets: AssetsSnapshot,
   pub config: Arc<Config>,
-  pub documents: Documents,
+  pub documents: Arc<Documents>,
   pub resolver: Arc<LspResolver>,
 }
 
@@ -149,7 +162,7 @@ impl Default for LanguageServerTaskQueue {
 }
 
 impl LanguageServerTaskQueue {
-  fn queue_task(&self, task_fn: LanguageServerTaskFn) -> bool {
+  pub fn queue_task(&self, task_fn: LanguageServerTaskFn) -> bool {
     self.task_tx.send(task_fn).is_ok()
   }
 
@@ -179,7 +192,7 @@ pub struct Inner {
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
   pub documents: Documents,
-  http_client: Arc<HttpClient>,
+  http_client_provider: Arc<HttpClientProvider>,
   initial_cwd: PathBuf,
   jsr_search_api: CliJsrSearchApi,
   /// Handles module registries, which allow discovery of modules
@@ -198,18 +211,19 @@ pub struct Inner {
   pub ts_server: Arc<TsServer>,
   /// A map of specifiers and URLs used to translate over the LSP.
   pub url_map: urls::LspUrlMap,
-  workspace_files: BTreeSet<ModuleSpecifier>,
+  workspace_files: IndexSet<ModuleSpecifier>,
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
   workspace_files_hash: u64,
 }
 
 impl LanguageServer {
-  pub fn new(client: Client, token: CancellationToken) -> Self {
-    Self(
-      Arc::new(tokio::sync::RwLock::new(Inner::new(client))),
-      token,
-    )
+  pub fn new(client: Client, shutdown_flag: AsyncFlag) -> Self {
+    Self {
+      inner: Arc::new(tokio::sync::RwLock::new(Inner::new(client))),
+      init_flag: Default::default(),
+      shutdown_flag,
+    }
   }
 
   /// Similar to `deno cache` on the command line, where modules will be cached
@@ -220,6 +234,9 @@ impl LanguageServer {
     referrer: ModuleSpecifier,
     force_global_cache: bool,
   ) -> LspResult<Option<Value>> {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
     async fn create_graph_for_caching(
       cli_options: CliOptions,
       roots: Vec<ModuleSpecifier>,
@@ -243,21 +260,22 @@ impl LanguageServer {
         .await?;
       graph_util::graph_valid(
         &graph,
-        factory.fs().clone(),
+        factory.fs(),
         &roots,
         graph_util::GraphValidOptions {
           is_vendoring: false,
           follow_type_only: true,
           check_js: false,
+          exit_lockfile_errors: false,
         },
       )?;
 
       // Update the lockfile on the file system with anything new
       // found after caching
       if let Some(lockfile) = cli_options.maybe_lockfile() {
-        let lockfile = lockfile.lock();
-        if let Err(err) = lockfile.write() {
-          lsp_warn!("Error writing lockfile: {:#}", err);
+        let mut lockfile = lockfile.lock();
+        if let Err(err) = write_lockfile_if_has_changes(&mut lockfile) {
+          lsp_warn!("{:#}", err);
         }
       }
 
@@ -266,13 +284,13 @@ impl LanguageServer {
 
     // prepare the cache inside the lock
     let maybe_prepare_cache_result = {
-      let mut inner = self.0.write().await; // ensure dropped
+      let mut inner = self.inner.write().await;
       match inner.prepare_cache(specifiers, referrer, force_global_cache) {
         Ok(maybe_cache_result) => maybe_cache_result,
         Err(err) => {
           lsp_warn!("Error preparing caching: {:#}", err);
           self
-            .0
+            .inner
             .read()
             .await
             .client
@@ -292,7 +310,7 @@ impl LanguageServer {
       if let Err(err) = handle.await.unwrap() {
         lsp_warn!("Error caching: {:#}", err);
         self
-          .0
+          .inner
           .read()
           .await
           .client
@@ -300,7 +318,7 @@ impl LanguageServer {
       }
 
       // now get the lock back to update with the new information
-      let mut inner = self.0.write().await;
+      let mut inner = self.inner.write().await;
       inner.resolver.did_cache();
       inner.refresh_npm_specifiers().await;
       inner.diagnostics_server.invalidate_all();
@@ -321,9 +339,12 @@ impl LanguageServer {
   pub async fn latest_diagnostic_batch_index_request(
     &self,
   ) -> LspResult<Option<Value>> {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
     Ok(
       self
-        .0
+        .inner
         .read()
         .await
         .diagnostics_server
@@ -333,18 +354,27 @@ impl LanguageServer {
   }
 
   pub async fn performance_request(&self) -> LspResult<Option<Value>> {
-    Ok(Some(self.0.read().await.get_performance()))
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    Ok(Some(self.inner.read().await.get_performance()))
   }
 
   pub async fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
-    self.0.read().await.task_definitions()
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.task_definitions()
   }
 
   pub async fn test_run_request(
     &self,
     params: Option<Value>,
   ) -> LspResult<Option<Value>> {
-    let inner = self.0.read().await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    let inner = self.inner.read().await;
     if let Some(testing_server) = &inner.maybe_testing_server {
       match params.map(serde_json::from_value) {
         Some(Ok(params)) => {
@@ -364,7 +394,11 @@ impl LanguageServer {
     &self,
     params: Option<Value>,
   ) -> LspResult<Option<Value>> {
-    if let Some(testing_server) = &self.0.read().await.maybe_testing_server {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    if let Some(testing_server) = &self.inner.read().await.maybe_testing_server
+    {
       match params.map(serde_json::from_value) {
         Some(Ok(params)) => testing_server.run_cancel_request(params),
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
@@ -379,10 +413,13 @@ impl LanguageServer {
     &self,
     params: Option<Value>,
   ) -> LspResult<Option<Value>> {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
     match params.map(serde_json::from_value) {
       Some(Ok(params)) => Ok(Some(
         serde_json::to_value(
-          self.0.read().await.virtual_text_document(params)?,
+          self.inner.read().await.virtual_text_document(params)?,
         )
         .map_err(|err| {
           error!(
@@ -399,17 +436,17 @@ impl LanguageServer {
 
   pub async fn refresh_configuration(&self) {
     let (client, folders, capable) = {
-      let ls = self.0.read().await;
+      let inner = self.inner.read().await;
       (
-        ls.client.clone(),
-        ls.config.workspace_folders.clone(),
-        ls.config.client_capabilities.workspace_configuration,
+        inner.client.clone(),
+        inner.config.workspace_folders.clone(),
+        inner.config.workspace_configuration_capable(),
       )
     };
     if capable {
       let mut scopes = Vec::with_capacity(folders.len() + 1);
       scopes.push(None);
-      for (_, folder) in &folders {
+      for (_, folder) in folders.as_ref() {
         scopes.push(Some(folder.uri.clone()));
       }
       let configs = client
@@ -424,11 +461,13 @@ impl LanguageServer {
         let mut configs = configs.into_iter();
         let unscoped = configs.next().unwrap();
         let mut folder_settings = Vec::with_capacity(folders.len());
-        for (folder_uri, _) in &folders {
+        for (folder_uri, _) in folders.as_ref() {
           folder_settings.push((folder_uri.clone(), configs.next().unwrap()));
         }
-        let mut ls = self.0.write().await;
-        ls.config.set_workspace_settings(unscoped, folder_settings);
+        let mut inner = self.inner.write().await;
+        inner
+          .config
+          .set_workspace_settings(unscoped, folder_settings);
       }
     }
   }
@@ -437,10 +476,10 @@ impl LanguageServer {
 impl Inner {
   fn new(client: Client) -> Self {
     let cache = LspCache::default();
-    let http_client = Arc::new(HttpClient::new(None, None));
+    let http_client_provider = Arc::new(HttpClientProvider::new(None, None));
     let module_registry = ModuleRegistry::new(
       cache.deno_dir().registries_folder_path(),
-      http_client.clone(),
+      http_client_provider.clone(),
     );
     let jsr_search_api =
       CliJsrSearchApi::new(module_registry.file_fetcher.clone());
@@ -470,7 +509,7 @@ impl Inner {
       diagnostics_state,
       diagnostics_server,
       documents,
-      http_client,
+      http_client_provider,
       initial_cwd: initial_cwd.clone(),
       jsr_search_api,
       project_version: 0,
@@ -578,7 +617,7 @@ impl Inner {
       project_version: self.project_version,
       assets: self.assets.snapshot(),
       config: Arc::new(self.config.clone()),
-      documents: self.documents.clone(),
+      documents: Arc::new(self.documents.clone()),
       resolver: self.resolver.snapshot(),
     })
   }
@@ -614,7 +653,7 @@ impl Inner {
     .unwrap_or_else(|_| RootCertStore::empty());
     let root_cert_store_provider =
       Arc::new(LspRootCertStoreProvider(root_cert_store));
-    self.http_client = Arc::new(HttpClient::new(
+    self.http_client_provider = Arc::new(HttpClientProvider::new(
       Some(root_cert_store_provider),
       workspace_settings
         .unsafely_ignore_certificate_errors
@@ -622,7 +661,7 @@ impl Inner {
     ));
     self.module_registry = ModuleRegistry::new(
       deno_dir.registries_folder_path(),
-      self.http_client.clone(),
+      self.http_client_provider.clone(),
     );
     let workspace_settings = self.config.workspace_settings();
     for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
@@ -731,7 +770,7 @@ impl Inner {
           vec![],
         );
       }
-      self.config.update_capabilities(&params.capabilities);
+      self.config.set_client_capabilities(params.capabilities);
     }
 
     self.diagnostics_server.start();
@@ -745,10 +784,6 @@ impl Inner {
     };
 
     self.update_debug_flag();
-    self.update_global_cache().await;
-    self.refresh_workspace_files();
-    self.refresh_config_tree().await;
-    self.update_cache();
 
     if capabilities.code_action_provider.is_some() {
       let fixable_diagnostics = self
@@ -767,8 +802,12 @@ impl Inner {
     })
   }
 
-  fn walk_workspace(config: &Config) -> (BTreeSet<ModuleSpecifier>, bool) {
-    let mut workspace_files = Default::default();
+  fn walk_workspace(config: &Config) -> (IndexSet<ModuleSpecifier>, bool) {
+    if !config.workspace_capable() {
+      log::debug!("Skipped workspace walk due to client incapability.");
+      return (Default::default(), false);
+    }
+    let mut workspace_files = IndexSet::default();
     let entry_limit = 1000;
     let mut pending = VecDeque::new();
     let mut entry_count = 0;
@@ -778,14 +817,37 @@ impl Inner {
       .filter_map(|p| specifier_to_file_path(&p.0).ok())
       .collect::<Vec<_>>();
     roots.sort();
-    for i in 0..roots.len() {
-      if i == 0 || !roots[i].starts_with(&roots[i - 1]) {
-        if let Ok(read_dir) = std::fs::read_dir(&roots[i]) {
-          pending.push_back((roots[i].clone(), read_dir));
+    let roots = roots
+      .iter()
+      .enumerate()
+      .filter(|(i, root)| *i == 0 || !root.starts_with(&roots[i - 1]))
+      .map(|(_, r)| r.clone())
+      .collect::<Vec<_>>();
+    let mut root_ancestors = BTreeSet::new();
+    for root in roots {
+      for ancestor in root.ancestors().skip(1) {
+        if root_ancestors.insert(ancestor.to_path_buf()) {
+          break;
+        }
+      }
+      if let Ok(read_dir) = std::fs::read_dir(&root) {
+        pending.push_back((root, read_dir));
+      }
+    }
+    for root_ancestor in root_ancestors {
+      for deno_json in ["deno.json", "deno.jsonc"] {
+        let path = root_ancestor.join(deno_json);
+        if path.exists() {
+          if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+            workspace_files.insert(specifier);
+          }
         }
       }
     }
     while let Some((parent_path, read_dir)) = pending.pop_front() {
+      // Sort entries from each dir for consistency across operating systems.
+      let mut dir_files = BTreeSet::new();
+      let mut dir_subdirs = BTreeMap::new();
       for entry in read_dir {
         let Ok(entry) = entry else {
           continue;
@@ -798,23 +860,21 @@ impl Inner {
         let Ok(specifier) = ModuleSpecifier::from_file_path(&path) else {
           continue;
         };
-        // TODO(nayeemrmn): Don't walk folders that are `None` here and aren't
-        // in a `deno.json` scope.
-        if config.settings.specifier_enabled(&specifier) == Some(false) {
-          continue;
-        }
         let Ok(file_type) = entry.file_type() else {
           continue;
         };
         let Some(file_name) = path.file_name() else {
           continue;
         };
+        if config.settings.specifier_enabled(&specifier) == Some(false) {
+          continue;
+        }
         if file_type.is_dir() {
           let dir_name = file_name.to_string_lossy().to_lowercase();
           // We ignore these directories by default because there is a
           // high likelihood they aren't relevant. Someone can opt-into
           // them by specifying one of them as an enabled path.
-          if matches!(dir_name.as_str(), "node_modules" | ".git") {
+          if matches!(dir_name.as_str(), "vendor" | "node_modules" | ".git") {
             continue;
           }
           // ignore cargo target directories for anyone using Deno with Rust
@@ -827,7 +887,7 @@ impl Inner {
             continue;
           }
           if let Ok(read_dir) = std::fs::read_dir(&path) {
-            pending.push_back((path, read_dir));
+            dir_subdirs.insert(specifier, (path, read_dir));
           }
         } else if file_type.is_file()
           || file_type.is_symlink()
@@ -862,9 +922,11 @@ impl Inner {
               }
             }
           }
-          workspace_files.insert(specifier);
+          dir_files.insert(specifier);
         }
       }
+      workspace_files.extend(dir_files);
+      pending.extend(dir_subdirs.into_values());
     }
     (workspace_files, false)
   }
@@ -901,11 +963,12 @@ impl Inner {
       self.cache.global().clone(),
       CacheSetting::RespectHeaders,
       true,
-      self.http_client.clone(),
+      self.http_client_provider.clone(),
       Default::default(),
       None,
     );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
+    let file_fetcher = Arc::new(file_fetcher);
     self
       .config
       .tree
@@ -941,10 +1004,14 @@ impl Inner {
   }
 
   async fn refresh_resolver(&mut self) {
-    self.resolver = self
-      .resolver
-      .with_new_config(&self.config, &self.cache, Some(&self.http_client))
-      .await;
+    self.resolver = Arc::new(
+      LspResolver::from_config(
+        &self.config,
+        &self.cache,
+        Some(&self.http_client_provider),
+      )
+      .await,
+    );
   }
 
   async fn refresh_documents_config(&mut self) {
@@ -960,10 +1027,6 @@ impl Inner {
     self.refresh_npm_specifiers().await;
 
     self.project_changed([], true);
-  }
-
-  fn shutdown(&self) -> LspResult<()> {
-    Ok(())
   }
 
   async fn did_open(&mut self, params: DidOpenTextDocumentParams) {
@@ -990,6 +1053,8 @@ impl Inner {
         params.text_document.uri
       );
     }
+    let file_referrer = (params.text_document.uri.scheme() == "file")
+      .then(|| params.text_document.uri.clone());
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -998,6 +1063,7 @@ impl Inner {
       params.text_document.version,
       params.text_document.language_id.parse().unwrap(),
       params.text_document.text.into(),
+      file_referrer,
     );
     self.project_changed([(document.specifier(), ChangeKind::Opened)], false);
     if document.is_diagnosable() {
@@ -1065,11 +1131,11 @@ impl Inner {
   }
 
   async fn refresh_npm_specifiers(&mut self) {
-    let package_reqs = self.documents.npm_package_reqs();
+    let package_reqs = self.documents.npm_reqs_by_scope();
     let resolver = self.resolver.clone();
-    // spawn to avoid the LSP's Send requirements
+    // spawn due to the lsp's `Send` requirement
     let handle =
-      spawn(async move { resolver.set_npm_package_reqs(&package_reqs).await });
+      spawn(async move { resolver.set_npm_reqs(&package_reqs).await });
     if let Err(err) = handle.await.unwrap() {
       lsp_warn!("Could not set npm package requirements. {:#}", err);
     }
@@ -1140,7 +1206,17 @@ impl Inner {
       self.workspace_files_hash = 0;
       self.refresh_workspace_files();
       self.refresh_config_tree().await;
+      self.update_cache();
       self.refresh_resolver().await;
+      self.refresh_documents_config().await;
+      self.project_changed(
+        changes.iter().map(|(s, _)| (s, ChangeKind::Modified)),
+        false,
+      );
+      self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
+      self.diagnostics_server.invalidate_all();
+      self.send_diagnostics_update();
+      self.send_testing_update();
       deno_config_changes.extend(changes.iter().filter_map(|(s, e)| {
         self.config.tree.watched_file_type(s).and_then(|t| {
           let configuration_type = match t.1 {
@@ -1169,15 +1245,6 @@ impl Inner {
           },
         );
       }
-      self.refresh_documents_config().await;
-      self.diagnostics_server.invalidate_all();
-      self.project_changed(
-        changes.iter().map(|(s, _)| (s, ChangeKind::Modified)),
-        false,
-      );
-      self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
-      self.send_diagnostics_update();
-      self.send_testing_update();
     }
     self.performance.measure(mark);
   }
@@ -1228,6 +1295,8 @@ impl Inner {
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
+    let file_referrer = (params.text_document.uri.scheme() == "file")
+      .then(|| params.text_document.uri.clone());
     let mut specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -1241,9 +1310,10 @@ impl Inner {
     {
       return Ok(None);
     }
-    let document = match self.documents.get(&specifier) {
-      Some(doc) if doc.is_open() => doc,
-      _ => return Ok(None),
+    let document =
+      file_referrer.and_then(|r| self.documents.get_or_load(&specifier, &r));
+    let Some(document) = document else {
+      return Ok(None);
     };
     // Detect vendored paths. Vendor file URLs will normalize to their remote
     // counterparts, but for formatting we want to favour the file URL.
@@ -1261,17 +1331,19 @@ impl Inner {
 
     // spawn a blocking task to allow doing other work while this is occurring
     let text_edits = deno_core::unsync::spawn_blocking({
-      let fmt_options = self
+      let mut fmt_options = self
         .config
         .tree
         .fmt_options_for_specifier(&specifier)
         .options
         .clone();
+      fmt_options.use_tabs = Some(!params.options.insert_spaces);
+      fmt_options.indent_width = Some(params.options.tab_size as u8);
       let document = document.clone();
       move || {
         let format_result = match document.maybe_parsed_source() {
           Some(Ok(parsed_source)) => {
-            format_parsed_source(&parsed_source, &fmt_options)
+            format_parsed_source(parsed_source, &fmt_options)
           }
           Some(Err(err)) => Err(anyhow!("{:#}", err)),
           None => {
@@ -1284,12 +1356,12 @@ impl Inner {
               .map(|ext| file_path.with_extension(ext))
               .unwrap_or(file_path);
             // it's not a js/ts file, so attempt to format its contents
-            format_file(&file_path, &document.content(), &fmt_options)
+            format_file(&file_path, document.content(), &fmt_options)
           }
         };
         match format_result {
           Ok(Some(new_text)) => Some(text::get_edits(
-            &document.content(),
+            document.content(),
             &new_text,
             document.line_index().as_ref(),
           )),
@@ -1329,41 +1401,44 @@ impl Inner {
 
     let mark = self.performance.mark_with_args("lsp.hover", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
+    let file_referrer = asset_or_doc.document().and_then(|d| d.file_referrer());
     let hover = if let Some((_, dep, range)) = asset_or_doc
       .get_maybe_dependency(&params.text_document_position_params.position)
     {
-      let dep_doc = dep.get_code().and_then(|s| self.documents.get(s));
+      let dep_doc = dep
+        .get_code()
+        .and_then(|s| self.documents.get_or_load(s, &specifier));
       let dep_maybe_types_dependency =
         dep_doc.as_ref().map(|d| d.maybe_types_dependency());
       let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
         (false, false, None) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_code),
-          self.resolution_to_hover_text(&dep.maybe_type),
+          self.resolution_to_hover_text(&dep.maybe_code, file_referrer),
+          self.resolution_to_hover_text(&dep.maybe_type, file_referrer),
         ),
         (false, false, Some(types_dep)) if !types_dep.is_none() => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n**Types**: {}\n**Import Types**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_code),
-          self.resolution_to_hover_text(&dep.maybe_type),
-          self.resolution_to_hover_text(types_dep),
+          self.resolution_to_hover_text(&dep.maybe_code, file_referrer),
+          self.resolution_to_hover_text(&dep.maybe_type, file_referrer),
+          self.resolution_to_hover_text(types_dep, file_referrer),
         ),
         (false, false, Some(_)) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_code),
-          self.resolution_to_hover_text(&dep.maybe_type),
+          self.resolution_to_hover_text(&dep.maybe_code, file_referrer),
+          self.resolution_to_hover_text(&dep.maybe_type, file_referrer),
         ),
         (false, true, Some(types_dep)) if !types_dep.is_none() => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_code),
-          self.resolution_to_hover_text(types_dep),
+          self.resolution_to_hover_text(&dep.maybe_code, file_referrer),
+          self.resolution_to_hover_text(types_dep, file_referrer),
         ),
         (false, true, _) => format!(
           "**Resolved Dependency**\n\n**Code**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_code),
+          self.resolution_to_hover_text(&dep.maybe_code, file_referrer),
         ),
         (true, false, _) => format!(
           "**Resolved Dependency**\n\n**Types**: {}\n",
-          self.resolution_to_hover_text(&dep.maybe_type),
+          self.resolution_to_hover_text(&dep.maybe_type, file_referrer),
         ),
         (true, true, _) => unreachable!("{}", json!(params)),
       };
@@ -1394,7 +1469,11 @@ impl Inner {
     Ok(hover)
   }
 
-  fn resolution_to_hover_text(&self, resolution: &Resolution) -> String {
+  fn resolution_to_hover_text(
+    &self,
+    resolution: &Resolution,
+    file_referrer: Option<&ModuleSpecifier>,
+  ) -> String {
     match resolution {
       Resolution::Ok(resolved) => {
         let specifier = &resolved.specifier;
@@ -1416,7 +1495,9 @@ impl Inner {
             if let Ok(jsr_req_ref) =
               JsrPackageReqReference::from_specifier(specifier)
             {
-              if let Some(url) = self.resolver.jsr_to_registry_url(&jsr_req_ref)
+              if let Some(url) = self
+                .resolver
+                .jsr_to_resource_url(&jsr_req_ref, file_referrer)
               {
                 result = format!("{result} (<{url}>)");
               }
@@ -1550,7 +1631,9 @@ impl Inner {
               &specifier,
               diagnostic,
               asset_or_doc.document().map(|d| d.text_info()),
-              asset_or_doc.maybe_parsed_source().and_then(|r| r.ok()),
+              asset_or_doc
+                .maybe_parsed_source()
+                .and_then(|r| r.as_ref().ok()),
             )
             .map_err(|err| {
               error!("Unable to fix lint error: {:#}", err);
@@ -1614,10 +1697,10 @@ impl Inner {
         .map(CodeActionOrCommand::CodeAction),
     );
 
-    let code_action_disabled_support =
-      self.config.client_capabilities.code_action_disabled_support;
+    let code_action_disabled_capable =
+      self.config.code_action_disabled_capable();
     let actions: Vec<CodeActionOrCommand> = all_actions.into_iter().filter(|ca| {
-      code_action_disabled_support
+      code_action_disabled_capable
         || matches!(ca, CodeActionOrCommand::CodeAction(ca) if ca.disabled.is_none())
     }).collect();
     let response = if actions.is_empty() {
@@ -2051,6 +2134,7 @@ impl Inner {
         &self.jsr_search_api,
         &self.npm_search_api,
         &self.documents,
+        self.resolver.as_ref(),
         self.config.tree.root_import_map().map(|i| i.as_ref()),
       )
       .await;
@@ -2268,7 +2352,7 @@ impl Inner {
             span.to_folding_range(
               asset_or_doc.line_index(),
               asset_or_doc.text().as_bytes(),
-              self.config.client_capabilities.line_folding_only,
+              self.config.line_folding_only_capable(),
             )
           })
           .collect::<Vec<FoldingRange>>(),
@@ -2790,6 +2874,9 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: ExecuteCommandParams,
   ) -> LspResult<Option<Value>> {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
     if params.command == "deno.cache" {
       #[derive(Default, Deserialize)]
       #[serde(rename_all = "camelCase")]
@@ -2806,7 +2893,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         .cache(specifiers, referrer, options.force_global_cache)
         .await
     } else if params.command == "deno.reloadImportRegistries" {
-      self.0.write().await.reload_import_registries().await
+      self.inner.write().await.reload_import_registries().await
     } else {
       Ok(None)
     }
@@ -2816,18 +2903,25 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
-    self.0.write().await.initialize(params).await
+    self.inner.write().await.initialize(params).await
   }
 
   async fn initialized(&self, _: InitializedParams) {
+    self.refresh_configuration().await;
     let mut registrations = Vec::with_capacity(2);
     let (client, http_client) = {
-      let mut ls = self.0.write().await;
-      if ls
-        .config
-        .client_capabilities
-        .workspace_did_change_watched_files
-      {
+      let mut inner = self.inner.write().await;
+      init_log_file(inner.config.log_file());
+      inner.update_debug_flag();
+      inner.update_global_cache().await;
+      inner.refresh_workspace_files();
+      inner.refresh_config_tree().await;
+      inner.update_cache();
+      inner.refresh_resolver().await;
+      inner.refresh_documents_config().await;
+      inner.task_queue.start(self.clone());
+      self.init_flag.raise();
+      if inner.config.did_change_watched_files_capable() {
         // we are going to watch all the JSON files in the workspace, and the
         // notification handler will pick up any of the changes of those files we
         // are interested in.
@@ -2845,7 +2939,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
           register_options: Some(serde_json::to_value(options).unwrap()),
         });
       }
-      if ls.config.client_capabilities.workspace_will_rename_files {
+      if inner.config.will_rename_files_capable() {
         let options = FileOperationRegistrationOptions {
           filters: vec![FileOperationFilter {
             scheme: Some("file".to_string()),
@@ -2863,17 +2957,17 @@ impl tower_lsp::LanguageServer for LanguageServer {
         });
       }
 
-      if ls.config.client_capabilities.testing_api {
+      if inner.config.testing_api_capable() {
         let test_server = testing::TestServer::new(
-          ls.client.clone(),
-          ls.performance.clone(),
-          ls.config.root_uri().cloned(),
+          inner.client.clone(),
+          inner.performance.clone(),
+          inner.config.root_uri().cloned(),
         );
-        ls.maybe_testing_server = Some(test_server);
+        inner.maybe_testing_server = Some(test_server);
       }
 
       let mut config_events = vec![];
-      for (scope_uri, config_data) in ls.config.tree.data_by_scope().iter() {
+      for (scope_uri, config_data) in inner.config.tree.data_by_scope().iter() {
         if let Some(config_file) = &config_data.config_file {
           config_events.push(lsp_custom::DenoConfigurationChangeEvent {
             scope_uri: scope_uri.clone(),
@@ -2892,14 +2986,16 @@ impl tower_lsp::LanguageServer for LanguageServer {
         }
       }
       if !config_events.is_empty() {
-        ls.client.send_did_change_deno_configuration_notification(
-          lsp_custom::DidChangeDenoConfigurationNotificationParams {
-            changes: config_events,
-          },
-        );
+        inner
+          .client
+          .send_did_change_deno_configuration_notification(
+            lsp_custom::DidChangeDenoConfigurationNotificationParams {
+              changes: config_events,
+            },
+          );
       }
 
-      (ls.client.clone(), ls.http_client.clone())
+      (inner.client.clone(), inner.http_client_provider.clone())
     };
 
     for registration in registrations {
@@ -2911,18 +3007,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
         lsp_warn!("Client errored on capabilities.\n{:#}", err);
       }
     }
-
-    self.refresh_configuration().await;
-
-    {
-      let mut ls = self.0.write().await;
-      init_log_file(ls.config.log_file());
-      ls.refresh_resolver().await;
-      ls.refresh_documents_config().await;
-      ls.diagnostics_server.invalidate_all();
-      ls.send_diagnostics_update();
-      ls.task_queue.start(self.clone());
-    };
 
     if upgrade_check_enabled() {
       // spawn to avoid lsp send/sync requirement, but also just
@@ -2950,39 +3034,54 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn shutdown(&self) -> LspResult<()> {
-    self.1.cancel();
-    self.0.write().await.shutdown()
+    self.shutdown_flag.raise();
+    Ok(())
   }
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
-    self.0.write().await.did_open(params).await;
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.did_open(params).await;
   }
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
-    self.0.write().await.did_change(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.did_change(params).await
   }
 
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
-    self.0.write().await.did_save(params);
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.did_save(params);
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
-    self.0.write().await.did_close(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.did_close(params).await
   }
 
   async fn did_change_configuration(
     &self,
     params: DidChangeConfigurationParams,
   ) {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
     let mark = {
-      let inner = self.0.read().await;
+      let inner = self.inner.read().await;
       inner
         .performance
         .mark_with_args("lsp.did_change_configuration", &params)
     };
     self.refresh_configuration().await;
-    let mut inner = self.0.write().await;
-    if !inner.config.client_capabilities.workspace_configuration {
+    let mut inner = self.inner.write().await;
+    if !inner.config.workspace_configuration_capable() {
       let config = params.settings.as_object().map(|settings| {
         let deno =
           serde_json::to_value(settings.get(SETTINGS_SECTION)).unwrap();
@@ -3013,15 +3112,26 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeWatchedFilesParams,
   ) {
-    self.0.write().await.did_change_watched_files(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self
+      .inner
+      .write()
+      .await
+      .did_change_watched_files(params)
+      .await
   }
 
   async fn did_change_workspace_folders(
     &self,
     params: DidChangeWorkspaceFoldersParams,
   ) {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
     let mark = {
-      let mut inner = self.0.write().await;
+      let mut inner = self.inner.write().await;
       let mark = inner
         .performance
         .mark_with_args("lsp.did_change_workspace_folders", &params);
@@ -3036,7 +3146,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
           )
         })
         .collect::<Vec<(ModuleSpecifier, WorkspaceFolder)>>();
-      for (specifier, folder) in &inner.config.workspace_folders {
+      for (specifier, folder) in inner.config.workspace_folders.as_ref() {
         if !params.event.removed.is_empty()
           && params.event.removed.iter().any(|f| f.uri == folder.uri)
         {
@@ -3048,7 +3158,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       mark
     };
     self.refresh_configuration().await;
-    let mut inner = self.0.write().await;
+    let mut inner = self.inner.write().await;
     inner.refresh_workspace_files();
     inner.refresh_config_tree().await;
     inner.refresh_resolver().await;
@@ -3063,176 +3173,254 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DocumentSymbolParams,
   ) -> LspResult<Option<DocumentSymbolResponse>> {
-    self.0.read().await.document_symbol(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.document_symbol(params).await
   }
 
   async fn formatting(
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    self.0.read().await.formatting(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.formatting(params).await
   }
 
   async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
-    self.0.read().await.hover(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.hover(params).await
   }
 
   async fn inlay_hint(
     &self,
     params: InlayHintParams,
   ) -> LspResult<Option<Vec<InlayHint>>> {
-    self.0.read().await.inlay_hint(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.inlay_hint(params).await
   }
 
   async fn code_action(
     &self,
     params: CodeActionParams,
   ) -> LspResult<Option<CodeActionResponse>> {
-    self.0.read().await.code_action(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.code_action(params).await
   }
 
   async fn code_action_resolve(
     &self,
     params: CodeAction,
   ) -> LspResult<CodeAction> {
-    self.0.read().await.code_action_resolve(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.code_action_resolve(params).await
   }
 
   async fn code_lens(
     &self,
     params: CodeLensParams,
   ) -> LspResult<Option<Vec<CodeLens>>> {
-    self.0.read().await.code_lens(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.code_lens(params).await
   }
 
   async fn code_lens_resolve(&self, params: CodeLens) -> LspResult<CodeLens> {
-    self.0.read().await.code_lens_resolve(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.code_lens_resolve(params).await
   }
 
   async fn document_highlight(
     &self,
     params: DocumentHighlightParams,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
-    self.0.read().await.document_highlight(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.document_highlight(params).await
   }
 
   async fn references(
     &self,
     params: ReferenceParams,
   ) -> LspResult<Option<Vec<Location>>> {
-    self.0.read().await.references(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.references(params).await
   }
 
   async fn goto_definition(
     &self,
     params: GotoDefinitionParams,
   ) -> LspResult<Option<GotoDefinitionResponse>> {
-    self.0.read().await.goto_definition(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.goto_definition(params).await
   }
 
   async fn goto_type_definition(
     &self,
     params: GotoTypeDefinitionParams,
   ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
-    self.0.read().await.goto_type_definition(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.goto_type_definition(params).await
   }
 
   async fn completion(
     &self,
     params: CompletionParams,
   ) -> LspResult<Option<CompletionResponse>> {
-    self.0.read().await.completion(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.completion(params).await
   }
 
   async fn completion_resolve(
     &self,
     params: CompletionItem,
   ) -> LspResult<CompletionItem> {
-    self.0.read().await.completion_resolve(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.completion_resolve(params).await
   }
 
   async fn goto_implementation(
     &self,
     params: GotoImplementationParams,
   ) -> LspResult<Option<GotoImplementationResponse>> {
-    self.0.read().await.goto_implementation(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.goto_implementation(params).await
   }
 
   async fn folding_range(
     &self,
     params: FoldingRangeParams,
   ) -> LspResult<Option<Vec<FoldingRange>>> {
-    self.0.read().await.folding_range(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.folding_range(params).await
   }
 
   async fn incoming_calls(
     &self,
     params: CallHierarchyIncomingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
-    self.0.read().await.incoming_calls(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.incoming_calls(params).await
   }
 
   async fn outgoing_calls(
     &self,
     params: CallHierarchyOutgoingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
-    self.0.read().await.outgoing_calls(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.outgoing_calls(params).await
   }
 
   async fn prepare_call_hierarchy(
     &self,
     params: CallHierarchyPrepareParams,
   ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
-    self.0.read().await.prepare_call_hierarchy(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.prepare_call_hierarchy(params).await
   }
 
   async fn rename(
     &self,
     params: RenameParams,
   ) -> LspResult<Option<WorkspaceEdit>> {
-    self.0.read().await.rename(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.rename(params).await
   }
 
   async fn selection_range(
     &self,
     params: SelectionRangeParams,
   ) -> LspResult<Option<Vec<SelectionRange>>> {
-    self.0.read().await.selection_range(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.selection_range(params).await
   }
 
   async fn semantic_tokens_full(
     &self,
     params: SemanticTokensParams,
   ) -> LspResult<Option<SemanticTokensResult>> {
-    self.0.read().await.semantic_tokens_full(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.semantic_tokens_full(params).await
   }
 
   async fn semantic_tokens_range(
     &self,
     params: SemanticTokensRangeParams,
   ) -> LspResult<Option<SemanticTokensRangeResult>> {
-    self.0.read().await.semantic_tokens_range(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.semantic_tokens_range(params).await
   }
 
   async fn signature_help(
     &self,
     params: SignatureHelpParams,
   ) -> LspResult<Option<SignatureHelp>> {
-    self.0.read().await.signature_help(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.signature_help(params).await
   }
 
   async fn will_rename_files(
     &self,
     params: RenameFilesParams,
   ) -> LspResult<Option<WorkspaceEdit>> {
-    self.0.read().await.will_rename_files(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.will_rename_files(params).await
   }
 
   async fn symbol(
     &self,
     params: WorkspaceSymbolParams,
   ) -> LspResult<Option<Vec<SymbolInformation>>> {
-    self.0.read().await.symbol(params).await
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.read().await.symbol(params).await
   }
 }
 
@@ -3266,7 +3454,10 @@ impl Inner {
     roots.extend(
       self
         .documents
-        .npm_package_reqs()
+        .npm_reqs_by_scope()
+        .values()
+        .flatten()
+        .collect::<BTreeSet<_>>()
         .iter()
         .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
     );
@@ -3299,6 +3490,9 @@ impl Inner {
       config_data.and_then(|d| d.config_file.as_deref().cloned()),
       config_data.and_then(|d| d.lockfile.clone()),
       config_data.and_then(|d| d.package_json.as_deref().cloned()),
+      config_data
+        .and_then(|d| d.npmrc.clone())
+        .unwrap_or_else(create_default_npmrc),
       force_global_cache,
     )?;
 
@@ -3517,10 +3711,13 @@ mod tests {
   #[test]
   fn test_walk_workspace() {
     let temp_dir = TempDir::new();
+    temp_dir.create_dir_all("root1/vendor/");
+    temp_dir.write("root1/vendor/mod.ts", ""); // no, vendor
+
     temp_dir.create_dir_all("root1/node_modules/");
     temp_dir.write("root1/node_modules/mod.ts", ""); // no, node_modules
 
-    temp_dir.create_dir_all("root1/sub_dir");
+    temp_dir.create_dir_all("root1/folder");
     temp_dir.create_dir_all("root1/target");
     temp_dir.create_dir_all("root1/node_modules");
     temp_dir.create_dir_all("root1/.git");
@@ -3538,14 +3735,15 @@ mod tests {
     temp_dir.write("root1/other.txt", ""); // no, text file
     temp_dir.write("root1/other.wasm", ""); // no, don't load wasm
     temp_dir.write("root1/Cargo.toml", ""); // no
-    temp_dir.write("root1/sub_dir/mod.ts", ""); // yes
-    temp_dir.write("root1/sub_dir/data.min.ts", ""); // no, minified file
+    temp_dir.write("root1/folder/mod.ts", ""); // yes
+    temp_dir.write("root1/folder/data.min.ts", ""); // no, minified file
     temp_dir.write("root1/.git/main.ts", ""); // no, .git folder
     temp_dir.write("root1/node_modules/main.ts", ""); // no, because it's in a node_modules folder
     temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
 
     temp_dir.create_dir_all("root2/folder");
     temp_dir.create_dir_all("root2/sub_folder");
+    temp_dir.create_dir_all("root2/root2.1");
     temp_dir.write("root2/file1.ts", ""); // yes, enabled
     temp_dir.write("root2/file2.ts", ""); // no, not enabled
     temp_dir.write("root2/folder/main.ts", ""); // yes, enabled
@@ -3553,15 +3751,26 @@ mod tests {
     temp_dir.write("root2/sub_folder/a.js", ""); // no, not enabled
     temp_dir.write("root2/sub_folder/b.ts", ""); // no, not enabled
     temp_dir.write("root2/sub_folder/c.js", ""); // no, not enabled
+    temp_dir.write("root2/root2.1/main.ts", ""); // yes, enabled as separate root
 
     temp_dir.create_dir_all("root3/");
     temp_dir.write("root3/mod.ts", ""); // no, not enabled
 
+    temp_dir.create_dir_all("root4_parent/root4");
+    temp_dir.write("root4_parent/deno.json", ""); // yes, enabled as deno.json above root
+    temp_dir.write("root4_parent/root4/main.ts", ""); // yes, enabled
+
     let mut config = Config::new_with_roots(vec![
       temp_dir.uri().join("root1/").unwrap(),
       temp_dir.uri().join("root2/").unwrap(),
+      temp_dir.uri().join("root2/root2.1/").unwrap(),
       temp_dir.uri().join("root3/").unwrap(),
+      temp_dir.uri().join("root4_parent/root4/").unwrap(),
     ]);
+    config.set_client_capabilities(ClientCapabilities {
+      workspace: Some(Default::default()),
+      ..Default::default()
+    });
     config.set_workspace_settings(
       Default::default(),
       vec![
@@ -3585,9 +3794,23 @@ mod tests {
           },
         ),
         (
+          temp_dir.uri().join("root2/root2.1/").unwrap(),
+          WorkspaceSettings {
+            enable: Some(true),
+            ..Default::default()
+          },
+        ),
+        (
           temp_dir.uri().join("root3/").unwrap(),
           WorkspaceSettings {
             enable: Some(false),
+            ..Default::default()
+          },
+        ),
+        (
+          temp_dir.uri().join("root4_parent/root4/").unwrap(),
+          WorkspaceSettings {
+            enable: Some(true),
             ..Default::default()
           },
         ),
@@ -3599,6 +3822,7 @@ mod tests {
     assert_eq!(
       json!(workspace_files),
       json!([
+        temp_dir.uri().join("root4_parent/deno.json").unwrap(),
         temp_dir.uri().join("root1/mod0.ts").unwrap(),
         temp_dir.uri().join("root1/mod1.js").unwrap(),
         temp_dir.uri().join("root1/mod2.tsx").unwrap(),
@@ -3609,9 +3833,11 @@ mod tests {
         temp_dir.uri().join("root1/mod7.d.mts").unwrap(),
         temp_dir.uri().join("root1/mod8.json").unwrap(),
         temp_dir.uri().join("root1/mod9.jsonc").unwrap(),
-        temp_dir.uri().join("root1/sub_dir/mod.ts").unwrap(),
         temp_dir.uri().join("root2/file1.ts").unwrap(),
+        temp_dir.uri().join("root4_parent/root4/main.ts").unwrap(),
+        temp_dir.uri().join("root1/folder/mod.ts").unwrap(),
         temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+        temp_dir.uri().join("root2/root2.1/main.ts").unwrap(),
       ])
     );
   }

@@ -95,6 +95,7 @@ impl TestReporter for DotTestReporter {
     std::io::stdout().flush().unwrap();
   }
 
+  fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
   fn report_output(&mut self, _output: &[u8]) {}
 
   fn report_result(

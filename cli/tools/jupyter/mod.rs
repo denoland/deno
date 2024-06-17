@@ -3,32 +3,31 @@
 use crate::args::Flags;
 use crate::args::JupyterFlags;
 use crate::ops;
-use crate::tools::jupyter::server::StdioMsg;
 use crate::tools::repl;
 use crate::tools::test::create_single_test_event_channel;
 use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::TestEventWorkerSender;
-use crate::util::logger;
 use crate::CliFactory;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::resolve_url_or_path;
-use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
+
+use jupyter_runtime::jupyter::ConnectionInfo;
+use jupyter_runtime::messaging::StreamContent;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 
 mod install;
-pub mod jupyter_msg;
 pub mod server;
 
 pub async fn kernel(
@@ -52,11 +51,6 @@ pub async fn kernel(
 
   let connection_filepath = jupyter_flags.conn_file.unwrap();
 
-  // This env var might be set by notebook
-  if std::env::var("DEBUG").is_ok() {
-    logger::init(Some(log::Level::Debug));
-  }
-
   let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let main_module =
@@ -73,7 +67,7 @@ pub async fn kernel(
     std::fs::read_to_string(&connection_filepath).with_context(|| {
       format!("Couldn't read connection file: {:?}", connection_filepath)
     })?;
-  let spec: ConnectionSpec =
+  let spec: ConnectionInfo =
     serde_json::from_str(&conn_file).with_context(|| {
       format!(
         "Connection file is not a valid JSON: {:?}",
@@ -119,12 +113,14 @@ pub async fn kernel(
     test_event_receiver,
   )
   .await?;
-  struct TestWriter(UnboundedSender<StdioMsg>);
+  struct TestWriter(UnboundedSender<StreamContent>);
   impl std::io::Write for TestWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
       self
         .0
-        .send(StdioMsg::Stdout(String::from_utf8_lossy(buf).into_owned()))
+        .send(StreamContent::stdout(
+          String::from_utf8_lossy(buf).into_owned(),
+        ))
         .ok();
       Ok(buf.len())
     }
@@ -149,16 +145,4 @@ pub async fn kernel(
   server::JupyterServer::start(spec, stdio_rx, repl_session).await?;
 
   Ok(())
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ConnectionSpec {
-  ip: String,
-  transport: String,
-  control_port: u32,
-  shell_port: u32,
-  stdin_port: u32,
-  hb_port: u32,
-  iopub_port: u32,
-  key: String,
 }

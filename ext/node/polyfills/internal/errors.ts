@@ -349,9 +349,8 @@ export class NodeErrorAbstraction extends Error {
     super(message);
     this.code = code;
     this.name = name;
-    //This number changes depending on the name of this class
-    //20 characters as of now
-    this.stack = this.stack && `${name} [${this.code}]${this.stack.slice(20)}`;
+    this.stack = this.stack &&
+      `${name} [${this.code}]${this.stack.slice(this.name.length)}`;
   }
 
   override toString() {
@@ -614,7 +613,6 @@ export class ERR_INVALID_ARG_TYPE_RANGE extends NodeRangeError {
 export class ERR_INVALID_ARG_TYPE extends NodeTypeError {
   constructor(name: string, expected: string | string[], actual: unknown) {
     const msg = createInvalidArgType(name, expected);
-
     super("ERR_INVALID_ARG_TYPE", `${msg}.${invalidArgTypeHelper(actual)}`);
   }
 
@@ -2564,6 +2562,12 @@ export class ERR_HTTP_SOCKET_ASSIGNED extends NodeError {
   }
 }
 
+export class ERR_INVALID_STATE extends NodeError {
+  constructor(message: string) {
+    super("ERR_INVALID_STATE", `Invalid state: ${message}`);
+  }
+}
+
 interface UvExceptionContext {
   syscall: string;
   path?: string;
@@ -2824,6 +2828,7 @@ export default {
   ERR_INVALID_RETURN_PROPERTY,
   ERR_INVALID_RETURN_PROPERTY_VALUE,
   ERR_INVALID_RETURN_VALUE,
+  ERR_INVALID_STATE,
   ERR_INVALID_SYNC_FORK_INPUT,
   ERR_INVALID_THIS,
   ERR_INVALID_TUPLE,

@@ -60,6 +60,8 @@ mod publish;
 mod repl;
 #[path = "run_tests.rs"]
 mod run;
+#[path = "serve_tests.rs"]
+mod serve;
 #[path = "shared_library_tests.rs"]
 mod shared_library_tests;
 #[path = "task_tests.rs"]

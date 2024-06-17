@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.159.0"
+version = "0.164.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -116,6 +116,7 @@ signal-hook = "0.3.17"
 signal-hook-registry = "1.4.0"
 tokio.workspace = true
 tokio-metrics.workspace = true
+twox-hash.workspace = true
 uuid.workspace = true
 which = "4.2.5"
 

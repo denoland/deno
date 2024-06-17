@@ -250,7 +250,7 @@ fn visit_modules(
 
     let parsed_source =
       parsed_source_cache.get_parsed_source_from_js_module(module)?;
-    let text_info = parsed_source.text_info().clone();
+    let text_info = parsed_source.text_info_lazy().clone();
 
     for dep in module.dependencies.values() {
       visit_resolution(

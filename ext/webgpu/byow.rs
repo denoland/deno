@@ -6,7 +6,12 @@ use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use std::ffi::c_void;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(
+  target_os = "linux",
+  target_os = "macos",
+  target_os = "freebsd",
+  target_os = "openbsd"
+))]
 use std::ptr::NonNull;
 
 use crate::surface::WebGpuSurface;
@@ -19,7 +24,9 @@ pub fn op_webgpu_surface_create(
   p1: *const c_void,
   p2: *const c_void,
 ) -> Result<ResourceId, AnyError> {
-  let instance = state.borrow::<super::Instance>();
+  let instance = state.try_borrow::<super::Instance>().ok_or_else(|| {
+    type_error("Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?")
+  })?;
   // Security note:
   //
   // The `p1` and `p2` parameters are pointers to platform-specific window
@@ -103,7 +110,7 @@ fn raw_window(
   Ok((win_handle, display_handle))
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
 fn raw_window(
   system: &str,
   window: *const c_void,
@@ -136,7 +143,7 @@ fn raw_window(
       ),
     );
   } else {
-    return Err(type_error("Invalid system on Linux"));
+    return Err(type_error("Invalid system on Linux/BSD"));
   }
 
   Ok((win_handle, display_handle))

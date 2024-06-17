@@ -14,6 +14,48 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use super::FastInsecureHasher;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct CacheDBHash(u64);
+
+impl CacheDBHash {
+  pub fn new(hash: u64) -> Self {
+    Self(hash)
+  }
+
+  pub fn from_source(source: impl std::hash::Hash) -> Self {
+    Self::new(
+      // always write in the deno version just in case
+      // the clearing on deno version change doesn't work
+      FastInsecureHasher::new_deno_versioned()
+        .write_hashable(source)
+        .finish(),
+    )
+  }
+}
+
+impl rusqlite::types::ToSql for CacheDBHash {
+  fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+    Ok(rusqlite::types::ToSqlOutput::Owned(
+      // sqlite doesn't support u64, but it does support i64 so store
+      // this value "incorrectly" as i64 then convert back to u64 on read
+      rusqlite::types::Value::Integer(self.0 as i64),
+    ))
+  }
+}
+
+impl rusqlite::types::FromSql for CacheDBHash {
+  fn column_result(
+    value: rusqlite::types::ValueRef,
+  ) -> rusqlite::types::FromSqlResult<Self> {
+    match value {
+      rusqlite::types::ValueRef::Integer(i) => Ok(Self::new(i as u64)),
+      _ => Err(rusqlite::types::FromSqlError::InvalidType),
+    }
+  }
+}
+
 /// What should the cache should do on failure?
 #[derive(Default)]
 pub enum CacheFailure {
@@ -41,21 +83,16 @@ pub struct CacheDBConfiguration {
 impl CacheDBConfiguration {
   fn create_combined_sql(&self) -> String {
     format!(
-      "
-      PRAGMA journal_mode=TRUNCATE;
-      PRAGMA synchronous=NORMAL;
-      PRAGMA temp_store=memory;
-      PRAGMA page_size=4096;
-      PRAGMA mmap_size=6000000;
-      PRAGMA optimize;
-
-      CREATE TABLE IF NOT EXISTS info (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-
-      {}
-    ",
+      concat!(
+        "PRAGMA journal_mode=WAL;",
+        "PRAGMA synchronous=NORMAL;",
+        "PRAGMA temp_store=memory;",
+        "PRAGMA page_size=4096;",
+        "PRAGMA mmap_size=6000000;",
+        "PRAGMA optimize;",
+        "CREATE TABLE IF NOT EXISTS info (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        "{}",
+      ),
       self.table_initializer
     )
   }
@@ -519,5 +556,33 @@ mod tests {
       Ok(row.get::<_, String>(0).unwrap())
     })
     .expect_err("Should have failed");
+  }
+
+  #[test]
+  fn cache_db_hash_max_u64_value() {
+    assert_same_serialize_deserialize(CacheDBHash::new(u64::MAX));
+    assert_same_serialize_deserialize(CacheDBHash::new(u64::MAX - 1));
+    assert_same_serialize_deserialize(CacheDBHash::new(u64::MIN));
+    assert_same_serialize_deserialize(CacheDBHash::new(u64::MIN + 1));
+  }
+
+  fn assert_same_serialize_deserialize(original_hash: CacheDBHash) {
+    use rusqlite::types::FromSql;
+    use rusqlite::types::ValueRef;
+    use rusqlite::ToSql;
+
+    let value = original_hash.to_sql().unwrap();
+    match value {
+      rusqlite::types::ToSqlOutput::Owned(rusqlite::types::Value::Integer(
+        value,
+      )) => {
+        let value_ref = ValueRef::Integer(value);
+        assert_eq!(
+          original_hash,
+          CacheDBHash::column_result(value_ref).unwrap()
+        );
+      }
+      _ => unreachable!(),
+    }
   }
 }

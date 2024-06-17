@@ -13,8 +13,8 @@ use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 use rustyline::error::ReadlineError;
 

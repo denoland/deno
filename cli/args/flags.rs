@@ -17,8 +17,8 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
-use deno_runtime::permissions::parse_sys_kind;
-use deno_runtime::permissions::PermissionsOptions;
+use deno_runtime::deno_permissions::parse_sys_kind;
+use deno_runtime::deno_permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -26,7 +26,6 @@ use serde::Serialize;
 use std::env;
 use std::ffi::OsString;
 use std::net::SocketAddr;
-use std::num::NonZeroU16;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
 use std::num::NonZeroUsize;
@@ -283,7 +282,7 @@ impl RunFlags {
 pub struct ServeFlags {
   pub script: String,
   pub watch: Option<WatchFlagsWithPaths>,
-  pub port: NonZeroU16,
+  pub port: u16,
   pub host: String,
 }
 
@@ -293,7 +292,7 @@ impl ServeFlags {
     Self {
       script,
       watch: None,
-      port: NonZeroU16::new(port).unwrap(),
+      port,
       host: host.to_owned(),
     }
   }
@@ -334,6 +333,7 @@ pub struct TestFlags {
   pub doc: bool,
   pub no_run: bool,
   pub coverage_dir: Option<String>,
+  pub clean: bool,
   pub fail_fast: Option<NonZeroUsize>,
   pub files: FileFlags,
   pub allow_none: bool,
@@ -1042,7 +1042,7 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
     <g>DENO_FUTURE</>          Set to "1" to enable APIs that will take effect in
                          Deno 2
 
-    <g>DENO_CERT</>            Load certificate authority from PEM encoded file
+    <g>DENO_CERT</>            Load certificate authorities from PEM encoded file
 
     <g>DENO_DIR</>             Set the cache directory
 
@@ -1237,6 +1237,15 @@ fn clap_root() -> Command {
     .long_version(long_version)
     // cause --unstable flags to display at the bottom of the help text
     .next_display_order(1000)
+    .disable_version_flag(true)
+    .arg(
+      Arg::new("version")
+        .short('V')
+        .short_alias('v')
+        .long("version")
+        .action(ArgAction::Version)
+        .help("Print version")
+    )
     .arg(
       Arg::new("unstable")
         .long("unstable")
@@ -2464,8 +2473,8 @@ fn serve_subcommand() -> Command {
     .arg(
       Arg::new("port")
         .long("port")
-        .help("The TCP port to serve on, defaulting to 8000.")
-        .value_parser(value_parser!(NonZeroU16)),
+        .help("The TCP port to serve on, defaulting to 8000. Pass 0 to pick a random free port.")
+        .value_parser(value_parser!(u16)),
     )
     .arg(
       Arg::new("host")
@@ -2621,6 +2630,14 @@ Directory arguments are expanded to all contained files matching the glob
         .conflicts_with("inspect-wait")
         .conflicts_with("inspect-brk")
         .help("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'."),
+    )
+    .arg(
+      Arg::new("clean")
+        .long("clean")
+        .help("Empty the temporary coverage profile data directory before running tests.
+        
+Note: running multiple `deno test --clean` calls in series or parallel for the same coverage directory may cause race conditions.")
+        .action(ArgAction::SetTrue),
     )
     .arg(
       Arg::new("parallel")
@@ -4127,9 +4144,7 @@ fn serve_parse(
   app: Command,
 ) -> clap::error::Result<()> {
   // deno serve implies --allow-net=host:port
-  let port = matches
-    .remove_one::<NonZeroU16>("port")
-    .unwrap_or(NonZeroU16::new(8000).unwrap());
+  let port = matches.remove_one::<u16>("port").unwrap_or(8000);
   let host = matches
     .remove_one::<String>("host")
     .unwrap_or_else(|| "0.0.0.0".to_owned());
@@ -4234,6 +4249,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let doc = matches.get_flag("doc");
   let allow_none = matches.get_flag("allow-none");
   let filter = matches.remove_one::<String>("filter");
+  let clean = matches.get_flag("clean");
 
   let fail_fast = if matches.contains_id("fail-fast") {
     Some(
@@ -4319,6 +4335,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     no_run,
     doc,
     coverage_dir: matches.remove_one::<String>("coverage"),
+    clean,
     fail_fast,
     files: FileFlags { include, ignore },
     filter,
@@ -5316,6 +5333,32 @@ mod tests {
         )),
         permissions: PermissionFlags {
           allow_net: Some(vec!["example.com:5000".to_owned()]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "serve",
+      "--port",
+      "0",
+      "--host",
+      "example.com",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Serve(ServeFlags::new_default(
+          "main.ts".to_string(),
+          0,
+          "example.com"
+        )),
+        permissions: PermissionFlags {
+          allow_net: Some(vec!["example.com:0".to_owned()]),
           ..Default::default()
         },
         code_cache_enabled: true,
@@ -8157,7 +8200,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-leaks", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-leaks", "--no-run", "--filter", "- foo", "--coverage=cov", "--clean", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8175,6 +8218,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: true,
           coverage_dir: Some("cov".to_string()),
+          clean: true,
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
@@ -8262,6 +8306,7 @@ mod tests {
           concurrent_jobs: Some(NonZeroUsize::new(4).unwrap()),
           trace_leaks: false,
           coverage_dir: None,
+          clean: false,
           watch: Default::default(),
           junit_path: None,
         }),
@@ -8298,6 +8343,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          clean: false,
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
@@ -8339,6 +8385,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          clean: false,
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
@@ -8474,6 +8521,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          clean: false,
           watch: Default::default(),
           reporter: Default::default(),
           junit_path: None,
@@ -8508,6 +8556,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
           junit_path: None,
@@ -8541,6 +8590,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
           junit_path: None,
@@ -8576,6 +8626,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          clean: false,
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,

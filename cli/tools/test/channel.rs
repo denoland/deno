@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::TestEvent;
-use super::TestStdioStream;
 use deno_core::futures::future::poll_fn;
 use deno_core::parking_lot;
 use deno_core::parking_lot::lock_api::RawMutex;
@@ -105,7 +104,6 @@ impl TestEventReceiver {
 
 struct TestStream {
   id: usize,
-  which: TestStdioStream,
   read_opt: Option<AsyncPipeRead>,
   sender: UnboundedSender<(usize, TestEvent)>,
 }
@@ -113,7 +111,6 @@ struct TestStream {
 impl TestStream {
   fn new(
     id: usize,
-    which: TestStdioStream,
     pipe_reader: PipeRead,
     sender: UnboundedSender<(usize, TestEvent)>,
   ) -> std::io::Result<Self> {
@@ -121,7 +118,6 @@ impl TestStream {
     let read_opt = Some(pipe_reader.into_async()?);
     Ok(Self {
       id,
-      which,
       read_opt,
       sender,
     })
@@ -135,7 +131,7 @@ impl TestStream {
       true
     } else if self
       .sender
-      .send((self.id, TestEvent::Output(self.which, buffer)))
+      .send((self.id, TestEvent::Output(buffer)))
       .is_err()
     {
       self.read_opt.take();
@@ -275,14 +271,9 @@ impl TestEventSenderFactory {
         .build()
         .unwrap();
       runtime.block_on(tokio::task::unconstrained(async move {
-        let mut test_stdout = TestStream::new(
-          id,
-          TestStdioStream::Stdout,
-          stdout_reader,
-          sender.clone(),
-        )?;
-        let mut test_stderr =
-          TestStream::new(id, TestStdioStream::Stderr, stderr_reader, sender)?;
+        let mut test_stdout =
+          TestStream::new(id, stdout_reader, sender.clone())?;
+        let mut test_stderr = TestStream::new(id, stderr_reader, sender)?;
 
         // This ensures that the stdout and stderr streams in the select! loop below cannot starve each
         // other.
@@ -488,7 +479,7 @@ mod tests {
     let mut count = 0;
     for message in messages {
       match message {
-        TestEvent::Output(_, vec) => {
+        TestEvent::Output(vec) => {
           assert_eq!(vec[0], expected);
           count += vec.len();
         }
@@ -619,7 +610,7 @@ mod tests {
       while let Some((_, message)) = receiver.recv().await {
         if i % 2 == 0 {
           let expected_text = format!("{:08x}", i / 2).into_bytes();
-          let TestEvent::Output(TestStdioStream::Stderr, text) = message else {
+          let TestEvent::Output(text) = message else {
             panic!("Incorrect message: {message:?}");
           };
           assert_eq!(text, expected_text);
@@ -665,7 +656,7 @@ mod tests {
         .unwrap();
       drop(worker);
       let (_, message) = receiver.recv().await.unwrap();
-      let TestEvent::Output(TestStdioStream::Stderr, text) = message else {
+      let TestEvent::Output(text) = message else {
         panic!("Incorrect message: {message:?}");
       };
       assert_eq!(text.as_slice(), b"hello");

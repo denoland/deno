@@ -66,6 +66,7 @@ async function dlint() {
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
     ":!:tests/wpt/suite/**",
+    ":!:tests/wpt/runner/**",
   ]);
 
   if (!sourceFiles.length) {
@@ -195,7 +196,7 @@ async function ensureNoNewITests() {
   // replace them with spec tests.
   const iTestCounts = {
     "bench_tests.rs": 0,
-    "bundle_tests.rs": 12,
+    "bundle_tests.rs": 11,
     "cache_tests.rs": 0,
     "cert_tests.rs": 0,
     "check_tests.rs": 23,
@@ -217,11 +218,11 @@ async function ensureNoNewITests() {
     "lsp_tests.rs": 0,
     "node_compat_tests.rs": 4,
     "node_unit_tests.rs": 2,
-    "npm_tests.rs": 98,
+    "npm_tests.rs": 97,
     "pm_tests.rs": 0,
     "publish_tests.rs": 0,
     "repl_tests.rs": 0,
-    "run_tests.rs": 372,
+    "run_tests.rs": 360,
     "shared_library_tests.rs": 0,
     "task_tests.rs": 30,
     "test_tests.rs": 77,

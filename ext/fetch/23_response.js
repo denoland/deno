@@ -282,7 +282,7 @@ class Response {
    * @param {ResponseInit} init
    * @returns {Response}
    */
-  static json(data = undefined, init = {}) {
+  static json(data = undefined, init = { __proto__: null }) {
     const prefix = "Failed to execute 'Response.json'";
     data = webidl.converters.any(data);
     init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");

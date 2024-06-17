@@ -172,6 +172,13 @@ function getStderrNoColor() {
   return noColorStderr();
 }
 
+class AssertionError extends Error {
+  name = "AssertionError";
+  constructor(message) {
+    super(message);
+  }
+}
+
 function assert(cond, msg = "Assertion failed.") {
   if (!cond) {
     throw new AssertionError(msg);
@@ -2930,7 +2937,7 @@ function cssToAnsi(css, prevCss = null) {
   return ansi;
 }
 
-function inspectArgs(args, inspectOptions = {}) {
+function inspectArgs(args, inspectOptions = { __proto__: null }) {
   const ctx = {
     ...getDefaultInspectOptions(),
     colors: inspectOptions.colors ?? !noColorStdout(),
@@ -3124,7 +3131,7 @@ class Console {
     );
   };
 
-  dir = (obj = undefined, options = {}) => {
+  dir = (obj = undefined, options = { __proto__: null }) => {
     this.#printFunc(
       inspectArgs([obj], {
         ...getConsoleInspectOptions(noColorStdout()),
@@ -3232,7 +3239,7 @@ class Console {
       resultData = [...new SafeSetIterator(data)];
     } else if (isMapObject) {
       let idx = 0;
-      resultData = {};
+      resultData = { __proto__: null };
 
       MapPrototypeForEach(data, (v, k) => {
         resultData[idx] = { Key: k, Values: v };
@@ -3390,7 +3397,7 @@ const customInspect = SymbolFor("Deno.customInspect");
 
 function inspect(
   value,
-  inspectOptions = {},
+  inspectOptions = { __proto__: null },
 ) {
   // Default options
   const ctx = {

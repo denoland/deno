@@ -1,23 +1,22 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use async_trait::async_trait;
 use dashmap::DashMap;
+use dashmap::DashSet;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::future;
-use deno_core::futures::future::LocalBoxFuture;
-use deno_core::futures::FutureExt;
-use deno_core::parking_lot::Mutex;
-use deno_core::ModuleCodeString;
+use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
-use deno_graph::source::NpmPackageReqResolution;
-use deno_graph::source::NpmResolver;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
+use deno_graph::NpmLoadError;
+use deno_graph::NpmResolvePkgReqsResult;
+use deno_npm::resolution::NpmResolutionError;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
@@ -29,12 +28,10 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::NpmResolver as DenoNodeNpmResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fs_util::specifier_to_file_path;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -61,7 +58,7 @@ pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
 }
 
 pub struct ModuleCodeStringSource {
-  pub code: ModuleCodeString,
+  pub code: ModuleSourceCode,
   pub found_url: ModuleSpecifier,
   pub media_type: MediaType,
 }
@@ -91,14 +88,14 @@ impl CliNodeResolver {
     }
   }
 
-  pub fn in_npm_package(&self, referrer: &ModuleSpecifier) -> bool {
-    self.npm_resolver.in_npm_package(referrer)
+  pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
+    self.npm_resolver.in_npm_package(specifier)
   }
 
   pub fn get_closest_package_json(
     &self,
     referrer: &ModuleSpecifier,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
   ) -> Result<Option<Rc<PackageJson>>, AnyError> {
     self
       .node_resolver
@@ -110,11 +107,10 @@ impl CliNodeResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-    permissions: &PermissionsContainer,
   ) -> Option<Result<Option<NodeResolution>, AnyError>> {
     if self.in_npm_package(referrer) {
       // we're in an npm package, so use node resolution
-      Some(self.resolve(specifier, referrer, mode, permissions))
+      Some(self.resolve(specifier, referrer, mode))
     } else {
       None
     }
@@ -125,20 +121,15 @@ impl CliNodeResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-    permissions: &PermissionsContainer,
   ) -> Result<Option<NodeResolution>, AnyError> {
-    self.handle_node_resolve_result(self.node_resolver.resolve(
-      specifier,
-      referrer,
-      mode,
-      permissions,
-    ))
+    self.handle_node_resolve_result(
+      self.node_resolver.resolve(specifier, referrer, mode),
+    )
   }
 
   pub fn resolve_req_reference(
     &self,
     req_ref: &NpmPackageReqReference,
-    permissions: &PermissionsContainer,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<NodeResolution, AnyError> {
@@ -150,7 +141,6 @@ impl CliNodeResolver {
       req_ref.sub_path(),
       referrer,
       mode,
-      permissions,
     )?;
     match maybe_resolution {
       Some(resolution) => Ok(resolution),
@@ -179,7 +169,6 @@ impl CliNodeResolver {
     sub_path: Option<&str>,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-    permissions: &PermissionsContainer,
   ) -> Result<Option<NodeResolution>, AnyError> {
     self.handle_node_resolve_result(
       self.node_resolver.resolve_package_subpath_from_deno_module(
@@ -187,7 +176,6 @@ impl CliNodeResolver {
         sub_path,
         referrer,
         mode,
-        permissions,
       ),
     )
   }
@@ -249,6 +237,7 @@ impl CliNodeResolver {
   }
 }
 
+#[derive(Clone)]
 pub struct NpmModuleLoader {
   cjs_resolutions: Arc<CjsResolutionStore>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
@@ -271,41 +260,28 @@ impl NpmModuleLoader {
     }
   }
 
-  pub fn maybe_prepare_load(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<Result<(), AnyError>> {
-    if self.node_resolver.in_npm_package(specifier) {
-      // nothing to prepare
-      Some(Ok(()))
-    } else {
-      None
-    }
-  }
-
-  pub fn load_sync_if_in_npm_package(
+  pub async fn load_if_in_npm_package(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-    permissions: &PermissionsContainer,
   ) -> Option<Result<ModuleCodeStringSource, AnyError>> {
     if self.node_resolver.in_npm_package(specifier) {
-      Some(self.load_sync(specifier, maybe_referrer, permissions))
+      Some(self.load(specifier, maybe_referrer).await)
     } else {
       None
     }
   }
 
-  fn load_sync(
+  pub async fn load(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-    permissions: &PermissionsContainer,
   ) -> Result<ModuleCodeStringSource, AnyError> {
     let file_path = specifier.to_file_path().unwrap();
     let code = self
       .fs
-      .read_text_file_sync(&file_path, None)
+      .read_file_async(file_path.clone(), None)
+      .await
       .map_err(AnyError::from)
       .with_context(|| {
         if file_path.is_dir() {
@@ -340,17 +316,25 @@ impl NpmModuleLoader {
 
     let code = if self.cjs_resolutions.contains(specifier) {
       // translate cjs to esm if it's cjs and inject node globals
-      self.node_code_translator.translate_cjs_to_esm(
-        specifier,
-        Some(code),
-        permissions,
-      )?
+      let code = match String::from_utf8_lossy(&code) {
+        Cow::Owned(code) => code,
+        // SAFETY: `String::from_utf8_lossy` guarantees that the result is valid
+        // UTF-8 if `Cow::Borrowed` is returned.
+        Cow::Borrowed(_) => unsafe { String::from_utf8_unchecked(code) },
+      };
+      ModuleSourceCode::String(
+        self
+          .node_code_translator
+          .translate_cjs_to_esm(specifier, Some(code))
+          .await?
+          .into(),
+      )
     } else {
       // esm and json code is untouched
-      code
+      ModuleSourceCode::Bytes(code.into_boxed_slice().into())
     };
     Ok(ModuleCodeStringSource {
-      code: code.into(),
+      code,
       found_url: specifier.clone(),
       media_type: MediaType::from_specifier(specifier),
     })
@@ -359,15 +343,15 @@ impl NpmModuleLoader {
 
 /// Keeps track of what module specifiers were resolved as CJS.
 #[derive(Debug, Default)]
-pub struct CjsResolutionStore(Mutex<HashSet<ModuleSpecifier>>);
+pub struct CjsResolutionStore(DashSet<ModuleSpecifier>);
 
 impl CjsResolutionStore {
   pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
-    self.0.lock().contains(specifier)
+    self.0.contains(specifier)
   }
 
   pub fn insert(&self, specifier: ModuleSpecifier) {
-    self.0.lock().insert(specifier);
+    self.0.insert(specifier);
   }
 }
 
@@ -452,7 +436,7 @@ pub struct CliGraphResolver {
   maybe_vendor_specifier: Option<ModuleSpecifier>,
   node_resolver: Option<Arc<CliNodeResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-  found_package_json_dep_flag: Arc<AtomicFlag>,
+  found_package_json_dep_flag: AtomicFlag,
   bare_node_builtins_enabled: bool,
 }
 
@@ -510,26 +494,23 @@ impl CliGraphResolver {
     self
   }
 
-  pub fn as_graph_npm_resolver(&self) -> &dyn NpmResolver {
-    self
-  }
-
-  pub fn found_package_json_dep(&self) -> bool {
-    self.found_package_json_dep_flag.is_raised()
+  pub fn create_graph_npm_resolver(&self) -> WorkerCliNpmGraphResolver {
+    WorkerCliNpmGraphResolver {
+      npm_resolver: self.npm_resolver.as_ref(),
+      found_package_json_dep_flag: &self.found_package_json_dep_flag,
+      bare_node_builtins_enabled: self.bare_node_builtins_enabled,
+    }
   }
 
   fn check_surface_byonm_node_error(
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
     original_err: AnyError,
     resolver: &ByonmCliNpmResolver,
   ) -> Result<(), AnyError> {
     if let Ok((pkg_name, _, _)) = parse_npm_pkg_name(specifier, referrer) {
-      match resolver
-        .resolve_package_folder_from_package(&pkg_name, referrer, mode)
-      {
+      match resolver.resolve_package_folder_from_package(&pkg_name, referrer) {
         Ok(_) => {
           return Err(original_err);
         }
@@ -639,12 +620,7 @@ impl Resolver for CliGraphResolver {
           {
             let node_resolver = self.node_resolver.as_ref().unwrap();
             return node_resolver
-              .resolve_req_reference(
-                &npm_req_ref,
-                &PermissionsContainer::allow_all(),
-                referrer,
-                to_node_mode(mode),
-              )
+              .resolve_req_reference(&npm_req_ref, referrer, to_node_mode(mode))
               .map(|res| res.into_url())
               .map_err(|err| err.into());
           }
@@ -652,12 +628,8 @@ impl Resolver for CliGraphResolver {
         Err(_) => {
           if referrer.scheme() == "file" {
             if let Some(node_resolver) = &self.node_resolver {
-              let node_result = node_resolver.resolve(
-                specifier,
-                referrer,
-                to_node_mode(mode),
-                &PermissionsContainer::allow_all(),
-              );
+              let node_result =
+                node_resolver.resolve(specifier, referrer, to_node_mode(mode));
               match node_result {
                 Ok(Some(res)) => {
                   return Ok(res.into_url());
@@ -667,7 +639,6 @@ impl Resolver for CliGraphResolver {
                     .check_surface_byonm_node_error(
                       specifier,
                       referrer,
-                      to_node_mode(mode),
                       anyhow!("Cannot find \"{}\"", specifier),
                       resolver,
                     )
@@ -676,17 +647,24 @@ impl Resolver for CliGraphResolver {
                 Err(err) => {
                   self
                     .check_surface_byonm_node_error(
-                      specifier,
-                      referrer,
-                      to_node_mode(mode),
-                      err,
-                      resolver,
+                      specifier, referrer, err, resolver,
                     )
                     .map_err(ResolveError::Other)?;
                 }
               }
             }
           }
+        }
+      }
+    } else if referrer.scheme() == "file" {
+      if let Some(node_resolver) = &self.node_resolver {
+        let node_result = node_resolver.resolve_if_in_npm_package(
+          specifier,
+          referrer,
+          to_node_mode(mode),
+        );
+        if let Some(Ok(Some(res))) = node_result {
+          return Ok(res.into_url());
         }
       }
     }
@@ -782,7 +760,15 @@ fn resolve_package_json_dep(
   Ok(None)
 }
 
-impl NpmResolver for CliGraphResolver {
+#[derive(Debug)]
+pub struct WorkerCliNpmGraphResolver<'a> {
+  npm_resolver: Option<&'a Arc<dyn CliNpmResolver>>,
+  found_package_json_dep_flag: &'a AtomicFlag,
+  bare_node_builtins_enabled: bool,
+}
+
+#[async_trait(?Send)]
+impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
   fn resolve_builtin_node_module(
     &self,
     specifier: &ModuleSpecifier,
@@ -814,42 +800,78 @@ impl NpmResolver for CliGraphResolver {
     }
   }
 
-  fn load_and_cache_npm_package_info(
-    &self,
-    package_name: &str,
-  ) -> LocalBoxFuture<'static, Result<(), AnyError>> {
-    match &self.npm_resolver {
+  fn load_and_cache_npm_package_info(&self, package_name: &str) {
+    match self.npm_resolver {
       Some(npm_resolver) if npm_resolver.as_managed().is_some() => {
-        let package_name = package_name.to_string();
         let npm_resolver = npm_resolver.clone();
-        async move {
+        let package_name = package_name.to_string();
+        deno_core::unsync::spawn(async move {
           if let Some(managed) = npm_resolver.as_managed() {
-            managed.cache_package_info(&package_name).await?;
+            let _ignore = managed.cache_package_info(&package_name).await;
           }
-          Ok(())
-        }
-        .boxed()
+        });
       }
-      _ => {
-        // return it succeeded and error at the import site below
-        Box::pin(future::ready(Ok(())))
-      }
+      _ => {}
     }
   }
 
-  fn resolve_npm(&self, package_req: &PackageReq) -> NpmPackageReqResolution {
+  async fn resolve_pkg_reqs(
+    &self,
+    package_reqs: &[PackageReq],
+  ) -> NpmResolvePkgReqsResult {
     match &self.npm_resolver {
-      Some(npm_resolver) => match npm_resolver.as_inner() {
-        InnerCliNpmResolverRef::Managed(npm_resolver) => {
-          npm_resolver.resolve_npm_for_deno_graph(package_req)
+      Some(npm_resolver) => {
+        let npm_resolver = match npm_resolver.as_inner() {
+          InnerCliNpmResolverRef::Managed(npm_resolver) => npm_resolver,
+          // if we are using byonm, then this should never be called because
+          // we don't use deno_graph's npm resolution in this case
+          InnerCliNpmResolverRef::Byonm(_) => unreachable!(),
+        };
+
+        let top_level_result = if self.found_package_json_dep_flag.is_raised() {
+          npm_resolver.ensure_top_level_package_json_install().await
+        } else {
+          Ok(())
+        };
+
+        let result = npm_resolver.add_package_reqs_raw(package_reqs).await;
+
+        NpmResolvePkgReqsResult {
+          results: result
+            .results
+            .into_iter()
+            .map(|r| {
+              r.map_err(|err| match err {
+                NpmResolutionError::Registry(e) => {
+                  NpmLoadError::RegistryInfo(Arc::new(e.into()))
+                }
+                NpmResolutionError::Resolution(e) => {
+                  NpmLoadError::PackageReqResolution(Arc::new(e.into()))
+                }
+                NpmResolutionError::DependencyEntry(e) => {
+                  NpmLoadError::PackageReqResolution(Arc::new(e.into()))
+                }
+              })
+            })
+            .collect(),
+          dep_graph_result: match top_level_result {
+            Ok(()) => result.dependencies_result.map_err(Arc::new),
+            Err(err) => Err(Arc::new(err)),
+          },
         }
-        // if we are using byonm, then this should never be called because
-        // we don't use deno_graph's npm resolution in this case
-        InnerCliNpmResolverRef::Byonm(_) => unreachable!(),
-      },
-      None => NpmPackageReqResolution::Err(anyhow!(
-        "npm specifiers were requested; but --no-npm is specified"
-      )),
+      }
+      None => {
+        let err = Arc::new(anyhow!(
+          "npm specifiers were requested; but --no-npm is specified"
+        ));
+        NpmResolvePkgReqsResult {
+          results: package_reqs
+            .iter()
+            .map(|_| Err(NpmLoadError::RegistryInfo(err.clone())))
+            .collect(),
+          dep_graph_result: Err(err),
+        }
+      }
     }
   }
 

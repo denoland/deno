@@ -1,0 +1,11 @@
+⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.
+[UNORDERED_START]
+Download http://localhost:4260/@denotest/transitive-bin
+Download http://localhost:4260/@denotest/bin
+Download http://localhost:4260/@denotest/bin/1.0.0.tgz
+Download http://localhost:4260/@denotest/transitive-bin/1.0.0.tgz
+Download http://localhost:4260/@denotest/bin/0.7.0.tgz
+Initialize @denotest/transitive-bin@1.0.0
+Initialize @denotest/bin@1.0.0
+Initialize @denotest/bin@0.7.0
+[UNORDERED_END]

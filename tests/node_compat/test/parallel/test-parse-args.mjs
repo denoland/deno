@@ -458,7 +458,7 @@ const candidateGreedyOptions = [
   '--foo',
 ];
 
-candidateGreedyOptions.forEach((value) => {
+for (const value of candidateGreedyOptions) {
   test(`greedy: when short option with value '${value}' then eaten`, () => {
     const args = ['-w', value];
     const options = { with: { type: 'string', short: 'w' } };
@@ -476,7 +476,7 @@ candidateGreedyOptions.forEach((value) => {
     const result = parseArgs({ args, options, strict: false });
     assert.deepStrictEqual(result, expectedResult);
   });
-});
+}
 
 test('strict: when candidate option value is plain text then does not throw', () => {
   const args = ['--with', 'abc'];
@@ -980,7 +980,7 @@ test('tokens:true should not include the default options after the args input', 
 
 test('proto as default value must be ignored', () => {
   const args = [];
-  const options = Object.create(null);
+  const options = { __proto__: null };
 
   // eslint-disable-next-line no-proto
   options.__proto__ = { type: 'string', default: 'HELLO' };

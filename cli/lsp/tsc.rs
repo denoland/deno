@@ -4,6 +4,7 @@ use super::analysis::CodeActionData;
 use super::code_lens;
 use super::config;
 use super::documents::AssetOrDocument;
+use super::documents::Document;
 use super::documents::DocumentsFilter;
 use super::language_server;
 use super::language_server::StateSnapshot;
@@ -67,6 +68,7 @@ use regex::Captures;
 use regex::Regex;
 use serde_repr::Deserialize_repr;
 use serde_repr::Serialize_repr;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp;
 use std::collections::HashMap;
@@ -92,7 +94,7 @@ static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
 static CAPTION_RE: Lazy<Regex> =
   lazy_regex!(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)");
-static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}");
+static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}"m);
 static EMAIL_MATCH_RE: Lazy<Regex> = lazy_regex!(r"(.+)\s<([-.\w]+@[-.\w]+)>");
 static HTTP_RE: Lazy<Regex> = lazy_regex!(r#"(?i)^https?:"#);
 static JSDOC_LINKS_RE: Lazy<Regex> = lazy_regex!(
@@ -383,7 +385,10 @@ impl TsServer {
       }
       None => None,
     };
-    *self.inspector_server.lock() = maybe_inspector_server.clone();
+    self
+      .inspector_server
+      .lock()
+      .clone_from(&maybe_inspector_server);
     // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
     // on the `TsServer` struct.
     let receiver = self.receiver.lock().take().unwrap();
@@ -392,8 +397,8 @@ impl TsServer {
     let _join_handle = thread::spawn(move || {
       run_tsc_thread(
         receiver,
-        performance.clone(),
-        specifier_map.clone(),
+        performance,
+        specifier_map,
         maybe_inspector_server,
       )
     });
@@ -1716,7 +1721,7 @@ fn display_parts_to_string(
       "linkName" => {
         if let Some(link) = current_link.as_mut() {
           link.name = Some(part.text.clone());
-          link.target = part.target.clone();
+          link.target.clone_from(&part.target);
         }
       }
       "linkText" => {
@@ -2269,7 +2274,7 @@ impl RenameLocations {
       let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
 
       // ensure TextDocumentEdit for `location.file_name`.
-      if text_document_edit_map.get(&uri).is_none() {
+      if !text_document_edit_map.contains_key(&uri) {
         text_document_edit_map.insert(
           uri.clone(),
           lsp::TextDocumentEdit {
@@ -3282,14 +3287,17 @@ impl CompletionEntryDetails {
       None
     };
     let documentation = if let Some(parts) = &self.documentation {
+      // NOTE: similar as `QuickInfo::to_hover()`
       let mut value = display_parts_to_string(parts, language_server);
       if let Some(tags) = &self.tags {
-        let tag_documentation = tags
+        let tags_preview = tags
           .iter()
           .map(|tag_info| get_tag_documentation(tag_info, language_server))
           .collect::<Vec<String>>()
-          .join("");
-        value = format!("{value}\n\n{tag_documentation}");
+          .join("  \n\n");
+        if !tags_preview.is_empty() {
+          value = format!("{value}\n\n{tags_preview}");
+        }
       }
       Some(lsp::Documentation::MarkupContent(lsp::MarkupContent {
         kind: lsp::MarkupKind::Markdown,
@@ -3628,7 +3636,7 @@ impl CompletionEntry {
               .check_specifier(&import_specifier, specifier)
               .or_else(|| relative_specifier(specifier, &import_specifier))
             {
-              display_source = new_module_specifier.clone();
+              display_source.clone_from(&new_module_specifier);
               if new_module_specifier != import_data.module_specifier {
                 specifier_rewrite =
                   Some((import_data.module_specifier, new_module_specifier));
@@ -3986,6 +3994,8 @@ struct State {
   response_tx: Option<oneshot::Sender<Result<String, AnyError>>>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
+  root_referrers: HashMap<ModuleSpecifier, ModuleSpecifier>,
+  last_referrer: Option<ModuleSpecifier>,
   token: CancellationToken,
   pending_requests: Option<UnboundedReceiver<Request>>,
   mark: Option<PerformanceMark>,
@@ -4004,9 +4014,27 @@ impl State {
       response_tx: None,
       state_snapshot,
       specifier_map,
+      root_referrers: Default::default(),
+      last_referrer: None,
       token: Default::default(),
       mark: None,
       pending_requests: Some(pending_requests),
+    }
+  }
+
+  fn get_document(&self, specifier: &ModuleSpecifier) -> Option<Arc<Document>> {
+    if let Some(referrer) = self.root_referrers.get(specifier) {
+      self
+        .state_snapshot
+        .documents
+        .get_or_load(specifier, referrer)
+    } else if let Some(referrer) = &self.last_referrer {
+      self
+        .state_snapshot
+        .documents
+        .get_or_load(specifier, referrer)
+    } else {
+      self.state_snapshot.documents.get(specifier)
     }
   }
 
@@ -4018,10 +4046,8 @@ impl State {
     if specifier.scheme() == "asset" {
       snapshot.assets.get(specifier).map(AssetOrDocument::Asset)
     } else {
-      snapshot
-        .documents
-        .get(specifier)
-        .map(AssetOrDocument::Document)
+      let document = self.get_document(specifier);
+      document.map(AssetOrDocument::Document)
     }
   }
 
@@ -4033,11 +4059,8 @@ impl State {
         None
       }
     } else {
-      self
-        .state_snapshot
-        .documents
-        .get(specifier)
-        .map(|d| d.script_version())
+      let document = self.get_document(specifier);
+      document.map(|d| d.script_version())
     }
   }
 }
@@ -4218,7 +4241,7 @@ fn op_resolve_inner(
       })
     })
     .collect();
-
+  state.last_referrer = Some(referrer);
   state.performance.measure(mark);
   Ok(specifiers)
 }
@@ -4231,6 +4254,7 @@ fn op_respond(
 ) {
   let state = state.borrow_mut::<State>();
   state.performance.measure(state.mark.take().unwrap());
+  state.last_referrer = None;
   let response = if !error.is_empty() {
     Err(anyhow!("tsc error: {error}"))
   } else {
@@ -4261,13 +4285,20 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     // ensure this is first so it resolves the node types first
     let specifier = "asset:///node_types.d.ts";
     result.push(specifier.to_string());
-    seen.insert(specifier);
+    seen.insert(Cow::Borrowed(specifier));
   }
 
   // inject these next because they're global
-  for specifier in state.state_snapshot.resolver.graph_import_specifiers() {
-    if seen.insert(specifier.as_str()) {
-      result.push(specifier.to_string());
+  for (referrer, specifiers) in
+    state.state_snapshot.resolver.graph_imports_by_referrer()
+  {
+    for specifier in specifiers {
+      if seen.insert(Cow::Borrowed(specifier.as_str())) {
+        result.push(specifier.to_string());
+      }
+      state
+        .root_referrers
+        .insert(specifier.clone(), referrer.clone());
     }
   }
 
@@ -4278,10 +4309,31 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     .documents(DocumentsFilter::AllDiagnosable);
   for doc in &docs {
     let specifier = doc.specifier();
-    if seen.insert(specifier.as_str())
-      && (doc.is_open() || specifier.scheme() == "file")
+    let is_open = doc.is_open();
+    if seen.insert(Cow::Borrowed(specifier.as_str()))
+      && (is_open || specifier.scheme() == "file")
     {
-      result.push(specifier.to_string());
+      let types_specifier = (|| {
+        let documents = &state.state_snapshot.documents;
+        let types = doc.maybe_types_dependency().maybe_specifier()?;
+        let (types, _) = documents.resolve_dependency(
+          types,
+          specifier,
+          doc.file_referrer(),
+        )?;
+        let types_doc = documents.get_or_load(&types, specifier)?;
+        Some(types_doc.specifier().clone())
+      })();
+      // If there is a types dep, use that as the root instead. But if the doc
+      // is open, include both as roots.
+      if let Some(types_specifier) = &types_specifier {
+        if seen.insert(Cow::Owned(types_specifier.to_string())) {
+          result.push(types_specifier.to_string());
+        }
+      }
+      if types_specifier.is_none() || is_open {
+        result.push(specifier.to_string());
+      }
     }
   }
 
@@ -4630,7 +4682,7 @@ impl UserPreferences {
       // TODO(nayeemrmn): Investigate why we use `Index` here.
       import_module_specifier_ending: Some(ImportModuleSpecifierEnding::Index),
       include_completions_with_snippet_text: Some(
-        config.client_capabilities.snippet_support,
+        config.snippet_support_capable(),
       ),
       provide_refactor_not_applicable_reason: Some(true),
       quote_preference: Some(fmt_config.into()),
@@ -4668,7 +4720,7 @@ impl UserPreferences {
       include_completions_with_class_member_snippets: Some(
         language_settings.suggest.enabled
           && language_settings.suggest.class_member_snippets.enabled
-          && config.client_capabilities.snippet_support,
+          && config.snippet_support_capable(),
       ),
       include_completions_with_insert_text: Some(
         language_settings.suggest.enabled,
@@ -4679,7 +4731,7 @@ impl UserPreferences {
             .suggest
             .object_literal_method_snippets
             .enabled
-          && config.client_capabilities.snippet_support,
+          && config.snippet_support_capable(),
       ),
       import_module_specifier_preference: Some(
         language_settings.preferences.import_module_specifier,
@@ -5135,9 +5187,8 @@ mod tests {
         .unwrap(),
       )
       .await;
-    let resolver = LspResolver::default()
-      .with_new_config(&config, &cache, None)
-      .await;
+    let resolver =
+      Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let mut documents = Documents::default();
     documents.update_config(&config, &resolver, &cache, &Default::default());
     for (specifier, source, version, language_id) in sources {
@@ -5148,11 +5199,12 @@ mod tests {
         *version,
         *language_id,
         (*source).into(),
+        None,
       );
     }
     let snapshot = Arc::new(StateSnapshot {
       project_version: 0,
-      documents,
+      documents: Arc::new(documents),
       assets: Default::default(),
       config: Arc::new(config),
       resolver,

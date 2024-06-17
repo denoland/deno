@@ -23,7 +23,6 @@ import {
   isUint8Array,
 } from "ext:deno_node/internal/util/types.ts";
 import { once } from "ext:deno_node/internal/util.mjs";
-import { deprecate } from "node:util";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 import {
   validateAbortSignal,
@@ -891,7 +890,7 @@ export const validateRmOptionsSync = hideStackFrames(
           message: "is a directory",
           path,
           syscall: "rm",
-          errno: EISDIR,
+          errno: osConstants.errno.EISDIR,
         });
       }
     }
@@ -959,24 +958,13 @@ export const getValidMode = hideStackFrames((mode, type) => {
 
 export const validateStringAfterArrayBufferView = hideStackFrames(
   (buffer, name) => {
-    if (typeof buffer === "string") {
-      return;
+    if (typeof buffer !== "string") {
+      throw new ERR_INVALID_ARG_TYPE(
+        name,
+        ["string", "Buffer", "TypedArray", "DataView"],
+        buffer,
+      );
     }
-
-    if (
-      typeof buffer === "object" &&
-      buffer !== null &&
-      typeof buffer.toString === "function" &&
-      Object.prototype.hasOwnProperty.call(buffer, "toString")
-    ) {
-      return;
-    }
-
-    throw new ERR_INVALID_ARG_TYPE(
-      name,
-      ["string", "Buffer", "TypedArray", "DataView"],
-      buffer,
-    );
   },
 );
 
@@ -1005,12 +993,6 @@ export const constants = {
   kWriteFileMaxChunkSize,
 };
 
-export const showStringCoercionDeprecation = deprecate(
-  () => {},
-  "Implicit coercion of objects with own toString property is deprecated.",
-  "DEP0162",
-);
-
 export default {
   constants,
   assertEncoding,
@@ -1030,7 +1012,6 @@ export default {
   preprocessSymlinkDestination,
   realpathCacheKey,
   getStatsFromBinding,
-  showStringCoercionDeprecation,
   stringToFlags,
   stringToSymlinkType,
   Stats,

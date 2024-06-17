@@ -472,7 +472,7 @@ dbTest("atomic mutation type=sum wrong type in mutation", async (db) => {
         .commit();
     },
     TypeError,
-    "Failed to perform 'sum' mutation on a non-U64 operand",
+    "Cannot sum KvU64 with Number",
   );
 });
 

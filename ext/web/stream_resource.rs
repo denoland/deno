@@ -66,6 +66,13 @@ impl Default for BoundedBufferChannelInner {
   }
 }
 
+impl Drop for BoundedBufferChannelInner {
+  fn drop(&mut self) {
+    // If any buffers remain in the ring, drop them here
+    self.drain(std::mem::drop);
+  }
+}
+
 impl std::fmt::Debug for BoundedBufferChannelInner {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.write_fmt(format_args!(

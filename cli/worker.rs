@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::num::NonZeroU16;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -8,7 +7,6 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -30,12 +28,12 @@ use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
@@ -49,6 +47,7 @@ use deno_terminal::colors;
 use tokio::select;
 
 use crate::args::package_json::PackageJsonDeps;
+use crate::args::write_lockfile_if_has_changes;
 use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
 use crate::errors;
@@ -58,20 +57,23 @@ use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
 use crate::version;
 
+pub struct ModuleLoaderAndSourceMapGetter {
+  pub module_loader: Rc<dyn ModuleLoader>,
+  pub source_map_getter: Option<Rc<dyn SourceMapGetter>>,
+}
+
 pub trait ModuleLoaderFactory: Send + Sync {
   fn create_for_main(
     &self,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader>;
+  ) -> ModuleLoaderAndSourceMapGetter;
 
   fn create_for_worker(
     &self,
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
-  ) -> Rc<dyn ModuleLoader>;
-
-  fn create_source_map_getter(&self) -> Option<Rc<dyn SourceMapGetter>>;
+  ) -> ModuleLoaderAndSourceMapGetter;
 }
 
 #[async_trait::async_trait(?Send)]
@@ -100,7 +102,6 @@ pub type CreateCoverageCollectorCb = Box<
 pub struct CliMainWorkerOptions {
   pub argv: Vec<String>,
   pub log_level: WorkerLogLevel,
-  pub coverage_dir: Option<String>,
   pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
@@ -145,7 +146,7 @@ struct SharedWorkerState {
   disable_deprecated_api_warning: bool,
   verbose_deprecated_api_warning: bool,
   code_cache: Option<Arc<dyn code_cache::CodeCache>>,
-  serve_port: Option<NonZeroU16>,
+  serve_port: Option<u16>,
   serve_host: Option<String>,
 }
 
@@ -415,7 +416,7 @@ impl CliMainWorkerFactory {
     feature_checker: Arc<FeatureChecker>,
     options: CliMainWorkerOptions,
     node_ipc: Option<i64>,
-    serve_port: Option<NonZeroU16>,
+    serve_port: Option<u16>,
     serve_host: Option<String>,
     enable_future_features: bool,
     disable_deprecated_api_warning: bool,
@@ -520,21 +521,15 @@ impl CliMainWorkerFactory {
           package_ref.req(),
           &referrer,
         )?;
-      let node_resolution = self.resolve_binary_entrypoint(
-        &package_folder,
-        package_ref.sub_path(),
-        &permissions,
-      )?;
+      let node_resolution = self
+        .resolve_binary_entrypoint(&package_folder, package_ref.sub_path())?;
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
 
       if let Some(lockfile) = &shared.maybe_lockfile {
         // For npm binary commands, ensure that the lockfile gets updated
         // so that we can re-use the npm resolution the next time it runs
         // for better performance
-        lockfile
-          .lock()
-          .write()
-          .context("Failed writing lockfile.")?;
+        write_lockfile_if_has_changes(&mut lockfile.lock())?;
       }
 
       (node_resolution.into_url(), is_main_cjs)
@@ -549,11 +544,12 @@ impl CliMainWorkerFactory {
       (main_module, false)
     };
 
-    let module_loader = shared
+    let ModuleLoaderAndSourceMapGetter {
+      module_loader,
+      source_map_getter,
+    } = shared
       .module_loader_factory
       .create_for_main(PermissionsContainer::allow_all(), permissions.clone());
-    let maybe_source_map_getter =
-      shared.module_loader_factory.create_source_map_getter();
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
     let create_web_worker_cb =
@@ -627,7 +623,7 @@ impl CliMainWorkerFactory {
         .clone(),
       root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       seed: shared.options.seed,
-      source_map_getter: maybe_source_map_getter,
+      source_map_getter,
       format_js_error_fn: Some(Arc::new(format_js_error)),
       create_web_worker_cb,
       maybe_inspector_server,
@@ -636,6 +632,7 @@ impl CliMainWorkerFactory {
       strace_ops: shared.options.strace_ops.clone(),
       module_loader,
       fs: shared.fs.clone(),
+      node_resolver: Some(shared.node_resolver.clone()),
       npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
       get_error_class_fn: Some(&errors::get_error_class_name),
       cache_storage_dir,
@@ -687,7 +684,6 @@ impl CliMainWorkerFactory {
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-    permissions: &PermissionsContainer,
   ) -> Result<NodeResolution, AnyError> {
     match self
       .shared
@@ -697,11 +693,8 @@ impl CliMainWorkerFactory {
       Ok(node_resolution) => Ok(node_resolution),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
-        let result = self.resolve_binary_entrypoint_fallback(
-          package_folder,
-          sub_path,
-          permissions,
-        );
+        let result =
+          self.resolve_binary_entrypoint_fallback(package_folder, sub_path);
         match result {
           Ok(Some(resolution)) => Ok(resolution),
           Ok(None) => Err(original_err),
@@ -718,7 +711,6 @@ impl CliMainWorkerFactory {
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-    permissions: &PermissionsContainer,
   ) -> Result<Option<NodeResolution>, AnyError> {
     // only fallback if the user specified a sub path
     if sub_path.is_none() {
@@ -739,7 +731,6 @@ impl CliMainWorkerFactory {
         sub_path,
         &referrer,
         NodeResolutionMode::Execution,
-        permissions,
       )?
     else {
       return Ok(None);
@@ -769,12 +760,13 @@ fn create_web_worker_callback(
   Arc::new(move |args| {
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
-    let module_loader = shared.module_loader_factory.create_for_worker(
+    let ModuleLoaderAndSourceMapGetter {
+      module_loader,
+      source_map_getter,
+    } = shared.module_loader_factory.create_for_worker(
       args.parent_permissions.clone(),
       args.permissions.clone(),
     );
-    let maybe_source_map_getter =
-      shared.module_loader_factory.create_source_map_getter();
     let create_web_worker_cb =
       create_web_worker_callback(mode, shared.clone(), stdio.clone());
 
@@ -839,9 +831,10 @@ fn create_web_worker_callback(
       seed: shared.options.seed,
       create_web_worker_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
-      source_map_getter: maybe_source_map_getter,
+      source_map_getter,
       module_loader,
       fs: shared.fs.clone(),
+      node_resolver: Some(shared.node_resolver.clone()),
       npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
       worker_type: args.worker_type,
       maybe_inspector_server,
@@ -876,7 +869,7 @@ fn create_web_worker_callback(
 mod tests {
   use super::*;
   use deno_core::resolve_path;
-  use deno_runtime::permissions::Permissions;
+  use deno_runtime::deno_permissions::Permissions;
 
   fn create_test_worker() -> MainWorker {
     let main_module =

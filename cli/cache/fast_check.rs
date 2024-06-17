@@ -7,13 +7,16 @@ use deno_runtime::deno_webstorage::rusqlite::params;
 
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
+use super::cache_db::CacheDBHash;
 use super::cache_db::CacheFailure;
 
 pub static FAST_CHECK_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
-  table_initializer: "CREATE TABLE IF NOT EXISTS fastcheckcache (
-      hash TEXT PRIMARY KEY,
-      data TEXT NOT NULL
-    );",
+  table_initializer: concat!(
+    "CREATE TABLE IF NOT EXISTS fastcheckcache (",
+    "hash INTEGER PRIMARY KEY,",
+    "data TEXT NOT NULL",
+    ");"
+  ),
   on_version_change: "DELETE FROM fastcheckcache;",
   preheat_queries: &[],
   on_failure: CacheFailure::Blackhole,
@@ -81,13 +84,14 @@ impl FastCheckCacheInner {
       WHERE
         hash=?1
       LIMIT 1";
-    let res = self
-      .conn
-      // key is a string because SQLite can't handle u64
-      .query_row(query, params![key.as_u64().to_string()], |row| {
+    let res = self.conn.query_row(
+      query,
+      params![CacheDBHash::new(key.as_u64())],
+      |row| {
         let value: Vec<u8> = row.get(0)?;
         Ok(bincode::deserialize::<FastCheckCacheItem>(&value)?)
-      })?;
+      },
+    )?;
     Ok(res)
   }
 
@@ -103,7 +107,7 @@ impl FastCheckCacheInner {
         (?1, ?2)";
     self.conn.execute(
       sql,
-      params![key.as_u64().to_string(), &bincode::serialize(data)?],
+      params![CacheDBHash::new(key.as_u64()), &bincode::serialize(data)?],
     )?;
     Ok(())
   }
@@ -114,6 +118,7 @@ mod test {
   use std::collections::BTreeSet;
 
   use deno_ast::ModuleSpecifier;
+  use deno_graph::FastCheckCache as _;
   use deno_graph::FastCheckCacheModuleItem;
   use deno_graph::FastCheckCacheModuleItemDiagnostic;
   use deno_semver::package::PackageNv;
@@ -123,12 +128,14 @@ mod test {
   #[test]
   pub fn cache_general_use() {
     let conn = CacheDB::in_memory(&FAST_CHECK_CACHE_DB, "1.0.0");
-    let cache = FastCheckCacheInner::new(conn);
+    let cache = FastCheckCache::new(conn);
 
     let key = FastCheckCacheKey::build(
+      cache.hash_seed(),
       &PackageNv::from_str("@scope/a@1.0.0").unwrap(),
       &Default::default(),
     );
+    let cache = cache.inner;
     assert!(cache.get(key).unwrap().is_none());
     let value = FastCheckCacheItem {
       dependencies: BTreeSet::from([

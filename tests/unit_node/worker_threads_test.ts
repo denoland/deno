@@ -562,3 +562,31 @@ Deno.test({
     port1.close();
   },
 });
+
+// Test for https://github.com/denoland/deno/issues/23854
+Deno.test({
+  name: "[node/worker_threads] MessagePort.addListener is present",
+  async fn() {
+    const channel = new workerThreads.MessageChannel();
+    const worker = new workerThreads.Worker(
+      `
+      import { parentPort } from "node:worker_threads";
+      parentPort.addListener("message", message => {
+        if (message.foo) {
+          const success = typeof message.foo.bar.addListener === "function";
+          parentPort.postMessage(success ? "it works" : "it doesn't work")
+        }
+      })
+      `,
+      {
+        eval: true,
+      },
+    );
+    worker.postMessage({ foo: { bar: channel.port1 } }, [channel.port1]);
+
+    assertEquals((await once(worker, "message"))[0], "it works");
+    worker.terminate();
+    channel.port1.close();
+    channel.port2.close();
+  },
+});

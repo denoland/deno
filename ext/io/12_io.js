@@ -228,7 +228,7 @@ class Stdin {
     return this.#readable;
   }
 
-  setRaw(mode, options = {}) {
+  setRaw(mode, options = { __proto__: null }) {
     const cbreak = !!(options.cbreak ?? false);
     op_set_raw(this.#rid, mode, cbreak);
   }
