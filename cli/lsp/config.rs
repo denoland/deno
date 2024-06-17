@@ -1568,27 +1568,13 @@ impl ConfigData {
 #[derive(Clone, Debug, Default)]
 pub struct ConfigTree {
   first_folder: Option<ModuleSpecifier>,
-  scopes: Arc<BTreeMap<ModuleSpecifier, ConfigData>>,
+  scopes: Arc<BTreeMap<ModuleSpecifier, Arc<ConfigData>>>,
 }
 
 impl ConfigTree {
-  pub fn root_scope(&self) -> Option<&ModuleSpecifier> {
-    self.first_folder.as_ref()
-  }
-
-  pub fn root_data(&self) -> Option<&ConfigData> {
-    self.first_folder.as_ref().and_then(|s| self.scopes.get(s))
-  }
-
   pub fn root_ts_config(&self) -> Arc<LspTsConfig> {
-    self
-      .root_data()
-      .map(|d| d.ts_config.clone())
-      .unwrap_or_default()
-  }
-
-  pub fn root_import_map(&self) -> Option<&Arc<ImportMap>> {
-    self.root_data().and_then(|d| d.import_map.as_ref())
+    let root_data = self.first_folder.as_ref().and_then(|s| self.scopes.get(s));
+    root_data.map(|d| d.ts_config.clone()).unwrap_or_default()
   }
 
   pub fn scope_for_specifier(
@@ -1599,19 +1585,20 @@ impl ConfigTree {
       .scopes
       .keys()
       .rfind(|s| specifier.as_str().starts_with(s.as_str()))
-      .or(self.first_folder.as_ref())
   }
 
   pub fn data_for_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Option<&ConfigData> {
+  ) -> Option<&Arc<ConfigData>> {
     self
       .scope_for_specifier(specifier)
       .and_then(|s| self.scopes.get(s))
   }
 
-  pub fn data_by_scope(&self) -> &Arc<BTreeMap<ModuleSpecifier, ConfigData>> {
+  pub fn data_by_scope(
+    &self,
+  ) -> &Arc<BTreeMap<ModuleSpecifier, Arc<ConfigData>>> {
     &self.scopes
   }
 
@@ -1694,14 +1681,16 @@ impl ConfigTree {
           if let Ok(config_uri) = folder_uri.join(config_path) {
             scopes.insert(
               folder_uri.clone(),
-              ConfigData::load(
-                Some(&config_uri),
-                folder_uri,
-                None,
-                settings,
-                Some(file_fetcher),
-              )
-              .await,
+              Arc::new(
+                ConfigData::load(
+                  Some(&config_uri),
+                  folder_uri,
+                  None,
+                  settings,
+                  Some(file_fetcher),
+                )
+                .await,
+              ),
             );
           }
         }
@@ -1756,10 +1745,10 @@ impl ConfigTree {
             Some(file_fetcher),
           )
           .await;
-          scopes.insert(member_scope.clone(), member_data);
+          scopes.insert(member_scope.clone(), Arc::new(member_data));
         }
       }
-      scopes.insert(scope, data);
+      scopes.insert(scope, Arc::new(data));
     }
 
     for folder_uri in settings.by_workspace_folder.keys() {
@@ -1769,14 +1758,16 @@ impl ConfigTree {
       {
         scopes.insert(
           folder_uri.clone(),
-          ConfigData::load(
-            None,
-            folder_uri,
-            None,
-            settings,
-            Some(file_fetcher),
-          )
-          .await,
+          Arc::new(
+            ConfigData::load(
+              None,
+              folder_uri,
+              None,
+              settings,
+              Some(file_fetcher),
+            )
+            .await,
+          ),
         );
       }
     }
@@ -1787,14 +1778,16 @@ impl ConfigTree {
   #[cfg(test)]
   pub async fn inject_config_file(&mut self, config_file: ConfigFile) {
     let scope = config_file.specifier.join(".").unwrap();
-    let data = ConfigData::load_inner(
-      Some(config_file),
-      &scope,
-      None,
-      &Default::default(),
-      None,
-    )
-    .await;
+    let data = Arc::new(
+      ConfigData::load_inner(
+        Some(config_file),
+        &scope,
+        None,
+        &Default::default(),
+        None,
+      )
+      .await,
+    );
     self.first_folder = Some(scope.clone());
     self.scopes = Arc::new([(scope, data)].into_iter().collect());
   }
