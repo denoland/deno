@@ -19,7 +19,6 @@ use super::semantic_tokens;
 use super::semantic_tokens::SemanticTokensBuilder;
 use super::text::LineIndex;
 use super::urls::LspClientUrl;
-use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::args::jsr_url;
@@ -1844,9 +1843,12 @@ impl DocumentSpan {
     let target_asset_or_doc =
       language_server.get_maybe_asset_or_document(&target_specifier)?;
     let target_line_index = target_asset_or_doc.line_index();
+    let file_referrer = language_server
+      .documents
+      .get_file_referrer(&target_specifier);
     let target_uri = language_server
       .url_map
-      .normalize_specifier(&target_specifier)
+      .normalize_specifier(&target_specifier, file_referrer.as_deref())
       .ok()?;
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
@@ -1890,9 +1892,10 @@ impl DocumentSpan {
       language_server.get_maybe_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let range = self.text_span.to_range(line_index);
+    let file_referrer = language_server.documents.get_file_referrer(&specifier);
     let mut target = language_server
       .url_map
-      .normalize_specifier(&specifier)
+      .normalize_specifier(&specifier, file_referrer.as_deref())
       .ok()?
       .into_url();
     target.set_fragment(Some(&format!(
@@ -1950,9 +1953,10 @@ impl NavigateToItem {
     let asset_or_doc =
       language_server.get_asset_or_document(&specifier).ok()?;
     let line_index = asset_or_doc.line_index();
+    let file_referrer = language_server.documents.get_file_referrer(&specifier);
     let uri = language_server
       .url_map
-      .normalize_specifier(&specifier)
+      .normalize_specifier(&specifier, file_referrer.as_deref())
       .ok()?;
     let range = self.text_span.to_range(line_index);
     let location = lsp::Location {
@@ -2208,9 +2212,10 @@ impl ImplementationLocation {
   ) -> lsp::Location {
     let specifier = resolve_url(&self.document_span.file_name)
       .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
+    let file_referrer = language_server.documents.get_file_referrer(&specifier);
     let uri = language_server
       .url_map
-      .normalize_specifier(&specifier)
+      .normalize_specifier(&specifier, file_referrer.as_deref())
       .unwrap_or_else(|_| {
         LspClientUrl::new(ModuleSpecifier::parse("deno://invalid").unwrap())
       });
@@ -2270,7 +2275,11 @@ impl RenameLocations {
         includes_non_files = true;
         continue;
       }
-      let uri = language_server.url_map.normalize_specifier(&specifier)?;
+      let file_referrer =
+        language_server.documents.get_file_referrer(&specifier);
+      let uri = language_server
+        .url_map
+        .normalize_specifier(&specifier, file_referrer.as_deref())?;
       let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
 
       // ensure TextDocumentEdit for `location.file_name`.
@@ -2916,12 +2925,14 @@ impl ReferenceEntry {
   pub fn to_location(
     &self,
     line_index: Arc<LineIndex>,
-    url_map: &LspUrlMap,
+    language_server: &language_server::Inner,
   ) -> lsp::Location {
     let specifier = resolve_url(&self.document_span.file_name)
       .unwrap_or_else(|_| INVALID_SPECIFIER.clone());
-    let uri = url_map
-      .normalize_specifier(&specifier)
+    let file_referrer = language_server.documents.get_file_referrer(&specifier);
+    let uri = language_server
+      .url_map
+      .normalize_specifier(&specifier, file_referrer.as_deref())
       .unwrap_or_else(|_| LspClientUrl::new(INVALID_SPECIFIER.clone()));
     lsp::Location {
       uri: uri.into_url(),
@@ -2977,9 +2988,12 @@ impl CallHierarchyItem {
   ) -> lsp::CallHierarchyItem {
     let target_specifier =
       resolve_url(&self.file).unwrap_or_else(|_| INVALID_SPECIFIER.clone());
+    let file_referrer = language_server
+      .documents
+      .get_file_referrer(&target_specifier);
     let uri = language_server
       .url_map
-      .normalize_specifier(&target_specifier)
+      .normalize_specifier(&target_specifier, file_referrer.as_deref())
       .unwrap_or_else(|_| LspClientUrl::new(INVALID_SPECIFIER.clone()));
 
     let use_file_name = self.is_source_file_item();
