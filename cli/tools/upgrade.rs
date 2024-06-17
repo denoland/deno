@@ -7,6 +7,7 @@ use crate::args::UpgradeFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 use crate::standalone::binary::unpack_into_dir;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -101,17 +102,17 @@ trait VersionProvider: Clone {
 
 #[derive(Clone)]
 struct RealVersionProvider {
-  http_client: Arc<HttpClient>,
+  http_client_provider: Arc<HttpClientProvider>,
   check_kind: UpgradeCheckKind,
 }
 
 impl RealVersionProvider {
   pub fn new(
-    http_client: Arc<HttpClient>,
+    http_client_provider: Arc<HttpClientProvider>,
     check_kind: UpgradeCheckKind,
   ) -> Self {
     Self {
-      http_client,
+      http_client_provider,
       check_kind,
     }
   }
@@ -124,8 +125,12 @@ impl VersionProvider for RealVersionProvider {
   }
 
   async fn latest_version(&self) -> Result<String, AnyError> {
-    get_latest_version(&self.http_client, self.release_kind(), self.check_kind)
-      .await
+    get_latest_version(
+      &self.http_client_provider.get_or_create()?,
+      self.release_kind(),
+      self.check_kind,
+    )
+    .await
   }
 
   fn current_version(&self) -> Cow<str> {
@@ -241,7 +246,7 @@ pub fn upgrade_check_enabled() -> bool {
 }
 
 pub fn check_for_upgrades(
-  http_client: Arc<HttpClient>,
+  http_client_provider: Arc<HttpClientProvider>,
   cache_file_path: PathBuf,
 ) {
   if !upgrade_check_enabled() {
@@ -250,7 +255,7 @@ pub fn check_for_upgrades(
 
   let env = RealUpdateCheckerEnvironment::new(cache_file_path);
   let version_provider =
-    RealVersionProvider::new(http_client, UpgradeCheckKind::Execution);
+    RealVersionProvider::new(http_client_provider, UpgradeCheckKind::Execution);
   let update_checker = UpdateChecker::new(env, version_provider);
 
   if update_checker.should_check_for_new_version() {
@@ -300,14 +305,14 @@ pub struct LspVersionUpgradeInfo {
 }
 
 pub async fn check_for_upgrades_for_lsp(
-  http_client: Arc<HttpClient>,
+  http_client_provider: Arc<HttpClientProvider>,
 ) -> Result<Option<LspVersionUpgradeInfo>, AnyError> {
   if !upgrade_check_enabled() {
     return Ok(None);
   }
 
   let version_provider =
-    RealVersionProvider::new(http_client, UpgradeCheckKind::Lsp);
+    RealVersionProvider::new(http_client_provider, UpgradeCheckKind::Lsp);
   check_for_upgrades_for_lsp_with_provider(&version_provider).await
 }
 
@@ -370,7 +375,7 @@ pub async fn upgrade(
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags)?;
-  let client = factory.http_client();
+  let client = factory.http_client_provider().get_or_create()?;
   let current_exe_path = std::env::current_exe()?;
   let full_path_output_flag = upgrade_flags
     .output
@@ -445,7 +450,7 @@ pub async fn upgrade(
       };
 
       let latest_version =
-        get_latest_version(client, release_kind, UpgradeCheckKind::Execution)
+        get_latest_version(&client, release_kind, UpgradeCheckKind::Execution)
           .await?;
 
       let current_is_most_recent = if upgrade_flags.canary {
@@ -491,7 +496,7 @@ pub async fn upgrade(
     )
   };
 
-  let archive_data = download_package(client, &download_url)
+  let archive_data = download_package(&client, &download_url)
     .await
     .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
 

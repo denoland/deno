@@ -38,7 +38,35 @@ use crate::util::progress_bar::ProgressMessagePrompt;
 ///
 /// This also handles creating the directory if a NotFound error
 /// occurs.
-pub fn atomic_write_file<T: AsRef<[u8]>>(
+pub fn atomic_write_file_with_retries<T: AsRef<[u8]>>(
+  file_path: &Path,
+  data: T,
+  mode: u32,
+) -> std::io::Result<()> {
+  let mut count = 0;
+  loop {
+    match atomic_write_file(file_path, data.as_ref(), mode) {
+      Ok(()) => return Ok(()),
+      Err(err) => {
+        if count >= 5 {
+          // too many retries, return the error
+          return Err(err);
+        }
+        count += 1;
+        let sleep_ms = std::cmp::min(50, 10 * count);
+        std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
+      }
+    }
+  }
+}
+
+/// Writes the file to the file system at a temporary path, then
+/// renames it to the destination in a single sys call in order
+/// to never leave the file system in a corrupted state.
+///
+/// This also handles creating the directory if a NotFound error
+/// occurs.
+fn atomic_write_file<T: AsRef<[u8]>>(
   file_path: &Path,
   data: T,
   mode: u32,
@@ -50,8 +78,11 @@ pub fn atomic_write_file<T: AsRef<[u8]>>(
     mode: u32,
   ) -> std::io::Result<()> {
     write_file(temp_file_path, data, mode)?;
-    std::fs::rename(temp_file_path, file_path)?;
-    Ok(())
+    std::fs::rename(temp_file_path, file_path).map_err(|err| {
+      // clean up the created temp file on error
+      let _ = std::fs::remove_file(temp_file_path);
+      err
+    })
   }
 
   fn inner(file_path: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {

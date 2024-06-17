@@ -75,7 +75,7 @@ impl ParsedSourceCache {
   ) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
     if let Some(parsed_source) = self.remove_parsed_source(specifier) {
       if parsed_source.media_type() == media_type
-        && parsed_source.text_info().text_str() == source.as_ref()
+        && parsed_source.text().as_ref() == source.as_ref()
       {
         // note: message used tests
         log::debug!("Removed parsed source: {}", specifier);

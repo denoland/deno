@@ -118,7 +118,7 @@ pub async fn build<
   graph_util::graph_valid(
     &graph,
     &real_fs,
-    &graph.roots,
+    &graph.roots.iter().cloned().collect::<Vec<_>>(),
     graph_util::GraphValidOptions {
       is_vendoring: true,
       check_js: true,

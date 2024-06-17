@@ -224,7 +224,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
   fn resolve_global_symbol(&self, symbol: &[String]) -> Option<String> {
     if self.deno_ns.contains(symbol) {
       Some(format!(
-        "https://deno.land/api@{}?s={}",
+        "https://deno.land/api@v{}?s={}",
         env!("CARGO_PKG_VERSION"),
         symbol.join(".")
       ))
@@ -350,7 +350,7 @@ fn check_diagnostics(diagnostics: &[DocDiagnostic]) -> Result<(), AnyError> {
     for (_, diagnostics_by_col) in diagnostics_by_lc {
       for (_, diagnostics) in diagnostics_by_col {
         for diagnostic in diagnostics {
-          log::error!("{}", diagnostic.display());
+          log::error!("{}\n", diagnostic.display());
         }
       }
     }

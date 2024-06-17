@@ -643,10 +643,11 @@ impl ReplSession {
           source_map: deno_ast::SourceMapOption::None,
           source_map_file: None,
           inline_sources: false,
-          keep_comments: false,
+          remove_comments: false,
         },
       )?
       .into_source()
+      .into_string()?
       .text;
 
     let value = self
@@ -821,7 +822,7 @@ fn parse_source_as(
 
   let parsed = deno_ast::parse_module(deno_ast::ParseParams {
     specifier,
-    text_info: deno_ast::SourceTextInfo::from_string(source),
+    text: source.into(),
     media_type,
     capture_tokens: true,
     maybe_syntax: None,
@@ -888,7 +889,7 @@ fn analyze_jsx_pragmas(
           range: comment_source_to_position_range(
             c.start(),
             &m,
-            parsed_source.text_info(),
+            parsed_source.text_info_lazy(),
             true,
           ),
         });
@@ -902,7 +903,7 @@ fn analyze_jsx_pragmas(
           range: comment_source_to_position_range(
             c.start(),
             &m,
-            parsed_source.text_info(),
+            parsed_source.text_info_lazy(),
             false,
           ),
         });
@@ -916,7 +917,7 @@ fn analyze_jsx_pragmas(
           range: comment_source_to_position_range(
             c.start(),
             &m,
-            parsed_source.text_info(),
+            parsed_source.text_info_lazy(),
             false,
           ),
         });

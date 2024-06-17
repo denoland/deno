@@ -385,7 +385,10 @@ impl TsServer {
       }
       None => None,
     };
-    *self.inspector_server.lock() = maybe_inspector_server.clone();
+    self
+      .inspector_server
+      .lock()
+      .clone_from(&maybe_inspector_server);
     // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
     // on the `TsServer` struct.
     let receiver = self.receiver.lock().take().unwrap();
@@ -1718,7 +1721,7 @@ fn display_parts_to_string(
       "linkName" => {
         if let Some(link) = current_link.as_mut() {
           link.name = Some(part.text.clone());
-          link.target = part.target.clone();
+          link.target.clone_from(&part.target);
         }
       }
       "linkText" => {
@@ -2271,7 +2274,7 @@ impl RenameLocations {
       let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
 
       // ensure TextDocumentEdit for `location.file_name`.
-      if text_document_edit_map.get(&uri).is_none() {
+      if !text_document_edit_map.contains_key(&uri) {
         text_document_edit_map.insert(
           uri.clone(),
           lsp::TextDocumentEdit {
@@ -3633,7 +3636,7 @@ impl CompletionEntry {
               .check_specifier(&import_specifier, specifier)
               .or_else(|| relative_specifier(specifier, &import_specifier))
             {
-              display_source = new_module_specifier.clone();
+              display_source.clone_from(&new_module_specifier);
               if new_module_specifier != import_data.module_specifier {
                 specifier_rewrite =
                   Some((import_data.module_specifier, new_module_specifier));
@@ -4679,7 +4682,7 @@ impl UserPreferences {
       // TODO(nayeemrmn): Investigate why we use `Index` here.
       import_module_specifier_ending: Some(ImportModuleSpecifierEnding::Index),
       include_completions_with_snippet_text: Some(
-        config.client_capabilities.snippet_support,
+        config.snippet_support_capable(),
       ),
       provide_refactor_not_applicable_reason: Some(true),
       quote_preference: Some(fmt_config.into()),
@@ -4717,7 +4720,7 @@ impl UserPreferences {
       include_completions_with_class_member_snippets: Some(
         language_settings.suggest.enabled
           && language_settings.suggest.class_member_snippets.enabled
-          && config.client_capabilities.snippet_support,
+          && config.snippet_support_capable(),
       ),
       include_completions_with_insert_text: Some(
         language_settings.suggest.enabled,
@@ -4728,7 +4731,7 @@ impl UserPreferences {
             .suggest
             .object_literal_method_snippets
             .enabled
-          && config.client_capabilities.snippet_support,
+          && config.snippet_support_capable(),
       ),
       import_module_specifier_preference: Some(
         language_settings.preferences.import_module_specifier,

@@ -8,7 +8,7 @@ use deno_runtime::deno_node::PackageJson;
 
 use crate::args::ConfigFile;
 use crate::cache;
-use crate::util::fs::atomic_write_file;
+use crate::util::fs::atomic_write_file_with_retries;
 use crate::Flags;
 
 use super::DenoSubcommand;
@@ -84,7 +84,7 @@ pub fn write_lockfile_if_has_changes(
   };
   // do an atomic write to reduce the chance of multiple deno
   // processes corrupting the file
-  atomic_write_file(&lockfile.filename, bytes, cache::CACHE_PERM)
+  atomic_write_file_with_retries(&lockfile.filename, bytes, cache::CACHE_PERM)
     .context("Failed writing lockfile.")?;
   lockfile.has_content_changed = false;
   Ok(())

@@ -38,6 +38,7 @@ use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_lint::linter::LintConfig;
 use deno_lint::rules::LintRule;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
@@ -804,12 +805,27 @@ fn generate_lint_diagnostics(
       continue;
     }
     let version = document.maybe_lsp_version();
-    let (lint_options, lint_rules) = config
+    let (lint_options, lint_config, lint_rules) = config
       .tree
       .scope_for_specifier(specifier)
       .and_then(|s| config_data_by_scope.get(s))
-      .map(|d| (d.lint_options.clone(), d.lint_rules.clone()))
-      .unwrap_or_default();
+      .map(|d| {
+        (
+          d.lint_options.clone(),
+          d.lint_config.clone(),
+          d.lint_rules.clone(),
+        )
+      })
+      .unwrap_or_else(|| {
+        (
+          Arc::default(),
+          LintConfig {
+            default_jsx_factory: None,
+            default_jsx_fragment_factory: None,
+          },
+          Arc::default(),
+        )
+      });
     diagnostics_vec.push(DiagnosticRecord {
       specifier: specifier.clone(),
       versioned: VersionedDiagnostics {
@@ -817,6 +833,7 @@ fn generate_lint_diagnostics(
         diagnostics: generate_document_lint_diagnostics(
           &document,
           &lint_options,
+          lint_config,
           lint_rules.rules.clone(),
         ),
       },
@@ -828,6 +845,7 @@ fn generate_lint_diagnostics(
 fn generate_document_lint_diagnostics(
   document: &Document,
   lint_options: &LintOptions,
+  lint_config: LintConfig,
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Vec<lsp::Diagnostic> {
   if !lint_options.files.matches_specifier(document.specifier()) {
@@ -836,7 +854,7 @@ fn generate_document_lint_diagnostics(
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
       if let Ok(references) =
-        analysis::get_lint_references(&parsed_source, lint_rules)
+        analysis::get_lint_references(parsed_source, lint_rules, lint_config)
       {
         references
           .into_iter()
@@ -1593,21 +1611,21 @@ mod tests {
   fn mock_config() -> Config {
     let root_uri = resolve_url("file:///").unwrap();
     Config {
-      settings: Settings {
-        unscoped: WorkspaceSettings {
+      settings: Arc::new(Settings {
+        unscoped: Arc::new(WorkspaceSettings {
           enable: Some(true),
           lint: true,
           ..Default::default()
-        },
+        }),
         ..Default::default()
-      },
-      workspace_folders: vec![(
+      }),
+      workspace_folders: Arc::new(vec![(
         root_uri.clone(),
         lsp::WorkspaceFolder {
           uri: root_uri,
           name: "".to_string(),
         },
-      )],
+      )]),
       ..Default::default()
     }
   }
@@ -1701,10 +1719,13 @@ let c: number = "a";
     // now test disabled specifier
     {
       let mut disabled_config = mock_config();
-      disabled_config.settings.unscoped = WorkspaceSettings {
-        enable: Some(false),
-        ..Default::default()
-      };
+      disabled_config.set_workspace_settings(
+        WorkspaceSettings {
+          enable: Some(false),
+          ..Default::default()
+        },
+        vec![],
+      );
 
       let diagnostics = generate_lint_diagnostics(
         &snapshot,

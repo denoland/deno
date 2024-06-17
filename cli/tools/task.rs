@@ -122,7 +122,6 @@ pub async fn execute_script(
     if cli_options.has_node_modules_dir() {
       if let Some(npm_resolver) = npm_resolver.as_managed() {
         npm_resolver.ensure_top_level_package_json_install().await?;
-        npm_resolver.resolve_pending().await?;
       }
     }
 
@@ -344,24 +343,27 @@ impl ShellCommand for NpmCommand {
     mut context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     if context.args.first().map(|s| s.as_str()) == Some("run")
-      && !context.args.iter().any(|s| s == "--")
+      && context.args.len() > 2
+      // for now, don't run any npm scripts that have a flag because
+      // we don't handle stuff like `--workspaces` properly
+      && !context.args.iter().any(|s| s.starts_with('-'))
     {
-      if let Some(task_name) = context.args.get(1) {
-        // run with deno task instead
-        let mut args = vec!["task".to_string(), task_name.to_string()];
-        args.extend(context.args.iter().skip(2).cloned());
-        let mut state = context.state;
-        state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
-        return ExecutableCommand::new(
-          "deno".to_string(),
-          std::env::current_exe().unwrap(),
-        )
-        .execute(ShellCommandContext {
-          args,
-          state,
-          ..context
-        });
-      }
+      // run with deno task instead
+      let mut args = Vec::with_capacity(context.args.len());
+      args.push("task".to_string());
+      args.extend(context.args.iter().skip(1).cloned());
+
+      let mut state = context.state;
+      state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
+      return ExecutableCommand::new(
+        "deno".to_string(),
+        std::env::current_exe().unwrap(),
+      )
+      .execute(ShellCommandContext {
+        args,
+        state,
+        ..context
+      });
     }
 
     // fallback to running the real npm command
@@ -647,7 +649,7 @@ esac
 
 if [ -x "$basedir/node" ]; then
   exec "$basedir/node"  "$basedir/../example/bin/example" "$@"
-else 
+else
   exec node  "$basedir/../example/bin/example" "$@"
 fi"#;
     assert_eq!(

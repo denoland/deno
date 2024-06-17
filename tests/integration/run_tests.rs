@@ -29,6 +29,8 @@ use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
 
+const CODE_CACHE_DB_FILE_NAME: &str = "v8_code_cache_v2";
+
 itest!(stdout_write_all {
   args: "run --quiet run/stdout_write_all.ts",
   output: "run/stdout_write_all.out",
@@ -3142,6 +3144,20 @@ itest!(byte_order_mark {
 });
 
 #[test]
+#[cfg(windows)]
+fn process_stdin_read_unblock() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdin_unblock.mjs"])
+    .with_pty(|mut console| {
+      console.write_raw("b");
+      console.human_delay();
+      console.write_line_raw("s");
+      console.expect_all(&["1", "1"]);
+    });
+}
+
+#[test]
 fn issue9750() {
   TestContext::default()
     .new_command()
@@ -3995,11 +4011,8 @@ async fn test_resolve_dns() {
     )
     .unwrap();
     let lexer = Lexer::new(&zone_file);
-    let records = Parser::new().parse(
-      lexer,
-      Some(Name::from_str("example.com").unwrap()),
-      None,
-    );
+    let records =
+      Parser::new().parse(lexer, Some(Name::from_str("example.com").unwrap()));
     if records.is_err() {
       panic!("failed to parse: {:?}", records.err())
     }
@@ -5052,7 +5065,7 @@ fn code_cache_test() {
     assert!(!output.stderr().contains("V8 code cache hit"));
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5143,7 +5156,7 @@ fn code_cache_npm_test() {
     assert!(!output.stderr().contains("V8 code cache hit"));
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5203,7 +5216,7 @@ fn code_cache_npm_with_require_test() {
     assert!(!output.stderr().contains("V8 code cache hit"));
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5282,17 +5295,19 @@ async fn listen_tls_alpn() {
   let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
     "../testdata/tls/RootCA.crt"
   )));
-  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let certs = rustls_pemfile::certs(&mut reader)
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap();
   let mut root_store = rustls::RootCertStore::empty();
-  root_store.add_parsable_certificates(&certs);
+  root_store.add_parsable_certificates(certs);
   let mut cfg = rustls::ClientConfig::builder()
-    .with_safe_defaults()
     .with_root_certificates(root_store)
     .with_no_client_auth();
   cfg.alpn_protocols.push(b"foobar".to_vec());
   let cfg = Arc::new(cfg);
 
-  let hostname = rustls::ServerName::try_from("localhost").unwrap();
+  let hostname =
+    rustls::pki_types::ServerName::try_from("localhost".to_string()).unwrap();
 
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
     .await
@@ -5334,17 +5349,18 @@ async fn listen_tls_alpn_fail() {
   let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
     "../testdata/tls/RootCA.crt"
   )));
-  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let certs = rustls_pemfile::certs(&mut reader)
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap();
   let mut root_store = rustls::RootCertStore::empty();
-  root_store.add_parsable_certificates(&certs);
+  root_store.add_parsable_certificates(certs);
   let mut cfg = rustls::ClientConfig::builder()
-    .with_safe_defaults()
     .with_root_certificates(root_store)
     .with_no_client_auth();
   cfg.alpn_protocols.push(b"boofar".to_vec());
   let cfg = Arc::new(cfg);
 
-  let hostname = rustls::ServerName::try_from("localhost").unwrap();
+  let hostname = rustls::pki_types::ServerName::try_from("localhost").unwrap();
 
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
     .await

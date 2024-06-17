@@ -1,17 +1,14 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::CacheSetting;
-use crate::auth_tokens::AuthToken;
 use crate::auth_tokens::AuthTokens;
 use crate::cache::HttpCache;
 use crate::colors;
-use crate::http_util;
-use crate::http_util::resolve_redirect_from_response;
 use crate::http_util::CacheSemantics;
-use crate::http_util::HeadersMap;
-use crate::http_util::HttpClient;
+use crate::http_util::FetchOnceArgs;
+use crate::http_util::FetchOnceResult;
+use crate::http_util::HttpClientProvider;
 use crate::util::progress_bar::ProgressBar;
-use crate::util::progress_bar::UpdateGuard;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
@@ -24,13 +21,9 @@ use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::LoaderChecksum;
-use deno_runtime::deno_fetch::reqwest::header::HeaderValue;
-use deno_runtime::deno_fetch::reqwest::header::ACCEPT;
-use deno_runtime::deno_fetch::reqwest::header::AUTHORIZATION;
-use deno_runtime::deno_fetch::reqwest::header::IF_NONE_MATCH;
-use deno_runtime::deno_fetch::reqwest::StatusCode;
+
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::PermissionsContainer;
 use log::debug;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -165,14 +158,14 @@ pub struct FetchNoFollowOptions<'a> {
 }
 
 /// A structure for resolving, fetching and caching source files.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct FileFetcher {
   auth_tokens: AuthTokens,
   allow_remote: bool,
   memory_files: MemoryFiles,
   cache_setting: CacheSetting,
   http_cache: Arc<dyn HttpCache>,
-  http_client: Arc<HttpClient>,
+  http_client_provider: Arc<HttpClientProvider>,
   blob_store: Arc<BlobStore>,
   download_log_level: log::Level,
   progress_bar: Option<ProgressBar>,
@@ -183,7 +176,7 @@ impl FileFetcher {
     http_cache: Arc<dyn HttpCache>,
     cache_setting: CacheSetting,
     allow_remote: bool,
-    http_client: Arc<HttpClient>,
+    http_client_provider: Arc<HttpClientProvider>,
     blob_store: Arc<BlobStore>,
     progress_bar: Option<ProgressBar>,
   ) -> Self {
@@ -193,7 +186,7 @@ impl FileFetcher {
       memory_files: Default::default(),
       cache_setting,
       http_cache,
-      http_client,
+      http_client_provider,
       blob_store,
       download_log_level: log::Level::Info,
       progress_bar,
@@ -400,17 +393,17 @@ impl FileFetcher {
     let mut maybe_etag = maybe_etag;
     let mut retried = false; // retry intermittent failures
     let result = loop {
-      let result = match fetch_no_follow(
-        &self.http_client,
-        FetchOnceArgs {
+      let result = match self
+        .http_client_provider
+        .get_or_create()?
+        .fetch_no_follow(FetchOnceArgs {
           url: specifier.clone(),
           maybe_accept: maybe_accept.map(ToOwned::to_owned),
           maybe_etag: maybe_etag.clone(),
           maybe_auth_token: maybe_auth_token.clone(),
           maybe_progress_guard: maybe_progress_guard.as_ref(),
-        },
-      )
-      .await?
+        })
+        .await?
       {
         FetchOnceResult::NotModified => {
           let file_or_redirect =
@@ -641,140 +634,17 @@ impl FileFetcher {
   }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-enum FetchOnceResult {
-  Code(Vec<u8>, HeadersMap),
-  NotModified,
-  Redirect(Url, HeadersMap),
-  RequestError(String),
-  ServerError(StatusCode),
-}
-
-#[derive(Debug)]
-struct FetchOnceArgs<'a> {
-  pub url: Url,
-  pub maybe_accept: Option<String>,
-  pub maybe_etag: Option<String>,
-  pub maybe_auth_token: Option<AuthToken>,
-  pub maybe_progress_guard: Option<&'a UpdateGuard>,
-}
-
-/// Asynchronously fetches the given HTTP URL one pass only.
-/// If no redirect is present and no error occurs,
-/// yields Code(ResultPayload).
-/// If redirect occurs, does not follow and
-/// yields Redirect(url).
-async fn fetch_no_follow<'a>(
-  http_client: &HttpClient,
-  args: FetchOnceArgs<'a>,
-) -> Result<FetchOnceResult, AnyError> {
-  let mut request = http_client.get_no_redirect(args.url.clone())?;
-
-  if let Some(etag) = args.maybe_etag {
-    let if_none_match_val = HeaderValue::from_str(&etag)?;
-    request = request.header(IF_NONE_MATCH, if_none_match_val);
-  }
-  if let Some(auth_token) = args.maybe_auth_token {
-    let authorization_val = HeaderValue::from_str(&auth_token.to_string())?;
-    request = request.header(AUTHORIZATION, authorization_val);
-  }
-  if let Some(accept) = args.maybe_accept {
-    let accepts_val = HeaderValue::from_str(&accept)?;
-    request = request.header(ACCEPT, accepts_val);
-  }
-  let response = match request.send().await {
-    Ok(resp) => resp,
-    Err(err) => {
-      if err.is_connect() || err.is_timeout() {
-        return Ok(FetchOnceResult::RequestError(err.to_string()));
-      }
-      return Err(err.into());
-    }
-  };
-
-  if response.status() == StatusCode::NOT_MODIFIED {
-    return Ok(FetchOnceResult::NotModified);
-  }
-
-  let mut result_headers = HashMap::new();
-  let response_headers = response.headers();
-
-  if let Some(warning) = response_headers.get("X-Deno-Warning") {
-    log::warn!(
-      "{} {}",
-      crate::colors::yellow("Warning"),
-      warning.to_str().unwrap()
-    );
-  }
-
-  for key in response_headers.keys() {
-    let key_str = key.to_string();
-    let values = response_headers.get_all(key);
-    let values_str = values
-      .iter()
-      .map(|e| e.to_str().unwrap().to_string())
-      .collect::<Vec<String>>()
-      .join(",");
-    result_headers.insert(key_str, values_str);
-  }
-
-  if response.status().is_redirection() {
-    let new_url = resolve_redirect_from_response(&args.url, &response)?;
-    return Ok(FetchOnceResult::Redirect(new_url, result_headers));
-  }
-
-  let status = response.status();
-
-  if status.is_server_error() {
-    return Ok(FetchOnceResult::ServerError(status));
-  }
-
-  if status.is_client_error() {
-    let err = if response.status() == StatusCode::NOT_FOUND {
-      custom_error(
-        "NotFound",
-        format!("Import '{}' failed, not found.", args.url),
-      )
-    } else {
-      generic_error(format!(
-        "Import '{}' failed: {}",
-        args.url,
-        response.status()
-      ))
-    };
-    return Err(err);
-  }
-
-  let body = http_util::get_response_body_with_progress(
-    response,
-    args.maybe_progress_guard,
-  )
-  .await?;
-
-  Ok(FetchOnceResult::Code(body, result_headers))
-}
-
-#[allow(clippy::print_stdout)]
-#[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
   use crate::cache::GlobalHttpCache;
   use crate::cache::RealDenoCacheEnv;
-  use crate::http_util::HttpClient;
-  use crate::version;
+  use crate::http_util::HttpClientProvider;
 
   use super::*;
   use deno_core::error::get_custom_error_class;
   use deno_core::resolve_url;
-  use deno_core::url::Url;
-  use deno_runtime::deno_fetch::create_http_client;
-  use deno_runtime::deno_fetch::CreateHttpClientOptions;
-  use deno_runtime::deno_tls::rustls::RootCertStore;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
-  use std::collections::hash_map::RandomState;
-  use std::collections::HashSet;
-  use std::fs::read;
   use test_util::TempDir;
 
   fn setup(
@@ -797,7 +667,7 @@ mod tests {
       Arc::new(GlobalHttpCache::new(location, RealDenoCacheEnv)),
       cache_setting,
       true,
-      Arc::new(HttpClient::new(None, None)),
+      Arc::new(HttpClientProvider::new(None, None)),
       blob_store.clone(),
       None,
     );
@@ -1051,7 +921,7 @@ mod tests {
       )),
       CacheSetting::ReloadAll,
       true,
-      Arc::new(HttpClient::new(None, None)),
+      Arc::new(HttpClientProvider::new(None, None)),
       Default::default(),
       None,
     );
@@ -1083,7 +953,7 @@ mod tests {
         )),
         CacheSetting::Use,
         true,
-        Arc::new(HttpClient::new(None, None)),
+        Arc::new(HttpClientProvider::new(None, None)),
         Default::default(),
         None,
       );
@@ -1120,7 +990,7 @@ mod tests {
         )),
         CacheSetting::Use,
         true,
-        Arc::new(HttpClient::new(None, None)),
+        Arc::new(HttpClientProvider::new(None, None)),
         Default::default(),
         None,
       );
@@ -1259,7 +1129,7 @@ mod tests {
         )),
         CacheSetting::Use,
         true,
-        Arc::new(HttpClient::new(None, None)),
+        Arc::new(HttpClientProvider::new(None, None)),
         Default::default(),
         None,
       );
@@ -1299,7 +1169,7 @@ mod tests {
         )),
         CacheSetting::Use,
         true,
-        Arc::new(HttpClient::new(None, None)),
+        Arc::new(HttpClientProvider::new(None, None)),
         Default::default(),
         None,
       );
@@ -1425,7 +1295,7 @@ mod tests {
       )),
       CacheSetting::Use,
       false,
-      Arc::new(HttpClient::new(None, None)),
+      Arc::new(HttpClientProvider::new(None, None)),
       Default::default(),
       None,
     );
@@ -1450,7 +1320,7 @@ mod tests {
       Arc::new(GlobalHttpCache::new(location.clone(), RealDenoCacheEnv)),
       CacheSetting::Only,
       true,
-      Arc::new(HttpClient::new(None, None)),
+      Arc::new(HttpClientProvider::new(None, None)),
       Default::default(),
       None,
     );
@@ -1458,7 +1328,7 @@ mod tests {
       Arc::new(GlobalHttpCache::new(location, RealDenoCacheEnv)),
       CacheSetting::Use,
       true,
-      Arc::new(HttpClient::new(None, None)),
+      Arc::new(HttpClientProvider::new(None, None)),
       Default::default(),
       None,
     );
@@ -1600,580 +1470,6 @@ mod tests {
     let expected = "console.log(\"\u{5E9}\u{5DC}\u{5D5}\u{5DD} \
                    \u{5E2}\u{5D5}\u{5DC}\u{5DD}\");\u{A}";
     test_fetch_remote_encoded("windows-1255", "windows-1255", expected).await;
-  }
-
-  fn create_test_client() -> HttpClient {
-    HttpClient::from_client(
-      create_http_client("test_client", CreateHttpClientOptions::default())
-        .unwrap(),
-    )
-  }
-
-  #[tokio::test]
-  async fn test_fetch_string() {
-    let _http_server_guard = test_util::http_server();
-    // Relies on external http server. See target/debug/test_server
-    let url = Url::parse("http://127.0.0.1:4545/assets/fixture.json").unwrap();
-    let client = create_test_client();
-    let result = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url,
-        maybe_accept: None,
-        maybe_etag: None,
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-    if let Ok(FetchOnceResult::Code(body, headers)) = result {
-      assert!(!body.is_empty());
-      assert_eq!(headers.get("content-type").unwrap(), "application/json");
-      assert_eq!(headers.get("etag"), None);
-      assert_eq!(headers.get("x-typescript-types"), None);
-    } else {
-      panic!();
-    }
-  }
-
-  #[tokio::test]
-  async fn test_fetch_gzip() {
-    let _http_server_guard = test_util::http_server();
-    // Relies on external http server. See target/debug/test_server
-    let url = Url::parse("http://127.0.0.1:4545/run/import_compression/gziped")
-      .unwrap();
-    let client = create_test_client();
-    let result = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url,
-        maybe_accept: None,
-        maybe_etag: None,
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-    if let Ok(FetchOnceResult::Code(body, headers)) = result {
-      assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
-      assert_eq!(
-        headers.get("content-type").unwrap(),
-        "application/javascript"
-      );
-      assert_eq!(headers.get("etag"), None);
-      assert_eq!(headers.get("x-typescript-types"), None);
-    } else {
-      panic!();
-    }
-  }
-
-  #[tokio::test]
-  async fn test_fetch_with_etag() {
-    let _http_server_guard = test_util::http_server();
-    let url = Url::parse("http://127.0.0.1:4545/etag_script.ts").unwrap();
-    let client = create_test_client();
-    let result = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url: url.clone(),
-        maybe_accept: None,
-        maybe_etag: None,
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-    if let Ok(FetchOnceResult::Code(body, headers)) = result {
-      assert!(!body.is_empty());
-      assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
-      assert_eq!(
-        headers.get("content-type").unwrap(),
-        "application/typescript"
-      );
-      assert_eq!(headers.get("etag").unwrap(), "33a64df551425fcc55e");
-    } else {
-      panic!();
-    }
-
-    let res = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url,
-        maybe_accept: None,
-        maybe_etag: Some("33a64df551425fcc55e".to_string()),
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-    assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
-  }
-
-  #[tokio::test]
-  async fn test_fetch_brotli() {
-    let _http_server_guard = test_util::http_server();
-    // Relies on external http server. See target/debug/test_server
-    let url = Url::parse("http://127.0.0.1:4545/run/import_compression/brotli")
-      .unwrap();
-    let client = create_test_client();
-    let result = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url,
-        maybe_accept: None,
-        maybe_etag: None,
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-    if let Ok(FetchOnceResult::Code(body, headers)) = result {
-      assert!(!body.is_empty());
-      assert_eq!(String::from_utf8(body).unwrap(), "console.log('brotli');");
-      assert_eq!(
-        headers.get("content-type").unwrap(),
-        "application/javascript"
-      );
-      assert_eq!(headers.get("etag"), None);
-      assert_eq!(headers.get("x-typescript-types"), None);
-    } else {
-      panic!();
-    }
-  }
-
-  #[tokio::test]
-  async fn test_fetch_accept() {
-    let _http_server_guard = test_util::http_server();
-    // Relies on external http server. See target/debug/test_server
-    let url = Url::parse("http://127.0.0.1:4545/echo_accept").unwrap();
-    let client = create_test_client();
-    let result = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url,
-        maybe_accept: Some("application/json".to_string()),
-        maybe_etag: None,
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-    if let Ok(FetchOnceResult::Code(body, _)) = result {
-      assert_eq!(body, r#"{"accept":"application/json"}"#.as_bytes());
-    } else {
-      panic!();
-    }
-  }
-
-  #[tokio::test]
-  async fn test_fetch_no_follow_with_redirect() {
-    let _http_server_guard = test_util::http_server();
-    // Relies on external http server. See target/debug/test_server
-    let url = Url::parse("http://127.0.0.1:4546/assets/fixture.json").unwrap();
-    // Dns resolver substitutes `127.0.0.1` with `localhost`
-    let target_url =
-      Url::parse("http://localhost:4545/assets/fixture.json").unwrap();
-    let client = create_test_client();
-    let result = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url,
-        maybe_accept: None,
-        maybe_etag: None,
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-    if let Ok(FetchOnceResult::Redirect(url, _)) = result {
-      assert_eq!(url, target_url);
-    } else {
-      panic!();
-    }
-  }
-
-  #[tokio::test]
-  async fn test_fetch_with_cafile_string() {
-    let _http_server_guard = test_util::http_server();
-    // Relies on external http server. See target/debug/test_server
-    let url = Url::parse("https://localhost:5545/assets/fixture.json").unwrap();
-
-    let client = HttpClient::from_client(
-      create_http_client(
-        version::get_user_agent(),
-        CreateHttpClientOptions {
-          ca_certs: vec![read(
-            test_util::testdata_path().join("tls/RootCA.pem"),
-          )
-          .unwrap()],
-          ..Default::default()
-        },
-      )
-      .unwrap(),
-    );
-    let result = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url,
-        maybe_accept: None,
-        maybe_etag: None,
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-    if let Ok(FetchOnceResult::Code(body, headers)) = result {
-      assert!(!body.is_empty());
-      assert_eq!(headers.get("content-type").unwrap(), "application/json");
-      assert_eq!(headers.get("etag"), None);
-      assert_eq!(headers.get("x-typescript-types"), None);
-    } else {
-      panic!();
-    }
-  }
-
-  static PUBLIC_HTTPS_URLS: &[&str] = &[
-    "https://deno.com/",
-    "https://example.com/",
-    "https://github.com/",
-    "https://www.w3.org/",
-  ];
-
-  /// This test depends on external servers, so we need to be careful to avoid mistaking an offline machine with a
-  /// test failure.
-  #[tokio::test]
-  async fn test_fetch_with_default_certificate_store() {
-    let urls: HashSet<_, RandomState> =
-      HashSet::from_iter(PUBLIC_HTTPS_URLS.iter());
-
-    // Rely on the randomization of hashset iteration
-    for url in urls {
-      // Relies on external http server with a valid mozilla root CA cert.
-      let url = Url::parse(url).unwrap();
-      eprintln!("Attempting to fetch {url}...");
-
-      let client = HttpClient::from_client(
-        create_http_client(
-          version::get_user_agent(),
-          CreateHttpClientOptions::default(),
-        )
-        .unwrap(),
-      );
-
-      let result = fetch_no_follow(
-        &client,
-        FetchOnceArgs {
-          url,
-          maybe_accept: None,
-          maybe_etag: None,
-          maybe_auth_token: None,
-          maybe_progress_guard: None,
-        },
-      )
-      .await;
-
-      match result {
-        Err(_) => {
-          eprintln!("Fetch error: {result:?}");
-          continue;
-        }
-        Ok(
-          FetchOnceResult::Code(..)
-          | FetchOnceResult::NotModified
-          | FetchOnceResult::Redirect(..),
-        ) => return,
-        Ok(
-          FetchOnceResult::RequestError(_) | FetchOnceResult::ServerError(_),
-        ) => {
-          eprintln!("HTTP error: {result:?}");
-          continue;
-        }
-      };
-    }
-
-    // Use 1.1.1.1 and 8.8.8.8 as our last-ditch internet check
-    if std::net::TcpStream::connect("8.8.8.8:80").is_err()
-      && std::net::TcpStream::connect("1.1.1.1:80").is_err()
-    {
-      return;
-    }
-
-    panic!("None of the expected public URLs were available but internet appears to be available");
-  }
-
-  #[tokio::test]
-  async fn test_fetch_with_empty_certificate_store() {
-    let root_cert_store = RootCertStore::empty();
-    let urls: HashSet<_, RandomState> =
-      HashSet::from_iter(PUBLIC_HTTPS_URLS.iter());
-
-    // Rely on the randomization of hashset iteration
-    let url = urls.into_iter().next().unwrap();
-    // Relies on external http server with a valid mozilla root CA cert.
-    let url = Url::parse(url).unwrap();
-    eprintln!("Attempting to fetch {url}...");
-
-    let client = HttpClient::from_client(
-      create_http_client(
-        version::get_user_agent(),
-        CreateHttpClientOptions {
-          root_cert_store: Some(root_cert_store),
-          ..Default::default()
-        },
-      )
-      .unwrap(),
-    );
-
-    let result = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url,
-        maybe_accept: None,
-        maybe_etag: None,
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-
-    match result {
-      Err(_) => {
-        eprintln!("Fetch error (expected): {result:?}");
-        return;
-      }
-      Ok(
-        FetchOnceResult::Code(..)
-        | FetchOnceResult::NotModified
-        | FetchOnceResult::Redirect(..),
-      ) => {
-        panic!("Should not have successfully fetched a URL");
-      }
-      Ok(
-        FetchOnceResult::RequestError(_) | FetchOnceResult::ServerError(_),
-      ) => {
-        eprintln!("HTTP error (expected): {result:?}");
-        return;
-      }
-    };
-  }
-
-  #[tokio::test]
-  async fn test_fetch_with_cafile_gzip() {
-    let _http_server_guard = test_util::http_server();
-    // Relies on external http server. See target/debug/test_server
-    let url =
-      Url::parse("https://localhost:5545/run/import_compression/gziped")
-        .unwrap();
-    let client = HttpClient::from_client(
-      create_http_client(
-        version::get_user_agent(),
-        CreateHttpClientOptions {
-          ca_certs: vec![read(
-            test_util::testdata_path()
-              .join("tls/RootCA.pem")
-              .to_string(),
-          )
-          .unwrap()],
-          ..Default::default()
-        },
-      )
-      .unwrap(),
-    );
-    let result = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url,
-        maybe_accept: None,
-        maybe_etag: None,
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-    if let Ok(FetchOnceResult::Code(body, headers)) = result {
-      assert_eq!(String::from_utf8(body).unwrap(), "console.log('gzip')");
-      assert_eq!(
-        headers.get("content-type").unwrap(),
-        "application/javascript"
-      );
-      assert_eq!(headers.get("etag"), None);
-      assert_eq!(headers.get("x-typescript-types"), None);
-    } else {
-      panic!();
-    }
-  }
-
-  #[tokio::test]
-  async fn test_fetch_with_cafile_with_etag() {
-    let _http_server_guard = test_util::http_server();
-    let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
-    let client = HttpClient::from_client(
-      create_http_client(
-        version::get_user_agent(),
-        CreateHttpClientOptions {
-          ca_certs: vec![read(
-            test_util::testdata_path()
-              .join("tls/RootCA.pem")
-              .to_string(),
-          )
-          .unwrap()],
-          ..Default::default()
-        },
-      )
-      .unwrap(),
-    );
-    let result = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url: url.clone(),
-        maybe_accept: None,
-        maybe_etag: None,
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-    if let Ok(FetchOnceResult::Code(body, headers)) = result {
-      assert!(!body.is_empty());
-      assert_eq!(String::from_utf8(body).unwrap(), "console.log('etag')");
-      assert_eq!(
-        headers.get("content-type").unwrap(),
-        "application/typescript"
-      );
-      assert_eq!(headers.get("etag").unwrap(), "33a64df551425fcc55e");
-      assert_eq!(headers.get("x-typescript-types"), None);
-    } else {
-      panic!();
-    }
-
-    let res = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url,
-        maybe_accept: None,
-        maybe_etag: Some("33a64df551425fcc55e".to_string()),
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-    assert_eq!(res.unwrap(), FetchOnceResult::NotModified);
-  }
-
-  #[tokio::test]
-  async fn test_fetch_with_cafile_brotli() {
-    let _http_server_guard = test_util::http_server();
-    // Relies on external http server. See target/debug/test_server
-    let url =
-      Url::parse("https://localhost:5545/run/import_compression/brotli")
-        .unwrap();
-    let client = HttpClient::from_client(
-      create_http_client(
-        version::get_user_agent(),
-        CreateHttpClientOptions {
-          ca_certs: vec![read(
-            test_util::testdata_path()
-              .join("tls/RootCA.pem")
-              .to_string(),
-          )
-          .unwrap()],
-          ..Default::default()
-        },
-      )
-      .unwrap(),
-    );
-    let result = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url,
-        maybe_accept: None,
-        maybe_etag: None,
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-    if let Ok(FetchOnceResult::Code(body, headers)) = result {
-      assert!(!body.is_empty());
-      assert_eq!(String::from_utf8(body).unwrap(), "console.log('brotli');");
-      assert_eq!(
-        headers.get("content-type").unwrap(),
-        "application/javascript"
-      );
-      assert_eq!(headers.get("etag"), None);
-      assert_eq!(headers.get("x-typescript-types"), None);
-    } else {
-      panic!();
-    }
-  }
-
-  #[tokio::test]
-  async fn bad_redirect() {
-    let _g = test_util::http_server();
-    let url_str = "http://127.0.0.1:4545/bad_redirect";
-    let url = Url::parse(url_str).unwrap();
-    let client = create_test_client();
-    let result = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url,
-        maybe_accept: None,
-        maybe_etag: None,
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    // Check that the error message contains the original URL
-    assert!(err.to_string().contains(url_str));
-  }
-
-  #[tokio::test]
-  async fn server_error() {
-    let _g = test_util::http_server();
-    let url_str = "http://127.0.0.1:4545/server_error";
-    let url = Url::parse(url_str).unwrap();
-    let client = create_test_client();
-    let result = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url,
-        maybe_accept: None,
-        maybe_etag: None,
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-
-    if let Ok(FetchOnceResult::ServerError(status)) = result {
-      assert_eq!(status, 500);
-    } else {
-      panic!();
-    }
-  }
-
-  #[tokio::test]
-  async fn request_error() {
-    let _g = test_util::http_server();
-    let url_str = "http://127.0.0.1:9999/";
-    let url = Url::parse(url_str).unwrap();
-    let client = create_test_client();
-    let result = fetch_no_follow(
-      &client,
-      FetchOnceArgs {
-        url,
-        maybe_accept: None,
-        maybe_etag: None,
-        maybe_auth_token: None,
-        maybe_progress_guard: None,
-      },
-    )
-    .await;
-
-    assert!(matches!(result, Ok(FetchOnceResult::RequestError(_))));
   }
 
   #[track_caller]

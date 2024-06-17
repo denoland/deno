@@ -52,17 +52,6 @@ impl DynamicLibraryResource {
   }
 }
 
-pub fn needs_unwrap(rv: &NativeType) -> bool {
-  matches!(
-    rv,
-    NativeType::I64 | NativeType::ISize | NativeType::U64 | NativeType::USize
-  )
-}
-
-fn is_i64(rv: &NativeType) -> bool {
-  matches!(rv, NativeType::I64 | NativeType::ISize)
-}
-
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ForeignFunction {
@@ -242,10 +231,6 @@ fn make_sync_fn<'s>(
       // SAFETY: The pointer will not be deallocated until the function is
       // garbage collected.
       let symbol = unsafe { &*(external.value() as *const Symbol) };
-      let needs_unwrap = match needs_unwrap(&symbol.result_type) {
-        true => Some(args.get(symbol.parameter_types.len() as i32)),
-        false => None,
-      };
       let out_buffer = match symbol.result_type {
         NativeType::Struct(_) => {
           let argc = args.length();
@@ -261,35 +246,10 @@ fn make_sync_fn<'s>(
       };
       match crate::call::ffi_call_sync(scope, args, symbol, out_buffer) {
         Ok(result) => {
-          match needs_unwrap {
-            Some(v) => {
-              let view: v8::Local<v8::ArrayBufferView> = v.try_into().unwrap();
-              let pointer =
-                view.buffer(scope).unwrap().data().unwrap().as_ptr() as *mut u8;
-
-              if is_i64(&symbol.result_type) {
-                // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
-                // it points to a fixed continuous slice of bytes on the heap.
-                let bs = unsafe { &mut *(pointer as *mut i64) };
-                // SAFETY: We already checked that type == I64
-                let value = unsafe { result.i64_value };
-                *bs = value;
-              } else {
-                // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
-                // it points to a fixed continuous slice of bytes on the heap.
-                let bs = unsafe { &mut *(pointer as *mut u64) };
-                // SAFETY: We checked that type == U64
-                let value = unsafe { result.u64_value };
-                *bs = value;
-              }
-            }
-            None => {
-              let result =
-                // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-                unsafe { result.to_v8(scope, symbol.result_type.clone()) };
-              rv.set(result);
-            }
-          }
+          let result =
+            // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+            unsafe { result.to_v8(scope, symbol.result_type.clone()) };
+          rv.set(result);
         }
         Err(err) => {
           deno_core::_ops::throw_type_error(scope, err.to_string());

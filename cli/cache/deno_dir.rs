@@ -79,40 +79,46 @@ impl DenoDir {
     self.root.display()
   }
 
+  /// Path for the V8 code cache.
+  pub fn code_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("v8_code_cache_v2")
+  }
+
   /// Path for the incremental cache used for formatting.
   pub fn fmt_incremental_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
-    self.root.join("fmt_incremental_cache_v1")
+    self.root.join("fmt_incremental_cache_v2")
   }
 
   /// Path for the incremental cache used for linting.
   pub fn lint_incremental_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
-    self.root.join("lint_incremental_cache_v1")
+    self.root.join("lint_incremental_cache_v2")
   }
 
   /// Path for caching swc dependency analysis.
   pub fn dep_analysis_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
-    self.root.join("dep_analysis_cache_v1")
+    self.root.join("dep_analysis_cache_v2")
   }
 
   /// Path for the cache used for fast check.
   pub fn fast_check_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
-    self.root.join("fast_check_cache_v1")
+    self.root.join("fast_check_cache_v2")
   }
 
   /// Path for caching node analysis.
   pub fn node_analysis_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
-    self.root.join("node_analysis_cache_v1")
+    self.root.join("node_analysis_cache_v2")
   }
 
   /// Path for the cache used for type checking.
   pub fn type_checking_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
-    self.root.join("check_cache_v1")
+    self.root.join("check_cache_v2")
   }
 
   /// Path to the registries cache, used for the lps.
@@ -139,12 +145,6 @@ impl DenoDir {
   /// Folder used for the npm cache.
   pub fn npm_folder_path(&self) -> PathBuf {
     self.root.join("npm")
-  }
-
-  /// Path for the V8 code cache.
-  pub fn code_cache_db_file_path(&self) -> PathBuf {
-    // bump this version name to invalidate the entire cache
-    self.root.join("v8_code_cache_v1")
   }
 
   /// Path used for the REPL history file.

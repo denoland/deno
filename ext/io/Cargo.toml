@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_io"
-version = "0.63.0"
+version = "0.66.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -28,3 +28,4 @@ os_pipe.workspace = true
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winbase", "processenv", "errhandlingapi"] }
 rand.workspace = true
+parking_lot.workspace = true

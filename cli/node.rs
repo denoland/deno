@@ -13,6 +13,7 @@ use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::cache::CacheDBHash;
 use crate::cache::NodeAnalysisCache;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
@@ -63,10 +64,9 @@ impl CliCjsCodeAnalyzer {
     specifier: &ModuleSpecifier,
     source: &str,
   ) -> Result<CliCjsAnalysis, AnyError> {
-    let source_hash = NodeAnalysisCache::compute_source_hash(source);
-    if let Some(analysis) = self
-      .cache
-      .get_cjs_analysis(specifier.as_str(), &source_hash)
+    let source_hash = CacheDBHash::from_source(source);
+    if let Some(analysis) =
+      self.cache.get_cjs_analysis(specifier.as_str(), source_hash)
     {
       return Ok(analysis);
     }
@@ -85,7 +85,7 @@ impl CliCjsCodeAnalyzer {
       move || -> Result<_, deno_ast::ParseDiagnostic> {
         let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
           specifier,
-          text_info: deno_ast::SourceTextInfo::new(source),
+          text: source,
           media_type,
           capture_tokens: true,
           scope_analysis: false,
@@ -107,7 +107,7 @@ impl CliCjsCodeAnalyzer {
 
     self
       .cache
-      .set_cjs_analysis(specifier.as_str(), &source_hash, &analysis);
+      .set_cjs_analysis(specifier.as_str(), source_hash, &analysis);
 
     Ok(analysis)
   }
@@ -125,7 +125,7 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
       None => {
         self
           .fs
-          .read_text_file_async(specifier.to_file_path().unwrap(), None)
+          .read_text_file_lossy_async(specifier.to_file_path().unwrap(), None)
           .await?
       }
     };

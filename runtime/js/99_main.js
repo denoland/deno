@@ -674,6 +674,14 @@ ObjectDefineProperties(finalDenoNs, {
       return internals.future ? undefined : customInspect;
     },
   },
+  exitCode: {
+    get() {
+      return os.getExitCode();
+    },
+    set(value) {
+      os.setExitCode(value);
+    },
+  },
 });
 
 const {

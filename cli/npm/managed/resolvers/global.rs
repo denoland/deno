@@ -11,17 +11,14 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use deno_npm::resolution::PackageNotFoundFromReferrerError;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
-use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeResolutionMode;
 
-use super::super::super::common::types_package_name;
 use super::super::cache::NpmCache;
+use super::super::cache::TarballCache;
 use super::super::resolution::NpmResolution;
 use super::common::cache_packages;
 use super::common::NpmPackageFsResolver;
@@ -31,6 +28,7 @@ use super::common::RegistryReadPermissionChecker;
 #[derive(Debug)]
 pub struct GlobalNpmPackageResolver {
   cache: Arc<NpmCache>,
+  tarball_cache: Arc<TarballCache>,
   resolution: Arc<NpmResolution>,
   system_info: NpmSystemInfo,
   registry_read_permission_checker: RegistryReadPermissionChecker,
@@ -38,35 +36,26 @@ pub struct GlobalNpmPackageResolver {
 
 impl GlobalNpmPackageResolver {
   pub fn new(
-    fs: Arc<dyn FileSystem>,
     cache: Arc<NpmCache>,
+    fs: Arc<dyn FileSystem>,
+    tarball_cache: Arc<TarballCache>,
     resolution: Arc<NpmResolution>,
     system_info: NpmSystemInfo,
   ) -> Self {
     Self {
-      cache: cache.clone(),
-      resolution,
-      system_info,
       registry_read_permission_checker: RegistryReadPermissionChecker::new(
         fs,
         cache.root_folder(),
       ),
+      cache,
+      tarball_cache,
+      resolution,
+      system_info,
     }
-  }
-
-  fn resolve_types_package(
-    &self,
-    package_name: &str,
-    referrer_pkg_id: &NpmPackageCacheFolderId,
-  ) -> Result<NpmResolutionPackage, Box<PackageNotFoundFromReferrerError>> {
-    let types_name = types_package_name(package_name);
-    self
-      .resolution
-      .resolve_package_from_package(&types_name, referrer_pkg_id)
   }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn root_dir_url(&self) -> &Url {
     self.cache.root_dir_url()
@@ -88,7 +77,6 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
     let Some(referrer_pkg_id) = self
       .cache
@@ -96,19 +84,9 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     else {
       bail!("could not find npm package for '{}'", referrer);
     };
-    let pkg = if mode.is_types() && !name.starts_with("@types/") {
-      // attempt to resolve the types package first, then fallback to the regular package
-      match self.resolve_types_package(name, &referrer_pkg_id) {
-        Ok(pkg) => pkg,
-        Err(_) => self
-          .resolution
-          .resolve_package_from_package(name, &referrer_pkg_id)?,
-      }
-    } else {
-      self
-        .resolution
-        .resolve_package_from_package(name, &referrer_pkg_id)?
-    };
+    let pkg = self
+      .resolution
+      .resolve_package_from_package(name, &referrer_pkg_id)?;
     self.package_folder(&pkg.id)
   }
 
@@ -128,7 +106,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
       .resolution
       .all_system_packages_partitioned(&self.system_info);
 
-    cache_packages(package_partitions.packages, &self.cache).await?;
+    cache_packages(package_partitions.packages, &self.tarball_cache).await?;
 
     // create the copy package folders
     for copy in package_partitions.copy_packages {
@@ -142,7 +120,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
 
   fn ensure_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     self

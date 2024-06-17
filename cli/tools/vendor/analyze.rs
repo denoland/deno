@@ -64,7 +64,6 @@ mod test {
   use deno_ast::ModuleSpecifier;
   use deno_ast::ParseParams;
   use deno_ast::ParsedSource;
-  use deno_ast::SourceTextInfo;
 
   use super::has_default_export;
 
@@ -107,7 +106,7 @@ mod test {
       maybe_syntax: None,
       media_type: MediaType::TypeScript,
       scope_analysis: false,
-      text_info: SourceTextInfo::from_string(text.to_string()),
+      text: text.into(),
     })
     .unwrap()
   }

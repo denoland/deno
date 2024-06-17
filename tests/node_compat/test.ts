@@ -128,7 +128,7 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
         }
         const stderrOutput = decoder.decode(stderr);
         const repeatCmd = magenta(
-          `./target/debug/deno test -A tests/node_compat/test.ts -- ${path}`,
+          `./target/debug/deno test --config tests/config/deno.json -A tests/node_compat/test.ts -- ${path}`,
         );
         const msg = `"${magenta(path)}" failed:
 
