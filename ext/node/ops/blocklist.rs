@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::net::IpAddr;
@@ -13,8 +12,6 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
-use deno_core::Resource;
-use deno_core::ResourceId;
 
 use ipnetwork::IpNetwork;
 use ipnetwork::Ipv4Network;
@@ -22,12 +19,6 @@ use ipnetwork::Ipv6Network;
 
 pub struct BlockListResource {
   blocklist: RefCell<BlockList>,
-}
-
-impl Resource for BlockListResource {
-  fn name(&self) -> Cow<str> {
-    "blocklist".into()
-  }
 }
 
 #[op2]
@@ -50,60 +41,48 @@ pub fn op_socket_address_parse(
   }
 }
 
-#[op2(fast)]
-#[smi]
-pub fn op_blocklist_new(state: &mut OpState) -> ResourceId {
+#[op2]
+#[cppgc]
+pub fn op_blocklist_new() -> BlockListResource {
   let blocklist = BlockList::new();
-  state.resource_table.add(BlockListResource {
+  BlockListResource {
     blocklist: RefCell::new(blocklist),
-  })
+  }
 }
 
 #[op2(fast)]
 pub fn op_blocklist_add_address(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
+  #[cppgc] wrap: &BlockListResource,
   #[string] address: String,
 ) -> Result<(), AnyError> {
-  let wrap = state.resource_table.get::<BlockListResource>(rid).unwrap();
-  let r = wrap.blocklist.borrow_mut().add_address(&address);
-  r
+  wrap.blocklist.borrow_mut().add_address(&address)
 }
 
 #[op2(fast)]
 pub fn op_blocklist_add_range(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
+  #[cppgc] wrap: &BlockListResource,
   #[string] start: String,
   #[string] end: String,
 ) -> Result<bool, AnyError> {
-  let wrap = state.resource_table.get::<BlockListResource>(rid).unwrap();
-  let r = wrap.blocklist.borrow_mut().add_range(&start, &end);
-  r
+  wrap.blocklist.borrow_mut().add_range(&start, &end)
 }
 
 #[op2(fast)]
 pub fn op_blocklist_add_subnet(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
+  #[cppgc] wrap: &BlockListResource,
   #[string] addr: String,
   #[smi] prefix: u8,
 ) -> Result<(), AnyError> {
-  let wrap = state.resource_table.get::<BlockListResource>(rid).unwrap();
-  let r = wrap.blocklist.borrow_mut().add_subnet(&addr, prefix);
-  r
+  wrap.blocklist.borrow_mut().add_subnet(&addr, prefix)
 }
 
 #[op2(fast)]
 pub fn op_blocklist_check(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
+  #[cppgc] wrap: &BlockListResource,
   #[string] addr: String,
   #[string] r#type: String,
 ) -> Result<bool, AnyError> {
-  let wrap = state.resource_table.get::<BlockListResource>(rid).unwrap();
-  let r = wrap.blocklist.borrow().check(&addr, r#type);
-  r
+  wrap.blocklist.borrow().check(&addr, r#type)
 }
 
 struct BlockList {
@@ -290,7 +269,7 @@ mod tests {
 
     // Check invalid IP version
     let block_list = BlockList::new();
-    assert!(!block_list.check("192.168.0.1", "ipv6".to_string()).unwrap());
+    assert!(block_list.check("192.168.0.1", "ipv6".to_string()).is_err());
 
     // Check invalid type
     let mut block_list = BlockList::new();

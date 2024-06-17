@@ -27,11 +27,11 @@ const {
   Symbol,
 } = primordials;
 
-const kRid = Symbol("resourceId");
+const internalBlockList = Symbol("blocklist");
 
 class BlockList {
   constructor() {
-    this[kRid] = op_blocklist_new();
+    this[internalBlockList] = op_blocklist_new();
   }
 
   [customInspectSymbol](depth, options) {
@@ -62,7 +62,7 @@ class BlockList {
     } else {
       address = address.address;
     }
-    op_blocklist_add_address(this[kRid], address);
+    op_blocklist_add_address(this[internalBlockList], address);
   }
 
   addRange(start, end, family = "ipv4") {
@@ -86,7 +86,7 @@ class BlockList {
     } else {
       end = end.address;
     }
-    const ret = op_blocklist_add_range(this[kRid], start, end);
+    const ret = op_blocklist_add_range(this[internalBlockList], start, end);
     if (ret === false) {
       throw new ERR_INVALID_ARG_VALUE("start", start, "must come before end");
     }
@@ -112,7 +112,7 @@ class BlockList {
         validateInt32(prefix, "prefix", 0, 128);
         break;
     }
-    op_blocklist_add_subnet(this[kRid], network, prefix);
+    op_blocklist_add_subnet(this[internalBlockList], network, prefix);
   }
 
   check(address, family = "ipv4") {
@@ -132,7 +132,13 @@ class BlockList {
       family = address.family;
       address = address.address;
     }
-    return Boolean(op_blocklist_check(this[kRid], address, family));
+    try {
+      return op_blocklist_check(this[internalBlockList], address, family);
+    } catch (_) {
+      // Node API expects false as return value if the address is invalid.
+      // Example: `blocklist.check("1.1.1.1", "ipv6")` should return false.
+      return false;
+    }
   }
 
   get rules() {
