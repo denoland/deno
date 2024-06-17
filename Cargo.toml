@@ -148,9 +148,9 @@ regex = "^1.7.0"
 reqwest = { version = "=0.12.4", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 ring = "^0.17.0"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
-rustls = "0.22.4"
+rustls = "0.23.10"
 rustls-pemfile = "2"
-rustls-tokio-stream = "=0.2.23"
+rustls-tokio-stream = "=0.2.24"
 rustls-webpki = "0.102"
 rustyline = "=13.0.0"
 saffron = "=0.1.0"
@@ -368,3 +368,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.base64-simd]
 opt-level = 3
+
+[patch.crates-io]
+rustls-tokio-stream = { git = "https://github.com/denoland/rustls-tokio-stream", branch = "upgrade_rustls" }
