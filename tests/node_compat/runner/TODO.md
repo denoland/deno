@@ -222,7 +222,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-blob-file-backed.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-blob-file-backed.js)
 - [parallel/test-blob.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-blob.js)
 - [parallel/test-blocklist-clone.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-blocklist-clone.js)
-- [parallel/test-blocklist.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-blocklist.js)
 - [parallel/test-bootstrap-modules.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-bootstrap-modules.js)
 - [parallel/test-broadcastchannel-custom-inspect.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-broadcastchannel-custom-inspect.js)
 - [parallel/test-buffer-backing-arraybuffer.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-buffer-backing-arraybuffer.js)

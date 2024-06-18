@@ -41,6 +41,7 @@ home = "0.5.9"
 http.workspace = true
 idna = "0.3.0"
 indexmap.workspace = true
+ipnetwork = "0.20.0"
 k256 = "0.13.1"
 lazy-regex.workspace = true
 libc.workspace = true
