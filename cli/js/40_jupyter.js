@@ -54,8 +54,9 @@ const rawToEntity = new Map(rawToEntityEntries);
 const rawRe = new RegExp(`[${[...rawToEntity.keys()].join("")}]`, "g");
 
 function escapeHTML(str) {
-  return str.replaceAll(rawRe, (m) =>
-    rawToEntity.has(m) ? rawToEntity.get(m) : m,
+  return str.replaceAll(
+    rawRe,
+    (m) => rawToEntity.has(m) ? rawToEntity.get(m) : m,
   );
 }
 
