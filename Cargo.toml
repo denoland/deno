@@ -368,3 +368,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.base64-simd]
 opt-level = 3
+
+[patch.crates-io]
+deno_core = { git = "https://github.com/denoland/deno_core" }
