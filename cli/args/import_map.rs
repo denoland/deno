@@ -56,18 +56,26 @@ async fn resolve_import_map_from_specifier(
   specifier: Url,
   file_fetcher: &FileFetcher,
 ) -> Result<ImportMap, AnyError> {
-  let value: serde_json::Value = if specifier.scheme() == "data" {
+  let value =
+    resolve_import_map_value_from_specifier(&specifier, file_fetcher).await?;
+  import_map_from_value(specifier, value)
+}
+
+pub async fn resolve_import_map_value_from_specifier(
+  specifier: &Url,
+  file_fetcher: &FileFetcher,
+) -> Result<serde_json::Value, AnyError> {
+  if specifier.scheme() == "data" {
     let data_url_text =
       deno_graph::source::RawDataUrl::parse(&specifier)?.decode()?;
-    serde_json::from_str(&data_url_text)?
+    Ok(serde_json::from_str(&data_url_text)?)
   } else {
     let file = file_fetcher
       .fetch(&specifier, &PermissionsContainer::allow_all())
       .await?
       .into_text_decoded()?;
-    serde_json::from_str(&file.source)?
-  };
-  import_map_from_value(specifier, value)
+    Ok(serde_json::from_str(&file.source)?)
+  }
 }
 
 pub fn import_map_from_value(

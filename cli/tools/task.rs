@@ -8,6 +8,7 @@ use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::fs::canonicalize_path;
+use deno_config::workspace::WorkspaceTasksConfig;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -22,7 +23,9 @@ use deno_task_shell::ShellCommandContext;
 use indexmap::IndexMap;
 use lazy_regex::Lazy;
 use regex::Regex;
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -38,21 +41,17 @@ pub async fn execute_script(
 ) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
-  let tasks_config = cli_options.resolve_tasks_config()?;
+  let start_ctx = cli_options.workspace.resolve_start_ctx();
+  if !start_ctx.has_deno_or_pkg_json() {
+    bail!("deno task couldn't find deno.json(c). See https://deno.land/manual@v{}/getting_started/configuration_file", env!("CARGO_PKG_VERSION"))
+  }
+  let tasks_config = start_ctx.to_tasks_config()?;
   let maybe_package_json = cli_options.maybe_package_json();
-  let package_json_scripts = maybe_package_json
-    .as_ref()
-    .and_then(|p| p.scripts.clone())
-    .unwrap_or_default();
 
   let task_name = match &task_flags.task {
     Some(task) => task,
     None => {
-      print_available_tasks(
-        &mut std::io::stdout(),
-        &tasks_config,
-        &package_json_scripts,
-      )?;
+      print_available_tasks(&mut std::io::stdout(), &tasks_config)?;
       return Ok(1);
     }
   };
@@ -282,53 +281,74 @@ fn real_env_vars() -> HashMap<String, String> {
 
 fn print_available_tasks(
   writer: &mut dyn std::io::Write,
-  tasks_config: &IndexMap<String, deno_config::Task>,
-  package_json_scripts: &IndexMap<String, String>,
+  tasks_config: &WorkspaceTasksConfig,
 ) -> Result<(), std::io::Error> {
   writeln!(writer, "{}", colors::green("Available tasks:"))?;
 
-  if tasks_config.is_empty() && package_json_scripts.is_empty() {
+  if tasks_config.is_empty() {
     writeln!(
       writer,
       "  {}",
       colors::red("No tasks found in configuration file")
     )?;
   } else {
-    for (is_deno, (key, task)) in tasks_config
-      .iter()
-      .map(|(k, t)| (true, (k, t.clone())))
-      .chain(
-        package_json_scripts
-          .iter()
-          .filter(|(key, _)| !tasks_config.contains_key(*key))
-          .map(|(k, v)| (false, (k, deno_config::Task::Definition(v.clone())))),
-      )
-    {
-      writeln!(
-        writer,
-        "- {}{}",
-        colors::cyan(key),
-        if is_deno {
-          "".to_string()
-        } else {
-          format!(" {}", colors::italic_gray("(package.json)"))
-        }
-      )?;
-      let definition = match &task {
-        deno_config::Task::Definition(definition) => definition,
-        deno_config::Task::Commented { definition, .. } => definition,
+    let mut seen_task_names =
+      HashSet::with_capacity(tasks_config.tasks_count());
+    for maybe_config in [&tasks_config.member, &tasks_config.root] {
+      let Some(config) = maybe_config else {
+        continue;
       };
-      if let deno_config::Task::Commented { comments, .. } = &task {
-        let slash_slash = colors::italic_gray("//");
-        for comment in comments {
-          writeln!(
-            writer,
-            "    {slash_slash} {}",
-            colors::italic_gray(comment)
-          )?;
+      for (is_deno, (key, task)) in config
+        .deno_json
+        .as_ref()
+        .map(|tasks| tasks.iter().map(|(k, t)| (true, (k, Cow::Borrowed(t)))))
+        .into_iter()
+        .flatten()
+        .chain(
+          config
+            .package_json
+            .as_ref()
+            .map(|scripts| {
+              scripts.iter().map(|(k, v)| {
+                (
+                  false,
+                  (k, Cow::Owned(deno_config::Task::Definition(v.clone()))),
+                )
+              })
+            })
+            .into_iter()
+            .flatten(),
+        )
+      {
+        if !seen_task_names.insert(key) {
+          continue; // already seen
         }
+        writeln!(
+          writer,
+          "- {}{}",
+          colors::cyan(key),
+          if is_deno {
+            "".to_string()
+          } else {
+            format!(" {}", colors::italic_gray("(package.json)"))
+          }
+        )?;
+        let definition = match &task {
+          deno_config::Task::Definition(definition) => definition,
+          deno_config::Task::Commented { definition, .. } => definition,
+        };
+        if let deno_config::Task::Commented { comments, .. } = &task {
+          let slash_slash = colors::italic_gray("//");
+          for comment in comments {
+            writeln!(
+              writer,
+              "    {slash_slash} {}",
+              colors::italic_gray(comment)
+            )?;
+          }
+        }
+        writeln!(writer, "    {definition}")?;
       }
-      writeln!(writer, "    {definition}")?;
     }
   }
 

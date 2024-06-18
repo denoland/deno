@@ -845,14 +845,16 @@ impl Flags {
           .include
           .iter()
           .filter_map(|p| Some(normalize_path(current_dir.join(p).parent()?)))
-          .next(),
+          .next()
+          .unwrap_or_else(|| current_dir.to_path_buf()),
       ),
       Lint(LintFlags { files, .. }) => Some(
         files
           .include
           .iter()
           .filter_map(|p| Some(normalize_path(current_dir.join(p).parent()?)))
-          .next(),
+          .next()
+          .unwrap_or_else(|| current_dir.to_path_buf()),
       ),
       Run(RunFlags { script, .. }) => {
         if let Ok(module_specifier) = resolve_url_or_path(script, current_dir) {
@@ -860,7 +862,7 @@ impl Flags {
             || module_specifier.scheme() == "npm"
           {
             if let Ok(p) = module_specifier.to_file_path() {
-              Some(p)
+              Some(p.parent().unwrap().to_path_buf())
             } else {
               Some(current_dir.to_path_buf())
             }
@@ -9197,7 +9199,14 @@ mod tests {
   fn test_config_path_args() {
     let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
     let cwd = std::env::current_dir().unwrap();
-    assert_eq!(flags.config_path_arg(&cwd), Some(vec![cwd.join("foo.js")]));
+    assert_eq!(flags.config_path_arg(&cwd), Some(cwd.clone()));
+
+    let flags = flags_from_vec(svec!["deno", "run", "sub_dir/foo.js"]).unwrap();
+    let cwd = std::env::current_dir().unwrap();
+    assert_eq!(
+      flags.config_path_arg(&cwd),
+      Some(cwd.join("sub_dir").clone())
+    );
 
     let flags =
       flags_from_vec(svec!["deno", "run", "https://example.com/foo.js"])
@@ -9206,20 +9215,14 @@ mod tests {
 
     let flags =
       flags_from_vec(svec!["deno", "lint", "dir/a.js", "dir/b.js"]).unwrap();
-    assert_eq!(
-      flags.config_path_arg(&cwd),
-      Some(vec![cwd.join("dir/a.js"), cwd.join("dir/b.js")])
-    );
+    assert_eq!(flags.config_path_arg(&cwd), Some(cwd.join("dir")));
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
-    assert!(flags.config_path_arg(&cwd).unwrap().is_empty());
+    assert_eq!(flags.config_path_arg(&cwd), Some(cwd.clone()));
 
     let flags =
       flags_from_vec(svec!["deno", "fmt", "dir/a.js", "dir/b.js"]).unwrap();
-    assert_eq!(
-      flags.config_path_arg(&cwd),
-      Some(vec![cwd.join("dir/a.js"), cwd.join("dir/b.js")])
-    );
+    assert_eq!(flags.config_path_arg(&cwd), Some(cwd.join("dir")));
   }
 
   #[test]

@@ -9,12 +9,12 @@ pub mod package_json;
 
 pub use self::import_map::resolve_import_map;
 use self::package_json::PackageJsonDeps;
-use deno_runtime::colors::yellow;
 use ::import_map::ImportMap;
 use deno_ast::SourceMapOption;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
+use deno_config::workspace::WorkspaceResolver;
 use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
@@ -22,10 +22,13 @@ use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
+use deno_runtime::colors::yellow;
 use deno_runtime::deno_fs::DenoConfigFsAdapter;
 use deno_runtime::deno_fs::RealFs;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
+use import_map::resolve_import_map_value_from_specifier;
 use indexmap::IndexMap;
 
 pub use deno_config::glob::FilePatterns;
@@ -801,7 +804,7 @@ pub struct CliOptions {
   overrides: CliOptionOverrides,
   // todo(THIS PR): REMOVE
   maybe_workspace_config: Option<WorkspaceConfig>,
-  workspace: Workspace,
+  pub workspace: Arc<Workspace>,
   pub disable_deprecated_api_warning: bool,
   pub verbose_deprecated_api_warning: bool,
 }
@@ -812,7 +815,7 @@ impl CliOptions {
     initial_cwd: PathBuf,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     npmrc: Arc<ResolvedNpmRc>,
-    workspace: Workspace,
+    workspace: Arc<Workspace>,
     force_global_cache: bool,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
@@ -975,7 +978,7 @@ impl CliOptions {
       initial_cwd,
       maybe_lock_file.map(|l| Arc::new(Mutex::new(l))),
       npmrc,
-      workspace,
+      Arc::new(workspace),
       false,
     )
   }
@@ -1079,62 +1082,58 @@ impl CliOptions {
   pub async fn resolve_import_map(
     &self,
     file_fetcher: &FileFetcher,
-  ) -> Result<Option<ImportMap>, AnyError> {
-    self.workspace.create_resolver()
-    if let Some(workspace_config) = self.maybe_workspace_config.as_ref() {
-      let root_config_file = self.maybe_config_file.as_ref().unwrap();
-      let base_import_map_config = ::import_map::ext::ImportMapConfig {
-        base_url: root_config_file.specifier.clone(),
-        import_map_value: root_config_file.to_import_map_value_from_imports(),
-      };
-      let children_configs = workspace_config
-        .members
-        .iter()
-        .map(|member| ::import_map::ext::ImportMapConfig {
-          base_url: member.config_file.specifier.clone(),
-          import_map_value: member
-            .config_file
-            .to_import_map_value_from_imports(),
-        })
-        .collect();
-
-      let (import_map_url, import_map) =
-        ::import_map::ext::create_synthetic_import_map(
-          base_import_map_config,
-          children_configs,
-        );
-      let import_map = enhance_import_map_value_with_workspace_members(
-        import_map,
-        &workspace_config.members,
-      );
-      log::debug!(
-        "Workspace config generated this import map {}",
-        serde_json::to_string_pretty(&import_map).unwrap()
-      );
-      let maybe_import_map_result =
-        import_map::import_map_from_value(import_map_url, import_map).map(Some);
-
-      return maybe_import_map_result;
-    }
-
-    if self
+  ) -> Result<WorkspaceResolver, AnyError> {
+    let overrode_no_import_map = self
       .overrides
       .import_map_specifier
       .as_ref()
       .map(|s| s.is_none())
-      == Some(true)
-    {
-      // overrode to not use an import map
-      return Ok(None);
-    }
-
-    let import_map_specifier = self.resolve_specified_import_map_specifier()?;
-    resolve_import_map(
-      import_map_specifier.as_ref(),
-      self.maybe_config_file().as_ref(),
-      file_fetcher,
+      == Some(true);
+    let cli_arg_specified_import_map = if overrode_no_import_map {
+      // use a fake empty import map
+      Some(deno_config::workspace::SpecifiedImportMap {
+        base_url: self
+          .workspace
+          .root_folder()
+          .0
+          .join("import_map.json")
+          .unwrap(),
+        value: serde_json::Value::Object(Default::default()),
+      })
+    } else {
+      let maybe_import_map_specifier =
+        self.resolve_specified_import_map_specifier()?;
+      match maybe_import_map_specifier {
+        Some(specifier) => {
+          let value =
+            resolve_import_map_value_from_specifier(&specifier, file_fetcher)
+              .await
+              .with_context(|| {
+                format!("Unable to load '{}' import map", specifier)
+              })?;
+          Some(deno_config::workspace::SpecifiedImportMap {
+            base_url: specifier,
+            value,
+          })
+        }
+        None => None,
+      }
+    };
+    Ok(
+      self
+        .workspace
+        .create_resolver(cli_arg_specified_import_map, |specifier| {
+          let specifier = specifier.clone();
+          async move {
+            let file = file_fetcher
+              .fetch(&specifier, &PermissionsContainer::allow_all())
+              .await?
+              .into_text_decoded()?;
+            Ok(file.source.to_string())
+          }
+        })
+        .await?,
     )
-    .await
   }
 
   pub fn node_ipc_fd(&self) -> Option<i64> {
@@ -1280,11 +1279,10 @@ impl CliOptions {
       initial_cwd: self.initial_cwd.clone(),
       maybe_node_modules_folder: Some(path),
       maybe_vendor_folder: self.maybe_vendor_folder.clone(),
-      maybe_config_file: self.maybe_config_file.clone(),
-      maybe_package_json: self.maybe_package_json.clone(),
       npmrc: self.npmrc.clone(),
       maybe_lockfile: self.maybe_lockfile.clone(),
       maybe_workspace_config: self.maybe_workspace_config.clone(),
+      workspace: self.workspace.clone(),
       overrides: self.overrides.clone(),
       disable_deprecated_api_warning: self.disable_deprecated_api_warning,
       verbose_deprecated_api_warning: self.verbose_deprecated_api_warning,
@@ -1292,12 +1290,10 @@ impl CliOptions {
   }
 
   pub fn node_modules_dir_enablement(&self) -> Option<bool> {
-    self.flags.node_modules_dir.or_else(|| {
-      self
-        .maybe_config_file
-        .as_ref()
-        .and_then(|c| c.json.node_modules_dir)
-    })
+    self
+      .flags
+      .node_modules_dir
+      .or_else(|| self.workspace.node_modules_dir())
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
@@ -1318,10 +1314,7 @@ impl CliOptions {
     &self,
     config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, AnyError> {
-    let result = deno_config::get_ts_config_for_emit(
-      config_type,
-      self.maybe_config_file.as_ref(),
-    );
+    let result = self.workspace.resolve_ts_config_for_emit(config_type);
 
     match result {
       Ok(mut ts_config_for_emit) => {
@@ -1360,18 +1353,6 @@ impl CliOptions {
     self.maybe_lockfile.clone()
   }
 
-  pub fn resolve_tasks_config(
-    &self,
-  ) -> Result<IndexMap<String, deno_config::Task>, AnyError> {
-    if let Some(config_file) = &self.maybe_config_file {
-      config_file.resolve_tasks_config()
-    } else if self.maybe_package_json.is_some() {
-      Ok(Default::default())
-    } else {
-      bail!("deno task couldn't find deno.json(c). See https://deno.land/manual@v{}/getting_started/configuration_file", env!("CARGO_PKG_VERSION"))
-    }
-  }
-
   /// Return the JSX import source configuration.
   pub fn to_maybe_jsx_import_source_config(
     &self,
@@ -1387,31 +1368,19 @@ impl CliOptions {
   pub fn to_maybe_imports(
     &self,
   ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
-    if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_maybe_imports().map(|maybe_imports| {
-        maybe_imports
-          .into_iter()
-          .map(|(referrer, imports)| deno_graph::ReferrerImports {
-            referrer,
-            imports,
-          })
-          .collect()
-      })
-    } else {
-      Ok(Vec::new())
-    }
-  }
-
-  pub fn maybe_config_file(&self) -> &Option<ConfigFile> {
-    &self.maybe_config_file
+    self.workspace.to_maybe_imports().map(|maybe_imports| {
+      maybe_imports
+        .into_iter()
+        .map(|(referrer, imports)| deno_graph::ReferrerImports {
+          referrer,
+          imports,
+        })
+        .collect()
+    })
   }
 
   pub fn maybe_workspace_config(&self) -> &Option<WorkspaceConfig> {
     &self.maybe_workspace_config
-  }
-
-  pub fn maybe_package_json(&self) -> &Option<PackageJson> {
-    &self.maybe_package_json
   }
 
   pub fn npmrc(&self) -> &Arc<ResolvedNpmRc> {
