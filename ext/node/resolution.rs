@@ -1616,7 +1616,7 @@ mod tests {
   use super::*;
 
   fn build_package_json(json: Value) -> PackageJson {
-    PackageJson::load_from_value(PathBuf::from("/package.json"), json).unwrap()
+    PackageJson::load_from_value(PathBuf::from("/package.json"), json)
   }
 
   #[test]

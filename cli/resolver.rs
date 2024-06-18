@@ -4,6 +4,8 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use dashmap::DashSet;
 use deno_ast::MediaType;
+use deno_config::workspace::MappedResolution;
+use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -352,87 +354,18 @@ impl CjsResolutionStore {
   }
 }
 
-/// Result of checking if a specifier is mapped via
-/// an import map or package.json.
-pub enum MappedResolution {
-  None,
-  PackageJson(ModuleSpecifier),
-  ImportMap(ModuleSpecifier),
-}
-
-impl MappedResolution {
-  pub fn into_specifier(self) -> Option<ModuleSpecifier> {
-    match self {
-      MappedResolution::None => Option::None,
-      MappedResolution::PackageJson(specifier) => Some(specifier),
-      MappedResolution::ImportMap(specifier) => Some(specifier),
-    }
-  }
-}
-
-/// Resolver for specifiers that could be mapped via an
-/// import map or package.json.
-#[derive(Debug)]
-pub struct MappedSpecifierResolver {
-  maybe_import_map: Option<Arc<ImportMap>>,
-  package_json_deps_provider: Arc<PackageJsonDepsProvider>,
-}
-
-impl MappedSpecifierResolver {
-  pub fn new(
-    maybe_import_map: Option<Arc<ImportMap>>,
-    package_json_deps_provider: Arc<PackageJsonDepsProvider>,
-  ) -> Self {
-    Self {
-      maybe_import_map,
-      package_json_deps_provider,
-    }
-  }
-
-  pub fn resolve(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-  ) -> Result<MappedResolution, AnyError> {
-    // attempt to resolve with the import map first
-    let maybe_import_map_err = match self
-      .maybe_import_map
-      .as_ref()
-      .map(|import_map| import_map.resolve(specifier, referrer))
-    {
-      Some(Ok(value)) => return Ok(MappedResolution::ImportMap(value)),
-      Some(Err(err)) => Some(err),
-      None => None,
-    };
-
-    // then with package.json
-    if let Some(deps) = self.package_json_deps_provider.deps() {
-      if let Some(specifier) = resolve_package_json_dep(specifier, deps)? {
-        return Ok(MappedResolution::PackageJson(specifier));
-      }
-    }
-
-    // otherwise, surface the import map error or try resolving when has no import map
-    if let Some(err) = maybe_import_map_err {
-      Err(err.into())
-    } else {
-      Ok(MappedResolution::None)
-    }
-  }
-}
-
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug)]
 pub struct CliGraphResolver {
   sloppy_imports_resolver: Option<SloppyImportsResolver>,
-  mapped_specifier_resolver: MappedSpecifierResolver,
   maybe_default_jsx_import_source: Option<String>,
   maybe_default_jsx_import_source_types: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   maybe_vendor_specifier: Option<ModuleSpecifier>,
   node_resolver: Option<Arc<CliNodeResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
+  workspace_resolver: Arc<WorkspaceResolver>,
   found_package_json_dep_flag: AtomicFlag,
   bare_node_builtins_enabled: bool,
 }
@@ -442,30 +375,16 @@ pub struct CliGraphResolverOptions<'a> {
   pub node_resolver: Option<Arc<CliNodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   pub package_json_deps_provider: Arc<PackageJsonDepsProvider>,
-  pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
-  pub maybe_import_map: Option<Arc<ImportMap>>,
-  pub maybe_vendor_dir: Option<&'a PathBuf>,
+  pub workspace_resolver: Arc<WorkspaceResolver>,
   pub bare_node_builtins_enabled: bool,
+  pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
+  pub maybe_vendor_dir: Option<&'a PathBuf>,
 }
 
 impl CliGraphResolver {
   pub fn new(options: CliGraphResolverOptions) -> Self {
-    let is_byonm = options
-      .npm_resolver
-      .as_ref()
-      .map(|n| n.as_byonm().is_some())
-      .unwrap_or(false);
     Self {
       sloppy_imports_resolver: options.sloppy_imports_resolver,
-      mapped_specifier_resolver: MappedSpecifierResolver::new(
-        options.maybe_import_map,
-        if is_byonm {
-          // don't resolve from the root package.json deps for byonm
-          Arc::new(PackageJsonDepsProvider::new(None))
-        } else {
-          options.package_json_deps_provider
-        },
-      ),
       maybe_default_jsx_import_source: options
         .maybe_jsx_import_source_config
         .as_ref()
@@ -482,6 +401,7 @@ impl CliGraphResolver {
         .and_then(|v| ModuleSpecifier::from_directory_path(v).ok()),
       node_resolver: options.node_resolver,
       npm_resolver: options.npm_resolver,
+      workspace_resolver: options.workspace_resolver,
       found_package_json_dep_flag: Default::default(),
       bare_node_builtins_enabled: options.bare_node_builtins_enabled,
     }
@@ -563,22 +483,35 @@ impl Resolver for CliGraphResolver {
 
     let referrer = &referrer_range.specifier;
     let result: Result<_, ResolveError> = self
-      .mapped_specifier_resolver
+      .workspace_resolver
       .resolve(specifier, referrer)
-      .map_err(|err| err.into())
-      .and_then(|resolution| match resolution {
+      .map_err(|err| AnyError::from(err).into());
+    let result = match result {
+      Ok(resolution) => match resolution {
         MappedResolution::ImportMap(specifier) => Ok(specifier),
-        MappedResolution::PackageJson(specifier) => {
+        // todo(THIS PR): for byonm it should do resolution solely based on
+        // the referrer and not the package.json
+        MappedResolution::PackageJson { req_ref, .. } => {
           // found a specifier in the package.json, so mark that
           // we need to do an "npm install" later
           self.found_package_json_dep_flag.raise();
-          Ok(specifier)
+
+          match &self.node_resolver {
+            Some(node_resolver) => {
+              return node_resolver
+                .resolve_req_reference(&req_ref, referrer, to_node_mode(mode))
+                .map(|res| res.into_url())
+                .map_err(|err| err.into());
+            }
+            None => {
+              // TODO(THIS PR): THIS
+              todo!();
+            }
+          }
         }
-        MappedResolution::None => {
-          deno_graph::resolve_import(specifier, &referrer_range.specifier)
-            .map_err(|err| err.into())
-        }
-      });
+      },
+      Err(err) => Err(err),
+    };
 
     // do sloppy imports resolution if enabled
     let result =
@@ -733,28 +666,6 @@ fn sloppy_imports_resolve(
   }
 
   resolution.into_specifier().into_owned()
-}
-
-fn resolve_package_json_dep(
-  specifier: &str,
-  deps: &PackageJsonDeps,
-) -> Result<Option<ModuleSpecifier>, AnyError> {
-  for (bare_specifier, req_result) in deps {
-    if specifier.starts_with(bare_specifier) {
-      let path = &specifier[bare_specifier.len()..];
-      if path.is_empty() || path.starts_with('/') {
-        let req = req_result.as_ref().map_err(|err| {
-          anyhow!(
-            "Parsing version constraints in the application-level package.json is more strict at the moment.\n\n{:#}",
-            err.clone()
-          )
-        })?;
-        return Ok(Some(ModuleSpecifier::parse(&format!("npm:{req}{path}"))?));
-      }
-    }
-  }
-
-  Ok(None)
 }
 
 #[derive(Debug)]
@@ -1265,71 +1176,9 @@ impl SloppyImportsResolver {
 
 #[cfg(test)]
 mod test {
-  use std::collections::BTreeMap;
-
   use test_util::TestContext;
 
   use super::*;
-
-  #[test]
-  fn test_resolve_package_json_dep() {
-    fn resolve(
-      specifier: &str,
-      deps: &BTreeMap<String, PackageReq>,
-    ) -> Result<Option<String>, String> {
-      let deps = deps
-        .iter()
-        .map(|(key, value)| (key.to_string(), Ok(value.clone())))
-        .collect();
-      resolve_package_json_dep(specifier, &deps)
-        .map(|s| s.map(|s| s.to_string()))
-        .map_err(|err| err.to_string())
-    }
-
-    let deps = BTreeMap::from([
-      (
-        "package".to_string(),
-        PackageReq::from_str("package@1.0").unwrap(),
-      ),
-      (
-        "package-alias".to_string(),
-        PackageReq::from_str("package@^1.2").unwrap(),
-      ),
-      (
-        "@deno/test".to_string(),
-        PackageReq::from_str("@deno/test@~0.2").unwrap(),
-      ),
-    ]);
-
-    assert_eq!(
-      resolve("package", &deps).unwrap(),
-      Some("npm:package@1.0".to_string()),
-    );
-    assert_eq!(
-      resolve("package/some_path.ts", &deps).unwrap(),
-      Some("npm:package@1.0/some_path.ts".to_string()),
-    );
-
-    assert_eq!(
-      resolve("@deno/test", &deps).unwrap(),
-      Some("npm:@deno/test@~0.2".to_string()),
-    );
-    assert_eq!(
-      resolve("@deno/test/some_path.ts", &deps).unwrap(),
-      Some("npm:@deno/test@~0.2/some_path.ts".to_string()),
-    );
-    // matches the start, but doesn't have the same length or a path
-    assert_eq!(resolve("@deno/testing", &deps).unwrap(), None,);
-
-    // alias
-    assert_eq!(
-      resolve("package-alias", &deps).unwrap(),
-      Some("npm:package@^1.2".to_string()),
-    );
-
-    // non-existent bare specifier
-    assert_eq!(resolve("non-existent", &deps).unwrap(), None);
-  }
 
   #[test]
   fn test_unstable_sloppy_imports() {

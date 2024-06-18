@@ -575,7 +575,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       None => None,
     };
     let maybe_import_map = cli_options
-      .resolve_import_map(self.file_fetcher)
+      .create_workspace_resolver(self.file_fetcher)
       .await?
       .map(|import_map| (import_map.base_url().clone(), import_map.to_json()));
     let (npm_vfs, npm_files, node_modules) =

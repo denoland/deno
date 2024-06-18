@@ -52,8 +52,11 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
+use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceResolver;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -63,6 +66,7 @@ use deno_lockfile::WorkspaceMemberConfig;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
@@ -157,7 +161,6 @@ struct CliFactoryServices {
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
   lockfile: Deferred<Option<Arc<Mutex<Lockfile>>>>,
-  maybe_import_map: Deferred<Option<Arc<ImportMap>>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
   blob_store: Deferred<Arc<BlobStore>>,
@@ -178,6 +181,7 @@ struct CliFactoryServices {
   cli_node_resolver: Deferred<Arc<CliNodeResolver>>,
   feature_checker: Deferred<Arc<FeatureChecker>>,
   code_cache: Deferred<Arc<CodeCache>>,
+  workspace_resolver: Deferred<Arc<WorkspaceResolver>>,
 }
 
 pub struct CliFactory {
@@ -305,20 +309,16 @@ impl CliFactory {
   }
 
   pub fn maybe_lockfile(&self) -> &Option<Arc<Mutex<Lockfile>>> {
-    fn check_no_npm(lockfile: &Mutex<Lockfile>, options: &CliOptions) -> bool {
-      if options.no_npm() {
-        return true;
-      }
-      // Deno doesn't yet understand npm workspaces and the package.json resolution
-      // may be in a different folder than the deno.json/lockfile. So for now, ignore
-      // any package.jsons that are in different folders
-      options
-        .maybe_package_json()
-        .as_ref()
-        .map(|package_json| {
-          package_json.path.parent() != lockfile.lock().filename.parent()
-        })
-        .unwrap_or(false)
+    fn pkg_json_deps(maybe_pkg_json: Option<&PackageJson>) -> BTreeSet<String> {
+      let Some(pkg_json) = maybe_pkg_json else {
+        return Default::default();
+      };
+      pkg_json
+        .resolve_local_package_json_version_reqs()
+        .values()
+        .filter_map(|r| r.ok())
+        .map(|r| format!("npm:{}", r))
+        .collect()
     }
 
     self.services.lockfile.get_or_init(|| {
@@ -326,8 +326,7 @@ impl CliFactory {
 
       // initialize the lockfile with the workspace's configuration
       if let Some(lockfile) = &maybe_lockfile {
-        let no_npm = check_no_npm(lockfile, &self.options);
-        let package_json_deps = (!no_npm)
+        let package_json_deps = (!self.options.no_npm())
           .then(|| {
             self
               .package_json_deps_provider()
@@ -339,55 +338,35 @@ impl CliFactory {
           })
           .unwrap_or_default();
         let mut lockfile = lockfile.lock();
-        let config = match self.options.maybe_workspace_config() {
-          Some(workspace_config) => deno_lockfile::WorkspaceConfig {
-            root: WorkspaceMemberConfig {
-              package_json_deps,
-              dependencies: deno_json_deps(
-                self.options.maybe_config_file().as_ref().unwrap(),
-              )
+        let root_folder = self.options.workspace.root_folder().1;
+        let config = deno_lockfile::WorkspaceConfig {
+          root: WorkspaceMemberConfig {
+            package_json_deps: pkg_json_deps(root_folder.pkg_json.as_ref()),
+            dependencies: deno_json_deps(root_folder.deno_json.as_ref())
               .into_iter()
               .map(|req| req.to_string())
               .collect(),
-            },
-            members: workspace_config
-              .members
-              .iter()
-              .map(|member| {
-                (
-                  member.package_name.clone(),
-                  WorkspaceMemberConfig {
-                    package_json_deps: Default::default(),
-                    dependencies: deno_json_deps(&member.config_file)
-                      .into_iter()
-                      .map(|req| req.to_string())
-                      .collect(),
-                  },
-                )
-              })
-              .collect(),
           },
-          None => deno_lockfile::WorkspaceConfig {
-            root: WorkspaceMemberConfig {
-              package_json_deps,
-              dependencies: self
-                .options
-                .maybe_config_file()
-                .as_ref()
-                .map(|config| {
-                  deno_json_deps(config)
+          members: workspace_config
+            .members
+            .iter()
+            .map(|member| {
+              (
+                member.package_name.clone(),
+                WorkspaceMemberConfig {
+                  package_json_deps: Default::default(),
+                  dependencies: deno_json_deps(&member.config_file)
                     .into_iter()
                     .map(|req| req.to_string())
-                    .collect()
-                })
-                .unwrap_or_default(),
-            },
-            members: Default::default(),
-          },
+                    .collect(),
+                },
+              )
+            })
+            .collect(),
         };
         lockfile.set_workspace_config(
           deno_lockfile::SetWorkspaceConfigOptions {
-            no_npm,
+            no_npm: self.options.no_npm(),
             no_config: self.options.no_config(),
             config,
           },
@@ -458,20 +437,18 @@ impl CliFactory {
     })
   }
 
-  pub async fn maybe_import_map(
+  pub async fn workspace_resolver(
     &self,
-  ) -> Result<&Option<Arc<ImportMap>>, AnyError> {
+  ) -> Result<&Arc<WorkspaceResolver>, AnyError> {
     self
       .services
-      .maybe_import_map
+      .workspace_resolver
       .get_or_try_init_async(async {
-        Ok(
-          self
-            .options
-            .resolve_import_map(self.file_fetcher()?)
-            .await?
-            .map(Arc::new),
-        )
+        self
+          .options
+          .create_workspace_resolver(self.file_fetcher()?)
+          .await
+          .map(Arc::new)
       })
       .await
   }
@@ -497,14 +474,15 @@ impl CliFactory {
             package_json_deps_provider: self
               .package_json_deps_provider()
               .clone(),
-            maybe_jsx_import_source_config: self
-              .options
-              .to_maybe_jsx_import_source_config()?,
-            maybe_import_map: self.maybe_import_map().await?.clone(),
-            maybe_vendor_dir: self.options.vendor_dir_path(),
+            workspace_resolver: self.workspace_resolver().await?.clone(),
             bare_node_builtins_enabled: self
               .options
               .unstable_bare_node_builtins(),
+            maybe_jsx_import_source_config: self
+              .options
+              .workspace
+              .to_maybe_jsx_import_source_config()?,
+            maybe_vendor_dir: self.options.vendor_dir_path(),
           })))
         }
         .boxed_local(),

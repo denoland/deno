@@ -295,7 +295,7 @@ fn build_resolver(
     sloppy_imports_resolver: None,
     package_json_deps_provider: Default::default(),
     maybe_jsx_import_source_config,
-    maybe_import_map: original_import_map.map(Arc::new),
+    workspace_resolver: original_import_map.map(Arc::new),
     maybe_vendor_dir: None,
     bare_node_builtins_enabled: false,
   })

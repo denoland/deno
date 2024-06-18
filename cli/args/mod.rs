@@ -840,17 +840,21 @@ impl CliOptions {
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
-      root_folder.config.as_deref(),
+      root_folder.deno_json.as_deref(),
       root_folder.pkg_json.as_deref(),
     )
     .with_context(|| "Resolving node_modules folder.")?;
     let maybe_vendor_folder = if force_global_cache {
       None
     } else {
-      resolve_vendor_folder(&initial_cwd, &flags, root_folder.config.as_deref())
+      resolve_vendor_folder(
+        &initial_cwd,
+        &flags,
+        root_folder.deno_json.as_deref(),
+      )
     };
     let maybe_workspace_config =
-      if let Some(config_file) = root_folder.config.as_ref() {
+      if let Some(config_file) = root_folder.deno_json.as_ref() {
         config_file.to_workspace_config()?
       } else {
         None
@@ -959,7 +963,7 @@ impl CliOptions {
     let root_folder = workspace.root_folder().1;
     let (npmrc, _) = discover_npmrc(
       root_folder.pkg_json.as_ref().map(|p| p.path.clone()),
-      root_folder.config.as_ref().and_then(|cf| {
+      root_folder.deno_json.as_ref().and_then(|cf| {
         if cf.specifier.scheme() == "file" {
           Some(cf.specifier.to_file_path().unwrap())
         } else {
@@ -970,7 +974,7 @@ impl CliOptions {
 
     let maybe_lock_file = lockfile::discover(
       &flags,
-      root_folder.config.as_deref(),
+      root_folder.deno_json.as_deref(),
       root_folder.pkg_json.as_deref(),
     )?;
     Self::new(
@@ -1073,13 +1077,13 @@ impl CliOptions {
       Some(maybe_url) => Ok(maybe_url),
       None => resolve_import_map_specifier(
         self.flags.import_map_path.as_deref(),
-        self.workspace.root_folder().1.config.as_deref(),
+        self.workspace.root_folder().1.deno_json.as_deref(),
         &self.initial_cwd,
       ),
     }
   }
 
-  pub async fn resolve_import_map(
+  pub async fn create_workspace_resolver(
     &self,
     file_fetcher: &FileFetcher,
   ) -> Result<WorkspaceResolver, AnyError> {
@@ -1351,16 +1355,6 @@ impl CliOptions {
 
   pub fn maybe_lockfile(&self) -> Option<Arc<Mutex<Lockfile>>> {
     self.maybe_lockfile.clone()
-  }
-
-  /// Return the JSX import source configuration.
-  pub fn to_maybe_jsx_import_source_config(
-    &self,
-  ) -> Result<Option<JsxImportSourceConfig>, AnyError> {
-    match self.maybe_config_file.as_ref() {
-      Some(config) => config.to_maybe_jsx_import_source_config(),
-      None => Ok(None),
-    }
   }
 
   /// Return any imports that should be brought into the scope of the module

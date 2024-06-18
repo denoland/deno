@@ -11,12 +11,12 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::load_pkg_json;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::package::PackageReq;
 
-use crate::args::package_json::get_local_package_json_version_reqs;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
@@ -51,13 +51,13 @@ impl ByonmCliNpmResolver {
     &self,
     dep_name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Option<Rc<PackageJson>> {
+  ) -> Option<Arc<PackageJson>> {
     let referrer_path = referrer.to_file_path().ok()?;
     let mut current_folder = referrer_path.parent()?;
     loop {
       let pkg_json_path = current_folder.join("package.json");
-      if let Ok(pkg_json) =
-        PackageJson::load_skip_read_permission(self.fs.as_ref(), pkg_json_path)
+      if let Ok(Some(pkg_json)) =
+        load_pkg_json(self.fs.as_ref(), &pkg_json_path)
       {
         if let Some(deps) = &pkg_json.dependencies {
           if deps.contains_key(dep_name) {
@@ -184,65 +184,72 @@ impl CliNpmResolver for ByonmCliNpmResolver {
     fn resolve_from_package_json(
       req: &PackageReq,
       fs: &dyn FileSystem,
-      path: PathBuf,
-    ) -> Result<PathBuf, AnyError> {
-      let package_json = PackageJson::load_skip_read_permission(fs, path)?;
-      let deps = get_local_package_json_version_reqs(&package_json);
+      pkg_json: &PackageJson,
+    ) -> Result<Option<PathBuf>, AnyError> {
+      let deps = pkg_json.resolve_local_package_json_version_reqs();
       for (key, value) in deps {
         if let Ok(value) = value {
           if value.name == req.name
             && value.version_req.intersects(&req.version_req)
           {
-            let package_path = package_json
+            let package_path = pkg_json
               .path
               .parent()
               .unwrap()
               .join("node_modules")
               .join(key);
-            return Ok(canonicalize_path_maybe_not_exists_with_fs(
+            return Ok(Some(canonicalize_path_maybe_not_exists_with_fs(
               &package_path,
               fs,
-            )?);
+            )?));
           }
         }
       }
-      bail!(
-        concat!(
-          "Could not find a matching package for 'npm:{}' in '{}'. ",
-          "You must specify this as a package.json dependency when the ",
-          "node_modules folder is not managed by Deno.",
-        ),
-        req,
-        package_json.path.display()
-      );
+      Ok(None)
     }
 
     // attempt to resolve the npm specifier from the referrer's package.json,
-    // but otherwise fallback to the project's package.json
     if let Ok(file_path) = specifier_to_file_path(referrer) {
       let mut current_path = file_path.as_path();
       while let Some(dir_path) = current_path.parent() {
         let package_json_path = dir_path.join("package.json");
-        if self.fs.exists_sync(&package_json_path) {
-          return resolve_from_package_json(
-            req,
-            self.fs.as_ref(),
-            package_json_path,
-          );
+        if let Some(pkg_json) =
+          load_pkg_json(self.fs.as_ref(), &package_json_path)?
+        {
+          if let Some(path) =
+            resolve_from_package_json(req, self.fs.as_ref(), pkg_json.as_ref())?
+          {
+            return Ok(path);
+          }
         }
         current_path = dir_path;
       }
     }
 
-    resolve_from_package_json(
+    // otherwise, fall fallback to the project's package.json
+    let root_pkg_json_path = self
+      .root_node_modules_dir
+      .parent()
+      .unwrap()
+      .join("package.json");
+    if let Some(pkg_json) =
+      load_pkg_json(self.fs.as_ref(), &root_pkg_json_path)?
+    {
+      if let Some(path) =
+        resolve_from_package_json(req, self.fs.as_ref(), pkg_json.as_ref())?
+      {
+        return Ok(path);
+      }
+    }
+
+    bail!(
+      concat!(
+        "Could not find a matching package for 'npm:{}' in a package.json file. ",
+        "You must specify this as a package.json dependency when the ",
+        "node_modules folder is not managed by Deno.",
+      ),
       req,
-      self.fs.as_ref(),
-      self
-        .root_node_modules_dir
-        .parent()
-        .unwrap()
-        .join("package.json"),
-    )
+    );
   }
 
   fn check_state_hash(&self) -> Option<u64> {

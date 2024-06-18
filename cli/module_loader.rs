@@ -80,7 +80,7 @@ pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
     npm_resolver.cache_packages().await?;
   }
   // cache as many entries in the import map as we can
-  if let Some(import_map) = factory.maybe_import_map().await? {
+  if let Some(import_map) = factory.workspace_resolver().await? {
     let roots = import_map
       .imports()
       .entries()

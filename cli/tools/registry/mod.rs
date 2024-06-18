@@ -85,7 +85,7 @@ pub async fn publish(
     get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
   let import_map = cli_factory
-    .maybe_import_map()
+    .workspace_resolver()
     .await?
     .clone()
     .unwrap_or_else(|| {

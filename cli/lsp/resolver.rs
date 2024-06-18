@@ -511,7 +511,7 @@ fn create_graph_resolver(
     )),
     maybe_jsx_import_source_config: config_file
       .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten()),
-    maybe_import_map: config_data.and_then(|d| d.import_map.clone()),
+    workspace_resolver: config_data.and_then(|d| d.import_map.clone()),
     maybe_vendor_dir: config_data.and_then(|d| d.vendor_dir.as_ref()),
     bare_node_builtins_enabled: config_file
       .map(|cf| cf.has_unstable("bare-node-builtins"))

@@ -43,7 +43,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = factory.maybe_lockfile();
-    let maybe_imports_map = factory.maybe_import_map().await?;
+    let maybe_imports_map = factory.workspace_resolver().await?;
 
     let maybe_import_specifier = if let Some(imports_map) = maybe_imports_map {
       if let Ok(imports_specifier) =
