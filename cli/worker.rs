@@ -46,7 +46,6 @@ use deno_semver::package::PackageReqReference;
 use deno_terminal::colors;
 use tokio::select;
 
-use crate::args::package_json::PackageJsonDeps;
 use crate::args::write_lockfile_if_has_changes;
 use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
@@ -119,7 +118,6 @@ pub struct CliMainWorkerOptions {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub unstable: bool,
   pub skip_op_registration: bool,
-  pub maybe_root_package_json_deps: Option<PackageJsonDeps>,
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
   pub create_coverage_collector: Option<CreateCoverageCollectorCb>,
 }

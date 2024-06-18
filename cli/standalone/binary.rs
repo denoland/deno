@@ -24,6 +24,7 @@ use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::NpmSystemInfo;
+use deno_runtime::deno_node::PackageJson;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReqSpecifierParseError;
@@ -31,8 +32,6 @@ use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::args::package_json::PackageJsonDepValueParseError;
-use crate::args::package_json::PackageJsonDeps;
 use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
@@ -54,79 +53,20 @@ use super::virtual_fs::VirtualDirectory;
 
 const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
-#[derive(Serialize, Deserialize)]
-enum SerializablePackageJsonDepValueParseError {
-  VersionReq(String),
-  Unsupported { scheme: String },
-}
-
-impl SerializablePackageJsonDepValueParseError {
-  pub fn from_err(err: PackageJsonDepValueParseError) -> Self {
-    match err {
-      PackageJsonDepValueParseError::VersionReq(err) => {
-        Self::VersionReq(err.source.to_string())
-      }
-      PackageJsonDepValueParseError::Unsupported { scheme } => {
-        Self::Unsupported { scheme }
-      }
-    }
-  }
-
-  pub fn into_err(self) -> PackageJsonDepValueParseError {
-    match self {
-      SerializablePackageJsonDepValueParseError::VersionReq(source) => {
-        PackageJsonDepValueParseError::VersionReq(NpmVersionReqParseError {
-          source: monch::ParseErrorFailureError::new(source),
-        })
-      }
-      SerializablePackageJsonDepValueParseError::Unsupported { scheme } => {
-        PackageJsonDepValueParseError::Unsupported { scheme }
-      }
-    }
-  }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SerializablePackageJsonDeps(
-  BTreeMap<
-    String,
-    Result<PackageReq, SerializablePackageJsonDepValueParseError>,
-  >,
-);
-
-impl SerializablePackageJsonDeps {
-  pub fn from_deps(deps: PackageJsonDeps) -> Self {
-    Self(
-      deps
-        .into_iter()
-        .map(|(name, req)| {
-          let res =
-            req.map_err(SerializablePackageJsonDepValueParseError::from_err);
-          (name, res)
-        })
-        .collect(),
-    )
-  }
-
-  pub fn into_deps(self) -> PackageJsonDeps {
-    self
-      .0
-      .into_iter()
-      .map(|(name, res)| (name, res.map_err(|err| err.into_err())))
-      .collect()
-  }
-}
-
 #[derive(Deserialize, Serialize)]
 pub enum NodeModules {
   Managed {
     /// Whether this uses a node_modules directory (true) or the global cache (false).
     node_modules_dir: bool,
-    package_json_deps: Option<SerializablePackageJsonDeps>,
   },
-  Byonm {
-    package_json_deps: Option<SerializablePackageJsonDeps>,
-  },
+  Byonm,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct SerializedWorkspaceResolver {
+  pub import_map: serde_json::Value,
+  /// Key is relative path, value is text.
+  pub package_jsons: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -140,7 +80,7 @@ pub struct Metadata {
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<Vec<u8>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub maybe_import_map: Option<(Url, String)>,
+  pub workspace_resolver: SerializedWorkspaceResolver,
   pub entrypoint: ModuleSpecifier,
   pub node_modules: Option<NodeModules>,
   pub disable_deprecated_api_warning: bool,
@@ -574,49 +514,38 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       Some(CaData::Bytes(bytes)) => Some(bytes.clone()),
       None => None,
     };
-    let maybe_import_map = cli_options
+    let workspace_resolver = cli_options
       .create_workspace_resolver(self.file_fetcher)
-      .await?
-      .map(|import_map| (import_map.base_url().clone(), import_map.to_json()));
-    let (npm_vfs, npm_files, node_modules) =
-      match self.npm_resolver.as_inner() {
-        InnerCliNpmResolverRef::Managed(managed) => {
-          let snapshot =
-            managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
-          if !snapshot.as_serialized().packages.is_empty() {
-            let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
-            eszip.add_npm_snapshot(snapshot);
-            (
-              Some(root_dir),
-              files,
-              Some(NodeModules::Managed {
-                node_modules_dir: self
-                  .npm_resolver
-                  .root_node_modules_path()
-                  .is_some(),
-                package_json_deps: self.package_json_deps_provider.deps().map(
-                  |deps| SerializablePackageJsonDeps::from_deps(deps.clone()),
-                ),
-              }),
-            )
-          } else {
-            (None, Vec::new(), None)
-          }
-        }
-        InnerCliNpmResolverRef::Byonm(_) => {
+      .await?;
+    let (npm_vfs, npm_files, node_modules) = match self.npm_resolver.as_inner()
+    {
+      InnerCliNpmResolverRef::Managed(managed) => {
+        let snapshot =
+          managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
+        if !snapshot.as_serialized().packages.is_empty() {
           let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
+          eszip.add_npm_snapshot(snapshot);
           (
             Some(root_dir),
             files,
-            Some(NodeModules::Byonm {
-              package_json_deps: self.package_json_deps_provider.deps().map(
-                |deps| SerializablePackageJsonDeps::from_deps(deps.clone()),
-              ),
+            Some(NodeModules::Managed {
+              node_modules_dir: self
+                .npm_resolver
+                .root_node_modules_path()
+                .is_some(),
             }),
           )
+        } else {
+          (None, Vec::new(), None)
         }
-      };
+      }
+      InnerCliNpmResolverRef::Byonm(_) => {
+        let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
+        (Some(root_dir), files, Some(NodeModules::Byonm))
+      }
+    };
 
+    let root_folder_url = cli_options.workspace.root_folder().0;
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
       seed: cli_options.seed(),
@@ -630,7 +559,22 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       ca_stores: cli_options.ca_stores().clone(),
       ca_data,
       entrypoint: entrypoint.clone(),
-      maybe_import_map,
+      workspace_resolver: SerializedWorkspaceResolver {
+        import_map: serde_json::to_value(&workspace_resolver.import_map())
+          .unwrap(),
+        package_jsons: workspace_resolver
+          .package_jsons()
+          .map(|pkg_json| {
+            (
+              root_folder_url
+                .make_relative(&pkg_json.specifier())
+                .unwrap()
+                .to_string(),
+              serde_json::to_value(pkg_json).unwrap(),
+            )
+          })
+          .collect(),
+      },
       node_modules,
       disable_deprecated_api_warning: cli_options
         .disable_deprecated_api_warning,

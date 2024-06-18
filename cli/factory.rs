@@ -4,7 +4,6 @@ use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::Lockfile;
-use crate::args::PackageJsonDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
@@ -174,7 +173,6 @@ struct CliFactoryServices {
   node_code_translator: Deferred<Arc<CliNodeCodeTranslator>>,
   node_resolver: Deferred<Arc<NodeResolver>>,
   npm_resolver: Deferred<Arc<dyn CliNpmResolver>>,
-  package_json_deps_provider: Deferred<Arc<PackageJsonDepsProvider>>,
   text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
   cjs_resolutions: Deferred<Arc<CjsResolutionStore>>,
@@ -438,14 +436,6 @@ impl CliFactory {
       .await
   }
 
-  pub fn package_json_deps_provider(&self) -> &Arc<PackageJsonDepsProvider> {
-    self.services.package_json_deps_provider.get_or_init(|| {
-      Arc::new(PackageJsonDepsProvider::new(
-        self.options.maybe_package_json_deps(),
-      ))
-    })
-  }
-
   pub async fn workspace_resolver(
     &self,
   ) -> Result<&Arc<WorkspaceResolver>, AnyError> {
@@ -491,9 +481,6 @@ impl CliFactory {
             } else {
               Some(self.npm_resolver().await?.clone())
             },
-            package_json_deps_provider: self
-              .package_json_deps_provider()
-              .clone(),
             workspace_resolver: self.workspace_resolver().await?.clone(),
             bare_node_builtins_enabled: self
               .options

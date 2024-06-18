@@ -35,6 +35,8 @@ use crate::worker::CliMainWorkerOptions;
 use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
 use deno_ast::MediaType;
+use deno_config::workspace::MappedResolution;
+use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
@@ -77,7 +79,7 @@ use self::file_system::DenoCompileFileSystem;
 
 struct SharedModuleLoaderState {
   eszip: eszip::EszipV2,
-  mapped_specifier_resolver: MappedSpecifierResolver,
+  workspace_resolver: WorkspaceResolver,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
 }
@@ -122,44 +124,37 @@ impl ModuleLoader for EmbeddedModuleLoader {
       };
     }
 
-    let maybe_mapped = self
+    let mapped_resolution = self
       .shared
-      .mapped_specifier_resolver
-      .resolve(specifier, &referrer)?
-      .into_specifier();
+      .workspace_resolver
+      .resolve(specifier, &referrer)?;
 
-    // npm specifier
-    let specifier_text = maybe_mapped
-      .as_ref()
-      .map(|r| r.as_str())
-      .unwrap_or(specifier);
-    if let Ok(reference) = NpmPackageReqReference::from_str(specifier_text) {
-      return self
-        .shared
-        .node_resolver
-        .resolve_req_reference(
-          &reference,
-          &referrer,
-          NodeResolutionMode::Execution,
-        )
-        .map(|res| res.into_url());
-    }
+    match mapped_resolution {
+      MappedResolution::PackageJson { req_ref, .. } => {
+        return self
+          .shared
+          .node_resolver
+          .resolve_req_reference(
+            &req_ref,
+            &referrer,
+            NodeResolutionMode::Execution,
+          )
+          .map(|res| res.into_url());
+      }
+      MappedResolution::ImportMap(specifier) => {
+        if specifier.scheme() == "jsr" {
+          if let Some(module) = self.shared.eszip.get_module(specifier.as_str())
+          {
+            return Ok(ModuleSpecifier::parse(&module.specifier).unwrap());
+          }
+        }
 
-    let specifier = match maybe_mapped {
-      Some(resolved) => resolved,
-      None => deno_core::resolve_import(specifier, referrer.as_str())?,
-    };
-
-    if specifier.scheme() == "jsr" {
-      if let Some(module) = self.shared.eszip.get_module(specifier.as_str()) {
-        return Ok(ModuleSpecifier::parse(&module.specifier).unwrap());
+        self
+          .shared
+          .node_resolver
+          .handle_if_in_node_modules(specifier)
       }
     }
-
-    self
-      .shared
-      .node_resolver
-      .handle_if_in_node_modules(specifier)
   }
 
   fn load(
@@ -348,112 +343,85 @@ pub async fn run(
     NpmCacheDir::new(root_path.clone(), vec![npm_registry_url.clone()]);
   let npm_global_cache_dir = npm_cache_dir.get_cache_location();
   let cache_setting = CacheSetting::Only;
-  let (package_json_deps_provider, fs, npm_resolver, maybe_vfs_root) =
-    match metadata.node_modules {
-      Some(binary::NodeModules::Managed {
-        node_modules_dir,
-        package_json_deps,
-      }) => {
-        // this will always have a snapshot
-        let snapshot = eszip.take_npm_snapshot().unwrap();
-        let vfs_root_dir_path = if node_modules_dir {
-          root_path
-        } else {
-          npm_cache_dir.root_dir().to_owned()
-        };
-        let vfs = load_npm_vfs(vfs_root_dir_path.clone())
-          .context("Failed to load npm vfs.")?;
-        let maybe_node_modules_path = if node_modules_dir {
-          Some(vfs.root().to_path_buf())
-        } else {
-          None
-        };
-        let package_json_deps_provider =
-          Arc::new(PackageJsonDepsProvider::new(
-            package_json_deps.map(|serialized| serialized.into_deps()),
-          ));
-        let fs = Arc::new(DenoCompileFileSystem::new(vfs))
-          as Arc<dyn deno_fs::FileSystem>;
-        let npm_resolver =
-          create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
-            CliNpmResolverManagedCreateOptions {
-              snapshot: CliNpmResolverManagedSnapshotOption::Specified(Some(
-                snapshot,
-              )),
-              maybe_lockfile: None,
-              fs: fs.clone(),
-              http_client_provider: http_client_provider.clone(),
-              npm_global_cache_dir,
-              cache_setting,
-              text_only_progress_bar: progress_bar,
-              maybe_node_modules_path,
-              package_json_deps_provider: package_json_deps_provider.clone(),
-              npm_system_info: Default::default(),
-              // Packages from different registries are already inlined in the ESZip,
-              // so no need to create actual `.npmrc` configuration.
-              npmrc: create_default_npmrc(),
-            },
-          ))
-          .await?;
-        (
-          package_json_deps_provider,
-          fs,
-          npm_resolver,
-          Some(vfs_root_dir_path),
-        )
-      }
-      Some(binary::NodeModules::Byonm { package_json_deps }) => {
-        let vfs_root_dir_path = root_path;
-        let vfs = load_npm_vfs(vfs_root_dir_path.clone())
-          .context("Failed to load npm vfs.")?;
-        let node_modules_path = vfs.root().join("node_modules");
-        let package_json_deps_provider =
-          Arc::new(PackageJsonDepsProvider::new(
-            package_json_deps.map(|serialized| serialized.into_deps()),
-          ));
-        let fs = Arc::new(DenoCompileFileSystem::new(vfs))
-          as Arc<dyn deno_fs::FileSystem>;
-        let npm_resolver =
-          create_cli_npm_resolver(CliNpmResolverCreateOptions::Byonm(
-            CliNpmResolverByonmCreateOptions {
-              fs: fs.clone(),
-              root_node_modules_dir: node_modules_path,
-            },
-          ))
-          .await?;
-        (
-          package_json_deps_provider,
-          fs,
-          npm_resolver,
-          Some(vfs_root_dir_path),
-        )
-      }
-      None => {
-        let package_json_deps_provider =
-          Arc::new(PackageJsonDepsProvider::new(None));
-        let fs = Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>;
-        let npm_resolver =
-          create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
-            CliNpmResolverManagedCreateOptions {
-              snapshot: CliNpmResolverManagedSnapshotOption::Specified(None),
-              maybe_lockfile: None,
-              fs: fs.clone(),
-              http_client_provider: http_client_provider.clone(),
-              npm_global_cache_dir,
-              cache_setting,
-              text_only_progress_bar: progress_bar,
-              maybe_node_modules_path: None,
-              package_json_deps_provider: package_json_deps_provider.clone(),
-              npm_system_info: Default::default(),
-              // Packages from different registries are already inlined in the ESZip,
-              // so no need to create actual `.npmrc` configuration.
-              npmrc: create_default_npmrc(),
-            },
-          ))
-          .await?;
-        (package_json_deps_provider, fs, npm_resolver, None)
-      }
-    };
+  let (fs, npm_resolver, maybe_vfs_root) = match metadata.node_modules {
+    Some(binary::NodeModules::Managed { node_modules_dir }) => {
+      // this will always have a snapshot
+      let snapshot = eszip.take_npm_snapshot().unwrap();
+      let vfs_root_dir_path = if node_modules_dir {
+        root_path
+      } else {
+        npm_cache_dir.root_dir().to_owned()
+      };
+      let vfs = load_npm_vfs(vfs_root_dir_path.clone())
+        .context("Failed to load npm vfs.")?;
+      let maybe_node_modules_path = if node_modules_dir {
+        Some(vfs.root().to_path_buf())
+      } else {
+        None
+      };
+      let fs = Arc::new(DenoCompileFileSystem::new(vfs))
+        as Arc<dyn deno_fs::FileSystem>;
+      let npm_resolver =
+        create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
+          CliNpmResolverManagedCreateOptions {
+            snapshot: CliNpmResolverManagedSnapshotOption::Specified(Some(
+              snapshot,
+            )),
+            maybe_lockfile: None,
+            fs: fs.clone(),
+            http_client_provider: http_client_provider.clone(),
+            npm_global_cache_dir,
+            cache_setting,
+            text_only_progress_bar: progress_bar,
+            maybe_node_modules_path,
+            npm_system_info: Default::default(),
+            // Packages from different registries are already inlined in the ESZip,
+            // so no need to create actual `.npmrc` configuration.
+            npmrc: create_default_npmrc(),
+          },
+        ))
+        .await?;
+      (fs, npm_resolver, Some(vfs_root_dir_path))
+    }
+    Some(binary::NodeModules::Byonm) => {
+      let vfs_root_dir_path = root_path;
+      let vfs = load_npm_vfs(vfs_root_dir_path.clone())
+        .context("Failed to load npm vfs.")?;
+      let node_modules_path = vfs.root().join("node_modules");
+      let fs = Arc::new(DenoCompileFileSystem::new(vfs))
+        as Arc<dyn deno_fs::FileSystem>;
+      let npm_resolver = create_cli_npm_resolver(
+        CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
+          fs: fs.clone(),
+          root_node_modules_dir: node_modules_path,
+        }),
+      )
+      .await?;
+      (fs, npm_resolver, Some(vfs_root_dir_path))
+    }
+    None => {
+      let fs = Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>;
+      let npm_resolver =
+        create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
+          CliNpmResolverManagedCreateOptions {
+            snapshot: CliNpmResolverManagedSnapshotOption::Specified(None),
+            maybe_lockfile: None,
+            fs: fs.clone(),
+            http_client_provider: http_client_provider.clone(),
+            npm_global_cache_dir,
+            cache_setting,
+            text_only_progress_bar: progress_bar,
+            maybe_node_modules_path: None,
+            npm_system_info: Default::default(),
+            // Packages from different registries are already inlined in the ESZip,
+            // so no need to create actual `.npmrc` configuration.
+            npmrc: create_default_npmrc(),
+          },
+        ))
+        .await?;
+      (fs, npm_resolver, None)
+    }
+  };
 
   let has_node_modules_dir = npm_resolver.root_node_modules_path().is_some();
   let node_resolver = Arc::new(NodeResolver::new(

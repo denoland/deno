@@ -293,7 +293,6 @@ fn build_resolver(
     node_resolver: None,
     npm_resolver: None,
     sloppy_imports_resolver: None,
-    package_json_deps_provider: Default::default(),
     maybe_jsx_import_source_config,
     workspace_resolver: original_import_map.map(Arc::new),
     maybe_vendor_dir: None,
