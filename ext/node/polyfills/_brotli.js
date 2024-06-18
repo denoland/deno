@@ -91,9 +91,7 @@ export class BrotliCompress extends Transform {
       // TODO(littledivy): use `encoding` argument
       transform(chunk, _encoding, callback) {
         const input = toU8(chunk);
-        const output = new Uint8Array(
-          brotliMaxCompressedSize(TypedArrayPrototypeGetByteLength(input)),
-        );
+        const output = new Uint8Array(brotliMaxCompressedSize(input.length));
         const written = op_brotli_compress_stream(context, input, output);
         if (written > 0) {
           // deno-lint-ignore prefer-primordials
@@ -172,9 +170,7 @@ export function brotliCompressSync(
   options,
 ) {
   const buf = toU8(input);
-  const output = new Uint8Array(
-    brotliMaxCompressedSize(TypedArrayPrototypeGetByteLength(buf)),
-  );
+  const output = new Uint8Array(brotliMaxCompressedSize(buf.length));
 
   const { quality, lgwin, mode } = oneOffCompressOptions(options);
   const len = op_brotli_compress(buf, output, quality, lgwin, mode);
