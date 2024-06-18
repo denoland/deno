@@ -41,7 +41,7 @@ export function fstat(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  new FsFile(fd, Symbol.for("Deno.internal.FsFile")).stat().then(
+  new FsFile(fd, false, Symbol.for("Deno.internal.FsFile")).stat().then(
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
     (err) => callback(err),
   );
@@ -60,6 +60,7 @@ export function fstatSync(
   fd: number,
   options?: statOptions,
 ): Stats | BigIntStats {
-  const origin = new FsFile(fd, Symbol.for("Deno.internal.FsFile")).statSync();
+  const origin = new FsFile(fd, false, Symbol.for("Deno.internal.FsFile"))
+    .statSync();
   return CFISBIS(origin, options?.bigint || false);
 }

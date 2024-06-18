@@ -10,12 +10,12 @@ export function fsync(
   fd: number,
   callback: CallbackWithError,
 ) {
-  new FsFile(fd, Symbol.for("Deno.internal.FsFile")).sync().then(
+  new FsFile(fd, false, Symbol.for("Deno.internal.FsFile")).sync().then(
     () => callback(null),
     callback,
   );
 }
 
 export function fsyncSync(fd: number) {
-  new FsFile(fd, Symbol.for("Deno.internal.FsFile")).syncSync();
+  new FsFile(fd, false, Symbol.for("Deno.internal.FsFile")).syncSync();
 }
