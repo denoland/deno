@@ -34,16 +34,17 @@ pub fn op_socket_address_parse(
 ) -> Result<bool, AnyError> {
   let ip = addr.parse::<IpAddr>()?;
   let parsed: SocketAddr = SocketAddr::new(ip, port);
+  let parsed_ip_str = parsed.ip().to_string();
   let family_correct = family.eq_ignore_ascii_case("ipv4") && parsed.is_ipv4()
     || family.eq_ignore_ascii_case("ipv6") && parsed.is_ipv6();
 
   if family_correct {
     let family_is_lowercase = family[..3].chars().all(char::is_lowercase);
-    if family_is_lowercase && parsed.ip().to_string() == addr {
+    if family_is_lowercase && parsed_ip_str == addr {
       Ok(true)
     } else {
       state.put::<SocketAddressSerialization>(SocketAddressSerialization(
-        parsed.ip().to_string(),
+        parsed_ip_str,
         family.to_lowercase(),
       ));
       Ok(false)
