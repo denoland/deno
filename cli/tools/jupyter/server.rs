@@ -402,12 +402,13 @@ impl JupyterServer {
           .await?;
       }
       JupyterMessageContent::CommMsg(comm) => {
+        eprintln!("got comm msg {:#?}", comm);
         let comm_container = self.comm_container.0.lock();
         let comm_channel = comm_container.get(&comm.comm_id.0).unwrap();
         // todo?: send the msg.metadata
+        eprintln!("sending message");
         let _ = comm_channel.sender.send((comm, msg.buffers));
-
-        return Ok(());
+        eprintln!("message sent on the channel");
       }
       JupyterMessageContent::CommClose(_) => {
         // Do nothing with regular comm messages

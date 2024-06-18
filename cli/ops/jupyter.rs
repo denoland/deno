@@ -102,6 +102,7 @@ pub fn op_jupyter_comm_open(
 ) {
   let container = state.borrow_mut::<CommContainer>();
   container.create(&comm_id, &target_name, None);
+  eprintln!("created comm {} {}", comm_id, target_name);
 }
 
 #[op2(async)]
@@ -121,8 +122,9 @@ pub async fn op_jupyter_comm_recv(
     comm.receiver.resubscribe()
   };
 
+  eprintln!("starting receive");
   let (msg, buffers) = receiver.recv().await.unwrap();
-
+  eprintln!("received");
   (
     serde_json::to_value(msg).unwrap(),
     buffers
