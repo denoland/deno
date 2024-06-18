@@ -1132,7 +1132,7 @@ impl ConfigData {
   async fn load(
     config_file_specifier: Option<&ModuleSpecifier>,
     scope: &ModuleSpecifier,
-    workspace_root: Option<(&ModuleSpecifier, &ConfigData)>,
+    workspace_root: Option<&ConfigData>,
     settings: &Settings,
     file_fetcher: Option<&Arc<FileFetcher>>,
   ) -> Self {
@@ -1194,7 +1194,7 @@ impl ConfigData {
   async fn load_inner(
     config_file: Option<ConfigFile>,
     scope: &ModuleSpecifier,
-    workspace_root: Option<(&ModuleSpecifier, &ConfigData)>,
+    workspace_root: Option<&ConfigData>,
     settings: &Settings,
     file_fetcher: Option<&Arc<FileFetcher>>,
   ) -> Self {
@@ -1219,7 +1219,7 @@ impl ConfigData {
     }
 
     let mut fmt_options = None;
-    if let Some((_, workspace_data)) = workspace_root {
+    if let Some(workspace_data) = workspace_root {
       let has_own_fmt_options = config_file
         .as_ref()
         .is_some_and(|config_file| config_file.json.fmt.is_some());
@@ -1250,7 +1250,7 @@ impl ConfigData {
     });
 
     let mut lint_options_rules = None;
-    if let Some((_, workspace_data)) = workspace_root {
+    if let Some(workspace_data) = workspace_root {
       let has_own_lint_options = config_file
         .as_ref()
         .is_some_and(|config_file| config_file.json.lint.is_some());
@@ -1406,99 +1406,106 @@ impl ConfigData {
     let mut import_map_value = None;
     let mut import_map_specifier = None;
     let mut import_map_from_settings = false;
-    if let Some(config_file) = &config_file {
-      if config_file.is_an_import_map() {
-        import_map_value = Some(config_file.to_import_map_value_from_imports());
-        import_map_specifier = Some(config_file.specifier.clone());
-      } else if let Ok(Some(specifier)) = config_file.to_import_map_specifier()
-      {
-        import_map_specifier = Some(specifier);
-      }
-    }
-    import_map_specifier = import_map_specifier.or_else(|| {
-      let import_map_str = settings.import_map.as_ref()?;
-      let specifier = Url::parse(import_map_str)
-        .ok()
-        .or_else(|| workspace_folder?.join(import_map_str).ok())?;
-      import_map_from_settings = true;
-      Some(specifier)
-    });
-    if let Some(specifier) = &import_map_specifier {
-      if let Ok(path) = specifier_to_file_path(specifier) {
-        watched_files
-          .entry(specifier.clone())
-          .or_insert(ConfigWatchedFileType::ImportMap);
-        let import_map_canonicalized_specifier =
-          canonicalize_path_maybe_not_exists(&path)
-            .ok()
-            .and_then(|p| ModuleSpecifier::from_file_path(p).ok());
-        if let Some(specifier) = import_map_canonicalized_specifier {
-          watched_files
-            .entry(specifier)
-            .or_insert(ConfigWatchedFileType::ImportMap);
+    if let Some(workspace_data) = workspace_root {
+      import_map.clone_from(&workspace_data.import_map);
+      import_map_from_settings = workspace_data.import_map_from_settings;
+    } else {
+      if let Some(config_file) = &config_file {
+        if config_file.is_an_import_map() {
+          import_map_value =
+            Some(config_file.to_import_map_value_from_imports());
+          import_map_specifier = Some(config_file.specifier.clone());
+        } else if let Ok(Some(specifier)) =
+          config_file.to_import_map_specifier()
+        {
+          import_map_specifier = Some(specifier);
         }
       }
-      if import_map_value.is_none() {
-        if let Some(file_fetcher) = file_fetcher {
-          // spawn due to the lsp's `Send` requirement
-          let fetch_result = deno_core::unsync::spawn({
-            let file_fetcher = file_fetcher.clone();
-            let specifier = specifier.clone();
-            async move {
-              file_fetcher
-                .fetch(&specifier, &PermissionsContainer::allow_all())
-                .await
+      import_map_specifier = import_map_specifier.or_else(|| {
+        let import_map_str = settings.import_map.as_ref()?;
+        let specifier = Url::parse(import_map_str)
+          .ok()
+          .or_else(|| workspace_folder?.join(import_map_str).ok())?;
+        import_map_from_settings = true;
+        Some(specifier)
+      });
+      if let Some(specifier) = &import_map_specifier {
+        if let Ok(path) = specifier_to_file_path(specifier) {
+          watched_files
+            .entry(specifier.clone())
+            .or_insert(ConfigWatchedFileType::ImportMap);
+          let import_map_canonicalized_specifier =
+            canonicalize_path_maybe_not_exists(&path)
+              .ok()
+              .and_then(|p| ModuleSpecifier::from_file_path(p).ok());
+          if let Some(specifier) = import_map_canonicalized_specifier {
+            watched_files
+              .entry(specifier)
+              .or_insert(ConfigWatchedFileType::ImportMap);
+          }
+        }
+        if import_map_value.is_none() {
+          if let Some(file_fetcher) = file_fetcher {
+            // spawn due to the lsp's `Send` requirement
+            let fetch_result = deno_core::unsync::spawn({
+              let file_fetcher = file_fetcher.clone();
+              let specifier = specifier.clone();
+              async move {
+                file_fetcher
+                  .fetch(&specifier, &PermissionsContainer::allow_all())
+                  .await
+              }
+            })
+            .await
+            .unwrap();
+            let value_result = fetch_result.and_then(|f| {
+              serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())
+            });
+            match value_result {
+              Ok(value) => {
+                import_map_value = Some(value);
+              }
+              Err(err) => {
+                lsp_warn!(
+                  "  Couldn't read import map \"{}\": {}",
+                  specifier.as_str(),
+                  err
+                );
+              }
             }
-          })
-          .await
-          .unwrap();
-          let value_result = fetch_result.and_then(|f| {
-            serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())
-          });
-          match value_result {
-            Ok(value) => {
-              import_map_value = Some(value);
+          }
+        }
+      }
+      if let (Some(value), Some(specifier)) =
+        (import_map_value, import_map_specifier)
+      {
+        match import_map::parse_from_value(specifier.clone(), value) {
+          Ok(result) => {
+            if config_file.as_ref().map(|c| &c.specifier) == Some(&specifier) {
+              lsp_log!("  Resolved import map from configuration file");
+            } else {
+              lsp_log!("  Resolved import map: \"{}\"", specifier.as_str());
             }
-            Err(err) => {
+            if !result.diagnostics.is_empty() {
               lsp_warn!(
-                "  Couldn't read import map \"{}\": {}",
-                specifier.as_str(),
-                err
+                "  Import map diagnostics:\n{}",
+                result
+                  .diagnostics
+                  .iter()
+                  .map(|d| format!("    - {d}"))
+                  .collect::<Vec<_>>()
+                  .join("\n")
               );
             }
+            import_map = Some(Arc::new(result.import_map));
           }
-        }
-      }
-    }
-    if let (Some(value), Some(specifier)) =
-      (import_map_value, import_map_specifier)
-    {
-      match import_map::parse_from_value(specifier.clone(), value) {
-        Ok(result) => {
-          if config_file.as_ref().map(|c| &c.specifier) == Some(&specifier) {
-            lsp_log!("  Resolved import map from configuration file");
-          } else {
-            lsp_log!("  Resolved import map: \"{}\"", specifier.as_str());
-          }
-          if !result.diagnostics.is_empty() {
+          Err(err) => {
             lsp_warn!(
-              "  Import map diagnostics:\n{}",
-              result
-                .diagnostics
-                .iter()
-                .map(|d| format!("    - {d}"))
-                .collect::<Vec<_>>()
-                .join("\n")
+              "Couldn't read import map \"{}\": {}",
+              specifier.as_str(),
+              err
             );
           }
-          import_map = Some(result.import_map);
-        }
-        Err(err) => {
-          lsp_warn!(
-            "Couldn't read import map \"{}\": {}",
-            specifier.as_str(),
-            err
-          );
         }
       }
     }
@@ -1533,7 +1540,7 @@ impl ConfigData {
           })
           .unwrap_or_default(),
       )
-    } else if let Some((_, workspace_data)) = workspace_root {
+    } else if let Some(workspace_data) = workspace_root {
       workspace_data.workspace_members.clone()
     } else if config_file.as_ref().is_some_and(|c| c.json.name.is_some()) {
       Arc::new(vec![scope.clone()])
@@ -1555,7 +1562,7 @@ impl ConfigData {
       lockfile: lockfile.map(Mutex::new).map(Arc::new),
       package_json: package_json.map(Arc::new),
       npmrc,
-      import_map: import_map.map(Arc::new),
+      import_map,
       import_map_from_settings,
       package_config: package_config.map(Arc::new),
       is_workspace_root,
@@ -1740,7 +1747,7 @@ impl ConfigTree {
           let member_data = ConfigData::load(
             Some(&config_file_specifier),
             member_scope,
-            Some((&scope, &data)),
+            Some(&data),
             settings,
             Some(file_fetcher),
           )

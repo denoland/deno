@@ -12695,6 +12695,68 @@ fn lsp_deno_json_workspace_lint_config() {
 }
 
 #[test]
+fn lsp_deno_json_workspace_import_map() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1/project2");
+  temp_dir.write(
+    "project1/deno.json",
+    json!({
+      "workspaces": ["project2"],
+      "imports": {
+        "foo": "./foo1.ts",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("project1/foo1.ts", "");
+  temp_dir.write(
+    "project1/project2/deno.json",
+    // Should ignore and inherit import map from `project1/deno.json`.
+    json!({
+      "imports": {
+        "foo": "./foo2.ts",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("project1/project2/foo2.ts", "");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project1/project2/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"foo\";\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project1/project2/file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 7 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.uri().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
+      },
+      "range": {
+        "start": { "line": 0, "character": 7 },
+        "end": { "line": 0, "character": 12 },
+      },
+    })
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_deno_json_workspace_jsr_resolution() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
