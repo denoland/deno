@@ -16,29 +16,49 @@ use deno_core::OpState;
 use ipnetwork::IpNetwork;
 use ipnetwork::Ipv4Network;
 use ipnetwork::Ipv6Network;
+use serde::Serialize;
 
 pub struct BlockListResource {
   blocklist: RefCell<BlockList>,
 }
 
-#[op2]
-#[serde]
+#[derive(Serialize)]
+struct SocketAddressSerialization(String, String);
+
+#[op2(fast)]
 pub fn op_socket_address_parse(
-  _state: &mut OpState,
+  state: &mut OpState,
   #[string] addr: &str,
   #[smi] port: u16,
   #[string] family: &str,
-) -> Result<(IpAddr, u16, String), AnyError> {
+) -> Result<bool, AnyError> {
   let ip = addr.parse::<IpAddr>()?;
-  let family = family.to_lowercase();
-  let parsed = SocketAddr::new(ip, port);
-  if family == "ipv4" && parsed.is_ipv4()
-    || family == "ipv6" && parsed.is_ipv6()
-  {
-    Ok((ip, port, family))
+  let parsed: SocketAddr = SocketAddr::new(ip, port);
+  let family_correct = family.eq_ignore_ascii_case("ipv4") && parsed.is_ipv4()
+    || family.eq_ignore_ascii_case("ipv6") && parsed.is_ipv6();
+
+  if family_correct {
+    let family_is_lowercase = family[..3].chars().all(char::is_lowercase);
+    if family_is_lowercase && parsed.ip().to_string() == addr {
+      Ok(true)
+    } else {
+      state.put::<SocketAddressSerialization>(SocketAddressSerialization(
+        parsed.ip().to_string(),
+        family.to_lowercase(),
+      ));
+      Ok(false)
+    }
   } else {
     Err(anyhow!("Invalid address"))
   }
+}
+
+#[op2]
+#[serde]
+pub fn op_socket_address_get_serialization(
+  state: &mut OpState,
+) -> Result<SocketAddressSerialization, AnyError> {
+  Ok(state.take::<SocketAddressSerialization>())
 }
 
 #[op2]
@@ -55,7 +75,7 @@ pub fn op_blocklist_add_address(
   #[cppgc] wrap: &BlockListResource,
   #[string] addr: &str,
 ) -> Result<(), AnyError> {
-  wrap.blocklist.borrow_mut().add_address(&addr)
+  wrap.blocklist.borrow_mut().add_address(addr)
 }
 
 #[op2(fast)]
@@ -64,7 +84,7 @@ pub fn op_blocklist_add_range(
   #[string] start: &str,
   #[string] end: &str,
 ) -> Result<bool, AnyError> {
-  wrap.blocklist.borrow_mut().add_range(&start, &end)
+  wrap.blocklist.borrow_mut().add_range(start, end)
 }
 
 #[op2(fast)]
@@ -73,7 +93,7 @@ pub fn op_blocklist_add_subnet(
   #[string] addr: &str,
   #[smi] prefix: u8,
 ) -> Result<(), AnyError> {
-  wrap.blocklist.borrow_mut().add_subnet(&addr, prefix)
+  wrap.blocklist.borrow_mut().add_subnet(addr, prefix)
 }
 
 #[op2(fast)]
@@ -82,7 +102,7 @@ pub fn op_blocklist_check(
   #[string] addr: &str,
   #[string] r#type: &str,
 ) -> Result<bool, AnyError> {
-  wrap.blocklist.borrow().check(&addr, r#type)
+  wrap.blocklist.borrow().check(addr, r#type)
 }
 
 struct BlockList {

@@ -8,6 +8,7 @@ import {
   op_blocklist_add_subnet,
   op_blocklist_check,
   op_blocklist_new,
+  op_socket_address_get_serialization,
   op_socket_address_parse,
 } from "ext:core/ops";
 
@@ -177,17 +178,22 @@ class SocketAddress {
     validatePort(port, "options.port");
     validateUint32(flowlabel, "options.flowlabel", false);
 
-    const { 0: address_, 1: port_, 2: family_ } = op_socket_address_parse(
+    this[kDetail] = {
+      address,
+      port,
+      family,
+      flowlabel,
+    };
+    const useInput = op_socket_address_parse(
       address,
       port,
       family,
     );
-    this[kDetail] = {
-      address: address_,
-      port: port_,
-      family: family_,
-      flowlabel,
-    };
+    if (!useInput) {
+      const { 0: address_, 1: family_ } = op_socket_address_get_serialization();
+      this[kDetail].address = address_;
+      this[kDetail].family = family_;
+    }
   }
 
   get address() {

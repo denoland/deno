@@ -231,6 +231,7 @@ deno_core::extension!(deno_node,
   parameters = [P: NodePermissions],
   ops = [
     ops::blocklist::op_socket_address_parse,
+    ops::blocklist::op_socket_address_get_serialization,
 
     ops::blocklist::op_blocklist_new,
     ops::blocklist::op_blocklist_add_address,
