@@ -25,9 +25,9 @@ pub struct BlockListResource {
 #[serde]
 pub fn op_socket_address_parse(
   _state: &mut OpState,
-  #[string] addr: String,
+  #[string] addr: &str,
   #[smi] port: u16,
-  #[string] family: String,
+  #[string] family: &str,
 ) -> Result<(IpAddr, u16, String), AnyError> {
   let ip = addr.parse::<IpAddr>()?;
   let family = family.to_lowercase();
@@ -53,16 +53,16 @@ pub fn op_blocklist_new() -> BlockListResource {
 #[op2(fast)]
 pub fn op_blocklist_add_address(
   #[cppgc] wrap: &BlockListResource,
-  #[string] address: String,
+  #[string] addr: &str,
 ) -> Result<(), AnyError> {
-  wrap.blocklist.borrow_mut().add_address(&address)
+  wrap.blocklist.borrow_mut().add_address(&addr)
 }
 
 #[op2(fast)]
 pub fn op_blocklist_add_range(
   #[cppgc] wrap: &BlockListResource,
-  #[string] start: String,
-  #[string] end: String,
+  #[string] start: &str,
+  #[string] end: &str,
 ) -> Result<bool, AnyError> {
   wrap.blocklist.borrow_mut().add_range(&start, &end)
 }
@@ -70,7 +70,7 @@ pub fn op_blocklist_add_range(
 #[op2(fast)]
 pub fn op_blocklist_add_subnet(
   #[cppgc] wrap: &BlockListResource,
-  #[string] addr: String,
+  #[string] addr: &str,
   #[smi] prefix: u8,
 ) -> Result<(), AnyError> {
   wrap.blocklist.borrow_mut().add_subnet(&addr, prefix)
@@ -79,8 +79,8 @@ pub fn op_blocklist_add_subnet(
 #[op2(fast)]
 pub fn op_blocklist_check(
   #[cppgc] wrap: &BlockListResource,
-  #[string] addr: String,
-  #[string] r#type: String,
+  #[string] addr: &str,
+  #[string] r#type: &str,
 ) -> Result<bool, AnyError> {
   wrap.blocklist.borrow().check(&addr, r#type)
 }
@@ -170,7 +170,7 @@ impl BlockList {
     Ok(())
   }
 
-  pub fn check(&self, addr: &str, r#type: String) -> Result<bool, AnyError> {
+  pub fn check(&self, addr: &str, r#type: &str) -> Result<bool, AnyError> {
     let addr: IpAddr = addr.parse()?;
     let family = r#type.to_lowercase();
     if family == "ipv4" && addr.is_ipv4() || family == "ipv6" && addr.is_ipv6()
@@ -191,16 +191,14 @@ mod tests {
     // Single IPv4 address
     let mut block_list = BlockList::new();
     block_list.add_address("192.168.0.1").unwrap();
-    assert!(block_list.check("192.168.0.1", "ipv4".to_string()).unwrap());
-    assert!(block_list
-      .check("::ffff:c0a8:1", "ipv6".to_string())
-      .unwrap());
+    assert!(block_list.check("192.168.0.1", "ipv4").unwrap());
+    assert!(block_list.check("::ffff:c0a8:1", "ipv6").unwrap());
 
     // Single IPv6 address
     let mut block_list = BlockList::new();
     block_list.add_address("2001:db8::1").unwrap();
-    assert!(block_list.check("2001:db8::1", "ipv6".to_string()).unwrap());
-    assert!(!block_list.check("192.168.0.1", "ipv4".to_string()).unwrap());
+    assert!(block_list.check("2001:db8::1", "ipv6").unwrap());
+    assert!(!block_list.check("192.168.0.1", "ipv4").unwrap());
   }
 
   #[test]
@@ -208,20 +206,18 @@ mod tests {
     // IPv4 range
     let mut block_list = BlockList::new();
     block_list.add_range("192.168.0.1", "192.168.0.3").unwrap();
-    assert!(block_list.check("192.168.0.1", "ipv4".to_string()).unwrap());
-    assert!(block_list.check("192.168.0.2", "ipv4".to_string()).unwrap());
-    assert!(block_list.check("192.168.0.3", "ipv4".to_string()).unwrap());
-    assert!(block_list
-      .check("::ffff:c0a8:1", "ipv6".to_string())
-      .unwrap());
+    assert!(block_list.check("192.168.0.1", "ipv4").unwrap());
+    assert!(block_list.check("192.168.0.2", "ipv4").unwrap());
+    assert!(block_list.check("192.168.0.3", "ipv4").unwrap());
+    assert!(block_list.check("::ffff:c0a8:1", "ipv6").unwrap());
 
     // IPv6 range
     let mut block_list = BlockList::new();
     block_list.add_range("2001:db8::1", "2001:db8::3").unwrap();
-    assert!(block_list.check("2001:db8::1", "ipv6".to_string()).unwrap());
-    assert!(block_list.check("2001:db8::2", "ipv6".to_string()).unwrap());
-    assert!(block_list.check("2001:db8::3", "ipv6".to_string()).unwrap());
-    assert!(!block_list.check("192.168.0.1", "ipv4".to_string()).unwrap());
+    assert!(block_list.check("2001:db8::1", "ipv6").unwrap());
+    assert!(block_list.check("2001:db8::2", "ipv6").unwrap());
+    assert!(block_list.check("2001:db8::3", "ipv6").unwrap());
+    assert!(!block_list.check("192.168.0.1", "ipv4").unwrap());
   }
 
   #[test]
@@ -229,22 +225,16 @@ mod tests {
     // IPv4 subnet
     let mut block_list = BlockList::new();
     block_list.add_subnet("192.168.0.0", 24).unwrap();
-    assert!(block_list.check("192.168.0.1", "ipv4".to_string()).unwrap());
-    assert!(block_list
-      .check("192.168.0.255", "ipv4".to_string())
-      .unwrap());
-    assert!(block_list
-      .check("::ffff:c0a8:0", "ipv6".to_string())
-      .unwrap());
+    assert!(block_list.check("192.168.0.1", "ipv4").unwrap());
+    assert!(block_list.check("192.168.0.255", "ipv4").unwrap());
+    assert!(block_list.check("::ffff:c0a8:0", "ipv6").unwrap());
 
     // IPv6 subnet
     let mut block_list = BlockList::new();
     block_list.add_subnet("2001:db8::", 64).unwrap();
-    assert!(block_list.check("2001:db8::1", "ipv6".to_string()).unwrap());
-    assert!(block_list
-      .check("2001:db8::ffff", "ipv6".to_string())
-      .unwrap());
-    assert!(!block_list.check("192.168.0.1", "ipv4".to_string()).unwrap());
+    assert!(block_list.check("2001:db8::1", "ipv6").unwrap());
+    assert!(block_list.check("2001:db8::ffff", "ipv6").unwrap());
+    assert!(!block_list.check("192.168.0.1", "ipv4").unwrap());
   }
 
   #[test]
@@ -252,30 +242,28 @@ mod tests {
     // Check IPv4 presence
     let mut block_list = BlockList::new();
     block_list.add_address("192.168.0.1").unwrap();
-    assert!(block_list.check("192.168.0.1", "ipv4".to_string()).unwrap());
+    assert!(block_list.check("192.168.0.1", "ipv4").unwrap());
 
     // Check IPv6 presence
     let mut block_list = BlockList::new();
     block_list.add_address("2001:db8::1").unwrap();
-    assert!(block_list.check("2001:db8::1", "ipv6".to_string()).unwrap());
+    assert!(block_list.check("2001:db8::1", "ipv6").unwrap());
 
     // Check IPv4 not present
     let block_list = BlockList::new();
-    assert!(!block_list.check("192.168.0.1", "ipv4".to_string()).unwrap());
+    assert!(!block_list.check("192.168.0.1", "ipv4").unwrap());
 
     // Check IPv6 not present
     let block_list = BlockList::new();
-    assert!(!block_list.check("2001:db8::1", "ipv6".to_string()).unwrap());
+    assert!(!block_list.check("2001:db8::1", "ipv6").unwrap());
 
     // Check invalid IP version
     let block_list = BlockList::new();
-    assert!(block_list.check("192.168.0.1", "ipv6".to_string()).is_err());
+    assert!(block_list.check("192.168.0.1", "ipv6").is_err());
 
     // Check invalid type
     let mut block_list = BlockList::new();
     block_list.add_address("192.168.0.1").unwrap();
-    assert!(block_list
-      .check("192.168.0.1", "invalid_type".to_string())
-      .is_err());
+    assert!(block_list.check("192.168.0.1", "invalid_type").is_err());
   }
 }
