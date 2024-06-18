@@ -2329,7 +2329,7 @@ const denoInspectDefaultOptions = {
 
   // node only
   maxArrayLength: 100,
-  maxStringLength: 100, // deno: strAbbreviateSize: 100
+  maxStringLength: 10_000, // deno: strAbbreviateSize: 10_000
   customInspect: true,
 
   // deno only
@@ -2357,7 +2357,7 @@ function getDefaultInspectOptions() {
 
 const DEFAULT_INDENT = "  "; // Default indent string
 
-const STR_ABBREVIATE_SIZE = 100;
+const STR_ABBREVIATE_SIZE = 10_000;
 
 class CSI {
   static kClear = "\x1b[1;1H";
