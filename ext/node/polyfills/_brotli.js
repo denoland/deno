@@ -8,7 +8,9 @@ const {
   ObjectValues,
   TypedArrayPrototypeSlice,
   TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeSubarray,
   TypedArrayPrototypeGetByteLength,
+  ObjectHasOwn,
 } = primordials;
 import {
   op_brotli_compress,
@@ -34,7 +36,7 @@ const toU8 = (input) => {
     return enc.encode(input);
   }
 
-  if (TypedArrayPrototypeGetBuffer(input)) {
+  if (ObjectHasOwn(input, "buffer")) {
     return new Uint8Array(TypedArrayPrototypeGetBuffer(input));
   }
 
@@ -89,7 +91,9 @@ export class BrotliCompress extends Transform {
       // TODO(littledivy): use `encoding` argument
       transform(chunk, _encoding, callback) {
         const input = toU8(chunk);
-        const output = new Uint8Array(brotliMaxCompressedSize(input.length));
+        const output = new Uint8Array(
+          brotliMaxCompressedSize(TypedArrayPrototypeGetByteLength(input)),
+        );
         const written = op_brotli_compress_stream(context, input, output);
         if (written > 0) {
           // deno-lint-ignore prefer-primordials
@@ -168,11 +172,13 @@ export function brotliCompressSync(
   options,
 ) {
   const buf = toU8(input);
-  const output = new Uint8Array(brotliMaxCompressedSize(buf.length));
+  const output = new Uint8Array(
+    brotliMaxCompressedSize(TypedArrayPrototypeGetByteLength(buf)),
+  );
 
   const { quality, lgwin, mode } = oneOffCompressOptions(options);
   const len = op_brotli_compress(buf, output, quality, lgwin, mode);
-  return Buffer.from(output.subarray(0, len));
+  return Buffer.from(TypedArrayPrototypeSubarray(output, 0, len));
 }
 
 export function brotliDecompress(input) {
