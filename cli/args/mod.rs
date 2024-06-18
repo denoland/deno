@@ -1381,21 +1381,6 @@ impl CliOptions {
     &self.npmrc
   }
 
-  pub fn maybe_package_json_deps(&self) -> Option<PackageJsonDeps> {
-    if matches!(
-      self.flags.subcommand,
-      DenoSubcommand::Task(TaskFlags { task: None, .. })
-    ) {
-      // don't have any package json dependencies for deno task with no args
-      None
-    } else {
-      self
-        .maybe_package_json()
-        .as_ref()
-        .map(package_json::get_local_package_json_version_reqs)
-    }
-  }
-
   pub fn resolve_fmt_options(
     &self,
     fmt_flags: FmtFlags,
@@ -1439,16 +1424,6 @@ impl CliOptions {
         .jsx_automatic
         .then(|| transpile_options.jsx_fragment_factory.clone()),
     })
-  }
-
-  pub fn resolve_config_excludes(&self) -> Result<PathOrPatternSet, AnyError> {
-    let maybe_config_files = if let Some(config_file) = &self.maybe_config_file
-    {
-      Some(config_file.to_files_config()?)
-    } else {
-      None
-    };
-    Ok(maybe_config_files.map(|f| f.exclude).unwrap_or_default())
   }
 
   pub fn resolve_test_options(
@@ -1555,11 +1530,7 @@ impl CliOptions {
   }
 
   pub fn check_js(&self) -> bool {
-    self
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| cf.get_check_js())
-      .unwrap_or(false)
+    self.workspace.check_js()
   }
 
   pub fn coverage_dir(&self) -> Option<String> {
@@ -1706,11 +1677,7 @@ impl CliOptions {
 
   pub fn unstable_bare_node_builtins(&self) -> bool {
     self.flags.unstable_config.bare_node_builtins
-      || self
-        .maybe_config_file()
-        .as_ref()
-        .map(|c| c.has_unstable("bare-node-builtins"))
-        .unwrap_or(false)
+      || self.workspace.has_unstable("bare-node-builtins")
   }
 
   pub fn use_byonm(&self) -> bool {
@@ -1727,28 +1694,16 @@ impl CliOptions {
         .as_ref()
         .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
         .unwrap_or(false)
-      || self
-        .maybe_config_file()
-        .as_ref()
-        .map(|c| c.has_unstable("byonm"))
-        .unwrap_or(false)
+      || self.workspace.has_unstable("byonm")
   }
 
   pub fn unstable_sloppy_imports(&self) -> bool {
     self.flags.unstable_config.sloppy_imports
-      || self
-        .maybe_config_file()
-        .as_ref()
-        .map(|c| c.has_unstable("sloppy-imports"))
-        .unwrap_or(false)
+      || self.workspace.has_unstable("sloppy-imports")
   }
 
   pub fn unstable_features(&self) -> Vec<String> {
-    let mut from_config_file = self
-      .maybe_config_file()
-      .as_ref()
-      .map(|c| c.json.unstable.clone())
-      .unwrap_or_default();
+    let mut from_config_file = self.workspace.unstable_features().to_vec();
 
     from_config_file.extend_from_slice(&self.flags.unstable_config.features);
 
@@ -1787,11 +1742,17 @@ impl CliOptions {
     {
       full_paths.push(import_map_path);
     }
-    if let Some(specifier) = self.maybe_config_file_specifier() {
-      if specifier.scheme() == "file" {
-        if let Ok(path) = specifier.to_file_path() {
-          full_paths.push(path);
+
+    for (_, folder) in self.workspace.config_folders() {
+      if let Some(deno_json) = &folder.deno_json {
+        if deno_json.specifier.scheme() == "file" {
+          if let Ok(path) = deno_json.specifier.to_file_path() {
+            full_paths.push(path);
+          }
         }
+      }
+      if let Some(pkg_json) = &folder.pkg_json {
+        full_paths.push(pkg_json.path.clone());
       }
     }
     full_paths
@@ -1901,8 +1862,9 @@ impl StorageKeyResolver {
       // otherwise we will use the path to the config file or None to
       // fall back to using the main module's path
       options
-        .maybe_config_file
-        .as_ref()
+        .workspace
+        .resolve_start_ctx()
+        .deno_json()
         .map(|config_file| Some(config_file.specifier.to_string()))
     })
   }
@@ -1990,7 +1952,7 @@ mod test {
     let config_file = ConfigFile::new(
       config_text,
       config_specifier,
-      &deno_config::ParseOptions::default(),
+      &deno_config::ConfigParseOptions::default(),
     )
     .unwrap();
     let actual = resolve_import_map_specifier(
@@ -2014,7 +1976,7 @@ mod test {
     let config_file = ConfigFile::new(
       config_text,
       config_specifier,
-      &deno_config::ParseOptions::default(),
+      &deno_config::ConfigParseOptions::default(),
     )
     .unwrap();
     let actual = resolve_import_map_specifier(

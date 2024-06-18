@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::deno_json::deno_json_deps;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -57,6 +56,7 @@ use std::path::PathBuf;
 
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceResolver;
+use deno_config::ConfigFile;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -321,44 +321,53 @@ impl CliFactory {
         .collect()
     }
 
+    fn deno_json_deps(
+      maybe_deno_json: Option<&ConfigFile>,
+    ) -> BTreeSet<String> {
+      maybe_deno_json
+        .map(|c| {
+          crate::args::deno_json::deno_json_deps(c)
+            .into_iter()
+            .map(|req| req.to_string())
+            .collect()
+        })
+        .unwrap_or_default()
+    }
+
     self.services.lockfile.get_or_init(|| {
       let maybe_lockfile = self.options.maybe_lockfile();
 
       // initialize the lockfile with the workspace's configuration
       if let Some(lockfile) = &maybe_lockfile {
-        let package_json_deps = (!self.options.no_npm())
-          .then(|| {
-            self
-              .package_json_deps_provider()
-              .reqs()
-              .map(|reqs| {
-                reqs.into_iter().map(|s| format!("npm:{}", s)).collect()
-              })
-              .unwrap_or_default()
-          })
-          .unwrap_or_default();
         let mut lockfile = lockfile.lock();
-        let root_folder = self.options.workspace.root_folder().1;
+        let (root_url, root_folder) = self.options.workspace.root_folder();
         let config = deno_lockfile::WorkspaceConfig {
           root: WorkspaceMemberConfig {
-            package_json_deps: pkg_json_deps(root_folder.pkg_json.as_ref()),
-            dependencies: deno_json_deps(root_folder.deno_json.as_ref())
-              .into_iter()
-              .map(|req| req.to_string())
-              .collect(),
+            package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
+            dependencies: deno_json_deps(root_folder.deno_json.as_deref()),
           },
-          members: workspace_config
-            .members
+          members: self
+            .options
+            .workspace
+            .config_folders()
             .iter()
-            .map(|member| {
+            .enumerate()
+            .filter(|(_, (folder_url, _))| *folder_url != root_url)
+            .map(|(i, (folder_url, folder))| {
               (
-                member.package_name.clone(),
+                folder
+                  .deno_json
+                  .as_ref()
+                  .and_then(|d| d.json.name.clone())
+                  .or_else(|| {
+                    folder.pkg_json.as_ref().and_then(|d| d.name.clone())
+                  })
+                  .or_else(|| root_url.make_relative(folder_url))
+                  // todo(THIS PR): what would be better here?
+                  .unwrap_or_else(|| format!("member_{}", i)),
                 WorkspaceMemberConfig {
-                  package_json_deps: Default::default(),
-                  dependencies: deno_json_deps(&member.config_file)
-                    .into_iter()
-                    .map(|req| req.to_string())
-                    .collect(),
+                  package_json_deps: pkg_json_deps(folder.pkg_json.as_deref()),
+                  dependencies: deno_json_deps(folder.deno_json.as_deref()),
                 },
               )
             })
