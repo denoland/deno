@@ -5084,7 +5084,7 @@ fn code_cache_test() {
   {
     let output = test_context
       .new_command()
-      .args("run -Ldebug main.js")
+      .args("run -Ldebug --no-code-cache main.js")
       .split_output()
       .run();
 
