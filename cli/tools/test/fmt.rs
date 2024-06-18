@@ -72,7 +72,7 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
 // This function prettifies `JsError` and applies some changes specifically for
 // test runner purposes:
 //
-// - hide stack traces if `options.hide_traces` is set to `true`
+// - hide stack traces if `options.hide_stacktraces` is set to `true`
 //
 // - filter out stack frames:
 //   - if stack trace consists of mixed user and internal code, the frames
@@ -88,7 +88,7 @@ pub fn format_test_error(
     .trim_start_matches("Uncaught ")
     .to_string();
   if let Some(options) = options {
-    if options.hide_traces {
+    if options.hide_stacktraces {
       return js_error.exception_message;
     }
   }

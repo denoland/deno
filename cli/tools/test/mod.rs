@@ -291,7 +291,7 @@ impl From<&TestDescription> for TestFailureDescription {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestFailureFormatOptions {
-  pub hide_traces: bool,
+  pub hide_stacktraces: bool,
 }
 
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -518,7 +518,7 @@ struct TestSpecifiersOptions {
   specifier: TestSpecifierOptions,
   reporter: TestReporterConfig,
   junit_path: Option<String>,
-  hide_traces: bool,
+  hide_stacktraces: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -1451,7 +1451,7 @@ async fn test_specifiers(
       receiver,
       reporter,
       Some(&TestFailureFormatOptions {
-        hide_traces: options.hide_traces,
+        hide_stacktraces: options.hide_stacktraces,
       }),
     )
     .await
@@ -1817,7 +1817,7 @@ pub async fn run_tests(
       filter: test_options.filter.is_some(),
       reporter: test_options.reporter,
       junit_path: test_options.junit_path,
-      hide_traces: test_options.hide_traces,
+      hide_stacktraces: test_options.hide_stacktraces,
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&test_options.filter),
         shuffle: test_options.shuffle,
@@ -1969,7 +1969,7 @@ pub async fn run_tests_with_watch(
             filter: test_options.filter.is_some(),
             reporter: test_options.reporter,
             junit_path: test_options.junit_path,
-            hide_traces: test_options.hide_traces,
+            hide_stacktraces: test_options.hide_stacktraces,
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&test_options.filter),
               shuffle: test_options.shuffle,
