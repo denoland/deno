@@ -453,11 +453,22 @@ impl CliFactory {
       .services
       .workspace_resolver
       .get_or_try_init_async(async {
-        self
+        let resolver = self
           .options
           .create_workspace_resolver(self.file_fetcher()?)
-          .await
-          .map(Arc::new)
+          .await?;
+        if !resolver.diagnostics().is_empty() {
+          warn!(
+            "Import map diagnostics:\n{}",
+            resolver
+              .diagnostics()
+              .iter()
+              .map(|d| format!("  - {d}"))
+              .collect::<Vec<_>>()
+              .join("\n")
+          );
+        }
+        Ok(Arc::new(resolver))
       })
       .await
   }

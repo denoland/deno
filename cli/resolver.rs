@@ -39,9 +39,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
-use crate::args::PackageJsonDepsProvider;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::colors;
 use crate::node::CliNodeCodeTranslator;
@@ -374,7 +372,6 @@ pub struct CliGraphResolverOptions<'a> {
   pub sloppy_imports_resolver: Option<SloppyImportsResolver>,
   pub node_resolver: Option<Arc<CliNodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-  pub package_json_deps_provider: Arc<PackageJsonDepsProvider>,
   pub workspace_resolver: Arc<WorkspaceResolver>,
   pub bare_node_builtins_enabled: bool,
   pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,

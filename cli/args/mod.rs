@@ -541,24 +541,6 @@ fn resolve_lint_rules_options(
   }
 }
 
-/// Discover `package.json` file. If `maybe_stop_at` is provided, we will stop
-/// crawling up the directory tree at that path.
-fn discover_package_json(
-  flags: &Flags,
-  maybe_stop_at: Option<PathBuf>,
-  current_dir: &Path,
-) -> Result<Option<PackageJson>, AnyError> {
-  // TODO(bartlomieju): discover for all subcommands, but print warnings that
-  // `package.json` is ignored in bundle/compile/etc.
-
-  if let Some(package_json_dir) = flags.package_json_search_dir(current_dir) {
-    return package_json::discover_from(&package_json_dir, maybe_stop_at);
-  }
-
-  log::debug!("No package.json file found");
-  Ok(None)
-}
-
 /// Discover `.npmrc` file - currently we only support it next to `package.json`
 /// or next to `deno.json`.
 ///

@@ -29,6 +29,8 @@ use deno_core::ModuleSpecifier;
 use deno_lint::linter::LintConfig;
 use deno_lockfile::Lockfile;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_runtime::deno_fs::DenoConfigFsAdapter;
+use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fs_util::specifier_to_file_path;
@@ -1138,8 +1140,9 @@ impl ConfigData {
   ) -> Self {
     if let Some(specifier) = config_file_specifier {
       match ConfigFile::from_specifier(
+        &DenoConfigFsAdapter::new(&RealFs),
         specifier.clone(),
-        &deno_config::ParseOptions::default(),
+        &deno_config::ConfigParseOptions::default(),
       ) {
         Ok(config_file) => {
           lsp_log!(
@@ -1513,17 +1516,23 @@ impl ConfigData {
       })
     });
 
-    let is_workspace_root = config_file
-      .as_ref()
-      .is_some_and(|c| !c.json.workspaces.is_empty());
+    let is_workspace_root = config_file.as_ref().is_some_and(|c| {
+      c.json
+        .workspace
+        .as_ref()
+        .map(|w| !w.is_empty())
+        .unwrap_or(false)
+    });
     let workspace_members = if is_workspace_root {
       Arc::new(
         config_file
           .as_ref()
           .map(|c| {
             c.json
-              .workspaces
-              .iter()
+              .workspace
+              .as_ref()
+              .into_iter()
+              .flatten()
               .flat_map(|p| {
                 let dir_specifier = c.specifier.join(p).ok()?;
                 let dir_path = specifier_to_file_path(&dir_specifier).ok()?;
@@ -2122,7 +2131,7 @@ mod tests {
         ConfigFile::new(
           "{}",
           root_uri.join("deno.json").unwrap(),
-          &deno_config::ParseOptions::default(),
+          &deno_config::ConfigParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2180,7 +2189,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &deno_config::ParseOptions::default(),
+          &deno_config::ConfigParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2206,7 +2215,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &deno_config::ParseOptions::default(),
+          &deno_config::ConfigParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2224,7 +2233,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &deno_config::ParseOptions::default(),
+          &deno_config::ConfigParseOptions::default(),
         )
         .unwrap(),
       )

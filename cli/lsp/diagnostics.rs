@@ -1655,7 +1655,7 @@ mod tests {
       let config_file = ConfigFile::new(
         json_string,
         base_url,
-        &deno_config::ParseOptions::default(),
+        &deno_config::ConfigParseOptions::default(),
       )
       .unwrap();
       config.tree.inject_config_file(config_file).await;
