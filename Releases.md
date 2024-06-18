@@ -8,12 +8,12 @@ https://github.com/denoland/deno_install
 
 ### 1.44.3 / 2024.06.18
 
-- feat(ext/node): add BlockList & SocketAddress classes (#24229)
 - feat(lsp): multi deno.json resolver scopes (#24206)
 - fix(cli): missing flag for `--unstable-process` (#24199)
 - fix(docs): correctly resolve href for built-ins (#24228)
 - fix(ext/console): bump default max str lengthto 10_00 (#24245)
 - fix(ext/http): actually await `goAhead` promise (#24226)
+- fix(ext/node): add missing BlockList & SocketAddress classes (#24229)
 - fix(ext/node): `server.close()` does graceful shutdown (#24184)
 - fix(ext/node): better support for `node:diagnostics_channel` module (#24088)
 - fix(ext/node): make process.versions own property (#24240)
