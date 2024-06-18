@@ -289,7 +289,7 @@ impl From<&TestDescription> for TestFailureDescription {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TestFailureFormatOptions {
   pub hide_traces: bool,
 }
