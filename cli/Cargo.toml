@@ -111,7 +111,7 @@ ignore = "0.4"
 import_map = { version = "=0.19.0", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser.workspace = true
-jupyter_runtime = { package = "runtimelib", version = "=0.11.0" }
+jupyter_runtime = { package = "runtimelib", git = "https://github.com/runtimed/runtimed.git", branch = "comm-id-public" }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true

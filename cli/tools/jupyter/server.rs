@@ -21,7 +21,7 @@ use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 
 use jupyter_runtime::messaging;
-use jupyter_runtime::AsChildOf;
+// use jupyter_runtime::AsChildOf;
 use jupyter_runtime::ConnectionInfo;
 use jupyter_runtime::JupyterMessage;
 use jupyter_runtime::JupyterMessageContent;
@@ -377,7 +377,7 @@ impl JupyterServer {
       JupyterMessageContent::CommOpen(comm) => {
         self
           .comm_container
-          .create(&comm.comm_id, &comm.target_name, None);
+          .create(&comm.comm_id.0, &comm.target_name, None);
 
         // connection
         //   .send(
@@ -403,7 +403,7 @@ impl JupyterServer {
       }
       JupyterMessageContent::CommMsg(comm) => {
         let comm_container = self.comm_container.0.lock();
-        let comm_channel = comm_container.get(&comm.comm_id).unwrap();
+        let comm_channel = comm_container.get(&comm.comm_id.0).unwrap();
         // todo?: send the msg.metadata
         let _ = comm_channel.sender.send((comm, msg.buffers));
 
@@ -442,7 +442,7 @@ impl JupyterServer {
     self
       .send_iopub(
         messaging::ExecuteInput {
-          execution_count: self.execution_count,
+          execution_count: self.execution_count.into(),
           code: execute_request.code.clone(),
         }
         .as_child_of(parent_message),
@@ -470,7 +470,7 @@ impl JupyterServer {
         connection
           .send(
             messaging::ExecuteReply {
-              execution_count: self.execution_count,
+              execution_count: self.execution_count.into(),
               status: ReplyStatus::Error,
               payload: Default::default(),
               user_expressions: None,
@@ -495,7 +495,7 @@ impl JupyterServer {
       connection
         .send(
           messaging::ExecuteReply {
-            execution_count: self.execution_count,
+            execution_count: self.execution_count.into(),
             status: ReplyStatus::Ok,
             user_expressions: None,
             payload: Default::default(),
@@ -595,13 +595,13 @@ impl JupyterServer {
       connection
         .send(
           messaging::ExecuteReply {
-            execution_count: self.execution_count,
+            execution_count: self.execution_count.into(),
             status: ReplyStatus::Error,
-            error: Some(ReplyError {
+            error: Some(Box::new(ReplyError {
               ename,
               evalue,
               traceback,
-            }),
+            })),
             user_expressions: None,
             payload: Default::default(),
           }

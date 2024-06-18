@@ -19,6 +19,7 @@ use deno_core::op2;
 use deno_core::parking_lot::Mutex as PlMutex;
 use deno_core::serde_json;
 use deno_core::OpState;
+use deno_core::ToJsBuffer;
 use std::collections::HashMap;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -76,14 +77,14 @@ impl CommContainer {
     container.insert(comm_id.to_string(), comm_channel);
   }
 
-  pub fn comms(&self) -> HashMap<String, CommInfo> {
+  pub fn comms(&self) -> HashMap<CommId, CommInfo> {
     let container = self.0.lock();
 
     container
       .iter()
       .map(|(comm_id, comm)| {
         (
-          comm_id.to_string(),
+          CommId(comm_id.to_string()),
           CommInfo {
             target_name: comm.target_name.clone(),
           },

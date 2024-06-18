@@ -720,7 +720,7 @@ dependencies = [
  "trust-dns-server",
  "url",
  "uuid",
- "zeromq",
+ "zeromq 0.3.4",
 ]
 
 [[package]]
@@ -1169,7 +1169,7 @@ dependencies = [
  "walkdir",
  "winapi",
  "winres",
- "zeromq",
+ "zeromq 0.3.4",
  "zstd",
 ]
 
@@ -5374,9 +5374,8 @@ dependencies = [
 
 [[package]]
 name = "runtimelib"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81f4969d577fe13ef40c8eb6fad2ccc66c26c800410672c847f5397699240b9d"
+version = "0.12.0"
+source = "git+https://github.com/runtimed/runtimed.git?branch=comm-id-public#799d9840fa524001874c35a127ab4e6b6dea2364"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -5384,6 +5383,7 @@ dependencies = [
  "chrono",
  "data-encoding",
  "dirs",
+ "futures",
  "glob",
  "rand",
  "ring",
@@ -5392,7 +5392,7 @@ dependencies = [
  "shellexpand",
  "tokio",
  "uuid",
- "zeromq",
+ "zeromq 0.4.0",
 ]
 
 [[package]]
@@ -8048,6 +8048,33 @@ name = "zeromq"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2db35fbc7d9082d39a85c9831ec5dc7b7b135038d2f00bb5ff2a4c0275893da1"
+dependencies = [
+ "async-trait",
+ "asynchronous-codec",
+ "bytes",
+ "crossbeam-queue",
+ "dashmap",
+ "futures-channel",
+ "futures-io",
+ "futures-task",
+ "futures-util",
+ "log",
+ "num-traits",
+ "once_cell",
+ "parking_lot 0.12.1",
+ "rand",
+ "regex",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "uuid",
+]
+
+[[package]]
+name = "zeromq"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb0560d00172817b7f7c2265060783519c475702ae290b154115ca75e976d4d0"
 dependencies = [
  "async-trait",
  "asynchronous-codec",
