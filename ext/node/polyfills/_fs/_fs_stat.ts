@@ -383,7 +383,7 @@ export function stat(
 
   Deno.stat(path).then(
     (stat) => callback(null, CFISBIS(stat, options.bigint)),
-    (err) => callback(denoErrorToNodeError(err, { syscall: "stat" })),
+    (err) => callback(denoErrorToNodeError(err, { syscall: "stat", path })),
   );
 }
 
@@ -417,7 +417,7 @@ export function statSync(
       return;
     }
     if (err instanceof Error) {
-      throw denoErrorToNodeError(err, { syscall: "stat" });
+      throw denoErrorToNodeError(err, { syscall: "stat", path });
     } else {
       throw err;
     }

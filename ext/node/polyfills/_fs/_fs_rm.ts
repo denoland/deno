@@ -54,7 +54,7 @@ export function rm(
           } else {
             callback(
               err instanceof Error
-                ? denoErrorToNodeError(err, { syscall: "rm" })
+                ? denoErrorToNodeError(err, { syscall: "rm", path })
                 : err,
             );
           }
@@ -77,7 +77,7 @@ export function rmSync(path: string | URL, options?: rmOptions) {
       return;
     }
     if (err instanceof Error) {
-      throw denoErrorToNodeError(err, { syscall: "stat" });
+      throw denoErrorToNodeError(err, { syscall: "stat", path });
     } else {
       throw err;
     }

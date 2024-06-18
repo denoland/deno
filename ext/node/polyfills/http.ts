@@ -30,6 +30,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import {
   addAbortSignal,
+  Duplex as NodeDuplex,
   finished,
   Readable as NodeReadable,
   Writable as NodeWritable,
@@ -289,6 +290,7 @@ class FakeSocket extends EventEmitter {
       encrypted?: boolean | undefined;
       remotePort?: number | undefined;
       remoteAddress?: string | undefined;
+      reader?: ReadableStreamDefaultReader | undefined;
     } = {},
   ) {
     super();
@@ -297,6 +299,7 @@ class FakeSocket extends EventEmitter {
     this.encrypted = opts.encrypted;
     this.writable = true;
     this.readable = true;
+    this.reader = opts.reader;
   }
 
   setKeepAlive() {}
@@ -1531,7 +1534,6 @@ export class ServerResponse extends NodeWritable {
 
 // TODO(@AaronO): optimize
 export class IncomingMessageForServer extends NodeReadable {
-  #req: Request;
   #headers: Record<string, string>;
   url: string;
   method: string;
@@ -1539,9 +1541,12 @@ export class IncomingMessageForServer extends NodeReadable {
   // These properties are used by `npm:forwarded` for example.
   socket: { remoteAddress: string; remotePort: number };
 
-  constructor(req: Request, socket: FakeSocket) {
-    // Check if no body (GET/HEAD/OPTIONS/...)
-    const reader = req.body?.getReader();
+  constructor(socket: FakeSocket | Socket) {
+    const reader = socket instanceof FakeSocket
+      ? socket.reader
+      : socket instanceof Socket
+      ? NodeDuplex.toWeb(socket).readable.getReader()
+      : null;
     super({
       autoDestroy: true,
       emitClose: true,
@@ -1562,12 +1567,12 @@ export class IncomingMessageForServer extends NodeReadable {
         reader?.cancel().finally(() => cb(err));
       },
     });
-    // TODO(@bartlomieju): consider more robust path extraction, e.g:
-    // url: (new URL(request.url).pathname),
-    this.url = req.url?.slice(req.url.indexOf("/", 8));
-    this.method = req.method;
+
+    this.url = "";
+    this.method = "";
     this.socket = socket;
-    this.#req = req;
+    this.upgrade = null;
+    this.rawHeaders = [];
   }
 
   get aborted() {
@@ -1585,7 +1590,7 @@ export class IncomingMessageForServer extends NodeReadable {
   get headers() {
     if (!this.#headers) {
       this.#headers = {};
-      const entries = headersEntries(this.#req.headers);
+      const entries = headersEntries(this.rawHeaders);
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         this.#headers[entry[0]] = entry[1];
@@ -1598,16 +1603,17 @@ export class IncomingMessageForServer extends NodeReadable {
     this.#headers = val;
   }
 
-  get upgrade(): boolean {
-    return Boolean(
-      this.#req.headers.get("connection")?.toLowerCase().includes("upgrade") &&
-        this.#req.headers.get("upgrade"),
-    );
-  }
-
   // connection is deprecated, but still tested in unit test.
   get connection() {
     return this.socket;
+  }
+
+  setTimeout(msecs, callback) {
+    if (callback) {
+      this.on("timeout", callback);
+    }
+    this.socket.setTimeout(msecs);
+    return this;
   }
 }
 
@@ -1693,8 +1699,15 @@ export class ServerImpl extends EventEmitter {
         remoteAddress: info.remoteAddr.hostname,
         remotePort: info.remoteAddr.port,
         encrypted: this._encrypted,
+        reader: request.body?.getReader(),
       });
-      const req = new IncomingMessageForServer(request, socket);
+      const req = new IncomingMessageForServer(socket);
+      req.url = request.url?.slice(req.url.indexOf("/", 8));
+      req.method = request.method;
+      req.upgrade =
+        request.headers.get("connection")?.toLowerCase().includes("upgrade") &&
+        request.headers.get("upgrade");
+      req.rawHeaders = request.headers;
       if (req.upgrade && this.listenerCount("upgrade") > 0) {
         const { conn, response } = upgradeHttpRaw(request);
         const socket = new Socket({

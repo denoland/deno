@@ -79,7 +79,7 @@ export function lstatSync(
     }
 
     if (err instanceof Error) {
-      throw denoErrorToNodeError(err, { syscall: "stat" });
+      throw denoErrorToNodeError(err, { syscall: "lstat", path });
     } else {
       throw err;
     }

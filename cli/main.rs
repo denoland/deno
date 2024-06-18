@@ -341,7 +341,13 @@ pub fn main() {
 fn resolve_flags_and_init(
   args: Vec<std::ffi::OsString>,
 ) -> Result<Flags, AnyError> {
-  let flags = match flags_from_vec(args) {
+  let args = deno_core::v8::V8::set_flags_from_command_line(
+    args
+      .into_iter()
+      .filter_map(|s| s.into_string().ok())
+      .collect(),
+  );
+  let flags = match flags_from_vec(args.into_iter().map(Into::into).collect()) {
     Ok(flags) => flags,
     Err(err @ clap::Error { .. })
       if err.kind() == clap::error::ErrorKind::DisplayHelp

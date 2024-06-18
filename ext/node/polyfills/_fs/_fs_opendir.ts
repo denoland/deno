@@ -53,7 +53,7 @@ export function opendir(
 
     dir = new Dir(path);
   } catch (error) {
-    err = denoErrorToNodeError(error as Error, { syscall: "opendir" });
+    err = denoErrorToNodeError(error as Error, { syscall: "opendir", path });
   }
   if (err) {
     callback(err);
@@ -87,6 +87,6 @@ export function opendirSync(
 
     return new Dir(path);
   } catch (err) {
-    throw denoErrorToNodeError(err as Error, { syscall: "opendir" });
+    throw denoErrorToNodeError(err as Error, { syscall: "opendir", path });
   }
 }

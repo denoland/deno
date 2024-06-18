@@ -77,10 +77,10 @@ export function readdir(
         result.push(toDirent(val));
       } else result.push(decode(val.name));
     }, (e) => {
-      callback(denoErrorToNodeError(e as Error, { syscall: "readdir" }));
+      callback(denoErrorToNodeError(e as Error, { syscall: "readdir", path }));
     });
   } catch (e) {
-    callback(denoErrorToNodeError(e as Error, { syscall: "readdir" }));
+    callback(denoErrorToNodeError(e as Error, { syscall: "readdir", path }));
   }
 }
 
@@ -136,7 +136,7 @@ export function readdirSync(
       } else result.push(decode(file.name));
     }
   } catch (e) {
-    throw denoErrorToNodeError(e as Error, { syscall: "readdir" });
+    throw denoErrorToNodeError(e as Error, { syscall: "readdir", path });
   }
   return result;
 }
