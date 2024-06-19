@@ -80,7 +80,10 @@ impl SubcommandOutput for Result<(), std::io::Error> {
 /// futures are very large, this prevents the stack from getting blown out from passing them by value up
 /// the callchain (especially in debug mode when Rust doesn't have a chance to elide copies!).
 #[inline(always)]
-fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
+pub fn spawn_subcommand<
+  F: Future<Output = T> + 'static,
+  T: SubcommandOutput,
+>(
   f: F,
 ) -> JoinHandle<Result<i32, AnyError>> {
   // the boxed_local() is important in order to get windows to not blow the stack in debug
