@@ -35,10 +35,10 @@ ecb.workspace = true
 elliptic-curve.workspace = true
 errno = "0.2.8"
 faster-hex.workspace = true
-h2.workspace = true
+h2 = { version = "0.3.26", features = ["unstable"] }
 hkdf.workspace = true
 home = "0.5.9"
-http.workspace = true
+http_v02.workspace = true
 idna = "0.3.0"
 indexmap.workspace = true
 ipnetwork = "0.20.0"
