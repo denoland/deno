@@ -587,7 +587,7 @@ mod test {
   use std::collections::HashSet;
   use std::hash::RandomState;
 
-  use deno_runtime::deno_tls::RootCertStore;
+  use deno_runtime::deno_tls::rustls::RootCertStore;
 
   use crate::version;
 
