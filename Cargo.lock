@@ -1096,7 +1096,6 @@ dependencies = [
  "deno_doc",
  "deno_emit",
  "deno_graph",
- "deno_lint",
  "deno_lockfile",
  "deno_npm",
  "deno_runtime",
@@ -1588,23 +1587,6 @@ dependencies = [
  "rusqlite",
  "serde",
  "url",
-]
-
-[[package]]
-name = "deno_lint"
-version = "0.60.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf6a9540b371b123e3df4ab5fd59af0defc0d834e08ebfb3deacc41837963368"
-dependencies = [
- "anyhow",
- "deno_ast",
- "derive_more",
- "if_chain",
- "log",
- "once_cell",
- "regex",
- "serde",
- "serde_json",
 ]
 
 [[package]]
