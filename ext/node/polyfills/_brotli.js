@@ -7,10 +7,8 @@ const {
   PromisePrototypeCatch,
   ObjectValues,
   TypedArrayPrototypeSlice,
-  TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeGetByteLength,
-  ObjectHasOwn,
 } = primordials;
 import {
   op_brotli_compress,
@@ -36,8 +34,10 @@ const toU8 = (input) => {
     return enc.encode(input);
   }
 
-  if (ObjectHasOwn(input, "buffer")) {
-    return new Uint8Array(TypedArrayPrototypeGetBuffer(input));
+  // deno-lint-ignore prefer-primordials
+  if (input.buffer) {
+    // deno-lint-ignore prefer-primordials
+    return new Uint8Array(input.buffer);
   }
 
   return input;
