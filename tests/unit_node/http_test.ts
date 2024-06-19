@@ -973,13 +973,14 @@ Deno.test("[node/http] ServerResponse appendHeader", async () => {
   const server = http.createServer((_req, res) => {
     res.setHeader("foo", "bar");
     res.appendHeader("foo", "baz");
+    res.appendHeader("foo", ["qux", "quux"]);
     res.end("Hello World");
   });
 
   server.listen(async () => {
     const { port } = server.address() as { port: number };
     const res = await fetch(`http://localhost:${port}`);
-    assertEquals(res.headers.get("foo"), "bar,baz");
+    assertEquals(res.headers.get("foo"), "bar, baz, qux,quux");
     assertEquals(await res.text(), "Hello World");
     server.close(() => {
       resolve();
