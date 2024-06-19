@@ -339,7 +339,7 @@ impl HttpClient {
     let response = match request.send().await {
       Ok(resp) => resp,
       Err(err) => {
-        if err.is_connect() || err.is_timeout() {
+        if err.is_connect() || err.is_timeout() || err.is_request() {
           return Ok(FetchOnceResult::RequestError(err.to_string()));
         }
         return Err(err.into());
