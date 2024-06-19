@@ -55,10 +55,10 @@ deno_terminal = "0.1.1"
 napi_sym = { version = "0.87.0", path = "./cli/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
-denokv_proto = "0.8.1"
-denokv_remote = "0.8.1"
+denokv_proto = "0.7.0"
+denokv_remote = "0.7.0"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
-denokv_sqlite = { default-features = false, version = "0.8.1" }
+denokv_sqlite = { default-features = false, version = "0.7.0" }
 
 # exts
 deno_broadcast_channel = { version = "0.151.0", path = "./ext/broadcast_channel" }
@@ -117,8 +117,8 @@ http = "1.0"
 http-body-util = "0.1"
 http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
-hyper = { version = "=1.3.1", features = ["full"] }
-hyper-util = { version = "=0.1.5", features = ["tokio", "server", "server-auto"] }
+hyper = { version = "=1.1.0", features = ["full"] }
+hyper-util = { version = "=0.1.2", features = ["tokio", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
 jsonc-parser = { version = "=0.23.0", features = ["serde"] }
@@ -145,13 +145,14 @@ prost = "0.11"
 prost-build = "0.11"
 rand = "=0.8.5"
 regex = "^1.7.0"
-reqwest = { version = "=0.12.4", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
+reqwest = { version = "=0.11.20", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 ring = "^0.17.0"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
-rustls = "0.22.4"
-rustls-pemfile = "2"
-rustls-tokio-stream = "=0.2.23"
-rustls-webpki = "0.102"
+# pinned because it was causing issues on cargo publish
+rustls = "=0.21.11"
+rustls-pemfile = "1.0.0"
+rustls-tokio-stream = "=0.2.24"
+rustls-webpki = "0.101.4"
 rustyline = "=13.0.0"
 saffron = "=0.1.0"
 scopeguard = "1.2.0"
@@ -177,7 +178,7 @@ twox-hash = "=1.6.3"
 # Upgrading past 2.4.1 may cause WPT failures
 url = { version = "< 2.5.0", features = ["serde", "expose_internals"] }
 uuid = { version = "1.3.0", features = ["v4"] }
-webpki-roots = "0.26"
+webpki-roots = "0.25.2"
 zeromq = { version = "=0.3.4", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zstd = "=0.12.4"
 
