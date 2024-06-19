@@ -46,13 +46,13 @@ repository = "https://github.com/denoland/deno"
 deno_ast = { version = "=0.39.2", features = ["transpiling"] }
 deno_core = { version = "0.290.0" }
 
-deno_bench_util = { version = "0.151.0", path = "./bench_util" }
+deno_bench_util = { version = "0.152.0", path = "./bench_util" }
 deno_lockfile = "0.20.0"
 deno_media_type = { version = "0.1.4", features = ["module_specifier"] }
-deno_permissions = { version = "0.17.0", path = "./runtime/permissions" }
-deno_runtime = { version = "0.165.0", path = "./runtime" }
+deno_permissions = { version = "0.18.0", path = "./runtime/permissions" }
+deno_runtime = { version = "0.166.0", path = "./runtime" }
 deno_terminal = "0.1.1"
-napi_sym = { version = "0.87.0", path = "./cli/napi/sym" }
+napi_sym = { version = "0.88.0", path = "./cli/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
 denokv_proto = "0.7.0"
@@ -61,28 +61,28 @@ denokv_remote = "0.7.0"
 denokv_sqlite = { default-features = false, version = "0.7.0" }
 
 # exts
-deno_broadcast_channel = { version = "0.151.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.89.0", path = "./ext/cache" }
-deno_canvas = { version = "0.26.0", path = "./ext/canvas" }
-deno_console = { version = "0.157.0", path = "./ext/console" }
-deno_cron = { version = "0.37.0", path = "./ext/cron" }
-deno_crypto = { version = "0.171.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.181.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.144.0", path = "./ext/ffi" }
-deno_fs = { version = "0.67.0", path = "./ext/fs" }
-deno_http = { version = "0.155.0", path = "./ext/http" }
-deno_io = { version = "0.67.0", path = "./ext/io" }
-deno_kv = { version = "0.65.0", path = "./ext/kv" }
-deno_napi = { version = "0.87.0", path = "./ext/napi" }
-deno_net = { version = "0.149.0", path = "./ext/net" }
-deno_node = { version = "0.94.0", path = "./ext/node" }
-deno_tls = { version = "0.144.0", path = "./ext/tls" }
-deno_url = { version = "0.157.0", path = "./ext/url" }
-deno_web = { version = "0.188.0", path = "./ext/web" }
-deno_webgpu = { version = "0.124.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.157.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.162.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.152.0", path = "./ext/webstorage" }
+deno_broadcast_channel = { version = "0.152.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.90.0", path = "./ext/cache" }
+deno_canvas = { version = "0.27.0", path = "./ext/canvas" }
+deno_console = { version = "0.158.0", path = "./ext/console" }
+deno_cron = { version = "0.38.0", path = "./ext/cron" }
+deno_crypto = { version = "0.172.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.182.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.145.0", path = "./ext/ffi" }
+deno_fs = { version = "0.68.0", path = "./ext/fs" }
+deno_http = { version = "0.156.0", path = "./ext/http" }
+deno_io = { version = "0.68.0", path = "./ext/io" }
+deno_kv = { version = "0.66.0", path = "./ext/kv" }
+deno_napi = { version = "0.88.0", path = "./ext/napi" }
+deno_net = { version = "0.150.0", path = "./ext/net" }
+deno_node = { version = "0.95.0", path = "./ext/node" }
+deno_tls = { version = "0.145.0", path = "./ext/tls" }
+deno_url = { version = "0.158.0", path = "./ext/url" }
+deno_web = { version = "0.189.0", path = "./ext/web" }
+deno_webgpu = { version = "0.125.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.158.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.163.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.153.0", path = "./ext/webstorage" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
