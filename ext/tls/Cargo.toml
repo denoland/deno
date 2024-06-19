@@ -15,8 +15,8 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
-deno_native_certs = "0.3.0"
-rustls.workspace = true
+deno_native_certs = "0.2.0"
+rustls = { workspace = true, features = ["dangerous_configuration"] }
 rustls-pemfile.workspace = true
 rustls-tokio-stream.workspace = true
 rustls-webpki.workspace = true

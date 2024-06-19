@@ -67,7 +67,7 @@ Deno.test(
         await fetch(`http://localhost:${port}`);
       },
       TypeError,
-      "error sending request for url",
+      "error trying to connect",
     );
   },
 );
@@ -80,7 +80,7 @@ Deno.test(
         await fetch("http://nil/");
       },
       TypeError,
-      "error sending request for url",
+      "error trying to connect",
     );
   },
 );
@@ -1824,7 +1824,7 @@ Deno.test(
         await fetch(`http://${addr}/`);
       },
       TypeError,
-      "error sending request",
+      "invalid content-length parsed",
     );
 
     listener.close();
@@ -1880,7 +1880,7 @@ Deno.test(
         await response.arrayBuffer();
       },
       Error,
-      "error decoding response body",
+      "end of file before message length reached",
     );
 
     listener.close();

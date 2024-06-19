@@ -2574,7 +2574,7 @@ for (const compression of [true, false]) {
       assertEquals(result.value, new Uint8Array([65]));
       const err = await assertRejects(() => reader.read());
       assert(err instanceof TypeError);
-      assert(err.message.includes("error decoding response body"));
+      assert(err.message.includes("unexpected EOF"));
 
       const httpConn = await server;
       httpConn.close();
@@ -2610,7 +2610,7 @@ for (const compression of [true, false]) {
       assertEquals(result.value, new Uint8Array([65]));
       const err = await assertRejects(() => reader.read());
       assert(err instanceof TypeError);
-      assert(err.message.includes("error decoding response body"));
+      assert(err.message.includes("unexpected internal error encountered"));
 
       const httpConn = await server;
       httpConn.close();
