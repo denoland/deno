@@ -403,7 +403,9 @@ Process.prototype.chdir = chdir;
 
 /** https://nodejs.org/api/process.html#processconfig */
 Process.prototype.config = {
-  target_defaults: {},
+  target_defaults: {
+    default_configuration: "Release",
+  },
   variables: {},
 };
 
