@@ -13,6 +13,7 @@ use crate::args::FmtFlags;
 use crate::args::FmtOptions;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
+use crate::cache::Caches;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::util::diff::diff;
@@ -50,7 +51,9 @@ use crate::cache::IncrementalCache;
 pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
   if fmt_flags.is_stdin() {
     let cli_options = CliOptions::from_flags(flags)?;
-    let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
+    let start_ctx = cli_options.workspace.resolve_start_ctx();
+    let fmt_options =
+      cli_options.resolve_fmt_options(&fmt_flags, &start_ctx)?;
     return format_stdin(
       fmt_options,
       cli_options
@@ -70,42 +73,47 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
         Ok(async move {
           let factory = CliFactory::from_flags(flags)?;
           let cli_options = factory.cli_options();
-          let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
-          let files = collect_fmt_files(cli_options, fmt_options.files.clone())
-            .and_then(|files| {
-              if files.is_empty() {
-                Err(generic_error("No target files found."))
+          let caches = factory.caches()?;
+          for fmt_options in
+            cli_options.resolve_member_fmt_options(&fmt_flags)?
+          {
+            let files =
+              collect_fmt_files(cli_options, fmt_options.files.clone())
+                .and_then(|files| {
+                  if files.is_empty() {
+                    Err(generic_error("No target files found."))
+                  } else {
+                    Ok(files)
+                  }
+                })?;
+            let _ = watcher_communicator.watch_paths(files.clone());
+            let refmt_files = if let Some(paths) = &changed_paths {
+              if fmt_options.check {
+                // check all files on any changed (https://github.com/denoland/deno/issues/12446)
+                files
+                  .iter()
+                  .any(|path| {
+                    canonicalize_path(path)
+                      .map(|path| paths.contains(&path))
+                      .unwrap_or(false)
+                  })
+                  .then_some(files)
+                  .unwrap_or_else(|| [].to_vec())
               } else {
-                Ok(files)
+                files
+                  .into_iter()
+                  .filter(|path| {
+                    canonicalize_path(path)
+                      .map(|path| paths.contains(&path))
+                      .unwrap_or(false)
+                  })
+                  .collect::<Vec<_>>()
               }
-            })?;
-          let _ = watcher_communicator.watch_paths(files.clone());
-          let refmt_files = if let Some(paths) = changed_paths {
-            if fmt_options.check {
-              // check all files on any changed (https://github.com/denoland/deno/issues/12446)
-              files
-                .iter()
-                .any(|path| {
-                  canonicalize_path(path)
-                    .map(|path| paths.contains(&path))
-                    .unwrap_or(false)
-                })
-                .then_some(files)
-                .unwrap_or_else(|| [].to_vec())
             } else {
               files
-                .into_iter()
-                .filter(|path| {
-                  canonicalize_path(path)
-                    .map(|path| paths.contains(&path))
-                    .unwrap_or(false)
-                })
-                .collect::<Vec<_>>()
-            }
-          } else {
-            files
-          };
-          format_files(factory, fmt_options, refmt_files).await?;
+            };
+            format_files(caches, fmt_options, refmt_files).await?;
+          }
 
           Ok(())
         })
@@ -114,28 +122,29 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
     .await?;
   } else {
     let factory = CliFactory::from_flags(flags)?;
+    let caches = factory.caches()?;
     let cli_options = factory.cli_options();
-    let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
-    let files = collect_fmt_files(cli_options, fmt_options.files.clone())
-      .and_then(|files| {
-        if files.is_empty() {
-          Err(generic_error("No target files found."))
-        } else {
-          Ok(files)
-        }
-      })?;
-    format_files(factory, fmt_options, files).await?;
+    for fmt_options in cli_options.resolve_member_fmt_options(&fmt_flags)? {
+      let files = collect_fmt_files(cli_options, fmt_options.files.clone())
+        .and_then(|files| {
+          if files.is_empty() {
+            Err(generic_error("No target files found."))
+          } else {
+            Ok(files)
+          }
+        })?;
+      format_files(caches, fmt_options, files).await?;
+    }
   }
 
   Ok(())
 }
 
 async fn format_files(
-  factory: CliFactory,
+  caches: &Arc<Caches>,
   fmt_options: FmtOptions,
   paths: Vec<PathBuf>,
 ) -> Result<(), AnyError> {
-  let caches = factory.caches()?;
   let check = fmt_options.check;
   let incremental_cache = Arc::new(IncrementalCache::new(
     caches.fmt_incremental_cache_db(),

@@ -254,12 +254,7 @@ impl PublishPreparer {
         let graph = graph.clone();
         async move {
           let package = self
-            .prepare_publish(
-              &member.package_name,
-              &member.config_file,
-              graph,
-              diagnostics_collector,
-            )
+            .prepare_publish(&member, graph, diagnostics_collector)
             .await
             .with_context(|| {
               format!("Failed preparing '{}'.", member.package_name)
@@ -392,14 +387,14 @@ impl PublishPreparer {
   #[allow(clippy::too_many_arguments)]
   async fn prepare_publish(
     &self,
-    package_name: &str,
-    deno_json: &ConfigFile,
+    package: &JsrPackageConfig,
     graph: Arc<deno_graph::ModuleGraph>,
     diagnostics_collector: &PublishDiagnosticsCollector,
   ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
     static SUGGESTED_ENTRYPOINTS: [&str; 4] =
       ["mod.ts", "mod.js", "index.ts", "index.js"];
 
+    let deno_json = &package.config_file;
     let config_path = deno_json.specifier.to_file_path().unwrap();
     let root_dir = config_path.parent().unwrap().to_path_buf();
     let Some(version) = deno_json.json.version.clone() else {
@@ -421,25 +416,26 @@ impl PublishPreparer {
   "version": "{}",
   "exports": "{}"
 }}"#,
-        package_name,
+        package.package_name,
         version,
         suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
       );
 
       bail!(
       "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
-      package_name,
+      package.package_name,
       deno_json.specifier,
       exports_content
     );
     }
-    let Some(name_no_at) = package_name.strip_prefix('@') else {
+    let Some(name_no_at) = package.package_name.strip_prefix('@') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
     let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
-    let file_patterns = deno_json
+    let file_patterns = package
+      .member_ctx
       .to_publish_config()?
       .map(|c| c.files)
       .unwrap_or_else(|| FilePatterns::new_with_base(root_dir.to_path_buf()));
@@ -485,7 +481,11 @@ impl PublishPreparer {
     })
     .await??;
 
-    log::debug!("Tarball size ({}): {}", package_name, tarball.bytes.len());
+    log::debug!(
+      "Tarball size ({}): {}",
+      package.package_name,
+      tarball.bytes.len()
+    );
 
     Ok(Rc::new(PreparedPublishPackage {
       scope: scope.to_string(),

@@ -1241,7 +1241,7 @@ impl ConfigData {
                 .specifier
                 .to_file_path()
                 .map_err(|_| anyhow!("Invalid base path."))?;
-              FmtOptions::resolve(o, None, &base_path)
+              FmtOptions::resolve(o, &Default::default(), &base_path)
             })
             .inspect_err(|err| {
               lsp_warn!("  Couldn't read formatter configuration: {}", err)

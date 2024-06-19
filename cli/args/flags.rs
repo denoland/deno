@@ -9,6 +9,7 @@ use clap::ArgMatches;
 use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
+use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::ConfigFlag;
 use deno_core::anyhow::bail;
@@ -44,6 +45,29 @@ use super::DENO_FUTURE;
 pub struct FileFlags {
   pub ignore: Vec<String>,
   pub include: Vec<String>,
+}
+
+impl FileFlags {
+  pub fn as_file_patterns(
+    &self,
+    base: &Path,
+  ) -> Result<FilePatterns, AnyError> {
+    Ok(FilePatterns {
+      include: if self.include.is_empty() {
+        None
+      } else {
+        Some(PathOrPatternSet::from_include_relative_path_or_patterns(
+          base,
+          &self.include,
+        )?)
+      },
+      exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
+        base,
+        &self.ignore,
+      )?,
+      base: base.to_path_buf(),
+    })
+  }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -153,7 +177,7 @@ pub struct EvalFlags {
   pub code: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct FmtFlags {
   pub check: bool,
   pub files: FileFlags,

@@ -163,7 +163,6 @@ async fn lint_files(
   paths: Vec<PathBuf>,
 ) -> Result<bool, AnyError> {
   let caches = factory.caches()?;
-  let maybe_config_file = factory.cli_options().maybe_config_file().as_ref();
   let lint_rules =
     get_config_rules_err_empty(lint_options.rules, maybe_config_file)?;
   let incremental_cache = Arc::new(IncrementalCache::new(
@@ -180,8 +179,9 @@ async fn lint_files(
 
   let mut futures = Vec::with_capacity(2);
   if lint_rules.no_slow_types {
-    if let Some(config_file) = maybe_config_file {
-      let members = config_file.to_workspace_members()?;
+    let publish_configs =
+      factory.cli_options().workspace.packages_for_publish();
+    if !publish_configs.is_empty() {
       let has_error = has_error.clone();
       let reporter_lock = reporter_lock.clone();
       let module_graph_creator = factory.module_graph_creator().await?.clone();
@@ -191,14 +191,15 @@ async fn lint_files(
         .collect::<HashSet<_>>();
       futures.push(deno_core::unsync::spawn(async move {
         let graph = module_graph_creator
-          .create_and_validate_publish_graph(&members, true)
+          .create_and_validate_publish_graph(&publish_configs, true)
           .await?;
         // todo(dsherret): this isn't exactly correct as linting isn't properly
         // setup to handle workspaces. Iterating over the workspace members
         // should be done at a higher level because it also needs to take into
         // account the config per workspace member.
-        for member in &members {
-          let export_urls = member.config_file.resolve_export_value_urls()?;
+        for publish_config in &publish_configs {
+          let export_urls =
+            publish_config.config_file.resolve_export_value_urls()?;
           if !export_urls.iter().any(|url| path_urls.contains(url)) {
             continue; // entrypoint is not specified, so skip
           }

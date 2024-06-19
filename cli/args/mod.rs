@@ -5,15 +5,15 @@ mod flags;
 mod flags_net;
 mod import_map;
 mod lockfile;
-pub mod package_json;
 
 pub use self::import_map::resolve_import_map;
-use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_ast::SourceMapOption;
+use deno_config::glob::PathOrPattern;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
+use deno_config::workspace::WorkspaceMemberContext;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
@@ -272,7 +272,7 @@ impl BenchOptions {
     Ok(Self {
       files: resolve_files(
         maybe_bench_config.map(|c| c.files),
-        Some(bench_flags.files),
+        Some(&bench_flags.files),
         initial_cwd,
       )?,
       filter: bench_flags.filter,
@@ -306,21 +306,18 @@ impl FmtOptions {
 
   pub fn resolve(
     maybe_fmt_config: Option<FmtConfig>,
-    maybe_fmt_flags: Option<FmtFlags>,
+    fmt_flags: &FmtFlags,
     initial_cwd: &Path,
   ) -> Result<Self, AnyError> {
     let (maybe_config_options, maybe_config_files) =
       maybe_fmt_config.map(|c| (c.options, c.files)).unzip();
 
     Ok(Self {
-      check: maybe_fmt_flags.as_ref().map(|f| f.check).unwrap_or(false),
-      options: resolve_fmt_options(
-        maybe_fmt_flags.as_ref(),
-        maybe_config_options,
-      ),
+      check: fmt_flags.check,
+      options: resolve_fmt_options(fmt_flags, maybe_config_options),
       files: resolve_files(
         maybe_config_files,
-        maybe_fmt_flags.map(|f| f.files),
+        Some(&fmt_flags.files),
         initial_cwd,
       )?,
     })
@@ -328,41 +325,39 @@ impl FmtOptions {
 }
 
 fn resolve_fmt_options(
-  fmt_flags: Option<&FmtFlags>,
+  fmt_flags: &FmtFlags,
   options: Option<FmtOptionsConfig>,
 ) -> FmtOptionsConfig {
   let mut options = options.unwrap_or_default();
 
-  if let Some(fmt_flags) = fmt_flags {
-    if let Some(use_tabs) = fmt_flags.use_tabs {
-      options.use_tabs = Some(use_tabs);
-    }
+  if let Some(use_tabs) = fmt_flags.use_tabs {
+    options.use_tabs = Some(use_tabs);
+  }
 
-    if let Some(line_width) = fmt_flags.line_width {
-      options.line_width = Some(line_width.get());
-    }
+  if let Some(line_width) = fmt_flags.line_width {
+    options.line_width = Some(line_width.get());
+  }
 
-    if let Some(indent_width) = fmt_flags.indent_width {
-      options.indent_width = Some(indent_width.get());
-    }
+  if let Some(indent_width) = fmt_flags.indent_width {
+    options.indent_width = Some(indent_width.get());
+  }
 
-    if let Some(single_quote) = fmt_flags.single_quote {
-      options.single_quote = Some(single_quote);
-    }
+  if let Some(single_quote) = fmt_flags.single_quote {
+    options.single_quote = Some(single_quote);
+  }
 
-    if let Some(prose_wrap) = &fmt_flags.prose_wrap {
-      options.prose_wrap = Some(match prose_wrap.as_str() {
-        "always" => ProseWrap::Always,
-        "never" => ProseWrap::Never,
-        "preserve" => ProseWrap::Preserve,
-        // validators in `flags.rs` makes other values unreachable
-        _ => unreachable!(),
-      });
-    }
+  if let Some(prose_wrap) = &fmt_flags.prose_wrap {
+    options.prose_wrap = Some(match prose_wrap.as_str() {
+      "always" => ProseWrap::Always,
+      "never" => ProseWrap::Never,
+      "preserve" => ProseWrap::Preserve,
+      // validators in `flags.rs` makes other values unreachable
+      _ => unreachable!(),
+    });
+  }
 
-    if let Some(no_semis) = &fmt_flags.no_semicolons {
-      options.semi_colons = Some(!no_semis);
-    }
+  if let Some(no_semis) = &fmt_flags.no_semicolons {
+    options.semi_colons = Some(!no_semis);
   }
 
   options
@@ -394,7 +389,7 @@ impl TestOptions {
     Ok(Self {
       files: resolve_files(
         maybe_test_config.map(|c| c.files),
-        Some(test_flags.files),
+        Some(&test_flags.files),
         initial_cwd,
       )?,
       allow_none: test_flags.allow_none,
@@ -499,7 +494,7 @@ impl LintOptions {
       reporter_kind: maybe_reporter_kind.unwrap_or_default(),
       files: resolve_files(
         maybe_config_files,
-        Some(maybe_file_flags),
+        Some(&maybe_file_flags),
         initial_cwd,
       )?,
       rules: resolve_lint_rules_options(
@@ -1362,16 +1357,40 @@ impl CliOptions {
     &self.npmrc
   }
 
+  pub fn resolve_member_fmt_options(
+    &self,
+    fmt_flags: &FmtFlags,
+  ) -> Result<Vec<FmtOptions>, AnyError> {
+    let cli_arg_patterns =
+      fmt_flags.files.as_file_patterns(self.initial_cwd())?;
+    let member_ctxs =
+      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
+    let mut result = Vec::with_capacity(member_ctxs.len());
+    for member_ctx in &member_ctxs {
+      let mut options = self.resolve_fmt_options(&fmt_flags, member_ctx)?;
+      // exclude the directory of other packages in the workspace for this config
+      options.files.exclude.append(
+        self
+          .workspace
+          .deno_jsons()
+          .filter(|deno_json| {
+            member_ctx.maybe_deno_json().map(|c| &c.specifier)
+              != Some(&deno_json.specifier)
+          })
+          .map(|d| PathOrPattern::Path(d.dir_path())),
+      );
+      result.push(options);
+    }
+    Ok(result)
+  }
+
   pub fn resolve_fmt_options(
     &self,
-    fmt_flags: FmtFlags,
+    fmt_flags: &FmtFlags,
+    ctx: &WorkspaceMemberContext,
   ) -> Result<FmtOptions, AnyError> {
-    let maybe_fmt_config = if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_fmt_config()?
-    } else {
-      None
-    };
-    FmtOptions::resolve(maybe_fmt_config, Some(fmt_flags), &self.initial_cwd)
+    let maybe_fmt_config = ctx.to_fmt_config()?;
+    FmtOptions::resolve(maybe_fmt_config, fmt_flags, &self.initial_cwd)
   }
 
   pub fn resolve_lint_options(
@@ -1878,7 +1897,7 @@ impl StorageKeyResolver {
 /// and `--ignore` CLI flag, only the flag value is taken into account.
 fn resolve_files(
   maybe_files_config: Option<FilePatterns>,
-  maybe_file_flags: Option<FileFlags>,
+  maybe_file_flags: Option<&FileFlags>,
   initial_cwd: &Path,
 ) -> Result<FilePatterns, AnyError> {
   let mut maybe_files_config = maybe_files_config
