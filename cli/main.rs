@@ -322,9 +322,6 @@ pub fn main() {
     Box::new(util::draw_thread::DrawThread::hide),
     Box::new(util::draw_thread::DrawThread::show),
   );
-  let Ok(_) = rustls::crypto::ring::default_provider().install_default() else {
-    exit_with_message("Unable to install TLS backend", 1);
-  };
   let args: Vec<_> = env::args_os().collect();
   let future = async move {
     // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
