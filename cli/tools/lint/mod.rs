@@ -9,6 +9,7 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_config::glob::FilePatterns;
+use deno_config::workspace::WorkspaceMemberContext;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -41,9 +42,12 @@ use crate::args::LintFlags;
 use crate::args::LintOptions;
 use crate::args::LintReporterKind;
 use crate::args::LintRulesConfig;
+use crate::args::WorkspaceLintOptions;
+use crate::cache::Caches;
 use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
+use crate::graph_util::ModuleGraphCreator;
 use crate::tools::fmt::run_parallelized;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
@@ -117,15 +121,19 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     let factory = CliFactory::from_flags(flags)?;
     let cli_options = factory.cli_options();
     let is_stdin = lint_flags.is_stdin();
-    let lint_options = cli_options.resolve_lint_options(lint_flags)?;
     let lint_config = cli_options.resolve_lint_config()?;
-    let files = &lint_options.files;
     let success = if is_stdin {
-      let reporter_kind = lint_options.reporter_kind;
+      let start_ctx = cli_options.workspace.resolve_start_ctx();
+      let reporter_kind = cli_options
+        .resolve_workspace_lint_options(&lint_flags)?
+        .reporter_kind;
       let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
+      let lint_options =
+        cli_options.resolve_lint_options(lint_flags, &start_ctx)?;
+      let files = &lint_options.files;
       let lint_rules = get_config_rules_err_empty(
         lint_options.rules,
-        cli_options.maybe_config_file().as_ref(),
+        start_ctx.maybe_deno_json().map(|c| c.as_ref()),
       )?;
       let file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
       let r = lint_stdin(&file_path, lint_rules.rules, lint_config);
@@ -137,16 +145,25 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       reporter_lock.lock().close(1);
       success
     } else {
-      let target_files = collect_lint_files(cli_options, files.clone())
-        .and_then(|files| {
-          if files.is_empty() {
-            Err(generic_error("No target files found."))
-          } else {
-            Ok(files)
-          }
-        })?;
-      debug!("Found {} files", target_files.len());
-      lint_files(factory, lint_options, lint_config, target_files).await?
+      let mut file_count = 0;
+      let mut linter = CliLinter::new(
+        factory.caches()?.clone(),
+        factory.module_graph_creator().await?.clone(),
+        &cli_options.resolve_workspace_lint_options(&lint_flags)?,
+      );
+      for (ctx, lint_options) in
+        cli_options.resolve_lint_options_for_members(&lint_flags)?
+      {
+        let files = &lint_options.files;
+        let target_files = collect_lint_files(cli_options, files.clone())?;
+        linter
+          .lint_files(lint_options, lint_config, ctx, target_files)
+          .await?;
+      }
+      if linter.file_count == 0 {
+        return Err(generic_error("No target files found."));
+      }
+      Ok(linter.finish())
     };
     if !success {
       std::process::exit(1);
@@ -156,52 +173,72 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
-async fn lint_files(
-  factory: CliFactory,
-  lint_options: LintOptions,
-  lint_config: LintConfig,
-  paths: Vec<PathBuf>,
-) -> Result<bool, AnyError> {
-  let caches = factory.caches()?;
-  let lint_rules =
-    get_config_rules_err_empty(lint_options.rules, maybe_config_file)?;
-  let incremental_cache = Arc::new(IncrementalCache::new(
-    caches.lint_incremental_cache_db(),
-    &lint_rules.incremental_cache_state(),
-    &paths,
-  ));
-  let target_files_len = paths.len();
-  let reporter_kind = lint_options.reporter_kind;
-  // todo(dsherret): abstract away this lock behind a performant interface
-  let reporter_lock =
-    Arc::new(Mutex::new(create_reporter(reporter_kind.clone())));
-  let has_error = Arc::new(AtomicFlag::default());
+struct CliLinter {
+  caches: Arc<Caches>,
+  module_graph_creator: Arc<ModuleGraphCreator>,
+  reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
+  has_error: Arc<AtomicFlag>,
+  file_count: usize,
+}
 
-  let mut futures = Vec::with_capacity(2);
-  if lint_rules.no_slow_types {
-    let publish_configs =
-      factory.cli_options().workspace.packages_for_publish();
-    if !publish_configs.is_empty() {
-      let has_error = has_error.clone();
-      let reporter_lock = reporter_lock.clone();
-      let module_graph_creator = factory.module_graph_creator().await?.clone();
-      let path_urls = paths
-        .iter()
-        .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
-        .collect::<HashSet<_>>();
-      futures.push(deno_core::unsync::spawn(async move {
-        let graph = module_graph_creator
-          .create_and_validate_publish_graph(&publish_configs, true)
-          .await?;
-        // todo(dsherret): this isn't exactly correct as linting isn't properly
-        // setup to handle workspaces. Iterating over the workspace members
-        // should be done at a higher level because it also needs to take into
-        // account the config per workspace member.
-        for publish_config in &publish_configs {
+impl CliLinter {
+  pub fn new(
+    caches: Arc<Caches>,
+    module_graph_creator: Arc<ModuleGraphCreator>,
+    workspace_options: &WorkspaceLintOptions,
+  ) -> Self {
+    let reporter_lock =
+      Arc::new(Mutex::new(create_reporter(workspace_options.reporter_kind)));
+    Self {
+      caches,
+      module_graph_creator,
+      reporter_lock,
+      has_error: Default::default(),
+      file_count: 0,
+    }
+  }
+
+  pub async fn lint_files(
+    &mut self,
+    lint_options: LintOptions,
+    lint_config: LintConfig,
+    member_ctx: WorkspaceMemberContext,
+    paths: Vec<PathBuf>,
+  ) -> Result<(), AnyError> {
+    self.file_count += paths.len();
+
+    let lint_rules = get_config_rules_err_empty(
+      lint_options.rules,
+      member_ctx.maybe_deno_json().map(|c| c.as_ref()),
+    )?;
+    let incremental_cache = Arc::new(IncrementalCache::new(
+      self.caches.lint_incremental_cache_db(),
+      &lint_rules.incremental_cache_state(),
+      &paths,
+    ));
+
+    let mut futures = Vec::with_capacity(2);
+    if lint_rules.no_slow_types {
+      let publish_config = member_ctx.maybe_package_config();
+      if let Some(publish_config) = publish_config {
+        let has_error = self.has_error.clone();
+        let reporter_lock = self.reporter_lock.clone();
+        let module_graph_creator = self.module_graph_creator.clone();
+        let path_urls = paths
+          .iter()
+          .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
+          .collect::<HashSet<_>>();
+        futures.push(deno_core::unsync::spawn(async move {
+          let graph = module_graph_creator
+            .create_and_validate_publish_graph(
+              &vec![publish_config.clone()],
+              true,
+            )
+            .await?;
           let export_urls =
             publish_config.config_file.resolve_export_value_urls()?;
           if !export_urls.iter().any(|url| path_urls.contains(url)) {
-            continue; // entrypoint is not specified, so skip
+            return Ok(()); // entrypoint is not specified, so skip
           }
           let diagnostics = no_slow_types::collect_no_slow_type_diagnostics(
             &export_urls,
@@ -215,63 +252,68 @@ async fn lint_files(
                 .visit_diagnostic(LintOrCliDiagnostic::FastCheck(diagnostic));
             }
           }
-        }
-        Ok(())
-      }));
+          Ok(())
+        }));
+      }
     }
+
+    futures.push({
+      let has_error = self.has_error.clone();
+      let linter = create_linter(lint_rules.rules);
+      let reporter_lock = self.reporter_lock.clone();
+      let incremental_cache = incremental_cache.clone();
+      let lint_config = lint_config.clone();
+      let fix = lint_options.fix;
+      deno_core::unsync::spawn(async move {
+        run_parallelized(paths, {
+          move |file_path| {
+            let file_text =
+              deno_ast::strip_bom(fs::read_to_string(&file_path)?);
+
+            // don't bother rechecking this file if it didn't have any diagnostics before
+            if incremental_cache.is_file_same(&file_path, &file_text) {
+              return Ok(());
+            }
+
+            let r = lint_file(&linter, &file_path, file_text, lint_config, fix);
+            if let Ok((file_source, file_diagnostics)) = &r {
+              if file_diagnostics.is_empty() {
+                // update the incremental cache if there were no diagnostics
+                incremental_cache.update_file(
+                  &file_path,
+                  // ensure the returned text is used here as it may have been modified via --fix
+                  file_source.text(),
+                )
+              }
+            }
+
+            let success = handle_lint_result(
+              &file_path.to_string_lossy(),
+              r,
+              reporter_lock.clone(),
+            );
+            if !success {
+              has_error.raise();
+            }
+
+            Ok(())
+          }
+        })
+        .await
+      })
+    });
+
+    deno_core::futures::future::try_join_all(futures).await?;
+
+    incremental_cache.wait_completion().await;
+    Ok(())
   }
 
-  futures.push({
-    let has_error = has_error.clone();
-    let linter = create_linter(lint_rules.rules);
-    let reporter_lock = reporter_lock.clone();
-    let incremental_cache = incremental_cache.clone();
-    let lint_config = lint_config.clone();
-    let fix = lint_options.fix;
-    deno_core::unsync::spawn(async move {
-      run_parallelized(paths, {
-        move |file_path| {
-          let file_text = deno_ast::strip_bom(fs::read_to_string(&file_path)?);
-
-          // don't bother rechecking this file if it didn't have any diagnostics before
-          if incremental_cache.is_file_same(&file_path, &file_text) {
-            return Ok(());
-          }
-
-          let r = lint_file(&linter, &file_path, file_text, lint_config, fix);
-          if let Ok((file_source, file_diagnostics)) = &r {
-            if file_diagnostics.is_empty() {
-              // update the incremental cache if there were no diagnostics
-              incremental_cache.update_file(
-                &file_path,
-                // ensure the returned text is used here as it may have been modified via --fix
-                file_source.text(),
-              )
-            }
-          }
-
-          let success = handle_lint_result(
-            &file_path.to_string_lossy(),
-            r,
-            reporter_lock.clone(),
-          );
-          if !success {
-            has_error.raise();
-          }
-
-          Ok(())
-        }
-      })
-      .await
-    })
-  });
-
-  deno_core::futures::future::try_join_all(futures).await?;
-
-  incremental_cache.wait_completion().await;
-  reporter_lock.lock().close(target_files_len);
-
-  Ok(!has_error.is_raised())
+  pub fn finish(self) -> bool {
+    debug!("Found {} files", self.file_count);
+    self.reporter_lock.lock().close(self.file_count);
+    self.has_error.is_raised()
+  }
 }
 
 fn collect_lint_files(
@@ -912,7 +954,7 @@ pub fn get_configured_rules(
 ) -> ConfiguredRules {
   const NO_SLOW_TYPES_NAME: &str = "no-slow-types";
   let implicit_no_slow_types = maybe_config_file
-    .map(|c| c.is_package() || !c.json.workspaces.is_empty())
+    .map(|c| c.is_package() || !c.json.workspace.is_empty())
     .unwrap_or(false);
   let no_slow_types = implicit_no_slow_types
     && !rules

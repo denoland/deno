@@ -15,6 +15,7 @@ use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
 use deno_config::workspace::WorkspaceMemberContext;
 use deno_config::workspace::WorkspaceResolver;
+use deno_config::WorkspaceLintConfig;
 use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
@@ -408,7 +409,7 @@ impl TestOptions {
   }
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug)]
 pub enum LintReporterKind {
   #[default]
   Pretty,
@@ -417,10 +418,52 @@ pub enum LintReporterKind {
 }
 
 #[derive(Clone, Debug)]
+pub struct WorkspaceLintOptions {
+  pub reporter_kind: LintReporterKind,
+}
+
+impl WorkspaceLintOptions {
+  pub fn resolve(
+    lint_config: &WorkspaceLintConfig,
+    lint_flags: &LintFlags,
+  ) -> Result<Self, AnyError> {
+    let mut maybe_reporter_kind = if lint_flags.json {
+      Some(LintReporterKind::Json)
+    } else if lint_flags.compact {
+      Some(LintReporterKind::Compact)
+    } else {
+      None
+    };
+
+    if maybe_reporter_kind.is_none() {
+      // Flag not set, so try to get lint reporter from the config file.
+      maybe_reporter_kind = match lint_config.report.as_deref() {
+        Some("json") => Some(LintReporterKind::Json),
+        Some("compact") => Some(LintReporterKind::Compact),
+        Some("pretty") => Some(LintReporterKind::Pretty),
+        Some(_) => {
+          bail!("Invalid lint report type in config file")
+        }
+        None => None,
+      }
+    }
+    Ok(Self {
+      reporter_kind: maybe_reporter_kind.unwrap_or_default(),
+    })
+  }
+}
+
+#[derive(Clone, Debug)]
+pub struct LintRulesOptions {
+  pub tags: Option<Vec<String>>,
+  pub include: Option<Vec<String>>,
+  pub exclude: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug)]
 pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
-  pub reporter_kind: LintReporterKind,
   pub fix: bool,
 }
 
@@ -435,7 +478,6 @@ impl LintOptions {
     Self {
       rules: Default::default(),
       files: FilePatterns::new_with_base(base),
-      reporter_kind: Default::default(),
       fix: false,
     }
   }
@@ -446,31 +488,6 @@ impl LintOptions {
     initial_cwd: &Path,
   ) -> Result<Self, AnyError> {
     let fix = maybe_lint_flags.as_ref().map(|f| f.fix).unwrap_or(false);
-    let mut maybe_reporter_kind =
-      maybe_lint_flags.as_ref().and_then(|lint_flags| {
-        if lint_flags.json {
-          Some(LintReporterKind::Json)
-        } else if lint_flags.compact {
-          Some(LintReporterKind::Compact)
-        } else {
-          None
-        }
-      });
-
-    if maybe_reporter_kind.is_none() {
-      // Flag not set, so try to get lint reporter from the config file.
-      if let Some(lint_config) = &maybe_lint_config {
-        maybe_reporter_kind = match lint_config.report.as_deref() {
-          Some("json") => Some(LintReporterKind::Json),
-          Some("compact") => Some(LintReporterKind::Compact),
-          Some("pretty") => Some(LintReporterKind::Pretty),
-          Some(_) => {
-            bail!("Invalid lint report type in config file")
-          }
-          None => None,
-        }
-      }
-    }
 
     let (
       maybe_file_flags,
@@ -491,7 +508,6 @@ impl LintOptions {
     let (maybe_config_files, maybe_config_rules) =
       maybe_lint_config.map(|c| (c.files, c.rules)).unzip();
     Ok(Self {
-      reporter_kind: maybe_reporter_kind.unwrap_or_default(),
       files: resolve_files(
         maybe_config_files,
         Some(&maybe_file_flags),
@@ -1365,7 +1381,7 @@ impl CliOptions {
     &self.npmrc
   }
 
-  pub fn resolve_member_fmt_options(
+  pub fn resolve_fmt_options_for_members(
     &self,
     fmt_flags: &FmtFlags,
   ) -> Result<Vec<FmtOptions>, AnyError> {
@@ -1377,16 +1393,7 @@ impl CliOptions {
     for member_ctx in &member_ctxs {
       let mut options = self.resolve_fmt_options(&fmt_flags, member_ctx)?;
       // exclude the directory of other packages in the workspace for this config
-      options.files.exclude.append(
-        self
-          .workspace
-          .deno_jsons()
-          .filter(|deno_json| {
-            member_ctx.maybe_deno_json().map(|c| &c.specifier)
-              != Some(&deno_json.specifier)
-          })
-          .map(|d| PathOrPattern::Path(d.dir_path())),
-      );
+      self.append_workspace_members_to_exclude(&mut options.files, member_ctx);
       result.push(options);
     }
     Ok(result)
@@ -1401,15 +1408,39 @@ impl CliOptions {
     FmtOptions::resolve(maybe_fmt_config, fmt_flags, &self.initial_cwd)
   }
 
+  pub fn resolve_workspace_lint_options(
+    &self,
+    lint_flags: &LintFlags,
+  ) -> Result<WorkspaceLintOptions, AnyError> {
+    let lint_config = self.workspace.to_lint_config()?;
+    WorkspaceLintOptions::resolve(&lint_config, lint_flags)
+  }
+
+  pub fn resolve_lint_options_for_members(
+    &self,
+    lint_flags: &LintFlags,
+  ) -> Result<Vec<(WorkspaceMemberContext, LintOptions)>, AnyError> {
+    let cli_arg_patterns =
+      lint_flags.files.as_file_patterns(self.initial_cwd())?;
+    let member_ctxs =
+      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
+    let mut result = Vec::with_capacity(member_ctxs.len());
+    for member_ctx in member_ctxs {
+      let mut options =
+        self.resolve_lint_options(lint_flags.clone(), &member_ctx)?;
+      // exclude the directory of other packages in the workspace for this config
+      self.append_workspace_members_to_exclude(&mut options.files, &member_ctx);
+      result.push((member_ctx, options));
+    }
+    Ok(result)
+  }
+
   pub fn resolve_lint_options(
     &self,
     lint_flags: LintFlags,
+    ctx: &WorkspaceMemberContext,
   ) -> Result<LintOptions, AnyError> {
-    let maybe_lint_config = if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_lint_config()?
-    } else {
-      None
-    };
+    let maybe_lint_config = ctx.to_lint_config()?;
     LintOptions::resolve(maybe_lint_config, Some(lint_flags), &self.initial_cwd)
   }
 
@@ -1461,6 +1492,28 @@ impl CliOptions {
       Some(bench_flags),
       &self.initial_cwd,
     )
+  }
+
+  fn append_workspace_members_to_exclude(
+    &self,
+    files: &mut FilePatterns,
+    current_ctx: &WorkspaceMemberContext,
+  ) {
+    let maybe_root_dir = current_ctx.maybe_deno_json().map(|d| d.dir_path());
+    files.exclude.append(
+      self
+        .workspace
+        .deno_jsons()
+        .filter(|member_deno_json| {
+          if let Some(root_dir) = &maybe_root_dir {
+            let member_dir = member_deno_json.dir_path();
+            member_dir != *root_dir && member_dir.starts_with(root_dir)
+          } else {
+            true // ok, this is just a perf optimization
+          }
+        })
+        .map(|d| PathOrPattern::Path(d.dir_path())),
+    );
   }
 
   pub fn resolve_deno_graph_workspace_members(

@@ -74,45 +74,47 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
           let factory = CliFactory::from_flags(flags)?;
           let cli_options = factory.cli_options();
           let caches = factory.caches()?;
+          let mut found_file = false;
+
           for fmt_options in
-            cli_options.resolve_member_fmt_options(&fmt_flags)?
+            cli_options.resolve_fmt_options_for_members(&fmt_flags)?
           {
             let files =
-              collect_fmt_files(cli_options, fmt_options.files.clone())
-                .and_then(|files| {
-                  if files.is_empty() {
-                    Err(generic_error("No target files found."))
-                  } else {
-                    Ok(files)
-                  }
-                })?;
-            let _ = watcher_communicator.watch_paths(files.clone());
-            let refmt_files = if let Some(paths) = &changed_paths {
-              if fmt_options.check {
-                // check all files on any changed (https://github.com/denoland/deno/issues/12446)
-                files
-                  .iter()
-                  .any(|path| {
-                    canonicalize_path(path)
-                      .map(|path| paths.contains(&path))
-                      .unwrap_or(false)
-                  })
-                  .then_some(files)
-                  .unwrap_or_else(|| [].to_vec())
+              collect_fmt_files(cli_options, fmt_options.files.clone())?;
+            if !files.is_empty() {
+              found_file = true;
+              let _ = watcher_communicator.watch_paths(files.clone());
+              let refmt_files = if let Some(paths) = &changed_paths {
+                if fmt_options.check {
+                  // check all files on any changed (https://github.com/denoland/deno/issues/12446)
+                  files
+                    .iter()
+                    .any(|path| {
+                      canonicalize_path(path)
+                        .map(|path| paths.contains(&path))
+                        .unwrap_or(false)
+                    })
+                    .then_some(files)
+                    .unwrap_or_else(|| [].to_vec())
+                } else {
+                  files
+                    .into_iter()
+                    .filter(|path| {
+                      canonicalize_path(path)
+                        .map(|path| paths.contains(&path))
+                        .unwrap_or(false)
+                    })
+                    .collect::<Vec<_>>()
+                }
               } else {
                 files
-                  .into_iter()
-                  .filter(|path| {
-                    canonicalize_path(path)
-                      .map(|path| paths.contains(&path))
-                      .unwrap_or(false)
-                  })
-                  .collect::<Vec<_>>()
-              }
-            } else {
-              files
-            };
-            format_files(caches, fmt_options, refmt_files).await?;
+              };
+              format_files(caches, fmt_options, refmt_files).await?;
+            }
+          }
+
+          if !found_file {
+            return Err(generic_error("No target files found."));
           }
 
           Ok(())
@@ -124,16 +126,19 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
     let factory = CliFactory::from_flags(flags)?;
     let caches = factory.caches()?;
     let cli_options = factory.cli_options();
-    for fmt_options in cli_options.resolve_member_fmt_options(&fmt_flags)? {
-      let files = collect_fmt_files(cli_options, fmt_options.files.clone())
-        .and_then(|files| {
-          if files.is_empty() {
-            Err(generic_error("No target files found."))
-          } else {
-            Ok(files)
-          }
-        })?;
-      format_files(caches, fmt_options, files).await?;
+    let mut found_file = false;
+    for member_fmt_options in
+      cli_options.resolve_fmt_options_for_members(&fmt_flags)?
+    {
+      let files =
+        collect_fmt_files(cli_options, member_fmt_options.files.clone())?;
+      if !files.is_empty() {
+        format_files(caches, member_fmt_options, files).await?;
+        found_file = true;
+      }
+    }
+    if !found_file {
+      return Err(generic_error("No target files found."));
     }
   }
 
