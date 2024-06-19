@@ -6,6 +6,13 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.44.4 / 2024.06.19
+
+- Revert "chore: upgrade to reqwest 0.12.4 and rustls 0.22 (#24056)" (#24262)
+- fix(ext/node): Add Dirent.path and Dirent.parentPath (#24257)
+- fix(ext/node): Add SIGPOLL and SIGUNUSED signals (#24259)
+- fix(ext/node): use primordials in `ext/node/polyfills/_utils.ts` (#24253)
+
 ### 1.44.3 / 2024.06.18
 
 - feat(lsp): multi deno.json resolver scopes (#24206)
