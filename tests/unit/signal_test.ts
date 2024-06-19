@@ -314,5 +314,5 @@ Deno.test(
 
     Deno.removeSignalListener("SIGUNUSED", i);
     Deno.removeSignalListener("SIGPOLL", i);
-  }
+  },
 );
