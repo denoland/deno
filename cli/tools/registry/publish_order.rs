@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 
 use deno_ast::ModuleSpecifier;
+use deno_config::workspace::JsrPackageConfig;
 use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -114,7 +115,7 @@ impl PublishOrderGraph {
 
 pub fn build_publish_order_graph(
   graph: &ModuleGraph,
-  roots: &[WorkspaceMemberConfig],
+  roots: &[JsrPackageConfig],
 ) -> Result<PublishOrderGraph, AnyError> {
   let packages = build_pkg_deps(graph, roots)?;
   Ok(build_publish_order_graph_from_pkgs_deps(packages))
@@ -122,18 +123,24 @@ pub fn build_publish_order_graph(
 
 fn build_pkg_deps(
   graph: &deno_graph::ModuleGraph,
-  roots: &[WorkspaceMemberConfig],
+  roots: &[JsrPackageConfig],
 ) -> Result<HashMap<String, HashSet<String>>, AnyError> {
   let mut members = HashMap::with_capacity(roots.len());
   let mut seen_modules = HashSet::with_capacity(graph.modules().count());
   let roots = roots
     .iter()
-    .map(|r| (ModuleSpecifier::from_file_path(&r.dir_path).unwrap(), r))
+    .map(|r| {
+      (
+        ModuleSpecifier::from_directory_path(&r.config_file.dir_path())
+          .unwrap(),
+        r,
+      )
+    })
     .collect::<Vec<_>>();
-  for (root_dir_url, root) in &roots {
+  for (root_dir_url, pkg_config) in &roots {
     let mut deps = HashSet::new();
     let mut pending = VecDeque::new();
-    pending.extend(root.config_file.resolve_export_value_urls()?);
+    pending.extend(pkg_config.config_file.resolve_export_value_urls()?);
     while let Some(specifier) = pending.pop_front() {
       let Some(module) = graph.get(&specifier).and_then(|m| m.js()) else {
         continue;
@@ -173,7 +180,7 @@ fn build_pkg_deps(
         }
       }
     }
-    members.insert(root.package_name.clone(), deps);
+    members.insert(pkg_config.package_name.clone(), deps);
   }
   Ok(members)
 }

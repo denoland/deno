@@ -81,7 +81,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
-use crate::args::import_map::enhance_import_map_value_with_workspace_members;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
@@ -1850,7 +1849,7 @@ impl StorageKeyResolver {
       options
         .workspace
         .resolve_start_ctx()
-        .deno_json()
+        .maybe_deno_json()
         .map(|config_file| Some(config_file.specifier.to_string()))
     })
   }

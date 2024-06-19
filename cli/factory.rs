@@ -312,7 +312,7 @@ impl CliFactory {
       pkg_json
         .resolve_local_package_json_version_reqs()
         .values()
-        .filter_map(|r| r.ok())
+        .filter_map(|r| r.as_ref().ok())
         .map(|r| format!("npm:{}", r))
         .collect()
     }

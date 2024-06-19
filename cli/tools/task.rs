@@ -21,7 +21,6 @@ use deno_task_shell::ExecutableCommand;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
-use indexmap::IndexMap;
 use lazy_regex::Lazy;
 use regex::Regex;
 use std::borrow::Cow;
@@ -97,7 +96,7 @@ pub async fn execute_script(
         })
         .await
       }
-      TaskOrScript::Script(scripts, script) => {
+      TaskOrScript::Script(scripts, _script) => {
         // ensure the npm packages are installed if using a node_modules
         // directory and managed resolver
         if cli_options.has_node_modules_dir() {

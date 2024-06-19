@@ -18,6 +18,7 @@ use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
+use deno_config::workspace::JsrPackageConfig;
 use deno_emit::LoaderChecksum;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleLoadError;
@@ -240,12 +241,12 @@ impl ModuleGraphCreator {
 
   pub async fn create_and_validate_publish_graph(
     &self,
-    packages: &[WorkspaceMemberConfig],
+    package_configs: &[JsrPackageConfig],
     build_fast_check_graph: bool,
   ) -> Result<ModuleGraph, AnyError> {
     let mut roots = Vec::new();
-    for package in packages {
-      roots.extend(package.config_file.resolve_export_value_urls()?);
+    for package_config in package_configs {
+      roots.extend(package_config.config_file.resolve_export_value_urls()?);
     }
     let mut graph = self
       .create_graph_with_options(CreateGraphOptions {
