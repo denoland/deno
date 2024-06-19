@@ -53,6 +53,7 @@ import {
 } from "ext:deno_web/06_streams.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
+import { type } from "../webidl/00_webidl.js";
 
 async function write(rid, data) {
   return await core.write(rid, data);
@@ -554,25 +555,29 @@ function listen(args) {
 }
 
 function validatePort(maybePort) {
-  if (typeof maybePort !== "number" || isNaN(maybePort) ||!Number.isInteger(maybePort) ) {
-    throw new TypeError(`Invalid port, expected integer but got: '${maybePort}'`);
+  if (typeof maybePort !== "number" && typeof maybePort !== "string") {
+    throw new TypeError(`Invalid port (expected number): '${maybePort}'`);
   }
-
-  if (maybePort < 0 || maybePort > 65535) {
+  if (maybePort === "") throw new TypeError("Invalid port: ''");
+  const port = Number(maybePort);
+  if (isNaN(port) || !Number.isInteger(maybePort)) {
+    throw new TypeError(`Invalid port: '${maybePort}'`);
+  }
+  if (port < 0 || port > 65535) {
     throw new RangeError(`Invalid port (out of range): '${maybePort}'`);
   }
-
-  return maybePort;
+  return port;
 }
 
 function createListenDatagram(udpOpFn, unixOpFn) {
   return function listenDatagram(args) {
     switch (args.transport) {
       case "udp": {
+        const port = validatePort(args.port);
         const { 0: rid, 1: addr } = udpOpFn(
           {
             hostname: args.hostname ?? "127.0.0.1",
-            port: args.port,
+            port,
           },
           args.reuseAddress ?? false,
           args.loopback ?? false,
@@ -597,10 +602,11 @@ function createListenDatagram(udpOpFn, unixOpFn) {
 async function connect(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
+      const port = validatePort(args.port);
       const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tcp(
         {
           hostname: args.hostname ?? "127.0.0.1",
-          port: args.port,
+          port,
         },
       );
       localAddr.transport = "tcp";
@@ -633,4 +639,5 @@ export {
   shutdown,
   TcpConn,
   UnixConn,
+  validatePort,
 };
