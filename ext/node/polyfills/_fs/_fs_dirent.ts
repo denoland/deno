@@ -43,4 +43,13 @@ export default class Dirent {
   get name(): string | null {
     return this.entry.name;
   }
+
+  get parentPath(): string {
+    return this.entry.parentPath;
+  }
+
+  /** @deprecated */
+  get path(): string {
+    return this.parentPath;
+  }
 }

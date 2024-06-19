@@ -426,21 +426,13 @@ fn napi_get_buffer_info(
   let env = check_env!(env);
   check_arg!(env, value);
 
+  // NB: Any TypedArray instance seems to be accepted by this function
+  // in Node.js.
   let Some(ta) =
     value.and_then(|v| v8::Local::<v8::TypedArray>::try_from(v).ok())
   else {
     return napi_set_last_error(env, napi_invalid_arg);
   };
-
-  let buffer_constructor =
-    v8::Local::new(&mut env.scope(), &env.buffer_constructor);
-
-  if !ta
-    .instance_of(&mut env.scope(), buffer_constructor.into())
-    .unwrap_or(false)
-  {
-    return napi_set_last_error(env, napi_invalid_arg);
-  }
 
   if !data.is_null() {
     unsafe {
