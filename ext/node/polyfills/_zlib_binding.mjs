@@ -125,7 +125,7 @@ class Zlib {
     out_len,
   ) {
     process.nextTick(() => {
-      const [availOut, availIn] = this.writeSync(
+      const res = this.writeSync(
         flush ?? Z_NO_FLUSH,
         input,
         in_off,
@@ -135,7 +135,10 @@ class Zlib {
         out_len,
       );
 
-      this.callback(availOut, availIn);
+      if (res) {
+        const [availOut, availIn] = res;
+        this.callback(availOut, availIn);
+      }
     });
 
     return this;
