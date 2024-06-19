@@ -47,8 +47,8 @@ use data_url::DataUrl;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
-use http::header::CONTENT_LENGTH;
-use http::Uri;
+use http_v02::header::CONTENT_LENGTH;
+use http_v02::Uri;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -449,9 +449,12 @@ where
         .decode_to_vec()
         .map_err(|e| type_error(format!("{e:?}")))?;
 
-      let response = http::Response::builder()
-        .status(http::StatusCode::OK)
-        .header(http::header::CONTENT_TYPE, data_url.mime_type().to_string())
+      let response = http_v02::Response::builder()
+        .status(http_v02::StatusCode::OK)
+        .header(
+          http_v02::header::CONTENT_TYPE,
+          data_url.mime_type().to_string(),
+        )
         .body(reqwest::Body::from(body))?;
 
       let fut = async move { Ok(Ok(Response::from(response))) };

@@ -696,13 +696,21 @@ pub fn get_root_cert_store(
   for store in ca_stores.iter() {
     match store.as_str() {
       "mozilla" => {
-        root_cert_store.extend(webpki_roots::TLS_SERVER_ROOTS.to_vec());
+        root_cert_store.add_trust_anchors(
+          webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
+            rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+              ta.subject,
+              ta.spki,
+              ta.name_constraints,
+            )
+          }),
+        );
       }
       "system" => {
         let roots = load_native_certs().expect("could not load platform certs");
         for root in roots {
           root_cert_store
-            .add(rustls::pki_types::CertificateDer::from(root.0))
+            .add(&rustls::Certificate(root.0))
             .expect("Failed to add platform cert to root cert store");
         }
       }
@@ -726,17 +734,17 @@ pub fn get_root_cert_store(
           RootCertStoreLoadError::CaFileOpenError(err.to_string())
         })?;
         let mut reader = BufReader::new(certfile);
-        rustls_pemfile::certs(&mut reader).collect::<Result<Vec<_>, _>>()
+        rustls_pemfile::certs(&mut reader)
       }
       CaData::Bytes(data) => {
         let mut reader = BufReader::new(Cursor::new(data));
-        rustls_pemfile::certs(&mut reader).collect::<Result<Vec<_>, _>>()
+        rustls_pemfile::certs(&mut reader)
       }
     };
 
     match result {
       Ok(certs) => {
-        root_cert_store.add_parsable_certificates(certs);
+        root_cert_store.add_parsable_certificates(&certs);
       }
       Err(e) => {
         return Err(RootCertStoreLoadError::FailedAddPemFile(e.to_string()));

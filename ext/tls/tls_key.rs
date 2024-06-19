@@ -11,6 +11,8 @@
 //! key lookup can handle closing one end of the pair, in which case they will just
 //! attempt to clean up the associated resources.
 
+use crate::Certificate;
+use crate::PrivateKey;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
@@ -30,21 +32,12 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use webpki::types::CertificateDer;
-use webpki::types::PrivateKeyDer;
 
 type ErrorType = Rc<AnyError>;
 
 /// A TLS certificate/private key pair.
-/// see https://docs.rs/rustls-pki-types/latest/rustls_pki_types/#cloning-private-keys
-#[derive(Debug, PartialEq, Eq)]
-pub struct TlsKey(pub Vec<CertificateDer<'static>>, pub PrivateKeyDer<'static>);
-
-impl Clone for TlsKey {
-  fn clone(&self) -> Self {
-    Self(self.0.clone(), self.1.clone_key())
-  }
-}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TlsKey(pub Vec<Certificate>, pub PrivateKey);
 
 #[derive(Clone, Debug, Default)]
 pub enum TlsKeys {
@@ -116,8 +109,9 @@ impl TlsKeyResolver {
     let key = self.resolve(sni).await?;
 
     let mut tls_config = ServerConfig::builder()
+      .with_safe_defaults()
       .with_no_client_auth()
-      .with_single_cert(key.0, key.1.clone_key())?;
+      .with_single_cert(key.0, key.1)?;
     tls_config.alpn_protocols = alpn;
     Ok(tls_config.into())
   }
@@ -257,18 +251,14 @@ impl TlsKeyLookup {
 pub mod tests {
   use super::*;
   use deno_core::unsync::spawn;
+  use rustls::Certificate;
+  use rustls::PrivateKey;
 
   fn tls_key_for_test(sni: &str) -> TlsKey {
-    let manifest_dir =
-      std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let sni = sni.replace(".com", "");
-    let cert_file = manifest_dir.join(format!("testdata/{}_cert.der", sni));
-    let prikey_file = manifest_dir.join(format!("testdata/{}_prikey.der", sni));
-    let cert = std::fs::read(cert_file).unwrap();
-    let prikey = std::fs::read(prikey_file).unwrap();
-    let cert = CertificateDer::from(cert);
-    let prikey = PrivateKeyDer::try_from(prikey).unwrap();
-    TlsKey(vec![cert], prikey)
+    TlsKey(
+      vec![Certificate(format!("{sni}-cert").into_bytes())],
+      PrivateKey(format!("{sni}-key").into_bytes()),
+    )
   }
 
   #[tokio::test]
@@ -280,8 +270,8 @@ pub mod tests {
       }
     });
 
-    let key = resolver.resolve("example1.com".to_owned()).await.unwrap();
-    assert_eq!(tls_key_for_test("example1.com"), key);
+    let key = resolver.resolve("example.com".to_owned()).await.unwrap();
+    assert_eq!(tls_key_for_test("example.com"), key);
     drop(resolver);
 
     task.await.unwrap();
@@ -296,13 +286,13 @@ pub mod tests {
       }
     });
 
-    let f1 = resolver.resolve("example1.com".to_owned());
-    let f2 = resolver.resolve("example1.com".to_owned());
+    let f1 = resolver.resolve("example.com".to_owned());
+    let f2 = resolver.resolve("example.com".to_owned());
 
     let key = f1.await.unwrap();
-    assert_eq!(tls_key_for_test("example1.com"), key);
+    assert_eq!(tls_key_for_test("example.com"), key);
     let key = f2.await.unwrap();
-    assert_eq!(tls_key_for_test("example1.com"), key);
+    assert_eq!(tls_key_for_test("example.com"), key);
     drop(resolver);
 
     task.await.unwrap();
