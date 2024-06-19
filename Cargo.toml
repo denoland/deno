@@ -257,6 +257,8 @@ opt-level = 3
 opt-level = 3
 [profile.bench.package.deno_http]
 opt-level = 3
+[profile.bench.package.deno_napi]
+opt-level = 3
 [profile.bench.package.deno_net]
 opt-level = 3
 [profile.bench.package.deno_node]
@@ -288,6 +290,8 @@ opt-level = 3
 [profile.bench.package.serde]
 opt-level = 3
 [profile.bench.package.serde_v8]
+opt-level = 3
+[profile.bench.package.test_napi]
 opt-level = 3
 [profile.bench.package.tokio]
 opt-level = 3
