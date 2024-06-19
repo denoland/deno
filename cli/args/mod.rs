@@ -1665,7 +1665,11 @@ impl CliOptions {
   pub fn use_byonm(&self) -> bool {
     if self.enable_future_features()
       && self.node_modules_dir_enablement().is_none()
-      && self.maybe_package_json.is_some()
+      && self
+        .workspace
+        .config_folders()
+        .values()
+        .any(|f| f.pkg_json.is_some())
     {
       return true;
     }

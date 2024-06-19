@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -232,9 +233,12 @@ impl VendorTestBuilder {
     let entry_points = self.entry_points.clone();
     let loader = self.loader.clone();
     let parsed_source_cache = ParsedSourceCache::default();
+    let import_map = self.original_import_map.clone().unwrap_or_else(|| {
+      ImportMap::new(ModuleSpecifier::parse("file:///import_map.json").unwrap())
+    });
     let resolver = Arc::new(build_resolver(
       self.jsx_import_source_config.clone(),
-      self.original_import_map.clone(),
+      import_map.clone(),
     ));
     super::build::build(super::build::BuildInput {
       entry_points,
@@ -257,7 +261,7 @@ impl VendorTestBuilder {
       },
       parsed_source_cache: &parsed_source_cache,
       output_dir: &output_dir,
-      maybe_original_import_map: self.original_import_map.as_ref(),
+      original_import_map: &import_map,
       maybe_jsx_import_source: self.jsx_import_source_config.as_ref(),
       resolver: resolver.as_graph_resolver(),
       environment: &self.environment,
@@ -287,14 +291,17 @@ impl VendorTestBuilder {
 
 fn build_resolver(
   maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
-  original_import_map: Option<ImportMap>,
+  original_import_map: ImportMap,
 ) -> CliGraphResolver {
   CliGraphResolver::new(CliGraphResolverOptions {
     node_resolver: None,
     npm_resolver: None,
     sloppy_imports_resolver: None,
+    workspace_resolver: Arc::new(WorkspaceResolver::new_for_deno_compile(
+      Arc::new(original_import_map),
+      Vec::new(),
+    )),
     maybe_jsx_import_source_config,
-    workspace_resolver: original_import_map.map(Arc::new),
     maybe_vendor_dir: None,
     bare_node_builtins_enabled: false,
   })

@@ -361,7 +361,6 @@ pub struct DenoCompileBinaryWriter<'a> {
   http_client_provider: &'a HttpClientProvider,
   npm_resolver: &'a dyn CliNpmResolver,
   npm_system_info: NpmSystemInfo,
-  package_json_deps_provider: &'a PackageJsonDepsProvider,
 }
 
 impl<'a> DenoCompileBinaryWriter<'a> {
@@ -372,7 +371,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     http_client_provider: &'a HttpClientProvider,
     npm_resolver: &'a dyn CliNpmResolver,
     npm_system_info: NpmSystemInfo,
-    package_json_deps_provider: &'a PackageJsonDepsProvider,
   ) -> Self {
     Self {
       deno_dir,
@@ -380,7 +378,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       http_client_provider,
       npm_resolver,
       npm_system_info,
-      package_json_deps_provider,
     }
   }
 

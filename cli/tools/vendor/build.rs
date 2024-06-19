@@ -58,7 +58,7 @@ pub struct BuildInput<
   pub build_graph: TBuildGraphFn,
   pub parsed_source_cache: &'a ParsedSourceCache,
   pub output_dir: &'a Path,
-  pub maybe_original_import_map: Option<&'a ImportMap>,
+  pub original_import_map: &'a ImportMap,
   pub maybe_jsx_import_source: Option<&'a JsxImportSourceConfig>,
   pub resolver: &'a dyn deno_graph::source::Resolver,
   pub environment: &'a TEnvironment,
@@ -81,8 +81,8 @@ pub async fn build<
     build_graph,
     parsed_source_cache,
     output_dir,
-    maybe_original_import_map: original_import_map,
-    maybe_jsx_import_source: jsx_import_source,
+    original_import_map,
+    maybe_jsx_import_source,
     resolver,
     environment,
   } = input;
@@ -90,12 +90,10 @@ pub async fn build<
   let output_dir_specifier =
     ModuleSpecifier::from_directory_path(output_dir).unwrap();
 
-  if let Some(original_im) = &original_import_map {
-    validate_original_import_map(original_im, &output_dir_specifier)?;
-  }
+  validate_original_import_map(original_import_map, &output_dir_specifier)?;
 
   // add the jsx import source to the entry points to ensure it is always vendored
-  if let Some(jsx_import_source) = jsx_import_source {
+  if let Some(jsx_import_source) = maybe_jsx_import_source {
     if let Some(specifier_text) = jsx_import_source.maybe_specifier_text() {
       if let Ok(specifier) = resolver.resolve(
         &specifier_text,
@@ -172,7 +170,7 @@ pub async fn build<
       modules: &all_modules,
       mappings: &mappings,
       original_import_map,
-      jsx_import_source,
+      maybe_jsx_import_source,
       resolver,
       parsed_source_cache,
     })?;

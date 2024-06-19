@@ -25,7 +25,6 @@ use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::NpmCacheDir;
 use crate::resolver::CjsResolutionStore;
 use crate::resolver::CliNodeResolver;
-use crate::resolver::MappedSpecifierResolver;
 use crate::resolver::NpmModuleLoader;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -323,6 +322,7 @@ pub async fn run(
   let current_exe_path = std::env::current_exe().unwrap();
   let current_exe_name =
     current_exe_path.file_name().unwrap().to_string_lossy();
+  let maybe_cwd = std::env::current_dir().ok();
   let deno_dir_provider = Arc::new(DenoDirProvider::new(None));
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
@@ -336,11 +336,13 @@ pub async fn run(
   ));
   // use a dummy npm registry url
   let npm_registry_url = ModuleSpecifier::parse("https://localhost/").unwrap();
-  let root_path = std::env::temp_dir()
-    .join(format!("deno-compile-{}", current_exe_name))
-    .join("node_modules");
-  let npm_cache_dir =
-    NpmCacheDir::new(root_path.clone(), vec![npm_registry_url.clone()]);
+  let root_path =
+    std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name));
+  let root_node_modules_path = root_path.join("node_modules");
+  let npm_cache_dir = NpmCacheDir::new(
+    root_node_modules_path.clone(),
+    vec![npm_registry_url.clone()],
+  );
   let npm_global_cache_dir = npm_cache_dir.get_cache_location();
   let cache_setting = CacheSetting::Only;
   let (fs, npm_resolver, maybe_vfs_root) = match metadata.node_modules {
@@ -348,7 +350,7 @@ pub async fn run(
       // this will always have a snapshot
       let snapshot = eszip.take_npm_snapshot().unwrap();
       let vfs_root_dir_path = if node_modules_dir {
-        root_path
+        root_node_modules_path
       } else {
         npm_cache_dir.root_dir().to_owned()
       };
@@ -384,7 +386,7 @@ pub async fn run(
       (fs, npm_resolver, Some(vfs_root_dir_path))
     }
     Some(binary::NodeModules::Byonm) => {
-      let vfs_root_dir_path = root_path;
+      let vfs_root_dir_path = root_node_modules_path;
       let vfs = load_npm_vfs(vfs_root_dir_path.clone())
         .context("Failed to load npm vfs.")?;
       let node_modules_path = vfs.root().join("node_modules");
@@ -439,9 +441,35 @@ pub async fn run(
     node_resolver.clone(),
     npm_resolver.clone().into_npm_resolver(),
   ));
-  let maybe_import_map = metadata.maybe_import_map.map(|(base, source)| {
-    Arc::new(parse_from_json(&base, &source).unwrap().import_map)
-  });
+  let workspace_resolver = {
+    let dir = maybe_vfs_root.as_ref().unwrap_or(&root_path);
+    let dir_url = ModuleSpecifier::from_directory_path(dir).unwrap();
+    let import_map = import_map::parse_from_value_with_options(
+      dir_url.join("deno.json").unwrap(),
+      metadata.workspace_resolver.import_map,
+      import_map::ImportMapOptions {
+        address_hook: None,
+        expand_imports: true,
+      },
+    )?
+    .import_map;
+    let pkg_jsons = metadata
+      .workspace_resolver
+      .package_jsons
+      .into_iter()
+      .map(|(relative_path, json)| {
+        let path = dir_url
+          .join(&relative_path)
+          .unwrap()
+          .to_file_path()
+          .unwrap();
+        let pkg_json =
+          deno_config::package_json::PackageJson::load_from_value(path, json);
+        Arc::new(pkg_json)
+      })
+      .collect();
+    WorkspaceResolver::new_for_deno_compile(import_map, pkg_jsons)
+  };
   let cli_node_resolver = Arc::new(CliNodeResolver::new(
     Some(cjs_resolutions.clone()),
     fs.clone(),
@@ -451,10 +479,7 @@ pub async fn run(
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
       eszip,
-      mapped_specifier_resolver: MappedSpecifierResolver::new(
-        maybe_import_map.clone(),
-        package_json_deps_provider.clone(),
-      ),
+      workspace_resolver,
       node_resolver: cli_node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
         cjs_resolutions,
@@ -466,7 +491,6 @@ pub async fn run(
   };
 
   let permissions = {
-    let maybe_cwd = std::env::current_dir().ok();
     let mut permissions =
       metadata.permissions.to_options(maybe_cwd.as_deref())?;
     // if running with an npm vfs, grant read access to it
@@ -539,7 +563,6 @@ pub async fn run(
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,
       unstable: metadata.unstable_config.legacy_flag_enabled,
-      maybe_root_package_json_deps: package_json_deps_provider.deps().cloned(),
       create_hmr_runner: None,
       create_coverage_collector: None,
     },

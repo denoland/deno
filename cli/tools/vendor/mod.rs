@@ -71,7 +71,7 @@ pub async fn vendor(
     },
     parsed_source_cache: factory.parsed_source_cache(),
     output_dir: &output_dir,
-    maybe_original_import_map: Some(workspace_resolver.import_map()),
+    original_import_map: workspace_resolver.import_map(),
     maybe_jsx_import_source: jsx_import_source.as_ref(),
     resolver: factory.resolver().await?.as_graph_resolver(),
     environment: &build::RealVendorEnvironment,

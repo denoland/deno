@@ -53,7 +53,6 @@ use crate::worker::CliMainWorkerOptions;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceResolver;
 use deno_config::ConfigFile;
 use deno_core::error::AnyError;
@@ -69,7 +68,6 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
-use import_map::ImportMap;
 use log::warn;
 use std::future::Future;
 use std::sync::Arc;
@@ -426,8 +424,6 @@ impl CliFactory {
             cache_setting: self.options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
             maybe_node_modules_path: self.options.node_modules_dir_path().cloned(),
-            package_json_deps_provider:
-                self.package_json_deps_provider().clone(),
             npm_system_info: self.options.npm_system_info(),
             npmrc: self.options.npmrc().clone()
           })
@@ -747,7 +743,6 @@ impl CliFactory {
       self.http_client_provider(),
       self.npm_resolver().await?.as_ref(),
       self.options.npm_system_info(),
-      self.package_json_deps_provider(),
     ))
   }
 
@@ -873,7 +868,6 @@ impl CliFactory {
         .unsafely_ignore_certificate_errors()
         .clone(),
       unstable: self.options.legacy_unstable_flag(),
-      maybe_root_package_json_deps: self.options.maybe_package_json_deps(),
       create_hmr_runner,
       create_coverage_collector,
     })

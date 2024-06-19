@@ -57,10 +57,7 @@ impl<'a> ImportMapBuilder<'a> {
       .or_insert_with(|| ImportsBuilder::new(self.base_dir, self.mappings))
   }
 
-  pub fn into_import_map(
-    self,
-    original_import_map: Option<&ImportMap>,
-  ) -> ImportMap {
+  pub fn into_import_map(self, original_im: &ImportMap) -> ImportMap {
     fn get_local_imports(
       new_relative_path: &str,
       original_imports: &SpecifierMap,
@@ -99,33 +96,31 @@ impl<'a> ImportMapBuilder<'a> {
 
     let mut import_map = ImportMap::new(self.base_dir.clone());
 
-    if let Some(original_im) = original_import_map {
-      let original_base_dir = ModuleSpecifier::from_directory_path(
-        original_im
-          .base_url()
-          .to_file_path()
-          .unwrap()
-          .parent()
-          .unwrap(),
-      )
-      .unwrap();
-      let new_relative_path = self
-        .mappings
-        .relative_specifier_text(self.base_dir, &original_base_dir);
-      // add the imports
-      add_local_imports(&new_relative_path, original_im.imports(), || {
-        import_map.imports_mut()
-      });
+    let original_base_dir = ModuleSpecifier::from_directory_path(
+      original_im
+        .base_url()
+        .to_file_path()
+        .unwrap()
+        .parent()
+        .unwrap(),
+    )
+    .unwrap();
+    let new_relative_path = self
+      .mappings
+      .relative_specifier_text(self.base_dir, &original_base_dir);
+    // add the imports
+    add_local_imports(&new_relative_path, original_im.imports(), || {
+      import_map.imports_mut()
+    });
 
-      for scope in original_im.scopes() {
-        if scope.raw_key.starts_with("./") || scope.raw_key.starts_with("../") {
-          let sub_index = scope.raw_key.find('/').unwrap() + 1;
-          let new_key =
-            format!("{}{}", new_relative_path, &scope.raw_key[sub_index..]);
-          add_local_imports(&new_relative_path, scope.imports, || {
-            import_map.get_or_append_scope_mut(&new_key).unwrap()
-          });
-        }
+    for scope in original_im.scopes() {
+      if scope.raw_key.starts_with("./") || scope.raw_key.starts_with("../") {
+        let sub_index = scope.raw_key.find('/').unwrap() + 1;
+        let new_key =
+          format!("{}{}", new_relative_path, &scope.raw_key[sub_index..]);
+        add_local_imports(&new_relative_path, scope.imports, || {
+          import_map.get_or_append_scope_mut(&new_key).unwrap()
+        });
       }
     }
 
@@ -183,8 +178,8 @@ pub struct BuildImportMapInput<'a> {
   pub modules: &'a [&'a Module],
   pub graph: &'a ModuleGraph,
   pub mappings: &'a Mappings,
-  pub original_import_map: Option<&'a ImportMap>,
-  pub jsx_import_source: Option<&'a JsxImportSourceConfig>,
+  pub original_import_map: &'a ImportMap,
+  pub maybe_jsx_import_source: Option<&'a JsxImportSourceConfig>,
   pub resolver: &'a dyn deno_graph::source::Resolver,
   pub parsed_source_cache: &'a ParsedSourceCache,
 }
@@ -198,7 +193,7 @@ pub fn build_import_map(
     graph,
     mappings,
     original_import_map,
-    jsx_import_source,
+    maybe_jsx_import_source,
     resolver,
     parsed_source_cache,
   } = input;
@@ -212,7 +207,7 @@ pub fn build_import_map(
   }
 
   // add the jsx import source to the destination import map, if mapped in the original import map
-  if let Some(jsx_import_source) = jsx_import_source {
+  if let Some(jsx_import_source) = maybe_jsx_import_source {
     if let Some(specifier_text) = jsx_import_source.maybe_specifier_text() {
       if let Ok(resolved_url) = resolver.resolve(
         &specifier_text,
