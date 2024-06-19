@@ -731,6 +731,9 @@ if (isWindows) {
 // @ts-ignore TS doesn't work well with ES5 classes
 const process = new Process();
 
+/* Set owned property */
+process.versions = versions;
+
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,
   writable: true,

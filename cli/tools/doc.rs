@@ -224,7 +224,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
   fn resolve_global_symbol(&self, symbol: &[String]) -> Option<String> {
     if self.deno_ns.contains(symbol) {
       Some(format!(
-        "https://deno.land/api@{}?s={}",
+        "https://deno.land/api@v{}?s={}",
         env!("CARGO_PKG_VERSION"),
         symbol.join(".")
       ))

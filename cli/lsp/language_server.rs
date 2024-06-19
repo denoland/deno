@@ -682,7 +682,7 @@ impl Inner {
   pub fn update_cache(&mut self) {
     let mark = self.performance.mark("lsp.update_cache");
     self.cache.update_config(&self.config);
-    self.url_map.set_cache(self.cache.root_vendor().cloned());
+    self.url_map.set_cache(&self.cache);
     self.performance.measure(mark);
   }
 
@@ -1134,11 +1134,9 @@ impl Inner {
     let package_reqs = self.documents.npm_reqs_by_scope();
     let resolver = self.resolver.clone();
     // spawn due to the lsp's `Send` requirement
-    let handle =
-      spawn(async move { resolver.set_npm_reqs(&package_reqs).await });
-    if let Err(err) = handle.await.unwrap() {
-      lsp_warn!("Could not set npm package requirements. {:#}", err);
-    }
+    spawn(async move { resolver.set_npm_reqs(&package_reqs).await })
+      .await
+      .ok();
   }
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
@@ -1818,11 +1816,15 @@ impl Inner {
 
   pub fn get_ts_response_import_mapper(
     &self,
-    _referrer: &ModuleSpecifier,
+    file_referrer: &ModuleSpecifier,
   ) -> TsResponseImportMapper {
     TsResponseImportMapper::new(
       &self.documents,
-      self.config.tree.root_import_map().map(|i| i.as_ref()),
+      self
+        .config
+        .tree
+        .data_for_specifier(file_referrer)
+        .and_then(|d| d.import_map.as_ref().map(|i| i.as_ref())),
       self.resolver.as_ref(),
     )
   }
@@ -1999,11 +2001,7 @@ impl Inner {
             self.get_asset_or_document(&reference_specifier)?;
           asset_or_doc.line_index()
         };
-        results.push(
-          reference
-            .entry
-            .to_location(reference_line_index, &self.url_map),
-        );
+        results.push(reference.entry.to_location(reference_line_index, self));
       }
 
       self.performance.measure(mark);
@@ -2125,6 +2123,10 @@ impl Inner {
       .map(|s| s.suggest.include_completions_for_import_statements)
       .unwrap_or(true)
     {
+      let file_referrer = asset_or_doc
+        .document()
+        .and_then(|d| d.file_referrer())
+        .unwrap_or(&specifier);
       response = completions::get_import_completions(
         &specifier,
         &params.text_document_position.position,
@@ -2135,7 +2137,11 @@ impl Inner {
         &self.npm_search_api,
         &self.documents,
         self.resolver.as_ref(),
-        self.config.tree.root_import_map().map(|i| i.as_ref()),
+        self
+          .config
+          .tree
+          .data_for_specifier(file_referrer)
+          .and_then(|d| d.import_map.as_ref().map(|i| i.as_ref())),
       )
       .await;
     }
@@ -3442,7 +3448,7 @@ impl Inner {
     let mark = self
       .performance
       .mark_with_args("lsp.cache", (&specifiers, &referrer));
-    let config_data = self.config.tree.root_data();
+    let config_data = self.config.tree.data_for_specifier(&referrer);
     let mut roots = if !specifiers.is_empty() {
       specifiers
     } else {
@@ -3451,16 +3457,17 @@ impl Inner {
 
     // always include the npm packages since resolution of one npm package
     // might affect the resolution of other npm packages
-    roots.extend(
-      self
-        .documents
-        .npm_reqs_by_scope()
-        .values()
-        .flatten()
-        .collect::<BTreeSet<_>>()
-        .iter()
-        .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
-    );
+    if let Some(npm_reqs) = self
+      .documents
+      .npm_reqs_by_scope()
+      .get(&config_data.map(|d| d.scope.clone()))
+    {
+      roots.extend(
+        npm_reqs
+          .iter()
+          .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
+      );
+    }
 
     let workspace_settings = self.config.workspace_settings();
     let cli_options = CliOptions::new(

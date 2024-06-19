@@ -667,9 +667,7 @@ function invalidArgTypeHelper(input: any) {
   return ` Received type ${typeof input} (${inspected})`;
 }
 
-export class ERR_OUT_OF_RANGE extends RangeError {
-  code = "ERR_OUT_OF_RANGE";
-
+export class ERR_OUT_OF_RANGE extends NodeRangeError {
   constructor(
     str: string,
     range: string,
@@ -694,15 +692,7 @@ export class ERR_OUT_OF_RANGE extends RangeError {
     }
     msg += ` It must be ${range}. Received ${received}`;
 
-    super(msg);
-
-    const { name } = this;
-    // Add the error code to the name to include it in the stack trace.
-    this.name = `${name} [${this.code}]`;
-    // Access the stack to generate the error message including the error code from the name.
-    this.stack;
-    // Reset the name to the actual name.
-    this.name = name;
+    super("ERR_OUT_OF_RANGE", msg);
   }
 }
 

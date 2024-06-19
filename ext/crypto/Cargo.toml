@@ -21,8 +21,7 @@ base64.workspace = true
 cbc.workspace = true
 const-oid = "0.9.0"
 ctr = "0.9.1"
-# https://github.com/dalek-cryptography/curve25519-dalek/pull/397
-curve25519-dalek = "4.1.1"
+curve25519-dalek = "4.1.3"
 deno_core.workspace = true
 deno_web.workspace = true
 elliptic-curve = { version = "0.13.1", features = ["std", "pem"] }
