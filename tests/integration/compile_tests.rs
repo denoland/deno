@@ -1269,3 +1269,32 @@ fn standalone_jsr_dynamic_import() {
   output.assert_exit_code(0);
   output.assert_matches_text("Hello world\n");
 }
+
+#[test]
+fn eszip_output() {
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
+  let eszip = dir.path().join("welcome.eszip");
+  let output = context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--eszip-internal-do-not-use",
+      "--output",
+      &eszip.to_string_lossy(),
+      "../../tests/testdata/welcome.ts",
+    ])
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
+  let output = context
+    .new_command()
+    .args_vec([
+      "run",
+      "--allow-read",
+      "--eszip-internal-do-not-use",
+      &eszip.to_string_lossy(),
+    ])
+    .run();
+  output.assert_matches_text("Welcome to Deno!\n");
+}

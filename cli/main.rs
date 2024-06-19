@@ -176,6 +176,8 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.is_stdin() {
         tools::run::run_from_stdin(flags).await
+      } else if flags.eszip {
+        tools::run::run_eszip(flags).await
       } else {
         tools::run::run_script(WorkerExecutionMode::Run, flags, run_flags.watch).await
       }

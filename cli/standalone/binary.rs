@@ -555,6 +555,53 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     Ok(())
   }
 
+  pub fn pack_node_modules(
+    &self,
+    eszip: &mut eszip::EszipV2,
+  ) -> Result<
+    (Option<VirtualDirectory>, Vec<Vec<u8>>, Option<NodeModules>),
+    AnyError,
+  > {
+    Ok(match self.npm_resolver.as_inner() {
+      InnerCliNpmResolverRef::Managed(managed) => {
+        let snapshot =
+          managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
+        if !snapshot.as_serialized().packages.is_empty() {
+          let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
+          eszip.add_npm_snapshot(snapshot);
+          (
+            Some(root_dir),
+            files,
+            Some(NodeModules::Managed {
+              node_modules_dir: self
+                .npm_resolver
+                .root_node_modules_path()
+                .is_some(),
+              package_json_deps: self.package_json_deps_provider.deps().map(
+                |deps| SerializablePackageJsonDeps::from_deps(deps.clone()),
+              ),
+            }),
+          )
+        } else {
+          (None, Vec::new(), None)
+        }
+      }
+      InnerCliNpmResolverRef::Byonm(_) => {
+        let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
+        (
+          Some(root_dir),
+          files,
+          Some(NodeModules::Byonm {
+            package_json_deps: self
+              .package_json_deps_provider
+              .deps()
+              .map(|deps| SerializablePackageJsonDeps::from_deps(deps.clone())),
+          }),
+        )
+      }
+    })
+  }
+
   /// This functions creates a standalone deno binary by appending a bundle
   /// and magic trailer to the currently executing binary.
   async fn write_standalone_binary(
@@ -579,43 +626,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .await?
       .map(|import_map| (import_map.base_url().clone(), import_map.to_json()));
     let (npm_vfs, npm_files, node_modules) =
-      match self.npm_resolver.as_inner() {
-        InnerCliNpmResolverRef::Managed(managed) => {
-          let snapshot =
-            managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
-          if !snapshot.as_serialized().packages.is_empty() {
-            let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
-            eszip.add_npm_snapshot(snapshot);
-            (
-              Some(root_dir),
-              files,
-              Some(NodeModules::Managed {
-                node_modules_dir: self
-                  .npm_resolver
-                  .root_node_modules_path()
-                  .is_some(),
-                package_json_deps: self.package_json_deps_provider.deps().map(
-                  |deps| SerializablePackageJsonDeps::from_deps(deps.clone()),
-                ),
-              }),
-            )
-          } else {
-            (None, Vec::new(), None)
-          }
-        }
-        InnerCliNpmResolverRef::Byonm(_) => {
-          let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
-          (
-            Some(root_dir),
-            files,
-            Some(NodeModules::Byonm {
-              package_json_deps: self.package_json_deps_provider.deps().map(
-                |deps| SerializablePackageJsonDeps::from_deps(deps.clone()),
-              ),
-            }),
-          )
-        }
-      };
+      self.pack_node_modules(&mut eszip)?;
 
     let metadata = Metadata {
       argv: compile_flags.args.clone(),

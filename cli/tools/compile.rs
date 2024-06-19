@@ -12,6 +12,10 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
 use deno_terminal::colors;
+use eszip::EszipV2;
+use rand::Rng;
+use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -81,7 +85,7 @@ pub async fn compile(
       ts_config_for_emit.ts_config,
     )?;
   let parser = parsed_source_cache.as_capturing_parser();
-  let eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
+  let mut eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
     graph,
     parser,
     transpile_options,
@@ -97,32 +101,72 @@ pub async fn compile(
   );
   validate_output_path(&output_path)?;
 
-  let mut file = std::fs::File::create(&output_path)
-    .with_context(|| format!("Opening file '{}'", output_path.display()))?;
-  let write_result = binary_writer
-    .write_bin(
-      &mut file,
-      eszip,
-      &module_specifier,
-      &compile_flags,
-      cli_options,
+  let mut temp_filename = output_path.file_name().unwrap().to_owned();
+  temp_filename.push(format!(
+    ".tmp-{}",
+    faster_hex::hex_encode(
+      &rand::thread_rng().gen::<[u8; 8]>(),
+      &mut [0u8; 16]
     )
-    .await
-    .with_context(|| format!("Writing {}", output_path.display()));
-  drop(file);
-  if let Err(err) = write_result {
-    // errored, so attempt to remove the output path
-    let _ = std::fs::remove_file(output_path);
-    return Err(err);
+    .unwrap()
+  ));
+  let temp_path = output_path.with_file_name(temp_filename);
+
+  let mut file = std::fs::File::create(&temp_path).with_context(|| {
+    format!("Opening temporary file '{}'", temp_path.display())
+  })?;
+  let write_result = if compile_flags.eszip {
+    // TODO: write npm vfs
+    let (_, _, node_modules) = binary_writer.pack_node_modules(&mut eszip)?;
+    if let Some(node_modules) = node_modules {
+      eszip.add_opaque_data(
+        "internal://node_modules".to_string(),
+        Arc::from(deno_core::serde_json::to_string(&node_modules)?.as_bytes()),
+      );
+    }
+    file.write_all(&eszip.into_bytes()).map_err(AnyError::from)
+  } else {
+    binary_writer
+      .write_bin(
+        &mut file,
+        eszip,
+        &module_specifier,
+        &compile_flags,
+        cli_options,
+      )
+      .await
   }
+  .with_context(|| format!("Writing temporary file '{}'", temp_path.display()));
+  drop(file);
 
   // set it as executable
   #[cfg(unix)]
-  {
+  let write_result = if write_result.is_ok() && !compile_flags.eszip {
     use std::os::unix::fs::PermissionsExt;
-    let perms = std::fs::Permissions::from_mode(0o777);
-    std::fs::set_permissions(output_path, perms)?;
+    let perms = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(&temp_path, perms).with_context(|| {
+      format!(
+        "Setting permissions on temporary file '{}'",
+        temp_path.display()
+      )
+    })
+  } else {
+    write_result
+  };
+
+  if let Err(err) = write_result {
+    // errored, so attempt to remove the output path
+    let _ = std::fs::remove_file(temp_path);
+    return Err(err);
   }
+
+  std::fs::rename(&temp_path, &output_path).with_context(|| {
+    format!(
+      "Renaming temporary file '{}' to '{}'",
+      temp_path.display(),
+      output_path.display()
+    )
+  })?;
 
   Ok(())
 }
@@ -145,7 +189,7 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
 
     // Make sure we don't overwrite any file not created by Deno compiler because
     // this filename is chosen automatically in some cases.
-    if !is_standalone_binary(output_path) {
+    if !is_standalone_binary(output_path) && !is_eszip(output_path) {
       bail!(
         concat!(
           "Could not compile to file '{}' because the file already exists ",
@@ -237,6 +281,17 @@ fn get_os_specific_filepath(
   }
 }
 
+pub fn is_eszip(path: &Path) -> bool {
+  let Ok(mut file) = std::fs::File::open(path) else {
+    return false;
+  };
+  let mut magic = [0u8; 8];
+  if file.read_exact(&mut magic).is_err() {
+    return false;
+  }
+  EszipV2::has_magic(&magic)
+}
+
 #[cfg(test)]
 mod test {
   pub use super::*;
@@ -253,6 +308,7 @@ mod test {
         target: Some("x86_64-unknown-linux-gnu".to_string()),
         no_terminal: false,
         include: vec![],
+        eszip: false,
       },
       &std::env::current_dir().unwrap(),
     )
@@ -277,6 +333,7 @@ mod test {
         target: Some("x86_64-pc-windows-msvc".to_string()),
         include: vec![],
         no_terminal: false,
+        eszip: false,
       },
       &std::env::current_dir().unwrap(),
     )
