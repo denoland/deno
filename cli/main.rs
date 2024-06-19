@@ -1,31 +1,31 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-mod args;
-mod auth_tokens;
-mod cache;
-mod cdp;
-mod emit;
-mod errors;
-mod factory;
-mod file_fetcher;
-mod graph_container;
-mod graph_util;
-mod http_util;
-mod js;
-mod jsr;
-mod lsp;
-mod module_loader;
-mod napi;
-mod node;
-mod npm;
-mod ops;
-mod resolver;
-mod standalone;
-mod tools;
-mod tsc;
-mod util;
-mod version;
-mod worker;
+pub mod args;
+pub mod auth_tokens;
+pub mod cache;
+pub mod cdp;
+pub mod emit;
+pub mod errors;
+pub mod factory;
+pub mod file_fetcher;
+pub mod graph_container;
+pub mod graph_util;
+pub mod http_util;
+pub mod js;
+pub mod jsr;
+pub mod lsp;
+pub mod module_loader;
+pub mod napi;
+pub mod node;
+pub mod npm;
+pub mod ops;
+pub mod resolver;
+pub mod standalone;
+pub mod tools;
+pub mod tsc;
+pub mod util;
+pub mod version;
+pub mod worker;
 
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
@@ -54,7 +54,7 @@ use std::future::Future;
 use std::path::PathBuf;
 
 /// Ensures that all subcommands return an i32 exit code and an [`AnyError`] error type.
-trait SubcommandOutput {
+pub trait SubcommandOutput {
   fn output(self) -> Result<i32, AnyError>;
 }
 
