@@ -367,7 +367,7 @@ impl ShellCommand for NpmCommand {
     }
 
     // fallback to running the real npm command
-    let npm_path = match context.resolve_command_path("npm") {
+    let npm_path = match context.state.resolve_command_path("npm") {
       Ok(path) => path,
       Err(err) => {
         let _ = context.stderr.write_line(&format!("{}", err));
@@ -396,7 +396,7 @@ impl ShellCommand for NpxCommand {
         command.execute(context)
       } else {
         // can't find the command, so fallback to running the real npx command
-        let npx_path = match context.resolve_command_path("npx") {
+        let npx_path = match context.state.resolve_command_path("npx") {
           Ok(npx) => npx,
           Err(err) => {
             let _ = context.stderr.write_line(&format!("{}", err));
