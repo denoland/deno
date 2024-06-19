@@ -5,6 +5,9 @@
 
 fn main() {
   setup_panic_hook();
+  rustls::crypto::ring::default_provider()
+    .install_default()
+    .unwrap();
   test_server::servers::run_all_servers();
 }
 

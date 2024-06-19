@@ -6877,6 +6877,7 @@ dependencies = [
  "prost-build",
  "regex",
  "reqwest",
+ "rustls",
  "rustls-pemfile",
  "rustls-tokio-stream",
  "semver 1.0.14",

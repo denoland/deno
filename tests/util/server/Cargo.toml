@@ -43,6 +43,7 @@ pretty_assertions.workspace = true
 prost.workspace = true
 regex.workspace = true
 reqwest.workspace = true
+rustls.workspace = true
 rustls-pemfile.workspace = true
 rustls-tokio-stream.workspace = true
 semver = "=1.0.14"
