@@ -1215,6 +1215,7 @@ dependencies = [
  "reqwest",
  "ring",
  "runtimelib",
+ "rustls",
  "rustyline",
  "rustyline-derive",
  "serde",

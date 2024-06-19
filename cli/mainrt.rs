@@ -71,6 +71,9 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 }
 
 fn main() {
+  let Ok(_) = rustls::crypto::ring::default_provider().install_default() else {
+    exit_with_message("Unable to install TLS backend", 1);
+  };
   let args: Vec<_> = env::args_os().collect();
   let current_exe_path = current_exe().unwrap();
   let standalone =
