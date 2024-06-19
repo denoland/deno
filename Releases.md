@@ -6,6 +6,32 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.44.3 / 2024.06.18
+
+- feat(lsp): multi deno.json resolver scopes (#24206)
+- fix(cli): missing flag for `--unstable-process` (#24199)
+- fix(docs): correctly resolve href for built-ins (#24228)
+- fix(ext/console): bump default max str lengthto 10_00 (#24245)
+- fix(ext/http): actually await `goAhead` promise (#24226)
+- fix(ext/node): add missing BlockList & SocketAddress classes (#24229)
+- fix(ext/node): `server.close()` does graceful shutdown (#24184)
+- fix(ext/node): better support for `node:diagnostics_channel` module (#24088)
+- fix(ext/node): make process.versions own property (#24240)
+- fix(ext/node): use `Deno.FsFile.statSync()` (#24234)
+- fix(ext/permissions): add correct feature flags to winapi (#24218)
+- fix(ext/web): fix `AbortSignal.timeout()` leak (#23842)
+- fix(ext/webgpu): fix surface creation panic when adapter not initialized
+  (#24201)
+- fix(inspector): crash on "Debugger.setBlackboxPatterns" (#24204)
+- fix(lsp): use import map from workspace root (#24246)
+- fix(napi): Read reference ownership before calling finalizer to avoid crash
+  (#24203)
+- fix(no-slow-types): handle named type in mapped type (#24205)
+- fix(npm): use more relaxed package.json version constraint parsing (#24202)
+- fix(repl): prevent panic when deleting globalThis.closed property (#24014)
+- perf(lsp): store settings in Arc (#24191)
+- perf(node): ensure cjs wrapper module has deterministic output (#24248)
+
 ### 1.44.2 / 2024.06.13
 
 - FUTURE: support `deno install <alias>@npm:<package>` (#24156)
