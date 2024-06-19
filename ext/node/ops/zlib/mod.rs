@@ -1,13 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
-use deno_core::OpState;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::future::Future;
-use std::rc::Rc;
 use zlib::*;
 
 mod alloc;
@@ -27,14 +23,6 @@ fn check(condition: bool, msg: &str) -> Result<(), AnyError> {
   } else {
     Err(type_error(msg.to_string()))
   }
-}
-
-#[inline]
-fn zlib(state: &mut OpState, handle: u32) -> Result<Rc<Zlib>, AnyError> {
-  state
-    .resource_table
-    .get::<Zlib>(handle)
-    .map_err(|_| bad_resource_id())
 }
 
 #[derive(Default)]
@@ -269,7 +257,7 @@ pub fn op_zlib_new(#[smi] mode: i32) -> Result<Zlib, AnyError> {
 #[op2(fast)]
 pub fn op_zlib_close(#[cppgc] resource: &Zlib) -> Result<(), AnyError> {
   let mut resource = resource.inner.borrow_mut();
-  let mut zlib = resource
+  let zlib = resource
     .as_mut()
     .ok_or_else(|| type_error("zlib not initialized"))?;
 
@@ -294,7 +282,7 @@ pub fn op_zlib_write(
   #[buffer] result: &mut [u32],
 ) -> Result<i32, AnyError> {
   let mut zlib = resource.inner.borrow_mut();
-  let mut zlib = zlib
+  let zlib = zlib
     .as_mut()
     .ok_or_else(|| type_error("zlib not initialized"))?;
 
@@ -319,7 +307,7 @@ pub fn op_zlib_init(
   #[buffer] dictionary: &[u8],
 ) -> Result<i32, AnyError> {
   let mut zlib = resource.inner.borrow_mut();
-  let mut zlib = zlib
+  let zlib = zlib
     .as_mut()
     .ok_or_else(|| type_error("zlib not initialized"))?;
 
@@ -360,7 +348,7 @@ pub fn op_zlib_init(
 #[smi]
 pub fn op_zlib_reset(#[cppgc] resource: &Zlib) -> Result<i32, AnyError> {
   let mut zlib = resource.inner.borrow_mut();
-  let mut zlib = zlib
+  let zlib = zlib
     .as_mut()
     .ok_or_else(|| type_error("zlib not initialized"))?;
 
@@ -375,7 +363,7 @@ pub fn op_zlib_close_if_pending(
 ) -> Result<(), AnyError> {
   let pending_close = {
     let mut zlib = resource.inner.borrow_mut();
-    let mut zlib = zlib
+    let zlib = zlib
       .as_mut()
       .ok_or_else(|| type_error("zlib not initialized"))?;
 
@@ -384,7 +372,7 @@ pub fn op_zlib_close_if_pending(
   };
   if pending_close {
     if let Some(mut res) = resource.inner.borrow_mut().take() {
-      res.close();
+      let _ = res.close();
     }
   }
 
