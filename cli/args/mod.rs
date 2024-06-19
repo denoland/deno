@@ -1442,26 +1442,26 @@ impl CliOptions {
     LintOptions::resolve(maybe_lint_config, Some(lint_flags), &self.initial_cwd)
   }
 
-  pub fn resolve_lint_config(
-    &self,
-  ) -> Result<deno_lint::linter::LintConfig, AnyError> {
-    let ts_config_result =
-      self.resolve_ts_config_for_emit(TsConfigType::Emit)?;
+  // pub fn resolve_lint_config(
+  //   &self,
+  // ) -> Result<deno_lint::linter::LintConfig, AnyError> {
+  //   let ts_config_result =
+  //     self.resolve_ts_config_for_emit(TsConfigType::Emit)?;
 
-    let (transpile_options, _) =
-      crate::args::ts_config_to_transpile_and_emit_options(
-        ts_config_result.ts_config,
-      )?;
+  //   let (transpile_options, _) =
+  //     crate::args::ts_config_to_transpile_and_emit_options(
+  //       ts_config_result.ts_config,
+  //     )?;
 
-    Ok(deno_lint::linter::LintConfig {
-      default_jsx_factory: transpile_options
-        .jsx_automatic
-        .then(|| transpile_options.jsx_factory.clone()),
-      default_jsx_fragment_factory: transpile_options
-        .jsx_automatic
-        .then(|| transpile_options.jsx_fragment_factory.clone()),
-    })
-  }
+  //   Ok(deno_lint::linter::LintConfig {
+  //     default_jsx_factory: transpile_options
+  //       .jsx_automatic
+  //       .then(|| transpile_options.jsx_factory.clone()),
+  //     default_jsx_fragment_factory: transpile_options
+  //       .jsx_automatic
+  //       .then(|| transpile_options.jsx_fragment_factory.clone()),
+  //   })
+  // }
 
   pub fn resolve_config_excludes(&self) -> Result<PathOrPatternSet, AnyError> {
     let maybe_config_files = if let Some(config_file) = &self.maybe_config_file

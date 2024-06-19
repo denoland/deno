@@ -13,7 +13,6 @@ pub mod graph_util;
 pub mod http_util;
 pub mod js;
 pub mod jsr;
-pub mod lsp;
 pub mod module_loader;
 pub mod napi;
 pub mod node;
@@ -94,9 +93,7 @@ pub fn spawn_subcommand<
 
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
   let handle = match flags.subcommand.clone() {
-    DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
-      tools::registry::add(flags, add_flags).await
-    }),
+    DenoSubcommand::Add(_add_flags) => panic!("Not implemented"),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       if bench_flags.watch.is_some() {
         tools::bench::run_benchmarks_with_watch(flags, bench_flags).await
@@ -155,27 +152,14 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(flags, install_flags).await
     }),
-    DenoSubcommand::Jupyter(jupyter_flags) => spawn_subcommand(async {
-      tools::jupyter::kernel(flags, jupyter_flags).await
-    }),
+    DenoSubcommand::Jupyter(_jupyter_flags) => panic!("Notimplemented"),
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
       tools::installer::uninstall(uninstall_flags)
     }),
-    DenoSubcommand::Lsp => spawn_subcommand(async { lsp::start().await }),
-    DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
-      if lint_flags.rules {
-        tools::lint::print_rules_list(
-          lint_flags.json,
-          lint_flags.maybe_rules_tags,
-        );
-        Ok(())
-      } else {
-        tools::lint::lint(flags, lint_flags).await
-      }
-    }),
-    DenoSubcommand::Repl(repl_flags) => {
-      spawn_subcommand(async move { tools::repl::run(flags, repl_flags).await })
-    }
+    DenoSubcommand::Lsp =>  panic!("Not implemented"),
+    DenoSubcommand::Lint(_lint_flags) => 
+      panic!("Not implemented"),
+    DenoSubcommand::Repl(_repl_flags) => panic!("Not implemented"),
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.is_stdin() {
         tools::run::run_from_stdin(flags).await
@@ -234,9 +218,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       tools::vendor::vendor(flags, vendor_flags).await
     }),
     // TODO:
-    DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
-      tools::registry::publish(flags, publish_flags).await
-    }),
+    DenoSubcommand::Publish(publish_flags) => panic!("Not implemented"),
   };
 
   handle.await?
