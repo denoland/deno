@@ -1,13 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
-use deno_core::OpState;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::future::Future;
-use std::rc::Rc;
 use zlib::*;
 
 mod alloc;
@@ -27,14 +23,6 @@ fn check(condition: bool, msg: &str) -> Result<(), AnyError> {
   } else {
     Err(type_error(msg.to_string()))
   }
-}
-
-#[inline]
-fn zlib(state: &mut OpState, handle: u32) -> Result<Rc<Zlib>, AnyError> {
-  state
-    .resource_table
-    .get::<Zlib>(handle)
-    .map_err(|_| bad_resource_id())
 }
 
 #[derive(Default)]
@@ -242,7 +230,7 @@ impl ZlibInner {
 }
 
 struct Zlib {
-  inner: RefCell<ZlibInner>,
+  inner: RefCell<Option<ZlibInner>>,
 }
 
 impl deno_core::Resource for Zlib {
@@ -251,12 +239,9 @@ impl deno_core::Resource for Zlib {
   }
 }
 
-#[op2(fast)]
-#[smi]
-pub fn op_zlib_new(
-  state: &mut OpState,
-  #[smi] mode: i32,
-) -> Result<u32, AnyError> {
+#[op2]
+#[cppgc]
+pub fn op_zlib_new(#[smi] mode: i32) -> Result<Zlib, AnyError> {
   let mode = Mode::try_from(mode)?;
 
   let inner = ZlibInner {
@@ -264,18 +249,17 @@ pub fn op_zlib_new(
     ..Default::default()
   };
 
-  Ok(state.resource_table.add(Zlib {
-    inner: RefCell::new(inner),
-  }))
+  Ok(Zlib {
+    inner: RefCell::new(Some(inner)),
+  })
 }
 
 #[op2(fast)]
-pub fn op_zlib_close(
-  state: &mut OpState,
-  #[smi] handle: u32,
-) -> Result<(), AnyError> {
-  let resource = zlib(state, handle)?;
-  let mut zlib = resource.inner.borrow_mut();
+pub fn op_zlib_close(#[cppgc] resource: &Zlib) -> Result<(), AnyError> {
+  let mut resource = resource.inner.borrow_mut();
+  let zlib = resource
+    .as_mut()
+    .ok_or_else(|| type_error("zlib not initialized"))?;
 
   // If there is a pending write, defer the close until the write is done.
   zlib.close()?;
@@ -284,43 +268,10 @@ pub fn op_zlib_close(
 }
 
 #[allow(clippy::too_many_arguments)]
-#[op2(async)]
-#[serde]
-pub fn op_zlib_write_async(
-  state: Rc<RefCell<OpState>>,
-  #[smi] handle: u32,
-  #[smi] flush: i32,
-  #[buffer] input: &[u8],
-  #[smi] in_off: u32,
-  #[smi] in_len: u32,
-  #[buffer] out: &mut [u8],
-  #[smi] out_off: u32,
-  #[smi] out_len: u32,
-) -> Result<impl Future<Output = Result<(i32, u32, u32), AnyError>>, AnyError> {
-  let mut state_mut = state.borrow_mut();
-  let resource = zlib(&mut state_mut, handle)?;
-
-  let mut strm = resource.inner.borrow_mut();
-  let flush = Flush::try_from(flush)?;
-  strm.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
-
-  let state = state.clone();
-  Ok(async move {
-    let mut state_mut = state.borrow_mut();
-    let resource = zlib(&mut state_mut, handle)?;
-    let mut zlib = resource.inner.borrow_mut();
-
-    zlib.do_write(flush)?;
-    Ok((zlib.err, zlib.strm.avail_out, zlib.strm.avail_in))
-  })
-}
-
-#[allow(clippy::too_many_arguments)]
 #[op2(fast)]
 #[smi]
 pub fn op_zlib_write(
-  state: &mut OpState,
-  #[smi] handle: u32,
+  #[cppgc] resource: &Zlib,
   #[smi] flush: i32,
   #[buffer] input: &[u8],
   #[smi] in_off: u32,
@@ -330,9 +281,11 @@ pub fn op_zlib_write(
   #[smi] out_len: u32,
   #[buffer] result: &mut [u32],
 ) -> Result<i32, AnyError> {
-  let resource = zlib(state, handle)?;
-
   let mut zlib = resource.inner.borrow_mut();
+  let zlib = zlib
+    .as_mut()
+    .ok_or_else(|| type_error("zlib not initialized"))?;
+
   let flush = Flush::try_from(flush)?;
   zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
   zlib.do_write(flush)?;
@@ -346,16 +299,17 @@ pub fn op_zlib_write(
 #[op2(fast)]
 #[smi]
 pub fn op_zlib_init(
-  state: &mut OpState,
-  #[smi] handle: u32,
+  #[cppgc] resource: &Zlib,
   #[smi] level: i32,
   #[smi] window_bits: i32,
   #[smi] mem_level: i32,
   #[smi] strategy: i32,
   #[buffer] dictionary: &[u8],
 ) -> Result<i32, AnyError> {
-  let resource = zlib(state, handle)?;
   let mut zlib = resource.inner.borrow_mut();
+  let zlib = zlib
+    .as_mut()
+    .ok_or_else(|| type_error("zlib not initialized"))?;
 
   check((8..=15).contains(&window_bits), "invalid windowBits")?;
   check((-1..=9).contains(&level), "invalid level")?;
@@ -392,13 +346,12 @@ pub fn op_zlib_init(
 
 #[op2(fast)]
 #[smi]
-pub fn op_zlib_reset(
-  state: &mut OpState,
-  #[smi] handle: u32,
-) -> Result<i32, AnyError> {
-  let resource = zlib(state, handle)?;
-
+pub fn op_zlib_reset(#[cppgc] resource: &Zlib) -> Result<i32, AnyError> {
   let mut zlib = resource.inner.borrow_mut();
+  let zlib = zlib
+    .as_mut()
+    .ok_or_else(|| type_error("zlib not initialized"))?;
+
   zlib.reset_stream()?;
 
   Ok(zlib.err)
@@ -406,19 +359,20 @@ pub fn op_zlib_reset(
 
 #[op2(fast)]
 pub fn op_zlib_close_if_pending(
-  state: &mut OpState,
-  #[smi] handle: u32,
+  #[cppgc] resource: &Zlib,
 ) -> Result<(), AnyError> {
-  let resource = zlib(state, handle)?;
   let pending_close = {
     let mut zlib = resource.inner.borrow_mut();
+    let zlib = zlib
+      .as_mut()
+      .ok_or_else(|| type_error("zlib not initialized"))?;
+
     zlib.write_in_progress = false;
     zlib.pending_close
   };
   if pending_close {
-    drop(resource);
-    if let Ok(res) = state.resource_table.take_any(handle) {
-      res.close();
+    if let Some(mut res) = resource.inner.borrow_mut().take() {
+      let _ = res.close();
     }
   }
 

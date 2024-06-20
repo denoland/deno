@@ -195,7 +195,7 @@ fn canonicalize_path(path: &Path) -> Result<PathBuf, AnyError> {
         } else {
           names_stack.push(path.to_str().unwrap().to_string());
           let current_dir = current_dir()?;
-          path = current_dir.clone();
+          path.clone_from(&current_dir);
         }
       }
       Err(err) => return Err(err.into()),

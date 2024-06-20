@@ -1775,14 +1775,38 @@ export class ServerImpl extends EventEmitter {
     }
 
     if (listening && this.#ac) {
-      this.#ac.abort();
-      this.#ac = undefined;
+      if (this.#server) {
+        this.#server.shutdown();
+      } else if (this.#ac) {
+        this.#ac.abort();
+        this.#ac = undefined;
+      }
     } else {
       this.#serveDeferred!.resolve();
     }
 
     this.#server = undefined;
     return this;
+  }
+
+  closeAllConnections() {
+    if (this.#hasClosed) {
+      return;
+    }
+    if (this.#ac) {
+      this.#ac.abort();
+      this.#ac = undefined;
+    }
+  }
+
+  closeIdleConnections() {
+    if (this.#hasClosed) {
+      return;
+    }
+
+    if (this.#server) {
+      this.#server.shutdown();
+    }
   }
 
   address() {

@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-deprecated-deno-api
-
 import { fstat, fstatSync } from "node:fs";
 import { fail } from "@std/assert/mod.ts";
 import { assertStats, assertStatsBigInt } from "./_fs_stat_test.ts";
@@ -83,7 +81,7 @@ Deno.test({
       //
       assertStatsBigInt(
         fstatSync(file.rid, { bigint: true }),
-        Deno.fstatSync(file.rid),
+        file.statSync(),
       );
       //main
     } finally {

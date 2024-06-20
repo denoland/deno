@@ -350,7 +350,7 @@ impl TestRun {
             test::TestEvent::Wait(id) => {
               reporter.report_wait(tests.read().get(&id).unwrap());
             }
-            test::TestEvent::Output(_, output) => {
+            test::TestEvent::Output(output) => {
               reporter.report_output(&output);
             }
             test::TestEvent::Slow(id, elapsed) => {
