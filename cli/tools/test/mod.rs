@@ -1749,6 +1749,10 @@ pub async fn run_tests(
 
   let members_with_test_options =
     cli_options.resolve_test_options_for_members(&test_flags)?;
+  eprintln!(
+    "members_with_test_options: {:#?}",
+    members_with_test_options
+  );
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     cli_options,
     file_fetcher,

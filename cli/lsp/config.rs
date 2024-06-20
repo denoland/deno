@@ -6,6 +6,7 @@ use crate::args::read_lockfile_at_path;
 use crate::args::ConfigFile;
 use crate::args::FmtOptions;
 use crate::args::LintOptions;
+use crate::args::MemberContextDirs;
 use crate::args::DENO_FUTURE;
 use crate::cache::FastInsecureHasher;
 use crate::file_fetcher::FileFetcher;
@@ -1241,7 +1242,11 @@ impl ConfigData {
                 .specifier
                 .to_file_path()
                 .map_err(|_| anyhow!("Invalid base path."))?;
-              FmtOptions::resolve(o, &Default::default(), &base_path)
+              FmtOptions::resolve(
+                o,
+                &Default::default(),
+                MemberContextDirs::no_flags(base_path),
+              )
             })
             .inspect_err(|err| {
               lsp_warn!("  Couldn't read formatter configuration: {}", err)
@@ -1275,7 +1280,11 @@ impl ConfigData {
                 .specifier
                 .to_file_path()
                 .map_err(|_| anyhow!("Invalid base path."))?;
-              LintOptions::resolve(o, None, &base_path)
+              LintOptions::resolve(
+                o,
+                None,
+                MemberContextDirs::no_flags(base_path),
+              )
             })
             .inspect_err(|err| {
               lsp_warn!("  Couldn't read lint configuration: {}", err)
