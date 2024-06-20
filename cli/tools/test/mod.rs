@@ -1731,6 +1731,8 @@ pub async fn run_tests(
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
+  let workspace_test_options =
+    cli_options.resolve_workspace_test_options(&test_flags);
   let test_options = cli_options.resolve_test_options(test_flags)?;
   let file_fetcher = factory.file_fetcher()?;
   // Various test files should not share the same permissions in terms of
@@ -1744,11 +1746,11 @@ pub async fn run_tests(
     cli_options,
     file_fetcher,
     test_options.files.clone(),
-    &test_options.doc,
+    &workspace_test_options.doc,
   )
   .await?;
 
-  if !test_options.allow_none && specifiers_with_mode.is_empty() {
+  if !workspace_test_options.allow_none && specifiers_with_mode.is_empty() {
     return Err(generic_error("No test modules found"));
   }
 
@@ -1761,7 +1763,7 @@ pub async fn run_tests(
   )
   .await?;
 
-  if test_options.no_run {
+  if workspace_test_options.no_run {
     return Ok(());
   }
 
@@ -1787,16 +1789,16 @@ pub async fn run_tests(
           ))
         },
       )?,
-      concurrent_jobs: test_options.concurrent_jobs,
-      fail_fast: test_options.fail_fast,
+      concurrent_jobs: workspace_test_options.concurrent_jobs,
+      fail_fast: workspace_test_options.fail_fast,
       log_level,
-      filter: test_options.filter.is_some(),
-      reporter: test_options.reporter,
-      junit_path: test_options.junit_path,
+      filter: workspace_test_options.filter.is_some(),
+      reporter: workspace_test_options.reporter,
+      junit_path: workspace_test_options.junit_path,
       specifier: TestSpecifierOptions {
-        filter: TestFilter::from_flag(&test_options.filter),
-        shuffle: test_options.shuffle,
-        trace_leaks: test_options.trace_leaks,
+        filter: TestFilter::from_flag(&workspace_test_options.filter),
+        shuffle: workspace_test_options.shuffle,
+        trace_leaks: workspace_test_options.trace_leaks,
       },
     },
   )
@@ -1838,6 +1840,8 @@ pub async fn run_tests_with_watch(
         let factory = CliFactoryBuilder::new()
           .build_from_flags_for_watcher(flags, watcher_communicator.clone())?;
         let cli_options = factory.cli_options();
+        let workspace_test_options =
+          cli_options.resolve_workspace_test_options(&test_flags);
         let test_options = cli_options.resolve_test_options(test_flags)?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
@@ -1853,7 +1857,7 @@ pub async fn run_tests_with_watch(
         let cli_options = cli_options.clone();
         let module_graph_creator = factory.module_graph_creator().await?;
         let file_fetcher = factory.file_fetcher()?;
-        let test_modules = if test_options.doc {
+        let test_modules = if workspace_test_options.doc {
           collect_specifiers(
             test_options.files.clone(),
             cli_options.vendor_dir_path().map(ToOwned::to_owned),
@@ -1899,7 +1903,7 @@ pub async fn run_tests_with_watch(
           &cli_options,
           file_fetcher,
           test_options.files.clone(),
-          &test_options.doc,
+          &workspace_test_options.doc,
         )
         .await?
         .into_iter()
@@ -1915,7 +1919,7 @@ pub async fn run_tests_with_watch(
         )
         .await?;
 
-        if test_options.no_run {
+        if workspace_test_options.no_run {
           return Ok(());
         }
 
@@ -1938,16 +1942,16 @@ pub async fn run_tests_with_watch(
                 ))
               },
             )?,
-            concurrent_jobs: test_options.concurrent_jobs,
-            fail_fast: test_options.fail_fast,
+            concurrent_jobs: workspace_test_options.concurrent_jobs,
+            fail_fast: workspace_test_options.fail_fast,
             log_level,
-            filter: test_options.filter.is_some(),
-            reporter: test_options.reporter,
-            junit_path: test_options.junit_path,
+            filter: workspace_test_options.filter.is_some(),
+            reporter: workspace_test_options.reporter,
+            junit_path: workspace_test_options.junit_path,
             specifier: TestSpecifierOptions {
-              filter: TestFilter::from_flag(&test_options.filter),
-              shuffle: test_options.shuffle,
-              trace_leaks: test_options.trace_leaks,
+              filter: TestFilter::from_flag(&workspace_test_options.filter),
+              shuffle: workspace_test_options.shuffle,
+              trace_leaks: workspace_test_options.trace_leaks,
             },
           },
         )

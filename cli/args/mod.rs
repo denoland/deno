@@ -365,9 +365,8 @@ fn resolve_fmt_options(
   options
 }
 
-#[derive(Clone)]
-pub struct TestOptions {
-  pub files: FilePatterns,
+#[derive(Clone, Debug)]
+pub struct WorkspaceTestOptions {
   pub doc: bool,
   pub no_run: bool,
   pub fail_fast: Option<NonZeroUsize>,
@@ -378,6 +377,30 @@ pub struct TestOptions {
   pub trace_leaks: bool,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
+}
+
+impl WorkspaceTestOptions {
+  pub fn resolve(test_flags: &TestFlags) -> Self {
+    Self {
+      allow_none: test_flags.allow_none,
+      concurrent_jobs: test_flags
+        .concurrent_jobs
+        .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
+      doc: test_flags.doc,
+      fail_fast: test_flags.fail_fast,
+      filter: test_flags.filter.clone(),
+      no_run: test_flags.no_run,
+      shuffle: test_flags.shuffle,
+      trace_leaks: test_flags.trace_leaks,
+      reporter: test_flags.reporter,
+      junit_path: test_flags.junit_path.clone(),
+    }
+  }
+}
+
+#[derive(Clone)]
+pub struct TestOptions {
+  pub files: FilePatterns,
 }
 
 impl TestOptions {
@@ -394,18 +417,6 @@ impl TestOptions {
         Some(&test_flags.files),
         initial_cwd,
       )?,
-      allow_none: test_flags.allow_none,
-      concurrent_jobs: test_flags
-        .concurrent_jobs
-        .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
-      doc: test_flags.doc,
-      fail_fast: test_flags.fail_fast,
-      filter: test_flags.filter,
-      no_run: test_flags.no_run,
-      shuffle: test_flags.shuffle,
-      trace_leaks: test_flags.trace_leaks,
-      reporter: test_flags.reporter,
-      junit_path: test_flags.junit_path,
     })
   }
 }
@@ -1488,15 +1499,38 @@ impl CliOptions {
     })
   }
 
+  pub fn resolve_workspace_test_options(
+    &self,
+    test_flags: &TestFlags,
+  ) -> WorkspaceTestOptions {
+    WorkspaceTestOptions::resolve(test_flags)
+  }
+
+  pub fn resolve_test_options_for_members(
+    &self,
+    test_flags: &TestFlags,
+  ) -> Result<Vec<(WorkspaceMemberContext, TestOptions)>, AnyError> {
+    let cli_arg_patterns =
+      test_flags.files.as_file_patterns(self.initial_cwd())?;
+    let member_ctxs =
+      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
+    let mut result = Vec::with_capacity(member_ctxs.len());
+    for member_ctx in member_ctxs {
+      let mut options =
+        self.resolve_test_options(test_flags.clone(), &member_ctx)?;
+      // exclude the directory of other packages in the workspace for this config
+      self.append_workspace_members_to_exclude(&mut options.files, &member_ctx);
+      result.push((member_ctx, options));
+    }
+    Ok(result)
+  }
+
   pub fn resolve_test_options(
     &self,
     test_flags: TestFlags,
+    ctx: &WorkspaceMemberContext,
   ) -> Result<TestOptions, AnyError> {
-    let maybe_test_config = if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_test_config()?
-    } else {
-      None
-    };
+    let maybe_test_config = ctx.to_test_config()?;
     TestOptions::resolve(maybe_test_config, Some(test_flags), &self.initial_cwd)
   }
 
