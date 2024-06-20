@@ -83,35 +83,49 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
         Ok(async move {
           let factory = CliFactory::from_flags(flags)?;
           let cli_options = factory.cli_options();
-          let lint_options = cli_options.resolve_lint_options(lint_flags)?;
+          let mut linter = WorkspaceLinter::new(
+            factory.caches()?.clone(),
+            factory.module_graph_creator().await?.clone(),
+            &cli_options.resolve_workspace_lint_options(&lint_flags)?,
+          );
           let lint_config = cli_options.resolve_lint_config()?;
-          let files =
-            collect_lint_files(cli_options, lint_options.files.clone())
-              .and_then(|files| {
-                if files.is_empty() {
-                  Err(generic_error("No target files found."))
-                } else {
-                  Ok(files)
-                }
-              })?;
-          _ = watcher_communicator.watch_paths(files.clone());
+          for (ctx, lint_options) in
+            cli_options.resolve_lint_options_for_members(&lint_flags)?
+          {
+            let files =
+              collect_lint_files(cli_options, lint_options.files.clone())
+                .and_then(|files| {
+                  if files.is_empty() {
+                    Err(generic_error("No target files found."))
+                  } else {
+                    Ok(files)
+                  }
+                })?;
+            _ = watcher_communicator.watch_paths(files.clone());
 
-          let lint_paths = if let Some(paths) = changed_paths {
-            // lint all files on any changed (https://github.com/denoland/deno/issues/12446)
-            files
-              .iter()
-              .any(|path| {
-                canonicalize_path(path)
-                  .map(|p| paths.contains(&p))
-                  .unwrap_or(false)
-              })
-              .then_some(files)
-              .unwrap_or_else(|| [].to_vec())
-          } else {
-            files
-          };
+            let lint_paths = if let Some(paths) = &changed_paths {
+              // lint all files on any changed (https://github.com/denoland/deno/issues/12446)
+              files
+                .iter()
+                .any(|path| {
+                  canonicalize_path(path)
+                    .map(|p| paths.contains(&p))
+                    .unwrap_or(false)
+                })
+                .then_some(files)
+                .unwrap_or_else(|| [].to_vec())
+            } else {
+              files
+            };
+            linter
+              .lint_files(lint_options, lint_config.clone(), ctx, lint_paths)
+              .await?;
+          }
+          if linter.file_count == 0 {
+            return Err(generic_error("No target files found."));
+          }
+          linter.finish();
 
-          lint_files(factory, lint_options, lint_config, lint_paths).await?;
           Ok(())
         })
       },
@@ -122,12 +136,13 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     let cli_options = factory.cli_options();
     let is_stdin = lint_flags.is_stdin();
     let lint_config = cli_options.resolve_lint_config()?;
+    let workspace_lint_options =
+      cli_options.resolve_workspace_lint_options(&lint_flags)?;
     let success = if is_stdin {
       let start_ctx = cli_options.workspace.resolve_start_ctx();
-      let reporter_kind = cli_options
-        .resolve_workspace_lint_options(&lint_flags)?
-        .reporter_kind;
-      let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
+      let reporter_lock = Arc::new(Mutex::new(create_reporter(
+        workspace_lint_options.reporter_kind,
+      )));
       let lint_options =
         cli_options.resolve_lint_options(lint_flags, &start_ctx)?;
       let files = &lint_options.files;
@@ -145,11 +160,10 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       reporter_lock.lock().close(1);
       success
     } else {
-      let mut file_count = 0;
-      let mut linter = CliLinter::new(
+      let mut linter = WorkspaceLinter::new(
         factory.caches()?.clone(),
         factory.module_graph_creator().await?.clone(),
-        &cli_options.resolve_workspace_lint_options(&lint_flags)?,
+        &workspace_lint_options,
       );
       for (ctx, lint_options) in
         cli_options.resolve_lint_options_for_members(&lint_flags)?
@@ -157,13 +171,13 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
         let files = &lint_options.files;
         let target_files = collect_lint_files(cli_options, files.clone())?;
         linter
-          .lint_files(lint_options, lint_config, ctx, target_files)
+          .lint_files(lint_options, lint_config.clone(), ctx, target_files)
           .await?;
       }
       if linter.file_count == 0 {
         return Err(generic_error("No target files found."));
       }
-      Ok(linter.finish())
+      linter.finish()
     };
     if !success {
       std::process::exit(1);
@@ -173,7 +187,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
-struct CliLinter {
+struct WorkspaceLinter {
   caches: Arc<Caches>,
   module_graph_creator: Arc<ModuleGraphCreator>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
@@ -181,7 +195,7 @@ struct CliLinter {
   file_count: usize,
 }
 
-impl CliLinter {
+impl WorkspaceLinter {
   pub fn new(
     caches: Arc<Caches>,
     module_graph_creator: Arc<ModuleGraphCreator>,
@@ -735,9 +749,8 @@ impl LintReporter for PrettyLintReporter {
     }
 
     match check_count {
-      n if n <= 1 => info!("Checked {} file", n),
-      n if n > 1 => info!("Checked {} files", n),
-      _ => unreachable!(),
+      n if n == 1 => info!("Checked 1 file"),
+      n => info!("Checked {} files", n),
     }
   }
 }
@@ -787,9 +800,8 @@ impl LintReporter for CompactLintReporter {
     }
 
     match check_count {
-      n if n <= 1 => info!("Checked {} file", n),
-      n if n > 1 => info!("Checked {} files", n),
-      _ => unreachable!(),
+      n if n == 1 => info!("Checked 1 file"),
+      n => info!("Checked {} files", n),
     }
   }
 }
@@ -953,9 +965,8 @@ pub fn get_configured_rules(
   maybe_config_file: Option<&deno_config::ConfigFile>,
 ) -> ConfiguredRules {
   const NO_SLOW_TYPES_NAME: &str = "no-slow-types";
-  let implicit_no_slow_types = maybe_config_file
-    .map(|c| c.is_package() || !c.json.workspace.is_empty())
-    .unwrap_or(false);
+  let implicit_no_slow_types =
+    maybe_config_file.map(|c| c.is_package()).unwrap_or(false);
   let no_slow_types = implicit_no_slow_types
     && !rules
       .exclude
