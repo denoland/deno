@@ -90,7 +90,7 @@ async-trait = "0.1.73"
 base32 = "=0.4.0"
 base64 = "0.21.4"
 bencher = "0.1"
-brotli = "3.3.4"
+brotli = "6.0.0"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
