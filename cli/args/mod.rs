@@ -7,8 +7,6 @@ mod import_map;
 mod lockfile;
 mod package_json;
 
-pub use self::import_map::resolve_import_map;
-use ::import_map::ImportMap;
 use deno_ast::SourceMapOption;
 use deno_config::glob::PathOrPattern;
 use deno_config::workspace::Workspace;
@@ -24,14 +22,12 @@ use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
-use deno_runtime::colors::yellow;
 use deno_runtime::deno_fs::DenoConfigFsAdapter;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::resolve_import_map_value_from_specifier;
-use indexmap::IndexMap;
 
 pub use deno_config::glob::FilePatterns;
 pub use deno_config::BenchConfig;
@@ -256,12 +252,25 @@ impl CacheSetting {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BenchOptions {
-  pub files: FilePatterns,
+pub struct WorkspaceBenchOptions {
   pub filter: Option<String>,
   pub json: bool,
   pub no_run: bool,
+}
+
+impl WorkspaceBenchOptions {
+  pub fn resolve(bench_flags: &BenchFlags) -> Self {
+    Self {
+      filter: bench_flags.filter.clone(),
+      json: bench_flags.json,
+      no_run: bench_flags.no_run,
+    }
+  }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BenchOptions {
+  pub files: FilePatterns,
 }
 
 impl BenchOptions {
@@ -277,9 +286,6 @@ impl BenchOptions {
         Some(&bench_flags.files),
         initial_cwd,
       )?,
-      filter: bench_flags.filter,
-      json: bench_flags.json,
-      no_run: bench_flags.no_run,
     })
   }
 }
@@ -1525,6 +1531,13 @@ impl CliOptions {
     Ok(result)
   }
 
+  pub fn resolve_workspace_bench_options(
+    &self,
+    bench_flags: &BenchFlags,
+  ) -> WorkspaceBenchOptions {
+    WorkspaceBenchOptions::resolve(bench_flags)
+  }
+
   pub fn resolve_test_options(
     &self,
     test_flags: TestFlags,
@@ -1534,16 +1547,31 @@ impl CliOptions {
     TestOptions::resolve(maybe_test_config, Some(test_flags), &self.initial_cwd)
   }
 
+  pub fn resolve_bench_options_for_members(
+    &self,
+    bench_flags: &BenchFlags,
+  ) -> Result<Vec<(WorkspaceMemberContext, BenchOptions)>, AnyError> {
+    let cli_arg_patterns =
+      bench_flags.files.as_file_patterns(self.initial_cwd())?;
+    let member_ctxs =
+      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
+    let mut result = Vec::with_capacity(member_ctxs.len());
+    for member_ctx in member_ctxs {
+      let mut options =
+        self.resolve_bench_options(bench_flags.clone(), &member_ctx)?;
+      // exclude the directory of other packages in the workspace for this config
+      self.append_workspace_members_to_exclude(&mut options.files, &member_ctx);
+      result.push((member_ctx, options));
+    }
+    Ok(result)
+  }
+
   pub fn resolve_bench_options(
     &self,
     bench_flags: BenchFlags,
+    ctx: &WorkspaceMemberContext,
   ) -> Result<BenchOptions, AnyError> {
-    let maybe_bench_config = if let Some(config_file) = &self.maybe_config_file
-    {
-      config_file.to_bench_config()?
-    } else {
-      None
-    };
+    let maybe_bench_config = ctx.to_bench_config()?;
     BenchOptions::resolve(
       maybe_bench_config,
       Some(bench_flags),

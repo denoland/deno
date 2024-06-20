@@ -3,7 +3,6 @@
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TestFlags;
-use crate::args::TestOptions;
 use crate::args::TestReporterConfig;
 use crate::colors;
 use crate::display;
