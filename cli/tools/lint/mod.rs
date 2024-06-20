@@ -145,7 +145,6 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       )));
       let lint_options =
         cli_options.resolve_lint_options(lint_flags, &start_ctx)?;
-      let files = &lint_options.files;
       let lint_rules = get_config_rules_err_empty(
         lint_options.rules,
         start_ctx.maybe_deno_json().map(|c| c.as_ref()),

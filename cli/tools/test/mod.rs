@@ -3,6 +3,7 @@
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TestFlags;
+use crate::args::TestOptions;
 use crate::args::TestReporterConfig;
 use crate::colors;
 use crate::display;
@@ -1705,11 +1706,17 @@ fn collect_specifiers_with_test_mode(
 async fn fetch_specifiers_with_test_mode(
   cli_options: &CliOptions,
   file_fetcher: &FileFetcher,
-  files: FilePatterns,
+  member_patterns: impl Iterator<Item = FilePatterns>,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let mut specifiers_with_mode =
-    collect_specifiers_with_test_mode(cli_options, files, doc)?;
+  let mut specifiers_with_mode = member_patterns
+    .map(|files| {
+      collect_specifiers_with_test_mode(cli_options, files.clone(), doc)
+    })
+    .collect::<Result<Vec<_>, _>>()?
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
 
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = file_fetcher
@@ -1733,7 +1740,6 @@ pub async fn run_tests(
   let cli_options = factory.cli_options();
   let workspace_test_options =
     cli_options.resolve_workspace_test_options(&test_flags);
-  let test_options = cli_options.resolve_test_options(test_flags)?;
   let file_fetcher = factory.file_fetcher()?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
@@ -1742,10 +1748,12 @@ pub async fn run_tests(
     Permissions::from_options(&cli_options.permissions_options()?)?;
   let log_level = cli_options.log_level();
 
+  let members_with_test_options =
+    cli_options.resolve_test_options_for_members(&test_flags)?;
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     cli_options,
     file_fetcher,
-    test_options.files.clone(),
+    members_with_test_options.into_iter().map(|(_, v)| v.files),
     &workspace_test_options.doc,
   )
   .await?;
@@ -1842,34 +1850,43 @@ pub async fn run_tests_with_watch(
         let cli_options = factory.cli_options();
         let workspace_test_options =
           cli_options.resolve_workspace_test_options(&test_flags);
-        let test_options = cli_options.resolve_test_options(test_flags)?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        if let Some(set) = &test_options.files.include {
-          let watch_paths = set.base_paths();
-          if !watch_paths.is_empty() {
-            let _ = watcher_communicator.watch_paths(watch_paths);
-          }
-        }
-
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
         let log_level = cli_options.log_level();
         let cli_options = cli_options.clone();
         let module_graph_creator = factory.module_graph_creator().await?;
         let file_fetcher = factory.file_fetcher()?;
-        let test_modules = if workspace_test_options.doc {
-          collect_specifiers(
-            test_options.files.clone(),
-            cli_options.vendor_dir_path().map(ToOwned::to_owned),
-            |e| is_supported_test_ext(e.path),
-          )
-        } else {
-          collect_specifiers(
-            test_options.files.clone(),
-            cli_options.vendor_dir_path().map(ToOwned::to_owned),
-            is_supported_test_path_predicate,
-          )
-        }?;
+        let members_with_test_options =
+          cli_options.resolve_test_options_for_members(&test_flags)?;
+        let test_modules = members_with_test_options
+          .iter()
+          .map(|(_, test_options)| {
+            collect_specifiers(
+              test_options.files.clone(),
+              cli_options.vendor_dir_path().map(ToOwned::to_owned),
+              if workspace_test_options.doc {
+                Box::new(|e: WalkEntry| is_supported_test_ext(e.path))
+                  as Box<dyn Fn(WalkEntry) -> bool>
+              } else {
+                Box::new(is_supported_test_path_predicate)
+              },
+            )
+          })
+          .collect::<Result<Vec<_>, _>>()?
+          .into_iter()
+          .flatten()
+          .collect::<Vec<_>>();
+
+        let mut watch_paths = Vec::with_capacity(test_modules.len());
+        for test_module in &test_modules {
+          if test_module.scheme() == "file" {
+            if let Ok(path) = test_module.to_file_path() {
+              watch_paths.push(path);
+            }
+          }
+        }
+        let _ = watcher_communicator.watch_paths(watch_paths);
 
         let permissions =
           Permissions::from_options(&cli_options.permissions_options()?)?;
@@ -1902,7 +1919,7 @@ pub async fn run_tests_with_watch(
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
           &cli_options,
           file_fetcher,
-          test_options.files.clone(),
+          members_with_test_options.into_iter().map(|(_, v)| v.files),
           &workspace_test_options.doc,
         )
         .await?
