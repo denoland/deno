@@ -820,8 +820,6 @@ pub struct CliOptions {
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
-  // todo(THIS PR): REMOVE
-  maybe_workspace_config: Option<WorkspaceConfig>,
   pub workspace: Arc<Workspace>,
   pub disable_deprecated_api_warning: bool,
   pub verbose_deprecated_api_warning: bool,
@@ -871,12 +869,6 @@ impl CliOptions {
         root_folder.deno_json.as_deref(),
       )
     };
-    let maybe_workspace_config =
-      if let Some(config_file) = root_folder.deno_json.as_ref() {
-        config_file.to_workspace_config()?
-      } else {
-        None
-      };
 
     if let Some(env_file_name) = &flags.env_file {
       match from_filename(env_file_name) {
@@ -907,7 +899,6 @@ impl CliOptions {
       maybe_node_modules_folder,
       maybe_vendor_folder,
       overrides: Default::default(),
-      maybe_workspace_config,
       workspace,
       disable_deprecated_api_warning,
       verbose_deprecated_api_warning,
@@ -1325,7 +1316,6 @@ impl CliOptions {
       maybe_vendor_folder: self.maybe_vendor_folder.clone(),
       npmrc: self.npmrc.clone(),
       maybe_lockfile: self.maybe_lockfile.clone(),
-      maybe_workspace_config: self.maybe_workspace_config.clone(),
       workspace: self.workspace.clone(),
       overrides: self.overrides.clone(),
       disable_deprecated_api_warning: self.disable_deprecated_api_warning,
@@ -1411,10 +1401,6 @@ impl CliOptions {
         })
         .collect()
     })
-  }
-
-  pub fn maybe_workspace_config(&self) -> &Option<WorkspaceConfig> {
-    &self.maybe_workspace_config
   }
 
   pub fn npmrc(&self) -> &Arc<ResolvedNpmRc> {
@@ -1604,24 +1590,6 @@ impl CliOptions {
   pub fn resolve_deno_graph_workspace_members(
     &self,
   ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
-    fn workspace_config_to_workspace_members(
-      workspace_config: &deno_config::WorkspaceConfig,
-    ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
-      workspace_config
-        .members
-        .iter()
-        .map(|member| {
-          config_to_workspace_member(&member.config_file).with_context(|| {
-            format!(
-              "Failed to resolve configuration for '{}' workspace member at '{}'",
-              member.member_name,
-              member.config_file.specifier.as_str()
-            )
-          })
-        })
-        .collect()
-    }
-
     fn config_to_workspace_member(
       config: &ConfigFile,
     ) -> Result<deno_graph::WorkspaceMember, AnyError> {
@@ -1642,24 +1610,12 @@ impl CliOptions {
       })
     }
 
-    let maybe_workspace_config = self.maybe_workspace_config();
-    if let Some(wc) = maybe_workspace_config {
-      workspace_config_to_workspace_members(wc)
-    } else {
-      Ok(
-        self
-          .maybe_config_file()
-          .as_ref()
-          .and_then(|c| match config_to_workspace_member(c) {
-            Ok(m) => Some(vec![m]),
-            Err(e) => {
-              log::debug!("Deno config was not a package: {:#}", e);
-              None
-            }
-          })
-          .unwrap_or_default(),
-      )
-    }
+    self
+      .workspace
+      .packages()
+      .into_iter()
+      .map(|pkg| config_to_workspace_member(&pkg.config_file))
+      .collect::<Result<Vec<_>, _>>()
   }
 
   /// Vector of user script CLI arguments.
