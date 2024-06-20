@@ -233,139 +233,145 @@ opt-level = 1
 
 # Optimize these packages for performance.
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
-[profile.bench.package.rand]
+[profile.bench.package.async-compression]
 opt-level = 3
-[profile.bench.package.flate2]
+[profile.bench.package.base64-simd]
 opt-level = 3
 [profile.bench.package.brotli]
 opt-level = 3
-[profile.bench.package.miniz_oxide]
-opt-level = 3
-[profile.bench.package.async-compression]
-opt-level = 3
 [profile.bench.package.brotli-decompressor]
+opt-level = 3
+[profile.bench.package.bytes]
 opt-level = 3
 [profile.bench.package.deno_bench_util]
 opt-level = 3
+[profile.bench.package.deno_broadcast_channel]
+opt-level = 3
 [profile.bench.package.deno_core]
 opt-level = 3
-[profile.bench.package.deno_runtime]
-opt-level = 3
-[profile.bench.package.deno_http]
-opt-level = 3
-[profile.bench.package.deno_web]
-opt-level = 3
-[profile.bench.package.deno_broadcast_channel]
+[profile.bench.package.deno_crypto]
 opt-level = 3
 [profile.bench.package.deno_fetch]
 opt-level = 3
 [profile.bench.package.deno_ffi]
 opt-level = 3
-[profile.bench.package.deno_tls]
+[profile.bench.package.deno_http]
 opt-level = 3
-[profile.bench.package.deno_websocket]
+[profile.bench.package.deno_napi]
 opt-level = 3
 [profile.bench.package.deno_net]
 opt-level = 3
-[profile.bench.package.deno_crypto]
-opt-level = 3
 [profile.bench.package.deno_node]
 opt-level = 3
-[profile.bench.package.num-bigint-dig]
+[profile.bench.package.deno_runtime]
 opt-level = 3
-[profile.bench.package.v8]
-opt-level = 3
-[profile.bench.package.serde_v8]
-opt-level = 3
-[profile.bench.package.serde]
+[profile.bench.package.deno_tls]
 opt-level = 3
 [profile.bench.package.deno_url]
 opt-level = 3
-[profile.bench.package.url]
+[profile.bench.package.deno_web]
 opt-level = 3
-[profile.bench.package.bytes]
-opt-level = 3
-[profile.bench.package.futures-util]
+[profile.bench.package.deno_websocket]
 opt-level = 3
 [profile.bench.package.fastwebsockets]
 opt-level = 3
+[profile.bench.package.flate2]
+opt-level = 3
+[profile.bench.package.futures-util]
+opt-level = 3
 [profile.bench.package.hyper]
 opt-level = 3
+[profile.bench.package.miniz_oxide]
+opt-level = 3
+[profile.bench.package.num-bigint-dig]
+opt-level = 3
+[profile.bench.package.rand]
+opt-level = 3
+[profile.bench.package.serde]
+opt-level = 3
+[profile.bench.package.serde_v8]
+opt-level = 3
+[profile.bench.package.test_napi]
+opt-level = 3
 [profile.bench.package.tokio]
+opt-level = 3
+[profile.bench.package.url]
+opt-level = 3
+[profile.bench.package.v8]
 opt-level = 3
 [profile.bench.package.zstd]
 opt-level = 3
 [profile.bench.package.zstd-sys]
 opt-level = 3
-[profile.bench.package.base64-simd]
-opt-level = 3
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
-[profile.release.package.rand]
+[profile.release.package.async-compression]
 opt-level = 3
-[profile.release.package.flate2]
+[profile.release.package.base64-simd]
 opt-level = 3
 [profile.release.package.brotli]
 opt-level = 3
-[profile.release.package.miniz_oxide]
-opt-level = 3
-[profile.release.package.async-compression]
-opt-level = 3
 [profile.release.package.brotli-decompressor]
+opt-level = 3
+[profile.release.package.bytes]
 opt-level = 3
 [profile.release.package.deno_bench_util]
 opt-level = 3
+[profile.release.package.deno_broadcast_channel]
+opt-level = 3
 [profile.release.package.deno_core]
 opt-level = 3
-[profile.release.package.deno_runtime]
-opt-level = 3
-[profile.release.package.deno_http]
-opt-level = 3
-[profile.release.package.deno_net]
-opt-level = 3
-[profile.release.package.deno_web]
-opt-level = 3
 [profile.release.package.deno_crypto]
-opt-level = 3
-[profile.release.package.deno_node]
-opt-level = 3
-[profile.release.package.deno_broadcast_channel]
 opt-level = 3
 [profile.release.package.deno_fetch]
 opt-level = 3
 [profile.release.package.deno_ffi]
 opt-level = 3
-[profile.release.package.deno_tls]
-opt-level = 3
-[profile.release.package.deno_websocket]
+[profile.release.package.deno_http]
 opt-level = 3
 [profile.release.package.deno_napi]
 opt-level = 3
-[profile.release.package.test_napi]
+[profile.release.package.deno_net]
 opt-level = 3
-[profile.release.package.num-bigint-dig]
+[profile.release.package.deno_node]
 opt-level = 3
-[profile.release.package.v8]
+[profile.release.package.deno_runtime]
 opt-level = 3
-[profile.release.package.serde_v8]
-opt-level = 3
-[profile.release.package.serde]
+[profile.release.package.deno_tls]
 opt-level = 3
 [profile.release.package.deno_url]
 opt-level = 3
-[profile.release.package.url]
+[profile.release.package.deno_web]
 opt-level = 3
-[profile.release.package.bytes]
+[profile.release.package.deno_websocket]
+opt-level = 3
+[profile.release.package.fastwebsockets]
+opt-level = 3
+[profile.release.package.flate2]
 opt-level = 3
 [profile.release.package.futures-util]
 opt-level = 3
 [profile.release.package.hyper]
 opt-level = 3
+[profile.release.package.miniz_oxide]
+opt-level = 3
+[profile.release.package.num-bigint-dig]
+opt-level = 3
+[profile.release.package.rand]
+opt-level = 3
+[profile.release.package.serde]
+opt-level = 3
+[profile.release.package.serde_v8]
+opt-level = 3
+[profile.release.package.test_napi]
+opt-level = 3
 [profile.release.package.tokio]
+opt-level = 3
+[profile.release.package.url]
+opt-level = 3
+[profile.release.package.v8]
 opt-level = 3
 [profile.release.package.zstd]
 opt-level = 3
 [profile.release.package.zstd-sys]
-opt-level = 3
-[profile.release.package.base64-simd]
 opt-level = 3
