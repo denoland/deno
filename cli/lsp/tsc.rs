@@ -5196,7 +5196,7 @@ mod tests {
           })
           .to_string(),
           resolve_url("file:///deno.json").unwrap(),
-          &deno_config::ParseOptions::default(),
+          &deno_config::ConfigParseOptions::default(),
         )
         .unwrap(),
       )

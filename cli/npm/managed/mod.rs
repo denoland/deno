@@ -67,6 +67,7 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   pub maybe_node_modules_path: Option<PathBuf>,
   pub npm_system_info: NpmSystemInfo,
+  pub package_json_deps_provider: Arc<PackageJsonDepsProvider>,
   pub npmrc: Arc<ResolvedNpmRc>,
 }
 
@@ -91,6 +92,7 @@ pub async fn create_managed_npm_resolver_for_lsp(
       npm_api,
       npm_cache,
       options.npmrc,
+      options.package_json_deps_provider,
       options.text_only_progress_bar,
       options.maybe_node_modules_path,
       options.npm_system_info,
@@ -114,6 +116,7 @@ pub async fn create_managed_npm_resolver(
     npm_api,
     npm_cache,
     options.npmrc,
+    options.package_json_deps_provider,
     options.text_only_progress_bar,
     options.maybe_node_modules_path,
     options.npm_system_info,
@@ -129,6 +132,7 @@ fn create_inner(
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
   npm_rc: Arc<ResolvedNpmRc>,
+  package_json_deps_provider: Arc<PackageJsonDepsProvider>,
   text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   node_modules_dir_path: Option<PathBuf>,
   npm_system_info: NpmSystemInfo,
@@ -161,6 +165,7 @@ fn create_inner(
     maybe_lockfile,
     npm_api,
     npm_cache,
+    package_json_deps_provider,
     resolution,
     tarball_cache,
     text_only_progress_bar,
@@ -248,6 +253,7 @@ pub struct ManagedCliNpmResolver {
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
+  package_json_deps_provider: Arc<PackageJsonDepsProvider>,
   resolution: Arc<NpmResolution>,
   tarball_cache: Arc<TarballCache>,
   text_only_progress_bar: ProgressBar,
@@ -271,6 +277,7 @@ impl ManagedCliNpmResolver {
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     npm_api: Arc<CliNpmRegistryApi>,
     npm_cache: Arc<NpmCache>,
+    package_json_deps_provider: Arc<PackageJsonDepsProvider>,
     resolution: Arc<NpmResolution>,
     tarball_cache: Arc<TarballCache>,
     text_only_progress_bar: ProgressBar,
@@ -282,6 +289,7 @@ impl ManagedCliNpmResolver {
       maybe_lockfile,
       npm_api,
       npm_cache,
+      package_json_deps_provider,
       text_only_progress_bar,
       resolution,
       tarball_cache,
@@ -441,12 +449,14 @@ impl ManagedCliNpmResolver {
   pub async fn ensure_top_level_package_json_install(
     &self,
   ) -> Result<(), AnyError> {
-    let Some(reqs) = self.package_json_deps_provider.reqs() else {
-      return Ok(());
-    };
     if !self.top_level_install_flag.raise() {
       return Ok(()); // already did this
     }
+    let reqs = self.package_json_deps_provider.reqs();
+    if reqs.is_empty() {
+      return Ok(());
+    }
+
     // check if something needs resolving before bothering to load all
     // the package information (which is slow)
     if reqs
@@ -459,7 +469,6 @@ impl ManagedCliNpmResolver {
       return Ok(()); // everything is already resolvable
     }
 
-    let reqs = reqs.into_iter().cloned().collect::<Vec<_>>();
     self.add_package_reqs(&reqs).await
   }
 
@@ -554,6 +563,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       self.maybe_lockfile.clone(),
       self.npm_api.clone(),
       self.npm_cache.clone(),
+      self.package_json_deps_provider.clone(),
       npm_resolution,
       self.tarball_cache.clone(),
       self.text_only_progress_bar.clone(),

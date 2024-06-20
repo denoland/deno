@@ -5,6 +5,7 @@ mod flags;
 mod flags_net;
 mod import_map;
 mod lockfile;
+mod package_json;
 
 pub use self::import_map::resolve_import_map;
 use ::import_map::ImportMap;
@@ -1172,22 +1173,18 @@ impl CliOptions {
   }
 
   pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
-    match &self.flags.subcommand {
+    let main_module = match &self.flags.subcommand {
       DenoSubcommand::Bundle(bundle_flags) => {
-        resolve_url_or_path(&bundle_flags.source_file, self.initial_cwd())
-          .map_err(AnyError::from)
+        resolve_url_or_path(&bundle_flags.source_file, self.initial_cwd())?
       }
       DenoSubcommand::Compile(compile_flags) => {
-        resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())
-          .map_err(AnyError::from)
+        resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
       }
       DenoSubcommand::Eval(_) => {
-        resolve_url_or_path("./$deno$eval", self.initial_cwd())
-          .map_err(AnyError::from)
+        resolve_url_or_path("./$deno$eval", self.initial_cwd())?
       }
       DenoSubcommand::Repl(_) => {
-        resolve_url_or_path("./$deno$repl.ts", self.initial_cwd())
-          .map_err(AnyError::from)
+        resolve_url_or_path("./$deno$repl.ts", self.initial_cwd())?
       }
       DenoSubcommand::Run(run_flags) => {
         if run_flags.is_stdin() {
@@ -1196,25 +1193,51 @@ impl CliOptions {
             .and_then(|cwd| {
               resolve_url_or_path("./$deno$stdin.ts", &cwd)
                 .map_err(AnyError::from)
-            })
+            })?
         } else if run_flags.watch.is_some() {
-          resolve_url_or_path(&run_flags.script, self.initial_cwd())
-            .map_err(AnyError::from)
+          resolve_url_or_path(&run_flags.script, self.initial_cwd())?
         } else if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
-          ModuleSpecifier::parse(&run_flags.script).map_err(AnyError::from)
+          ModuleSpecifier::parse(&run_flags.script)?
         } else {
-          resolve_url_or_path(&run_flags.script, self.initial_cwd())
-            .map_err(AnyError::from)
+          resolve_url_or_path(&run_flags.script, self.initial_cwd())?
         }
       }
       DenoSubcommand::Serve(run_flags) => {
-        resolve_url_or_path(&run_flags.script, self.initial_cwd())
-          .map_err(AnyError::from)
+        resolve_url_or_path(&run_flags.script, self.initial_cwd())?
       }
       _ => {
         bail!("No main module.")
       }
-    }
+    };
+
+    // todo(THIS PR): I think maybe we don't need to do this
+    // if let Ok(package_ref) = NpmPackageReqReference::from_specifier(&main_module) {
+    //   // When using the wildcard version, select the same version used in the
+    //   // package.json deps in order to prevent adding a new dependency version
+    //   if package_ref.req().version_req.version_text() == "*" {
+    //     let start_ctx = self.workspace.resolve_start_ctx();
+    //     start_ctx.
+    //     shared
+    //       .options
+    //       .maybe_root_package_json_deps
+    //       .as_ref()
+    //       .and_then(|deps| {
+    //         deps
+    //           .values()
+    //           .filter_map(|v| v.as_ref().ok())
+    //           .find(|dep| dep.name == package_ref.req().name)
+    //           .map(|dep| {
+    //             NpmPackageReqReference::new(PackageReqReference {
+    //               req: dep.clone(),
+    //               sub_path: package_ref.sub_path().map(|s| s.to_string()),
+    //             })
+    //           })
+    //       })
+    //       .unwrap_or(package_ref)
+    //   }
+    // }
+
+    Ok(main_module)
   }
 
   pub fn resolve_file_header_overrides(

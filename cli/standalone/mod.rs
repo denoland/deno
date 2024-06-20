@@ -377,6 +377,10 @@ pub async fn run(
             text_only_progress_bar: progress_bar,
             maybe_node_modules_path,
             npm_system_info: Default::default(),
+            package_json_deps_provider: Arc::new(
+              // this is only used for installing packages, which isn't necessary with deno compile
+              PackageJsonDepsProvider::empty(),
+            ),
             // Packages from different registries are already inlined in the ESZip,
             // so no need to create actual `.npmrc` configuration.
             npmrc: create_default_npmrc(),
@@ -415,6 +419,10 @@ pub async fn run(
             text_only_progress_bar: progress_bar,
             maybe_node_modules_path: None,
             npm_system_info: Default::default(),
+            package_json_deps_provider: Arc::new(
+              // this is only used for installing packages, which isn't necessary with deno compile
+              PackageJsonDepsProvider::empty(),
+            ),
             // Packages from different registries are already inlined in the ESZip,
             // so no need to create actual `.npmrc` configuration.
             npmrc: create_default_npmrc(),
@@ -468,7 +476,7 @@ pub async fn run(
         Arc::new(pkg_json)
       })
       .collect();
-    WorkspaceResolver::new_for_deno_compile(import_map, pkg_jsons)
+    WorkspaceResolver::new_raw(import_map, pkg_jsons)
   };
   let cli_node_resolver = Arc::new(CliNodeResolver::new(
     Some(cjs_resolutions.clone()),

@@ -4,6 +4,7 @@ use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::Lockfile;
+use crate::args::PackageJsonDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
@@ -424,6 +425,9 @@ impl CliFactory {
             cache_setting: self.options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
             maybe_node_modules_path: self.options.node_modules_dir_path().cloned(),
+            package_json_deps_provider: Arc::new(PackageJsonDepsProvider::from_workspace(
+              &self.options.workspace,
+            )),
             npm_system_info: self.options.npm_system_info(),
             npmrc: self.options.npmrc().clone()
           })

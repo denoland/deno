@@ -356,22 +356,22 @@ impl CjsResolutionStore {
 /// import map, JSX settings.
 #[derive(Debug)]
 pub struct CliGraphResolver {
+  node_resolver: Option<Arc<CliNodeResolver>>,
+  npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   sloppy_imports_resolver: Option<SloppyImportsResolver>,
+  workspace_resolver: Arc<WorkspaceResolver>,
   maybe_default_jsx_import_source: Option<String>,
   maybe_default_jsx_import_source_types: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   maybe_vendor_specifier: Option<ModuleSpecifier>,
-  node_resolver: Option<Arc<CliNodeResolver>>,
-  npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-  workspace_resolver: Arc<WorkspaceResolver>,
   found_package_json_dep_flag: AtomicFlag,
   bare_node_builtins_enabled: bool,
 }
 
 pub struct CliGraphResolverOptions<'a> {
-  pub sloppy_imports_resolver: Option<SloppyImportsResolver>,
   pub node_resolver: Option<Arc<CliNodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
+  pub sloppy_imports_resolver: Option<SloppyImportsResolver>,
   pub workspace_resolver: Arc<WorkspaceResolver>,
   pub bare_node_builtins_enabled: bool,
   pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
@@ -381,7 +381,10 @@ pub struct CliGraphResolverOptions<'a> {
 impl CliGraphResolver {
   pub fn new(options: CliGraphResolverOptions) -> Self {
     Self {
+      node_resolver: options.node_resolver,
+      npm_resolver: options.npm_resolver,
       sloppy_imports_resolver: options.sloppy_imports_resolver,
+      workspace_resolver: options.workspace_resolver,
       maybe_default_jsx_import_source: options
         .maybe_jsx_import_source_config
         .as_ref()
@@ -396,9 +399,6 @@ impl CliGraphResolver {
       maybe_vendor_specifier: options
         .maybe_vendor_dir
         .and_then(|v| ModuleSpecifier::from_directory_path(v).ok()),
-      node_resolver: options.node_resolver,
-      npm_resolver: options.npm_resolver,
-      workspace_resolver: options.workspace_resolver,
       found_package_json_dep_flag: Default::default(),
       bare_node_builtins_enabled: options.bare_node_builtins_enabled,
     }

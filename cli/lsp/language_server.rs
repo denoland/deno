@@ -2,6 +2,8 @@
 
 use base64::Engine;
 use deno_ast::MediaType;
+use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
@@ -13,6 +15,7 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
+use deno_runtime::deno_fs::DenoConfigFsAdapter;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -3494,12 +3497,23 @@ impl Inner {
         ..Default::default()
       },
       self.initial_cwd.clone(),
-      config_data.and_then(|d| d.config_file.as_deref().cloned()),
       config_data.and_then(|d| d.lockfile.clone()),
-      config_data.and_then(|d| d.package_json.as_deref().cloned()),
       config_data
         .and_then(|d| d.npmrc.clone())
         .unwrap_or_else(create_default_npmrc),
+      // todo: we need a way to convert config data to a Workspace
+      Arc::new(Workspace::discover(&WorkspaceDiscoverOptions {
+        fs: &DenoConfigFsAdapter::new(&deno_runtime::deno_fs::RealFs),
+        pkg_json_cache: None,
+        start: deno_config::workspace::WorkspaceDiscoverStart::Dir(
+          &self.initial_cwd,
+        ),
+        config_parse_options: &deno_config::ConfigParseOptions {
+          include_task_comments: false,
+        },
+        additional_config_file_names: &[],
+        discover_pkg_json: true,
+      })?),
       force_global_cache,
     )?;
 

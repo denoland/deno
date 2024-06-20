@@ -297,8 +297,8 @@ fn build_resolver(
     node_resolver: None,
     npm_resolver: None,
     sloppy_imports_resolver: None,
-    workspace_resolver: Arc::new(WorkspaceResolver::new_for_deno_compile(
-      Arc::new(original_import_map),
+    workspace_resolver: Arc::new(WorkspaceResolver::new_raw(
+      original_import_map,
       Vec::new(),
     )),
     maybe_jsx_import_source_config,
