@@ -9,7 +9,10 @@ const {
   TypedArrayPrototypeSlice,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeGetByteLength,
+  DataViewPrototypeGetBuffer,
+  TypedArrayPrototypeGetBuffer,
 } = primordials;
+const { isTypedArray, isDataView, close } = core;
 import {
   op_brotli_compress,
   op_brotli_compress_async,
@@ -34,10 +37,10 @@ const toU8 = (input) => {
     return enc.encode(input);
   }
 
-  // deno-lint-ignore prefer-primordials
-  if (input.buffer) {
-    // deno-lint-ignore prefer-primordials
-    return new Uint8Array(input.buffer);
+  if (isTypedArray(input)) {
+    return new Uint8Array(TypedArrayPrototypeGetBuffer(input));
+  } else if (isDataView(input)) {
+    return new Uint8Array(DataViewPrototypeGetBuffer(input));
   }
 
   return input;
@@ -73,7 +76,7 @@ export class BrotliDecompress extends Transform {
           // deno-lint-ignore prefer-primordials
           this.push(TypedArrayPrototypeSlice(output, 0, avail));
         }
-        core.close(context);
+        close(context);
         callback();
       },
     });
@@ -106,7 +109,7 @@ export class BrotliCompress extends Transform {
           // deno-lint-ignore prefer-primordials
           this.push(TypedArrayPrototypeSlice(output, 0, avail));
         }
-        core.close(context);
+        close(context);
         callback();
       },
     });
