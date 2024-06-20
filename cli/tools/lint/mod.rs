@@ -9,14 +9,22 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_config::glob::FilePatterns;
+use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceMemberContext;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::futures::future::BoxFuture;
+use deno_core::futures::future::LocalBoxFuture;
+use deno_core::futures::future::Shared;
+use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_core::unsync::JoinHandle;
 use deno_graph::FastCheckDiagnostic;
+use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::LintConfig;
 use deno_lint::linter::LintFileOptions;
@@ -28,12 +36,15 @@ use log::debug;
 use log::info;
 use serde::Serialize;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fs;
+use std::future::Future;
 use std::io::stdin;
 use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::args::CliOptions;
@@ -86,6 +97,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
           let mut linter = WorkspaceLinter::new(
             factory.caches()?.clone(),
             factory.module_graph_creator().await?.clone(),
+            cli_options.workspace.clone(),
             &cli_options.resolve_workspace_lint_options(&lint_flags)?,
           );
           let lint_config = cli_options.resolve_lint_config()?;
@@ -162,6 +174,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       let mut linter = WorkspaceLinter::new(
         factory.caches()?.clone(),
         factory.module_graph_creator().await?.clone(),
+        cli_options.workspace.clone(),
         &workspace_lint_options,
       );
       for (ctx, lint_options) in
@@ -186,10 +199,56 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
+struct InnerSharedLocalFuture<'a, T: Clone> {
+  future: RefCell<Option<LocalBoxFuture<'a, T>>>,
+  result: RefCell<Option<T>>,
+}
+
+#[derive(Clone)]
+struct SharedLocalFuture<'a, T: Clone>(Rc<InnerSharedLocalFuture<'a, T>>);
+
+impl<'a, T: Clone> SharedLocalFuture<'a, T> {
+  pub fn new(future: LocalBoxFuture<'a, T>) -> Self {
+    SharedLocalFuture(Rc::new(InnerSharedLocalFuture {
+      future: RefCell::new(Some(future)),
+      result: Default::default(),
+    }))
+  }
+}
+
+impl<'a, T: Clone> Future for SharedLocalFuture<'a, T> {
+  type Output = T;
+
+  fn poll(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Self::Output> {
+    use std::task::Poll;
+
+    if let Some(result) = self.0.result.borrow().clone() {
+      return Poll::Ready(result);
+    }
+
+    let mut maybe_future = self.0.future.borrow_mut();
+    let future = maybe_future.as_mut().unwrap();
+    match future.as_mut().poll(cx) {
+      Poll::Ready(result) => {
+        *self.0.result.borrow_mut() = Some(result.clone());
+        *maybe_future = None;
+        Poll::Ready(result)
+      }
+      Poll::Pending => Poll::Pending,
+    }
+  }
+}
+
 struct WorkspaceLinter {
   caches: Arc<Caches>,
   module_graph_creator: Arc<ModuleGraphCreator>,
+  workspace: Arc<Workspace>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
+  workspace_module_graph:
+    Option<SharedLocalFuture<'static, Result<Arc<ModuleGraph>, Arc<AnyError>>>>,
   has_error: Arc<AtomicFlag>,
   file_count: usize,
 }
@@ -198,6 +257,7 @@ impl WorkspaceLinter {
   pub fn new(
     caches: Arc<Caches>,
     module_graph_creator: Arc<ModuleGraphCreator>,
+    workspace: Arc<Workspace>,
     workspace_options: &WorkspaceLintOptions,
   ) -> Self {
     let reporter_lock =
@@ -205,7 +265,9 @@ impl WorkspaceLinter {
     Self {
       caches,
       module_graph_creator,
+      workspace,
       reporter_lock,
+      workspace_module_graph: None,
       has_error: Default::default(),
       file_count: 0,
     }
@@ -232,41 +294,62 @@ impl WorkspaceLinter {
 
     let mut futures = Vec::with_capacity(2);
     if lint_rules.no_slow_types {
+      if self.workspace_module_graph.is_none() {
+        let module_graph_creator = self.module_graph_creator.clone();
+        let packages = self.workspace.packages();
+        self.workspace_module_graph = Some(SharedLocalFuture::new(
+          async move {
+            module_graph_creator
+              .create_and_validate_publish_graph(&packages, true)
+              .await
+              .map(Arc::new)
+              .map_err(Arc::new)
+          }
+          .boxed_local(),
+        ));
+      }
+      let workspace_module_graph_future =
+        self.workspace_module_graph.as_ref().unwrap().clone();
       let publish_config = member_ctx.maybe_package_config();
       if let Some(publish_config) = publish_config {
         let has_error = self.has_error.clone();
         let reporter_lock = self.reporter_lock.clone();
-        let module_graph_creator = self.module_graph_creator.clone();
         let path_urls = paths
           .iter()
           .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
           .collect::<HashSet<_>>();
-        futures.push(deno_core::unsync::spawn(async move {
-          let graph = module_graph_creator
-            .create_and_validate_publish_graph(
-              &vec![publish_config.clone()],
-              true,
-            )
-            .await?;
-          let export_urls =
-            publish_config.config_file.resolve_export_value_urls()?;
-          if !export_urls.iter().any(|url| path_urls.contains(url)) {
-            return Ok(()); // entrypoint is not specified, so skip
-          }
-          let diagnostics = no_slow_types::collect_no_slow_type_diagnostics(
-            &export_urls,
-            &graph,
-          );
-          if !diagnostics.is_empty() {
-            has_error.raise();
-            let mut reporter = reporter_lock.lock();
-            for diagnostic in &diagnostics {
-              reporter
-                .visit_diagnostic(LintOrCliDiagnostic::FastCheck(diagnostic));
+        futures.push(
+          async move {
+            // let graph = module_graph_creator
+            //   .create_and_validate_publish_graph(
+            //     &vec![publish_config.clone()],
+            //     true,
+            //   )
+            //   .await?;
+            let graph = workspace_module_graph_future
+              .await
+              .map_err(|err| anyhow!("{:#}", err))?;
+            let export_urls =
+              publish_config.config_file.resolve_export_value_urls()?;
+            if !export_urls.iter().any(|url| path_urls.contains(url)) {
+              return Ok(()); // entrypoint is not specified, so skip
             }
+            let diagnostics = no_slow_types::collect_no_slow_type_diagnostics(
+              &export_urls,
+              &graph,
+            );
+            if !diagnostics.is_empty() {
+              has_error.raise();
+              let mut reporter = reporter_lock.lock();
+              for diagnostic in &diagnostics {
+                reporter
+                  .visit_diagnostic(LintOrCliDiagnostic::FastCheck(diagnostic));
+              }
+            }
+            Ok(())
           }
-          Ok(())
-        }));
+          .boxed_local(),
+        );
       }
     }
 
@@ -277,7 +360,7 @@ impl WorkspaceLinter {
       let incremental_cache = incremental_cache.clone();
       let lint_config = lint_config.clone();
       let fix = lint_options.fix;
-      deno_core::unsync::spawn(async move {
+      async move {
         run_parallelized(paths, {
           move |file_path| {
             let file_text =
@@ -313,7 +396,8 @@ impl WorkspaceLinter {
           }
         })
         .await
-      })
+      }
+      .boxed_local()
     });
 
     deno_core::futures::future::try_join_all(futures).await?;
