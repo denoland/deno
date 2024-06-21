@@ -1419,6 +1419,7 @@ export class ServerResponse extends NodeWritable {
     this.#headers[name] = value;
     return this;
   }
+
   appendHeader(name: string, value: string | string[]) {
     if (Array.isArray(value)) {
       this.#hasNonStringHeaders = true;
@@ -1429,7 +1430,12 @@ export class ServerResponse extends NodeWritable {
       if (!Array.isArray(this.#headers[name])) {
         this.#headers[name] = [this.#headers[name]];
       }
-      this.#headers[name].push(value);
+      const header = this.#headers[name];
+      if (Array.isArray(value)) {
+        header.push(...value);
+      } else {
+        header.push(value);
+      }
     }
     return this;
   }

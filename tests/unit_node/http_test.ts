@@ -975,6 +975,8 @@ Deno.test("[node/http] ServerResponse appendHeader", async () => {
     res.appendHeader("foo", "baz");
     res.appendHeader("foo", ["qux"]);
     res.appendHeader("foo", ["quux"]);
+    res.appendHeader("Set-Cookie", "a=b");
+    res.appendHeader("Set-Cookie", ["c=d", "e=f"]);
     res.end("Hello World");
   });
 
@@ -982,6 +984,7 @@ Deno.test("[node/http] ServerResponse appendHeader", async () => {
     const { port } = server.address() as { port: number };
     const res = await fetch(`http://localhost:${port}`);
     assertEquals(res.headers.get("foo"), "bar, baz, qux, quux");
+    assertEquals(res.headers.getSetCookie(), ["a=b", "c=d", "e=f"]);
     assertEquals(await res.text(), "Hello World");
     server.close(() => {
       resolve();
