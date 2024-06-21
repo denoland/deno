@@ -432,6 +432,7 @@ class WebSocket extends EventTarget {
 
         const event = new CloseEvent("close");
         this.dispatchEvent(event);
+        core.tryClose(rid);
         break;
       }
 
