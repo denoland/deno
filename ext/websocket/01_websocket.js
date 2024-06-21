@@ -426,7 +426,8 @@ class WebSocket extends EventTarget {
       const kind = await op_ws_next_event(rid);
       /* close the connection if read was cancelled, and we didn't get a close frame */
       if (
-        this[_readyState] == CLOSING && kind <= 3 && this[_role] !== CLIENT
+        (this[_readyState] == CLOSING) &&
+        kind <= 3 && this[_role] !== CLIENT
       ) {
         this[_readyState] = CLOSED;
 
