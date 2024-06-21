@@ -485,26 +485,17 @@ impl Resolver for CliGraphResolver {
       .map_err(|err| AnyError::from(err).into());
     let result = match result {
       Ok(resolution) => match resolution {
-        MappedResolution::ImportMap(specifier) => Ok(specifier),
+        MappedResolution::Normal(specifier) => Ok(specifier),
         // todo(THIS PR): for byonm it should do resolution solely based on
         // the referrer and not the package.json
-        MappedResolution::PackageJson { req_ref, .. } => {
+        MappedResolution::PackageJson { .. } => {
           // found a specifier in the package.json, so mark that
           // we need to do an "npm install" later
           self.found_package_json_dep_flag.raise();
 
-          match &self.node_resolver {
-            Some(node_resolver) => {
-              return node_resolver
-                .resolve_req_reference(&req_ref, referrer, to_node_mode(mode))
-                .map(|res| res.into_url())
-                .map_err(|err| err.into());
-            }
-            None => {
-              // TODO(THIS PR): THIS
-              todo!();
-            }
-          }
+          resolution
+            .into_url()
+            .map_err(|e| ResolveError::Other(e.into()))
         }
       },
       Err(err) => Err(err),

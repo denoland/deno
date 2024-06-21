@@ -368,7 +368,8 @@ impl WorkspaceLinter {
   pub fn finish(self) -> bool {
     debug!("Found {} files", self.file_count);
     self.reporter_lock.lock().close(self.file_count);
-    self.has_error.is_raised()
+    let success = !self.has_error.is_raised();
+    success
   }
 }
 

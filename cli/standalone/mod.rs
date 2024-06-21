@@ -140,7 +140,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
           .map(|res| res.into_url());
       }
-      MappedResolution::ImportMap(specifier) => {
+      MappedResolution::Normal(specifier) => {
         if specifier.scheme() == "jsr" {
           if let Some(module) = self.shared.eszip.get_module(specifier.as_str())
           {
