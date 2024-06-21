@@ -1493,8 +1493,13 @@ fn parse_private_key(
 ) -> Result<pkcs8::SecretDocument, AnyError> {
   match format {
     "pem" => {
-      let (_, doc) =
-        pkcs8::SecretDocument::from_pem(std::str::from_utf8(key).unwrap())?;
+      let pem = std::str::from_utf8(key).map_err(|err| {
+        type_error(format!(
+          "Invalid PEM private key: not valid utf8 starting at byte {}",
+          err.valid_up_to()
+        ))
+      })?;
+      let (_, doc) = pkcs8::SecretDocument::from_pem(pem)?;
       Ok(doc)
     }
     "der" => {
@@ -1600,8 +1605,13 @@ fn parse_public_key(
 ) -> Result<pkcs8::Document, AnyError> {
   match format {
     "pem" => {
-      let (label, doc) =
-        pkcs8::Document::from_pem(std::str::from_utf8(key).unwrap())?;
+      let pem = std::str::from_utf8(key).map_err(|err| {
+        type_error(format!(
+          "Invalid PEM private key: not valid utf8 starting at byte {}",
+          err.valid_up_to()
+        ))
+      })?;
+      let (label, doc) = pkcs8::Document::from_pem(pem)?;
       if label != "PUBLIC KEY" {
         return Err(type_error("Invalid PEM label"));
       }

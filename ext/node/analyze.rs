@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -106,7 +107,8 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         .to_string(),
     ];
 
-    let mut all_exports = analysis.exports.into_iter().collect::<HashSet<_>>();
+    // use a BTreeSet to make the output deterministic for v8's code cache
+    let mut all_exports = analysis.exports.into_iter().collect::<BTreeSet<_>>();
 
     if !analysis.reexports.is_empty() {
       let mut errors = Vec::new();
@@ -159,7 +161,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     &'a self,
     entry_specifier: &url::Url,
     reexports: Vec<String>,
-    all_exports: &mut HashSet<String>,
+    all_exports: &mut BTreeSet<String>,
     // this goes through the modules concurrently, so collect
     // the errors in order to be deterministic
     errors: &mut Vec<anyhow::Error>,

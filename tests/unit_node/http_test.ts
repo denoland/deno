@@ -968,6 +968,32 @@ Deno.test("[node/http] ServerResponse getHeader", async () => {
   await promise;
 });
 
+Deno.test("[node/http] ServerResponse appendHeader", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.setHeader("foo", "bar");
+    res.appendHeader("foo", "baz");
+    res.appendHeader("foo", ["qux"]);
+    res.appendHeader("foo", ["quux"]);
+    res.appendHeader("Set-Cookie", "a=b");
+    res.appendHeader("Set-Cookie", ["c=d", "e=f"]);
+    res.end("Hello World");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(res.headers.get("foo"), "bar, baz, qux, quux");
+    assertEquals(res.headers.getSetCookie(), ["a=b", "c=d", "e=f"]);
+    assertEquals(await res.text(), "Hello World");
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
 Deno.test("[node/http] IncomingMessage override", () => {
   const req = new http.IncomingMessage(new net.Socket());
   // https://github.com/dougmoscrop/serverless-http/blob/3aaa6d0fe241109a8752efb011c242d249f32368/lib/request.js#L20-L30

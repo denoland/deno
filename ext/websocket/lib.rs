@@ -36,13 +36,14 @@ use http::Request;
 use http::StatusCode;
 use http::Uri;
 use once_cell::sync::Lazy;
-use rustls_tokio_stream::rustls::pki_types::ServerName;
 use rustls_tokio_stream::rustls::RootCertStore;
+use rustls_tokio_stream::rustls::ServerName;
 use rustls_tokio_stream::TlsStream;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::convert::TryFrom;
 use std::fmt;
 use std::future::Future;
 use std::num::NonZeroUsize;
@@ -244,8 +245,8 @@ async fn handshake_http1_wss(
 ) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
   let tcp_socket = TcpStream::connect(addr).await?;
   let tls_config = create_ws_client_config(state, SocketUse::Http1Only)?;
-  let dnsname = ServerName::try_from(domain.to_string())
-    .map_err(|_| invalid_hostname(domain))?;
+  let dnsname =
+    ServerName::try_from(domain).map_err(|_| invalid_hostname(domain))?;
   let mut tls_connector = TlsStream::new_client_side(
     tcp_socket,
     ClientConnection::new(tls_config.into(), dnsname)?,
@@ -269,8 +270,8 @@ async fn handshake_http2_wss(
 ) -> Result<(WebSocket<WebSocketStream>, http::HeaderMap), AnyError> {
   let tcp_socket = TcpStream::connect(addr).await?;
   let tls_config = create_ws_client_config(state, SocketUse::Http2Only)?;
-  let dnsname = ServerName::try_from(domain.to_string())
-    .map_err(|_| invalid_hostname(domain))?;
+  let dnsname =
+    ServerName::try_from(domain).map_err(|_| invalid_hostname(domain))?;
   // We need to better expose the underlying errors here
   let mut tls_connector = TlsStream::new_client_side(
     tcp_socket,

@@ -340,7 +340,7 @@ async fn resolve_references_code_lens(
       locations.push(
         reference
           .entry
-          .to_location(asset_or_doc.line_index(), &language_server.url_map),
+          .to_location(asset_or_doc.line_index(), language_server),
       );
     }
     Ok(locations)

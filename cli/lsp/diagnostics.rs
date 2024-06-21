@@ -5,6 +5,7 @@ use super::client::Client;
 use super::config::Config;
 use super::documents;
 use super::documents::Document;
+use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::language_server;
 use super::language_server::StateSnapshot;
@@ -120,6 +121,7 @@ impl DiagnosticsPublisher {
     source: DiagnosticSource,
     diagnostics: DiagnosticVec,
     url_map: &LspUrlMap,
+    documents: &Documents,
     token: &CancellationToken,
   ) -> usize {
     let mut diagnostics_by_specifier =
@@ -153,11 +155,12 @@ impl DiagnosticsPublisher {
       self
         .state
         .update(&record.specifier, version, &all_specifier_diagnostics);
+      let file_referrer = documents.get_file_referrer(&record.specifier);
       self
         .client
         .publish_diagnostics(
           url_map
-            .normalize_specifier(&record.specifier)
+            .normalize_specifier(&record.specifier, file_referrer.as_deref())
             .unwrap_or(LspClientUrl::new(record.specifier)),
           all_specifier_diagnostics,
           version,
@@ -183,11 +186,12 @@ impl DiagnosticsPublisher {
         if let Some(removed_value) = maybe_removed_value {
           // clear out any diagnostics for this specifier
           self.state.update(specifier, removed_value.version, &[]);
+          let file_referrer = documents.get_file_referrer(specifier);
           self
             .client
             .publish_diagnostics(
               url_map
-                .normalize_specifier(specifier)
+                .normalize_specifier(specifier, file_referrer.as_deref())
                 .unwrap_or_else(|_| LspClientUrl::new(specifier.clone())),
               Vec::new(),
               removed_value.version,
@@ -519,6 +523,7 @@ impl DiagnosticsServer {
                         DiagnosticSource::Ts,
                         diagnostics,
                         &url_map,
+                        snapshot.documents.as_ref(),
                         &token,
                       )
                       .await;
@@ -556,6 +561,7 @@ impl DiagnosticsServer {
                   let mark = performance.mark("lsp.update_diagnostics_deps");
                   let diagnostics = spawn_blocking({
                     let token = token.clone();
+                    let snapshot = snapshot.clone();
                     move || generate_deno_diagnostics(&snapshot, &config, token)
                   })
                   .await
@@ -568,6 +574,7 @@ impl DiagnosticsServer {
                         DiagnosticSource::Deno,
                         diagnostics,
                         &url_map,
+                        snapshot.documents.as_ref(),
                         &token,
                       )
                       .await;
@@ -605,6 +612,7 @@ impl DiagnosticsServer {
                   let mark = performance.mark("lsp.update_diagnostics_lint");
                   let diagnostics = spawn_blocking({
                     let token = token.clone();
+                    let snapshot = snapshot.clone();
                     move || generate_lint_diagnostics(&snapshot, &config, token)
                   })
                   .await
@@ -617,6 +625,7 @@ impl DiagnosticsServer {
                         DiagnosticSource::Lint,
                         diagnostics,
                         &url_map,
+                        snapshot.documents.as_ref(),
                         &token,
                       )
                       .await;
@@ -1466,7 +1475,11 @@ fn diagnose_dependency(
     return; // ignore, surface typescript errors instead
   }
 
-  let import_map = snapshot.config.tree.root_import_map();
+  let import_map = snapshot
+    .config
+    .tree
+    .data_for_specifier(referrer_doc.file_referrer().unwrap_or(referrer))
+    .and_then(|d| d.import_map.as_ref());
   if let Some(import_map) = import_map {
     if let Resolution::Ok(resolved) = &dependency.maybe_code {
       if let Some(to) = import_map.lookup(&resolved.specifier, referrer) {
