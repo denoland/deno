@@ -702,7 +702,7 @@ pub async fn op_ws_close(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ServerWebSocket>(rid)?;
+    .take::<ServerWebSocket>(rid)?;
   let frame = reason
     .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
     .unwrap_or_else(|| Frame::close_raw(vec![].into()));
