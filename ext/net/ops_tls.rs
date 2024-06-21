@@ -195,41 +195,34 @@ pub struct StartTlsArgs {
 }
 
 #[op2]
-pub fn op_tls_key_null<'s>(
-  scope: &mut v8::HandleScope<'s>,
-) -> Result<v8::Local<'s, v8::Object>, AnyError> {
-  Ok(deno_core::cppgc::make_cppgc_object(
-    scope,
-    TlsKeysHolder::from(TlsKeys::Null),
-  ))
+#[cppgc]
+pub fn op_tls_key_null() -> TlsKeysHolder {
+  TlsKeysHolder::from(TlsKeys::Null)
 }
 
 #[op2]
-pub fn op_tls_key_static<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  #[string] cert: String,
-  #[string] key: String,
-) -> Result<v8::Local<'s, v8::Object>, AnyError> {
+#[cppgc]
+pub fn op_tls_key_static(
+  #[string] cert: &str,
+  #[string] key: &str,
+) -> Result<TlsKeysHolder, AnyError> {
   let cert = load_certs(&mut BufReader::new(cert.as_bytes()))?;
   let key = load_private_keys(key.as_bytes())?
     .into_iter()
     .next()
     .unwrap();
-  Ok(deno_core::cppgc::make_cppgc_object(
-    scope,
-    TlsKeysHolder::from(TlsKeys::Static(TlsKey(cert, key))),
-  ))
+  Ok(TlsKeysHolder::from(TlsKeys::Static(TlsKey(cert, key))))
 }
 
 /// Legacy op -- will be removed in Deno 2.0.
 #[op2]
-pub fn op_tls_key_static_from_file<'s, NP>(
+#[cppgc]
+pub fn op_tls_key_static_from_file<NP>(
   state: &mut OpState,
-  scope: &mut v8::HandleScope<'s>,
   #[string] api: String,
   #[string] cert_file: String,
   #[string] key_file: String,
-) -> Result<v8::Local<'s, v8::Object>, AnyError>
+) -> Result<TlsKeysHolder, AnyError>
 where
   NP: NetPermissions + 'static,
 {
@@ -244,10 +237,7 @@ where
     .into_iter()
     .next()
     .unwrap();
-  Ok(deno_core::cppgc::make_cppgc_object(
-    scope,
-    TlsKeysHolder::from(TlsKeys::Static(TlsKey(cert, key))),
-  ))
+  Ok(TlsKeysHolder::from(TlsKeys::Static(TlsKey(cert, key))))
 }
 
 #[op2]

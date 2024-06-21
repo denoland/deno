@@ -233,6 +233,8 @@ struct Zlib {
   inner: RefCell<Option<ZlibInner>>,
 }
 
+impl deno_core::GcResource for Zlib {}
+
 impl deno_core::Resource for Zlib {
   fn name(&self) -> Cow<str> {
     "zlib".into()
