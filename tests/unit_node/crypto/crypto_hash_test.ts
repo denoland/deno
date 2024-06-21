@@ -1,9 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import {
-  createHash,
-  createHmac,
-  getHashes,
-} from "node:crypto";
+import { createHash, createHmac, getHashes } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import { assert, assertEquals } from "@std/assert/mod.ts";
