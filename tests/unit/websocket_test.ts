@@ -786,7 +786,6 @@ Deno.test("Close connection", async () => {
   });
 
   await listeningDeferred.promise;
-  const { promise, resolve } = Promise.withResolvers<void>();
 
   const conn = await Deno.connect({ port: servePort, hostname: "localhost" });
   await conn.write(
