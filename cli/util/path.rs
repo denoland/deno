@@ -145,25 +145,6 @@ pub fn relative_specifier(
   Some(to_percent_decoded_str(&text))
 }
 
-/// Gets the parent of this module specifier.
-pub fn specifier_parent(specifier: &ModuleSpecifier) -> ModuleSpecifier {
-  let mut specifier = specifier.clone();
-  // don't use specifier.segments() because it will strip the leading slash
-  let mut segments = specifier.path().split('/').collect::<Vec<_>>();
-  if segments.iter().all(|s| s.is_empty()) {
-    return specifier;
-  }
-  if let Some(last) = segments.last() {
-    if last.is_empty() {
-      segments.pop();
-    }
-    segments.pop();
-    let new_path = format!("{}/", segments.join("/"));
-    specifier.set_path(&new_path);
-  }
-  specifier
-}
-
 /// Gets a path with the specified file stem suffix.
 ///
 /// Ex. `file.ts` with suffix `_2` returns `file_2.ts`
@@ -421,22 +402,6 @@ mod test {
         expected,
         "from: \"{from_str}\" to: \"{to_str}\""
       );
-    }
-  }
-
-  #[test]
-  fn test_specifier_parent() {
-    run_test("file:///", "file:///");
-    run_test("file:///test", "file:///");
-    run_test("file:///test/", "file:///");
-    run_test("file:///test/other", "file:///test/");
-    run_test("file:///test/other.txt", "file:///test/");
-    run_test("file:///test/other/", "file:///test/");
-
-    fn run_test(specifier: &str, expected: &str) {
-      let result =
-        specifier_parent(&ModuleSpecifier::parse(specifier).unwrap());
-      assert_eq!(result.to_string(), expected);
     }
   }
 

@@ -495,11 +495,7 @@ fn create_graph_resolver(
     node_resolver: node_resolver.cloned(),
     npm_resolver: npm_resolver.cloned(),
     workspace_resolver: Arc::new(WorkspaceResolver::new_raw(
-      config_data
-        .and_then(|d| d.import_map.as_ref().map(|i| (**i).clone()))
-        .unwrap_or_else(|| {
-          ImportMap::new(Url::parse("file:///import_map.json").unwrap())
-        }),
+      config_data.and_then(|d| d.import_map.as_ref().map(|i| (**i).clone())),
       config_data
         .and_then(|d| d.package_json.clone())
         .into_iter()

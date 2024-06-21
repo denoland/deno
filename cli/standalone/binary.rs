@@ -64,7 +64,7 @@ pub enum NodeModules {
 
 #[derive(Deserialize, Serialize)]
 pub struct SerializedWorkspaceResolver {
-  pub import_map: serde_json::Value,
+  pub import_map: Option<serde_json::Value>,
   /// Key is relative path, value is text.
   pub package_jsons: BTreeMap<String, serde_json::Value>,
 }
@@ -557,8 +557,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       ca_data,
       entrypoint: entrypoint.clone(),
       workspace_resolver: SerializedWorkspaceResolver {
-        import_map: serde_json::to_value(&workspace_resolver.import_map())
-          .unwrap(),
+        import_map: workspace_resolver
+          .maybe_import_map()
+          .map(|i| serde_json::to_value(i).unwrap()),
         package_jsons: workspace_resolver
           .package_jsons()
           .map(|pkg_json| {

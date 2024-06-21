@@ -354,8 +354,10 @@ mod tests {
         }
       }),
     );
-    let workspace_resolver =
-      WorkspaceResolver::new_raw(import_map, vec![Arc::new(package_json)]);
+    let workspace_resolver = WorkspaceResolver::new_raw(
+      Some(import_map),
+      vec![Arc::new(package_json)],
+    );
     let fs = Arc::new(RealFs);
     let sloppy_imports_resolver = SloppyImportsResolver::new(fs);
 

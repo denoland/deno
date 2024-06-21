@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;

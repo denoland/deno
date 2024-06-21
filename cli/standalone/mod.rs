@@ -140,7 +140,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
           .map(|res| res.into_url());
       }
-      MappedResolution::Normal(specifier) => {
+      MappedResolution::Normal(specifier)
+      | MappedResolution::ImportMap(specifier) => {
         if specifier.scheme() == "jsr" {
           if let Some(module) = self.shared.eszip.get_module(specifier.as_str())
           {
@@ -452,15 +453,20 @@ pub async fn run(
   let workspace_resolver = {
     let dir = maybe_vfs_root.as_ref().unwrap_or(&root_path);
     let dir_url = ModuleSpecifier::from_directory_path(dir).unwrap();
-    let import_map = import_map::parse_from_value_with_options(
-      dir_url.join("deno.json").unwrap(),
-      metadata.workspace_resolver.import_map,
-      import_map::ImportMapOptions {
-        address_hook: None,
-        expand_imports: true,
-      },
-    )?
-    .import_map;
+    let import_map = match metadata.workspace_resolver.import_map {
+      Some(value) => Some(
+        import_map::parse_from_value_with_options(
+          dir_url.join("deno.json").unwrap(),
+          value,
+          import_map::ImportMapOptions {
+            address_hook: None,
+            expand_imports: true,
+          },
+        )?
+        .import_map,
+      ),
+      None => None,
+    };
     let pkg_jsons = metadata
       .workspace_resolver
       .package_jsons

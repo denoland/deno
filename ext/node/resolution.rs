@@ -1020,7 +1020,27 @@ impl NodeResolver {
       }
     }
 
-    let result = self.resolve_package_subpath_for_package(
+    self.resolve_package_subpath_for_package(
+      &package_name,
+      &package_subpath,
+      referrer,
+      referrer_kind,
+      conditions,
+      mode,
+    )
+  }
+
+  #[allow(clippy::too_many_arguments)]
+  fn resolve_package_subpath_for_package(
+    &self,
+    package_name: &str,
+    package_subpath: &str,
+    referrer: &ModuleSpecifier,
+    referrer_kind: NodeModuleKind,
+    conditions: &[&str],
+    mode: NodeResolutionMode,
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
+    let result = self.resolve_package_subpath_for_package_inner(
       &package_name,
       &package_subpath,
       referrer,
@@ -1029,9 +1049,9 @@ impl NodeResolver {
       mode,
     );
     if mode.is_types() && !matches!(result, Ok(Some(_))) {
-      // try to resolve with the @types/node package
+      // try to resolve with the @types package
       let package_name = types_package_name(&package_name);
-      if let Ok(Some(result)) = self.resolve_package_subpath_for_package(
+      if let Ok(Some(result)) = self.resolve_package_subpath_for_package_inner(
         &package_name,
         &package_subpath,
         referrer,
@@ -1042,12 +1062,11 @@ impl NodeResolver {
         return Ok(Some(result));
       }
     }
-
     result
   }
 
   #[allow(clippy::too_many_arguments)]
-  fn resolve_package_subpath_for_package(
+  fn resolve_package_subpath_for_package_inner(
     &self,
     package_name: &str,
     package_subpath: &str,

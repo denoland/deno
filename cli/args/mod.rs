@@ -9,6 +9,7 @@ mod package_json;
 
 use deno_ast::SourceMapOption;
 use deno_config::glob::PathOrPattern;
+use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
@@ -1109,16 +1110,23 @@ impl CliOptions {
     Ok(
       self
         .workspace
-        .create_resolver(cli_arg_specified_import_map, |specifier| {
-          let specifier = specifier.clone();
-          async move {
-            let file = file_fetcher
-              .fetch(&specifier, &PermissionsContainer::allow_all())
-              .await?
-              .into_text_decoded()?;
-            Ok(file.source.to_string())
-          }
-        })
+        .create_resolver(
+          CreateResolverOptions {
+            // todo(dsherret): this should also applie to `nodeModulesDir: true`
+            pkg_json_dep_resolution: !self.use_byonm(),
+            specified_import_map: cli_arg_specified_import_map,
+          },
+          |specifier| {
+            let specifier = specifier.clone();
+            async move {
+              let file = file_fetcher
+                .fetch(&specifier, &PermissionsContainer::allow_all())
+                .await?
+                .into_text_decoded()?;
+              Ok(file.source.to_string())
+            }
+          },
+        )
         .await?,
     )
   }

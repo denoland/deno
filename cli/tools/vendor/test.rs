@@ -183,7 +183,7 @@ pub struct VendorOutput {
 pub struct VendorTestBuilder {
   entry_points: Vec<ModuleSpecifier>,
   loader: TestLoader,
-  original_import_map: Option<ImportMap>,
+  maybe_original_import_map: Option<ImportMap>,
   environment: TestVendorEnvironment,
   jsx_import_source_config: Option<JsxImportSourceConfig>,
 }
@@ -208,7 +208,7 @@ impl VendorTestBuilder {
     &mut self,
     import_map: ImportMap,
   ) -> &mut Self {
-    self.original_import_map = Some(import_map);
+    self.maybe_original_import_map = Some(import_map);
     self
   }
 
@@ -233,12 +233,9 @@ impl VendorTestBuilder {
     let entry_points = self.entry_points.clone();
     let loader = self.loader.clone();
     let parsed_source_cache = ParsedSourceCache::default();
-    let import_map = self.original_import_map.clone().unwrap_or_else(|| {
-      ImportMap::new(ModuleSpecifier::parse("file:///import_map.json").unwrap())
-    });
     let resolver = Arc::new(build_resolver(
       self.jsx_import_source_config.clone(),
-      import_map.clone(),
+      self.maybe_original_import_map.clone(),
     ));
     super::build::build(super::build::BuildInput {
       entry_points,
@@ -261,7 +258,7 @@ impl VendorTestBuilder {
       },
       parsed_source_cache: &parsed_source_cache,
       output_dir: &output_dir,
-      original_import_map: &import_map,
+      maybe_original_import_map: self.maybe_original_import_map.as_ref(),
       maybe_jsx_import_source: self.jsx_import_source_config.as_ref(),
       resolver: resolver.as_graph_resolver(),
       environment: &self.environment,
@@ -291,14 +288,14 @@ impl VendorTestBuilder {
 
 fn build_resolver(
   maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
-  original_import_map: ImportMap,
+  maybe_original_import_map: Option<ImportMap>,
 ) -> CliGraphResolver {
   CliGraphResolver::new(CliGraphResolverOptions {
     node_resolver: None,
     npm_resolver: None,
     sloppy_imports_resolver: None,
     workspace_resolver: Arc::new(WorkspaceResolver::new_raw(
-      original_import_map,
+      maybe_original_import_map,
       Vec::new(),
     )),
     maybe_jsx_import_source_config,

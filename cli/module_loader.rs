@@ -81,35 +81,36 @@ pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
   }
   // cache as many entries in the import map as we can
   let resolver = factory.workspace_resolver().await?;
-  let roots = resolver
-    .import_map()
-    .imports()
-    .entries()
-    .filter_map(|entry| {
-      if entry.key.ends_with('/') {
-        None
-      } else {
-        entry.value.cloned()
-      }
-    })
-    .collect::<Vec<_>>();
-  let mut graph_permit = factory
-    .main_module_graph_container()
-    .await?
-    .acquire_update_permit()
-    .await;
-  let graph = graph_permit.graph_mut();
-  factory
-    .module_load_preparer()
-    .await?
-    .prepare_module_load(
-      graph,
-      &roots,
-      false,
-      factory.cli_options().ts_type_lib_window(),
-      deno_runtime::deno_permissions::PermissionsContainer::allow_all(),
-    )
-    .await?;
+  if let Some(import_map) = resolver.maybe_import_map() {
+    let roots = import_map
+      .imports()
+      .entries()
+      .filter_map(|entry| {
+        if entry.key.ends_with('/') {
+          None
+        } else {
+          entry.value.cloned()
+        }
+      })
+      .collect::<Vec<_>>();
+    let mut graph_permit = factory
+      .main_module_graph_container()
+      .await?
+      .acquire_update_permit()
+      .await;
+    let graph = graph_permit.graph_mut();
+    factory
+      .module_load_preparer()
+      .await?
+      .prepare_module_load(
+        graph,
+        &roots,
+        false,
+        factory.cli_options().ts_type_lib_window(),
+        deno_runtime::deno_permissions::PermissionsContainer::allow_all(),
+      )
+      .await?;
+  }
 
   Ok(())
 }

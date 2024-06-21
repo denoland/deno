@@ -485,7 +485,8 @@ impl Resolver for CliGraphResolver {
       .map_err(|err| AnyError::from(err).into());
     let result = match result {
       Ok(resolution) => match resolution {
-        MappedResolution::Normal(specifier) => Ok(specifier),
+        MappedResolution::Normal(specifier)
+        | MappedResolution::ImportMap(specifier) => Ok(specifier),
         // todo(THIS PR): for byonm it should do resolution solely based on
         // the referrer and not the package.json
         MappedResolution::PackageJson { .. } => {
