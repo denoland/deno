@@ -45,15 +45,23 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     let maybe_lockfile = factory.maybe_lockfile();
     let resolver = factory.workspace_resolver().await?;
 
-    let specifier = resolver
-      .resolve(
-        &specifier,
-        &ModuleSpecifier::from_directory_path(
-          cli_options.initial_cwd().join("deno.json"),
-        )
-        .unwrap(),
-      )?
-      .into_url()?;
+    let maybe_import_specifier =
+      if let Some(import_map) = resolver.maybe_import_map() {
+        if let Ok(imports_specifier) =
+          import_map.resolve(&specifier, import_map.base_url())
+        {
+          Some(imports_specifier)
+        } else {
+          None
+        }
+      } else {
+        None
+      };
+
+    let specifier = match maybe_import_specifier {
+      Some(specifier) => specifier,
+      None => resolve_url_or_path(&specifier, cli_options.initial_cwd())?,
+    };
 
     let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
