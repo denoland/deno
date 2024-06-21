@@ -143,7 +143,7 @@
       "loop.js",
       "print-chars.js",
       "sample.png",
-      "x.txt",
+      "x.txt"
     ],
     "fixtures/keys": ["agent1-cert.pem", "agent1-key.pem", "ca1-cert.pem"],
     "internet": [
