@@ -2,8 +2,6 @@
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
-use std::borrow::Cow;
-use std::cell::RefCell;
 use zlib::*;
 
 mod alloc;
@@ -230,16 +228,16 @@ impl ZlibInner {
 }
 
 struct Zlib {
-  inner: RefCell<Option<ZlibInner>>,
+  inner: Option<ZlibInner>,
+}
+
+impl Zlib {
+  fn as_mut(&mut self) -> Option<&mut ZlibInner> {
+    self.inner.as_mut()
+  }
 }
 
 impl deno_core::GcResource for Zlib {}
-
-impl deno_core::Resource for Zlib {
-  fn name(&self) -> Cow<str> {
-    "zlib".into()
-  }
-}
 
 #[op2]
 #[cppgc]
@@ -251,15 +249,12 @@ pub fn op_zlib_new(#[smi] mode: i32) -> Result<Zlib, AnyError> {
     ..Default::default()
   };
 
-  Ok(Zlib {
-    inner: RefCell::new(Some(inner)),
-  })
+  Ok(Zlib { inner: Some(inner) })
 }
 
 #[op2(fast)]
-pub fn op_zlib_close(#[cppgc] resource: &Zlib) -> Result<(), AnyError> {
-  let mut resource = resource.inner.borrow_mut();
-  let zlib = resource
+pub fn op_zlib_close(#[cppgc] zlib: &mut Zlib) -> Result<(), AnyError> {
+  let zlib = zlib
     .as_mut()
     .ok_or_else(|| type_error("zlib not initialized"))?;
 
@@ -273,7 +268,7 @@ pub fn op_zlib_close(#[cppgc] resource: &Zlib) -> Result<(), AnyError> {
 #[op2(fast)]
 #[smi]
 pub fn op_zlib_write(
-  #[cppgc] resource: &Zlib,
+  #[cppgc] zlib: &mut Zlib,
   #[smi] flush: i32,
   #[buffer] input: &[u8],
   #[smi] in_off: u32,
@@ -283,7 +278,6 @@ pub fn op_zlib_write(
   #[smi] out_len: u32,
   #[buffer] result: &mut [u32],
 ) -> Result<i32, AnyError> {
-  let mut zlib = resource.inner.borrow_mut();
   let zlib = zlib
     .as_mut()
     .ok_or_else(|| type_error("zlib not initialized"))?;
@@ -301,14 +295,13 @@ pub fn op_zlib_write(
 #[op2(fast)]
 #[smi]
 pub fn op_zlib_init(
-  #[cppgc] resource: &Zlib,
+  #[cppgc] zlib: &mut Zlib,
   #[smi] level: i32,
   #[smi] window_bits: i32,
   #[smi] mem_level: i32,
   #[smi] strategy: i32,
   #[buffer] dictionary: &[u8],
 ) -> Result<i32, AnyError> {
-  let mut zlib = resource.inner.borrow_mut();
   let zlib = zlib
     .as_mut()
     .ok_or_else(|| type_error("zlib not initialized"))?;
@@ -348,8 +341,7 @@ pub fn op_zlib_init(
 
 #[op2(fast)]
 #[smi]
-pub fn op_zlib_reset(#[cppgc] resource: &Zlib) -> Result<i32, AnyError> {
-  let mut zlib = resource.inner.borrow_mut();
+pub fn op_zlib_reset(#[cppgc] zlib: &mut Zlib) -> Result<i32, AnyError> {
   let zlib = zlib
     .as_mut()
     .ok_or_else(|| type_error("zlib not initialized"))?;
@@ -361,10 +353,9 @@ pub fn op_zlib_reset(#[cppgc] resource: &Zlib) -> Result<i32, AnyError> {
 
 #[op2(fast)]
 pub fn op_zlib_close_if_pending(
-  #[cppgc] resource: &Zlib,
+  #[cppgc] zlib: &mut Zlib,
 ) -> Result<(), AnyError> {
   let pending_close = {
-    let mut zlib = resource.inner.borrow_mut();
     let zlib = zlib
       .as_mut()
       .ok_or_else(|| type_error("zlib not initialized"))?;
@@ -373,7 +364,7 @@ pub fn op_zlib_close_if_pending(
     zlib.pending_close
   };
   if pending_close {
-    if let Some(mut res) = resource.inner.borrow_mut().take() {
+    if let Some(mut res) = zlib.inner.take() {
       let _ = res.close();
     }
   }
