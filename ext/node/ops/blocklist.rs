@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
@@ -17,12 +16,6 @@ use ipnetwork::IpNetwork;
 use ipnetwork::Ipv4Network;
 use ipnetwork::Ipv6Network;
 use serde::Serialize;
-
-pub struct BlockListResource {
-  blocklist: RefCell<BlockList>,
-}
-
-impl deno_core::GcResource for BlockListResource {}
 
 #[derive(Serialize)]
 struct SocketAddressSerialization(String, String);
@@ -66,51 +59,50 @@ pub fn op_socket_address_get_serialization(
 
 #[op2]
 #[cppgc]
-pub fn op_blocklist_new() -> BlockListResource {
-  let blocklist = BlockList::new();
-  BlockListResource {
-    blocklist: RefCell::new(blocklist),
-  }
+pub fn op_blocklist_new() -> BlockList {
+  BlockList::new()
 }
 
 #[op2(fast)]
 pub fn op_blocklist_add_address(
-  #[cppgc] wrap: &BlockListResource,
+  #[cppgc] blocklist: &mut BlockList,
   #[string] addr: &str,
 ) -> Result<(), AnyError> {
-  wrap.blocklist.borrow_mut().add_address(addr)
+  blocklist.add_address(addr)
 }
 
 #[op2(fast)]
 pub fn op_blocklist_add_range(
-  #[cppgc] wrap: &BlockListResource,
+  #[cppgc] blocklist: &mut BlockList,
   #[string] start: &str,
   #[string] end: &str,
 ) -> Result<bool, AnyError> {
-  wrap.blocklist.borrow_mut().add_range(start, end)
+  blocklist.add_range(start, end)
 }
 
 #[op2(fast)]
 pub fn op_blocklist_add_subnet(
-  #[cppgc] wrap: &BlockListResource,
+  #[cppgc] blocklist: &mut BlockList,
   #[string] addr: &str,
   #[smi] prefix: u8,
 ) -> Result<(), AnyError> {
-  wrap.blocklist.borrow_mut().add_subnet(addr, prefix)
+  blocklist.add_subnet(addr, prefix)
 }
 
 #[op2(fast)]
 pub fn op_blocklist_check(
-  #[cppgc] wrap: &BlockListResource,
+  #[cppgc] blocklist: &BlockList,
   #[string] addr: &str,
-  #[string] r#type: &str,
+  #[string] type_: &str,
 ) -> Result<bool, AnyError> {
-  wrap.blocklist.borrow().check(addr, r#type)
+  blocklist.check(addr, type_)
 }
 
 struct BlockList {
   rules: HashSet<IpNetwork>,
 }
+
+impl deno_core::GcResource for BlockList {}
 
 impl BlockList {
   pub fn new() -> Self {
