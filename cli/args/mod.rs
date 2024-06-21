@@ -283,7 +283,7 @@ impl BenchOptions {
     Ok(Self {
       files: resolve_files(
         maybe_bench_config.map(|c| c.files),
-        Some(&bench_flags.files),
+        &bench_flags.files,
         dirs,
       )?,
     })
@@ -323,7 +323,7 @@ impl FmtOptions {
     Ok(Self {
       check: fmt_flags.check,
       options: resolve_fmt_options(fmt_flags, maybe_config_options),
-      files: resolve_files(maybe_config_files, Some(&fmt_flags.files), dirs)?,
+      files: resolve_files(maybe_config_files, &fmt_flags.files, dirs)?,
     })
   }
 }
@@ -416,7 +416,7 @@ impl TestOptions {
     Ok(Self {
       files: resolve_files(
         maybe_test_config.map(|c| c.files),
-        Some(&test_flags.files),
+        &test_flags.files,
         dirs,
       )?,
     })
@@ -498,38 +498,20 @@ impl LintOptions {
 
   pub fn resolve(
     maybe_lint_config: Option<LintConfig>,
-    maybe_lint_flags: Option<LintFlags>,
+    lint_flags: LintFlags,
     dirs: MemberContextDirs,
   ) -> Result<Self, AnyError> {
-    let fix = maybe_lint_flags.as_ref().map(|f| f.fix).unwrap_or(false);
-
-    let (
-      maybe_file_flags,
-      maybe_rules_tags,
-      maybe_rules_include,
-      maybe_rules_exclude,
-    ) = maybe_lint_flags
-      .map(|f| {
-        (
-          f.files,
-          f.maybe_rules_tags,
-          f.maybe_rules_include,
-          f.maybe_rules_exclude,
-        )
-      })
-      .unwrap_or_default();
-
     let (maybe_config_files, maybe_config_rules) =
       maybe_lint_config.map(|c| (c.files, c.rules)).unzip();
     Ok(Self {
-      files: resolve_files(maybe_config_files, Some(&maybe_file_flags), dirs)?,
+      files: resolve_files(maybe_config_files, &lint_flags.files, dirs)?,
       rules: resolve_lint_rules_options(
         maybe_config_rules,
-        maybe_rules_tags,
-        maybe_rules_include,
-        maybe_rules_exclude,
+        lint_flags.maybe_rules_tags,
+        lint_flags.maybe_rules_include,
+        lint_flags.maybe_rules_exclude,
       ),
-      fix,
+      fix: lint_flags.fix,
     })
   }
 }
@@ -1465,7 +1447,7 @@ impl CliOptions {
     let maybe_lint_config = ctx.to_lint_config()?;
     LintOptions::resolve(
       maybe_lint_config,
-      Some(lint_flags),
+      lint_flags,
       self.resolve_member_ctx_dirs(ctx),
     )
   }
@@ -2008,7 +1990,10 @@ impl StorageKeyResolver {
 }
 
 pub struct MemberContextDirs<'a> {
+  /// Base directory for the current workspace member
+  /// being resolved.
   pub config_base: PathBuf,
+  /// The current working directory that's used to resolve the flags.
   pub flags_base: Option<&'a Path>,
 }
 
@@ -2026,27 +2011,25 @@ impl<'a> MemberContextDirs<'a> {
 /// and `--ignore` CLI flag, only the flag value is taken into account.
 fn resolve_files(
   maybe_files_config: Option<FilePatterns>,
-  maybe_file_flags: Option<&FileFlags>,
+  file_flags: &FileFlags,
   dirs: MemberContextDirs,
 ) -> Result<FilePatterns, AnyError> {
   let mut files_config = maybe_files_config.unwrap_or_else(|| {
     FilePatterns::new_with_base(dirs.config_base.to_path_buf())
   });
-  if let Some(file_flags) = maybe_file_flags {
-    if !file_flags.include.is_empty() {
-      files_config.include =
-        Some(PathOrPatternSet::from_include_relative_path_or_patterns(
-          dirs.flags_base.unwrap_or(&dirs.config_base),
-          &file_flags.include,
-        )?);
-    }
-    if !file_flags.ignore.is_empty() {
-      files_config.exclude =
-        PathOrPatternSet::from_exclude_relative_path_or_patterns(
-          dirs.flags_base.unwrap_or(&dirs.config_base),
-          &file_flags.ignore,
-        )?;
-    }
+  if !file_flags.include.is_empty() {
+    files_config.include =
+      Some(PathOrPatternSet::from_include_relative_path_or_patterns(
+        dirs.flags_base.unwrap_or(&dirs.config_base),
+        &file_flags.include,
+      )?);
+  }
+  if !file_flags.ignore.is_empty() {
+    files_config.exclude =
+      PathOrPatternSet::from_exclude_relative_path_or_patterns(
+        dirs.flags_base.unwrap_or(&dirs.config_base),
+        &file_flags.ignore,
+      )?;
   }
   if files_config.base != dirs.config_base {
     // the upstream code should have set the base properly
@@ -2214,7 +2197,7 @@ mod test {
         )
         .unwrap(),
       }),
-      None,
+      &Default::default(),
       MemberContextDirs {
         config_base: temp_dir_path.to_path_buf(),
         flags_base: Some(temp_dir_path),

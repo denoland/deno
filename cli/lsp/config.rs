@@ -1282,7 +1282,7 @@ impl ConfigData {
                 .map_err(|_| anyhow!("Invalid base path."))?;
               LintOptions::resolve(
                 o,
-                None,
+                Default::default(),
                 MemberContextDirs::no_flags(base_path),
               )
             })

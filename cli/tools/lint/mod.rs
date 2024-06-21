@@ -22,6 +22,8 @@ use deno_core::futures::future::Shared;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
+use deno_core::unsync::future::LocalFutureExt;
+use deno_core::unsync::future::SharedLocal;
 use deno_core::unsync::JoinHandle;
 use deno_graph::FastCheckDiagnostic;
 use deno_graph::ModuleGraph;
@@ -36,10 +38,8 @@ use log::debug;
 use log::info;
 use serde::Serialize;
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fs;
-use std::future::Future;
 use std::io::stdin;
 use std::io::Read;
 use std::path::Path;
@@ -199,56 +199,14 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
-struct InnerSharedLocalFuture<'a, T: Clone> {
-  future: RefCell<Option<LocalBoxFuture<'a, T>>>,
-  result: RefCell<Option<T>>,
-}
-
-#[derive(Clone)]
-struct SharedLocalFuture<'a, T: Clone>(Rc<InnerSharedLocalFuture<'a, T>>);
-
-impl<'a, T: Clone> SharedLocalFuture<'a, T> {
-  pub fn new(future: LocalBoxFuture<'a, T>) -> Self {
-    SharedLocalFuture(Rc::new(InnerSharedLocalFuture {
-      future: RefCell::new(Some(future)),
-      result: Default::default(),
-    }))
-  }
-}
-
-impl<'a, T: Clone> Future for SharedLocalFuture<'a, T> {
-  type Output = T;
-
-  fn poll(
-    self: std::pin::Pin<&mut Self>,
-    cx: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<Self::Output> {
-    use std::task::Poll;
-
-    if let Some(result) = self.0.result.borrow().clone() {
-      return Poll::Ready(result);
-    }
-
-    let mut maybe_future = self.0.future.borrow_mut();
-    let future = maybe_future.as_mut().unwrap();
-    match future.as_mut().poll(cx) {
-      Poll::Ready(result) => {
-        *self.0.result.borrow_mut() = Some(result.clone());
-        *maybe_future = None;
-        Poll::Ready(result)
-      }
-      Poll::Pending => Poll::Pending,
-    }
-  }
-}
-
 struct WorkspaceLinter {
   caches: Arc<Caches>,
   module_graph_creator: Arc<ModuleGraphCreator>,
   workspace: Arc<Workspace>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
-  workspace_module_graph:
-    Option<SharedLocalFuture<'static, Result<Arc<ModuleGraph>, Arc<AnyError>>>>,
+  workspace_module_graph: Option<
+    SharedLocal<LocalBoxFuture<'static, Result<Rc<ModuleGraph>, Rc<AnyError>>>>,
+  >,
   has_error: Arc<AtomicFlag>,
   file_count: usize,
 }
@@ -297,16 +255,17 @@ impl WorkspaceLinter {
       if self.workspace_module_graph.is_none() {
         let module_graph_creator = self.module_graph_creator.clone();
         let packages = self.workspace.packages();
-        self.workspace_module_graph = Some(SharedLocalFuture::new(
+        self.workspace_module_graph = Some(
           async move {
             module_graph_creator
               .create_and_validate_publish_graph(&packages, true)
               .await
-              .map(Arc::new)
-              .map_err(Arc::new)
+              .map(Rc::new)
+              .map_err(Rc::new)
           }
-          .boxed_local(),
-        ));
+          .boxed_local()
+          .shared_local(),
+        );
       }
       let workspace_module_graph_future =
         self.workspace_module_graph.as_ref().unwrap().clone();

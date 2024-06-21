@@ -256,7 +256,7 @@ pub struct UninstallFlags {
   pub kind: UninstallKind,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct LintFlags {
   pub files: FileFlags,
   pub rules: bool,

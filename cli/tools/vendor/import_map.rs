@@ -10,6 +10,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::Position;
 use deno_graph::Range;
 use deno_graph::Resolution;
+use deno_runtime::fs_util::specifier_to_file_path;
 use import_map::ImportMap;
 use import_map::SpecifierMap;
 use indexmap::IndexMap;
@@ -17,6 +18,7 @@ use log::warn;
 
 use crate::args::JsxImportSourceConfig;
 use crate::cache::ParsedSourceCache;
+use crate::util::path::specifier_parent;
 
 use super::mappings::Mappings;
 use super::specifiers::is_remote_specifier;
@@ -96,15 +98,7 @@ impl<'a> ImportMapBuilder<'a> {
 
     let mut import_map = ImportMap::new(self.base_dir.clone());
 
-    let original_base_dir = ModuleSpecifier::from_directory_path(
-      original_im
-        .base_url()
-        .to_file_path()
-        .unwrap()
-        .parent()
-        .unwrap(),
-    )
-    .unwrap();
+    let original_base_dir = specifier_parent(original_im.base_url());
     let new_relative_path = self
       .mappings
       .relative_specifier_text(self.base_dir, &original_base_dir);
