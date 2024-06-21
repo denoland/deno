@@ -1858,6 +1858,18 @@ pub async fn run_tests_with_watch(
         let file_fetcher = factory.file_fetcher()?;
         let members_with_test_options =
           cli_options.resolve_test_options_for_members(&test_flags)?;
+        let watch_paths = members_with_test_options
+          .iter()
+          .filter_map(|(_, test_options)| {
+            test_options
+              .files
+              .include
+              .as_ref()
+              .map(|set| set.base_paths())
+          })
+          .flatten()
+          .collect::<Vec<_>>();
+        let _ = watcher_communicator.watch_paths(watch_paths);
         let test_modules = members_with_test_options
           .iter()
           .map(|(_, test_options)| {
@@ -1876,16 +1888,6 @@ pub async fn run_tests_with_watch(
           .into_iter()
           .flatten()
           .collect::<Vec<_>>();
-
-        let mut watch_paths = Vec::with_capacity(test_modules.len());
-        for test_module in &test_modules {
-          if test_module.scheme() == "file" {
-            if let Ok(path) = test_module.to_file_path() {
-              watch_paths.push(path);
-            }
-          }
-        }
-        let _ = watcher_communicator.watch_paths(watch_paths);
 
         let permissions =
           Permissions::from_options(&cli_options.permissions_options()?)?;

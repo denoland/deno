@@ -492,6 +492,18 @@ pub async fn run_benchmarks_with_watch(
         let module_graph_creator = factory.module_graph_creator().await?;
         let members_with_bench_options =
           cli_options.resolve_bench_options_for_members(&bench_flags)?;
+        let watch_paths = members_with_bench_options
+          .iter()
+          .filter_map(|(_, bench_options)| {
+            bench_options
+              .files
+              .include
+              .as_ref()
+              .map(|set| set.base_paths())
+          })
+          .flatten()
+          .collect::<Vec<_>>();
+        let _ = watcher_communicator.watch_paths(watch_paths);
         let collected_bench_modules = members_with_bench_options
           .iter()
           .map(|(_, bench_options)| {
@@ -505,15 +517,6 @@ pub async fn run_benchmarks_with_watch(
           .into_iter()
           .flatten()
           .collect::<Vec<_>>();
-        let mut watch_paths = Vec::with_capacity(collected_bench_modules.len());
-        for bench_module in &collected_bench_modules {
-          if bench_module.scheme() == "file" {
-            if let Ok(path) = bench_module.to_file_path() {
-              watch_paths.push(path);
-            }
-          }
-        }
-        let _ = watcher_communicator.watch_paths(watch_paths);
 
         // Various bench files should not share the same permissions in terms of
         // `PermissionsContainer` - otherwise granting/revoking permissions in one
