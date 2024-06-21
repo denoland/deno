@@ -1420,6 +1420,26 @@ export class ServerResponse extends NodeWritable {
     return this;
   }
 
+  appendHeader(name: string, value: string | string[]) {
+    if (Array.isArray(value)) {
+      this.#hasNonStringHeaders = true;
+    }
+    if (this.#headers[name] === undefined) {
+      this.#headers[name] = value;
+    } else {
+      if (!Array.isArray(this.#headers[name])) {
+        this.#headers[name] = [this.#headers[name]];
+      }
+      const header = this.#headers[name];
+      if (Array.isArray(value)) {
+        header.push(...value);
+      } else {
+        header.push(value);
+      }
+    }
+    return this;
+  }
+
   getHeader(name: string) {
     return this.#headers[name];
   }
