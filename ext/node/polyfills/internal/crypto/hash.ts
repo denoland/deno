@@ -13,8 +13,8 @@ import {
   op_node_hash_update,
   op_node_hash_update_str,
 } from "ext:core/ops";
+import { primordials } from "ext:core/mod.js";
 
-import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Buffer } from "node:buffer";
 import { Transform } from "node:stream";
 import {
@@ -22,7 +22,11 @@ import {
   forgivingBase64UrlEncode as encodeToBase64Url,
 } from "ext:deno_web/00_infra.js";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
+import {
+  validateEncoding,
+  validateString,
+  validateUint32,
+} from "ext:deno_node/internal/validators.mjs";
 import type {
   BinaryToTextEncoding,
   Encoding,
@@ -32,119 +36,148 @@ import {
   KeyObject,
   prepareSecretKey,
 } from "ext:deno_node/internal/crypto/keys.ts";
+import {
+  ERR_CRYPTO_HASH_FINALIZED,
+  ERR_INVALID_ARG_TYPE,
+  NodeError,
+} from "ext:deno_node/internal/errors.ts";
+import LazyTransform from "ext:deno_node/internal/streams/lazy_transform.mjs";
+import {
+  getDefaultEncoding,
+  toBuf,
+} from "ext:deno_node/internal/crypto/util.ts";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 
-// TODO(@littledivy): Use Result<T, E> instead of boolean when
-// https://bugs.chromium.org/p/v8/issues/detail?id=13600 is fixed.
+const { ReflectApply, ObjectSetPrototypeOf } = primordials;
+
 function unwrapErr(ok: boolean) {
-  if (!ok) {
-    throw new Error("Context is not initialized");
-  }
+  if (!ok) throw new ERR_CRYPTO_HASH_FINALIZED();
 }
 
-const coerceToBytes = (data: string | BufferSource): Uint8Array => {
-  if (data instanceof Uint8Array) {
-    return data;
-  } else if (typeof data === "string") {
-    // This assumes UTF-8, which may not be correct.
-    return new TextEncoder().encode(data);
-  } else if (ArrayBuffer.isView(data)) {
-    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-  } else if (data instanceof ArrayBuffer) {
-    return new Uint8Array(data);
-  } else {
-    throw new TypeError("expected data to be string | BufferSource");
+declare const __hasher: unique symbol;
+type Hasher = { __hasher: typeof __hasher };
+
+const kHandle = Symbol("kHandle");
+
+export function Hash(
+  this: Hash,
+  algorithm: string | Hasher,
+  options?: { outputLength?: number },
+): Hash {
+  if (!(this instanceof Hash)) {
+    return new Hash(algorithm, options);
   }
+  if (!(typeof algorithm === "object")) {
+    validateString(algorithm, "algorithm");
+  }
+  const xofLen = typeof options === "object" && options !== null
+    ? options.outputLength
+    : undefined;
+  if (xofLen !== undefined) {
+    validateUint32(xofLen, "options.outputLength");
+  }
+
+  try {
+    this[kHandle] = typeof algorithm === "object"
+      ? op_node_hash_clone(algorithm, xofLen)
+      : op_node_create_hash(algorithm.toLowerCase(), xofLen);
+  } catch (err) {
+    // TODO(lucacasonato): don't do this
+    if (err.message === "Output length mismatch for non-extendable algorithm") {
+      throw new NodeError(
+        "ERR_OSSL_EVP_NOT_XOF_OR_INVALID_LENGTH",
+        "Invalid XOF digest length",
+      );
+    } else {
+      throw err;
+    }
+  }
+
+  if (this[kHandle] === null) throw new ERR_CRYPTO_HASH_FINALIZED();
+
+  ReflectApply(LazyTransform, this, [options]);
+}
+
+interface Hash {
+  [kHandle]: object;
+}
+
+ObjectSetPrototypeOf(Hash.prototype, LazyTransform.prototype);
+ObjectSetPrototypeOf(Hash, LazyTransform);
+
+Hash.prototype.copy = function copy(options?: { outputLength: number }) {
+  return new Hash(this[kHandle], options);
 };
 
-/**
- * The Hash class is a utility for creating hash digests of data. It can be used in one of two ways:
- *
- * - As a stream that is both readable and writable, where data is written to produce a computed hash digest on the readable side, or
- * - Using the hash.update() and hash.digest() methods to produce the computed hash.
- *
- * The crypto.createHash() method is used to create Hash instances. Hash objects are not to be created directly using the new keyword.
- */
-export class Hash extends Transform {
-  #context: number;
+Hash.prototype._transform = function _transform(
+  chunk: string | Buffer,
+  encoding: Encoding | "buffer",
+  callback: () => void,
+) {
+  this.update(chunk, encoding);
+  callback();
+};
 
-  constructor(
-    algorithm: string | number,
-    _opts?: TransformOptions,
+Hash.prototype._flush = function _flush(callback: () => void) {
+  this.push(this.digest());
+  callback();
+};
+
+Hash.prototype.update = function update(
+  data: string | Buffer,
+  encoding: Encoding | "buffer",
+) {
+  encoding = encoding || getDefaultEncoding();
+
+  if (typeof data === "string") {
+    validateEncoding(data, encoding);
+  } else if (!isArrayBufferView(data)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "data",
+      ["string", "Buffer", "TypedArray", "DataView"],
+      data,
+    );
+  }
+
+  if (
+    typeof data === "string" && (encoding === "utf8" || encoding === "buffer")
   ) {
-    super({
-      transform(chunk: string, _encoding: string, callback: () => void) {
-        op_node_hash_update(context, coerceToBytes(chunk));
-        callback();
-      },
-      flush(callback: () => void) {
-        this.push(this.digest(undefined));
-        callback();
-      },
-    });
-
-    if (typeof algorithm === "string") {
-      this.#context = op_node_create_hash(
-        algorithm.toLowerCase(),
-      );
-      if (this.#context === 0) {
-        throw new TypeError(`Unknown hash algorithm: ${algorithm}`);
-      }
-    } else {
-      this.#context = algorithm;
-    }
-
-    const context = this.#context;
+    unwrapErr(op_node_hash_update_str(this[kHandle], data));
+  } else {
+    unwrapErr(op_node_hash_update(this[kHandle], toBuf(data, encoding)));
   }
 
-  copy(): Hash {
-    return new Hash(op_node_hash_clone(this.#context));
+  return this;
+};
+
+Hash.prototype.digest = function digest(outputEncoding: Encoding | "buffer") {
+  outputEncoding = outputEncoding || getDefaultEncoding();
+  outputEncoding = `${outputEncoding}`;
+
+  if (outputEncoding === "hex") {
+    const result = op_node_hash_digest_hex(this[kHandle]);
+    if (result === null) throw new ERR_CRYPTO_HASH_FINALIZED();
+    return result;
   }
 
-  /**
-   * Updates the hash content with the given data.
-   */
-  update(data: string | ArrayBuffer, _encoding?: string): this {
-    if (typeof data === "string") {
-      unwrapErr(op_node_hash_update_str(this.#context, data));
-    } else {
-      unwrapErr(op_node_hash_update(this.#context, coerceToBytes(data)));
-    }
+  const digest = op_node_hash_digest(this[kHandle]);
+  if (digest === null) throw new ERR_CRYPTO_HASH_FINALIZED();
 
-    return this;
-  }
-
-  /**
-   * Calculates the digest of all of the data.
-   *
-   * If encoding is provided a string will be returned; otherwise a Buffer is returned.
-   *
-   * Supported encodings are currently 'hex', 'binary', 'base64', 'base64url'.
-   */
-  digest(encoding?: string): Buffer | string {
-    if (encoding === "hex") {
-      return op_node_hash_digest_hex(this.#context);
-    }
-
-    const digest = op_node_hash_digest(this.#context);
-    if (encoding === undefined) {
+  // TODO(@littedivy): Fast paths for below encodings.
+  switch (outputEncoding) {
+    case "binary":
+      return String.fromCharCode(...digest);
+    case "base64":
+      return encodeToBase64(digest);
+    case "base64url":
+      return encodeToBase64Url(digest);
+    case undefined:
+    case "buffer":
       return Buffer.from(digest);
-    }
-
-    // TODO(@littedivy): Fast paths for below encodings.
-    switch (encoding) {
-      case "binary":
-        return String.fromCharCode(...digest);
-      case "base64":
-        return encodeToBase64(digest);
-      case "base64url":
-        return encodeToBase64Url(digest);
-      case "buffer":
-        return Buffer.from(digest);
-      default:
-        return Buffer.from(digest).toString(encoding);
-    }
+    default:
+      return Buffer.from(digest).toString(outputEncoding);
   }
-}
+};
 
 export function Hmac(
   hmac: string,
@@ -171,7 +204,7 @@ class HmacImpl extends Transform {
     super({
       transform(chunk: string, encoding: string, callback: () => void) {
         // deno-lint-ignore no-explicit-any
-        self.update(coerceToBytes(chunk), encoding as any);
+        self.update(Buffer.from(chunk), encoding as any);
         callback();
       },
       flush(callback: () => void) {
@@ -219,9 +252,10 @@ class HmacImpl extends Transform {
   digest(encoding?: BinaryToTextEncoding): Buffer | string {
     const result = this.#hash.digest();
 
-    return new Hash(this.#algorithm).update(this.#opad).update(result).digest(
-      encoding,
-    );
+    return new Hash(this.#algorithm).update(this.#opad).update(result)
+      .digest(
+        encoding,
+      );
   }
 
   update(data: string | ArrayBuffer, inputEncoding?: Encoding): this {

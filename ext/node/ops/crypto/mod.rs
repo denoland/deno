@@ -7,7 +7,6 @@ use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
 use deno_core::OpState;
-use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ToJsBuffer;
 use elliptic_curve::sec1::ToEncodedPoint;
@@ -96,18 +95,13 @@ pub fn op_node_check_prime_bytes_async(
   })
 }
 
-#[op2(fast)]
-#[smi]
+#[op2]
+#[cppgc]
 pub fn op_node_create_hash(
-  state: &mut OpState,
   #[string] algorithm: &str,
-) -> u32 {
-  state
-    .resource_table
-    .add(match digest::Context::new(algorithm) {
-      Ok(context) => context,
-      Err(_) => return 0,
-    })
+  output_length: Option<u32>,
+) -> Result<digest::Hasher, AnyError> {
+  digest::Hasher::new(algorithm, output_length.map(|l| l as usize))
 }
 
 #[op2]
@@ -118,65 +112,44 @@ pub fn op_node_get_hashes() -> Vec<&'static str> {
 
 #[op2(fast)]
 pub fn op_node_hash_update(
-  state: &mut OpState,
-  #[smi] rid: u32,
+  #[cppgc] hasher: &digest::Hasher,
   #[buffer] data: &[u8],
 ) -> bool {
-  let context = match state.resource_table.get::<digest::Context>(rid) {
-    Ok(context) => context,
-    _ => return false,
-  };
-  context.update(data);
-  true
+  hasher.update(data)
 }
 
 #[op2(fast)]
 pub fn op_node_hash_update_str(
-  state: &mut OpState,
-  #[smi] rid: u32,
+  #[cppgc] hasher: &digest::Hasher,
   #[string] data: &str,
 ) -> bool {
-  let context = match state.resource_table.get::<digest::Context>(rid) {
-    Ok(context) => context,
-    _ => return false,
-  };
-  context.update(data.as_bytes());
-  true
+  hasher.update(data.as_bytes())
 }
 
 #[op2]
-#[serde]
+#[buffer]
 pub fn op_node_hash_digest(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> Result<ToJsBuffer, AnyError> {
-  let context = state.resource_table.take::<digest::Context>(rid)?;
-  let context = Rc::try_unwrap(context)
-    .map_err(|_| type_error("Hash context is already in use"))?;
-  Ok(context.digest()?.into())
+  #[cppgc] hasher: &digest::Hasher,
+) -> Option<Box<[u8]>> {
+  hasher.digest()
 }
 
 #[op2]
 #[string]
 pub fn op_node_hash_digest_hex(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> Result<String, AnyError> {
-  let context = state.resource_table.take::<digest::Context>(rid)?;
-  let context = Rc::try_unwrap(context)
-    .map_err(|_| type_error("Hash context is already in use"))?;
-  let digest = context.digest()?;
-  Ok(faster_hex::hex_string(&digest))
+  #[cppgc] hasher: &digest::Hasher,
+) -> Option<String> {
+  let digest = hasher.digest()?;
+  Some(faster_hex::hex_string(&digest))
 }
 
-#[op2(fast)]
-#[smi]
+#[op2]
+#[cppgc]
 pub fn op_node_hash_clone(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> Result<ResourceId, AnyError> {
-  let context = state.resource_table.get::<digest::Context>(rid)?;
-  Ok(state.resource_table.add(context.as_ref().clone()))
+  #[cppgc] hasher: &digest::Hasher,
+  output_length: Option<u32>,
+) -> Result<Option<digest::Hasher>, AnyError> {
+  hasher.clone_inner(output_length.map(|l| l as usize))
 }
 
 #[op2]

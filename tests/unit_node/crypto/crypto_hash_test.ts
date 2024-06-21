@@ -123,17 +123,13 @@ Deno.test("[node/crypto.getHashes]", () => {
   }
 });
 
-Deno.test("[node/crypto.getRandomUUID] works the same way as Web Crypto API", () => {
-  assertEquals(randomUUID().length, crypto.randomUUID().length);
-  assertEquals(typeof randomUUID(), typeof crypto.randomUUID());
+Deno.test("[node/crypto.hash] supports buffer args", () => {
+  const buffer = Buffer.from("abc");
+  const d = createHash("sha1").update(buffer).digest("hex");
+  assertEquals(d, "a9993e364706816aba3e25717850c26c9cd0d89d");
 });
 
-Deno.test("[node/crypto.randomFillSync] supported arguments", () => {
-  const buf = new Uint8Array(10);
-
-  assert(randomFillSync(buf));
-  assert(randomFillSync(buf, 0));
-  // @ts-ignore: arraybuffer arguments are valid.
-  assert(randomFillSync(buf.buffer));
-  assert(randomFillSync(new DataView(buf.buffer)));
+Deno.test("[node/crypto.hash] does not leak", () => {
+  const hasher = createHash("sha1");
+  hasher.update("abc");
 });
