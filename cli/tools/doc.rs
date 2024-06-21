@@ -186,7 +186,38 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       Default::default()
     };
 
-    generate_docs_directory(doc_nodes_by_url, html_options, deno_ns)
+    let rewrite_map =
+      if let Some(config_file) = cli_options.maybe_config_file().clone() {
+        let config = config_file.to_exports_config()?;
+
+        let rewrite_map = config
+          .clone()
+          .into_map()
+          .into_keys()
+          .map(|key| {
+            Ok((
+              config.get_resolved(&key)?.unwrap(),
+              key
+                .strip_prefix('.')
+                .unwrap_or(&key)
+                .strip_prefix('/')
+                .unwrap_or(&key)
+                .to_owned(),
+            ))
+          })
+          .collect::<Result<IndexMap<_, _>, AnyError>>()?;
+
+        Some(rewrite_map)
+      } else {
+        None
+      };
+
+    generate_docs_directory(
+      doc_nodes_by_url,
+      html_options,
+      deno_ns,
+      rewrite_map,
+    )
   } else {
     let modules_len = doc_nodes_by_url.len();
     let doc_nodes =
@@ -257,19 +288,103 @@ impl deno_doc::html::HrefResolver for DocResolver {
   }
 }
 
+struct DenoDocResolver();
+
+impl deno_doc::html::HrefResolver for DenoDocResolver {
+  fn resolve_path(
+    &self,
+    current: UrlResolveKind,
+    target: UrlResolveKind,
+  ) -> String {
+    deno_doc::html::href_path_resolve(current, target)
+  }
+
+  fn resolve_global_symbol(&self, _symbol: &[String]) -> Option<String> {
+    None
+  }
+
+  fn resolve_import_href(
+    &self,
+    _symbol: &[String],
+    _src: &str,
+  ) -> Option<String> {
+    None
+  }
+
+  fn resolve_usage(&self, _current_resolve: UrlResolveKind) -> Option<String> {
+    None
+  }
+
+  fn resolve_source(&self, _location: &deno_doc::Location) -> Option<String> {
+    None
+  }
+}
+
+struct NodeDocResolver();
+
+impl deno_doc::html::HrefResolver for NodeDocResolver {
+  fn resolve_path(
+    &self,
+    current: UrlResolveKind,
+    target: UrlResolveKind,
+  ) -> String {
+    deno_doc::html::href_path_resolve(current, target)
+  }
+
+  fn resolve_global_symbol(&self, _symbol: &[String]) -> Option<String> {
+    None
+  }
+
+  fn resolve_import_href(
+    &self,
+    _symbol: &[String],
+    _src: &str,
+  ) -> Option<String> {
+    None
+  }
+
+  fn resolve_usage(&self, current_resolve: UrlResolveKind) -> Option<String> {
+    current_resolve
+      .get_file()
+      .map(|file| format!("node:{}", file.path))
+  }
+
+  fn resolve_source(&self, _location: &deno_doc::Location) -> Option<String> {
+    None
+  }
+}
+
 fn generate_docs_directory(
   doc_nodes_by_url: IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: &DocHtmlFlag,
   deno_ns: std::collections::HashSet<Vec<String>>,
+  rewrite_map: Option<IndexMap<ModuleSpecifier, String>>,
 ) -> Result<(), AnyError> {
   let cwd = std::env::current_dir().context("Failed to get CWD")?;
   let output_dir_resolved = cwd.join(&html_options.output);
 
+  let internal_env = std::env::var("DENO_INTERNAL_HTML_DOCS").ok();
+
+  let href_resolver: Rc<dyn deno_doc::html::HrefResolver> = if internal_env
+    .as_ref()
+    .is_some_and(|internal_html_docs| internal_html_docs == "node")
+  {
+    Rc::new(NodeDocResolver())
+  } else if internal_env
+    .as_ref()
+    .is_some_and(|internal_html_docs| internal_html_docs == "deno")
+    || deno_ns.is_empty()
+  {
+    Rc::new(DenoDocResolver())
+  } else {
+    Rc::new(DocResolver { deno_ns })
+  };
+
   let options = deno_doc::html::GenerateOptions {
     package_name: html_options.name.clone(),
     main_entrypoint: None,
-    rewrite_map: None,
-    href_resolver: Rc::new(DocResolver { deno_ns }),
+    rewrite_map,
+    href_resolver,
     usage_composer: None,
     composable_output: false,
   };
