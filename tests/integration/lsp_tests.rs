@@ -13006,7 +13006,7 @@ fn lsp_deno_future_env_byonm() {
         "severity": 1,
         "code": "resolver-error",
         "source": "deno",
-        "message": format!("Could not find a matching package for 'npm:chalk' in '{}'. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.", temp_dir.path().join("package.json")),
+        "message": "Could not find a matching package for 'npm:chalk' in a package.json file. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.",
       },
     ])
   );

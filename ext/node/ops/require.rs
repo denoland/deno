@@ -551,17 +551,16 @@ where
   P: NodePermissions + 'static,
 {
   let node_resolver = state.borrow::<NodeResolverRc>().clone();
-  let permissions = state.borrow_mut::<P>();
   let package_json_path = PathBuf::from(package_json_path);
-  if matches!(permissions.check_read(&package_json_path), Ok(())) {
-    node_resolver
-      .load_package_json(&package_json_path)
-      .ok()
-      .flatten()
-      .map(|pkg| (*pkg).clone())
-  } else {
-    None
+  if package_json_path.file_name() != Some("package.json".as_ref()) {
+    // permissions: do not allow reading a non-package.json file
+    return None;
   }
+  node_resolver
+    .load_package_json(&package_json_path)
+    .ok()
+    .flatten()
+    .map(|pkg| (*pkg).clone())
 }
 
 #[op2]
