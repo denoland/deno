@@ -53,17 +53,20 @@ class NodeTestContext {
 
   test(name, options, fn) {
     const prepared = prepareOptions(name, options, fn, {});
-    return PromisePrototypeThen(this.#denoContext.step({
-      name: prepared.name,
-      fn: async (denoTestContext) => {
-        const newNodeTextContext = new NodeTestContext(denoTestContext);
-        await prepared.fn(newNodeTextContext);
-      },
-      ignore: prepared.options.todo || prepared.options.skip,
-      sanitizeExit: false,
-      sanitizeOps: false,
-      sanitizeResources: false,
-    }), () => undefined);
+    return PromisePrototypeThen(
+      this.#denoContext.step({
+        name: prepared.name,
+        fn: async (denoTestContext) => {
+          const newNodeTextContext = new NodeTestContext(denoTestContext);
+          await prepared.fn(newNodeTextContext);
+        },
+        ignore: prepared.options.todo || prepared.options.skip,
+        sanitizeExit: false,
+        sanitizeOps: false,
+        sanitizeResources: false,
+      }),
+      () => undefined,
+    );
   }
 
   before(_fn, _options) {
