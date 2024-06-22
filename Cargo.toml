@@ -373,5 +373,6 @@ opt-level = 3
 
 [patch.crates-io]
 deno_config = { path = "../deno_config" }
+deno_graph = { path = "../deno_graph" }
 deno_unsync = { path = "../deno_unsync" }
 import_map = { path = "../import_map/rs-lib" }

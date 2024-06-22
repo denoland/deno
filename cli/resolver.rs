@@ -5,6 +5,7 @@ use dashmap::DashMap;
 use dashmap::DashSet;
 use deno_ast::MediaType;
 use deno_config::workspace::MappedResolution;
+use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
@@ -482,7 +483,15 @@ impl Resolver for CliGraphResolver {
     let result: Result<_, ResolveError> = self
       .workspace_resolver
       .resolve(specifier, referrer)
-      .map_err(|err| AnyError::from(err).into());
+      .map_err(|err| match err {
+        MappedResolutionError::Specifier(err) => ResolveError::Specifier(err),
+        MappedResolutionError::ImportMap(err) => {
+          ResolveError::Other(err.into())
+        }
+        MappedResolutionError::PkgJsonDep(err) => {
+          ResolveError::Other(err.into())
+        }
+      });
     let result = match result {
       Ok(resolution) => match resolution {
         MappedResolution::Normal(specifier)

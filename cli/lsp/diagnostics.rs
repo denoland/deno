@@ -1033,7 +1033,7 @@ impl DenoDiagnostic {
               "invalid-local-import"
             }
             ResolutionError::InvalidSpecifier { error, .. } => match error {
-              SpecifierError::ImportPrefixMissing(_, _) => {
+              SpecifierError::ImportPrefixMissing { .. } => {
                 "import-prefix-missing"
               }
               SpecifierError::InvalidUrl(_) => "invalid-url",
