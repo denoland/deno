@@ -3,8 +3,10 @@ use std::io::Write;
 use std::pin::Pin;
 use std::rc::Rc;
 
+use brotli::enc::encode::BrotliEncoderOperation;
 use brotli::enc::encode::BrotliEncoderParameter;
-use brotli::ffi::compressor::BrotliEncoderState;
+use brotli::enc::encode::BrotliEncoderStateStruct;
+use brotli::writer::StandardAlloc;
 use bytes::Bytes;
 use bytes::BytesMut;
 use deno_core::error::AnyError;
@@ -448,58 +450,24 @@ enum BrotliState {
   EndOfStream,
 }
 
-struct BrotliEncoderStateWrapper {
-  stm: *mut BrotliEncoderState,
-}
-
 #[pin_project]
 pub struct BrotliResponseStream {
   state: BrotliState,
-  stm: BrotliEncoderStateWrapper,
-  current_cursor: usize,
-  output_written_so_far: usize,
+  stm: BrotliEncoderStateStruct<StandardAlloc>,
   #[pin]
   underlying: ResponseStream,
 }
 
-impl Drop for BrotliEncoderStateWrapper {
-  fn drop(&mut self) {
-    // SAFETY: since we are dropping, we can be sure that this instance will not
-    // be used again.
-    unsafe {
-      brotli::ffi::compressor::BrotliEncoderDestroyInstance(self.stm);
-    }
-  }
-}
-
 impl BrotliResponseStream {
   pub fn new(underlying: ResponseStream) -> Self {
-    // SAFETY: creating an FFI instance should be OK with these args.
-    let stm = unsafe {
-      let stm = brotli::ffi::compressor::BrotliEncoderCreateInstance(
-        None,
-        None,
-        std::ptr::null_mut(),
-      );
-      // Quality level 6 is based on google's nginx default value for on-the-fly compression
-      // https://github.com/google/ngx_brotli#brotli_comp_level
-      // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes (~4MB)
-      brotli::ffi::compressor::BrotliEncoderSetParameter(
-        stm,
-        BrotliEncoderParameter::BROTLI_PARAM_QUALITY,
-        6,
-      );
-      brotli::ffi::compressor::BrotliEncoderSetParameter(
-        stm,
-        BrotliEncoderParameter::BROTLI_PARAM_LGWIN,
-        22,
-      );
-      BrotliEncoderStateWrapper { stm }
-    };
+    let mut stm = BrotliEncoderStateStruct::new(StandardAlloc::default());
+    // Quality level 6 is based on google's nginx default value for on-the-fly compression
+    // https://github.com/google/ngx_brotli#brotli_comp_level
+    // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes (~4MB)
+    stm.set_parameter(BrotliEncoderParameter::BROTLI_PARAM_QUALITY, 6);
+    stm.set_parameter(BrotliEncoderParameter::BROTLI_PARAM_LGWIN, 22);
     Self {
       stm,
-      output_written_so_far: 0,
-      current_cursor: 0,
       state: BrotliState::Streaming,
       underlying,
     }
@@ -546,71 +514,46 @@ impl PollFrame for BrotliResponseStream {
 
     let res = match frame {
       ResponseStreamResult::NonEmptyBuf(buf) => {
-        let mut output_written = 0;
-        let mut total_output_written = 0;
-        let mut input_size = buf.len();
-        let input_buffer = buf.as_ref();
-        let mut len = max_compressed_size(input_size);
-        let mut output_buffer = vec![0u8; len];
-        let mut ob_ptr = output_buffer.as_mut_ptr();
+        let mut output_buffer = vec![0; max_compressed_size(buf.len())];
+        let mut output_offset = 0;
 
-        // SAFETY: these are okay arguments to these FFI calls.
-        unsafe {
-          brotli::ffi::compressor::BrotliEncoderCompressStream(
-            this.stm.stm,
-            brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
-            &mut input_size,
-            &input_buffer.as_ptr() as *const *const u8 as *mut *const u8,
-            &mut len,
-            &mut ob_ptr,
-            &mut output_written,
-          );
-          total_output_written += output_written;
-          output_written = 0;
+        this.stm.compress_stream(
+          BrotliEncoderOperation::BROTLI_OPERATION_FLUSH,
+          &mut buf.len(),
+          &buf,
+          &mut 0,
+          &mut output_buffer.len(),
+          &mut output_buffer,
+          &mut output_offset,
+          &mut None,
+          &mut |_, _, _, _| (),
+        );
 
-          brotli::ffi::compressor::BrotliEncoderCompressStream(
-            this.stm.stm,
-            brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_FLUSH,
-            &mut input_size,
-            &input_buffer.as_ptr() as *const *const u8 as *mut *const u8,
-            &mut len,
-            &mut ob_ptr,
-            &mut output_written,
-          );
-          total_output_written += output_written;
-        };
-
-        output_buffer
-          .truncate(total_output_written - this.output_written_so_far);
-        this.output_written_so_far = total_output_written;
+        output_buffer.truncate(output_offset);
         ResponseStreamResult::NonEmptyBuf(BufView::from(output_buffer))
       }
       ResponseStreamResult::EndOfStream => {
-        let mut len = 1024usize;
-        let mut output_buffer = vec![0u8; len];
-        let mut input_size = 0;
-        let mut output_written = 0;
-        let ob_ptr = output_buffer.as_mut_ptr();
+        let mut output_buffer = vec![0; 1024];
+        let mut output_offset = 0;
 
-        // SAFETY: these are okay arguments to these FFI calls.
-        unsafe {
-          brotli::ffi::compressor::BrotliEncoderCompressStream(
-            this.stm.stm,
-            brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_FINISH,
-            &mut input_size,
-            std::ptr::null_mut(),
-            &mut len,
-            &ob_ptr as *const *mut u8 as *mut *mut u8,
-            &mut output_written,
-          );
-        };
+        this.stm.compress_stream(
+          BrotliEncoderOperation::BROTLI_OPERATION_FINISH,
+          &mut 0,
+          &[],
+          &mut 0,
+          &mut output_buffer.len(),
+          &mut output_buffer,
+          &mut output_offset,
+          &mut None,
+          &mut |_, _, _, _| (),
+        );
 
-        if output_written == 0 {
+        if output_offset == 0 {
           this.state = BrotliState::EndOfStream;
           ResponseStreamResult::EndOfStream
         } else {
           this.state = BrotliState::Flushing;
-          output_buffer.truncate(output_written - this.output_written_so_far);
+          output_buffer.truncate(output_offset);
           ResponseStreamResult::NonEmptyBuf(BufView::from(output_buffer))
         }
       }

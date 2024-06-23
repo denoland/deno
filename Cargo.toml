@@ -44,7 +44,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.39.2", features = ["transpiling"] }
-deno_core = { version = "0.290.0" }
+deno_core = { version = "0.291.0" }
 
 deno_bench_util = { version = "0.152.0", path = "./bench_util" }
 deno_lockfile = "0.20.0"
@@ -90,7 +90,7 @@ async-trait = "0.1.73"
 base32 = "=0.4.0"
 base64 = "0.21.4"
 bencher = "0.1"
-brotli = "3.3.4"
+brotli = "6.0.0"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }

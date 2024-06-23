@@ -29,6 +29,8 @@ pub struct Script {
   inner: i::ContextifyScript,
 }
 
+impl deno_core::GcResource for Script {}
+
 impl Script {
   fn new(
     scope: &mut v8::HandleScope,
