@@ -254,7 +254,7 @@ impl CacheSetting {
 
 pub struct WorkspaceBenchOptions {
   pub filter: Option<String>,
-  pub json: bool,
+  pub format: BenchReporterFormat,
   pub no_run: bool,
 }
 
@@ -262,7 +262,7 @@ impl WorkspaceBenchOptions {
   pub fn resolve(bench_flags: &BenchFlags) -> Self {
     Self {
       filter: bench_flags.filter.clone(),
-      json: bench_flags.json,
+      format: bench_flags.format.clone(),
       no_run: bench_flags.no_run,
     }
   }

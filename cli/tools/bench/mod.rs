@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::BenchFlags;
+use crate::args::BenchReporterFormat;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::colors;
@@ -50,14 +51,12 @@ use tokio::sync::mpsc::UnboundedSender;
 mod mitata;
 mod reporters;
 
-use reporters::BenchReporter;
-use reporters::ConsoleReporter;
-use reporters::JsonReporter;
+use reporters::{BenchReporter, ConsoleReporter, CsvReporter, JsonReporter};
 
 #[derive(Debug, Clone)]
 struct BenchSpecifierOptions {
   filter: TestFilter,
-  json: bool,
+  format: BenchReporterFormat,
   log_level: Option<log::Level>,
 }
 
@@ -136,12 +135,13 @@ impl BenchReport {
 
 fn create_reporter(
   show_output: bool,
-  json: bool,
+  format: BenchReporterFormat,
 ) -> Box<dyn BenchReporter + Send> {
-  if json {
-    return Box::new(JsonReporter::new());
+  match format {
+    BenchReporterFormat::Console => Box::new(ConsoleReporter::new(show_output)),
+    BenchReporterFormat::Json => Box::new(JsonReporter::new()),
+    BenchReporterFormat::Csv => Box::new(CsvReporter::new()),
   }
-  Box::new(ConsoleReporter::new(show_output))
 }
 
 /// Run a single specifier as an executable bench module.
@@ -300,7 +300,7 @@ async fn bench_specifiers(
       let mut used_only = false;
       let mut report = BenchReport::new();
       let mut reporter =
-        create_reporter(log_level != Some(Level::Error), options.json);
+        create_reporter(log_level != Some(Level::Error), options.format);
       let mut benches = IndexMap::new();
 
       while let Some(event) = receiver.recv().await {
@@ -453,7 +453,7 @@ pub async fn run_benchmarks(
     specifiers,
     BenchSpecifierOptions {
       filter: TestFilter::from_flag(&workspace_bench_options.filter),
-      json: workspace_bench_options.json,
+      format: workspace_bench_options.format,
       log_level,
     },
   )
@@ -573,7 +573,7 @@ pub async fn run_benchmarks_with_watch(
           specifiers,
           BenchSpecifierOptions {
             filter: TestFilter::from_flag(&workspace_bench_options.filter),
-            json: workspace_bench_options.json,
+            format: workspace_bench_options.format,
             log_level,
           },
         )

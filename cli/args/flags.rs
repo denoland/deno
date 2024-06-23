@@ -2,6 +2,7 @@
 
 use clap::builder::styling::AnsiColor;
 use clap::builder::FalseyValueParser;
+use clap::builder::TypedValueParser;
 use clap::value_parser;
 use clap::Arg;
 use clap::ArgAction;
@@ -80,9 +81,36 @@ pub struct AddFlags {
 pub struct BenchFlags {
   pub files: FileFlags,
   pub filter: Option<String>,
-  pub json: bool,
+  pub format: BenchReporterFormat,
   pub no_run: bool,
   pub watch: Option<WatchFlags>,
+}
+
+/// Used to specify which format the benchmark should be reported in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BenchReporterFormat {
+  Console,
+  Json,
+  Csv,
+}
+
+impl std::str::FromStr for BenchReporterFormat {
+  type Err = ();
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    match s.trim() {
+      "console" => Ok(Self::Console),
+      "json" => Ok(Self::Json),
+      "csv" => Ok(Self::Csv),
+      _ => Ok(Self::default()),
+    }
+  }
+}
+
+impl Default for BenchReporterFormat {
+  fn default() -> BenchReporterFormat {
+    BenchReporterFormat::Console
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1404,10 +1432,12 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
       runtime_args(cmd, true, false)
         .arg(check_arg(true))
         .arg(
-          Arg::new("json")
-            .long("json")
-            .action(ArgAction::SetTrue)
-            .help("UNSTABLE: Output benchmark result in JSON format"),
+          Arg::new("format")
+            .long("format")
+            .action(ArgAction::Set)
+            .default_value("console")
+            .value_parser(["console", "json", "csv"])
+            .help("UNSTABLE: Benchmark output format"),
         )
         .arg(
           Arg::new("ignore")
@@ -3738,7 +3768,11 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   // interactive prompts, unless done by user code
   flags.permissions.no_prompt = true;
 
-  let json = matches.get_flag("json");
+  let format = if let Some(s) = matches.remove_one::<String>("format") {
+    BenchReporterFormat::from_str(s.as_str()).unwrap()
+  } else {
+    BenchReporterFormat::default()
+  };
 
   let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f.collect(),
@@ -3764,7 +3798,7 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Bench(BenchFlags {
     files: FileFlags { include, ignore },
     filter,
-    json,
+    format,
     no_run,
     watch: watch_arg_parse(matches),
   });
@@ -9592,7 +9626,8 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "bench",
-      "--json",
+      "--format",
+      "json",
       "--unstable",
       "--no-npm",
       "--no-remote",
@@ -9613,7 +9648,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: Some("- foo".to_string()),
-          json: true,
+          format: BenchReporterFormat::Json,
           no_run: true,
           files: FileFlags {
             include: vec!["dir1/".to_string(), "dir2/".to_string()],
@@ -9648,7 +9683,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: None,
-          json: false,
+          format: BenchReporterFormat::default(),
           no_run: false,
           files: FileFlags {
             include: vec![],

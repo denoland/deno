@@ -299,3 +299,47 @@ impl BenchReporter for ConsoleReporter {
     println!();
   }
 }
+
+pub struct CsvReporter(Vec<CsvReporterOutput>);
+
+impl CsvReporter {
+  pub fn new() -> Self {
+    Self(Vec::new())
+  }
+}
+
+pub struct CsvReporterOutput;
+
+impl BenchReporter for CsvReporter {
+  fn report_group_summary(&mut self) {
+    println!("Report Group Summary")
+  }
+
+  fn report_plan(&mut self, plan: &BenchPlan) {
+    println!("Bench plan: {plan:?}");
+  }
+
+  fn report_end(&mut self, report: &BenchReport) {
+    println!("Report end: {report:?}")
+  }
+
+  fn report_register(&mut self, desc: &BenchDescription) {
+    println!("Report register: {desc:?}")
+  }
+
+  fn report_wait(&mut self, desc: &BenchDescription) {
+    println!("Report wait: {desc:?}")
+  }
+
+  fn report_output(&mut self, output: &str) {
+    println!("Report output: {output}")
+  }
+
+  fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult) {
+    println!("Report result: {desc:?}");
+  }
+
+  fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>) {
+    println!("Uncaught error. Origin: {origin}, error: {error}")
+  }
+}
