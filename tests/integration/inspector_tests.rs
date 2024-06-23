@@ -499,12 +499,14 @@ async fn inspector_does_not_hang() {
     .send_many(&[
       json!({"id":1,"method":"Runtime.enable"}),
       json!({"id":2,"method":"Debugger.enable"}),
+      json!({"id":3,"method":"Debugger.setBlackboxPatterns","params":{"patterns":["/node_modules/|/bower_components/"]}}),
     ])
     .await;
   tester.assert_received_messages(
       &[
         r#"{"id":1,"result":{}}"#,
-        r#"{"id":2,"result":{"debuggerId":"#
+        r#"{"id":2,"result":{"debuggerId":"#,
+        r#"{"id":3,"result":"#,
       ],
       &[
         r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#
@@ -513,21 +515,21 @@ async fn inspector_does_not_hang() {
     .await;
 
   tester
-    .send(json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}))
+    .send(json!({"id":4,"method":"Runtime.runIfWaitingForDebugger"}))
     .await;
   tester
     .assert_received_messages(
-      &[r#"{"id":3,"result":{}}"#],
+      &[r#"{"id":4,"result":{}}"#],
       &[r#"{"method":"Debugger.paused","#],
     )
     .await;
 
   tester
-    .send(json!({"id":4,"method":"Debugger.resume"}))
+    .send(json!({"id":5,"method":"Debugger.resume"}))
     .await;
   tester
     .assert_received_messages(
-      &[r#"{"id":4,"result":{}}"#],
+      &[r#"{"id":5,"result":{}}"#],
       &[r#"{"method":"Debugger.resumed","params":{}}"#],
     )
     .await;

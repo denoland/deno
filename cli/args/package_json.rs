@@ -7,16 +7,16 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_npm::registry::parse_dep_entry_name_and_raw_version;
 use deno_runtime::deno_node::PackageJson;
+use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
-use deno_semver::VersionReqSpecifierParseError;
 use indexmap::IndexMap;
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum PackageJsonDepValueParseError {
   #[error(transparent)]
-  Specifier(#[from] VersionReqSpecifierParseError),
+  VersionReq(#[from] NpmVersionReqParseError),
   #[error("Not implemented scheme '{scheme}'")]
   Unsupported { scheme: String },
 }
@@ -75,13 +75,13 @@ pub fn get_local_package_json_version_reqs(
       });
     }
     let (name, version_req) = parse_dep_entry_name_and_raw_version(key, value);
-    let result = VersionReq::parse_from_specifier(version_req);
+    let result = VersionReq::parse_from_npm(version_req);
     match result {
       Ok(version_req) => Ok(PackageReq {
         name: name.to_string(),
         version_req,
       }),
-      Err(err) => Err(PackageJsonDepValueParseError::Specifier(err)),
+      Err(err) => Err(PackageJsonDepValueParseError::VersionReq(err)),
     }
   }
 
@@ -208,7 +208,7 @@ mod test {
     let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
     package_json.dependencies = Some(IndexMap::from([(
       "test".to_string(),
-      "1.x - 1.3".to_string(),
+      "%*(#$%()".to_string(),
     )]));
     let map = get_local_package_json_version_reqs_for_tests(&package_json);
     assert_eq!(
@@ -217,12 +217,32 @@ mod test {
         "test".to_string(),
         Err(
           concat!(
-            "Invalid specifier version requirement. Unexpected character.\n",
-            "   - 1.3\n",
+            "Invalid npm version requirement. Unexpected character.\n",
+            "  %*(#$%()\n",
             "  ~"
           )
           .to_string()
         )
+      )])
+    );
+  }
+
+  #[test]
+  fn test_get_local_package_json_version_reqs_range() {
+    let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
+    package_json.dependencies = Some(IndexMap::from([(
+      "test".to_string(),
+      "1.x - 1.3".to_string(),
+    )]));
+    let map = get_local_package_json_version_reqs_for_tests(&package_json);
+    assert_eq!(
+      map,
+      IndexMap::from([(
+        "test".to_string(),
+        Ok(PackageReq {
+          name: "test".to_string(),
+          version_req: VersionReq::parse_from_npm("1.x - 1.3").unwrap()
+        })
       )])
     );
   }

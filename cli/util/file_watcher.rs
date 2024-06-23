@@ -278,7 +278,9 @@ where
   deno_core::unsync::spawn(async move {
     loop {
       let received_changed_paths = watcher_receiver.recv().await;
-      *changed_paths_.borrow_mut() = received_changed_paths.clone();
+      changed_paths_
+        .borrow_mut()
+        .clone_from(&received_changed_paths);
 
       match *watcher_.restart_mode.lock() {
         WatcherRestartMode::Automatic => {
