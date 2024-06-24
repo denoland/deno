@@ -1,8 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
+import { primordials } from "ext:core/mod.js";
+const { PromisePrototypeThen } = primordials;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 
 export function run() {
@@ -54,17 +53,20 @@ class NodeTestContext {
 
   test(name, options, fn) {
     const prepared = prepareOptions(name, options, fn, {});
-    return this.#denoContext.step({
-      name: prepared.name,
-      fn: async (denoTestContext) => {
-        const newNodeTextContext = new NodeTestContext(denoTestContext);
-        await prepared.fn(newNodeTextContext);
-      },
-      ignore: prepared.options.todo || prepared.options.skip,
-      sanitizeExit: false,
-      sanitizeOps: false,
-      sanitizeResources: false,
-    }).then(() => undefined);
+    return PromisePrototypeThen(
+      this.#denoContext.step({
+        name: prepared.name,
+        fn: async (denoTestContext) => {
+          const newNodeTextContext = new NodeTestContext(denoTestContext);
+          await prepared.fn(newNodeTextContext);
+        },
+        ignore: prepared.options.todo || prepared.options.skip,
+        sanitizeExit: false,
+        sanitizeOps: false,
+        sanitizeResources: false,
+      }),
+      () => undefined,
+    );
   }
 
   before(_fn, _options) {
@@ -127,6 +129,8 @@ function wrapTestFn(fn, resolve) {
 function prepareDenoTest(name, options, fn, overrides) {
   const prepared = prepareOptions(name, options, fn, overrides);
 
+  // TODO(iuioiua): Update once there's a primordial for `Promise.withResolvers()`.
+  // deno-lint-ignore prefer-primordials
   const { promise, resolve } = Promise.withResolvers();
 
   const denoTestOptions = {
