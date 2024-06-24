@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-
-import { op_node_cp, op_node_cp_sync, primordials } from "ext:core/ops";
+import { primordials } from "ext:core/mod.js";
+import { op_node_cp, op_node_cp_sync } from "ext:core/ops";
 import {
   getValidatedPath,
   validateCpOptions,
