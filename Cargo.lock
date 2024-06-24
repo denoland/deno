@@ -1705,7 +1705,7 @@ dependencies = [
  "scrypt",
  "sec1",
  "serde",
- "sha-1",
+ "sha1",
  "sha2",
  "signature",
  "simd-json",
