@@ -61,6 +61,7 @@ use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
+use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -76,8 +77,51 @@ use self::binary::load_npm_vfs;
 use self::binary::Metadata;
 use self::file_system::DenoCompileFileSystem;
 
-struct SharedModuleLoaderState {
+struct WorkspaceEszipModule {
+  specifier: ModuleSpecifier,
+  inner: eszip::Module,
+}
+
+struct WorkspaceEszip {
   eszip: eszip::EszipV2,
+  root_dir_url: ModuleSpecifier,
+}
+
+impl WorkspaceEszip {
+  pub fn get_module(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<WorkspaceEszipModule> {
+    let specifier_key = if specifier.scheme() == "file" {
+      let relative = self.root_dir_url.make_relative(specifier)?;
+      if !relative.starts_with("../") {
+        Cow::Owned(format!("./{}", relative))
+      } else {
+        Cow::Owned(relative)
+      }
+    } else {
+      Cow::Borrowed(specifier.as_str())
+    };
+    let module = self.eszip.get_module(&specifier_key)?;
+    if module.specifier.starts_with("./") || module.specifier.starts_with("../")
+    {
+      let specifier = self.root_dir_url.join(&module.specifier).unwrap();
+      Some(WorkspaceEszipModule {
+        specifier,
+        inner: module,
+      })
+    } else {
+      Some(WorkspaceEszipModule {
+        // todo(THIS PR): No unwrap
+        specifier: ModuleSpecifier::parse(&module.specifier).unwrap(),
+        inner: module,
+      })
+    }
+  }
+}
+
+struct SharedModuleLoaderState {
+  eszip: WorkspaceEszip,
   workspace_resolver: WorkspaceResolver,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
@@ -97,6 +141,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
+    eprintln!("RESOLVING: {} {}", specifier, referrer);
     let referrer = if referrer == "." {
       if kind != ResolutionKind::MainModule {
         return Err(generic_error(format!(
@@ -142,10 +187,24 @@ impl ModuleLoader for EmbeddedModuleLoader {
       }
       MappedResolution::Normal(specifier)
       | MappedResolution::ImportMap(specifier) => {
+        eprintln!("RESOLVED TO: {}", specifier);
+        if let Ok(reference) =
+          NpmPackageReqReference::from_specifier(&specifier)
+        {
+          return self
+            .shared
+            .node_resolver
+            .resolve_req_reference(
+              &reference,
+              &referrer,
+              NodeResolutionMode::Execution,
+            )
+            .map(|res| res.into_url());
+        }
+
         if specifier.scheme() == "jsr" {
-          if let Some(module) = self.shared.eszip.get_module(specifier.as_str())
-          {
-            return Ok(ModuleSpecifier::parse(&module.specifier).unwrap());
+          if let Some(module) = self.shared.eszip.get_module(&specifier) {
+            return Ok(module.specifier);
           }
         }
 
@@ -210,27 +269,23 @@ impl ModuleLoader for EmbeddedModuleLoader {
       );
     }
 
-    let Some(module) =
-      self.shared.eszip.get_module(original_specifier.as_str())
-    else {
+    let Some(module) = self.shared.eszip.get_module(original_specifier) else {
       return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
         "Module not found: {}",
         original_specifier
       ))));
     };
     let original_specifier = original_specifier.clone();
-    let found_specifier =
-      ModuleSpecifier::parse(&module.specifier).expect("invalid url in eszip");
 
     deno_core::ModuleLoadResponse::Async(
       async move {
-        let code = module.source().await.ok_or_else(|| {
+        let code = module.inner.source().await.ok_or_else(|| {
           type_error(format!("Module not found: {}", original_specifier))
         })?;
         let code = arc_u8_to_arc_str(code)
           .map_err(|_| type_error("Module source is not utf-8"))?;
         Ok(deno_core::ModuleSource::new_with_redirect(
-          match module.kind {
+          match module.inner.kind {
             eszip::ModuleKind::JavaScript => ModuleType::JavaScript,
             eszip::ModuleKind::Json => ModuleType::Json,
             eszip::ModuleKind::Jsonc => {
@@ -242,7 +297,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           },
           ModuleSourceCode::String(code.into()),
           &original_specifier,
-          &found_specifier,
+          &module.specifier,
           None,
         ))
       }
@@ -319,7 +374,6 @@ pub async fn run(
   mut eszip: eszip::EszipV2,
   metadata: Metadata,
 ) -> Result<i32, AnyError> {
-  let main_module = &metadata.entrypoint;
   let current_exe_path = std::env::current_exe().unwrap();
   let current_exe_name =
     current_exe_path.file_name().unwrap().to_string_lossy();
@@ -339,6 +393,15 @@ pub async fn run(
   let npm_registry_url = ModuleSpecifier::parse("https://localhost/").unwrap();
   let root_path =
     std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name));
+  let root_dir_url = ModuleSpecifier::from_directory_path(&root_path).unwrap();
+  let main_module = if metadata.entrypoint.starts_with("./")
+    || metadata.entrypoint.starts_with("../")
+  {
+    // todo(THIS PR): DO NOT UNWRAP
+    root_dir_url.join(&metadata.entrypoint).unwrap()
+  } else {
+    ModuleSpecifier::parse(&metadata.entrypoint).unwrap()
+  };
   let root_node_modules_path = root_path.join("node_modules");
   let npm_cache_dir = NpmCacheDir::new(
     root_node_modules_path.clone(),
@@ -451,13 +514,11 @@ pub async fn run(
     npm_resolver.clone().into_npm_resolver(),
   ));
   let workspace_resolver = {
-    let dir = maybe_vfs_root.as_ref().unwrap_or(&root_path);
-    let dir_url = ModuleSpecifier::from_directory_path(dir).unwrap();
     let import_map = match metadata.workspace_resolver.import_map {
-      Some(value) => Some(
-        import_map::parse_from_value_with_options(
-          dir_url.join("deno.json").unwrap(),
-          value,
+      Some(import_map) => Some(
+        import_map::parse_from_json_with_options(
+          root_dir_url.join(&import_map.specifier).unwrap(),
+          &import_map.json,
           import_map::ImportMapOptions {
             address_hook: None,
             expand_imports: true,
@@ -472,7 +533,7 @@ pub async fn run(
       .package_jsons
       .into_iter()
       .map(|(relative_path, json)| {
-        let path = dir_url
+        let path = root_dir_url
           .join(&relative_path)
           .unwrap()
           .to_file_path()
@@ -492,7 +553,10 @@ pub async fn run(
   ));
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
-      eszip,
+      eszip: WorkspaceEszip {
+        eszip,
+        root_dir_url,
+      },
       workspace_resolver,
       node_resolver: cli_node_resolver.clone(),
       npm_module_loader: Arc::new(NpmModuleLoader::new(
@@ -567,7 +631,7 @@ pub async fn run(
       is_npm_main: main_module.scheme() == "npm",
       skip_op_registration: true,
       location: metadata.location,
-      argv0: NpmPackageReqReference::from_specifier(main_module)
+      argv0: NpmPackageReqReference::from_specifier(&main_module)
         .ok()
         .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
         .or(std::env::args().next()),
@@ -597,11 +661,7 @@ pub async fn run(
   deno_core::JsRuntime::init_platform(None);
 
   let mut worker = worker_factory
-    .create_main_worker(
-      WorkerExecutionMode::Run,
-      main_module.clone(),
-      permissions,
-    )
+    .create_main_worker(WorkerExecutionMode::Run, main_module, permissions)
     .await?;
 
   let exit_code = worker.run().await?;

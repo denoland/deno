@@ -5,6 +5,7 @@ use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClientProvider;
 use crate::standalone::is_standalone_binary;
+use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -22,6 +23,43 @@ pub async fn compile(
   flags: Flags,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
+  fn resolve_graph_root_dir(
+    graph: &deno_graph::ModuleGraph,
+    starting_dir: &ModuleSpecifier,
+  ) -> ModuleSpecifier {
+    fn select_common_root<'a>(a: &'a str, b: &'a str) -> &'a str {
+      let min_length = a.len().min(b.len());
+
+      let mut last_slash = 0;
+      for i in 0..min_length {
+        if a.as_bytes()[i] == b.as_bytes()[i] && a.as_bytes()[i] == b'/' {
+          last_slash = i;
+        } else if a.as_bytes()[i] != b.as_bytes()[i] {
+          break;
+        }
+      }
+
+      // Return the common root path up to the last common slash.
+      // This returns a slice of the original string 'a', up to and including the last matching '/'.
+      &a[..=last_slash]
+    }
+
+    let mut found_dir = starting_dir.as_str();
+    for (specifier, _) in graph.specifiers() {
+      if specifier.scheme() == "file" {
+        // todo(THIS PR): handle this ending up with a path at the root dir of file:///
+        found_dir = select_common_root(found_dir, specifier.as_str());
+      }
+    }
+    let found_dir = found_dir
+      .strip_suffix('/')
+      .unwrap_or(found_dir)
+      .rfind('/')
+      .map(|i| &found_dir[..i + 1])
+      .unwrap_or(found_dir);
+    ModuleSpecifier::parse(found_dir).unwrap()
+  }
+
   let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let module_graph_creator = factory.module_graph_creator().await?;
@@ -81,12 +119,25 @@ pub async fn compile(
       ts_config_for_emit.ts_config,
     )?;
   let parser = parsed_source_cache.as_capturing_parser();
-  let eszip = eszip::EszipV2::from_graph(
+  let root_dir_url =
+    resolve_graph_root_dir(&graph, cli_options.workspace.root_folder().0);
+  let eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
     graph,
-    &parser,
+    parser,
     transpile_options,
     emit_options,
-  )?;
+    // make all the modules relative to the root folder
+    relative_file_base: Some(&root_dir_url),
+  })?;
+  let entrypoint = if module_specifier.scheme() == "file" {
+    // todo(THIS PR): DO NOT UNWRAP
+    format!(
+      "./{}",
+      root_dir_url.make_relative(&module_specifier).unwrap()
+    )
+  } else {
+    module_specifier.to_string()
+  };
 
   log::info!(
     "{} {} to {}",
@@ -102,7 +153,8 @@ pub async fn compile(
     .write_bin(
       &mut file,
       eszip,
-      &module_specifier,
+      &root_dir_url,
+      entrypoint,
       &compile_flags,
       cli_options,
     )

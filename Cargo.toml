@@ -375,4 +375,5 @@ opt-level = 3
 deno_config = { path = "../deno_config" }
 deno_graph = { path = "../deno_graph" }
 deno_unsync = { path = "../deno_unsync" }
+eszip = { path = "../eszip" }
 import_map = { path = "../import_map/rs-lib" }

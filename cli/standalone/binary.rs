@@ -63,9 +63,14 @@ pub enum NodeModules {
 }
 
 #[derive(Deserialize, Serialize)]
+pub struct SerializedWorkspaceResolverImportMap {
+  pub specifier: String,
+  pub json: String,
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct SerializedWorkspaceResolver {
-  pub import_map: Option<serde_json::Value>,
-  /// Key is relative path, value is text.
+  pub import_map: Option<SerializedWorkspaceResolverImportMap>,
   pub package_jsons: BTreeMap<String, serde_json::Value>,
 }
 
@@ -81,7 +86,7 @@ pub struct Metadata {
   pub ca_data: Option<Vec<u8>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub workspace_resolver: SerializedWorkspaceResolver,
-  pub entrypoint: ModuleSpecifier,
+  pub entrypoint: String,
   pub node_modules: Option<NodeModules>,
   pub disable_deprecated_api_warning: bool,
   pub unstable_config: UnstableConfig,
@@ -355,6 +360,7 @@ pub fn unpack_into_dir(
   fs::remove_file(&archive_path)?;
   Ok(exe_path)
 }
+
 pub struct DenoCompileBinaryWriter<'a> {
   deno_dir: &'a DenoDir,
   file_fetcher: &'a FileFetcher,
@@ -385,7 +391,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     writer: &mut impl Write,
     eszip: eszip::EszipV2,
-    module_specifier: &ModuleSpecifier,
+    root_dir_url: &ModuleSpecifier,
+    entrypoint: String,
     compile_flags: &CompileFlags,
     cli_options: &CliOptions,
   ) -> Result<(), AnyError> {
@@ -408,7 +415,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         writer,
         original_binary,
         eszip,
-        module_specifier,
+        root_dir_url,
+        entrypoint,
         cli_options,
         compile_flags,
       )
@@ -499,7 +507,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     writer: &mut impl Write,
     original_bin: Vec<u8>,
     mut eszip: eszip::EszipV2,
-    entrypoint: &ModuleSpecifier,
+    root_dir_url: &ModuleSpecifier,
+    entrypoint: String,
     cli_options: &CliOptions,
     compile_flags: &CompileFlags,
   ) -> Result<(), AnyError> {
@@ -542,7 +551,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     };
 
-    let root_folder_url = cli_options.workspace.root_folder().0;
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
       seed: cli_options.seed(),
@@ -555,19 +563,23 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       log_level: cli_options.log_level(),
       ca_stores: cli_options.ca_stores().clone(),
       ca_data,
-      entrypoint: entrypoint.clone(),
+      entrypoint,
       workspace_resolver: SerializedWorkspaceResolver {
-        import_map: workspace_resolver
-          .maybe_import_map()
-          .map(|i| serde_json::to_value(i).unwrap()),
+        import_map: workspace_resolver.maybe_import_map().map(|i| {
+          SerializedWorkspaceResolverImportMap {
+            specifier: root_dir_url
+              .make_relative(&i.base_url())
+              .map(|s| format!("./{}", s))
+              // just make a remote url local
+              .unwrap_or_else(|| "./deno.json".to_string()),
+            json: i.to_json(),
+          }
+        }),
         package_jsons: workspace_resolver
           .package_jsons()
           .map(|pkg_json| {
             (
-              root_folder_url
-                .make_relative(&pkg_json.specifier())
-                .unwrap()
-                .to_string(),
+              root_dir_url.make_relative(&pkg_json.specifier()).unwrap(),
               serde_json::to_value(pkg_json).unwrap(),
             )
           })
