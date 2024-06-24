@@ -30,7 +30,6 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
-use dotenvy::from_filename;
 
 use std::borrow::Cow;
 use std::env;
