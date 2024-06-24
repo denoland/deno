@@ -380,6 +380,14 @@ fn generate_docs_directory(
     Rc::new(DocResolver { deno_ns })
   };
 
+  let category_docs =
+    if let Some(category_docs_path) = &html_options.category_docs_path {
+      let content = std::fs::read(category_docs_path)?;
+      Some(deno_core::serde_json::from_slice(&content)?)
+    } else {
+      None
+    };
+
   let options = deno_doc::html::GenerateOptions {
     package_name: html_options.name.clone(),
     main_entrypoint: None,
@@ -387,6 +395,7 @@ fn generate_docs_directory(
     href_resolver,
     usage_composer: None,
     composable_output: false,
+    category_docs,
     disable_search: internal_env.is_some(),
   };
 

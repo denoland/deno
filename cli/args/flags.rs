@@ -133,6 +133,7 @@ impl Default for DocSourceFileFlag {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocHtmlFlag {
   pub name: Option<String>,
+  pub category_docs_path: Option<String>,
   pub output: String,
 }
 
@@ -1795,6 +1796,13 @@ Show documentation for runtime built-ins:
             .require_equals(true)
         )
         .arg(
+          Arg::new("category-docs")
+            .long("category-docs")
+            .help("Path to a JSON file keyed by category and an optional value of a markdown doc")
+            .action(ArgAction::Set)
+            .require_equals(true)
+        )
+        .arg(
           Arg::new("output")
             .long("output")
             .help("Directory for HTML documentation output")
@@ -2635,7 +2643,7 @@ Directory arguments are expanded to all contained files matching the glob
       Arg::new("clean")
         .long("clean")
         .help("Empty the temporary coverage profile data directory before running tests.
-        
+
 Note: running multiple `deno test --clean` calls in series or parallel for the same coverage directory may cause race conditions.")
         .action(ArgAction::SetTrue),
     )
@@ -3879,10 +3887,15 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let filter = matches.remove_one::<String>("filter");
   let html = if matches.get_flag("html") {
     let name = matches.remove_one::<String>("name");
+    let category_docs_path = matches.remove_one::<String>("category-docs");
     let output = matches
       .remove_one::<String>("output")
       .unwrap_or(String::from("./docs/"));
-    Some(DocHtmlFlag { name, output })
+    Some(DocHtmlFlag {
+      name,
+      category_docs_path,
+      output,
+    })
   } else {
     None
   };
