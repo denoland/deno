@@ -703,8 +703,8 @@
       "test-zlib-zero-windowBits.js"
     ],
     "pseudo-tty": [
-      "console-dumb-tty.js",
       "console_colors.js",
+      "console-dumb-tty.js",
       "no_dropped_stdio.js",
       "no_interleaved_stdio.js",
       "test-tty-color-support-warning-2.js",
