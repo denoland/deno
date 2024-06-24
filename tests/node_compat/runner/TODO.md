@@ -464,7 +464,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-from-binary.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-from-binary.js)
 - [parallel/test-crypto-getcipherinfo.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-getcipherinfo.js)
 - [parallel/test-crypto-hash-stream-pipe.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-hash-stream-pipe.js)
-- [parallel/test-crypto-hash.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-hash.js)
 - [parallel/test-crypto-key-objects-messageport.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-key-objects-messageport.js)
 - [parallel/test-crypto-key-objects.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-key-objects.js)
 - [parallel/test-crypto-keygen-async-dsa-key-object.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-keygen-async-dsa-key-object.js)
