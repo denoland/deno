@@ -24,7 +24,7 @@ harness = false
 async-compression = { version = "0.4", features = ["tokio", "brotli", "gzip"] }
 async-trait.workspace = true
 base64.workspace = true
-brotli = "3.3.4"
+brotli.workspace = true
 bytes.workspace = true
 cache_control.workspace = true
 deno_core.workspace = true

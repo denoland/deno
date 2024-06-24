@@ -61,6 +61,7 @@ util::unit_test_factory!(
     crypto_cipher_gcm_test = crypto / crypto_cipher_gcm_test,
     crypto_hash_test = crypto / crypto_hash_test,
     crypto_key_test = crypto / crypto_key_test,
+    crypto_misc_test = crypto / crypto_misc_test,
     crypto_sign_test = crypto / crypto_sign_test,
     events_test,
     dgram_test,
