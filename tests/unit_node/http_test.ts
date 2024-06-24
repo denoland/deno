@@ -1151,7 +1151,7 @@ Deno.test("[node/http] client closing a streaming response doesn't terminate ser
 
   const deferred1 = Promise.withResolvers<void>();
   server.listen(0, () => {
-    const port = (server.address() as any).port;
+    const port = server.address().port;
 
     // Create a client connection to the server
     const client = net.createConnection({ port }, () => {
