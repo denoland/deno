@@ -403,7 +403,9 @@ Process.prototype.chdir = chdir;
 
 /** https://nodejs.org/api/process.html#processconfig */
 Process.prototype.config = {
-  target_defaults: {},
+  target_defaults: {
+    default_configuration: "Release",
+  },
   variables: {},
 };
 
@@ -730,6 +732,9 @@ if (isWindows) {
 /** https://nodejs.org/api/process.html#process_process */
 // @ts-ignore TS doesn't work well with ES5 classes
 const process = new Process();
+
+/* Set owned property */
+process.versions = versions;
 
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,

@@ -8,7 +8,7 @@ use libffi::middle::Arg;
 use std::ffi::c_void;
 use std::ptr;
 
-pub struct OutBuffer(pub *mut u8, pub usize);
+pub struct OutBuffer(pub *mut u8);
 
 // SAFETY: OutBuffer is allocated by us in 00_ffi.js and is guaranteed to be
 // only used for the purpose of writing return value of structs.
@@ -23,9 +23,8 @@ pub fn out_buffer_as_ptr(
   match out_buffer {
     Some(out_buffer) => {
       let ab = out_buffer.buffer(scope).unwrap();
-      let len = ab.byte_length();
       ab.data()
-        .map(|non_null| OutBuffer(non_null.as_ptr() as *mut u8, len))
+        .map(|non_null| OutBuffer(non_null.as_ptr() as *mut u8))
     }
     None => None,
   }

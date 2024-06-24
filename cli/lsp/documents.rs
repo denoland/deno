@@ -303,6 +303,10 @@ impl Document {
     cache: &Arc<LspCache>,
     file_referrer: Option<ModuleSpecifier>,
   ) -> Arc<Self> {
+    let file_referrer = Some(&specifier)
+      .filter(|s| s.scheme() == "file")
+      .cloned()
+      .or(file_referrer);
     let media_type = resolve_media_type(
       &specifier,
       maybe_headers.as_ref(),
@@ -336,9 +340,13 @@ impl Document {
     Arc::new(Self {
       config,
       dependencies,
-      file_referrer: file_referrer.filter(|_| specifier.scheme() != "file"),
+      maybe_fs_version: calculate_fs_version(
+        cache,
+        &specifier,
+        file_referrer.as_ref(),
+      ),
+      file_referrer,
       maybe_types_dependency,
-      maybe_fs_version: calculate_fs_version(cache, &specifier),
       line_index,
       maybe_language_id,
       maybe_headers,
@@ -540,7 +548,11 @@ impl Document {
       config: self.config.clone(),
       specifier: self.specifier.clone(),
       file_referrer: self.file_referrer.clone(),
-      maybe_fs_version: calculate_fs_version(cache, &self.specifier),
+      maybe_fs_version: calculate_fs_version(
+        cache,
+        &self.specifier,
+        self.file_referrer.as_ref(),
+      ),
       maybe_language_id: self.maybe_language_id,
       dependencies: self.dependencies.clone(),
       maybe_types_dependency: self.maybe_types_dependency.clone(),
@@ -563,7 +575,11 @@ impl Document {
       config: self.config.clone(),
       specifier: self.specifier.clone(),
       file_referrer: self.file_referrer.clone(),
-      maybe_fs_version: calculate_fs_version(cache, &self.specifier),
+      maybe_fs_version: calculate_fs_version(
+        cache,
+        &self.specifier,
+        self.file_referrer.as_ref(),
+      ),
       maybe_language_id: self.maybe_language_id,
       dependencies: self.dependencies.clone(),
       maybe_types_dependency: self.maybe_types_dependency.clone(),
@@ -766,7 +782,10 @@ impl FileSystemDocuments {
     cache: &Arc<LspCache>,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<Arc<Document>> {
-    let new_fs_version = calculate_fs_version(cache, specifier);
+    let file_referrer = Some(specifier)
+      .filter(|s| s.scheme() == "file")
+      .or(file_referrer);
+    let new_fs_version = calculate_fs_version(cache, specifier, file_referrer);
     let old_doc = self.docs.get(specifier).map(|v| v.value().clone());
     let dirty = match &old_doc {
       None => true,
@@ -830,7 +849,7 @@ impl FileSystemDocuments {
         file_referrer.cloned(),
       )
     } else {
-      let http_cache = cache.root_vendor_or_global();
+      let http_cache = cache.for_specifier(file_referrer);
       let cache_key = http_cache.cache_item_key(specifier).ok()?;
       let bytes = http_cache
         .read_file_bytes(&cache_key, None, LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY)
@@ -1089,7 +1108,7 @@ impl Documents {
           .map(|p| p.is_file())
           .unwrap_or(false);
       }
-      if self.cache.root_vendor_or_global().contains(&specifier) {
+      if self.cache.for_specifier(file_referrer).contains(&specifier) {
         return true;
       }
     }
@@ -1335,8 +1354,7 @@ impl Documents {
     let mut visit_doc = |doc: &Arc<Document>| {
       let scope = doc
         .file_referrer()
-        .and_then(|r| self.config.tree.scope_for_specifier(r))
-        .or(self.config.tree.root_scope());
+        .and_then(|r| self.config.tree.scope_for_specifier(r));
       let reqs = npm_reqs_by_scope.entry(scope.cloned()).or_default();
       for dependency in doc.dependencies().values() {
         if let Some(dep) = dependency.get_code() {
@@ -1367,21 +1385,15 @@ impl Documents {
     }
 
     // fill the reqs from the lockfile
-    // TODO(nayeemrmn): Iterate every lockfile here for multi-deno.json.
-    if let Some(lockfile) = self
-      .config
-      .tree
-      .root_data()
-      .and_then(|d| d.lockfile.as_ref())
-    {
-      let reqs = npm_reqs_by_scope
-        .entry(self.config.tree.root_scope().cloned())
-        .or_default();
-      let lockfile = lockfile.lock();
-      for key in lockfile.content.packages.specifiers.keys() {
-        if let Some(key) = key.strip_prefix("npm:") {
-          if let Ok(req) = PackageReq::from_str(key) {
-            reqs.insert(req);
+    for (scope, config_data) in self.config.tree.data_by_scope().as_ref() {
+      if let Some(lockfile) = config_data.lockfile.as_ref() {
+        let reqs = npm_reqs_by_scope.entry(Some(scope.clone())).or_default();
+        let lockfile = lockfile.lock();
+        for key in lockfile.content.packages.specifiers.keys() {
+          if let Some(key) = key.strip_prefix("npm:") {
+            if let Ok(req) = PackageReq::from_str(key) {
+              reqs.insert(req);
+            }
           }
         }
       }
