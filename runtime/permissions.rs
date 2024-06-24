@@ -6,12 +6,10 @@ use std::path::Path;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 pub use deno_io::fs::FsError;
-use deno_net::NetPermissionHost;
 pub use deno_permissions::create_child_permissions;
 pub use deno_permissions::parse_sys_kind;
 pub use deno_permissions::set_prompt_callbacks;
 pub use deno_permissions::ChildPermissionsArg;
-use deno_permissions::NetDescriptor;
 pub use deno_permissions::Permissions;
 pub use deno_permissions::PermissionsOptions;
 
@@ -100,14 +98,12 @@ impl deno_fetch::FetchPermissions for PermissionsContainer {
 
 impl deno_net::NetPermissions for PermissionsContainer {
   #[inline(always)]
-  fn check_net(
+  fn check_net<T: AsRef<str>>(
     &mut self,
-    host: &NetPermissionHost,
+    host: &(T, Option<u16>),
     api_name: &str,
   ) -> Result<(), AnyError> {
-    self
-      .0
-      .check_net(&NetDescriptor(host.host.clone(), host.port), api_name)
+    self.0.check_net(host, api_name)
   }
 
   #[inline(always)]

@@ -80,6 +80,8 @@ pub fn split_host_port(s: &str) -> Result<(String, Option<u16>), AnyError> {
 }
 
 pub fn extract_host(s: &str) -> String {
+  let lowercased = s.to_lowercase();
+  let s = lowercased.as_str();
   if let Some(index) = s.find("://") {
     return s[index + 3..].split('/').next().unwrap_or(s).to_string();
   }

@@ -1157,7 +1157,6 @@ impl UnaryPermission<NetDescriptor> {
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     skip_check_if_is_permission_fully_granted!(self);
-    dbg!(url.clone());
     let descriptor = NetDescriptor::from_url(url)?;
     self.check_desc(Some(&descriptor), false, api_name, || {
       let hostname = url.host_str().unwrap();
