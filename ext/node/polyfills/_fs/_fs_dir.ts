@@ -70,7 +70,6 @@ export default class Dir {
     if (!this.#syncIterator) {
       this.#syncIterator = Deno.readDirSync(this.path)![SymbolIterator]();
     }
-    console.log(this.#syncIterator);
 
     const iteratorResult = ArrayIteratorPrototypeNext(this.#syncIterator);
     if (iteratorResult.done) {
