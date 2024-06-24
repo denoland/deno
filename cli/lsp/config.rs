@@ -18,6 +18,7 @@ use deno_ast::MediaType;
 use deno_config::FmtOptionsConfig;
 use deno_config::TsConfig;
 use deno_core::anyhow::anyhow;
+use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de::DeserializeOwned;
@@ -1238,14 +1239,10 @@ impl ConfigData {
           config_file
             .to_fmt_config()
             .and_then(|o| {
-              let base_path = config_file
-                .specifier
-                .to_file_path()
-                .map_err(|_| anyhow!("Invalid base path."))?;
               FmtOptions::resolve(
                 o,
                 &Default::default(),
-                MemberContextDirs::no_flags(base_path),
+                member_ctx_dirs_from_config(config_file)?,
               )
             })
             .inspect_err(|err| {
@@ -1276,14 +1273,10 @@ impl ConfigData {
           config_file
             .to_lint_config()
             .and_then(|o| {
-              let base_path = config_file
-                .specifier
-                .to_file_path()
-                .map_err(|_| anyhow!("Invalid base path."))?;
               LintOptions::resolve(
                 o,
                 Default::default(),
-                MemberContextDirs::no_flags(base_path),
+                member_ctx_dirs_from_config(config_file)?,
               )
             })
             .inspect_err(|err| {
@@ -1872,6 +1865,17 @@ fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<Lockfile> {
       None
     }
   }
+}
+
+fn member_ctx_dirs_from_config(
+  config: &ConfigFile,
+) -> Result<MemberContextDirs, AnyError> {
+  let config_path = config
+    .specifier
+    .to_file_path()
+    .map_err(|_| anyhow!("Invalid base path."))?;
+  let base_path = config_path.parent().unwrap().to_path_buf();
+  Ok(MemberContextDirs::no_flags(base_path))
 }
 
 #[cfg(test)]

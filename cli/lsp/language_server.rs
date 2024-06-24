@@ -3473,6 +3473,20 @@ impl Inner {
     }
 
     let workspace_settings = self.config.workspace_settings();
+    let initial_cwd = config_data
+      .and_then(|d| d.scope.to_file_path().ok())
+      .unwrap_or_else(|| self.initial_cwd.clone());
+    // todo: we need a way to convert config data to a Workspace
+    let workspace = Arc::new(Workspace::discover(&WorkspaceDiscoverOptions {
+      fs: &DenoConfigFsAdapter::new(&deno_runtime::deno_fs::RealFs),
+      pkg_json_cache: None,
+      start: deno_config::workspace::WorkspaceDiscoverStart::Dir(&initial_cwd),
+      config_parse_options: &deno_config::ConfigParseOptions {
+        include_task_comments: false,
+      },
+      additional_config_file_names: &[],
+      discover_pkg_json: true,
+    })?);
     let cli_options = CliOptions::new(
       Flags {
         cache_path: Some(self.cache.deno_dir().root.clone()),
@@ -3496,24 +3510,12 @@ impl Inner {
         type_check_mode: crate::args::TypeCheckMode::Local,
         ..Default::default()
       },
-      self.initial_cwd.clone(),
+      initial_cwd,
       config_data.and_then(|d| d.lockfile.clone()),
       config_data
         .and_then(|d| d.npmrc.clone())
         .unwrap_or_else(create_default_npmrc),
-      // todo: we need a way to convert config data to a Workspace
-      Arc::new(Workspace::discover(&WorkspaceDiscoverOptions {
-        fs: &DenoConfigFsAdapter::new(&deno_runtime::deno_fs::RealFs),
-        pkg_json_cache: None,
-        start: deno_config::workspace::WorkspaceDiscoverStart::Dir(
-          &self.initial_cwd,
-        ),
-        config_parse_options: &deno_config::ConfigParseOptions {
-          include_task_comments: false,
-        },
-        additional_config_file_names: &[],
-        discover_pkg_json: true,
-      })?),
+      workspace,
       force_global_cache,
     )?;
 
