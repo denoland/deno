@@ -375,3 +375,7 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
+
+[patch.crates-io]
+hyper = { git = "https://github.com/hyperium/hyper", branch = "client-try-send" }
+hyper-util = { git = "https://github.com/hyperium/hyper-util", branch = "client-pool-try-send" }
