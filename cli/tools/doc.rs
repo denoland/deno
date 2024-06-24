@@ -387,6 +387,7 @@ fn generate_docs_directory(
     href_resolver,
     usage_composer: None,
     composable_output: false,
+    disable_search: internal_env.is_some(),
   };
 
   let files = deno_doc::html::generate(options, doc_nodes_by_url)
