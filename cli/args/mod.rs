@@ -971,6 +971,10 @@ impl CliOptions {
     )
   }
 
+  pub fn frozen_lockfile(&self) -> bool {
+    self.flags.frozen_lockfile
+  }
+
   #[inline(always)]
   pub fn initial_cwd(&self) -> &Path {
     &self.initial_cwd

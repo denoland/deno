@@ -888,6 +888,7 @@ impl CliFactory {
       maybe_root_package_json_deps: self.options.maybe_package_json_deps(),
       create_hmr_runner,
       create_coverage_collector,
+      frozen_lockfile: self.options.frozen_lockfile(),
     })
   }
 }

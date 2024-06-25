@@ -120,6 +120,7 @@ pub struct CliMainWorkerOptions {
   pub maybe_root_package_json_deps: Option<PackageJsonDeps>,
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
   pub create_coverage_collector: Option<CreateCoverageCollectorCb>,
+  pub frozen_lockfile: bool,
 }
 
 struct SharedWorkerState {
@@ -529,7 +530,6 @@ impl CliMainWorkerFactory {
         // for better performance
         lockfile.write_if_changed()?;
       }
-
       (node_resolution.into_url(), is_main_cjs)
     } else if shared.options.is_npm_main
       || shared.node_resolver.in_npm_package(&main_module)
