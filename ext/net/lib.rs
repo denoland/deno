@@ -11,7 +11,6 @@ mod tcp;
 
 use deno_core::error::AnyError;
 use deno_core::OpState;
-use deno_permissions::host::extract_host;
 use deno_permissions::host::split_host_port;
 use deno_permissions::host::Host;
 use deno_permissions::NetDescriptor;
@@ -34,12 +33,11 @@ impl NetPermissionHost {
     host: &str,
     port: Option<u16>,
   ) -> Result<Self, AnyError> {
-    let extracted_host = extract_host(host);
-    let (host_str, port_) = split_host_port(extracted_host.as_str())?;
-    let host = Host::from_host_and_origin_host(
-      host_str.as_str(),
-      extracted_host.as_str(),
-    )?;
+    let lowercased = host.to_lowercase();
+    let extracted_host = lowercased.as_str();
+    let (host_str, port_) = split_host_port(extracted_host)?;
+    let host =
+      Host::from_host_and_origin_host(host_str.as_str(), extracted_host)?;
 
     let final_port = if let Some(port_) = port_ {
       Some(port_)
@@ -239,6 +237,7 @@ mod tests {
         port: None
       }
     );
+
     // Parsing host address with a port
     assert_eq!(
       NetPermissionHost::from_host_and_maybe_port("deno.land:80", None)
@@ -257,6 +256,7 @@ mod tests {
         port: None
       }
     );
+
     // Parsing an IPv4 address with a port
     assert_eq!(
       NetPermissionHost::from_host_and_maybe_port("127.0.0.1:80", None)
@@ -281,6 +281,7 @@ mod tests {
         port: None
       }
     );
+
     // Parsing an IPv6 address with a port
     assert_eq!(
       NetPermissionHost::from_host_and_maybe_port(
@@ -296,109 +297,12 @@ mod tests {
       }
     );
 
-    // Parsing a URL with a host
-    assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port(
-        "https://github.com/denoland/",
-        None
-      )
-      .unwrap(),
-      NetPermissionHost {
-        host: Host::FQDN(FQDN::from_str("github.com").unwrap()),
-        port: None
-      }
-    );
-    // Parsing a URL with a host & port
-    assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port(
-        "https://github.com:443/denoland/",
-        None
-      )
-      .unwrap(),
-      NetPermissionHost {
-        host: Host::FQDN(FQDN::from_str("github.com").unwrap()),
-        port: Some(443)
-      }
-    );
-
-    // Parsing a URL with an IPv4 address
-    assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port("https://127.0.0.1", None)
-        .unwrap(),
-      NetPermissionHost {
-        host: Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)),
-        port: None
-      }
-    );
-    // Parsing a URL with an IPv4 address & port
-    assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port("https://127.0.0.1:80", None)
-        .unwrap(),
-      NetPermissionHost {
-        host: Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)),
-        port: Some(80)
-      }
-    );
-
-    // Parsing a URL with an IPv6 address
-    assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port(
-        "https://[2606:4700:4700::1111]",
-        None
-      )
-      .unwrap(),
-      NetPermissionHost {
-        host: Host::Ipv6(Ipv6Addr::new(
-          0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111
-        )),
-        port: None
-      }
-    );
-    // Parsing a URL with an IPv6 address & port
-    assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port(
-        "https://[2606:4700:4700::1111]:80",
-        None
-      )
-      .unwrap(),
-      NetPermissionHost {
-        host: Host::Ipv6(Ipv6Addr::new(
-          0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111
-        )),
-        port: Some(80)
-      }
-    );
-
-    // Parsing invalid URL/host with special characters
+    // Parsing invalid host with special characters
     assert_eq!(
       NetPermissionHost::from_host_and_maybe_port("foo@bar.com.", None)
         .unwrap_err()
         .to_string(),
       "Failed to parse host: foo@bar.com.\n"
-    );
-    assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port(
-        "http://foo@bar.com.:80",
-        None
-      )
-      .unwrap_err()
-      .to_string(),
-      "Failed to parse host: foo@bar.com.:80\n"
-    );
-    assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port("http://foo@bar.com.:", None)
-        .unwrap_err()
-        .to_string(),
-      "No port specified after ':'"
-    );
-    assert_eq!(
-      NetPermissionHost::from_host_and_maybe_port(
-        "https://[2606:4700:4700::1111]:",
-        None
-      )
-      .unwrap_err()
-      .to_string(),
-      "Invalid format: [ipv6]:port"
     );
   }
 }

@@ -38,7 +38,6 @@ use prompter::permission_prompt;
 use prompter::PromptResponse;
 use prompter::PERMISSION_EMOJI;
 
-use crate::host::extract_host;
 use crate::host::split_host_port;
 use crate::host::Host;
 pub use prompter::set_prompt_callbacks;
@@ -712,12 +711,11 @@ impl NetDescriptor {
   ///
   /// Returns an `AnyError` if the input string cannot be parsed.
   pub fn from_cli_arg(s: &str) -> Result<Self, AnyError> {
-    let extracted_host = extract_host(s);
-    let (host_str, port) = split_host_port(extracted_host.as_str())?;
-    let host = Host::from_host_and_origin_host(
-      host_str.as_str(),
-      extracted_host.as_str(),
-    )?;
+    let lowercased = s.to_lowercase();
+    let extracted_host = lowercased.as_str();
+    let (host_str, port) = split_host_port(extracted_host)?;
+    let host =
+      Host::from_host_and_origin_host(host_str.as_str(), extracted_host)?;
     Ok(NetDescriptor(host, port))
   }
 
@@ -1838,7 +1836,7 @@ fn parse_net_list(
     v.iter()
       .map(|x| {
         if x.is_empty() {
-          Err(AnyError::msg("Empty host is not allowed"))
+          Err(uri_error("Empty host is not allowed"))
         } else {
           NetDescriptor::from_cli_arg(x)
         }
@@ -3528,6 +3526,7 @@ mod tests {
       NetDescriptor::from_cli_arg("deno.land.").unwrap(),
       NetDescriptor(Host::FQDN(FQDN::from_str("deno.land").unwrap()), None)
     );
+
     // Parsing host address with a port
     assert_eq!(
       NetDescriptor::from_cli_arg("deno.land:80").unwrap(),
@@ -3539,6 +3538,7 @@ mod tests {
       NetDescriptor::from_cli_arg("127.0.0.1").unwrap(),
       NetDescriptor(Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)), None)
     );
+
     // Parsing an IPv4 address with a port
     assert_eq!(
       NetDescriptor::from_cli_arg("127.0.0.1:80").unwrap(),
@@ -3553,6 +3553,7 @@ mod tests {
         None
       )
     );
+
     // Parsing an IPv6 address with a port
     assert_eq!(
       NetDescriptor::from_cli_arg("[2606:4700:4700::1111]:80").unwrap(),
@@ -3562,72 +3563,12 @@ mod tests {
       )
     );
 
-    // Parsing a URL with a host
-    assert_eq!(
-      NetDescriptor::from_cli_arg("https://github.com/denoland/").unwrap(),
-      NetDescriptor(Host::FQDN(FQDN::from_str("github.com").unwrap()), None)
-    );
-    // Parsing a URL with a host & port
-    assert_eq!(
-      NetDescriptor::from_cli_arg("https://github.com:443/denoland/").unwrap(),
-      NetDescriptor(
-        Host::FQDN(FQDN::from_str("github.com").unwrap()),
-        Some(443)
-      )
-    );
-
-    // Parsing a URL with an IPv4 address
-    assert_eq!(
-      NetDescriptor::from_cli_arg("https://127.0.0.1").unwrap(),
-      NetDescriptor(Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)), None)
-    );
-    // Parsing a URL with an IPv4 address & port
-    assert_eq!(
-      NetDescriptor::from_cli_arg("https://127.0.0.1:80").unwrap(),
-      NetDescriptor(Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)), Some(80))
-    );
-
-    // Parsing a URL with an IPv6 address
-    assert_eq!(
-      NetDescriptor::from_cli_arg("https://[2606:4700:4700::1111]").unwrap(),
-      NetDescriptor(
-        Host::Ipv6(Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111)),
-        None
-      )
-    );
-    // Parsing a URL with an IPv6 address & port
-    assert_eq!(
-      NetDescriptor::from_cli_arg("https://[2606:4700:4700::1111]:80").unwrap(),
-      NetDescriptor(
-        Host::Ipv6(Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111)),
-        Some(80)
-      )
-    );
-
-    // Parsing invalid URL/host with special characters
+    // Parsing invalid host with special characters
     assert_eq!(
       NetDescriptor::from_cli_arg("foo@bar.com.")
         .unwrap_err()
         .to_string(),
       "Failed to parse host: foo@bar.com.\n"
-    );
-    assert_eq!(
-      NetDescriptor::from_cli_arg("http://foo@bar.com.:80")
-        .unwrap_err()
-        .to_string(),
-      "Failed to parse host: foo@bar.com.:80\n"
-    );
-    assert_eq!(
-      NetDescriptor::from_cli_arg("http://foo@bar.com.:")
-        .unwrap_err()
-        .to_string(),
-      "No port specified after ':'"
-    );
-    assert_eq!(
-      NetDescriptor::from_cli_arg("https://[2606:4700:4700::1111]:")
-        .unwrap_err()
-        .to_string(),
-      "Invalid format: [ipv6]:port"
     );
   }
 }

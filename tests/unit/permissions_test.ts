@@ -23,13 +23,13 @@ Deno.test(function permissionInvalidNameSync() {
 Deno.test(async function permissionNetInvalidHost() {
   await assertRejects(async () => {
     await Deno.permissions.query({ name: "net", host: ":" });
-  }, Error);
+  }, URIError);
 });
 
 Deno.test(function permissionNetInvalidHostSync() {
   assertThrows(() => {
     Deno.permissions.querySync({ name: "net", host: ":" });
-  }, Error);
+  }, URIError);
 });
 
 Deno.test(async function permissionSysValidKind() {

@@ -23,7 +23,6 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_permissions::host::extract_host;
 use deno_permissions::host::split_host_port;
 use deno_permissions::host::Host;
 use serde::Deserialize;
@@ -84,13 +83,12 @@ pub struct IpAddr {
 /// This function will return an error if the hostname cannot be parsed or if any validation fails.
 ///
 fn normalize_ip_addr(addr: &mut IpAddr) -> Result<(), AnyError> {
-  let extracted_host = extract_host(addr.hostname.as_str());
-  let (host_str, port) = split_host_port(extracted_host.as_str())?;
-  addr.hostname = Host::from_host_and_origin_host(
-    host_str.as_str(),
-    extracted_host.as_str(),
-  )?
-  .to_string();
+  let lowercased = addr.hostname.as_str().to_lowercase();
+  let extracted_host = lowercased.as_str();
+  let (host_str, port) = split_host_port(extracted_host)?;
+  addr.hostname =
+    Host::from_host_and_origin_host(host_str.as_str(), extracted_host)?
+      .to_string();
   if let Some(port) = port {
     addr.port = port;
   }
@@ -1158,7 +1156,7 @@ mod tests {
   #[test]
   fn test_process_ip_addr() {
     let mut ip_addr = IpAddr {
-      hostname: "https://192.0.2.1/".to_string(),
+      hostname: "192.0.2.1.".to_string(),
       port: 80,
     };
     normalize_ip_addr(&mut ip_addr).unwrap();
@@ -1166,7 +1164,7 @@ mod tests {
     assert_eq!(ip_addr.port, 80);
 
     let mut ip_addr = IpAddr {
-      hostname: "https://golang.org/".to_string(),
+      hostname: "golang.org.".to_string(),
       port: 80,
     };
     normalize_ip_addr(&mut ip_addr).unwrap();
@@ -1174,7 +1172,7 @@ mod tests {
     assert_eq!(ip_addr.port, 80);
 
     let mut ip_addr = IpAddr {
-      hostname: "https://192.0.2.1:90/".to_string(),
+      hostname: "192.0.2.1:90".to_string(),
       port: 0,
     };
     normalize_ip_addr(&mut ip_addr).unwrap();

@@ -26,11 +26,6 @@
       "args": " run --allow-net ipv4.js",
       "output": "",
       "exitCode": 0
-    },
-    {
-      "args": " run  --allow-net=[::1]:80 ipv6.js",
-      "output": "err_iii.out",
-      "exitCode": 1
     }
   ]
 }

@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::anyhow::Context;
+use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use fqdn::FQDN;
 use std::fmt;
@@ -24,8 +24,9 @@ impl Host {
       return Ok(Host::Ipv6(ipv6));
     }
 
-    let host = FQDN::from_str(host)
-      .with_context(|| format!("Failed to parse host: {}\n", origin_host))?;
+    let host = FQDN::from_str(host).map_err(|_| {
+      uri_error(format!("Failed to parse host: {}\n", origin_host))
+    })?;
     let host_string = host.to_string();
 
     if let Ok(ipv4) = host_string.parse::<Ipv4Addr>() {
@@ -54,7 +55,7 @@ pub fn split_host_port(s: &str) -> Result<(String, Option<u16>), AnyError> {
 
   if host.starts_with('[') && host.contains(']') {
     if host.ends_with("]:") {
-      return Err(AnyError::msg("Invalid format: [ipv6]:port"));
+      return Err(uri_error("Invalid format: [ipv6]:port"));
     }
     if let Some(pos) = host.rfind("]:") {
       let port_str = &host[pos + 2..];
@@ -73,17 +74,8 @@ pub fn split_host_port(s: &str) -> Result<(String, Option<u16>), AnyError> {
   }
 
   if have_port && port.is_none() {
-    return Err(AnyError::msg("No port specified after ':'"));
+    return Err(uri_error("No port specified after ':'"));
   }
 
   Ok((host, port))
-}
-
-pub fn extract_host(s: &str) -> String {
-  let lowercased = s.to_lowercase();
-  let s = lowercased.as_str();
-  if let Some(index) = s.find("://") {
-    return s[index + 3..].split('/').next().unwrap_or(s).to_string();
-  }
-  s.to_string()
 }
