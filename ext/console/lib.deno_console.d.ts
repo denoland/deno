@@ -5,7 +5,11 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category I/O */
+/** Provides access to the debugging console. 
+ * The specific set of available methods are determined by the environment in
+ * which the script is running.
+ * 
+ * @category I/O */
 declare interface Console {
   assert(condition?: boolean, ...data: any[]): void;
   clear(): void;
