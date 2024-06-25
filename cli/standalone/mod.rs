@@ -141,7 +141,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
-    eprintln!("RESOLVING: {} {}", specifier, referrer);
     let referrer = if referrer == "." {
       if kind != ResolutionKind::MainModule {
         return Err(generic_error(format!(
@@ -187,7 +186,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
       }
       MappedResolution::Normal(specifier)
       | MappedResolution::ImportMap(specifier) => {
-        eprintln!("RESOLVED TO: {}", specifier);
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
