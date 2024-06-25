@@ -525,7 +525,16 @@ fn handle_lint_result(
   let mut reporter = reporter_lock.lock();
 
   match result {
-    Ok((_source, mut file_diagnostics)) => {
+    Ok((source, mut file_diagnostics)) => {
+      if !source.diagnostics().is_empty() {
+        for x in source.diagnostics() {
+          log::info!("{}: {}", colors::red("error"), x);
+        }
+        log::info!(
+          "Found {} parsing related problems\n",
+          source.diagnostics().len()
+        );
+      }
       file_diagnostics.sort_by(|a, b| match a.specifier.cmp(&b.specifier) {
         std::cmp::Ordering::Equal => a.range.start.cmp(&b.range.start),
         file_order => file_order,
