@@ -415,3 +415,27 @@ Deno.test("generate rsa export public key", async function () {
   const der = publicKey.export({ format: "der", type: "spki" });
   assert(der instanceof Uint8Array);
 });
+
+Deno.test("create public key with invalid utf-8 string", function () {
+  // This is an invalid UTF-8 string because it contains a lone utf-16 surrogate.
+  const invalidPem = Buffer.from(new Uint8Array([0xE2, 0x28, 0xA1]));
+  assertThrows(
+    () => {
+      createPublicKey(invalidPem);
+    },
+    Error,
+    "not valid utf8",
+  );
+});
+
+Deno.test("create private key with invalid utf-8 string", function () {
+  // This is an invalid UTF-8 string because it contains a lone utf-16 surrogate.
+  const invalidPem = Buffer.from(new Uint8Array([0xE2, 0x28, 0xA1]));
+  assertThrows(
+    () => {
+      createPrivateKey(invalidPem);
+    },
+    Error,
+    "not valid utf8",
+  );
+});

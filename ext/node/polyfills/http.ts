@@ -1346,10 +1346,14 @@ export class ServerResponse extends NodeWritable {
   #socketOverride: any | null = null;
 
   static #enqueue(controller: ReadableStreamDefaultController, chunk: Chunk) {
-    if (typeof chunk === "string") {
-      controller.enqueue(ENCODER.encode(chunk));
-    } else {
-      controller.enqueue(chunk);
+    try {
+      if (typeof chunk === "string") {
+        controller.enqueue(ENCODER.encode(chunk));
+      } else {
+        controller.enqueue(chunk);
+      }
+    } catch (_) {
+      // The stream might have been closed. Ignore the error.
     }
   }
 
@@ -1417,6 +1421,26 @@ export class ServerResponse extends NodeWritable {
       this.#hasNonStringHeaders = true;
     }
     this.#headers[name] = value;
+    return this;
+  }
+
+  appendHeader(name: string, value: string | string[]) {
+    if (Array.isArray(value)) {
+      this.#hasNonStringHeaders = true;
+    }
+    if (this.#headers[name] === undefined) {
+      this.#headers[name] = value;
+    } else {
+      if (!Array.isArray(this.#headers[name])) {
+        this.#headers[name] = [this.#headers[name]];
+      }
+      const header = this.#headers[name];
+      if (Array.isArray(value)) {
+        header.push(...value);
+      } else {
+        header.push(value);
+      }
+    }
     return this;
   }
 

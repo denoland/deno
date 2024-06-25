@@ -75,7 +75,7 @@ deno_lockfile.workspace = true
 deno_npm = "=0.21.4"
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver = "=0.5.6"
-deno_task_shell = "=0.16.1"
+deno_task_shell = "=0.17.0"
 deno_terminal.workspace = true
 eszip = "=0.71.0"
 napi_sym.workspace = true

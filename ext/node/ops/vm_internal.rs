@@ -64,6 +64,8 @@ pub struct ContextifyContext {
   sandbox: v8::Global<v8::Object>,
 }
 
+impl deno_core::GcResource for ContextifyContext {}
+
 impl ContextifyContext {
   pub fn attach(
     scope: &mut v8::HandleScope,
@@ -125,7 +127,7 @@ impl ContextifyContext {
   }
 
   pub fn from_sandbox_obj<'a>(
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::HandleScope<'a>,
     sandbox_obj: v8::Local<v8::Object>,
   ) -> Option<&'a Self> {
     let private_str =
@@ -136,6 +138,7 @@ impl ContextifyContext {
       .get_private(scope, private_symbol)
       .and_then(|wrapper| {
         deno_core::cppgc::try_unwrap_cppgc_object::<Self>(wrapper)
+          .map(|s| s as _)
       })
   }
 
