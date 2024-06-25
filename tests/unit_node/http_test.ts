@@ -1130,3 +1130,52 @@ Deno.test("[node/http] server closeIdleConnections shutdown", async () => {
 
   await promise;
 });
+
+Deno.test("[node/http] client closing a streaming response doesn't terminate server", async () => {
+  let interval: number;
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    interval = setInterval(() => {
+      res.write("Hello, world!\n");
+    }, 100);
+    req.on("end", () => {
+      clearInterval(interval);
+      res.end();
+    });
+    req.on("error", (err) => {
+      console.error("Request error:", err);
+      clearInterval(interval);
+      res.end();
+    });
+  });
+
+  const deferred1 = Promise.withResolvers<void>();
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+
+    // Create a client connection to the server
+    const client = net.createConnection({ port }, () => {
+      console.log("Client connected to server");
+
+      // Write data to the server
+      client.write("GET / HTTP/1.1\r\n");
+      client.write("Host: localhost\r\n");
+      client.write("Connection: close\r\n");
+      client.write("\r\n");
+
+      // End the client connection prematurely while reading data
+      client.on("data", (data) => {
+        assert(data.length > 0);
+        client.end();
+        setTimeout(() => deferred1.resolve(), 100);
+      });
+    });
+  });
+
+  await deferred1.promise;
+  assertEquals(server.listening, true);
+  server.close();
+  assertEquals(server.listening, false);
+  clearInterval(interval!);
+});
