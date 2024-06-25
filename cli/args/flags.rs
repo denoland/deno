@@ -134,6 +134,7 @@ impl Default for DocSourceFileFlag {
 pub struct DocHtmlFlag {
   pub name: Option<String>,
   pub category_docs_path: Option<String>,
+  pub symbol_redirect_map_path: Option<String>,
   pub output: String,
 }
 
@@ -1799,6 +1800,15 @@ Show documentation for runtime built-ins:
           Arg::new("category-docs")
             .long("category-docs")
             .help("Path to a JSON file keyed by category and an optional value of a markdown doc")
+            .requires("html")
+            .action(ArgAction::Set)
+            .require_equals(true)
+        )
+        .arg(
+          Arg::new("symbol-redirect-map")
+            .long("symbol-redirect-map")
+            .help("Path to a JSON file keyed by file, with an inner map of symbol to an external link")
+            .requires("html")
             .action(ArgAction::Set)
             .require_equals(true)
         )
@@ -3888,12 +3898,15 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let html = if matches.get_flag("html") {
     let name = matches.remove_one::<String>("name");
     let category_docs_path = matches.remove_one::<String>("category-docs");
+    let symbol_redirect_map_path =
+      matches.remove_one::<String>("symbol-redirect-map");
     let output = matches
       .remove_one::<String>("output")
       .unwrap_or(String::from("./docs/"));
     Some(DocHtmlFlag {
       name,
       category_docs_path,
+      symbol_redirect_map_path,
       output,
     })
   } else {

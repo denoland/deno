@@ -388,6 +388,15 @@ fn generate_docs_directory(
       None
     };
 
+  let symbol_redirect_map = if let Some(symbol_redirect_map_path) =
+    &html_options.symbol_redirect_map_path
+  {
+    let content = std::fs::read(symbol_redirect_map_path)?;
+    Some(deno_core::serde_json::from_slice(&content)?)
+  } else {
+    None
+  };
+
   let options = deno_doc::html::GenerateOptions {
     package_name: html_options.name.clone(),
     main_entrypoint: None,
@@ -397,6 +406,7 @@ fn generate_docs_directory(
     composable_output: false,
     category_docs,
     disable_search: internal_env.is_some(),
+    symbol_redirect_map,
   };
 
   let files = deno_doc::html::generate(options, doc_nodes_by_url)
