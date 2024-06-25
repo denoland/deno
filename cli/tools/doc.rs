@@ -241,6 +241,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
 
 struct DocResolver {
   deno_ns: std::collections::HashSet<Vec<String>>,
+  strip_trailing_html: bool,
 }
 
 impl deno_doc::html::HrefResolver for DocResolver {
@@ -249,7 +250,14 @@ impl deno_doc::html::HrefResolver for DocResolver {
     current: UrlResolveKind,
     target: UrlResolveKind,
   ) -> String {
-    deno_doc::html::href_path_resolve(current, target)
+    let path = deno_doc::html::href_path_resolve(current, target);
+    if self.strip_trailing_html {
+      if let Some(path) = path.strip_suffix(".html") {
+        return path.to_owned();
+      }
+    }
+
+    path
   }
 
   fn resolve_global_symbol(&self, symbol: &[String]) -> Option<String> {
@@ -288,7 +296,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
   }
 }
 
-struct DenoDocResolver();
+struct DenoDocResolver(bool);
 
 impl deno_doc::html::HrefResolver for DenoDocResolver {
   fn resolve_path(
@@ -296,7 +304,14 @@ impl deno_doc::html::HrefResolver for DenoDocResolver {
     current: UrlResolveKind,
     target: UrlResolveKind,
   ) -> String {
-    deno_doc::html::href_path_resolve(current, target)
+    let path = deno_doc::html::href_path_resolve(current, target);
+    if self.0 {
+      if let Some(path) = path.strip_suffix(".html") {
+        return path.to_owned();
+      }
+    }
+
+    path
   }
 
   fn resolve_global_symbol(&self, _symbol: &[String]) -> Option<String> {
@@ -320,7 +335,7 @@ impl deno_doc::html::HrefResolver for DenoDocResolver {
   }
 }
 
-struct NodeDocResolver();
+struct NodeDocResolver(bool);
 
 impl deno_doc::html::HrefResolver for NodeDocResolver {
   fn resolve_path(
@@ -328,7 +343,14 @@ impl deno_doc::html::HrefResolver for NodeDocResolver {
     current: UrlResolveKind,
     target: UrlResolveKind,
   ) -> String {
-    deno_doc::html::href_path_resolve(current, target)
+    let path = deno_doc::html::href_path_resolve(current, target);
+    if self.0 {
+      if let Some(path) = path.strip_suffix(".html") {
+        return path.to_owned();
+      }
+    }
+
+    path
   }
 
   fn resolve_global_symbol(&self, _symbol: &[String]) -> Option<String> {
@@ -369,15 +391,18 @@ fn generate_docs_directory(
     .as_ref()
     .is_some_and(|internal_html_docs| internal_html_docs == "node")
   {
-    Rc::new(NodeDocResolver())
+    Rc::new(NodeDocResolver(html_options.strip_trailing_html))
   } else if internal_env
     .as_ref()
     .is_some_and(|internal_html_docs| internal_html_docs == "deno")
     || deno_ns.is_empty()
   {
-    Rc::new(DenoDocResolver())
+    Rc::new(DenoDocResolver(html_options.strip_trailing_html))
   } else {
-    Rc::new(DocResolver { deno_ns })
+    Rc::new(DocResolver {
+      deno_ns,
+      strip_trailing_html: html_options.strip_trailing_html,
+    })
   };
 
   let category_docs =
