@@ -16,7 +16,7 @@
 import { magenta } from "@std/fmt/colors.ts";
 import { pooledMap } from "@std/async/pool.ts";
 import { dirname, fromFileUrl, join } from "@std/path/mod.ts";
-import { fail } from "@std/assert/mod.ts";
+import { assertEquals, fail } from "@std/assert/mod.ts";
 import {
   config,
   getPathsFromTestSuites,
@@ -169,12 +169,14 @@ Deno.test("Node.js compatibility", async (t) => {
 function checkConfigTestFilesOrder(testFileLists: Array<string[]>) {
   for (const testFileList of testFileLists) {
     const sortedTestList = JSON.parse(JSON.stringify(testFileList));
-    sortedTestList.sort();
-    if (JSON.stringify(testFileList) !== JSON.stringify(sortedTestList)) {
-      throw new Error(
-        `File names in \`config.json\` are not correct order.`,
-      );
-    }
+    sortedTestList.sort((a: string, b: string) =>
+      a.toLowerCase().localeCompare(b.toLowerCase())
+    );
+    assertEquals(
+      testFileList,
+      sortedTestList,
+      "File names in `config.json` are not correct order.",
+    );
   }
 }
 
