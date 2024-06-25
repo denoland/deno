@@ -71,7 +71,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     // write out the lockfile if there is one
     if let Some(lockfile) = &maybe_lockfile {
       graph_exit_lock_errors(&graph);
-      write_lockfile_if_has_changes(&lockfile.lock())?;
+      write_lockfile_if_has_changes(&mut lockfile.lock())?;
     }
 
     if info_flags.json {

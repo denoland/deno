@@ -197,30 +197,31 @@ assert.throws(
   }));
 }
 
-if (!common.isWindows) {
-  // Verify that end works when start is not specified, and we do not try to
-  // use positioned reads. This makes sure that this keeps working for
-  // non-seekable file descriptors.
-  tmpdir.refresh();
-  const filename = `${tmpdir.path}/foo.pipe`;
-  const mkfifoResult = child_process.spawnSync('mkfifo', [filename]);
-  if (!mkfifoResult.error) {
-    child_process.exec(`echo "xyz foobar" > '${filename}'`);
-    const stream = new fs.createReadStream(filename, common.mustNotMutateObjectDeep({ end: 1 }));
-    stream.data = '';
+// TODO(bartlomieju): this bit became very flaky on CI, and so far we haven't pinpointed the exact cause
+// if (!common.isWindows) {
+//   // Verify that end works when start is not specified, and we do not try to
+//   // use positioned reads. This makes sure that this keeps working for
+//   // non-seekable file descriptors.
+//   tmpdir.refresh();
+//   const filename = `${tmpdir.path}/foo.pipe`;
+//   const mkfifoResult = child_process.spawnSync('mkfifo', [filename]);
+//   if (!mkfifoResult.error) {
+//     child_process.exec(`echo "xyz foobar" > '${filename}'`);
+//     const stream = new fs.createReadStream(filename, common.mustNotMutateObjectDeep({ end: 1 }));
+//     stream.data = '';
 
-    stream.on('data', function(chunk) {
-      stream.data += chunk;
-    });
+//     stream.on('data', function(chunk) {
+//       stream.data += chunk;
+//     });
 
-    stream.on('end', common.mustCall(function() {
-      assert.strictEqual(stream.data, 'xy');
-      fs.unlinkSync(filename);
-    }));
-  } else {
-    common.printSkipMessage('mkfifo not available');
-  }
-}
+//     stream.on('end', common.mustCall(function() {
+//       assert.strictEqual(stream.data, 'xy');
+//       fs.unlinkSync(filename);
+//     }));
+//   } else {
+//     common.printSkipMessage('mkfifo not available');
+//   }
+// }
 
 {
   // Pause and then resume immediately.

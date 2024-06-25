@@ -5,6 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, primordials } from "ext:core/mod.js";
+const { internalRidSymbol } = core;
 import {
   op_http2_client_get_response,
   op_http2_client_get_response_body_chunk,
@@ -405,7 +406,7 @@ export class ClientHttp2Session extends Http2Session {
     const connPromise = new Promise((resolve) => {
       const eventName = url.startsWith("https") ? "secureConnect" : "connect";
       socket.once(eventName, () => {
-        const rid = socket[kHandle][kStreamBaseField].rid;
+        const rid = socket[kHandle][kStreamBaseField][internalRidSymbol];
         nextTick(() => {
           resolve(rid);
         });
@@ -933,25 +934,23 @@ export class ClientHttp2Stream extends Duplex {
 
   // TODO(bartlomieju): clean up
   _write(chunk, encoding, callback?: () => void) {
-    debugHttp2(">>> _write", callback);
+    debugHttp2(">>> _write", encoding, callback);
     if (typeof encoding === "function") {
       callback = encoding;
-      encoding = "utf8";
+      encoding = this.#encoding;
     }
     let data;
-    if (typeof encoding === "string") {
+    if (encoding === "utf8") {
       data = ENCODER.encode(chunk);
-    } else {
+    } else if (encoding === "buffer") {
+      this.#encoding = encoding;
       data = chunk.buffer;
     }
 
     this.#requestPromise
       .then(() => {
         debugHttp2(">>> _write", this.#rid, data, encoding, callback);
-        return op_http2_client_send_data(
-          this.#rid,
-          data,
-        );
+        return op_http2_client_send_data(this.#rid, new Uint8Array(data));
       })
       .then(() => {
         callback?.();
@@ -979,7 +978,7 @@ export class ClientHttp2Stream extends Duplex {
       return;
     }
 
-    shutdownWritable(this, cb);
+    shutdownWritable(this, cb, this.#rid);
   }
 
   // TODO(bartlomieju): needs a proper cleanup
@@ -1177,15 +1176,30 @@ export class ClientHttp2Stream extends Duplex {
   }
 }
 
-function shutdownWritable(stream, callback) {
+function shutdownWritable(stream, callback, streamRid) {
   debugHttp2(">>> shutdownWritable", callback);
   const state = stream[kState];
   if (state.shutdownWritableCalled) {
+    debugHttp2(">>> shutdownWritable() already called");
     return callback();
   }
   state.shutdownWritableCalled = true;
-  onStreamTrailers(stream);
-  callback();
+  if (state.flags & STREAM_FLAGS_HAS_TRAILERS) {
+    onStreamTrailers(stream);
+    callback();
+  } else {
+    op_http2_client_send_data(streamRid, new Uint8Array(), true)
+      .then(() => {
+        callback();
+        stream[kMaybeDestroy]();
+        core.tryClose(streamRid);
+      })
+      .catch((e) => {
+        callback(e);
+        core.tryClose(streamRid);
+        stream._destroy(e);
+      });
+  }
   // TODO(bartlomieju): might have to add "finish" event listener here,
   // check it.
 }

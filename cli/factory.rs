@@ -25,7 +25,7 @@ use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphCreator;
-use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 use crate::module_loader::CliModuleLoaderFactory;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::node::CliCjsCodeAnalyzer;
@@ -35,7 +35,6 @@ use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
-use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::resolver::CjsResolutionStore;
 use crate::resolver::CliGraphResolver;
@@ -152,7 +151,7 @@ struct CliFactoryServices {
   file_fetcher: Deferred<Arc<FileFetcher>>,
   global_http_cache: Deferred<Arc<GlobalHttpCache>>,
   http_cache: Deferred<Arc<dyn HttpCache>>,
-  http_client: Deferred<Arc<HttpClient>>,
+  http_client_provider: Deferred<Arc<HttpClientProvider>>,
   emit_cache: Deferred<EmitCache>,
   emitter: Deferred<Arc<Emitter>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
@@ -279,9 +278,9 @@ impl CliFactory {
     })
   }
 
-  pub fn http_client(&self) -> &Arc<HttpClient> {
-    self.services.http_client.get_or_init(|| {
-      Arc::new(HttpClient::new(
+  pub fn http_client_provider(&self) -> &Arc<HttpClientProvider> {
+    self.services.http_client_provider.get_or_init(|| {
+      Arc::new(HttpClientProvider::new(
         Some(self.root_cert_store_provider().clone()),
         self.options.unsafely_ignore_certificate_errors().clone(),
       ))
@@ -294,7 +293,7 @@ impl CliFactory {
         self.http_cache()?.clone(),
         self.options.cache_setting(),
         !self.options.no_remote(),
-        self.http_client().clone(),
+        self.http_client_provider().clone(),
         self.blob_store().clone(),
         Some(self.text_only_progress_bar().clone()),
       )))
@@ -436,15 +435,13 @@ impl CliFactory {
             },
             maybe_lockfile: self.maybe_lockfile().as_ref().cloned(),
             fs: fs.clone(),
-            http_client: self.http_client().clone(),
+            http_client_provider: self.http_client_provider().clone(),
             npm_global_cache_dir: self.deno_dir()?.npm_folder_path(),
             cache_setting: self.options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
             maybe_node_modules_path: self.options.node_modules_dir_path().cloned(),
-            package_json_installer:
-              CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
+            package_json_deps_provider:
                 self.package_json_deps_provider().clone(),
-              ),
             npm_system_info: self.options.npm_system_info(),
             npmrc: self.options.npmrc().clone()
           })
@@ -760,9 +757,9 @@ impl CliFactory {
     &self,
   ) -> Result<DenoCompileBinaryWriter, AnyError> {
     Ok(DenoCompileBinaryWriter::new(
-      self.file_fetcher()?,
-      self.http_client(),
       self.deno_dir()?,
+      self.file_fetcher()?,
+      self.http_client_provider(),
       self.npm_resolver().await?.as_ref(),
       self.options.npm_system_info(),
       self.package_json_deps_provider(),
@@ -867,7 +864,6 @@ impl CliFactory {
       // integration.
       skip_op_registration: self.options.sub_command().is_run(),
       log_level: self.options.log_level().unwrap_or(log::Level::Info).into(),
-      coverage_dir: self.options.coverage_dir(),
       enable_op_summary_metrics: self.options.enable_op_summary_metrics(),
       enable_testing_features: self.options.enable_testing_features(),
       has_node_modules_dir: self.options.has_node_modules_dir(),

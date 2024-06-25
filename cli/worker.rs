@@ -28,12 +28,12 @@ use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
@@ -102,7 +102,6 @@ pub type CreateCoverageCollectorCb = Box<
 pub struct CliMainWorkerOptions {
   pub argv: Vec<String>,
   pub log_level: WorkerLogLevel,
-  pub coverage_dir: Option<String>,
   pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
@@ -522,18 +521,15 @@ impl CliMainWorkerFactory {
           package_ref.req(),
           &referrer,
         )?;
-      let node_resolution = self.resolve_binary_entrypoint(
-        &package_folder,
-        package_ref.sub_path(),
-        &permissions,
-      )?;
+      let node_resolution = self
+        .resolve_binary_entrypoint(&package_folder, package_ref.sub_path())?;
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
 
       if let Some(lockfile) = &shared.maybe_lockfile {
         // For npm binary commands, ensure that the lockfile gets updated
         // so that we can re-use the npm resolution the next time it runs
         // for better performance
-        write_lockfile_if_has_changes(&lockfile.lock())?;
+        write_lockfile_if_has_changes(&mut lockfile.lock())?;
       }
 
       (node_resolution.into_url(), is_main_cjs)
@@ -636,6 +632,7 @@ impl CliMainWorkerFactory {
       strace_ops: shared.options.strace_ops.clone(),
       module_loader,
       fs: shared.fs.clone(),
+      node_resolver: Some(shared.node_resolver.clone()),
       npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
       get_error_class_fn: Some(&errors::get_error_class_name),
       cache_storage_dir,
@@ -687,7 +684,6 @@ impl CliMainWorkerFactory {
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-    permissions: &PermissionsContainer,
   ) -> Result<NodeResolution, AnyError> {
     match self
       .shared
@@ -697,11 +693,8 @@ impl CliMainWorkerFactory {
       Ok(node_resolution) => Ok(node_resolution),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
-        let result = self.resolve_binary_entrypoint_fallback(
-          package_folder,
-          sub_path,
-          permissions,
-        );
+        let result =
+          self.resolve_binary_entrypoint_fallback(package_folder, sub_path);
         match result {
           Ok(Some(resolution)) => Ok(resolution),
           Ok(None) => Err(original_err),
@@ -718,7 +711,6 @@ impl CliMainWorkerFactory {
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-    permissions: &PermissionsContainer,
   ) -> Result<Option<NodeResolution>, AnyError> {
     // only fallback if the user specified a sub path
     if sub_path.is_none() {
@@ -739,7 +731,6 @@ impl CliMainWorkerFactory {
         sub_path,
         &referrer,
         NodeResolutionMode::Execution,
-        permissions,
       )?
     else {
       return Ok(None);
@@ -843,6 +834,7 @@ fn create_web_worker_callback(
       source_map_getter,
       module_loader,
       fs: shared.fs.clone(),
+      node_resolver: Some(shared.node_resolver.clone()),
       npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
       worker_type: args.worker_type,
       maybe_inspector_server,
@@ -877,7 +869,7 @@ fn create_web_worker_callback(
 mod tests {
   use super::*;
   use deno_core::resolve_path;
-  use deno_runtime::permissions::Permissions;
+  use deno_runtime::deno_permissions::Permissions;
 
   fn create_test_worker() -> MainWorker {
     let main_module =

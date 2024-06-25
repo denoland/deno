@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.43.6"
+version = "1.44.4"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -65,19 +65,19 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = { workspace = true }
-deno_config = "=0.16.3"
+deno_config = "=0.16.4"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.137.0", features = ["html", "syntect"] }
-deno_emit = "=0.41.0"
-deno_graph = { version = "=0.77.0", features = ["tokio_executor"] }
-deno_lint = { version = "=0.58.4", features = ["docs"] }
+deno_doc = { version = "=0.139.0", features = ["html", "syntect"] }
+deno_emit = "=0.42.0"
+deno_graph = { version = "=0.78.1", features = ["tokio_executor"] }
+deno_lint = { version = "=0.60.0", features = ["docs"] }
 deno_lockfile.workspace = true
-deno_npm = "=0.21.0"
+deno_npm = "=0.21.4"
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_semver = "=0.5.4"
-deno_task_shell = "=0.16.1"
+deno_semver = "=0.5.6"
+deno_task_shell = "=0.17.0"
 deno_terminal.workspace = true
-eszip = "=0.70.1"
+eszip = "=0.71.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -96,10 +96,10 @@ dashmap = "5.5.3"
 data-encoding.workspace = true
 dissimilar = "=1.0.4"
 dotenvy = "0.15.7"
-dprint-plugin-json = "=0.19.2"
+dprint-plugin-json = "=0.19.3"
 dprint-plugin-jupyter = "=0.1.3"
-dprint-plugin-markdown = "=0.17.0"
-dprint-plugin-typescript = "=0.90.5"
+dprint-plugin-markdown = "=0.17.1"
+dprint-plugin-typescript = "=0.91.1"
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
 faster-hex.workspace = true
@@ -111,6 +111,7 @@ ignore = "0.4"
 import_map = { version = "=0.19.0", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser.workspace = true
+jupyter_runtime = { package = "runtimelib", version = "=0.11.0" }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
@@ -130,7 +131,6 @@ rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 reqwest.workspace = true
 ring.workspace = true
-runtimelib = "=0.9.0"
 rustyline.workspace = true
 rustyline-derive = "=0.7.0"
 serde.workspace = true

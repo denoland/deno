@@ -40,6 +40,18 @@ pub trait SqliteDbHandlerPermissions {
   fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
 }
 
+impl SqliteDbHandlerPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_read(self, p, api_name)
+  }
+
+  #[inline(always)]
+  fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_write(self, p, api_name)
+  }
+}
+
 impl<P: SqliteDbHandlerPermissions> SqliteDbHandler<P> {
   pub fn new(
     default_storage_dir: Option<PathBuf>,
@@ -183,7 +195,7 @@ fn canonicalize_path(path: &Path) -> Result<PathBuf, AnyError> {
         } else {
           names_stack.push(path.to_str().unwrap().to_string());
           let current_dir = current_dir()?;
-          path = current_dir.clone();
+          path.clone_from(&current_dir);
         }
       }
       Err(err) => return Err(err.into()),

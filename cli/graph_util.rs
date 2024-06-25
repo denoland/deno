@@ -41,7 +41,7 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use import_map::ImportMapError;
@@ -78,7 +78,7 @@ pub fn graph_valid(
 
   let mut errors = graph
     .walk(
-      roots,
+      roots.iter(),
       deno_graph::WalkOptions {
         check_js: options.check_js,
         follow_type_only: options.follow_type_only,
@@ -160,6 +160,10 @@ pub fn graph_valid(
   if let Some(error) = errors.next() {
     Err(error)
   } else {
+    // finally surface the npm resolution result
+    if let Err(err) = &graph.npm_dep_graph_result {
+      return Err(custom_error(get_error_class_name(err), format!("{}", err)));
+    }
     Ok(())
   }
 }
@@ -479,7 +483,7 @@ impl ModuleGraphBuilder {
     };
     let cli_resolver = &self.resolver;
     let graph_resolver = cli_resolver.as_graph_resolver();
-    let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
+    let graph_npm_resolver = cli_resolver.create_graph_npm_resolver();
     let maybe_file_watcher_reporter = self
       .maybe_file_watcher_reporter
       .as_ref()
@@ -503,7 +507,7 @@ impl ModuleGraphBuilder {
           executor: Default::default(),
           file_system: &DenoGraphFsAdapter(self.fs.as_ref()),
           jsr_url_provider: &CliJsrUrlProvider,
-          npm_resolver: Some(graph_npm_resolver),
+          npm_resolver: Some(&graph_npm_resolver),
           module_analyzer: &analyzer,
           reporter: maybe_file_watcher_reporter,
           resolver: Some(graph_resolver),
@@ -562,29 +566,8 @@ impl ModuleGraphBuilder {
     let initial_redirects_len = graph.redirects.len();
     let initial_package_deps_len = graph.packages.package_deps_sum();
     let initial_package_mappings_len = graph.packages.mappings().len();
-    let initial_npm_packages = graph.npm_packages.len();
 
     graph.build(roots, loader, options).await;
-
-    let has_npm_packages_changed =
-      graph.npm_packages.len() != initial_npm_packages;
-    // skip installing npm packages if we don't have to
-    if is_first_execution
-      && self.npm_resolver.root_node_modules_path().is_some()
-      || has_npm_packages_changed
-    {
-      if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-        // ensure that the top level package.json is installed if a
-        // specifier was matched in the package.json
-        if self.resolver.found_package_json_dep() {
-          npm_resolver.ensure_top_level_package_json_install().await?;
-        }
-
-        // resolve the dependencies of any pending dependencies
-        // that were inserted by building the graph
-        npm_resolver.resolve_pending().await?;
-      }
-    }
 
     let has_redirects_changed = graph.redirects.len() != initial_redirects_len;
     let has_jsr_package_deps_changed =
@@ -595,7 +578,6 @@ impl ModuleGraphBuilder {
     if has_redirects_changed
       || has_jsr_package_deps_changed
       || has_jsr_package_mappings_changed
-      || has_npm_packages_changed
     {
       if let Some(lockfile) = &self.lockfile {
         let mut lockfile = lockfile.lock();
@@ -624,10 +606,6 @@ impl ModuleGraphBuilder {
               .add_package_deps(&name.to_string(), deps.map(|s| s.to_string()));
           }
         }
-        // npm packages
-        if has_npm_packages_changed {
-          self.npm_resolver.as_managed().unwrap().lock(&mut lockfile);
-        }
       }
     }
 
@@ -652,7 +630,7 @@ impl ModuleGraphBuilder {
     let parser = self.parsed_source_cache.as_capturing_parser();
     let cli_resolver = &self.resolver;
     let graph_resolver = cli_resolver.as_graph_resolver();
-    let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
+    let graph_npm_resolver = cli_resolver.create_graph_npm_resolver();
     let workspace_members = if options.workspace_fast_check {
       Some(self.options.resolve_deno_graph_workspace_members()?)
     } else {
@@ -666,7 +644,7 @@ impl ModuleGraphBuilder {
         fast_check_dts: false,
         module_parser: Some(&parser),
         resolver: Some(graph_resolver),
-        npm_resolver: Some(graph_npm_resolver),
+        npm_resolver: Some(&graph_npm_resolver),
         workspace_fast_check: if let Some(members) = &workspace_members {
           deno_graph::WorkspaceFastCheckOption::Enabled(members)
         } else {
@@ -701,7 +679,10 @@ impl ModuleGraphBuilder {
   /// so. Returns `Err(_)` if there is a known module graph or resolution
   /// error statically reachable from `roots` and not a dynamic import.
   pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), AnyError> {
-    self.graph_roots_valid(graph, &graph.roots)
+    self.graph_roots_valid(
+      graph,
+      &graph.roots.iter().cloned().collect::<Vec<_>>(),
+    )
   }
 
   pub fn graph_roots_valid(
@@ -891,9 +872,8 @@ pub fn has_graph_root_local_dependent_changed(
   root: &ModuleSpecifier,
   canonicalized_changed_paths: &HashSet<PathBuf>,
 ) -> bool {
-  let roots = vec![root.clone()];
   let mut dependent_specifiers = graph.walk(
-    &roots,
+    std::iter::once(root),
     deno_graph::WalkOptions {
       follow_dynamic: true,
       follow_type_only: true,

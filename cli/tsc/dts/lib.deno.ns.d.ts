@@ -50,10 +50,10 @@ declare interface ImportMeta {
    * * Example:
    * ```
    * // Unix
-   * console.log(import.meta.dirname); // /home/alice/
+   * console.log(import.meta.dirname); // /home/alice
    *
    * // Windows
-   * console.log(import.meta.dirname); // C:\alice\
+   * console.log(import.meta.dirname); // C:\alice
    * ```
    */
   dirname?: string;
@@ -1465,6 +1465,23 @@ declare namespace Deno {
    * @category Runtime
    */
   export function exit(code?: number): never;
+
+  /** The exit code for the Deno process.
+   *
+   * If no exit code has been supplied, then Deno will assume a return code of `0`.
+   *
+   * When setting an exit code value, a number or non-NaN string must be provided,
+   * otherwise a TypeError will be thrown.
+   *
+   * ```ts
+   * console.log(Deno.exitCode); //-> 0
+   * Deno.exitCode = 1;
+   * console.log(Deno.exitCode); //-> 1
+   * ```
+   *
+   * @category Runtime
+   */
+  export var exitCode: number;
 
   /** An interface containing methods to interact with the process environment
    * variables.
@@ -4399,6 +4416,8 @@ declare namespace Deno {
     | "SIGINFO"
     | "SIGINT"
     | "SIGIO"
+    | "SIGPOLL"
+    | "SIGUNUSED"
     | "SIGKILL"
     | "SIGPIPE"
     | "SIGPROF"
@@ -4523,6 +4542,9 @@ declare namespace Deno {
    * If `stdin` is set to `"piped"`, the `stdin` {@linkcode WritableStream}
    * needs to be closed manually.
    *
+   * `Command` acts as a builder. Each call to {@linkcode Command.spawn} or
+   * {@linkcode Command.output} will spawn a new subprocess.
+   *
    * @example Spawn a subprocess and pipe the output to a file
    *
    * ```ts
@@ -4584,8 +4606,6 @@ declare namespace Deno {
     /**
      * Executes the {@linkcode Deno.Command}, waiting for it to finish and
      * collecting all of its output.
-     * If `spawn()` was called, calling this function will collect the remaining
-     * output.
      *
      * Will throw an error if `stdin: "piped"` is set.
      *

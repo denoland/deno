@@ -29,6 +29,8 @@ use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
 
+const CODE_CACHE_DB_FILE_NAME: &str = "v8_code_cache_v2";
+
 itest!(stdout_write_all {
   args: "run --quiet run/stdout_write_all.ts",
   output: "run/stdout_write_all.out",
@@ -3142,6 +3144,20 @@ itest!(byte_order_mark {
 });
 
 #[test]
+#[cfg(windows)]
+fn process_stdin_read_unblock() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdin_unblock.mjs"])
+    .with_pty(|mut console| {
+      console.write_raw("b");
+      console.human_delay();
+      console.write_line_raw("s");
+      console.expect_all(&["1", "1"]);
+    });
+}
+
+#[test]
 fn issue9750() {
   TestContext::default()
     .new_command()
@@ -3995,11 +4011,8 @@ async fn test_resolve_dns() {
     )
     .unwrap();
     let lexer = Lexer::new(&zone_file);
-    let records = Parser::new().parse(
-      lexer,
-      Some(Name::from_str("example.com").unwrap()),
-      None,
-    );
+    let records =
+      Parser::new().parse(lexer, Some(Name::from_str("example.com").unwrap()));
     if records.is_err() {
       panic!("failed to parse: {:?}", records.err())
     }
@@ -5030,8 +5043,8 @@ fn run_etag_delete_source_cache() {
 
 #[test]
 fn code_cache_test() {
-  let deno_dir = TempDir::new();
   let test_context = TestContextBuilder::new().use_temp_cwd().build();
+  let deno_dir = test_context.deno_dir();
   let temp_dir = test_context.temp_dir();
   temp_dir.write("main.js", "console.log('Hello World - A');");
 
@@ -5039,20 +5052,17 @@ fn code_cache_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("main.js")
+      .args("run -Ldebug main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("Hello World - A[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]");
-    assert!(!output.stderr().contains("V8 code cache hit"));
+    assert_not_contains!(output.stderr(), "V8 code cache hit");
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5060,35 +5070,28 @@ fn code_cache_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("main.js")
+      .args("run -Ldebug main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("Hello World - A[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.js[WILDCARD]");
-    assert!(!output.stderr().contains("Updating V8 code cache"));
+    assert_not_contains!(output.stderr(), "Updating V8 code cache");
   }
 
   // Rerun with --no-code-cache.
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("--no-code-cache")
-      .arg("main.js")
+      .args("run -Ldebug --no-code-cache main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("Hello World - A[WILDCARD]")
       .skip_stderr_check();
-    assert!(!output.stderr().contains("V8 code cache"));
+    assert_not_contains!(output.stderr(), "V8 code cache");
   }
 
   // Modify the script, and make sure that the cache is rejected.
@@ -5096,27 +5099,21 @@ fn code_cache_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("main.js")
+      .args("run -Ldebug main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("Hello World - B[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]");
-    assert!(!output.stderr().contains("V8 code cache hit"));
+    assert_not_contains!(output.stderr(), "V8 code cache hit");
   }
 }
 
 #[test]
 fn code_cache_npm_test() {
-  let deno_dir = TempDir::new();
-  let test_context = TestContextBuilder::new()
-    .use_temp_cwd()
-    .use_http_server()
-    .build();
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let deno_dir = test_context.deno_dir();
   let temp_dir = test_context.temp_dir();
   temp_dir.write(
     "main.js",
@@ -5127,12 +5124,7 @@ fn code_cache_npm_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .envs(env_vars_for_npm_tests())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("-A")
-      .arg("main.js")
+      .args("run -Ldebug -A main.js")
       .split_output()
       .run();
 
@@ -5140,10 +5132,10 @@ fn code_cache_npm_test() {
       .assert_stdout_matches_text("Hello World[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
-    assert!(!output.stderr().contains("V8 code cache hit"));
+    assert_not_contains!(output.stderr(), "V8 code cache hit");
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5151,12 +5143,7 @@ fn code_cache_npm_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .envs(env_vars_for_npm_tests())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("-A")
-      .arg("main.js")
+      .args("run -Ldebug -A main.js")
       .split_output()
       .run();
 
@@ -5164,17 +5151,14 @@ fn code_cache_npm_test() {
       .assert_stdout_matches_text("Hello World[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
-    assert!(!output.stderr().contains("Updating V8 code cache"));
+    assert_not_contains!(output.stderr(), "Updating V8 code cache");
   }
 }
 
 #[test]
 fn code_cache_npm_with_require_test() {
-  let deno_dir = TempDir::new();
-  let test_context = TestContextBuilder::new()
-    .use_temp_cwd()
-    .use_http_server()
-    .build();
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let deno_dir = test_context.deno_dir();
   let temp_dir = test_context.temp_dir();
   temp_dir.write(
     "main.js",
@@ -5185,12 +5169,7 @@ fn code_cache_npm_with_require_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .envs(env_vars_for_npm_tests())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("-A")
-      .arg("main.js")
+      .args("run -Ldebug -A main.js")
       .split_output()
       .run();
 
@@ -5200,10 +5179,10 @@ fn code_cache_npm_with_require_test() {
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/browserslist/[WILDCARD]/index.js[WILDCARD]");
-    assert!(!output.stderr().contains("V8 code cache hit"));
+    assert_not_contains!(output.stderr(), "V8 code cache hit");
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5211,12 +5190,7 @@ fn code_cache_npm_with_require_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .envs(env_vars_for_npm_tests())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("-A")
-      .arg("main.js")
+      .args("run -Ldebug -A main.js")
       .split_output()
       .run();
 
@@ -5226,7 +5200,54 @@ fn code_cache_npm_with_require_test() {
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/browserslist/[WILDCARD]/index.js[WILDCARD]");
-    assert!(!output.stderr().contains("Updating V8 code cache"));
+    assert_not_contains!(output.stderr(), "Updating V8 code cache");
+  }
+}
+
+#[test]
+fn code_cache_npm_cjs_wrapper_module_many_exports() {
+  // The code cache was being invalidated because the CJS wrapper module
+  // had indeterministic output.
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write(
+    "main.js",
+    // this package has a few exports
+    "import { hello } from \"npm:@denotest/cjs-reexport-collision\";hello.sayHello();",
+  );
+
+  // First run with no prior cache.
+  {
+    let output = test_context
+      .new_command()
+      .args("run -Ldebug -A main.js")
+      .split_output()
+      .run();
+
+    assert_not_contains!(output.stderr(), "V8 code cache hit");
+    assert_contains!(output.stderr(), "Updating V8 code cache");
+    output.skip_stdout_check();
+  }
+
+  // 2nd run with cache.
+  {
+    let output = test_context
+      .new_command()
+      .args("run -Ldebug -A main.js")
+      .split_output()
+      .run();
+    assert_contains!(output.stderr(), "V8 code cache hit");
+    assert_not_contains!(output.stderr(), "Updating V8 code cache");
+    output.skip_stdout_check();
+
+    // should have two occurrences of this (one for entrypoint and one for wrapper module)
+    assert_eq!(
+      output
+        .stderr()
+        .split("V8 code cache hit for ES module")
+        .count(),
+      3
+    );
   }
 }
 

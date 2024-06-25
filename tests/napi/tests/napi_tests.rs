@@ -69,6 +69,7 @@ fn napi_tests() {
     .arg("--allow-env")
     .arg("--allow-ffi")
     .arg("--allow-run")
+    .arg("--v8-flags=--expose-gc")
     .arg("--config")
     .arg(deno_config_path())
     .arg("--no-lock")

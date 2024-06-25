@@ -1669,12 +1669,6 @@ itest!(non_existent_dep_version {
     "Download http://localhost:4260/@denotest/non-existent-dep-version\n",
     "Download http://localhost:4260/@denotest/esm-basic\n",
     "[UNORDERED_END]\n",
-    // does two downloads because when failing once it max tries to
-    // get the latest version a second time
-    "[UNORDERED_START]\n",
-    "Download http://localhost:4260/@denotest/non-existent-dep-version\n",
-    "Download http://localhost:4260/@denotest/esm-basic\n",
-    "[UNORDERED_END]\n",
     "error: Could not find npm package '@denotest/esm-basic' matching '=99.99.99'.\n"
   )),
 });
@@ -1828,6 +1822,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
       .run();
     output.assert_matches_text(concat!(
       "error: Could not find npm package '@denotest/esm-import-cjs-default' matching '1.0.0'.\n",
+      "    at file:///[WILDCARD]/main.ts:1:8\n",
     ));
     output.assert_exit_code(1);
 

@@ -54,9 +54,9 @@ use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
@@ -454,7 +454,7 @@ pub enum TestEvent {
   Register(Arc<TestDescriptions>),
   Plan(TestPlan),
   Wait(usize),
-  Output(TestStdioStream, Vec<u8>),
+  Output(Vec<u8>),
   Slow(usize, u64),
   Result(usize, TestResult, u64),
   UncaughtError(String, Box<JsError>),
@@ -881,6 +881,7 @@ async fn run_tests_for_worker_inner(
     // failing. If we don't do this, a connection to a test server we just tore down might be re-used in
     // the next test.
     // TODO(mmastrac): this should be some sort of callback that we can implement for any subsystem
+    #[allow(clippy::disallowed_types)] // allow using reqwest::Client here
     worker
       .js_runtime
       .op_state()
@@ -1248,7 +1249,7 @@ fn extract_files_from_source_comments(
 ) -> Result<Vec<File>, AnyError> {
   let parsed_source = deno_ast::parse_module(deno_ast::ParseParams {
     specifier: specifier.clone(),
-    text_info: deno_ast::SourceTextInfo::new(source),
+    text: source,
     media_type,
     capture_tokens: false,
     maybe_syntax: None,
@@ -1272,7 +1273,7 @@ fn extract_files_from_source_comments(
         specifier,
         &comment.text,
         media_type,
-        parsed_source.text_info().line_index(comment.start()),
+        parsed_source.text_info_lazy().line_index(comment.start()),
         blocks_regex,
         lines_regex,
       )
@@ -1490,7 +1491,7 @@ pub async fn report_tests(
           reporter.report_wait(tests.get(&id).unwrap());
         }
       }
-      TestEvent::Output(_, output) => {
+      TestEvent::Output(output) => {
         reporter.report_output(&output);
       }
       TestEvent::Slow(id, elapsed) => {
@@ -1876,7 +1877,7 @@ pub async fn run_tests_with_watch(
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
-          let mut result = Vec::new();
+          let mut result = IndexSet::with_capacity(test_modules.len());
           let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
           for test_module_specifier in test_modules {
             if has_graph_root_local_dependent_changed(
@@ -1884,7 +1885,7 @@ pub async fn run_tests_with_watch(
               test_module_specifier,
               &changed_paths,
             ) {
-              result.push(test_module_specifier.clone());
+              result.insert(test_module_specifier.clone());
             }
           }
           result

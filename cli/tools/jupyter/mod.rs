@@ -7,7 +7,6 @@ use crate::tools::repl;
 use crate::tools::test::create_single_test_event_channel;
 use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::TestEventWorkerSender;
-use crate::util::logger;
 use crate::CliFactory;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -18,13 +17,13 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
 
-use runtimelib::jupyter::ConnectionInfo;
-use runtimelib::messaging::StreamContent;
+use jupyter_runtime::jupyter::ConnectionInfo;
+use jupyter_runtime::messaging::StreamContent;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -51,11 +50,6 @@ pub async fn kernel(
   }
 
   let connection_filepath = jupyter_flags.conn_file.unwrap();
-
-  // This env var might be set by notebook
-  if std::env::var("DEBUG").is_ok() {
-    logger::init(Some(log::Level::Debug));
-  }
 
   let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();

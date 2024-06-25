@@ -47,13 +47,13 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
-use deno_runtime::permissions::PermissionsOptions;
 use deno_terminal::colors;
 use dotenvy::from_filename;
 use once_cell::sync::Lazy;
@@ -198,7 +198,7 @@ pub fn ts_config_to_transpile_and_emit_options(
     },
     deno_ast::EmitOptions {
       inline_sources: options.inline_sources,
-      keep_comments: true,
+      remove_comments: false,
       source_map,
       source_map_file: None,
     },
@@ -555,14 +555,10 @@ fn discover_package_json(
 ///
 /// In the future we will need to support it in user directory or global directory
 /// as per https://docs.npmjs.com/cli/v10/configuring-npm/npmrc#files.
-fn discover_npmrc(
+pub fn discover_npmrc(
   maybe_package_json_path: Option<PathBuf>,
   maybe_deno_json_path: Option<PathBuf>,
-) -> Result<Arc<ResolvedNpmRc>, AnyError> {
-  if !*DENO_FUTURE {
-    return Ok(create_default_npmrc());
-  }
-
+) -> Result<(Arc<ResolvedNpmRc>, Option<PathBuf>), AnyError> {
   const NPMRC_NAME: &str = ".npmrc";
 
   fn get_env_var(var_name: &str) -> Option<String> {
@@ -601,7 +597,7 @@ fn discover_npmrc(
   if let Some(package_json_path) = maybe_package_json_path {
     if let Some(package_json_dir) = package_json_path.parent() {
       if let Some((source, path)) = try_to_read_npmrc(package_json_dir)? {
-        return try_to_parse_npmrc(source, &path);
+        return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
       }
     }
   }
@@ -610,7 +606,7 @@ fn discover_npmrc(
   if let Some(deno_json_path) = maybe_deno_json_path {
     if let Some(deno_json_dir) = deno_json_path.parent() {
       if let Some((source, path)) = try_to_read_npmrc(deno_json_dir)? {
-        return try_to_parse_npmrc(source, &path);
+        return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
       }
     }
   }
@@ -625,7 +621,7 @@ fn discover_npmrc(
   }
 
   log::debug!("No .npmrc file found");
-  Ok(create_default_npmrc())
+  Ok((create_default_npmrc(), None))
 }
 
 pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
@@ -635,6 +631,7 @@ pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
       config: Default::default(),
     },
     scopes: Default::default(),
+    registry_configs: Default::default(),
   })
 }
 
@@ -950,7 +947,7 @@ impl CliOptions {
     } else {
       maybe_package_json = discover_package_json(&flags, None, &initial_cwd)?;
     }
-    let npmrc = discover_npmrc(
+    let (npmrc, _) = discover_npmrc(
       maybe_package_json.as_ref().map(|p| p.path.clone()),
       maybe_config_file.as_ref().and_then(|cf| {
         if cf.specifier.scheme() == "file" {
@@ -1455,6 +1452,27 @@ impl CliOptions {
       None
     };
     LintOptions::resolve(maybe_lint_config, Some(lint_flags), &self.initial_cwd)
+  }
+
+  pub fn resolve_lint_config(
+    &self,
+  ) -> Result<deno_lint::linter::LintConfig, AnyError> {
+    let ts_config_result =
+      self.resolve_ts_config_for_emit(TsConfigType::Emit)?;
+
+    let (transpile_options, _) =
+      crate::args::ts_config_to_transpile_and_emit_options(
+        ts_config_result.ts_config,
+      )?;
+
+    Ok(deno_lint::linter::LintConfig {
+      default_jsx_factory: transpile_options
+        .jsx_automatic
+        .then(|| transpile_options.jsx_factory.clone()),
+      default_jsx_fragment_factory: transpile_options
+        .jsx_automatic
+        .then(|| transpile_options.jsx_fragment_factory.clone()),
+    })
   }
 
   pub fn resolve_config_excludes(&self) -> Result<PathOrPatternSet, AnyError> {

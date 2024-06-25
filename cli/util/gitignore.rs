@@ -105,7 +105,7 @@ impl GitIgnoreTree {
     });
     let current = self
       .fs
-      .read_text_file_sync(&dir_path.join(".gitignore"), None)
+      .read_text_file_lossy_sync(&dir_path.join(".gitignore"), None)
       .ok()
       .and_then(|text| {
         let mut builder = ignore::gitignore::GitignoreBuilder::new(dir_path);

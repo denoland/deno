@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::io;
 use std::io::SeekFrom;
@@ -1333,11 +1332,11 @@ where
   let fs = state.borrow::<FileSystemRc>().clone();
   let mut access_check =
     sync_permission_check::<P>(state.borrow_mut(), "Deno.readFileSync()");
-  let buf = fs
-    .read_file_sync(&path, Some(&mut access_check))
+  let str = fs
+    .read_text_file_lossy_sync(&path, Some(&mut access_check))
     .map_err(|error| map_permission_error("readfile", error, &path))?;
 
-  Ok(string_from_utf8_lossy(buf))
+  Ok(str)
 }
 
 #[op2(async)]
@@ -1361,9 +1360,10 @@ where
     (state.borrow::<FileSystemRc>().clone(), cancel_handle)
   };
 
-  let fut = fs.read_file_async(path.clone(), Some(&mut access_check));
+  let fut =
+    fs.read_text_file_lossy_async(path.clone(), Some(&mut access_check));
 
-  let buf = if let Some(cancel_handle) = cancel_handle {
+  let str = if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
 
     if let Some(cancel_rid) = cancel_rid {
@@ -1379,18 +1379,7 @@ where
       .map_err(|error| map_permission_error("readfile", error, &path))?
   };
 
-  Ok(string_from_utf8_lossy(buf))
-}
-
-// Like String::from_utf8_lossy but operates on owned values
-fn string_from_utf8_lossy(buf: Vec<u8>) -> String {
-  match String::from_utf8_lossy(&buf) {
-    // buf contained non-utf8 chars than have been patched
-    Cow::Owned(s) => s,
-    // SAFETY: if Borrowed then the buf only contains utf8 chars,
-    // we do this instead of .into_owned() to avoid copying the input buf
-    Cow::Borrowed(_) => unsafe { String::from_utf8_unchecked(buf) },
-  }
+  Ok(str)
 }
 
 fn to_seek_from(offset: i64, whence: i32) -> Result<SeekFrom, AnyError> {

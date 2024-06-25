@@ -318,7 +318,7 @@ pub fn main() {
   util::windows::ensure_stdio_open();
   #[cfg(windows)]
   colors::enable_ansi(); // For Windows 10
-  deno_runtime::permissions::set_prompt_callbacks(
+  deno_runtime::deno_permissions::set_prompt_callbacks(
     Box::new(util::draw_thread::DrawThread::hide),
     Box::new(util::draw_thread::DrawThread::show),
   );

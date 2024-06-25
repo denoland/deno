@@ -17,8 +17,8 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
-use deno_runtime::permissions::parse_sys_kind;
-use deno_runtime::permissions::PermissionsOptions;
+use deno_runtime::deno_permissions::parse_sys_kind;
+use deno_runtime::deno_permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -1042,7 +1042,7 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
     <g>DENO_FUTURE</>          Set to "1" to enable APIs that will take effect in
                          Deno 2
 
-    <g>DENO_CERT</>            Load certificate authority from PEM encoded file
+    <g>DENO_CERT</>            Load certificate authorities from PEM encoded file
 
     <g>DENO_DIR</>             Set the cache directory
 

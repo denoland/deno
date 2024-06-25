@@ -32,7 +32,7 @@ import {
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { validateBuffer } from "ext:deno_node/internal/validators.mjs";
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
-import { ERR_INVALID_STATE } from "ext:deno_node/internal/errors.ts";
+import { ERR_INVALID_STATE, NodeError } from "ext:deno_node/internal/errors.ts";
 import {
   forgivingBase64Encode,
   forgivingBase64UrlEncode,
@@ -167,10 +167,7 @@ Object.setPrototypeOf(Buffer.prototype, Uint8Array.prototype);
 Object.setPrototypeOf(Buffer, Uint8Array);
 
 function assertSize(size) {
-  validateNumber(size, "size");
-  if (!(size >= 0 && size <= kMaxLength)) {
-    throw new codes.ERR_INVALID_ARG_VALUE.RangeError("size", size);
-  }
+  validateNumber(size, "size", 0, kMaxLength);
 }
 
 function _alloc(size, fill, encoding) {
@@ -852,7 +849,14 @@ function _base64Slice(buf, start, end) {
 const decoder = new TextDecoder();
 
 function _utf8Slice(buf, start, end) {
-  return decoder.decode(buf.slice(start, end));
+  try {
+    return decoder.decode(buf.slice(start, end));
+  } catch (err) {
+    if (err instanceof TypeError) {
+      throw new NodeError("ERR_STRING_TOO_LONG", "String too long");
+    }
+    throw err;
+  }
 }
 
 function _latin1Slice(buf, start, end) {
@@ -2297,9 +2301,22 @@ export function boundsError(value, length, type) {
   );
 }
 
-export function validateNumber(value, name) {
+export function validateNumber(value, name, min = undefined, max) {
   if (typeof value !== "number") {
     throw new codes.ERR_INVALID_ARG_TYPE(name, "number", value);
+  }
+
+  if (
+    (min != null && value < min) || (max != null && value > max) ||
+    ((min != null || max != null) && Number.isNaN(value))
+  ) {
+    throw new codes.ERR_OUT_OF_RANGE(
+      name,
+      `${min != null ? `>= ${min}` : ""}${
+        min != null && max != null ? " && " : ""
+      }${max != null ? `<= ${max}` : ""}`,
+      value,
+    );
   }
 }
 

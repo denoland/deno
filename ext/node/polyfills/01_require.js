@@ -475,6 +475,7 @@ function Module(id = "", parent) {
   updateChildren(parent, this, false);
   this.filename = null;
   this.loaded = false;
+  this.parent = parent;
   this.children = [];
 }
 
@@ -1103,7 +1104,12 @@ Module._extensions[".node"] = function (module, filename) {
   if (filename.endsWith("fsevents.node")) {
     throw new Error("Using fsevents module is currently not supported");
   }
-  module.exports = op_napi_open(filename, globalThis);
+  module.exports = op_napi_open(
+    filename,
+    globalThis,
+    nodeGlobals.Buffer,
+    reportError,
+  );
 };
 
 function createRequireFromPath(filename) {

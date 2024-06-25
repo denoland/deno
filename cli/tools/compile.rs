@@ -3,6 +3,7 @@
 use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
+use crate::http_util::HttpClientProvider;
 use crate::standalone::is_standalone_binary;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -26,6 +27,7 @@ pub async fn compile(
   let module_graph_creator = factory.module_graph_creator().await?;
   let parsed_source_cache = factory.parsed_source_cache();
   let binary_writer = factory.create_compile_binary_writer().await?;
+  let http_client = factory.http_client_provider();
   let module_specifier = cli_options.resolve_main_module()?;
   let module_roots = {
     let mut vec = Vec::with_capacity(compile_flags.include.len() + 1);
@@ -49,6 +51,7 @@ pub async fn compile(
   }
 
   let output_path = resolve_compile_executable_output_path(
+    http_client,
     &compile_flags,
     cli_options.initial_cwd(),
   )
@@ -174,6 +177,7 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
 }
 
 async fn resolve_compile_executable_output_path(
+  http_client_provider: &HttpClientProvider,
   compile_flags: &CompileFlags,
   current_dir: &Path,
 ) -> Result<PathBuf, AnyError> {
@@ -184,9 +188,10 @@ async fn resolve_compile_executable_output_path(
   let mut output_path = if let Some(out) = output_flag.as_ref() {
     let mut out_path = PathBuf::from(out);
     if out.ends_with('/') || out.ends_with('\\') {
-      if let Some(infer_file_name) = infer_name_from_url(&module_specifier)
-        .await
-        .map(PathBuf::from)
+      if let Some(infer_file_name) =
+        infer_name_from_url(http_client_provider, &module_specifier)
+          .await
+          .map(PathBuf::from)
       {
         out_path = out_path.join(infer_file_name);
       }
@@ -199,7 +204,7 @@ async fn resolve_compile_executable_output_path(
   };
 
   if output_flag.is_none() {
-    output_path = infer_name_from_url(&module_specifier)
+    output_path = infer_name_from_url(http_client_provider, &module_specifier)
       .await
       .map(PathBuf::from)
   }
@@ -237,7 +242,9 @@ mod test {
 
   #[tokio::test]
   async fn resolve_compile_executable_output_path_target_linux() {
+    let http_client = HttpClientProvider::new(None, None);
     let path = resolve_compile_executable_output_path(
+      &http_client,
       &CompileFlags {
         source_file: "mod.ts".to_string(),
         output: Some(String::from("./file")),
@@ -259,7 +266,9 @@ mod test {
 
   #[tokio::test]
   async fn resolve_compile_executable_output_path_target_windows() {
+    let http_client = HttpClientProvider::new(None, None);
     let path = resolve_compile_executable_output_path(
+      &http_client,
       &CompileFlags {
         source_file: "mod.ts".to_string(),
         output: Some(String::from("./file")),

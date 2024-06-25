@@ -33,7 +33,6 @@ use deno_graph::ResolutionResolved;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use lsp_types::Url;
 use once_cell::sync::Lazy;
@@ -248,7 +247,7 @@ fn get_maybe_hash(
 }
 
 fn get_hash(source: &str, hash_data: u64) -> String {
-  FastInsecureHasher::new()
+  FastInsecureHasher::new_without_deno_version()
     .write_str(source)
     .write_u64(hash_data)
     .finish()
@@ -742,7 +741,6 @@ fn resolve_graph_specifier_types(
             module.nv_reference.sub_path(),
             referrer,
             NodeResolutionMode::Types,
-            &PermissionsContainer::allow_all(),
           )?;
         Ok(Some(NodeResolution::into_specifier_and_media_type(
           maybe_resolution,
@@ -779,12 +777,7 @@ fn resolve_non_graph_specifier_types(
     // we're in an npm package, so use node resolution
     Ok(Some(NodeResolution::into_specifier_and_media_type(
       node_resolver
-        .resolve(
-          specifier,
-          referrer,
-          NodeResolutionMode::Types,
-          &PermissionsContainer::allow_all(),
-        )
+        .resolve(specifier, referrer, NodeResolutionMode::Types)
         .ok()
         .flatten(),
     )))
@@ -802,7 +795,6 @@ fn resolve_non_graph_specifier_types(
         npm_req_ref.sub_path(),
         referrer,
         NodeResolutionMode::Types,
-        &PermissionsContainer::allow_all(),
       )?;
     Ok(Some(NodeResolution::into_specifier_and_media_type(
       maybe_resolution,

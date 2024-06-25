@@ -14,7 +14,7 @@ fn fast_check_cache() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let deno_dir = test_context.deno_dir();
   let temp_dir = test_context.temp_dir();
-  let type_check_cache_path = deno_dir.path().join("check_cache_v1");
+  let type_check_cache_path = deno_dir.path().join("check_cache_v2");
 
   temp_dir.write(
     "main.ts",

@@ -3,8 +3,8 @@
 use std::io::Read;
 
 use deno_core::error::AnyError;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 
 use crate::args::EvalFlags;
@@ -42,7 +42,7 @@ To grant permissions, set them before the script argument. For example:
   // map specified and bare specifier is used on the command line
   let factory = CliFactory::from_flags(flags)?;
   let deno_dir = factory.deno_dir()?;
-  let http_client = factory.http_client();
+  let http_client = factory.http_client_provider();
   let cli_options = factory.cli_options();
 
   if cli_options.unstable_sloppy_imports() {

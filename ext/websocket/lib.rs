@@ -99,6 +99,17 @@ pub trait WebSocketPermissions {
   ) -> Result<(), AnyError>;
 }
 
+impl WebSocketPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_net_url(
+    &mut self,
+    url: &url::Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+  }
+}
+
 /// `UnsafelyIgnoreCertificateErrors` is a wrapper struct so it can be placed inside `GothamState`;
 /// using type alias for a `Option<Vec<String>>` could work, but there's a high chance
 /// that there might be another type alias pointing to a `Option<Vec<String>>`, which
@@ -688,10 +699,14 @@ pub async fn op_ws_close(
   #[smi] code: Option<u16>,
   #[string] reason: Option<String>,
 ) -> Result<(), AnyError> {
-  let resource = state
+  let Ok(resource) = state
     .borrow_mut()
     .resource_table
-    .get::<ServerWebSocket>(rid)?;
+    .get::<ServerWebSocket>(rid)
+  else {
+    return Ok(());
+  };
+
   let frame = reason
     .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
     .unwrap_or_else(|| Frame::close_raw(vec![].into()));

@@ -7,6 +7,7 @@ error[invalid-external-import]: invalid import to a non-JSR 'https' specifier
   | 
 1 | export * from "https://deno.land/std/assert/assert.ts";
   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the specifier
+  | 
   = hint: replace this import with one from jsr or npm, or vendor the dependency into your package
 
   info: the import was resolved to 'https://deno.land/std/assert/assert.ts'

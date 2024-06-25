@@ -1,0 +1,25 @@
+running 2 tests from ./main.js
+Deno.exitCode ... FAILED ([WILDCARD])
+success ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+Deno.exitCode => ./main.js:1:6
+error: Error
+  throw new Error("");
+        ^
+    at [WILDCARD]/exit_code2/main.js:3:9
+
+success => ./main.js:6:6
+error: Error: Test case finished with exit code set to 5.
+    at exitSanitizer (ext:cli/40_test.js:113:15)
+    at async outerWrapped (ext:cli/40_test.js:134:14)
+
+ FAILURES 
+
+Deno.exitCode => ./main.js:1:6
+success => ./main.js:6:6
+
+FAILED | 0 passed | 2 failed ([WILDCARD])
+
+error: Test failed

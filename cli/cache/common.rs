@@ -3,16 +3,17 @@
 use std::hash::Hasher;
 
 /// A very fast insecure hasher that uses the xxHash algorithm.
-#[derive(Default)]
 pub struct FastInsecureHasher(twox_hash::XxHash64);
 
 impl FastInsecureHasher {
-  pub fn new() -> Self {
-    Self::default()
+  pub fn new_without_deno_version() -> Self {
+    Self(Default::default())
   }
 
-  pub fn hash(hashable: impl std::hash::Hash) -> u64 {
-    Self::new().write_hashable(hashable).finish()
+  pub fn new_deno_versioned() -> Self {
+    let mut hasher = Self::new_without_deno_version();
+    hasher.write_str(crate::version::deno());
+    hasher
   }
 
   pub fn write_str(&mut self, text: &str) -> &mut Self {

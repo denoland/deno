@@ -130,7 +130,7 @@ impl GraphDiagnosticsCollector {
       prefer_fast_check_graph: false,
       follow_type_only: true,
     };
-    let mut iter = graph.walk(&graph.roots, options);
+    let mut iter = graph.walk(graph.roots.iter(), options);
     while let Some((specifier, entry)) = iter.next() {
       if skip_specifiers.contains(specifier) {
         iter.skip_previous_dependencies();
@@ -196,7 +196,7 @@ fn check_for_banned_triple_slash_directives(
         PublishDiagnostic::BannedTripleSlashDirectives {
           specifier: parsed_source.specifier().clone(),
           range: comment.range(),
-          text_info: parsed_source.text_info().clone(),
+          text_info: parsed_source.text_info_lazy().clone(),
         },
       );
     }

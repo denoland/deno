@@ -12,6 +12,10 @@
     "npm_run": {
       "args": "task npm_run",
       "output": "task_npm_run.out"
+    },
+    "npm_run_args": {
+      "args": "task npm_run_args",
+      "output": "task_npm_run_args.out"
     }
   }
 }
