@@ -2,6 +2,7 @@
 
 import EventEmitter from "node:events";
 import http, { type RequestOptions } from "node:http";
+import url from "node:url";
 import https from "node:https";
 import net from "node:net";
 import { assert, assertEquals, fail } from "@std/assert/mod.ts";
@@ -967,6 +968,32 @@ Deno.test("[node/http] ServerResponse getHeader", async () => {
   await promise;
 });
 
+Deno.test("[node/http] ServerResponse appendHeader", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.setHeader("foo", "bar");
+    res.appendHeader("foo", "baz");
+    res.appendHeader("foo", ["qux"]);
+    res.appendHeader("foo", ["quux"]);
+    res.appendHeader("Set-Cookie", "a=b");
+    res.appendHeader("Set-Cookie", ["c=d", "e=f"]);
+    res.end("Hello World");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(res.headers.get("foo"), "bar, baz, qux, quux");
+    assertEquals(res.headers.getSetCookie(), ["a=b", "c=d", "e=f"]);
+    assertEquals(await res.text(), "Hello World");
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
 Deno.test("[node/http] IncomingMessage override", () => {
   const req = new http.IncomingMessage(new net.Socket());
   // https://github.com/dougmoscrop/serverless-http/blob/3aaa6d0fe241109a8752efb011c242d249f32368/lib/request.js#L20-L30
@@ -1039,4 +1066,67 @@ Deno.test("[node/http] ServerResponse default status code 200", () => {
 
 Deno.test("[node/http] maxHeaderSize is defined", () => {
   assertEquals(http.maxHeaderSize, 16_384);
+});
+
+Deno.test("[node/http] server graceful close", async () => {
+  const server = http.createServer(function (_, response) {
+    response.writeHead(200, {});
+    response.end("ok");
+    server.close();
+  });
+
+  const { promise, resolve } = Promise.withResolvers<void>();
+  server.listen(0, function () {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+    const testURL = url.parse(
+      `http://localhost:${port}`,
+    );
+
+    http.request(testURL, function (response) {
+      assertEquals(response.statusCode, 200);
+      response.on("data", function () {});
+      response.on("end", function () {
+        resolve();
+      });
+    }).end();
+  });
+
+  await promise;
+});
+
+Deno.test("[node/http] server closeAllConnections shutdown", async () => {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      data: "Hello World!",
+    }));
+  });
+
+  server.listen(0);
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(() => {
+    server.close(() => resolve());
+    server.closeAllConnections();
+  }, 2000);
+
+  await promise;
+});
+
+Deno.test("[node/http] server closeIdleConnections shutdown", async () => {
+  const server = http.createServer({ keepAliveTimeout: 60000 }, (_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      data: "Hello World!",
+    }));
+  });
+
+  server.listen(0);
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(() => {
+    server.close(() => resolve());
+    server.closeIdleConnections();
+  }, 2000);
+
+  await promise;
 });
