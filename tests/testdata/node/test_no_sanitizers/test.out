@@ -1,7 +1,7 @@
 running 1 test from ./node/test_no_sanitizers/test.js
 should not complain about resource and op sanitizers ...
   nested test ... ok ([WILDCARD])
-should not complain about resource and op sanitizers ... ok ([WILDCARD])
+  should not complain about resource and op sanitizers ... ok ([WILDCARD])
 
 ok | 1 passed (1 step) | 0 failed ([WILDCARD])
 

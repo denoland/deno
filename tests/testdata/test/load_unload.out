@@ -7,7 +7,7 @@ test ...
 ------- output -------
 test
 ----- output end -----
-test ... ok ([WILDCARD])
+  test ... ok ([WILDCARD])
 ------- post-test output -------
 unload
 ----- post-test output end -----

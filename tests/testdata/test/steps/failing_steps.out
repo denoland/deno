@@ -4,15 +4,15 @@ nested failure ...
   step 1 ...
     inner 1 ... FAILED ([WILDCARD])
     inner 2 ... ok ([WILDCARD])
-  step 1 ... FAILED (due to 1 failed step) ([WILDCARD])
-nested failure ... FAILED (due to 1 failed step) ([WILDCARD])
+    step 1 ... FAILED (due to 1 failed step) ([WILDCARD])
+  nested failure ... FAILED (due to 1 failed step) ([WILDCARD])
 multiple test step failures ...
   step 1 ... FAILED ([WILDCARD])
   step 2 ... FAILED ([WILDCARD])
-multiple test step failures ... FAILED (due to 2 failed steps) ([WILDCARD])
+  multiple test step failures ... FAILED (due to 2 failed steps) ([WILDCARD])
 failing step in failing test ...
   step 1 ... FAILED ([WILDCARD])
-failing step in failing test ... FAILED ([WILDCARD])
+  failing step in failing test ... FAILED ([WILDCARD])
 
  ERRORS 
 

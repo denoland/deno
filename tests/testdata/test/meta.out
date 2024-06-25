@@ -5,7 +5,7 @@ check values ...
 import.meta.main: false
 import.meta.url: [WILDCARD]/test/meta.ts
 ----- output end -----
-check values ... ok ([WILDCARD])
+  check values ... ok ([WILDCARD])
 
 ok | 1 passed | 0 failed ([WILDCARD])
 

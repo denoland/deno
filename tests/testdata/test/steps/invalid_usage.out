@@ -2,35 +2,35 @@
 running 7 tests from ./test/steps/invalid_usage.ts
 capturing ...
   some step ... ok ([WILDCARD])
-capturing ... FAILED ([WILDCARD])
+  capturing ... FAILED ([WILDCARD])
 top level missing await ...
   step ... INCOMPLETE
-top level missing await ... FAILED (due to incomplete steps) ([WILDCARD])
+  top level missing await ... FAILED (due to incomplete steps) ([WILDCARD])
 inner missing await ...
   step ...
     inner ... INCOMPLETE
-  step ... FAILED (due to incomplete steps) ([WILDCARD])
-inner missing await ... FAILED (due to 1 failed step) ([WILDCARD])
+    step ... FAILED (due to incomplete steps) ([WILDCARD])
+  inner missing await ... FAILED (due to 1 failed step) ([WILDCARD])
 parallel steps with sanitizers ...
   step 1 ... INCOMPLETE
-  step 2 ... FAILED ([WILDCARD])
-parallel steps with sanitizers ... FAILED (due to incomplete steps) ([WILDCARD])
+    step 2 ... FAILED ([WILDCARD])
+  parallel steps with sanitizers ... FAILED (due to incomplete steps) ([WILDCARD])
 parallel steps when first has sanitizer ...
   step 1 ... ok ([WILDCARD])
-  step 2 ... FAILED ([WILDCARD])
-parallel steps when first has sanitizer ... FAILED (due to 1 failed step) ([WILDCARD])
+    step 2 ... FAILED ([WILDCARD])
+  parallel steps when first has sanitizer ... FAILED (due to 1 failed step) ([WILDCARD])
 parallel steps when second has sanitizer ...
   step 1 ... ok ([WILDCARD])
-  step 2 ... FAILED ([WILDCARD])
-parallel steps when second has sanitizer ... FAILED (due to 1 failed step) ([WILDCARD])
+    step 2 ... FAILED ([WILDCARD])
+  parallel steps when second has sanitizer ... FAILED (due to 1 failed step) ([WILDCARD])
 parallel steps where only inner tests have sanitizers ...
   step 1 ...
     step inner ... ok ([WILDCARD])
-  step 1 ... ok ([WILDCARD])
-  step 2 ...
+    step 1 ... ok ([WILDCARD])
+    step 2 ...
     step inner ... FAILED ([WILDCARD])
   step 2 ... FAILED (due to 1 failed step) ([WILDCARD])
-parallel steps where only inner tests have sanitizers ... FAILED (due to 1 failed step) ([WILDCARD])
+  parallel steps where only inner tests have sanitizers ... FAILED (due to 1 failed step) ([WILDCARD])
 
  ERRORS 
 

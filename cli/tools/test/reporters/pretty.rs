@@ -99,6 +99,12 @@ impl PrettyTestReporter {
     elapsed: u64,
   ) {
     self.write_output_end();
+    if self.in_new_line
+      && (matches!(result, TestStepResult::Ok)
+        || matches!(result, TestStepResult::Failed(_)))
+    {
+      write!(&mut self.writer, "  ").unwrap();
+    }
     if self.in_new_line || self.scope_test_id != Some(description.id) {
       self.force_report_step_wait(description);
     }
@@ -270,6 +276,14 @@ impl TestReporter for PrettyTestReporter {
     }
 
     self.write_output_end();
+
+    if self.in_new_line
+      && (matches!(result, TestResult::Ok)
+        || matches!(result, TestResult::Failed(_)))
+    {
+      write!(&mut self.writer, "  ").unwrap();
+    }
+
     if self.in_new_line || self.scope_test_id != Some(description.id) {
       self.force_report_wait(description);
     }
