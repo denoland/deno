@@ -699,10 +699,14 @@ pub async fn op_ws_close(
   #[smi] code: Option<u16>,
   #[string] reason: Option<String>,
 ) -> Result<(), AnyError> {
-  let resource = state
+  let Ok(resource) = state
     .borrow_mut()
     .resource_table
-    .get::<ServerWebSocket>(rid)?;
+    .get::<ServerWebSocket>(rid)
+  else {
+    return Ok(());
+  };
+
   let frame = reason
     .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
     .unwrap_or_else(|| Frame::close_raw(vec![].into()));
