@@ -454,7 +454,7 @@ pub enum TestEvent {
   Register(Arc<TestDescriptions>),
   Plan(TestPlan),
   Wait(usize),
-  Output(TestStdioStream, Vec<u8>),
+  Output(Vec<u8>),
   Slow(usize, u64),
   Result(usize, TestResult, u64),
   UncaughtError(String, Box<JsError>),
@@ -1491,7 +1491,7 @@ pub async fn report_tests(
           reporter.report_wait(tests.get(&id).unwrap());
         }
       }
-      TestEvent::Output(_, output) => {
+      TestEvent::Output(output) => {
         reporter.report_output(&output);
       }
       TestEvent::Slow(id, elapsed) => {

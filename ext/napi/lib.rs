@@ -9,6 +9,7 @@ use core::ptr::NonNull;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
+use deno_core::url::Url;
 use deno_core::ExternalOpsTracker;
 use deno_core::OpState;
 use deno_core::V8CrossThreadTaskSpawner;
@@ -528,7 +529,10 @@ where
   let type_tag = v8::Private::new(scope, Some(type_tag_name));
   let type_tag = v8::Global::new(scope, type_tag);
 
-  let env_shared = EnvShared::new(napi_wrap, type_tag, path.clone());
+  let url_filename =
+    Url::from_file_path(&path).map_err(|_| type_error("Invalid path"))?;
+  let env_shared =
+    EnvShared::new(napi_wrap, type_tag, format!("{url_filename}\0"));
 
   let ctx = scope.get_current_context();
   let mut env = Env::new(

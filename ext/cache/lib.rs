@@ -6,6 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde::Deserialize;
@@ -205,11 +206,12 @@ where
   let mut state = state.borrow_mut();
   if let Some(cache) = state.try_borrow::<CA>() {
     Ok(cache.clone())
-  } else {
-    let create_cache = state.borrow::<CreateCache<CA>>().clone();
+  } else if let Some(create_cache) = state.try_borrow::<CreateCache<CA>>() {
     let cache = create_cache.0();
     state.put(cache);
     Ok(state.borrow::<CA>().clone())
+  } else {
+    Err(type_error("CacheStorage is not available in this context."))
   }
 }
 

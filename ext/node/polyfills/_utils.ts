@@ -1,8 +1,19 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
+import { primordials } from "ext:core/mod.js";
+const {
+  Error,
+  PromisePrototypeThen,
+  ArrayPrototypePop,
+  StringPrototypeToLowerCase,
+  NumberIsInteger,
+  ObjectGetOwnPropertyNames,
+  ReflectGetOwnPropertyDescriptor,
+  ObjectDefineProperty,
+  NumberIsSafeInteger,
+  FunctionPrototypeApply,
+  SafeArrayIterator,
+} = primordials;
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { errorMap } from "ext:deno_node/internal_binding/uv.ts";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
@@ -53,9 +64,10 @@ export function intoCallbackAPI<T>(
   // deno-lint-ignore no-explicit-any
   ...args: any[]
 ) {
-  func(...args).then(
-    (value) => cb && cb(null, value),
-    (err) => cb && cb(err),
+  PromisePrototypeThen(
+    func(...new SafeArrayIterator(args)),
+    (value: T) => cb && cb(null, value),
+    (err: MaybeNull<Error>) => cb && cb(err),
   );
 }
 
@@ -67,15 +79,18 @@ export function intoCallbackAPIWithIntercept<T1, T2>(
   // deno-lint-ignore no-explicit-any
   ...args: any[]
 ) {
-  func(...args).then(
-    (value) => cb && cb(null, interceptor(value)),
-    (err) => cb && cb(err),
+  PromisePrototypeThen(
+    func(...new SafeArrayIterator(args)),
+    (value: T1) => cb && cb(null, interceptor(value)),
+    (err: MaybeNull<Error>) => cb && cb(err),
   );
 }
 
 export function spliceOne(list: string[], index: number) {
-  for (; index + 1 < list.length; index++) list[index] = list[index + 1];
-  list.pop();
+  for (; index + 1 < list.length; index++) {
+    list[index] = list[index + 1];
+  }
+  ArrayPrototypePop(list);
 }
 
 // Taken from: https://github.com/nodejs/node/blob/ba684805b6c0eded76e5cd89ee00328ac7a59365/lib/internal/util.js#L125
@@ -95,12 +110,15 @@ function slowCases(enc: string): TextEncodings | undefined {
     case 4:
       if (enc === "UTF8") return "utf8";
       if (enc === "ucs2" || enc === "UCS2") return "utf16le";
-      enc = `${enc}`.toLowerCase();
+      enc = StringPrototypeToLowerCase(enc);
       if (enc === "utf8") return "utf8";
       if (enc === "ucs2") return "utf16le";
       break;
     case 3:
-      if (enc === "hex" || enc === "HEX" || `${enc}`.toLowerCase() === "hex") {
+      if (
+        enc === "hex" || enc === "HEX" ||
+        StringPrototypeToLowerCase(enc) === "hex"
+      ) {
         return "hex";
       }
       break;
@@ -110,7 +128,7 @@ function slowCases(enc: string): TextEncodings | undefined {
       if (enc === "UTF-8") return "utf8";
       if (enc === "ASCII") return "ascii";
       if (enc === "UCS-2") return "utf16le";
-      enc = `${enc}`.toLowerCase();
+      enc = StringPrototypeToLowerCase(enc);
       if (enc === "utf-8") return "utf8";
       if (enc === "ascii") return "ascii";
       if (enc === "ucs-2") return "utf16le";
@@ -120,7 +138,7 @@ function slowCases(enc: string): TextEncodings | undefined {
       if (enc === "latin1" || enc === "binary") return "latin1";
       if (enc === "BASE64") return "base64";
       if (enc === "LATIN1" || enc === "BINARY") return "latin1";
-      enc = `${enc}`.toLowerCase();
+      enc = StringPrototypeToLowerCase(enc);
       if (enc === "base64") return "base64";
       if (enc === "latin1" || enc === "binary") return "latin1";
       break;
@@ -128,7 +146,7 @@ function slowCases(enc: string): TextEncodings | undefined {
       if (
         enc === "utf16le" ||
         enc === "UTF16LE" ||
-        `${enc}`.toLowerCase() === "utf16le"
+        StringPrototypeToLowerCase(enc) === "utf16le"
       ) {
         return "utf16le";
       }
@@ -137,7 +155,7 @@ function slowCases(enc: string): TextEncodings | undefined {
       if (
         enc === "utf-16le" ||
         enc === "UTF-16LE" ||
-        `${enc}`.toLowerCase() === "utf-16le"
+        StringPrototypeToLowerCase(enc) === "utf-16le"
       ) {
         return "utf16le";
       }
@@ -154,7 +172,7 @@ export function validateIntegerRange(
   max = 2147483647,
 ) {
   // The defaults for min and max correspond to the limits of 32-bit integers.
-  if (!Number.isInteger(value)) {
+  if (!NumberIsInteger(value)) {
     throw new Error(`${name} must be 'an integer' but was ${value}`);
   }
 
@@ -175,25 +193,25 @@ export function once<T = undefined>(
   return function (this: unknown, ...args: OptionalSpread<T>) {
     if (called) return;
     called = true;
-    callback.apply(this, args);
+    FunctionPrototypeApply(callback, this, args);
   };
 }
 
 export function makeMethodsEnumerable(klass: { new (): unknown }) {
   const proto = klass.prototype;
-  for (const key of Object.getOwnPropertyNames(proto)) {
+  const names = ObjectGetOwnPropertyNames(proto);
+  for (let i = 0; i < names.length; i++) {
+    const key = names[i];
     const value = proto[key];
     if (typeof value === "function") {
-      const desc = Reflect.getOwnPropertyDescriptor(proto, key);
+      const desc = ReflectGetOwnPropertyDescriptor(proto, key);
       if (desc) {
         desc.enumerable = true;
-        Object.defineProperty(proto, key, desc);
+        ObjectDefineProperty(proto, key, desc);
       }
     }
   }
 }
-
-const NumberIsSafeInteger = Number.isSafeInteger;
 
 /**
  * Returns a system error name from an error code number.
