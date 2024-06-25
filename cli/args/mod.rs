@@ -1112,8 +1112,8 @@ impl CliOptions {
         .workspace
         .create_resolver(
           CreateResolverOptions {
-            // todo(dsherret): this should be false for byonm and nodeModulesDir: true
-            pkg_json_dep_resolution: true,
+            // todo(dsherret): this should be false for nodeModulesDir: true
+            pkg_json_dep_resolution: !self.use_byonm(),
             specified_import_map: cli_arg_specified_import_map,
           },
           |specifier| {

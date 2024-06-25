@@ -35,6 +35,7 @@ use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
 use deno_ast::MediaType;
 use deno_config::workspace::MappedResolution;
+use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -167,13 +168,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
       };
     }
 
-    let mapped_resolution = self
-      .shared
-      .workspace_resolver
-      .resolve(specifier, &referrer)?;
+    let mapped_resolution =
+      self.shared.workspace_resolver.resolve(specifier, &referrer);
 
     match mapped_resolution {
-      MappedResolution::PackageJson { req_ref, .. } => {
+      Ok(MappedResolution::PackageJson { req_ref, .. }) => {
         return self
           .shared
           .node_resolver
@@ -184,8 +183,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
           .map(|res| res.into_url());
       }
-      MappedResolution::Normal(specifier)
-      | MappedResolution::ImportMap(specifier) => {
+      Ok(MappedResolution::Normal(specifier))
+      | Ok(MappedResolution::ImportMap(specifier)) => {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
@@ -211,6 +210,22 @@ impl ModuleLoader for EmbeddedModuleLoader {
           .node_resolver
           .handle_if_in_node_modules(specifier)
       }
+      Err(err)
+        if err.is_unmapped_bare_specifier() && referrer.scheme() == "file" =>
+      {
+        // todo(dsherret): return a better error from node resolution so that
+        // we can more easily tell whether to surface it or not
+        let node_result = self.shared.node_resolver.resolve(
+          specifier,
+          &referrer,
+          NodeResolutionMode::Execution,
+        );
+        if let Ok(Some(res)) = node_result {
+          return Ok(res.into_url());
+        }
+        Err(err.into())
+      }
+      Err(err) => Err(err.into()),
     }
   }
 

@@ -33,6 +33,7 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
+use deno_semver::package::PackageReqReference;
 use import_map::ImportMap;
 use std::borrow::Cow;
 use std::path::Path;
@@ -153,7 +154,7 @@ impl CliNodeResolver {
           }
         }
         Err(anyhow!(
-          "Failed resolving package subpath for '{}' in '{}'.",
+          "Failed resolving '{}' in '{}'.",
           req_ref,
           package_folder.display()
         ))
@@ -417,6 +418,7 @@ impl CliGraphResolver {
     }
   }
 
+  // todo(dsherret): if we returned structured errors from the NodeResolver we wouldn't need this
   fn check_surface_byonm_node_error(
     &self,
     specifier: &str,

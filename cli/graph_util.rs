@@ -633,7 +633,7 @@ impl ModuleGraphBuilder {
     log::debug!("Building fast check graph");
     let fast_check_cache = if matches!(
       options.workspace_fast_check,
-      deno_graph::WorkspaceFastCheckOption::Enabled(_)
+      deno_graph::WorkspaceFastCheckOption::Disabled
     ) {
       Some(cache::FastCheckCache::new(self.caches.fast_check_db()))
     } else {

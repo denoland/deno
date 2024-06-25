@@ -326,22 +326,14 @@ impl NodeResolver {
     let package_subpath = package_subpath
       .map(|s| format!("./{s}"))
       .unwrap_or_else(|| ".".to_string());
-    let maybe_resolved_url = self
-      .resolve_package_subpath(
-        &package_json,
-        &package_subpath,
-        referrer,
-        node_module_kind,
-        DEFAULT_CONDITIONS,
-        mode,
-      )
-      .with_context(|| {
-        format!(
-          "Failed resolving package subpath '{}' for '{}'",
-          package_subpath,
-          package_json.path.display()
-        )
-      })?;
+    let maybe_resolved_url = self.resolve_package_subpath(
+      &package_json,
+      &package_subpath,
+      referrer,
+      node_module_kind,
+      DEFAULT_CONDITIONS,
+      mode,
+    )?;
     let resolved_url = match maybe_resolved_url {
       Some(resolved_path) => resolved_path,
       None => return Ok(None),
