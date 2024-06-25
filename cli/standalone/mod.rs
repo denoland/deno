@@ -411,18 +411,19 @@ pub async fn run(
     Some(binary::NodeModules::Managed { node_modules_dir }) => {
       // this will always have a snapshot
       let snapshot = eszip.take_npm_snapshot().unwrap();
-      let vfs_root_dir_path = if node_modules_dir {
-        root_node_modules_path
+      let vfs_root_dir_path = if node_modules_dir.is_some() {
+        root_path.clone()
       } else {
         npm_cache_dir.root_dir().to_owned()
       };
       let vfs = load_npm_vfs(vfs_root_dir_path.clone())
         .context("Failed to load npm vfs.")?;
-      let maybe_node_modules_path = if node_modules_dir {
-        Some(vfs.root().to_path_buf())
-      } else {
-        None
-      };
+      let maybe_node_modules_path =
+        if let Some(node_modules_dir) = node_modules_dir {
+          Some(vfs_root_dir_path.join(node_modules_dir))
+        } else {
+          None
+        };
       let fs = Arc::new(DenoCompileFileSystem::new(vfs))
         as Arc<dyn deno_fs::FileSystem>;
       let npm_resolver =
@@ -451,17 +452,19 @@ pub async fn run(
         .await?;
       (fs, npm_resolver, Some(vfs_root_dir_path))
     }
-    Some(binary::NodeModules::Byonm) => {
-      let vfs_root_dir_path = root_node_modules_path;
+    Some(binary::NodeModules::Byonm {
+      root_node_modules_dir,
+    }) => {
+      let vfs_root_dir_path = root_path.clone();
       let vfs = load_npm_vfs(vfs_root_dir_path.clone())
-        .context("Failed to load npm vfs.")?;
-      let node_modules_path = vfs.root().join("node_modules");
+        .context("Failed to load vfs.")?;
+      let root_node_modules_dir = vfs.root().join(root_node_modules_dir);
       let fs = Arc::new(DenoCompileFileSystem::new(vfs))
         as Arc<dyn deno_fs::FileSystem>;
       let npm_resolver = create_cli_npm_resolver(
         CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
           fs: fs.clone(),
-          root_node_modules_dir: node_modules_path,
+          root_node_modules_dir,
         }),
       )
       .await?;

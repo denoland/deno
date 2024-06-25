@@ -880,7 +880,11 @@ impl Flags {
           .next()
           .unwrap_or_else(|| current_dir.to_path_buf()),
       ),
-      Run(RunFlags { script, .. }) => {
+      Run(RunFlags { script, .. })
+      | Compile(CompileFlags {
+        source_file: script,
+        ..
+      }) => {
         if let Ok(module_specifier) = resolve_url_or_path(script, current_dir) {
           if module_specifier.scheme() == "file"
             || module_specifier.scheme() == "npm"
@@ -911,53 +915,6 @@ impl Flags {
         }
       }
       _ => Some(current_dir.to_path_buf()),
-    }
-  }
-
-  /// Extract path argument for `package.json` search paths.
-  /// If it returns Some(path), the `package.json` should be discovered
-  /// from the `path` dir.
-  /// If it returns None, the `package.json` file shouldn't be discovered at
-  /// all.
-  pub fn package_json_search_dir(&self, current_dir: &Path) -> Option<PathBuf> {
-    use DenoSubcommand::*;
-
-    match &self.subcommand {
-      Run(RunFlags { script, .. }) | Serve(ServeFlags { script, .. }) => {
-        let module_specifier = resolve_url_or_path(script, current_dir).ok()?;
-        if module_specifier.scheme() == "file" {
-          let p = module_specifier
-            .to_file_path()
-            .unwrap()
-            .parent()?
-            .to_owned();
-          Some(p)
-        } else if module_specifier.scheme() == "npm" {
-          Some(current_dir.to_path_buf())
-        } else {
-          None
-        }
-      }
-      Task(TaskFlags { cwd: Some(cwd), .. }) => {
-        resolve_url_or_path(cwd, current_dir)
-          .ok()?
-          .to_file_path()
-          .ok()
-      }
-      Task(_) | Check(_) | Coverage(_) | Cache(_) | Info(_) | Eval(_)
-      | Test(_) | Bench(_) | Repl(_) | Compile(_) | Publish(_) => {
-        Some(current_dir.to_path_buf())
-      }
-      Add(_) | Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_)
-      | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types | Upgrade(_)
-      | Vendor(_) => None,
-      Install(_) => {
-        if *DENO_FUTURE {
-          Some(current_dir.to_path_buf())
-        } else {
-          None
-        }
-      }
     }
   }
 

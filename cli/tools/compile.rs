@@ -23,9 +23,10 @@ pub async fn compile(
   flags: Flags,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
-  fn resolve_graph_root_dir(
+  fn resolve_root_dir(
     graph: &deno_graph::ModuleGraph,
     starting_dir: &ModuleSpecifier,
+    node_modules_dir: Option<&PathBuf>,
   ) -> ModuleSpecifier {
     fn select_common_root<'a>(a: &'a str, b: &'a str) -> &'a str {
       let min_length = a.len().min(b.len());
@@ -44,8 +45,14 @@ pub async fn compile(
       &a[..=last_slash]
     }
 
+    let node_modules_dir = node_modules_dir
+      .and_then(|p| ModuleSpecifier::from_directory_path(p).ok());
     let mut found_dir = starting_dir.as_str();
-    for (specifier, _) in graph.specifiers() {
+    for specifier in graph
+      .specifiers()
+      .map(|(s, _)| s)
+      .chain(node_modules_dir.iter())
+    {
       if specifier.scheme() == "file" {
         // todo(THIS PR): handle this ending up with a path at the root dir of file:///
         found_dir = select_common_root(found_dir, specifier.as_str());
@@ -119,8 +126,11 @@ pub async fn compile(
       ts_config_for_emit.ts_config,
     )?;
   let parser = parsed_source_cache.as_capturing_parser();
-  let root_dir_url =
-    resolve_graph_root_dir(&graph, cli_options.workspace.root_folder().0);
+  let root_dir_url = resolve_root_dir(
+    &graph,
+    cli_options.workspace.root_folder().0,
+    cli_options.node_modules_dir_path(),
+  );
   let eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
     graph,
     parser,

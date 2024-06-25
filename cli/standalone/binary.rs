@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use deno_ast::ModuleSpecifier;
+use deno_config::workspace::Workspace;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -56,10 +57,12 @@ const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 #[derive(Deserialize, Serialize)]
 pub enum NodeModules {
   Managed {
-    /// Whether this uses a node_modules directory (true) or the global cache (false).
-    node_modules_dir: bool,
+    /// Relative path for the node_modules directory in the vfs.
+    node_modules_dir: Option<String>,
   },
-  Byonm,
+  Byonm {
+    root_node_modules_dir: String,
+  },
 }
 
 #[derive(Deserialize, Serialize)]
@@ -409,7 +412,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       set_windows_binary_to_gui(&mut original_binary)?;
     }
-
     self
       .write_standalone_binary(
         writer,
@@ -523,31 +525,57 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let workspace_resolver = cli_options
       .create_workspace_resolver(self.file_fetcher)
       .await?;
+    let root_path = root_dir_url.to_file_path().unwrap();
     let (npm_vfs, npm_files, node_modules) = match self.npm_resolver.as_inner()
     {
       InnerCliNpmResolverRef::Managed(managed) => {
         let snapshot =
           managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
         if !snapshot.as_serialized().packages.is_empty() {
-          let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
+          let (root_dir, files) = self
+            .build_vfs(&root_path, cli_options)?
+            .into_dir_and_files();
           eszip.add_npm_snapshot(snapshot);
           (
             Some(root_dir),
             files,
             Some(NodeModules::Managed {
-              node_modules_dir: self
-                .npm_resolver
-                .root_node_modules_path()
-                .is_some(),
+              node_modules_dir: self.npm_resolver.root_node_modules_path().map(
+                |path| {
+                  root_dir_url
+                    .make_relative(
+                      &ModuleSpecifier::from_directory_path(path).unwrap(),
+                    )
+                    .unwrap()
+                    .to_string()
+                },
+              ),
             }),
           )
         } else {
           (None, Vec::new(), None)
         }
       }
-      InnerCliNpmResolverRef::Byonm(_) => {
-        let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
-        (Some(root_dir), files, Some(NodeModules::Byonm))
+      InnerCliNpmResolverRef::Byonm(resolver) => {
+        let (root_dir, files) = self
+          .build_vfs(&root_path, cli_options)?
+          .into_dir_and_files();
+        (
+          Some(root_dir),
+          files,
+          Some(NodeModules::Byonm {
+            root_node_modules_dir: root_dir_url
+              .make_relative(
+                &ModuleSpecifier::from_directory_path(
+                  // will always be set for byonm
+                  resolver.root_node_modules_path().unwrap(),
+                )
+                .unwrap(),
+              )
+              .unwrap()
+              .to_string(),
+          }),
+        )
       }
     };
 
@@ -607,7 +635,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     )
   }
 
-  fn build_vfs(&self) -> Result<VfsBuilder, AnyError> {
+  fn build_vfs(
+    &self,
+    root_path: &Path,
+    cli_options: &CliOptions,
+  ) -> Result<VfsBuilder, AnyError> {
     fn maybe_warn_different_system(system_info: &NpmSystemInfo) {
       if system_info != &NpmSystemInfo::default() {
         log::warn!("{} The node_modules directory may be incompatible with the target system.", crate::colors::yellow("Warning"));
@@ -618,7 +650,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       InnerCliNpmResolverRef::Managed(npm_resolver) => {
         if let Some(node_modules_path) = npm_resolver.root_node_modules_path() {
           maybe_warn_different_system(&self.npm_system_info);
-          let mut builder = VfsBuilder::new(node_modules_path.clone())?;
+          let mut builder = VfsBuilder::new(root_path.to_path_buf())?;
           builder.add_dir_recursive(node_modules_path)?;
           Ok(builder)
         } else {
@@ -641,11 +673,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         maybe_warn_different_system(&self.npm_system_info);
         // the root_node_modules directory will always exist for byonm
         let node_modules_path = npm_resolver.root_node_modules_path().unwrap();
-        let parent_path = node_modules_path.parent().unwrap();
-        let mut builder = VfsBuilder::new(parent_path.to_path_buf())?;
-        let package_json_path = parent_path.join("package.json");
-        if package_json_path.exists() {
-          builder.add_file_at_path(&package_json_path)?;
+        let mut builder = VfsBuilder::new(root_path.to_path_buf())?;
+        for pkg_json in cli_options.workspace.package_jsons() {
+          builder.add_file_at_path(&pkg_json.path)?;
         }
         if node_modules_path.exists() {
           builder.add_dir_recursive(node_modules_path)?;

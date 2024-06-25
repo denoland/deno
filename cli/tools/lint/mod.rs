@@ -254,7 +254,7 @@ impl WorkspaceLinter {
     if lint_rules.no_slow_types {
       if self.workspace_module_graph.is_none() {
         let module_graph_creator = self.module_graph_creator.clone();
-        let packages = self.workspace.packages();
+        let packages = self.workspace.packages_for_publish();
         self.workspace_module_graph = Some(
           async move {
             module_graph_creator

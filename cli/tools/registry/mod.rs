@@ -15,7 +15,6 @@ use deno_config::glob::FilePatterns;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::WorkspaceResolver;
 use deno_config::ConfigFile;
-use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;

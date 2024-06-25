@@ -1112,8 +1112,8 @@ impl CliOptions {
         .workspace
         .create_resolver(
           CreateResolverOptions {
-            // todo(dsherret): this should also applie to `nodeModulesDir: true`
-            pkg_json_dep_resolution: !self.use_byonm(),
+            // todo(dsherret): this should be false for byonm and nodeModulesDir: true
+            pkg_json_dep_resolution: true,
             specified_import_map: cli_arg_specified_import_map,
           },
           |specifier| {
@@ -1593,31 +1593,11 @@ impl CliOptions {
   pub fn resolve_deno_graph_workspace_members(
     &self,
   ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
-    fn config_to_workspace_member(
-      config: &ConfigFile,
-    ) -> Result<deno_graph::WorkspaceMember, AnyError> {
-      let nv = deno_semver::package::PackageNv {
-        name: match &config.json.name {
-          Some(name) => name.clone(),
-          None => bail!("Missing 'name' field in config file."),
-        },
-        version: match &config.json.version {
-          Some(name) => deno_semver::Version::parse_standard(name)?,
-          None => bail!("Missing 'version' field in config file."),
-        },
-      };
-      Ok(deno_graph::WorkspaceMember {
-        base: config.specifier.join("./").unwrap(),
-        nv,
-        exports: config.to_exports_config()?.into_map(),
-      })
-    }
-
     self
       .workspace
       .packages()
       .into_iter()
-      .map(|pkg| config_to_workspace_member(&pkg.config_file))
+      .map(|pkg| config_to_deno_graph_workspace_member(&pkg.config_file))
       .collect::<Result<Vec<_>, _>>()
   }
 
@@ -2062,6 +2042,26 @@ pub fn npm_pkg_req_ref_to_binary_command(
 ) -> String {
   let binary_name = req_ref.sub_path().unwrap_or(req_ref.req().name.as_str());
   binary_name.to_string()
+}
+
+pub fn config_to_deno_graph_workspace_member(
+  config: &ConfigFile,
+) -> Result<deno_graph::WorkspaceMember, AnyError> {
+  let nv = deno_semver::package::PackageNv {
+    name: match &config.json.name {
+      Some(name) => name.clone(),
+      None => bail!("Missing 'name' field in config file."),
+    },
+    version: match &config.json.version {
+      Some(name) => deno_semver::Version::parse_standard(name)?,
+      None => bail!("Missing 'version' field in config file."),
+    },
+  };
+  Ok(deno_graph::WorkspaceMember {
+    base: config.specifier.join("./").unwrap(),
+    nv,
+    exports: config.to_exports_config()?.into_map(),
+  })
 }
 
 #[cfg(test)]
