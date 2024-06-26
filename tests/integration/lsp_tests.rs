@@ -12438,7 +12438,7 @@ fn lsp_deno_json_workspace_fmt_config() {
   temp_dir.write(
     "deno.json",
     json!({
-      "workspaces": ["project1", "project2"],
+      "workspace": ["project1", "project2"],
       "fmt": {
         "semiColons": false,
       },
@@ -12561,7 +12561,7 @@ fn lsp_deno_json_workspace_lint_config() {
   temp_dir.write(
     "deno.json",
     json!({
-      "workspaces": ["project1", "project2"],
+      "workspace": ["project1", "project2"],
       "lint": {
         "rules": {
           "include": ["camelcase"],
@@ -12702,7 +12702,7 @@ fn lsp_deno_json_workspace_import_map() {
   temp_dir.write(
     "project1/deno.json",
     json!({
-      "workspaces": ["project2"],
+      "workspace": ["project2"],
       "imports": {
         "foo": "./foo1.ts",
       },
@@ -12763,7 +12763,7 @@ fn lsp_deno_json_workspace_jsr_resolution() {
   temp_dir.write(
     "deno.json",
     json!({
-      "workspaces": ["project1"],
+      "workspace": ["project1"],
     })
     .to_string(),
   );
