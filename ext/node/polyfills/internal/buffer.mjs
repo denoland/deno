@@ -229,21 +229,20 @@ function fromArrayLike(array) {
   return buf;
 }
 
-function fromAnyArrayBuffer(ab) {
-  const length = ab.length < 0 ? 0 : checked(ab.length) | 0;
-  const buf = new Uint8Array(ab.buffer, 0, length);
+function fromUint8Array(u8) {
+  const buf = new Uint8Array(u8.buffer, 0, u8.byteLength);
   Object.setPrototypeOf(buf, Buffer.prototype);
   return buf.slice();
 }
 
 function fromObject(obj) {
-  if (obj.length !== undefined) {
+  if (obj.length !== undefined || isAnyArrayBuffer(obj.buffer)) {
     if (typeof obj.length !== "number") {
       return createBuffer(0);
     }
 
-    if (isAnyArrayBuffer(obj.buffer)) {
-      return fromAnyArrayBuffer(obj);
+    if (obj instanceof Uint8Array) {
+      return fromUint8Array(obj);
     }
 
     return fromArrayLike(obj);
