@@ -56,6 +56,7 @@ use std::path::PathBuf;
 
 use deno_config::workspace::WorkspaceResolver;
 use deno_config::ConfigFile;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -348,10 +349,9 @@ impl CliFactory {
             .workspace
             .config_folders()
             .iter()
-            .enumerate()
-            .filter(|(_, (folder_url, _))| *folder_url != root_url)
-            .map(|(i, (folder_url, folder))| {
-              (
+            .filter(|(folder_url, _)| *folder_url != root_url)
+            .filter_map(|(folder_url, folder)| {
+              Some((
                 folder
                   .deno_json
                   .as_ref()
@@ -359,14 +359,12 @@ impl CliFactory {
                   .or_else(|| {
                     folder.pkg_json.as_ref().and_then(|d| d.name.clone())
                   })
-                  .or_else(|| root_url.make_relative(folder_url))
-                  // todo(THIS PR): what would be better here?
-                  .unwrap_or_else(|| format!("member_{}", i)),
+                  .or_else(|| root_url.make_relative(folder_url))?, // should never be None here
                 WorkspaceMemberConfig {
                   package_json_deps: pkg_json_deps(folder.pkg_json.as_deref()),
                   dependencies: deno_json_deps(folder.deno_json.as_deref()),
                 },
-              )
+              ))
             })
             .collect(),
         };
