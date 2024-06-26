@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use deno_config::package_json::PackageJson;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json::Map;

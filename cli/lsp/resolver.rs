@@ -42,7 +42,6 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
-use import_map::ImportMap;
 use indexmap::IndexMap;
 use std::borrow::Cow;
 use std::collections::BTreeMap;

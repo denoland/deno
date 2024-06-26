@@ -26,7 +26,6 @@ use deno_graph::ModuleLoadError;
 use deno_graph::WorkspaceFastCheckOption;
 use deno_runtime::fs_util::specifier_to_file_path;
 
-use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;

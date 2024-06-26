@@ -33,6 +33,7 @@ use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
 use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
+use binary::eszip_make_relative;
 use deno_ast::MediaType;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionError;
@@ -93,27 +94,17 @@ impl WorkspaceEszip {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<WorkspaceEszipModule> {
-    let specifier_key = if specifier.scheme() == "file" {
-      let relative = self.root_dir_url.make_relative(specifier)?;
-      if !relative.starts_with("../") {
-        Cow::Owned(format!("./{}", relative))
-      } else {
-        Cow::Owned(relative)
-      }
-    } else {
-      Cow::Borrowed(specifier.as_str())
-    };
-    let module = self.eszip.get_module(&specifier_key)?;
-    if module.specifier.starts_with("./") || module.specifier.starts_with("../")
-    {
+    if specifier.scheme() == "file" {
+      let specifier = eszip_make_relative(&self.root_dir_url, specifier);
+      let module = self.eszip.get_module(&specifier)?;
       let specifier = self.root_dir_url.join(&module.specifier).unwrap();
       Some(WorkspaceEszipModule {
         specifier,
         inner: module,
       })
     } else {
+      let module = self.eszip.get_module(specifier.as_str())?;
       Some(WorkspaceEszipModule {
-        // todo(THIS PR): No unwrap
         specifier: ModuleSpecifier::parse(&module.specifier).unwrap(),
         inner: module,
       })

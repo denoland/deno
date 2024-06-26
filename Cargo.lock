@@ -1372,9 +1372,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.139.0"
+version = "0.140.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9cd9891748fbd9847c9aeed31635c4c1b5d9a949f6fdd80613b082bdd863518"
+checksum = "c78299b18732d827203ab801f14f4d163ba260eb2b01ebc6e807274d09243fa1"
 dependencies = [
  "ammonia",
  "anyhow",
@@ -1397,7 +1397,9 @@ dependencies = [
 
 [[package]]
 name = "deno_emit"
-version = "0.42.0"
+version = "0.43.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4a9faa31cf536b4390073a3d51ec188f0318851961787456e4d91bf0771b634"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
@@ -1467,7 +1469,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.78.1"
+version = "0.79.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "caa95531b3eb65aced626d8dd8117b29b3e57763e0c1ace502101fb56b8a2c31"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1896,7 +1900,9 @@ dependencies = [
 
 [[package]]
 name = "deno_unsync"
-version = "0.3.4"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cfb230b6e1965cd2695f7c4082adb278e0b999175a0fbb0852c7e67d26654b1"
 dependencies = [
  "tokio",
 ]
@@ -2544,7 +2550,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.71.0"
+version = "0.72.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "147888e181154a01f77dbdb9d7b6d4042e67a76e872c77ac65c8da775b6a38ab"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
@@ -3470,7 +3478,9 @@ dependencies = [
 
 [[package]]
 name = "import_map"
-version = "0.19.1"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "373b8288ad259df0d1314e3e8b2fff0e5e63f22e01bc54ecd2c3c7ad77b9200c"
 dependencies = [
  "indexmap",
  "log",

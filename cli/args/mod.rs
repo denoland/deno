@@ -41,7 +41,6 @@ pub use deno_config::TsConfig;
 pub use deno_config::TsConfigForEmit;
 pub use deno_config::TsConfigType;
 pub use deno_config::TsTypeLib;
-pub use deno_config::WorkspaceConfig;
 pub use flags::*;
 pub use lockfile::read_lockfile_at_path;
 pub use lockfile::write_lockfile_if_has_changes;
@@ -69,7 +68,6 @@ use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
@@ -466,13 +464,6 @@ impl WorkspaceLintOptions {
       reporter_kind: maybe_reporter_kind.unwrap_or_default(),
     })
   }
-}
-
-#[derive(Clone, Debug)]
-pub struct LintRulesOptions {
-  pub tags: Option<Vec<String>>,
-  pub include: Option<Vec<String>>,
-  pub exclude: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug)]

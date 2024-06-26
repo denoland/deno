@@ -542,12 +542,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             Some(NodeModules::Managed {
               node_modules_dir: self.npm_resolver.root_node_modules_path().map(
                 |path| {
-                  root_dir_url
-                    .make_relative(
-                      &ModuleSpecifier::from_directory_path(path).unwrap(),
-                    )
-                    .unwrap()
-                    .to_string()
+                  eszip_make_relative(
+                    &root_dir_url,
+                    &ModuleSpecifier::from_directory_path(path).unwrap(),
+                  )
+                  .into_owned()
                 },
               ),
             }),
@@ -564,16 +563,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           Some(root_dir),
           files,
           Some(NodeModules::Byonm {
-            root_node_modules_dir: root_dir_url
-              .make_relative(
-                &ModuleSpecifier::from_directory_path(
-                  // will always be set for byonm
-                  resolver.root_node_modules_path().unwrap(),
-                )
-                .unwrap(),
+            root_node_modules_dir: eszip_make_relative(
+              &root_dir_url,
+              &ModuleSpecifier::from_directory_path(
+                // will always be set for byonm
+                resolver.root_node_modules_path().unwrap(),
               )
-              .unwrap()
-              .to_string(),
+              .unwrap(),
+            )
+            .into_owned(),
           }),
         )
       }
@@ -595,11 +593,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       workspace_resolver: SerializedWorkspaceResolver {
         import_map: workspace_resolver.maybe_import_map().map(|i| {
           SerializedWorkspaceResolverImportMap {
-            specifier: root_dir_url
-              .make_relative(&i.base_url())
-              .map(|s| format!("./{}", s))
+            specifier: if i.base_url().scheme() == "file" {
+              eszip_make_relative(root_dir_url, &i.base_url()).into_owned()
+            } else {
               // just make a remote url local
-              .unwrap_or_else(|| "./deno.json".to_string()),
+              "deno.json".to_string()
+            },
             json: i.to_json(),
           }
         }),
@@ -607,7 +606,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           .package_jsons()
           .map(|pkg_json| {
             (
-              root_dir_url.make_relative(&pkg_json.specifier()).unwrap(),
+              eszip_make_relative(root_dir_url, &pkg_json.specifier())
+                .into_owned(),
               serde_json::to_value(pkg_json).unwrap(),
             )
           })
@@ -683,6 +683,20 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         Ok(builder)
       }
     }
+  }
+}
+
+// todo(dsherret): should expose and reuse this in eszip
+pub fn eszip_make_relative<'a>(base: &Url, target: &'a Url) -> Cow<'a, str> {
+  match base.make_relative(target) {
+    Some(relative) => {
+      if relative.starts_with("../") {
+        Cow::Borrowed(target.as_str())
+      } else {
+        Cow::Owned(relative)
+      }
+    }
+    None => Cow::Borrowed(target.as_str()),
   }
 }
 

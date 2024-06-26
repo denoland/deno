@@ -10,7 +10,6 @@ use deno_graph::ModuleGraph;
 use deno_graph::Position;
 use deno_graph::Range;
 use deno_graph::Resolution;
-use deno_runtime::fs_util::specifier_to_file_path;
 use import_map::ImportMap;
 use import_map::SpecifierMap;
 use indexmap::IndexMap;

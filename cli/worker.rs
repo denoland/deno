@@ -42,7 +42,6 @@ use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageReqReference;
 use deno_terminal::colors;
 use tokio::select;
 
