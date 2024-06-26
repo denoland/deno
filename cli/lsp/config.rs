@@ -1055,7 +1055,6 @@ impl Default for LspTsConfig {
         "esModuleInterop": true,
         "experimentalDecorators": false,
         "isolatedModules": true,
-        "jsx": "react",
         "lib": ["deno.ns", "deno.window", "deno.unstable"],
         "module": "esnext",
         "moduleDetection": "force",
@@ -1569,16 +1568,10 @@ impl ConfigData {
 
 #[derive(Clone, Debug, Default)]
 pub struct ConfigTree {
-  first_folder: Option<ModuleSpecifier>,
   scopes: Arc<BTreeMap<ModuleSpecifier, Arc<ConfigData>>>,
 }
 
 impl ConfigTree {
-  pub fn root_ts_config(&self) -> Arc<LspTsConfig> {
-    let root_data = self.first_folder.as_ref().and_then(|s| self.scopes.get(s));
-    root_data.map(|d| d.ts_config.clone()).unwrap_or_default()
-  }
-
   pub fn scope_for_specifier(
     &self,
     specifier: &ModuleSpecifier,
@@ -1773,7 +1766,6 @@ impl ConfigTree {
         );
       }
     }
-    self.first_folder.clone_from(&settings.first_folder);
     self.scopes = Arc::new(scopes);
   }
 
@@ -1790,7 +1782,6 @@ impl ConfigTree {
       )
       .await,
     );
-    self.first_folder = Some(scope.clone());
     self.scopes = Arc::new([(scope, data)].into_iter().collect());
   }
 }
