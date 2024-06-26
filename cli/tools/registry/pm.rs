@@ -50,7 +50,7 @@ impl DenoConfigFormat {
 
 enum DenoOrPackageJson {
   Deno(deno_config::ConfigFile, DenoConfigFormat),
-  Npm(deno_node::PackageJson, Option<FmtOptionsConfig>),
+  Npm(Arc<deno_node::PackageJson>, Option<FmtOptionsConfig>),
 }
 
 impl DenoOrPackageJson {

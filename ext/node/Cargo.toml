@@ -23,9 +23,11 @@ bytes.workspace = true
 cbc.workspace = true
 const-oid = "0.9.5"
 data-encoding.workspace = true
+deno_config = { workspace = true, default-features = false, features = ["package_json"] }
 deno_core.workspace = true
 deno_fetch.workspace = true
 deno_fs.workspace = true
+deno_io.workspace = true
 deno_media_type.workspace = true
 deno_net.workspace = true
 deno_permissions.workspace = true

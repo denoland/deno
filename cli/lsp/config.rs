@@ -1520,25 +1520,20 @@ impl ConfigData {
       })
     });
 
-    let is_workspace_root = config_file
+    let workspace = config_file
       .as_ref()
-      .is_some_and(|c| !c.json.workspaces.is_empty());
-    let workspace_members = if is_workspace_root {
+      .and_then(|c| c.json.workspace.as_ref().map(|w| (c, w)));
+    let is_workspace_root = workspace.is_some();
+    let workspace_members = if let Some((config, workspace)) = workspace {
       Arc::new(
-        config_file
-          .as_ref()
-          .map(|c| {
-            c.json
-              .workspaces
-              .iter()
-              .flat_map(|p| {
-                let dir_specifier = c.specifier.join(p).ok()?;
-                let dir_path = specifier_to_file_path(&dir_specifier).ok()?;
-                Url::from_directory_path(normalize_path(dir_path)).ok()
-              })
-              .collect()
+        workspace
+          .iter()
+          .flat_map(|p| {
+            let dir_specifier = config.specifier.join(p).ok()?;
+            let dir_path = specifier_to_file_path(&dir_specifier).ok()?;
+            Url::from_directory_path(normalize_path(dir_path)).ok()
           })
-          .unwrap_or_default(),
+          .collect(),
       )
     } else if let Some(workspace_data) = workspace_root {
       workspace_data.workspace_members.clone()
