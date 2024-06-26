@@ -33,7 +33,6 @@ use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
 use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
-use binary::eszip_make_relative;
 use deno_ast::MediaType;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionError;
@@ -62,6 +61,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
+use eszip::EszipRelativeFileBaseUrl;
 use import_map::parse_from_json;
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -95,8 +95,9 @@ impl WorkspaceEszip {
     specifier: &ModuleSpecifier,
   ) -> Option<WorkspaceEszipModule> {
     if specifier.scheme() == "file" {
-      let specifier = eszip_make_relative(&self.root_dir_url, specifier);
-      let module = self.eszip.get_module(&specifier)?;
+      let specifier_key = EszipRelativeFileBaseUrl::new(&self.root_dir_url)
+        .specifier_key(specifier);
+      let module = self.eszip.get_module(&specifier_key)?;
       let specifier = self.root_dir_url.join(&module.specifier).unwrap();
       Some(WorkspaceEszipModule {
         specifier,
@@ -163,17 +164,15 @@ impl ModuleLoader for EmbeddedModuleLoader {
       self.shared.workspace_resolver.resolve(specifier, &referrer);
 
     match mapped_resolution {
-      Ok(MappedResolution::PackageJson { req_ref, .. }) => {
-        return self
-          .shared
-          .node_resolver
-          .resolve_req_reference(
-            &req_ref,
-            &referrer,
-            NodeResolutionMode::Execution,
-          )
-          .map(|res| res.into_url());
-      }
+      Ok(MappedResolution::PackageJson { req_ref, .. }) => self
+        .shared
+        .node_resolver
+        .resolve_req_reference(
+          &req_ref,
+          &referrer,
+          NodeResolutionMode::Execution,
+        )
+        .map(|res| res.into_url()),
       Ok(MappedResolution::Normal(specifier))
       | Ok(MappedResolution::ImportMap(specifier)) => {
         if let Ok(reference) =
@@ -398,13 +397,13 @@ pub async fn run(
   let root_path =
     std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name));
   let root_dir_url = ModuleSpecifier::from_directory_path(&root_path).unwrap();
-  let main_module = if metadata.entrypoint.starts_with("./")
-    || metadata.entrypoint.starts_with("../")
+  let main_module = if metadata.entrypoint_key.starts_with("./")
+    || metadata.entrypoint_key.starts_with("../")
   {
     // todo(THIS PR): DO NOT UNWRAP
-    root_dir_url.join(&metadata.entrypoint).unwrap()
+    root_dir_url.join(&metadata.entrypoint_key).unwrap()
   } else {
-    ModuleSpecifier::parse(&metadata.entrypoint).unwrap()
+    ModuleSpecifier::parse(&metadata.entrypoint_key).unwrap()
   };
   let root_node_modules_path = root_path.join("node_modules");
   let npm_cache_dir = NpmCacheDir::new(
@@ -424,12 +423,8 @@ pub async fn run(
       };
       let vfs = load_npm_vfs(vfs_root_dir_path.clone())
         .context("Failed to load npm vfs.")?;
-      let maybe_node_modules_path =
-        if let Some(node_modules_dir) = node_modules_dir {
-          Some(vfs_root_dir_path.join(node_modules_dir))
-        } else {
-          None
-        };
+      let maybe_node_modules_path = node_modules_dir
+        .map(|node_modules_dir| vfs_root_dir_path.join(node_modules_dir));
       let fs = Arc::new(DenoCompileFileSystem::new(vfs))
         as Arc<dyn deno_fs::FileSystem>;
       let npm_resolver =

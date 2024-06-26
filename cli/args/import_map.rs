@@ -13,11 +13,11 @@ pub async fn resolve_import_map_value_from_specifier(
 ) -> Result<serde_json::Value, AnyError> {
   if specifier.scheme() == "data" {
     let data_url_text =
-      deno_graph::source::RawDataUrl::parse(&specifier)?.decode()?;
+      deno_graph::source::RawDataUrl::parse(specifier)?.decode()?;
     Ok(serde_json::from_str(&data_url_text)?)
   } else {
     let file = file_fetcher
-      .fetch(&specifier, &PermissionsContainer::allow_all())
+      .fetch(specifier, &PermissionsContainer::allow_all())
       .await?
       .into_text_decoded()?;
     Ok(serde_json::from_str(&file.source)?)

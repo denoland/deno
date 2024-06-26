@@ -13,6 +13,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
 use deno_terminal::colors;
+use eszip::EszipRelativeFileBaseUrl;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -131,23 +132,15 @@ pub async fn compile(
     cli_options.workspace.root_folder().0,
     cli_options.node_modules_dir_path(),
   );
+  let root_dir_url = EszipRelativeFileBaseUrl::new(&root_dir_url);
   let eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
     graph,
     parser,
     transpile_options,
     emit_options,
     // make all the modules relative to the root folder
-    relative_file_base: Some(&root_dir_url),
+    relative_file_base: Some(root_dir_url),
   })?;
-  let entrypoint = if module_specifier.scheme() == "file" {
-    // todo(THIS PR): DO NOT UNWRAP
-    format!(
-      "./{}",
-      root_dir_url.make_relative(&module_specifier).unwrap()
-    )
-  } else {
-    module_specifier.to_string()
-  };
 
   log::info!(
     "{} {} to {}",
@@ -163,8 +156,8 @@ pub async fn compile(
     .write_bin(
       &mut file,
       eszip,
-      &root_dir_url,
-      entrypoint,
+      root_dir_url,
+      &module_specifier,
       &compile_flags,
       cli_options,
     )

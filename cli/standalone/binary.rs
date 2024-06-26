@@ -29,6 +29,7 @@ use deno_runtime::deno_node::PackageJson;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReqSpecifierParseError;
+use eszip::EszipRelativeFileBaseUrl;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
@@ -89,7 +90,7 @@ pub struct Metadata {
   pub ca_data: Option<Vec<u8>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub workspace_resolver: SerializedWorkspaceResolver,
-  pub entrypoint: String,
+  pub entrypoint_key: String,
   pub node_modules: Option<NodeModules>,
   pub disable_deprecated_api_warning: bool,
   pub unstable_config: UnstableConfig,
@@ -394,8 +395,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     writer: &mut impl Write,
     eszip: eszip::EszipV2,
-    root_dir_url: &ModuleSpecifier,
-    entrypoint: String,
+    root_dir_url: EszipRelativeFileBaseUrl<'_>,
+    entrypoint: &ModuleSpecifier,
     compile_flags: &CompileFlags,
     cli_options: &CliOptions,
   ) -> Result<(), AnyError> {
@@ -504,13 +505,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   /// This functions creates a standalone deno binary by appending a bundle
   /// and magic trailer to the currently executing binary.
+  #[allow(clippy::too_many_arguments)]
   async fn write_standalone_binary(
     &self,
     writer: &mut impl Write,
     original_bin: Vec<u8>,
     mut eszip: eszip::EszipV2,
-    root_dir_url: &ModuleSpecifier,
-    entrypoint: String,
+    root_dir_url: EszipRelativeFileBaseUrl<'_>,
+    entrypoint: &ModuleSpecifier,
     cli_options: &CliOptions,
     compile_flags: &CompileFlags,
   ) -> Result<(), AnyError> {
@@ -525,7 +527,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let workspace_resolver = cli_options
       .create_workspace_resolver(self.file_fetcher)
       .await?;
-    let root_path = root_dir_url.to_file_path().unwrap();
+    let root_path = root_dir_url.inner().to_file_path().unwrap();
     let (npm_vfs, npm_files, node_modules) = match self.npm_resolver.as_inner()
     {
       InnerCliNpmResolverRef::Managed(managed) => {
@@ -542,11 +544,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             Some(NodeModules::Managed {
               node_modules_dir: self.npm_resolver.root_node_modules_path().map(
                 |path| {
-                  eszip_make_relative(
-                    &root_dir_url,
-                    &ModuleSpecifier::from_directory_path(path).unwrap(),
-                  )
-                  .into_owned()
+                  root_dir_url
+                    .specifier_key(
+                      &ModuleSpecifier::from_directory_path(path).unwrap(),
+                    )
+                    .into_owned()
                 },
               ),
             }),
@@ -563,15 +565,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           Some(root_dir),
           files,
           Some(NodeModules::Byonm {
-            root_node_modules_dir: eszip_make_relative(
-              &root_dir_url,
-              &ModuleSpecifier::from_directory_path(
-                // will always be set for byonm
-                resolver.root_node_modules_path().unwrap(),
+            root_node_modules_dir: root_dir_url
+              .specifier_key(
+                &ModuleSpecifier::from_directory_path(
+                  // will always be set for byonm
+                  resolver.root_node_modules_path().unwrap(),
+                )
+                .unwrap(),
               )
-              .unwrap(),
-            )
-            .into_owned(),
+              .into_owned(),
           }),
         )
       }
@@ -589,12 +591,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       log_level: cli_options.log_level(),
       ca_stores: cli_options.ca_stores().clone(),
       ca_data,
-      entrypoint,
+      entrypoint_key: root_dir_url.specifier_key(entrypoint).into_owned(),
       workspace_resolver: SerializedWorkspaceResolver {
         import_map: workspace_resolver.maybe_import_map().map(|i| {
           SerializedWorkspaceResolverImportMap {
             specifier: if i.base_url().scheme() == "file" {
-              eszip_make_relative(root_dir_url, &i.base_url()).into_owned()
+              root_dir_url.specifier_key(i.base_url()).into_owned()
             } else {
               // just make a remote url local
               "deno.json".to_string()
@@ -606,7 +608,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           .package_jsons()
           .map(|pkg_json| {
             (
-              eszip_make_relative(root_dir_url, &pkg_json.specifier())
+              root_dir_url
+                .specifier_key(&pkg_json.specifier())
                 .into_owned(),
               serde_json::to_value(pkg_json).unwrap(),
             )
@@ -683,20 +686,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         Ok(builder)
       }
     }
-  }
-}
-
-// todo(dsherret): should expose and reuse this in eszip
-pub fn eszip_make_relative<'a>(base: &Url, target: &'a Url) -> Cow<'a, str> {
-  match base.make_relative(target) {
-    Some(relative) => {
-      if relative.starts_with("../") {
-        Cow::Borrowed(target.as_str())
-      } else {
-        Cow::Owned(relative)
-      }
-    }
-    None => Cow::Borrowed(target.as_str()),
   }
 }
 

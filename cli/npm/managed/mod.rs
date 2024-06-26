@@ -469,7 +469,7 @@ impl ManagedCliNpmResolver {
       return Ok(()); // everything is already resolvable
     }
 
-    self.add_package_reqs(&reqs).await
+    self.add_package_reqs(reqs).await
   }
 
   pub async fn cache_package_info(

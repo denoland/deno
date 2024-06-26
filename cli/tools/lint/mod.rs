@@ -196,14 +196,15 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
+type WorkspaceModuleGraphFuture =
+  SharedLocal<LocalBoxFuture<'static, Result<Rc<ModuleGraph>, Rc<AnyError>>>>;
+
 struct WorkspaceLinter {
   caches: Arc<Caches>,
   module_graph_creator: Arc<ModuleGraphCreator>,
   workspace: Arc<Workspace>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
-  workspace_module_graph: Option<
-    SharedLocal<LocalBoxFuture<'static, Result<Rc<ModuleGraph>, Rc<AnyError>>>>,
-  >,
+  workspace_module_graph: Option<WorkspaceModuleGraphFuture>,
   has_error: Arc<AtomicFlag>,
   file_count: usize,
 }
@@ -789,7 +790,7 @@ impl LintReporter for PrettyLintReporter {
     }
 
     match check_count {
-      n if n == 1 => info!("Checked 1 file"),
+      1 => info!("Checked 1 file"),
       n => info!("Checked {} files", n),
     }
   }
@@ -840,7 +841,7 @@ impl LintReporter for CompactLintReporter {
     }
 
     match check_count {
-      n if n == 1 => info!("Checked 1 file"),
+      1 => info!("Checked 1 file"),
       n => info!("Checked {} files", n),
     }
   }

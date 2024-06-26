@@ -130,8 +130,7 @@ fn build_pkg_deps(
     .iter()
     .map(|r| {
       (
-        ModuleSpecifier::from_directory_path(&r.config_file.dir_path())
-          .unwrap(),
+        ModuleSpecifier::from_directory_path(r.config_file.dir_path()).unwrap(),
         r,
       )
     })

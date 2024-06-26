@@ -1390,7 +1390,7 @@ impl CliOptions {
       self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
     let mut result = Vec::with_capacity(member_ctxs.len());
     for member_ctx in &member_ctxs {
-      let mut options = self.resolve_fmt_options(&fmt_flags, member_ctx)?;
+      let mut options = self.resolve_fmt_options(fmt_flags, member_ctx)?;
       // exclude the directory of other packages in the workspace for this config
       self.append_workspace_members_to_exclude(&mut options.files, member_ctx);
       result.push(options);

@@ -38,7 +38,7 @@ impl PackageJsonDepsProvider {
             .iter()
             .filter(|(folder_url, _)| *folder_url != root_folder_url)
             .filter_map(|(_, folder)| folder.pkg_json.as_ref())
-            .map(|p| {
+            .flat_map(|p| {
               let mut reqs = p
                 .resolve_local_package_json_version_reqs()
                 .into_values()
@@ -46,9 +46,7 @@ impl PackageJsonDepsProvider {
                 .collect::<Vec<_>>();
               reqs.sort();
               reqs.into_iter()
-            })
-            .into_iter()
-            .flatten(),
+            }),
         )
         .collect::<Vec<_>>()
     };
