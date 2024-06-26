@@ -103,12 +103,6 @@ function createBuffer(length) {
   return buf;
 }
 
-function createBufferFromAb(ab) {
-  const buf = new Uint8Array(ab);
-  Object.setPrototypeOf(buf, Buffer.prototype);
-  return buf;
-}
-
 export function Buffer(arg, encodingOrOffset, length) {
   if (typeof arg === "number") {
     if (typeof encodingOrOffset === "string") {
@@ -236,7 +230,10 @@ function fromArrayLike(array) {
 }
 
 function fromAnyArrayBuffer(ab) {
-  return createBufferFromAb(ab).slice();
+  const length = ab.length < 0 ? 0 : checked(ab.length) | 0;
+  const buf = new Uint8Array(ab.buffer, 0, length);
+  Object.setPrototypeOf(buf, Buffer.prototype);
+  return buf.slice();
 }
 
 function fromObject(obj) {
@@ -246,7 +243,7 @@ function fromObject(obj) {
     }
 
     if (isAnyArrayBuffer(obj.buffer)) {
-      return fromAnyArrayBuffer(obj.buffer);
+      return fromAnyArrayBuffer(obj);
     }
 
     return fromArrayLike(obj);
