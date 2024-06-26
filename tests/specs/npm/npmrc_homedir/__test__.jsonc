@@ -1,8 +1,9 @@
 {
+  "if": "unix",
   "tempDir": true,
   "envs": {
     "DENO_FUTURE": "1",
-    "HOME": "$TESTS/specs/npm/npmrc_homedir/"
+    "HOME": "$PWD/../"
   },
   "cwd": "subdir",
   "args": "install",
