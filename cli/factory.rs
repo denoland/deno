@@ -314,7 +314,6 @@ impl CliFactory {
       // any package.jsons that are in different folders
       options
         .maybe_package_json()
-        .as_ref()
         .map(|package_json| {
           package_json.path.parent() != lockfile.lock().filename.parent()
         })

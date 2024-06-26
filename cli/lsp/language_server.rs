@@ -3496,7 +3496,7 @@ impl Inner {
       self.initial_cwd.clone(),
       config_data.and_then(|d| d.config_file.as_deref().cloned()),
       config_data.and_then(|d| d.lockfile.clone()),
-      config_data.and_then(|d| d.package_json.as_deref().cloned()),
+      config_data.and_then(|d| d.package_json.clone()),
       config_data
         .and_then(|d| d.npmrc.clone())
         .unwrap_or_else(create_default_npmrc),
