@@ -534,15 +534,18 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[node/buffer] Buffer from another buffer creates a Buffer",
+  name: "[node/buffer] Buffer from another buffer creates a copy",
   fn() {
-    const buffer: Buffer = Buffer.from(Buffer.from("test"));
-    assertEquals(buffer.length, 4, "Buffer length should be 4");
+    const buffer1: Buffer = Buffer.from("test");
+    const buffer2: Buffer = Buffer.from(buffer1);
+    assertEquals(buffer2.length, 4, "Buffer length should be 4");
     assertEquals(
-      buffer.toString(),
+      buffer2.toString(),
       "test",
       "Buffer to string should recover the string",
     );
+    buffer1[0] = 114;
+    assertEquals(buffer2.toString(), "test", "Buffer should be a copy");
   },
 });
 
