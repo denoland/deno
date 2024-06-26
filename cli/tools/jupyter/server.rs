@@ -217,6 +217,7 @@ impl JupyterServer {
       .send_iopub(messaging::Status::busy().as_child_of(parent))
       .await?;
 
+    eprintln!("msg type on shell {}", msg.message_type());
     match msg.content {
       JupyterMessageContent::ExecuteRequest(execute_request) => {
         self
@@ -375,6 +376,7 @@ impl JupyterServer {
         // NOTE: This will belong on the stdin channel, not the shell channel
       }
       JupyterMessageContent::CommOpen(comm) => {
+        eprintln!("comm_open");
         self
           .comm_container
           .create(&comm.comm_id.0, &comm.target_name, None);
@@ -390,6 +392,7 @@ impl JupyterServer {
         //   .await?;
       }
       JupyterMessageContent::CommInfoRequest(_req) => {
+        eprintln!("comm_open");
         connection
           .send(
             messaging::CommInfoReply {

@@ -402,19 +402,42 @@ function enableJupyter() {
   const { op_jupyter_broadcast, op_jupyter_comm_recv, op_jupyter_comm_open } =
     core.ops;
 
-  function commOpen(commId, targetName) {
+  function comm(commId, targetName, msgCallback) {
     op_jupyter_comm_open(commId, targetName);
-  }
 
-  async function commRecv(commId) {
-    const [data, buffers] = await op_jupyter_comm_recv(commId);
+    let closed = false;
 
-    if (!data) {
-      return undefined;
-    }
+    // TODO(bartlomieju): return something, so we can close this comm.
+    (async () => {
+      while (true) {
+        const [data, buffers] = await op_jupyter_comm_recv(commId);
+
+        if (!data) {
+          closed = true;
+          break;
+        }
+
+        msgCallback?.({
+          ...data,
+          buffers,
+        });
+      }
+    })();
+
     return {
-      ...data,
-      buffers,
+      close() {
+        if (closed) {
+          return;
+        }
+
+        closed = true;
+      },
+      send(data) {
+        return broadcast("comm_msg", {
+          comm_id: commId,
+          data: data,
+        });
+      },
     };
   }
 
@@ -493,8 +516,7 @@ function enableJupyter() {
 
   globalThis.Deno.jupyter = {
     broadcast,
-    commRecv,
-    commOpen,
+    comm,
     display,
     format,
     md,
