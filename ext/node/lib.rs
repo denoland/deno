@@ -655,7 +655,7 @@ deno_core::extension!(deno_node,
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
-use ops::vm;
+    use ops::vm;
 
     let mut external_references = Vec::with_capacity(14);
 
