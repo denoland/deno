@@ -135,6 +135,7 @@ pub struct DocHtmlFlag {
   pub name: Option<String>,
   pub category_docs_path: Option<String>,
   pub symbol_redirect_map_path: Option<String>,
+  pub default_symbol_map_path: Option<String>,
   pub strip_trailing_html: bool,
   pub output: String,
 }
@@ -1819,6 +1820,14 @@ Show documentation for runtime built-ins:
             .help("Remove trailing .html from various links. Will still generate files with a .html extension.")
             .requires("html")
             .action(ArgAction::SetTrue)
+        )
+        .arg(
+          Arg::new("default-symbol-map")
+            .long("default-symbol-map")
+            .help("Uses the provided mapping of default name to wanted name for usage blocks.")
+            .requires("html")
+            .action(ArgAction::Set)
+            .require_equals(true)
         )
         .arg(
           Arg::new("output")
@@ -3909,6 +3918,8 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     let symbol_redirect_map_path =
       matches.remove_one::<String>("symbol-redirect-map");
     let strip_trailing_html = matches.get_flag("strip-trailing-html");
+    let default_symbol_map_path =
+      matches.remove_one::<String>("default-symbol-map");
     let output = matches
       .remove_one::<String>("output")
       .unwrap_or(String::from("./docs/"));
@@ -3916,6 +3927,7 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       name,
       category_docs_path,
       symbol_redirect_map_path,
+      default_symbol_map_path,
       strip_trailing_html,
       output,
     })

@@ -179,6 +179,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
               deno_doc::html::DocNodeKindWithDrilldown::Other(node.kind),
             inner: std::sync::Arc::new(node),
             drilldown_parent_kind: None,
+            parent: None,
           })
           .collect::<Vec<_>>(),
       )
@@ -431,6 +432,15 @@ fn generate_docs_directory(
     None
   };
 
+  let default_symbol_map = if let Some(default_symbol_map_path) =
+    &html_options.default_symbol_map_path
+  {
+    let content = std::fs::read(default_symbol_map_path)?;
+    Some(deno_core::serde_json::from_slice(&content)?)
+  } else {
+    None
+  };
+
   let options = deno_doc::html::GenerateOptions {
     package_name: html_options.name.clone(),
     main_entrypoint: None,
@@ -441,6 +451,7 @@ fn generate_docs_directory(
     category_docs,
     disable_search: internal_env.is_some(),
     symbol_redirect_map,
+    default_symbol_map,
   };
 
   let files = deno_doc::html::generate(options, doc_nodes_by_url)
