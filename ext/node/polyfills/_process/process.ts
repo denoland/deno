@@ -1,13 +1,23 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 // The following are all the process APIs that don't depend on the stream module
 // They have to be split this way to prevent a circular dependency
 
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const {
+  Error,
+  ObjectGetOwnPropertyNames,
+  String,
+  ReflectOwnKeys,
+  ArrayPrototypeIncludes,
+  Object,
+  Proxy,
+  ObjectPrototype,
+  ObjectPrototypeIsPrototypeOf,
+  TypeErrorPrototype,
+} = primordials;
+const { build } = core;
 
 import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
@@ -15,11 +25,11 @@ import * as fs from "ext:deno_fs/30_fs.js";
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
-  if (core.build.arch == "x86_64") {
+  if (build.arch == "x86_64") {
     return "x64";
-  } else if (core.build.arch == "aarch64") {
+  } else if (build.arch == "aarch64") {
     return "arm64";
-  } else if (core.build.arch == "riscv64gc") {
+  } else if (build.arch == "riscv64gc") {
     return "riscv64";
   } else {
     throw Error("unreachable");
@@ -41,14 +51,18 @@ function denoEnvGet(name: string) {
   try {
     return Deno.env.get(name);
   } catch (e) {
-    if (e instanceof TypeError || e instanceof Deno.errors.PermissionDenied) {
+    if (
+      ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e) ||
+      // TODO(iuioiua): Use `PermissionDeniedPrototype` when it's available
+      ObjectPrototypeIsPrototypeOf(Deno.errors.PermissionDenied.prototype, e)
+    ) {
       return undefined;
     }
     throw e;
   }
 }
 
-const OBJECT_PROTO_PROP_NAMES = Object.getOwnPropertyNames(Object.prototype);
+const OBJECT_PROTO_PROP_NAMES = ObjectGetOwnPropertyNames(ObjectPrototype);
 /**
  * https://nodejs.org/api/process.html#process_process_env
  * Requires env permissions
@@ -66,13 +80,13 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
         return envValue;
       }
 
-      if (OBJECT_PROTO_PROP_NAMES.includes(prop)) {
+      if (ArrayPrototypeIncludes(OBJECT_PROTO_PROP_NAMES, prop)) {
         return target[prop];
       }
 
       return envValue;
     },
-    ownKeys: () => Reflect.ownKeys(Deno.env.toObject()),
+    ownKeys: () => ReflectOwnKeys(Deno.env.toObject()),
     getOwnPropertyDescriptor: (_target, name) => {
       const value = denoEnvGet(String(name));
       if (value) {

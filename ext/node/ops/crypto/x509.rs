@@ -19,6 +19,8 @@ pub(crate) struct Certificate {
   cert: X509Certificate<'static>,
 }
 
+impl deno_core::GcResource for Certificate {}
+
 impl Certificate {
   fn fingerprint<D: Digest>(&self) -> Option<String> {
     self.pem.as_ref().map(|pem| {
