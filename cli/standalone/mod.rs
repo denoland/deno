@@ -397,14 +397,7 @@ pub async fn run(
   let root_path =
     std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name));
   let root_dir_url = ModuleSpecifier::from_directory_path(&root_path).unwrap();
-  let main_module = if metadata.entrypoint_key.starts_with("./")
-    || metadata.entrypoint_key.starts_with("../")
-  {
-    // todo(THIS PR): DO NOT UNWRAP
-    root_dir_url.join(&metadata.entrypoint_key).unwrap()
-  } else {
-    ModuleSpecifier::parse(&metadata.entrypoint_key).unwrap()
-  };
+  let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
   let root_node_modules_path = root_path.join("node_modules");
   let npm_cache_dir = NpmCacheDir::new(
     root_node_modules_path.clone(),

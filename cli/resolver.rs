@@ -494,7 +494,7 @@ impl Resolver for CliGraphResolver {
       Ok(resolution) => match resolution {
         MappedResolution::Normal(specifier)
         | MappedResolution::ImportMap(specifier) => Ok(specifier),
-        // todo(THIS PR): for byonm it should do resolution solely based on
+        // todo(dsherret): for byonm it should do resolution solely based on
         // the referrer and not the package.json
         MappedResolution::PackageJson { .. } => {
           // found a specifier in the package.json, so mark that

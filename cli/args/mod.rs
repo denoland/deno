@@ -932,6 +932,9 @@ impl CliOptions {
     };
 
     for diagnostic in workspace.diagnostics() {
+      if diagnostic.kind.is_fatal() {
+        return Err(diagnostic.into());
+      }
       log::warn!("{}", colors::yellow(diagnostic));
     }
 
@@ -1190,33 +1193,6 @@ impl CliOptions {
         bail!("No main module.")
       }
     };
-
-    // todo(THIS PR): I think maybe we don't need to do this
-    // if let Ok(package_ref) = NpmPackageReqReference::from_specifier(&main_module) {
-    //   // When using the wildcard version, select the same version used in the
-    //   // package.json deps in order to prevent adding a new dependency version
-    //   if package_ref.req().version_req.version_text() == "*" {
-    //     let start_ctx = self.workspace.resolve_start_ctx();
-    //     start_ctx.
-    //     shared
-    //       .options
-    //       .maybe_root_package_json_deps
-    //       .as_ref()
-    //       .and_then(|deps| {
-    //         deps
-    //           .values()
-    //           .filter_map(|v| v.as_ref().ok())
-    //           .find(|dep| dep.name == package_ref.req().name)
-    //           .map(|dep| {
-    //             NpmPackageReqReference::new(PackageReqReference {
-    //               req: dep.clone(),
-    //               sub_path: package_ref.sub_path().map(|s| s.to_string()),
-    //             })
-    //           })
-    //       })
-    //       .unwrap_or(package_ref)
-    //   }
-    // }
 
     Ok(main_module)
   }
