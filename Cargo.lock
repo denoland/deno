@@ -1106,7 +1106,7 @@ dependencies = [
  "glibc_version",
  "glob",
  "ignore",
- "import_map",
+ "import_map 0.20.0",
  "indexmap",
  "jsonc-parser",
  "junction",
@@ -1266,18 +1266,18 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.16.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d21c7b688ff6cb411895a93bf1d6734ed654c3a7eb9b502f96098f6659df0c5"
 dependencies = [
  "anyhow",
- "deno_semver",
  "glob",
- "import_map",
+ "import_map 0.19.0",
  "indexmap",
  "jsonc-parser",
  "log",
  "percent-encoding",
  "serde",
  "serde_json",
- "thiserror",
  "url",
 ]
 
@@ -1385,7 +1385,7 @@ dependencies = [
  "futures",
  "handlebars",
  "html-escape",
- "import_map",
+ "import_map 0.20.0",
  "indexmap",
  "lazy_static",
  "regex",
@@ -1407,7 +1407,7 @@ dependencies = [
  "deno_graph",
  "escape8259",
  "futures",
- "import_map",
+ "import_map 0.20.0",
  "parking_lot 0.11.2",
  "url",
 ]
@@ -1453,7 +1453,6 @@ version = "0.68.0"
 dependencies = [
  "async-trait",
  "base32",
- "deno_config",
  "deno_core",
  "deno_io",
  "deno_permissions",
@@ -1481,7 +1480,7 @@ dependencies = [
  "deno_unsync",
  "encoding_rs",
  "futures",
- "import_map",
+ "import_map 0.20.0",
  "indexmap",
  "log",
  "monch",
@@ -1669,11 +1668,9 @@ dependencies = [
  "cbc",
  "const-oid",
  "data-encoding",
- "deno_config",
  "deno_core",
  "deno_fetch",
  "deno_fs",
- "deno_io",
  "deno_media_type",
  "deno_net",
  "deno_permissions",
@@ -1900,9 +1897,9 @@ dependencies = [
 
 [[package]]
 name = "deno_unsync"
-version = "0.3.5"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cfb230b6e1965cd2695f7c4082adb278e0b999175a0fbb0852c7e67d26654b1"
+checksum = "7557a5e9278b9a5cc8056dc37062ea4344770bda4eeb5973c7cbb7ebf636b9a4"
 dependencies = [
  "tokio",
 ]
@@ -2550,9 +2547,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.72.0"
+version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "147888e181154a01f77dbdb9d7b6d4042e67a76e872c77ac65c8da775b6a38ab"
+checksum = "87821a4dc0e26683d866a1841560b99aa9002a60db8a9eded78efe1853144c43"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
@@ -3474,6 +3471,20 @@ dependencies = [
  "color_quant",
  "num-traits",
  "png",
+]
+
+[[package]]
+name = "import_map"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "696717335b077e26921a60be7b7bdc15d1246074f1ac79d9e8560792535f7d07"
+dependencies = [
+ "indexmap",
+ "log",
+ "percent-encoding",
+ "serde",
+ "serde_json",
+ "url",
 ]
 
 [[package]]
@@ -6752,18 +6763,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "1.0.61"
+version = "1.0.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c546c80d6be4bc6a00c0f01730c08df82eaa7a7a61f11d656526506112cc1709"
+checksum = "f0126ad08bff79f29fc3ae6a55cc72352056dfff61e3ff8bb7129476d44b23aa"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.61"
+version = "1.0.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46c3384250002a6d5af4d114f2845d37b57521033f30d5c3f46c4d70e1197533"
+checksum = "d1cd413b5d558b4c5bf3680e324a6fa5014e7b7c067a51e69dbdf47eb7148b66"
 dependencies = [
  "proc-macro2",
  "quote",
