@@ -220,29 +220,16 @@ function fromString(string, encoding) {
   return buf;
 }
 
-function fromArrayLike(array) {
-  const length = array.length < 0 ? 0 : checked(array.length) | 0;
-  const buf = createBuffer(length);
-  for (let i = 0; i < length; i += 1) {
-    buf[i] = array[i] & 255;
-  }
-  return buf;
-}
-
-function fromUint8Array(u8) {
-  const buf = new Uint8Array(u8.buffer, u8.byteOffset, u8.byteLength);
+function fromArrayLike(obj) {
+  const buf = new Uint8Array(obj);
   Object.setPrototypeOf(buf, Buffer.prototype);
-  return buf.slice();
+  return buf;
 }
 
 function fromObject(obj) {
   if (obj.length !== undefined || isAnyArrayBuffer(obj.buffer)) {
     if (typeof obj.length !== "number") {
       return createBuffer(0);
-    }
-
-    if (obj instanceof Uint8Array) {
-      return fromUint8Array(obj);
     }
 
     return fromArrayLike(obj);
