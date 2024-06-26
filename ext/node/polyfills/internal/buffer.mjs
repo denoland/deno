@@ -230,7 +230,7 @@ function fromArrayLike(array) {
 }
 
 function fromUint8Array(u8) {
-  const buf = new Uint8Array(u8.buffer, 0, u8.byteLength);
+  const buf = new Uint8Array(u8.buffer, u8.byteOffset, u8.byteLength);
   Object.setPrototypeOf(buf, Buffer.prototype);
   return buf.slice();
 }
