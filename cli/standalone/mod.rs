@@ -472,7 +472,7 @@ pub async fn run(
     npm_resolver.clone().into_npm_resolver(),
   ));
   let maybe_import_map = metadata.maybe_import_map.map(|(base, source)| {
-    Arc::new(parse_from_json(&base, &source).unwrap().import_map)
+    Arc::new(parse_from_json(base, &source).unwrap().import_map)
   });
   let cli_node_resolver = Arc::new(CliNodeResolver::new(
     Some(cjs_resolutions.clone()),
