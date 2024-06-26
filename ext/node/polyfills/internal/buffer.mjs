@@ -220,12 +220,9 @@ function fromString(string, encoding) {
   return buf;
 }
 
-function fromArrayLike(array) {
-  const length = array.length < 0 ? 0 : checked(array.length) | 0;
-  const buf = createBuffer(length);
-  for (let i = 0; i < length; i += 1) {
-    buf[i] = array[i] & 255;
-  }
+function fromArrayLike(obj) {
+  const buf = new Uint8Array(obj);
+  Object.setPrototypeOf(buf, Buffer.prototype);
   return buf;
 }
 
@@ -234,6 +231,7 @@ function fromObject(obj) {
     if (typeof obj.length !== "number") {
       return createBuffer(0);
     }
+
     return fromArrayLike(obj);
   }
 
