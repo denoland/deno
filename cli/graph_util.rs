@@ -843,7 +843,7 @@ fn get_resolution_error_bare_specifier(
   error: &ResolutionError,
 ) -> Option<&str> {
   if let ResolutionError::InvalidSpecifier {
-    error: SpecifierError::ImportPrefixMissing(specifier, _),
+    error: SpecifierError::ImportPrefixMissing { specifier, .. },
     ..
   } = error
   {
@@ -1065,7 +1065,10 @@ mod test {
           start: Position::zeroed(),
           end: Position::zeroed(),
         },
-        error: SpecifierError::ImportPrefixMissing(input.to_string(), None),
+        error: SpecifierError::ImportPrefixMissing {
+          specifier: input.to_string(),
+          referrer: None,
+        },
       };
       assert_eq!(get_resolution_error_bare_node_specifier(&err), output,);
     }
