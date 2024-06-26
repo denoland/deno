@@ -72,6 +72,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::args::import_map::enhance_import_map_value_with_workspace_members;
+use crate::cache;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
@@ -592,6 +593,7 @@ pub fn discover_npmrc(
     Ok(Arc::new(resolved))
   }
 
+  // 1. Try `.npmrc` next to `package.json`
   if let Some(package_json_path) = maybe_package_json_path {
     if let Some(package_json_dir) = package_json_path.parent() {
       if let Some((source, path)) = try_to_read_npmrc(package_json_dir)? {
@@ -600,11 +602,21 @@ pub fn discover_npmrc(
     }
   }
 
+  // 2. Try `.npmrc` next to `deno.json(c)`
   if let Some(deno_json_path) = maybe_deno_json_path {
     if let Some(deno_json_dir) = deno_json_path.parent() {
       if let Some((source, path)) = try_to_read_npmrc(deno_json_dir)? {
         return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
       }
+    }
+  }
+
+  // TODO(bartlomieju): update to read both files - one in the project root and one and
+  // home dir and then merge them.
+  // 3. Try `.npmrc` in the user's home directory
+  if let Some(home_dir) = cache::home_dir() {
+    if let Some((source, path)) = try_to_read_npmrc(&home_dir)? {
+      return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
     }
   }
 
