@@ -229,11 +229,22 @@ function fromArrayLike(array) {
   return buf;
 }
 
+function fromUint8Array(u8) {
+  const buf = new Uint8Array(u8.buffer, u8.byteOffset, u8.byteLength);
+  Object.setPrototypeOf(buf, Buffer.prototype);
+  return buf.slice();
+}
+
 function fromObject(obj) {
   if (obj.length !== undefined || isAnyArrayBuffer(obj.buffer)) {
     if (typeof obj.length !== "number") {
       return createBuffer(0);
     }
+
+    if (obj instanceof Uint8Array) {
+      return fromUint8Array(obj);
+    }
+
     return fromArrayLike(obj);
   }
 
