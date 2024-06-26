@@ -616,7 +616,7 @@ pub fn discover_npmrc(
   // 3. Try `.npmrc` in the user's home directory
   if let Some(home_dir) = cache::home_dir() {
     if let Some((source, path)) = try_to_read_npmrc(&home_dir)? {
-      return try_to_parse_npmrc(source, &path);
+      return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
     }
   }
 
