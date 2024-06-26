@@ -48,7 +48,6 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use super::cache::LspCache;
@@ -359,15 +358,12 @@ impl LspResolver {
   pub fn get_closest_package_json(
     &self,
     referrer: &ModuleSpecifier,
-  ) -> Result<Option<Rc<PackageJson>>, AnyError> {
+  ) -> Result<Option<Arc<PackageJson>>, AnyError> {
     let resolver = self.get_scope_resolver(Some(referrer));
     let Some(node_resolver) = resolver.node_resolver.as_ref() else {
       return Ok(None);
     };
-    node_resolver.get_closest_package_json(
-      referrer,
-      &mut deno_runtime::deno_node::AllowAllNodePermissions,
-    )
+    node_resolver.get_closest_package_json(referrer)
   }
 
   pub fn resolve_redirects(
@@ -462,7 +458,7 @@ async fn create_npm_resolver(
         config_data
           .and_then(|d| d.package_json.as_ref())
           .map(|package_json| {
-            package_json::get_local_package_json_version_reqs(package_json)
+            package_json.resolve_local_package_json_version_reqs()
           }),
       )),
       npmrc: config_data
@@ -506,7 +502,7 @@ fn create_graph_resolver(
       config_data
         .and_then(|d| d.package_json.as_ref())
         .map(|package_json| {
-          package_json::get_local_package_json_version_reqs(package_json)
+          package_json.resolve_local_package_json_version_reqs()
         }),
     )),
     maybe_jsx_import_source_config: config_file

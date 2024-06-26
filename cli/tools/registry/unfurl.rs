@@ -305,7 +305,6 @@ fn to_range(
 mod tests {
   use std::sync::Arc;
 
-  use crate::args::package_json::get_local_package_json_version_reqs;
   use crate::args::PackageJsonDepsProvider;
 
   use super::*;
@@ -316,7 +315,6 @@ mod tests {
   use deno_runtime::deno_fs::RealFs;
   use deno_runtime::deno_node::PackageJson;
   use import_map::ImportMapWithDiagnostics;
-  use indexmap::IndexMap;
   use pretty_assertions::assert_eq;
   use test_util::testdata_path;
 
@@ -349,13 +347,18 @@ mod tests {
     });
     let ImportMapWithDiagnostics { import_map, .. } =
       import_map::parse_from_value(deno_json_url, value).unwrap();
-    let mut package_json = PackageJson::empty(cwd.join("package.json"));
-    package_json.dependencies =
-      Some(IndexMap::from([("chalk".to_string(), "5".to_string())]));
+    let package_json = PackageJson::load_from_value(
+      cwd.join("package.json"),
+      json!({
+        "dependencies": {
+          "chalk": 5
+        }
+      }),
+    );
     let mapped_resolver = MappedSpecifierResolver::new(
       Some(Arc::new(import_map)),
       Arc::new(PackageJsonDepsProvider::new(Some(
-        get_local_package_json_version_reqs(&package_json),
+        package_json.resolve_local_package_json_version_reqs(),
       ))),
     );
 
