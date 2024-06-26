@@ -527,8 +527,8 @@ fn handle_lint_result(
   match result {
     Ok((source, mut file_diagnostics)) => {
       if !source.diagnostics().is_empty() {
-        for x in source.diagnostics() {
-          log::info!("{}: {}", colors::red("error"), x);
+        for parse_diagnostic in source.diagnostics() {
+          log::info!("{}: {}", colors::red("error"), parse_diagnostic);
         }
         log::info!(
           "Found {} parsing related problems\n",
