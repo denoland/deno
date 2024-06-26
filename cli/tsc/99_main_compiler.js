@@ -1220,7 +1220,7 @@ delete Object.prototype.__proto__;
           newByScope.set(scope, { ls, compilerOptions });
           languageServiceEntries.byScope.delete(scope);
         }
-        for (const [, oldEntry] of languageServiceEntries.byScope) {
+        for (const oldEntry of languageServiceEntries.byScope.values()) {
           oldEntry.ls.dispose();
         }
         languageServiceEntries.byScope = newByScope;
