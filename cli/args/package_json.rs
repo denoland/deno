@@ -10,9 +10,7 @@ use deno_core::error::AnyError;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_node::load_pkg_json;
 use deno_runtime::deno_node::PackageJson;
-use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
-use thiserror::Error;
 
 #[derive(Debug, Default)]
 pub struct PackageJsonDepsProvider(Option<PackageJsonDeps>);

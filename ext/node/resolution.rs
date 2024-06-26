@@ -4,8 +4,8 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
+use deno_config::package_json::PackageJsonRc;
 use deno_core::anyhow::bail;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -322,7 +322,7 @@ impl NodeResolver {
       .map(|s| format!("./{s}"))
       .unwrap_or_else(|| ".".to_string());
     let maybe_resolved_url = self.resolve_package_dir_subpath(
-      &package_dir,
+      package_dir,
       &package_subpath,
       referrer,
       node_module_kind,
@@ -1025,8 +1025,8 @@ impl NodeResolver {
     mode: NodeResolutionMode,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     let result = self.resolve_package_subpath_for_package_inner(
-      &package_name,
-      &package_subpath,
+      package_name,
+      package_subpath,
       referrer,
       referrer_kind,
       conditions,
@@ -1034,10 +1034,10 @@ impl NodeResolver {
     );
     if mode.is_types() && !matches!(result, Ok(Some(_))) {
       // try to resolve with the @types package
-      let package_name = types_package_name(&package_name);
+      let package_name = types_package_name(package_name);
       if let Ok(Some(result)) = self.resolve_package_subpath_for_package_inner(
         &package_name,
-        &package_subpath,
+        package_subpath,
         referrer,
         referrer_kind,
         conditions,
@@ -1212,7 +1212,7 @@ impl NodeResolver {
   pub fn get_closest_package_json(
     &self,
     url: &ModuleSpecifier,
-  ) -> Result<Option<Arc<PackageJson>>, AnyError> {
+  ) -> Result<Option<PackageJsonRc>, AnyError> {
     let Ok(file_path) = url.to_file_path() else {
       return Ok(None);
     };
@@ -1222,7 +1222,7 @@ impl NodeResolver {
   pub fn get_closest_package_json_from_path(
     &self,
     file_path: &Path,
-  ) -> Result<Option<Arc<PackageJson>>, AnyError> {
+  ) -> Result<Option<PackageJsonRc>, AnyError> {
     let current_dir = deno_core::strip_unc_prefix(
       self.fs.realpath_sync(file_path.parent().unwrap())?,
     );
@@ -1246,7 +1246,7 @@ impl NodeResolver {
     &self,
     package_json_path: &Path,
   ) -> Result<
-    Option<Arc<PackageJson>>,
+    Option<PackageJsonRc>,
     deno_config::package_json::PackageJsonLoadError,
   > {
     crate::package_json::load_pkg_json(&*self.fs, package_json_path)
