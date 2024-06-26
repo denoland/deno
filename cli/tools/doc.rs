@@ -252,7 +252,10 @@ impl deno_doc::html::HrefResolver for DocResolver {
   ) -> String {
     let path = deno_doc::html::href_path_resolve(current, target);
     if self.strip_trailing_html {
-      if let Some(path) = path.strip_suffix(".html") {
+      if let Some(path) = path
+        .strip_suffix("index.html")
+        .or_else(|| path.strip_suffix(".html"))
+      {
         return path.to_owned();
       }
     }
@@ -306,7 +309,10 @@ impl deno_doc::html::HrefResolver for DenoDocResolver {
   ) -> String {
     let path = deno_doc::html::href_path_resolve(current, target);
     if self.0 {
-      if let Some(path) = path.strip_suffix(".html") {
+      if let Some(path) = path
+        .strip_suffix("index.html")
+        .or_else(|| path.strip_suffix(".html"))
+      {
         return path.to_owned();
       }
     }
@@ -345,7 +351,10 @@ impl deno_doc::html::HrefResolver for NodeDocResolver {
   ) -> String {
     let path = deno_doc::html::href_path_resolve(current, target);
     if self.0 {
-      if let Some(path) = path.strip_suffix(".html") {
+      if let Some(path) = path
+        .strip_suffix("index.html")
+        .or_else(|| path.strip_suffix(".html"))
+      {
         return path.to_owned();
       }
     }
