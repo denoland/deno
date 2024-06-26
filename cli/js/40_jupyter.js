@@ -432,11 +432,11 @@ function enableJupyter() {
 
         closed = true;
       },
-      send(data) {
+      send(data, buffers = []) {
         return broadcast("comm_msg", {
           comm_id: commId,
           data: data,
-        });
+        }, { buffers });
       },
     };
   }
