@@ -35,7 +35,6 @@ mod resolution;
 pub use deno_config::package_json::PackageJson;
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
-use ops::vm;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 pub use ops::vm::ContextInitMode;
@@ -656,6 +655,8 @@ deno_core::extension!(deno_node,
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
+    use ops::vm;
+
     let mut external_references = Vec::with_capacity(14);
 
     vm::GETTER_MAP_FN.with(|getter| {

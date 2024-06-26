@@ -4,9 +4,8 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use deno_config::package_json::PackageJson;
+use deno_config::package_json::PackageJsonRc;
 use deno_core::anyhow::bail;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -22,6 +21,7 @@ use crate::is_builtin_node_module;
 use crate::path::to_file_specifier;
 use crate::polyfill::get_module_name_from_builtin_node_module_specifier;
 use crate::NpmResolverRc;
+use crate::PackageJson;
 use crate::PathClean;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
@@ -317,16 +317,12 @@ impl NodeResolver {
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<Option<NodeResolution>, AnyError> {
-    let package_json_path = package_dir.join("package.json");
-    let Some(package_json) = self.load_package_json(&package_json_path)? else {
-      return Ok(None);
-    };
     let node_module_kind = NodeModuleKind::Esm;
     let package_subpath = package_subpath
       .map(|s| format!("./{s}"))
       .unwrap_or_else(|| ".".to_string());
-    let maybe_resolved_url = self.resolve_package_subpath(
-      &package_json,
+    let maybe_resolved_url = self.resolve_package_dir_subpath(
+      package_dir,
       &package_subpath,
       referrer,
       node_module_kind,
@@ -498,22 +494,19 @@ impl NodeResolver {
       return Ok(Some(to_file_specifier(&path)));
     }
     if self.fs.is_dir_sync(&path) {
-      let package_json_path = path.join("package.json");
-      if let Ok(Some(pkg_json)) = self.load_package_json(&package_json_path) {
-        let maybe_resolution = self.resolve_package_subpath(
-          &pkg_json,
-          /* sub path */ ".",
-          referrer,
-          referrer_kind,
-          match referrer_kind {
-            NodeModuleKind::Esm => DEFAULT_CONDITIONS,
-            NodeModuleKind::Cjs => REQUIRE_CONDITIONS,
-          },
-          NodeResolutionMode::Types,
-        )?;
-        if let Some(resolution) = maybe_resolution {
-          return Ok(Some(resolution));
-        }
+      let maybe_resolution = self.resolve_package_dir_subpath(
+        &path,
+        /* sub path */ ".",
+        referrer,
+        referrer_kind,
+        match referrer_kind {
+          NodeModuleKind::Esm => DEFAULT_CONDITIONS,
+          NodeModuleKind::Cjs => REQUIRE_CONDITIONS,
+        },
+        NodeResolutionMode::Types,
+      )?;
+      if let Some(resolution) = maybe_resolution {
+        return Ok(Some(resolution));
       }
       let index_path = path.join("index.js");
       if let Some(path) = probe_extensions(
@@ -1032,8 +1025,8 @@ impl NodeResolver {
     mode: NodeResolutionMode,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
     let result = self.resolve_package_subpath_for_package_inner(
-      &package_name,
-      &package_subpath,
+      package_name,
+      package_subpath,
       referrer,
       referrer_kind,
       conditions,
@@ -1041,10 +1034,10 @@ impl NodeResolver {
     );
     if mode.is_types() && !matches!(result, Ok(Some(_))) {
       // try to resolve with the @types package
-      let package_name = types_package_name(&package_name);
+      let package_name = types_package_name(package_name);
       if let Ok(Some(result)) = self.resolve_package_subpath_for_package_inner(
         &package_name,
-        &package_subpath,
+        package_subpath,
         referrer,
         referrer_kind,
         conditions,
@@ -1069,7 +1062,6 @@ impl NodeResolver {
     let package_dir_path = self
       .npm_resolver
       .resolve_package_folder_from_package(package_name, referrer)?;
-    let package_json_path = package_dir_path.join("package.json");
 
     // todo: error with this instead when can't find package
     // Err(errors::err_module_not_found(
@@ -1085,17 +1077,44 @@ impl NodeResolver {
     // ))
 
     // Package match.
-    let Some(package_json) = self.load_package_json(&package_json_path)? else {
-      return Ok(None);
-    };
-    self.resolve_package_subpath(
-      &package_json,
+    self.resolve_package_dir_subpath(
+      &package_dir_path,
       package_subpath,
       referrer,
       referrer_kind,
       conditions,
       mode,
     )
+  }
+
+  #[allow(clippy::too_many_arguments)]
+  fn resolve_package_dir_subpath(
+    &self,
+    package_dir_path: &Path,
+    package_subpath: &str,
+    referrer: &ModuleSpecifier,
+    referrer_kind: NodeModuleKind,
+    conditions: &[&str],
+    mode: NodeResolutionMode,
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
+    let package_json_path = package_dir_path.join("package.json");
+    match self.load_package_json(&package_json_path)? {
+      Some(pkg_json) => self.resolve_package_subpath(
+        &pkg_json,
+        package_subpath,
+        referrer,
+        referrer_kind,
+        conditions,
+        mode,
+      ),
+      None => self.resolve_package_subpath_no_pkg_json(
+        package_dir_path,
+        package_subpath,
+        referrer,
+        referrer_kind,
+        mode,
+      ),
+    }
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -1133,6 +1152,7 @@ impl NodeResolver {
         }
       }
     }
+
     if package_subpath == "." {
       return self.legacy_main_resolve(
         package_json,
@@ -1142,7 +1162,25 @@ impl NodeResolver {
       );
     }
 
-    let file_path = package_json.path.parent().unwrap().join(package_subpath);
+    self.resolve_subpath_exact(
+      package_json.path.parent().unwrap(),
+      package_subpath,
+      referrer,
+      referrer_kind,
+      mode,
+    )
+  }
+
+  fn resolve_subpath_exact(
+    &self,
+    directory: &Path,
+    package_subpath: &str,
+    referrer: &ModuleSpecifier,
+    referrer_kind: NodeModuleKind,
+    mode: NodeResolutionMode,
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
+    assert_ne!(package_subpath, ".");
+    let file_path = directory.join(package_subpath);
     if mode.is_types() {
       self.path_to_declaration_url(file_path, referrer, referrer_kind)
     } else {
@@ -1150,10 +1188,31 @@ impl NodeResolver {
     }
   }
 
+  fn resolve_package_subpath_no_pkg_json(
+    &self,
+    directory: &Path,
+    package_subpath: &str,
+    referrer: &ModuleSpecifier,
+    referrer_kind: NodeModuleKind,
+    mode: NodeResolutionMode,
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
+    if package_subpath == "." {
+      self.legacy_index_resolve(directory, referrer_kind, mode)
+    } else {
+      self.resolve_subpath_exact(
+        directory,
+        package_subpath,
+        referrer,
+        referrer_kind,
+        mode,
+      )
+    }
+  }
+
   pub fn get_closest_package_json(
     &self,
     url: &ModuleSpecifier,
-  ) -> Result<Option<Arc<PackageJson>>, AnyError> {
+  ) -> Result<Option<PackageJsonRc>, AnyError> {
     let Ok(file_path) = url.to_file_path() else {
       return Ok(None);
     };
@@ -1163,7 +1222,7 @@ impl NodeResolver {
   pub fn get_closest_package_json_from_path(
     &self,
     file_path: &Path,
-  ) -> Result<Option<Arc<PackageJson>>, AnyError> {
+  ) -> Result<Option<PackageJsonRc>, AnyError> {
     let current_dir = deno_core::strip_unc_prefix(
       self.fs.realpath_sync(file_path.parent().unwrap())?,
     );
@@ -1187,7 +1246,7 @@ impl NodeResolver {
     &self,
     package_json_path: &Path,
   ) -> Result<
-    Option<Arc<PackageJson>>,
+    Option<PackageJsonRc>,
     deno_config::package_json::PackageJsonLoadError,
   > {
     crate::package_json::load_pkg_json(&*self.fs, package_json_path)
@@ -1259,6 +1318,19 @@ impl NodeResolver {
       }
     }
 
+    self.legacy_index_resolve(
+      package_json.path.parent().unwrap(),
+      referrer_kind,
+      mode,
+    )
+  }
+
+  fn legacy_index_resolve(
+    &self,
+    directory: &Path,
+    referrer_kind: NodeModuleKind,
+    mode: NodeResolutionMode,
+  ) -> Result<Option<ModuleSpecifier>, AnyError> {
     let index_file_names = if mode.is_types() {
       // todo(dsherret): investigate exactly how typescript does this
       match referrer_kind {
@@ -1269,12 +1341,7 @@ impl NodeResolver {
       vec!["index.js"]
     };
     for index_file_name in index_file_names {
-      let guess = package_json
-        .path
-        .parent()
-        .unwrap()
-        .join(index_file_name)
-        .clean();
+      let guess = directory.join(index_file_name).clean();
       if self.fs.is_file_sync(&guess) {
         // TODO(bartlomieju): emitLegacyIndexDeprecation()
         return Ok(Some(to_file_specifier(&guess)));

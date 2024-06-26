@@ -2561,8 +2561,8 @@ fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
 
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text(
-    r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDLINE]package.json' imported from '[WILDLINE]'
-    at file:///[WILDCARD]/main.ts:1:8
+    r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDLINE]package.json' imported from '[WILDLINE]main.ts'
+    at file:///[WILDLINE]/main.ts:1:8
 "#,
   );
   output.assert_exit_code(1);
@@ -2605,7 +2605,7 @@ fn future_byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
 
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text(
-    r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDLINE]package.json' imported from '[WILDLINE]'
+    r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDLINE]package.json' imported from '[WILDLINE]main.ts'
     at file:///[WILDLINE]/main.ts:1:8
 "#,
   );

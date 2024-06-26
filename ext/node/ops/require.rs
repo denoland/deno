@@ -500,26 +500,25 @@ where
   else {
     return Ok(None);
   };
+  let Some(exports) = &pkg.exports else {
+    return Ok(None);
+  };
 
-  if let Some(exports) = &pkg.exports {
-    let referrer = Url::from_file_path(parent_path).unwrap();
-    let r = node_resolver.package_exports_resolve(
-      &pkg.path,
-      &format!(".{expansion}"),
-      exports,
-      &referrer,
-      NodeModuleKind::Cjs,
-      resolution::REQUIRE_CONDITIONS,
-      NodeResolutionMode::Execution,
-    )?;
-    Ok(Some(if r.scheme() == "file" {
-      url_to_file_path_string(&r)?
-    } else {
-      r.to_string()
-    }))
+  let referrer = Url::from_file_path(parent_path).unwrap();
+  let r = node_resolver.package_exports_resolve(
+    &pkg.path,
+    &format!(".{expansion}"),
+    exports,
+    &referrer,
+    NodeModuleKind::Cjs,
+    resolution::REQUIRE_CONDITIONS,
+    NodeResolutionMode::Execution,
+  )?;
+  Ok(Some(if r.scheme() == "file" {
+    url_to_file_path_string(&r)?
   } else {
-    Ok(None)
-  }
+    r.to_string()
+  }))
 }
 
 #[op2]
