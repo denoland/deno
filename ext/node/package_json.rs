@@ -17,6 +17,12 @@ thread_local! {
 
 pub struct PackageJsonThreadLocalCache;
 
+impl PackageJsonThreadLocalCache {
+  pub fn clear() {
+    CACHE.with(|cache| cache.borrow_mut().clear());
+  }
+}
+
 impl deno_config::package_json::PackageJsonCache
   for PackageJsonThreadLocalCache
 {
