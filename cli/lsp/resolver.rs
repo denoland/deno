@@ -271,20 +271,20 @@ impl LspResolver {
 
   pub fn graph_imports_by_referrer(
     &self,
+    file_referrer: &ModuleSpecifier,
   ) -> IndexMap<&ModuleSpecifier, Vec<&ModuleSpecifier>> {
-    self
-      .by_scope
+    let resolver = self.get_scope_resolver(Some(file_referrer));
+    resolver
+      .graph_imports
       .iter()
-      .flat_map(|(_, r)| {
-        r.graph_imports.iter().map(|(s, i)| {
-          (
-            s,
-            i.dependencies
-              .values()
-              .flat_map(|d| d.get_type().or_else(|| d.get_code()))
-              .collect(),
-          )
-        })
+      .map(|(s, i)| {
+        (
+          s,
+          i.dependencies
+            .values()
+            .flat_map(|d| d.get_type().or_else(|| d.get_code()))
+            .collect(),
+        )
       })
       .collect()
   }
