@@ -805,7 +805,7 @@ declare var ReadableByteStreamController: {
   new (): never;
 };
 
-/** Fine grained control over pipe operations, allowing for the prevention of stream closing, cancellation, or aborting.
+/** Fine grained control over {@linkcode ReadableStream.pipeTo} operations, allowing for the prevention of stream closing, cancellation, or aborting.
  *
  *  @category Streams */
 declare interface PipeOptions {
