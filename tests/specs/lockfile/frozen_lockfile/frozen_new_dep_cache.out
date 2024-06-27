@@ -1,1 +1,11 @@
 error: The lockfile is out of date. Run `deno cache` to update it.
+changes:
+ 5 | -      "npm:@denotest/add@1": "npm:@denotest/add@1.0.0"
+ 5 | +      "npm:@denotest/add@1": "npm:@denotest/add@1.0.0",
+ 6 | +      "npm:@denotest/subtract@1": "npm:@denotest/subtract@1.0.0"
+11 | -      }
+12 | +      },
+13 | +      "@denotest/subtract@1.0.0": {
+14 | +        "integrity": "sha512-dxGTiMVdqnsZgewLxLifDdUskXs5pznErABlPE8kDHaHR2MS9coLuwpqOrkb0jxx4xTKnFrdR/+r4rudmvo5zA==",
+15 | +        "dependencies": {}
+16 | +      }

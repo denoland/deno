@@ -159,8 +159,14 @@ pub fn error_if_lockfile_has_changes(
       "`deno cache`"
     };
 
+    let contents =
+      std::fs::read_to_string(&lockfile.filename).unwrap_or_default();
+    let new_contents = lockfile.as_json_string();
+    let diff = crate::util::diff::diff(&contents, &new_contents);
+    // has an extra newline at the end
+    let diff = diff.trim_end();
     Err(deno_core::anyhow::anyhow!(
-      "The lockfile is out of date. Run {suggested} to update it."
+      "The lockfile is out of date. Run {suggested} to update it.\nchanges:\n{diff}"
     ))
   } else {
     Ok(())
