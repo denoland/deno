@@ -1,5 +1,5 @@
 ⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.
-error: The lockfile is out of date. Run `deno cache` or `deno install` to update it.
+error: The lockfile is out of date. Run `deno cache`, `deno install`, or rerun without the `--frozen` flag to update it.
 changes:
  5 | -      "npm:@denotest/add@1": "npm:@denotest/add@1.0.0"
  5 | +      "npm:@denotest/add@1": "npm:@denotest/add@1.0.0",

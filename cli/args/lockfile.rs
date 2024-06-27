@@ -154,7 +154,7 @@ pub fn error_if_lockfile_has_changes(
 ) -> Result<(), AnyError> {
   if frozen && lockfile.has_content_changed {
     let suggested = if *super::DENO_FUTURE {
-      "`deno cache` or `deno install`"
+      "`deno cache`, `deno install`,"
     } else {
       "`deno cache`"
     };
@@ -166,7 +166,7 @@ pub fn error_if_lockfile_has_changes(
     // has an extra newline at the end
     let diff = diff.trim_end();
     Err(deno_core::anyhow::anyhow!(
-      "The lockfile is out of date. Run {suggested} to update it.\nchanges:\n{diff}"
+      "The lockfile is out of date. Run {suggested} or rerun without the `--frozen` flag to update it.\nchanges:\n{diff}"
     ))
   } else {
     Ok(())
