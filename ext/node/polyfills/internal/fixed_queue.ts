@@ -65,7 +65,7 @@ class FixedCircularBuffer {
   constructor() {
     this.bottom = 0;
     this.top = 0;
-    this.list = ArrayFrom({ __proto__: null, length: kSize }, () => undefined);
+    this.list = ArrayFrom({ __proto__: null, length: kSize });
     this.next = null;
   }
 
