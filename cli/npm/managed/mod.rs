@@ -387,13 +387,11 @@ impl ManagedCliNpmResolver {
 
     let mut result = self.resolution.add_package_reqs(packages).await;
 
-    if result.dependencies_result.is_ok() {
-      if frozen {
-        if let Some(lockfile) = self.maybe_lockfile.as_ref() {
-          let lockfile = lockfile.lock();
-          result.dependencies_result =
-            crate::args::error_if_lockfile_has_changes(&lockfile, frozen);
-        }
+    if result.dependencies_result.is_ok() && frozen {
+      if let Some(lockfile) = self.maybe_lockfile.as_ref() {
+        let lockfile = lockfile.lock();
+        result.dependencies_result =
+          crate::args::error_if_lockfile_has_changes(&lockfile, frozen);
       }
     }
     if result.dependencies_result.is_ok() {
