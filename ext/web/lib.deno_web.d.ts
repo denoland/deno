@@ -212,7 +212,7 @@ declare var EventTarget: {
 };
 
 /** Represents a function type that can be used as an event listener in various
- * contexts. Functions matching this type must accept a single parameter, `evt`.
+ * contexts. Functions matching this type will receive an {@linkcode Event} as the first parameter.
  *
  * @category Events */
 declare interface EventListener {
