@@ -43,6 +43,7 @@ pub use caches::Caches;
 pub use check::TypeCheckCache;
 pub use code_cache::CodeCache;
 pub use common::FastInsecureHasher;
+pub use deno_dir::dirs::home_dir;
 pub use deno_dir::DenoDir;
 pub use deno_dir::DenoDirProvider;
 pub use disk_cache::DiskCache;

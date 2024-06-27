@@ -1106,7 +1106,7 @@ dependencies = [
  "glibc_version",
  "glob",
  "ignore",
- "import_map 0.20.0",
+ "import_map",
  "indexmap",
  "jsonc-parser",
  "junction",
@@ -1265,19 +1265,21 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.16.4"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d21c7b688ff6cb411895a93bf1d6734ed654c3a7eb9b502f96098f6659df0c5"
+checksum = "01b0852c0dd8594926d51a5dae80cd1679f87f79a7c02415e60625d6ee2a99ba"
 dependencies = [
  "anyhow",
+ "deno_semver",
  "glob",
- "import_map 0.19.0",
+ "import_map",
  "indexmap",
  "jsonc-parser",
  "log",
  "percent-encoding",
  "serde",
  "serde_json",
+ "thiserror",
  "url",
 ]
 
@@ -1385,7 +1387,7 @@ dependencies = [
  "futures",
  "handlebars",
  "html-escape",
- "import_map 0.20.0",
+ "import_map",
  "indexmap",
  "lazy_static",
  "regex",
@@ -1407,7 +1409,7 @@ dependencies = [
  "deno_graph",
  "escape8259",
  "futures",
- "import_map 0.20.0",
+ "import_map",
  "parking_lot 0.11.2",
  "url",
 ]
@@ -1453,6 +1455,7 @@ version = "0.68.0"
 dependencies = [
  "async-trait",
  "base32",
+ "deno_config",
  "deno_core",
  "deno_io",
  "deno_permissions",
@@ -1480,7 +1483,7 @@ dependencies = [
  "deno_unsync",
  "encoding_rs",
  "futures",
- "import_map 0.20.0",
+ "import_map",
  "indexmap",
  "log",
  "monch",
@@ -1668,9 +1671,11 @@ dependencies = [
  "cbc",
  "const-oid",
  "data-encoding",
+ "deno_config",
  "deno_core",
  "deno_fetch",
  "deno_fs",
+ "deno_io",
  "deno_media_type",
  "deno_net",
  "deno_permissions",
@@ -3471,20 +3476,6 @@ dependencies = [
  "color_quant",
  "num-traits",
  "png",
-]
-
-[[package]]
-name = "import_map"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "696717335b077e26921a60be7b7bdc15d1246074f1ac79d9e8560792535f7d07"
-dependencies = [
- "indexmap",
- "log",
- "percent-encoding",
- "serde",
- "serde_json",
- "url",
 ]
 
 [[package]]
@@ -6763,18 +6754,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "1.0.59"
+version = "1.0.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0126ad08bff79f29fc3ae6a55cc72352056dfff61e3ff8bb7129476d44b23aa"
+checksum = "c546c80d6be4bc6a00c0f01730c08df82eaa7a7a61f11d656526506112cc1709"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.59"
+version = "1.0.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1cd413b5d558b4c5bf3680e324a6fa5014e7b7c067a51e69dbdf47eb7148b66"
+checksum = "46c3384250002a6d5af4d114f2845d37b57521033f30d5c3f46c4d70e1197533"
 dependencies = [
  "proc-macro2",
  "quote",

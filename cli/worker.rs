@@ -6,6 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_config::package_json::PackageJsonDeps;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -46,7 +47,6 @@ use deno_semver::package::PackageReqReference;
 use deno_terminal::colors;
 use tokio::select;
 
-use crate::args::package_json::PackageJsonDeps;
 use crate::args::write_lockfile_if_has_changes;
 use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;

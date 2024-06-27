@@ -101,6 +101,7 @@ console_static_text = "=0.8.1"
 data-encoding = "2.3.3"
 data-url = "=0.3.0"
 deno_cache_dir = "=0.10.0"
+deno_config = { version = "=0.17.0", default-features = false }
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
@@ -170,7 +171,7 @@ spki = "0.7.2"
 tar = "=0.4.40"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
-thiserror = "1.0.40"
+thiserror = "1.0.61"
 tokio = { version = "1.36.0", features = ["full"] }
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
 tokio-util = "0.7.4"
