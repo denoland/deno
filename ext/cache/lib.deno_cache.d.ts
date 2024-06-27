@@ -14,7 +14,7 @@ declare var caches: CacheStorage;
 
 /** Represents the storage for Cache objects.
  * The interface maintains a mapping of string names to corresponding 
- * Cache *objects.
+ * Cache objects.
  * 
  * Use CacheStorage.open() to obtain a Cache instance.
  * 
