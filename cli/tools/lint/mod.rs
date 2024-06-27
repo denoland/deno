@@ -911,7 +911,7 @@ pub fn get_configured_rules(
 ) -> ConfiguredRules {
   const NO_SLOW_TYPES_NAME: &str = "no-slow-types";
   let implicit_no_slow_types = maybe_config_file
-    .map(|c| c.is_package() || !c.json.workspaces.is_empty())
+    .map(|c| c.is_package() || c.json.workspace.is_some())
     .unwrap_or(false);
   let no_slow_types = implicit_no_slow_types
     && !rules

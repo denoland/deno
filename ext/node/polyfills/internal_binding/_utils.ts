@@ -18,9 +18,13 @@ export function asciiToBytes(str: string) {
 }
 
 export function base64ToBytes(str: string) {
-  str = base64clean(str);
-  str = str.replaceAll("-", "+").replaceAll("_", "/");
-  return forgivingBase64Decode(str);
+  try {
+    return forgivingBase64Decode(str);
+  } catch {
+    str = base64clean(str);
+    str = str.replaceAll("-", "+").replaceAll("_", "/");
+    return forgivingBase64Decode(str);
+  }
 }
 
 const INVALID_BASE64_RE = /[^+/0-9A-Za-z-_]/g;
