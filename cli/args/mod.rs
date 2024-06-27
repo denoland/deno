@@ -8,7 +8,6 @@ mod lockfile;
 mod package_json;
 
 use deno_ast::SourceMapOption;
-use deno_config::glob::PathOrPattern;
 use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDiscoverOptions;
@@ -1366,9 +1365,7 @@ impl CliOptions {
       self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
     let mut result = Vec::with_capacity(member_ctxs.len());
     for member_ctx in &member_ctxs {
-      let mut options = self.resolve_fmt_options(fmt_flags, member_ctx)?;
-      // exclude the directory of other packages in the workspace for this config
-      self.append_workspace_members_to_exclude(&mut options.files, member_ctx);
+      let options = self.resolve_fmt_options(fmt_flags, member_ctx)?;
       result.push(options);
     }
     Ok(result)
@@ -1405,10 +1402,8 @@ impl CliOptions {
       self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
     let mut result = Vec::with_capacity(member_ctxs.len());
     for member_ctx in member_ctxs {
-      let mut options =
+      let options =
         self.resolve_lint_options(lint_flags.clone(), &member_ctx)?;
-      // exclude the directory of other packages in the workspace for this config
-      self.append_workspace_members_to_exclude(&mut options.files, &member_ctx);
       result.push((member_ctx, options));
     }
     Ok(result)
@@ -1465,10 +1460,8 @@ impl CliOptions {
       self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
     let mut result = Vec::with_capacity(member_ctxs.len());
     for member_ctx in member_ctxs {
-      let mut options =
+      let options =
         self.resolve_test_options(test_flags.clone(), &member_ctx)?;
-      // exclude the directory of other packages in the workspace for this config
-      self.append_workspace_members_to_exclude(&mut options.files, &member_ctx);
       result.push((member_ctx, options));
     }
     Ok(result)
@@ -1504,9 +1497,7 @@ impl CliOptions {
       self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
     let mut result = Vec::with_capacity(member_ctxs.len());
     for member_ctx in member_ctxs {
-      let mut options = self.resolve_bench_options(bench_flags, &member_ctx)?;
-      // exclude the directory of other packages in the workspace for this config
-      self.append_workspace_members_to_exclude(&mut options.files, &member_ctx);
+      let options = self.resolve_bench_options(bench_flags, &member_ctx)?;
       result.push((member_ctx, options));
     }
     Ok(result)
@@ -1533,28 +1524,6 @@ impl CliOptions {
       config_base: ctx.dir_path(),
       flags_base: Some(&self.initial_cwd),
     }
-  }
-
-  fn append_workspace_members_to_exclude(
-    &self,
-    files: &mut FilePatterns,
-    current_ctx: &WorkspaceMemberContext,
-  ) {
-    let maybe_root_dir = current_ctx.maybe_deno_json().map(|d| d.dir_path());
-    files.exclude.append(
-      self
-        .workspace
-        .deno_jsons()
-        .filter(|member_deno_json| {
-          if let Some(root_dir) = &maybe_root_dir {
-            let member_dir = member_deno_json.dir_path();
-            member_dir != *root_dir && member_dir.starts_with(root_dir)
-          } else {
-            true // ok, this is just a perf optimization
-          }
-        })
-        .map(|d| PathOrPattern::Path(d.dir_path())),
-    );
   }
 
   pub fn resolve_deno_graph_workspace_members(

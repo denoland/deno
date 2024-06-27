@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::sync::Arc;
+
 use deno_config::workspace::Workspace;
 use deno_semver::package::PackageReq;
 
@@ -14,7 +16,7 @@ impl PackageJsonDepsProvider {
     Self(Vec::new())
   }
 
-  pub fn from_workspace(workspace: &Workspace) -> Self {
+  pub fn from_workspace(workspace: &Arc<Workspace>) -> Self {
     let reqs = {
       let (root_folder_url, root_folder) = workspace.root_folder();
       let workspace_npm_pkgs = workspace.npm_packages();
