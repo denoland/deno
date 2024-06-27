@@ -1329,7 +1329,7 @@ declare interface ImageDataSettings {
   readonly colorSpace?: PredefinedColorSpace;
 }
 
-/** An object that holds information about an image.
+/** An object representing the underlying data that backs an image.
  *
  * @category Platform */
 declare interface ImageData {
