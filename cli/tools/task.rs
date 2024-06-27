@@ -275,15 +275,20 @@ fn print_available_tasks(
       for (is_deno, (key, task)) in config
         .deno_json
         .as_ref()
-        .map(|tasks| tasks.iter().map(|(k, t)| (true, (k, Cow::Borrowed(t)))))
+        .map(|config| {
+          config
+            .tasks
+            .iter()
+            .map(|(k, t)| (true, (k, Cow::Borrowed(t))))
+        })
         .into_iter()
         .flatten()
         .chain(
           config
             .package_json
             .as_ref()
-            .map(|scripts| {
-              scripts.iter().map(|(k, v)| {
+            .map(|config| {
+              config.tasks.iter().map(|(k, v)| {
                 (
                   false,
                   (k, Cow::Owned(deno_config::Task::Definition(v.clone()))),

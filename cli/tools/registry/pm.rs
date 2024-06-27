@@ -87,7 +87,6 @@ impl DenoOrPackageJson {
       DenoOrPackageJson::Deno(deno, ..) => deno
         .to_fmt_config()
         .ok()
-        .flatten()
         .map(|f| f.options)
         .unwrap_or_default(),
       DenoOrPackageJson::Npm(_, config) => config.clone().unwrap_or_default(),

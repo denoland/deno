@@ -6,7 +6,6 @@ use crate::args::read_lockfile_at_path;
 use crate::args::ConfigFile;
 use crate::args::FmtOptions;
 use crate::args::LintOptions;
-use crate::args::MemberContextDirs;
 use crate::args::DENO_FUTURE;
 use crate::cache::FastInsecureHasher;
 use crate::file_fetcher::FileFetcher;
@@ -17,8 +16,6 @@ use crate::util::fs::canonicalize_path_maybe_not_exists;
 use deno_ast::MediaType;
 use deno_config::FmtOptionsConfig;
 use deno_config::TsConfig;
-use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
 use deno_core::normalize_path;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde::de::DeserializeOwned;
@@ -941,7 +938,7 @@ impl Config {
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
     let config_file = self.tree.config_file_for_specifier(specifier);
     if let Some(cf) = config_file {
-      if let Ok(files) = cf.to_files_config() {
+      if let Ok(files) = cf.to_exclude_files_config() {
         if !files.matches_specifier(specifier) {
           return false;
         }
@@ -958,7 +955,7 @@ impl Config {
     specifier: &ModuleSpecifier,
   ) -> bool {
     if let Some(cf) = self.tree.config_file_for_specifier(specifier) {
-      if let Some(options) = cf.to_test_config().ok().flatten() {
+      if let Some(options) = cf.to_test_config().ok() {
         if !options.files.matches_specifier(specifier) {
           return false;
         }
@@ -1238,13 +1235,7 @@ impl ConfigData {
         .and_then(|config_file| {
           config_file
             .to_fmt_config()
-            .and_then(|o| {
-              FmtOptions::resolve(
-                o,
-                &Default::default(),
-                member_ctx_dirs_from_config(config_file)?,
-              )
-            })
+            .and_then(|o| FmtOptions::resolve(o, &Default::default(), None))
             .inspect_err(|err| {
               lsp_warn!("  Couldn't read formatter configuration: {}", err)
             })
@@ -1272,13 +1263,7 @@ impl ConfigData {
         .and_then(|config_file| {
           config_file
             .to_lint_config()
-            .and_then(|o| {
-              LintOptions::resolve(
-                o,
-                Default::default(),
-                member_ctx_dirs_from_config(config_file)?,
-              )
-            })
+            .and_then(|o| LintOptions::resolve(o, Default::default(), None))
             .inspect_err(|err| {
               lsp_warn!("  Couldn't read lint configuration: {}", err)
             })
@@ -1854,17 +1839,6 @@ fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<Lockfile> {
       None
     }
   }
-}
-
-fn member_ctx_dirs_from_config(
-  config: &ConfigFile,
-) -> Result<MemberContextDirs, AnyError> {
-  let config_path = config
-    .specifier
-    .to_file_path()
-    .map_err(|_| anyhow!("Invalid base path."))?;
-  let base_path = config_path.parent().unwrap().to_path_buf();
-  Ok(MemberContextDirs::no_flags(base_path))
 }
 
 #[cfg(test)]

@@ -274,15 +274,15 @@ pub struct BenchOptions {
 
 impl BenchOptions {
   pub fn resolve(
-    maybe_bench_config: Option<BenchConfig>,
+    bench_config: BenchConfig,
     bench_flags: &BenchFlags,
-    dirs: MemberContextDirs,
+    maybe_flags_base: Option<&Path>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
       files: resolve_files(
-        maybe_bench_config.map(|c| c.files),
+        bench_config.files,
         &bench_flags.files,
-        dirs,
+        maybe_flags_base,
       )?,
     })
   }
@@ -311,27 +311,26 @@ impl FmtOptions {
   }
 
   pub fn resolve(
-    maybe_fmt_config: Option<FmtConfig>,
+    fmt_config: FmtConfig,
     fmt_flags: &FmtFlags,
-    dirs: MemberContextDirs,
+    maybe_flags_base: Option<&Path>,
   ) -> Result<Self, AnyError> {
-    let (maybe_config_options, maybe_config_files) =
-      maybe_fmt_config.map(|c| (c.options, c.files)).unzip();
-
     Ok(Self {
       check: fmt_flags.check,
-      options: resolve_fmt_options(fmt_flags, maybe_config_options),
-      files: resolve_files(maybe_config_files, &fmt_flags.files, dirs)?,
+      options: resolve_fmt_options(fmt_flags, fmt_config.options),
+      files: resolve_files(
+        fmt_config.files,
+        &fmt_flags.files,
+        maybe_flags_base,
+      )?,
     })
   }
 }
 
 fn resolve_fmt_options(
   fmt_flags: &FmtFlags,
-  options: Option<FmtOptionsConfig>,
+  mut options: FmtOptionsConfig,
 ) -> FmtOptionsConfig {
-  let mut options = options.unwrap_or_default();
-
   if let Some(use_tabs) = fmt_flags.use_tabs {
     options.use_tabs = Some(use_tabs);
   }
@@ -405,17 +404,15 @@ pub struct TestOptions {
 
 impl TestOptions {
   pub fn resolve(
-    maybe_test_config: Option<TestConfig>,
-    maybe_test_flags: Option<TestFlags>,
-    dirs: MemberContextDirs,
+    test_config: TestConfig,
+    test_flags: TestFlags,
+    maybe_flags_base: Option<&Path>,
   ) -> Result<Self, AnyError> {
-    let test_flags = maybe_test_flags.unwrap_or_default();
-
     Ok(Self {
       files: resolve_files(
-        maybe_test_config.map(|c| c.files),
+        test_config.files,
         &test_flags.files,
-        dirs,
+        maybe_flags_base,
       )?,
     })
   }
@@ -488,16 +485,18 @@ impl LintOptions {
   }
 
   pub fn resolve(
-    maybe_lint_config: Option<LintConfig>,
+    lint_config: LintConfig,
     lint_flags: LintFlags,
-    dirs: MemberContextDirs,
+    maybe_flags_base: Option<&Path>,
   ) -> Result<Self, AnyError> {
-    let (maybe_config_files, maybe_config_rules) =
-      maybe_lint_config.map(|c| (c.files, c.rules)).unzip();
     Ok(Self {
-      files: resolve_files(maybe_config_files, &lint_flags.files, dirs)?,
+      files: resolve_files(
+        lint_config.files,
+        &lint_flags.files,
+        maybe_flags_base,
+      )?,
       rules: resolve_lint_rules_options(
-        maybe_config_rules,
+        lint_config.rules,
         lint_flags.maybe_rules_tags,
         lint_flags.maybe_rules_include,
         lint_flags.maybe_rules_exclude,
@@ -508,25 +507,24 @@ impl LintOptions {
 }
 
 fn resolve_lint_rules_options(
-  maybe_lint_rules_config: Option<LintRulesConfig>,
+  config_rules: LintRulesConfig,
   mut maybe_rules_tags: Option<Vec<String>>,
   mut maybe_rules_include: Option<Vec<String>>,
   mut maybe_rules_exclude: Option<Vec<String>>,
 ) -> LintRulesConfig {
-  if let Some(config_rules) = maybe_lint_rules_config {
-    // Try to get configured rules. CLI flags take precedence
-    // over config file, i.e. if there's `rules.include` in config file
-    // and `--rules-include` CLI flag, only the flag value is taken into account.
-    if maybe_rules_include.is_none() {
-      maybe_rules_include = config_rules.include;
-    }
-    if maybe_rules_exclude.is_none() {
-      maybe_rules_exclude = config_rules.exclude;
-    }
-    if maybe_rules_tags.is_none() {
-      maybe_rules_tags = config_rules.tags;
-    }
+  // Try to get configured rules. CLI flags take precedence
+  // over config file, i.e. if there's `rules.include` in config file
+  // and `--rules-include` CLI flag, only the flag value is taken into account.
+  if maybe_rules_include.is_none() {
+    maybe_rules_include = config_rules.include;
   }
+  if maybe_rules_exclude.is_none() {
+    maybe_rules_exclude = config_rules.exclude;
+  }
+  if maybe_rules_tags.is_none() {
+    maybe_rules_tags = config_rules.tags;
+  }
+
   LintRulesConfig {
     exclude: maybe_rules_exclude,
     include: maybe_rules_include,
@@ -1376,12 +1374,8 @@ impl CliOptions {
     fmt_flags: &FmtFlags,
     ctx: &WorkspaceMemberContext,
   ) -> Result<FmtOptions, AnyError> {
-    let maybe_fmt_config = ctx.to_fmt_config()?;
-    FmtOptions::resolve(
-      maybe_fmt_config,
-      fmt_flags,
-      self.resolve_member_ctx_dirs(ctx),
-    )
+    let fmt_config = ctx.to_fmt_config()?;
+    FmtOptions::resolve(fmt_config, fmt_flags, Some(&self.initial_cwd))
   }
 
   pub fn resolve_workspace_lint_options(
@@ -1414,12 +1408,8 @@ impl CliOptions {
     lint_flags: LintFlags,
     ctx: &WorkspaceMemberContext,
   ) -> Result<LintOptions, AnyError> {
-    let maybe_lint_config = ctx.to_lint_config()?;
-    LintOptions::resolve(
-      maybe_lint_config,
-      lint_flags,
-      self.resolve_member_ctx_dirs(ctx),
-    )
+    let lint_config = ctx.to_lint_config()?;
+    LintOptions::resolve(lint_config, lint_flags, Some(&self.initial_cwd))
   }
 
   pub fn resolve_lint_config(
@@ -1479,12 +1469,8 @@ impl CliOptions {
     test_flags: TestFlags,
     ctx: &WorkspaceMemberContext,
   ) -> Result<TestOptions, AnyError> {
-    let maybe_test_config = ctx.to_test_config()?;
-    TestOptions::resolve(
-      maybe_test_config,
-      Some(test_flags),
-      self.resolve_member_ctx_dirs(ctx),
-    )
+    let test_config = ctx.to_test_config()?;
+    TestOptions::resolve(test_config, test_flags, Some(&self.initial_cwd))
   }
 
   pub fn resolve_bench_options_for_members(
@@ -1508,22 +1494,8 @@ impl CliOptions {
     bench_flags: &BenchFlags,
     ctx: &WorkspaceMemberContext,
   ) -> Result<BenchOptions, AnyError> {
-    let maybe_bench_config = ctx.to_bench_config()?;
-    BenchOptions::resolve(
-      maybe_bench_config,
-      bench_flags,
-      self.resolve_member_ctx_dirs(ctx),
-    )
-  }
-
-  fn resolve_member_ctx_dirs<'a>(
-    &'a self,
-    ctx: &WorkspaceMemberContext,
-  ) -> MemberContextDirs<'a> {
-    MemberContextDirs {
-      config_base: ctx.dir_path(),
-      flags_base: Some(&self.initial_cwd),
-    }
+    let bench_config = ctx.to_bench_config()?;
+    BenchOptions::resolve(bench_config, bench_flags, Some(&self.initial_cwd))
   }
 
   pub fn resolve_deno_graph_workspace_members(
@@ -1913,52 +1885,27 @@ impl StorageKeyResolver {
   }
 }
 
-pub struct MemberContextDirs<'a> {
-  /// Base directory for the current workspace member
-  /// being resolved.
-  pub config_base: PathBuf,
-  /// The current working directory that's used to resolve the flags.
-  pub flags_base: Option<&'a Path>,
-}
-
-impl<'a> MemberContextDirs<'a> {
-  pub fn no_flags(base: PathBuf) -> Self {
-    Self {
-      flags_base: None,
-      config_base: base,
-    }
-  }
-}
-
 /// Collect included and ignored files. CLI flags take precedence
 /// over config file, i.e. if there's `files.ignore` in config file
 /// and `--ignore` CLI flag, only the flag value is taken into account.
 fn resolve_files(
-  maybe_files_config: Option<FilePatterns>,
+  mut files_config: FilePatterns,
   file_flags: &FileFlags,
-  dirs: MemberContextDirs,
+  maybe_flags_base: Option<&Path>,
 ) -> Result<FilePatterns, AnyError> {
-  let mut files_config = maybe_files_config.unwrap_or_else(|| {
-    FilePatterns::new_with_base(dirs.config_base.to_path_buf())
-  });
   if !file_flags.include.is_empty() {
     files_config.include =
       Some(PathOrPatternSet::from_include_relative_path_or_patterns(
-        dirs.flags_base.unwrap_or(&dirs.config_base),
+        maybe_flags_base.unwrap_or(&files_config.base),
         &file_flags.include,
       )?);
   }
   if !file_flags.ignore.is_empty() {
     files_config.exclude =
       PathOrPatternSet::from_exclude_relative_path_or_patterns(
-        dirs.flags_base.unwrap_or(&dirs.config_base),
+        maybe_flags_base.unwrap_or(&files_config.base),
         &file_flags.ignore,
       )?;
-  }
-  if files_config.base != dirs.config_base {
-    // the upstream code should have set the base properly
-    debug_assert_eq!(files_config.base, dirs.config_base);
-    files_config = files_config.with_new_base(dirs.config_base);
   }
   Ok(files_config)
 }
@@ -2121,7 +2068,7 @@ mod test {
     assert!(error.to_string().starts_with("Failed to expand glob"));
 
     let resolved_files = resolve_files(
-      Some(FilePatterns {
+      FilePatterns {
         base: temp_dir_path.to_path_buf(),
         include: Some(
           PathOrPatternSet::from_include_relative_path_or_patterns(
@@ -2140,12 +2087,9 @@ mod test {
           &["nested/**/*bazz.ts".to_string()],
         )
         .unwrap(),
-      }),
-      &Default::default(),
-      MemberContextDirs {
-        config_base: temp_dir_path.to_path_buf(),
-        flags_base: Some(temp_dir_path),
       },
+      &Default::default(),
+      Some(&temp_dir_path),
     )
     .unwrap();
 

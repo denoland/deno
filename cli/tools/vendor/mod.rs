@@ -253,7 +253,6 @@ fn maybe_update_config_file(
   let fmt_config_options = config_file
     .to_fmt_config()
     .ok()
-    .flatten()
     .map(|config| config.options)
     .unwrap_or_default();
   let result = update_config_file(

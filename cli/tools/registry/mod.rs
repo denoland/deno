@@ -11,7 +11,6 @@ use std::sync::Arc;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_ast::ModuleSpecifier;
-use deno_config::glob::FilePatterns;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::bail;
@@ -431,11 +430,7 @@ impl PublishPreparer {
     let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
-    let file_patterns = package
-      .member_ctx
-      .to_publish_config()?
-      .map(|c| c.files)
-      .unwrap_or_else(|| FilePatterns::new_with_base(root_dir.to_path_buf()));
+    let file_patterns = package.member_ctx.to_publish_config()?.files;
 
     let tarball = deno_core::unsync::spawn_blocking({
       let diagnostics_collector = diagnostics_collector.clone();
