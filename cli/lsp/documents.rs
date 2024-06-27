@@ -1601,7 +1601,8 @@ mod tests {
 
   async fn setup() -> (Documents, LspCache, TempDir) {
     let temp_dir = TempDir::new();
-    let cache = LspCache::new(Some(temp_dir.uri()));
+    temp_dir.create_dir_all(".deno_dir");
+    let cache = LspCache::new(Some(temp_dir.uri().join(".deno_dir").unwrap()));
     let config = Config::default();
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
