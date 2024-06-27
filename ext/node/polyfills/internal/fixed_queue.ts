@@ -111,13 +111,13 @@ export class FixedQueue {
       // and sets it as the new main queue.
       this.head = this.head.next = new FixedCircularBuffer();
     }
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore prefer-primordials -- `push` is a method of `FixedCircularBuffer`
     this.head.push(data);
   }
 
   shift() {
     const tail = this.tail;
-    // deno-lint-ignore prefer-primordials
+    // deno-lint-ignore prefer-primordials -- `shift` is a method of `FixedCircularBuffer`
     const next = tail.shift();
     if (tail.isEmpty() && tail.next !== null) {
       // If there is another queue, it forms the new tail.
