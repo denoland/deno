@@ -32,6 +32,7 @@ use crate::npm_registry_unset_url;
 use crate::pty::Pty;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
+use crate::tests_path;
 use crate::HttpServerGuard;
 use crate::TempDir;
 
@@ -837,6 +838,7 @@ impl TestCommandBuilder {
     text
       .replace("$DENO_DIR", &self.deno_dir.path().to_string_lossy())
       .replace("$TESTDATA", &testdata_path().to_string_lossy())
+      .replace("$TESTS", &tests_path().to_string_lossy())
       .replace("$PWD", &cwd.to_string_lossy())
   }
 }
