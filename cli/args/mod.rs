@@ -8,9 +8,9 @@ mod lockfile;
 pub mod package_json;
 
 pub use self::import_map::resolve_import_map;
-use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_ast::SourceMapOption;
+use deno_config::package_json::PackageJsonDeps;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
 use deno_npm::npm_rc::NpmRc;
@@ -72,6 +72,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::args::import_map::enhance_import_map_value_with_workspace_members;
+use crate::cache;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
@@ -537,7 +538,7 @@ fn discover_package_json(
   flags: &Flags,
   maybe_stop_at: Option<PathBuf>,
   current_dir: &Path,
-) -> Result<Option<PackageJson>, AnyError> {
+) -> Result<Option<Arc<PackageJson>>, AnyError> {
   // TODO(bartlomieju): discover for all subcommands, but print warnings that
   // `package.json` is ignored in bundle/compile/etc.
 
@@ -592,6 +593,7 @@ pub fn discover_npmrc(
     Ok(Arc::new(resolved))
   }
 
+  // 1. Try `.npmrc` next to `package.json`
   if let Some(package_json_path) = maybe_package_json_path {
     if let Some(package_json_dir) = package_json_path.parent() {
       if let Some((source, path)) = try_to_read_npmrc(package_json_dir)? {
@@ -600,11 +602,21 @@ pub fn discover_npmrc(
     }
   }
 
+  // 2. Try `.npmrc` next to `deno.json(c)`
   if let Some(deno_json_path) = maybe_deno_json_path {
     if let Some(deno_json_dir) = deno_json_path.parent() {
       if let Some((source, path)) = try_to_read_npmrc(deno_json_dir)? {
         return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
       }
+    }
+  }
+
+  // TODO(bartlomieju): update to read both files - one in the project root and one and
+  // home dir and then merge them.
+  // 3. Try `.npmrc` in the user's home directory
+  if let Some(home_dir) = cache::home_dir() {
+    if let Some((source, path)) = try_to_read_npmrc(&home_dir)? {
+      return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
     }
   }
 
@@ -798,7 +810,7 @@ pub struct CliOptions {
   maybe_node_modules_folder: Option<PathBuf>,
   maybe_vendor_folder: Option<PathBuf>,
   maybe_config_file: Option<ConfigFile>,
-  maybe_package_json: Option<PackageJson>,
+  maybe_package_json: Option<Arc<PackageJson>>,
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
@@ -813,7 +825,7 @@ impl CliOptions {
     initial_cwd: PathBuf,
     maybe_config_file: Option<ConfigFile>,
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
-    maybe_package_json: Option<PackageJson>,
+    maybe_package_json: Option<Arc<PackageJson>>,
     npmrc: Arc<ResolvedNpmRc>,
     force_global_cache: bool,
   ) -> Result<Self, AnyError> {
@@ -839,7 +851,7 @@ impl CliOptions {
       &initial_cwd,
       &flags,
       maybe_config_file.as_ref(),
-      maybe_package_json.as_ref(),
+      maybe_package_json.as_deref(),
     )
     .with_context(|| "Resolving node_modules folder.")?;
     let maybe_vendor_folder = if force_global_cache {
@@ -949,7 +961,7 @@ impl CliOptions {
     let maybe_lock_file = lockfile::discover(
       &flags,
       maybe_config_file.as_ref(),
-      maybe_package_json.as_ref(),
+      maybe_package_json.as_deref(),
     )?;
     Self::new(
       flags,
@@ -1395,8 +1407,8 @@ impl CliOptions {
     &self.maybe_workspace_config
   }
 
-  pub fn maybe_package_json(&self) -> &Option<PackageJson> {
-    &self.maybe_package_json
+  pub fn maybe_package_json(&self) -> Option<&Arc<PackageJson>> {
+    self.maybe_package_json.as_ref()
   }
 
   pub fn npmrc(&self) -> &Arc<ResolvedNpmRc> {
@@ -1414,7 +1426,7 @@ impl CliOptions {
       self
         .maybe_package_json()
         .as_ref()
-        .map(package_json::get_local_package_json_version_reqs)
+        .map(|p| p.resolve_local_package_json_version_reqs())
     }
   }
 

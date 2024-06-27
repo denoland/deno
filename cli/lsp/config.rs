@@ -1055,7 +1055,6 @@ impl Default for LspTsConfig {
         "esModuleInterop": true,
         "experimentalDecorators": false,
         "isolatedModules": true,
-        "jsx": "react",
         "lib": ["deno.ns", "deno.window", "deno.unstable"],
         "module": "esnext",
         "moduleDetection": "force",
@@ -1520,25 +1519,20 @@ impl ConfigData {
       })
     });
 
-    let is_workspace_root = config_file
+    let workspace = config_file
       .as_ref()
-      .is_some_and(|c| !c.json.workspaces.is_empty());
-    let workspace_members = if is_workspace_root {
+      .and_then(|c| c.json.workspace.as_ref().map(|w| (c, w)));
+    let is_workspace_root = workspace.is_some();
+    let workspace_members = if let Some((config, workspace)) = workspace {
       Arc::new(
-        config_file
-          .as_ref()
-          .map(|c| {
-            c.json
-              .workspaces
-              .iter()
-              .flat_map(|p| {
-                let dir_specifier = c.specifier.join(p).ok()?;
-                let dir_path = specifier_to_file_path(&dir_specifier).ok()?;
-                Url::from_directory_path(normalize_path(dir_path)).ok()
-              })
-              .collect()
+        workspace
+          .iter()
+          .flat_map(|p| {
+            let dir_specifier = config.specifier.join(p).ok()?;
+            let dir_path = specifier_to_file_path(&dir_specifier).ok()?;
+            Url::from_directory_path(normalize_path(dir_path)).ok()
           })
-          .unwrap_or_default(),
+          .collect(),
       )
     } else if let Some(workspace_data) = workspace_root {
       workspace_data.workspace_members.clone()
@@ -1574,16 +1568,10 @@ impl ConfigData {
 
 #[derive(Clone, Debug, Default)]
 pub struct ConfigTree {
-  first_folder: Option<ModuleSpecifier>,
   scopes: Arc<BTreeMap<ModuleSpecifier, Arc<ConfigData>>>,
 }
 
 impl ConfigTree {
-  pub fn root_ts_config(&self) -> Arc<LspTsConfig> {
-    let root_data = self.first_folder.as_ref().and_then(|s| self.scopes.get(s));
-    root_data.map(|d| d.ts_config.clone()).unwrap_or_default()
-  }
-
   pub fn scope_for_specifier(
     &self,
     specifier: &ModuleSpecifier,
@@ -1778,7 +1766,6 @@ impl ConfigTree {
         );
       }
     }
-    self.first_folder.clone_from(&settings.first_folder);
     self.scopes = Arc::new(scopes);
   }
 
@@ -1795,7 +1782,6 @@ impl ConfigTree {
       )
       .await,
     );
-    self.first_folder = Some(scope.clone());
     self.scopes = Arc::new([(scope, data)].into_iter().collect());
   }
 }

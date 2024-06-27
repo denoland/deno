@@ -16,13 +16,12 @@ use once_cell::sync::Lazy;
 
 use deno_core::error::AnyError;
 
+use crate::package_json::load_pkg_json;
 use crate::path::to_file_specifier;
 use crate::resolution::NodeResolverRc;
-use crate::AllowAllNodePermissions;
 use crate::NodeModuleKind;
 use crate::NodeResolutionMode;
 use crate::NpmResolverRc;
-use crate::PackageJson;
 use crate::PathClean;
 
 #[derive(Debug, Clone)]
@@ -312,13 +311,8 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     )?;
 
     let package_json_path = module_dir.join("package.json");
-    let package_json = PackageJson::load(
-      &*self.fs,
-      &*self.npm_resolver,
-      &mut AllowAllNodePermissions,
-      package_json_path.clone(),
-    )?;
-    if package_json.exists {
+    let maybe_package_json = load_pkg_json(&*self.fs, &package_json_path)?;
+    if let Some(package_json) = maybe_package_json {
       if let Some(exports) = &package_json.exports {
         return self.node_resolver.package_exports_resolve(
           &package_json_path,
@@ -337,13 +331,9 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         if self.fs.is_dir_sync(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
-          let package_json = PackageJson::load(
-            &*self.fs,
-            &*self.npm_resolver,
-            &mut AllowAllNodePermissions,
-            package_json_path,
-          )?;
-          if package_json.exists {
+          let maybe_package_json =
+            load_pkg_json(&*self.fs, &package_json_path)?;
+          if let Some(package_json) = maybe_package_json {
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
               return Ok(to_file_specifier(&d.join(main).clean()));
             }
