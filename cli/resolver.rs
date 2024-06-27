@@ -523,7 +523,19 @@ impl Resolver for CliGraphResolver {
           // we need to do an "npm install" later
           self.found_package_json_dep_flag.raise();
 
-          if let Some(node_resolver) = &self.node_resolver {
+          ModuleSpecifier::parse(&req_ref.to_string())
+            .map_err(|e| ResolveError::Other(e.into()))
+        }
+      },
+      Err(err) => Err(err),
+    };
+
+    // check if it resolves to a workspace member
+    if let Some(node_resolver) = &self.node_resolver {
+      if !self.npm_workspace_members.is_empty() {
+        if let Ok(specifier) = &result {
+          if let Ok(req_ref) = NpmPackageReqReference::from_specifier(specifier)
+          {
             for member in &self.npm_workspace_members {
               if member.matches_req(req_ref.req()) {
                 let maybe_specifier = node_resolver
@@ -538,13 +550,9 @@ impl Resolver for CliGraphResolver {
               }
             }
           }
-
-          ModuleSpecifier::parse(&req_ref.to_string())
-            .map_err(|e| ResolveError::Other(e.into()))
         }
-      },
-      Err(err) => Err(err),
-    };
+      }
+    }
 
     // do sloppy imports resolution if enabled
     let result =
