@@ -1562,7 +1562,7 @@ impl CliOptions {
   ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
     self
       .workspace
-      .packages()
+      .jsr_packages()
       .into_iter()
       .map(|pkg| config_to_deno_graph_workspace_member(&pkg.config_file))
       .collect::<Result<Vec<_>, _>>()

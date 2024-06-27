@@ -2622,7 +2622,7 @@ fn byonm_npm_workspaces() {
     "package.json",
     r#"{
   "name": "my-workspace",
-  "workspace": [
+  "workspaces": [
     "project-a",
     "project-b"
   ]

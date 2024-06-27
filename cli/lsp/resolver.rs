@@ -509,6 +509,8 @@ fn create_graph_resolver(
     sloppy_imports_resolver: unstable_sloppy_imports.then(|| {
       SloppyImportsResolver::new_without_stat_cache(Arc::new(deno_fs::RealFs))
     }),
+    // todo(dsherret): support npm workspaces in the LSP
+    npm_workspace_members: Vec::new(),
   }))
 }
 

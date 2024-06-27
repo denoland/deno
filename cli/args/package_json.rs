@@ -17,6 +17,7 @@ impl PackageJsonDepsProvider {
   pub fn from_workspace(workspace: &Workspace) -> Self {
     let reqs = {
       let (root_folder_url, root_folder) = workspace.root_folder();
+      let workspace_npm_pkgs = workspace.npm_packages();
       root_folder
         .pkg_json
         .as_ref()
@@ -48,6 +49,17 @@ impl PackageJsonDepsProvider {
               reqs.into_iter()
             }),
         )
+        .filter(|req| {
+          !workspace_npm_pkgs.iter().any(|pkg| {
+            req.name == pkg.package_nv.name
+              && match req.version_req.inner() {
+                deno_semver::RangeSetOrTag::RangeSet(set) => {
+                  set.satisfies(&pkg.package_nv.version)
+                }
+                deno_semver::RangeSetOrTag::Tag(_) => false,
+              }
+          })
+        })
         .collect::<Vec<_>>()
     };
     Self(reqs)

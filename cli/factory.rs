@@ -56,7 +56,6 @@ use std::path::PathBuf;
 
 use deno_config::workspace::WorkspaceResolver;
 use deno_config::ConfigFile;
-use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -488,6 +487,21 @@ impl CliFactory {
               .workspace
               .to_maybe_jsx_import_source_config()?,
             maybe_vendor_dir: self.options.vendor_dir_path(),
+            npm_workspace_members: self
+              .options
+              .workspace
+              .npm_packages()
+              .into_iter()
+              .map(|pkg| crate::resolver::NpmWorkspaceMember {
+                package_nv: pkg.package_nv,
+                directory: pkg
+                  .package_json
+                  .path
+                  .parent()
+                  .unwrap()
+                  .to_path_buf(),
+              })
+              .collect(),
           })))
         }
         .boxed_local(),

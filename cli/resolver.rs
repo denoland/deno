@@ -31,6 +31,7 @@ use deno_runtime::deno_node::NpmResolver as DenoNodeNpmResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use std::borrow::Cow;
 use std::path::Path;
@@ -350,6 +351,24 @@ impl CjsResolutionStore {
   }
 }
 
+#[derive(Debug)]
+pub struct NpmWorkspaceMember {
+  pub package_nv: PackageNv,
+  pub directory: PathBuf,
+}
+
+impl NpmWorkspaceMember {
+  pub fn matches_req(&self, req: &PackageReq) -> bool {
+    self.package_nv.name == req.name
+      && match req.version_req.inner() {
+        deno_semver::RangeSetOrTag::RangeSet(set) => {
+          set.satisfies(&self.package_nv.version)
+        }
+        deno_semver::RangeSetOrTag::Tag(_) => false,
+      }
+  }
+}
+
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug)]
@@ -364,6 +383,7 @@ pub struct CliGraphResolver {
   maybe_vendor_specifier: Option<ModuleSpecifier>,
   found_package_json_dep_flag: AtomicFlag,
   bare_node_builtins_enabled: bool,
+  npm_workspace_members: Vec<NpmWorkspaceMember>,
 }
 
 pub struct CliGraphResolverOptions<'a> {
@@ -374,6 +394,7 @@ pub struct CliGraphResolverOptions<'a> {
   pub bare_node_builtins_enabled: bool,
   pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
   pub maybe_vendor_dir: Option<&'a PathBuf>,
+  pub npm_workspace_members: Vec<NpmWorkspaceMember>,
 }
 
 impl CliGraphResolver {
@@ -399,6 +420,7 @@ impl CliGraphResolver {
         .and_then(|v| ModuleSpecifier::from_directory_path(v).ok()),
       found_package_json_dep_flag: Default::default(),
       bare_node_builtins_enabled: options.bare_node_builtins_enabled,
+      npm_workspace_members: options.npm_workspace_members,
     }
   }
 
@@ -496,13 +518,28 @@ impl Resolver for CliGraphResolver {
         | MappedResolution::ImportMap(specifier) => Ok(specifier),
         // todo(dsherret): for byonm it should do resolution solely based on
         // the referrer and not the package.json
-        MappedResolution::PackageJson { .. } => {
+        MappedResolution::PackageJson { req_ref, .. } => {
           // found a specifier in the package.json, so mark that
           // we need to do an "npm install" later
           self.found_package_json_dep_flag.raise();
 
-          resolution
-            .into_url()
+          if let Some(node_resolver) = &self.node_resolver {
+            for member in &self.npm_workspace_members {
+              if member.matches_req(req_ref.req()) {
+                let maybe_specifier = node_resolver
+                  .resolve_package_sub_path_from_deno_module(
+                    &member.directory,
+                    req_ref.sub_path(),
+                    referrer,
+                    to_node_mode(mode),
+                  )?;
+                // todo(THIS PR): don't unwrap
+                return Ok(maybe_specifier.unwrap().into_url());
+              }
+            }
+          }
+
+          ModuleSpecifier::parse(&req_ref.to_string())
             .map_err(|e| ResolveError::Other(e.into()))
         }
       },
