@@ -71,6 +71,7 @@ generate_builtin_node_module_lists! {
   "querystring",
   "repl",
   "readline",
+  "readline/promises",
   "stream",
   "stream/consumers",
   "stream/promises",

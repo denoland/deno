@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::lsp::logging::lsp_warn;
+
 use super::analysis::source_range_to_lsp_range;
 use super::config::CodeLensSettings;
 use super::language_server;
@@ -27,6 +29,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
+use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::lsp_types as lsp;
 
 static ABSTRACT_MODIFIER: Lazy<Regex> = lazy_regex!(r"\babstract\b");
@@ -260,7 +263,11 @@ async fn resolve_implementation_code_lens(
       data.specifier.clone(),
       line_index.offset_tsc(code_lens.range.start)?,
     )
-    .await?;
+    .await
+    .map_err(|err| {
+      lsp_warn!("{err}");
+      LspError::internal_error()
+    })?;
   if let Some(implementations) = maybe_implementations {
     let mut locations = Vec::new();
     for implementation in implementations {
@@ -357,7 +364,11 @@ async fn resolve_references_code_lens(
       data.specifier.clone(),
       line_index.offset_tsc(code_lens.range.start)?,
     )
-    .await?;
+    .await
+    .map_err(|err| {
+      lsp_warn!("Unable to find references: {err}");
+      LspError::internal_error()
+    })?;
   let locations = get_locations(maybe_referenced_symbols, language_server)?;
   let title = if locations.len() == 1 {
     "1 reference".to_string()
