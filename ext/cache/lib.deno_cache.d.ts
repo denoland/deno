@@ -30,8 +30,7 @@ declare interface CacheStorage {
 }
 
 /** 
- * Provides a persistent storage mechanism for Request / Response object pairs 
- * that are cached in long lived memory.
+ * Provides a storage mechanism for Request / Response object pairs
  * 
  * @category Cache
  */
