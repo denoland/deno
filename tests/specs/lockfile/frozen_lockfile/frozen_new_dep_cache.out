@@ -6,6 +6,6 @@ changes:
 11 | -      }
 12 | +      },
 13 | +      "@denotest/subtract@1.0.0": {
-14 | +        "integrity": "sha512-dxGTiMVdqnsZgewLxLifDdUskXs5pznErABlPE8kDHaHR2MS9coLuwpqOrkb0jxx4xTKnFrdR/+r4rudmvo5zA==",
+14 | +        "integrity": "[WILDCARD]",
 15 | +        "dependencies": {}
 16 | +      }

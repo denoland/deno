@@ -10,5 +10,5 @@ changes:
  7 | +    },
  8 | +    "jsr": {
  9 | +      "@denotest/add@0.2.0": {
-10 | +        "integrity": "a9076d30ecb42b2fc6dd95e7055fbf4e6358b53f550741bd7f60089d19f68848"
+10 | +        "integrity": "[WILDCARD]"
 11 | +      },

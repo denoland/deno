@@ -10,7 +10,7 @@ changes:
 14 | -  "remote": {}
 12 | +      },
 13 | +      "@denotest/bin@0.7.0": {
-14 | +        "integrity": "sha512-IKNzP1q9lJzTNyePIvLWffODL5v73KPLa+IKhKVw1iV9cqmAxrHLM7wX3lizWSOj+1lY30QU/say0T6os+J6cQ==",
+14 | +        "integrity": "[WILDCARD]",
 15 | +        "dependencies": {}
 16 | +      }
 17 | +    }
