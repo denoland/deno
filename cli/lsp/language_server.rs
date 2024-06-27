@@ -1058,8 +1058,10 @@ impl Inner {
         params.text_document.uri
       );
     }
-    let file_referrer = (params.text_document.uri.scheme() == "file")
-      .then(|| params.text_document.uri.clone());
+    let file_referrer = (self
+      .documents
+      .is_valid_file_referrer(&params.text_document.uri))
+    .then(|| params.text_document.uri.clone());
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -1308,8 +1310,10 @@ impl Inner {
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    let file_referrer = (params.text_document.uri.scheme() == "file")
-      .then(|| params.text_document.uri.clone());
+    let file_referrer = (self
+      .documents
+      .is_valid_file_referrer(&params.text_document.uri))
+    .then(|| params.text_document.uri.clone());
     let mut specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
