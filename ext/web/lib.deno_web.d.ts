@@ -1322,7 +1322,7 @@ declare function reportError(
 /** @category Platform */
 declare type PredefinedColorSpace = "srgb" | "display-p3";
 
-/** Color space settings for `ImageData` objects.
+/** Color space settings for {@linkcode ImageData} objects.
  *
  *  @category Platform */
 declare interface ImageDataSettings {
