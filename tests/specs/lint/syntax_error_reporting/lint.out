@@ -1,9 +1,7 @@
-error: Unterminated string constant at [WILDCARD]script.ts:1:13
+warn: Unterminated string constant at [WILDCARD]script.ts:1:13
 
   const foo = 'bar
               ~~~~
-Found 1 parsing related problems
-
 error[no-unused-vars]: `foo` is never used
  --> [WILDCARD]script.ts:1:7
   | 

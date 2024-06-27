@@ -528,12 +528,8 @@ fn handle_lint_result(
     Ok((source, mut file_diagnostics)) => {
       if !source.diagnostics().is_empty() {
         for parse_diagnostic in source.diagnostics() {
-          log::info!("{}: {}", colors::red("error"), parse_diagnostic);
+          log::info!("{}: {}", colors::yellow("warn"), parse_diagnostic);
         }
-        log::info!(
-          "Found {} parsing related problems\n",
-          source.diagnostics().len()
-        );
       }
       file_diagnostics.sort_by(|a, b| match a.specifier.cmp(&b.specifier) {
         std::cmp::Ordering::Equal => a.range.start.cmp(&b.range.start),
