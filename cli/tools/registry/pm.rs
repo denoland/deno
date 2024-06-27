@@ -50,7 +50,7 @@ impl DenoConfigFormat {
 
 enum DenoOrPackageJson {
   Deno(deno_config::ConfigFile, DenoConfigFormat),
-  Npm(deno_node::PackageJson, Option<FmtOptionsConfig>),
+  Npm(Arc<deno_node::PackageJson>, Option<FmtOptionsConfig>),
 }
 
 impl DenoOrPackageJson {
@@ -306,8 +306,8 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     .await
     .context("Failed to update configuration file")?;
 
-  // TODO(bartlomieju): we should now cache the imports from the deno.json.
-
+  // clear the previously cached package.json from memory before reloading it
+  deno_node::PackageJsonThreadLocalCache::clear();
   // make a new CliFactory to pick up the updated config file
   let cli_factory = CliFactory::from_flags(flags)?;
   // cache deps

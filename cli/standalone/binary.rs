@@ -15,6 +15,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use deno_ast::ModuleSpecifier;
+use deno_config::package_json::PackageJsonDepValueParseError;
+use deno_config::package_json::PackageJsonDeps;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -31,8 +33,6 @@ use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::args::package_json::PackageJsonDepValueParseError;
-use crate::args::package_json::PackageJsonDeps;
 use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
