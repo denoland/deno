@@ -5,11 +5,11 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** Defines utility methods to work with the 
- * query string of a URL. An object implementing URLSearchParams can directly 
- * be used in a `for...of` structure to iterate over key/value pairs in the 
- * same order as they appear in the query string 
- * 
+/** Defines utility methods to work with the
+ * query string of a URL. An object implementing URLSearchParams can directly
+ * be used in a `for...of` structure to iterate over key/value pairs in the
+ * same order as they appear in the query string
+ *
  * @category URL
  */
 declare interface URLSearchParams {
@@ -166,7 +166,7 @@ declare interface URLSearchParams {
 /** @category URL */
 declare var URLSearchParams: {
   readonly prototype: URLSearchParams;
-  new(
+  new (
     init?: Iterable<string[]> | Record<string, string> | string,
   ): URLSearchParams;
 };
@@ -200,7 +200,7 @@ declare interface URL {
  */
 declare var URL: {
   readonly prototype: URL;
-  new(url: string | URL, base?: string | URL): URL;
+  new (url: string | URL, base?: string | URL): URL;
   parse(url: string | URL, base?: string | URL): URL | null;
   canParse(url: string | URL, base?: string | URL): boolean;
   createObjectURL(blob: Blob): string;
@@ -383,5 +383,5 @@ declare interface URLPattern {
  */
 declare var URLPattern: {
   readonly prototype: URLPattern;
-  new(input: URLPatternInput, baseURL?: string): URLPattern;
+  new (input: URLPatternInput, baseURL?: string): URLPattern;
 };
