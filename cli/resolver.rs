@@ -530,7 +530,7 @@ impl Resolver for CliGraphResolver {
       Err(err) => Err(err),
     };
 
-    // check if it resolves to a workspace member
+    // check if it's an npm specifier that resolves to a workspace member
     if let Some(node_resolver) = &self.node_resolver {
       if !self.npm_workspace_members.is_empty() {
         if let Ok(specifier) = &result {
