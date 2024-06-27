@@ -433,6 +433,7 @@ pub struct CliGraphResolver {
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: AtomicFlag,
   bare_node_builtins_enabled: bool,
+  frozen: bool,
 }
 
 pub struct CliGraphResolverOptions<'a> {
@@ -444,6 +445,7 @@ pub struct CliGraphResolverOptions<'a> {
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_vendor_dir: Option<&'a PathBuf>,
   pub bare_node_builtins_enabled: bool,
+  pub frozen: bool,
 }
 
 impl CliGraphResolver {
@@ -482,6 +484,7 @@ impl CliGraphResolver {
       npm_resolver: options.npm_resolver,
       found_package_json_dep_flag: Default::default(),
       bare_node_builtins_enabled: options.bare_node_builtins_enabled,
+      frozen: options.frozen,
     }
   }
 
@@ -494,6 +497,7 @@ impl CliGraphResolver {
       npm_resolver: self.npm_resolver.as_ref(),
       found_package_json_dep_flag: &self.found_package_json_dep_flag,
       bare_node_builtins_enabled: self.bare_node_builtins_enabled,
+      frozen: self.frozen,
     }
   }
 
@@ -760,6 +764,7 @@ pub struct WorkerCliNpmGraphResolver<'a> {
   npm_resolver: Option<&'a Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: &'a AtomicFlag,
   bare_node_builtins_enabled: bool,
+  frozen: bool,
 }
 
 #[async_trait(?Send)]
@@ -824,13 +829,17 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
         };
 
         let top_level_result = if self.found_package_json_dep_flag.is_raised() {
-          npm_resolver.ensure_top_level_package_json_install().await
+          npm_resolver
+            .ensure_top_level_package_json_install(self.frozen)
+            .await
+            .map(|_| ())
         } else {
           Ok(())
         };
 
-        let result = npm_resolver.add_package_reqs_raw(package_reqs).await;
-
+        let result = npm_resolver
+          .add_package_reqs_raw(package_reqs, self.frozen)
+          .await;
         NpmResolvePkgReqsResult {
           results: result
             .results

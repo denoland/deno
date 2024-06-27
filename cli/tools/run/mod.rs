@@ -195,9 +195,12 @@ pub async fn eval_command(
 async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
   // ensure an "npm install" is done if the user has explicitly
   // opted into using a managed node_modules directory
-  if factory.cli_options().node_modules_dir_enablement() == Some(true) {
+  let options = factory.cli_options();
+  if options.node_modules_dir_enablement() == Some(true) {
     if let Some(npm_resolver) = factory.npm_resolver().await?.as_managed() {
-      npm_resolver.ensure_top_level_package_json_install().await?;
+      npm_resolver
+        .ensure_top_level_package_json_install(options.frozen_lockfile())
+        .await?;
     }
   }
   Ok(())

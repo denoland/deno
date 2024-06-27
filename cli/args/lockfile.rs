@@ -147,3 +147,22 @@ impl CliLockfile {
     }
   }
 }
+
+pub fn error_if_lockfile_has_changes(
+  lockfile: &Lockfile,
+  frozen: bool,
+) -> Result<(), AnyError> {
+  if frozen && lockfile.has_content_changed {
+    let suggested = if *super::DENO_FUTURE {
+      "`deno cache` or `deno install`"
+    } else {
+      "`deno cache`"
+    };
+
+    Err(deno_core::anyhow::anyhow!(
+      "The lockfile is out of date. Run {suggested} to update it."
+    ))
+  } else {
+    Ok(())
+  }
+}

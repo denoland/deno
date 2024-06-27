@@ -121,7 +121,9 @@ pub async fn execute_script(
     // directory and managed resolver
     if cli_options.has_node_modules_dir() {
       if let Some(npm_resolver) = npm_resolver.as_managed() {
-        npm_resolver.ensure_top_level_package_json_install().await?;
+        npm_resolver
+          .ensure_top_level_package_json_install(cli_options.frozen_lockfile())
+          .await?;
       }
     }
 

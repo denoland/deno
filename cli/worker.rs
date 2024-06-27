@@ -505,7 +505,10 @@ impl CliMainWorkerFactory {
       };
       if let Some(npm_resolver) = shared.npm_resolver.as_managed() {
         npm_resolver
-          .add_package_reqs(&[package_ref.req().clone()])
+          .add_package_reqs(
+            &[package_ref.req().clone()],
+            shared.options.frozen_lockfile,
+          )
           .await?;
       }
 
