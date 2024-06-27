@@ -69,7 +69,7 @@ declare var DOMException: {
 };
 
 /** Specifies the options that can be passed to the constructor of an `Event`
- * object. The EventInit interface defines three optional properties: `bubbles`, `cancelable`, and `composed`.
+ * object.
  *
  * @category Events */
 declare interface EventInit {
