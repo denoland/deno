@@ -5,19 +5,19 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** Returns the CacheStorage object 
+/** Returns the CacheStorage object
  * associated with the current context.
- * 
- * @category Cache 
+ *
+ * @category Cache
  */
 declare var caches: CacheStorage;
 
 /** Represents the storage for Cache objects.
- * The interface maintains a mapping of string names to corresponding 
+ * The interface maintains a mapping of string names to corresponding
  * Cache objects.
- * 
+ *
  * Use CacheStorage.open() to obtain a Cache instance.
- * 
+ *
  * @category Cache
  */
 declare interface CacheStorage {
@@ -29,9 +29,9 @@ declare interface CacheStorage {
   delete(cacheName: string): Promise<boolean>;
 }
 
-/** 
+/**
  * Provides a storage mechanism for Request / Response object pairs
- * 
+ *
  * @category Cache
  */
 declare interface Cache {
@@ -70,13 +70,13 @@ declare interface Cache {
 /** @category Cache */
 declare var Cache: {
   readonly prototype: Cache;
-  new(): never;
+  new (): never;
 };
 
 /** @category Cache */
 declare var CacheStorage: {
   readonly prototype: CacheStorage;
-  new(): never;
+  new (): never;
 };
 
 /** @category Cache */
