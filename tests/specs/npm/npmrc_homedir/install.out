@@ -1,0 +1,9 @@
+⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.
+[UNORDERED_START]
+Download http://localhost:4261/@denotest/basic
+Download http://localhost:4262/@denotest2/basic
+Download http://localhost:4261/@denotest/basic/1.0.0.tgz
+Download http://localhost:4262/@denotest2/basic/1.0.0.tgz
+Initialize @denotest2/basic@1.0.0
+Initialize @denotest/basic@1.0.0
+[UNORDERED_END]
