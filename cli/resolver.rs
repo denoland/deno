@@ -433,7 +433,7 @@ pub struct CliGraphResolver {
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: AtomicFlag,
   bare_node_builtins_enabled: bool,
-  frozen: bool,
+  frozen_lockfile: bool,
 }
 
 pub struct CliGraphResolverOptions<'a> {
@@ -445,7 +445,7 @@ pub struct CliGraphResolverOptions<'a> {
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_vendor_dir: Option<&'a PathBuf>,
   pub bare_node_builtins_enabled: bool,
-  pub frozen: bool,
+  pub frozen_lockfile: bool,
 }
 
 impl CliGraphResolver {
@@ -484,7 +484,7 @@ impl CliGraphResolver {
       npm_resolver: options.npm_resolver,
       found_package_json_dep_flag: Default::default(),
       bare_node_builtins_enabled: options.bare_node_builtins_enabled,
-      frozen: options.frozen,
+      frozen_lockfile: options.frozen_lockfile,
     }
   }
 
@@ -497,7 +497,7 @@ impl CliGraphResolver {
       npm_resolver: self.npm_resolver.as_ref(),
       found_package_json_dep_flag: &self.found_package_json_dep_flag,
       bare_node_builtins_enabled: self.bare_node_builtins_enabled,
-      frozen: self.frozen,
+      frozen_lockfile: self.frozen_lockfile,
     }
   }
 
@@ -764,7 +764,7 @@ pub struct WorkerCliNpmGraphResolver<'a> {
   npm_resolver: Option<&'a Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: &'a AtomicFlag,
   bare_node_builtins_enabled: bool,
-  frozen: bool,
+  frozen_lockfile: bool,
 }
 
 #[async_trait(?Send)]
@@ -830,7 +830,7 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
 
         let top_level_result = if self.found_package_json_dep_flag.is_raised() {
           npm_resolver
-            .ensure_top_level_package_json_install(self.frozen)
+            .ensure_top_level_package_json_install(self.frozen_lockfile)
             .await
             .map(|_| ())
         } else {
@@ -838,7 +838,7 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
         };
 
         let result = npm_resolver
-          .add_package_reqs_raw(package_reqs, self.frozen)
+          .add_package_reqs_raw(package_reqs, self.frozen_lockfile)
           .await;
         NpmResolvePkgReqsResult {
           results: result

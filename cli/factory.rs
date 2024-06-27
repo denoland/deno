@@ -502,7 +502,7 @@ impl CliFactory {
             bare_node_builtins_enabled: self
               .options
               .unstable_bare_node_builtins(),
-            frozen: self.options.frozen_lockfile(),
+            frozen_lockfile: self.options.frozen_lockfile(),
           })))
         }
         .boxed_local(),
