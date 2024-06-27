@@ -40,7 +40,7 @@ declare interface DOMException extends Error {
 /** @category Platform */
 declare var DOMException: {
   readonly prototype: DOMException;
-  new(message?: string, name?: string): DOMException;
+  new (message?: string, name?: string): DOMException;
   readonly INDEX_SIZE_ERR: 1;
   readonly DOMSTRING_SIZE_ERR: 2;
   readonly HIERARCHY_REQUEST_ERR: 3;
@@ -145,7 +145,7 @@ declare interface Event {
  */
 declare var Event: {
   readonly prototype: Event;
-  new(type: string, eventInitDict?: EventInit): Event;
+  new (type: string, eventInitDict?: EventInit): Event;
   readonly AT_TARGET: number;
   readonly BUBBLING_PHASE: number;
   readonly CAPTURING_PHASE: number;
@@ -208,7 +208,7 @@ declare interface EventTarget {
  */
 declare var EventTarget: {
   readonly prototype: EventTarget;
-  new(): EventTarget;
+  new (): EventTarget;
 };
 
 /** Represents a function type that can be used as an event listener in various
@@ -288,7 +288,7 @@ declare interface ProgressEvent<T extends EventTarget = EventTarget>
  */
 declare var ProgressEvent: {
   readonly prototype: ProgressEvent;
-  new(type: string, eventInitDict?: ProgressEventInit): ProgressEvent;
+  new (type: string, eventInitDict?: ProgressEventInit): ProgressEvent;
 };
 
 /** Decodes a string of data which has been encoded using base-64 encoding.
@@ -348,7 +348,7 @@ declare interface TextDecoder {
  * @category Encoding */
 declare var TextDecoder: {
   readonly prototype: TextDecoder;
-  new(label?: string, options?: TextDecoderOptions): TextDecoder;
+  new (label?: string, options?: TextDecoderOptions): TextDecoder;
 };
 
 /** Represents the result of an encoding operation performed by a TextEncoder.
@@ -376,12 +376,12 @@ declare interface TextEncoder {
 /** @category Encoding */
 declare var TextEncoder: {
   readonly prototype: TextEncoder;
-  new(): TextEncoder;
+  new (): TextEncoder;
 };
 
-/** A stream-based text decoder for efficient processing of large or 
+/** A stream-based text decoder for efficient processing of large or
  * streaming text data.
- * 
+ *
  *  @category Encoding */
 declare interface TextDecoderStream {
   /** Returns encoding's name, lowercased. */
@@ -398,11 +398,11 @@ declare interface TextDecoderStream {
 /** @category Encoding */
 declare var TextDecoderStream: {
   readonly prototype: TextDecoderStream;
-  new(label?: string, options?: TextDecoderOptions): TextDecoderStream;
+  new (label?: string, options?: TextDecoderOptions): TextDecoderStream;
 };
 
 /** Stream-based mechanism for encoding text into a stream of UTF-8 encoded data
- * 
+ *
  *  @category Encoding */
 declare interface TextEncoderStream {
   /** Returns "utf-8". */
@@ -415,7 +415,7 @@ declare interface TextEncoderStream {
 /** @category Encoding */
 declare var TextEncoderStream: {
   readonly prototype: TextEncoderStream;
-  new(): TextEncoderStream;
+  new (): TextEncoderStream;
 };
 
 /** A controller object that allows you to abort one or more DOM requests as and
@@ -438,7 +438,7 @@ declare interface AbortController {
  */
 declare var AbortController: {
   readonly prototype: AbortController;
-  new(): AbortController;
+  new (): AbortController;
 };
 
 /** @category Platform */
@@ -486,7 +486,7 @@ declare interface AbortSignal extends EventTarget {
 /** @category Platform */
 declare var AbortSignal: {
   readonly prototype: AbortSignal;
-  new(): never;
+  new (): never;
   abort(reason?: any): AbortSignal;
   any(signals: AbortSignal[]): AbortSignal;
   timeout(milliseconds: number): AbortSignal;
@@ -515,8 +515,8 @@ declare interface FileReader extends EventTarget {
   onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
   onloadend: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
   onloadstart:
-  | ((this: FileReader, ev: ProgressEvent<FileReader>) => any)
-  | null;
+    | ((this: FileReader, ev: ProgressEvent<FileReader>) => any)
+    | null;
   onprogress: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
   readonly readyState: number;
   readonly result: string | ArrayBuffer | null;
@@ -553,7 +553,7 @@ declare interface FileReader extends EventTarget {
 /** @category File */
 declare var FileReader: {
   readonly prototype: FileReader;
-  new(): FileReader;
+  new (): FileReader;
   readonly DONE: number;
   readonly EMPTY: number;
   readonly LOADING: number;
@@ -593,7 +593,7 @@ declare interface Blob {
  */
 declare var Blob: {
   readonly prototype: Blob;
-  new(blobParts?: BlobPart[], options?: BlobPropertyBag): Blob;
+  new (blobParts?: BlobPart[], options?: BlobPropertyBag): Blob;
 };
 
 /** @category File */
@@ -618,20 +618,20 @@ declare interface File extends Blob {
  */
 declare var File: {
   readonly prototype: File;
-  new(fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
+  new (fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
 };
 
-/**  The result object from reading a stream when the stream has been fully 
+/**  The result object from reading a stream when the stream has been fully
  * consumed or closed.
- * 
+ *
  * @category Streams */
 declare interface ReadableStreamDefaultReadDoneResult {
   done: true;
   value?: undefined;
 }
 
-/** The result object from reading a stream that is not yet finished 
- * 
+/** The result object from reading a stream that is not yet finished
+ *
  * @category Streams */
 declare interface ReadableStreamDefaultReadValueResult<T> {
   done: false;
@@ -643,8 +643,8 @@ declare type ReadableStreamDefaultReadResult<T> =
   | ReadableStreamDefaultReadValueResult<T>
   | ReadableStreamDefaultReadDoneResult;
 
-/** An object that allows you to read from a readable stream 
- * 
+/** An object that allows you to read from a readable stream
+ *
  * @category Streams */
 declare interface ReadableStreamDefaultReader<R = any> {
   readonly closed: Promise<void>;
@@ -659,16 +659,16 @@ declare var ReadableStreamDefaultReader: {
   new <R>(stream: ReadableStream<R>): ReadableStreamDefaultReader<R>;
 };
 
-/** The result of an operation, specifically in the context of reading from a stream using a "bring your own buffer" (BYOB) strategy. 
- * 
+/** The result of an operation, specifically in the context of reading from a stream using a "bring your own buffer" (BYOB) strategy.
+ *
  * @category Streams */
 declare interface ReadableStreamBYOBReadDoneResult<V extends ArrayBufferView> {
   done: true;
   value?: V;
 }
 
-/** The result of a read operation from a stream using a "bring your own buffer" (BYOB) strategy. 
- *  
+/** The result of a read operation from a stream using a "bring your own buffer" (BYOB) strategy.
+ *
  * @category Streams */
 declare interface ReadableStreamBYOBReadValueResult<V extends ArrayBufferView> {
   done: false;
@@ -686,7 +686,7 @@ declare interface ReadableStreamBYOBReaderReadOptions {
 }
 
 /** Provides a set of methods for reading binary data from a stream using a buffer provided by the developer, with mechanisms for handling stream closure, cancellation, and locking
- * 
+ *
  *  @category Streams */
 declare interface ReadableStreamBYOBReader {
   readonly closed: Promise<void>;
@@ -701,11 +701,11 @@ declare interface ReadableStreamBYOBReader {
 /** @category Streams */
 declare var ReadableStreamBYOBReader: {
   readonly prototype: ReadableStreamBYOBReader;
-  new(stream: ReadableStream<Uint8Array>): ReadableStreamBYOBReader;
+  new (stream: ReadableStream<Uint8Array>): ReadableStreamBYOBReader;
 };
 
 /** Notify the stream about the amount of data processed and to supply new buffers as needed.
- * 
+ *
  * @category Streams */
 declare interface ReadableStreamBYOBRequest {
   readonly view: ArrayBufferView | null;
@@ -716,18 +716,18 @@ declare interface ReadableStreamBYOBRequest {
 /** @category Streams */
 declare var ReadableStreamBYOBRequest: {
   readonly prototype: ReadableStreamBYOBRequest;
-  new(): never;
+  new (): never;
 };
 
 /** A callback function type for managing a readable byte stream.
- * 
+ *
  * @category Streams */
 declare interface ReadableByteStreamControllerCallback {
   (controller: ReadableByteStreamController): void | PromiseLike<void>;
 }
 
 /** A structure for implementing sources of binary data.
- *  
+ *
  * @category Streams */
 declare interface UnderlyingByteSource {
   autoAllocateChunkSize?: number;
@@ -737,10 +737,10 @@ declare interface UnderlyingByteSource {
   type: "bytes";
 }
 
-/** A contract for objects that can consume data chunks, providing hooks for 
- * initialization `start`, writing data `write`, handling errors `abort`, and 
- * closing the stream `close`. 
- * 
+/** A contract for objects that can consume data chunks, providing hooks for
+ * initialization `start`, writing data `write`, handling errors `abort`, and
+ * closing the stream `close`.
+ *
  * @category Streams */
 declare interface UnderlyingSink<W = any> {
   abort?: WritableStreamErrorCallback;
@@ -751,7 +751,7 @@ declare interface UnderlyingSink<W = any> {
 }
 
 /** Outlines the structure for objects that can serve as the underlying source of data for a `ReadableStream`
- *  
+ *
  * @category Streams */
 declare interface UnderlyingSource<R = any> {
   cancel?: ReadableStreamErrorCallback;
@@ -761,7 +761,7 @@ declare interface UnderlyingSource<R = any> {
 }
 
 /** Callback function to handle errors in the context of readable streams
- * 
+ *
  *  @category Streams */
 declare interface ReadableStreamErrorCallback {
   (reason: any): void | PromiseLike<void>;
@@ -772,8 +772,8 @@ declare interface ReadableStreamDefaultControllerCallback<R> {
   (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
 }
 
-/** Control the state and behavior of a readable stream 
- * 
+/** Control the state and behavior of a readable stream
+ *
  * @category Streams */
 declare interface ReadableStreamDefaultController<R = any> {
   readonly desiredSize: number | null;
@@ -785,11 +785,11 @@ declare interface ReadableStreamDefaultController<R = any> {
 /** @category Streams */
 declare var ReadableStreamDefaultController: {
   readonly prototype: ReadableStreamDefaultController;
-  new(): never;
+  new (): never;
 };
 
 /** Manage the flow of byte data in a stream, including buffering, closing the stream, and handling errors.
- * 
+ *
  *  @category Streams */
 declare interface ReadableByteStreamController {
   readonly byobRequest: ReadableStreamBYOBRequest | null;
@@ -802,11 +802,11 @@ declare interface ReadableByteStreamController {
 /** @category Streams */
 declare var ReadableByteStreamController: {
   readonly prototype: ReadableByteStreamController;
-  new(): never;
+  new (): never;
 };
 
 /** Fine grained control over pipe operations, allowing for the prevention of stream closing, cancellation, or aborting.
- * 
+ *
  *  @category Streams */
 declare interface PipeOptions {
   preventAbort?: boolean;
@@ -839,7 +839,7 @@ declare interface CountQueuingStrategy extends QueuingStrategy {
 /** @category Streams */
 declare var CountQueuingStrategy: {
   readonly prototype: CountQueuingStrategy;
-  new(options: { highWaterMark: number }): CountQueuingStrategy;
+  new (options: { highWaterMark: number }): CountQueuingStrategy;
 };
 
 /** @category Streams */
@@ -852,7 +852,7 @@ declare interface ByteLengthQueuingStrategy
 /** @category Streams */
 declare var ByteLengthQueuingStrategy: {
   readonly prototype: ByteLengthQueuingStrategy;
-  new(options: { highWaterMark: number }): ByteLengthQueuingStrategy;
+  new (options: { highWaterMark: number }): ByteLengthQueuingStrategy;
 };
 
 /** This Streams API interface represents a readable stream of byte data. The
@@ -883,7 +883,7 @@ declare interface ReadableStream<R = any> {
 /** @category Streams */
 declare var ReadableStream: {
   readonly prototype: ReadableStream;
-  new(
+  new (
     underlyingSource: UnderlyingByteSource,
     strategy?: { highWaterMark?: number; size?: undefined },
   ): ReadableStream<Uint8Array>;
@@ -957,7 +957,7 @@ declare interface WritableStreamDefaultController {
 /** @category Streams */
 declare var WritableStreamDefaultController: {
   readonly prototype: WritableStreamDefaultController;
-  new(): never;
+  new (): never;
 };
 
 /** This Streams API interface is the object returned by
@@ -1010,11 +1010,11 @@ declare interface TransformStreamDefaultController<O = any> {
 /** @category Streams */
 declare var TransformStreamDefaultController: {
   readonly prototype: TransformStreamDefaultController;
-  new(): never;
+  new (): never;
 };
 
-/** Define custom behavior for transforming data in streams 
- * 
+/** Define custom behavior for transforming data in streams
+ *
  * @category Streams */
 declare interface Transformer<I = any, O = any> {
   flush?: TransformStreamDefaultControllerCallback<O>;
@@ -1108,7 +1108,7 @@ declare interface MessageChannel {
  */
 declare var MessageChannel: {
   readonly prototype: MessageChannel;
-  new(): MessageChannel;
+  new (): MessageChannel;
 };
 
 /** @category Messaging */
@@ -1175,7 +1175,7 @@ declare interface MessagePort extends EventTarget {
  */
 declare var MessagePort: {
   readonly prototype: MessagePort;
-  new(): never;
+  new (): never;
 };
 
 /**
@@ -1248,7 +1248,7 @@ declare var CompressionStream: {
    * Throws a `TypeError` if the format passed to the constructor is not
    * supported.
    */
-  new(format: string): CompressionStream;
+  new (format: string): CompressionStream;
 };
 
 /**
@@ -1295,7 +1295,7 @@ declare var DecompressionStream: {
    * Throws a `TypeError` if the format passed to the constructor is not
    * supported.
    */
-  new(format: string): DecompressionStream;
+  new (format: string): DecompressionStream;
 };
 
 /** Dispatch an uncaught exception. Similar to a synchronous version of:
@@ -1323,14 +1323,14 @@ declare function reportError(
 declare type PredefinedColorSpace = "srgb" | "display-p3";
 
 /** Color space settings for `ImageData` objects.
- * 
+ *
  *  @category Platform */
 declare interface ImageDataSettings {
   readonly colorSpace?: PredefinedColorSpace;
 }
 
-/** An object that holds information about an image. 
- * 
+/** An object that holds information about an image.
+ *
  * @category Platform */
 declare interface ImageData {
   readonly colorSpace: PredefinedColorSpace;
@@ -1339,14 +1339,14 @@ declare interface ImageData {
   readonly width: number;
 }
 
-/** Work with image data, create new image data objects or manipulate existing 
- * pixel data.  
- * 
+/** Work with image data, create new image data objects or manipulate existing
+ * pixel data.
+ *
  * @category Platform */
 declare var ImageData: {
   prototype: ImageData;
-  new(sw: number, sh: number, settings?: ImageDataSettings): ImageData;
-  new(
+  new (sw: number, sh: number, settings?: ImageDataSettings): ImageData;
+  new (
     data: Uint8ClampedArray,
     sw: number,
     sh?: number,
