@@ -193,13 +193,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
             .shared
             .node_resolver
             .resolve_package_sub_path_from_deno_module(
-              &pkg_folder,
+              pkg_folder,
               sub_path.as_deref(),
               &referrer,
               NodeResolutionMode::Execution,
             )?;
           // todo(THIS PR): don't unwrap
-          return Ok(maybe_specifier.unwrap().into_url());
+          Ok(maybe_specifier.unwrap().into_url())
         }
       },
       Ok(MappedResolution::Normal(specifier))

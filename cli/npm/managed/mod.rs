@@ -153,6 +153,7 @@ fn create_inner(
   let fs_resolver = create_npm_fs_resolver(
     fs.clone(),
     npm_cache.clone(),
+    &package_json_deps_provider,
     &text_only_progress_bar,
     resolution.clone(),
     tarball_cache.clone(),
@@ -452,7 +453,7 @@ impl ManagedCliNpmResolver {
     if !self.top_level_install_flag.raise() {
       return Ok(()); // already did this
     }
-    let reqs = self.package_json_deps_provider.reqs();
+    let reqs = self.package_json_deps_provider.remote_pkg_reqs();
     if reqs.is_empty() {
       return Ok(());
     }
@@ -554,6 +555,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       create_npm_fs_resolver(
         self.fs.clone(),
         self.npm_cache.clone(),
+        &self.package_json_deps_provider,
         &self.text_only_progress_bar,
         npm_resolution.clone(),
         self.tarball_cache.clone(),

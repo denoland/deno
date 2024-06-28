@@ -551,7 +551,7 @@ impl Resolver for CliGraphResolver {
                       to_node_mode(mode),
                     )?;
                   // todo(THIS PR): don't unwrap
-                  return Ok(maybe_specifier.unwrap().into_url());
+                  Ok(maybe_specifier.unwrap().into_url())
                 }),
             })
         }

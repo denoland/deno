@@ -2093,7 +2093,7 @@ mod test {
         .unwrap(),
       },
       &Default::default(),
-      Some(&temp_dir_path),
+      Some(temp_dir_path),
     )
     .unwrap();
 

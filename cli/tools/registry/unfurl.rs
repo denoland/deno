@@ -78,7 +78,7 @@ impl<'a> SpecifierUnfurler<'a> {
           Ok(dep) => match dep {
             PackageJsonDepValue::Req(req) => ModuleSpecifier::parse(&format!(
               "npm:{}{}",
-              req.to_string(),
+              req,
               sub_path
                 .as_ref()
                 .map(|s| format!("/{}", s))

@@ -1,66 +1,87 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_config::package_json::PackageJsonDepValue;
 use deno_config::workspace::Workspace;
 use deno_semver::package::PackageReq;
 
+#[derive(Debug)]
+pub struct InstallNpmWorkspacePkg {
+  pub alias: String,
+  pub pkg_dir: PathBuf,
+}
+
 // todo(dsherret): this is not correct, but it's good enough for now.
 // We need deno_npm to be able to understand workspace packages and
 // then have a way to properly lay them out on the file system
 #[derive(Debug, Default)]
-pub struct PackageJsonInstallDepsProvider(Vec<PackageReq>);
+pub struct PackageJsonInstallDepsProvider {
+  remote_pkg_reqs: Vec<PackageReq>,
+  workspace_pkgs: Vec<InstallNpmWorkspacePkg>,
+}
 
 impl PackageJsonInstallDepsProvider {
   pub fn empty() -> Self {
-    Self(Vec::new())
+    Self::default()
   }
 
   pub fn from_workspace(workspace: &Arc<Workspace>) -> Self {
-    fn pkg_json_reqs(
-      pkg_json: &deno_config::package_json::PackageJson,
-    ) -> Vec<PackageReq> {
-      let mut reqs = pkg_json
-        .resolve_local_package_json_deps()
-        .into_values()
-        .filter_map(|v| v.ok())
-        .filter_map(|dep| match dep {
-          PackageJsonDepValue::Req(req) => Some(req),
-          PackageJsonDepValue::Workspace(_) => None,
-        })
-        .collect::<Vec<_>>();
+    let mut workspace_pkgs = Vec::new();
+    let mut remote_pkg_reqs = Vec::new();
+    let workspace_npm_pkgs = workspace.npm_packages();
+    for pkg_json in workspace.package_jsons() {
+      let deps = pkg_json.resolve_local_package_json_deps();
+      let mut pkg_reqs = Vec::with_capacity(deps.len());
+      for (alias, dep) in deps {
+        let Ok(dep) = dep else {
+          continue;
+        };
+        match dep {
+          PackageJsonDepValue::Req(pkg_req) => {
+            if let Some(pkg) = workspace_npm_pkgs
+              .iter()
+              .find(|pkg| pkg.matches_req(&pkg_req))
+            {
+              workspace_pkgs.push(InstallNpmWorkspacePkg {
+                alias,
+                pkg_dir: pkg.package_json.dir_path().to_path_buf(),
+              });
+            } else {
+              pkg_reqs.push(pkg_req)
+            }
+          }
+          PackageJsonDepValue::Workspace(version_req) => {
+            if let Some(pkg) = workspace_npm_pkgs.iter().find(|pkg| {
+              pkg.matches_name_and_version_req(&alias, &version_req)
+            }) {
+              workspace_pkgs.push(InstallNpmWorkspacePkg {
+                alias,
+                pkg_dir: pkg.package_json.dir_path().to_path_buf(),
+              });
+            }
+          }
+        }
+      }
       // sort within each package
-      reqs.sort();
-      reqs
-    }
+      pkg_reqs.sort();
 
-    let reqs = {
-      let (root_folder_url, root_folder) = workspace.root_folder();
-      let workspace_npm_pkgs = workspace.npm_packages();
-      root_folder
-        .pkg_json
-        .as_ref()
-        .map(|r| pkg_json_reqs(r))
-        .into_iter()
-        .flatten()
-        .chain(
-          workspace
-            .config_folders()
-            .iter()
-            .filter(|(folder_url, _)| *folder_url != root_folder_url)
-            .filter_map(|(_, folder)| folder.pkg_json.as_ref())
-            .flat_map(|p| pkg_json_reqs(p).into_iter()),
-        )
-        .filter(|req| {
-          !workspace_npm_pkgs.iter().any(|pkg| pkg.matches_req(req))
-        })
-        .collect::<Vec<_>>()
-    };
-    Self(reqs)
+      remote_pkg_reqs.extend(pkg_reqs);
+    }
+    remote_pkg_reqs.shrink_to_fit();
+    workspace_pkgs.shrink_to_fit();
+    Self {
+      remote_pkg_reqs,
+      workspace_pkgs,
+    }
   }
 
-  pub fn reqs(&self) -> &Vec<PackageReq> {
-    &self.0
+  pub fn remote_pkg_reqs(&self) -> &Vec<PackageReq> {
+    &self.remote_pkg_reqs
+  }
+
+  pub fn workspace_pkgs(&self) -> &Vec<InstallNpmWorkspacePkg> {
+    &self.workspace_pkgs
   }
 }

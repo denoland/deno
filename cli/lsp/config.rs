@@ -955,7 +955,7 @@ impl Config {
     specifier: &ModuleSpecifier,
   ) -> bool {
     if let Some(cf) = self.tree.config_file_for_specifier(specifier) {
-      if let Some(options) = cf.to_test_config().ok() {
+      if let Ok(options) = cf.to_test_config() {
         if !options.files.matches_specifier(specifier) {
           return false;
         }
