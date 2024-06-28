@@ -53,13 +53,10 @@ impl PackageJsonDepsProvider {
         )
         .filter(|req| {
           !workspace_npm_pkgs.iter().any(|pkg| {
-            req.name == pkg.package_nv.name
-              && match req.version_req.inner() {
-                deno_semver::RangeSetOrTag::RangeSet(set) => {
-                  set.satisfies(&pkg.package_nv.version)
-                }
-                deno_semver::RangeSetOrTag::Tag(_) => false,
-              }
+            crate::resolver::NpmWorkspaceMember::nv_matches_req(
+              &pkg.package_nv,
+              req,
+            )
           })
         })
         .collect::<Vec<_>>()

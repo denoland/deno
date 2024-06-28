@@ -358,14 +358,16 @@ pub struct NpmWorkspaceMember {
 }
 
 impl NpmWorkspaceMember {
-  pub fn matches_req(&self, req: &PackageReq) -> bool {
-    self.package_nv.name == req.name
+  pub fn nv_matches_req(nv: &PackageNv, req: &PackageReq) -> bool {
+    nv.name == req.name
       && match req.version_req.inner() {
-        deno_semver::RangeSetOrTag::RangeSet(set) => {
-          set.satisfies(&self.package_nv.version)
-        }
-        deno_semver::RangeSetOrTag::Tag(_) => false,
+        deno_semver::RangeSetOrTag::RangeSet(set) => set.satisfies(&nv.version),
+        deno_semver::RangeSetOrTag::Tag(tag) => tag == "workspace",
       }
+  }
+
+  pub fn matches_req(&self, req: &PackageReq) -> bool {
+    Self::nv_matches_req(&self.package_nv, req)
   }
 }
 
