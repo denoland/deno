@@ -58,13 +58,17 @@ impl ContextifyScript {
   }
 }
 
-#[derive(Debug, Clone)]
 pub struct ContextifyContext {
-  context: v8::Global<v8::Context>,
-  sandbox: v8::Global<v8::Object>,
+  context: v8::TracedReference<v8::Context>,
+  sandbox: v8::TracedReference<v8::Object>,
 }
 
-impl deno_core::GcResource for ContextifyContext {}
+impl deno_core::GarbageCollected for ContextifyContext {
+  fn trace(&self, visitor: &v8::cppgc::Visitor) {
+    visitor.trace(&self.context);
+    visitor.trace(&self.sandbox);
+  }
+}
 
 impl ContextifyContext {
   pub fn attach(
@@ -102,12 +106,12 @@ impl ContextifyContext {
       );
     }
 
-    let context = v8::Global::new(scope, v8_context);
-    let sandbox = v8::Global::new(scope, sandbox_obj);
+    let context = v8::TracedReference::new(scope, v8_context);
+    let sandbox = v8::TracedReference::new(scope, sandbox_obj);
     let wrapper =
       deno_core::cppgc::make_cppgc_object(scope, Self { context, sandbox });
-    let ptr = deno_core::cppgc::try_unwrap_cppgc_object::<Self>(wrapper.into())
-      .unwrap();
+    let ptr =
+      deno_core::cppgc::try_unwrap_cppgc_object::<Self>(scope, wrapper.into());
 
     // SAFETY: We are storing a pointer to the ContextifyContext
     // in the embedder data of the v8::Context. The contextified wrapper
@@ -115,7 +119,7 @@ impl ContextifyContext {
     unsafe {
       v8_context.set_aligned_pointer_in_embedder_data(
         3,
-        ptr as *const ContextifyContext as _,
+        ptr.borrow().unwrap() as *const ContextifyContext as _,
       );
     }
 
@@ -137,8 +141,12 @@ impl ContextifyContext {
     sandbox_obj
       .get_private(scope, private_symbol)
       .and_then(|wrapper| {
-        deno_core::cppgc::try_unwrap_cppgc_object::<Self>(wrapper)
-          .map(|s| s as _)
+        deno_core::cppgc::try_unwrap_cppgc_object::<Self>(scope, wrapper)
+          .borrow()
+          // SAFETY: the lifetime of the scope does not actually bind to
+          // the lifetime of this reference at all, but the object we read
+          // it from does, so it will be alive at least that long.
+          .map(|r| unsafe { &*(r as *const _) })
       })
   }
 
@@ -153,7 +161,7 @@ impl ContextifyContext {
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Context> {
-    v8::Local::new(scope, &self.context)
+    self.context.get(scope).unwrap()
   }
 
   fn global_proxy<'s>(
@@ -168,7 +176,7 @@ impl ContextifyContext {
     &self,
     scope: &mut v8::HandleScope<'a>,
   ) -> v8::Local<'a, v8::Object> {
-    v8::Local::new(scope, &self.sandbox)
+    self.sandbox.get(scope).unwrap()
   }
 
   fn get<'a, 'c>(
