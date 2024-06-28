@@ -72,6 +72,7 @@ pub enum FsFileType {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsDirEntry {
+  pub parent_path: String,
   pub name: String,
   pub is_file: bool,
   pub is_directory: bool,
@@ -300,6 +301,35 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   ) -> FsResult<String> {
     let buf = self.read_file_async(path, access_check).await?;
     Ok(string_from_utf8_lossy(buf))
+  }
+}
+
+pub struct DenoConfigFsAdapter<'a>(&'a dyn FileSystem);
+
+impl<'a> DenoConfigFsAdapter<'a> {
+  pub fn new(fs: &'a dyn FileSystem) -> Self {
+    Self(fs)
+  }
+}
+
+impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
+  fn read_to_string(&self, path: &Path) -> Result<String, std::io::Error> {
+    use deno_io::fs::FsError;
+    use std::io::ErrorKind;
+    self
+      .0
+      .read_text_file_lossy_sync(path, None)
+      .map_err(|err| match err {
+        FsError::Io(io) => io,
+        FsError::FileBusy => std::io::Error::new(ErrorKind::Other, "file busy"),
+        FsError::NotSupported => {
+          std::io::Error::new(ErrorKind::Other, "not supported")
+        }
+        FsError::PermissionDenied(name) => std::io::Error::new(
+          ErrorKind::PermissionDenied,
+          format!("requires {}", name),
+        ),
+      })
   }
 }
 

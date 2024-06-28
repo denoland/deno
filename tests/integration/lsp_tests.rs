@@ -280,13 +280,14 @@ fn lsp_import_map_remote() {
 #[test]
 fn lsp_import_map_data_url() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.set_import_map("data:application/json;utf8,{\"imports\": { \"example\": \"https://deno.land/x/example/mod.ts\" }}");
   });
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/file.ts",
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import example from \"example\";\n"
@@ -780,7 +781,7 @@ fn lsp_format_vendor_path() {
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/file.ts",
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"import "http://localhost:4545/run/002_hello.ts";"#,
@@ -802,7 +803,7 @@ fn lsp_format_vendor_path() {
     "workspace/executeCommand",
     json!({
       "command": "deno.cache",
-      "arguments": [[], "file:///a/file.ts"],
+      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
     }),
   );
   assert!(temp_dir
@@ -2622,7 +2623,7 @@ fn lsp_import_map_setting_with_deno_json() {
   });
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/file.ts",
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "import \"file2\";\n",
@@ -7585,7 +7586,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   client.did_open(
     json!({
       "textDocument": {
-        "uri": "file:///a/file.ts",
+        "uri": temp_dir.uri().join("file.ts").unwrap(),
         "languageId": "typescript",
         "version": 1,
         "text": concat!(
@@ -7612,7 +7613,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
           "npm:chalk@~5",
           "http://localhost:4545/subdir/print_hello.ts",
         ],
-        "file:///a/file.ts",
+        temp_dir.uri().join("file.ts").unwrap(),
       ],
     }),
   );
@@ -7620,14 +7621,14 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try auto-import with path
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/a.ts",
+      "uri": temp_dir.uri().join("a.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "getClie",
     }
   }));
   let list = client.get_completion_list(
-    "file:///a/a.ts",
+    temp_dir.uri().join("a.ts").unwrap(),
     (0, 7),
     json!({ "triggerKind": 1 }),
   );
@@ -7668,20 +7669,23 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try quick fix with path
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/b.ts",
+      "uri": temp_dir.uri().join("b.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "getClient",
     }
   }));
   let diagnostics = diagnostics
-    .messages_with_file_and_source("file:///a/b.ts", "deno-ts")
+    .messages_with_file_and_source(
+      temp_dir.uri().join("b.ts").unwrap().as_str(),
+      "deno-ts",
+    )
     .diagnostics;
   let res = client.write_request(
     "textDocument/codeAction",
     json!(json!({
       "textDocument": {
-        "uri": "file:///a/b.ts"
+        "uri": temp_dir.uri().join("b.ts").unwrap()
       },
       "range": {
         "start": { "line": 0, "character": 0 },
@@ -7713,7 +7717,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       "edit": {
         "documentChanges": [{
             "textDocument": {
-              "uri": "file:///a/b.ts",
+              "uri": temp_dir.uri().join("b.ts").unwrap(),
               "version": 1,
             },
             "edits": [{
@@ -7731,7 +7735,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try auto-import without path
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/c.ts",
+      "uri": temp_dir.uri().join("c.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "chal",
@@ -7739,7 +7743,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   }));
 
   let list = client.get_completion_list(
-    "file:///a/c.ts",
+    temp_dir.uri().join("c.ts").unwrap(),
     (0, 4),
     json!({ "triggerKind": 1 }),
   );
@@ -7778,20 +7782,23 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try quick fix without path
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/d.ts",
+      "uri": temp_dir.uri().join("d.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "chalk",
     }
   }));
   let diagnostics = diagnostics
-    .messages_with_file_and_source("file:///a/d.ts", "deno-ts")
+    .messages_with_file_and_source(
+      temp_dir.uri().join("d.ts").unwrap().as_str(),
+      "deno-ts",
+    )
     .diagnostics;
   let res = client.write_request(
     "textDocument/codeAction",
     json!(json!({
       "textDocument": {
-        "uri": "file:///a/d.ts"
+        "uri": temp_dir.uri().join("d.ts").unwrap()
       },
       "range": {
         "start": { "line": 0, "character": 0 },
@@ -7823,7 +7830,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       "edit": {
         "documentChanges": [{
             "textDocument": {
-              "uri": "file:///a/d.ts",
+              "uri": temp_dir.uri().join("d.ts").unwrap(),
               "version": 1,
             },
             "edits": [{
@@ -7841,7 +7848,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try auto-import with http import map
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/e.ts",
+      "uri": temp_dir.uri().join("e.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "printH",
@@ -7849,7 +7856,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   }));
 
   let list = client.get_completion_list(
-    "file:///a/e.ts",
+    temp_dir.uri().join("e.ts").unwrap(),
     (0, 6),
     json!({ "triggerKind": 1 }),
   );
@@ -7888,20 +7895,23 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try quick fix with http import
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/f.ts",
+      "uri": temp_dir.uri().join("f.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "printHello",
     }
   }));
   let diagnostics = diagnostics
-    .messages_with_file_and_source("file:///a/f.ts", "deno-ts")
+    .messages_with_file_and_source(
+      temp_dir.uri().join("f.ts").unwrap().as_str(),
+      "deno-ts",
+    )
     .diagnostics;
   let res = client.write_request(
     "textDocument/codeAction",
     json!(json!({
       "textDocument": {
-        "uri": "file:///a/f.ts"
+        "uri": temp_dir.uri().join("f.ts").unwrap()
       },
       "range": {
         "start": { "line": 0, "character": 0 },
@@ -7933,7 +7943,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       "edit": {
         "documentChanges": [{
             "textDocument": {
-              "uri": "file:///a/f.ts",
+              "uri": temp_dir.uri().join("f.ts").unwrap(),
               "version": 1,
             },
             "edits": [{
@@ -7951,14 +7961,14 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   // try auto-import with npm package with sub-path on value side of import map
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/nested_path.ts",
+      "uri": temp_dir.uri().join("nested_path.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "entry",
     }
   }));
   let list = client.get_completion_list(
-    "file:///a/nested_path.ts",
+    temp_dir.uri().join("nested_path.ts").unwrap(),
     (0, 5),
     json!({ "triggerKind": 1 }),
   );
@@ -9534,8 +9544,6 @@ fn lsp_untitled_file_diagnostics() {
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceAverage {
   pub name: String,
-  pub count: u32,
-  pub average_duration: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -9595,7 +9603,6 @@ fn lsp_performance() {
       "tsc.op.op_is_node_file",
       "tsc.op.op_load",
       "tsc.op.op_script_names",
-      "tsc.op.op_ts_config",
       "tsc.request.$getAssets",
       "tsc.request.$getSupportedCodeFixes",
       "tsc.request.getQuickInfoAtPosition",
@@ -11003,7 +11010,7 @@ fn lsp_lint_with_config() {
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/file.ts",
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "// TODO: fixme\nexport async function non_camel_case() {\nconsole.log(\"finished!\")\n}"
@@ -12106,6 +12113,817 @@ fn lsp_vendor_dir() {
 
   client.shutdown();
 }
+
+#[test]
+fn lsp_deno_json_scopes_import_map() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.create_dir_all("project2/project3");
+  temp_dir.write(
+    "project1/deno.json",
+    json!({
+      "imports": {
+        "foo": "./foo1.ts",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("project1/foo1.ts", "");
+  temp_dir.write(
+    "project2/deno.json",
+    json!({
+      "imports": {
+        "foo": "./foo2.ts",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("project2/foo2.ts", "");
+  temp_dir.write(
+    "project2/project3/deno.json",
+    json!({
+      "imports": {
+        "foo": "./foo3.ts",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("project2/project3/foo3.ts", "");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"foo\";\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 7 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.uri().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
+      },
+      "range": {
+        "start": { "line": 0, "character": 7 },
+        "end": { "line": 0, "character": 12 },
+      },
+    })
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"foo\";\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 7 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.uri().join("project2/foo2.ts").unwrap().as_str().trim_start_matches("file")),
+      },
+      "range": {
+        "start": { "line": 0, "character": 7 },
+        "end": { "line": 0, "character": 12 },
+      },
+    })
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"foo\";\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 7 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.uri().join("project2/project3/foo3.ts").unwrap().as_str().trim_start_matches("file")),
+      },
+      "range": {
+        "start": { "line": 0, "character": 7 },
+        "end": { "line": 0, "character": 12 },
+      },
+    })
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_deno_json_scopes_vendor_dirs() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.create_dir_all("project2/project3");
+  temp_dir.write(
+    "project1/deno.json",
+    json!({
+      "vendor": true,
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "project2/deno.json",
+    json!({
+      "vendor": true,
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "project2/project3/deno.json",
+    json!({
+      "vendor": true,
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"http://localhost:4545/subdir/mod1.ts\";\n",
+    },
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("project1/file.ts").unwrap()],
+    }),
+  );
+  let res = client.write_request(
+    "textDocument/definition",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 7 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "targetUri": temp_dir.uri().join("project1/vendor/http_localhost_4545/subdir/mod1.ts").unwrap(),
+      "targetRange": {
+        "start": {
+          "line": 0,
+          "character": 0,
+        },
+        "end": {
+          "line": 17,
+          "character": 0,
+        },
+      },
+      "targetSelectionRange": {
+        "start": {
+          "line": 0,
+          "character": 0,
+        },
+        "end": {
+          "line": 17,
+          "character": 0,
+        },
+      },
+    }]),
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"http://localhost:4545/subdir/mod2.ts\";\n",
+    },
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("project2/file.ts").unwrap()],
+    }),
+  );
+  let res = client.write_request(
+    "textDocument/definition",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 7 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "targetUri": temp_dir.uri().join("project2/vendor/http_localhost_4545/subdir/mod2.ts").unwrap(),
+      "targetRange": {
+        "start": {
+          "line": 0,
+          "character": 0,
+        },
+        "end": {
+          "line": 1,
+          "character": 0,
+        },
+      },
+      "targetSelectionRange": {
+        "start": {
+          "line": 0,
+          "character": 0,
+        },
+        "end": {
+          "line": 1,
+          "character": 0,
+        },
+      },
+    }]),
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"http://localhost:4545/subdir/mod3.js\";\n",
+    },
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("project2/project3/file.ts").unwrap()],
+    }),
+  );
+  let res = client.write_request(
+    "textDocument/definition",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project2/project3/file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 7 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "targetUri": temp_dir.uri().join("project2/project3/vendor/http_localhost_4545/subdir/mod3.js").unwrap(),
+      "targetRange": {
+        "start": {
+          "line": 0,
+          "character": 0,
+        },
+        "end": {
+          "line": 1,
+          "character": 0,
+        },
+      },
+      "targetSelectionRange": {
+        "start": {
+          "line": 0,
+          "character": 0,
+        },
+        "end": {
+          "line": 1,
+          "character": 0,
+        },
+      },
+    }]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_deno_json_scopes_ts_config() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.create_dir_all("project2");
+  temp_dir.write("project1/deno.json", json!({}).to_string());
+  temp_dir.write(
+    "project2/deno.json",
+    json!({
+      "compilerOptions": {
+        "lib": ["deno.worker"],
+      },
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "Window;\nWorkerGlobalScope;\n",
+    },
+  }));
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "Window;\nWorkerGlobalScope;\n",
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all_messages()),
+    json!([
+      {
+        "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+        "version": 1,
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 6 },
+            },
+            "severity": 1,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'Window'.",
+          },
+        ],
+      },
+      {
+        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+        "version": 1,
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 17 },
+            },
+            "severity": 1,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'WorkerGlobalScope'.",
+          },
+        ],
+      }
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_deno_json_scopes_declaration_files() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.create_dir_all("project2");
+  temp_dir.write("project1/deno.json", json!({}).to_string());
+  temp_dir.write("project2/deno.json", json!({}).to_string());
+  temp_dir.write("project1/foo.d.ts", "declare type Foo = number;\n");
+  temp_dir.write("project2/bar.d.ts", "declare type Bar = number;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export const foo: Foo = 1;\nexport const bar: Bar = 1;\n",
+    },
+  }));
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export const foo: Foo = 1;\nexport const bar: Bar = 1;\n",
+    },
+  }));
+  assert_eq!(
+    json!(diagnostics.all_messages()),
+    json!([
+      {
+        "uri": temp_dir.uri().join("project2/file.ts").unwrap(),
+        "version": 1,
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 18 },
+              "end": { "line": 0, "character": 21 },
+            },
+            "severity": 1,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'Foo'.",
+          },
+        ],
+      },
+      {
+        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+        "version": 1,
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 1, "character": 18 },
+              "end": { "line": 1, "character": 21 },
+            },
+            "severity": 1,
+            "code": 2304,
+            "source": "deno-ts",
+            "message": "Cannot find name 'Bar'.",
+          },
+        ],
+      }
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_deno_json_scopes_find_references() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.create_dir_all("project2");
+  temp_dir.write("project1/deno.json", json!({}).to_string());
+  temp_dir.write("project2/deno.json", json!({}).to_string());
+  let file1 = source_file(
+    temp_dir.path().join("project1/file.ts"),
+    "export const foo = 1;\n",
+  );
+  let file2 = source_file(
+    temp_dir.path().join("project2/file.ts"),
+    "export { foo } from \"../project1/file.ts\";\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": file1.identifier(),
+      "position": file1.range_of("foo").start,
+      "context": {
+        "includeDeclaration": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "uri": file1.uri(),
+        "range": file1.range_of("foo"),
+      },
+      {
+        "uri": file2.uri(),
+        "range": file2.range_of("foo"),
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_deno_json_scopes_file_rename_import_edits() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.create_dir_all("project2");
+  temp_dir.write("project1/deno.json", json!({}).to_string());
+  temp_dir.write("project2/deno.json", json!({}).to_string());
+  let file1 = source_file(temp_dir.path().join("project1/file.ts"), "");
+  let file2 = source_file(
+    temp_dir.path().join("project2/file.ts"),
+    "import \"../project1/file.ts\";\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "workspace/willRenameFiles",
+    json!({
+      "files": [
+        {
+          "oldUri": file1.uri(),
+          "newUri": file1.uri().join("file_renamed.ts").unwrap(),
+        },
+      ],
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "documentChanges": [
+        {
+          "textDocument": {
+            "uri": file2.uri(),
+            "version": null,
+          },
+          "edits": [
+            {
+              "range": file2.range_of("../project1/file.ts"),
+              "newText": "../project1/file_renamed.ts",
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_deno_json_scopes_goto_implementations() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.create_dir_all("project2");
+  temp_dir.write("project1/deno.json", json!({}).to_string());
+  temp_dir.write("project2/deno.json", json!({}).to_string());
+  let file1 = source_file(
+    temp_dir.path().join("project1/file.ts"),
+    "export interface Foo {}\n",
+  );
+  let file2 = source_file(
+    temp_dir.path().join("project2/file.ts"),
+    r#"
+      import type { Foo } from "../project1/file.ts";
+      export class SomeFoo implements Foo {}
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/implementation",
+    json!({
+      "textDocument": file1.identifier(),
+      "position": file1.range_of("Foo").start,
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "targetUri": file2.uri(),
+        "targetRange": file2.range_of("export class SomeFoo implements Foo {}"),
+        "targetSelectionRange": file2.range_of("SomeFoo"),
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_deno_json_scopes_call_hierarchy() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.create_dir_all("project2");
+  temp_dir.create_dir_all("project3");
+  temp_dir.write("project1/deno.json", json!({}).to_string());
+  temp_dir.write("project2/deno.json", json!({}).to_string());
+  temp_dir.write("project3/deno.json", json!({}).to_string());
+  let file1 = source_file(
+    temp_dir.path().join("project1/file.ts"),
+    r#"
+      export function foo() {}
+    "#,
+  );
+  let file2 = source_file(
+    temp_dir.path().join("project2/file.ts"),
+    r#"
+      import { foo } from "../project1/file.ts";
+      export function bar() {
+        foo();
+      }
+    "#,
+  );
+  let file3 = source_file(
+    temp_dir.path().join("project3/file.ts"),
+    r#"
+      import { bar } from "../project2/file.ts";
+      bar();
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/prepareCallHierarchy",
+    json!({
+      "textDocument": file2.identifier(),
+      "position": file2.range_of("bar").start,
+    }),
+  );
+  assert_eq!(
+    &res,
+    &json!([
+      {
+        "name": "bar",
+        "kind": 12,
+        "detail": "",
+        "uri": file2.uri(),
+        "range": {
+          "start": { "line": 2, "character": 6 },
+          "end": { "line": 4, "character": 7 },
+        },
+        "selectionRange": file2.range_of("bar"),
+      },
+    ]),
+  );
+  let item = res.as_array().unwrap().first().unwrap();
+  let res = client
+    .write_request("callHierarchy/incomingCalls", json!({ "item": item }));
+  assert_eq!(
+    res,
+    json!([
+      {
+        "from": {
+          "name": "file.ts",
+          "kind": 2,
+          "detail": "project3",
+          "uri": file3.uri(),
+          "range": {
+            "start": { "line": 1, "character": 6 },
+            "end": { "line": 3, "character": 4 },
+          },
+          "selectionRange": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 },
+          },
+        },
+        "fromRanges": [
+          {
+            "start": { "line": 2, "character": 6 },
+            "end": { "line": 2, "character": 9 },
+          },
+        ],
+      },
+    ]),
+  );
+  let res = client
+    .write_request("callHierarchy/outgoingCalls", json!({ "item": item }));
+  assert_eq!(
+    res,
+    json!([
+      {
+        "to": {
+          "name": "foo",
+          "kind": 12,
+          "detail": "",
+          "uri": file1.uri(),
+          "range": file1.range_of("export function foo() {}"),
+          "selectionRange": file1.range_of("foo"),
+        },
+        "fromRanges": [
+          {
+            "start": { "line": 3, "character": 8 },
+            "end": { "line": 3, "character": 11 },
+          },
+        ],
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_deno_json_scopes_rename_symbol() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.create_dir_all("project2");
+  temp_dir.write("project1/deno.json", json!({}).to_string());
+  temp_dir.write("project2/deno.json", json!({}).to_string());
+  let file1 = source_file(
+    temp_dir.path().join("project1/file.ts"),
+    "export const foo = 1;\n",
+  );
+  let file2 = source_file(
+    temp_dir.path().join("project2/file.ts"),
+    "export { foo } from \"../project1/file.ts\";\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/rename",
+    json!({
+      "textDocument": file1.identifier(),
+      "position": file1.range_of("foo").start,
+      "newName": "bar",
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "documentChanges": [
+        {
+          "textDocument": {
+            "uri": file1.uri(),
+            "version": null,
+          },
+          "edits": [
+            {
+              "range": file1.range_of("foo"),
+              "newText": "bar",
+            },
+          ],
+        },
+        {
+          "textDocument": {
+            "uri": file2.uri(),
+            "version": null,
+          },
+          "edits": [
+            {
+              "range": file2.range_of("foo"),
+              "newText": "bar",
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_deno_json_scopes_search_symbol() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1");
+  temp_dir.create_dir_all("project2");
+  temp_dir.write("project1/deno.json", json!({}).to_string());
+  temp_dir.write("project2/deno.json", json!({}).to_string());
+  let file1 = source_file(
+    temp_dir.path().join("project1/file.ts"),
+    "export const someSymbol1 = 1;\n",
+  );
+  let file2 = source_file(
+    temp_dir.path().join("project2/file.ts"),
+    "export const someSymbol2 = 2;\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res =
+    client.write_request("workspace/symbol", json!({ "query": "someSymbol" }));
+  assert_eq!(
+    res,
+    json!([
+      {
+        "name": "someSymbol1",
+        "kind": 13,
+        "location": {
+          "uri": file1.uri(),
+          "range": file1.range_of("someSymbol1 = 1"),
+        },
+        "containerName": "",
+      },
+      {
+        "name": "someSymbol2",
+        "kind": 13,
+        "location": {
+          "uri": file2.uri(),
+          "range": file2.range_of("someSymbol2 = 2"),
+        },
+        "containerName": "",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
 #[test]
 fn lsp_deno_json_workspace_fmt_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -12370,6 +13188,68 @@ fn lsp_deno_json_workspace_lint_config() {
 }
 
 #[test]
+fn lsp_deno_json_workspace_import_map() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("project1/project2");
+  temp_dir.write(
+    "project1/deno.json",
+    json!({
+      "workspaces": ["project2"],
+      "imports": {
+        "foo": "./foo1.ts",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("project1/foo1.ts", "");
+  temp_dir.write(
+    "project1/project2/deno.json",
+    // Should ignore and inherit import map from `project1/deno.json`.
+    json!({
+      "imports": {
+        "foo": "./foo2.ts",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("project1/project2/foo2.ts", "");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("project1/project2/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"foo\";\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project1/project2/file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 7 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.uri().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
+      },
+      "range": {
+        "start": { "line": 0, "character": 7 },
+        "end": { "line": 0, "character": 12 },
+      },
+    })
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_deno_json_workspace_jsr_resolution() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12619,7 +13499,7 @@ fn lsp_deno_future_env_byonm() {
         "severity": 1,
         "code": "resolver-error",
         "source": "deno",
-        "message": format!("Could not find a matching package for 'npm:chalk' in '{}'. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.", temp_dir.path().join("package.json")),
+        "message": "Could not find a matching package for 'npm:chalk' in a package.json file. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.",
       },
     ])
   );
@@ -13007,7 +13887,7 @@ fn lsp_uses_lockfile_for_npm_initialization() {
     assert!(!line.contains("Running npm resolution."), "Line: {}", line);
     line.contains("Server ready.")
   });
-  assert_eq!(skipping_count, 1);
+  assert_eq!(skipping_count, 2);
   client.shutdown();
 }
 

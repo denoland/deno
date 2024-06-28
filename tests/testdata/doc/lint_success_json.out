@@ -2,6 +2,7 @@
   {
     "kind": "class",
     "name": "Test",
+    "isDefault": false,
     "location": {
       "filename": "file:///[WILDCARD]/lint_success.ts",
       "line": 2,

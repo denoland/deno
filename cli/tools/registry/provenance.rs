@@ -570,6 +570,7 @@ static DEFAULT_REKOR_URL: Lazy<String> = Lazy::new(|| {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LogEntry {
+  #[allow(dead_code)]
   #[serde(rename = "logID")]
   pub log_id: String,
   pub log_index: u64,

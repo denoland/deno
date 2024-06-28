@@ -32,6 +32,7 @@ mod path;
 mod polyfill;
 mod resolution;
 
+pub use deno_config::package_json::PackageJson;
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
 use ops::vm;
@@ -39,7 +40,8 @@ pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
-pub use package_json::PackageJson;
+pub use package_json::load_pkg_json;
+pub use package_json::PackageJsonThreadLocalCache;
 pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
@@ -230,6 +232,15 @@ deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   parameters = [P: NodePermissions],
   ops = [
+    ops::blocklist::op_socket_address_parse,
+    ops::blocklist::op_socket_address_get_serialization,
+
+    ops::blocklist::op_blocklist_new,
+    ops::blocklist::op_blocklist_add_address,
+    ops::blocklist::op_blocklist_add_range,
+    ops::blocklist::op_blocklist_add_subnet,
+    ops::blocklist::op_blocklist_check,
+
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
     ops::crypto::op_node_create_decipheriv,
@@ -323,7 +334,6 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_close,
     ops::zlib::op_zlib_close_if_pending,
     ops::zlib::op_zlib_write,
-    ops::zlib::op_zlib_write_async,
     ops::zlib::op_zlib_init,
     ops::zlib::op_zlib_reset,
     ops::zlib::brotli::op_brotli_compress,
@@ -489,6 +499,7 @@ deno_core::extension!(deno_node,
     "internal_binding/uv.ts",
     "internal/assert.mjs",
     "internal/async_hooks.ts",
+    "internal/blocklist.mjs",
     "internal/buffer.mjs",
     "internal/child_process.ts",
     "internal/cli_table.ts",
@@ -583,7 +594,7 @@ deno_core::extension!(deno_node,
     "node:constants" = "constants.ts",
     "node:crypto" = "crypto.ts",
     "node:dgram" = "dgram.ts",
-    "node:diagnostics_channel" = "diagnostics_channel.ts",
+    "node:diagnostics_channel" = "diagnostics_channel.js",
     "node:dns" = "dns.ts",
     "node:dns/promises" = "dns/promises.ts",
     "node:domain" = "domain.ts",
