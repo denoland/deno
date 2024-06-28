@@ -31,7 +31,7 @@ use crate::args::NpmProcessStateKind;
 use crate::args::PackageJsonDepsProvider;
 use crate::cache::FastInsecureHasher;
 use crate::http_util::HttpClientProvider;
-use crate::lockfile::CliLockfile;
+use crate::args::CliLockfile;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::sync::AtomicFlag;

@@ -26,7 +26,7 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
 
-use crate::lockfile::CliLockfile;
+use crate::args::CliLockfile;
 use crate::util::sync::SyncReadAsyncWriteLock;
 
 use super::CliNpmRegistryApi;

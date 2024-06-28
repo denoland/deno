@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::jsr_url;
+use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
@@ -10,7 +11,6 @@ use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
-use crate::lockfile::CliLockfile;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::SloppyImportsResolver;

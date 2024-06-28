@@ -22,7 +22,7 @@ use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
-use crate::lockfile::CliLockfile;
+use crate::args::CliLockfile;
 use crate::node;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliNodeResolver;

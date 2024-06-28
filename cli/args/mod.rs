@@ -4,6 +4,7 @@ pub mod deno_json;
 mod flags;
 mod flags_net;
 mod import_map;
+mod lockfile;
 pub mod package_json;
 
 pub use self::import_map::resolve_import_map;
@@ -33,6 +34,7 @@ pub use deno_config::TsConfigType;
 pub use deno_config::TsTypeLib;
 pub use deno_config::WorkspaceConfig;
 pub use flags::*;
+pub use lockfile::CliLockfile;
 pub use package_json::PackageJsonDepsProvider;
 
 use deno_ast::ModuleSpecifier;
@@ -69,7 +71,6 @@ use thiserror::Error;
 use crate::args::import_map::enhance_import_map_value_with_workspace_members;
 use crate::cache;
 use crate::file_fetcher::FileFetcher;
-use crate::lockfile::CliLockfile;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
 
