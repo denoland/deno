@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "tests": {
+    "auto_install": {
+      "args": "run b/main.ts",
+      "output": "b/main.out"
+    }
+  }
+}

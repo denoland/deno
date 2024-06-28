@@ -1,7 +1,0 @@
-{
-  "tempDir": true,
-  "steps": [{
-    "args": "run b/main.ts",
-    "output": "b/main.out"
-  }]
-}
