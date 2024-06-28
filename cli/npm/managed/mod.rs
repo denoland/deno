@@ -26,12 +26,12 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use resolution::AddPkgReqsResult;
 
+use crate::args::CliLockfile;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::args::PackageJsonDepsProvider;
 use crate::cache::FastInsecureHasher;
 use crate::http_util::HttpClientProvider;
-use crate::args::CliLockfile;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::sync::AtomicFlag;
@@ -208,10 +208,7 @@ async fn resolve_snapshot(
         let snapshot = snapshot_from_lockfile(lockfile.clone(), api)
           .await
           .with_context(|| {
-            format!(
-              "failed reading lockfile '{}'",
-              lockfile.filename.display()
-            )
+            format!("failed reading lockfile '{}'", lockfile.filename.display())
           })?;
         Ok(Some(snapshot))
       } else {

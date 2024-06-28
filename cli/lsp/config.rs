@@ -2,13 +2,13 @@
 
 use super::logging::lsp_log;
 use crate::args::discover_npmrc;
+use crate::args::CliLockfile;
 use crate::args::ConfigFile;
 use crate::args::FmtOptions;
 use crate::args::LintOptions;
 use crate::args::DENO_FUTURE;
 use crate::cache::FastInsecureHasher;
 use crate::file_fetcher::FileFetcher;
-use crate::args::CliLockfile;
 use crate::lsp::logging::lsp_warn;
 use crate::tools::lint::get_configured_rules;
 use crate::tools::lint::ConfiguredRules;

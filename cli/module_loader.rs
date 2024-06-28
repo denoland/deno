@@ -9,6 +9,7 @@ use std::str;
 use std::sync::Arc;
 
 use crate::args::jsr_url;
+use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
@@ -22,7 +23,6 @@ use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
-use crate::args::CliLockfile;
 use crate::node;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliNodeResolver;
