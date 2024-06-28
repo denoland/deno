@@ -9,12 +9,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::cdp;
-use crate::lsp::ReplCompletionItem;
 use crate::tools::repl;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::serde_json;
-use deno_core::serde_json::json;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use tokio::sync::mpsc;
@@ -32,6 +30,7 @@ use jupyter_runtime::ReplyError;
 use jupyter_runtime::ReplyStatus;
 use jupyter_runtime::StreamContent;
 
+use super::ReplSessionProxy;
 pub struct JupyterServer {
   execution_count: usize,
   last_execution_request: Rc<RefCell<Option<JupyterMessage>>>,
@@ -41,140 +40,11 @@ pub struct JupyterServer {
   repl_session_proxy: ReplSessionProxy,
 }
 
-struct ReplSessionProxy {
-  repl_session: repl::ReplSession,
-}
-
-impl ReplSessionProxy {
-  pub async fn lsp_completions(
-    &mut self,
-    line_text: &str,
-    position: usize,
-  ) -> Vec<ReplCompletionItem> {
-    self
-      .repl_session
-      .language_server
-      .completions(line_text, position)
-      .await
-  }
-
-  pub async fn get_properties(
-    &mut self,
-    object_id: String,
-  ) -> Option<cdp::GetPropertiesResponse> {
-    let get_properties_response = self
-      .repl_session
-      .post_message_with_event_loop(
-        "Runtime.getProperties",
-        Some(cdp::GetPropertiesArgs {
-          object_id,
-          own_properties: None,
-          accessor_properties_only: None,
-          generate_preview: None,
-          non_indexed_properties_only: Some(true),
-        }),
-      )
-      .await
-      .ok()?;
-    serde_json::from_value(get_properties_response).ok()
-  }
-
-  pub async fn evaluate(
-    &mut self,
-    expr: String,
-  ) -> Option<cdp::EvaluateResponse> {
-    let evaluate_response: serde_json::Value = self
-      .repl_session
-      .post_message_with_event_loop(
-        "Runtime.evaluate",
-        Some(cdp::EvaluateArgs {
-          expression: expr,
-          object_group: None,
-          include_command_line_api: None,
-          silent: None,
-          context_id: Some(self.repl_session.context_id),
-          return_by_value: None,
-          generate_preview: None,
-          user_gesture: None,
-          await_promise: None,
-          throw_on_side_effect: Some(true),
-          timeout: Some(200),
-          disable_breaks: None,
-          repl_mode: None,
-          allow_unsafe_eval_blocked_by_csp: None,
-          unique_context_id: None,
-        }),
-      )
-      .await
-      .ok()?;
-    serde_json::from_value(evaluate_response).ok()
-  }
-
-  pub async fn global_lexical_scope_names(
-    &mut self,
-  ) -> cdp::GlobalLexicalScopeNamesResponse {
-    let evaluate_response = self
-      .repl_session
-      .post_message_with_event_loop(
-        "Runtime.globalLexicalScopeNames",
-        Some(cdp::GlobalLexicalScopeNamesArgs {
-          execution_context_id: Some(self.repl_session.context_id),
-        }),
-      )
-      .await
-      .unwrap();
-    serde_json::from_value(evaluate_response).unwrap()
-  }
-
-  pub async fn evaluate_line_with_object_wrapping(
-    &mut self,
-    line: &str,
-  ) -> Result<repl::TsEvaluateResponse, AnyError> {
-    self
-      .repl_session
-      .evaluate_line_with_object_wrapping(line)
-      .await
-  }
-
-  pub async fn call_function_on_args(
-    &mut self,
-    function_declaration: String,
-    args: &[cdp::RemoteObject],
-  ) -> Result<cdp::CallFunctionOnResponse, AnyError> {
-    self
-      .repl_session
-      .call_function_on_args(function_declaration, args)
-      .await
-  }
-
-  // TODO(bartlomieju): rename to "broadcast_result"?
-  pub async fn call_function_on(
-    &mut self,
-    arg0: cdp::CallArgument,
-    arg1: cdp::CallArgument,
-  ) -> Option<cdp::CallFunctionOnResponse> {
-    let response = self.repl_session
-    .post_message_with_event_loop(
-      "Runtime.callFunctionOn",
-      Some(json!({
-        "functionDeclaration": r#"async function (execution_count, result) {
-          await Deno[Deno.internal].jupyter.broadcastResult(execution_count, result);
-    }"#,
-        "arguments": [arg0, arg1],
-        "executionContextId": self.repl_session.context_id,
-        "awaitPromise": true,
-      })),
-    )
-    .await.ok()?;
-    serde_json::from_value(response).ok()
-  }
-}
-
 impl JupyterServer {
   pub async fn start(
     connection_info: ConnectionInfo,
     mut stdio_rx: mpsc::UnboundedReceiver<StreamContent>,
-    mut repl_session: repl::ReplSession,
+    mut repl_session_proxy: ReplSessionProxy,
   ) -> Result<(), AnyError> {
     let mut heartbeat =
       connection_info.create_kernel_heartbeat_connection().await?;
@@ -192,7 +62,8 @@ impl JupyterServer {
 
     // Store `iopub_connection` in the op state so it's accessible to the runtime API.
     {
-      let op_state_rc = repl_session.worker.js_runtime.op_state();
+      let op_state_rc =
+        repl_session_proxy.repl_session.worker.js_runtime.op_state();
       let mut op_state = op_state_rc.borrow_mut();
       op_state.put(iopub_connection.clone());
       op_state.put(last_execution_request.clone());
@@ -204,7 +75,7 @@ impl JupyterServer {
       execution_count: 0,
       iopub_connection: iopub_connection.clone(),
       last_execution_request: last_execution_request.clone(),
-      repl_session_proxy: ReplSessionProxy { repl_session },
+      repl_session_proxy,
     };
 
     let hearbeat_fut = deno_core::unsync::spawn(async move {
