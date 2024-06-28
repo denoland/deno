@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use deno_config::package_json::PackageJsonDepValue;
 use deno_config::workspace::Workspace;
 use deno_semver::package::PackageReq;
 
@@ -9,30 +10,38 @@ use deno_semver::package::PackageReq;
 // We need deno_npm to be able to understand workspace packages and
 // then have a way to properly lay them out on the file system
 #[derive(Debug, Default)]
-pub struct PackageJsonDepsProvider(Vec<PackageReq>);
+pub struct PackageJsonInstallDepsProvider(Vec<PackageReq>);
 
-impl PackageJsonDepsProvider {
+impl PackageJsonInstallDepsProvider {
   pub fn empty() -> Self {
     Self(Vec::new())
   }
 
   pub fn from_workspace(workspace: &Arc<Workspace>) -> Self {
+    fn pkg_json_reqs(
+      pkg_json: &deno_config::package_json::PackageJson,
+    ) -> Vec<PackageReq> {
+      let mut reqs = pkg_json
+        .resolve_local_package_json_deps()
+        .into_values()
+        .filter_map(|v| v.ok())
+        .filter_map(|dep| match dep {
+          PackageJsonDepValue::Req(req) => Some(req),
+          PackageJsonDepValue::Workspace(_) => None,
+        })
+        .collect::<Vec<_>>();
+      // sort within each package
+      reqs.sort();
+      reqs
+    }
+
     let reqs = {
       let (root_folder_url, root_folder) = workspace.root_folder();
       let workspace_npm_pkgs = workspace.npm_packages();
       root_folder
         .pkg_json
         .as_ref()
-        .map(|p| {
-          // sort within each package
-          let mut reqs = p
-            .resolve_local_package_json_version_reqs()
-            .into_values()
-            .filter_map(|v| v.ok())
-            .collect::<Vec<_>>();
-          reqs.sort();
-          reqs.into_iter()
-        })
+        .map(|r| pkg_json_reqs(r))
         .into_iter()
         .flatten()
         .chain(
@@ -41,23 +50,10 @@ impl PackageJsonDepsProvider {
             .iter()
             .filter(|(folder_url, _)| *folder_url != root_folder_url)
             .filter_map(|(_, folder)| folder.pkg_json.as_ref())
-            .flat_map(|p| {
-              let mut reqs = p
-                .resolve_local_package_json_version_reqs()
-                .into_values()
-                .filter_map(|v| v.ok())
-                .collect::<Vec<_>>();
-              reqs.sort();
-              reqs.into_iter()
-            }),
+            .flat_map(|p| pkg_json_reqs(p).into_iter()),
         )
         .filter(|req| {
-          !workspace_npm_pkgs.iter().any(|pkg| {
-            crate::resolver::NpmWorkspaceMember::nv_matches_req(
-              &pkg.package_nv,
-              req,
-            )
-          })
+          !workspace_npm_pkgs.iter().any(|pkg| pkg.matches_req(req))
         })
         .collect::<Vec<_>>()
     };

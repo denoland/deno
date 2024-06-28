@@ -30,7 +30,7 @@ use resolution::AddPkgReqsResult;
 use crate::args::Lockfile;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
-use crate::args::PackageJsonDepsProvider;
+use crate::args::PackageJsonInstallDepsProvider;
 use crate::cache::FastInsecureHasher;
 use crate::http_util::HttpClientProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
@@ -67,7 +67,7 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   pub maybe_node_modules_path: Option<PathBuf>,
   pub npm_system_info: NpmSystemInfo,
-  pub package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+  pub package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
   pub npmrc: Arc<ResolvedNpmRc>,
 }
 
@@ -132,7 +132,7 @@ fn create_inner(
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
   npm_rc: Arc<ResolvedNpmRc>,
-  package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+  package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
   text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   node_modules_dir_path: Option<PathBuf>,
   npm_system_info: NpmSystemInfo,
@@ -253,7 +253,7 @@ pub struct ManagedCliNpmResolver {
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
-  package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+  package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
   resolution: Arc<NpmResolution>,
   tarball_cache: Arc<TarballCache>,
   text_only_progress_bar: ProgressBar,
@@ -277,7 +277,7 @@ impl ManagedCliNpmResolver {
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     npm_api: Arc<CliNpmRegistryApi>,
     npm_cache: Arc<NpmCache>,
-    package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+    package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
     resolution: Arc<NpmResolution>,
     tarball_cache: Arc<TarballCache>,
     text_only_progress_bar: ProgressBar,

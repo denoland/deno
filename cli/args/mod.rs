@@ -44,7 +44,7 @@ pub use flags::*;
 pub use lockfile::read_lockfile_at_path;
 pub use lockfile::write_lockfile_if_has_changes;
 pub use lockfile::Lockfile;
-pub use package_json::PackageJsonDepsProvider;
+pub use package_json::PackageJsonInstallDepsProvider;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;

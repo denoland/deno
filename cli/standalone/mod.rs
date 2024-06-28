@@ -10,7 +10,7 @@ use crate::args::get_root_cert_store;
 use crate::args::npm_pkg_req_ref_to_binary_command;
 use crate::args::CaData;
 use crate::args::CacheSetting;
-use crate::args::PackageJsonDepsProvider;
+use crate::args::PackageJsonInstallDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
 use crate::cache::DenoDirProvider;
@@ -34,6 +34,7 @@ use crate::worker::CliMainWorkerOptions;
 use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
 use deno_ast::MediaType;
+use deno_config::package_json::PackageJsonDepValue;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::WorkspaceResolver;
@@ -164,15 +165,43 @@ impl ModuleLoader for EmbeddedModuleLoader {
       self.shared.workspace_resolver.resolve(specifier, &referrer);
 
     match mapped_resolution {
-      Ok(MappedResolution::PackageJson { req_ref, .. }) => self
-        .shared
-        .node_resolver
-        .resolve_req_reference(
-          &req_ref,
-          &referrer,
-          NodeResolutionMode::Execution,
-        )
-        .map(|res| res.into_url()),
+      Ok(MappedResolution::PackageJson {
+        dep_result,
+        sub_path,
+        alias,
+        ..
+      }) => match dep_result.as_ref().map_err(|e| AnyError::from(e.clone()))? {
+        PackageJsonDepValue::Req(req) => self
+          .shared
+          .node_resolver
+          .resolve_req_with_sub_path(
+            req,
+            sub_path.as_deref(),
+            &referrer,
+            NodeResolutionMode::Execution,
+          )
+          .map(|res| res.into_url()),
+        PackageJsonDepValue::Workspace(version_req) => {
+          let pkg_folder = self
+            .shared
+            .workspace_resolver
+            .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
+              alias,
+              version_req,
+            )?;
+          let maybe_specifier = self
+            .shared
+            .node_resolver
+            .resolve_package_sub_path_from_deno_module(
+              &pkg_folder,
+              sub_path.as_deref(),
+              &referrer,
+              NodeResolutionMode::Execution,
+            )?;
+          // todo(THIS PR): don't unwrap
+          return Ok(maybe_specifier.unwrap().into_url());
+        }
+      },
       Ok(MappedResolution::Normal(specifier))
       | Ok(MappedResolution::ImportMap(specifier)) => {
         if let Ok(reference) =
@@ -436,7 +465,7 @@ pub async fn run(
             npm_system_info: Default::default(),
             package_json_deps_provider: Arc::new(
               // this is only used for installing packages, which isn't necessary with deno compile
-              PackageJsonDepsProvider::empty(),
+              PackageJsonInstallDepsProvider::empty(),
             ),
             // Packages from different registries are already inlined in the ESZip,
             // so no need to create actual `.npmrc` configuration.
@@ -480,7 +509,7 @@ pub async fn run(
             npm_system_info: Default::default(),
             package_json_deps_provider: Arc::new(
               // this is only used for installing packages, which isn't necessary with deno compile
-              PackageJsonDepsProvider::empty(),
+              PackageJsonInstallDepsProvider::empty(),
             ),
             // Packages from different registries are already inlined in the ESZip,
             // so no need to create actual `.npmrc` configuration.

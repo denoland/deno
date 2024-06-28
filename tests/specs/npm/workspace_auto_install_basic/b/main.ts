@@ -1,7 +1,9 @@
-import { sayHello } from "@denotest/a";
-import { sayHello as sayHello2 } from "npm:@denotest/a@1";
-import { sayHello as sayHello3 } from "npm:@denotest/a@workspace";
+import * as a1 from "@denotest/a";
+import * as a2 from "npm:@denotest/a@1";
+import * as a3 from "npm:@denotest/a@workspace";
+import * as c from "@denotest/c";
 
-sayHello();
-sayHello2();
-sayHello3();
+a1.sayHello();
+a2.sayHello();
+a3.sayHello();
+c.sayHello();

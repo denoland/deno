@@ -4,7 +4,7 @@ use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::Lockfile;
-use crate::args::PackageJsonDepsProvider;
+use crate::args::PackageJsonInstallDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
@@ -54,6 +54,7 @@ use crate::worker::CliMainWorkerOptions;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
+use deno_config::package_json::PackageJsonDepValue;
 use deno_config::workspace::WorkspaceResolver;
 use deno_config::ConfigFile;
 use deno_core::error::AnyError;
@@ -311,9 +312,13 @@ impl CliFactory {
         return Default::default();
       };
       pkg_json
-        .resolve_local_package_json_version_reqs()
+        .resolve_local_package_json_deps()
         .values()
-        .filter_map(|r| r.as_ref().ok())
+        .filter_map(|dep| dep.as_ref().ok())
+        .filter_map(|dep| match dep {
+          PackageJsonDepValue::Req(req) => Some(req),
+          PackageJsonDepValue::Workspace(_) => None,
+        })
         .map(|r| format!("npm:{}", r))
         .collect()
     }
@@ -422,7 +427,7 @@ impl CliFactory {
             cache_setting: self.options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
             maybe_node_modules_path: self.options.node_modules_dir_path().cloned(),
-            package_json_deps_provider: Arc::new(PackageJsonDepsProvider::from_workspace(
+            package_json_deps_provider: Arc::new(PackageJsonInstallDepsProvider::from_workspace(
               &self.options.workspace,
             )),
             npm_system_info: self.options.npm_system_info(),
@@ -487,21 +492,6 @@ impl CliFactory {
               .workspace
               .to_maybe_jsx_import_source_config()?,
             maybe_vendor_dir: self.options.vendor_dir_path(),
-            npm_workspace_members: self
-              .options
-              .workspace
-              .npm_packages()
-              .into_iter()
-              .map(|pkg| crate::resolver::NpmWorkspaceMember {
-                package_nv: pkg.package_nv,
-                directory: pkg
-                  .package_json
-                  .path
-                  .parent()
-                  .unwrap()
-                  .to_path_buf(),
-              })
-              .collect(),
           })))
         }
         .boxed_local(),

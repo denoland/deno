@@ -2,7 +2,7 @@
 
 use crate::args::create_default_npmrc;
 use crate::args::CacheSetting;
-use crate::args::PackageJsonDepsProvider;
+use crate::args::PackageJsonInstallDepsProvider;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
@@ -455,7 +455,9 @@ async fn create_npm_resolver(
       maybe_node_modules_path: config_data
         .and_then(|d| d.node_modules_dir.clone()),
       // only used for top level install, so we can ignore this
-      package_json_deps_provider: Arc::new(PackageJsonDepsProvider::empty()),
+      package_json_deps_provider: Arc::new(
+        PackageJsonInstallDepsProvider::empty(),
+      ),
       npmrc: config_data
         .and_then(|d| d.npmrc.clone())
         .unwrap_or_else(create_default_npmrc),
@@ -509,8 +511,6 @@ fn create_graph_resolver(
     sloppy_imports_resolver: unstable_sloppy_imports.then(|| {
       SloppyImportsResolver::new_without_stat_cache(Arc::new(deno_fs::RealFs))
     }),
-    // todo(dsherret): support npm workspaces in the LSP
-    npm_workspace_members: Vec::new(),
   }))
 }
 

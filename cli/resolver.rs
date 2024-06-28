@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use dashmap::DashSet;
 use deno_ast::MediaType;
+use deno_config::package_json::PackageJsonDepValue;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::WorkspaceResolver;
@@ -31,7 +32,6 @@ use deno_runtime::deno_node::NpmResolver as DenoNodeNpmResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use std::borrow::Cow;
 use std::path::Path;
@@ -129,12 +129,27 @@ impl CliNodeResolver {
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<NodeResolution, AnyError> {
+    self.resolve_req_with_sub_path(
+      req_ref.req(),
+      req_ref.sub_path(),
+      referrer,
+      mode,
+    )
+  }
+
+  pub fn resolve_req_with_sub_path(
+    &self,
+    req: &PackageReq,
+    sub_path: Option<&str>,
+    referrer: &ModuleSpecifier,
+    mode: NodeResolutionMode,
+  ) -> Result<NodeResolution, AnyError> {
     let package_folder = self
       .npm_resolver
-      .resolve_pkg_folder_from_deno_module_req(req_ref.req(), referrer)?;
+      .resolve_pkg_folder_from_deno_module_req(req, referrer)?;
     let maybe_resolution = self.resolve_package_sub_path_from_deno_module(
       &package_folder,
-      req_ref.sub_path(),
+      sub_path,
       referrer,
       mode,
     )?;
@@ -151,8 +166,9 @@ impl CliNodeResolver {
           }
         }
         Err(anyhow!(
-          "Failed resolving '{}' in '{}'.",
-          req_ref,
+          "Failed resolving '{}{}' in '{}'.",
+          req,
+          sub_path.map(|s| format!("/{}", s)).unwrap_or_default(),
           package_folder.display()
         ))
       }
@@ -351,26 +367,6 @@ impl CjsResolutionStore {
   }
 }
 
-#[derive(Debug)]
-pub struct NpmWorkspaceMember {
-  pub package_nv: PackageNv,
-  pub directory: PathBuf,
-}
-
-impl NpmWorkspaceMember {
-  pub fn nv_matches_req(nv: &PackageNv, req: &PackageReq) -> bool {
-    nv.name == req.name
-      && match req.version_req.inner() {
-        deno_semver::RangeSetOrTag::RangeSet(set) => set.satisfies(&nv.version),
-        deno_semver::RangeSetOrTag::Tag(tag) => tag == "workspace",
-      }
-  }
-
-  pub fn matches_req(&self, req: &PackageReq) -> bool {
-    Self::nv_matches_req(&self.package_nv, req)
-  }
-}
-
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug)]
@@ -385,7 +381,6 @@ pub struct CliGraphResolver {
   maybe_vendor_specifier: Option<ModuleSpecifier>,
   found_package_json_dep_flag: AtomicFlag,
   bare_node_builtins_enabled: bool,
-  npm_workspace_members: Vec<NpmWorkspaceMember>,
 }
 
 pub struct CliGraphResolverOptions<'a> {
@@ -396,7 +391,6 @@ pub struct CliGraphResolverOptions<'a> {
   pub bare_node_builtins_enabled: bool,
   pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
   pub maybe_vendor_dir: Option<&'a PathBuf>,
-  pub npm_workspace_members: Vec<NpmWorkspaceMember>,
 }
 
 impl CliGraphResolver {
@@ -422,7 +416,6 @@ impl CliGraphResolver {
         .and_then(|v| ModuleSpecifier::from_directory_path(v).ok()),
       found_package_json_dep_flag: Default::default(),
       bare_node_builtins_enabled: options.bare_node_builtins_enabled,
-      npm_workspace_members: options.npm_workspace_members,
     }
   }
 
@@ -510,9 +503,6 @@ impl Resolver for CliGraphResolver {
         MappedResolutionError::ImportMap(err) => {
           ResolveError::Other(err.into())
         }
-        MappedResolutionError::PkgJsonDep(err) => {
-          ResolveError::Other(err.into())
-        }
       });
     let result = match result {
       Ok(resolution) => match resolution {
@@ -520,13 +510,50 @@ impl Resolver for CliGraphResolver {
         | MappedResolution::ImportMap(specifier) => Ok(specifier),
         // todo(dsherret): for byonm it should do resolution solely based on
         // the referrer and not the package.json
-        MappedResolution::PackageJson { req_ref, .. } => {
+        MappedResolution::PackageJson {
+          dep_result,
+          alias,
+          sub_path,
+          ..
+        } => {
           // found a specifier in the package.json, so mark that
           // we need to do an "npm install" later
           self.found_package_json_dep_flag.raise();
 
-          ModuleSpecifier::parse(&req_ref.to_string())
-            .map_err(|e| ResolveError::Other(e.into()))
+          dep_result
+            .as_ref()
+            .map_err(|e| ResolveError::Other(e.clone().into()))
+            .and_then(|dep| match dep {
+              PackageJsonDepValue::Req(req) => {
+                ModuleSpecifier::parse(&format!(
+                  "npm:{}{}",
+                  req,
+                  sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+                ))
+                .map_err(|e| ResolveError::Other(e.into()))
+              }
+              PackageJsonDepValue::Workspace(version_req) => self
+                .workspace_resolver
+                .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
+                  alias,
+                  version_req,
+                )
+                .map_err(|e| ResolveError::Other(e.into()))
+                .and_then(|pkg_folder| {
+                  let maybe_specifier = self
+                    .node_resolver
+                    .as_ref()
+                    .unwrap()
+                    .resolve_package_sub_path_from_deno_module(
+                      pkg_folder,
+                      sub_path.as_deref(),
+                      referrer,
+                      to_node_mode(mode),
+                    )?;
+                  // todo(THIS PR): don't unwrap
+                  return Ok(maybe_specifier.unwrap().into_url());
+                }),
+            })
         }
       },
       Err(err) => Err(err),
@@ -534,23 +561,21 @@ impl Resolver for CliGraphResolver {
 
     // check if it's an npm specifier that resolves to a workspace member
     if let Some(node_resolver) = &self.node_resolver {
-      if !self.npm_workspace_members.is_empty() {
-        if let Ok(specifier) = &result {
-          if let Ok(req_ref) = NpmPackageReqReference::from_specifier(specifier)
+      if let Ok(specifier) = &result {
+        if let Ok(req_ref) = NpmPackageReqReference::from_specifier(specifier) {
+          if let Some(pkg_folder) = self
+            .workspace_resolver
+            .resolve_workspace_pkg_json_folder_for_npm_specifier(req_ref.req())
           {
-            for member in &self.npm_workspace_members {
-              if member.matches_req(req_ref.req()) {
-                let maybe_specifier = node_resolver
-                  .resolve_package_sub_path_from_deno_module(
-                    &member.directory,
-                    req_ref.sub_path(),
-                    referrer,
-                    to_node_mode(mode),
-                  )?;
-                // todo(THIS PR): don't unwrap
-                return Ok(maybe_specifier.unwrap().into_url());
-              }
-            }
+            let maybe_specifier = node_resolver
+              .resolve_package_sub_path_from_deno_module(
+                pkg_folder,
+                req_ref.sub_path(),
+                referrer,
+                to_node_mode(mode),
+              )?;
+            // todo(THIS PR): don't unwrap
+            return Ok(maybe_specifier.unwrap().into_url());
           }
         }
       }

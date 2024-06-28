@@ -301,7 +301,6 @@ fn build_resolver(
     maybe_jsx_import_source_config,
     maybe_vendor_dir: None,
     bare_node_builtins_enabled: false,
-    npm_workspace_members: Vec::new(),
   })
 }
 

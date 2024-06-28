@@ -3,6 +3,8 @@
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
+use deno_config::package_json::PackageJsonDepValue;
+use deno_config::workspace::MappedResolution;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::ModuleSpecifier;
 use deno_graph::DependencyDescriptor;
@@ -65,7 +67,37 @@ impl<'a> SpecifierUnfurler<'a> {
     let resolved = if let Ok(resolved) =
       self.workspace_resolver.resolve(specifier, referrer)
     {
-      resolved.into_url().ok()
+      match resolved {
+        MappedResolution::Normal(specifier)
+        | MappedResolution::ImportMap(specifier) => Some(specifier),
+        MappedResolution::PackageJson {
+          sub_path,
+          dep_result,
+          ..
+        } => match dep_result {
+          Ok(dep) => match dep {
+            PackageJsonDepValue::Req(req) => ModuleSpecifier::parse(&format!(
+              "npm:{}{}",
+              req.to_string(),
+              sub_path
+                .as_ref()
+                .map(|s| format!("/{}", s))
+                .unwrap_or_default()
+            ))
+            .ok(),
+            PackageJsonDepValue::Workspace(_) => {
+              log::warn!(
+                "package.json workspace entries are not implemented yet for publishing."
+              );
+              None
+            }
+          },
+          Err(_err) => {
+            // todo(dsherret): this should be surfaced somehow
+            None
+          }
+        },
+      }
     } else {
       None
     };
