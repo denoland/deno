@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+import { primordials } from "ext:core/mod.js";
+const { ArrayFrom } = primordials;
 
 // Currently optimal queue size, tested on V8 6.0 - 6.6. Must be power of two.
 const kSize = 2048;
@@ -65,7 +65,7 @@ class FixedCircularBuffer {
   constructor() {
     this.bottom = 0;
     this.top = 0;
-    this.list = new Array(kSize);
+    this.list = ArrayFrom({ __proto__: null, length: kSize });
     this.next = null;
   }
 
@@ -111,11 +111,13 @@ export class FixedQueue {
       // and sets it as the new main queue.
       this.head = this.head.next = new FixedCircularBuffer();
     }
+    // deno-lint-ignore prefer-primordials -- `push` is a method of `FixedCircularBuffer`
     this.head.push(data);
   }
 
   shift() {
     const tail = this.tail;
+    // deno-lint-ignore prefer-primordials -- `shift` is a method of `FixedCircularBuffer`
     const next = tail.shift();
     if (tail.isEmpty() && tail.next !== null) {
       // If there is another queue, it forms the new tail.
