@@ -8,7 +8,7 @@ use crate::args::LintOptions;
 use crate::args::DENO_FUTURE;
 use crate::cache::FastInsecureHasher;
 use crate::file_fetcher::FileFetcher;
-use crate::lockfile::read_lockfile_at_path;
+use crate::lockfile::CliLockfile;
 use crate::lsp::logging::lsp_warn;
 use crate::tools::lint::get_configured_rules;
 use crate::tools::lint::ConfiguredRules;
@@ -18,7 +18,6 @@ use deno_config::FmtOptionsConfig;
 use deno_config::TsConfig;
 use deno_core::anyhow::anyhow;
 use deno_core::normalize_path;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -27,7 +26,6 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_lint::linter::LintConfig;
-use deno_lockfile::Lockfile;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -1111,7 +1109,7 @@ pub struct ConfigData {
   pub byonm: bool,
   pub node_modules_dir: Option<PathBuf>,
   pub vendor_dir: Option<PathBuf>,
-  pub lockfile: Option<Arc<Mutex<Lockfile>>>,
+  pub lockfile: Option<Arc<CliLockfile>>,
   pub package_json: Option<Arc<PackageJson>>,
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
   pub import_map: Option<Arc<ImportMap>>,
@@ -1316,8 +1314,7 @@ impl ConfigData {
     // Load lockfile
     let lockfile = config_file.as_ref().and_then(resolve_lockfile_from_config);
     if let Some(lockfile) = &lockfile {
-      if let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile.filename)
-      {
+      if let Some(specifier) = lockfile.specifier() {
         watched_files
           .entry(specifier)
           .or_insert(ConfigWatchedFileType::Lockfile);
@@ -1326,7 +1323,7 @@ impl ConfigData {
     let lockfile_canonicalized_specifier = lockfile
       .as_ref()
       .and_then(|lockfile| {
-        canonicalize_path_maybe_not_exists(&lockfile.filename).ok()
+        canonicalize_path_maybe_not_exists(&lockfile.inner().filename).ok()
       })
       .and_then(|p| ModuleSpecifier::from_file_path(p).ok());
     if let Some(specifier) = lockfile_canonicalized_specifier {
@@ -1553,7 +1550,7 @@ impl ConfigData {
       byonm,
       node_modules_dir,
       vendor_dir,
-      lockfile: lockfile.map(Mutex::new).map(Arc::new),
+      lockfile: lockfile.map(Arc::new),
       package_json: package_json.map(Arc::new),
       npmrc,
       import_map,
@@ -1786,7 +1783,9 @@ impl ConfigTree {
   }
 }
 
-fn resolve_lockfile_from_config(config_file: &ConfigFile) -> Option<Lockfile> {
+fn resolve_lockfile_from_config(
+  config_file: &ConfigFile,
+) -> Option<CliLockfile> {
   let lockfile_path = match config_file.resolve_lockfile_path() {
     Ok(Some(value)) => value,
     Ok(None) => return None,
@@ -1824,14 +1823,11 @@ fn resolve_node_modules_dir(
   canonicalize_path_maybe_not_exists(&node_modules_dir).ok()
 }
 
-fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<Lockfile> {
-  match read_lockfile_at_path(lockfile_path) {
+fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<CliLockfile> {
+  match CliLockfile::read_from_path(lockfile_path) {
     Ok(value) => {
-      if value.filename.exists() {
-        if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)
-        {
-          lsp_log!("  Resolved lockfile: \"{}\"", specifier);
-        }
+      if let Some(specifier) = value.specifier() {
+        lsp_log!("  Resolved lockfile: \"{}\"", specifier);
       }
       Some(value)
     }

@@ -39,7 +39,6 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::deno_node::PackageJson;
@@ -70,7 +69,7 @@ use thiserror::Error;
 use crate::args::import_map::enhance_import_map_value_with_workspace_members;
 use crate::cache;
 use crate::file_fetcher::FileFetcher;
-use crate::lockfile::Lockfile;
+use crate::lockfile::CliLockfile;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
 
@@ -809,7 +808,7 @@ pub struct CliOptions {
   maybe_config_file: Option<ConfigFile>,
   maybe_package_json: Option<Arc<PackageJson>>,
   npmrc: Arc<ResolvedNpmRc>,
-  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  maybe_lockfile: Option<Arc<CliLockfile>>,
   overrides: CliOptionOverrides,
   maybe_workspace_config: Option<WorkspaceConfig>,
   pub disable_deprecated_api_warning: bool,
@@ -821,7 +820,7 @@ impl CliOptions {
     flags: Flags,
     initial_cwd: PathBuf,
     maybe_config_file: Option<ConfigFile>,
-    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+    maybe_lockfile: Option<Arc<CliLockfile>>,
     maybe_package_json: Option<Arc<PackageJson>>,
     npmrc: Arc<ResolvedNpmRc>,
     force_global_cache: bool,
@@ -955,7 +954,7 @@ impl CliOptions {
       }),
     )?;
 
-    let maybe_lock_file = crate::lockfile::discover(
+    let maybe_lock_file = CliLockfile::discover(
       &flags,
       maybe_config_file.as_ref(),
       maybe_package_json.as_deref(),
@@ -964,7 +963,7 @@ impl CliOptions {
       flags,
       initial_cwd,
       maybe_config_file,
-      maybe_lock_file.map(|l| Arc::new(Mutex::new(l))),
+      maybe_lock_file.map(Arc::new),
       maybe_package_json,
       npmrc,
       false,
@@ -1350,7 +1349,7 @@ impl CliOptions {
     Ok(Some(InspectorServer::new(host, version::get_user_agent())?))
   }
 
-  pub fn maybe_lockfile(&self) -> Option<Arc<Mutex<Lockfile>>> {
+  pub fn maybe_lockfile(&self) -> Option<Arc<CliLockfile>> {
     self.maybe_lockfile.clone()
   }
 

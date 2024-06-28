@@ -94,7 +94,6 @@ use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClientProvider;
-use crate::lockfile::write_lockfile_if_has_changes;
 use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
@@ -274,8 +273,7 @@ impl LanguageServer {
       // Update the lockfile on the file system with anything new
       // found after caching
       if let Some(lockfile) = cli_options.maybe_lockfile() {
-        let mut lockfile = lockfile.lock();
-        if let Err(err) = write_lockfile_if_has_changes(&mut lockfile) {
+        if let Err(err) = &lockfile.write_if_changed() {
           lsp_warn!("{:#}", err);
         }
       }

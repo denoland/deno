@@ -30,7 +30,6 @@ use crate::args::InfoFlags;
 use crate::display;
 use crate::factory::CliFactory;
 use crate::graph_util::graph_exit_lock_errors;
-use crate::lockfile::write_lockfile_if_has_changes;
 use crate::npm::CliNpmResolver;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;
@@ -71,7 +70,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     // write out the lockfile if there is one
     if let Some(lockfile) = &maybe_lockfile {
       graph_exit_lock_errors(&graph);
-      write_lockfile_if_has_changes(&mut lockfile.lock())?;
+      lockfile.write_if_changed()?;
     }
 
     if info_flags.json {

@@ -25,7 +25,7 @@ use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClientProvider;
-use crate::lockfile::Lockfile;
+use crate::lockfile::CliLockfile;
 use crate::module_loader::CliModuleLoaderFactory;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::node::CliCjsCodeAnalyzer;
@@ -56,7 +56,6 @@ use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::FeatureChecker;
 
 use deno_lockfile::WorkspaceMemberConfig;
@@ -156,7 +155,7 @@ struct CliFactoryServices {
   emitter: Deferred<Arc<Emitter>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
-  lockfile: Deferred<Option<Arc<Mutex<Lockfile>>>>,
+  lockfile: Deferred<Option<Arc<CliLockfile>>>,
   maybe_import_map: Deferred<Option<Arc<ImportMap>>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
@@ -304,8 +303,8 @@ impl CliFactory {
     self.services.fs.get_or_init(|| Arc::new(deno_fs::RealFs))
   }
 
-  pub fn maybe_lockfile(&self) -> &Option<Arc<Mutex<Lockfile>>> {
-    fn check_no_npm(lockfile: &Mutex<Lockfile>, options: &CliOptions) -> bool {
+  pub fn maybe_lockfile(&self) -> &Option<Arc<CliLockfile>> {
+    fn check_no_npm(lockfile: &CliLockfile, options: &CliOptions) -> bool {
       if options.no_npm() {
         return true;
       }
@@ -315,7 +314,7 @@ impl CliFactory {
       options
         .maybe_package_json()
         .map(|package_json| {
-          package_json.path.parent() != lockfile.lock().filename.parent()
+          package_json.path.parent() != lockfile.inner().filename.parent()
         })
         .unwrap_or(false)
     }
@@ -337,7 +336,6 @@ impl CliFactory {
               .unwrap_or_default()
           })
           .unwrap_or_default();
-        let mut lockfile = lockfile.lock();
         let config = match self.options.maybe_workspace_config() {
           Some(workspace_config) => deno_lockfile::WorkspaceConfig {
             root: WorkspaceMemberConfig {
