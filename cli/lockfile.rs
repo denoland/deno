@@ -11,9 +11,9 @@ use crate::cache;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::Flags;
 
-use super::DenoSubcommand;
-use super::InstallFlags;
-use super::InstallKind;
+use crate::args::DenoSubcommand;
+use crate::args::InstallFlags;
+use crate::args::InstallKind;
 
 pub use deno_lockfile::Lockfile;
 

@@ -13,6 +13,7 @@ mod graph_util;
 mod http_util;
 mod js;
 mod jsr;
+mod lockfile;
 mod lsp;
 mod module_loader;
 mod napi;

@@ -25,12 +25,12 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_terminal::colors;
 
-use crate::args::write_lockfile_if_has_changes;
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
 use crate::factory::CliFactory;
 use crate::graph_util::graph_exit_lock_errors;
+use crate::lockfile::write_lockfile_if_has_changes;
 use crate::npm::CliNpmResolver;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;

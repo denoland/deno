@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::resolve_no_prompt;
-use crate::args::write_lockfile_if_has_changes;
+use crate::lockfile::write_lockfile_if_has_changes;
 use crate::args::AddFlags;
 use crate::args::CaData;
 use crate::args::Flags;

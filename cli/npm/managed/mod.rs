@@ -27,12 +27,12 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use resolution::AddPkgReqsResult;
 
-use crate::args::Lockfile;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::args::PackageJsonDepsProvider;
 use crate::cache::FastInsecureHasher;
 use crate::http_util::HttpClientProvider;
+use crate::lockfile::Lockfile;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::sync::AtomicFlag;

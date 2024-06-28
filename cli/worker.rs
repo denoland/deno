@@ -47,10 +47,10 @@ use deno_semver::package::PackageReqReference;
 use deno_terminal::colors;
 use tokio::select;
 
-use crate::args::write_lockfile_if_has_changes;
 use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
 use crate::errors;
+use crate::lockfile::write_lockfile_if_has_changes;
 use crate::npm::CliNpmResolver;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;

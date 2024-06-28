@@ -2,7 +2,6 @@
 
 use crate::args::jsr_url;
 use crate::args::CliOptions;
-use crate::args::Lockfile;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
@@ -11,6 +10,7 @@ use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
+use crate::lockfile::Lockfile;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::SloppyImportsResolver;

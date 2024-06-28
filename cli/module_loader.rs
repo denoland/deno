@@ -9,7 +9,7 @@ use std::str;
 use std::sync::Arc;
 
 use crate::args::jsr_url;
-use crate::args::write_lockfile_if_has_changes;
+use crate::lockfile::write_lockfile_if_has_changes;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
