@@ -1,8 +1,8 @@
-# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_bench_util"
-version = "0.91.0"
+version = "0.152.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,12 +17,7 @@ path = "lib.rs"
 [dependencies]
 bencher.workspace = true
 deno_core.workspace = true
-once_cell.workspace = true
 tokio.workspace = true
-
-[[bench]]
-name = "op_baseline"
-harness = false
 
 [[bench]]
 name = "utf8"

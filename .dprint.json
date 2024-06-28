@@ -1,5 +1,4 @@
 {
-  "incremental": true,
   "typescript": {
     "deno": true
   },
@@ -10,15 +9,17 @@
     "deno": true
   },
   "exec": {
-    "associations": "**/*.rs",
-    "rustfmt": "rustfmt --config imports_granularity=item"
+    "commands": [{
+      "command": "rustfmt --config imports_granularity=item",
+      "exts": ["rs"]
+    }]
   },
-  "includes": ["**/*.{ts,tsx,js,jsx,json,md,toml,rs}"],
   "excludes": [
     ".cargo_home",
     ".git",
     "cli/bench/testdata/express-router.js",
-    "cli/bench/testdata/npm/*",
+    "cli/bench/testdata/npm/",
+    "cli/bench/testdata/lsp_benchdata/",
     "cli/tsc/dts/lib.d.ts",
     "cli/tsc/dts/lib.scripthost.d.ts",
     "cli/tsc/dts/lib.decorators*.d.ts",
@@ -26,35 +27,40 @@
     "cli/tsc/dts/lib.dom*.d.ts",
     "cli/tsc/dts/lib.es*.d.ts",
     "cli/tsc/dts/typescript.d.ts",
-    "cli/tests/node_compat/test",
-    "cli/tests/testdata/file_extensions/ts_with_js_extension.js",
-    "cli/tests/testdata/fmt/badly_formatted.json",
-    "cli/tests/testdata/fmt/badly_formatted.md",
-    "cli/tests/testdata/byte_order_mark.ts",
-    "cli/tests/testdata/encoding",
-    "cli/tests/testdata/fmt/*",
-    "cli/tests/testdata/import_assertions/json_with_shebang.json",
-    "cli/tests/testdata/run/inline_js_source_map*",
-    "cli/tests/testdata/malformed_config/*",
-    "cli/tests/testdata/npm/registry/",
-    "cli/tests/testdata/test/markdown_windows.md",
+    "tests/node_compat/test",
+    "tests/registry/",
+    "tests/testdata/file_extensions/ts_with_js_extension.js",
+    "tests/testdata/fmt/badly_formatted.json",
+    "tests/testdata/fmt/badly_formatted.md",
+    "tests/testdata/fmt/badly_formatted.ipynb",
+    "tests/testdata/byte_order_mark.ts",
+    "tests/testdata/encoding",
+    "tests/testdata/fmt/",
+    "tests/testdata/lint/glob/",
+    "tests/testdata/test/glob/",
+    "tests/testdata/import_attributes/json_with_shebang.json",
+    "tests/testdata/run/error_syntax_empty_trailing_line.mjs",
+    "tests/testdata/run/inline_js_source_map*",
+    "tests/testdata/malformed_config/",
+    "tests/testdata/test/markdown_windows.md",
     "cli/tsc/*typescript.js",
     "gh-pages",
     "target",
-    "test_ffi/tests/test.js",
-    "test_util/std",
-    "test_util/wpt",
+    "tests/ffi/tests/test.js",
+    "tests/util/std",
+    "tests/wpt/suite",
     "third_party",
-    "tools/node_compat/TODO.md",
-    "tools/node_compat/versions",
-    "tools/wpt/expectation.json",
-    "tools/wpt/manifest.json"
+    "tests/node_compat/runner/TODO.md",
+    "tests/node_compat/runner/suite",
+    "tests/wpt/runner/expectation.json",
+    "tests/wpt/runner/manifest.json",
+    "ext/websocket/autobahn/reports"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.84.0.wasm",
-    "https://plugins.dprint.dev/json-0.17.0.wasm",
-    "https://plugins.dprint.dev/markdown-0.15.2.wasm",
-    "https://plugins.dprint.dev/toml-0.5.4.wasm",
-    "https://plugins.dprint.dev/exec-0.3.5.json@d687dda57be0fe9a0088ccdaefa5147649ff24127d8b3ea227536c68ee7abeab"
+    "https://plugins.dprint.dev/typescript-0.91.1.wasm",
+    "https://plugins.dprint.dev/json-0.19.3.wasm",
+    "https://plugins.dprint.dev/markdown-0.17.1.wasm",
+    "https://plugins.dprint.dev/toml-0.6.2.wasm",
+    "https://plugins.dprint.dev/exec-0.4.4.json@c207bf9b9a4ee1f0ecb75c594f774924baf62e8e53a2ce9d873816a408cecbf7"
   ]
 }

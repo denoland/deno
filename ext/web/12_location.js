@@ -1,23 +1,24 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { URL } from "ext:deno_url/00_url.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
   Error,
   ObjectDefineProperties,
+  SafeWeakMap,
   Symbol,
   SymbolFor,
   SymbolToStringTag,
   TypeError,
-  WeakMap,
   WeakMapPrototypeGet,
   WeakMapPrototypeSet,
 } = primordials;
 
-const locationConstructorKey = Symbol("locationConstuctorKey");
+import { URL } from "ext:deno_url/00_url.js";
+import { DOMException } from "./01_dom_exception.js";
+
+const locationConstructorKey = Symbol("locationConstructorKey");
 
 // The differences between the definitions of `Location` and `WorkerLocation`
 // are because of the `LegacyUnforgeable` attribute only specified upon
@@ -180,19 +181,20 @@ class Location {
         enumerable: true,
       },
       [SymbolFor("Deno.privateCustomInspect")]: {
-        value: function (inspect) {
-          const object = {
-            hash: this.hash,
-            host: this.host,
-            hostname: this.hostname,
-            href: this.href,
-            origin: this.origin,
-            pathname: this.pathname,
-            port: this.port,
-            protocol: this.protocol,
-            search: this.search,
-          };
-          return `${this.constructor.name} ${inspect(object)}`;
+        value: function (inspect, inspectOptions) {
+          return `${this.constructor.name} ${
+            inspect({
+              hash: this.hash,
+              host: this.host,
+              hostname: this.hostname,
+              href: this.href,
+              origin: this.origin,
+              pathname: this.pathname,
+              port: this.port,
+              protocol: this.protocol,
+              search: this.search,
+            }, inspectOptions)
+          }`;
         },
       },
     });
@@ -206,7 +208,7 @@ ObjectDefineProperties(Location.prototype, {
   },
 });
 
-const workerLocationUrls = new WeakMap();
+const workerLocationUrls = new SafeWeakMap();
 
 class WorkerLocation {
   constructor(href = null, key = null) {
@@ -337,19 +339,20 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     configurable: true,
   },
   [SymbolFor("Deno.privateCustomInspect")]: {
-    value: function (inspect) {
-      const object = {
-        hash: this.hash,
-        host: this.host,
-        hostname: this.hostname,
-        href: this.href,
-        origin: this.origin,
-        pathname: this.pathname,
-        port: this.port,
-        protocol: this.protocol,
-        search: this.search,
-      };
-      return `${this.constructor.name} ${inspect(object)}`;
+    value: function (inspect, inspectOptions) {
+      return `${this.constructor.name} ${
+        inspect({
+          hash: this.hash,
+          host: this.host,
+          hostname: this.hostname,
+          href: this.href,
+          origin: this.origin,
+          pathname: this.pathname,
+          port: this.port,
+          protocol: this.protocol,
+          search: this.search,
+        }, inspectOptions)
+      }`;
     },
   },
 });

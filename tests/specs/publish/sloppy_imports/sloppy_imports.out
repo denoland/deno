@@ -1,0 +1,10 @@
+Warning Sloppy module resolution (hint: specify path to index.ts file in directory instead)
+    at file:///[WILDCARD]/mod.ts:1:20
+Check file:///[WILDCARD]/mod.ts
+Checking for slow types in the public API...
+Check file:///[WILDCARD]/mod.ts
+Simulating publish of @foo/bar@1.0.0 with files:
+   file:///[WILDCARD]/b/index.ts (27B)
+   file:///[WILDCARD]/deno.json (87B)
+   file:///[WILDCARD]/mod.ts (35B)
+Warning Aborting due to --dry-run

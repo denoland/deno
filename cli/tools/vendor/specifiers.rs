@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::BTreeMap;
 use std::collections::HashSet;
@@ -65,7 +65,7 @@ pub fn make_url_relative(
 }
 
 pub fn is_remote_specifier(specifier: &ModuleSpecifier) -> bool {
-  specifier.scheme().to_lowercase().starts_with("http")
+  matches!(specifier.scheme().to_lowercase().as_str(), "http" | "https")
 }
 
 pub fn is_remote_specifier_text(text: &str) -> bool {

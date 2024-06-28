@@ -1,0 +1,6 @@
+{
+  "type": "module",
+  "imports": {
+    "#bye": "./bye.js"
+  }
+}

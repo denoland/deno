@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -6,10 +6,8 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 
-const core = globalThis.Deno.core;
-const internals = globalThis.__bootstrap.internals;
-const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, internals, primordials } from "ext:core/mod.js";
+import { op_base64_decode, op_base64_encode } from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
@@ -18,6 +16,7 @@ const {
   JSONStringify,
   NumberPrototypeToString,
   ObjectPrototypeIsPrototypeOf,
+  RegExpPrototypeTest,
   SafeArrayIterator,
   SafeRegExp,
   String,
@@ -26,12 +25,15 @@ const {
   StringPrototypeMatch,
   StringPrototypePadStart,
   StringPrototypeReplace,
+  StringPrototypeReplaceAll,
   StringPrototypeSlice,
   StringPrototypeSubstring,
   StringPrototypeToLowerCase,
   StringPrototypeToUpperCase,
+  Symbol,
   TypeError,
 } = primordials;
+
 import { URLPrototype } from "ext:deno_url/00_url.js";
 
 const ASCII_DIGIT = ["\u0030-\u0039"];
@@ -244,7 +246,7 @@ function collectHttpQuotedString(input, position, extractValue) {
  * @returns {string}
  */
 function forgivingBase64Encode(data) {
-  return ops.op_base64_encode(data);
+  return op_base64_encode(data);
 }
 
 /**
@@ -252,7 +254,7 @@ function forgivingBase64Encode(data) {
  * @returns {Uint8Array}
  */
 function forgivingBase64Decode(data) {
-  return ops.op_base64_decode(data);
+  return op_base64_decode(data);
 }
 
 // Taken from std/encoding/base64url.ts
@@ -274,17 +276,24 @@ function addPaddingToBase64url(base64url) {
   return base64url;
 }
 
+const BASE64URL_PATTERN = new SafeRegExp(/^[-_A-Z0-9]*?={0,2}$/i);
+
 /**
  * @param {string} base64url
  * @returns {string}
  */
 function convertBase64urlToBase64(base64url) {
-  if (!/^[-_A-Z0-9]*?={0,2}$/i.test(base64url)) {
+  if (!RegExpPrototypeTest(BASE64URL_PATTERN, base64url)) {
     // Contains characters not part of base64url spec.
     throw new TypeError("Failed to decode base64url: invalid character");
   }
-  return addPaddingToBase64url(base64url).replace(/\-/g, "+").replace(
-    /_/g,
+  return StringPrototypeReplaceAll(
+    StringPrototypeReplaceAll(
+      addPaddingToBase64url(base64url),
+      "-",
+      "+",
+    ),
+    "_",
     "/",
   );
 }
@@ -295,9 +304,21 @@ function convertBase64urlToBase64(base64url) {
  * @returns {string}
  */
 function forgivingBase64UrlEncode(data) {
-  return forgivingBase64Encode(
-    typeof data === "string" ? new TextEncoder().encode(data) : data,
-  ).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+  return StringPrototypeReplaceAll(
+    StringPrototypeReplaceAll(
+      StringPrototypeReplaceAll(
+        forgivingBase64Encode(
+          typeof data === "string" ? new TextEncoder().encode(data) : data,
+        ),
+        "=",
+        "",
+      ),
+      "+",
+      "-",
+    ),
+    "/",
+    "_",
+  );
 }
 
 /**
@@ -436,6 +457,15 @@ function pathFromURL(pathOrUrl) {
 // NOTE(bartlomieju): this is exposed on `internals` so we can test
 // it in unit tests
 internals.pathFromURL = pathFromURL;
+
+// deno-lint-ignore prefer-primordials
+export const SymbolDispose = Symbol.dispose ?? Symbol("Symbol.dispose");
+// deno-lint-ignore prefer-primordials
+export const SymbolAsyncDispose = Symbol.asyncDispose ??
+  Symbol("Symbol.asyncDispose");
+// deno-lint-ignore prefer-primordials
+export const SymbolMetadata = Symbol.metadata ??
+  Symbol("Symbol.metadata");
 
 export {
   ASCII_ALPHA,

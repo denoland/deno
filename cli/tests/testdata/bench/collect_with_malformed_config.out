@@ -1,4 +1,0 @@
-error: Failed to parse "bench" configuration
-
-Caused by:
-    unknown field `dont_know_this_field`, expected `files`

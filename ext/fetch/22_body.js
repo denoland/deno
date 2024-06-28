@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -11,7 +11,29 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  isAnyArrayBuffer,
+  isArrayBuffer,
+} = core;
+const {
+  ArrayBufferIsView,
+  ArrayPrototypeMap,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
+  JSONParse,
+  ObjectDefineProperties,
+  ObjectPrototypeIsPrototypeOf,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeGetSymbolToStringTag,
+  TypedArrayPrototypeSlice,
+  TypeError,
+  Uint8Array,
+} = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   parseUrlEncoded,
@@ -33,30 +55,9 @@ import {
   readableStreamCollectIntoUint8Array,
   readableStreamDisturb,
   ReadableStreamPrototype,
+  readableStreamTee,
   readableStreamThrowIfErrored,
 } from "ext:deno_web/06_streams.js";
-const primordials = globalThis.__bootstrap.primordials;
-const {
-  ArrayBufferPrototype,
-  ArrayBufferPrototypeGetByteLength,
-  ArrayBufferIsView,
-  ArrayPrototypeMap,
-  DataViewPrototypeGetBuffer,
-  DataViewPrototypeGetByteLength,
-  DataViewPrototypeGetByteOffset,
-  JSONParse,
-  ObjectDefineProperties,
-  ObjectPrototypeIsPrototypeOf,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
-  TypedArrayPrototypeGetBuffer,
-  TypedArrayPrototypeGetByteLength,
-  TypedArrayPrototypeGetByteOffset,
-  TypedArrayPrototypeGetSymbolToStringTag,
-  TypedArrayPrototypeSlice,
-  TypeError,
-  Uint8Array,
-} = primordials;
 
 /**
  * @param {Uint8Array | string} chunk
@@ -195,7 +196,7 @@ class InnerBody {
    * @returns {InnerBody}
    */
   clone() {
-    const { 0: out1, 1: out2 } = this.stream.tee();
+    const { 0: out1, 1: out2 } = readableStreamTee(this.stream, true);
     this.streamOrStatic = out1;
     const second = new InnerBody(out2);
     second.source = core.deserialize(core.serialize(this.source));
@@ -295,6 +296,15 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
       configurable: true,
       enumerable: true,
     },
+    bytes: {
+      /** @returns {Promise<Uint8Array>} */
+      value: function bytes() {
+        return consumeBody(this, "bytes");
+      },
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    },
     formData: {
       /** @returns {Promise<FormData>} */
       value: function formData() {
@@ -329,7 +339,7 @@ function mixinBody(prototype, bodySymbol, mimeTypeSymbol) {
 /**
  * https://fetch.spec.whatwg.org/#concept-body-package-data
  * @param {Uint8Array | string} bytes
- * @param {"ArrayBuffer" | "Blob" | "FormData" | "JSON" | "text"} type
+ * @param {"ArrayBuffer" | "Blob" | "FormData" | "JSON" | "text" | "bytes"} type
  * @param {MimeType | null} [mimeType]
  */
 function packageData(bytes, type, mimeType) {
@@ -340,6 +350,8 @@ function packageData(bytes, type, mimeType) {
       return new Blob([bytes], {
         type: mimeType !== null ? mimesniff.serializeMimeType(mimeType) : "",
       });
+    case "bytes":
+      return chunkToU8(bytes);
     case "FormData": {
       if (mimeType !== null) {
         const essence = mimesniff.essence(mimeType);
@@ -394,44 +406,27 @@ function extractBody(object) {
     }
   } else if (ArrayBufferIsView(object)) {
     const tag = TypedArrayPrototypeGetSymbolToStringTag(object);
-    if (tag === "Uint8Array") {
-      // Fast(er) path for common case of Uint8Array
-      const copy = TypedArrayPrototypeSlice(
-        object,
-        TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (object)),
-        TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (object)),
-      );
-      source = copy;
-    } else if (tag !== undefined) {
+    if (tag !== undefined) {
       // TypedArray
-      const copy = TypedArrayPrototypeSlice(
-        new Uint8Array(
+      if (tag !== "Uint8Array") {
+        // TypedArray, unless it's Uint8Array
+        object = new Uint8Array(
           TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (object)),
           TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (object)),
           TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (object)),
-        ),
-      );
-      source = copy;
+        );
+      }
     } else {
       // DataView
-      const copy = TypedArrayPrototypeSlice(
-        new Uint8Array(
-          DataViewPrototypeGetBuffer(/** @type {DataView} */ (object)),
-          DataViewPrototypeGetByteOffset(/** @type {DataView} */ (object)),
-          DataViewPrototypeGetByteLength(/** @type {DataView} */ (object)),
-        ),
+      object = new Uint8Array(
+        DataViewPrototypeGetBuffer(/** @type {DataView} */ (object)),
+        DataViewPrototypeGetByteOffset(/** @type {DataView} */ (object)),
+        DataViewPrototypeGetByteLength(/** @type {DataView} */ (object)),
       );
-      source = copy;
     }
-  } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, object)) {
-    const copy = TypedArrayPrototypeSlice(
-      new Uint8Array(
-        object,
-        0,
-        ArrayBufferPrototypeGetByteLength(object),
-      ),
-    );
-    source = copy;
+    source = TypedArrayPrototypeSlice(object);
+  } else if (isArrayBuffer(object)) {
+    source = TypedArrayPrototypeSlice(new Uint8Array(object));
   } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, object)) {
     const res = formDataToBlob(object);
     stream = res.stream();
@@ -442,6 +437,7 @@ function extractBody(object) {
     ObjectPrototypeIsPrototypeOf(URLSearchParamsPrototype, object)
   ) {
     // TODO(@satyarohith): not sure what primordial here.
+    // deno-lint-ignore prefer-primordials
     source = object.toString();
     contentType = "application/x-www-form-urlencoded;charset=UTF-8";
   } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {
@@ -466,33 +462,29 @@ function extractBody(object) {
   return { body, contentType };
 }
 
-webidl.converters["BodyInit_DOMString"] = (V, opts) => {
+webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
   // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
   if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, V)) {
-    return webidl.converters["ReadableStream"](V, opts);
+    return webidl.converters["ReadableStream"](V, prefix, context, opts);
   } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
-    return webidl.converters["Blob"](V, opts);
+    return webidl.converters["Blob"](V, prefix, context, opts);
   } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, V)) {
-    return webidl.converters["FormData"](V, opts);
+    return webidl.converters["FormData"](V, prefix, context, opts);
   } else if (ObjectPrototypeIsPrototypeOf(URLSearchParamsPrototype, V)) {
-    return webidl.converters["URLSearchParams"](V, opts);
+    return webidl.converters["URLSearchParams"](V, prefix, context, opts);
   }
   if (typeof V === "object") {
-    if (
-      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
-      // deno-lint-ignore prefer-primordials
-      ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
-    ) {
-      return webidl.converters["ArrayBuffer"](V, opts);
+    if (isAnyArrayBuffer(V)) {
+      return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {
-      return webidl.converters["ArrayBufferView"](V, opts);
+      return webidl.converters["ArrayBufferView"](V, prefix, context, opts);
     }
   }
   // BodyInit conversion is passed to extractBody(), which calls core.encode().
   // core.encode() will UTF-8 encode strings with replacement, being equivalent to the USV normalization.
   // Therefore we can convert to DOMString instead of USVString and avoid a costly redundant conversion.
-  return webidl.converters["DOMString"](V, opts);
+  return webidl.converters["DOMString"](V, prefix, context, opts);
 };
 webidl.converters["BodyInit_DOMString?"] = webidl.createNullableConverter(
   webidl.converters["BodyInit_DOMString"],

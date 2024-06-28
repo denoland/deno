@@ -1,15 +1,60 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
+use deno_core::unsync::spawn_blocking;
 use deno_runtime::deno_webstorage::rusqlite;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 use deno_runtime::deno_webstorage::rusqlite::OptionalExtension;
 use deno_runtime::deno_webstorage::rusqlite::Params;
 use once_cell::sync::OnceCell;
+use std::io::IsTerminal;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+use super::FastInsecureHasher;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct CacheDBHash(u64);
+
+impl CacheDBHash {
+  pub fn new(hash: u64) -> Self {
+    Self(hash)
+  }
+
+  pub fn from_source(source: impl std::hash::Hash) -> Self {
+    Self::new(
+      // always write in the deno version just in case
+      // the clearing on deno version change doesn't work
+      FastInsecureHasher::new_deno_versioned()
+        .write_hashable(source)
+        .finish(),
+    )
+  }
+}
+
+impl rusqlite::types::ToSql for CacheDBHash {
+  fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+    Ok(rusqlite::types::ToSqlOutput::Owned(
+      // sqlite doesn't support u64, but it does support i64 so store
+      // this value "incorrectly" as i64 then convert back to u64 on read
+      rusqlite::types::Value::Integer(self.0 as i64),
+    ))
+  }
+}
+
+impl rusqlite::types::FromSql for CacheDBHash {
+  fn column_result(
+    value: rusqlite::types::ValueRef,
+  ) -> rusqlite::types::FromSqlResult<Self> {
+    match value {
+      rusqlite::types::ValueRef::Integer(i) => Ok(Self::new(i as u64)),
+      _ => Err(rusqlite::types::FromSqlError::InvalidType),
+    }
+  }
+}
 
 /// What should the cache should do on failure?
 #[derive(Default)]
@@ -38,21 +83,16 @@ pub struct CacheDBConfiguration {
 impl CacheDBConfiguration {
   fn create_combined_sql(&self) -> String {
     format!(
-      "
-      PRAGMA journal_mode=TRUNCATE;
-      PRAGMA synchronous=NORMAL;
-      PRAGMA temp_store=memory;
-      PRAGMA page_size=4096;
-      PRAGMA mmap_size=6000000;
-      PRAGMA optimize;
-
-      CREATE TABLE IF NOT EXISTS info (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-
-      {}
-    ",
+      concat!(
+        "PRAGMA journal_mode=WAL;",
+        "PRAGMA synchronous=NORMAL;",
+        "PRAGMA temp_store=memory;",
+        "PRAGMA page_size=4096;",
+        "PRAGMA mmap_size=6000000;",
+        "PRAGMA optimize;",
+        "CREATE TABLE IF NOT EXISTS info (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        "{}",
+      ),
       self.table_initializer
     )
   }
@@ -95,7 +135,7 @@ impl Drop for CacheDB {
       // Hand off SQLite connection to another thread to do the surprisingly expensive cleanup
       let inner = inner.into_inner().into_inner();
       if let Some(conn) = inner {
-        tokio::task::spawn_blocking(move || {
+        spawn_blocking(move || {
           drop(conn);
           log::trace!(
             "Cleaned up SQLite connection at {}",
@@ -108,7 +148,6 @@ impl Drop for CacheDB {
 }
 
 impl CacheDB {
-  #[cfg(test)]
   pub fn in_memory(
     config: &'static CacheDBConfiguration,
     version: &'static str,
@@ -168,7 +207,7 @@ impl CacheDB {
   fn spawn_eager_init_thread(&self) {
     let clone = self.clone();
     debug_assert!(tokio::runtime::Handle::try_current().is_ok());
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking(move || {
       let lock = clone.conn.lock();
       clone.initialize(&lock);
     });
@@ -177,7 +216,7 @@ impl CacheDB {
   /// Open the connection in memory or on disk.
   fn actually_open_connection(
     &self,
-    path: &Option<PathBuf>,
+    path: Option<&Path>,
   ) -> Result<Connection, rusqlite::Error> {
     match path {
       // This should never fail unless something is very wrong
@@ -223,7 +262,7 @@ impl CacheDB {
   /// Open and initialize a connection.
   fn open_connection_and_init(
     &self,
-    path: &Option<PathBuf>,
+    path: Option<&Path>,
   ) -> Result<Connection, AnyError> {
     let conn = self.actually_open_connection(path)?;
     Self::initialize_connection(self.config, &conn, self.version)?;
@@ -233,71 +272,9 @@ impl CacheDB {
   /// This function represents the policy for dealing with corrupted cache files. We try fairly aggressively
   /// to repair the situation, and if we can't, we prefer to log noisily and continue with in-memory caches.
   fn open_connection(&self) -> Result<ConnectionState, AnyError> {
-    // Success on first try? We hope that this is the case.
-    let err = match self.open_connection_and_init(&self.path) {
-      Ok(conn) => return Ok(ConnectionState::Connected(conn)),
-      Err(err) => err,
-    };
-
-    if self.path.is_none() {
-      // If an in-memory DB fails, that's game over
-      log::error!("Failed to initialize in-memory cache database.");
-      return Err(err);
-    }
-
-    let path = self.path.as_ref().unwrap();
-
-    // There are rare times in the tests when we can't initialize a cache DB the first time, but it succeeds the second time, so
-    // we don't log these at a debug level.
-    log::trace!(
-      "Could not initialize cache database '{}', retrying... ({err:?})",
-      path.to_string_lossy(),
-    );
-
-    // Try a second time
-    let err = match self.open_connection_and_init(&self.path) {
-      Ok(conn) => return Ok(ConnectionState::Connected(conn)),
-      Err(err) => err,
-    };
-
-    // Failed, try deleting it
-    log::warn!(
-      "Could not initialize cache database '{}', deleting and retrying... ({err:?})",
-      path.to_string_lossy()
-    );
-    if std::fs::remove_file(path).is_ok() {
-      // Try a third time if we successfully deleted it
-      let res = self.open_connection_and_init(&self.path);
-      if let Ok(conn) = res {
-        return Ok(ConnectionState::Connected(conn));
-      };
-    }
-
-    match self.config.on_failure {
-      CacheFailure::InMemory => {
-        log::error!(
-          "Failed to open cache file '{}', opening in-memory cache.",
-          path.to_string_lossy()
-        );
-        Ok(ConnectionState::Connected(
-          self.open_connection_and_init(&None)?,
-        ))
-      }
-      CacheFailure::Blackhole => {
-        log::error!(
-          "Failed to open cache file '{}', performance may be degraded.",
-          path.to_string_lossy()
-        );
-        Ok(ConnectionState::Blackhole)
-      }
-      CacheFailure::Error => {
-        log::error!(
-          "Failed to open cache file '{}', expect further errors.",
-          path.to_string_lossy()
-        );
-        Err(err)
-      }
-    }
+    open_connection(self.config, self.path.as_deref(), |maybe_path| {
+      self.open_connection_and_init(maybe_path)
+    })
   }
 
   fn initialize<'a>(
@@ -384,8 +361,105 @@ impl CacheDB {
   }
 }
 
+/// This function represents the policy for dealing with corrupted cache files. We try fairly aggressively
+/// to repair the situation, and if we can't, we prefer to log noisily and continue with in-memory caches.
+fn open_connection(
+  config: &CacheDBConfiguration,
+  path: Option<&Path>,
+  open_connection_and_init: impl Fn(Option<&Path>) -> Result<Connection, AnyError>,
+) -> Result<ConnectionState, AnyError> {
+  // Success on first try? We hope that this is the case.
+  let err = match open_connection_and_init(path) {
+    Ok(conn) => return Ok(ConnectionState::Connected(conn)),
+    Err(err) => err,
+  };
+
+  let Some(path) = path.as_ref() else {
+    // If an in-memory DB fails, that's game over
+    log::error!("Failed to initialize in-memory cache database.");
+    return Err(err);
+  };
+
+  // ensure the parent directory exists
+  if let Some(parent) = path.parent() {
+    match std::fs::create_dir_all(parent) {
+      Ok(_) => {
+        log::debug!("Created parent directory for cache db.");
+      }
+      Err(err) => {
+        log::debug!("Failed creating the cache db parent dir: {:#}", err);
+      }
+    }
+  }
+
+  // There are rare times in the tests when we can't initialize a cache DB the first time, but it succeeds the second time, so
+  // we don't log these at a debug level.
+  log::trace!(
+    "Could not initialize cache database '{}', retrying... ({err:?})",
+    path.to_string_lossy(),
+  );
+
+  // Try a second time
+  let err = match open_connection_and_init(Some(path)) {
+    Ok(conn) => return Ok(ConnectionState::Connected(conn)),
+    Err(err) => err,
+  };
+
+  // Failed, try deleting it
+  let is_tty = std::io::stderr().is_terminal();
+  log::log!(
+      if is_tty { log::Level::Warn } else { log::Level::Trace },
+      "Could not initialize cache database '{}', deleting and retrying... ({err:?})",
+      path.to_string_lossy()
+    );
+  if std::fs::remove_file(path).is_ok() {
+    // Try a third time if we successfully deleted it
+    let res = open_connection_and_init(Some(path));
+    if let Ok(conn) = res {
+      return Ok(ConnectionState::Connected(conn));
+    };
+  }
+
+  match config.on_failure {
+    CacheFailure::InMemory => {
+      log::log!(
+        if is_tty {
+          log::Level::Error
+        } else {
+          log::Level::Trace
+        },
+        "Failed to open cache file '{}', opening in-memory cache.",
+        path.to_string_lossy()
+      );
+      Ok(ConnectionState::Connected(open_connection_and_init(None)?))
+    }
+    CacheFailure::Blackhole => {
+      log::log!(
+        if is_tty {
+          log::Level::Error
+        } else {
+          log::Level::Trace
+        },
+        "Failed to open cache file '{}', performance may be degraded.",
+        path.to_string_lossy()
+      );
+      Ok(ConnectionState::Blackhole)
+    }
+    CacheFailure::Error => {
+      log::error!(
+        "Failed to open cache file '{}', expect further errors.",
+        path.to_string_lossy()
+      );
+      Err(err)
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
+  use deno_core::anyhow::anyhow;
+  use test_util::TempDir;
+
   use super::*;
 
   static TEST_DB: CacheDBConfiguration = CacheDBConfiguration {
@@ -396,15 +470,15 @@ mod tests {
   };
 
   static TEST_DB_BLACKHOLE: CacheDBConfiguration = CacheDBConfiguration {
-    table_initializer: "create table if not exists test(value TEXT);",
-    on_version_change: "delete from test;",
+    table_initializer: "syntax error", // intentially cause an error
+    on_version_change: "",
     preheat_queries: &[],
     on_failure: CacheFailure::Blackhole,
   };
 
   static TEST_DB_ERROR: CacheDBConfiguration = CacheDBConfiguration {
-    table_initializer: "create table if not exists test(value TEXT);",
-    on_version_change: "delete from test;",
+    table_initializer: "syntax error", // intentionally cause an error
+    on_version_change: "",
     preheat_queries: &[],
     on_failure: CacheFailure::Error,
   };
@@ -415,8 +489,6 @@ mod tests {
     preheat_queries: &[],
     on_failure: CacheFailure::InMemory,
   };
-
-  static FAILURE_PATH: &str = "/tmp/this/doesnt/exist/so/will/always/fail";
 
   #[tokio::test]
   async fn simple_database() {
@@ -430,7 +502,7 @@ mod tests {
         Ok(row.get::<_, String>(0).unwrap())
       })
       .unwrap();
-    assert_eq!(Some("1".into()), res);
+    assert_eq!(res, Some("1".into()));
   }
 
   #[tokio::test]
@@ -442,22 +514,23 @@ mod tests {
 
   #[tokio::test]
   async fn failure_mode_in_memory() {
-    let db = CacheDB::from_path(&TEST_DB, FAILURE_PATH.into(), "1.0");
-    db.ensure_connected()
-      .expect("Should have created a database");
-
-    db.execute("insert into test values (?1)", [1]).unwrap();
-    let res = db
-      .query_row("select * from test", [], |row| {
-        Ok(row.get::<_, String>(0).unwrap())
-      })
-      .unwrap();
-    assert_eq!(Some("1".into()), res);
+    let temp_dir = TempDir::new();
+    let path = temp_dir.path().join("data").to_path_buf();
+    let state = open_connection(&TEST_DB, Some(path.as_path()), |maybe_path| {
+      match maybe_path {
+        Some(_) => Err(anyhow!("fail")),
+        None => Ok(Connection::open_in_memory().unwrap()),
+      }
+    })
+    .unwrap();
+    assert!(matches!(state, ConnectionState::Connected(_)));
   }
 
   #[tokio::test]
   async fn failure_mode_blackhole() {
-    let db = CacheDB::from_path(&TEST_DB_BLACKHOLE, FAILURE_PATH.into(), "1.0");
+    let temp_dir = TempDir::new();
+    let path = temp_dir.path().join("data");
+    let db = CacheDB::from_path(&TEST_DB_BLACKHOLE, path.to_path_buf(), "1.0");
     db.ensure_connected()
       .expect("Should have created a database");
 
@@ -467,12 +540,14 @@ mod tests {
         Ok(row.get::<_, String>(0).unwrap())
       })
       .unwrap();
-    assert_eq!(None, res);
+    assert_eq!(res, None);
   }
 
   #[tokio::test]
   async fn failure_mode_error() {
-    let db = CacheDB::from_path(&TEST_DB_ERROR, FAILURE_PATH.into(), "1.0");
+    let temp_dir = TempDir::new();
+    let path = temp_dir.path().join("data");
+    let db = CacheDB::from_path(&TEST_DB_ERROR, path.to_path_buf(), "1.0");
     db.ensure_connected().expect_err("Should have failed");
 
     db.execute("insert into test values (?1)", [1])
@@ -481,5 +556,33 @@ mod tests {
       Ok(row.get::<_, String>(0).unwrap())
     })
     .expect_err("Should have failed");
+  }
+
+  #[test]
+  fn cache_db_hash_max_u64_value() {
+    assert_same_serialize_deserialize(CacheDBHash::new(u64::MAX));
+    assert_same_serialize_deserialize(CacheDBHash::new(u64::MAX - 1));
+    assert_same_serialize_deserialize(CacheDBHash::new(u64::MIN));
+    assert_same_serialize_deserialize(CacheDBHash::new(u64::MIN + 1));
+  }
+
+  fn assert_same_serialize_deserialize(original_hash: CacheDBHash) {
+    use rusqlite::types::FromSql;
+    use rusqlite::types::ValueRef;
+    use rusqlite::ToSql;
+
+    let value = original_hash.to_sql().unwrap();
+    match value {
+      rusqlite::types::ToSqlOutput::Owned(rusqlite::types::Value::Integer(
+        value,
+      )) => {
+        let value_ref = ValueRef::Integer(value);
+        assert_eq!(
+          original_hash,
+          CacheDBHash::column_result(value_ref).unwrap()
+        );
+      }
+      _ => unreachable!(),
+    }
   }
 }

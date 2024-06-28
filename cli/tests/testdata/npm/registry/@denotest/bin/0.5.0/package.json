@@ -1,5 +1,0 @@
-{
-  "name": "@deno/bin",
-  "version": "0.5.0",
-  "bin": "./cli.mjs"
-}

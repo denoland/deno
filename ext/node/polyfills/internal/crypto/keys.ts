@@ -1,10 +1,21 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import {
+  op_node_create_private_key,
+  op_node_create_public_key,
+  op_node_export_rsa_public_pem,
+  op_node_export_rsa_spki_der,
+} from "ext:core/ops";
 
 import {
   kHandle,
   kKeyObject,
 } from "ext:deno_node/internal/crypto/constants.ts";
+import { isStringOrBuffer } from "ext:deno_node/internal/crypto/cipher.ts";
 import {
   ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE,
   ERR_INVALID_ARG_TYPE,
@@ -13,11 +24,10 @@ import {
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import type {
   KeyFormat,
-  KeyType,
   PrivateKeyInput,
   PublicKeyInput,
 } from "ext:deno_node/internal/crypto/types.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
@@ -36,7 +46,7 @@ import {
   forgivingBase64UrlEncode as encodeToBase64Url,
 } from "ext:deno_web/00_infra.js";
 
-const getArrayBufferOrView = hideStackFrames(
+export const getArrayBufferOrView = hideStackFrames(
   (
     buffer,
     name,
@@ -58,7 +68,7 @@ const getArrayBufferOrView = hideStackFrames(
     | Uint16Array
     | Uint32Array => {
     if (isAnyArrayBuffer(buffer)) {
-      return buffer;
+      return new Uint8Array(buffer);
     }
     if (typeof buffer === "string") {
       if (encoding === "buffer") {
@@ -165,18 +175,6 @@ export class KeyObject {
     return this[kKeyType];
   }
 
-  get asymmetricKeyDetails(): AsymmetricKeyDetails | undefined {
-    notImplemented("crypto.KeyObject.prototype.asymmetricKeyDetails");
-
-    return undefined;
-  }
-
-  get asymmetricKeyType(): KeyType | undefined {
-    notImplemented("crypto.KeyObject.prototype.asymmetricKeyType");
-
-    return undefined;
-  }
-
   get symmetricKeySize(): number | undefined {
     notImplemented("crypto.KeyObject.prototype.symmetricKeySize");
 
@@ -216,16 +214,48 @@ export interface JsonWebKeyInput {
   format: "jwk";
 }
 
+export function prepareAsymmetricKey(key) {
+  if (isStringOrBuffer(key)) {
+    return { format: "pem", data: getArrayBufferOrView(key, "key") };
+  } else if (isKeyObject(key)) {
+    return {
+      // Assumes that assymetric keys are stored as PEM.
+      format: "pem",
+      data: getKeyMaterial(key),
+    };
+  } else if (typeof key == "object") {
+    const { key: data, encoding, format, type } = key;
+    if (!isStringOrBuffer(data)) {
+      throw new TypeError("Invalid key type");
+    }
+
+    return {
+      data: getArrayBufferOrView(data, "key", encoding),
+      format: format ?? "pem",
+      encoding,
+      type,
+    };
+  }
+
+  throw new TypeError("Invalid key type");
+}
+
 export function createPrivateKey(
-  _key: PrivateKeyInput | string | Buffer | JsonWebKeyInput,
-): KeyObject {
-  notImplemented("crypto.createPrivateKey");
+  key: PrivateKeyInput | string | Buffer | JsonWebKeyInput,
+): PrivateKeyObject {
+  const { data, format, type } = prepareAsymmetricKey(key);
+  const details = op_node_create_private_key(data, format, type);
+  const handle = setOwnedKey(copyBuffer(data));
+  return new PrivateKeyObject(handle, details);
 }
 
 export function createPublicKey(
-  _key: PublicKeyInput | string | Buffer | KeyObject | JsonWebKeyInput,
-): KeyObject {
-  notImplemented("crypto.createPublicKey");
+  key: PublicKeyInput | string | Buffer | JsonWebKeyInput,
+): PublicKeyObject {
+  const { data, format, type } = prepareAsymmetricKey(key);
+  const details = op_node_create_public_key(data, format, type);
+  const handle = setOwnedKey(copyBuffer(data));
+  return new PublicKeyObject(handle, details);
 }
 
 function getKeyTypes(allowKeyObject: boolean, bufferOnly = false) {
@@ -279,7 +309,7 @@ export function prepareSecretKey(
   return getArrayBufferOrView(key, "key", encoding);
 }
 
-class SecretKeyObject extends KeyObject {
+export class SecretKeyObject extends KeyObject {
   constructor(handle: unknown) {
     super("secret", handle);
   }
@@ -313,7 +343,68 @@ class SecretKeyObject extends KeyObject {
   }
 }
 
-function setOwnedKey(key: Uint8Array): unknown {
+const kAsymmetricKeyType = Symbol("kAsymmetricKeyType");
+const kAsymmetricKeyDetails = Symbol("kAsymmetricKeyDetails");
+
+class AsymmetricKeyObject extends KeyObject {
+  constructor(type: KeyObjectType, handle: unknown, details: unknown) {
+    super(type, handle);
+    this[kAsymmetricKeyType] = details.type;
+    this[kAsymmetricKeyDetails] = { ...details };
+  }
+
+  get asymmetricKeyType() {
+    return this[kAsymmetricKeyType];
+  }
+
+  get asymmetricKeyDetails() {
+    return this[kAsymmetricKeyDetails];
+  }
+}
+
+export class PrivateKeyObject extends AsymmetricKeyObject {
+  constructor(handle: unknown, details: unknown) {
+    super("private", handle, details);
+  }
+
+  export(_options: unknown) {
+    notImplemented("crypto.PrivateKeyObject.prototype.export");
+  }
+}
+
+export class PublicKeyObject extends AsymmetricKeyObject {
+  constructor(handle: unknown, details: unknown) {
+    super("public", handle, details);
+  }
+
+  export(options: unknown) {
+    const key = KEY_STORE.get(this[kHandle]);
+    switch (this.asymmetricKeyType) {
+      case "rsa":
+      case "rsa-pss": {
+        switch (options.format) {
+          case "pem":
+            return op_node_export_rsa_public_pem(key);
+          case "der": {
+            if (options.type == "pkcs1") {
+              return key;
+            } else {
+              return op_node_export_rsa_spki_der(key);
+            }
+          }
+          default:
+            throw new TypeError(`exporting ${options.type} is not implemented`);
+        }
+      }
+      default:
+        throw new TypeError(
+          `exporting ${this.asymmetricKeyType} is not implemented`,
+        );
+    }
+  }
+}
+
+export function setOwnedKey(key: Uint8Array): unknown {
   const handle = {};
   KEY_STORE.set(handle, key);
   return handle;
@@ -345,4 +436,8 @@ export default {
   isCryptoKey,
   KeyObject,
   prepareSecretKey,
+  setOwnedKey,
+  SecretKeyObject,
+  PrivateKeyObject,
+  PublicKeyObject,
 };

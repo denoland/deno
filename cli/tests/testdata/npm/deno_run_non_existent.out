@@ -1,2 +1,0 @@
-Download http://localhost:4545/npm/registry/mkdirp
-error: Could not find npm package 'mkdirp' matching 0.5.125. Try retrieving the latest npm package information by running with --reload

@@ -1,6 +1,13 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { Buffer } from "ext:deno_node/buffer.ts";
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { Buffer } from "node:buffer";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import * as io from "ext:deno_io/12_io.js";
+import * as fs from "ext:deno_fs/30_fs.js";
+import { ReadOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import {
   validateOffsetLengthRead,
   validatePosition,
@@ -9,13 +16,6 @@ import {
   validateBuffer,
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
-
-type readOptions = {
-  buffer: Buffer | Uint8Array;
-  offset: number;
-  length: number;
-  position: number | null;
-};
 
 type readSyncOptions = {
   offset: number;
@@ -33,7 +33,7 @@ type Callback = BinaryCallback;
 export function read(fd: number, callback: Callback): void;
 export function read(
   fd: number,
-  options: readOptions,
+  options: ReadOptions,
   callback: Callback,
 ): void;
 export function read(
@@ -46,7 +46,7 @@ export function read(
 ): void;
 export function read(
   fd: number,
-  optOrBufferOrCb?: Buffer | Uint8Array | readOptions | Callback,
+  optOrBufferOrCb?: Buffer | Uint8Array | ReadOptions | Callback,
   offsetOrCallback?: number | Callback,
   length?: number,
   position?: number | null,
@@ -84,14 +84,10 @@ export function read(
     length = buffer.byteLength;
     position = null;
   } else {
-    const opt = optOrBufferOrCb as readOptions;
+    const opt = optOrBufferOrCb as ReadOptions;
     if (
       !(opt.buffer instanceof Buffer) && !(opt.buffer instanceof Uint8Array)
     ) {
-      if (opt.buffer === null) {
-        // @ts-ignore: Intentionally create TypeError for passing test-fs-read.js#L87
-        length = opt.buffer.byteLength;
-      }
       throw new ERR_INVALID_ARG_TYPE("buffer", [
         "Buffer",
         "TypedArray",
@@ -117,14 +113,14 @@ export function read(
     try {
       let nread: number | null;
       if (typeof position === "number" && position >= 0) {
-        const currentPosition = await Deno.seek(fd, 0, Deno.SeekMode.Current);
+        const currentPosition = await fs.seek(fd, 0, io.SeekMode.Current);
         // We use sync calls below to avoid being affected by others during
         // these calls.
-        Deno.seekSync(fd, position, Deno.SeekMode.Start);
-        nread = Deno.readSync(fd, buffer);
-        Deno.seekSync(fd, currentPosition, Deno.SeekMode.Start);
+        fs.seekSync(fd, position, io.SeekMode.Start);
+        nread = io.readSync(fd, buffer);
+        fs.seekSync(fd, currentPosition, io.SeekMode.Start);
       } else {
-        nread = await Deno.read(fd, buffer);
+        nread = await io.read(fd, buffer);
       }
       cb(null, nread ?? 0, Buffer.from(buffer.buffer, offset, length));
     } catch (error) {
@@ -167,7 +163,7 @@ export function readSync(
   if (typeof offsetOrOpt === "number") {
     offset = offsetOrOpt;
     validateInteger(offset, "offset", 0);
-  } else {
+  } else if (offsetOrOpt !== undefined) {
     const opt = offsetOrOpt as readSyncOptions;
     offset = opt.offset ?? 0;
     length = opt.length ?? buffer.byteLength;
@@ -183,14 +179,14 @@ export function readSync(
 
   let currentPosition = 0;
   if (typeof position === "number" && position >= 0) {
-    currentPosition = Deno.seekSync(fd, 0, Deno.SeekMode.Current);
-    Deno.seekSync(fd, position, Deno.SeekMode.Start);
+    currentPosition = fs.seekSync(fd, 0, io.SeekMode.Current);
+    fs.seekSync(fd, position, io.SeekMode.Start);
   }
 
-  const numberOfBytesRead = Deno.readSync(fd, buffer);
+  const numberOfBytesRead = io.readSync(fd, buffer);
 
   if (typeof position === "number" && position >= 0) {
-    Deno.seekSync(fd, currentPosition, Deno.SeekMode.Start);
+    fs.seekSync(fd, currentPosition, io.SeekMode.Start);
   }
 
   return numberOfBytesRead ?? 0;

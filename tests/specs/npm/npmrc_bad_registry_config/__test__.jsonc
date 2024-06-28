@@ -1,0 +1,9 @@
+{
+  "envs": {
+    "DENO_FUTURE": "1"
+  },
+  "tempDir": true,
+  "args": "install",
+  "output": "main.out",
+  "exitCode": 1
+}

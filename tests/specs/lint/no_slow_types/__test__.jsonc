@@ -1,0 +1,17 @@
+{
+  "steps": [{
+    "args": "lint",
+    "output": "no_slow_types.out",
+    "exitCode": 1
+  }, {
+    "args": "lint --rules-exclude=no-slow-types",
+    "output": "Checked 4 files\n"
+  }, {
+    "args": "lint --config=deno.non-package.json",
+    "output": "Checked 4 files\n"
+  }, {
+    // non-entrypoint
+    "args": "lint d.ts",
+    "output": "Checked 1 file\n"
+  }]
+}

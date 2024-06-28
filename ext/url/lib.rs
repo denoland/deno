@@ -1,15 +1,15 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod urlpattern;
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
+use deno_core::JsBuffer;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 use std::path::PathBuf;
 
 use crate::urlpattern::op_urlpattern_parse;
@@ -32,12 +32,13 @@ deno_core::extension!(
 );
 
 /// Parse `href` with a `base_href`. Fills the out `buf` with URL components.
-#[op]
+#[op2(fast)]
+#[smi]
 pub fn op_url_parse_with_base(
   state: &mut OpState,
-  href: &str,
-  base_href: &str,
-  buf: &mut [u32],
+  #[string] href: &str,
+  #[string] base_href: &str,
+  #[buffer] buf: &mut [u32],
 ) -> u32 {
   let base_url = match Url::parse(base_href) {
     Ok(url) => url,
@@ -55,14 +56,20 @@ pub enum ParseStatus {
 
 struct UrlSerialization(String);
 
-#[op]
+#[op2]
+#[string]
 pub fn op_url_get_serialization(state: &mut OpState) -> String {
   state.take::<UrlSerialization>().0
 }
 
 /// Parse `href` without a `base_url`. Fills the out `buf` with URL components.
-#[op(fast)]
-pub fn op_url_parse(state: &mut OpState, href: &str, buf: &mut [u32]) -> u32 {
+#[op2(fast)]
+#[smi]
+pub fn op_url_parse(
+  state: &mut OpState,
+  #[string] href: &str,
+  #[buffer] buf: &mut [u32],
+) -> u32 {
   parse_url(state, href, None, buf)
 }
 
@@ -137,24 +144,14 @@ pub enum UrlSetter {
 
 const NO_PORT: u32 = 65536;
 
-fn as_u32_slice(slice: &mut [u8]) -> &mut [u32] {
-  assert_eq!(slice.len() % std::mem::size_of::<u32>(), 0);
-  // SAFETY: size is multiple of 4
-  unsafe {
-    std::slice::from_raw_parts_mut(
-      slice.as_mut_ptr() as *mut u32,
-      slice.len() / std::mem::size_of::<u32>(),
-    )
-  }
-}
-
-#[op]
+#[op2(fast)]
+#[smi]
 pub fn op_url_reparse(
   state: &mut OpState,
-  href: String,
-  setter: u8,
-  setter_value: String,
-  buf: &mut [u8],
+  #[string] href: String,
+  #[smi] setter: u8,
+  #[string] setter_value: String,
+  #[buffer] buf: &mut [u32],
 ) -> u32 {
   let mut url = match Url::options().parse(&href) {
     Ok(url) => url,
@@ -196,7 +193,6 @@ pub fn op_url_reparse(
     Ok(_) => {
       let inner_url = quirks::internal_components(&url);
 
-      let buf: &mut [u32] = as_u32_slice(buf);
       buf[0] = inner_url.scheme_end;
       buf[1] = inner_url.username_end;
       buf[2] = inner_url.host_start;
@@ -217,10 +213,11 @@ pub fn op_url_reparse(
   }
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_url_parse_search_params(
-  args: Option<String>,
-  zero_copy: Option<ZeroCopyBuf>,
+  #[string] args: Option<String>,
+  #[buffer] zero_copy: Option<JsBuffer>,
 ) -> Result<Vec<(String, String)>, AnyError> {
   let params = match (args, zero_copy) {
     (None, Some(zero_copy)) => form_urlencoded::parse(&zero_copy)
@@ -236,8 +233,11 @@ pub fn op_url_parse_search_params(
   Ok(params)
 }
 
-#[op]
-pub fn op_url_stringify_search_params(args: Vec<(String, String)>) -> String {
+#[op2]
+#[string]
+pub fn op_url_stringify_search_params(
+  #[serde] args: Vec<(String, String)>,
+) -> String {
   let search = form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)
     .finish();

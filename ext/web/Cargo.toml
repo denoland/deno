@@ -1,8 +1,8 @@
-# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_web"
-version = "0.128.0"
+version = "0.189.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,9 +16,12 @@ path = "lib.rs"
 [dependencies]
 async-trait.workspace = true
 base64-simd = "0.8"
+bytes.workspace = true
 deno_core.workspace = true
+deno_permissions.workspace = true
 encoding_rs.workspace = true
-flate2.workspace = true
+flate2 = { workspace = true, features = ["default"] }
+futures.workspace = true
 serde = "1.0.149"
 tokio.workspace = true
 uuid = { workspace = true, features = ["serde"] }

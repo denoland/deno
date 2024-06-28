@@ -1,0 +1,10 @@
+{
+  "name": "@foo/foo",
+  "version": "1.0.0",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "bar": "jsr:@foo/bar@1"
+  }
+}

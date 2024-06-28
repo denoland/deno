@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 #[cfg(target_family = "windows")]
 use std::sync::Once;
 
@@ -6,7 +6,7 @@ type LoadAvg = (f64, f64, f64);
 const DEFAULT_LOADAVG: LoadAvg = (0.0, 0.0, 0.0);
 
 pub fn loadavg() -> LoadAvg {
-  #[cfg(target_os = "linux")]
+  #[cfg(any(target_os = "android", target_os = "linux"))]
   {
     use libc::SI_LOAD_SHIFT;
 
@@ -48,6 +48,7 @@ pub fn loadavg() -> LoadAvg {
 pub fn os_release() -> String {
   #[cfg(target_os = "linux")]
   {
+    #[allow(clippy::disallowed_methods)]
     match std::fs::read_to_string("/proc/sys/kernel/osrelease") {
       Ok(mut s) => {
         s.pop(); // pop '\n'
@@ -56,7 +57,27 @@ pub fn os_release() -> String {
       _ => String::from(""),
     }
   }
-  #[cfg(target_vendor = "apple")]
+  #[cfg(target_os = "android")]
+  {
+    let mut info = std::mem::MaybeUninit::uninit();
+    // SAFETY: `info` is a valid pointer to a `libc::utsname` struct.
+    let res = unsafe { libc::uname(info.as_mut_ptr()) };
+    if res != 0 {
+      return String::from("");
+    }
+    // SAFETY: `uname` returns 0 on success, and `info` is initialized.
+    let mut info = unsafe { info.assume_init() };
+    let len = info.release.len();
+    info.release[len - 1] = 0;
+    // SAFETY: `info.release` is a valid pointer and NUL-terminated.
+    let c_str = unsafe { std::ffi::CStr::from_ptr(info.release.as_ptr()) };
+    c_str.to_string_lossy().into_owned()
+  }
+  #[cfg(any(
+    target_vendor = "apple",
+    target_os = "freebsd",
+    target_os = "openbsd"
+  ))]
   {
     let mut s = [0u8; 256];
     let mut mib = [libc::CTL_KERN, libc::KERN_OSRELEASE];
@@ -193,7 +214,7 @@ pub fn mem_info() -> Option<MemInfo> {
     swap_total: 0,
     swap_free: 0,
   };
-  #[cfg(target_os = "linux")]
+  #[cfg(any(target_os = "android", target_os = "linux"))]
   {
     let mut info = std::mem::MaybeUninit::uninit();
     // SAFETY: `info` is a valid pointer to a `libc::sysinfo` struct.
@@ -206,10 +227,22 @@ pub fn mem_info() -> Option<MemInfo> {
       mem_info.swap_free = info.freeswap * mem_unit;
       mem_info.total = info.totalram * mem_unit;
       mem_info.free = info.freeram * mem_unit;
+      mem_info.available = mem_info.free;
       mem_info.buffers = info.bufferram * mem_unit;
     }
+
+    // Gets the available memory from /proc/meminfo in linux for compatibility
+    #[allow(clippy::disallowed_methods)]
+    if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
+      let line = meminfo.lines().find(|l| l.starts_with("MemAvailable:"));
+      if let Some(line) = line {
+        let mem = line.split_whitespace().nth(1);
+        let mem = mem.and_then(|v| v.parse::<u64>().ok());
+        mem_info.available = mem.unwrap_or(0);
+      }
+    }
   }
-  #[cfg(any(target_vendor = "apple"))]
+  #[cfg(target_vendor = "apple")]
   {
     let mut mib: [i32; 2] = [0, 0];
     mib[0] = libc::CTL_HW;
@@ -227,7 +260,6 @@ pub fn mem_info() -> Option<MemInfo> {
         std::ptr::null_mut(),
         0,
       );
-      mem_info.total /= 1024;
 
       let mut xs: libc::xsw_usage = std::mem::zeroed::<libc::xsw_usage>();
       mib[0] = libc::CTL_VM;
@@ -287,9 +319,9 @@ pub fn mem_info() -> Option<MemInfo> {
     let result = sysinfoapi::GlobalMemoryStatusEx(mem_status.as_mut_ptr());
     if result != 0 {
       let stat = mem_status.assume_init();
-      mem_info.total = stat.ullTotalPhys / 1024;
+      mem_info.total = stat.ullTotalPhys;
       mem_info.available = 0;
-      mem_info.free = stat.ullAvailPhys / 1024;
+      mem_info.free = stat.ullAvailPhys;
       mem_info.cached = 0;
       mem_info.buffers = 0;
 
@@ -326,7 +358,7 @@ pub fn mem_info() -> Option<MemInfo> {
 pub fn os_uptime() -> u64 {
   let uptime: u64;
 
-  #[cfg(target_os = "linux")]
+  #[cfg(any(target_os = "android", target_os = "linux"))]
   {
     let mut info = std::mem::MaybeUninit::uninit();
     // SAFETY: `info` is a valid pointer to a `libc::sysinfo` struct.
@@ -384,7 +416,7 @@ pub fn os_uptime() -> u64 {
   #[cfg(target_family = "windows")]
   // SAFETY: windows API usage
   unsafe {
-    // Windows is the only one that returns `uptime` in milisecond precision,
+    // Windows is the only one that returns `uptime` in millisecond precision,
     // so we need to get the seconds out of it to be in sync with other envs.
     uptime = winapi::um::sysinfoapi::GetTickCount64() / 1000;
   }

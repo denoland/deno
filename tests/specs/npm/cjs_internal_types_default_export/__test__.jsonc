@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_FUTURE": "1"
+  },
+  "steps": [{
+    "commandName": "npm",
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "check main.ts",
+    "exitCode": 1,
+    "output": "main.out"
+  }]
+}

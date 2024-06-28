@@ -1,23 +1,27 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-const core = globalThis.Deno.core;
-const ops = core.ops;
-const primordials = globalThis.__bootstrap.primordials;
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+import { core, internals, primordials } from "ext:core/mod.js";
+import { op_console_size } from "ext:core/ops";
 const {
   Uint32Array,
-  Uint8Array,
 } = primordials;
+const {
+  isTerminal,
+} = core;
 
 const size = new Uint32Array(2);
 
 function consoleSize() {
-  ops.op_console_size(size);
+  op_console_size(size);
   return { columns: size[0], rows: size[1] };
 }
 
-const isattyBuffer = new Uint8Array(1);
 function isatty(rid) {
-  ops.op_isatty(rid, isattyBuffer);
-  return !!isattyBuffer[0];
+  internals.warnOnDeprecatedApi(
+    "Deno.isatty()",
+    new Error().stack,
+    "Use `Deno.stdin.isTerminal()`, `Deno.stdout.isTerminal()`, `Deno.stderr.isTerminal()` or `Deno.FsFile.isTerminal()` instead.",
+  );
+  return isTerminal(rid);
 }
 
 export { consoleSize, isatty };

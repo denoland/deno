@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::benchmark_main;
@@ -11,8 +11,9 @@ use test_util::lsp::LspClientBuilder;
 // Intended to match the benchmark in quick-lint-js
 // https://github.com/quick-lint/quick-lint-js/blob/35207e6616267c6c81be63f47ce97ec2452d60df/benchmark/benchmark-lsp/lsp-benchmarks.cpp#L223-L268
 fn incremental_change_wait(bench: &mut Bencher) {
-  let mut client = LspClientBuilder::new().build();
+  let mut client = LspClientBuilder::new().use_diagnostic_sync(false).build();
   client.initialize_default();
+  client.change_configuration(json!({ "deno": { "enable": true } }));
 
   client.write_notification(
     "textDocument/didOpen",
@@ -23,15 +24,6 @@ fn incremental_change_wait(bench: &mut Bencher) {
         "version": 0,
         "text": include_str!("testdata/express-router.js")
       }
-    }),
-  );
-
-  let (id, method, _): (u64, String, Option<Value>) = client.read_request();
-  assert_eq!(method, "workspace/configuration");
-  client.write_response(
-    id,
-    json!({
-      "enable": true
     }),
   );
 

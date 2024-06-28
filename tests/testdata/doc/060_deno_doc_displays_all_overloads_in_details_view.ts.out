@@ -1,0 +1,9 @@
+Defined in [WILDCARD]/060_deno_doc_displays_all_overloads_in_details_view.ts:3:3
+
+function test(name: string, fn: Function): void
+
+Defined in [WILDCARD]/060_deno_doc_displays_all_overloads_in_details_view.ts:4:3
+
+function test(options: object): void
+
+

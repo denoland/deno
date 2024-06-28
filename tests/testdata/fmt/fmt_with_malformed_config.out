@@ -1,0 +1,4 @@
+error: Failed to parse "fmt" configuration
+
+Caused by:
+    unknown field `dont_know_this_field`, expected one of `useTabs`, `lineWidth`, `indentWidth`, `singleQuote`, `proseWrap`, `semiColons`, `options`, `include`, `exclude`, `files`

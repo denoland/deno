@@ -1,6 +1,5 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
@@ -11,8 +10,9 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 
-use deno_core::op;
+use deno_core::op2;
 
+use deno_permissions::PermissionsContainer;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;
@@ -31,9 +31,6 @@ use tokio::sync::mpsc;
 deno_core::extension!(
   deno_fs_events,
   ops = [op_fs_events_open, op_fs_events_poll],
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
 struct FsEventsResource {
@@ -95,10 +92,11 @@ pub struct OpenArgs {
   paths: Vec<String>,
 }
 
-#[op]
+#[op2]
+#[smi]
 fn op_fs_events_open(
   state: &mut OpState,
-  args: OpenArgs,
+  #[serde] args: OpenArgs,
 ) -> Result<ResourceId, AnyError> {
   let (sender, receiver) = mpsc::channel::<Result<FsEvent, AnyError>>(16);
   let sender = Mutex::new(sender);
@@ -133,10 +131,11 @@ fn op_fs_events_open(
   Ok(rid)
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<Option<FsEvent>, AnyError> {
   let resource = state.borrow().resource_table.get::<FsEventsResource>(rid)?;
   let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;

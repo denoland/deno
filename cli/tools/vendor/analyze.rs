@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::swc::ast::ExportDefaultDecl;
 use deno_ast::swc::ast::ExportSpecifier;
@@ -61,9 +61,9 @@ fn export_specifier_has_default(s: &ExportSpecifier) -> bool {
 #[cfg(test)]
 mod test {
   use deno_ast::MediaType;
+  use deno_ast::ModuleSpecifier;
   use deno_ast::ParseParams;
   use deno_ast::ParsedSource;
-  use deno_ast::SourceTextInfo;
 
   use super::has_default_export;
 
@@ -101,12 +101,12 @@ mod test {
 
   fn parse_module(text: &str) -> ParsedSource {
     deno_ast::parse_module(ParseParams {
-      specifier: "file:///mod.ts".to_string(),
+      specifier: ModuleSpecifier::parse("file:///mod.ts").unwrap(),
       capture_tokens: false,
       maybe_syntax: None,
       media_type: MediaType::TypeScript,
       scope_analysis: false,
-      text_info: SourceTextInfo::from_string(text.to_string()),
+      text: text.into(),
     })
     .unwrap()
   }

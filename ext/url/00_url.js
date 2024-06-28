@@ -1,14 +1,19 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
+import {
+  op_url_get_serialization,
+  op_url_parse,
+  op_url_parse_search_params,
+  op_url_parse_with_base,
+  op_url_reparse,
+  op_url_stringify_search_params,
+} from "ext:core/ops";
 const {
   ArrayIsArray,
   ArrayPrototypeMap,
@@ -17,14 +22,19 @@ const {
   ArrayPrototypeSort,
   ArrayPrototypeSplice,
   ObjectKeys,
-  Uint32Array,
+  ObjectPrototypeIsPrototypeOf,
   SafeArrayIterator,
   StringPrototypeSlice,
+  StringPrototypeStartsWith,
   Symbol,
   SymbolFor,
   SymbolIterator,
   TypeError,
+  Uint32Array,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 const _list = Symbol("list");
 const _urlObject = Symbol("url object");
@@ -41,8 +51,14 @@ const SET_SEARCH = 7;
 const SET_USERNAME = 8;
 
 // Helper functions
+/**
+ * @param {string} href
+ * @param {number} setter
+ * @param {string} value
+ * @returns {string}
+ */
 function opUrlReparse(href, setter, value) {
-  const status = ops.op_url_reparse(
+  const status = op_url_reparse(
     href,
     setter,
     value,
@@ -51,25 +67,33 @@ function opUrlReparse(href, setter, value) {
   return getSerialization(status, href);
 }
 
+/**
+ * @param {string} href
+ * @param {string} [maybeBase]
+ * @returns {number}
+ */
 function opUrlParse(href, maybeBase) {
-  let status;
   if (maybeBase === undefined) {
-    status = ops.op_url_parse(href, componentsBuf);
-  } else {
-    status = ops.op_url_parse_with_base(
-      href,
-      maybeBase,
-      componentsBuf,
-    );
+    return op_url_parse(href, componentsBuf);
   }
-  return getSerialization(status, href, maybeBase);
+  return op_url_parse_with_base(
+    href,
+    maybeBase,
+    componentsBuf,
+  );
 }
 
+/**
+ * @param {number} status
+ * @param {string} href
+ * @param {string} [maybeBase]
+ * @returns {string}
+ */
 function getSerialization(status, href, maybeBase) {
   if (status === 0) {
     return href;
   } else if (status === 1) {
-    return ops.op_url_get_serialization();
+    return op_url_get_serialization();
   } else {
     throw new TypeError(
       `Invalid URL: '${href}'` +
@@ -90,7 +114,8 @@ class URLSearchParams {
     init = webidl.converters
       ["sequence<sequence<USVString>> or record<USVString, USVString> or USVString"](
         init,
-        { prefix, context: "Argument 1" },
+        prefix,
+        "Argument 1",
       );
     this[webidl.brand] = webidl.brand;
     if (!init) {
@@ -106,7 +131,7 @@ class URLSearchParams {
       if (init[0] == "?") {
         init = StringPrototypeSlice(init, 1);
       }
-      this[_list] = ops.op_url_parse_search_params(init);
+      this[_list] = op_url_parse_search_params(init);
     } else if (ArrayIsArray(init)) {
       // Overload: sequence<sequence<USVString>>
       this[_list] = ArrayPrototypeMap(init, (pair, i) => {
@@ -133,6 +158,7 @@ class URLSearchParams {
     if (url === null) {
       return;
     }
+    // deno-lint-ignore prefer-primordials
     url[_updateUrlSearch](this.toString());
   }
 
@@ -143,37 +169,40 @@ class URLSearchParams {
   append(name, value) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    name = webidl.converters.USVString(name, {
-      prefix,
-      context: "Argument 1",
-    });
-    value = webidl.converters.USVString(value, {
-      prefix,
-      context: "Argument 2",
-    });
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    name = webidl.converters.USVString(name, prefix, "Argument 1");
+    value = webidl.converters.USVString(value, prefix, "Argument 2");
     ArrayPrototypePush(this[_list], [name, value]);
     this.#updateUrlSearch();
   }
 
   /**
    * @param {string} name
+   * @param {string} [value]
    */
-  delete(name) {
+  delete(name, value = undefined) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    name = webidl.converters.USVString(name, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    name = webidl.converters.USVString(name, prefix, "Argument 1");
     const list = this[_list];
     let i = 0;
-    while (i < list.length) {
-      if (list[i][0] === name) {
-        ArrayPrototypeSplice(list, i, 1);
-      } else {
-        i++;
+    if (value === undefined) {
+      while (i < list.length) {
+        if (list[i][0] === name) {
+          ArrayPrototypeSplice(list, i, 1);
+        } else {
+          i++;
+        }
+      }
+    } else {
+      value = webidl.converters.USVString(value, prefix, "Argument 2");
+      while (i < list.length) {
+        if (list[i][0] === name && list[i][1] === value) {
+          ArrayPrototypeSplice(list, i, 1);
+        } else {
+          i++;
+        }
       }
     }
     this.#updateUrlSearch();
@@ -186,11 +215,8 @@ class URLSearchParams {
   getAll(name) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'getAll' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    name = webidl.converters.USVString(name, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    name = webidl.converters.USVString(name, prefix, "Argument 1");
     const values = [];
     const entries = this[_list];
     for (let i = 0; i < entries.length; ++i) {
@@ -209,11 +235,8 @@ class URLSearchParams {
   get(name) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'get' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    name = webidl.converters.USVString(name, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    name = webidl.converters.USVString(name, prefix, "Argument 1");
     const entries = this[_list];
     for (let i = 0; i < entries.length; ++i) {
       const entry = entries[i];
@@ -226,16 +249,21 @@ class URLSearchParams {
 
   /**
    * @param {string} name
+   * @param {string} [value]
    * @return {boolean}
    */
-  has(name) {
+  has(name, value = undefined) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'has' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    name = webidl.converters.USVString(name, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    name = webidl.converters.USVString(name, prefix, "Argument 1");
+    if (value !== undefined) {
+      value = webidl.converters.USVString(value, prefix, "Argument 2");
+      return ArrayPrototypeSome(
+        this[_list],
+        (entry) => entry[0] === name && entry[1] === value,
+      );
+    }
     return ArrayPrototypeSome(this[_list], (entry) => entry[0] === name);
   }
 
@@ -246,15 +274,9 @@ class URLSearchParams {
   set(name, value) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'set' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    name = webidl.converters.USVString(name, {
-      prefix,
-      context: "Argument 1",
-    });
-    value = webidl.converters.USVString(value, {
-      prefix,
-      context: "Argument 2",
-    });
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    name = webidl.converters.USVString(name, prefix, "Argument 1");
+    value = webidl.converters.USVString(value, prefix, "Argument 2");
 
     const list = this[_list];
 
@@ -300,7 +322,7 @@ class URLSearchParams {
    */
   toString() {
     webidl.assertBranded(this, URLSearchParamsPrototype);
-    return ops.op_url_stringify_search_params(this[_list]);
+    return op_url_stringify_search_params(this[_list]);
   }
 
   get size() {
@@ -311,7 +333,7 @@ class URLSearchParams {
 
 webidl.mixinPairIterable("URLSearchParams", URLSearchParams, _list, 0, 1);
 
-webidl.configurePrototype(URLSearchParams);
+webidl.configureInterface(URLSearchParams);
 const URLSearchParamsPrototype = URLSearchParams.prototype;
 
 webidl.converters["URLSearchParams"] = webidl.createInterfaceConverter(
@@ -329,17 +351,29 @@ function trim(s) {
 // Represents a "no port" value. A port in URL cannot be greater than 2^16 - 1
 const NO_PORT = 65536;
 
+const skipInit = Symbol();
 const componentsBuf = new Uint32Array(8);
+
 class URL {
+  /** @type {URLSearchParams|null} */
   #queryObject = null;
+  /** @type {string} */
   #serialization;
+  /** @type {number} */
   #schemeEnd;
+  /** @type {number} */
   #usernameEnd;
+  /** @type {number} */
   #hostStart;
+  /** @type {number} */
   #hostEnd;
+  /** @type {number} */
   #port;
+  /** @type {number} */
   #pathStart;
+  /** @type {number} */
   #queryStart;
+  /** @type {number} */
   #fragmentStart;
 
   [_updateUrlSearch](value) {
@@ -353,20 +387,62 @@ class URL {
 
   /**
    * @param {string} url
-   * @param {string} base
+   * @param {string} [base]
    */
   constructor(url, base = undefined) {
-    const prefix = "Failed to construct 'URL'";
-    url = webidl.converters.DOMString(url, { prefix, context: "Argument 1" });
-    if (base !== undefined) {
-      base = webidl.converters.DOMString(base, {
-        prefix,
-        context: "Argument 2",
-      });
+    // skip initialization for URL.parse
+    if (url === skipInit) {
+      return;
     }
+    const prefix = "Failed to construct 'URL'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    url = webidl.converters.DOMString(url, prefix, "Argument 1");
+    if (base !== undefined) {
+      base = webidl.converters.DOMString(base, prefix, "Argument 2");
+    }
+    const status = opUrlParse(url, base);
     this[webidl.brand] = webidl.brand;
-    this.#serialization = opUrlParse(url, base);
+    this.#serialization = getSerialization(status, url, base);
     this.#updateComponents();
+  }
+
+  /**
+   * @param {string} url
+   * @param {string} [base]
+   */
+  static parse(url, base = undefined) {
+    const prefix = "Failed to execute 'URL.parse'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    url = webidl.converters.DOMString(url, prefix, "Argument 1");
+    if (base !== undefined) {
+      base = webidl.converters.DOMString(base, prefix, "Argument 2");
+    }
+    const status = opUrlParse(url, base);
+    if (status !== 0 && status !== 1) {
+      return null;
+    }
+    // If initialized with webidl.createBranded, private properties are not be accessible,
+    // so it is passed through the constructor
+    const self = new this(skipInit);
+    self[webidl.brand] = webidl.brand;
+    self.#serialization = getSerialization(status, url, base);
+    self.#updateComponents();
+    return self;
+  }
+
+  /**
+   * @param {string} url
+   * @param {string} [base]
+   */
+  static canParse(url, base = undefined) {
+    const prefix = "Failed to execute 'URL.canParse'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    url = webidl.converters.DOMString(url, prefix, "Argument 1");
+    if (base !== undefined) {
+      base = webidl.converters.DOMString(base, prefix, "Argument 2");
+    }
+    const status = opUrlParse(url, base);
+    return status === 0 || status === 1;
   }
 
   #updateComponents() {
@@ -383,26 +459,32 @@ class URL {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    const object = {
-      href: this.href,
-      origin: this.origin,
-      protocol: this.protocol,
-      username: this.username,
-      password: this.password,
-      host: this.host,
-      hostname: this.hostname,
-      port: this.port,
-      pathname: this.pathname,
-      hash: this.hash,
-      search: this.search,
-    };
-    return `${this.constructor.name} ${inspect(object, inspectOptions)}`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(URLPrototype, this),
+        keys: [
+          "href",
+          "origin",
+          "protocol",
+          "username",
+          "password",
+          "host",
+          "hostname",
+          "port",
+          "pathname",
+          "hash",
+          "search",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   #updateSearchParams() {
     if (this.#queryObject !== null) {
       const params = this.#queryObject[_list];
-      const newParams = ops.op_url_parse_search_params(
+      const newParams = op_url_parse_search_params(
         StringPrototypeSlice(this.search, 1),
       );
       ArrayPrototypeSplice(
@@ -416,7 +498,10 @@ class URL {
 
   #hasAuthority() {
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L824
-    return this.#serialization.slice(this.#schemeEnd).startsWith("://");
+    return StringPrototypeStartsWith(
+      StringPrototypeSlice(this.#serialization, this.#schemeEnd),
+      "://",
+    );
   }
 
   /** @return {string} */
@@ -424,7 +509,7 @@ class URL {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L263
     return this.#fragmentStart
-      ? trim(this.#serialization.slice(this.#fragmentStart))
+      ? trim(StringPrototypeSlice(this.#serialization, this.#fragmentStart))
       : "";
   }
 
@@ -432,11 +517,8 @@ class URL {
   set hash(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'hash' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    value = webidl.converters.DOMString(value, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    value = webidl.converters.DOMString(value, prefix, "Argument 1");
     try {
       this.#serialization = opUrlReparse(
         this.#serialization,
@@ -453,18 +535,19 @@ class URL {
   get host() {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L101
-    return this.#serialization.slice(this.#hostStart, this.#pathStart);
+    return StringPrototypeSlice(
+      this.#serialization,
+      this.#hostStart,
+      this.#pathStart,
+    );
   }
 
   /** @param {string} value */
   set host(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'host' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    value = webidl.converters.DOMString(value, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    value = webidl.converters.DOMString(value, prefix, "Argument 1");
     try {
       this.#serialization = opUrlReparse(
         this.#serialization,
@@ -481,18 +564,19 @@ class URL {
   get hostname() {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L988
-    return this.#serialization.slice(this.#hostStart, this.#hostEnd);
+    return StringPrototypeSlice(
+      this.#serialization,
+      this.#hostStart,
+      this.#hostEnd,
+    );
   }
 
   /** @param {string} value */
   set hostname(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'hostname' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    value = webidl.converters.DOMString(value, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    value = webidl.converters.DOMString(value, prefix, "Argument 1");
     try {
       this.#serialization = opUrlReparse(
         this.#serialization,
@@ -515,12 +599,10 @@ class URL {
   set href(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'href' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    value = webidl.converters.DOMString(value, {
-      prefix,
-      context: "Argument 1",
-    });
-    this.#serialization = opUrlParse(value);
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    value = webidl.converters.DOMString(value, prefix, "Argument 1");
+    const status = opUrlParse(value);
+    this.#serialization = getSerialization(status, value);
     this.#updateComponents();
     this.#updateSearchParams();
   }
@@ -529,7 +611,11 @@ class URL {
   get origin() {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/origin.rs#L14
-    const scheme = this.#serialization.slice(0, this.#schemeEnd);
+    const scheme = StringPrototypeSlice(
+      this.#serialization,
+      0,
+      this.#schemeEnd,
+    );
     if (
       scheme === "http" || scheme === "https" || scheme === "ftp" ||
       scheme === "ws" || scheme === "wss"
@@ -558,7 +644,8 @@ class URL {
       this.#usernameEnd !== this.#serialization.length &&
       this.#serialization[this.#usernameEnd] === ":"
     ) {
-      return this.#serialization.slice(
+      return StringPrototypeSlice(
+        this.#serialization,
         this.#usernameEnd + 1,
         this.#hostStart - 1,
       );
@@ -570,11 +657,8 @@ class URL {
   set password(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'password' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    value = webidl.converters.DOMString(value, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    value = webidl.converters.DOMString(value, prefix, "Argument 1");
     try {
       this.#serialization = opUrlReparse(
         this.#serialization,
@@ -592,22 +676,23 @@ class URL {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L1203
     if (!this.#queryStart && !this.#fragmentStart) {
-      return this.#serialization.slice(this.#pathStart);
+      return StringPrototypeSlice(this.#serialization, this.#pathStart);
     }
 
     const nextComponentStart = this.#queryStart || this.#fragmentStart;
-    return this.#serialization.slice(this.#pathStart, nextComponentStart);
+    return StringPrototypeSlice(
+      this.#serialization,
+      this.#pathStart,
+      nextComponentStart,
+    );
   }
 
   /** @param {string} value */
   set pathname(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'pathname' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    value = webidl.converters.DOMString(value, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    value = webidl.converters.DOMString(value, prefix, "Argument 1");
     try {
       this.#serialization = opUrlReparse(
         this.#serialization,
@@ -625,9 +710,14 @@ class URL {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L196
     if (this.#port === NO_PORT) {
-      return this.#serialization.slice(this.#hostEnd, this.#pathStart);
+      return StringPrototypeSlice(
+        this.#serialization,
+        this.#hostEnd,
+        this.#pathStart,
+      );
     } else {
-      return this.#serialization.slice(
+      return StringPrototypeSlice(
+        this.#serialization,
         this.#hostEnd + 1, /* : */
         this.#pathStart,
       );
@@ -638,11 +728,8 @@ class URL {
   set port(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'port' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    value = webidl.converters.DOMString(value, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    value = webidl.converters.DOMString(value, prefix, "Argument 1");
     try {
       this.#serialization = opUrlReparse(
         this.#serialization,
@@ -659,18 +746,19 @@ class URL {
   get protocol() {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/quirks.rs#L56
-    return this.#serialization.slice(0, this.#schemeEnd + 1 /* : */);
+    return StringPrototypeSlice(
+      this.#serialization,
+      0,
+      this.#schemeEnd + 1, /* : */
+    );
   }
 
   /** @param {string} value */
   set protocol(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'protocol' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    value = webidl.converters.DOMString(value, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    value = webidl.converters.DOMString(value, prefix, "Argument 1");
     try {
       this.#serialization = opUrlReparse(
         this.#serialization,
@@ -690,18 +778,17 @@ class URL {
     const afterPath = this.#queryStart || this.#fragmentStart ||
       this.#serialization.length;
     const afterQuery = this.#fragmentStart || this.#serialization.length;
-    return trim(this.#serialization.slice(afterPath, afterQuery));
+    return trim(
+      StringPrototypeSlice(this.#serialization, afterPath, afterQuery),
+    );
   }
 
   /** @param {string} value */
   set search(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'search' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    value = webidl.converters.DOMString(value, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    value = webidl.converters.DOMString(value, prefix, "Argument 1");
     try {
       this.#serialization = opUrlReparse(
         this.#serialization,
@@ -719,13 +806,14 @@ class URL {
   get username() {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L881
-    const schemeSeperatorLen = 3; /* :// */
+    const schemeSeparatorLen = 3; /* :// */
     if (
       this.#hasAuthority() &&
-      this.#usernameEnd > this.#schemeEnd + schemeSeperatorLen
+      this.#usernameEnd > this.#schemeEnd + schemeSeparatorLen
     ) {
-      return this.#serialization.slice(
-        this.#schemeEnd + schemeSeperatorLen,
+      return StringPrototypeSlice(
+        this.#serialization,
+        this.#schemeEnd + schemeSeparatorLen,
         this.#usernameEnd,
       );
     } else {
@@ -737,11 +825,8 @@ class URL {
   set username(value) {
     webidl.assertBranded(this, URLPrototype);
     const prefix = "Failed to set 'username' on 'URL'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    value = webidl.converters.DOMString(value, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    value = webidl.converters.DOMString(value, prefix, "Argument 1");
     try {
       this.#serialization = opUrlReparse(
         this.#serialization,
@@ -754,7 +839,7 @@ class URL {
     }
   }
 
-  /** @return {string} */
+  /** @return {URLSearchParams} */
   get searchParams() {
     if (this.#queryObject == null) {
       this.#queryObject = new URLSearchParams(this.search);
@@ -776,7 +861,7 @@ class URL {
   }
 }
 
-webidl.configurePrototype(URL);
+webidl.configureInterface(URL);
 const URLPrototype = URL.prototype;
 
 /**
@@ -786,21 +871,31 @@ const URLPrototype = URL.prototype;
  * @returns {[string, string][]}
  */
 function parseUrlEncoded(bytes) {
-  return ops.op_url_parse_search_params(null, bytes);
+  return op_url_parse_search_params(null, bytes);
 }
 
 webidl
   .converters[
     "sequence<sequence<USVString>> or record<USVString, USVString> or USVString"
-  ] = (V, opts) => {
+  ] = (V, prefix, context, opts) => {
     // Union for (sequence<sequence<USVString>> or record<USVString, USVString> or USVString)
     if (webidl.type(V) === "Object" && V !== null) {
       if (V[SymbolIterator] !== undefined) {
-        return webidl.converters["sequence<sequence<USVString>>"](V, opts);
+        return webidl.converters["sequence<sequence<USVString>>"](
+          V,
+          prefix,
+          context,
+          opts,
+        );
       }
-      return webidl.converters["record<USVString, USVString>"](V, opts);
+      return webidl.converters["record<USVString, USVString>"](
+        V,
+        prefix,
+        context,
+        opts,
+      );
     }
-    return webidl.converters.USVString(V, opts);
+    return webidl.converters.USVString(V, prefix, context, opts);
   };
 
 export {

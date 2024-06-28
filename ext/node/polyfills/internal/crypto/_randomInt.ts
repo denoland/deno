@@ -1,4 +1,10 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { op_node_random_int } from "ext:core/ops";
+
 export default function randomInt(max: number): number;
 export default function randomInt(min: number, max: number): number;
 export default function randomInt(
@@ -40,16 +46,9 @@ export default function randomInt(
     throw new Error("Min is bigger than Max!");
   }
 
-  const randomBuffer = new Uint32Array(1);
-
-  globalThis.crypto.getRandomValues(randomBuffer);
-
-  const randomNumber = randomBuffer[0] / (0xffffffff + 1);
-
   min = Math.ceil(min);
   max = Math.floor(max);
-
-  const result = Math.floor(randomNumber * (max - min)) + min;
+  const result = op_node_random_int(min, max);
 
   if (cb) {
     cb(null, result);

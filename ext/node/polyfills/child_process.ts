@@ -1,12 +1,23 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
-import { core } from "ext:deno_node/_core.ts";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { internals } from "ext:core/mod.js";
+import {
+  op_bootstrap_unstable_args,
+  op_node_child_ipc_pipe,
+  op_npm_process_state,
+} from "ext:core/ops";
+
 import {
   ChildProcess,
   ChildProcessOptions,
   normalizeSpawnArguments,
+  setupChannel,
   type SpawnOptions,
   spawnSync as _spawnSync,
   type SpawnSyncOptions,
@@ -35,10 +46,10 @@ import {
   ObjectAssign,
   StringPrototypeSlice,
 } from "ext:deno_node/internal/primordials.mjs";
-import { getSystemErrorName, promisify } from "ext:deno_node/util.ts";
+import { getSystemErrorName, promisify } from "node:util";
 import { createDeferredPromise } from "ext:deno_node/internal/util.mjs";
-import process from "ext:deno_node/process.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import process from "node:process";
+import { Buffer } from "node:buffer";
 import {
   convertToValidSignal,
   kEmptyObject,
@@ -109,16 +120,20 @@ export function fork(
       if (flag.startsWith("--max-old-space-size")) {
         execArgv.splice(index, 1);
         v8Flags.push(flag);
+      } else if (flag.startsWith("--enable-source-maps")) {
+        // https://github.com/denoland/deno/issues/21750
+        execArgv.splice(index, 1);
       }
     }
   }
+
   const stringifiedV8Flags: string[] = [];
   if (v8Flags.length > 0) {
     stringifiedV8Flags.push("--v8-flags=" + v8Flags.join(","));
   }
   args = [
     "run",
-    "--unstable", // TODO(kt3k): Remove when npm: is stable
+    ...op_bootstrap_unstable_args(),
     "--node-modules-dir",
     "-A",
     ...stringifiedV8Flags,
@@ -144,8 +159,7 @@ export function fork(
   options.shell = false;
 
   Object.assign(options.env ??= {}, {
-    DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE: core.ops
-      .op_npm_process_state(),
+    DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE: op_npm_process_state(),
   });
 
   return spawn(options.execPath, args, options);
@@ -426,15 +440,7 @@ export function execFile(
     shell: false,
     ...options,
   };
-  if (!Number.isInteger(execOptions.timeout) || execOptions.timeout < 0) {
-    // In Node source, the first argument to error constructor is "timeout" instead of "options.timeout".
-    // timeout is indeed a member of options object.
-    throw new ERR_OUT_OF_RANGE(
-      "timeout",
-      "an unsigned integer",
-      execOptions.timeout,
-    );
-  }
+  validateTimeout(execOptions.timeout);
   if (execOptions.maxBuffer < 0) {
     throw new ERR_OUT_OF_RANGE(
       "options.maxBuffer",
@@ -815,6 +821,14 @@ export function execFileSync(
 
   return ret.stdout as string | Buffer;
 }
+
+function setupChildProcessIpcChannel() {
+  const fd = op_node_child_ipc_pipe();
+  if (typeof fd != "number" || fd < 0) return;
+  setupChannel(process, fd);
+}
+
+internals.__setupChildProcessIpcChannel = setupChildProcessIpcChannel;
 
 export default {
   fork,

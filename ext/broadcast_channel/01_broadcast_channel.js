@@ -1,24 +1,34 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
+import { core, primordials } from "ext:core/mod.js";
+import {
+  op_broadcast_recv,
+  op_broadcast_send,
+  op_broadcast_subscribe,
+  op_broadcast_unsubscribe,
+} from "ext:core/ops";
+const {
+  ArrayPrototypeIndexOf,
+  ArrayPrototypePush,
+  ArrayPrototypeSplice,
+  ObjectPrototypeIsPrototypeOf,
+  Symbol,
+  SymbolFor,
+  Uint8Array,
+} = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
   defineEventHandler,
   EventTarget,
+  setIsTrusted,
   setTarget,
 } from "ext:deno_web/02_event.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
-const primordials = globalThis.__bootstrap.primordials;
-const {
-  ArrayPrototypeIndexOf,
-  ArrayPrototypeSplice,
-  ArrayPrototypePush,
-  Symbol,
-  Uint8Array,
-} = primordials;
+import { defer } from "ext:deno_web/02_timers.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 const _name = Symbol("[[name]]");
 const _closed = Symbol("[[closed]]");
@@ -28,7 +38,7 @@ let rid = null;
 
 async function recv() {
   while (channels.length > 0) {
-    const message = await core.opAsync("op_broadcast_recv", rid);
+    const message = await op_broadcast_recv(rid);
 
     if (message === null) {
       break;
@@ -56,6 +66,7 @@ function dispatch(source, name, data) {
         data: core.deserialize(data), // TODO(bnoordhuis) Cache immutables.
         origin: "http://127.0.0.1",
       });
+      setIsTrusted(event, true);
       setTarget(event, channel);
       channel.dispatchEvent(event);
     };
@@ -63,14 +74,6 @@ function dispatch(source, name, data) {
     defer(go);
   }
 }
-
-// Defer to avoid starving the event loop. Not using queueMicrotask()
-// for that reason: it lets promises make forward progress but can
-// still starve other parts of the event loop.
-function defer(go) {
-  setTimeout(go, 1);
-}
-
 class BroadcastChannel extends EventTarget {
   [_name];
   [_closed] = false;
@@ -83,12 +86,9 @@ class BroadcastChannel extends EventTarget {
     super();
 
     const prefix = "Failed to construct 'BroadcastChannel'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
-    this[_name] = webidl.converters["DOMString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    this[_name] = webidl.converters["DOMString"](name, prefix, "Argument 1");
 
     this[webidl.brand] = webidl.brand;
 
@@ -97,7 +97,7 @@ class BroadcastChannel extends EventTarget {
     if (rid === null) {
       // Create the rid immediately, otherwise there is a time window (and a
       // race condition) where messages can get lost, because recv() is async.
-      rid = ops.op_broadcast_subscribe();
+      rid = op_broadcast_subscribe();
       recv();
     }
   }
@@ -106,7 +106,7 @@ class BroadcastChannel extends EventTarget {
     webidl.assertBranded(this, BroadcastChannelPrototype);
 
     const prefix = "Failed to execute 'postMessage' on 'BroadcastChannel'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
     if (this[_closed]) {
       throw new DOMException("Already closed", "InvalidStateError");
@@ -124,7 +124,7 @@ class BroadcastChannel extends EventTarget {
     // Send to listeners in other VMs.
     defer(() => {
       if (!this[_closed]) {
-        core.opAsync("op_broadcast_send", rid, this[_name], data);
+        op_broadcast_send(rid, this[_name], data);
       }
     });
   }
@@ -138,8 +138,23 @@ class BroadcastChannel extends EventTarget {
 
     ArrayPrototypeSplice(channels, index, 1);
     if (channels.length === 0) {
-      ops.op_broadcast_unsubscribe(rid);
+      op_broadcast_unsubscribe(rid);
     }
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(BroadcastChannelPrototype, this),
+        keys: [
+          "name",
+          "onmessage",
+          "onmessageerror",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 

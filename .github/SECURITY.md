@@ -9,11 +9,13 @@ we use to work with the security research community to address runtime security.
 
 ## Reporting a vulnerability
 
-Please email findings to security@deno.com. We strive to resolve all problems as
-quickly as possible, and are more than happy to play an active role in
-publication of writeups after the problem is resolved.
+Please open a new
+[Security advisory](https://github.com/denoland/deno/security/advisories/new)
+with your findings. We strive to resolve all problems as quickly as possible,
+and are more than happy to play an active role in publication of writeups after
+the problem is resolved.
 
-Try to include as much information as possible in the initial email, so we can
+Try to include as much information as possible in the initial report, so we can
 quickly address the issue.
 
 **Please do not open security issues in the public issue tracker.**
@@ -48,6 +50,10 @@ may change slightly over time, but in general the model is as follows:
   that a value set in one web worker can not be accessed by another.
 - All runtime I/O is considered to be privileged and must always be guarded by a
   runtime permission. This includes filesystem access, network access, etc.
+  - The only exception to this is runtime storage explosion attacks that are
+    isolated to a part of the file system, caused by evaluated code (for
+    example, caching big dependencies or no limits on runtime caches such as the
+    [Web Cache](https://developer.mozilla.org/en-US/docs/Web/API/Cache) API).
 - Users should not be able to self-escalate their permissions without explicit
   consent.
 - I/O required to build an initial static module graph should always follow the

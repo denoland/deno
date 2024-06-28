@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -20,15 +20,20 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { EventEmitter } from "ext:deno_node/events.ts";
+import { BlockList, SocketAddress } from "ext:deno_node/internal/blocklist.mjs";
+
+import { EventEmitter } from "node:events";
 import {
   isIP,
   isIPv4,
   isIPv6,
   normalizedArgsSymbol,
 } from "ext:deno_node/internal/net.ts";
-import { Duplex } from "ext:deno_node/stream.ts";
+import { Duplex } from "node:stream";
 import {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
@@ -71,7 +76,7 @@ import {
   DTRACE_NET_SERVER_CONNECTION,
   DTRACE_NET_STREAM_END,
 } from "ext:deno_node/internal/dtrace.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import type { LookupOneOptions } from "ext:deno_node/internal/dns/utils.ts";
 import {
   validateAbortSignal,
@@ -94,14 +99,14 @@ import {
 import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
-import { ADDRCONFIG, lookup as dnsLookup } from "ext:deno_node/dns.ts";
+import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
-import { channel } from "ext:deno_node/diagnostics_channel.ts";
+import { channel } from "node:diagnostics_channel";
 
 let debug = debuglog("net", (fn) => {
   debug = fn;
@@ -1834,21 +1839,8 @@ function _onconnection(this: any, err: number, clientHandle?: Handle) {
     return;
   }
 
-  const socket = new Socket({
-    handle: clientHandle,
-    allowHalfOpen: self.allowHalfOpen,
-    pauseOnCreate: self.pauseOnConnect,
-    readable: true,
-    writable: true,
-  });
-
-  // TODO(@bartlomieju): implement noDelay and setKeepAlive
-
-  self._connections++;
-  socket.server = self;
-  socket._server = self;
-
-  DTRACE_NET_SERVER_CONNECTION(socket);
+  const socket = self._createSocket(clientHandle);
+  this._connections++;
   self.emit("connection", socket);
 
   if (netServerSocketChannel.hasSubscribers) {
@@ -2369,6 +2361,25 @@ export class Server extends EventEmitter {
     return !!this._handle;
   }
 
+  _createSocket(clientHandle) {
+    const socket = new Socket({
+      handle: clientHandle,
+      allowHalfOpen: this.allowHalfOpen,
+      pauseOnCreate: this.pauseOnConnect,
+      readable: true,
+      writable: true,
+    });
+
+    // TODO(@bartlomieju): implement noDelay and setKeepAlive
+
+    socket.server = this;
+    socket._server = this;
+
+    DTRACE_NET_SERVER_CONNECTION(socket);
+
+    return socket;
+  }
+
   _listen2 = _setupListenHandle;
 
   _emitCloseIfDrained() {
@@ -2463,7 +2474,7 @@ export function createServer(
   return new Server(options, connectionListener);
 }
 
-export { isIP, isIPv4, isIPv6 };
+export { BlockList, isIP, isIPv4, isIPv6, SocketAddress };
 
 export default {
   _createServerHandle,
@@ -2471,6 +2482,8 @@ export default {
   isIP,
   isIPv4,
   isIPv6,
+  BlockList,
+  SocketAddress,
   connect,
   createConnection,
   createServer,

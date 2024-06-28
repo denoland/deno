@@ -1,5 +1,8 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
 
 import { ERR_CRYPTO_FIPS_FORCED } from "ext:deno_node/internal/errors.ts";
 import { crypto as constants } from "ext:deno_node/internal_binding/constants.ts";
@@ -83,7 +86,6 @@ import {
 import {
   Cipheriv,
   Decipheriv,
-  getCipherInfo,
   privateDecrypt,
   privateEncrypt,
   publicDecrypt,
@@ -134,16 +136,21 @@ import type {
   VerifyKeyObjectInput,
   VerifyPublicKeyInput,
 } from "ext:deno_node/internal/crypto/sig.ts";
-import { createHash, Hash, Hmac } from "ext:deno_node/internal/crypto/hash.ts";
+import {
+  createHash,
+  getHashes,
+  Hash,
+  Hmac,
+} from "ext:deno_node/internal/crypto/hash.ts";
 import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
 import type {
   PeerCertificate,
   X509CheckOptions,
 } from "ext:deno_node/internal/crypto/x509.ts";
 import {
+  getCipherInfo,
   getCiphers,
   getCurves,
-  getHashes,
   secureHeapUsed,
   setEngine,
 } from "ext:deno_node/internal/crypto/util.ts";
@@ -155,7 +162,12 @@ import type {
 } from "ext:deno_node/_stream.d.ts";
 import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
 
+const subtle = webcrypto.subtle;
 const fipsForced = getOptionValue("--force-fips");
+
+function getRandomValues(typedArray) {
+  return webcrypto.getRandomValues(typedArray);
+}
 
 function createCipheriv(
   algorithm: CipherCCMTypes,
@@ -299,6 +311,9 @@ const setFips = fipsForced ? setFipsForced : setFipsCrypto;
 const sign = signOneShot;
 const verify = verifyOneShot;
 
+/* Deprecated in Node.js, alias of randomBytes */
+const pseudoRandomBytes = randomBytes;
+
 export default {
   Certificate,
   checkPrime,
@@ -322,6 +337,7 @@ export default {
   diffieHellman,
   DiffieHellmanGroup,
   ECDH,
+  getRandomValues,
   generateKey,
   generateKeyPair,
   generateKeyPairSync,
@@ -346,6 +362,7 @@ export default {
   publicDecrypt,
   publicEncrypt,
   randomBytes,
+  pseudoRandomBytes,
   randomFill,
   randomFillSync,
   randomInt,
@@ -361,6 +378,7 @@ export default {
   Verify,
   verify,
   webcrypto,
+  subtle,
   X509Certificate,
 };
 
@@ -469,6 +487,7 @@ export {
   getDiffieHellman,
   getFips,
   getHashes,
+  getRandomValues,
   Hash,
   hkdf,
   hkdfSync,
@@ -478,6 +497,8 @@ export {
   pbkdf2Sync,
   privateDecrypt,
   privateEncrypt,
+  /* Deprecated in Node.js, alias of randomBytes */
+  pseudoRandomBytes,
   publicDecrypt,
   publicEncrypt,
   randomBytes,
@@ -492,6 +513,7 @@ export {
   setFips,
   Sign,
   sign,
+  subtle,
   timingSafeEqual,
   Verify,
   verify,

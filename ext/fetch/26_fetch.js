@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -10,15 +10,39 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
+import { core, primordials } from "ext:core/mod.js";
+import {
+  op_fetch,
+  op_fetch_send,
+  op_wasm_streaming_feed,
+  op_wasm_streaming_set_url,
+} from "ext:core/ops";
+const {
+  ArrayPrototypePush,
+  ArrayPrototypeSplice,
+  ArrayPrototypeFilter,
+  ArrayPrototypeIncludes,
+  Error,
+  ObjectPrototypeIsPrototypeOf,
+  Promise,
+  PromisePrototypeThen,
+  PromisePrototypeCatch,
+  SafeArrayIterator,
+  String,
+  StringPrototypeStartsWith,
+  StringPrototypeToLowerCase,
+  TypeError,
+  TypedArrayPrototypeGetSymbolToStringTag,
+} = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { byteLowerCase } from "ext:deno_web/00_infra.js";
-import { BlobPrototype } from "ext:deno_web/09_file.js";
 import {
   errorReadableStream,
+  getReadableStreamResourceBacking,
   readableStreamForRid,
   ReadableStreamPrototype,
+  resourceForReadableStream,
 } from "ext:deno_web/06_streams.js";
 import { extractBody, InnerBody } from "ext:deno_fetch/22_body.js";
 import { processUrlList, toInnerRequest } from "ext:deno_fetch/23_request.js";
@@ -31,29 +55,6 @@ import {
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-const primordials = globalThis.__bootstrap.primordials;
-const {
-  ArrayPrototypePush,
-  ArrayPrototypeSplice,
-  ArrayPrototypeFilter,
-  ArrayPrototypeIncludes,
-  ObjectPrototypeIsPrototypeOf,
-  Promise,
-  PromisePrototypeThen,
-  PromisePrototypeCatch,
-  SafeArrayIterator,
-  String,
-  StringPrototypeStartsWith,
-  StringPrototypeToLowerCase,
-  TypeError,
-  Uint8Array,
-  Uint8ArrayPrototype,
-  WeakMap,
-  WeakMapPrototypeDelete,
-  WeakMapPrototypeGet,
-  WeakMapPrototypeHas,
-  WeakMapPrototypeSet,
-} = primordials;
 
 const REQUEST_BODY_HEADER_NAMES = [
   "content-encoding",
@@ -62,31 +63,12 @@ const REQUEST_BODY_HEADER_NAMES = [
   "content-type",
 ];
 
-const requestBodyReaders = new WeakMap();
-
-/**
- * @param {{ method: string, url: string, headers: [string, string][], clientRid: number | null, hasBody: boolean }} args
- * @param {Uint8Array | null} body
- * @returns {{ requestRid: number, requestBodyRid: number | null }}
- */
-function opFetch(method, url, headers, clientRid, hasBody, bodyLength, body) {
-  return ops.op_fetch(
-    method,
-    url,
-    headers,
-    clientRid,
-    hasBody,
-    bodyLength,
-    body,
-  );
-}
-
 /**
  * @param {number} rid
- * @returns {Promise<{ status: number, statusText: string, headers: [string, string][], url: string, responseRid: number }>}
+ * @returns {Promise<{ status: number, statusText: string, headers: [string, string][], url: string, responseRid: number, error: string? }>}
  */
 function opFetchSend(rid) {
-  return core.opAsync("op_fetch_send", rid);
+  return op_fetch_send(rid);
 }
 
 /**
@@ -145,139 +127,58 @@ async function mainFetch(req, recursive, terminator) {
 
   /** @type {ReadableStream<Uint8Array> | Uint8Array | null} */
   let reqBody = null;
+  let reqRid = null;
 
-  if (req.body !== null) {
-    if (
-      ObjectPrototypeIsPrototypeOf(
-        ReadableStreamPrototype,
-        req.body.streamOrStatic,
-      )
-    ) {
-      if (
-        req.body.length === null ||
-        ObjectPrototypeIsPrototypeOf(BlobPrototype, req.body.source)
-      ) {
-        reqBody = req.body.stream;
+  if (req.body) {
+    const stream = req.body.streamOrStatic;
+    const body = stream.body;
+
+    if (TypedArrayPrototypeGetSymbolToStringTag(body) === "Uint8Array") {
+      reqBody = body;
+    } else if (typeof body === "string") {
+      reqBody = core.encode(body);
+    } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, stream)) {
+      const resourceBacking = getReadableStreamResourceBacking(stream);
+      if (resourceBacking) {
+        reqRid = resourceBacking.rid;
       } else {
-        const reader = req.body.stream.getReader();
-        WeakMapPrototypeSet(requestBodyReaders, req, reader);
-        const r1 = await reader.read();
-        if (r1.done) {
-          reqBody = new Uint8Array(0);
-        } else {
-          reqBody = r1.value;
-          const r2 = await reader.read();
-          if (!r2.done) throw new TypeError("Unreachable");
-        }
-        WeakMapPrototypeDelete(requestBodyReaders, req);
+        reqRid = resourceForReadableStream(stream, req.body.length);
       }
     } else {
-      req.body.streamOrStatic.consumed = true;
-      reqBody = req.body.streamOrStatic.body;
-      // TODO(@AaronO): plumb support for StringOrBuffer all the way
-      reqBody = typeof reqBody === "string" ? core.encode(reqBody) : reqBody;
+      throw TypeError("invalid body");
     }
   }
 
-  const { requestRid, requestBodyRid, cancelHandleRid } = opFetch(
+  const { requestRid, cancelHandleRid } = op_fetch(
     req.method,
     req.currentUrl(),
     req.headerList,
     req.clientRid,
-    reqBody !== null,
-    req.body?.length,
-    ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, reqBody) ? reqBody : null,
+    reqBody !== null || reqRid !== null,
+    reqBody,
+    reqRid,
   );
 
   function onAbort() {
     if (cancelHandleRid !== null) {
       core.tryClose(cancelHandleRid);
     }
-    if (requestBodyRid !== null) {
-      core.tryClose(requestBodyRid);
-    }
   }
   terminator[abortSignal.add](onAbort);
-
-  let requestSendError;
-  let requestSendErrorSet = false;
-  if (requestBodyRid !== null) {
-    if (
-      reqBody === null ||
-      !ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, reqBody)
-    ) {
-      throw new TypeError("Unreachable");
-    }
-    const reader = reqBody.getReader();
-    WeakMapPrototypeSet(requestBodyReaders, req, reader);
-    (async () => {
-      let done = false;
-      while (!done) {
-        let val;
-        try {
-          const res = await reader.read();
-          done = res.done;
-          val = res.value;
-        } catch (err) {
-          if (terminator.aborted) break;
-          // TODO(lucacasonato): propagate error into response body stream
-          requestSendError = err;
-          requestSendErrorSet = true;
-          break;
-        }
-        if (done) break;
-        if (!ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, val)) {
-          const error = new TypeError(
-            "Item in request body ReadableStream is not a Uint8Array",
-          );
-          await reader.cancel(error);
-          // TODO(lucacasonato): propagate error into response body stream
-          requestSendError = error;
-          requestSendErrorSet = true;
-          break;
-        }
-        try {
-          await core.writeAll(requestBodyRid, val);
-        } catch (err) {
-          if (terminator.aborted) break;
-          await reader.cancel(err);
-          // TODO(lucacasonato): propagate error into response body stream
-          requestSendError = err;
-          requestSendErrorSet = true;
-          break;
-        }
-      }
-      if (done && !terminator.aborted) {
-        try {
-          await core.shutdown(requestBodyRid);
-        } catch (err) {
-          if (!terminator.aborted) {
-            requestSendError = err;
-            requestSendErrorSet = true;
-          }
-        }
-      }
-      WeakMapPrototypeDelete(requestBodyReaders, req);
-      core.tryClose(requestBodyRid);
-    })();
-  }
   let resp;
   try {
     resp = await opFetchSend(requestRid);
   } catch (err) {
-    if (terminator.aborted) return;
-    if (requestSendErrorSet) {
-      // if the request body stream errored, we want to propagate that error
-      // instead of the original error from opFetchSend
-      throw new TypeError("Failed to fetch: request body stream errored", {
-        cause: requestSendError,
-      });
-    }
+    if (terminator.aborted) return abortedNetworkError();
     throw err;
   } finally {
     if (cancelHandleRid !== null) {
       core.tryClose(cancelHandleRid);
     }
+  }
+  // Re-throw any body errors
+  if (resp.error) {
+    throw new TypeError("body failed", { cause: new Error(resp.error) });
   }
   if (terminator.aborted) return abortedNetworkError();
 
@@ -404,7 +305,7 @@ function httpRedirectFetch(request, response, terminator) {
  * @param {RequestInfo} input
  * @param {RequestInit} init
  */
-function fetch(input, init = {}) {
+function fetch(input, init = { __proto__: null }) {
   // There is an async dispatch later that causes a stack trace disconnect.
   // We reconnect it by assigning the result of that dispatch to `opPromise`,
   // awaiting `opPromise` in an inner function also named `fetch()` and
@@ -412,8 +313,8 @@ function fetch(input, init = {}) {
   let opPromise = undefined;
   // 1.
   const result = new Promise((resolve, reject) => {
-    const prefix = "Failed to call 'fetch'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    const prefix = "Failed to execute 'fetch'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
     // 2.
     const requestObject = new Request(input, init);
     // 3.
@@ -496,9 +397,8 @@ function fetch(input, init = {}) {
 
 function abortFetch(request, responseObject, error) {
   if (request.body !== null) {
-    if (WeakMapPrototypeHas(requestBodyReaders, request)) {
-      WeakMapPrototypeGet(requestBodyReaders, request).cancel(error);
-    } else {
+    // Cancel the body if we haven't taken it as a resource yet
+    if (!request.body.streamOrStatic.locked) {
       request.body.cancel(error);
     }
   }
@@ -523,10 +423,11 @@ function handleWasmStreaming(source, rid) {
   // This implements part of
   // https://webassembly.github.io/spec/web-api/#compile-a-potential-webassembly-response
   try {
-    const res = webidl.converters["Response"](source, {
-      prefix: "Failed to call 'WebAssembly.compileStreaming'",
-      context: "Argument 1",
-    });
+    const res = webidl.converters["Response"](
+      source,
+      "Failed to execute 'WebAssembly.compileStreaming'",
+      "Argument 1",
+    );
 
     // 2.3.
     // The spec is ambiguous here, see
@@ -549,7 +450,7 @@ function handleWasmStreaming(source, rid) {
     }
 
     // Pass the resolved URL to v8.
-    ops.op_wasm_streaming_set_url(rid, res.url);
+    op_wasm_streaming_set_url(rid, res.url);
 
     if (res.body !== null) {
       // 2.6.
@@ -561,7 +462,7 @@ function handleWasmStreaming(source, rid) {
           while (true) {
             const { value: chunk, done } = await reader.read();
             if (done) break;
-            ops.op_wasm_streaming_feed(rid, chunk);
+            op_wasm_streaming_feed(rid, chunk);
           }
         })(),
         // 2.7
@@ -579,4 +480,4 @@ function handleWasmStreaming(source, rid) {
   }
 }
 
-export { fetch, handleWasmStreaming };
+export { fetch, handleWasmStreaming, mainFetch };

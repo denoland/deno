@@ -1,7 +1,0 @@
-{
-    "bench": {
-      "files": {
-        "exclude": ["./ignore"]
-      }
-    }
-}

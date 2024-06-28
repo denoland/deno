@@ -1,20 +1,75 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category DOM Events */
-declare class DOMException extends Error {
-  constructor(message?: string, name?: string);
+/** @category Platform */
+declare interface DOMException extends Error {
   readonly name: string;
   readonly message: string;
   readonly code: number;
+  readonly INDEX_SIZE_ERR: 1;
+  readonly DOMSTRING_SIZE_ERR: 2;
+  readonly HIERARCHY_REQUEST_ERR: 3;
+  readonly WRONG_DOCUMENT_ERR: 4;
+  readonly INVALID_CHARACTER_ERR: 5;
+  readonly NO_DATA_ALLOWED_ERR: 6;
+  readonly NO_MODIFICATION_ALLOWED_ERR: 7;
+  readonly NOT_FOUND_ERR: 8;
+  readonly NOT_SUPPORTED_ERR: 9;
+  readonly INUSE_ATTRIBUTE_ERR: 10;
+  readonly INVALID_STATE_ERR: 11;
+  readonly SYNTAX_ERR: 12;
+  readonly INVALID_MODIFICATION_ERR: 13;
+  readonly NAMESPACE_ERR: 14;
+  readonly INVALID_ACCESS_ERR: 15;
+  readonly VALIDATION_ERR: 16;
+  readonly TYPE_MISMATCH_ERR: 17;
+  readonly SECURITY_ERR: 18;
+  readonly NETWORK_ERR: 19;
+  readonly ABORT_ERR: 20;
+  readonly URL_MISMATCH_ERR: 21;
+  readonly QUOTA_EXCEEDED_ERR: 22;
+  readonly TIMEOUT_ERR: 23;
+  readonly INVALID_NODE_TYPE_ERR: 24;
+  readonly DATA_CLONE_ERR: 25;
 }
 
-/** @category DOM Events */
-interface EventInit {
+/** @category Platform */
+declare var DOMException: {
+  readonly prototype: DOMException;
+  new (message?: string, name?: string): DOMException;
+  readonly INDEX_SIZE_ERR: 1;
+  readonly DOMSTRING_SIZE_ERR: 2;
+  readonly HIERARCHY_REQUEST_ERR: 3;
+  readonly WRONG_DOCUMENT_ERR: 4;
+  readonly INVALID_CHARACTER_ERR: 5;
+  readonly NO_DATA_ALLOWED_ERR: 6;
+  readonly NO_MODIFICATION_ALLOWED_ERR: 7;
+  readonly NOT_FOUND_ERR: 8;
+  readonly NOT_SUPPORTED_ERR: 9;
+  readonly INUSE_ATTRIBUTE_ERR: 10;
+  readonly INVALID_STATE_ERR: 11;
+  readonly SYNTAX_ERR: 12;
+  readonly INVALID_MODIFICATION_ERR: 13;
+  readonly NAMESPACE_ERR: 14;
+  readonly INVALID_ACCESS_ERR: 15;
+  readonly VALIDATION_ERR: 16;
+  readonly TYPE_MISMATCH_ERR: 17;
+  readonly SECURITY_ERR: 18;
+  readonly NETWORK_ERR: 19;
+  readonly ABORT_ERR: 20;
+  readonly URL_MISMATCH_ERR: 21;
+  readonly QUOTA_EXCEEDED_ERR: 22;
+  readonly TIMEOUT_ERR: 23;
+  readonly INVALID_NODE_TYPE_ERR: 24;
+  readonly DATA_CLONE_ERR: 25;
+};
+
+/** @category Events */
+declare interface EventInit {
   bubbles?: boolean;
   cancelable?: boolean;
   composed?: boolean;
@@ -22,10 +77,9 @@ interface EventInit {
 
 /** An event which takes place in the DOM.
  *
- * @category DOM Events
+ * @category Events
  */
-declare class Event {
-  constructor(type: string, eventInitDict?: EventInit);
+declare interface Event {
   /** Returns true or false depending on how event was initialized. True if
    * event goes through its target's ancestors in reverse tree order, and
    * false otherwise. */
@@ -80,19 +134,28 @@ declare class Event {
   readonly BUBBLING_PHASE: number;
   readonly CAPTURING_PHASE: number;
   readonly NONE: number;
-  static readonly AT_TARGET: number;
-  static readonly BUBBLING_PHASE: number;
-  static readonly CAPTURING_PHASE: number;
-  static readonly NONE: number;
 }
+
+/** An event which takes place in the DOM.
+ *
+ * @category Events
+ */
+declare var Event: {
+  readonly prototype: Event;
+  new (type: string, eventInitDict?: EventInit): Event;
+  readonly AT_TARGET: number;
+  readonly BUBBLING_PHASE: number;
+  readonly CAPTURING_PHASE: number;
+  readonly NONE: number;
+};
 
 /**
  * EventTarget is a DOM interface implemented by objects that can receive events
  * and may have listeners for them.
  *
- * @category DOM Events
+ * @category Events
  */
-declare class EventTarget {
+declare interface EventTarget {
   /** Appends an event listener for events whose type attribute value is type.
    * The callback argument sets the callback that will be invoked when the event
    * is dispatched.
@@ -121,7 +184,7 @@ declare class EventTarget {
     listener: EventListenerOrEventListenerObject | null,
     options?: boolean | AddEventListenerOptions,
   ): void;
-  /** Dispatches a synthetic event event to target and returns true if either
+  /** Dispatches a synthetic event to event target and returns true if either
    * event's cancelable attribute value is false or its preventDefault() method
    * was not invoked, and false otherwise. */
   dispatchEvent(event: Event): boolean;
@@ -134,35 +197,46 @@ declare class EventTarget {
   ): void;
 }
 
-/** @category DOM Events */
-interface EventListener {
+/**
+ * EventTarget is a DOM interface implemented by objects that can receive events
+ * and may have listeners for them.
+ *
+ * @category Events
+ */
+declare var EventTarget: {
+  readonly prototype: EventTarget;
+  new (): EventTarget;
+};
+
+/** @category Events */
+declare interface EventListener {
   (evt: Event): void | Promise<void>;
 }
 
-/** @category DOM Events */
-interface EventListenerObject {
+/** @category Events */
+declare interface EventListenerObject {
   handleEvent(evt: Event): void | Promise<void>;
 }
 
-/** @category DOM Events */
+/** @category Events */
 declare type EventListenerOrEventListenerObject =
   | EventListener
   | EventListenerObject;
 
-/** @category DOM Events */
-interface AddEventListenerOptions extends EventListenerOptions {
+/** @category Events */
+declare interface AddEventListenerOptions extends EventListenerOptions {
   once?: boolean;
   passive?: boolean;
   signal?: AbortSignal;
 }
 
-/** @category DOM Events */
-interface EventListenerOptions {
+/** @category Events */
+declare interface EventListenerOptions {
   capture?: boolean;
 }
 
-/** @category DOM Events */
-interface ProgressEventInit extends EventInit {
+/** @category Events */
+declare interface ProgressEventInit extends EventInit {
   lengthComputable?: boolean;
   loaded?: number;
   total?: number;
@@ -172,15 +246,26 @@ interface ProgressEventInit extends EventInit {
  * (for an XMLHttpRequest, or the loading of the underlying resource of an
  * <img>, <audio>, <video>, <style> or <link>).
  *
- * @category DOM Events
+ * @category Events
  */
-declare class ProgressEvent<T extends EventTarget = EventTarget> extends Event {
-  constructor(type: string, eventInitDict?: ProgressEventInit);
+declare interface ProgressEvent<T extends EventTarget = EventTarget>
+  extends Event {
   readonly lengthComputable: boolean;
   readonly loaded: number;
   readonly target: T | null;
   readonly total: number;
 }
+
+/** Events measuring progress of an underlying process, like an HTTP request
+ * (for an XMLHttpRequest, or the loading of the underlying resource of an
+ * <img>, <audio>, <video>, <style> or <link>).
+ *
+ * @category Events
+ */
+declare var ProgressEvent: {
+  readonly prototype: ProgressEvent;
+  new (type: string, eventInitDict?: ProgressEventInit): ProgressEvent;
+};
 
 /** Decodes a string of data which has been encoded using base-64 encoding.
  *
@@ -188,7 +273,7 @@ declare class ProgressEvent<T extends EventTarget = EventTarget> extends Event {
  * console.log(atob("aGVsbG8gd29ybGQ=")); // outputs 'hello world'
  * ```
  *
- * @category Encoding API
+ * @category Encoding
  */
 declare function atob(s: string): string;
 
@@ -198,23 +283,23 @@ declare function atob(s: string): string;
  * console.log(btoa("hello world"));  // outputs "aGVsbG8gd29ybGQ="
  * ```
  *
- * @category Encoding API
+ * @category Encoding
  */
 declare function btoa(s: string): string;
 
-/** @category Encoding API */
+/** @category Encoding */
 declare interface TextDecoderOptions {
   fatal?: boolean;
   ignoreBOM?: boolean;
 }
 
-/** @category Encoding API */
+/** @category Encoding */
 declare interface TextDecodeOptions {
   stream?: boolean;
 }
 
-/** @category Encoding API */
-interface TextDecoder {
+/** @category Encoding */
+declare interface TextDecoder {
   /** Returns encoding's name, lowercased. */
   readonly encoding: string;
   /** Returns `true` if error mode is "fatal", and `false` otherwise. */
@@ -226,20 +311,20 @@ interface TextDecoder {
   decode(input?: BufferSource, options?: TextDecodeOptions): string;
 }
 
-/** @category Encoding API */
+/** @category Encoding */
 declare var TextDecoder: {
-  prototype: TextDecoder;
+  readonly prototype: TextDecoder;
   new (label?: string, options?: TextDecoderOptions): TextDecoder;
 };
 
-/** @category Encoding API */
+/** @category Encoding */
 declare interface TextEncoderEncodeIntoResult {
   read: number;
   written: number;
 }
 
-/** @category Encoding API */
-interface TextEncoder {
+/** @category Encoding */
+declare interface TextEncoder {
   /** Returns "utf-8". */
   readonly encoding: "utf-8";
   /** Returns the result of running UTF-8's encoder. */
@@ -247,14 +332,14 @@ interface TextEncoder {
   encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
 }
 
-/** @category Encoding API */
+/** @category Encoding */
 declare var TextEncoder: {
-  prototype: TextEncoder;
+  readonly prototype: TextEncoder;
   new (): TextEncoder;
 };
 
-/** @category Encoding API */
-interface TextDecoderStream {
+/** @category Encoding */
+declare interface TextDecoderStream {
   /** Returns encoding's name, lowercased. */
   readonly encoding: string;
   /** Returns `true` if error mode is "fatal", and `false` otherwise. */
@@ -266,14 +351,14 @@ interface TextDecoderStream {
   readonly [Symbol.toStringTag]: string;
 }
 
-/** @category Encoding API */
+/** @category Encoding */
 declare var TextDecoderStream: {
-  prototype: TextDecoderStream;
+  readonly prototype: TextDecoderStream;
   new (label?: string, options?: TextDecoderOptions): TextDecoderStream;
 };
 
-/** @category Encoding API */
-interface TextEncoderStream {
+/** @category Encoding */
+declare interface TextEncoderStream {
   /** Returns "utf-8". */
   readonly encoding: "utf-8";
   readonly readable: ReadableStream<Uint8Array>;
@@ -281,18 +366,18 @@ interface TextEncoderStream {
   readonly [Symbol.toStringTag]: string;
 }
 
-/** @category Encoding API */
+/** @category Encoding */
 declare var TextEncoderStream: {
-  prototype: TextEncoderStream;
+  readonly prototype: TextEncoderStream;
   new (): TextEncoderStream;
 };
 
 /** A controller object that allows you to abort one or more DOM requests as and
  * when desired.
  *
- * @category Web APIs
+ * @category Platform
  */
-declare class AbortController {
+declare interface AbortController {
   /** Returns the AbortSignal object associated with this object. */
   readonly signal: AbortSignal;
   /** Invoking this method will set this object's AbortSignal's aborted flag and
@@ -300,17 +385,27 @@ declare class AbortController {
   abort(reason?: any): void;
 }
 
-/** @category Web APIs */
-interface AbortSignalEventMap {
+/** A controller object that allows you to abort one or more DOM requests as and
+ * when desired.
+ *
+ * @category Platform
+ */
+declare var AbortController: {
+  readonly prototype: AbortController;
+  new (): AbortController;
+};
+
+/** @category Platform */
+declare interface AbortSignalEventMap {
   abort: Event;
 }
 
 /** A signal object that allows you to communicate with a DOM request (such as a
  * Fetch) and abort it if required via an AbortController object.
  *
- * @category Web APIs
+ * @category Platform
  */
-interface AbortSignal extends EventTarget {
+declare interface AbortSignal extends EventTarget {
   /** Returns true if this AbortSignal's AbortController has signaled to abort,
    * and false otherwise. */
   readonly aborted: boolean;
@@ -342,16 +437,17 @@ interface AbortSignal extends EventTarget {
   throwIfAborted(): void;
 }
 
-/** @category Web APIs */
+/** @category Platform */
 declare var AbortSignal: {
-  prototype: AbortSignal;
-  new (): AbortSignal;
+  readonly prototype: AbortSignal;
+  new (): never;
   abort(reason?: any): AbortSignal;
+  any(signals: AbortSignal[]): AbortSignal;
   timeout(milliseconds: number): AbortSignal;
 };
 
-/** @category Web File API */
-interface FileReaderEventMap {
+/** @category File */
+declare interface FileReaderEventMap {
   "abort": ProgressEvent<FileReader>;
   "error": ProgressEvent<FileReader>;
   "load": ProgressEvent<FileReader>;
@@ -364,9 +460,9 @@ interface FileReaderEventMap {
  * buffers) stored on the user's computer, using File or Blob objects to specify
  * the file or data to read.
  *
- * @category Web File API
+ * @category File
  */
-interface FileReader extends EventTarget {
+declare interface FileReader extends EventTarget {
   readonly error: DOMException | null;
   onabort: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
   onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
@@ -408,20 +504,20 @@ interface FileReader extends EventTarget {
   ): void;
 }
 
-/** @category Web File API */
+/** @category File */
 declare var FileReader: {
-  prototype: FileReader;
+  readonly prototype: FileReader;
   new (): FileReader;
   readonly DONE: number;
   readonly EMPTY: number;
   readonly LOADING: number;
 };
 
-/** @category Web File API */
-type BlobPart = BufferSource | Blob | string;
+/** @category File */
+declare type BlobPart = BufferSource | Blob | string;
 
-/** @category Web File API */
-interface BlobPropertyBag {
+/** @category File */
+declare interface BlobPropertyBag {
   type?: string;
   endings?: "transparent" | "native";
 }
@@ -431,11 +527,9 @@ interface BlobPropertyBag {
  * Blob, inheriting blob functionality and expanding it to support files on the
  * user's system.
  *
- * @category Web File API
+ * @category File
  */
-declare class Blob {
-  constructor(blobParts?: BlobPart[], options?: BlobPropertyBag);
-
+declare interface Blob {
   readonly size: number;
   readonly type: string;
   arrayBuffer(): Promise<ArrayBuffer>;
@@ -444,105 +538,133 @@ declare class Blob {
   text(): Promise<string>;
 }
 
-/** @category Web File API */
-interface FilePropertyBag extends BlobPropertyBag {
+/** A file-like object of immutable, raw data. Blobs represent data that isn't
+ * necessarily in a JavaScript-native format. The File interface is based on
+ * Blob, inheriting blob functionality and expanding it to support files on the
+ * user's system.
+ *
+ * @category File
+ */
+declare var Blob: {
+  readonly prototype: Blob;
+  new (blobParts?: BlobPart[], options?: BlobPropertyBag): Blob;
+};
+
+/** @category File */
+declare interface FilePropertyBag extends BlobPropertyBag {
   lastModified?: number;
 }
 
 /** Provides information about files and allows JavaScript in a web page to
  * access their content.
  *
- * @category Web File API
+ * @category File
  */
-declare class File extends Blob {
-  constructor(
-    fileBits: BlobPart[],
-    fileName: string,
-    options?: FilePropertyBag,
-  );
-
+declare interface File extends Blob {
   readonly lastModified: number;
   readonly name: string;
 }
 
-/** @category Streams API */
-interface ReadableStreamDefaultReadDoneResult {
+/** Provides information about files and allows JavaScript in a web page to
+ * access their content.
+ *
+ * @category File
+ */
+declare var File: {
+  readonly prototype: File;
+  new (fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
+};
+
+/** @category Streams */
+declare interface ReadableStreamDefaultReadDoneResult {
   done: true;
   value?: undefined;
 }
 
-/** @category Streams API */
-interface ReadableStreamDefaultReadValueResult<T> {
+/** @category Streams */
+declare interface ReadableStreamDefaultReadValueResult<T> {
   done: false;
   value: T;
 }
 
-/** @category Streams API */
-type ReadableStreamDefaultReadResult<T> =
+/** @category Streams */
+declare type ReadableStreamDefaultReadResult<T> =
   | ReadableStreamDefaultReadValueResult<T>
   | ReadableStreamDefaultReadDoneResult;
 
-/** @category Streams API */
-interface ReadableStreamDefaultReader<R = any> {
+/** @category Streams */
+declare interface ReadableStreamDefaultReader<R = any> {
   readonly closed: Promise<void>;
   cancel(reason?: any): Promise<void>;
   read(): Promise<ReadableStreamDefaultReadResult<R>>;
   releaseLock(): void;
 }
 
-/** @category Streams API */
+/** @category Streams */
 declare var ReadableStreamDefaultReader: {
-  prototype: ReadableStreamDefaultReader;
+  readonly prototype: ReadableStreamDefaultReader;
   new <R>(stream: ReadableStream<R>): ReadableStreamDefaultReader<R>;
 };
 
-/** @category Streams API */
-interface ReadableStreamBYOBReadDoneResult<V extends ArrayBufferView> {
+/** @category Streams */
+declare interface ReadableStreamBYOBReadDoneResult<V extends ArrayBufferView> {
   done: true;
   value?: V;
 }
 
-/** @category Streams API */
-interface ReadableStreamBYOBReadValueResult<V extends ArrayBufferView> {
+/** @category Streams */
+declare interface ReadableStreamBYOBReadValueResult<V extends ArrayBufferView> {
   done: false;
   value: V;
 }
 
-/** @category Streams API */
-type ReadableStreamBYOBReadResult<V extends ArrayBufferView> =
+/** @category Streams */
+declare type ReadableStreamBYOBReadResult<V extends ArrayBufferView> =
   | ReadableStreamBYOBReadDoneResult<V>
   | ReadableStreamBYOBReadValueResult<V>;
 
-/** @category Streams API */
-interface ReadableStreamBYOBReader {
+/** @category Streams */
+declare interface ReadableStreamBYOBReaderReadOptions {
+  min?: number;
+}
+
+/** @category Streams */
+declare interface ReadableStreamBYOBReader {
   readonly closed: Promise<void>;
   cancel(reason?: any): Promise<void>;
   read<V extends ArrayBufferView>(
     view: V,
+    options?: ReadableStreamBYOBReaderReadOptions,
   ): Promise<ReadableStreamBYOBReadResult<V>>;
   releaseLock(): void;
 }
 
-/** @category Streams API */
+/** @category Streams */
 declare var ReadableStreamBYOBReader: {
-  prototype: ReadableStreamBYOBReader;
+  readonly prototype: ReadableStreamBYOBReader;
   new (stream: ReadableStream<Uint8Array>): ReadableStreamBYOBReader;
 };
 
-/** @category Streams API */
-interface ReadableStreamBYOBRequest {
+/** @category Streams */
+declare interface ReadableStreamBYOBRequest {
   readonly view: ArrayBufferView | null;
   respond(bytesWritten: number): void;
   respondWithNewView(view: ArrayBufferView): void;
 }
 
-/** @category Streams API */
-interface ReadableByteStreamControllerCallback {
+/** @category Streams */
+declare var ReadableStreamBYOBRequest: {
+  readonly prototype: ReadableStreamBYOBRequest;
+  new (): never;
+};
+
+/** @category Streams */
+declare interface ReadableByteStreamControllerCallback {
   (controller: ReadableByteStreamController): void | PromiseLike<void>;
 }
 
-/** @category Streams API */
-interface UnderlyingByteSource {
+/** @category Streams */
+declare interface UnderlyingByteSource {
   autoAllocateChunkSize?: number;
   cancel?: ReadableStreamErrorCallback;
   pull?: ReadableByteStreamControllerCallback;
@@ -550,8 +672,8 @@ interface UnderlyingByteSource {
   type: "bytes";
 }
 
-/** @category Streams API */
-interface UnderlyingSink<W = any> {
+/** @category Streams */
+declare interface UnderlyingSink<W = any> {
   abort?: WritableStreamErrorCallback;
   close?: WritableStreamDefaultControllerCloseCallback;
   start?: WritableStreamDefaultControllerStartCallback;
@@ -559,40 +681,40 @@ interface UnderlyingSink<W = any> {
   write?: WritableStreamDefaultControllerWriteCallback<W>;
 }
 
-/** @category Streams API */
-interface UnderlyingSource<R = any> {
+/** @category Streams */
+declare interface UnderlyingSource<R = any> {
   cancel?: ReadableStreamErrorCallback;
   pull?: ReadableStreamDefaultControllerCallback<R>;
   start?: ReadableStreamDefaultControllerCallback<R>;
   type?: undefined;
 }
 
-/** @category Streams API */
-interface ReadableStreamErrorCallback {
+/** @category Streams */
+declare interface ReadableStreamErrorCallback {
   (reason: any): void | PromiseLike<void>;
 }
 
-/** @category Streams API */
-interface ReadableStreamDefaultControllerCallback<R> {
+/** @category Streams */
+declare interface ReadableStreamDefaultControllerCallback<R> {
   (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
 }
 
-/** @category Streams API */
-interface ReadableStreamDefaultController<R = any> {
+/** @category Streams */
+declare interface ReadableStreamDefaultController<R = any> {
   readonly desiredSize: number | null;
   close(): void;
   enqueue(chunk: R): void;
   error(error?: any): void;
 }
 
-/** @category Streams API */
+/** @category Streams */
 declare var ReadableStreamDefaultController: {
-  prototype: ReadableStreamDefaultController;
-  new (): ReadableStreamDefaultController;
+  readonly prototype: ReadableStreamDefaultController;
+  new (): never;
 };
 
-/** @category Streams API */
-interface ReadableByteStreamController {
+/** @category Streams */
+declare interface ReadableByteStreamController {
   readonly byobRequest: ReadableStreamBYOBRequest | null;
   readonly desiredSize: number | null;
   close(): void;
@@ -600,27 +722,27 @@ interface ReadableByteStreamController {
   error(error?: any): void;
 }
 
-/** @category Streams API */
+/** @category Streams */
 declare var ReadableByteStreamController: {
-  prototype: ReadableByteStreamController;
-  new (): ReadableByteStreamController;
+  readonly prototype: ReadableByteStreamController;
+  new (): never;
 };
 
-/** @category Streams API */
-interface PipeOptions {
+/** @category Streams */
+declare interface PipeOptions {
   preventAbort?: boolean;
   preventCancel?: boolean;
   preventClose?: boolean;
   signal?: AbortSignal;
 }
 
-/** @category Streams API */
-interface QueuingStrategySizeCallback<T = any> {
+/** @category Streams */
+declare interface QueuingStrategySizeCallback<T = any> {
   (chunk: T): number;
 }
 
-/** @category Streams API */
-interface QueuingStrategy<T = any> {
+/** @category Streams */
+declare interface QueuingStrategy<T = any> {
   highWaterMark?: number;
   size?: QueuingStrategySizeCallback<T>;
 }
@@ -628,28 +750,29 @@ interface QueuingStrategy<T = any> {
 /** This Streams API interface provides a built-in byte length queuing strategy
  * that can be used when constructing streams.
  *
- * @category Streams API
+ * @category Streams
  */
-interface CountQueuingStrategy extends QueuingStrategy {
+declare interface CountQueuingStrategy extends QueuingStrategy {
   highWaterMark: number;
   size(chunk: any): 1;
 }
 
-/** @category Streams API */
+/** @category Streams */
 declare var CountQueuingStrategy: {
-  prototype: CountQueuingStrategy;
+  readonly prototype: CountQueuingStrategy;
   new (options: { highWaterMark: number }): CountQueuingStrategy;
 };
 
-/** @category Streams API */
-interface ByteLengthQueuingStrategy extends QueuingStrategy<ArrayBufferView> {
+/** @category Streams */
+declare interface ByteLengthQueuingStrategy
+  extends QueuingStrategy<ArrayBufferView> {
   highWaterMark: number;
   size(chunk: ArrayBufferView): number;
 }
 
-/** @category Streams API */
+/** @category Streams */
 declare var ByteLengthQueuingStrategy: {
-  prototype: ByteLengthQueuingStrategy;
+  readonly prototype: ByteLengthQueuingStrategy;
   new (options: { highWaterMark: number }): ByteLengthQueuingStrategy;
 };
 
@@ -657,9 +780,9 @@ declare var ByteLengthQueuingStrategy: {
  * Fetch API offers a concrete instance of a ReadableStream through the body
  * property of a Response object.
  *
- * @category Streams API
+ * @category Streams
  */
-interface ReadableStream<R = any> {
+declare interface ReadableStream<R = any> {
   readonly locked: boolean;
   cancel(reason?: any): Promise<void>;
   getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
@@ -670,14 +793,17 @@ interface ReadableStream<R = any> {
   }, options?: PipeOptions): ReadableStream<T>;
   pipeTo(dest: WritableStream<R>, options?: PipeOptions): Promise<void>;
   tee(): [ReadableStream<R>, ReadableStream<R>];
+  values(options?: {
+    preventCancel?: boolean;
+  }): AsyncIterableIterator<R>;
   [Symbol.asyncIterator](options?: {
     preventCancel?: boolean;
   }): AsyncIterableIterator<R>;
 }
 
-/** @category Streams API */
+/** @category Streams */
 declare var ReadableStream: {
-  prototype: ReadableStream;
+  readonly prototype: ReadableStream;
   new (
     underlyingSource: UnderlyingByteSource,
     strategy?: { highWaterMark?: number; size?: undefined },
@@ -686,20 +812,23 @@ declare var ReadableStream: {
     underlyingSource?: UnderlyingSource<R>,
     strategy?: QueuingStrategy<R>,
   ): ReadableStream<R>;
+  from<R>(
+    asyncIterable: AsyncIterable<R> | Iterable<R | PromiseLike<R>>,
+  ): ReadableStream<R>;
 };
 
-/** @category Streams API */
-interface WritableStreamDefaultControllerCloseCallback {
+/** @category Streams */
+declare interface WritableStreamDefaultControllerCloseCallback {
   (): void | PromiseLike<void>;
 }
 
-/** @category Streams API */
-interface WritableStreamDefaultControllerStartCallback {
+/** @category Streams */
+declare interface WritableStreamDefaultControllerStartCallback {
   (controller: WritableStreamDefaultController): void | PromiseLike<void>;
 }
 
-/** @category Streams API */
-interface WritableStreamDefaultControllerWriteCallback<W> {
+/** @category Streams */
+declare interface WritableStreamDefaultControllerWriteCallback<W> {
   (chunk: W, controller: WritableStreamDefaultController):
     | void
     | PromiseLike<
@@ -707,8 +836,8 @@ interface WritableStreamDefaultControllerWriteCallback<W> {
     >;
 }
 
-/** @category Streams API */
-interface WritableStreamErrorCallback {
+/** @category Streams */
+declare interface WritableStreamErrorCallback {
   (reason: any): void | PromiseLike<void>;
 }
 
@@ -716,18 +845,18 @@ interface WritableStreamErrorCallback {
  * streaming data to a destination, known as a sink. This object comes with
  * built-in backpressure and queuing.
  *
- * @category Streams API
+ * @category Streams
  */
-interface WritableStream<W = any> {
+declare interface WritableStream<W = any> {
   readonly locked: boolean;
   abort(reason?: any): Promise<void>;
   close(): Promise<void>;
   getWriter(): WritableStreamDefaultWriter<W>;
 }
 
-/** @category Streams API */
+/** @category Streams */
 declare var WritableStream: {
-  prototype: WritableStream;
+  readonly prototype: WritableStream;
   new <W = any>(
     underlyingSink?: UnderlyingSink<W>,
     strategy?: QueuingStrategy<W>,
@@ -739,24 +868,27 @@ declare var WritableStream: {
  * sink is given a corresponding WritableStreamDefaultController instance to
  * manipulate.
  *
- * @category Streams API
+ * @category Streams
  */
-interface WritableStreamDefaultController {
+declare interface WritableStreamDefaultController {
   signal: AbortSignal;
   error(error?: any): void;
 }
 
-/** @category Streams API */
-declare var WritableStreamDefaultController: WritableStreamDefaultController;
+/** @category Streams */
+declare var WritableStreamDefaultController: {
+  readonly prototype: WritableStreamDefaultController;
+  new (): never;
+};
 
 /** This Streams API interface is the object returned by
  * WritableStream.getWriter() and once created locks the < writer to the
  * WritableStream ensuring that no other streams can write to the underlying
  * sink.
  *
- * @category Streams API
+ * @category Streams
  */
-interface WritableStreamDefaultWriter<W = any> {
+declare interface WritableStreamDefaultWriter<W = any> {
   readonly closed: Promise<void>;
   readonly desiredSize: number | null;
   readonly ready: Promise<void>;
@@ -766,21 +898,21 @@ interface WritableStreamDefaultWriter<W = any> {
   write(chunk: W): Promise<void>;
 }
 
-/** @category Streams API */
+/** @category Streams */
 declare var WritableStreamDefaultWriter: {
-  prototype: WritableStreamDefaultWriter;
-  new (): WritableStreamDefaultWriter;
+  readonly prototype: WritableStreamDefaultWriter;
+  new <W>(stream: WritableStream<W>): WritableStreamDefaultWriter<W>;
 };
 
-/** @category Streams API */
-interface TransformStream<I = any, O = any> {
+/** @category Streams */
+declare interface TransformStream<I = any, O = any> {
   readonly readable: ReadableStream<O>;
   readonly writable: WritableStream<I>;
 }
 
-/** @category Streams API */
+/** @category Streams */
 declare var TransformStream: {
-  prototype: TransformStream;
+  readonly prototype: TransformStream;
   new <I = any, O = any>(
     transformer?: Transformer<I, O>,
     writableStrategy?: QueuingStrategy<I>,
@@ -788,77 +920,91 @@ declare var TransformStream: {
   ): TransformStream<I, O>;
 };
 
-/** @category Streams API */
-interface TransformStreamDefaultController<O = any> {
+/** @category Streams */
+declare interface TransformStreamDefaultController<O = any> {
   readonly desiredSize: number | null;
   enqueue(chunk: O): void;
   error(reason?: any): void;
   terminate(): void;
 }
 
-/** @category Streams API */
-declare var TransformStreamDefaultController: TransformStreamDefaultController;
+/** @category Streams */
+declare var TransformStreamDefaultController: {
+  readonly prototype: TransformStreamDefaultController;
+  new (): never;
+};
 
-/** @category Streams API */
-interface Transformer<I = any, O = any> {
+/** @category Streams */
+declare interface Transformer<I = any, O = any> {
   flush?: TransformStreamDefaultControllerCallback<O>;
   readableType?: undefined;
   start?: TransformStreamDefaultControllerCallback<O>;
   transform?: TransformStreamDefaultControllerTransformCallback<I, O>;
+  cancel?: (reason: any) => Promise<void>;
   writableType?: undefined;
 }
 
-/** @category Streams API */
-interface TransformStreamDefaultControllerCallback<O> {
+/** @category Streams */
+declare interface TransformStreamDefaultControllerCallback<O> {
   (controller: TransformStreamDefaultController<O>): void | PromiseLike<void>;
 }
 
-/** @category Streams API */
-interface TransformStreamDefaultControllerTransformCallback<I, O> {
+/** @category Streams */
+declare interface TransformStreamDefaultControllerTransformCallback<I, O> {
   (
     chunk: I,
     controller: TransformStreamDefaultController<O>,
   ): void | PromiseLike<void>;
 }
 
-/** @category Streams API */
-interface MessageEventInit<T = any> extends EventInit {
+/** @category Events */
+declare interface MessageEventInit<T = any> extends EventInit {
   data?: T;
   origin?: string;
   lastEventId?: string;
 }
 
-/** @category Streams API */
-declare class MessageEvent<T = any> extends Event {
+/** @category Events */
+declare interface MessageEvent<T = any> extends Event {
   /**
    * Returns the data of the message.
    */
   readonly data: T;
   /**
+   * Returns the origin of the message, for server-sent events.
+   */
+  readonly origin: string;
+  /**
    * Returns the last event ID string, for server-sent events.
    */
   readonly lastEventId: string;
+  readonly source: null;
   /**
    * Returns transferred ports.
    */
   readonly ports: ReadonlyArray<MessagePort>;
-  constructor(type: string, eventInitDict?: MessageEventInit);
 }
 
-/** @category DOM APIs */
-type Transferable = ArrayBuffer | MessagePort;
+/** @category Events */
+declare var MessageEvent: {
+  readonly prototype: MessageEvent;
+  new <T>(type: string, eventInitDict?: MessageEventInit<T>): MessageEvent<T>;
+};
+
+/** @category Events */
+declare type Transferable = ArrayBuffer | MessagePort;
 
 /**
  * This type has been renamed to StructuredSerializeOptions. Use that type for
  * new code.
  *
  * @deprecated use `StructuredSerializeOptions` instead.
- * @category DOM APIs
+ * @category Events
  */
-type PostMessageOptions = StructuredSerializeOptions;
+declare type PostMessageOptions = StructuredSerializeOptions;
 
-/** @category DOM APIs */
-interface StructuredSerializeOptions {
+/** @category Platform */
+declare interface StructuredSerializeOptions {
   transfer?: Transferable[];
 }
 
@@ -866,16 +1012,26 @@ interface StructuredSerializeOptions {
  * create a new message channel and send data through it via its two MessagePort
  * properties.
  *
- * @category DOM APIs
+ * @category Messaging
  */
-declare class MessageChannel {
-  constructor();
+declare interface MessageChannel {
   readonly port1: MessagePort;
   readonly port2: MessagePort;
 }
 
-/** @category DOM APIs */
-interface MessagePortEventMap {
+/** The MessageChannel interface of the Channel Messaging API allows us to
+ * create a new message channel and send data through it via its two MessagePort
+ * properties.
+ *
+ * @category Messaging
+ */
+declare var MessageChannel: {
+  readonly prototype: MessageChannel;
+  new (): MessageChannel;
+};
+
+/** @category Messaging */
+declare interface MessagePortEventMap {
   "message": MessageEvent;
   "messageerror": MessageEvent;
 }
@@ -884,9 +1040,9 @@ interface MessagePortEventMap {
  * two ports of a MessageChannel, allowing messages to be sent from one port and
  * listening out for them arriving at the other.
  *
- * @category DOM APIs
+ * @category Messaging
  */
-declare class MessagePort extends EventTarget {
+declare interface MessagePort extends EventTarget {
   onmessage: ((this: MessagePort, ev: MessageEvent) => any) | null;
   onmessageerror: ((this: MessagePort, ev: MessageEvent) => any) | null;
   /**
@@ -930,6 +1086,17 @@ declare class MessagePort extends EventTarget {
   ): void;
 }
 
+/** The MessagePort interface of the Channel Messaging API represents one of the
+ * two ports of a MessageChannel, allowing messages to be sent from one port and
+ * listening out for them arriving at the other.
+ *
+ * @category Messaging
+ */
+declare var MessagePort: {
+  readonly prototype: MessagePort;
+  new (): never;
+};
+
 /**
  * Creates a deep copy of a given value using the structured clone algorithm.
  *
@@ -955,12 +1122,12 @@ declare class MessagePort extends EventTarget {
  * console.log(shallowCopy.x, object.x); // 1 1
  * ```
  *
- * @category DOM APIs
+ * @category Platform
  */
-declare function structuredClone(
-  value: any,
+declare function structuredClone<T = any>(
+  value: T,
   options?: StructuredSerializeOptions,
-): any;
+): T;
 
 /**
  * An API for compressing a stream of data.
@@ -972,9 +1139,27 @@ declare function structuredClone(
  *   .pipeTo(Deno.stdout.writable);
  * ```
  *
- * @category Compression Streams API
+ * @category Streams
  */
-declare class CompressionStream {
+declare interface CompressionStream {
+  readonly readable: ReadableStream<Uint8Array>;
+  readonly writable: WritableStream<Uint8Array>;
+}
+
+/**
+ * An API for compressing a stream of data.
+ *
+ * @example
+ * ```ts
+ * await Deno.stdin.readable
+ *   .pipeThrough(new CompressionStream("gzip"))
+ *   .pipeTo(Deno.stdout.writable);
+ * ```
+ *
+ * @category Streams
+ */
+declare var CompressionStream: {
+  readonly prototype: CompressionStream;
   /**
    * Creates a new `CompressionStream` object which compresses a stream of
    * data.
@@ -982,8 +1167,25 @@ declare class CompressionStream {
    * Throws a `TypeError` if the format passed to the constructor is not
    * supported.
    */
-  constructor(format: string);
+  new (format: string): CompressionStream;
+};
 
+/**
+ * An API for decompressing a stream of data.
+ *
+ * @example
+ * ```ts
+ * const input = await Deno.open("./file.txt.gz");
+ * const output = await Deno.create("./file.txt");
+ *
+ * await input.readable
+ *   .pipeThrough(new DecompressionStream("gzip"))
+ *   .pipeTo(output.writable);
+ * ```
+ *
+ * @category Streams
+ */
+declare interface DecompressionStream {
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<Uint8Array>;
 }
@@ -1001,9 +1203,10 @@ declare class CompressionStream {
  *   .pipeTo(output.writable);
  * ```
  *
- * @category Compression Streams API
+ * @category Streams
  */
-declare class DecompressionStream {
+declare var DecompressionStream: {
+  readonly prototype: DecompressionStream;
   /**
    * Creates a new `DecompressionStream` object which decompresses a stream of
    * data.
@@ -1011,11 +1214,8 @@ declare class DecompressionStream {
    * Throws a `TypeError` if the format passed to the constructor is not
    * supported.
    */
-  constructor(format: string);
-
-  readonly readable: ReadableStream<Uint8Array>;
-  readonly writable: WritableStream<Uint8Array>;
-}
+  new (format: string): DecompressionStream;
+};
 
 /** Dispatch an uncaught exception. Similar to a synchronous version of:
  * ```ts
@@ -1032,8 +1232,36 @@ declare class DecompressionStream {
  * ```
  * In Deno, this error will terminate the process if not intercepted like above.
  *
- * @category Web APIs
+ * @category Platform
  */
 declare function reportError(
   error: any,
 ): void;
+
+/** @category Platform */
+declare type PredefinedColorSpace = "srgb" | "display-p3";
+
+/** @category Platform */
+declare interface ImageDataSettings {
+  readonly colorSpace?: PredefinedColorSpace;
+}
+
+/** @category Platform */
+declare interface ImageData {
+  readonly colorSpace: PredefinedColorSpace;
+  readonly data: Uint8ClampedArray;
+  readonly height: number;
+  readonly width: number;
+}
+
+/** @category Platform */
+declare var ImageData: {
+  prototype: ImageData;
+  new (sw: number, sh: number, settings?: ImageDataSettings): ImageData;
+  new (
+    data: Uint8ClampedArray,
+    sw: number,
+    sh?: number,
+    settings?: ImageDataSettings,
+  ): ImageData;
+};

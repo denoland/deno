@@ -1,8 +1,8 @@
-# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_runtime"
-version = "0.105.0"
+version = "0.166.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,37 +12,42 @@ description = "Provides the deno runtime library"
 [features]
 # "fake" feature that allows to generate docs on docs.rs
 docsrs = []
-# A feature that disables creation of startup snapshot during in the build script.
-dont_create_runtime_snapshot = []
-# A feature that changes how startup snapshot is generated, that allows
-# extending it in embedder crates.
-snapshot_from_snapshot = []
+# A feature that allows excluding `./js/99_main.js` from the exported extension.
+exclude_runtime_main_js = []
 # A feature that disables embedding of the JavaScript source files in the binary.
 # With this feature enabled, the sources must be consumed during build time,
 # by creating a startup snapshot.
 include_js_files_for_snapshotting = [
   "deno_core/include_js_files_for_snapshotting",
 ]
+# A dev feature to disable creations and loading of snapshots in favor of
+# loading JS sources at runtime.
+__runtime_js_sources = ["include_js_files_for_snapshotting"]
+# Signal that only snapshotted JS sources should be used. This will
+# conditionally exclude the runtime source transpilation logic, and add an
+# assertion that a snapshot is provided.
+only_snapshotted_js_sources = ["include_js_files_for_snapshotting"]
 
 [lib]
 name = "deno_runtime"
 path = "lib.rs"
 
 [[example]]
-name = "hello_runtime"
-path = "examples/hello_runtime.rs"
+name = "extension"
+path = "examples/extension/main.rs"
 
 [build-dependencies]
 deno_ast.workspace = true
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
+deno_canvas.workspace = true
 deno_console.workspace = true
 deno_core.workspace = true
+deno_cron.workspace = true
 deno_crypto.workspace = true
 deno_fetch.workspace = true
 deno_ffi.workspace = true
-deno_flash.workspace = true
-deno_fs.workspace = true
+deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_http.workspace = true
 deno_io.workspace = true
 deno_net.workspace = true
@@ -51,63 +56,74 @@ deno_kv.workspace = true
 deno_tls.workspace = true
 deno_url.workspace = true
 deno_web.workspace = true
+deno_webgpu.workspace = true
 deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
 deno_napi.workspace = true
+flate2 = { workspace = true, features = ["default"] }
+serde.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
-winres.workspace = true
 winapi.workspace = true
 
 [dependencies]
+deno_ast.workspace = true
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
+deno_canvas.workspace = true
 deno_console.workspace = true
 deno_core.workspace = true
+deno_cron.workspace = true
 deno_crypto.workspace = true
 deno_fetch.workspace = true
 deno_ffi.workspace = true
-deno_flash.workspace = true
-deno_fs.workspace = true
+deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_http.workspace = true
 deno_io.workspace = true
 deno_kv.workspace = true
 deno_napi.workspace = true
 deno_net.workspace = true
 deno_node.workspace = true
+deno_permissions.workspace = true
+deno_terminal.workspace = true
 deno_tls.workspace = true
 deno_url.workspace = true
 deno_web.workspace = true
+deno_webgpu.workspace = true
 deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
 
-atty.workspace = true
-console_static_text.workspace = true
-dlopen.workspace = true
+dlopen2.workspace = true
 encoding_rs.workspace = true
-filetime = "0.2.16"
-fs3.workspace = true
+fastwebsockets.workspace = true
 http.workspace = true
-hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 libc.workspace = true
 log.workspace = true
 netif = "0.1.6"
 notify.workspace = true
 once_cell.workspace = true
+percent-encoding.workspace = true
 regex.workspace = true
-ring.workspace = true
+rustyline = { workspace = true, features = ["custom-bindings"] }
 serde.workspace = true
+signal-hook = "0.3.17"
 signal-hook-registry = "1.4.0"
-termcolor = "1.1.3"
 tokio.workspace = true
+tokio-metrics.workspace = true
+twox-hash.workspace = true
 uuid.workspace = true
+which = "4.2.5"
 
 [target.'cfg(windows)'.dependencies]
-fwdansi.workspace = true
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
 ntapi = "0.4.0"
+windows-sys.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true

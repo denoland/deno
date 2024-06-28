@@ -1,20 +1,36 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // The following are all the process APIs that don't depend on the stream module
 // They have to be split this way to prevent a circular dependency
 
-const core = globalThis.Deno.core;
+import { core, primordials } from "ext:core/mod.js";
+const {
+  Error,
+  ObjectGetOwnPropertyNames,
+  String,
+  ReflectOwnKeys,
+  ArrayPrototypeIncludes,
+  Object,
+  Proxy,
+  ObjectPrototype,
+  ObjectPrototypeIsPrototypeOf,
+  TypeErrorPrototype,
+} = primordials;
+const { build } = core;
+
 import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import * as fs from "ext:deno_fs/30_fs.js";
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
-  if (core.build.arch == "x86_64") {
+  if (build.arch == "x86_64") {
     return "x64";
-  } else if (core.build.arch == "aarch64") {
+  } else if (build.arch == "aarch64") {
     return "arm64";
+  } else if (build.arch == "riscv64gc") {
+    return "riscv64";
   } else {
     throw Error("unreachable");
   }
@@ -32,24 +48,21 @@ export const nextTick = _nextTick;
 /** Wrapper of Deno.env.get, which doesn't throw type error when
  * the env name has "=" or "\0" in it. */
 function denoEnvGet(name: string) {
-  const perm =
-    Deno.permissions.querySync?.({ name: "env", variable: name }).state ??
-      "granted"; // for Deno Deploy
-  // Returns undefined if the env permission is unavailable
-  if (perm !== "granted") {
-    return undefined;
-  }
   try {
     return Deno.env.get(name);
   } catch (e) {
-    if (e instanceof TypeError) {
+    if (
+      ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, e) ||
+      // TODO(iuioiua): Use `PermissionDeniedPrototype` when it's available
+      ObjectPrototypeIsPrototypeOf(Deno.errors.PermissionDenied.prototype, e)
+    ) {
       return undefined;
     }
     throw e;
   }
 }
 
-const OBJECT_PROTO_PROP_NAMES = Object.getOwnPropertyNames(Object.prototype);
+const OBJECT_PROTO_PROP_NAMES = ObjectGetOwnPropertyNames(ObjectPrototype);
 /**
  * https://nodejs.org/api/process.html#process_process_env
  * Requires env permissions
@@ -67,13 +80,13 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
         return envValue;
       }
 
-      if (OBJECT_PROTO_PROP_NAMES.includes(prop)) {
+      if (ArrayPrototypeIncludes(OBJECT_PROTO_PROP_NAMES, prop)) {
         return target[prop];
       }
 
       return envValue;
     },
-    ownKeys: () => Reflect.ownKeys(Deno.env.toObject()),
+    ownKeys: () => ReflectOwnKeys(Deno.env.toObject()),
     getOwnPropertyDescriptor: (_target, name) => {
       const value = denoEnvGet(String(name));
       if (value) {
@@ -89,6 +102,10 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
       return true; // success
     },
     has: (_target, prop) => typeof denoEnvGet(String(prop)) === "string",
+    deleteProperty(_target, key) {
+      Deno.env.delete(String(key));
+      return true;
+    },
   });
 
 /**
@@ -99,7 +116,7 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
  * it pointed to Deno version, but that led to incompability
  * with some packages.
  */
-export const version = "v18.12.1";
+export const version = "v20.11.1";
 
 /**
  * https://nodejs.org/api/process.html#process_process_versions
@@ -110,7 +127,7 @@ export const version = "v18.12.1";
  * with some packages. Value of `v8` field is still taken from `Deno.version`.
  */
 export const versions = {
-  node: "18.12.1",
+  node: "20.11.1",
   uv: "1.43.0",
   zlib: "1.2.11",
   brotli: "1.0.9",

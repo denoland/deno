@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -12,18 +12,20 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures;
+use deno_core::futures::FutureExt;
 use deno_core::serde_json;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_graph::DefaultModuleAnalyzer;
+use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
 use import_map::ImportMap;
 
+use crate::args::JsxImportSourceConfig;
 use crate::cache::ParsedSourceCache;
-use crate::npm::NpmRegistryApi;
-use crate::npm::NpmResolution;
-use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::CliGraphResolverOptions;
 
 use super::build::VendorEnvironment;
 
@@ -110,15 +112,21 @@ impl TestLoader {
 
 impl Loader for TestLoader {
   fn load(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
-    _is_dynamic: bool,
+    _options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
-    let specifier = self.redirects.get(specifier).unwrap_or(specifier);
+    if let Some(redirect) = self.redirects.get(specifier) {
+      return Box::pin(futures::future::ready(Ok(Some(
+        LoadResponse::Redirect {
+          specifier: redirect.clone(),
+        },
+      ))));
+    }
     let result = self.files.get(specifier).map(|result| match result {
       Ok(result) => Ok(LoadResponse::Module {
         specifier: specifier.clone(),
-        content: result.0.clone().into(),
+        content: result.0.clone().into_bytes().into(),
         maybe_headers: result.1.clone(),
       }),
       Err(err) => Err(err),
@@ -142,10 +150,6 @@ struct TestVendorEnvironment {
 }
 
 impl VendorEnvironment for TestVendorEnvironment {
-  fn cwd(&self) -> Result<PathBuf, AnyError> {
-    Ok(make_path("/"))
-  }
-
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError> {
     let mut directories = self.directories.borrow_mut();
     for path in dir_path.ancestors() {
@@ -156,20 +160,16 @@ impl VendorEnvironment for TestVendorEnvironment {
     Ok(())
   }
 
-  fn write_file(&self, file_path: &Path, text: &str) -> Result<(), AnyError> {
+  fn write_file(&self, file_path: &Path, text: &[u8]) -> Result<(), AnyError> {
     let parent = file_path.parent().unwrap();
     if !self.directories.borrow().contains(parent) {
       bail!("Directory not found: {}", parent.display());
     }
-    self
-      .files
-      .borrow_mut()
-      .insert(file_path.to_path_buf(), text.to_string());
+    self.files.borrow_mut().insert(
+      file_path.to_path_buf(),
+      String::from_utf8(text.to_vec()).unwrap(),
+    );
     Ok(())
-  }
-
-  fn path_exists(&self, path: &Path) -> bool {
-    self.files.borrow().contains_key(&path.to_path_buf())
   }
 }
 
@@ -184,6 +184,7 @@ pub struct VendorTestBuilder {
   loader: TestLoader,
   original_import_map: Option<ImportMap>,
   environment: TestVendorEnvironment,
+  jsx_import_source_config: Option<JsxImportSourceConfig>,
 }
 
 impl VendorTestBuilder {
@@ -193,8 +194,12 @@ impl VendorTestBuilder {
     builder
   }
 
+  pub fn resolve_to_url(&self, path: &str) -> ModuleSpecifier {
+    ModuleSpecifier::from_file_path(make_path(path)).unwrap()
+  }
+
   pub fn new_import_map(&self, base_path: &str) -> ImportMap {
-    let base = ModuleSpecifier::from_file_path(make_path(base_path)).unwrap();
+    let base = self.resolve_to_url(base_path);
     ImportMap::new(base)
   }
 
@@ -214,27 +219,50 @@ impl VendorTestBuilder {
     self
   }
 
+  pub fn set_jsx_import_source_config(
+    &mut self,
+    jsx_import_source_config: JsxImportSourceConfig,
+  ) -> &mut Self {
+    self.jsx_import_source_config = Some(jsx_import_source_config);
+    self
+  }
+
   pub async fn build(&mut self) -> Result<VendorOutput, AnyError> {
     let output_dir = make_path("/vendor");
-    let roots = self.entry_points.clone();
+    let entry_points = self.entry_points.clone();
     let loader = self.loader.clone();
-    let parsed_source_cache = ParsedSourceCache::new_in_memory();
-    let analyzer = parsed_source_cache.as_analyzer();
-    let graph = build_test_graph(
-      roots,
+    let parsed_source_cache = ParsedSourceCache::default();
+    let resolver = Arc::new(build_resolver(
+      self.jsx_import_source_config.clone(),
       self.original_import_map.clone(),
-      loader,
-      &*analyzer,
-    )
-    .await;
-    super::build::build(
-      graph,
-      &parsed_source_cache,
-      &output_dir,
-      self.original_import_map.as_ref(),
-      None,
-      &self.environment,
-    )?;
+    ));
+    super::build::build(super::build::BuildInput {
+      entry_points,
+      build_graph: {
+        let resolver = resolver.clone();
+        move |entry_points| {
+          async move {
+            Ok(
+              build_test_graph(
+                entry_points,
+                loader,
+                resolver.as_graph_resolver(),
+                &DefaultModuleAnalyzer,
+              )
+              .await,
+            )
+          }
+          .boxed_local()
+        }
+      },
+      parsed_source_cache: &parsed_source_cache,
+      output_dir: &output_dir,
+      maybe_original_import_map: self.original_import_map.as_ref(),
+      maybe_jsx_import_source: self.jsx_import_source_config.as_ref(),
+      resolver: resolver.as_graph_resolver(),
+      environment: &self.environment,
+    })
+    .await?;
 
     let mut files = self.environment.files.borrow_mut();
     let import_map = files.remove(&output_dir.join("import_map.json"));
@@ -257,38 +285,36 @@ impl VendorTestBuilder {
   }
 }
 
+fn build_resolver(
+  maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
+  original_import_map: Option<ImportMap>,
+) -> CliGraphResolver {
+  CliGraphResolver::new(CliGraphResolverOptions {
+    node_resolver: None,
+    npm_resolver: None,
+    sloppy_imports_resolver: None,
+    package_json_deps_provider: Default::default(),
+    maybe_jsx_import_source_config,
+    maybe_import_map: original_import_map.map(Arc::new),
+    maybe_vendor_dir: None,
+    bare_node_builtins_enabled: false,
+  })
+}
+
 async fn build_test_graph(
   roots: Vec<ModuleSpecifier>,
-  original_import_map: Option<ImportMap>,
-  mut loader: TestLoader,
+  loader: TestLoader,
+  resolver: &dyn deno_graph::source::Resolver,
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
-  let resolver = original_import_map.map(|m| {
-    let npm_registry_api = NpmRegistryApi::new_uninitialized();
-    let npm_resolution =
-      NpmResolution::new(npm_registry_api.clone(), None, None);
-    let deps_installer = PackageJsonDepsInstaller::new(
-      npm_registry_api.clone(),
-      npm_resolution.clone(),
-      None,
-    );
-    CliGraphResolver::new(
-      None,
-      Some(Arc::new(m)),
-      false,
-      npm_registry_api,
-      npm_resolution,
-      deps_installer,
-    )
-  });
-  let mut graph = ModuleGraph::default();
+  let mut graph = ModuleGraph::new(GraphKind::All);
   graph
     .build(
       roots,
-      &mut loader,
+      &loader,
       deno_graph::BuildOptions {
-        resolver: resolver.as_ref().map(|r| r.as_graph_resolver()),
-        module_analyzer: Some(analyzer),
+        resolver: Some(resolver),
+        module_analyzer: analyzer,
         ..Default::default()
       },
     )

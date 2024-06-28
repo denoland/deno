@@ -1,7 +1,10 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
 
 import { Console } from "ext:deno_node/internal/console/constructor.mjs";
-import { windowOrWorkerGlobalScope } from "ext:runtime/98_global_scope.js";
+import { windowOrWorkerGlobalScope } from "ext:runtime/98_global_scope_shared.js";
 // Don't rely on global `console` because during bootstrapping, it is pointing
 // to native `console` object provided by V8.
 const console = windowOrWorkerGlobalScope.console.value;

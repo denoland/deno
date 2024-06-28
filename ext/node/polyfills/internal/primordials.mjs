@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file prefer-primordials
+
 export const ArrayIsArray = Array.isArray;
 export const ArrayPrototypeFilter = (that, ...args) => that.filter(...args);
 export const ArrayPrototypeForEach = (that, ...args) => that.forEach(...args);
@@ -10,9 +12,10 @@ export const ArrayPrototypeSlice = (that, ...args) => that.slice(...args);
 export const ArrayPrototypeSome = (that, ...args) => that.some(...args);
 export const ArrayPrototypeSort = (that, ...args) => that.sort(...args);
 export const ArrayPrototypeUnshift = (that, ...args) => that.unshift(...args);
+export const BigInt = globalThis.BigInt;
 export const ObjectAssign = Object.assign;
 export const ObjectCreate = Object.create;
-export const ObjectPrototypeHasOwnProperty = Object.hasOwn;
+export const ObjectHasOwn = Object.hasOwn;
 export const RegExpPrototypeTest = (that, ...args) => that.test(...args);
 export const RegExpPrototypeExec = RegExp.prototype.exec;
 export const StringFromCharCode = String.fromCharCode;

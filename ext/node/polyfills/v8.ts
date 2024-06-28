@@ -1,12 +1,23 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
+
+/// <reference path="../../core/internal.d.ts" />
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { core } from "ext:core/mod.js";
+import {
+  op_v8_cached_data_version_tag,
+  op_v8_get_heap_statistics,
+} from "ext:core/ops";
+
+import { Buffer } from "node:buffer";
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
-const { ops } = globalThis.__bootstrap.core;
-
 export function cachedDataVersionTag() {
-  return ops.op_v8_cached_data_version_tag();
+  return op_v8_cached_data_version_tag();
 }
 export function getHeapCodeStatistics() {
   notImplemented("v8.getHeapCodeStatistics");
@@ -21,7 +32,7 @@ export function getHeapSpaceStatistics() {
 const buffer = new Float64Array(14);
 
 export function getHeapStatistics() {
-  ops.op_v8_get_heap_statistics(buffer);
+  op_v8_get_heap_statistics(buffer);
 
   return {
     total_heap_size: buffer[0],
@@ -42,7 +53,14 @@ export function getHeapStatistics() {
 }
 
 export function setFlagsFromString() {
-  notImplemented("v8.setFlagsFromString");
+  // NOTE(bartlomieju): From Node.js docs:
+  // The v8.setFlagsFromString() method can be used to programmatically set V8
+  // command-line flags. This method should be used with care. Changing settings
+  // after the VM has started may result in unpredictable behavior, including
+  // crashes and data loss; or it may simply do nothing.
+  //
+  // Notice: "or it may simply do nothing". This is what we're gonna do,
+  // this function will just be a no-op.
 }
 export function stopCoverage() {
   notImplemented("v8.stopCoverage");
@@ -53,11 +71,11 @@ export function takeCoverage() {
 export function writeHeapSnapshot() {
   notImplemented("v8.writeHeapSnapshot");
 }
-export function serialize() {
-  notImplemented("v8.serialize");
+export function serialize(value) {
+  return Buffer.from(core.serialize(value));
 }
-export function deserialize() {
-  notImplemented("v8.deserialize");
+export function deserialize(data) {
+  return core.deserialize(data);
 }
 export class Serializer {
   constructor() {

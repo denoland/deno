@@ -1,7 +1,9 @@
-#!/usr/bin/env -S deno run --unstable --allow-read=. --allow-run=git
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+#!/usr/bin/env -S deno run --allow-read=. --allow-run=git
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { getSources, ROOT_PATH } from "./util.js";
+
+const copyrightYear = 2024;
 
 const buffer = new Uint8Array(1024);
 const textDecoder = new TextDecoder();
@@ -22,15 +24,18 @@ export async function checkCopyright() {
     "*.js",
     "*.ts",
     ":!:.github/mtime_cache/action.js",
-    ":!:cli/tests/testdata/**",
+    ":!:tests/registry/**",
+    ":!:tests/specs/**",
+    ":!:tests/testdata/**",
     ":!:cli/bench/testdata/**",
     ":!:cli/tsc/dts/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
-    ":!:test_util/wpt/**",
+    ":!:tests/wpt/suite/**",
     ":!:cli/tools/init/templates/**",
-    ":!:cli/tests/unit_node/testdata/**",
-    ":!:cli/tests/node_compat/test/**",
+    ":!:tests/unit_node/testdata/**",
+    ":!:tests/node_compat/test/**",
+    ":!:cli/tools/bench/mitata.rs",
 
     // rust
     "*.rs",
@@ -42,36 +47,63 @@ export async function checkCopyright() {
 
   const errors = [];
   const sourceFilesSet = new Set(sourceFiles);
+  const ERROR_MSG = "Copyright header is missing: ";
+
+  // Acceptable content before the copyright line
+  const ACCEPTABLE_LINES =
+    /^(\/\/ deno-lint-.*|\/\/ Copyright.*|\/\/ Ported.*|\s*|#!\/.*)\n/;
+  const COPYRIGHT_LINE =
+    `Copyright 2018-${copyrightYear} the Deno authors. All rights reserved. MIT license.`;
+  const TOML_COPYRIGHT_LINE = "# " + COPYRIGHT_LINE;
+  const C_STYLE_COPYRIGHT_LINE = "// " + COPYRIGHT_LINE;
 
   for (const file of sourceFilesSet) {
-    const ERROR_MSG = "Copyright header is missing: ";
-
     const fileText = await readFirstPartOfFile(file);
     if (file.endsWith("Cargo.toml")) {
       if (
-        !fileText.startsWith(
-          "# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
-        )
+        !fileText.startsWith(TOML_COPYRIGHT_LINE)
       ) {
         errors.push(ERROR_MSG + file);
       }
       continue;
     }
 
-    // use .includes(...) because the first line might be a shebang
     if (
-      !fileText.includes(
-        "// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
-      )
+      !fileText.startsWith(C_STYLE_COPYRIGHT_LINE)
     ) {
-      errors.push(ERROR_MSG + file);
+      let trimmedText = fileText;
+      // Attempt to trim acceptable lines
+      while (
+        ACCEPTABLE_LINES.test(trimmedText) &&
+        !trimmedText.startsWith(C_STYLE_COPYRIGHT_LINE)
+      ) {
+        trimmedText = trimmedText.split("\n").slice(1).join("\n");
+      }
+      if (
+        !trimmedText.startsWith(C_STYLE_COPYRIGHT_LINE)
+      ) {
+        errors.push(
+          `${ERROR_MSG}${file} (incorrect line is '${
+            trimmedText.split("\n", 1)
+          }')`,
+        );
+      }
     }
+  }
+
+  // check the main license file
+  const licenseText = Deno.readTextFileSync(ROOT_PATH + "/LICENSE.md");
+  if (
+    !licenseText.includes(`Copyright 2018-${copyrightYear} the Deno authors`)
+  ) {
+    errors.push(`LICENSE.md has old copyright year`);
   }
 
   if (errors.length > 0) {
     // show all the errors at the same time to prevent overlap with
     // other running scripts that may be outputting
     console.error(errors.join("\n"));
+    console.error(`Expected copyright:\n\`\`\`\n${COPYRIGHT_LINE}\n\`\`\``);
     throw new Error(`Copyright checker had ${errors.length} errors.`);
   }
 }

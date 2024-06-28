@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference no-default-lib="true" />
@@ -10,26 +10,21 @@
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-const primordials = globalThis.__bootstrap.primordials;
-import { forgivingBase64Encode } from "ext:deno_web/00_infra.js";
-import { EventTarget, ProgressEvent } from "ext:deno_web/02_event.js";
-import { decode, TextDecoder } from "ext:deno_web/08_text_encoding.js";
-import { parseMimeType } from "ext:deno_web/01_mimesniff.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { primordials } from "ext:core/mod.js";
+import { op_encode_binary_string } from "ext:core/ops";
 const {
   ArrayPrototypePush,
   ArrayPrototypeReduce,
   FunctionPrototypeCall,
-  Map,
   MapPrototypeGet,
   MapPrototypeSet,
   ObjectDefineProperty,
+  ObjectPrototypeIsPrototypeOf,
   queueMicrotask,
   SafeArrayIterator,
+  SafeMap,
   Symbol,
+  SymbolFor,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
@@ -37,6 +32,14 @@ const {
   TypeError,
   Uint8Array,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { forgivingBase64Encode } from "./00_infra.js";
+import { EventTarget, ProgressEvent } from "./02_event.js";
+import { decode, TextDecoder } from "./08_text_encoding.js";
+import { parseMimeType } from "./01_mimesniff.js";
+import { DOMException } from "./01_dom_exception.js";
 
 const state = Symbol("[[state]]");
 const result = Symbol("[[result]]");
@@ -169,7 +172,7 @@ class FileReader extends EventTarget {
                   break;
                 }
                 case "BinaryString":
-                  this[result] = ops.op_encode_binary_string(bytes);
+                  this[result] = op_encode_binary_string(bytes);
                   break;
                 case "Text": {
                   let decoder = undefined;
@@ -273,7 +276,7 @@ class FileReader extends EventTarget {
     webidl.assertBranded(this, FileReaderPrototype);
 
     if (!this[handlerSymbol]) {
-      this[handlerSymbol] = new Map();
+      this[handlerSymbol] = new SafeMap();
     }
     let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
     if (handlerWrapper) {
@@ -352,7 +355,7 @@ class FileReader extends EventTarget {
   readAsArrayBuffer(blob) {
     webidl.assertBranded(this, FileReaderPrototype);
     const prefix = "Failed to execute 'readAsArrayBuffer' on 'FileReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     this.#readOperation(blob, { kind: "ArrayBuffer" });
   }
 
@@ -360,7 +363,7 @@ class FileReader extends EventTarget {
   readAsBinaryString(blob) {
     webidl.assertBranded(this, FileReaderPrototype);
     const prefix = "Failed to execute 'readAsBinaryString' on 'FileReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     // alias for readAsArrayBuffer
     this.#readOperation(blob, { kind: "BinaryString" });
   }
@@ -369,7 +372,7 @@ class FileReader extends EventTarget {
   readAsDataURL(blob) {
     webidl.assertBranded(this, FileReaderPrototype);
     const prefix = "Failed to execute 'readAsDataURL' on 'FileReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     // alias for readAsArrayBuffer
     this.#readOperation(blob, { kind: "DataUrl" });
   }
@@ -381,12 +384,9 @@ class FileReader extends EventTarget {
   readAsText(blob, encoding = undefined) {
     webidl.assertBranded(this, FileReaderPrototype);
     const prefix = "Failed to execute 'readAsText' on 'FileReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     if (encoding !== undefined) {
-      encoding = webidl.converters["DOMString"](encoding, {
-        prefix,
-        context: "Argument 2",
-      });
+      encoding = webidl.converters["DOMString"](encoding, prefix, "Argument 2");
     }
     // alias for readAsArrayBuffer
     this.#readOperation(blob, { kind: "Text", encoding });
@@ -433,9 +433,24 @@ class FileReader extends EventTarget {
   set onabort(value) {
     this.#setEventHandlerFor("abort", value);
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(FileReaderPrototype, this),
+        keys: [
+          "error",
+          "readyState",
+          "result",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
 }
 
-webidl.configurePrototype(FileReader);
+webidl.configureInterface(FileReader);
 const FileReaderPrototype = FileReader.prototype;
 
 ObjectDefineProperty(FileReader, "EMPTY", {

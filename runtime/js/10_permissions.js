@@ -1,16 +1,16 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-import { pathFromURL } from "ext:deno_web/00_infra.js";
-import { Event, EventTarget } from "ext:deno_web/02_event.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
+import {
+  op_query_permission,
+  op_request_permission,
+  op_revoke_permission,
+} from "ext:core/ops";
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
-  Map,
   MapPrototypeGet,
   MapPrototypeHas,
   MapPrototypeSet,
@@ -19,10 +19,14 @@ const {
   PromiseReject,
   ReflectHas,
   SafeArrayIterator,
+  SafeMap,
   Symbol,
   SymbolFor,
   TypeError,
 } = primordials;
+
+import { pathFromURL } from "ext:deno_web/00_infra.js";
+import { Event, EventTarget } from "ext:deno_web/02_event.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
@@ -30,6 +34,7 @@ const illegalConstructorKey = Symbol("illegalConstructorKey");
  * @typedef StatusCacheValue
  * @property {PermissionState} state
  * @property {PermissionStatus} status
+ * @property {boolean} partial
  */
 
 /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi" | "hrtime">} */
@@ -49,7 +54,7 @@ const permissionNames = [
  * @returns {Deno.PermissionState}
  */
 function opQuery(desc) {
-  return ops.op_query_permission(desc);
+  return op_query_permission(desc);
 }
 
 /**
@@ -57,7 +62,7 @@ function opQuery(desc) {
  * @returns {Deno.PermissionState}
  */
 function opRevoke(desc) {
-  return ops.op_revoke_permission(desc);
+  return op_revoke_permission(desc);
 }
 
 /**
@@ -65,31 +70,36 @@ function opRevoke(desc) {
  * @returns {Deno.PermissionState}
  */
 function opRequest(desc) {
-  return ops.op_request_permission(desc);
+  return op_request_permission(desc);
 }
 
 class PermissionStatus extends EventTarget {
-  /** @type {{ state: Deno.PermissionState }} */
-  #state;
+  /** @type {{ state: Deno.PermissionState, partial: boolean }} */
+  #status;
 
   /** @type {((this: PermissionStatus, event: Event) => any) | null} */
   onchange = null;
 
   /** @returns {Deno.PermissionState} */
   get state() {
-    return this.#state.state;
+    return this.#status.state;
+  }
+
+  /** @returns {boolean} */
+  get partial() {
+    return this.#status.partial;
   }
 
   /**
-   * @param {{ state: Deno.PermissionState }} state
+   * @param {{ state: Deno.PermissionState, partial: boolean }} status
    * @param {unknown} key
    */
-  constructor(state = null, key = null) {
+  constructor(status = null, key = null) {
     if (key != illegalConstructorKey) {
       throw new TypeError("Illegal constructor.");
     }
     super();
-    this.#state = state;
+    this.#status = status;
   }
 
   /**
@@ -105,22 +115,22 @@ class PermissionStatus extends EventTarget {
     return dispatched;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({ state: this.state, onchange: this.onchange })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    const object = { state: this.state, onchange: this.onchange };
+    if (this.partial) object.partial = this.partial;
+    return `${this.constructor.name} ${inspect(object, inspectOptions)}`;
   }
 }
 
 /** @type {Map<string, StatusCacheValue>} */
-const statusCache = new Map();
+const statusCache = new SafeMap();
 
 /**
  * @param {Deno.PermissionDescriptor} desc
- * @param {Deno.PermissionState} state
+ * @param {{ state: Deno.PermissionState, partial: boolean }} rawStatus
  * @returns {PermissionStatus}
  */
-function cache(desc, state) {
+function cache(desc, rawStatus) {
   let { name: key } = desc;
   if (
     (desc.name === "read" || desc.name === "write" || desc.name === "ffi") &&
@@ -139,18 +149,24 @@ function cache(desc, state) {
     key += "$";
   }
   if (MapPrototypeHas(statusCache, key)) {
-    const status = MapPrototypeGet(statusCache, key);
-    if (status.state !== state) {
-      status.state = state;
-      status.status.dispatchEvent(new Event("change", { cancelable: false }));
+    const cachedObj = MapPrototypeGet(statusCache, key);
+    if (
+      cachedObj.state !== rawStatus.state ||
+      cachedObj.partial !== rawStatus.partial
+    ) {
+      cachedObj.state = rawStatus.state;
+      cachedObj.partial = rawStatus.partial;
+      cachedObj.status.dispatchEvent(
+        new Event("change", { cancelable: false }),
+      );
     }
-    return status.status;
+    return cachedObj.status;
   }
-  /** @type {{ state: Deno.PermissionState; status?: PermissionStatus }} */
-  const status = { state };
-  status.status = new PermissionStatus(status, illegalConstructorKey);
-  MapPrototypeSet(statusCache, key, status);
-  return status.status;
+  /** @type {{ state: Deno.PermissionState, partial: boolean, status?: PermissionStatus }} */
+  const obj = rawStatus;
+  obj.status = new PermissionStatus(obj, illegalConstructorKey);
+  MapPrototypeSet(statusCache, key, obj);
+  return obj.status;
 }
 
 /**
@@ -200,8 +216,8 @@ class Permissions {
 
     formDescriptor(desc);
 
-    const state = opQuery(desc);
-    return cache(desc, state);
+    const status = opQuery(desc);
+    return cache(desc, status);
   }
 
   revoke(desc) {
@@ -221,8 +237,8 @@ class Permissions {
 
     formDescriptor(desc);
 
-    const state = opRevoke(desc);
-    return cache(desc, state);
+    const status = opRevoke(desc);
+    return cache(desc, status);
   }
 
   request(desc) {
@@ -242,8 +258,8 @@ class Permissions {
 
     formDescriptor(desc);
 
-    const state = opRequest(desc);
-    return cache(desc, state);
+    const status = opRequest(desc);
+    return cache(desc, status);
   }
 }
 
@@ -252,7 +268,7 @@ const permissions = new Permissions(illegalConstructorKey);
 /** Converts all file URLs in FS allowlists to paths. */
 function serializePermissions(permissions) {
   if (typeof permissions == "object" && permissions != null) {
-    const serializedPermissions = {};
+    const serializedPermissions = { __proto__: null };
     for (
       const key of new SafeArrayIterator(["read", "write", "run", "ffi"])
     ) {

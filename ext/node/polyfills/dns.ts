@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -19,6 +19,9 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
 
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
@@ -89,7 +92,7 @@ import {
   GetAddrInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { toASCII } from "ext:deno_node/punycode.ts";
+import { domainToASCII } from "ext:deno_node/internal/idna.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
 function onlookup(
@@ -261,7 +264,13 @@ export function lookup(
   req.hostname = hostname;
   req.oncomplete = all ? onlookupall : onlookup;
 
-  const err = getaddrinfo(req, toASCII(hostname), family, hints, verbatim);
+  const err = getaddrinfo(
+    req,
+    domainToASCII(hostname),
+    family,
+    hints,
+    verbatim,
+  );
 
   if (err) {
     nextTick(
@@ -329,7 +338,7 @@ function resolver(bindingName: keyof ChannelWrapQuery) {
 
     req.ttl = !!(options && (options as ResolveOptions).ttl);
 
-    const err = this._handle[bindingName](req, toASCII(name));
+    const err = this._handle[bindingName](req, domainToASCII(name));
 
     if (err) {
       throw dnsException(err, bindingName, name);

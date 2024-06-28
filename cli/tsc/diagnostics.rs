@@ -1,83 +1,18 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_runtime::colors;
+use deno_ast::ModuleSpecifier;
+use deno_graph::ModuleGraph;
+use deno_terminal::colors;
 
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
-use once_cell::sync::Lazy;
-use regex::Regex;
+use deno_core::sourcemap::SourceMap;
 use std::error::Error;
 use std::fmt;
 
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
-
-const UNSTABLE_DENO_PROPS: &[&str] = &[
-  "CreateHttpClientOptions",
-  "DatagramConn",
-  "HttpClient",
-  "UnixConnectOptions",
-  "UnixListenOptions",
-  "connect",
-  "createHttpClient",
-  "kill",
-  "listen",
-  "listenDatagram",
-  "dlopen",
-  "ppid",
-  "removeSignalListener",
-  "shutdown",
-  "umask",
-  "serve",
-  "ServeInit",
-  "ServeTlsInit",
-  "Handler",
-  "osUptime",
-];
-
-static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r#"Property '([^']+)' does not exist on type 'typeof Deno'"#)
-    .unwrap()
-});
-
-static MSG_SUGGESTION: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#" Did you mean '([^']+)'\?"#).unwrap());
-
-/// Potentially convert a "raw" diagnostic message from TSC to something that
-/// provides a more sensible error message given a Deno runtime context.
-fn format_message(msg: &str, code: &u64) -> String {
-  match code {
-    2339 => {
-      if let Some(captures) = MSG_MISSING_PROPERTY_DENO.captures(msg) {
-        if let Some(property) = captures.get(1) {
-          if UNSTABLE_DENO_PROPS.contains(&property.as_str()) {
-            return format!("{} 'Deno.{}' is an unstable API. Did you forget to run with the '--unstable' flag?", msg, property.as_str());
-          }
-        }
-      }
-
-      msg.to_string()
-    }
-    2551 => {
-      if let (Some(caps_property), Some(caps_suggestion)) = (
-        MSG_MISSING_PROPERTY_DENO.captures(msg),
-        MSG_SUGGESTION.captures(msg),
-      ) {
-        if let (Some(property), Some(suggestion)) =
-          (caps_property.get(1), caps_suggestion.get(1))
-        {
-          if UNSTABLE_DENO_PROPS.contains(&property.as_str()) {
-            return format!("{} 'Deno.{}' is an unstable API. Did you forget to run with the '--unstable' flag, or did you mean '{}'?", MSG_SUGGESTION.replace(msg, ""), property.as_str(), suggestion.as_str());
-          }
-        }
-      }
-
-      msg.to_string()
-    }
-    _ => msg.to_string(),
-  }
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DiagnosticCategory {
@@ -169,7 +104,9 @@ impl DiagnosticMessageChain {
 #[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Position {
+  /// 0-indexed line number
   pub line: u64,
+  /// 0-indexed character number
   pub character: u64,
 }
 
@@ -180,15 +117,32 @@ pub struct Diagnostic {
   pub code: u64,
   pub start: Option<Position>,
   pub end: Option<Position>,
+  /// Position of this diagnostic in the original non-mapped source.
+  ///
+  /// This will exist and be different from the `start` for fast
+  /// checked modules where the TypeScript source will differ
+  /// from the original source.
+  #[serde(skip_serializing)]
+  pub original_source_start: Option<Position>,
   pub message_text: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub message_chain: Option<DiagnosticMessageChain>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub source: Option<String>,
   pub source_line: Option<String>,
   pub file_name: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub related_information: Option<Vec<Diagnostic>>,
 }
 
 impl Diagnostic {
+  /// If this diagnostic should be included when it comes from a remote module.
+  pub fn include_when_remote(&self) -> bool {
+    /// TS6133: value is declared but its value is never read (noUnusedParameters and noUnusedLocals)
+    const TS6133: u64 = 6133;
+    self.code != TS6133
+  }
+
   fn fmt_category_and_code(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let category = match self.category {
       DiagnosticCategory::Error => "ERROR",
@@ -210,9 +164,10 @@ impl Diagnostic {
   }
 
   fn fmt_frame(&self, f: &mut fmt::Formatter, level: usize) -> fmt::Result {
-    if let (Some(file_name), Some(start)) =
-      (self.file_name.as_ref(), self.start.as_ref())
-    {
+    if let (Some(file_name), Some(start)) = (
+      self.file_name.as_ref(),
+      self.original_source_start.as_ref().or(self.start.as_ref()),
+    ) {
       write!(
         f,
         "\n{:indent$}    at {}:{}:{}",
@@ -235,7 +190,7 @@ impl Diagnostic {
         f,
         "{:indent$}{}",
         "",
-        format_message(&self.message_text.clone().unwrap(), &self.code),
+        self.message_text.as_deref().unwrap_or_default(),
         indent = level,
       )
     }
@@ -327,16 +282,61 @@ impl Diagnostics {
 
   /// Return a set of diagnostics where only the values where the predicate
   /// returns `true` are included.
-  pub fn filter<P>(&self, predicate: P) -> Self
+  pub fn filter<P>(self, predicate: P) -> Self
   where
-    P: FnMut(&Diagnostic) -> Option<Diagnostic>,
+    P: FnMut(&Diagnostic) -> bool,
   {
-    let diagnostics = self.0.iter().filter_map(predicate).collect();
+    let diagnostics = self.0.into_iter().filter(predicate).collect();
     Self(diagnostics)
   }
 
   pub fn is_empty(&self) -> bool {
     self.0.is_empty()
+  }
+
+  /// Modifies all the diagnostics to have their display positions
+  /// modified to point at the original source.
+  pub fn apply_fast_check_source_maps(&mut self, graph: &ModuleGraph) {
+    fn visit_diagnostic(d: &mut Diagnostic, graph: &ModuleGraph) {
+      if let Some(specifier) = d
+        .file_name
+        .as_ref()
+        .and_then(|n| ModuleSpecifier::parse(n).ok())
+      {
+        if let Ok(Some(module)) = graph.try_get_prefer_types(&specifier) {
+          if let Some(fast_check_module) =
+            module.js().and_then(|m| m.fast_check_module())
+          {
+            // todo(dsherret): use a short lived cache to prevent parsing
+            // source maps so often
+            if let Ok(source_map) =
+              SourceMap::from_slice(&fast_check_module.source_map)
+            {
+              if let Some(start) = d.start.as_mut() {
+                let maybe_token = source_map
+                  .lookup_token(start.line as u32, start.character as u32);
+                if let Some(token) = maybe_token {
+                  d.original_source_start = Some(Position {
+                    line: token.get_src_line() as u64,
+                    character: token.get_src_col() as u64,
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if let Some(related) = &mut d.related_information {
+        for d in related.iter_mut() {
+          visit_diagnostic(d, graph);
+        }
+      }
+    }
+
+    for d in &mut self.0 {
+      visit_diagnostic(d, graph);
+    }
   }
 }
 

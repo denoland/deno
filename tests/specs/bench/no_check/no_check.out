@@ -1,0 +1,9 @@
+error: (in promise) TypeError: Cannot read properties of undefined (reading 'fn')
+Deno.bench();
+     ^
+    at [WILDCARD]
+    at [WILDCARD]/no_check.ts:1:6
+This error was not caught from a benchmark and caused the bench runner to fail on the referenced module.
+It most likely originated from a dangling promise, event/timeout handler or top-level code.
+
+error: Bench failed

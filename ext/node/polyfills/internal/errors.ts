@@ -1,5 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 /** NOT IMPLEMENTED
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
@@ -13,7 +17,9 @@
  * ERR_INVALID_PACKAGE_CONFIG // package.json stuff, probably useless
  */
 
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
+import { primordials } from "ext:core/mod.js";
+const { JSONStringify } = primordials;
+import { format, inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import {
   codeMap,
@@ -343,9 +349,8 @@ export class NodeErrorAbstraction extends Error {
     super(message);
     this.code = code;
     this.name = name;
-    //This number changes depending on the name of this class
-    //20 characters as of now
-    this.stack = this.stack && `${name} [${this.code}]${this.stack.slice(20)}`;
+    this.stack = this.stack &&
+      `${name} [${this.code}]${this.stack.slice(this.name.length)}`;
   }
 
   override toString() {
@@ -608,7 +613,6 @@ export class ERR_INVALID_ARG_TYPE_RANGE extends NodeRangeError {
 export class ERR_INVALID_ARG_TYPE extends NodeTypeError {
   constructor(name: string, expected: string | string[], actual: unknown) {
     const msg = createInvalidArgType(name, expected);
-
     super("ERR_INVALID_ARG_TYPE", `${msg}.${invalidArgTypeHelper(actual)}`);
   }
 
@@ -663,9 +667,7 @@ function invalidArgTypeHelper(input: any) {
   return ` Received type ${typeof input} (${inspected})`;
 }
 
-export class ERR_OUT_OF_RANGE extends RangeError {
-  code = "ERR_OUT_OF_RANGE";
-
+export class ERR_OUT_OF_RANGE extends NodeRangeError {
   constructor(
     str: string,
     range: string,
@@ -690,15 +692,7 @@ export class ERR_OUT_OF_RANGE extends RangeError {
     }
     msg += ` It must be ${range}. Received ${received}`;
 
-    super(msg);
-
-    const { name } = this;
-    // Add the error code to the name to include it in the stack trace.
-    this.name = `${name} [${this.code}]`;
-    // Access the stack to generate the error message including the error code from the name.
-    this.stack;
-    // Reset the name to the actual name.
-    this.name = name;
+    super("ERR_OUT_OF_RANGE", msg);
   }
 }
 
@@ -832,6 +826,15 @@ export class ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY extends NodeError {
     super(
       "ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY",
       "Public key is not valid for specified curve",
+    );
+  }
+}
+
+export class ERR_CRYPTO_UNKNOWN_DH_GROUP extends NodeError {
+  constructor() {
+    super(
+      "ERR_CRYPTO_UNKNOWN_DH_GROUP",
+      "Unknown DH group",
     );
   }
 }
@@ -2065,7 +2068,7 @@ export class ERR_UNKNOWN_CREDENTIAL extends NodeError {
 }
 export class ERR_UNKNOWN_ENCODING extends NodeTypeError {
   constructor(x: string) {
-    super("ERR_UNKNOWN_ENCODING", `Unknown encoding: ${x}`);
+    super("ERR_UNKNOWN_ENCODING", format("Unknown encoding: %s", x));
   }
 }
 export class ERR_UNKNOWN_FILE_EXTENSION extends NodeTypeError {
@@ -2235,6 +2238,16 @@ export class ERR_FALSY_VALUE_REJECTION extends NodeError {
     this.reason = reason;
   }
 }
+
+export class ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS extends NodeError {
+  constructor() {
+    super(
+      "ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS",
+      "Number of custom settings exceeds MAX_ADDITIONAL_SETTINGS",
+    );
+  }
+}
+
 export class ERR_HTTP2_INVALID_SETTING_VALUE extends NodeRangeError {
   actual: unknown;
   min?: number;
@@ -2408,7 +2421,7 @@ export class ERR_INVALID_PACKAGE_TARGET extends NodeError {
     if (key === ".") {
       assert(isImport === false);
       msg = `Invalid "exports" main target ${JSON.stringify(target)} defined ` +
-        `in the package config ${pkgPath}package.json${
+        `in the package config ${displayJoin(pkgPath, "package.json")}${
           base ? ` imported from ${base}` : ""
         }${relError ? '; targets must start with "./"' : ""}`;
     } else {
@@ -2416,9 +2429,11 @@ export class ERR_INVALID_PACKAGE_TARGET extends NodeError {
         JSON.stringify(
           target,
         )
-      } defined for '${key}' in the package config ${pkgPath}package.json${
-        base ? ` imported from ${base}` : ""
-      }${relError ? '; targets must start with "./"' : ""}`;
+      } defined for '${key}' in the package config ${
+        displayJoin(pkgPath, "package.json")
+      }${base ? ` imported from ${base}` : ""}${
+        relError ? '; targets must start with "./"' : ""
+      }`;
     }
     super("ERR_INVALID_PACKAGE_TARGET", msg);
   }
@@ -2431,7 +2446,9 @@ export class ERR_PACKAGE_IMPORT_NOT_DEFINED extends NodeTypeError {
     base: string,
   ) {
     const msg = `Package import specifier "${specifier}" is not defined${
-      packagePath ? ` in package ${packagePath}package.json` : ""
+      packagePath
+        ? ` in package ${displayJoin(packagePath, "package.json")}`
+        : ""
     } imported from ${base}`;
 
     super("ERR_PACKAGE_IMPORT_NOT_DEFINED", msg);
@@ -2442,17 +2459,46 @@ export class ERR_PACKAGE_PATH_NOT_EXPORTED extends NodeError {
   constructor(subpath: string, pkgPath: string, basePath?: string) {
     let msg: string;
     if (subpath === ".") {
-      msg = `No "exports" main defined in ${pkgPath}package.json${
-        basePath ? ` imported from ${basePath}` : ""
-      }`;
+      msg = `No "exports" main defined in ${
+        displayJoin(pkgPath, "package.json")
+      }${basePath ? ` imported from ${basePath}` : ""}`;
     } else {
-      msg =
-        `Package subpath '${subpath}' is not defined by "exports" in ${pkgPath}package.json${
-          basePath ? ` imported from ${basePath}` : ""
-        }`;
+      msg = `Package subpath '${subpath}' is not defined by "exports" in ${
+        displayJoin(pkgPath, "package.json")
+      }${basePath ? ` imported from ${basePath}` : ""}`;
     }
 
     super("ERR_PACKAGE_PATH_NOT_EXPORTED", msg);
+  }
+}
+
+export class ERR_PARSE_ARGS_INVALID_OPTION_VALUE extends NodeTypeError {
+  constructor(x: string) {
+    super("ERR_PARSE_ARGS_INVALID_OPTION_VALUE", x);
+  }
+}
+
+export class ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL extends NodeTypeError {
+  constructor(x: string) {
+    super(
+      "ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL",
+      `Unexpected argument '${x}'. This ` +
+        `command does not take positional arguments`,
+    );
+  }
+}
+
+export class ERR_PARSE_ARGS_UNKNOWN_OPTION extends NodeTypeError {
+  constructor(option, allowPositionals) {
+    const suggestDashDash = allowPositionals
+      ? ". To specify a positional " +
+        "argument starting with a '-', place it at the end of the command after " +
+        `'--', as in '-- ${JSONStringify(option)}`
+      : "";
+    super(
+      "ERR_PARSE_ARGS_UNKNOWN_OPTION",
+      `Unknown option '${option}'${suggestDashDash}`,
+    );
   }
 }
 
@@ -2481,6 +2527,34 @@ export class ERR_FS_RMDIR_ENOTDIR extends NodeSystemError {
       errno: isWindows ? osConstants.errno.ENOENT : osConstants.errno.ENOTDIR,
     };
     super(code, ctx, "Path is not a directory");
+  }
+}
+
+export class ERR_OS_NO_HOMEDIR extends NodeSystemError {
+  constructor() {
+    const code = isWindows ? "ENOENT" : "ENOTDIR";
+    const ctx: NodeSystemErrorCtx = {
+      message: "not a directory",
+      syscall: "home",
+      code,
+      errno: isWindows ? osConstants.errno.ENOENT : osConstants.errno.ENOTDIR,
+    };
+    super(code, ctx, "Path is not a directory");
+  }
+}
+
+export class ERR_HTTP_SOCKET_ASSIGNED extends NodeError {
+  constructor() {
+    super(
+      "ERR_HTTP_SOCKET_ASSIGNED",
+      `ServerResponse has an already assigned socket`,
+    );
+  }
+}
+
+export class ERR_INVALID_STATE extends NodeError {
+  constructor(message: string) {
+    super("ERR_INVALID_STATE", `Invalid state: ${message}`);
   }
 }
 
@@ -2551,6 +2625,11 @@ codes.ERR_OUT_OF_RANGE = ERR_OUT_OF_RANGE;
 codes.ERR_SOCKET_BAD_PORT = ERR_SOCKET_BAD_PORT;
 codes.ERR_BUFFER_OUT_OF_BOUNDS = ERR_BUFFER_OUT_OF_BOUNDS;
 codes.ERR_UNKNOWN_ENCODING = ERR_UNKNOWN_ENCODING;
+codes.ERR_PARSE_ARGS_INVALID_OPTION_VALUE = ERR_PARSE_ARGS_INVALID_OPTION_VALUE;
+codes.ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL =
+  ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL;
+codes.ERR_PARSE_ARGS_UNKNOWN_OPTION = ERR_PARSE_ARGS_UNKNOWN_OPTION;
+
 // TODO(kt3k): assign all error classes here.
 
 /**
@@ -2593,6 +2672,12 @@ function determineSpecificType(value: any) {
   if (inspected.length > 28) inspected = `${inspected.slice(0, 25)}...`;
 
   return `type ${typeof value} (${inspected})`;
+}
+
+// Non-robust path join
+function displayJoin(dir: string, fileName: string) {
+  const sep = dir.includes("\\") ? "\\" : "/";
+  return dir.endsWith(sep) ? dir + fileName : dir + sep + fileName;
 }
 
 export { codes, genericNodeError, hideStackFrames };
@@ -2733,6 +2818,7 @@ export default {
   ERR_INVALID_RETURN_PROPERTY,
   ERR_INVALID_RETURN_PROPERTY_VALUE,
   ERR_INVALID_RETURN_VALUE,
+  ERR_INVALID_STATE,
   ERR_INVALID_SYNC_FORK_INPUT,
   ERR_INVALID_THIS,
   ERR_INVALID_TUPLE,
@@ -2762,6 +2848,7 @@ export default {
   ERR_OUT_OF_RANGE,
   ERR_PACKAGE_IMPORT_NOT_DEFINED,
   ERR_PACKAGE_PATH_NOT_EXPORTED,
+  ERR_PARSE_ARGS_INVALID_OPTION_VALUE,
   ERR_QUICCLIENTSESSION_FAILED,
   ERR_QUICCLIENTSESSION_FAILED_SETSOCKET,
   ERR_QUICSESSION_DESTROYED,

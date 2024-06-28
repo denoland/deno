@@ -1,4 +1,0 @@
-error: Uncaught TypeError: Cannot load extension module from external code
-await import("ext:runtime/01_errors.js");
-^
-    at [WILDCARD]/extension_dynamic_import.ts:1:1

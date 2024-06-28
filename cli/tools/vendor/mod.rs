@@ -1,26 +1,30 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_ast::TextChange;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
+use deno_graph::GraphKind;
 use log::warn;
 
 use crate::args::CliOptions;
+use crate::args::ConfigFile;
 use crate::args::Flags;
 use crate::args::FmtOptionsConfig;
 use crate::args::VendorFlags;
-use crate::proc_state::ProcState;
+use crate::factory::CliFactory;
 use crate::tools::fmt::format_json;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::resolve_from_cwd;
 use crate::util::path::relative_specifier;
-use crate::util::path::specifier_to_file_path;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 mod analyze;
 mod build;
@@ -36,22 +40,42 @@ pub async fn vendor(
 ) -> Result<(), AnyError> {
   let mut cli_options = CliOptions::from_flags(flags)?;
   let raw_output_dir = match &vendor_flags.output_path {
-    Some(output_path) => output_path.to_owned(),
+    Some(output_path) => PathBuf::from(output_path).to_owned(),
     None => PathBuf::from("vendor/"),
   };
   let output_dir = resolve_from_cwd(&raw_output_dir)?;
   validate_output_dir(&output_dir, &vendor_flags)?;
   validate_options(&mut cli_options, &output_dir)?;
-  let ps = ProcState::from_options(Arc::new(cli_options)).await?;
-  let graph = create_graph(&ps, &vendor_flags).await?;
-  let vendored_count = build::build(
-    graph,
-    &ps.parsed_source_cache,
-    &output_dir,
-    ps.maybe_import_map.as_deref(),
-    ps.lockfile.clone(),
-    &build::RealVendorEnvironment,
-  )?;
+  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+  let cli_options = factory.cli_options();
+  let entry_points =
+    resolve_entry_points(&vendor_flags, cli_options.initial_cwd())?;
+  let jsx_import_source = cli_options.to_maybe_jsx_import_source_config()?;
+  let module_graph_creator = factory.module_graph_creator().await?.clone();
+  let output = build::build(build::BuildInput {
+    entry_points,
+    build_graph: move |entry_points| {
+      async move {
+        module_graph_creator
+          .create_graph(GraphKind::All, entry_points)
+          .await
+      }
+      .boxed_local()
+    },
+    parsed_source_cache: factory.parsed_source_cache(),
+    output_dir: &output_dir,
+    maybe_original_import_map: factory.maybe_import_map().await?.as_deref(),
+    maybe_jsx_import_source: jsx_import_source.as_ref(),
+    resolver: factory.resolver().await?.as_graph_resolver(),
+    environment: &build::RealVendorEnvironment,
+  })
+  .await?;
+
+  let vendored_count = output.vendored_count;
+  let graph = output.graph;
+  let npm_package_count = graph.npm_packages.len();
+  let try_add_node_modules_dir = npm_package_count > 0
+    && cli_options.node_modules_dir_enablement().unwrap_or(true);
 
   log::info!(
     concat!("Vendored {} {} into {} directory.",),
@@ -63,9 +87,50 @@ pub async fn vendor(
     },
     raw_output_dir.display(),
   );
+
+  let try_add_import_map = vendored_count > 0;
+  let modified_result = maybe_update_config_file(
+    &output_dir,
+    cli_options,
+    try_add_import_map,
+    try_add_node_modules_dir,
+  );
+
+  // cache the node_modules folder when it's been added to the config file
+  if modified_result.added_node_modules_dir {
+    let node_modules_path =
+      cli_options.node_modules_dir_path().cloned().or_else(|| {
+        cli_options
+          .maybe_config_file_specifier()
+          .filter(|c| c.scheme() == "file")
+          .and_then(|c| c.to_file_path().ok())
+          .map(|config_path| config_path.parent().unwrap().join("node_modules"))
+      });
+    if let Some(node_modules_path) = node_modules_path {
+      let cli_options =
+        cli_options.with_node_modules_dir_path(node_modules_path);
+      let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+      if let Some(managed) = factory.npm_resolver().await?.as_managed() {
+        managed.cache_packages().await?;
+      }
+    }
+    log::info!(
+      concat!(
+        "Vendored {} npm {} into node_modules directory. Set `nodeModulesDir: false` ",
+        "in the Deno configuration file to disable vendoring npm packages in the future.",
+      ),
+      npm_package_count,
+      if npm_package_count == 1 {
+        "package"
+      } else {
+        "packages"
+      },
+    );
+  }
+
   if vendored_count > 0 {
     let import_map_path = raw_output_dir.join("import_map.json");
-    if maybe_update_config_file(&output_dir, &ps) {
+    if modified_result.updated_import_map {
       log::info!(
         concat!(
           "\nUpdated your local Deno configuration file with a reference to the ",
@@ -108,9 +173,24 @@ fn validate_options(
   options: &mut CliOptions,
   output_dir: &Path,
 ) -> Result<(), AnyError> {
+  let import_map_specifier = options
+    .resolve_specified_import_map_specifier()?
+    .or_else(|| {
+      let config_file = options.maybe_config_file().as_ref()?;
+      config_file
+        .to_import_map_specifier()
+        .ok()
+        .flatten()
+        .or_else(|| {
+          if config_file.is_an_import_map() {
+            Some(config_file.specifier.clone())
+          } else {
+            None
+          }
+        })
+    });
   // check the import map
-  if let Some(import_map_path) = options
-    .resolve_import_map_specifier()?
+  if let Some(import_map_path) = import_map_specifier
     .and_then(|p| specifier_to_file_path(&p).ok())
     .and_then(|p| canonicalize_path(&p).ok())
   {
@@ -147,108 +227,158 @@ fn validate_options(
   Ok(())
 }
 
-fn maybe_update_config_file(output_dir: &Path, ps: &ProcState) -> bool {
+fn maybe_update_config_file(
+  output_dir: &Path,
+  options: &CliOptions,
+  try_add_import_map: bool,
+  try_add_node_modules_dir: bool,
+) -> ModifiedResult {
   assert!(output_dir.is_absolute());
-  let config_file_specifier = match ps.options.maybe_config_file_specifier() {
-    Some(f) => f,
-    None => return false,
+  let config_file = match options.maybe_config_file() {
+    Some(config_file) => config_file,
+    None => return ModifiedResult::default(),
   };
+  if config_file.specifier.scheme() != "file" {
+    return ModifiedResult::default();
+  }
 
-  let fmt_config = ps
-    .options
-    .maybe_config_file()
-    .as_ref()
-    .and_then(|config| config.to_fmt_config().ok())
-    .unwrap_or_default()
+  let fmt_config_options = config_file
+    .to_fmt_config()
+    .ok()
+    .flatten()
+    .map(|config| config.options)
     .unwrap_or_default();
   let result = update_config_file(
-    &config_file_specifier,
-    &ModuleSpecifier::from_file_path(output_dir.join("import_map.json"))
-      .unwrap(),
-    &fmt_config.options,
+    config_file,
+    &fmt_config_options,
+    if try_add_import_map {
+      Some(
+        ModuleSpecifier::from_file_path(output_dir.join("import_map.json"))
+          .unwrap(),
+      )
+    } else {
+      None
+    },
+    try_add_node_modules_dir,
   );
   match result {
-    Ok(()) => true,
+    Ok(modified_result) => modified_result,
     Err(err) => {
       warn!("Error updating config file. {:#}", err);
-      false
+      ModifiedResult::default()
     }
   }
 }
 
 fn update_config_file(
-  config_specifier: &ModuleSpecifier,
-  import_map_specifier: &ModuleSpecifier,
+  config_file: &ConfigFile,
   fmt_options: &FmtOptionsConfig,
-) -> Result<(), AnyError> {
-  if config_specifier.scheme() != "file" {
-    return Ok(());
-  }
-
-  let config_path = specifier_to_file_path(config_specifier)?;
+  import_map_specifier: Option<ModuleSpecifier>,
+  try_add_node_modules_dir: bool,
+) -> Result<ModifiedResult, AnyError> {
+  let config_path = specifier_to_file_path(&config_file.specifier)?;
   let config_text = std::fs::read_to_string(&config_path)?;
-  let relative_text =
-    match relative_specifier(config_specifier, import_map_specifier) {
-      Some(text) => text,
-      None => return Ok(()), // ignore
-    };
-  if let Some(new_text) =
-    update_config_text(&config_text, &relative_text, fmt_options)
-  {
+  let import_map_specifier =
+    import_map_specifier.and_then(|import_map_specifier| {
+      relative_specifier(&config_file.specifier, &import_map_specifier)
+    });
+  let modified_result = update_config_text(
+    &config_text,
+    fmt_options,
+    import_map_specifier.as_deref(),
+    try_add_node_modules_dir,
+  )?;
+  if let Some(new_text) = &modified_result.new_text {
     std::fs::write(config_path, new_text)?;
   }
+  Ok(modified_result)
+}
 
-  Ok(())
+#[derive(Default)]
+struct ModifiedResult {
+  updated_import_map: bool,
+  added_node_modules_dir: bool,
+  new_text: Option<String>,
 }
 
 fn update_config_text(
   text: &str,
-  import_map_specifier: &str,
   fmt_options: &FmtOptionsConfig,
-) -> Option<String> {
+  import_map_specifier: Option<&str>,
+  try_add_node_modules_dir: bool,
+) -> Result<ModifiedResult, AnyError> {
   use jsonc_parser::ast::ObjectProp;
   use jsonc_parser::ast::Value;
+  let text = if text.trim().is_empty() { "{}\n" } else { text };
   let ast =
-    jsonc_parser::parse_to_ast(text, &Default::default(), &Default::default())
-      .ok()?;
+    jsonc_parser::parse_to_ast(text, &Default::default(), &Default::default())?;
   let obj = match ast.value {
     Some(Value::Object(obj)) => obj,
-    _ => return None, // shouldn't happen, so ignore
+    _ => bail!("Failed updating config file due to no object."),
   };
-  let import_map_specifier = import_map_specifier.replace('\"', "\\\"");
+  let mut modified_result = ModifiedResult::default();
+  let mut text_changes = Vec::new();
+  let mut should_format = false;
 
-  match obj.get("importMap") {
-    Some(ObjectProp {
-      value: Value::StringLit(lit),
-      ..
-    }) => Some(format!(
-      "{}{}{}",
-      &text[..lit.range.start + 1],
-      import_map_specifier,
-      &text[lit.range.end - 1..],
-    )),
-    None => {
-      // insert it crudely at a position that won't cause any issues
-      // with comments and format after to make it look nice
+  if try_add_node_modules_dir {
+    // Only modify the nodeModulesDir property if it's not set
+    // as this allows people to opt-out of this when vendoring
+    // by specifying `nodeModulesDir: false`
+    if obj.get("nodeModulesDir").is_none() {
       let insert_position = obj.range.end - 1;
-      let insert_text = format!(
-        r#"{}"importMap": "{}""#,
-        if obj.properties.is_empty() { "" } else { "," },
-        import_map_specifier
-      );
-      let new_text = format!(
-        "{}{}{}",
-        &text[..insert_position],
-        insert_text,
-        &text[insert_position..],
-      );
-      format_json(&new_text, fmt_options)
-        .ok()
-        .map(|formatted_text| formatted_text.unwrap_or(new_text))
+      text_changes.push(TextChange {
+        range: insert_position..insert_position,
+        new_text: r#""nodeModulesDir": true"#.to_string(),
+      });
+      should_format = true;
+      modified_result.added_node_modules_dir = true;
     }
-    // shouldn't happen, so ignore
-    Some(_) => None,
   }
+
+  if let Some(import_map_specifier) = import_map_specifier {
+    let import_map_specifier = import_map_specifier.replace('\"', "\\\"");
+    match obj.get("importMap") {
+      Some(ObjectProp {
+        value: Value::StringLit(lit),
+        ..
+      }) => {
+        text_changes.push(TextChange {
+          range: lit.range.start..lit.range.end,
+          new_text: format!("\"{}\"", import_map_specifier),
+        });
+        modified_result.updated_import_map = true;
+      }
+      None => {
+        // insert it crudely at a position that won't cause any issues
+        // with comments and format after to make it look nice
+        let insert_position = obj.range.end - 1;
+        text_changes.push(TextChange {
+          range: insert_position..insert_position,
+          new_text: format!(r#""importMap": "{}""#, import_map_specifier),
+        });
+        should_format = true;
+        modified_result.updated_import_map = true;
+      }
+      // shouldn't happen
+      Some(_) => {
+        bail!("Failed updating importMap in config file due to invalid type.")
+      }
+    }
+  }
+
+  if text_changes.is_empty() {
+    return Ok(modified_result);
+  }
+
+  let new_text = deno_ast::apply_text_changes(text, text_changes);
+  modified_result.new_text = if should_format {
+    format_json(&PathBuf::from("deno.json"), &new_text, fmt_options)
+      .ok()
+      .map(|formatted_text| formatted_text.unwrap_or(new_text))
+  } else {
+    Some(new_text)
+  };
+  Ok(modified_result)
 }
 
 fn is_dir_empty(dir_path: &Path) -> Result<bool, AnyError> {
@@ -261,17 +391,15 @@ fn is_dir_empty(dir_path: &Path) -> Result<bool, AnyError> {
   }
 }
 
-async fn create_graph(
-  ps: &ProcState,
+fn resolve_entry_points(
   flags: &VendorFlags,
-) -> Result<deno_graph::ModuleGraph, AnyError> {
-  let entry_points = flags
+  initial_cwd: &Path,
+) -> Result<Vec<ModuleSpecifier>, AnyError> {
+  flags
     .specifiers
     .iter()
-    .map(|p| resolve_url_or_path(p, ps.options.initial_cwd()))
-    .collect::<Result<Vec<_>, _>>()?;
-
-  ps.create_graph(entry_points).await
+    .map(|p| resolve_url_or_path(p, initial_cwd).map_err(|e| e.into()))
+    .collect::<Result<Vec<_>, _>>()
 }
 
 #[cfg(test)]
@@ -281,16 +409,49 @@ mod internal_test {
 
   #[test]
   fn update_config_text_no_existing_props_add_prop() {
-    let text = update_config_text(
+    let result = update_config_text(
       "{\n}",
-      "./vendor/import_map.json",
       &Default::default(),
+      Some("./vendor/import_map.json"),
+      false,
     )
     .unwrap();
+    assert!(result.updated_import_map);
+    assert!(!result.added_node_modules_dir);
     assert_eq!(
-      text,
+      result.new_text.unwrap(),
       r#"{
   "importMap": "./vendor/import_map.json"
+}
+"#
+    );
+
+    let result = update_config_text(
+      "{\n}",
+      &Default::default(),
+      Some("./vendor/import_map.json"),
+      true,
+    )
+    .unwrap();
+    assert!(result.updated_import_map);
+    assert!(result.added_node_modules_dir);
+    assert_eq!(
+      result.new_text.unwrap(),
+      r#"{
+  "nodeModulesDir": true,
+  "importMap": "./vendor/import_map.json"
+}
+"#
+    );
+
+    let result =
+      update_config_text("{\n}", &Default::default(), None, true).unwrap();
+    assert!(!result.updated_import_map);
+    assert!(result.added_node_modules_dir);
+    assert_eq!(
+      result.new_text.unwrap(),
+      r#"{
+  "nodeModulesDir": true
 }
 "#
     );
@@ -298,19 +459,44 @@ mod internal_test {
 
   #[test]
   fn update_config_text_existing_props_add_prop() {
-    let text = update_config_text(
+    let result = update_config_text(
       r#"{
   "tasks": {
     "task1": "other"
   }
 }
 "#,
-      "./vendor/import_map.json",
       &Default::default(),
+      Some("./vendor/import_map.json"),
+      false,
     )
     .unwrap();
     assert_eq!(
-      text,
+      result.new_text.unwrap(),
+      r#"{
+  "tasks": {
+    "task1": "other"
+  },
+  "importMap": "./vendor/import_map.json"
+}
+"#
+    );
+
+    // trailing comma
+    let result = update_config_text(
+      r#"{
+  "tasks": {
+    "task1": "other"
+  },
+}
+"#,
+      &Default::default(),
+      Some("./vendor/import_map.json"),
+      false,
+    )
+    .unwrap();
+    assert_eq!(
+      result.new_text.unwrap(),
       r#"{
   "tasks": {
     "task1": "other"
@@ -323,21 +509,54 @@ mod internal_test {
 
   #[test]
   fn update_config_text_update_prop() {
-    let text = update_config_text(
+    let result = update_config_text(
       r#"{
   "importMap": "./local.json"
 }
 "#,
-      "./vendor/import_map.json",
       &Default::default(),
+      Some("./vendor/import_map.json"),
+      false,
     )
     .unwrap();
     assert_eq!(
-      text,
+      result.new_text.unwrap(),
       r#"{
   "importMap": "./vendor/import_map.json"
 }
 "#
     );
+  }
+
+  #[test]
+  fn no_update_node_modules_dir() {
+    // will not update if this is already set (even if it's false)
+    let result = update_config_text(
+      r#"{
+  "nodeModulesDir": false
+}
+"#,
+      &Default::default(),
+      None,
+      true,
+    )
+    .unwrap();
+    assert!(!result.added_node_modules_dir);
+    assert!(!result.updated_import_map);
+    assert_eq!(result.new_text, None);
+
+    let result = update_config_text(
+      r#"{
+  "nodeModulesDir": true
+}
+"#,
+      &Default::default(),
+      None,
+      true,
+    )
+    .unwrap();
+    assert!(!result.added_node_modules_dir);
+    assert!(!result.updated_import_map);
+    assert_eq!(result.new_text, None);
   }
 }

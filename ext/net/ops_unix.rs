@@ -1,19 +1,20 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::UnixStreamResource;
+use crate::raw::NetworkListenerResource;
 use crate::NetPermissions;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -30,21 +31,6 @@ pub fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
     let message = format!("File name or path {s:?} is not valid UTF-8");
     custom_error("InvalidData", message)
   })
-}
-
-struct UnixListenerResource {
-  listener: AsyncRefCell<UnixListener>,
-  cancel: CancelHandle,
-}
-
-impl Resource for UnixListenerResource {
-  fn name(&self) -> Cow<str> {
-    "unixListener".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.cancel.cancel();
-  }
 }
 
 pub struct UnixDatagramResource {
@@ -72,15 +58,16 @@ pub struct UnixListenArgs {
   pub path: String,
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_net_accept_unix(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(ResourceId, Option<String>, Option<String>), AnyError> {
   let resource = state
     .borrow()
     .resource_table
-    .get::<UnixListenerResource>(rid)
+    .get::<NetworkListenerResource<UnixListener>>(rid)
     .map_err(|_| bad_resource("Listener has been closed"))?;
   let listener = RcRef::map(&resource, |r| &r.listener)
     .try_borrow_mut()
@@ -103,16 +90,16 @@ pub async fn op_net_accept_unix(
   Ok((rid, local_addr_path, remote_addr_path))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_net_connect_unix<NP>(
   state: Rc<RefCell<OpState>>,
-  path: String,
+  #[string] path: String,
 ) -> Result<(ResourceId, Option<String>, Option<String>), AnyError>
 where
   NP: NetPermissions + 'static,
 {
   let address_path = Path::new(&path);
-  super::check_unstable2(&state, "Deno.connect");
   {
     let mut state_ = state.borrow_mut();
     state_
@@ -134,11 +121,12 @@ where
   Ok((rid, local_addr_path, remote_addr_path))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_net_recv_unixpacket(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  mut buf: ZeroCopyBuf,
+  #[smi] rid: ResourceId,
+  #[buffer] mut buf: JsBuffer,
 ) -> Result<(usize, Option<String>), AnyError> {
   let resource = state
     .borrow()
@@ -155,12 +143,13 @@ pub async fn op_net_recv_unixpacket(
   Ok((nread, path))
 }
 
-#[op]
-async fn op_net_send_unixpacket<NP>(
+#[op2(async)]
+#[number]
+pub async fn op_net_send_unixpacket<NP>(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  path: String,
-  zero_copy: ZeroCopyBuf,
+  #[smi] rid: ResourceId,
+  #[string] path: String,
+  #[buffer] zero_copy: JsBuffer,
 ) -> Result<usize, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -185,26 +174,25 @@ where
   Ok(nwritten)
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_net_listen_unix<NP>(
   state: &mut OpState,
-  path: String,
+  #[string] path: String,
+  #[string] api_name: String,
 ) -> Result<(ResourceId, Option<String>), AnyError>
 where
   NP: NetPermissions + 'static,
 {
   let address_path = Path::new(&path);
-  super::check_unstable(state, "Deno.listen");
   let permissions = state.borrow_mut::<NP>();
-  permissions.check_read(address_path, "Deno.listen()")?;
-  permissions.check_write(address_path, "Deno.listen()")?;
+  let api_call_expr = format!("{}()", api_name);
+  permissions.check_read(address_path, &api_call_expr)?;
+  permissions.check_write(address_path, &api_call_expr)?;
   let listener = UnixListener::bind(address_path)?;
   let local_addr = listener.local_addr()?;
   let pathname = local_addr.as_pathname().map(pathstring).transpose()?;
-  let listener_resource = UnixListenerResource {
-    listener: AsyncRefCell::new(listener),
-    cancel: Default::default(),
-  };
+  let listener_resource = NetworkListenerResource::new(listener);
   let rid = state.resource_table.add(listener_resource);
   Ok((rid, pathname))
 }
@@ -231,10 +219,11 @@ where
   Ok((rid, pathname))
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_net_listen_unixpacket<NP>(
   state: &mut OpState,
-  path: String,
+  #[string] path: String,
 ) -> Result<(ResourceId, Option<String>), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -243,10 +232,11 @@ where
   net_listen_unixpacket::<NP>(state, path)
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_unstable_net_listen_unixpacket<NP>(
   state: &mut OpState,
-  path: String,
+  #[string] path: String,
 ) -> Result<(ResourceId, Option<String>), AnyError>
 where
   NP: NetPermissions + 'static,

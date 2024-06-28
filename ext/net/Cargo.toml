@@ -1,8 +1,8 @@
-# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_net"
-version = "0.89.0"
+version = "0.150.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,10 +15,12 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
+deno_permissions.workspace = true
 deno_tls.workspace = true
-log.workspace = true
+pin-project.workspace = true
+rustls-tokio-stream.workspace = true
 serde.workspace = true
 socket2.workspace = true
 tokio.workspace = true
-trust-dns-proto = "0.22"
-trust-dns-resolver = { version = "0.22", features = ["tokio-runtime", "serde-config"] }
+trust-dns-proto = "0.23"
+trust-dns-resolver = { version = "0.23", features = ["tokio-runtime", "serde-config"] }

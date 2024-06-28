@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
 export default class Dirent {
@@ -42,5 +42,14 @@ export default class Dirent {
 
   get name(): string | null {
     return this.entry.name;
+  }
+
+  get parentPath(): string {
+    return this.entry.parentPath;
+  }
+
+  /** @deprecated */
+  get path(): string {
+    return this.parentPath;
   }
 }

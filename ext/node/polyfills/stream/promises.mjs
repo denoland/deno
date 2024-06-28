@@ -1,9 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import stream from "ext:deno_node/_stream.mjs";
+import { Stream } from "ext:deno_node/_stream.mjs";
 
-const { finished, pipeline } = stream.promises;
+const { finished, pipeline } = Stream.promises;
 
 export default {
   finished,

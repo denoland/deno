@@ -1,10 +1,18 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
-import { Buffer } from "ext:deno_node/buffer.ts";
-import { validateEncoding, validateInteger } from "ext:deno_node/internal/validators.mjs";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { Buffer } from "node:buffer";
+import {
+  validateEncoding,
+  validateInteger,
+} from "ext:deno_node/internal/validators.mjs";
+import * as io from "ext:deno_io/12_io.js";
+import * as fs from "ext:deno_fs/30_fs.js";
 import {
   getValidatedFd,
-  showStringCoercionDeprecation,
   validateOffsetLengthWrite,
   validateStringAfterArrayBufferView,
 } from "ext:deno_node/internal/fs/utils.mjs";
@@ -19,12 +27,12 @@ export function writeSync(fd, buffer, offset, length, position) {
       buffer = new Uint8Array(buffer.buffer);
     }
     if (typeof position === "number") {
-      Deno.seekSync(fd, position, Deno.SeekMode.Start);
+      fs.seekSync(fd, position, io.SeekMode.Start);
     }
     let currentOffset = offset;
     const end = offset + length;
     while (currentOffset - offset < length) {
-      currentOffset += Deno.writeSync(fd, buffer.subarray(currentOffset, end));
+      currentOffset += io.writeSync(fd, buffer.subarray(currentOffset, end));
     }
     return currentOffset - offset;
   };
@@ -65,12 +73,12 @@ export function write(fd, buffer, offset, length, position, callback) {
       buffer = new Uint8Array(buffer.buffer);
     }
     if (typeof position === "number") {
-      await Deno.seek(fd, position, Deno.SeekMode.Start);
+      await fs.seek(fd, position, io.SeekMode.Start);
     }
     let currentOffset = offset;
     const end = offset + length;
     while (currentOffset - offset < length) {
-      currentOffset += await Deno.write(
+      currentOffset += await io.write(
         fd,
         buffer.subarray(currentOffset, end),
       );
@@ -105,9 +113,6 @@ export function write(fd, buffer, offset, length, position, callback) {
   // `fs.write(fd, string[, position[, encoding]], callback)`
 
   validateStringAfterArrayBufferView(buffer, "buffer");
-  if (typeof buffer !== "string") {
-    showStringCoercionDeprecation();
-  }
 
   if (typeof position !== "function") {
     if (typeof offset === "function") {
@@ -119,7 +124,7 @@ export function write(fd, buffer, offset, length, position, callback) {
     length = "utf-8";
   }
 
-  const str = String(buffer);
+  const str = buffer;
   validateEncoding(str, length);
   callback = maybeCallback(position);
   buffer = Buffer.from(str, length);

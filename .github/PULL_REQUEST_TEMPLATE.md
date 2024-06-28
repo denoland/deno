@@ -1,5 +1,5 @@
 <!--
-Before submitting a PR, please read http://deno.land/manual/contributing
+Before submitting a PR, please read https://docs.deno.com/runtime/manual/references/contributing
 
 1. Give the PR a descriptive title.
 

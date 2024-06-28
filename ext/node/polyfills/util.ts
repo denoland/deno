@@ -1,6 +1,34 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayIsArray,
+  ArrayPrototypeJoin,
+  Date,
+  DatePrototypeGetDate,
+  DatePrototypeGetHours,
+  DatePrototypeGetMinutes,
+  DatePrototypeGetMonth,
+  DatePrototypeGetSeconds,
+  ErrorPrototype,
+  NumberPrototypeToString,
+  ObjectDefineProperty,
+  ObjectKeys,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectPrototypeToString,
+  ObjectSetPrototypeOf,
+  ReflectApply,
+  ReflectConstruct,
+  SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeHas,
+  StringPrototypeIsWellFormed,
+  StringPrototypePadStart,
+  StringPrototypeToWellFormed,
+} = primordials;
+
 import { promisify } from "ext:deno_node/internal/util.mjs";
-import { callbackify } from "ext:deno_node/_util/_util_callbackify.ts";
+import { callbackify } from "ext:deno_node/_util/_util_callbackify.js";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import {
   format,
@@ -9,11 +37,12 @@ import {
   stripVTControlCharacters,
 } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
-import types from "ext:deno_node/util/types.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import types from "node:util/types";
+import { Buffer } from "node:buffer";
 import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
-import process from "ext:deno_node/process.ts";
+import process from "node:process";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
+import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
 
 export {
   callbackify,
@@ -21,19 +50,18 @@ export {
   format,
   formatWithOptions,
   inspect,
+  parseArgs,
   promisify,
   stripVTControlCharacters,
   types,
 };
 
 /** @deprecated - use `Array.isArray()` instead. */
-export function isArray(value: unknown): boolean {
-  return Array.isArray(value);
-}
+export const isArray = ArrayIsArray;
 
-/** @deprecated - use `typeof value === "boolean" || value instanceof Boolean` instead. */
+/** @deprecated - use `typeof value === "boolean" instead. */
 export function isBoolean(value: unknown): boolean {
-  return typeof value === "boolean" || value instanceof Boolean;
+  return typeof value === "boolean";
 }
 
 /** @deprecated - use `value === null` instead. */
@@ -46,14 +74,14 @@ export function isNullOrUndefined(value: unknown): boolean {
   return value === null || value === undefined;
 }
 
-/** @deprecated - use `typeof value === "number" || value instanceof Number` instead. */
+/** @deprecated - use `typeof value === "number" instead. */
 export function isNumber(value: unknown): boolean {
-  return typeof value === "number" || value instanceof Number;
+  return typeof value === "number";
 }
 
-/** @deprecated - use `typeof value === "string" || value instanceof String` instead. */
+/** @deprecated - use `typeof value === "string" instead. */
 export function isString(value: unknown): boolean {
-  return typeof value === "string" || value instanceof String;
+  return typeof value === "string";
 }
 
 /** @deprecated - use `typeof value === "symbol"` instead. */
@@ -73,7 +101,8 @@ export function isObject(value: unknown): boolean {
 
 /** @deprecated - use `e instanceof Error` instead. */
 export function isError(e: unknown): boolean {
-  return e instanceof Error;
+  return ObjectPrototypeToString(e) === "[object Error]" ||
+    ObjectPrototypeIsPrototypeOf(ErrorPrototype, e);
 }
 
 /** @deprecated - use `typeof value === "function"` instead. */
@@ -81,15 +110,11 @@ export function isFunction(value: unknown): boolean {
   return typeof value === "function";
 }
 
-/** @deprecated Use util.types.RegExp() instead. */
-export function isRegExp(value: unknown): boolean {
-  return types.isRegExp(value);
-}
+/** @deprecated Use util.types.isRegExp() instead. */
+export const isRegExp = types.isRegExp;
 
 /** @deprecated Use util.types.isDate() instead. */
-export function isDate(value: unknown): boolean {
-  return types.isDate(value);
-}
+export const isDate = types.isDate;
 
 /** @deprecated - use `value === null || (typeof value !== "object" && typeof value !== "function")` instead. */
 export function isPrimitive(value: unknown): boolean {
@@ -99,9 +124,7 @@ export function isPrimitive(value: unknown): boolean {
 }
 
 /** @deprecated  Use Buffer.isBuffer() instead. */
-export function isBuffer(value: unknown): boolean {
-  return Buffer.isBuffer(value);
-}
+export const isBuffer = Buffer.isBuffer;
 
 /** @deprecated Use Object.assign() instead. */
 export function _extend(
@@ -111,7 +134,7 @@ export function _extend(
   // Don't do anything if source isn't an object
   if (source === null || typeof source !== "object") return target;
 
-  const keys = Object.keys(source!);
+  const keys = ObjectKeys(source!);
   let i = keys.length;
   while (i--) {
     target[keys[i]] = (source as Record<string, unknown>)[keys[i]];
@@ -143,12 +166,12 @@ export function inherits<T, U>(
       superCtor.prototype,
     );
   }
-  Object.defineProperty(ctor, "super_", {
+  ObjectDefineProperty(ctor, "super_", {
     value: superCtor,
     writable: true,
     configurable: true,
   });
-  Object.setPrototypeOf(ctor.prototype, superCtor.prototype);
+  ObjectSetPrototypeOf(ctor.prototype, superCtor.prototype);
 }
 
 import {
@@ -165,8 +188,15 @@ export const TextDecoder = _TextDecoder;
 export type TextEncoder = import("./_utils.ts")._TextEncoder;
 export const TextEncoder = _TextEncoder;
 
+export function toUSVString(str: string): string {
+  if (StringPrototypeIsWellFormed(str)) {
+    return str;
+  }
+  return StringPrototypeToWellFormed(str);
+}
+
 function pad(n: number) {
-  return n.toString().padStart(2, "0");
+  return StringPrototypePadStart(NumberPrototypeToString(n), 2, "0");
 }
 
 const months = [
@@ -189,12 +219,12 @@ const months = [
  */
 function timestamp(): string {
   const d = new Date();
-  const t = [
-    pad(d.getHours()),
-    pad(d.getMinutes()),
-    pad(d.getSeconds()),
-  ].join(":");
-  return `${(d.getDate())} ${months[(d).getMonth()]} ${t}`;
+  const t = ArrayPrototypeJoin([
+    pad(DatePrototypeGetHours(d)),
+    pad(DatePrototypeGetMinutes(d)),
+    pad(DatePrototypeGetSeconds(d)),
+  ], ":");
+  return `${DatePrototypeGetDate(d)} ${months[DatePrototypeGetMonth(d)]} ${t}`;
 }
 
 /**
@@ -203,12 +233,12 @@ function timestamp(): string {
  */
 // deno-lint-ignore no-explicit-any
 export function log(...args: any[]) {
-  console.log("%s - %s", timestamp(), format(...args));
+  console.log("%s - %s", timestamp(), ReflectApply(format, undefined, args));
 }
 
 // Keep a list of deprecation codes that have been warned on so we only warn on
 // each one once.
-const codesWarned = new Set();
+const codesWarned = new SafeSet();
 
 // Mark that a method should not be used.
 // Returns a modified function which warns once by default.
@@ -229,9 +259,9 @@ export function deprecate(fn: any, msg: string, code?: any) {
     if (!warned) {
       warned = true;
       if (code !== undefined) {
-        if (!codesWarned.has(code)) {
+        if (!SetPrototypeHas(codesWarned, code)) {
           process.emitWarning(msg, "DeprecationWarning", code, deprecated);
-          codesWarned.add(code);
+          SetPrototypeAdd(codesWarned, code);
         }
       } else {
         // deno-lint-ignore no-explicit-any
@@ -239,13 +269,13 @@ export function deprecate(fn: any, msg: string, code?: any) {
       }
     }
     if (new.target) {
-      return Reflect.construct(fn, args, new.target);
+      return ReflectConstruct(fn, args, new.target);
     }
-    return Reflect.apply(fn, this, args);
+    return ReflectApply(fn, this, args);
   }
 
   // The wrapper will keep the same prototype as fn to maintain prototype chain
-  Object.setPrototypeOf(deprecated, fn);
+  ObjectSetPrototypeOf(deprecated, fn);
   if (fn.prototype) {
     // Setting this (rather than using Object.setPrototype, as above) ensures
     // that calling the unwrapped constructor gives an instanceof the wrapped
@@ -281,12 +311,14 @@ export default {
   getSystemErrorName,
   deprecate,
   callbackify,
+  parseArgs,
   promisify,
   inherits,
   types,
   stripVTControlCharacters,
   TextDecoder,
   TextEncoder,
+  toUSVString,
   log,
   debuglog,
   isDeepStrictEqual,

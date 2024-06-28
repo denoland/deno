@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { $, GitLogOutput, semver } from "./deps.ts";
 
@@ -7,6 +7,8 @@ const workspace = await DenoWorkspace.load();
 const repo = workspace.repo;
 const cliCrate = workspace.getCliCrate();
 const originalCliVersion = cliCrate.version;
+
+await bumpCiCacheVersion();
 
 // increment the cli version
 if (Deno.args.some((a) => a === "--patch")) {
@@ -23,10 +25,6 @@ if (Deno.args.some((a) => a === "--patch")) {
 for (const crate of workspace.getCliDependencyCrates()) {
   await crate.increment("minor");
 }
-
-// update the std version used in the code
-$.logStep("Updating std version...");
-await updateStdVersion();
 
 // update the lock file
 await workspace.getCliCrate().cargoUpdate("--workspace");
@@ -96,17 +94,24 @@ async function getGitLog() {
   }
 }
 
-async function updateStdVersion() {
-  const compatFilePath = cliCrate.folderPath.join("deno_std.rs");
-  const text = await compatFilePath.readText();
-  const versionRe = /std@([0-9]+\.[0-9]+\.[0-9]+)/;
-  const stdVersionText = versionRe.exec(text)?.[1];
-  if (stdVersionText == null) {
-    throw new Error(`Could not find the deno_std version in ${compatFilePath}`);
-  }
-  const stdVersion = semver.parse(stdVersionText)!;
-  const newStdVersion = stdVersion.increment("minor");
-  await compatFilePath.writeText(
-    text.replace(versionRe, `std@${newStdVersion}`),
+async function bumpCiCacheVersion() {
+  const generateScript = workspace.repo.folderPath.join(
+    ".github/workflows/ci.generate.ts",
   );
+  const fileText = generateScript.readTextSync();
+  const cacheVersionRegex = /const cacheVersion = ([0-9]+);/;
+  const version = fileText.match(cacheVersionRegex)?.[1];
+  if (version == null) {
+    throw new Error("Could not find cache version in text.");
+  }
+  const toVersion = parseInt(version, 10) + 1;
+  $.logStep(`Bumping cache version from ${version} to ${toVersion}...`);
+  const newText = fileText.replace(
+    cacheVersionRegex,
+    `const cacheVersion = ${toVersion};`,
+  );
+  generateScript.writeTextSync(newText);
+
+  // run the script
+  await $`${generateScript}`;
 }

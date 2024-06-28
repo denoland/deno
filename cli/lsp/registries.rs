@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::completions::IMPORT_COMMIT_CHARS;
 use super::logging::lsp_log;
@@ -13,10 +13,11 @@ use super::path_to_regex::StringOrVec;
 use super::path_to_regex::Token;
 
 use crate::args::CacheSetting;
-use crate::cache::DenoDir;
+use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
+use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FileFetcher;
-use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -29,13 +30,12 @@ use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
-use deno_runtime::deno_web::BlobStore;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use log::error;
 use once_cell::sync::Lazy;
-use regex::Regex;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
@@ -64,17 +64,17 @@ const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
   .add(b'+')
   .add(b',');
 
-const REGISTRY_IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'", "/"];
+const REGISTRY_IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'"];
 
-static REPLACEMENT_VARIABLE_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"\$\{\{?(\w+)\}?\}").unwrap());
+static REPLACEMENT_VARIABLE_RE: Lazy<regex::Regex> =
+  lazy_regex::lazy_regex!(r"\$\{\{?(\w+)\}?\}");
 
 fn base_url(url: &Url) -> String {
   url.origin().ascii_serialization()
 }
 
 #[derive(Debug)]
-enum CompletorType {
+enum CompletionType {
   Literal(String),
   Key {
     key: Key,
@@ -85,25 +85,25 @@ enum CompletorType {
 
 /// Determine if a completion at a given offset is a string literal or a key/
 /// variable.
-fn get_completor_type(
+fn get_completion_type(
   offset: usize,
   tokens: &[Token],
   match_result: &MatchResult,
-) -> Option<CompletorType> {
+) -> Option<CompletionType> {
   let mut len = 0_usize;
   for (index, token) in tokens.iter().enumerate() {
     match token {
       Token::String(s) => {
         len += s.chars().count();
         if offset < len {
-          return Some(CompletorType::Literal(s.clone()));
+          return Some(CompletionType::Literal(s.clone()));
         }
       }
       Token::Key(k) => {
         if let Some(prefix) = &k.prefix {
           len += prefix.chars().count();
           if offset < len {
-            return Some(CompletorType::Key {
+            return Some(CompletionType::Key {
               key: k.clone(),
               prefix: Some(prefix.clone()),
               index,
@@ -120,7 +120,7 @@ fn get_completor_type(
             .unwrap_or_default();
           len += value.chars().count();
           if offset <= len {
-            return Some(CompletorType::Key {
+            return Some(CompletionType::Key {
               key: k.clone(),
               prefix: None,
               index,
@@ -130,7 +130,7 @@ fn get_completor_type(
         if let Some(suffix) = &k.suffix {
           len += suffix.chars().count();
           if offset <= len {
-            return Some(CompletorType::Literal(suffix.clone()));
+            return Some(CompletionType::Literal(suffix.clone()));
           }
         }
       }
@@ -416,41 +416,37 @@ enum VariableItems {
 #[derive(Debug, Clone)]
 pub struct ModuleRegistry {
   origins: HashMap<String, Vec<RegistryConfiguration>>,
-  file_fetcher: FileFetcher,
-}
-
-impl Default for ModuleRegistry {
-  fn default() -> Self {
-    // This only gets used when creating the tsc runtime and for testing, and so
-    // it shouldn't ever actually access the DenoDir, so it doesn't support a
-    // custom root.
-    let dir = DenoDir::new(None).unwrap();
-    let location = dir.registries_folder_path();
-    let http_client = HttpClient::new(None, None).unwrap();
-    Self::new(&location, http_client).unwrap()
-  }
+  pub location: PathBuf,
+  pub file_fetcher: Arc<FileFetcher>,
+  http_cache: Arc<GlobalHttpCache>,
 }
 
 impl ModuleRegistry {
   pub fn new(
-    location: &Path,
-    http_client: HttpClient,
-  ) -> Result<Self, AnyError> {
-    let http_cache = HttpCache::new(location);
+    location: PathBuf,
+    http_client_provider: Arc<HttpClientProvider>,
+  ) -> Self {
+    // the http cache should always be the global one for registry completions
+    let http_cache = Arc::new(GlobalHttpCache::new(
+      location.clone(),
+      crate::cache::RealDenoCacheEnv,
+    ));
     let mut file_fetcher = FileFetcher::new(
-      http_cache,
+      http_cache.clone(),
       CacheSetting::RespectHeaders,
       true,
-      http_client,
-      BlobStore::default(),
+      http_client_provider,
+      Default::default(),
       None,
     );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
 
-    Ok(Self {
+    Self {
       origins: HashMap::new(),
-      file_fetcher,
-    })
+      location,
+      file_fetcher: Arc::new(file_fetcher),
+      http_cache,
+    }
   }
 
   fn complete_literal(
@@ -497,10 +493,12 @@ impl ModuleRegistry {
   }
 
   /// Disable a registry, removing its configuration, if any, from memory.
-  pub async fn disable(&mut self, origin: &str) -> Result<(), AnyError> {
-    let origin = base_url(&Url::parse(origin)?);
+  pub fn disable(&mut self, origin: &str) {
+    let Ok(origin_url) = Url::parse(origin) else {
+      return;
+    };
+    let origin = base_url(&origin_url);
     self.origins.remove(&origin);
-    Ok(())
   }
 
   /// Check to see if the given origin has a registry configuration.
@@ -517,14 +515,21 @@ impl ModuleRegistry {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
-    let fetch_result = self
-      .file_fetcher
-      .fetch_with_accept(
-        specifier,
-        PermissionsContainer::allow_all(),
-        Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
-      )
-      .await;
+    // spawn due to the lsp's `Send` requirement
+    let fetch_result = deno_core::unsync::spawn({
+      let file_fetcher = self.file_fetcher.clone();
+      let specifier = specifier.clone();
+      async move {
+        file_fetcher
+        .fetch_with_options(FetchOptions {
+          specifier: &specifier,
+          permissions: &PermissionsContainer::allow_all(),
+          maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
+          maybe_cache_setting: None,
+        })
+        .await
+      }
+    }).await?;
     // if there is an error fetching, we will cache an empty file, so that
     // subsequent requests they are just an empty doc which will error without
     // needing to connect to the remote URL. We will cache it for 1 week.
@@ -534,12 +539,9 @@ impl ModuleRegistry {
         "cache-control".to_string(),
         "max-age=604800, immutable".to_string(),
       );
-      self
-        .file_fetcher
-        .http_cache
-        .set(specifier, headers_map, &[])?;
+      self.http_cache.set(specifier, headers_map, &[])?;
     }
-    let file = fetch_result?;
+    let file = fetch_result?.into_text_decoded()?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;
     validate_config(&config)?;
     Ok(config.registries)
@@ -547,13 +549,17 @@ impl ModuleRegistry {
 
   /// Enable a registry by attempting to retrieve its configuration and
   /// validating it.
-  pub async fn enable(&mut self, origin: &str) -> Result<(), AnyError> {
-    let origin_url = Url::parse(origin)?;
+  pub async fn enable(&mut self, origin: &str) {
+    let Ok(origin_url) = Url::parse(origin) else {
+      return;
+    };
     let origin = base_url(&origin_url);
     #[allow(clippy::map_entry)]
     // we can't use entry().or_insert_with() because we can't use async closures
     if !self.origins.contains_key(&origin) {
-      let specifier = origin_url.join(CONFIG_PATH)?;
+      let Ok(specifier) = origin_url.join(CONFIG_PATH) else {
+        return;
+      };
       match self.fetch_config(&specifier).await {
         Ok(configs) => {
           self.origins.insert(origin, configs);
@@ -568,8 +574,6 @@ impl ModuleRegistry {
         }
       }
     }
-
-    Ok(())
   }
 
   #[cfg(test)]
@@ -617,11 +621,20 @@ impl ModuleRegistry {
           None,
         )
         .ok()?;
-        let file = self
-          .file_fetcher
-          .fetch(&endpoint, PermissionsContainer::allow_all())
-          .await
-          .ok()?;
+        let file_fetcher = self.file_fetcher.clone();
+        // spawn due to the lsp's `Send` requirement
+        let file = deno_core::unsync::spawn({
+          async move {
+            file_fetcher
+              .fetch(&endpoint, &PermissionsContainer::allow_all())
+              .await
+              .ok()?
+              .into_text_decoded()
+              .ok()
+          }
+        })
+        .await
+        .ok()??;
         let documentation: lsp::Documentation =
           serde_json::from_str(&file.source).ok()?;
         return match documentation {
@@ -691,17 +704,17 @@ impl ModuleRegistry {
                 .ok()?;
               if let Some(match_result) = matcher.matches(path) {
                 did_match = true;
-                let completor_type =
-                  get_completor_type(path_offset, &tokens, &match_result);
-                match completor_type {
-                  Some(CompletorType::Literal(s)) => self.complete_literal(
+                let completion_type =
+                  get_completion_type(path_offset, &tokens, &match_result);
+                match completion_type {
+                  Some(CompletionType::Literal(s)) => self.complete_literal(
                     s,
                     &mut completions,
                     current_specifier,
                     offset,
                     range,
                   ),
-                  Some(CompletorType::Key { key, prefix, index }) => {
+                  Some(CompletionType::Key { key, prefix, index }) => {
                     let maybe_url = registry.get_url_for_key(&key);
                     if let Some(url) = maybe_url {
                       if let Some(items) = self
@@ -766,7 +779,10 @@ impl ModuleRegistry {
                             Some(lsp::Command {
                               title: "".to_string(),
                               command: "deno.cache".to_string(),
-                              arguments: Some(vec![json!([item_specifier])]),
+                              arguments: Some(vec![
+                                json!([item_specifier]),
+                                json!(&specifier),
+                              ]),
                             })
                           } else {
                             None
@@ -900,7 +916,10 @@ impl ModuleRegistry {
                               Some(lsp::Command {
                                 title: "".to_string(),
                                 command: "deno.cache".to_string(),
-                                arguments: Some(vec![json!([item_specifier])]),
+                                arguments: Some(vec![
+                                  json!([item_specifier]),
+                                  json!(&specifier),
+                                ]),
                               })
                             } else {
                               None
@@ -975,11 +994,18 @@ impl ModuleRegistry {
     url: &str,
   ) -> Option<lsp::Documentation> {
     let specifier = Url::parse(url).ok()?;
-    let file = self
-      .file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
-      .await
-      .ok()?;
+    let file_fetcher = self.file_fetcher.clone();
+    // spawn due to the lsp's `Send` requirement
+    let file = deno_core::unsync::spawn(async move {
+      file_fetcher
+        .fetch(&specifier, &PermissionsContainer::allow_all())
+        .await
+        .ok()?
+        .into_text_decoded()
+        .ok()
+    })
+    .await
+    .ok()??;
     serde_json::from_str(&file.source).ok()
   }
 
@@ -1032,17 +1058,27 @@ impl ModuleRegistry {
 
   async fn get_items(&self, url: &str) -> Option<VariableItems> {
     let specifier = ModuleSpecifier::parse(url).ok()?;
-    let file = self
-      .file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
-      .await
-      .map_err(|err| {
-        error!(
-          "Internal error fetching endpoint \"{}\". {}",
-          specifier, err
-        );
-      })
-      .ok()?;
+    // spawn due to the lsp's `Send` requirement
+    let file = deno_core::unsync::spawn({
+      let file_fetcher = self.file_fetcher.clone();
+      let specifier = specifier.clone();
+      async move {
+        file_fetcher
+          .fetch(&specifier, &PermissionsContainer::allow_all())
+          .await
+          .map_err(|err| {
+            error!(
+              "Internal error fetching endpoint \"{}\". {}",
+              specifier, err
+            );
+          })
+          .ok()?
+          .into_text_decoded()
+          .ok()
+      }
+    })
+    .await
+    .ok()??;
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
         error!(
@@ -1068,17 +1104,27 @@ impl ModuleRegistry {
           error!("Internal error mapping endpoint \"{}\". {}", url, err);
         })
         .ok()?;
-    let file = self
-      .file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
-      .await
-      .map_err(|err| {
-        error!(
-          "Internal error fetching endpoint \"{}\". {}",
-          specifier, err
-        );
-      })
-      .ok()?;
+    // spawn due to the lsp's `Send` requirement
+    let file = deno_core::unsync::spawn({
+      let file_fetcher = self.file_fetcher.clone();
+      let specifier = specifier.clone();
+      async move {
+        file_fetcher
+          .fetch(&specifier, &PermissionsContainer::allow_all())
+          .await
+          .map_err(|err| {
+            error!(
+              "Internal error fetching endpoint \"{}\". {}",
+              specifier, err
+            );
+          })
+          .ok()?
+          .into_text_decoded()
+          .ok()
+      }
+    })
+    .await
+    .ok()??;
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
         error!(
@@ -1088,6 +1134,10 @@ impl ModuleRegistry {
       })
       .ok()?;
     Some(items)
+  }
+
+  pub fn clear_cache(&self) {
+    self.file_fetcher.clear_memory_files();
   }
 }
 
@@ -1250,14 +1300,12 @@ mod tests {
   async fn test_registry_completions_origin_match() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
-    let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
-    module_registry
-      .enable("http://localhost:4545/")
-      .await
-      .expect("could not enable");
+    let location = temp_dir.path().join("registries").to_path_buf();
+    let mut module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
+    module_registry.enable("http://localhost:4545/").await;
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1312,14 +1360,12 @@ mod tests {
   async fn test_registry_completions() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
-    let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
-    module_registry
-      .enable("http://localhost:4545/")
-      .await
-      .expect("could not enable");
+    let location = temp_dir.path().join("registries").to_path_buf();
+    let mut module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
+    module_registry.enable("http://localhost:4545/").await;
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1536,10 +1582,11 @@ mod tests {
   async fn test_registry_completions_key_first() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
-    let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+    let location = temp_dir.path().join("registries").to_path_buf();
+    let mut module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-key-first.json")
       .await
@@ -1607,10 +1654,11 @@ mod tests {
   async fn test_registry_completions_complex() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
-    let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+    let location = temp_dir.path().join("registries").to_path_buf();
+    let mut module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-complex.json")
       .await
@@ -1659,10 +1707,11 @@ mod tests {
   async fn test_check_origin_supported() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
-    let module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+    let location = temp_dir.path().join("registries").to_path_buf();
+    let module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
     let result = module_registry.check_origin("http://localhost:4545").await;
     assert!(result.is_ok());
   }
@@ -1671,10 +1720,11 @@ mod tests {
   async fn test_check_origin_not_supported() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
-    let module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+    let location = temp_dir.path().join("registries").to_path_buf();
+    let module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
     let result = module_registry.check_origin("https://example.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();

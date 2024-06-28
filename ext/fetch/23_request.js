@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -9,14 +9,29 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
+import { core, internals, primordials } from "ext:core/mod.js";
+const {
+  ArrayPrototypeMap,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
+  ObjectFreeze,
+  ObjectKeys,
+  ObjectPrototypeIsPrototypeOf,
+  RegExpPrototypeExec,
+  StringPrototypeStartsWith,
+  Symbol,
+  SymbolFor,
+  TypeError,
+} = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
   byteUpperCase,
   HTTP_TOKEN_CODE_POINT_RE,
 } from "ext:deno_web/00_infra.js";
 import { URL } from "ext:deno_url/00_url.js";
-import { extractBody, InnerBody, mixinBody } from "ext:deno_fetch/22_body.js";
+import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 import { extractMimeType } from "ext:deno_web/01_mimesniff.js";
 import { blobFromObjectUrl } from "ext:deno_web/09_file.js";
@@ -28,30 +43,25 @@ import {
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
 import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-const primordials = globalThis.__bootstrap.primordials;
-const {
-  ArrayPrototypeMap,
-  ArrayPrototypeSlice,
-  ArrayPrototypeSplice,
-  ObjectKeys,
-  ObjectPrototypeIsPrototypeOf,
-  RegExpPrototypeTest,
-  Symbol,
-  SymbolFor,
-  TypeError,
-} = primordials;
+import {
+  createDependentAbortSignal,
+  newSignal,
+  signalAbort,
+} from "ext:deno_web/03_abort_signal.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const { internalRidSymbol } = core;
 
 const _request = Symbol("request");
 const _headers = Symbol("headers");
 const _getHeaders = Symbol("get headers");
 const _headersCache = Symbol("headers cache");
 const _signal = Symbol("signal");
+const _signalCache = Symbol("signalCache");
 const _mimeType = Symbol("mime type");
 const _body = Symbol("body");
-const _flash = Symbol("flash");
 const _url = Symbol("url");
 const _method = Symbol("method");
+const _brand = webidl.brand;
 
 /**
  * @param {(() => string)[]} urlList
@@ -82,7 +92,7 @@ function processUrlList(urlList, urlListProcessed) {
  */
 
 /**
- * @param {() => string} method
+ * @param {string} method
  * @param {string | () => string} url
  * @param {() => [string, string][]} headerList
  * @param {typeof __window.bootstrap.fetchBody.InnerBody} body
@@ -91,19 +101,16 @@ function processUrlList(urlList, urlListProcessed) {
  */
 function newInnerRequest(method, url, headerList, body, maybeBlob) {
   let blobUrlEntry = null;
-  if (maybeBlob && typeof url === "string" && url.startsWith("blob:")) {
+  if (
+    maybeBlob &&
+    typeof url === "string" &&
+    StringPrototypeStartsWith(url, "blob:")
+  ) {
     blobUrlEntry = blobFromObjectUrl(url);
   }
   return {
-    methodInner: null,
+    methodInner: method,
     get method() {
-      if (this.methodInner === null) {
-        try {
-          this.methodInner = method();
-        } catch {
-          throw new TypeError("cannot read method: request closed");
-        }
-      }
       return this.methodInner;
     },
     set method(value) {
@@ -158,10 +165,9 @@ function newInnerRequest(method, url, headerList, body, maybeBlob) {
  * https://fetch.spec.whatwg.org/#concept-request-clone
  * @param {InnerRequest} request
  * @param {boolean} skipBody
- * @param {boolean} flash
  * @returns {InnerRequest}
  */
-function cloneInnerRequest(request, skipBody = false, flash = false) {
+function cloneInnerRequest(request, skipBody = false) {
   const headerList = ArrayPrototypeMap(
     request.headerList,
     (x) => [x[0], x[1]],
@@ -172,27 +178,14 @@ function cloneInnerRequest(request, skipBody = false, flash = false) {
     body = request.body.clone();
   }
 
-  if (flash) {
-    return {
-      body,
-      methodCb: request.methodCb,
-      urlCb: request.urlCb,
-      headerList: request.headerList,
-      streamRid: request.streamRid,
-      serverId: request.serverId,
-      redirectMode: "follow",
-      redirectCount: 0,
-    };
-  }
-
   return {
     method: request.method,
     headerList,
     body,
     redirectMode: request.redirectMode,
     redirectCount: request.redirectCount,
-    urlList: request.urlList,
-    urlListProcessed: request.urlListProcessed,
+    urlList: [() => request.url()],
+    urlListProcessed: [request.url()],
     clientRid: request.clientRid,
     blobUrlEntry: request.blobUrlEntry,
     url() {
@@ -219,32 +212,30 @@ function cloneInnerRequest(request, skipBody = false, flash = false) {
   };
 }
 
-/**
- * @param {string} m
- * @returns {boolean}
- */
-function isKnownMethod(m) {
-  return (
-    m === "DELETE" ||
-    m === "GET" ||
-    m === "HEAD" ||
-    m === "OPTIONS" ||
-    m === "POST" ||
-    m === "PUT"
-  );
-}
+// method => normalized method
+const KNOWN_METHODS = {
+  "DELETE": "DELETE",
+  "delete": "DELETE",
+  "GET": "GET",
+  "get": "GET",
+  "HEAD": "HEAD",
+  "head": "HEAD",
+  "OPTIONS": "OPTIONS",
+  "options": "OPTIONS",
+  "PATCH": "PATCH",
+  "patch": "PATCH",
+  "POST": "POST",
+  "post": "POST",
+  "PUT": "PUT",
+  "put": "PUT",
+};
+
 /**
  * @param {string} m
  * @returns {string}
  */
 function validateAndNormalizeMethod(m) {
-  // Fast path for well-known methods
-  if (isKnownMethod(m)) {
-    return m;
-  }
-
-  // Regular path
-  if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, m)) {
+  if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, m) === null) {
     throw new TypeError("Method is not valid.");
   }
   const upperCase = byteUpperCase(m);
@@ -276,7 +267,23 @@ class Request {
   }
 
   /** @type {AbortSignal} */
-  [_signal];
+  get [_signal]() {
+    const signal = this[_signalCache];
+    // This signal not been created yet, and the request is still in progress
+    if (signal === undefined) {
+      const signal = newSignal();
+      this[_signalCache] = signal;
+      return signal;
+    }
+    // This signal has not been created yet, but the request has already completed
+    if (signal === false) {
+      const signal = newSignal();
+      this[_signalCache] = signal;
+      signal[signalAbort](signalAbortError);
+      return signal;
+    }
+    return signal;
+  }
   get [_mimeType]() {
     const values = getDecodeSplitHeader(
       headerListFromHeaders(this[_headers]),
@@ -285,11 +292,7 @@ class Request {
     return extractMimeType(values);
   }
   get [_body]() {
-    if (this[_flash]) {
-      return this[_flash].body;
-    } else {
-      return this[_request].body;
-    }
+    return this[_request].body;
   }
 
   /**
@@ -297,19 +300,22 @@ class Request {
    * @param {RequestInfo} input
    * @param {RequestInit} init
    */
-  constructor(input, init = {}) {
-    const prefix = "Failed to construct 'Request'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    input = webidl.converters["RequestInfo_DOMString"](input, {
-      prefix,
-      context: "Argument 1",
-    });
-    init = webidl.converters["RequestInit"](init, {
-      prefix,
-      context: "Argument 2",
-    });
+  constructor(input, init = { __proto__: null }) {
+    if (input === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
 
-    this[webidl.brand] = webidl.brand;
+    const prefix = "Failed to construct 'Request'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    input = webidl.converters["RequestInfo_DOMString"](
+      input,
+      prefix,
+      "Argument 1",
+    );
+    init = webidl.converters["RequestInit"](init, prefix, "Argument 2");
+
+    this[_brand] = _brand;
 
     /** @type {InnerRequest} */
     let request;
@@ -322,7 +328,7 @@ class Request {
     if (typeof input === "string") {
       const parsedURL = new URL(input, baseURL);
       request = newInnerRequest(
-        () => "GET",
+        "GET",
         parsedURL.href,
         () => [],
         null,
@@ -348,9 +354,10 @@ class Request {
 
     // 25.
     if (init.method !== undefined) {
-      let method = init.method;
-      method = validateAndNormalizeMethod(method);
-      request.method = method;
+      const method = init.method;
+      // fast path: check for known methods
+      request.method = KNOWN_METHODS[method] ??
+        validateAndNormalizeMethod(method);
     }
 
     // 26.
@@ -367,51 +374,45 @@ class Request {
         throw webidl.makeException(
           TypeError,
           "`client` must be a Deno.HttpClient",
-          { prefix, context: "Argument 2" },
+          prefix,
+          "Argument 2",
         );
       }
-      request.clientRid = init.client?.rid ?? null;
+      request.clientRid = init.client?.[internalRidSymbol] ?? null;
     }
-
-    // 27.
-    this[_request] = request;
 
     // 28.
-    this[_signal] = abortSignal.newSignal();
+    this[_request] = request;
 
-    // 29.
+    // 29 & 30.
     if (signal !== null) {
-      abortSignal.follow(this[_signal], signal);
+      this[_signalCache] = createDependentAbortSignal([signal], prefix);
     }
 
-    // 30.
+    // 31.
     this[_headers] = headersFromHeaderList(request.headerList, "request");
 
-    // 32.
-    if (ObjectKeys(init).length > 0) {
-      let headers = ArrayPrototypeSlice(
-        headerListFromHeaders(this[_headers]),
+    // 33.
+    if (init.headers || ObjectKeys(init).length > 0) {
+      const headerList = headerListFromHeaders(this[_headers]);
+      const headers = init.headers ?? ArrayPrototypeSlice(
+        headerList,
         0,
-        headerListFromHeaders(this[_headers]).length,
+        headerList.length,
       );
-      if (init.headers !== undefined) {
-        headers = init.headers;
+      if (headerList.length !== 0) {
+        ArrayPrototypeSplice(headerList, 0, headerList.length);
       }
-      ArrayPrototypeSplice(
-        headerListFromHeaders(this[_headers]),
-        0,
-        headerListFromHeaders(this[_headers]).length,
-      );
       fillHeaders(this[_headers], headers);
     }
 
-    // 33.
+    // 34.
     let inputBody = null;
     if (ObjectPrototypeIsPrototypeOf(RequestPrototype, input)) {
       inputBody = input[_body];
     }
 
-    // 34.
+    // 35.
     if (
       (request.method === "GET" || request.method === "HEAD") &&
       ((init.body !== undefined && init.body !== null) ||
@@ -420,10 +421,10 @@ class Request {
       throw new TypeError("Request with GET/HEAD method cannot have body.");
     }
 
-    // 35.
+    // 36.
     let initBody = null;
 
-    // 36.
+    // 37.
     if (init.body !== undefined && init.body !== null) {
       const res = extractBody(init.body);
       initBody = res.body;
@@ -432,13 +433,13 @@ class Request {
       }
     }
 
-    // 37.
+    // 38.
     const inputOrInitBody = initBody ?? inputBody;
 
-    // 39.
+    // 40.
     let finalBody = inputOrInitBody;
 
-    // 40.
+    // 41.
     if (initBody === null && inputBody !== null) {
       if (input[_body] && input[_body].unusable()) {
         throw new TypeError("Input request's body is unusable.");
@@ -446,7 +447,7 @@ class Request {
       finalBody = inputBody.createProxy();
     }
 
-    // 41.
+    // 42.
     request.body = finalBody;
   }
 
@@ -455,13 +456,8 @@ class Request {
     if (this[_method]) {
       return this[_method];
     }
-    if (this[_flash]) {
-      this[_method] = this[_flash].methodCb();
-      return this[_method];
-    } else {
-      this[_method] = this[_request].method;
-      return this[_method];
-    }
+    this[_method] = this[_request].method;
+    return this[_method];
   }
 
   get url() {
@@ -470,13 +466,8 @@ class Request {
       return this[_url];
     }
 
-    if (this[_flash]) {
-      this[_url] = this[_flash].urlCb();
-      return this[_url];
-    } else {
-      this[_url] = this[_request].url();
-      return this[_url];
-    }
+    this[_url] = this[_request].url();
+    return this[_url];
   }
 
   get headers() {
@@ -486,9 +477,6 @@ class Request {
 
   get redirect() {
     webidl.assertBranded(this, RequestPrototype);
-    if (this[_flash]) {
-      return this[_flash].redirectMode;
-    }
     return this[_request].redirectMode;
   }
 
@@ -498,55 +486,49 @@ class Request {
   }
 
   clone() {
+    const prefix = "Failed to execute 'Request.clone'";
     webidl.assertBranded(this, RequestPrototype);
     if (this[_body] && this[_body].unusable()) {
       throw new TypeError("Body is unusable.");
     }
-    let newReq;
-    if (this[_flash]) {
-      newReq = cloneInnerRequest(this[_flash], false, true);
-    } else {
-      newReq = cloneInnerRequest(this[_request]);
-    }
-    const newSignal = abortSignal.newSignal();
+    const clonedReq = cloneInnerRequest(this[_request]);
 
-    if (this[_signal]) {
-      abortSignal.follow(newSignal, this[_signal]);
-    }
-
-    if (this[_flash]) {
-      return fromInnerRequest(
-        newReq,
-        newSignal,
-        guardFromHeaders(this[_headers]),
-        true,
-      );
-    }
-
-    return fromInnerRequest(
-      newReq,
-      newSignal,
-      guardFromHeaders(this[_headers]),
-      false,
+    const materializedSignal = this[_signal];
+    const clonedSignal = createDependentAbortSignal(
+      [materializedSignal],
+      prefix,
     );
+
+    const request = new Request(_brand);
+    request[_request] = clonedReq;
+    request[_signalCache] = clonedSignal;
+    request[_getHeaders] = () =>
+      headersFromHeaderList(
+        clonedReq.headerList,
+        guardFromHeaders(this[_headers]),
+      );
+    return request;
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(RequestPrototype, this),
-      keys: [
-        "bodyUsed",
-        "headers",
-        "method",
-        "redirect",
-        "url",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(RequestPrototype, this),
+        keys: [
+          "bodyUsed",
+          "headers",
+          "method",
+          "redirect",
+          "url",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
-webidl.configurePrototype(Request);
+webidl.configureInterface(Request);
 const RequestPrototype = Request.prototype;
 mixinBody(RequestPrototype, _body, _mimeType);
 
@@ -554,15 +536,15 @@ webidl.converters["Request"] = webidl.createInterfaceConverter(
   "Request",
   RequestPrototype,
 );
-webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
+webidl.converters["RequestInfo_DOMString"] = (V, prefix, context, opts) => {
   // Union for (Request or USVString)
   if (typeof V == "object") {
     if (ObjectPrototypeIsPrototypeOf(RequestPrototype, V)) {
-      return webidl.converters["Request"](V, opts);
+      return webidl.converters["Request"](V, prefix, context, opts);
     }
   }
   // Passed to new URL(...) which implicitly converts DOMString -> USVString
-  return webidl.converters["DOMString"](V, opts);
+  return webidl.converters["DOMString"](V, prefix, context, opts);
 };
 webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
   "RequestRedirect",
@@ -604,60 +586,39 @@ function toInnerRequest(request) {
 
 /**
  * @param {InnerRequest} inner
- * @param {AbortSignal} signal
  * @param {"request" | "immutable" | "request-no-cors" | "response" | "none"} guard
- * @param {boolean} flash
  * @returns {Request}
  */
-function fromInnerRequest(inner, signal, guard, flash) {
-  const request = webidl.createBranded(Request);
-  if (flash) {
-    request[_flash] = inner;
-  } else {
-    request[_request] = inner;
-  }
-  request[_signal] = signal;
-  request[_getHeaders] = flash
-    ? () => headersFromHeaderList(inner.headerList(), guard)
-    : () => headersFromHeaderList(inner.headerList, guard);
+function fromInnerRequest(inner, guard) {
+  const request = new Request(_brand);
+  request[_request] = inner;
+  request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
   return request;
 }
 
-/**
- * @param {number} serverId
- * @param {number} streamRid
- * @param {ReadableStream} body
- * @param {() => string} methodCb
- * @param {() => string} urlCb
- * @param {() => [string, string][]} headersCb
- * @returns {Request}
- */
-function fromFlashRequest(
-  serverId,
-  streamRid,
-  body,
-  methodCb,
-  urlCb,
-  headersCb,
-) {
-  const request = webidl.createBranded(Request);
-  request[_flash] = {
-    body: body !== null ? new InnerBody(body) : null,
-    methodCb,
-    urlCb,
-    headerList: headersCb,
-    streamRid,
-    serverId,
-    redirectMode: "follow",
-    redirectCount: 0,
-  };
-  request[_getHeaders] = () => headersFromHeaderList(headersCb(), "request");
-  return request;
+const signalAbortError = new DOMException(
+  "The request has been cancelled.",
+  "AbortError",
+);
+ObjectFreeze(signalAbortError);
+
+function abortRequest(request) {
+  if (request[_signalCache] !== undefined) {
+    request[_signal][signalAbort](signalAbortError);
+  } else {
+    request[_signalCache] = false;
+  }
 }
+
+function getCachedAbortSignal(request) {
+  return request[_signalCache];
+}
+
+// For testing
+internals.getCachedAbortSignal = getCachedAbortSignal;
 
 export {
-  _flash,
-  fromFlashRequest,
+  abortRequest,
   fromInnerRequest,
   newInnerRequest,
   processUrlList,

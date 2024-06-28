@@ -1,7 +1,11 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { Encodings } from "ext:deno_node/_utils.ts";
-import { fromFileUrl } from "ext:deno_node/path.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
+import { Buffer } from "node:buffer";
 import {
   CallbackWithError,
   checkEncoding,
@@ -16,10 +20,10 @@ import {
   denoErrorToNodeError,
 } from "ext:deno_node/internal/errors.ts";
 import {
-  showStringCoercionDeprecation,
   validateStringAfterArrayBufferView,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { FsFile } from "ext:deno_fs/30_fs.js";
 
 interface Writer {
   write(p: Uint8Array): Promise<number>;
@@ -27,8 +31,7 @@ interface Writer {
 
 export function writeFile(
   pathOrRid: string | number | URL,
-  // deno-lint-ignore ban-types
-  data: string | Uint8Array | Object,
+  data: string | Uint8Array,
   optOrCallback: Encodings | CallbackWithError | WriteFileOptions | undefined,
   callback?: CallbackWithError,
 ) {
@@ -41,7 +44,7 @@ export function writeFile(
     throw new TypeError("Callback must be a function.");
   }
 
-  pathOrRid = pathOrRid instanceof URL ? fromFileUrl(pathOrRid) : pathOrRid;
+  pathOrRid = pathOrRid instanceof URL ? pathFromURL(pathOrRid) : pathOrRid;
 
   const flag: string | undefined = isFileOptions(options)
     ? options.flag
@@ -56,10 +59,7 @@ export function writeFile(
 
   if (!ArrayBuffer.isView(data)) {
     validateStringAfterArrayBufferView(data, "data");
-    if (typeof data !== "string") {
-      showStringCoercionDeprecation();
-    }
-    data = Buffer.from(String(data), encoding);
+    data = Buffer.from(data, encoding);
   }
 
   const isRid = typeof pathOrRid === "number";
@@ -69,7 +69,7 @@ export function writeFile(
   (async () => {
     try {
       file = isRid
-        ? new Deno.FsFile(pathOrRid as number)
+        ? new FsFile(pathOrRid as number, Symbol.for("Deno.internal.FsFile"))
         : await Deno.open(pathOrRid as string, openOptions);
 
       // ignore mode because it's not supported on windows
@@ -96,18 +96,16 @@ export function writeFile(
 
 export const writeFilePromise = promisify(writeFile) as (
   pathOrRid: string | number | URL,
-  // deno-lint-ignore ban-types
-  data: string | Uint8Array | Object,
+  data: string | Uint8Array,
   options?: Encodings | WriteFileOptions,
 ) => Promise<void>;
 
 export function writeFileSync(
   pathOrRid: string | number | URL,
-  // deno-lint-ignore ban-types
-  data: string | Uint8Array | Object,
+  data: string | Uint8Array,
   options?: Encodings | WriteFileOptions,
 ) {
-  pathOrRid = pathOrRid instanceof URL ? fromFileUrl(pathOrRid) : pathOrRid;
+  pathOrRid = pathOrRid instanceof URL ? pathFromURL(pathOrRid) : pathOrRid;
 
   const flag: string | undefined = isFileOptions(options)
     ? options.flag
@@ -122,10 +120,7 @@ export function writeFileSync(
 
   if (!ArrayBuffer.isView(data)) {
     validateStringAfterArrayBufferView(data, "data");
-    if (typeof data !== "string") {
-      showStringCoercionDeprecation();
-    }
-    data = Buffer.from(String(data), encoding);
+    data = Buffer.from(data, encoding);
   }
 
   const isRid = typeof pathOrRid === "number";
@@ -134,7 +129,7 @@ export function writeFileSync(
   let error: Error | null = null;
   try {
     file = isRid
-      ? new Deno.FsFile(pathOrRid as number)
+      ? new FsFile(pathOrRid as number, Symbol.for("Deno.internal.FsFile"))
       : Deno.openSync(pathOrRid as string, openOptions);
 
     // ignore mode because it's not supported on windows

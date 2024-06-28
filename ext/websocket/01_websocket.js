@@ -1,83 +1,105 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-import { URL } from "ext:deno_url/00_url.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
-import {
-  _skipInternalInit,
-  CloseEvent,
-  defineEventHandler,
-  ErrorEvent,
-  Event,
-  EventTarget,
-  MessageEvent,
-} from "ext:deno_web/02_event.js";
-import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
 const {
-  ArrayBufferPrototype,
+  isAnyArrayBuffer,
+  isArrayBuffer,
+} = core;
+import {
+  op_ws_check_permission_and_cancel_handle,
+  op_ws_close,
+  op_ws_create,
+  op_ws_get_buffer,
+  op_ws_get_buffer_as_string,
+  op_ws_get_buffered_amount,
+  op_ws_get_error,
+  op_ws_next_event,
+  op_ws_send_binary,
+  op_ws_send_binary_ab,
+  op_ws_send_ping,
+  op_ws_send_text,
+} from "ext:core/ops";
+const {
   ArrayBufferIsView,
-  ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
+  ArrayPrototypePush,
+  ArrayPrototypeShift,
   ArrayPrototypeSome,
-  DataView,
-  DataViewPrototypeGetByteLength,
   ErrorPrototypeToString,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeCatch,
   PromisePrototypeThen,
-  RegExpPrototypeTest,
-  Set,
+  RegExpPrototypeExec,
+  SafeSet,
   SetPrototypeGetSize,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
   String,
   StringPrototypeEndsWith,
   StringPrototypeToLowerCase,
   Symbol,
-  SymbolIterator,
-  PromisePrototypeCatch,
   SymbolFor,
+  SymbolIterator,
   TypedArrayPrototypeGetByteLength,
-  TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
-webidl.converters["sequence<DOMString> or DOMString"] = (V, opts) => {
+import { URL } from "ext:deno_url/00_url.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
+import {
+  CloseEvent,
+  defineEventHandler,
+  dispatch,
+  ErrorEvent,
+  Event,
+  EventTarget,
+  MessageEvent,
+  setIsTrusted,
+} from "ext:deno_web/02_event.js";
+import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
+import { getLocationHref } from "ext:deno_web/12_location.js";
+
+webidl.converters["sequence<DOMString> or DOMString"] = (
+  V,
+  prefix,
+  context,
+  opts,
+) => {
   // Union for (sequence<DOMString> or DOMString)
   if (webidl.type(V) === "Object" && V !== null) {
     if (V[SymbolIterator] !== undefined) {
-      return webidl.converters["sequence<DOMString>"](V, opts);
+      return webidl.converters["sequence<DOMString>"](V, prefix, context, opts);
     }
   }
-  return webidl.converters.DOMString(V, opts);
+  return webidl.converters.DOMString(V, prefix, context, opts);
 };
 
-webidl.converters["WebSocketSend"] = (V, opts) => {
+webidl.converters["WebSocketSend"] = (V, prefix, context, opts) => {
   // Union for (Blob or ArrayBufferView or ArrayBuffer or USVString)
   if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
-    return webidl.converters["Blob"](V, opts);
+    return webidl.converters["Blob"](V, prefix, context, opts);
   }
   if (typeof V === "object") {
-    if (
-      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
-      // deno-lint-ignore prefer-primordials
-      ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
-    ) {
-      return webidl.converters["ArrayBuffer"](V, opts);
+    if (isAnyArrayBuffer(V)) {
+      return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {
-      return webidl.converters["ArrayBufferView"](V, opts);
+      return webidl.converters["ArrayBufferView"](V, prefix, context, opts);
     }
   }
-  return webidl.converters["USVString"](V, opts);
+  return webidl.converters["USVString"](V, prefix, context, opts);
 };
 
+/** role */
+const SERVER = 0;
+const CLIENT = 1;
+
+/** state */
 const CONNECTING = 0;
 const OPEN = 1;
 const CLOSING = 2;
@@ -86,106 +108,55 @@ const CLOSED = 3;
 const _readyState = Symbol("[[readyState]]");
 const _url = Symbol("[[url]]");
 const _rid = Symbol("[[rid]]");
+const _role = Symbol("[[role]]");
 const _extensions = Symbol("[[extensions]]");
 const _protocol = Symbol("[[protocol]]");
 const _binaryType = Symbol("[[binaryType]]");
-const _bufferedAmount = Symbol("[[bufferedAmount]]");
 const _eventLoop = Symbol("[[eventLoop]]");
+const _sendQueue = Symbol("[[sendQueue]]");
+const _queueSend = Symbol("[[queueSend]]");
 
 const _server = Symbol("[[server]]");
 const _idleTimeoutDuration = Symbol("[[idleTimeout]]");
 const _idleTimeoutTimeout = Symbol("[[idleTimeoutTimeout]]");
 const _serverHandleIdleTimeout = Symbol("[[serverHandleIdleTimeout]]");
+
 class WebSocket extends EventTarget {
-  [_rid];
-
-  [_readyState] = CONNECTING;
-  get readyState() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return this[_readyState];
-  }
-
-  get CONNECTING() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return CONNECTING;
-  }
-  get OPEN() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return OPEN;
-  }
-  get CLOSING() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return CLOSING;
-  }
-  get CLOSED() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return CLOSED;
-  }
-
-  [_extensions] = "";
-  get extensions() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return this[_extensions];
-  }
-
-  [_protocol] = "";
-  get protocol() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return this[_protocol];
-  }
-
-  [_url] = "";
-  get url() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return this[_url];
-  }
-
-  [_binaryType] = "blob";
-  get binaryType() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return this[_binaryType];
-  }
-  set binaryType(value) {
-    webidl.assertBranded(this, WebSocketPrototype);
-    value = webidl.converters.DOMString(value, {
-      prefix: "Failed to set 'binaryType' on 'WebSocket'",
-    });
-    if (value === "blob" || value === "arraybuffer") {
-      this[_binaryType] = value;
-    }
-  }
-
-  [_bufferedAmount] = 0;
-  get bufferedAmount() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return this[_bufferedAmount];
-  }
-
   constructor(url, protocols = []) {
     super();
     this[webidl.brand] = webidl.brand;
+    this[_rid] = undefined;
+    this[_role] = undefined;
+    this[_readyState] = CONNECTING;
+    this[_extensions] = "";
+    this[_protocol] = "";
+    this[_url] = "";
+    this[_binaryType] = "blob";
+    this[_idleTimeoutDuration] = 0;
+    this[_idleTimeoutTimeout] = undefined;
+    this[_sendQueue] = [];
+
     const prefix = "Failed to construct 'WebSocket'";
-    webidl.requiredArguments(arguments.length, 1, {
-      prefix,
-    });
-    url = webidl.converters.USVString(url, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    url = webidl.converters.USVString(url, prefix, "Argument 1");
     protocols = webidl.converters["sequence<DOMString> or DOMString"](
       protocols,
-      {
-        prefix,
-        context: "Argument 2",
-      },
+      prefix,
+      "Argument 2",
     );
 
     let wsURL;
 
     try {
-      wsURL = new URL(url);
+      wsURL = new URL(url, getLocationHref());
     } catch (e) {
       throw new DOMException(e.message, "SyntaxError");
+    }
+
+    if (wsURL.protocol === "http:") {
+      wsURL.protocol = "ws:";
+    } else if (wsURL.protocol === "https:") {
+      wsURL.protocol = "wss:";
     }
 
     if (wsURL.protocol !== "ws:" && wsURL.protocol !== "wss:") {
@@ -203,8 +174,9 @@ class WebSocket extends EventTarget {
     }
 
     this[_url] = wsURL.href;
+    this[_role] = CLIENT;
 
-    ops.op_ws_check_permission_and_cancel_handle(
+    op_ws_check_permission_and_cancel_handle(
       "WebSocket.abort()",
       this[_url],
       false,
@@ -217,7 +189,7 @@ class WebSocket extends EventTarget {
     if (
       protocols.length !==
         SetPrototypeGetSize(
-          new Set(
+          new SafeSet(
             ArrayPrototypeMap(protocols, (p) => StringPrototypeToLowerCase(p)),
           ),
         )
@@ -231,7 +203,8 @@ class WebSocket extends EventTarget {
     if (
       ArrayPrototypeSome(
         protocols,
-        (protocol) => !RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, protocol),
+        (protocol) =>
+          RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, protocol) === null,
       )
     ) {
       throw new DOMException(
@@ -241,8 +214,7 @@ class WebSocket extends EventTarget {
     }
 
     PromisePrototypeThen(
-      core.opAsync(
-        "op_ws_create",
+      op_ws_create(
         "new WebSocket()",
         wsURL.href,
         ArrayPrototypeJoin(protocols, ", "),
@@ -254,7 +226,7 @@ class WebSocket extends EventTarget {
 
         if (this[_readyState] === CLOSING) {
           PromisePrototypeThen(
-            core.opAsync("op_ws_close", this[_rid]),
+            op_ws_close(this[_rid]),
             () => {
               this[_readyState] = CLOSED;
 
@@ -289,68 +261,98 @@ class WebSocket extends EventTarget {
     );
   }
 
+  get readyState() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return this[_readyState];
+  }
+
+  get CONNECTING() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return CONNECTING;
+  }
+  get OPEN() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return OPEN;
+  }
+  get CLOSING() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return CLOSING;
+  }
+  get CLOSED() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return CLOSED;
+  }
+
+  get extensions() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return this[_extensions];
+  }
+
+  get protocol() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return this[_protocol];
+  }
+
+  get url() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return this[_url];
+  }
+
+  get binaryType() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return this[_binaryType];
+  }
+  set binaryType(value) {
+    webidl.assertBranded(this, WebSocketPrototype);
+    value = webidl.converters.DOMString(
+      value,
+      "Failed to set 'binaryType' on 'WebSocket'",
+    );
+    if (value === "blob" || value === "arraybuffer") {
+      this[_binaryType] = value;
+    }
+  }
+
+  get bufferedAmount() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    if (this[_readyState] === OPEN) {
+      return op_ws_get_buffered_amount(this[_rid]);
+    } else {
+      return 0;
+    }
+  }
+
   send(data) {
     webidl.assertBranded(this, WebSocketPrototype);
     const prefix = "Failed to execute 'send' on 'WebSocket'";
 
-    webidl.requiredArguments(arguments.length, 1, {
-      prefix,
-    });
-    data = webidl.converters.WebSocketSend(data, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    data = webidl.converters.WebSocketSend(data, prefix, "Argument 1");
 
     if (this[_readyState] !== OPEN) {
       throw new DOMException("readyState not OPEN", "InvalidStateError");
     }
 
-    /**
-     * @param {ArrayBufferView} view
-     * @param {number} byteLength
-     */
-    const sendTypedArray = (view, byteLength) => {
-      this[_bufferedAmount] += byteLength;
-      PromisePrototypeThen(
-        core.opAsync2("op_ws_send_binary", this[_rid], view),
-        () => {
-          this[_bufferedAmount] -= byteLength;
-        },
-      );
-    };
-
-    if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
-      PromisePrototypeThen(
-        data.slice().arrayBuffer(),
-        (ab) =>
-          sendTypedArray(
-            new DataView(ab),
-            ArrayBufferPrototypeGetByteLength(ab),
-          ),
-      );
-    } else if (ArrayBufferIsView(data)) {
-      if (TypedArrayPrototypeGetSymbolToStringTag(data) === undefined) {
-        // DataView
-        sendTypedArray(data, DataViewPrototypeGetByteLength(data));
+    if (this[_sendQueue].length === 0) {
+      // Fast path if the send queue is empty, for example when only synchronous
+      // data is being sent.
+      if (ArrayBufferIsView(data)) {
+        op_ws_send_binary(this[_rid], data);
+      } else if (isArrayBuffer(data)) {
+        op_ws_send_binary_ab(this[_rid], data);
+      } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
+        this[_queueSend](data);
       } else {
-        // TypedArray
-        sendTypedArray(data, TypedArrayPrototypeGetByteLength(data));
+        const string = String(data);
+        op_ws_send_text(
+          this[_rid],
+          string,
+        );
       }
-    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-      sendTypedArray(
-        new DataView(data),
-        ArrayBufferPrototypeGetByteLength(data),
-      );
     } else {
-      const string = String(data);
-      const d = core.encode(string);
-      this[_bufferedAmount] += TypedArrayPrototypeGetByteLength(d);
-      PromisePrototypeThen(
-        core.opAsync2("op_ws_send_text", this[_rid], string),
-        () => {
-          this[_bufferedAmount] -= TypedArrayPrototypeGetByteLength(d);
-        },
-      );
+      // Slower path if the send queue is not empty, for example when sending
+      // asynchronous data like a Blob.
+      this[_queueSend](data);
     }
   }
 
@@ -359,18 +361,13 @@ class WebSocket extends EventTarget {
     const prefix = "Failed to execute 'close' on 'WebSocket'";
 
     if (code !== undefined) {
-      code = webidl.converters["unsigned short"](code, {
-        prefix,
+      code = webidl.converters["unsigned short"](code, prefix, "Argument 1", {
         clamp: true,
-        context: "Argument 1",
       });
     }
 
     if (reason !== undefined) {
-      reason = webidl.converters.USVString(reason, {
-        prefix,
-        context: "Argument 2",
-      });
+      reason = webidl.converters.USVString(reason, prefix, "Argument 2");
     }
 
     if (!this[_server]) {
@@ -401,7 +398,11 @@ class WebSocket extends EventTarget {
       this[_readyState] = CLOSING;
 
       PromisePrototypeCatch(
-        core.opAsync("op_ws_close", this[_rid], code, reason),
+        op_ws_close(
+          this[_rid],
+          code,
+          reason,
+        ),
         (err) => {
           this[_readyState] = CLOSED;
 
@@ -420,40 +421,62 @@ class WebSocket extends EventTarget {
   }
 
   async [_eventLoop]() {
+    const rid = this[_rid];
     while (this[_readyState] !== CLOSED) {
-      const { 0: kind, 1: value } = await core.opAsync2(
-        "op_ws_next_event",
-        this[_rid],
-      );
+      const kind = await op_ws_next_event(rid);
+      /* close the connection if read was cancelled, and we didn't get a close frame */
+      if (
+        (this[_readyState] == CLOSING) &&
+        kind <= 3 && this[_role] !== CLIENT
+      ) {
+        this[_readyState] = CLOSED;
+
+        const event = new CloseEvent("close");
+        this.dispatchEvent(event);
+        core.tryClose(rid);
+        break;
+      }
 
       switch (kind) {
         case 0: {
           /* string */
+          const data = op_ws_get_buffer_as_string(rid);
+          if (data === undefined) {
+            break;
+          }
+
           this[_serverHandleIdleTimeout]();
           const event = new MessageEvent("message", {
-            data: value,
+            data,
             origin: this[_url],
           });
-          this.dispatchEvent(event);
+          setIsTrusted(event, true);
+          dispatch(this, event);
           break;
         }
         case 1: {
           /* binary */
-          this[_serverHandleIdleTimeout]();
-          let data;
+          const d = op_ws_get_buffer(rid);
+          if (d == undefined) {
+            break;
+          }
 
+          this[_serverHandleIdleTimeout]();
+          // deno-lint-ignore prefer-primordials
+          const buffer = d.buffer;
+          let data;
           if (this.binaryType === "blob") {
-            data = new Blob([value]);
+            data = new Blob([buffer]);
           } else {
-            data = value;
+            data = buffer;
           }
 
           const event = new MessageEvent("message", {
             data,
             origin: this[_url],
-            [_skipInternalInit]: true,
           });
-          this.dispatchEvent(event);
+          setIsTrusted(event, true);
+          dispatch(this, event);
           break;
         }
         case 2: {
@@ -461,38 +484,34 @@ class WebSocket extends EventTarget {
           this[_serverHandleIdleTimeout]();
           break;
         }
-        case 5: {
+        case 3: {
           /* error */
           this[_readyState] = CLOSED;
 
           const errorEv = new ErrorEvent("error", {
-            message: value,
+            message: op_ws_get_error(rid),
           });
           this.dispatchEvent(errorEv);
 
           const closeEv = new CloseEvent("close");
           this.dispatchEvent(closeEv);
-          core.tryClose(this[_rid]);
-          break;
-        }
-        case 3: {
-          /* ping */
+          core.tryClose(rid);
           break;
         }
         default: {
           /* close */
           const code = kind;
+          const reason = code == 1005 ? "" : op_ws_get_error(rid);
           const prevState = this[_readyState];
           this[_readyState] = CLOSED;
           clearTimeout(this[_idleTimeoutTimeout]);
 
           if (prevState === OPEN) {
             try {
-              await core.opAsync(
-                "op_ws_close",
-                this[_rid],
+              await op_ws_close(
+                rid,
                 code,
-                value,
+                reason,
               );
             } catch {
               // ignore failures
@@ -502,13 +521,45 @@ class WebSocket extends EventTarget {
           const event = new CloseEvent("close", {
             wasClean: true,
             code: code,
-            reason: value,
+            reason,
           });
           this.dispatchEvent(event);
-          core.tryClose(this[_rid]);
+          core.tryClose(rid);
           break;
         }
       }
+    }
+  }
+
+  async [_queueSend](data) {
+    const queue = this[_sendQueue];
+
+    ArrayPrototypePush(queue, data);
+
+    if (queue.length > 1) {
+      // There is already a send in progress, so we just push to the queue
+      // and let that task handle sending of this data.
+      return;
+    }
+
+    while (queue.length > 0) {
+      const data = queue[0];
+      if (ArrayBufferIsView(data)) {
+        op_ws_send_binary(this[_rid], data);
+      } else if (isArrayBuffer(data)) {
+        op_ws_send_binary_ab(this[_rid], data);
+      } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
+        // deno-lint-ignore prefer-primordials
+        const ab = await data.slice().arrayBuffer();
+        op_ws_send_binary_ab(this[_rid], ab);
+      } else {
+        const string = String(data);
+        op_ws_send_text(
+          this[_rid],
+          string,
+        );
+      }
+      ArrayPrototypeShift(queue);
     }
   }
 
@@ -517,14 +568,15 @@ class WebSocket extends EventTarget {
       clearTimeout(this[_idleTimeoutTimeout]);
       this[_idleTimeoutTimeout] = setTimeout(async () => {
         if (this[_readyState] === OPEN) {
-          await core.opAsync("op_ws_send", this[_rid], {
-            kind: "ping",
-          });
+          await PromisePrototypeCatch(op_ws_send_ping(this[_rid]), () => {});
           this[_idleTimeoutTimeout] = setTimeout(async () => {
             if (this[_readyState] === OPEN) {
               this[_readyState] = CLOSING;
               const reason = "No response from ping frame.";
-              await core.opAsync("op_ws_close", this[_rid], 1001, reason);
+              await PromisePrototypeCatch(
+                op_ws_close(this[_rid], 1001, reason),
+                () => {},
+              );
               this[_readyState] = CLOSED;
 
               const errEvent = new ErrorEvent("error", {
@@ -550,17 +602,26 @@ class WebSocket extends EventTarget {
     }
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({
-        url: this.url,
-        readyState: this.readyState,
-        extensions: this.extensions,
-        protocol: this.protocol,
-        binaryType: this.binaryType,
-        bufferedAmount: this.bufferedAmount,
-      })
-    }`;
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(WebSocketPrototype, this),
+        keys: [
+          "url",
+          "readyState",
+          "extensions",
+          "protocol",
+          "binaryType",
+          "bufferedAmount",
+          "onmessage",
+          "onerror",
+          "onclose",
+          "onopen",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
@@ -584,8 +645,27 @@ defineEventHandler(WebSocket.prototype, "error");
 defineEventHandler(WebSocket.prototype, "close");
 defineEventHandler(WebSocket.prototype, "open");
 
-webidl.configurePrototype(WebSocket);
+webidl.configureInterface(WebSocket);
 const WebSocketPrototype = WebSocket.prototype;
+
+function createWebSocketBranded() {
+  const socket = webidl.createBranded(WebSocket);
+  socket[_rid] = undefined;
+  socket[_role] = undefined;
+  socket[_readyState] = CONNECTING;
+  socket[_extensions] = "";
+  socket[_protocol] = "";
+  socket[_url] = "";
+  // We use ArrayBuffer for server websockets for backwards compatibility
+  // and performance reasons.
+  //
+  // https://github.com/denoland/deno/issues/15340#issuecomment-1872353134
+  socket[_binaryType] = "arraybuffer";
+  socket[_idleTimeoutDuration] = 0;
+  socket[_idleTimeoutTimeout] = undefined;
+  socket[_sendQueue] = [];
+  return socket;
+}
 
 export {
   _eventLoop,
@@ -594,7 +674,10 @@ export {
   _protocol,
   _readyState,
   _rid,
+  _role,
   _server,
   _serverHandleIdleTimeout,
+  createWebSocketBranded,
+  SERVER,
   WebSocket,
 };

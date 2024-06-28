@@ -1,0 +1,54 @@
+{
+  "$id": "https://deno.land/x/deno/cli/schemas/kv-metadata-exchange-response.v1.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "Uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "DateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "EndpointInfo": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "consistency": {
+          "type": "string"
+        }
+      },
+      "required": ["url", "consistency"],
+      "additionalProperties": false
+    },
+    "DatabaseMetadata": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "databaseId": {
+          "$ref": "#/definitions/Uuid"
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/EndpointInfo"
+          }
+        },
+        "token": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "$ref": "#/definitions/DateTime"
+        }
+      },
+      "required": ["version", "databaseId", "endpoints", "token", "expiresAt"],
+      "additionalProperties": false
+    }
+  },
+  "$ref": "#/definitions/DatabaseMetadata"
+}

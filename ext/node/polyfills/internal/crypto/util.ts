@@ -1,8 +1,11 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import {
   ERR_INVALID_ARG_TYPE,
   hideStackFrames,
@@ -17,33 +20,51 @@ import {
   kKeyObject,
 } from "ext:deno_node/internal/crypto/constants.ts";
 
-// TODO(kt3k): Generate this list from `digestAlgorithms`
-// of std/crypto/_wasm/mod.ts
-const digestAlgorithms = [
-  "blake2b256",
-  "blake2b384",
-  "blake2b",
-  "blake2s",
-  "blake3",
-  "keccak-224",
-  "keccak-256",
-  "keccak-384",
-  "keccak-512",
-  "sha384",
-  "sha3-224",
-  "sha3-256",
-  "sha3-384",
-  "sha3-512",
-  "shake128",
-  "shake256",
-  "tiger",
-  "rmd160",
-  "sha224",
-  "sha256",
-  "sha512",
-  "md4",
-  "md5",
-  "sha1",
+export type EllipticCurve = {
+  name: string;
+  ephemeral: boolean;
+  privateKeySize: number;
+  publicKeySize: number;
+  publicKeySizeCompressed: number;
+  sharedSecretSize: number;
+};
+
+export const ellipticCurves: Array<EllipticCurve> = [
+  {
+    name: "secp256k1",
+    privateKeySize: 32,
+    publicKeySize: 65,
+    publicKeySizeCompressed: 33,
+    sharedSecretSize: 32,
+  }, // Weierstrass-class EC used by Bitcoin
+  {
+    name: "prime256v1",
+    privateKeySize: 32,
+    publicKeySize: 65,
+    publicKeySizeCompressed: 33,
+    sharedSecretSize: 32,
+  }, // NIST P-256 EC
+  {
+    name: "secp256r1",
+    privateKeySize: 32,
+    publicKeySize: 65,
+    publicKeySizeCompressed: 33,
+    sharedSecretSize: 32,
+  }, // NIST P-256 EC (same as above)
+  {
+    name: "secp384r1",
+    privateKeySize: 48,
+    publicKeySize: 97,
+    publicKeySizeCompressed: 49,
+    sharedSecretSize: 48,
+  }, // NIST P-384 EC
+  {
+    name: "secp224r1",
+    privateKeySize: 28,
+    publicKeySize: 57,
+    publicKeySizeCompressed: 29,
+    sharedSecretSize: 28,
+  }, // NIST P-224 EC
 ];
 
 // deno-fmt-ignore
@@ -66,6 +87,89 @@ const supportedCiphers = [
 
 export function getCiphers(): string[] {
   return supportedCiphers;
+}
+
+export function getCipherInfo(
+  nameOrNid: string | number,
+  options?: { keyLength?: number; ivLength?: number },
+) {
+  if (typeof nameOrNid !== "string" && typeof nameOrNid !== "number") {
+    throw new ERR_INVALID_ARG_TYPE(
+      "nameOrNid",
+      ["string", "number"],
+      nameOrNid,
+    );
+  }
+
+  if (typeof nameOrNid === "number") {
+    validateInt32(nameOrNid, "nameOrNid");
+  }
+
+  let keyLength, ivLength;
+
+  if (options !== undefined) {
+    validateObject(options, "options");
+
+    ({ keyLength, ivLength } = options);
+
+    if (keyLength !== undefined) {
+      validateInt32(keyLength, "options.keyLength");
+    }
+
+    if (ivLength !== undefined) {
+      validateInt32(ivLength, "options.ivLength");
+    }
+  }
+
+  // This API is heavily based on OpenSSL's EVP_get_cipherbyname(3) and
+  // EVP_get_cipherbynid(3) functions.
+  //
+  // TODO(@littledivy): write proper cipher info utility in Rust
+  // in future refactors
+  const cipher = supportedCiphers.find((c) => c === nameOrNid);
+  if (cipher === undefined) {
+    return undefined;
+  }
+
+  const match = cipher.match(/^(aes)-(\d+)-(\w+)$/);
+  if (match) {
+    const [, name, keyLength, mode] = match;
+    return {
+      name: `${name}-${keyLength}-${mode}`,
+      keyLength: parseInt(keyLength) / 8,
+      mode,
+      ivLength: 16,
+    };
+  }
+
+  if (cipher === "aes128") {
+    return {
+      name: "aes-128-cbc",
+      keyLength: 16,
+      mode: "cbc",
+      ivLength: 16,
+    };
+  }
+
+  if (cipher === "aes192") {
+    return {
+      name: "aes-192-cbc",
+      keyLength: 24,
+      mode: "cbc",
+      ivLength: 16,
+    };
+  }
+
+  if (cipher === "aes256") {
+    return {
+      name: "aes-256-cbc",
+      keyLength: 32,
+      mode: "cbc",
+      ivLength: 16,
+    };
+  }
+
+  return undefined;
 }
 
 let defaultEncoding = "buffer";
@@ -107,15 +211,9 @@ export const validateByteSource = hideStackFrames((val, name) => {
   );
 });
 
-/**
- * Returns an array of the names of the supported hash algorithms, such as 'sha1'.
- */
-export function getHashes(): readonly string[] {
-  return digestAlgorithms;
-}
-
+const curveNames = ellipticCurves.map((x) => x.name);
 export function getCurves(): readonly string[] {
-  notImplemented("crypto.getCurves");
+  return curveNames;
 }
 
 export interface SecureHeapUsage {
@@ -133,13 +231,15 @@ export function setEngine(_engine: string, _flags: typeof constants) {
   notImplemented("crypto.setEngine");
 }
 
-export { kHandle, kKeyObject };
+const kAesKeyLengths = [128, 192, 256];
+
+export { kAesKeyLengths, kHandle, kKeyObject };
 
 export default {
   getDefaultEncoding,
-  getHashes,
   setDefaultEncoding,
   getCiphers,
+  getCipherInfo,
   getCurves,
   secureHeapUsed,
   setEngine,
@@ -147,4 +247,5 @@ export default {
   toBuf,
   kHandle,
   kKeyObject,
+  kAesKeyLengths,
 };

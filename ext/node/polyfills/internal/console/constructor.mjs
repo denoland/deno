@@ -1,6 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { op_preview_entries } from "ext:core/ops";
+
 // Mock trace for now
 const trace = () => {};
 import {
@@ -14,20 +19,12 @@ import {
   validateInteger,
   validateObject,
 } from "ext:deno_node/internal/validators.mjs";
-const previewEntries = (iter, isKeyValue) => {
-  if (isKeyValue) {
-    const arr = [...iter];
-    if (Array.isArray(arr[0]) && arr[0].length === 2) {
-      return [[].concat(...arr), true];
-    }
-    return [arr, false];
-  } else {
-    return [...iter];
-  }
-};
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 const { isBuffer } = Buffer;
-import { formatWithOptions, inspect } from "ext:deno_node/internal/util/inspect.mjs";
+import {
+  formatWithOptions,
+  inspect,
+} from "ext:deno_node/internal/util/inspect.mjs";
 import {
   isMap,
   isMapIterator,
@@ -41,7 +38,10 @@ import {
   CHAR_LOWERCASE_N as kTraceInstant,
   CHAR_UPPERCASE_C as kTraceCount,
 } from "ext:deno_node/internal/constants.ts";
-import { clearScreenDown, cursorTo } from "ext:deno_node/internal/readline/callbacks.mjs";
+import {
+  clearScreenDown,
+  cursorTo,
+} from "ext:deno_node/internal/readline/callbacks.mjs";
 import cliTable from "ext:deno_node/internal/cli_table.ts";
 const kCounts = Symbol("counts");
 
@@ -466,7 +466,6 @@ const consoleMethods = {
 
   // https://console.spec.whatwg.org/#table
   table(tabularData, properties) {
-    console.log("tabularData", tabularData);
     if (properties !== undefined) {
       validateArray(properties, "properties");
     }
@@ -502,7 +501,7 @@ const consoleMethods = {
     let isKeyValue = false;
     let i = 0;
     if (mapIter) {
-      const res = previewEntries(tabularData, true);
+      const res = op_preview_entries(tabularData, true);
       tabularData = res[0];
       isKeyValue = res[1];
     }
@@ -537,7 +536,7 @@ const consoleMethods = {
 
     const setIter = isSetIterator(tabularData);
     if (setIter) {
-      tabularData = previewEntries(tabularData);
+      tabularData = op_preview_entries(tabularData, false);
     }
 
     const setlike = setIter || mapIter || isSet(tabularData);

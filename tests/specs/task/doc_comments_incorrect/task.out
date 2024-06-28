@@ -1,0 +1,6 @@
+Task not found: doesntexist
+Available tasks:
+- lint
+    // some docs
+    // on what this does
+    deno lint

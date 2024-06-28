@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::sync::Arc;
 
@@ -6,14 +6,14 @@ use async_trait::async_trait;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::Value;
+use deno_core::serde_json::json;
+use deno_core::unsync::spawn;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::ConfigurationItem;
 
 use crate::lsp::repl::get_repl_workspace_settings;
 
-use super::config::SpecifierSettings;
+use super::config::WorkspaceSettings;
 use super::config::SETTINGS_SECTION;
 use super::lsp_custom;
 use super::testing::lsp_custom as testing_lsp_custom;
@@ -24,13 +24,6 @@ pub enum TestingNotification {
   Module(testing_lsp_custom::TestModuleNotificationParams),
   DeleteModule(testing_lsp_custom::TestModuleDeleteNotificationParams),
   Progress(testing_lsp_custom::TestRunProgressParams),
-}
-
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-pub enum LspClientKind {
-  #[default]
-  CodeEditor,
-  Repl,
 }
 
 #[derive(Clone)]
@@ -51,14 +44,22 @@ impl Client {
     Self(Arc::new(ReplClient))
   }
 
-  pub fn kind(&self) -> LspClientKind {
-    self.0.kind()
-  }
-
   /// Gets additional methods that should only be called outside
   /// the LSP's lock to prevent deadlocking scenarios.
   pub fn when_outside_lsp_lock(&self) -> OutsideLockClient {
     OutsideLockClient(self.0.clone())
+  }
+
+  pub async fn publish_diagnostics(
+    &self,
+    uri: LspClientUrl,
+    diags: Vec<lsp::Diagnostic>,
+    version: Option<i32>,
+  ) {
+    self
+      .0
+      .publish_diagnostics(uri.into_url(), diags, version)
+      .await;
   }
 
   pub fn send_registry_state_notification(
@@ -67,16 +68,54 @@ impl Client {
   ) {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
-    tokio::task::spawn(async move {
+    spawn(async move {
       client.send_registry_state_notification(params).await;
+    });
+  }
+
+  /// This notification is sent to the client during internal testing
+  /// purposes only in order to let the test client know when the latest
+  /// diagnostics have been published.
+  pub fn send_diagnostic_batch_notification(
+    &self,
+    params: lsp_custom::DiagnosticBatchNotificationParams,
+  ) {
+    // do on a task in case the caller currently is in the lsp lock
+    let client = self.0.clone();
+    spawn(async move {
+      client.send_diagnostic_batch_notification(params).await;
     });
   }
 
   pub fn send_test_notification(&self, params: TestingNotification) {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
-    tokio::task::spawn(async move {
+    spawn(async move {
       client.send_test_notification(params).await;
+    });
+  }
+
+  pub fn send_did_change_deno_configuration_notification(
+    &self,
+    params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
+  ) {
+    // do on a task in case the caller currently is in the lsp lock
+    let client = self.0.clone();
+    spawn(async move {
+      client
+        .send_did_change_deno_configuration_notification(params)
+        .await;
+    });
+  }
+
+  pub fn send_did_upgrade_check_notification(
+    &self,
+    params: lsp_custom::DidUpgradeCheckNotificationParams,
+  ) {
+    // do on a task in case the caller currently is in the lsp lock
+    let client = self.0.clone();
+    spawn(async move {
+      client.send_did_upgrade_check_notification(params).await;
     });
   }
 
@@ -88,7 +127,7 @@ impl Client {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
     let message = message.to_string();
-    tokio::task::spawn(async move {
+    spawn(async move {
       client.show_message(message_type, message).await;
     });
   }
@@ -108,59 +147,16 @@ impl OutsideLockClient {
     self.0.register_capability(registrations).await
   }
 
-  pub async fn specifier_configurations(
+  pub async fn workspace_configuration(
     &self,
-    specifiers: Vec<LspClientUrl>,
-  ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError> {
-    self
-      .0
-      .specifier_configurations(
-        specifiers.into_iter().map(|s| s.into_url()).collect(),
-      )
-      .await
-  }
-
-  pub async fn specifier_configuration(
-    &self,
-    specifier: &LspClientUrl,
-  ) -> Result<SpecifierSettings, AnyError> {
-    let values = self
-      .0
-      .specifier_configurations(vec![specifier.as_url().clone()])
-      .await?;
-    if let Some(value) = values.into_iter().next() {
-      value.map_err(|err| {
-        anyhow!(
-          "Error converting specifier settings ({}): {}",
-          specifier,
-          err
-        )
-      })
-    } else {
-      bail!(
-        "Expected the client to return a configuration item for specifier: {}",
-        specifier
-      );
-    }
-  }
-
-  pub async fn workspace_configuration(&self) -> Result<Value, AnyError> {
-    self.0.workspace_configuration().await
-  }
-
-  pub async fn publish_diagnostics(
-    &self,
-    uri: lsp::Url,
-    diags: Vec<lsp::Diagnostic>,
-    version: Option<i32>,
-  ) {
-    self.0.publish_diagnostics(uri, diags, version).await;
+    scopes: Vec<Option<lsp::Url>>,
+  ) -> Result<Vec<WorkspaceSettings>, AnyError> {
+    self.0.workspace_configuration(scopes).await
   }
 }
 
 #[async_trait]
 trait ClientTrait: Send + Sync {
-  fn kind(&self) -> LspClientKind;
   async fn publish_diagnostics(
     &self,
     uri: lsp::Url,
@@ -171,12 +167,23 @@ trait ClientTrait: Send + Sync {
     &self,
     params: lsp_custom::RegistryStateNotificationParams,
   );
-  async fn send_test_notification(&self, params: TestingNotification);
-  async fn specifier_configurations(
+  async fn send_diagnostic_batch_notification(
     &self,
-    uris: Vec<lsp::Url>,
-  ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError>;
-  async fn workspace_configuration(&self) -> Result<Value, AnyError>;
+    params: lsp_custom::DiagnosticBatchNotificationParams,
+  );
+  async fn send_test_notification(&self, params: TestingNotification);
+  async fn send_did_change_deno_configuration_notification(
+    &self,
+    params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
+  );
+  async fn send_did_upgrade_check_notification(
+    &self,
+    params: lsp_custom::DidUpgradeCheckNotificationParams,
+  );
+  async fn workspace_configuration(
+    &self,
+    scopes: Vec<Option<lsp::Url>>,
+  ) -> Result<Vec<WorkspaceSettings>, AnyError>;
   async fn show_message(&self, message_type: lsp::MessageType, text: String);
   async fn register_capability(
     &self,
@@ -189,10 +196,6 @@ struct TowerClient(tower_lsp::Client);
 
 #[async_trait]
 impl ClientTrait for TowerClient {
-  fn kind(&self) -> LspClientKind {
-    LspClientKind::CodeEditor
-  }
-
   async fn publish_diagnostics(
     &self,
     uri: lsp::Url,
@@ -209,6 +212,16 @@ impl ClientTrait for TowerClient {
     self
       .0
       .send_notification::<lsp_custom::RegistryStateNotification>(params)
+      .await
+  }
+
+  async fn send_diagnostic_batch_notification(
+    &self,
+    params: lsp_custom::DiagnosticBatchNotificationParams,
+  ) {
+    self
+      .0
+      .send_notification::<lsp_custom::DiagnosticBatchNotification>(params)
       .await
   }
 
@@ -239,50 +252,72 @@ impl ClientTrait for TowerClient {
     }
   }
 
-  async fn specifier_configurations(
+  async fn send_did_change_deno_configuration_notification(
     &self,
-    uris: Vec<lsp::Url>,
-  ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError> {
+    params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
+  ) {
+    self
+      .0
+      .send_notification::<lsp_custom::DidChangeDenoConfigurationNotification>(
+        params,
+      )
+      .await
+  }
+
+  async fn send_did_upgrade_check_notification(
+    &self,
+    params: lsp_custom::DidUpgradeCheckNotificationParams,
+  ) {
+    self
+      .0
+      .send_notification::<lsp_custom::DidUpgradeCheckNotification>(params)
+      .await
+  }
+
+  async fn workspace_configuration(
+    &self,
+    scopes: Vec<Option<lsp::Url>>,
+  ) -> Result<Vec<WorkspaceSettings>, AnyError> {
     let config_response = self
       .0
       .configuration(
-        uris
-          .into_iter()
-          .map(|uri| ConfigurationItem {
-            scope_uri: Some(uri),
-            section: Some(SETTINGS_SECTION.to_string()),
+        scopes
+          .iter()
+          .flat_map(|scope_uri| {
+            vec![
+              ConfigurationItem {
+                scope_uri: scope_uri.clone(),
+                section: Some(SETTINGS_SECTION.to_string()),
+              },
+              ConfigurationItem {
+                scope_uri: scope_uri.clone(),
+                section: Some("javascript".to_string()),
+              },
+              ConfigurationItem {
+                scope_uri: scope_uri.clone(),
+                section: Some("typescript".to_string()),
+              },
+            ]
           })
           .collect(),
       )
-      .await?;
-
-    Ok(
-      config_response
-        .into_iter()
-        .map(|value| {
-          serde_json::from_value::<SpecifierSettings>(value).map_err(|err| {
-            anyhow!("Error converting specifier settings: {}", err)
-          })
-        })
-        .collect(),
-    )
-  }
-
-  async fn workspace_configuration(&self) -> Result<Value, AnyError> {
-    let config_response = self
-      .0
-      .configuration(vec![ConfigurationItem {
-        scope_uri: None,
-        section: Some(SETTINGS_SECTION.to_string()),
-      }])
       .await;
     match config_response {
-      Ok(value_vec) => match value_vec.get(0).cloned() {
-        Some(value) => Ok(value),
-        None => bail!("Missing response workspace configuration."),
-      },
+      Ok(configs) => {
+        let mut configs = configs.into_iter();
+        let mut result = Vec::with_capacity(scopes.len());
+        for _ in 0..scopes.len() {
+          let deno = json!(configs.next());
+          let javascript = json!(configs.next());
+          let typescript = json!(configs.next());
+          result.push(WorkspaceSettings::from_raw_settings(
+            deno, javascript, typescript,
+          ));
+        }
+        Ok(result)
+      }
       Err(err) => {
-        bail!("Error getting workspace configuration: {}", err)
+        bail!("Error getting workspace configurations: {}", err)
       }
     }
   }
@@ -312,10 +347,6 @@ struct ReplClient;
 
 #[async_trait]
 impl ClientTrait for ReplClient {
-  fn kind(&self) -> LspClientKind {
-    LspClientKind::Repl
-  }
-
   async fn publish_diagnostics(
     &self,
     _uri: lsp::Url,
@@ -330,27 +361,31 @@ impl ClientTrait for ReplClient {
   ) {
   }
 
-  async fn send_test_notification(&self, _params: TestingNotification) {}
-
-  async fn specifier_configurations(
+  async fn send_diagnostic_batch_notification(
     &self,
-    uris: Vec<lsp::Url>,
-  ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError> {
-    // all specifiers are enabled for the REPL
-    let settings = uris
-      .into_iter()
-      .map(|_| {
-        Ok(SpecifierSettings {
-          enable: true,
-          ..Default::default()
-        })
-      })
-      .collect();
-    Ok(settings)
+    _params: lsp_custom::DiagnosticBatchNotificationParams,
+  ) {
   }
 
-  async fn workspace_configuration(&self) -> Result<Value, AnyError> {
-    Ok(serde_json::to_value(get_repl_workspace_settings()).unwrap())
+  async fn send_test_notification(&self, _params: TestingNotification) {}
+
+  async fn send_did_change_deno_configuration_notification(
+    &self,
+    _params: lsp_custom::DidChangeDenoConfigurationNotificationParams,
+  ) {
+  }
+
+  async fn send_did_upgrade_check_notification(
+    &self,
+    _params: lsp_custom::DidUpgradeCheckNotificationParams,
+  ) {
+  }
+
+  async fn workspace_configuration(
+    &self,
+    scopes: Vec<Option<lsp::Url>>,
+  ) -> Result<Vec<WorkspaceSettings>, AnyError> {
+    Ok(vec![get_repl_workspace_settings(); scopes.len()])
   }
 
   async fn show_message(

@@ -1,5 +1,31 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // This file was vendored from std/testing/_diff.ts
+
+import { primordials } from "ext:core/mod.js";
+const {
+  ArrayFrom,
+  ArrayPrototypeFilter,
+  ArrayPrototypeForEach,
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
+  ArrayPrototypePop,
+  ArrayPrototypePush,
+  ArrayPrototypePushApply,
+  ArrayPrototypeReverse,
+  ArrayPrototypeShift,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSome,
+  ArrayPrototypeSplice,
+  ArrayPrototypeUnshift,
+  MathMin,
+  ObjectFreeze,
+  SafeArrayIterator,
+  SafeRegExp,
+  StringPrototypeReplace,
+  StringPrototypeSplit,
+  StringPrototypeTrim,
+  Uint32Array,
+} = primordials;
 
 import {
   bgGreen,
@@ -25,7 +51,7 @@ export enum DiffType {
 export interface DiffResult<T> {
   type: DiffType;
   value: T;
-  details?: Array<DiffResult<T>>;
+  details?: DiffResult<T>[];
 }
 
 const REMOVED = 1;
@@ -35,11 +61,11 @@ const ADDED = 3;
 function createCommon<T>(A: T[], B: T[], reverse?: boolean): T[] {
   const common = [];
   if (A.length === 0 || B.length === 0) return [];
-  for (let i = 0; i < Math.min(A.length, B.length); i += 1) {
+  for (let i = 0; i < MathMin(A.length, B.length); i += 1) {
     if (
       A[reverse ? A.length - i - 1 : i] === B[reverse ? B.length - i - 1 : i]
     ) {
-      common.push(A[reverse ? A.length - i - 1 : i]);
+      ArrayPrototypePush(common, A[reverse ? A.length - i - 1 : i]);
     } else {
       return common;
     }
@@ -52,44 +78,56 @@ function createCommon<T>(A: T[], B: T[], reverse?: boolean): T[] {
  * @param A Actual value
  * @param B Expected value
  */
-export function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
+export function diff<T>(A: T[], B: T[]): DiffResult<T>[] {
   const prefixCommon = createCommon(A, B);
-  const suffixCommon = createCommon(
-    A.slice(prefixCommon.length),
-    B.slice(prefixCommon.length),
+  const suffixCommon = ArrayPrototypeReverse(createCommon(
+    ArrayPrototypeSlice(A, prefixCommon.length),
+    ArrayPrototypeSlice(B, prefixCommon.length),
     true,
-  ).reverse();
+  ));
   A = suffixCommon.length
-    ? A.slice(prefixCommon.length, -suffixCommon.length)
-    : A.slice(prefixCommon.length);
+    ? ArrayPrototypeSlice(A, prefixCommon.length, -suffixCommon.length)
+    : ArrayPrototypeSlice(A, prefixCommon.length);
   B = suffixCommon.length
-    ? B.slice(prefixCommon.length, -suffixCommon.length)
-    : B.slice(prefixCommon.length);
+    ? ArrayPrototypeSlice(B, prefixCommon.length, -suffixCommon.length)
+    : ArrayPrototypeSlice(B, prefixCommon.length);
   const swapped = B.length > A.length;
-  [A, B] = swapped ? [B, A] : [A, B];
+  if (swapped) {
+    const temp = A;
+    A = B;
+    B = temp;
+  }
   const M = A.length;
   const N = B.length;
-  if (!M && !N && !suffixCommon.length && !prefixCommon.length) return [];
-  if (!N) {
+  if (
+    M === 0 && N === 0 && suffixCommon.length === 0 && prefixCommon.length === 0
+  ) return [];
+  if (N === 0) {
     return [
-      ...prefixCommon.map(
-        (c): DiffResult<typeof c> => ({ type: DiffType.common, value: c }),
+      ...new SafeArrayIterator(
+        ArrayPrototypeMap(
+          prefixCommon,
+          (c: T): DiffResult<typeof c> => ({ type: DiffType.common, value: c }),
+        ),
       ),
-      ...A.map(
-        (a): DiffResult<typeof a> => ({
+      ...new SafeArrayIterator(
+        ArrayPrototypeMap(A, (a: T): DiffResult<typeof a> => ({
           type: swapped ? DiffType.added : DiffType.removed,
           value: a,
-        }),
+        })),
       ),
-      ...suffixCommon.map(
-        (c): DiffResult<typeof c> => ({ type: DiffType.common, value: c }),
+      ...new SafeArrayIterator(
+        ArrayPrototypeMap(
+          suffixCommon,
+          (c: T): DiffResult<typeof c> => ({ type: DiffType.common, value: c }),
+        ),
       ),
     ];
   }
   const offset = N;
   const delta = M - N;
   const size = M + N + 1;
-  const fp: FarthestPoint[] = Array.from(
+  const fp: FarthestPoint[] = ArrayFrom(
     { length: size },
     () => ({ y: -1, id: -1 }),
   );
@@ -111,13 +149,13 @@ export function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
     B: T[],
     current: FarthestPoint,
     swapped: boolean,
-  ): Array<{
+  ): {
     type: DiffType;
     value: T;
-  }> {
+  }[] {
     const M = A.length;
     const N = B.length;
-    const result = [];
+    const result: DiffResult<T>[] = [];
     let a = M - 1;
     let b = N - 1;
     let j = routes[current.id];
@@ -126,19 +164,19 @@ export function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
       if (!j && !type) break;
       const prev = j;
       if (type === REMOVED) {
-        result.unshift({
+        ArrayPrototypeUnshift(result, {
           type: swapped ? DiffType.removed : DiffType.added,
           value: B[b],
         });
         b -= 1;
       } else if (type === ADDED) {
-        result.unshift({
+        ArrayPrototypeUnshift(result, {
           type: swapped ? DiffType.added : DiffType.removed,
           value: A[a],
         });
         a -= 1;
       } else {
-        result.unshift({ type: DiffType.common, value: A[a] });
+        ArrayPrototypeUnshift(result, { type: DiffType.common, value: A[a] });
         a -= 1;
         b -= 1;
       }
@@ -231,15 +269,39 @@ export function diff<T>(A: T[], B: T[]): Array<DiffResult<T>> {
     );
   }
   return [
-    ...prefixCommon.map(
-      (c): DiffResult<typeof c> => ({ type: DiffType.common, value: c }),
+    ...new SafeArrayIterator(
+      ArrayPrototypeMap(
+        prefixCommon,
+        (c: T): DiffResult<typeof c> => ({ type: DiffType.common, value: c }),
+      ),
     ),
-    ...backTrace(A, B, fp[delta + offset], swapped),
-    ...suffixCommon.map(
-      (c): DiffResult<typeof c> => ({ type: DiffType.common, value: c }),
+    ...new SafeArrayIterator(backTrace(A, B, fp[delta + offset], swapped)),
+    ...new SafeArrayIterator(
+      ArrayPrototypeMap(
+        suffixCommon,
+        (c: T): DiffResult<typeof c> => ({ type: DiffType.common, value: c }),
+      ),
     ),
   ];
 }
+
+const ESCAPE_PATTERN = new SafeRegExp(/([\b\f\t\v])/g);
+const ESCAPE_MAP = ObjectFreeze({
+  "\b": "\\b",
+  "\f": "\\f",
+  "\t": "\\t",
+  "\v": "\\v",
+});
+const LINE_BREAK_GLOBAL_PATTERN = new SafeRegExp(/\r\n|\r|\n/g);
+
+const LINE_BREAK_PATTERN = new SafeRegExp(/(\n|\r\n)/);
+const WHITESPACE_PATTERN = new SafeRegExp(/\s+/);
+const WHITESPACE_SYMBOL_PATTERN = new SafeRegExp(
+  /([^\S\r\n]+|[()[\]{}'"\r\n]|\b)/,
+);
+const LATIN_CHARACTER_PATTERN = new SafeRegExp(
+  /^[a-zA-Z\u{C0}-\u{FF}\u{D8}-\u{F6}\u{F8}-\u{2C6}\u{2C8}-\u{2D7}\u{2DE}-\u{2FF}\u{1E00}-\u{1EFF}]+$/u,
+);
 
 /**
  * Renders the differences between the actual and expected strings
@@ -251,44 +313,44 @@ export function diffstr(A: string, B: string) {
   function unescape(string: string): string {
     // unescape invisible characters.
     // ref: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String#escape_sequences
-    return string
-      .replaceAll("\b", "\\b")
-      .replaceAll("\f", "\\f")
-      .replaceAll("\t", "\\t")
-      .replaceAll("\v", "\\v")
-      .replaceAll( // does not remove line breaks
-        /\r\n|\r|\n/g,
-        (str) => str === "\r" ? "\\r" : str === "\n" ? "\\n\n" : "\\r\\n\r\n",
-      );
+    return StringPrototypeReplace(
+      StringPrototypeReplace(
+        string,
+        ESCAPE_PATTERN,
+        (c: string) => ESCAPE_MAP[c],
+      ),
+      LINE_BREAK_GLOBAL_PATTERN, // does not remove line breaks
+      (str: string) =>
+        str === "\r" ? "\\r" : str === "\n" ? "\\n\n" : "\\r\\n\r\n",
+    );
   }
 
   function tokenize(string: string, { wordDiff = false } = {}): string[] {
     if (wordDiff) {
       // Split string on whitespace symbols
-      const tokens = string.split(/([^\S\r\n]+|[()[\]{}'"\r\n]|\b)/);
-      // Extended Latin character set
-      const words =
-        /^[a-zA-Z\u{C0}-\u{FF}\u{D8}-\u{F6}\u{F8}-\u{2C6}\u{2C8}-\u{2D7}\u{2DE}-\u{2FF}\u{1E00}-\u{1EFF}]+$/u;
+      const tokens = StringPrototypeSplit(string, WHITESPACE_SYMBOL_PATTERN);
 
       // Join boundary splits that we do not consider to be boundaries and merge empty strings surrounded by word chars
       for (let i = 0; i < tokens.length - 1; i++) {
         if (
-          !tokens[i + 1] && tokens[i + 2] && words.test(tokens[i]) &&
-          words.test(tokens[i + 2])
+          !tokens[i + 1] && tokens[i + 2] &&
+          LATIN_CHARACTER_PATTERN.test(tokens[i]) &&
+          LATIN_CHARACTER_PATTERN.test(tokens[i + 2])
         ) {
           tokens[i] += tokens[i + 2];
-          tokens.splice(i + 1, 2);
+          ArrayPrototypeSplice(tokens, i + 1, 2);
           i--;
         }
       }
-      return tokens.filter((token) => token);
+      return ArrayPrototypeFilter(tokens, (token: string) => token);
     } else {
       // Split string on new lines symbols
-      const tokens = [], lines = string.split(/(\n|\r\n)/);
+      const tokens: string[] = [],
+        lines: string[] = StringPrototypeSplit(string, LINE_BREAK_PATTERN);
 
       // Ignore final empty token when text ends with a newline
-      if (!lines[lines.length - 1]) {
-        lines.pop();
+      if (lines[lines.length - 1] === "") {
+        ArrayPrototypePop(lines);
       }
 
       // Merge the content and line separators into single tokens
@@ -296,7 +358,7 @@ export function diffstr(A: string, B: string) {
         if (i % 2) {
           tokens[tokens.length - 1] += lines[i];
         } else {
-          tokens.push(lines[i]);
+          ArrayPrototypePush(tokens, lines[i]);
         }
       }
       return tokens;
@@ -307,22 +369,28 @@ export function diffstr(A: string, B: string) {
   // and merge "space-diff" if surrounded by word-diff for cleaner displays
   function createDetails(
     line: DiffResult<string>,
-    tokens: Array<DiffResult<string>>,
+    tokens: DiffResult<string>[],
   ) {
-    return tokens.filter(({ type }) =>
-      type === line.type || type === DiffType.common
-    ).map((result, i, t) => {
-      if (
-        (result.type === DiffType.common) && (t[i - 1]) &&
-        (t[i - 1]?.type === t[i + 1]?.type) && /\s+/.test(result.value)
-      ) {
-        return {
-          ...result,
-          type: t[i - 1].type,
-        };
-      }
-      return result;
-    });
+    return ArrayPrototypeMap(
+      ArrayPrototypeFilter(
+        tokens,
+        ({ type }: DiffResult<string>) =>
+          type === line.type || type === DiffType.common,
+      ),
+      (result: DiffResult<string>, i: number, t: DiffResult<string>[]) => {
+        if (
+          (result.type === DiffType.common) && (t[i - 1]) &&
+          (t[i - 1]?.type === t[i + 1]?.type) &&
+          WHITESPACE_PATTERN.test(result.value)
+        ) {
+          return {
+            ...result,
+            type: t[i - 1].type,
+          };
+        }
+        return result;
+      },
+    );
   }
 
   // Compute multi-line diff
@@ -331,32 +399,36 @@ export function diffstr(A: string, B: string) {
     tokenize(`${unescape(B)}\n`),
   );
 
-  const added = [], removed = [];
-  for (const result of diffResult) {
+  const added: DiffResult<string>[] = [], removed: DiffResult<string>[] = [];
+  for (let i = 0; i < diffResult.length; ++i) {
+    const result = diffResult[i];
     if (result.type === DiffType.added) {
-      added.push(result);
+      ArrayPrototypePush(added, result);
     }
     if (result.type === DiffType.removed) {
-      removed.push(result);
+      ArrayPrototypePush(removed, result);
     }
   }
 
   // Compute word-diff
   const aLines = added.length < removed.length ? added : removed;
   const bLines = aLines === removed ? added : removed;
-  for (const a of aLines) {
-    let tokens = [] as Array<DiffResult<string>>,
+  for (let i = 0; i < aLines.length; ++i) {
+    const a = aLines[i];
+    let tokens = [] as DiffResult<string>[],
       b: undefined | DiffResult<string>;
     // Search another diff line with at least one common token
-    while (bLines.length) {
-      b = bLines.shift();
+    while (bLines.length !== 0) {
+      b = ArrayPrototypeShift(bLines);
       tokens = diff(
         tokenize(a.value, { wordDiff: true }),
         tokenize(b?.value ?? "", { wordDiff: true }),
       );
       if (
-        tokens.some(({ type, value }) =>
-          type === DiffType.common && value.trim().length
+        ArrayPrototypeSome(
+          tokens,
+          ({ type, value }) =>
+            type === DiffType.common && StringPrototypeTrim(value).length,
         )
       ) {
         break;
@@ -415,26 +487,35 @@ export function buildMessage(
   { stringDiff = false } = {},
 ): string[] {
   const messages: string[] = [], diffMessages: string[] = [];
-  messages.push("");
-  messages.push("");
-  messages.push(
+  ArrayPrototypePush(messages, "");
+  ArrayPrototypePush(messages, "");
+  ArrayPrototypePush(
+    messages,
     `    ${gray(bold("[Diff]"))} ${red(bold("Actual"))} / ${
       green(bold("Expected"))
     }`,
   );
-  messages.push("");
-  messages.push("");
-  diffResult.forEach((result: DiffResult<string>) => {
+  ArrayPrototypePush(messages, "");
+  ArrayPrototypePush(messages, "");
+  ArrayPrototypeForEach(diffResult, (result: DiffResult<string>) => {
     const c = createColor(result.type);
-    const line = result.details?.map((detail) =>
-      detail.type !== DiffType.common
-        ? createColor(detail.type, { background: true })(detail.value)
-        : detail.value
-    ).join("") ?? result.value;
-    diffMessages.push(c(`${createSign(result.type)}${line}`));
+
+    const line = result.details != null
+      ? ArrayPrototypeJoin(
+        ArrayPrototypeMap(result.details, (detail) =>
+          detail.type !== DiffType.common
+            ? createColor(detail.type, { background: true })(detail.value)
+            : detail.value),
+        "",
+      )
+      : result.value;
+    ArrayPrototypePush(diffMessages, c(`${createSign(result.type)}${line}`));
   });
-  messages.push(...(stringDiff ? [diffMessages.join("")] : diffMessages));
-  messages.push("");
+  ArrayPrototypePushApply(
+    messages,
+    stringDiff ? [ArrayPrototypeJoin(diffMessages, "")] : diffMessages,
+  );
+  ArrayPrototypePush(messages, "");
 
   return messages;
 }

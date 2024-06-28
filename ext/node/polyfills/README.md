@@ -86,7 +86,7 @@ are stable:
 modules. It also sets supported globals.
 
 ```ts
-import { createRequire } from "https://deno.land/std@$STD_VERSION/node/module.ts";
+import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 // Loads native module polyfill.
@@ -99,94 +99,10 @@ const leftPad = require("left-pad");
 
 ## Contributing
 
-### Setting up the test runner
+### Setting up the test runner and running tests
 
-This library contains automated tests pulled directly from the Node.js repo in
-order ensure compatibility.
-
-Setting up the test runner is as simple as running the `node/_tools/setup.ts`
-file, this will pull the configured tests in and then add them to the test
-workflow.
-
-```zsh
-$ deno task node:setup
-```
-
-You can additionally pass the `-y`/`-n` flag to use test cache or generating
-tests from scratch instead of being prompted at the moment of running it.
-
-```zsh
-# Will use downloaded tests instead of prompting user
-$ deno run --allow-read --allow-net --allow-write node/_tools/setup.ts -y
-# Will not prompt but will download and extract the tests directly
-$ deno run --allow-read --allow-net --allow-write node/_tools/setup.ts -n
-```
-
-To run the tests you have set up, do the following:
-
-```zsh
-$ deno test --allow-read --allow-run node/_tools/test.ts
-```
-
-If you want to run specific Node.js test files, you can use the following
-command
-
-```shellsession
-$ deno test -A node/_tools/test.ts -- <pattern-to-match>
-```
-
-For example, if you want to run only
-`node/_tools/test/parallel/test-event-emitter-check-listener-leaks.js`, you can
-use:
-
-```shellsession
-$ deno test -A node/_tools/test.ts -- test-event-emitter-check-listener-leaks.js
-```
-
-If you want to run all test files which contains `event-emitter` in filename,
-then you can use:
-
-```shellsession
-$ deno test -A node/_tools/test.ts -- event-emitter
-```
-
-The test should be passing with the latest deno, so if the test fails, try the
-following:
-
-- `$ deno upgrade`
-- `$ git submodule update --init`
-- Use
-  [`--unstable` flag](https://deno.land/manual@v1.15.3/runtime/stability#standard-modules)
-
-To enable new tests, simply add a new entry inside `node/_tools/config.json`
-under the `tests` property. The structure this entries must have has to resemble
-a path inside `https://github.com/nodejs/node/tree/main/test`.
-
-Adding a new entry under the `ignore` option will indicate the test runner that
-it should not regenerate that file from scratch the next time the setup is run,
-this is specially useful to keep track of files that have been manually edited
-to pass certain tests. However, avoid doing such manual changes to the test
-files, since that may cover up inconsistencies between the node library and
-actual node behavior.
-
-### Working with child processes ? Use `DENO_NODE_COMPAT_URL`
-
-When working with `child_process` modules, you will have to run tests pulled
-from Node.js. These tests usually spawn deno child processes via the use of
-`process.execPath`. The `deno` executable will use its own embedded version of
-std modules, then you may get the impression your code is not really working as
-it should.
-
-To prevent this, set `DENO_NODE_COMPAT_URL` with the absolute path to your
-`deno_std` repo, ending with a trailing slash:
-
-```
-export DENO_NODE_COMPAT_URL=$PWD/
-# or
-export DENO_NODE_COMPAT_URL=file:///path/to/deno_std/dir/
-```
-
-Then, `deno` will use your local copy of `deno_std` instead of latest version.
+See
+[tests/node_compat/runner/README.md](../../../tests/node_compat/runner/README.md).
 
 ### Best practices
 
@@ -245,4 +161,4 @@ It's not as clean, but prevents the callback being called twice.
 
 Node compatibility can be measured by how many native Node tests pass. If you'd
 like to know what you can work on, check out the list of Node tests remaining
-[here](_tools/TODO.md).
+[here](../../../tests/node_compat/runner/TODO.md).

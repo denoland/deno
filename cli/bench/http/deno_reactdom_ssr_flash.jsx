@@ -18,6 +18,6 @@ const headers = {
   },
 };
 
-serve({ hostname, port }, async () => {
+serve({ hostname, port: Number(port) }, async () => {
   return new Response(await renderToReadableStream(<App />), headers);
 });

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 const addr = Deno.args[0] || "127.0.0.1:4500";
 const [hostname, port] = addr.split(":");
@@ -11,4 +11,4 @@ function handler() {
   return new Response(file.readable);
 }
 
-serve(handler, { hostname, port: Number(port) });
+serve({ hostname, port: Number(port) }, handler);

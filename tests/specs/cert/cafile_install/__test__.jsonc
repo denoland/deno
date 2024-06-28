@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": [
+      "install",
+      "--cert",
+      "RootCA.pem",
+      "-n",
+      "echo_test",
+      "--root",
+      "$PWD",
+      "https://localhost:5545/echo.ts"
+    ],
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./bin/echo_test.cmd",
+    "flaky": true,
+    "args": ["foo"],
+    "output": "[WILDCARD]foo"
+  }, {
+    "if": "unix",
+    "commandName": "./bin/echo_test",
+    "flaky": true,
+    "args": ["foo"],
+    "output": "[WILDCARD]foo"
+  }]
+}

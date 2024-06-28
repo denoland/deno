@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { $, createOctoKit, getGitHubRepository } from "./deps.ts";
 
@@ -34,10 +34,9 @@ $.log(`Opened PR at ${openedPr.data.url}`);
 function getPrBody() {
   let text = `Bumped versions for ${cliCrate.version}\n\n` +
     `Please ensure:\n` +
-    `- [ ] Target branch is correct\n` +
+    `- [ ] Target branch is correct (\`vX.XX\` if a patch release, \`main\` if minor)\n` +
     `- [ ] Crate versions are bumped correctly\n` +
-    `- [ ] deno_std version is incremented in the code (see \`cli/deno_std.rs\`)\n` +
-    `- [ ] Releases.md is updated correctly\n\n` +
+    `- [ ] Releases.md is updated correctly (think relevancy and remove reverts)\n\n` +
     `To make edits to this PR:\n` +
     "```shell\n" +
     `git fetch upstream ${newBranchName} && git checkout -b ${newBranchName} upstream/${newBranchName}\n` +

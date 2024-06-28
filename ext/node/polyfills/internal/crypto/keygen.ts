@@ -1,19 +1,109 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file no-explicit-any prefer-primordials
+
 import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import { kAesKeyLengths } from "ext:deno_node/internal/crypto/util.ts";
+import {
+  PrivateKeyObject,
+  PublicKeyObject,
+  SecretKeyObject,
+  setOwnedKey,
+} from "ext:deno_node/internal/crypto/keys.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import {
+  ERR_INCOMPATIBLE_OPTION_PAIR,
+  ERR_INVALID_ARG_VALUE,
+  ERR_MISSING_OPTION,
+} from "ext:deno_node/internal/errors.ts";
+import {
+  validateBuffer,
+  validateFunction,
+  validateInt32,
+  validateInteger,
+  validateObject,
+  validateOneOf,
+  validateString,
+  validateUint32,
+} from "ext:deno_node/internal/validators.mjs";
+import { Buffer } from "node:buffer";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 
-export function generateKey(
-  _type: "hmac" | "aes",
-  _options: {
+import {
+  op_node_dh_generate,
+  op_node_dh_generate_async,
+  op_node_dh_generate_group,
+  op_node_dh_generate_group_async,
+  op_node_dsa_generate,
+  op_node_dsa_generate_async,
+  op_node_ec_generate,
+  op_node_ec_generate_async,
+  op_node_ed25519_generate,
+  op_node_ed25519_generate_async,
+  op_node_generate_rsa,
+  op_node_generate_rsa_async,
+  op_node_generate_secret,
+  op_node_generate_secret_async,
+  op_node_x25519_generate,
+  op_node_x25519_generate_async,
+} from "ext:core/ops";
+
+function validateGenerateKey(
+  type: "hmac" | "aes",
+  options: { length: number },
+) {
+  validateString(type, "type");
+  validateObject(options, "options");
+  const { length } = options;
+  switch (type) {
+    case "hmac":
+      validateInteger(length, "options.length", 8, 2 ** 31 - 1);
+      break;
+    case "aes":
+      validateOneOf(length, "options.length", kAesKeyLengths);
+      break;
+    default:
+      throw new ERR_INVALID_ARG_VALUE(
+        "type",
+        type,
+        "must be a supported key type",
+      );
+  }
+}
+
+export function generateKeySync(
+  type: "hmac" | "aes",
+  options: {
     length: number;
   },
-  _callback: (err: Error | null, key: KeyObject) => void,
+): KeyObject {
+  validateGenerateKey(type, options);
+  const { length } = options;
+
+  const key = new Uint8Array(Math.floor(length / 8));
+  op_node_generate_secret(key);
+
+  return new SecretKeyObject(setOwnedKey(key));
+}
+
+export function generateKey(
+  type: "hmac" | "aes",
+  options: {
+    length: number;
+  },
+  callback: (err: Error | null, key: KeyObject) => void,
 ) {
-  notImplemented("crypto.generateKey");
+  validateGenerateKey(type, options);
+  validateFunction(callback, "callback");
+  const { length } = options;
+
+  op_node_generate_secret_async(Math.floor(length / 8)).then(
+    (key) => {
+      callback(null, new SecretKeyObject(setOwnedKey(key)));
+    },
+  );
 }
 
 export interface BasePrivateKeyEncodingOptions<T extends KeyFormat> {
@@ -467,17 +557,34 @@ export function generateKeyPair(
   ) => void,
 ): void;
 export function generateKeyPair(
-  _type: KeyType,
-  _options: unknown,
-  _callback: (
+  type: KeyType,
+  options: unknown,
+  callback: (
     err: Error | null,
-    // deno-lint-ignore no-explicit-any
     publicKey: any,
-    // deno-lint-ignore no-explicit-any
     privateKey: any,
   ) => void,
 ) {
-  notImplemented("crypto.generateKeyPair");
+  createJob(kAsync, type, options).then(([privateKey, publicKey]) => {
+    privateKey = new PrivateKeyObject(setOwnedKey(privateKey), { type });
+    publicKey = new PublicKeyObject(setOwnedKey(publicKey), { type });
+
+    if (typeof options === "object" && options !== null) {
+      const { publicKeyEncoding, privateKeyEncoding } = options as any;
+
+      if (publicKeyEncoding) {
+        publicKey = publicKey.export(publicKeyEncoding);
+      }
+
+      if (privateKeyEncoding) {
+        privateKey = privateKey.export(privateKeyEncoding);
+      }
+    }
+
+    callback(null, publicKey, privateKey);
+  }).catch((err) => {
+    callback(err, null, null);
+  });
 }
 
 export interface KeyPairKeyObjectResult {
@@ -654,21 +761,237 @@ export function generateKeyPairSync(
   options?: X448KeyPairKeyObjectOptions,
 ): KeyPairKeyObjectResult;
 export function generateKeyPairSync(
-  _type: KeyType,
-  _options: unknown,
+  type: KeyType,
+  options: unknown,
 ):
   | KeyPairKeyObjectResult
   | KeyPairSyncResult<string | Buffer, string | Buffer> {
-  notImplemented("crypto.generateKeyPairSync");
+  let [privateKey, publicKey] = createJob(kSync, type, options);
+
+  privateKey = new PrivateKeyObject(setOwnedKey(privateKey), { type });
+  publicKey = new PublicKeyObject(setOwnedKey(publicKey), { type });
+
+  if (typeof options === "object" && options !== null) {
+    const { publicKeyEncoding, privateKeyEncoding } = options as any;
+
+    if (publicKeyEncoding) {
+      publicKey = publicKey.export(publicKeyEncoding);
+    }
+
+    if (privateKeyEncoding) {
+      privateKey = privateKey.export(privateKeyEncoding);
+    }
+  }
+
+  return { publicKey, privateKey };
 }
 
-export function generateKeySync(
-  _type: "hmac" | "aes",
-  _options: {
-    length: number;
-  },
-): KeyObject {
-  notImplemented("crypto.generateKeySync");
+const kSync = 0;
+const kAsync = 1;
+
+function createJob(mode, type, options) {
+  validateString(type, "type");
+
+  if (options !== undefined) {
+    validateObject(options, "options");
+  }
+
+  switch (type) {
+    case "rsa":
+    case "rsa-pss": {
+      validateObject(options, "options");
+      const { modulusLength } = options;
+      validateUint32(modulusLength, "options.modulusLength");
+
+      let { publicExponent } = options;
+      if (publicExponent == null) {
+        publicExponent = 0x10001;
+      } else {
+        validateUint32(publicExponent, "options.publicExponent");
+      }
+
+      if (type === "rsa") {
+        if (mode === kSync) {
+          return op_node_generate_rsa(
+            modulusLength,
+            publicExponent,
+          );
+        } else {
+          return op_node_generate_rsa_async(
+            modulusLength,
+            publicExponent,
+          );
+        }
+      }
+
+      const {
+        hash,
+        mgf1Hash,
+        hashAlgorithm,
+        mgf1HashAlgorithm,
+        saltLength,
+      } = options;
+
+      if (saltLength !== undefined) {
+        validateInt32(saltLength, "options.saltLength", 0);
+      }
+      if (hashAlgorithm !== undefined) {
+        validateString(hashAlgorithm, "options.hashAlgorithm");
+      }
+      if (mgf1HashAlgorithm !== undefined) {
+        validateString(mgf1HashAlgorithm, "options.mgf1HashAlgorithm");
+      }
+      if (hash !== undefined) {
+        process.emitWarning(
+          '"options.hash" is deprecated, ' +
+            'use "options.hashAlgorithm" instead.',
+          "DeprecationWarning",
+          "DEP0154",
+        );
+        validateString(hash, "options.hash");
+        if (hashAlgorithm && hash !== hashAlgorithm) {
+          throw new ERR_INVALID_ARG_VALUE("options.hash", hash);
+        }
+      }
+      if (mgf1Hash !== undefined) {
+        process.emitWarning(
+          '"options.mgf1Hash" is deprecated, ' +
+            'use "options.mgf1HashAlgorithm" instead.',
+          "DeprecationWarning",
+          "DEP0154",
+        );
+        validateString(mgf1Hash, "options.mgf1Hash");
+        if (mgf1HashAlgorithm && mgf1Hash !== mgf1HashAlgorithm) {
+          throw new ERR_INVALID_ARG_VALUE("options.mgf1Hash", mgf1Hash);
+        }
+      }
+
+      if (mode === kSync) {
+        return op_node_generate_rsa(
+          modulusLength,
+          publicExponent,
+        );
+      } else {
+        return op_node_generate_rsa_async(
+          modulusLength,
+          publicExponent,
+        );
+      }
+    }
+    case "dsa": {
+      validateObject(options, "options");
+      const { modulusLength } = options;
+      validateUint32(modulusLength, "options.modulusLength");
+
+      let { divisorLength } = options;
+      if (divisorLength == null) {
+        divisorLength = 256;
+      } else {
+        validateInt32(divisorLength, "options.divisorLength", 0);
+      }
+
+      if (mode === kSync) {
+        return op_node_dsa_generate(modulusLength, divisorLength);
+      }
+      return op_node_dsa_generate_async(
+        modulusLength,
+        divisorLength,
+      );
+    }
+    case "ec": {
+      validateObject(options, "options");
+      const { namedCurve } = options;
+      validateString(namedCurve, "options.namedCurve");
+      const { paramEncoding } = options;
+      if (paramEncoding == null || paramEncoding === "named") {
+        // pass.
+      } else if (paramEncoding === "explicit") {
+        // TODO(@littledivy): Explicit param encoding is very rarely used, and not supported by the ring crate.
+        throw new TypeError("Explicit encoding is not supported");
+      } else {
+        throw new ERR_INVALID_ARG_VALUE("options.paramEncoding", paramEncoding);
+      }
+
+      if (mode === kSync) {
+        return op_node_ec_generate(namedCurve);
+      } else {
+        return op_node_ec_generate_async(namedCurve);
+      }
+    }
+    case "ed25519": {
+      if (mode === kSync) {
+        return op_node_ed25519_generate();
+      }
+      return op_node_ed25519_generate_async();
+    }
+    case "x25519": {
+      if (mode === kSync) {
+        return op_node_x25519_generate();
+      }
+      return op_node_x25519_generate_async();
+    }
+    case "ed448":
+    case "x448": {
+      notImplemented(type);
+      break;
+    }
+    case "dh": {
+      validateObject(options, "options");
+      const { group, primeLength, prime, generator } = options;
+      if (group != null) {
+        if (prime != null) {
+          throw new ERR_INCOMPATIBLE_OPTION_PAIR("group", "prime");
+        }
+        if (primeLength != null) {
+          throw new ERR_INCOMPATIBLE_OPTION_PAIR("group", "primeLength");
+        }
+        if (generator != null) {
+          throw new ERR_INCOMPATIBLE_OPTION_PAIR("group", "generator");
+        }
+
+        validateString(group, "options.group");
+
+        if (mode === kSync) {
+          return op_node_dh_generate_group(group);
+        } else {
+          return op_node_dh_generate_group_async(group);
+        }
+      }
+
+      if (prime != null) {
+        if (primeLength != null) {
+          throw new ERR_INCOMPATIBLE_OPTION_PAIR("prime", "primeLength");
+        }
+
+        validateBuffer(prime, "options.prime");
+      } else if (primeLength != null) {
+        validateInt32(primeLength, "options.primeLength", 0);
+      } else {
+        throw new ERR_MISSING_OPTION(
+          "At least one of the group, prime, or primeLength options",
+        );
+      }
+
+      if (generator != null) {
+        validateInt32(generator, "options.generator", 0);
+      }
+
+      const g = generator == null ? 2 : generator;
+
+      if (mode === kSync) {
+        return op_node_dh_generate(prime, primeLength ?? 0, g);
+      } else {
+        return op_node_dh_generate_async(
+          prime,
+          primeLength ?? 0,
+          g,
+        );
+      }
+    }
+    default:
+      // Fall through
+  }
+  throw new ERR_INVALID_ARG_VALUE("type", type, "must be a supported key type");
 }
 
 export default {

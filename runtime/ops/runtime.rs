@@ -1,24 +1,22 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_permissions::PermissionsContainer;
 
 deno_core::extension!(
   deno_runtime,
-  ops = [op_main_module],
+  ops = [op_main_module, op_ppid],
   options = { main_module: ModuleSpecifier },
   state = |state, options| {
     state.put::<ModuleSpecifier>(options.main_module);
   },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
-#[op]
+#[op2]
+#[string]
 fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
   let main_url = state.borrow::<ModuleSpecifier>();
   let main_path = main_url.to_string();
@@ -31,7 +29,11 @@ fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
   Ok(main_path)
 }
 
-pub fn ppid() -> i64 {
+/// This is an op instead of being done at initialization time because
+/// it's expensive to retrieve the ppid on Windows.
+#[op2(fast)]
+#[number]
+pub fn op_ppid() -> i64 {
   #[cfg(windows)]
   {
     // Adopted from rustup:

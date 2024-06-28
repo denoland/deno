@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "bench",
+  "output": "lib.bench.out"
+}

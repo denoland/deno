@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -9,9 +9,9 @@
  * session or local storage. It allows, for example, the addition, modification,
  * or deletion of stored data items.
  *
- * @category Web Storage API
+ * @category Storage
  */
-interface Storage {
+declare interface Storage {
   /**
    * Returns the number of key/value pairs currently present in the list associated with the object.
    */
@@ -41,8 +41,8 @@ interface Storage {
   [name: string]: any;
 }
 
-/** @category Web Storage API */
+/** @category Storage */
 declare var Storage: {
-  prototype: Storage;
-  new (): Storage;
+  readonly prototype: Storage;
+  new (): never;
 };

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -7,21 +7,22 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../web/lib.deno_web.d.ts" />
 
-const primordials = globalThis.__bootstrap.primordials;
+import { primordials } from "ext:core/mod.js";
 const {
-  ArrayPrototypeSlice,
-  Error,
   ErrorPrototype,
+  ErrorCaptureStackTrace,
   ObjectDefineProperty,
   ObjectCreate,
   ObjectEntries,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   Symbol,
   SymbolFor,
 } = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 const _name = Symbol("name");
 const _message = Symbol("message");
@@ -94,14 +95,16 @@ class DOMException {
 
   // https://webidl.spec.whatwg.org/#dom-domexception-domexception
   constructor(message = "", name = "Error") {
-    message = webidl.converters.DOMString(message, {
-      prefix: "Failed to construct 'DOMException'",
-      context: "Argument 1",
-    });
-    name = webidl.converters.DOMString(name, {
-      prefix: "Failed to construct 'DOMException'",
-      context: "Argument 2",
-    });
+    message = webidl.converters.DOMString(
+      message,
+      "Failed to construct 'DOMException'",
+      "Argument 1",
+    );
+    name = webidl.converters.DOMString(
+      name,
+      "Failed to construct 'DOMException'",
+      "Argument 2",
+    );
     const code = nameToCodeMapping[name] ?? 0;
 
     this[_message] = message;
@@ -109,21 +112,7 @@ class DOMException {
     this[_code] = code;
     this[webidl.brand] = webidl.brand;
 
-    const error = new Error(message);
-    error.name = "DOMException";
-    ObjectDefineProperty(this, "stack", {
-      value: error.stack,
-      writable: true,
-      configurable: true,
-    });
-
-    // `DOMException` isn't a native error, so `Error.prepareStackTrace()` is
-    // not called when accessing `.stack`, meaning our structured stack trace
-    // hack doesn't apply. This patches it in.
-    ObjectDefineProperty(this, "__callSiteEvals", {
-      value: ArrayPrototypeSlice(error.__callSiteEvals, 1),
-      configurable: true,
-    });
+    ErrorCaptureStackTrace(this, DOMException);
   }
 
   get message() {
@@ -141,26 +130,31 @@ class DOMException {
     return this[_code];
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    if (ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this)) {
-      return `DOMException: ${this[_message]}`;
-    } else {
-      return inspect(createFilteredInspectProxy({
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    if (ObjectHasOwn(this, "stack")) {
+      const stack = this.stack;
+      if (typeof stack === "string") {
+        return stack;
+      }
+    }
+    return inspect(
+      createFilteredInspectProxy({
         object: this,
-        evaluate: false,
+        evaluate: ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this),
         keys: [
           "message",
           "name",
           "code",
         ],
-      }));
-    }
+      }),
+      inspectOptions,
+    );
   }
 }
 
 ObjectSetPrototypeOf(DOMException.prototype, ErrorPrototype);
 
-webidl.configurePrototype(DOMException);
+webidl.configureInterface(DOMException);
 const DOMExceptionPrototype = DOMException.prototype;
 
 const entries = ObjectEntries({
@@ -197,4 +191,4 @@ for (let i = 0; i < entries.length; ++i) {
   ObjectDefineProperty(DOMException.prototype, key, desc);
 }
 
-export default DOMException;
+export { DOMException, DOMExceptionPrototype };

@@ -3,7 +3,7 @@
 // deno-lint-ignore-file
 
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
-import stream from "ext:deno_node/stream.ts";
+import stream from "node:stream";
 
 function LazyTransform(options) {
   this._options = options;

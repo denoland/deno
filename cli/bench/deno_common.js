@@ -1,41 +1,14 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // v8 builtin that's close to the upper bound non-NOPs
 Deno.bench("date_now", { n: 5e5 }, () => {
   Date.now();
 });
 
-// Fast API calls
-{
-  // deno-lint-ignore camelcase
-  const { op_add } = Deno[Deno.internal].core.ops;
-  // deno-lint-ignore no-inner-declarations
-  function add(a, b) {
-    return op_add(a, b);
-  }
-  // deno-lint-ignore no-inner-declarations
-  function addJS(a, b) {
-    return a + b;
-  }
-  Deno.bench("op_add", () => add(1, 2));
-  Deno.bench("add_js", () => addJS(1, 2));
+function addJS(a, b) {
+  return a + b;
 }
-
-// deno-lint-ignore camelcase
-const { op_void_sync } = Deno[Deno.internal].core.ops;
-function sync() {
-  return op_void_sync();
-}
-sync(); // Warmup
-
-// Void ops measure op-overhead
-Deno.bench("op_void_sync", () => sync());
-
-Deno.bench(
-  "op_void_async",
-  { n: 1e6 },
-  () => Deno[Deno.internal].core.opAsync("op_void_async"),
-);
+Deno.bench("add_js", () => addJS(1, 2));
 
 // A very lightweight op, that should be highly optimizable
 Deno.bench("perf_now", { n: 5e5 }, () => {
@@ -43,8 +16,7 @@ Deno.bench("perf_now", { n: 5e5 }, () => {
 });
 
 Deno.bench("open_file_sync", () => {
-  const file = Deno.openSync("./cli/bench/testdata/128k.bin");
-  file.close();
+  using _file = Deno.openSync("./cli/bench/testdata/128k.bin");
 });
 
 // A common "language feature", that should be fast
@@ -74,6 +46,7 @@ Deno.bench("b64_rt_short", { n: 1e6 }, () => {
   const buf = new Uint8Array(100);
   const file = Deno.openSync("/dev/zero");
   Deno.bench("read_zero", { n: 5e5 }, () => {
+    // deno-lint-ignore no-deprecated-deno-api
     Deno.readSync(file.rid, buf);
   });
 }
@@ -83,7 +56,7 @@ Deno.bench("b64_rt_short", { n: 1e6 }, () => {
   const dataChunk = new Uint8Array(100);
   const file = Deno.openSync("/dev/null", { write: true });
   Deno.bench("write_null", { n: 5e5 }, () => {
-    Deno.writeSync(file.rid, dataChunk);
+    file.writeSync(dataChunk);
   });
 }
 

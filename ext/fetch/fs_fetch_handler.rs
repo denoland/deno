@@ -1,9 +1,8 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::CancelHandle;
 use crate::CancelableResponseFuture;
 use crate::FetchHandler;
-use crate::FetchRequestBodyResource;
 
 use deno_core::error::type_error;
 use deno_core::futures::FutureExt;
@@ -25,18 +24,14 @@ impl FetchHandler for FsFetchHandler {
     &self,
     _state: &mut OpState,
     url: Url,
-  ) -> (
-    CancelableResponseFuture,
-    Option<FetchRequestBodyResource>,
-    Option<Rc<CancelHandle>>,
-  ) {
+  ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>) {
     let cancel_handle = CancelHandle::new_rc();
     let response_fut = async move {
       let path = url.to_file_path()?;
       let file = tokio::fs::File::open(path).map_err(|_| ()).await?;
       let stream = ReaderStream::new(file);
       let body = reqwest::Body::wrap_stream(stream);
-      let response = http::Response::builder()
+      let response = http_v02::Response::builder()
         .status(StatusCode::OK)
         .body(body)
         .map_err(|_| ())?
@@ -49,6 +44,6 @@ impl FetchHandler for FsFetchHandler {
     .or_cancel(&cancel_handle)
     .boxed_local();
 
-    (response_fut, None, Some(cancel_handle))
+    (response_fut, Some(cancel_handle))
   }
 }

@@ -1,0 +1,16 @@
+{
+  "name": "@denotest/conditional-exports-strict",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./types/src/index.d.ts",
+      "require": "./cjs/index.cjs",
+      "import": "./esm/index.js"
+    },
+    "./client": {
+      "types": "./types/src/client/index.d.ts",
+      "import": "./esm/client/index.js"
+    }
+  }
+}

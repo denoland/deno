@@ -1,0 +1,14 @@
+{
+  "name": "bin_entries_prefer_closer",
+  "dependencies": {
+    "@denotest/bin": "0.7.0",
+    "@denotest/transitive-bin": "1.0.0"
+  },
+
+  "scripts": {
+    "run-esm": "cli-esm hello world",
+    "run-cjs": "cli-cjs hello world",
+    "run-no-ext": "cli-no-ext hello world",
+    "run-ts": "cli-ts"
+  }
+}

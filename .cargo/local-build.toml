@@ -1,0 +1,15 @@
+# To run a build using a local tree:
+#
+# 0. Check out these repositories as siblings:
+#
+#     - https://github.com/denoland/deno
+#     - https://github.com/denoland/deno_core
+#     - https://github.com/denoland/rusty_v8
+#
+# 1. From `deno`, run: cargo --config .cargo/local-build.toml build
+
+[patch.crates-io]
+deno_core = { path = "../deno_core/core" }
+deno_ops = { path = "../deno_core/ops" }
+serde_v8 = { path = "../deno_core/serde_v8" }
+v8 = { path = "../rusty_v8" }

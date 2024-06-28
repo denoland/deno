@@ -1,8 +1,8 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::time::Duration;
 
-use deno_runtime::colors;
+use deno_terminal::colors;
 
 use crate::util::display::human_download_size;
 

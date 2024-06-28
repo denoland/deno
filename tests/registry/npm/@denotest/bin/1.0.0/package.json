@@ -1,0 +1,9 @@
+{
+  "name": "@denotest/bin",
+  "version": "1.0.0",
+  "bin": {
+    "cli-esm": "./cli.mjs",
+    "cli-no-ext": "./cli-no-ext",
+    "cli-cjs": "./cli-cjs.js"
+  }
+}

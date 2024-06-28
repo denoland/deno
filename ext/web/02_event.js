@@ -1,16 +1,11 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This module follows most of the WHATWG Living Standard for the DOM logic.
 // Many parts of the DOM are not implemented in Deno, but the logic for those
 // parts still exists.  This means you will observe a lot of strange structures
 // and impossible logic branches based on what Deno currently supports.
 
-const core = globalThis.Deno.core;
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
@@ -21,10 +16,8 @@ const {
   ArrayPrototypeSplice,
   ArrayPrototypeUnshift,
   Boolean,
-  DateNow,
   Error,
   FunctionPrototypeCall,
-  Map,
   MapPrototypeGet,
   MapPrototypeSet,
   ObjectCreate,
@@ -32,14 +25,18 @@ const {
   ObjectGetOwnPropertyDescriptor,
   ObjectPrototypeIsPrototypeOf,
   ReflectDefineProperty,
-  ReflectHas,
   SafeArrayIterator,
+  SafeMap,
   StringPrototypeStartsWith,
   Symbol,
   SymbolFor,
   SymbolToStringTag,
   TypeError,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { DOMException } from "./01_dom_exception.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 // This should be set via setGlobalThis this is required so that if even
 // user deletes globalThis it is still usable
@@ -108,33 +105,11 @@ function setStopImmediatePropagation(
   event[_stopImmediatePropagationFlag] = value;
 }
 
-// Type guards that widen the event type
-
-function hasRelatedTarget(
-  event,
-) {
-  return ReflectHas(event, "relatedTarget");
-}
-
 const isTrusted = ObjectGetOwnPropertyDescriptor({
   get isTrusted() {
     return this[_isTrusted];
   },
 }, "isTrusted").get;
-
-const eventInitConverter = webidl.createDictionaryConverter("EventInit", [{
-  key: "bubbles",
-  defaultValue: false,
-  converter: webidl.converters.boolean,
-}, {
-  key: "cancelable",
-  defaultValue: false,
-  converter: webidl.converters.boolean,
-}, {
-  key: "composed",
-  defaultValue: false,
-  converter: webidl.converters.boolean,
-}]);
 
 const _attributes = Symbol("[[attributes]]");
 const _canceledFlag = Symbol("[[canceledFlag]]");
@@ -146,11 +121,9 @@ const _inPassiveListener = Symbol("[[inPassiveListener]]");
 const _dispatched = Symbol("[[dispatched]]");
 const _isTrusted = Symbol("[[isTrusted]]");
 const _path = Symbol("[[path]]");
-// internal.
-const _skipInternalInit = Symbol("[[skipSlowInit]]");
 
 class Event {
-  constructor(type, eventInitDict = {}) {
+  constructor(type, eventInitDict = { __proto__: null }) {
     // TODO(lucacasonato): remove when this interface is spec aligned
     this[SymbolToStringTag] = "Event";
     this[_canceledFlag] = false;
@@ -161,55 +134,38 @@ class Event {
     this[_isTrusted] = false;
     this[_path] = [];
 
-    if (!eventInitDict[_skipInternalInit]) {
-      webidl.requiredArguments(arguments.length, 1, {
-        prefix: "Failed to construct 'Event'",
-      });
-      type = webidl.converters.DOMString(type, {
-        prefix: "Failed to construct 'Event'",
-        context: "Argument 1",
-      });
-      const eventInit = eventInitConverter(eventInitDict, {
-        prefix: "Failed to construct 'Event'",
-        context: "Argument 2",
-      });
-      this[_attributes] = {
-        type,
-        ...eventInit,
-        currentTarget: null,
-        eventPhase: Event.NONE,
-        target: null,
-        timeStamp: DateNow(),
-      };
-      // [LegacyUnforgeable]
-      ReflectDefineProperty(this, "isTrusted", {
-        enumerable: true,
-        get: isTrusted,
-      });
-    } else {
-      this[_attributes] = {
-        type,
-        data: eventInitDict.data ?? null,
-        bubbles: eventInitDict.bubbles ?? false,
-        cancelable: eventInitDict.cancelable ?? false,
-        composed: eventInitDict.composed ?? false,
-        currentTarget: null,
-        eventPhase: Event.NONE,
-        target: null,
-        timeStamp: DateNow(),
-      };
-      // TODO(@littledivy): Not spec compliant but performance is hurt badly
-      // for users of `_skipInternalInit`.
-      this.isTrusted = false;
-    }
+    webidl.requiredArguments(
+      arguments.length,
+      1,
+      "Failed to construct 'Event'",
+    );
+    type = webidl.converters.DOMString(
+      type,
+      "Failed to construct 'Event'",
+      "Argument 1",
+    );
+
+    this[_attributes] = {
+      type,
+      bubbles: !!eventInitDict.bubbles,
+      cancelable: !!eventInitDict.cancelable,
+      composed: !!eventInitDict.composed,
+      currentTarget: null,
+      eventPhase: Event.NONE,
+      target: null,
+      timeStamp: 0,
+    };
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(Event.prototype, this),
-      keys: EVENT_PROPS,
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(EventPrototype, this),
+        keys: EVENT_PROPS,
+      }),
+      inspectOptions,
+    );
   }
 
   get type() {
@@ -431,6 +387,15 @@ class Event {
   }
 }
 
+const EventPrototype = Event.prototype;
+
+// Not spec compliant. The spec defines it as [LegacyUnforgeable]
+// but doing so has a big performance hit
+ReflectDefineProperty(Event.prototype, "isTrusted", {
+  enumerable: true,
+  get: isTrusted,
+});
+
 function defineEnumerableProps(
   Ctor,
   props,
@@ -480,7 +445,7 @@ function getRoot(eventTarget) {
 function isNode(
   eventTarget,
 ) {
-  return Boolean(eventTarget && ReflectHas(eventTarget, "nodeType"));
+  return eventTarget?.nodeType !== undefined;
 }
 
 // https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
@@ -512,10 +477,13 @@ function isShadowRoot(nodeImpl) {
   );
 }
 
-function isSlotable(
-  nodeImpl,
+function isSlottable(
+  /* nodeImpl, */
 ) {
-  return Boolean(isNode(nodeImpl) && ReflectHas(nodeImpl, "assignedSlot"));
+  // TODO(marcosc90) currently there aren't any slottables nodes
+  // https://dom.spec.whatwg.org/#concept-slotable
+  // return isNode(nodeImpl) && ReflectHas(nodeImpl, "assignedSlot");
+  return false;
 }
 
 // DOM Logic functions
@@ -558,9 +526,7 @@ function dispatch(
   setDispatched(eventImpl, true);
 
   targetOverride = targetOverride ?? targetImpl;
-  const eventRelatedTarget = hasRelatedTarget(eventImpl)
-    ? eventImpl.relatedTarget
-    : null;
+  const eventRelatedTarget = eventImpl.relatedTarget;
   let relatedTarget = retarget(eventRelatedTarget, targetImpl);
 
   if (targetImpl !== relatedTarget || targetImpl === eventRelatedTarget) {
@@ -582,7 +548,7 @@ function dispatch(
     }
 
     let slotInClosedTree = false;
-    let slotable = isSlotable(targetImpl) && getAssignedSlot(targetImpl)
+    let slottable = isSlottable(targetImpl) && getAssignedSlot(targetImpl)
       ? targetImpl
       : null;
     let parent = getParent(targetImpl);
@@ -590,8 +556,8 @@ function dispatch(
     // Populate event path
     // https://dom.spec.whatwg.org/#event-path
     while (parent !== null) {
-      if (slotable !== null) {
-        slotable = null;
+      if (slottable !== null) {
+        slottable = null;
 
         const parentRoot = getRoot(parent);
         if (
@@ -732,10 +698,15 @@ function innerInvokeEventListeners(
     return found;
   }
 
-  // Copy event listeners before iterating since the list can be modified during the iteration.
-  const handlers = ArrayPrototypeSlice(targetListeners[type]);
+  let handlers = targetListeners[type];
+  const handlersLength = handlers.length;
 
-  for (let i = 0; i < handlers.length; i++) {
+  // Copy event listeners before iterating since the list can be modified during the iteration.
+  if (handlersLength > 1) {
+    handlers = ArrayPrototypeSlice(targetListeners[type]);
+  }
+
+  for (let i = 0; i < handlersLength; i++) {
     const listener = handlers[i];
 
     let capture, once, passive;
@@ -802,12 +773,19 @@ function innerInvokeEventListeners(
  * Ref: https://dom.spec.whatwg.org/#concept-event-listener-invoke */
 function invokeEventListeners(tuple, eventImpl) {
   const path = getPath(eventImpl);
-  const tupleIndex = ArrayPrototypeIndexOf(path, tuple);
-  for (let i = tupleIndex; i >= 0; i--) {
-    const t = path[i];
+  if (path.length === 1) {
+    const t = path[0];
     if (t.target) {
       setTarget(eventImpl, t.target);
-      break;
+    }
+  } else {
+    const tupleIndex = ArrayPrototypeIndexOf(path, tuple);
+    for (let i = tupleIndex; i >= 0; i--) {
+      const t = path[i];
+      if (t.target) {
+        setTarget(eventImpl, t.target);
+        break;
+      }
     }
   }
 
@@ -904,44 +882,28 @@ function getDefaultTargetData() {
   };
 }
 
-// This is lazy loaded because there is a circular dependency with AbortSignal.
-let addEventListenerOptionsConverter;
-
-function lazyAddEventListenerOptionsConverter() {
-  addEventListenerOptionsConverter ??= webidl.createDictionaryConverter(
-    "AddEventListenerOptions",
-    [
-      {
-        key: "capture",
-        defaultValue: false,
-        converter: webidl.converters.boolean,
-      },
-      {
-        key: "passive",
-        defaultValue: false,
-        converter: webidl.converters.boolean,
-      },
-      {
-        key: "once",
-        defaultValue: false,
-        converter: webidl.converters.boolean,
-      },
-      {
-        key: "signal",
-        converter: webidl.converters.AbortSignal,
-      },
-    ],
-  );
-}
-
-webidl.converters.AddEventListenerOptions = (V, opts) => {
-  if (webidl.type(V) !== "Object" || V === null) {
-    V = { capture: Boolean(V) };
+function addEventListenerOptionsConverter(V, prefix) {
+  if (webidl.type(V) !== "Object") {
+    return { capture: !!V, once: false, passive: false };
   }
 
-  lazyAddEventListenerOptionsConverter();
-  return addEventListenerOptionsConverter(V, opts);
-};
+  const options = {
+    capture: !!V.capture,
+    once: !!V.once,
+    passive: !!V.passive,
+  };
+
+  const signal = V.signal;
+  if (signal !== undefined) {
+    options.signal = webidl.converters.AbortSignal(
+      signal,
+      prefix,
+      "'signal' of 'AddEventListenerOptions' (Argument 3)",
+    );
+  }
+
+  return options;
+}
 
 class EventTarget {
   constructor() {
@@ -958,14 +920,9 @@ class EventTarget {
     webidl.assertBranded(self, EventTargetPrototype);
     const prefix = "Failed to execute 'addEventListener' on 'EventTarget'";
 
-    webidl.requiredArguments(arguments.length, 2, {
-      prefix,
-    });
+    webidl.requiredArguments(arguments.length, 2, prefix);
 
-    options = webidl.converters.AddEventListenerOptions(options, {
-      prefix,
-      context: "Argument 3",
-    });
+    options = addEventListenerOptionsConverter(options, prefix);
 
     if (callback === null) {
       return;
@@ -973,7 +930,7 @@ class EventTarget {
 
     const { listeners } = self[eventTargetData];
 
-    if (!(ReflectHas(listeners, type))) {
+    if (!listeners[type]) {
       listeners[type] = [];
     }
 
@@ -1014,12 +971,14 @@ class EventTarget {
   ) {
     const self = this ?? globalThis_;
     webidl.assertBranded(self, EventTargetPrototype);
-    webidl.requiredArguments(arguments.length, 2, {
-      prefix: "Failed to execute 'removeEventListener' on 'EventTarget'",
-    });
+    webidl.requiredArguments(
+      arguments.length,
+      2,
+      "Failed to execute 'removeEventListener' on 'EventTarget'",
+    );
 
     const { listeners } = self[eventTargetData];
-    if (callback !== null && ReflectHas(listeners, type)) {
+    if (callback !== null && listeners[type]) {
       listeners[type] = ArrayPrototypeFilter(
         listeners[type],
         (listener) => listener.callback !== callback,
@@ -1052,9 +1011,11 @@ class EventTarget {
     // executed.
     const self = this ?? globalThis_;
     webidl.assertBranded(self, EventTargetPrototype);
-    webidl.requiredArguments(arguments.length, 1, {
-      prefix: "Failed to execute 'dispatchEvent' on 'EventTarget'",
-    });
+    webidl.requiredArguments(
+      arguments.length,
+      1,
+      "Failed to execute 'dispatchEvent' on 'EventTarget'",
+    );
 
     // This is an optimization to avoid creating an event listener
     // on each startup.
@@ -1066,7 +1027,7 @@ class EventTarget {
     }
 
     const { listeners } = self[eventTargetData];
-    if (!ReflectHas(listeners, event.type)) {
+    if (!listeners[event.type]) {
       setTarget(event, this);
       return true;
     }
@@ -1085,9 +1046,13 @@ class EventTarget {
   getParent(_event) {
     return null;
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
+  }
 }
 
-webidl.configurePrototype(EventTarget);
+webidl.configureInterface(EventTarget);
 const EventTargetPrototype = EventTarget.prototype;
 
 defineEnumerableProps(EventTarget, [
@@ -1130,7 +1095,7 @@ class ErrorEvent extends Event {
       lineno = 0,
       colno = 0,
       error,
-    } = {},
+    } = { __proto__: null },
   ) {
     super(type, {
       bubbles: bubbles,
@@ -1145,24 +1110,29 @@ class ErrorEvent extends Event {
     this.#error = error;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(ErrorEvent.prototype, this),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "message",
-        "filename",
-        "lineno",
-        "colno",
-        "error",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(ErrorEventPrototype, this),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "message",
+          "filename",
+          "lineno",
+          "colno",
+          "error",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
   [SymbolToStringTag] = "ErrorEvent";
 }
+
+const ErrorEventPrototype = ErrorEvent.prototype;
 
 defineEnumerableProps(ErrorEvent, [
   "message",
@@ -1194,7 +1164,7 @@ class CloseEvent extends Event {
     wasClean = false,
     code = 0,
     reason = "",
-  } = {}) {
+  } = { __proto__: null }) {
     super(type, {
       bubbles: bubbles,
       cancelable: cancelable,
@@ -1206,19 +1176,24 @@ class CloseEvent extends Event {
     this.#reason = reason;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(CloseEvent.prototype, this),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "wasClean",
-        "code",
-        "reason",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(CloseEventPrototype, this),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "wasClean",
+          "code",
+          "reason",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
+
+const CloseEventPrototype = CloseEvent.prototype;
 
 class MessageEvent extends Event {
   get source() {
@@ -1230,7 +1205,6 @@ class MessageEvent extends Event {
       bubbles: eventInitDict?.bubbles ?? false,
       cancelable: eventInitDict?.cancelable ?? false,
       composed: eventInitDict?.composed ?? false,
-      [_skipInternalInit]: eventInitDict?.[_skipInternalInit],
     });
 
     this.data = eventInitDict?.data ?? null;
@@ -1239,31 +1213,38 @@ class MessageEvent extends Event {
     this.lastEventId = eventInitDict?.lastEventId ?? "";
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(MessageEvent.prototype, this),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "data",
-        "origin",
-        "lastEventId",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(MessageEventPrototype, this),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "data",
+          "origin",
+          "lastEventId",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
-  [SymbolToStringTag] = "CloseEvent";
+  [SymbolToStringTag] = "MessageEvent";
 }
+
+const MessageEventPrototype = MessageEvent.prototype;
 
 class CustomEvent extends Event {
   #detail = null;
 
-  constructor(type, eventInitDict = {}) {
+  constructor(type, eventInitDict = { __proto__: null }) {
     super(type, eventInitDict);
-    webidl.requiredArguments(arguments.length, 1, {
-      prefix: "Failed to construct 'CustomEvent'",
-    });
+    webidl.requiredArguments(
+      arguments.length,
+      1,
+      "Failed to construct 'CustomEvent'",
+    );
     const { detail } = eventInitDict;
     this.#detail = detail;
   }
@@ -1272,20 +1253,25 @@ class CustomEvent extends Event {
     return this.#detail;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(CustomEvent.prototype, this),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "detail",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(CustomEventPrototype, this),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "detail",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
   [SymbolToStringTag] = "CustomEvent";
 }
+
+const CustomEventPrototype = CustomEvent.prototype;
 
 ReflectDefineProperty(CustomEvent.prototype, "detail", {
   enumerable: true,
@@ -1294,7 +1280,7 @@ ReflectDefineProperty(CustomEvent.prototype, "detail", {
 // ProgressEvent could also be used in other DOM progress event emits.
 // Current use is for FileReader.
 class ProgressEvent extends Event {
-  constructor(type, eventInitDict = {}) {
+  constructor(type, eventInitDict = { __proto__: null }) {
     super(type, eventInitDict);
 
     this.lengthComputable = eventInitDict?.lengthComputable ?? false;
@@ -1302,22 +1288,27 @@ class ProgressEvent extends Event {
     this.total = eventInitDict?.total ?? 0;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(ProgressEvent.prototype, this),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "lengthComputable",
-        "loaded",
-        "total",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(ProgressEventPrototype, this),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "lengthComputable",
+          "loaded",
+          "total",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
   [SymbolToStringTag] = "ProgressEvent";
 }
+
+const ProgressEventPrototype = ProgressEvent.prototype;
 
 class PromiseRejectionEvent extends Event {
   #promise = null;
@@ -1338,7 +1329,7 @@ class PromiseRejectionEvent extends Event {
       composed,
       promise,
       reason,
-    } = {},
+    } = { __proto__: null },
   ) {
     super(type, {
       bubbles: bubbles,
@@ -1350,24 +1341,29 @@ class PromiseRejectionEvent extends Event {
     this.#reason = reason;
   }
 
-  [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(
-        PromiseRejectionEvent.prototype,
-        this,
-      ),
-      keys: [
-        ...new SafeArrayIterator(EVENT_PROPS),
-        "promise",
-        "reason",
-      ],
-    }));
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          PromiseRejectionEventPrototype,
+          this,
+        ),
+        keys: [
+          ...new SafeArrayIterator(EVENT_PROPS),
+          "promise",
+          "reason",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   // TODO(lucacasonato): remove when this interface is spec aligned
   [SymbolToStringTag] = "PromiseRejectionEvent";
 }
+
+const PromiseRejectionEventPrototype = PromiseRejectionEvent.prototype;
 
 defineEnumerableProps(PromiseRejectionEvent, [
   "promise",
@@ -1384,7 +1380,7 @@ function makeWrappedHandler(handler, isSpecialErrorEventHandler) {
 
     if (
       isSpecialErrorEventHandler &&
-      ObjectPrototypeIsPrototypeOf(ErrorEvent.prototype, evt) &&
+      ObjectPrototypeIsPrototypeOf(ErrorEventPrototype, evt) &&
       evt.type === "error"
     ) {
       const ret = FunctionPrototypeCall(
@@ -1437,7 +1433,7 @@ function defineEventHandler(
       }
 
       if (!this[_eventHandlers]) {
-        this[_eventHandlers] = new Map();
+        this[_eventHandlers] = new SafeMap();
       }
       let handlerWrapper = MapPrototypeGet(this[_eventHandlers], name);
       if (handlerWrapper) {
@@ -1497,7 +1493,7 @@ function reportException(error) {
   });
   // Avoid recursing `reportException()` via error handlers more than once.
   if (reportExceptionStackedCalls > 1 || globalThis_.dispatchEvent(event)) {
-    ops.op_dispatch_exception(error);
+    core.reportUnhandledException(error);
   }
   reportExceptionStackedCalls--;
 }
@@ -1511,16 +1507,16 @@ function checkThis(thisArg) {
 // https://html.spec.whatwg.org/#dom-reporterror
 function reportError(error) {
   checkThis(this);
-  const prefix = "Failed to call 'reportError'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
+  const prefix = "Failed to execute 'reportError'";
+  webidl.requiredArguments(arguments.length, 1, prefix);
   reportException(error);
 }
 
 export {
-  _skipInternalInit,
   CloseEvent,
   CustomEvent,
   defineEventHandler,
+  dispatch,
   ErrorEvent,
   Event,
   EventTarget,

@@ -1,34 +1,48 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import {
+  op_vm_create_context,
+  op_vm_create_script,
+  op_vm_is_context,
+  op_vm_script_run_in_context,
+  op_vm_script_run_in_this_context,
+} from "ext:core/ops";
 
 export class Script {
-  code: string;
+  #inner;
+
   constructor(code: string, _options = {}) {
-    this.code = `${code}`;
+    this.#inner = op_vm_create_script(code);
   }
 
   runInThisContext(_options: any) {
-    return eval.call(globalThis, this.code);
+    return op_vm_script_run_in_this_context(this.#inner);
   }
 
-  runInContext(_contextifiedObject: any, _options: any) {
-    notImplemented("Script.prototype.runInContext");
+  runInContext(contextifiedObject: any, _options: any) {
+    return op_vm_script_run_in_context(this.#inner, contextifiedObject);
   }
 
-  runInNewContext(_contextObject: any, _options: any) {
-    notImplemented("Script.prototype.runInNewContext");
+  runInNewContext(contextObject: any, options: any) {
+    const context = createContext(contextObject);
+    return this.runInContext(context, options);
   }
 
   createCachedData() {
-    notImplemented("Script.prototyp.createCachedData");
+    notImplemented("Script.prototype.createCachedData");
   }
 }
 
-export function createContext(_contextObject: any, _options: any) {
-  notImplemented("createContext");
+export function createContext(contextObject: any = {}, _options: any) {
+  if (isContext(contextObject)) {
+    return contextObject;
+  }
+
+  op_vm_create_context(contextObject);
+  return contextObject;
 }
 
 export function createScript(code: string, options: any) {
@@ -36,19 +50,22 @@ export function createScript(code: string, options: any) {
 }
 
 export function runInContext(
-  _code: string,
-  _contextifiedObject: any,
+  code: string,
+  contextifiedObject: any,
   _options: any,
 ) {
-  notImplemented("runInContext");
+  return createScript(code).runInContext(contextifiedObject);
 }
 
 export function runInNewContext(
-  _code: string,
-  _contextObject: any,
-  _options: any,
+  code: string,
+  contextObject: any,
+  options: any,
 ) {
-  notImplemented("runInNewContext");
+  if (options) {
+    console.warn("vm.runInNewContext options are currently not supported");
+  }
+  return createScript(code).runInNewContext(contextObject);
 }
 
 export function runInThisContext(
@@ -58,8 +75,8 @@ export function runInThisContext(
   return createScript(code, options).runInThisContext(options);
 }
 
-export function isContext(_maybeContext: any) {
-  notImplemented("isContext");
+export function isContext(maybeContext: any) {
+  return op_vm_is_context(maybeContext);
 }
 
 export function compileFunction(_code: string, _params: any, _options: any) {

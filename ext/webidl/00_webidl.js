@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Adapted from https://github.com/jsdom/webidl-conversions.
 // Copyright Domenic Denicola. Licensed under BSD-2-Clause License.
@@ -6,10 +6,14 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-const core = globalThis.Deno.core;
-const primordials = globalThis.__bootstrap.primordials;
+import { core, primordials } from "ext:core/mod.js";
 const {
-  ArrayBufferPrototype,
+  isArrayBuffer,
+  isDataView,
+  isSharedArrayBuffer,
+  isTypedArray,
+} = core;
+const {
   ArrayBufferIsView,
   ArrayPrototypeForEach,
   ArrayPrototypePush,
@@ -25,7 +29,6 @@ const {
   Int16Array,
   Int32Array,
   Int8Array,
-  isNaN,
   MathFloor,
   MathFround,
   MathMax,
@@ -36,9 +39,7 @@ const {
   Number,
   NumberIsFinite,
   NumberIsNaN,
-  // deno-lint-ignore camelcase
   NumberMAX_SAFE_INTEGER,
-  // deno-lint-ignore camelcase
   NumberMIN_SAFE_INTEGER,
   ObjectAssign,
   ObjectCreate,
@@ -47,7 +48,7 @@ const {
   ObjectGetOwnPropertyDescriptor,
   ObjectGetOwnPropertyDescriptors,
   ObjectGetPrototypeOf,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   ObjectIs,
   PromisePrototypeThen,
@@ -60,7 +61,7 @@ const {
   ReflectOwnKeys,
   RegExpPrototypeTest,
   SafeRegExp,
-  Set,
+  SafeSet,
   SetPrototypeEntries,
   SetPrototypeForEach,
   SetPrototypeKeys,
@@ -70,10 +71,10 @@ const {
   SetPrototypeDelete,
   SetPrototypeAdd,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
+  // SharedArrayBufferPrototype,
   String,
-  StringFromCodePoint,
   StringPrototypeCharCodeAt,
+  StringPrototypeToWellFormed,
   Symbol,
   SymbolIterator,
   SymbolToStringTag,
@@ -86,11 +87,9 @@ const {
   Uint8ClampedArray,
 } = primordials;
 
-function makeException(ErrorType, message, opts = {}) {
+function makeException(ErrorType, message, prefix, context) {
   return new ErrorType(
-    `${opts.prefix ? opts.prefix + ": " : ""}${
-      opts.context ? opts.context : "Value"
-    } ${message}`,
+    `${prefix ? prefix + ": " : ""}${context ? context : "Value"} ${message}`,
   );
 }
 
@@ -123,7 +122,7 @@ function type(V) {
     case "function":
     // Falls through
     default:
-      // Per ES spec, typeof returns an implemention-defined value that is not any of the existing ones for
+      // Per ES spec, typeof returns an implementation-defined value that is not any of the existing ones for
       // uncallable non-standard exotic objects. Yet Type() which the Web IDL spec depends on returns Object for
       // such cases. So treat the default case as an object.
       return "Object";
@@ -193,13 +192,23 @@ function createIntegerConversion(bitLength, typeOpts) {
   const twoToTheBitLength = MathPow(2, bitLength);
   const twoToOneLessThanTheBitLength = MathPow(2, bitLength - 1);
 
-  return (V, opts = {}) => {
+  return (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
     if (opts.enforceRange) {
       if (!NumberIsFinite(x)) {
-        throw makeException(TypeError, "is not a finite number", opts);
+        throw makeException(
+          TypeError,
+          "is not a finite number",
+          prefix,
+          context,
+        );
       }
 
       x = integerPart(x);
@@ -208,7 +217,8 @@ function createIntegerConversion(bitLength, typeOpts) {
         throw makeException(
           TypeError,
           `is outside the accepted range of ${lowerBound} to ${upperBound}, inclusive`,
-          opts,
+          prefix,
+          context,
         );
       }
 
@@ -246,13 +256,23 @@ function createLongLongConversion(bitLength, { unsigned }) {
   const lowerBound = unsigned ? 0 : NumberMIN_SAFE_INTEGER;
   const asBigIntN = unsigned ? BigIntAsUintN : BigIntAsIntN;
 
-  return (V, opts = {}) => {
+  return (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
     if (opts.enforceRange) {
       if (!NumberIsFinite(x)) {
-        throw makeException(TypeError, "is not a finite number", opts);
+        throw makeException(
+          TypeError,
+          "is not a finite number",
+          prefix,
+          context,
+        );
       }
 
       x = integerPart(x);
@@ -261,7 +281,8 @@ function createLongLongConversion(bitLength, { unsigned }) {
         throw makeException(
           TypeError,
           `is outside the accepted range of ${lowerBound} to ${upperBound}, inclusive`,
-          opts,
+          prefix,
+          context,
         );
       }
 
@@ -310,14 +331,15 @@ converters["unsigned long long"] = createLongLongConversion(64, {
   unsigned: true,
 });
 
-converters.float = (V, opts) => {
+converters.float = (V, prefix, context, _opts) => {
   const x = toNumber(V);
 
   if (!NumberIsFinite(x)) {
     throw makeException(
       TypeError,
       "is not a finite floating-point value",
-      opts,
+      prefix,
+      context,
     );
   }
 
@@ -331,17 +353,18 @@ converters.float = (V, opts) => {
     throw makeException(
       TypeError,
       "is outside the range of a single-precision floating-point value",
-      opts,
+      prefix,
+      context,
     );
   }
 
   return y;
 };
 
-converters["unrestricted float"] = (V, _opts) => {
+converters["unrestricted float"] = (V, _prefix, _context, _opts) => {
   const x = toNumber(V);
 
-  if (isNaN(x)) {
+  if (NumberIsNaN(x)) {
     return x;
   }
 
@@ -352,27 +375,33 @@ converters["unrestricted float"] = (V, _opts) => {
   return MathFround(x);
 };
 
-converters.double = (V, opts) => {
+converters.double = (V, prefix, context, _opts) => {
   const x = toNumber(V);
 
   if (!NumberIsFinite(x)) {
     throw makeException(
       TypeError,
       "is not a finite floating-point value",
-      opts,
+      prefix,
+      context,
     );
   }
 
   return x;
 };
 
-converters["unrestricted double"] = (V, _opts) => {
+converters["unrestricted double"] = (V, _prefix, _context, _opts) => {
   const x = toNumber(V);
 
   return x;
 };
 
-converters.DOMString = function (V, opts = {}) {
+converters.DOMString = function (
+  V,
+  prefix,
+  context,
+  opts = { __proto__: null },
+) {
   if (typeof V === "string") {
     return V;
   } else if (V === null && opts.treatNullAsEmptyString) {
@@ -381,53 +410,50 @@ converters.DOMString = function (V, opts = {}) {
     throw makeException(
       TypeError,
       "is a symbol, which cannot be converted to a string",
-      opts,
+      prefix,
+      context,
     );
   }
 
   return String(V);
 };
 
-// deno-lint-ignore no-control-regex
-const IS_BYTE_STRING = new SafeRegExp(/^[\x00-\xFF]*$/);
-converters.ByteString = (V, opts) => {
-  const x = converters.DOMString(V, opts);
-  if (!RegExpPrototypeTest(IS_BYTE_STRING, x)) {
-    throw makeException(TypeError, "is not a valid ByteString", opts);
+function isByteString(input) {
+  for (let i = 0; i < input.length; i++) {
+    if (StringPrototypeCharCodeAt(input, i) > 255) {
+      // If a character code is greater than 255, it means the string is not a byte string.
+      return false;
+    }
+  }
+  return true;
+}
+
+converters.ByteString = (V, prefix, context, opts) => {
+  const x = converters.DOMString(V, prefix, context, opts);
+  if (!isByteString(x)) {
+    throw makeException(
+      TypeError,
+      "is not a valid ByteString",
+      prefix,
+      context,
+    );
   }
   return x;
 };
 
-converters.USVString = (V, opts) => {
-  const S = converters.DOMString(V, opts);
-  const n = S.length;
-  let U = "";
-  for (let i = 0; i < n; ++i) {
-    const c = StringPrototypeCharCodeAt(S, i);
-    if (c < 0xd800 || c > 0xdfff) {
-      U += StringFromCodePoint(c);
-    } else if (0xdc00 <= c && c <= 0xdfff) {
-      U += StringFromCodePoint(0xfffd);
-    } else if (i === n - 1) {
-      U += StringFromCodePoint(0xfffd);
-    } else {
-      const d = StringPrototypeCharCodeAt(S, i + 1);
-      if (0xdc00 <= d && d <= 0xdfff) {
-        const a = c & 0x3ff;
-        const b = d & 0x3ff;
-        U += StringFromCodePoint((2 << 15) + (2 << 9) * a + b);
-        ++i;
-      } else {
-        U += StringFromCodePoint(0xfffd);
-      }
-    }
-  }
-  return U;
+converters.USVString = (V, prefix, context, opts) => {
+  const S = converters.DOMString(V, prefix, context, opts);
+  return StringPrototypeToWellFormed(S);
 };
 
-converters.object = (V, opts) => {
+converters.object = (V, prefix, context, _opts) => {
   if (type(V) !== "Object") {
-    throw makeException(TypeError, "is not an object", opts);
+    throw makeException(
+      TypeError,
+      "is not an object",
+      prefix,
+      context,
+    );
   }
 
   return V;
@@ -437,52 +463,68 @@ converters.object = (V, opts) => {
 
 // Neither Function nor VoidFunction is defined with [TreatNonObjectAsNull], so
 // handling for that is omitted.
-function convertCallbackFunction(V, opts) {
+function convertCallbackFunction(V, prefix, context, _opts) {
   if (typeof V !== "function") {
-    throw makeException(TypeError, "is not a function", opts);
+    throw makeException(
+      TypeError,
+      "is not a function",
+      prefix,
+      context,
+    );
   }
   return V;
 }
 
-function isDataView(V) {
-  return ArrayBufferIsView(V) &&
-    TypedArrayPrototypeGetSymbolToStringTag(V) === undefined;
-}
-
-function isNonSharedArrayBuffer(V) {
-  return ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V);
-}
-
-function isSharedArrayBuffer(V) {
-  // deno-lint-ignore prefer-primordials
-  return ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V);
-}
-
-converters.ArrayBuffer = (V, opts = {}) => {
-  if (!isNonSharedArrayBuffer(V)) {
+converters.ArrayBuffer = (
+  V,
+  prefix = undefined,
+  context = undefined,
+  opts = { __proto__: null },
+) => {
+  if (!isArrayBuffer(V)) {
     if (opts.allowShared && !isSharedArrayBuffer(V)) {
       throw makeException(
         TypeError,
         "is not an ArrayBuffer or SharedArrayBuffer",
-        opts,
+        prefix,
+        context,
       );
     }
-    throw makeException(TypeError, "is not an ArrayBuffer", opts);
+    throw makeException(
+      TypeError,
+      "is not an ArrayBuffer",
+      prefix,
+      context,
+    );
   }
 
   return V;
 };
 
-converters.DataView = (V, opts = {}) => {
+converters.DataView = (
+  V,
+  prefix = undefined,
+  context = undefined,
+  opts = { __proto__: null },
+) => {
   if (!isDataView(V)) {
-    throw makeException(TypeError, "is not a DataView", opts);
+    throw makeException(
+      TypeError,
+      "is not a DataView",
+      prefix,
+      context,
+    );
   }
 
-  if (!opts.allowShared && isSharedArrayBuffer(DataViewPrototypeGetBuffer(V))) {
+  if (
+    !opts.allowShared &&
+    isSharedArrayBuffer(DataViewPrototypeGetBuffer(V))
+  ) {
     throw makeException(
       TypeError,
       "is backed by a SharedArrayBuffer, which is not allowed",
-      opts,
+      prefix,
+      context,
     );
   }
 
@@ -498,6 +540,8 @@ ArrayPrototypeForEach(
     Uint16Array,
     Uint32Array,
     Uint8ClampedArray,
+    // TODO(petamoriken): add Float16Array converter
+    // Float16Array,
     Float32Array,
     Float64Array,
   ],
@@ -506,12 +550,18 @@ ArrayPrototypeForEach(
     const article = RegExpPrototypeTest(new SafeRegExp(/^[AEIOU]/), name)
       ? "an"
       : "a";
-    converters[name] = (V, opts = {}) => {
+    converters[name] = (
+      V,
+      prefix = undefined,
+      context = undefined,
+      opts = { __proto__: null },
+    ) => {
       if (TypedArrayPrototypeGetSymbolToStringTag(V) !== name) {
         throw makeException(
           TypeError,
           `is not ${article} ${name} object`,
-          opts,
+          prefix,
+          context,
         );
       }
       if (
@@ -521,7 +571,8 @@ ArrayPrototypeForEach(
         throw makeException(
           TypeError,
           "is a view on a SharedArrayBuffer, which is not allowed",
-          opts,
+          prefix,
+          context,
         );
       }
 
@@ -532,16 +583,22 @@ ArrayPrototypeForEach(
 
 // Common definitions
 
-converters.ArrayBufferView = (V, opts = {}) => {
+converters.ArrayBufferView = (
+  V,
+  prefix = undefined,
+  context = undefined,
+  opts = { __proto__: null },
+) => {
   if (!ArrayBufferIsView(V)) {
     throw makeException(
       TypeError,
       "is not a view on an ArrayBuffer or SharedArrayBuffer",
-      opts,
+      prefix,
+      context,
     );
   }
   let buffer;
-  if (TypedArrayPrototypeGetSymbolToStringTag(V) !== undefined) {
+  if (isTypedArray(V)) {
     buffer = TypedArrayPrototypeGetBuffer(V);
   } else {
     buffer = DataViewPrototypeGetBuffer(V);
@@ -550,17 +607,23 @@ converters.ArrayBufferView = (V, opts = {}) => {
     throw makeException(
       TypeError,
       "is a view on a SharedArrayBuffer, which is not allowed",
-      opts,
+      prefix,
+      context,
     );
   }
 
   return V;
 };
 
-converters.BufferSource = (V, opts = {}) => {
+converters.BufferSource = (
+  V,
+  prefix = undefined,
+  context = undefined,
+  opts = { __proto__: null },
+) => {
   if (ArrayBufferIsView(V)) {
     let buffer;
-    if (TypedArrayPrototypeGetSymbolToStringTag(V) !== undefined) {
+    if (isTypedArray(V)) {
       buffer = TypedArrayPrototypeGetBuffer(V);
     } else {
       buffer = DataViewPrototypeGetBuffer(V);
@@ -569,29 +632,32 @@ converters.BufferSource = (V, opts = {}) => {
       throw makeException(
         TypeError,
         "is a view on a SharedArrayBuffer, which is not allowed",
-        opts,
+        prefix,
+        context,
       );
     }
 
     return V;
   }
 
-  if (!opts.allowShared && !isNonSharedArrayBuffer(V)) {
+  if (!opts.allowShared && !isArrayBuffer(V)) {
     throw makeException(
       TypeError,
       "is not an ArrayBuffer or a view on one",
-      opts,
+      prefix,
+      context,
     );
   }
   if (
     opts.allowShared &&
     !isSharedArrayBuffer(V) &&
-    !isNonSharedArrayBuffer(V)
+    !isArrayBuffer(V)
   ) {
     throw makeException(
       TypeError,
       "is not an ArrayBuffer, SharedArrayBuffer, or a view on one",
-      opts,
+      prefix,
+      context,
     );
   }
 
@@ -642,11 +708,9 @@ converters["sequence<DOMString>"] = createSequenceConverter(
   converters.DOMString,
 );
 
-function requiredArguments(length, required, opts = {}) {
+function requiredArguments(length, required, prefix) {
   if (length < required) {
-    const errMsg = `${
-      opts.prefix ? opts.prefix + ": " : ""
-    }${required} argument${
+    const errMsg = `${prefix ? prefix + ": " : ""}${required} argument${
       required === 1 ? "" : "s"
     } required, but only ${length} present.`;
     throw new TypeError(errMsg);
@@ -673,7 +737,7 @@ function createDictionaryConverter(name, ...dictionaries) {
     return a.key < b.key ? -1 : 1;
   });
 
-  const defaultValues = {};
+  const defaultValues = { __proto__: null };
   for (let i = 0; i < allMembers.length; ++i) {
     const member = allMembers[i];
     if (ReflectHas(member, "defaultValue")) {
@@ -698,7 +762,12 @@ function createDictionaryConverter(name, ...dictionaries) {
     }
   }
 
-  return function (V, opts = {}) {
+  return function (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) {
     const typeV = type(V);
     switch (typeV) {
       case "Undefined":
@@ -709,7 +778,8 @@ function createDictionaryConverter(name, ...dictionaries) {
         throw makeException(
           TypeError,
           "can not be converted to a dictionary",
-          opts,
+          prefix,
+          context,
         );
     }
     const esDict = V;
@@ -733,17 +803,23 @@ function createDictionaryConverter(name, ...dictionaries) {
       }
 
       if (esMemberValue !== undefined) {
-        const context = `'${key}' of '${name}'${
-          opts.context ? ` (${opts.context})` : ""
+        const memberContext = `'${key}' of '${name}'${
+          context ? ` (${context})` : ""
         }`;
         const converter = member.converter;
-        const idlMemberValue = converter(esMemberValue, { ...opts, context });
+        const idlMemberValue = converter(
+          esMemberValue,
+          prefix,
+          memberContext,
+          opts,
+        );
         idlDict[key] = idlMemberValue;
       } else if (member.required) {
         throw makeException(
           TypeError,
           `can not be converted to '${name}' because '${key}' is required in '${name}'.`,
-          opts,
+          prefix,
+          context,
         );
       }
     }
@@ -754,15 +830,20 @@ function createDictionaryConverter(name, ...dictionaries) {
 
 // https://heycam.github.io/webidl/#es-enumeration
 function createEnumConverter(name, values) {
-  const E = new Set(values);
+  const E = new SafeSet(values);
 
-  return function (V, opts = {}) {
+  return function (
+    V,
+    prefix = undefined,
+    _context = undefined,
+    _opts = { __proto__: null },
+  ) {
     const S = String(V);
 
     if (!E.has(S)) {
       throw new TypeError(
         `${
-          opts.prefix ? opts.prefix + ": " : ""
+          prefix ? prefix + ": " : ""
         }The provided value '${S}' is not a valid enum value of type ${name}.`,
       );
     }
@@ -772,7 +853,12 @@ function createEnumConverter(name, values) {
 }
 
 function createNullableConverter(converter) {
-  return (V, opts = {}) => {
+  return (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) => {
     // FIXME: If Type(V) is not Object, and the conversion to an IDL value is
     // being performed due to V being assigned to an attribute whose type is a
     // nullable callback function that is annotated with
@@ -780,18 +866,24 @@ function createNullableConverter(converter) {
     // value null.
 
     if (V === null || V === undefined) return null;
-    return converter(V, opts);
+    return converter(V, prefix, context, opts);
   };
 }
 
 // https://heycam.github.io/webidl/#es-sequence
 function createSequenceConverter(converter) {
-  return function (V, opts = {}) {
+  return function (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) {
     if (type(V) !== "Object") {
       throw makeException(
         TypeError,
         "can not be converted to sequence.",
-        opts,
+        prefix,
+        context,
       );
     }
     const iter = V?.[SymbolIterator]?.();
@@ -799,7 +891,8 @@ function createSequenceConverter(converter) {
       throw makeException(
         TypeError,
         "can not be converted to sequence.",
-        opts,
+        prefix,
+        context,
       );
     }
     const array = [];
@@ -809,14 +902,17 @@ function createSequenceConverter(converter) {
         throw makeException(
           TypeError,
           "can not be converted to sequence.",
-          opts,
+          prefix,
+          context,
         );
       }
       if (res.done === true) break;
-      const val = converter(res.value, {
-        ...opts,
-        context: `${opts.context}, index ${array.length}`,
-      });
+      const val = converter(
+        res.value,
+        prefix,
+        `${context}, index ${array.length}`,
+        opts,
+      );
       ArrayPrototypePush(array, val);
     }
     return array;
@@ -824,24 +920,25 @@ function createSequenceConverter(converter) {
 }
 
 function createRecordConverter(keyConverter, valueConverter) {
-  return (V, opts) => {
+  return (V, prefix, context, opts) => {
     if (type(V) !== "Object") {
       throw makeException(
         TypeError,
         "can not be converted to dictionary.",
-        opts,
+        prefix,
+        context,
       );
     }
-    const result = {};
+    const result = { __proto__: null };
     // Fast path for common case (not a Proxy)
     if (!core.isProxy(V)) {
       for (const key in V) {
-        if (!ObjectPrototypeHasOwnProperty(V, key)) {
+        if (!ObjectHasOwn(V, key)) {
           continue;
         }
-        const typedKey = keyConverter(key, opts);
+        const typedKey = keyConverter(key, prefix, context, opts);
         const value = V[key];
-        const typedValue = valueConverter(value, opts);
+        const typedValue = valueConverter(value, prefix, context, opts);
         result[typedKey] = typedValue;
       }
       return result;
@@ -852,9 +949,9 @@ function createRecordConverter(keyConverter, valueConverter) {
       const key = keys[i];
       const desc = ObjectGetOwnPropertyDescriptor(V, key);
       if (desc !== undefined && desc.enumerable === true) {
-        const typedKey = keyConverter(key, opts);
+        const typedKey = keyConverter(key, prefix, context, opts);
         const value = V[key];
-        const typedValue = valueConverter(value, opts);
+        const typedValue = valueConverter(value, prefix, context, opts);
         result[typedKey] = typedValue;
       }
     }
@@ -863,8 +960,13 @@ function createRecordConverter(keyConverter, valueConverter) {
 }
 
 function createPromiseConverter(converter) {
-  return (V, opts) =>
-    PromisePrototypeThen(PromiseResolve(V), (V) => converter(V, opts));
+  return (V, prefix, context, opts) =>
+    // should be able to handle thenables
+    // see: https://github.com/web-platform-tests/wpt/blob/a31d3ba53a79412793642366f3816c9a63f0cf57/streams/writable-streams/close.any.js#L207
+    typeof V?.then === "function"
+      ? PromisePrototypeThen(PromiseResolve(V), (V) =>
+        converter(V, prefix, context, opts))
+      : PromiseResolve(converter(V, prefix, context, opts));
 }
 
 function invokeCallbackFunction(
@@ -872,16 +974,14 @@ function invokeCallbackFunction(
   args,
   thisArg,
   returnValueConverter,
-  opts,
+  prefix,
+  returnsPromise,
 ) {
   try {
     const rv = ReflectApply(callable, thisArg, args);
-    return returnValueConverter(rv, {
-      prefix: opts.prefix,
-      context: "return value",
-    });
+    return returnValueConverter(rv, prefix, "return value");
   } catch (err) {
-    if (opts.returnsPromise === true) {
+    if (returnsPromise === true) {
       return PromiseReject(err);
     }
     throw err;
@@ -891,9 +991,14 @@ function invokeCallbackFunction(
 const brand = Symbol("[[webidl.brand]]");
 
 function createInterfaceConverter(name, prototype) {
-  return (V, opts) => {
+  return (V, prefix, context, _opts) => {
     if (!ObjectPrototypeIsPrototypeOf(prototype, V) || V[brand] !== brand) {
-      throw makeException(TypeError, `is not of type ${name}.`, opts);
+      throw makeException(
+        TypeError,
+        `is not of type ${name}.`,
+        prefix,
+        context,
+      );
     }
     return V;
   };
@@ -1040,36 +1145,42 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
   return ObjectDefineProperties(prototype.prototype, properties);
 }
 
-function configurePrototype(prototype) {
-  const descriptors = ObjectGetOwnPropertyDescriptors(prototype.prototype);
+function configureInterface(interface_) {
+  configureProperties(interface_);
+  configureProperties(interface_.prototype);
+  ObjectDefineProperty(interface_.prototype, SymbolToStringTag, {
+    value: interface_.name,
+    enumerable: false,
+    configurable: true,
+    writable: false,
+  });
+}
+
+function configureProperties(obj) {
+  const descriptors = ObjectGetOwnPropertyDescriptors(obj);
   for (const key in descriptors) {
-    if (!ObjectPrototypeHasOwnProperty(descriptors, key)) {
+    if (!ObjectHasOwn(descriptors, key)) {
       continue;
     }
     if (key === "constructor") continue;
+    if (key === "prototype") continue;
     const descriptor = descriptors[key];
     if (
       ReflectHas(descriptor, "value") &&
       typeof descriptor.value === "function"
     ) {
-      ObjectDefineProperty(prototype.prototype, key, {
+      ObjectDefineProperty(obj, key, {
         enumerable: true,
         writable: true,
         configurable: true,
       });
     } else if (ReflectHas(descriptor, "get")) {
-      ObjectDefineProperty(prototype.prototype, key, {
+      ObjectDefineProperty(obj, key, {
         enumerable: true,
         configurable: true,
       });
     }
   }
-  ObjectDefineProperty(prototype.prototype, SymbolToStringTag, {
-    value: prototype.name,
-    enumerable: false,
-    configurable: true,
-    writable: false,
-  });
 }
 
 const setlikeInner = Symbol("[[set]]");
@@ -1177,7 +1288,7 @@ function setlike(obj, objPrototype, readonly) {
 export {
   assertBranded,
   brand,
-  configurePrototype,
+  configureInterface,
   converters,
   createBranded,
   createDictionaryConverter,

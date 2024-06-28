@@ -1,0 +1,4 @@
+error: Uncaught (in promise) TypeError: Importing ext: modules is only allowed from ext: and node: modules. Tried to import ext:runtime/01_errors.js from [WILDCARD]/testdata/run/extension_dynamic_import.ts
+await import("ext:runtime/01_errors.js");
+^
+    at async [WILDCARD]/run/extension_dynamic_import.ts:1:1

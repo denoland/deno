@@ -1,10 +1,29 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import {
+  op_node_x509_ca,
+  op_node_x509_check_email,
+  op_node_x509_fingerprint,
+  op_node_x509_fingerprint256,
+  op_node_x509_fingerprint512,
+  op_node_x509_get_issuer,
+  op_node_x509_get_serial_number,
+  op_node_x509_get_subject,
+  op_node_x509_get_valid_from,
+  op_node_x509_get_valid_to,
+  op_node_x509_key_usage,
+  op_node_x509_parse,
+} from "ext:core/ops";
+
 import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
 
@@ -35,6 +54,8 @@ export interface X509CheckOptions {
 }
 
 export class X509Certificate {
+  #handle: number;
+
   constructor(buffer: BinaryLike) {
     if (typeof buffer === "string") {
       buffer = Buffer.from(buffer);
@@ -48,20 +69,21 @@ export class X509Certificate {
       );
     }
 
-    notImplemented("crypto.X509Certificate");
+    this.#handle = op_node_x509_parse(buffer);
   }
 
   get ca(): boolean {
-    notImplemented("crypto.X509Certificate.prototype.ca");
-
-    return false;
+    return op_node_x509_ca(this.#handle);
   }
 
   checkEmail(
-    _email: string,
+    email: string,
     _options?: Pick<X509CheckOptions, "subject">,
   ): string | undefined {
-    notImplemented("crypto.X509Certificate.prototype.checkEmail");
+    validateString(email, "email");
+    if (op_node_x509_check_email(this.#handle, email)) {
+      return email;
+    }
   }
 
   checkHost(_name: string, _options?: X509CheckOptions): string | undefined {
@@ -81,21 +103,15 @@ export class X509Certificate {
   }
 
   get fingerprint(): string {
-    notImplemented("crypto.X509Certificate.prototype.fingerprint");
-
-    return "";
+    return op_node_x509_fingerprint(this.#handle);
   }
 
   get fingerprint256(): string {
-    notImplemented("crypto.X509Certificate.prototype.fingerprint256");
-
-    return "";
+    return op_node_x509_fingerprint256(this.#handle);
   }
 
   get fingerprint512(): string {
-    notImplemented("crypto.X509Certificate.prototype.fingerprint512");
-
-    return "";
+    return op_node_x509_fingerprint512(this.#handle);
   }
 
   get infoAccess(): string | undefined {
@@ -105,21 +121,27 @@ export class X509Certificate {
   }
 
   get issuer(): string {
-    notImplemented("crypto.X509Certificate.prototype.issuer");
-
-    return "";
+    return op_node_x509_get_issuer(this.#handle);
   }
 
   get issuerCertificate(): X509Certificate | undefined {
-    notImplemented("crypto.X509Certificate.prototype.issuerCertificate");
-
-    return {} as X509Certificate;
+    return undefined;
   }
 
-  get keyUsage(): string[] {
-    notImplemented("crypto.X509Certificate.prototype.keyUsage");
-
-    return [];
+  get keyUsage(): string[] | undefined {
+    const flags = op_node_x509_key_usage(this.#handle);
+    if (flags === 0) return undefined;
+    const result: string[] = [];
+    if (flags & 0x01) result.push("DigitalSignature");
+    if (flags >> 1 & 0x01) result.push("NonRepudiation");
+    if (flags >> 2 & 0x01) result.push("KeyEncipherment");
+    if (flags >> 3 & 0x01) result.push("DataEncipherment");
+    if (flags >> 4 & 0x01) result.push("KeyAgreement");
+    if (flags >> 5 & 0x01) result.push("KeyCertSign");
+    if (flags >> 6 & 0x01) result.push("CRLSign");
+    if (flags >> 7 & 0x01) result.push("EncipherOnly");
+    if (flags >> 8 & 0x01) result.push("DecipherOnly");
+    return result;
   }
 
   get publicKey(): KeyObject {
@@ -135,21 +157,15 @@ export class X509Certificate {
   }
 
   get serialNumber(): string {
-    notImplemented("crypto.X509Certificate.prototype.serialNumber");
-
-    return "";
+    return op_node_x509_get_serial_number(this.#handle);
   }
 
   get subject(): string {
-    notImplemented("crypto.X509Certificate.prototype.subject");
-
-    return "";
+    return op_node_x509_get_subject(this.#handle);
   }
 
   get subjectAltName(): string | undefined {
-    notImplemented("crypto.X509Certificate.prototype.subjectAltName");
-
-    return "";
+    return undefined;
   }
 
   toJSON(): string {
@@ -165,15 +181,11 @@ export class X509Certificate {
   }
 
   get validFrom(): string {
-    notImplemented("crypto.X509Certificate.prototype.validFrom");
-
-    return "";
+    return op_node_x509_get_valid_from(this.#handle);
   }
 
   get validTo(): string {
-    notImplemented("crypto.X509Certificate.prototype.validTo");
-
-    return "";
+    return op_node_x509_get_valid_to(this.#handle);
   }
 
   verify(_publicKey: KeyObject): boolean {

@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "posttest": "echo 'posttest'"
+  }
+}

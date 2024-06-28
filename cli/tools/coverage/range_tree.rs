@@ -1,9 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 //
 // Forked from https://github.com/demurgos/v8-coverage/tree/d0ca18da8740198681e0bc68971b0a6cdb11db3e/rust
 // Copyright 2021 Charles Samborski. All rights reserved. MIT license.
 
-use super::json_types::CoverageRange;
+use crate::cdp;
 use std::iter::Peekable;
 use typed_arena::Arena;
 
@@ -86,7 +86,7 @@ impl<'rt> RangeTree<'rt> {
           };
         if is_chain_end {
           let mut chain_iter = chain.drain(..);
-          let mut head: &'a mut RangeTree<'a> = chain_iter.next().unwrap();
+          let head: &'a mut RangeTree<'a> = chain_iter.next().unwrap();
           for tree in chain_iter {
             head.end = tree.end;
             for sub_child in tree.children.drain(..) {
@@ -100,7 +100,7 @@ impl<'rt> RangeTree<'rt> {
       }
       if !chain.is_empty() {
         let mut chain_iter = chain.drain(..);
-        let mut head: &'a mut RangeTree<'a> = chain_iter.next().unwrap();
+        let head: &'a mut RangeTree<'a> = chain_iter.next().unwrap();
         for tree in chain_iter {
           head.end = tree.end;
           for sub_child in tree.children.drain(..) {
@@ -126,12 +126,12 @@ impl<'rt> RangeTree<'rt> {
     tree
   }
 
-  pub fn to_ranges(&self) -> Vec<CoverageRange> {
-    let mut ranges: Vec<CoverageRange> = Vec::new();
+  pub fn to_ranges(&self) -> Vec<cdp::CoverageRange> {
+    let mut ranges: Vec<cdp::CoverageRange> = Vec::new();
     let mut stack: Vec<(&RangeTree, i64)> = vec![(self, 0)];
     while let Some((cur, parent_count)) = stack.pop() {
       let count: i64 = parent_count + cur.delta;
-      ranges.push(CoverageRange {
+      ranges.push(cdp::CoverageRange {
         start_char_offset: cur.start,
         end_char_offset: cur.end,
         count,
@@ -145,19 +145,19 @@ impl<'rt> RangeTree<'rt> {
 
   pub fn from_sorted_ranges<'a>(
     rta: &'a RangeTreeArena<'a>,
-    ranges: &[CoverageRange],
+    ranges: &[cdp::CoverageRange],
   ) -> Option<&'a mut RangeTree<'a>> {
     Self::from_sorted_ranges_inner(
       rta,
       &mut ranges.iter().peekable(),
-      ::std::usize::MAX,
+      usize::MAX,
       0,
     )
   }
 
   fn from_sorted_ranges_inner<'a, 'b, 'c: 'b>(
     rta: &'a RangeTreeArena<'a>,
-    ranges: &'b mut Peekable<impl Iterator<Item = &'c CoverageRange>>,
+    ranges: &'b mut Peekable<impl Iterator<Item = &'c cdp::CoverageRange>>,
     parent_end: usize,
     parent_count: i64,
   ) -> Option<&'a mut RangeTree<'a>> {
@@ -190,7 +190,7 @@ mod tests {
   #[test]
   fn from_sorted_ranges_empty() {
     let rta = RangeTreeArena::new();
-    let inputs: Vec<CoverageRange> = vec![CoverageRange {
+    let inputs: Vec<cdp::CoverageRange> = vec![cdp::CoverageRange {
       start_char_offset: 0,
       end_char_offset: 9,
       count: 1,

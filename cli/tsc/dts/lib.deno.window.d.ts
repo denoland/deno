@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -7,15 +7,15 @@
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
 
-/** @category Web APIs */
-interface WindowEventMap {
+/** @category Platform */
+declare interface WindowEventMap {
   "error": ErrorEvent;
   "unhandledrejection": PromiseRejectionEvent;
+  "rejectionhandled": PromiseRejectionEvent;
 }
 
-/** @category Web APIs */
-declare class Window extends EventTarget {
-  new(): Window;
+/** @category Platform */
+declare interface Window extends EventTarget {
   readonly window: Window & typeof globalThis;
   readonly self: Window & typeof globalThis;
   onerror: ((this: Window, ev: ErrorEvent) => any) | null;
@@ -23,6 +23,9 @@ declare class Window extends EventTarget {
   onbeforeunload: ((this: Window, ev: Event) => any) | null;
   onunload: ((this: Window, ev: Event) => any) | null;
   onunhandledrejection:
+    | ((this: Window, ev: PromiseRejectionEvent) => any)
+    | null;
+  onrejectionhandled:
     | ((this: Window, ev: PromiseRejectionEvent) => any)
     | null;
   close: () => void;
@@ -38,6 +41,7 @@ declare class Window extends EventTarget {
   localStorage: Storage;
   sessionStorage: Storage;
   caches: CacheStorage;
+  name: string;
 
   addEventListener<K extends keyof WindowEventMap>(
     type: K,
@@ -67,39 +71,55 @@ declare class Window extends EventTarget {
   ): void;
 }
 
-/** @category Web APIs */
+/** @category Platform */
+declare var Window: {
+  readonly prototype: Window;
+  new (): never;
+};
+
+/** @category Platform */
 declare var window: Window & typeof globalThis;
-/** @category Web APIs */
+/** @category Platform */
 declare var self: Window & typeof globalThis;
-/** @category DOM Events */
+/** @category Platform */
+declare var closed: boolean;
+/** @category Platform */
+declare function close(): void;
+/** @category Events */
 declare var onerror: ((this: Window, ev: ErrorEvent) => any) | null;
-/** @category DOM Events */
+/** @category Events */
 declare var onload: ((this: Window, ev: Event) => any) | null;
-/** @category DOM Events */
+/** @category Events */
 declare var onbeforeunload: ((this: Window, ev: Event) => any) | null;
-/** @category DOM Events */
+/** @category Events */
 declare var onunload: ((this: Window, ev: Event) => any) | null;
-/** @category Observability */
+/** @category Events */
 declare var onunhandledrejection:
   | ((this: Window, ev: PromiseRejectionEvent) => any)
   | null;
-/** @category Web Storage API */
+/** @category Storage */
 declare var localStorage: Storage;
-/** @category Web Storage API */
+/** @category Storage */
 declare var sessionStorage: Storage;
-/** @category Cache API */
+/** @category Cache */
 declare var caches: CacheStorage;
 
-/** @category Web APIs */
-declare class Navigator {
-  constructor();
+/** @category Platform */
+declare interface Navigator {
+  readonly gpu: GPU;
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
   readonly language: string;
   readonly languages: string[];
 }
 
-/** @category Web APIs */
+/** @category Platform */
+declare var Navigator: {
+  readonly prototype: Navigator;
+  new (): never;
+};
+
+/** @category Platform */
 declare var navigator: Navigator;
 
 /**
@@ -107,7 +127,7 @@ declare var navigator: Navigator;
  *
  * If the stdin is not interactive, it does nothing.
  *
- * @category Web APIs
+ * @category Platform
  *
  * @param message
  */
@@ -120,7 +140,7 @@ declare function alert(message?: string): void;
  *
  * If the stdin is not interactive, it returns false.
  *
- * @category Web APIs
+ * @category Platform
  *
  * @param message
  */
@@ -132,11 +152,12 @@ declare function confirm(message?: string): boolean;
  * If the default value is given and the user inputs the empty string, then it returns the given
  * default value.
  *
- * If the default value is not given and the user inputs the empty string, it returns null.
+ * If the default value is not given and the user inputs the empty string, it returns the empty
+ * string.
  *
  * If the stdin is not interactive, it returns null.
  *
- * @category Web APIs
+ * @category Platform
  *
  * @param message
  * @param defaultValue
@@ -152,7 +173,7 @@ declare function prompt(message?: string, defaultValue?: string): string | null;
  * dispatchEvent(new Event('unload'));
  * ```
  *
- * @category DOM Events
+ * @category Events
  */
 declare function addEventListener<
   K extends keyof WindowEventMap,
@@ -161,7 +182,7 @@ declare function addEventListener<
   listener: (this: Window, ev: WindowEventMap[K]) => any,
   options?: boolean | AddEventListenerOptions,
 ): void;
-/** @category DOM Events */
+/** @category Events */
 declare function addEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,
@@ -176,7 +197,7 @@ declare function addEventListener(
  * removeEventListener('load', listener);
  * ```
  *
- * @category DOM Events
+ * @category Events
  */
 declare function removeEventListener<
   K extends keyof WindowEventMap,
@@ -185,6 +206,7 @@ declare function removeEventListener<
   listener: (this: Window, ev: WindowEventMap[K]) => any,
   options?: boolean | EventListenerOptions,
 ): void;
+/** @category Events */
 declare function removeEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,
@@ -197,10 +219,9 @@ declare function removeEventListener(
  * reflected on the object it relates to. Accessible via
  * `globalThis.location`.
  *
- * @category Web APIs
+ * @category Platform
  */
-declare class Location {
-  constructor();
+declare interface Location {
   /** Returns a DOMStringList object listing the origins of the ancestor
    * browsing contexts, from the parent browsing context to the top-level
    * browsing context.
@@ -264,5 +285,21 @@ declare class Location {
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
 // The types there must first be split into window, worker and global types.
-/** @category Web APIs */
+/** The location (URL) of the object it is linked to. Changes done on it are
+ * reflected on the object it relates to. Accessible via
+ * `globalThis.location`.
+ *
+ * @category Platform
+ */
+declare var Location: {
+  readonly prototype: Location;
+  new (): never;
+};
+
+// TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
+// The types there must first be split into window, worker and global types.
+/** @category Platform */
 declare var location: Location;
+
+/** @category Platform */
+declare var name: string;
