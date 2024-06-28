@@ -8837,6 +8837,10 @@ mod tests {
           lint: false,
           html: Some(DocHtmlFlag {
             name: Some("My library".to_string()),
+            category_docs_path: None,
+            symbol_redirect_map_path: None,
+            default_symbol_map_path: None,
+            strip_trailing_html: false,
             output: String::from("./docs/"),
           }),
           source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
@@ -8863,6 +8867,10 @@ mod tests {
           json: false,
           html: Some(DocHtmlFlag {
             name: Some("My library".to_string()),
+            category_docs_path: None,
+            symbol_redirect_map_path: None,
+            default_symbol_map_path: None,
+            strip_trailing_html: false,
             output: String::from("./foo"),
           }),
           lint: true,
