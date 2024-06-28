@@ -184,4 +184,13 @@ impl LspCache {
       .as_ref()?;
     vendor.get_remote_url(&path)
   }
+
+  pub fn is_valid_file_referrer(&self, specifier: &ModuleSpecifier) -> bool {
+    if let Ok(path) = specifier_to_file_path(specifier) {
+      if !path.starts_with(&self.deno_dir().root) {
+        return true;
+      }
+    }
+    false
+  }
 }
