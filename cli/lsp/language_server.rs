@@ -3477,16 +3477,18 @@ impl Inner {
       .and_then(|d| d.scope.to_file_path().ok())
       .unwrap_or_else(|| self.initial_cwd.clone());
     // todo: we need a way to convert config data to a Workspace
-    let workspace = Arc::new(Workspace::discover(&WorkspaceDiscoverOptions {
-      fs: &DenoConfigFsAdapter::new(&deno_runtime::deno_fs::RealFs),
-      pkg_json_cache: None,
-      start: deno_config::workspace::WorkspaceDiscoverStart::Dir(&initial_cwd),
-      config_parse_options: &deno_config::ConfigParseOptions {
-        include_task_comments: false,
+    let workspace = Arc::new(Workspace::discover(
+      deno_config::workspace::WorkspaceDiscoverStart::Dir(&initial_cwd),
+      &WorkspaceDiscoverOptions {
+        fs: &DenoConfigFsAdapter::new(&deno_runtime::deno_fs::RealFs),
+        pkg_json_cache: None,
+        config_parse_options: deno_config::ConfigParseOptions {
+          include_task_comments: false,
+        },
+        additional_config_file_names: &[],
+        discover_pkg_json: true,
       },
-      additional_config_file_names: &[],
-      discover_pkg_json: true,
-    })?);
+    )?);
     let cli_options = CliOptions::new(
       Flags {
         cache_path: Some(self.cache.deno_dir().root.clone()),

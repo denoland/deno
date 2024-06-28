@@ -877,7 +877,7 @@ impl CliOptions {
       } else {
         &[]
       };
-    let parse_options = deno_config::ConfigParseOptions {
+    let config_parse_options = deno_config::ConfigParseOptions {
       include_task_comments: matches!(
         flags.subcommand,
         DenoSubcommand::Task(..)
@@ -894,16 +894,18 @@ impl CliOptions {
     let workspace = match &flags.config_flag {
       deno_config::ConfigFlag::Discover => {
         if let Some(start_dir) = flags.config_path_arg(&initial_cwd) {
-          Workspace::discover(&WorkspaceDiscoverOptions {
-            fs: &DenoConfigFsAdapter::new(&RealFs),
-            pkg_json_cache: Some(
-              &deno_runtime::deno_node::PackageJsonThreadLocalCache,
-            ),
-            start: WorkspaceDiscoverStart::Dir(&start_dir),
-            config_parse_options: &parse_options,
-            additional_config_file_names,
-            discover_pkg_json,
-          })?
+          Workspace::discover(
+            WorkspaceDiscoverStart::Dir(&start_dir),
+            &WorkspaceDiscoverOptions {
+              fs: &DenoConfigFsAdapter::new(&RealFs),
+              pkg_json_cache: Some(
+                &deno_runtime::deno_node::PackageJsonThreadLocalCache,
+              ),
+              config_parse_options,
+              additional_config_file_names,
+              discover_pkg_json,
+            },
+          )?
         } else {
           Workspace::empty(Arc::new(
             ModuleSpecifier::from_directory_path(&initial_cwd).unwrap(),
@@ -912,16 +914,18 @@ impl CliOptions {
       }
       deno_config::ConfigFlag::Path(path) => {
         let config_path = normalize_path(initial_cwd.join(path));
-        Workspace::discover(&WorkspaceDiscoverOptions {
-          fs: &DenoConfigFsAdapter::new(&RealFs),
-          pkg_json_cache: Some(
-            &deno_runtime::deno_node::PackageJsonThreadLocalCache,
-          ),
-          start: WorkspaceDiscoverStart::ConfigFile(&config_path),
-          config_parse_options: &parse_options,
-          additional_config_file_names,
-          discover_pkg_json,
-        })?
+        Workspace::discover(
+          WorkspaceDiscoverStart::ConfigFile(&config_path),
+          &WorkspaceDiscoverOptions {
+            fs: &DenoConfigFsAdapter::new(&RealFs),
+            pkg_json_cache: Some(
+              &deno_runtime::deno_node::PackageJsonThreadLocalCache,
+            ),
+            config_parse_options,
+            additional_config_file_names,
+            discover_pkg_json,
+          },
+        )?
       }
       deno_config::ConfigFlag::Disabled => Workspace::empty(Arc::new(
         ModuleSpecifier::from_directory_path(&initial_cwd).unwrap(),
