@@ -327,7 +327,7 @@ fn populate_lockfile_from_snapshot(
   lockfile: &CliLockfile,
   snapshot: &NpmResolutionSnapshot,
 ) {
-  let mut lockfile = lockfile.inner();
+  let mut lockfile = lockfile.lock();
   for (package_req, nv) in snapshot.package_reqs() {
     lockfile.insert_package_specifier(
       format!("npm:{}", package_req),

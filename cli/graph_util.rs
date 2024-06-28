@@ -421,7 +421,7 @@ impl ModuleGraphBuilder {
       ) -> Option<LoaderChecksum> {
         self
           .0
-          .inner()
+          .lock()
           .remote()
           .get(specifier.as_str())
           .map(|s| LoaderChecksum::new(s.clone()))
@@ -431,7 +431,7 @@ impl ModuleGraphBuilder {
         &self,
         specifier: &deno_ast::ModuleSpecifier,
       ) -> bool {
-        self.0.inner().remote().contains_key(specifier.as_str())
+        self.0.lock().remote().contains_key(specifier.as_str())
       }
 
       fn set_remote_checksum(
@@ -441,7 +441,7 @@ impl ModuleGraphBuilder {
       ) {
         self
           .0
-          .inner()
+          .lock()
           .insert_remote(specifier.to_string(), checksum.into_string())
       }
 
@@ -451,7 +451,7 @@ impl ModuleGraphBuilder {
       ) -> Option<LoaderChecksum> {
         self
           .0
-          .inner()
+          .lock()
           .content
           .packages
           .jsr
@@ -468,7 +468,7 @@ impl ModuleGraphBuilder {
         // to insert the same package manifest checksum
         self
           .0
-          .inner()
+          .lock()
           .insert_package(package_nv.to_string(), checksum.into_string());
       }
     }
@@ -537,7 +537,7 @@ impl ModuleGraphBuilder {
     if is_first_execution {
       // populate the information from the lockfile
       if let Some(lockfile) = &self.lockfile {
-        let lockfile = lockfile.inner();
+        let lockfile = lockfile.lock();
         for (from, to) in &lockfile.content.redirects {
           if let Ok(from) = ModuleSpecifier::parse(from) {
             if let Ok(to) = ModuleSpecifier::parse(to) {
@@ -580,7 +580,7 @@ impl ModuleGraphBuilder {
       || has_jsr_package_mappings_changed
     {
       if let Some(lockfile) = &self.lockfile {
-        let mut lockfile = lockfile.inner();
+        let mut lockfile = lockfile.lock();
         // https redirects
         if has_redirects_changed {
           let graph_redirects = graph.redirects.iter().filter(|(from, _)| {

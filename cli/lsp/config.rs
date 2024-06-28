@@ -1314,7 +1314,8 @@ impl ConfigData {
     // Load lockfile
     let lockfile = config_file.as_ref().and_then(resolve_lockfile_from_config);
     if let Some(lockfile) = &lockfile {
-      if let Some(specifier) = lockfile.specifier() {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile.filename)
+      {
         watched_files
           .entry(specifier)
           .or_insert(ConfigWatchedFileType::Lockfile);
@@ -1323,7 +1324,7 @@ impl ConfigData {
     let lockfile_canonicalized_specifier = lockfile
       .as_ref()
       .and_then(|lockfile| {
-        canonicalize_path_maybe_not_exists(&lockfile.inner().filename).ok()
+        canonicalize_path_maybe_not_exists(&lockfile.filename).ok()
       })
       .and_then(|p| ModuleSpecifier::from_file_path(p).ok());
     if let Some(specifier) = lockfile_canonicalized_specifier {
@@ -1826,8 +1827,11 @@ fn resolve_node_modules_dir(
 fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<CliLockfile> {
   match CliLockfile::read_from_path(lockfile_path) {
     Ok(value) => {
-      if let Some(specifier) = value.specifier() {
-        lsp_log!("  Resolved lockfile: \"{}\"", specifier);
+      if value.filename.exists() {
+        if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)
+        {
+          lsp_log!("  Resolved lockfile: \"{}\"", specifier);
+        }
       }
       Some(value)
     }

@@ -210,7 +210,7 @@ async fn resolve_snapshot(
           .with_context(|| {
             format!(
               "failed reading lockfile '{}'",
-              lockfile.inner().filename.display()
+              lockfile.filename.display()
             )
           })?;
         Ok(Some(snapshot))
@@ -227,7 +227,7 @@ async fn snapshot_from_lockfile(
   api: &dyn NpmRegistryApi,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
   let (incomplete_snapshot, skip_integrity_check) = {
-    let lock = lockfile.inner();
+    let lock = lockfile.lock();
     (
       deno_npm::resolution::incomplete_snapshot_from_lockfile(&lock)?,
       lock.overwrite,

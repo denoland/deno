@@ -84,7 +84,7 @@ impl JsrCacheResolver {
       }
     }
     if let Some(lockfile) = config_data.and_then(|d| d.lockfile.as_ref()) {
-      for (req_url, nv_url) in &lockfile.inner().content.packages.specifiers {
+      for (req_url, nv_url) in &lockfile.lock().content.packages.specifiers {
         let Some(req) = req_url.strip_prefix("jsr:") else {
           continue;
         };

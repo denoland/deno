@@ -314,7 +314,7 @@ impl CliFactory {
       options
         .maybe_package_json()
         .map(|package_json| {
-          package_json.path.parent() != lockfile.inner().filename.parent()
+          package_json.path.parent() != lockfile.filename.parent()
         })
         .unwrap_or(false)
     }

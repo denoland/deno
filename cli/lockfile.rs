@@ -6,7 +6,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
-use deno_core::ModuleSpecifier;
 use deno_runtime::deno_node::PackageJson;
 
 use crate::args::ConfigFile;
@@ -23,6 +22,7 @@ use deno_lockfile::Lockfile;
 #[derive(Debug)]
 pub struct CliLockfile {
   lockfile: Mutex<Lockfile>,
+  pub filename: PathBuf,
 }
 
 pub struct Guard<'a, T> {
@@ -45,22 +45,15 @@ impl<'a, T> std::ops::DerefMut for Guard<'a, T> {
 
 impl CliLockfile {
   pub fn new(lockfile: Lockfile) -> Self {
+    let filename = lockfile.filename.clone();
     Self {
       lockfile: Mutex::new(lockfile),
-    }
-  }
-
-  pub fn specifier(&self) -> Option<ModuleSpecifier> {
-    let path = &self.lockfile.lock().filename;
-    if path.exists() {
-      Some(ModuleSpecifier::from_file_path(path).ok()?)
-    } else {
-      None
+      filename,
     }
   }
 
   /// Get the inner deno_lockfile::Lockfile.
-  pub fn inner(&self) -> Guard<Lockfile> {
+  pub fn lock(&self) -> Guard<Lockfile> {
     Guard {
       guard: self.lockfile.lock(),
     }
