@@ -9,7 +9,7 @@ use std::str;
 use std::sync::Arc;
 
 use crate::args::jsr_url;
-use crate::args::write_lockfile_if_has_changes;
+use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
@@ -45,7 +45,6 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
@@ -65,7 +64,6 @@ use deno_graph::JsonModule;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
-use deno_lockfile::Lockfile;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -116,7 +114,7 @@ pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
-  lockfile: Option<Arc<Mutex<Lockfile>>>,
+  lockfile: Option<Arc<CliLockfile>>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
   progress_bar: ProgressBar,
   type_checker: Arc<TypeChecker>,
@@ -126,7 +124,7 @@ impl ModuleLoadPreparer {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: Arc<CliOptions>,
-    lockfile: Option<Arc<Mutex<Lockfile>>>,
+    lockfile: Option<Arc<CliLockfile>>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
     progress_bar: ProgressBar,
     type_checker: Arc<TypeChecker>,
@@ -177,7 +175,7 @@ impl ModuleLoadPreparer {
 
     // write the lockfile if there is one
     if let Some(lockfile) = &self.lockfile {
-      write_lockfile_if_has_changes(&mut lockfile.lock())?;
+      lockfile.write_if_changed()?;
     }
 
     drop(_pb_clear_guard);
