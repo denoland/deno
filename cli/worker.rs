@@ -10,7 +10,6 @@ use deno_config::package_json::PackageJsonDeps;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
@@ -21,7 +20,6 @@ use deno_core::ModuleLoader;
 use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
-use deno_lockfile::Lockfile;
 use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
@@ -47,7 +45,7 @@ use deno_semver::package::PackageReqReference;
 use deno_terminal::colors;
 use tokio::select;
 
-use crate::args::write_lockfile_if_has_changes;
+use crate::args::CliLockfile;
 use crate::args::DenoSubcommand;
 use crate::args::StorageKeyResolver;
 use crate::errors;
@@ -139,7 +137,7 @@ struct SharedWorkerState {
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
-  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  maybe_lockfile: Option<Arc<CliLockfile>>,
   feature_checker: Arc<FeatureChecker>,
   node_ipc: Option<i64>,
   enable_future_features: bool,
@@ -412,7 +410,7 @@ impl CliMainWorkerFactory {
     fs: Arc<dyn deno_fs::FileSystem>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
-    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+    maybe_lockfile: Option<Arc<CliLockfile>>,
     feature_checker: Arc<FeatureChecker>,
     options: CliMainWorkerOptions,
     node_ipc: Option<i64>,
@@ -529,7 +527,7 @@ impl CliMainWorkerFactory {
         // For npm binary commands, ensure that the lockfile gets updated
         // so that we can re-use the npm resolution the next time it runs
         // for better performance
-        write_lockfile_if_has_changes(&mut lockfile.lock())?;
+        lockfile.write_if_changed()?;
       }
 
       (node_resolution.into_url(), is_main_cjs)

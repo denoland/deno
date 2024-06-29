@@ -86,7 +86,6 @@ use super::tsc::TsServer;
 use super::urls;
 use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
-use crate::args::write_lockfile_if_has_changes;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
@@ -274,8 +273,7 @@ impl LanguageServer {
       // Update the lockfile on the file system with anything new
       // found after caching
       if let Some(lockfile) = cli_options.maybe_lockfile() {
-        let mut lockfile = lockfile.lock();
-        if let Err(err) = write_lockfile_if_has_changes(&mut lockfile) {
+        if let Err(err) = &lockfile.write_if_changed() {
           lsp_warn!("{:#}", err);
         }
       }

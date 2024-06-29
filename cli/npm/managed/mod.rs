@@ -9,7 +9,6 @@ use cache::TarballCache;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
@@ -27,7 +26,7 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use resolution::AddPkgReqsResult;
 
-use crate::args::Lockfile;
+use crate::args::CliLockfile;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::args::PackageJsonDepsProvider;
@@ -53,13 +52,13 @@ mod resolution;
 mod resolvers;
 
 pub enum CliNpmResolverManagedSnapshotOption {
-  ResolveFromLockfile(Arc<Mutex<Lockfile>>),
+  ResolveFromLockfile(Arc<CliLockfile>),
   Specified(Option<ValidSerializedNpmResolutionSnapshot>),
 }
 
 pub struct CliNpmResolverManagedCreateOptions {
   pub snapshot: CliNpmResolverManagedSnapshotOption,
-  pub maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  pub maybe_lockfile: Option<Arc<CliLockfile>>,
   pub fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
   pub http_client_provider: Arc<crate::http_util::HttpClientProvider>,
   pub npm_global_cache_dir: PathBuf,
@@ -128,7 +127,7 @@ pub async fn create_managed_npm_resolver(
 fn create_inner(
   fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
   http_client_provider: Arc<HttpClientProvider>,
-  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
   npm_rc: Arc<ResolvedNpmRc>,
@@ -205,14 +204,11 @@ async fn resolve_snapshot(
 ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
   match snapshot {
     CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
-      if !lockfile.lock().overwrite {
+      if !lockfile.overwrite() {
         let snapshot = snapshot_from_lockfile(lockfile.clone(), api)
           .await
           .with_context(|| {
-            format!(
-              "failed reading lockfile '{}'",
-              lockfile.lock().filename.display()
-            )
+            format!("failed reading lockfile '{}'", lockfile.filename.display())
           })?;
         Ok(Some(snapshot))
       } else {
@@ -224,7 +220,7 @@ async fn resolve_snapshot(
 }
 
 async fn snapshot_from_lockfile(
-  lockfile: Arc<Mutex<Lockfile>>,
+  lockfile: Arc<CliLockfile>,
   api: &dyn NpmRegistryApi,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
   let (incomplete_snapshot, skip_integrity_check) = {
@@ -250,7 +246,7 @@ async fn snapshot_from_lockfile(
 pub struct ManagedCliNpmResolver {
   fs: Arc<dyn FileSystem>,
   fs_resolver: Arc<dyn NpmPackageFsResolver>,
-  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
   package_json_deps_provider: Arc<PackageJsonDepsProvider>,
@@ -274,7 +270,7 @@ impl ManagedCliNpmResolver {
   pub fn new(
     fs: Arc<dyn FileSystem>,
     fs_resolver: Arc<dyn NpmPackageFsResolver>,
-    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+    maybe_lockfile: Option<Arc<CliLockfile>>,
     npm_api: Arc<CliNpmRegistryApi>,
     npm_cache: Arc<NpmCache>,
     package_json_deps_provider: Arc<PackageJsonDepsProvider>,
