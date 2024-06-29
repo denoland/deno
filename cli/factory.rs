@@ -1,9 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::args::Lockfile;
 use crate::args::PackageJsonInstallDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
@@ -59,7 +59,6 @@ use deno_config::workspace::WorkspaceResolver;
 use deno_config::ConfigFile;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::FeatureChecker;
 
 use deno_lockfile::WorkspaceMemberConfig;
@@ -159,7 +158,7 @@ struct CliFactoryServices {
   emitter: Deferred<Arc<Emitter>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
-  lockfile: Deferred<Option<Arc<Mutex<Lockfile>>>>,
+  lockfile: Deferred<Option<Arc<CliLockfile>>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
   blob_store: Deferred<Arc<BlobStore>>,
@@ -306,7 +305,7 @@ impl CliFactory {
     self.services.fs.get_or_init(|| Arc::new(deno_fs::RealFs))
   }
 
-  pub fn maybe_lockfile(&self) -> &Option<Arc<Mutex<Lockfile>>> {
+  pub fn maybe_lockfile(&self) -> &Option<Arc<CliLockfile>> {
     fn pkg_json_deps(maybe_pkg_json: Option<&PackageJson>) -> BTreeSet<String> {
       let Some(pkg_json) = maybe_pkg_json else {
         return Default::default();
@@ -341,7 +340,6 @@ impl CliFactory {
 
       // initialize the lockfile with the workspace's configuration
       if let Some(lockfile) = &maybe_lockfile {
-        let mut lockfile = lockfile.lock();
         let (root_url, root_folder) = self.options.workspace.root_folder();
         let config = deno_lockfile::WorkspaceConfig {
           root: WorkspaceMemberConfig {
