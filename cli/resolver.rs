@@ -833,6 +833,7 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
         };
 
         let result = npm_resolver.add_package_reqs_raw(package_reqs).await;
+
         NpmResolvePkgReqsResult {
           results: result
             .results
