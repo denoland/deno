@@ -389,6 +389,7 @@ mod tests {
     let workspace_resolver = WorkspaceResolver::new_raw(
       Some(import_map),
       vec![Arc::new(package_json)],
+      deno_config::workspace::PackageJsonDepResolution::Enabled,
     );
     let fs = Arc::new(RealFs);
     let sloppy_imports_resolver = SloppyImportsResolver::new(fs);

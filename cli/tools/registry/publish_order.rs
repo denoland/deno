@@ -173,12 +173,12 @@ fn build_pkg_deps(
             specifier.as_str().starts_with(dir_url.as_str())
           });
           if let Some(root) = found_root {
-            deps.insert(root.1.package_name.clone());
+            deps.insert(root.1.name.clone());
           }
         }
       }
     }
-    members.insert(pkg_config.package_name.clone(), deps);
+    members.insert(pkg_config.name.clone(), deps);
   }
   Ok(members)
 }

@@ -9,6 +9,7 @@ mod package_json;
 
 use deno_ast::SourceMapOption;
 use deno_config::workspace::CreateResolverOptions;
+use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
@@ -1108,7 +1109,11 @@ impl CliOptions {
         .create_resolver(
           CreateResolverOptions {
             // todo(dsherret): this should be false for nodeModulesDir: true
-            pkg_json_dep_resolution: !self.use_byonm(),
+            pkg_json_dep_resolution: if self.use_byonm() {
+              PackageJsonDepResolution::Disabled
+            } else {
+              PackageJsonDepResolution::Enabled
+            },
             specified_import_map: cli_arg_specified_import_map,
           },
           |specifier| {

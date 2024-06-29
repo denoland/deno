@@ -25,6 +25,7 @@ use crate::util::progress_bar::ProgressBarStyle;
 use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_cache_dir::HttpCache;
+use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
@@ -501,6 +502,13 @@ fn create_graph_resolver(
         .and_then(|d| d.package_json.clone())
         .into_iter()
         .collect(),
+      if config_data.map(|d| d.byonm).unwrap_or(false) {
+        PackageJsonDepResolution::Disabled
+      } else {
+        // todo(dsherret): this should also be disabled for when using
+        // auto-install with a node_modules directory
+        PackageJsonDepResolution::Enabled
+      },
     )),
     maybe_jsx_import_source_config: config_file
       .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten()),

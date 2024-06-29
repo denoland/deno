@@ -252,10 +252,8 @@ impl PublishPreparer {
           let package = self
             .prepare_publish(&member, graph, diagnostics_collector)
             .await
-            .with_context(|| {
-              format!("Failed preparing '{}'.", member.package_name)
-            })?;
-          Ok::<_, AnyError>((member.package_name, package))
+            .with_context(|| format!("Failed preparing '{}'.", member.name))?;
+          Ok::<_, AnyError>((member.name, package))
         }
         .boxed()
       })
@@ -412,19 +410,19 @@ impl PublishPreparer {
   "version": "{}",
   "exports": "{}"
 }}"#,
-        package.package_name,
+        package.name,
         version,
         suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
       );
 
       bail!(
       "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
-      package.package_name,
+      package.name,
       deno_json.specifier,
       exports_content
     );
     }
-    let Some(name_no_at) = package.package_name.strip_prefix('@') else {
+    let Some(name_no_at) = package.name.strip_prefix('@') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
     let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
@@ -473,11 +471,7 @@ impl PublishPreparer {
     })
     .await??;
 
-    log::debug!(
-      "Tarball size ({}): {}",
-      package.package_name,
-      tarball.bytes.len()
-    );
+    log::debug!("Tarball size ({}): {}", package.name, tarball.bytes.len());
 
     Ok(Rc::new(PreparedPublishPackage {
       scope: scope.to_string(),

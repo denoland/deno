@@ -46,7 +46,7 @@ impl PackageJsonInstallDepsProvider {
             {
               workspace_pkgs.push(InstallNpmWorkspacePkg {
                 alias,
-                pkg_dir: pkg.package_json.dir_path().to_path_buf(),
+                pkg_dir: pkg.pkg_json.dir_path().to_path_buf(),
               });
             } else {
               pkg_reqs.push(pkg_req)
@@ -58,7 +58,7 @@ impl PackageJsonInstallDepsProvider {
             }) {
               workspace_pkgs.push(InstallNpmWorkspacePkg {
                 alias,
-                pkg_dir: pkg.package_json.dir_path().to_path_buf(),
+                pkg_dir: pkg.pkg_json.dir_path().to_path_buf(),
               });
             }
           }

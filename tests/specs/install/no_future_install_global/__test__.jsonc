@@ -2,7 +2,7 @@
   "tempDir": true,
   "steps": [
     {
-      "args": "install --root ./bins --name deno-test-bin ./main.js",
+      "args": "install --root ./bins --name deno-test-bin ./pkg/main.js",
       "output": "install.out"
     },
     {

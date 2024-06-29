@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use deno_ast::ModuleSpecifier;
+use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::Workspace;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -76,6 +77,7 @@ pub struct SerializedWorkspaceResolverImportMap {
 pub struct SerializedWorkspaceResolver {
   pub import_map: Option<SerializedWorkspaceResolverImportMap>,
   pub package_jsons: BTreeMap<String, serde_json::Value>,
+  pub pkg_json_resolution: PackageJsonDepResolution,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -615,6 +617,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             )
           })
           .collect(),
+        pkg_json_resolution: workspace_resolver.pkg_json_dep_resolution(),
       },
       node_modules,
       disable_deprecated_api_warning: cli_options

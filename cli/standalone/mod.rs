@@ -567,7 +567,11 @@ pub async fn run(
         Arc::new(pkg_json)
       })
       .collect();
-    WorkspaceResolver::new_raw(import_map, pkg_jsons)
+    WorkspaceResolver::new_raw(
+      import_map,
+      pkg_jsons,
+      metadata.workspace_resolver.pkg_json_resolution,
+    )
   };
   let cli_node_resolver = Arc::new(CliNodeResolver::new(
     Some(cjs_resolutions.clone()),

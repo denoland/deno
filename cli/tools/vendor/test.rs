@@ -297,6 +297,7 @@ fn build_resolver(
     workspace_resolver: Arc::new(WorkspaceResolver::new_raw(
       maybe_original_import_map,
       Vec::new(),
+      deno_config::workspace::PackageJsonDepResolution::Enabled,
     )),
     maybe_jsx_import_source_config,
     maybe_vendor_dir: None,
