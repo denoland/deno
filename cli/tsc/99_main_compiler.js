@@ -161,9 +161,6 @@ delete Object.prototype.__proto__;
   /** @type {Map<string, number>} */
   const sourceRefCounts = new Map();
 
-  /** @type {string[]=} */
-  let scriptFileNamesCache;
-
   /** @type {Map<string, string>} */
   const scriptVersionCache = new Map();
 
@@ -172,13 +169,14 @@ delete Object.prototype.__proto__;
 
   const isCjsCache = new SpecifierIsCjsCache();
 
-  /** @type {ts.CompilerOptions | null} */
-  let tsConfigCache = null;
-
   /** @type {number | null} */
   let projectVersionCache = null;
 
+  /** @type {string | null} */
   let lastRequestMethod = null;
+
+  /** @type {string | null} */
+  let lastRequestScope = null;
 
   const ChangeKind = {
     Opened: 0,
@@ -542,8 +540,19 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @type {ts.LanguageService & { [k:string]: any }} */
-  let languageService;
+  /** @typedef {{
+   *    ls: ts.LanguageService & { [k:string]: any },
+   *    compilerOptions: ts.CompilerOptions,
+   *  }} LanguageServiceEntry */
+  /** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry> }} */
+  const languageServiceEntries = {
+    // @ts-ignore Will be set later.
+    unscoped: null,
+    byScope: new Map(),
+  };
+
+  /** @type {{ unscoped: string[], byScope: Map<string, string[]> } | null} */
+  let scriptNamesCache = null;
 
   /** An object literal of the incremental compiler host, which provides the
    * specific "bindings" to the Deno environment that tsc needs to work.
@@ -785,32 +794,24 @@ delete Object.prototype.__proto__;
       if (logDebug) {
         debug("host.getCompilationSettings()");
       }
-      if (tsConfigCache) {
-        return tsConfigCache;
-      }
-      const tsConfig = normalizeConfig(ops.op_ts_config());
-      const { options, errors } = ts
-        .convertCompilerOptionsFromJson(tsConfig, "");
-      Object.assign(options, {
-        allowNonTsExtensions: true,
-        allowImportingTsExtensions: true,
-      });
-      if (errors.length > 0 && logDebug) {
-        debug(ts.formatDiagnostics(errors, host));
-      }
-      tsConfigCache = options;
-      return options;
+      return (lastRequestScope
+        ? languageServiceEntries.byScope.get(lastRequestScope)?.compilerOptions
+        : null) ?? languageServiceEntries.unscoped.compilerOptions;
     },
     getScriptFileNames() {
       if (logDebug) {
         debug("host.getScriptFileNames()");
       }
-      // tsc requests the script file names multiple times even though it can't
-      // possibly have changed, so we will memoize it on a per request basis.
-      if (scriptFileNamesCache) {
-        return scriptFileNamesCache;
+      if (!scriptNamesCache) {
+        const { unscoped, byScope } = ops.op_script_names();
+        scriptNamesCache = {
+          unscoped,
+          byScope: new Map(Object.entries(byScope)),
+        };
       }
-      return scriptFileNamesCache = ops.op_script_names();
+      return (lastRequestScope
+        ? scriptNamesCache.byScope.get(lastRequestScope)
+        : null) ?? scriptNamesCache.unscoped;
     },
     getScriptVersion(specifier) {
       if (logDebug) {
@@ -953,7 +954,7 @@ delete Object.prototype.__proto__;
     }
   }
 
-  /** @param {Record<string, string>} config */
+  /** @param {Record<string, unknown>} config */
   function normalizeConfig(config) {
     // the typescript compiler doesn't know about the precompile
     // transform at the moment, so just tell it we're using react-jsx
@@ -964,6 +965,21 @@ delete Object.prototype.__proto__;
       delete config.jsxPrecompileSkipElements;
     }
     return config;
+  }
+
+  /** @param {Record<string, unknown>} config */
+  function lspTsConfigToCompilerOptions(config) {
+    const normalizedConfig = normalizeConfig(config);
+    const { options, errors } = ts
+      .convertCompilerOptionsFromJson(normalizedConfig, "");
+    Object.assign(options, {
+      allowNonTsExtensions: true,
+      allowImportingTsExtensions: true,
+    });
+    if (errors.length > 0 && logDebug) {
+      debug(ts.formatDiagnostics(errors, host));
+    }
+    return options;
   }
 
   /** The API that is called by Rust when executing a request.
@@ -1079,7 +1095,7 @@ delete Object.prototype.__proto__;
   /**
    * @param {number} _id
    * @param {any} data
-   * @param {any | null} error
+   * @param {string | null} error
    */
   // TODO(bartlomieju): this feels needlessly generic, both type chcking
   // and language server use it with inefficient serialization. Id is not used
@@ -1088,19 +1104,19 @@ delete Object.prototype.__proto__;
     if (error) {
       ops.op_respond(
         "error",
-        "stack" in error ? error.stack.toString() : error.toString(),
+        error,
       );
     } else {
       ops.op_respond(JSON.stringify(data), "");
     }
   }
 
-  /** @typedef {[[string, number][], number, boolean] } PendingChange */
+  /** @typedef {[[string, number][], number, [string, any][]] } PendingChange */
   /**
    * @template T
    * @typedef {T | null} Option<T> */
 
-  /** @returns {Promise<[number, string, any[], Option<PendingChange>] | null>} */
+  /** @returns {Promise<[number, string, any[], string | null, Option<PendingChange>] | null>} */
   async function pollRequests() {
     return await ops.op_poll_requests();
   }
@@ -1113,7 +1129,30 @@ delete Object.prototype.__proto__;
       throw new Error("The language server has already been initialized.");
     }
     hasStarted = true;
-    languageService = ts.createLanguageService(host, documentRegistry);
+    languageServiceEntries.unscoped = {
+      ls: ts.createLanguageService(
+        host,
+        documentRegistry,
+      ),
+      compilerOptions: lspTsConfigToCompilerOptions({
+        "allowJs": true,
+        "esModuleInterop": true,
+        "experimentalDecorators": false,
+        "isolatedModules": true,
+        "lib": ["deno.ns", "deno.window", "deno.unstable"],
+        "module": "esnext",
+        "moduleDetection": "force",
+        "noEmit": true,
+        "resolveJsonModule": true,
+        "strict": true,
+        "target": "esnext",
+        "useDefineForClassFields": true,
+        "useUnknownInCatchVariables": false,
+        "jsx": "react",
+        "jsxFactory": "React.createElement",
+        "jsxFragmentFactory": "React.Fragment",
+      }),
+    };
     setLogDebug(enableDebugLogging, "TSLS");
     debug("serverInit()");
 
@@ -1123,39 +1162,68 @@ delete Object.prototype.__proto__;
         break;
       }
       try {
-        serverRequest(request[0], request[1], request[2], request[3]);
-      } catch (err) {
-        const reqString = "[" + request.map((v) =>
-          JSON.stringify(v)
-        ).join(", ") + "]";
-        error(
-          `Error occurred processing request ${reqString} : ${
-            "stack" in err ? err.stack : err
-          }`,
+        serverRequest(
+          request[0],
+          request[1],
+          request[2],
+          request[3],
+          request[4],
         );
+      } catch (err) {
+        error(`Internal error occurred processing request: ${err}`);
       }
     }
+  }
+
+  /**
+   * @param {any} error
+   * @param {any[] | null} args
+   */
+  function formatErrorWithArgs(error, args) {
+    let errorString = "stack" in error
+      ? error.stack.toString()
+      : error.toString();
+    if (args) {
+      errorString += `\nFor request: [${
+        args.map((v) => JSON.stringify(v)).join(", ")
+      }]`;
+    }
+    return errorString;
   }
 
   /**
    * @param {number} id
    * @param {string} method
    * @param {any[]} args
+   * @param {string | null} scope
    * @param {PendingChange | null} maybeChange
    */
-  function serverRequest(id, method, args, maybeChange) {
+  function serverRequest(id, method, args, scope, maybeChange) {
     if (logDebug) {
-      debug(`serverRequest()`, id, method, args, maybeChange);
+      debug(`serverRequest()`, id, method, args, scope, maybeChange);
     }
-    lastRequestMethod = method;
     if (maybeChange !== null) {
       const changedScripts = maybeChange[0];
       const newProjectVersion = maybeChange[1];
-      const configChanged = maybeChange[2];
-
-      if (configChanged) {
-        tsConfigCache = null;
+      const newConfigsByScope = maybeChange[2];
+      if (newConfigsByScope) {
         isNodeSourceFileCache.clear();
+        /** @type { typeof languageServiceEntries.byScope } */
+        const newByScope = new Map();
+        for (const [scope, config] of newConfigsByScope) {
+          lastRequestScope = scope;
+          const oldEntry = languageServiceEntries.byScope.get(scope);
+          const ls = oldEntry
+            ? oldEntry.ls
+            : ts.createLanguageService(host, documentRegistry);
+          const compilerOptions = lspTsConfigToCompilerOptions(config);
+          newByScope.set(scope, { ls, compilerOptions });
+          languageServiceEntries.byScope.delete(scope);
+        }
+        for (const oldEntry of languageServiceEntries.byScope.values()) {
+          oldEntry.ls.dispose();
+        }
+        languageServiceEntries.byScope = newByScope;
       }
 
       projectVersionCache = newProjectVersion;
@@ -1172,10 +1240,15 @@ delete Object.prototype.__proto__;
         sourceTextCache.delete(script);
       }
 
-      if (configChanged || opened || closed) {
-        scriptFileNamesCache = undefined;
+      if (newConfigsByScope || opened || closed) {
+        scriptNamesCache = null;
       }
     }
+
+    lastRequestMethod = method;
+    lastRequestScope = scope;
+    const ls = (scope ? languageServiceEntries.byScope.get(scope)?.ls : null) ??
+      languageServiceEntries.unscoped.ls;
     switch (method) {
       case "$getSupportedCodeFixes": {
         return respond(
@@ -1200,9 +1273,9 @@ delete Object.prototype.__proto__;
           const diagnosticMap = {};
           for (const specifier of args[0]) {
             diagnosticMap[specifier] = fromTypeScriptDiagnostics([
-              ...languageService.getSemanticDiagnostics(specifier),
-              ...languageService.getSuggestionDiagnostics(specifier),
-              ...languageService.getSyntacticDiagnostics(specifier),
+              ...ls.getSemanticDiagnostics(specifier),
+              ...ls.getSuggestionDiagnostics(specifier),
+              ...ls.getSyntacticDiagnostics(specifier),
             ].filter(({ code }) => !IGNORED_DIAGNOSTICS.includes(code)));
           }
           return respond(id, diagnosticMap);
@@ -1210,25 +1283,31 @@ delete Object.prototype.__proto__;
           if (
             !isCancellationError(e)
           ) {
-            respond(id, {}, e);
-            throw e;
+            return respond(
+              id,
+              {},
+              formatErrorWithArgs(e, [id, method, args, scope, maybeChange]),
+            );
           }
           return respond(id, {});
         }
       }
       default:
-        if (typeof languageService[method] === "function") {
+        if (typeof ls[method] === "function") {
           // The `getCompletionEntryDetails()` method returns null if the
           // `source` is `null` for whatever reason. It must be `undefined`.
           if (method == "getCompletionEntryDetails") {
             args[4] ??= undefined;
           }
           try {
-            return respond(id, languageService[method](...args));
+            return respond(id, ls[method](...args));
           } catch (e) {
             if (!isCancellationError(e)) {
-              respond(id, null, e);
-              throw e;
+              return respond(
+                id,
+                null,
+                formatErrorWithArgs(e, [id, method, args, scope, maybeChange]),
+              );
             }
             return respond(id);
           }
