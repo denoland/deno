@@ -1,9 +1,25 @@
 {
   "tempDir": true,
   "tests": {
-    "auto_install": {
-      "args": "run b/main.ts",
-      "output": "b/main.out"
+    "global_cache": {
+      "args": "run --node-modules-dir=false b/main.ts",
+      "output": "b/main_global_cache.out"
+    },
+    "node_modules_dir": {
+      "args": "run --node-modules-dir=true b/main.ts",
+      "output": "b/main_node_modules_dir.out"
+    },
+    "byonm": {
+      "envs": {
+        "DENO_FUTURE": "1"
+      },
+      "steps": [{
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "run b/main.ts",
+        "output": "b/main_byonm.out"
+      }]
     }
   }
 }
