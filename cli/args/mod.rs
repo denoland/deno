@@ -34,7 +34,6 @@ pub use deno_config::TsConfigType;
 pub use deno_config::TsTypeLib;
 pub use deno_config::WorkspaceConfig;
 pub use flags::*;
-pub use lockfile::error_if_lockfile_has_changes;
 pub use lockfile::CliLockfile;
 pub use package_json::PackageJsonDepsProvider;
 
@@ -970,10 +969,6 @@ impl CliOptions {
       npmrc,
       false,
     )
-  }
-
-  pub fn frozen_lockfile(&self) -> bool {
-    self.flags.frozen_lockfile
   }
 
   #[inline(always)]

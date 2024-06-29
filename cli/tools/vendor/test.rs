@@ -298,7 +298,6 @@ fn build_resolver(
     maybe_import_map: original_import_map.map(Arc::new),
     maybe_vendor_dir: None,
     bare_node_builtins_enabled: false,
-    frozen_lockfile: false,
   })
 }
 

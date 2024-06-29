@@ -556,7 +556,6 @@ pub async fn run(
       hmr: false,
       inspect_brk: false,
       inspect_wait: false,
-      frozen_lockfile: true,
       strace_ops: None,
       is_inspecting: false,
       is_npm_main: main_module.scheme() == "npm",

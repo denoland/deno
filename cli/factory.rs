@@ -502,7 +502,6 @@ impl CliFactory {
             bare_node_builtins_enabled: self
               .options
               .unstable_bare_node_builtins(),
-            frozen_lockfile: self.options.frozen_lockfile(),
           })))
         }
         .boxed_local(),
@@ -889,7 +888,6 @@ impl CliFactory {
       maybe_root_package_json_deps: self.options.maybe_package_json_deps(),
       create_hmr_runner,
       create_coverage_collector,
-      frozen_lockfile: self.options.frozen_lockfile(),
     })
   }
 }

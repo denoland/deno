@@ -515,7 +515,6 @@ fn create_graph_resolver(
     sloppy_imports_resolver: unstable_sloppy_imports.then(|| {
       SloppyImportsResolver::new_without_stat_cache(Arc::new(deno_fs::RealFs))
     }),
-    frozen_lockfile: false,
   }))
 }
 

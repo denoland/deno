@@ -528,9 +528,7 @@ impl ModuleGraphBuilder {
     // opted into using a node_modules directory
     if self.options.node_modules_dir_enablement() == Some(true) {
       if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-        npm_resolver
-          .ensure_top_level_package_json_install(self.options.frozen_lockfile())
-          .await?;
+        npm_resolver.ensure_top_level_package_json_install().await?;
       }
     }
 

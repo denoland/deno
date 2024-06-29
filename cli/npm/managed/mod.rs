@@ -365,10 +365,9 @@ impl ManagedCliNpmResolver {
   pub async fn add_package_reqs(
     &self,
     packages: &[PackageReq],
-    frozen: bool,
   ) -> Result<(), AnyError> {
     self
-      .add_package_reqs_raw(packages, frozen)
+      .add_package_reqs_raw(packages)
       .await
       .dependencies_result
   }
@@ -376,7 +375,6 @@ impl ManagedCliNpmResolver {
   pub async fn add_package_reqs_raw(
     &self,
     packages: &[PackageReq],
-    frozen: bool,
   ) -> AddPkgReqsResult {
     if packages.is_empty() {
       return AddPkgReqsResult {
@@ -387,11 +385,9 @@ impl ManagedCliNpmResolver {
 
     let mut result = self.resolution.add_package_reqs(packages).await;
 
-    if result.dependencies_result.is_ok() && frozen {
+    if result.dependencies_result.is_ok() {
       if let Some(lockfile) = self.maybe_lockfile.as_ref() {
-        let lockfile = lockfile.lock();
-        result.dependencies_result =
-          crate::args::error_if_lockfile_has_changes(&lockfile, frozen);
+        result.dependencies_result = lockfile.error_if_changed();
       }
     }
     if result.dependencies_result.is_ok() {
@@ -430,14 +426,13 @@ impl ManagedCliNpmResolver {
   ) -> Result<(), AnyError> {
     // add and ensure this isn't added to the lockfile
     self
-      .add_package_reqs(&[PackageReq::from_str("@types/node").unwrap()], false)
+      .add_package_reqs(&[PackageReq::from_str("@types/node").unwrap()])
       .await?;
 
     Ok(())
   }
 
   pub async fn cache_packages(&self) -> Result<(), AnyError> {
-    // eprintln!("{}", std::backtrace::Backtrace::force_capture());
     self.fs_resolver.cache_packages().await
   }
 
@@ -463,7 +458,6 @@ impl ManagedCliNpmResolver {
   /// If this returns `false`, `node_modules` has _not_ been set up.
   pub async fn ensure_top_level_package_json_install(
     &self,
-    frozen: bool,
   ) -> Result<bool, AnyError> {
     let Some(reqs) = self.package_json_deps_provider.reqs() else {
       return Ok(false);
@@ -484,7 +478,7 @@ impl ManagedCliNpmResolver {
     }
 
     let reqs = reqs.into_iter().cloned().collect::<Vec<_>>();
-    self.add_package_reqs(&reqs, frozen).await.map(|_| true)
+    self.add_package_reqs(&reqs).await.map(|_| true)
   }
 
   pub async fn cache_package_info(
