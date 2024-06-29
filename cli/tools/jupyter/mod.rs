@@ -10,9 +10,11 @@ use crate::tools::test::create_single_test_event_channel;
 use crate::tools::test::reporters::PrettyTestReporter;
 use crate::tools::test::TestEventWorkerSender;
 use crate::CliFactory;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
@@ -24,11 +26,11 @@ use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 use deno_terminal::colors;
-
 use jupyter_runtime::jupyter::ConnectionInfo;
 use jupyter_runtime::messaging::StreamContent;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::oneshot;
 
 mod install;
 pub mod server;
@@ -145,17 +147,263 @@ pub async fn kernel(
     )
   }));
 
-  let repl_session_proxy = ReplSessionProxy { repl_session };
-  server::JupyterServer::start(spec, stdio_rx, repl_session_proxy).await?;
+  let (tx1, rx1) = mpsc::unbounded_channel();
+  let (tx2, rx2) = mpsc::unbounded_channel();
+  let (startup_data_tx, startup_data_rx) =
+    oneshot::channel::<server::StartupData>();
+
+  let mut repl_session_proxy = ReplSessionProxy {
+    repl_session,
+    rx: rx1,
+    tx: tx2,
+  };
+  let repl_session_proxy_channels =
+    ReplSessionProxyChannels { tx: tx1, rx: rx2 };
+
+  let join_handle = std::thread::spawn(move || {
+    let fut = server::JupyterServer::start(
+      spec,
+      stdio_rx,
+      repl_session_proxy_channels,
+      startup_data_tx,
+    )
+    .boxed_local();
+    deno_runtime::tokio_util::create_and_run_current_thread(fut)
+  });
+
+  let Ok(startup_data) = startup_data_rx.await else {
+    bail!("Failed to acquire startup data");
+  };
+  // Store `iopub_connection` in the op state so it's accessible to the runtime API.
+  {
+    let op_state_rc =
+      repl_session_proxy.repl_session.worker.js_runtime.op_state();
+    let mut op_state = op_state_rc.borrow_mut();
+    op_state.put(startup_data.iopub_connection.clone());
+    op_state.put(startup_data.last_execution_request.clone());
+  }
+
+  repl_session_proxy.start().await;
+  let server_result = join_handle.join();
+  match server_result {
+    Ok(result) => {
+      result?;
+    }
+    Err(e) => {
+      bail!("Jupyter kernel error: {:?}", e);
+    }
+  };
 
   Ok(())
 }
 
+pub enum ReplSessionProxyRequest {
+  LspCompletions {
+    line_text: String,
+    position: usize,
+  },
+  JsGetProperties {
+    object_id: String,
+  },
+  JsEvaluate {
+    expr: String,
+  },
+  JsGlobalLexicalScopeNames,
+  JsEvaluateLineWithObjectWrapping {
+    line: String,
+  },
+  JsCallFunctionOnArgs {
+    function_declaration: String,
+    args: Vec<cdp::RemoteObject>,
+  },
+  JsCallFunctionOn {
+    arg0: cdp::CallArgument,
+    arg1: cdp::CallArgument,
+  },
+}
+
+pub enum ReplSessionProxyResponse {
+  LspCompletions(Vec<ReplCompletionItem>),
+  JsGetProperties(Option<cdp::GetPropertiesResponse>),
+  JsEvaluate(Option<cdp::EvaluateResponse>),
+  JsGlobalLexicalScopeNames(cdp::GlobalLexicalScopeNamesResponse),
+  JsEvaluateLineWithObjectWrapping(Result<repl::TsEvaluateResponse, AnyError>),
+  JsCallFunctionOnArgs(Result<cdp::CallFunctionOnResponse, AnyError>),
+  JsCallFunctionOn(Option<cdp::CallFunctionOnResponse>),
+}
+
+pub struct ReplSessionProxyChannels {
+  tx: mpsc::UnboundedSender<ReplSessionProxyRequest>,
+  rx: mpsc::UnboundedReceiver<ReplSessionProxyResponse>,
+}
+
+impl ReplSessionProxyChannels {
+  pub async fn lsp_completions(
+    &mut self,
+    line_text: String,
+    position: usize,
+  ) -> Vec<ReplCompletionItem> {
+    let _ = self.tx.send(ReplSessionProxyRequest::LspCompletions {
+      line_text,
+      position,
+    });
+    let Some(ReplSessionProxyResponse::LspCompletions(resp)) =
+      self.rx.recv().await
+    else {
+      unreachable!()
+    };
+    resp
+  }
+
+  pub async fn get_properties(
+    &mut self,
+    object_id: String,
+  ) -> Option<cdp::GetPropertiesResponse> {
+    let _ = self
+      .tx
+      .send(ReplSessionProxyRequest::JsGetProperties { object_id });
+    let Some(ReplSessionProxyResponse::JsGetProperties(resp)) =
+      self.rx.recv().await
+    else {
+      unreachable!()
+    };
+    resp
+  }
+
+  pub async fn evaluate(
+    &mut self,
+    expr: String,
+  ) -> Option<cdp::EvaluateResponse> {
+    let _ = self.tx.send(ReplSessionProxyRequest::JsEvaluate { expr });
+    let Some(ReplSessionProxyResponse::JsEvaluate(resp)) = self.rx.recv().await
+    else {
+      unreachable!()
+    };
+    resp
+  }
+
+  pub async fn global_lexical_scope_names(
+    &mut self,
+  ) -> cdp::GlobalLexicalScopeNamesResponse {
+    let _ = self
+      .tx
+      .send(ReplSessionProxyRequest::JsGlobalLexicalScopeNames);
+    let Some(ReplSessionProxyResponse::JsGlobalLexicalScopeNames(resp)) =
+      self.rx.recv().await
+    else {
+      unreachable!()
+    };
+    resp
+  }
+
+  pub async fn evaluate_line_with_object_wrapping(
+    &mut self,
+    line: String,
+  ) -> Result<repl::TsEvaluateResponse, AnyError> {
+    let _ = self
+      .tx
+      .send(ReplSessionProxyRequest::JsEvaluateLineWithObjectWrapping { line });
+    let Some(ReplSessionProxyResponse::JsEvaluateLineWithObjectWrapping(resp)) =
+      self.rx.recv().await
+    else {
+      unreachable!()
+    };
+    resp
+  }
+
+  pub async fn call_function_on_args(
+    &mut self,
+    function_declaration: String,
+    args: Vec<cdp::RemoteObject>,
+  ) -> Result<cdp::CallFunctionOnResponse, AnyError> {
+    let _ = self.tx.send(ReplSessionProxyRequest::JsCallFunctionOnArgs {
+      function_declaration,
+      args,
+    });
+    let Some(ReplSessionProxyResponse::JsCallFunctionOnArgs(resp)) =
+      self.rx.recv().await
+    else {
+      unreachable!()
+    };
+    resp
+  }
+
+  // TODO(bartlomieju): rename to "broadcast_result"?
+  pub async fn call_function_on(
+    &mut self,
+    arg0: cdp::CallArgument,
+    arg1: cdp::CallArgument,
+  ) -> Option<cdp::CallFunctionOnResponse> {
+    let _ = self
+      .tx
+      .send(ReplSessionProxyRequest::JsCallFunctionOn { arg0, arg1 });
+    let Some(ReplSessionProxyResponse::JsCallFunctionOn(resp)) =
+      self.rx.recv().await
+    else {
+      unreachable!()
+    };
+    resp
+  }
+}
+
 pub struct ReplSessionProxy {
   repl_session: repl::ReplSession,
+  rx: mpsc::UnboundedReceiver<ReplSessionProxyRequest>,
+  tx: mpsc::UnboundedSender<ReplSessionProxyResponse>,
 }
 
 impl ReplSessionProxy {
+  pub async fn start(&mut self) {
+    loop {
+      let Some(msg) = self.rx.recv().await else {
+        break;
+      };
+      let resp = match msg {
+        ReplSessionProxyRequest::LspCompletions {
+          line_text,
+          position,
+        } => ReplSessionProxyResponse::LspCompletions(
+          self.lsp_completions(&line_text, position).await,
+        ),
+        ReplSessionProxyRequest::JsGetProperties { object_id } => {
+          ReplSessionProxyResponse::JsGetProperties(
+            self.get_properties(object_id).await,
+          )
+        }
+        ReplSessionProxyRequest::JsEvaluate { expr } => {
+          ReplSessionProxyResponse::JsEvaluate(self.evaluate(expr).await)
+        }
+        ReplSessionProxyRequest::JsGlobalLexicalScopeNames => {
+          ReplSessionProxyResponse::JsGlobalLexicalScopeNames(
+            self.global_lexical_scope_names().await,
+          )
+        }
+        ReplSessionProxyRequest::JsEvaluateLineWithObjectWrapping { line } => {
+          ReplSessionProxyResponse::JsEvaluateLineWithObjectWrapping(
+            self.evaluate_line_with_object_wrapping(&line).await,
+          )
+        }
+        ReplSessionProxyRequest::JsCallFunctionOnArgs {
+          function_declaration,
+          args,
+        } => ReplSessionProxyResponse::JsCallFunctionOnArgs(
+          self
+            .call_function_on_args(function_declaration, &args)
+            .await,
+        ),
+        ReplSessionProxyRequest::JsCallFunctionOn { arg0, arg1 } => {
+          ReplSessionProxyResponse::JsCallFunctionOn(
+            self.call_function_on(arg0, arg1).await,
+          )
+        }
+      };
+
+      let Ok(()) = self.tx.send(resp) else {
+        break;
+      };
+    }
+  }
+
   pub async fn lsp_completions(
     &mut self,
     line_text: &str,

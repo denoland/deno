@@ -3,19 +3,20 @@
 // This file is forked/ported from <https://github.com/evcxr/evcxr>
 // Copyright 2020 The Evcxr Authors. MIT license.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::cdp;
 use crate::tools::repl;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::serde_json;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tokio::sync::Mutex;
 
 use jupyter_runtime::messaging;
@@ -30,21 +31,26 @@ use jupyter_runtime::ReplyError;
 use jupyter_runtime::ReplyStatus;
 use jupyter_runtime::StreamContent;
 
-use super::ReplSessionProxy;
+use super::ReplSessionProxyChannels;
+
 pub struct JupyterServer {
   execution_count: usize,
-  last_execution_request: Rc<RefCell<Option<JupyterMessage>>>,
-  // This is Arc<Mutex<>>, so we don't hold RefCell borrows across await
-  // points.
+  last_execution_request: Arc<Mutex<Option<JupyterMessage>>>,
   iopub_connection: Arc<Mutex<KernelIoPubConnection>>,
-  repl_session_proxy: ReplSessionProxy,
+  repl_session_proxy: ReplSessionProxyChannels,
+}
+
+pub struct StartupData {
+  pub iopub_connection: Arc<Mutex<KernelIoPubConnection>>,
+  pub last_execution_request: Arc<Mutex<Option<JupyterMessage>>>,
 }
 
 impl JupyterServer {
   pub async fn start(
     connection_info: ConnectionInfo,
     mut stdio_rx: mpsc::UnboundedReceiver<StreamContent>,
-    mut repl_session_proxy: ReplSessionProxy,
+    repl_session_proxy: ReplSessionProxyChannels,
+    setup_tx: oneshot::Sender<StartupData>,
   ) -> Result<(), AnyError> {
     let mut heartbeat =
       connection_info.create_kernel_heartbeat_connection().await?;
@@ -58,16 +64,14 @@ impl JupyterServer {
       connection_info.create_kernel_iopub_connection().await?;
 
     let iopub_connection = Arc::new(Mutex::new(iopub_connection));
-    let last_execution_request = Rc::new(RefCell::new(None));
+    let last_execution_request = Arc::new(Mutex::new(None));
 
-    // Store `iopub_connection` in the op state so it's accessible to the runtime API.
-    {
-      let op_state_rc =
-        repl_session_proxy.repl_session.worker.js_runtime.op_state();
-      let mut op_state = op_state_rc.borrow_mut();
-      op_state.put(iopub_connection.clone());
-      op_state.put(last_execution_request.clone());
-    }
+    let Ok(()) = setup_tx.send(StartupData {
+      iopub_connection: iopub_connection.clone(),
+      last_execution_request: last_execution_request.clone(),
+    }) else {
+      bail!("Failed to send startup data");
+    };
 
     let cancel_handle = CancelHandle::new_rc();
 
@@ -141,10 +145,10 @@ impl JupyterServer {
 
   async fn handle_stdio_msg(
     iopub_connection: Arc<Mutex<KernelIoPubConnection>>,
-    last_execution_request: Rc<RefCell<Option<JupyterMessage>>>,
+    last_execution_request: Arc<Mutex<Option<JupyterMessage>>>,
     stdio_msg: StreamContent,
   ) {
-    let maybe_exec_result = last_execution_request.borrow().clone();
+    let maybe_exec_result = last_execution_request.lock().await.clone();
     let Some(exec_request) = maybe_exec_result else {
       return;
     };
@@ -225,7 +229,7 @@ impl JupyterServer {
 
         let lsp_completions = self
           .repl_session_proxy
-          .lsp_completions(&user_code, cursor_pos)
+          .lsp_completions(user_code.clone(), cursor_pos)
           .await;
 
         if !lsp_completions.is_empty() {
@@ -425,7 +429,7 @@ impl JupyterServer {
     if !execute_request.silent && execute_request.store_history {
       self.execution_count += 1;
     }
-    *self.last_execution_request.borrow_mut() = Some(parent_message.clone());
+    *self.last_execution_request.lock().await = Some(parent_message.clone());
 
     self
       .send_iopub(
@@ -439,7 +443,7 @@ impl JupyterServer {
 
     let result = self
       .repl_session_proxy
-      .evaluate_line_with_object_wrapping(&execute_request.code)
+      .evaluate_line_with_object_wrapping(execute_request.code)
       .await;
 
     let evaluate_response = match result {
@@ -523,7 +527,7 @@ impl JupyterServer {
           }
         "#
             .into(),
-            &[exception],
+            vec![exception],
           )
           .await?;
 
@@ -639,7 +643,7 @@ fn kernel_info() -> messaging::KernelInfoReply {
 }
 
 async fn publish_result(
-  repl_session_proxy: &mut ReplSessionProxy,
+  repl_session_proxy: &mut ReplSessionProxyChannels,
   evaluate_result: &cdp::RemoteObject,
   execution_count: usize,
 ) -> Result<Option<HashMap<String, serde_json::Value>>, AnyError> {
@@ -692,14 +696,14 @@ fn is_word_boundary(c: char) -> bool {
 
 // TODO(bartlomieju): dedup with repl::editor
 async fn get_global_lexical_scope_names(
-  repl_session_proxy: &mut ReplSessionProxy,
+  repl_session_proxy: &mut ReplSessionProxyChannels,
 ) -> Vec<String> {
   repl_session_proxy.global_lexical_scope_names().await.names
 }
 
 // TODO(bartlomieju): dedup with repl::editor
 async fn get_expression_property_names(
-  repl_session_proxy: &mut ReplSessionProxy,
+  repl_session_proxy: &mut ReplSessionProxyChannels,
   expr: &str,
 ) -> Vec<String> {
   // try to get the properties from the expression
@@ -729,7 +733,7 @@ async fn get_expression_property_names(
 
 // TODO(bartlomieju): dedup with repl::editor
 async fn get_expression_type(
-  repl_session_proxy: &mut ReplSessionProxy,
+  repl_session_proxy: &mut ReplSessionProxyChannels,
   expr: &str,
 ) -> Option<String> {
   evaluate_expression(repl_session_proxy, expr)
@@ -739,7 +743,7 @@ async fn get_expression_type(
 
 // TODO(bartlomieju): dedup with repl::editor
 async fn get_object_expr_properties(
-  repl_session_proxy: &mut ReplSessionProxy,
+  repl_session_proxy: &mut ReplSessionProxyChannels,
   object_expr: &str,
 ) -> Option<Vec<String>> {
   let evaluate_result =
@@ -759,7 +763,7 @@ async fn get_object_expr_properties(
 
 // TODO(bartlomieju): dedup with repl::editor
 async fn evaluate_expression(
-  repl_session_proxy: &mut ReplSessionProxy,
+  repl_session_proxy: &mut ReplSessionProxyChannels,
   expr: &str,
 ) -> Option<cdp::EvaluateResponse> {
   let evaluate_response = repl_session_proxy.evaluate(expr.to_string()).await?;
