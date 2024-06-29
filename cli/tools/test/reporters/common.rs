@@ -105,6 +105,7 @@ pub(super) fn report_summary(
   cwd: &Url,
   summary: &TestSummary,
   elapsed: &Duration,
+  options: Option<&TestFailureFormatOptions>,
 ) {
   if !summary.failures.is_empty() || !summary.uncaught_errors.is_empty() {
     #[allow(clippy::type_complexity)] // Type alias doesn't look better here
@@ -136,8 +137,13 @@ pub(super) fn report_summary(
         if !failure.hide_in_summary() {
           let failure_title = format_test_for_summary(cwd, description);
           writeln!(writer, "{}", &failure_title).unwrap();
-          writeln!(writer, "{}: {}", colors::red_bold("error"), failure)
-            .unwrap();
+          writeln!(
+            writer,
+            "{}: {}",
+            colors::red_bold("error"),
+            failure.format(options)
+          )
+          .unwrap();
           writeln!(writer).unwrap();
           failure_titles.push(failure_title);
         }
@@ -152,7 +158,7 @@ pub(super) fn report_summary(
           writer,
           "{}: {}",
           colors::red_bold("error"),
-          format_test_error(js_error)
+          format_test_error(js_error, options)
         )
         .unwrap();
         writeln!(writer, "This error was not caught from a test and caused the test runner to fail on the referenced module.").unwrap();

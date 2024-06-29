@@ -26,6 +26,7 @@ pub trait TestReporter {
     description: &TestDescription,
     result: &TestResult,
     elapsed: u64,
+    options: Option<&TestFailureFormatOptions>,
   );
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>);
   fn report_step_register(&mut self, description: &TestStepDescription);
@@ -37,18 +38,21 @@ pub trait TestReporter {
     elapsed: u64,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
+    options: Option<&TestFailureFormatOptions>,
   );
   fn report_summary(
     &mut self,
     elapsed: &Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
+    options: Option<&TestFailureFormatOptions>,
   );
   fn report_sigint(
     &mut self,
     tests_pending: &HashSet<usize>,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
+    options: Option<&TestFailureFormatOptions>,
   );
   fn report_completed(&mut self);
   fn flush_report(

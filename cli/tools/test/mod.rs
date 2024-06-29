@@ -289,6 +289,11 @@ impl From<&TestDescription> for TestFailureDescription {
   }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct TestFailureFormatOptions {
+  pub hide_stacktraces: bool,
+}
+
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -303,11 +308,12 @@ pub enum TestFailure {
   HasSanitizersAndOverlaps(IndexSet<String>), // Long names of overlapped tests
 }
 
-impl std::fmt::Display for TestFailure {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
+impl TestFailure {
+  pub fn format(&self, options: Option<&TestFailureFormatOptions>) -> String {
+    let mut f = String::new();
+    let result = match self {
       TestFailure::JsError(js_error) => {
-        write!(f, "{}", format_test_error(js_error))
+        write!(f, "{}", format_test_error(js_error, options))
       }
       TestFailure::FailedSteps(1) => write!(f, "1 test step failed."),
       TestFailure::FailedSteps(n) => write!(f, "{n} test steps failed."),
@@ -321,34 +327,37 @@ impl std::fmt::Display for TestFailure {
         )
       }
       TestFailure::Leaked(details, trailer_notes) => {
-        write!(f, "Leaks detected:")?;
+        let mut r = write!(f, "Leaks detected:");
         for detail in details {
-          write!(f, "\n  - {}", detail)?;
+          r = write!(f, "\n  - {}", detail);
         }
         for trailer in trailer_notes {
-          write!(f, "\n{}", trailer)?;
+          r = write!(f, "\n{}", trailer);
         }
-        Ok(())
+        r
       }
       TestFailure::OverlapsWithSanitizers(long_names) => {
-        write!(f, "Started test step while another test step with sanitizers was running:")?;
+        let mut r = write!(f, "Started test step while another test step with sanitizers was running:");
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name)?;
+          r = write!(f, "\n  * {}", long_name);
         }
-        Ok(())
+        r
       }
       TestFailure::HasSanitizersAndOverlaps(long_names) => {
-        write!(f, "Started test step with sanitizers while another test step was running:")?;
+        let mut r = write!(f, "Started test step with sanitizers while another test step was running:");
         for long_name in long_names {
-          write!(f, "\n  * {}", long_name)?;
+          r = write!(f, "\n  * {}", long_name);
         }
-        Ok(())
+        r
       }
+    };
+
+    match result {
+      Ok(_) => f,
+      Err(err) => format!("Failed to format {:?}: {}", self, err),
     }
   }
-}
 
-impl TestFailure {
   pub fn overview(&self) -> String {
     match self {
       TestFailure::JsError(js_error) => js_error.exception_message.clone(),
@@ -368,10 +377,6 @@ impl TestFailure {
           .to_string()
       }
     }
-  }
-
-  pub fn detail(&self) -> String {
-    self.to_string()
   }
 
   fn format_label(&self) -> String {
@@ -513,6 +518,7 @@ struct TestSpecifiersOptions {
   specifier: TestSpecifierOptions,
   reporter: TestReporterConfig,
   junit_path: Option<String>,
+  hide_stacktraces: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -1440,7 +1446,17 @@ async fn test_specifiers(
     .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let handler = spawn(async move { report_tests(receiver, reporter).await.0 });
+  let handler = spawn(async move {
+    report_tests(
+      receiver,
+      reporter,
+      Some(&TestFailureFormatOptions {
+        hide_stacktraces: options.hide_stacktraces,
+      }),
+    )
+    .await
+    .0
+  });
 
   let (join_results, result) = future::join(join_stream, handler).await;
   sigint_handler_handle.abort();
@@ -1457,6 +1473,7 @@ async fn test_specifiers(
 pub async fn report_tests(
   mut receiver: TestEventReceiver,
   mut reporter: Box<dyn TestReporter>,
+  options: Option<&TestFailureFormatOptions>,
 ) -> (Result<(), AnyError>, TestEventReceiver) {
   let mut tests = IndexMap::new();
   let mut test_steps = IndexMap::new();
@@ -1505,7 +1522,12 @@ pub async fn report_tests(
             }
             _ => (),
           }
-          reporter.report_result(tests.get(&id).unwrap(), &result, elapsed);
+          reporter.report_result(
+            tests.get(&id).unwrap(),
+            &result,
+            elapsed,
+            options,
+          );
         }
       }
       TestEvent::UncaughtError(origin, error) => {
@@ -1529,6 +1551,7 @@ pub async fn report_tests(
             duration,
             &tests,
             &test_steps,
+            options,
           );
         }
       }
@@ -1549,6 +1572,7 @@ pub async fn report_tests(
             .collect(),
           &tests,
           &test_steps,
+          options,
         );
 
         #[allow(clippy::print_stderr)]
@@ -1563,7 +1587,7 @@ pub async fn report_tests(
   let elapsed = start_time
     .map(|t| Instant::now().duration_since(t))
     .unwrap_or_default();
-  reporter.report_summary(&elapsed, &tests, &test_steps);
+  reporter.report_summary(&elapsed, &tests, &test_steps, options);
   if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
     return (
       Err(generic_error(format!(
@@ -1793,6 +1817,7 @@ pub async fn run_tests(
       filter: test_options.filter.is_some(),
       reporter: test_options.reporter,
       junit_path: test_options.junit_path,
+      hide_stacktraces: test_options.hide_stacktraces,
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&test_options.filter),
         shuffle: test_options.shuffle,
@@ -1944,6 +1969,7 @@ pub async fn run_tests_with_watch(
             filter: test_options.filter.is_some(),
             reporter: test_options.reporter,
             junit_path: test_options.junit_path,
+            hide_stacktraces: test_options.hide_stacktraces,
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&test_options.filter),
               shuffle: test_options.shuffle,
