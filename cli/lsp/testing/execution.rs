@@ -26,7 +26,7 @@ use deno_core::parking_lot::RwLock;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
-use deno_runtime::permissions::Permissions;
+use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -218,11 +218,11 @@ impl TestRun {
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.
     let permissions =
-      Permissions::from_options(&factory.cli_options().permissions_options())?;
+      Permissions::from_options(&factory.cli_options().permissions_options()?)?;
+    let main_graph_container = factory.main_module_graph_container().await?;
     test::check_specifiers(
-      factory.cli_options(),
       factory.file_fetcher()?,
-      factory.module_load_preparer().await?,
+      main_graph_container,
       self
         .queue
         .iter()
@@ -350,8 +350,11 @@ impl TestRun {
             test::TestEvent::Wait(id) => {
               reporter.report_wait(tests.read().get(&id).unwrap());
             }
-            test::TestEvent::Output(_, output) => {
+            test::TestEvent::Output(output) => {
               reporter.report_output(&output);
+            }
+            test::TestEvent::Slow(id, elapsed) => {
+              reporter.report_slow(tests.read().get(&id).unwrap(), elapsed);
             }
             test::TestEvent::Result(id, result, elapsed) => {
               if tests_with_result.insert(id) {
@@ -609,6 +612,8 @@ impl LspTestReporter {
     let test = desc.as_test_identifier(&self.tests);
     self.progress(lsp_custom::TestRunProgressMessage::Started { test });
   }
+
+  fn report_slow(&mut self, _desc: &test::TestDescription, _elapsed: u64) {}
 
   fn report_output(&mut self, output: &[u8]) {
     let test = self

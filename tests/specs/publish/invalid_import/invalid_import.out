@@ -1,7 +1,7 @@
 Download http://localhost:4545/welcome.ts
 Download http://localhost:4545/echo.ts
-Download http://localhost:4545/npm/registry/chalk
-Download http://localhost:4545/npm/registry/chalk/chalk-5.0.1.tgz
+Download http://localhost:4260/chalk
+Download http://localhost:4260/chalk/chalk-5.0.1.tgz
 Check file:///[WILDCARD]/mod.ts
 Checking for slow types in the public API...
 Check file://[WILDCARD]mod.ts
@@ -10,6 +10,7 @@ error[invalid-external-import]: invalid import to a non-JSR 'http' specifier
   | 
 1 | import "http://localhost:4545/welcome.ts";
   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the specifier
+  | 
   = hint: replace this import with one from jsr or npm, or vendor the dependency into your package
 
   info: the import was resolved to 'http://localhost:4545/welcome.ts'
@@ -22,6 +23,7 @@ error[invalid-external-import]: invalid import to a non-JSR 'http' specifier
   | 
 2 | import "$echo";
   |        ^^^^^^^ the specifier
+  | 
   = hint: replace this import with one from jsr or npm, or vendor the dependency into your package
 
   info: the import was resolved to 'http://localhost:4545/echo.ts'

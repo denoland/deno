@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -71,6 +72,7 @@ pub enum FsFileType {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsDirEntry {
+  pub parent_path: String,
   pub name: String,
   pub is_file: bool,
   pub is_directory: bool,
@@ -284,24 +286,61 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     self.stat_sync(path).is_ok()
   }
 
-  fn read_text_file_sync(
+  fn read_text_file_lossy_sync(
     &self,
     path: &Path,
     access_check: Option<AccessCheckCb>,
   ) -> FsResult<String> {
     let buf = self.read_file_sync(path, access_check)?;
-    String::from_utf8(buf).map_err(|err| {
-      std::io::Error::new(std::io::ErrorKind::InvalidData, err).into()
-    })
+    Ok(string_from_utf8_lossy(buf))
   }
-  async fn read_text_file_async<'a>(
+  async fn read_text_file_lossy_async<'a>(
     &'a self,
     path: PathBuf,
     access_check: Option<AccessCheckCb<'a>>,
   ) -> FsResult<String> {
     let buf = self.read_file_async(path, access_check).await?;
-    String::from_utf8(buf).map_err(|err| {
-      std::io::Error::new(std::io::ErrorKind::InvalidData, err).into()
-    })
+    Ok(string_from_utf8_lossy(buf))
+  }
+}
+
+pub struct DenoConfigFsAdapter<'a>(&'a dyn FileSystem);
+
+impl<'a> DenoConfigFsAdapter<'a> {
+  pub fn new(fs: &'a dyn FileSystem) -> Self {
+    Self(fs)
+  }
+}
+
+impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
+  fn read_to_string(&self, path: &Path) -> Result<String, std::io::Error> {
+    use deno_io::fs::FsError;
+    use std::io::ErrorKind;
+    self
+      .0
+      .read_text_file_lossy_sync(path, None)
+      .map_err(|err| match err {
+        FsError::Io(io) => io,
+        FsError::FileBusy => std::io::Error::new(ErrorKind::Other, "file busy"),
+        FsError::NotSupported => {
+          std::io::Error::new(ErrorKind::Other, "not supported")
+        }
+        FsError::PermissionDenied(name) => std::io::Error::new(
+          ErrorKind::PermissionDenied,
+          format!("requires {}", name),
+        ),
+      })
+  }
+}
+
+// Like String::from_utf8_lossy but operates on owned values
+#[inline(always)]
+fn string_from_utf8_lossy(buf: Vec<u8>) -> String {
+  match String::from_utf8_lossy(&buf) {
+    // buf contained non-utf8 chars than have been patched
+    Cow::Owned(s) => s,
+    // SAFETY: if Borrowed then the buf only contains utf8 chars,
+    // we do this instead of .into_owned() to avoid copying the input buf
+    Cow::Borrowed(_) => unsafe { String::from_utf8_unchecked(buf) },
   }
 }

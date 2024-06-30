@@ -1,0 +1,11 @@
+{
+  "if": "unix",
+  "tempDir": true,
+  "envs": {
+    "DENO_FUTURE": "1",
+    "HOME": "$PWD/../"
+  },
+  "cwd": "subdir",
+  "args": "install",
+  "output": "install.out"
+}

@@ -73,6 +73,7 @@ impl DebouncedReceiver {
   }
 }
 
+#[allow(clippy::print_stderr)]
 async fn error_handler<F>(watch_future: F) -> bool
 where
   F: Future<Output = Result<(), AnyError>>,
@@ -132,8 +133,9 @@ fn create_print_after_restart_fn(
   clear_screen: bool,
 ) -> impl Fn() {
   move || {
+    #[allow(clippy::print_stderr)]
     if clear_screen && std::io::stderr().is_terminal() {
-      eprint!("{CLEAR_SCREEN}");
+      eprint!("{}", CLEAR_SCREEN);
     }
     info!(
       "{} File change detected! Restarting!",
@@ -276,7 +278,9 @@ where
   deno_core::unsync::spawn(async move {
     loop {
       let received_changed_paths = watcher_receiver.recv().await;
-      *changed_paths_.borrow_mut() = received_changed_paths.clone();
+      changed_paths_
+        .borrow_mut()
+        .clone_from(&received_changed_paths);
 
       match *watcher_.restart_mode.lock() {
         WatcherRestartMode::Automatic => {

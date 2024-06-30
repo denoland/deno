@@ -7,7 +7,7 @@ use socket2::Domain;
 use socket2::Protocol;
 use socket2::Type;
 
-/// Our per-process `Connections`. We can use this to find an existant listener for
+/// Our per-process `Connections`. We can use this to find an existent listener for
 /// a given local address and clone its socket for us to listen on in our thread.
 static CONNS: std::sync::OnceLock<std::sync::Mutex<Connections>> =
   std::sync::OnceLock::new();

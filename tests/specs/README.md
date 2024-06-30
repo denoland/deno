@@ -26,9 +26,16 @@ Or just the following, though it might run other tests:
 cargo test test_name
 ```
 
+To run showing the output of every test use `-- --nocapture` (note: this will
+cause tests to run sequentially instead of in parallel):
+
+```
+cargo test test_name -- --nocapture
+```
+
 ## `__test__.json` file
 
-This file describes the test to execute and the steps to execute. A basic
+This file describes the test(s) to execute and the steps to execute. A basic
 example looks like:
 
 ```json
@@ -57,11 +64,26 @@ Or another example that runs multiple steps:
 }
 ```
 
+Or if you want to run several tests at the same time:
+
+```json
+{
+  "tests": {
+    "ignore_dir": {
+      "args": "run script.ts",
+      "output": "script.out"
+    },
+    "some_other_test": {
+      "args": "run other.ts",
+      "output": "other.out"
+    }
+  }
+}
+```
+
 ### Top level properties
 
-- `base` - The base config to use for the test. Options:
-  - `jsr` - Uses env vars for jsr.
-  - `npm` - Uses env vars for npm.
+- `repeat` (number) - Number of times to repeat a test.
 - `tempDir` (boolean) - Copy all the non-test files to a temporary directory and
   execute the command in that temporary directory.
   - By default, tests are executed with a current working directory of the test,
@@ -71,13 +93,12 @@ Or another example that runs multiple steps:
 ### Step properties
 
 When writing a single step, these may be at the top level rather than nested in
-a "steps" array.
+a "steps" array or "tests" object.
 
 - `args` - A string (that will be spilt on whitespace into an args array) or an
   array of arguments.
-- `output` - Path to use to assert the output.
-- `cleanDenoDir` (boolean) - Whether to empty the deno_dir before running the
-  step.
+- `output` - Path to use to assert the output or text (must end with an .out
+  extension) _or_ text to pattern match against the output.
 - `flaky` - Step should be repeated until success a maximum of 3 times.
 - `if` (`"windows"`, `"linux"`, `"mac"`, `"unix"`) - Whether to run this step.
 - `exitCode` (number) - Expected exit code.

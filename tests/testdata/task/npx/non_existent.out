@@ -1,2 +1,4 @@
 Task non-existent npx this-command-should-not-exist-for-you
-npx: could not resolve command 'this-command-should-not-exist-for-you'
+npm [WILDCARD] code E404
+npm [WILDCARD] 404 Not Found - GET http://localhost:4260/this-command-should-not-exist-for-you
+[WILDCARD]

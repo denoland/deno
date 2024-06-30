@@ -126,7 +126,7 @@ fn resolve_content_maybe_unfurling(
       let text = String::from_utf8(data)?;
       deno_ast::parse_module(deno_ast::ParseParams {
         specifier: specifier.clone(),
-        text_info: deno_ast::SourceTextInfo::from_string(text),
+        text: text.into(),
         media_type,
         capture_tokens: false,
         maybe_syntax: None,

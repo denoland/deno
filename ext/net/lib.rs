@@ -30,6 +30,35 @@ pub trait NetPermissions {
     -> Result<(), AnyError>;
 }
 
+impl NetPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_net<T: AsRef<str>>(
+    &mut self,
+    host: &(T, Option<u16>),
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_net(self, host, api_name)
+  }
+
+  #[inline(always)]
+  fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_read(self, path, api_name)
+  }
+
+  #[inline(always)]
+  fn check_write(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_write(self, path, api_name)
+  }
+}
+
 /// Helper for checking unstable features. Used for sync ops.
 fn check_unstable(state: &OpState, api_name: &str) {
   // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
@@ -87,6 +116,10 @@ deno_core::extension!(deno_net,
     ops_tls::op_tls_key_null,
     ops_tls::op_tls_key_static,
     ops_tls::op_tls_key_static_from_file<P>,
+    ops_tls::op_tls_cert_resolver_create,
+    ops_tls::op_tls_cert_resolver_poll,
+    ops_tls::op_tls_cert_resolver_resolve,
+    ops_tls::op_tls_cert_resolver_resolve_error,
     ops_tls::op_tls_start<P>,
     ops_tls::op_net_connect_tls<P>,
     ops_tls::op_net_listen_tls<P>,

@@ -37,18 +37,18 @@ jobs:
           submodules: false
         if: github.event.pull_request.draft == true
       - id: check
+        if: 'github.event.pull_request.draft == true && (!contains(github.event.pull_request.labels.*.name, ''ci-draft''))'
         run: |-
           GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})
           echo Commit message: $GIT_MESSAGE
-          echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)
-        if: github.event.pull_request.draft == true
+          echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass or add the ci-draft label.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)
   build:
     name: '${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
     needs:
       - pre_build
     if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
     runs-on: '${{ matrix.runner }}'
-    timeout-minutes: 120
+    timeout-minutes: 150
     defaults:
       run:
         shell: bash
@@ -194,7 +194,7 @@ jobs:
             Where-Object { Test-Path "$_\python.exe" } |
             Select-Object -Skip 1 |
             ForEach-Object { Move-Item "$_" "$_.disabled" }
-      - if: '!(matrix.skip) && (matrix.job == ''bench'')'
+      - if: '!(matrix.skip) && (matrix.job == ''bench'' || matrix.job == ''test'')'
         name: Install Node
         uses: actions/setup-node@v4
         with:
@@ -261,19 +261,19 @@ jobs:
           sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-17.list
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-18.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install --no-install-recommends clang-17 lld-17 clang-tools-17 clang-format-17 clang-tidy-17 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends clang-17 lld-17 clang-tools-17 clang-format-17 clang-tidy-17
+          sudo apt-get install --no-install-recommends clang-18 lld-18 clang-tools-18 clang-format-18 clang-tidy-18 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends clang-18 lld-18 clang-tools-18 clang-format-18 clang-tidy-18
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
           echo "Decompressing sysroot..."
-          wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240207/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
+          wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20240528/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
           cd /
           xzcat /tmp/sysroot.tar.xz | sudo tar -x
           sudo mount --rbind /dev /sysroot/dev
@@ -282,51 +282,52 @@ jobs:
           sudo mount -t proc /proc /sysroot/proc
           cd
 
-          if [[ `uname -m` == "aarch64" ]]; then
-            echo "Copying libdl.a"
-            sudo cp /sysroot/usr/lib/aarch64-linux-gnu/libdl.a /sysroot/lib/aarch64-linux-gnu/libdl.a
-            echo "Copying libdl.so"
-            sudo cp /sysroot/lib/aarch64-linux-gnu/libdl.so.2 /sysroot/lib/aarch64-linux-gnu/libdl.so
-          else
-            echo "Copying libdl.a"
-            sudo cp /sysroot/usr/lib/x86_64-linux-gnu/libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
-            echo "Copying libdl.so"
-            sudo cp /sysroot/lib/x86_64-linux-gnu/libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
-          fi
+          echo "Done."
 
           # Configure the build environment. Both Rust and Clang will produce
           # llvm bitcode only, so we can use lld's incremental LTO support.
-          cat >> $GITHUB_ENV << __0
+
+          # Load the sysroot's env vars
+          echo "sysroot env:"
+          cat /sysroot/.env
+          . /sysroot/.env
+
+          # Important notes:
+          #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
+          #      to be in the Rust default flags in the smoketest, so uncertain why we need
+          #      to be explicit here.
+          #   2. RUSTFLAGS and RUSTDOCFLAGS must be specified, otherwise the doctests fail
+          #      to build because the object formats are not compatible.
+          echo "
           CARGO_PROFILE_BENCH_INCREMENTAL=false
           CARGO_PROFILE_BENCH_LTO=false
           CARGO_PROFILE_RELEASE_INCREMENTAL=false
           CARGO_PROFILE_RELEASE_LTO=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-17
-            -C link-arg=-fuse-ld=lld-17
-            -C link-arg=--sysroot=/sysroot
+            -C linker=clang-18
+            -C link-arg=-fuse-ld=lld-18
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
             --cfg tokio_unstable
-            ${{ env.RUSTFLAGS }}
+            $RUSTFLAGS
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-17
-            -C link-arg=-fuse-ld=lld-17
-            -C link-arg=--sysroot=/sysroot
+            -C linker=clang-18
+            -C link-arg=-fuse-ld=lld-18
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
-            ${{ env.RUSTFLAGS }}
+            --cfg tokio_unstable
+            $RUSTFLAGS
           __1
-          CC=/usr/bin/clang-17
-          CFLAGS=-flto=thin --sysroot=/sysroot
-          __0
+          CC=/usr/bin/clang-18
+          CFLAGS=-flto=thin $CFLAGS
+          " > $GITHUB_ENV
       - name: Remove macOS cURL --ipv4 flag
         run: |-
           curl --version
@@ -366,8 +367,8 @@ jobs:
           path: |-
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
-          key: '86-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '86-cargo-home-${{ matrix.os }}-${{ matrix.arch }}'
+          key: '99-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '99-cargo-home-${{ matrix.os }}-${{ matrix.arch }}'
         if: '!(matrix.skip)'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
@@ -379,7 +380,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '86-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '99-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -419,6 +420,14 @@ jobs:
           df -h
           cargo build --release --locked --all-targets
           df -h
+      - name: Check deno binary
+        if: '!(matrix.skip) && (matrix.job == ''test'')'
+        run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'
+        env:
+          NO_COLOR: 1
+      - name: Check deno binary (in sysroot)
+        if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.use_sysroot)'
+        run: 'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version'
       - name: Upload PR artifact (linux)
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
@@ -512,14 +521,6 @@ jobs:
           github.repository == 'denoland/deno' &&
           !startsWith(github.ref, 'refs/tags/'))))
         run: cargo test --release --locked
-      - name: Check deno binary
-        if: '!(matrix.skip) && (matrix.profile == ''release'' && startsWith(github.ref, ''refs/tags/''))'
-        run: target/release/deno eval "console.log(1+2)" | grep 3
-        env:
-          NO_COLOR: 1
-      - name: Check deno binary (in sysroot)
-        if: '!(matrix.skip) && (matrix.profile == ''release'' && matrix.use_sysroot && matrix.arch != ''aarch64'')'
-        run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
       - name: Configure hosts file for WPT
         if: '!(matrix.skip) && (matrix.wpt)'
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
@@ -538,14 +539,10 @@ jobs:
         env:
           DENO_BIN: ./target/release/deno
         run: |-
-          deno run --allow-env --allow-net --allow-read --allow-run \
-                   --allow-write --unstable                         \
-                   --lock=tools/deno.lock.json                      \
+          deno run -A --unstable --lock=tools/deno.lock.json        \
                    ./tests/wpt/wpt.ts setup
-          deno run --allow-env --allow-net --allow-read --allow-run \
-                   --allow-write --unstable                         \
-                   --lock=tools/deno.lock.json                      \
-                   ./tests/wpt/wpt.ts run --quiet --release             \
+          deno run -A --unstable --lock=tools/deno.lock.json        \
+                   ./tests/wpt/wpt.ts run --quiet --release         \
                                       --binary="$DENO_BIN"          \
                                       --json=wpt.json               \
                                       --wptreport=wptreport.json
@@ -672,7 +669,7 @@ jobs:
             !./target/*/gn_out
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '86-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '99-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   publish-canary:
     name: publish canary
     runs-on: ubuntu-22.04

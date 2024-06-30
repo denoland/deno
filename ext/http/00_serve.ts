@@ -34,6 +34,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   PromisePrototypeThen,
+  StringPrototypeIncludes,
   Symbol,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -224,7 +225,7 @@ class InnerRequest {
           const wsRid = await wsPromise;
 
           // We have to wait for the go-ahead signal
-          await goAhead;
+          await goAhead.promise;
 
           ws[_rid] = wsRid;
           ws[_readyState] = WebSocket.OPEN;
@@ -591,7 +592,7 @@ function serve(arg1, arg2) {
     throw new TypeError("A handler function must be provided.");
   }
   if (options === undefined) {
-    options = {};
+    options = { __proto__: null };
   }
 
   const wantsHttps = hasTlsKeyPairOptions(options);
@@ -656,14 +657,19 @@ function serve(arg1, arg2) {
   // If the hostname is "0.0.0.0", we display "localhost" in console
   // because browsers in Windows don't resolve "0.0.0.0".
   // See the discussion in https://github.com/denoland/deno_std/issues/1165
-  const hostname = addr.hostname == "0.0.0.0" ? "localhost" : addr.hostname;
+  const hostname = addr.hostname == "0.0.0.0" || addr.hostname == "::"
+    ? "localhost"
+    : addr.hostname;
   addr.hostname = hostname;
 
   const onListen = (scheme) => {
     if (options.onListen) {
       options.onListen(addr);
     } else {
-      console.log(`Listening on ${scheme}${addr.hostname}:${addr.port}/`);
+      const host = StringPrototypeIncludes(addr.hostname, ":")
+        ? `[${addr.hostname}]`
+        : addr.hostname;
+      console.log(`Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
 
@@ -747,26 +753,52 @@ function serveHttpOn(context, addr, callback) {
       PromisePrototypeCatch(callback(req), promiseErrorHandler);
     }
 
-    if (!context.closing && !context.closed) {
-      context.closing = op_http_close(rid, false);
-      context.close();
-    }
+    try {
+      if (!context.closing && !context.closed) {
+        context.closing = await op_http_close(rid, false);
+        context.close();
+      }
 
-    await context.closing;
-    context.close();
-    context.closed = true;
+      await context.closing;
+    } catch (error) {
+      if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
+        return;
+      }
+      if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+        return;
+      }
+
+      throw error;
+    } finally {
+      context.close();
+      context.closed = true;
+    }
   })();
 
   return {
     addr,
     finished,
     async shutdown() {
-      if (!context.closing && !context.closed) {
-        // Shut this HTTP server down gracefully
-        context.closing = op_http_close(context.serverRid, true);
+      try {
+        if (!context.closing && !context.closed) {
+          // Shut this HTTP server down gracefully
+          context.closing = op_http_close(context.serverRid, true);
+        }
+
+        await context.closing;
+      } catch (error) {
+        // The server was interrupted
+        if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
+          return;
+        }
+        if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+          return;
+        }
+
+        throw error;
+      } finally {
+        context.closed = true;
       }
-      await context.closing;
-      context.closed = true;
     },
     ref() {
       ref = true;
@@ -793,9 +825,9 @@ internals.serveHttpOnConnection = serveHttpOnConnection;
 
 function registerDeclarativeServer(exports) {
   if (ObjectHasOwn(exports, "fetch")) {
-    if (typeof exports.fetch !== "function" || exports.fetch.length !== 1) {
+    if (typeof exports.fetch !== "function") {
       throw new TypeError(
-        "Invalid type for fetch: must be a function with a single parameter",
+        "Invalid type for fetch: must be a function with a single or no parameter",
       );
     }
     return ({ servePort, serveHost }) => {

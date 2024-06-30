@@ -1,0 +1,3 @@
+Task test npm run echo hi there
+Task echo echo "hi" "there"
+hi there

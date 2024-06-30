@@ -9,7 +9,6 @@ use dynasmrt::dynasm;
 use dynasmrt::DynasmApi;
 use dynasmrt::ExecutableBuffer;
 
-use crate::dlfcn::needs_unwrap;
 use crate::NativeType;
 use crate::Symbol;
 
@@ -46,21 +45,18 @@ pub(crate) fn make_template(
   sym: &Symbol,
   trampoline: &Trampoline,
 ) -> fast_api::FastFunction {
-  let mut params = once(fast_api::Type::V8Value) // Receiver
+  let params = once(fast_api::Type::V8Value) // Receiver
     .chain(sym.parameter_types.iter().map(|t| t.into()))
     .collect::<Vec<_>>();
 
-  let ret = if needs_unwrap(&sym.result_type) {
-    params.push(fast_api::Type::TypedArray(fast_api::CType::Int32));
-    fast_api::CType::Void
-  } else if sym.result_type == NativeType::Buffer {
+  let ret = if sym.result_type == NativeType::Buffer {
     // Buffer can be used as a return type and converts differently than in parameters.
     fast_api::CType::Pointer
   } else {
     fast_api::CType::from(&fast_api::Type::from(&sym.result_type))
   };
 
-  fast_api::FastFunction::new(
+  fast_api::FastFunction::new_with_bigint(
     Box::leak(params.into_boxed_slice()),
     ret,
     trampoline.ptr(),
@@ -158,15 +154,9 @@ impl SysVAmd64 {
 
     let must_cast_return_value =
       compiler.must_cast_return_value(&sym.result_type);
-    let must_wrap_return_value =
-      compiler.must_wrap_return_value_in_typed_array(&sym.result_type);
-    let must_save_preserved_register = must_wrap_return_value;
-    let cannot_tailcall = must_cast_return_value || must_wrap_return_value;
+    let cannot_tailcall = must_cast_return_value;
 
     if cannot_tailcall {
-      if must_save_preserved_register {
-        compiler.save_preserved_register_to_stack();
-      }
       compiler.allocate_stack(&sym.parameter_types);
     }
 
@@ -177,22 +167,13 @@ impl SysVAmd64 {
       // the receiver object should never be expected. Avoid its unexpected or deliberate leak
       compiler.zero_first_arg();
     }
-    if must_wrap_return_value {
-      compiler.save_out_array_to_preserved_register();
-    }
 
     if cannot_tailcall {
       compiler.call(sym.ptr.as_ptr());
       if must_cast_return_value {
         compiler.cast_return_value(&sym.result_type);
       }
-      if must_wrap_return_value {
-        compiler.wrap_return_value_in_out_array();
-      }
       compiler.deallocate_stack();
-      if must_save_preserved_register {
-        compiler.recover_preserved_register();
-      }
       compiler.ret();
     } else {
       compiler.tailcall(sym.ptr.as_ptr());
@@ -555,12 +536,6 @@ impl SysVAmd64 {
     )
   }
 
-  fn must_wrap_return_value_in_typed_array(&self, rv: &NativeType) -> bool {
-    // V8 only supports i32 and u32 return types for integers
-    // We support 64 bit integers by wrapping them in a TypedArray out parameter
-    crate::dlfcn::needs_unwrap(rv)
-  }
-
   fn finalize(self) -> ExecutableBuffer {
     self.assmblr.finalize().unwrap()
   }
@@ -602,19 +577,6 @@ impl Aarch64Apple {
   fn compile(sym: &Symbol) -> Trampoline {
     let mut compiler = Self::new();
 
-    let must_wrap_return_value =
-      compiler.must_wrap_return_value_in_typed_array(&sym.result_type);
-    let must_save_preserved_register = must_wrap_return_value;
-    let cannot_tailcall = must_wrap_return_value;
-
-    if cannot_tailcall {
-      compiler.allocate_stack(sym);
-      compiler.save_frame_record();
-      if compiler.must_save_preserved_register_to_stack(sym) {
-        compiler.save_preserved_register_to_stack();
-      }
-    }
-
     for param in sym.parameter_types.iter().cloned() {
       compiler.move_left(param)
     }
@@ -622,24 +584,8 @@ impl Aarch64Apple {
       // the receiver object should never be expected. Avoid its unexpected or deliberate leak
       compiler.zero_first_arg();
     }
-    if compiler.must_wrap_return_value_in_typed_array(&sym.result_type) {
-      compiler.save_out_array_to_preserved_register();
-    }
 
-    if cannot_tailcall {
-      compiler.call(sym.ptr.as_ptr());
-      if must_wrap_return_value {
-        compiler.wrap_return_value_in_out_array();
-      }
-      if must_save_preserved_register {
-        compiler.recover_preserved_register();
-      }
-      compiler.recover_frame_record();
-      compiler.deallocate_stack();
-      compiler.ret();
-    } else {
-      compiler.tailcall(sym.ptr.as_ptr());
-    }
+    compiler.tailcall(sym.ptr.as_ptr());
 
     Trampoline(compiler.finalize())
   }
@@ -980,10 +926,6 @@ impl Aarch64Apple {
     // > Each frame shall link to the frame of its caller by means of a frame record of two 64-bit values on the stack
     stack_size += 16;
 
-    if self.must_save_preserved_register_to_stack(symbol) {
-      stack_size += 8;
-    }
-
     // Section 6.2.2 of Aarch64 PCS:
     // > At any point at which memory is accessed via SP, the hardware requires that
     // > - SP mod 16 = 0. The stack must be quad-word aligned.
@@ -1064,16 +1006,6 @@ impl Aarch64Apple {
     self.integral_params > 0
   }
 
-  fn must_save_preserved_register_to_stack(&mut self, symbol: &Symbol) -> bool {
-    self.must_wrap_return_value_in_typed_array(&symbol.result_type)
-  }
-
-  fn must_wrap_return_value_in_typed_array(&self, rv: &NativeType) -> bool {
-    // V8 only supports i32 and u32 return types for integers
-    // We support 64 bit integers by wrapping them in a TypedArray out parameter
-    crate::dlfcn::needs_unwrap(rv)
-  }
-
   fn finalize(self) -> ExecutableBuffer {
     self.assmblr.finalize().unwrap()
   }
@@ -1117,15 +1049,9 @@ impl Win64 {
 
     let must_cast_return_value =
       compiler.must_cast_return_value(&sym.result_type);
-    let must_wrap_return_value =
-      compiler.must_wrap_return_value_in_typed_array(&sym.result_type);
-    let must_save_preserved_register = must_wrap_return_value;
-    let cannot_tailcall = must_cast_return_value || must_wrap_return_value;
+    let cannot_tailcall = must_cast_return_value;
 
     if cannot_tailcall {
-      if must_save_preserved_register {
-        compiler.save_preserved_register_to_stack();
-      }
       compiler.allocate_stack(&sym.parameter_types);
     }
 
@@ -1136,22 +1062,13 @@ impl Win64 {
       // the receiver object should never be expected. Avoid its unexpected or deliberate leak
       compiler.zero_first_arg();
     }
-    if must_wrap_return_value {
-      compiler.save_out_array_to_preserved_register();
-    }
 
     if cannot_tailcall {
       compiler.call(sym.ptr.as_ptr());
       if must_cast_return_value {
         compiler.cast_return_value(&sym.result_type);
       }
-      if must_wrap_return_value {
-        compiler.wrap_return_value_in_out_array();
-      }
       compiler.deallocate_stack();
-      if must_save_preserved_register {
-        compiler.recover_preserved_register();
-      }
       compiler.ret();
     } else {
       compiler.tailcall(sym.ptr.as_ptr());
@@ -1424,12 +1341,6 @@ impl Win64 {
     )
   }
 
-  fn must_wrap_return_value_in_typed_array(&self, rv: &NativeType) -> bool {
-    // V8 only supports i32 and u32 return types for integers
-    // We support 64 bit integers by wrapping them in a TypedArray out parameter
-    crate::dlfcn::needs_unwrap(rv)
-  }
-
   fn finalize(self) -> ExecutableBuffer {
     self.assmblr.finalize().unwrap()
   }
@@ -1656,61 +1567,6 @@ mod tests {
       let expected = assembler.finalize().unwrap();
       assert_eq!(trampoline.0.deref(), expected.deref());
     }
-
-    #[test]
-    fn return_u64_in_register_typed_array() {
-      let trampoline = SysVAmd64::compile(&symbol(vec![], U64));
-
-      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/8G7a488o7
-      dynasm!(assembler
-        ; .arch x64
-        ; push rbx
-        ; xor edi, edi       // recv
-        ; mov rbx, [rsi + 8] // save data array pointer to non-volatile register
-        ; mov rax, QWORD 0
-        ; call rax
-        ; mov [rbx], rax     // copy return value to data pointer address
-        ; pop rbx
-        ; ret
-      );
-      let expected = assembler.finalize().unwrap();
-      assert_eq!(trampoline.0.deref(), expected.deref());
-    }
-
-    #[test]
-    fn return_u64_in_stack_typed_array() {
-      let trampoline = SysVAmd64::compile(&symbol(
-        vec![U64, U64, U64, U64, U64, U64, U64],
-        U64,
-      ));
-
-      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/cPnPYWdWq
-      dynasm!(assembler
-        ; .arch x64
-        ; push rbx
-        ; sub rsp, DWORD 16
-        ; mov rdi, rsi              // u64
-        ; mov rsi, rdx              // u64
-        ; mov rdx, rcx              // u64
-        ; mov rcx, r8               // u64
-        ; mov r8, r9                // u64
-        ; mov r9, [DWORD rsp + 32]  // u64
-        ; mov rax, [DWORD rsp + 40] // u64
-        ; mov [DWORD rsp + 0], rax  // ..
-        ; mov rax, [DWORD rsp + 48] // save data array pointer to non-volatile register
-        ; mov rbx, [rax + 8]        // ..
-        ; mov rax, QWORD 0
-        ; call rax
-        ; mov [rbx], rax     // copy return value to data pointer address
-        ; add rsp, DWORD 16
-        ; pop rbx
-        ; ret
-      );
-      let expected = assembler.finalize().unwrap();
-      assert_eq!(trampoline.0.deref(), expected.deref());
-    }
   }
 
   mod aarch64_apple {
@@ -1832,73 +1688,6 @@ mod tests {
       let expected = assembler.finalize().unwrap();
       assert_eq!(trampoline.0.deref(), expected.deref());
     }
-
-    #[test]
-    fn return_u64_in_register_typed_array() {
-      let trampoline = Aarch64Apple::compile(&symbol(vec![], U64));
-
-      let mut assembler = dynasmrt::aarch64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/47EvvYb83
-      dynasm!(assembler
-        ; .arch aarch64
-        ; sub sp, sp, 32
-        ; stp x29, x30, [sp, 16]
-        ; add x29, sp, 16
-        ; str x19, [sp, 8]
-        ; mov x0, xzr       // recv
-        ; ldr x19, [x1, 8]  // save data array pointer to non-volatile register
-        ; movz x8, 0
-        ; blr x8
-        ; str x0, [x19]     // copy return value to data pointer address
-        ; ldr x19, [sp, 8]
-        ; ldp x29, x30, [sp, 16]
-        ; add sp, sp, 32
-        ; ret
-      );
-      let expected = assembler.finalize().unwrap();
-      assert_eq!(trampoline.0.deref(), expected.deref());
-    }
-
-    #[test]
-    fn return_u64_in_stack_typed_array() {
-      let trampoline = Aarch64Apple::compile(&symbol(
-        vec![U64, U64, U64, U64, U64, U64, U64, U64, U8, U8],
-        U64,
-      ));
-
-      let mut assembler = dynasmrt::aarch64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/PvYPbsE1b
-      dynasm!(assembler
-        ; .arch aarch64
-        ; sub sp, sp, 32
-        ; stp x29, x30, [sp, 16]
-        ; add x29, sp, 16
-        ; str x19, [sp, 8]
-        ; mov x0, x1          // u64
-        ; mov x1, x2          // u64
-        ; mov x2, x3          // u64
-        ; mov x3, x4          // u64
-        ; mov x4, x5          // u64
-        ; mov x5, x6          // u64
-        ; mov x6, x7          // u64
-        ; ldr x7, [sp, 32]    // u64
-        ; ldr w8, [sp, 40]    // u8
-        ; strb w8, [sp]        // ..
-        ; ldr w8, [sp, 48]    // u8
-        ; strb w8, [sp, 1]        // ..
-        ; ldr x19, [sp, 56]   // save data array pointer to non-volatile register
-        ; ldr x19, [x19, 8]   // ..
-        ; movz x8, 0
-        ; blr x8
-        ; str x0, [x19]       // copy return value to data pointer address
-        ; ldr x19, [sp, 8]
-        ; ldp x29, x30, [sp, 16]
-        ; add sp, sp, 32
-        ; ret
-      );
-      let expected = assembler.finalize().unwrap();
-      assert_eq!(trampoline.0.deref(), expected.deref());
-    }
   }
 
   mod x64_windows {
@@ -2004,59 +1793,6 @@ mod tests {
         ; mov [DWORD rsp + 48], rax        // ..
         ; mov rax, QWORD 0
         ; jmp rax
-      );
-      let expected = assembler.finalize().unwrap();
-      assert_eq!(trampoline.0.deref(), expected.deref());
-    }
-
-    #[test]
-    fn return_u64_in_register_typed_array() {
-      let trampoline = Win64::compile(&symbol(vec![], U64));
-
-      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/7EnPE7o3T
-      dynasm!(assembler
-        ; .arch x64
-        ; push rbx
-        ; sub rsp, DWORD 32
-        ; xor ecx, ecx       // recv
-        ; mov rbx, [rdx + 8] // save data array pointer to non-volatile register
-        ; mov rax, QWORD 0
-        ; call rax
-        ; mov [rbx], rax     // copy return value to data pointer address
-        ; add rsp, DWORD 32
-        ; pop rbx
-        ; ret
-      );
-      let expected = assembler.finalize().unwrap();
-      assert_eq!(trampoline.0.deref(), expected.deref());
-    }
-
-    #[test]
-    fn return_u64_in_stack_typed_array() {
-      let trampoline =
-        Win64::compile(&symbol(vec![U64, U64, U64, U64, U64], U64));
-
-      let mut assembler = dynasmrt::x64::Assembler::new().unwrap();
-      // See https://godbolt.org/z/3966sfEex
-      dynasm!(assembler
-        ; .arch x64
-        ; push rbx
-        ; sub rsp, DWORD 48
-        ; mov rcx, rdx               // u64
-        ; mov rdx, r8                // u64
-        ; mov r8, r9                 // u64
-        ; mov r9, [DWORD rsp + 96]   // u64
-        ; mov rax, [DWORD rsp + 104] // u64
-        ; mov [DWORD rsp + 32], rax  // ..
-        ; mov rax, [DWORD rsp + 112] // save data array pointer to non-volatile register
-        ; mov rbx, [rax + 8]         // ..
-        ; mov rax, QWORD 0
-        ; call rax
-        ; mov [rbx], rax             // copy return value to data pointer address
-        ; add rsp, DWORD 48
-        ; pop rbx
-        ; ret
       );
       let expected = assembler.finalize().unwrap();
       assert_eq!(trampoline.0.deref(), expected.deref());

@@ -258,7 +258,6 @@ impl VendorTestBuilder {
       parsed_source_cache: &parsed_source_cache,
       output_dir: &output_dir,
       maybe_original_import_map: self.original_import_map.as_ref(),
-      maybe_lockfile: None,
       maybe_jsx_import_source: self.jsx_import_source_config.as_ref(),
       resolver: resolver.as_graph_resolver(),
       environment: &self.environment,

@@ -785,6 +785,7 @@ fn read_dir(path: &Path) -> FsResult<Vec<FsDirEntry>> {
         };
       }
       Some(FsDirEntry {
+        parent_path: path.to_string_lossy().to_string(),
         name,
         is_file: method_or_false!(is_file),
         is_directory: method_or_false!(is_dir),
@@ -890,7 +891,15 @@ fn open_with_access_check(
   access_check: Option<AccessCheckCb>,
 ) -> FsResult<std::fs::File> {
   if let Some(access_check) = access_check {
-    let path = if path.is_absolute() {
+    let path_bytes = path.as_os_str().as_encoded_bytes();
+    let is_windows_device_path = cfg!(windows)
+      && path_bytes.starts_with(br"\\.\")
+      && !path_bytes.contains(&b':');
+    let path = if is_windows_device_path {
+      // On Windows, normalize_path doesn't work with device-prefix-style
+      // paths. We pass these through.
+      path.to_owned()
+    } else if path.is_absolute() {
       normalize_path(path)
     } else {
       let cwd = current_dir()?;
@@ -898,8 +907,8 @@ fn open_with_access_check(
     };
     (*access_check)(false, &path, &options)?;
     // On Linux, /proc may contain magic links that we don't want to resolve
-    let needs_canonicalization =
-      !cfg!(target_os = "linux") || path.starts_with("/proc");
+    let needs_canonicalization = !is_windows_device_path
+      && (!cfg!(target_os = "linux") || path.starts_with("/proc"));
     let path = if needs_canonicalization {
       match path.canonicalize() {
         Ok(path) => path,
@@ -916,7 +925,6 @@ fn open_with_access_check(
     } else {
       path
     };
-
     (*access_check)(true, &path, &options)?;
 
     // For windows

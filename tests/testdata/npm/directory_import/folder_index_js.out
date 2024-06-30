@@ -1,5 +1,5 @@
-Download http://localhost:4545/npm/registry/@denotest/sub-folders
-Download http://localhost:4545/npm/registry/@denotest/sub-folders/1.0.0.tgz
+Download http://localhost:4260/@denotest/sub-folders
+Download http://localhost:4260/@denotest/sub-folders/1.0.0.tgz
 error: Directory import [WILDCARD]folder_index_js is not supported resolving import from file:///[WILDCARD]/directory_import/folder_index_js.ts
 Did you mean to import index.js within the directory?
 

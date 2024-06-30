@@ -1,10 +1,9 @@
-local: [WILDLINE]
-emit: [WILDLINE]
-type: TypeScript
-dependencies: [WILDLINE]
-size: [WILDLINE]
+[WILDCARD]
 
 file:///[WILDLINE]/main.ts ([WILDLINE])
-├── http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts ([WILDLINE])
+├─┬ http://127.0.0.1:4250/@denotest/deps/1.0.0/mod.ts ([WILDLINE])
+│ ├── http://127.0.0.1:4250/@denotest/module-graph/1.4.0/other.ts ([WILDLINE])
+│ └─┬ http://127.0.0.1:4250/@denotest/no-module-graph/0.1.1/mod.ts ([WILDLINE])
+│   └── http://127.0.0.1:4250/@denotest/no-module-graph/0.1.1/TestClass.ts ([WILDLINE])
 └── Importing JSR packages via HTTPS specifiers for type checking is not supported for performance reasons. If you would like types, import via a `jsr:` specifier instead or else use a non-statically analyzable dynamic import.
-  Importing: http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts (resolve error)
+  Importing: http://127.0.0.1:4250/@denotest/deps/1.0.0/mod.ts (resolve error)

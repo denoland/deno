@@ -6,6 +6,10 @@ import {
   op_net_accept_tls,
   op_net_connect_tls,
   op_net_listen_tls,
+  op_tls_cert_resolver_create,
+  op_tls_cert_resolver_poll,
+  op_tls_cert_resolver_resolve,
+  op_tls_cert_resolver_resolve_error,
   op_tls_handshake,
   op_tls_key_null,
   op_tls_key_static,
@@ -16,6 +20,7 @@ const {
   Number,
   ObjectDefineProperty,
   TypeError,
+  SymbolFor,
 } = primordials;
 
 import { Conn, Listener } from "ext:deno_net/01_net.js";
@@ -87,9 +92,12 @@ async function connectTls({
     keyFile,
     privateKey,
   });
+  // TODO(mmastrac): We only expose this feature via symbol for now. This should actually be a feature
+  // in Deno.connectTls, however.
+  const serverName = arguments[0][serverNameSymbol] ?? null;
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tls(
     { hostname, port },
-    { certFile: deprecatedCertFile, caCerts, alpnProtocols },
+    { certFile: deprecatedCertFile, caCerts, alpnProtocols, serverName },
     keyPair,
   );
   localAddr.transport = "tcp";
@@ -133,6 +141,10 @@ class TlsListener extends Listener {
  * interfaces.
  */
 function hasTlsKeyPairOptions(options) {
+  // TODO(mmastrac): remove this temporary symbol when the API lands
+  if (options[resolverSymbol] !== undefined) {
+    return true;
+  }
   return (options.cert !== undefined || options.key !== undefined ||
     options.certFile !== undefined ||
     options.keyFile !== undefined || options.privateKey !== undefined ||
@@ -157,6 +169,11 @@ function loadTlsKeyPair(api, {
     certChain = undefined;
     keyFile = undefined;
     privateKey = undefined;
+  }
+
+  // TODO(mmastrac): remove this temporary symbol when the API lands
+  if (arguments[1][resolverSymbol] !== undefined) {
+    return createTlsKeyResolver(arguments[1][resolverSymbol]);
   }
 
   // Check for "pem" format
@@ -264,7 +281,7 @@ async function startTls(
     hostname = "127.0.0.1",
     caCerts = [],
     alpnProtocols = undefined,
-  } = {},
+  } = { __proto__: null },
 ) {
   const { 0: rid, 1: localAddr, 2: remoteAddr } = op_tls_start({
     rid: conn[internalRidSymbol],
@@ -274,6 +291,37 @@ async function startTls(
   });
   return new TlsConn(rid, remoteAddr, localAddr);
 }
+
+const resolverSymbol = SymbolFor("unstableSniResolver");
+const serverNameSymbol = SymbolFor("unstableServerName");
+
+function createTlsKeyResolver(callback) {
+  const { 0: resolver, 1: lookup } = op_tls_cert_resolver_create();
+  (async () => {
+    while (true) {
+      const sni = await op_tls_cert_resolver_poll(lookup);
+      if (typeof sni !== "string") {
+        break;
+      }
+      try {
+        const key = await callback(sni);
+        if (!hasTlsKeyPairOptions(key)) {
+          op_tls_cert_resolver_resolve_error(lookup, sni, "Invalid key");
+        } else {
+          const resolved = loadTlsKeyPair("Deno.listenTls", key);
+          op_tls_cert_resolver_resolve(lookup, sni, resolved);
+        }
+      } catch (e) {
+        op_tls_cert_resolver_resolve_error(lookup, sni, e.message);
+      }
+    }
+  })();
+  return resolver;
+}
+
+internals.resolverSymbol = resolverSymbol;
+internals.serverNameSymbol = serverNameSymbol;
+internals.createTlsKeyResolver = createTlsKeyResolver;
 
 export {
   connectTls,

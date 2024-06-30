@@ -1,0 +1,7 @@
+{
+  "envs": {
+    "DENO_FUTURE": "1"
+  },
+  "args": "check --quiet main.ts",
+  "output": ""
+}

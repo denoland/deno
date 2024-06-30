@@ -19,6 +19,7 @@ pub trait TestReporter {
   fn report_register(&mut self, description: &TestDescription);
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
+  fn report_slow(&mut self, description: &TestDescription, elapsed: u64);
   fn report_output(&mut self, output: &[u8]);
   fn report_result(
     &mut self,

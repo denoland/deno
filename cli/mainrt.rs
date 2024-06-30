@@ -36,6 +36,7 @@ use std::env::current_exe;
 
 use crate::args::Flags;
 
+#[allow(clippy::print_stderr)]
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   eprintln!(
     "Unstable API '{api_name}'. The `--unstable-{}` flag must be provided.",
@@ -44,6 +45,7 @@ pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   std::process::exit(70);
 }
 
+#[allow(clippy::print_stderr)]
 fn exit_with_message(message: &str, code: i32) -> ! {
   eprintln!(
     "{}: {}",
@@ -57,7 +59,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
-      let mut error_string = format!("{error:?}");
+      let mut error_string = format!("{:?}", error);
 
       if let Some(e) = error.downcast_ref::<JsError>() {
         error_string = format_js_error(e);

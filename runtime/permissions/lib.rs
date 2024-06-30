@@ -592,7 +592,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
 
     match flag {
       ChildUnaryPermissionArg::Inherit => {
-        perms = self.clone();
+        perms.clone_from(self);
       }
       ChildUnaryPermissionArg::Granted => {
         if self.check_all_api(None).is_err() {
@@ -615,10 +615,12 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
       }
     }
     perms.flag_denied_global = self.flag_denied_global;
-    perms.flag_denied_list = self.flag_denied_list.clone();
     perms.prompt_denied_global = self.prompt_denied_global;
-    perms.prompt_denied_list = self.prompt_denied_list.clone();
     perms.prompt = self.prompt;
+    perms.flag_denied_list.clone_from(&self.flag_denied_list);
+    perms
+      .prompt_denied_list
+      .clone_from(&self.prompt_denied_list);
 
     Ok(perms)
   }
@@ -864,11 +866,11 @@ impl From<PathBuf> for RunDescriptor {
   }
 }
 
-impl ToString for RunDescriptor {
-  fn to_string(&self) -> String {
+impl std::fmt::Display for RunDescriptor {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      RunDescriptor::Name(s) => s.clone(),
-      RunDescriptor::Path(p) => p.to_string_lossy().to_string(),
+      RunDescriptor::Name(s) => f.write_str(s),
+      RunDescriptor::Path(p) => f.write_str(&p.display().to_string()),
     }
   }
 }
@@ -913,7 +915,7 @@ impl Descriptor for SysDescriptor {
 pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
   match kind {
     "hostname" | "osRelease" | "osUptime" | "loadavg" | "networkInterfaces"
-    | "systemMemoryInfo" | "uid" | "gid" | "cpus" => Ok(kind),
+    | "systemMemoryInfo" | "uid" | "gid" | "cpus" | "homedir" => Ok(kind),
     _ => Err(type_error(format!("unknown system info kind \"{kind}\""))),
   }
 }
@@ -1680,7 +1682,46 @@ impl PermissionsContainer {
       return Ok(());
     }
 
+    /// We'll allow opening /proc/self/fd/{n} without additional permissions under the following conditions:
+    ///
+    /// 1. n > 2. This allows for opening bash-style redirections, but not stdio
+    /// 2. the fd referred to by n is a pipe
+    #[cfg(unix)]
+    fn is_fd_file_is_pipe(path: &Path) -> bool {
+      if let Some(fd) = path.file_name() {
+        if let Ok(s) = std::str::from_utf8(fd.as_encoded_bytes()) {
+          if let Ok(n) = s.parse::<i32>() {
+            if n > 2 {
+              // SAFETY: This is proper use of the stat syscall
+              unsafe {
+                let mut stat = std::mem::zeroed::<libc::stat>();
+                if libc::fstat(n, &mut stat as _) == 0
+                  && ((stat.st_mode & libc::S_IFMT) & libc::S_IFIFO) != 0
+                {
+                  return true;
+                }
+              };
+            }
+          }
+        }
+      }
+      false
+    }
+
+    // On unixy systems, we allow opening /dev/fd/XXX for valid FDs that
+    // are pipes.
+    #[cfg(unix)]
+    if path.starts_with("/dev/fd") && is_fd_file_is_pipe(path) {
+      return Ok(());
+    }
+
     if cfg!(target_os = "linux") {
+      // On Linux, we also allow opening /proc/self/fd/XXX for valid FDs that
+      // are pipes.
+      #[cfg(unix)]
+      if path.starts_with("/proc/self/fd") && is_fd_file_is_pipe(path) {
+        return Ok(());
+      }
       if path.starts_with("/dev")
         || path.starts_with("/proc")
         || path.starts_with("/sys")
@@ -1691,20 +1732,17 @@ impl PermissionsContainer {
           self.check_was_allow_all_flag_passed().map_err(error_all)?;
         }
       }
-      if path.starts_with("/etc") {
-        self.check_was_allow_all_flag_passed().map_err(error_all)?;
-      }
     } else if cfg!(unix) {
       if path.starts_with("/dev") {
         self.check_was_allow_all_flag_passed().map_err(error_all)?;
       }
-      if path.starts_with("/etc") {
-        self.check_was_allow_all_flag_passed().map_err(error_all)?;
-      }
-      if path.starts_with("/private/etc") {
-        self.check_was_allow_all_flag_passed().map_err(error_all)?;
-      }
     } else if cfg!(target_os = "windows") {
+      // \\.\nul is allowed
+      let s = path.as_os_str().as_encoded_bytes();
+      if s.eq_ignore_ascii_case(br#"\\.\nul"#) {
+        return Ok(());
+      }
+
       fn is_normalized_windows_drive_path(path: &Path) -> bool {
         let s = path.as_os_str().as_encoded_bytes();
         // \\?\X:\

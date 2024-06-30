@@ -515,3 +515,78 @@ Deno.test({
     await worker.terminate();
   },
 });
+
+Deno.test({
+  name: "[node/worker_threads] Returns terminate promise with exit code",
+  async fn() {
+    const deferred = Promise.withResolvers<void>();
+    const worker = new workerThreads.Worker(
+      `
+      import { parentPort } from "node:worker_threads";
+      parentPort.postMessage("ok");
+      `,
+      {
+        eval: true,
+      },
+    );
+
+    worker.on("message", (data) => {
+      assertEquals(data, "ok");
+      deferred.resolve();
+    });
+
+    await deferred.promise;
+    const promise = worker.terminate();
+    assertEquals(typeof promise.then, "function");
+    assertEquals(await promise, 0);
+  },
+});
+
+Deno.test({
+  name:
+    "[node/worker_threads] MessagePort.on all message listeners are invoked",
+  async fn() {
+    const output: string[] = [];
+    const deferred = Promise.withResolvers<void>();
+    const { port1, port2 } = new workerThreads.MessageChannel();
+    port1.on("message", (msg) => output.push(msg));
+    port1.on("message", (msg) => output.push(msg + 2));
+    port1.on("message", (msg) => {
+      output.push(msg + 3);
+      deferred.resolve();
+    });
+    port2.postMessage("hi!");
+    await deferred.promise;
+    assertEquals(output, ["hi!", "hi!2", "hi!3"]);
+    port2.close();
+    port1.close();
+  },
+});
+
+// Test for https://github.com/denoland/deno/issues/23854
+Deno.test({
+  name: "[node/worker_threads] MessagePort.addListener is present",
+  async fn() {
+    const channel = new workerThreads.MessageChannel();
+    const worker = new workerThreads.Worker(
+      `
+      import { parentPort } from "node:worker_threads";
+      parentPort.addListener("message", message => {
+        if (message.foo) {
+          const success = typeof message.foo.bar.addListener === "function";
+          parentPort.postMessage(success ? "it works" : "it doesn't work")
+        }
+      })
+      `,
+      {
+        eval: true,
+      },
+    );
+    worker.postMessage({ foo: { bar: channel.port1 } }, [channel.port1]);
+
+    assertEquals((await once(worker, "message"))[0], "it works");
+    worker.terminate();
+    channel.port1.close();
+    channel.port2.close();
+  },
+});

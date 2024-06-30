@@ -20,8 +20,7 @@ impl Resource for WebGpuShaderModule {
   }
 
   fn close(self: Rc<Self>) {
-    let instance = &self.0;
-    gfx_select!(self.1 => instance.shader_module_drop(self.1));
+    gfx_select!(self.1 => self.0.shader_module_drop(self.1));
   }
 }
 
@@ -50,6 +49,6 @@ pub fn op_webgpu_create_shader_module(
     device,
     &descriptor,
     source,
-    ()
+    None
   ) => state, WebGpuShaderModule)
 }

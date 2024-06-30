@@ -1,6 +1,6 @@
 A
-Download http://localhost:4545/npm/registry/chalk
-Download http://localhost:4545/npm/registry/chalk/chalk-5.0.1.tgz
+Download http://localhost:4260/chalk
+Download http://localhost:4260/chalk/chalk-5.0.1.tgz
 B
 C
 devDependency import failed: TypeError: Relative import path "xo"[WILDCARD]

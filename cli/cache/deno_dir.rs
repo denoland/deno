@@ -33,11 +33,10 @@ impl DenoDirProvider {
 
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
 /// in single directory that can be controlled with `$DENO_DIR` env variable.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DenoDir {
   /// Example: /Users/rld/.deno/
-  /// Note: This is not exposed in order to encourage using re-usable methods.
-  root: PathBuf,
+  pub root: PathBuf,
   /// Used by TsCompiler to cache compiler output.
   pub gen_cache: DiskCache,
 }
@@ -80,40 +79,46 @@ impl DenoDir {
     self.root.display()
   }
 
+  /// Path for the V8 code cache.
+  pub fn code_cache_db_file_path(&self) -> PathBuf {
+    // bump this version name to invalidate the entire cache
+    self.root.join("v8_code_cache_v2")
+  }
+
   /// Path for the incremental cache used for formatting.
   pub fn fmt_incremental_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
-    self.root.join("fmt_incremental_cache_v1")
+    self.root.join("fmt_incremental_cache_v2")
   }
 
   /// Path for the incremental cache used for linting.
   pub fn lint_incremental_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
-    self.root.join("lint_incremental_cache_v1")
+    self.root.join("lint_incremental_cache_v2")
   }
 
   /// Path for caching swc dependency analysis.
   pub fn dep_analysis_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
-    self.root.join("dep_analysis_cache_v1")
+    self.root.join("dep_analysis_cache_v2")
   }
 
   /// Path for the cache used for fast check.
   pub fn fast_check_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
-    self.root.join("fast_check_cache_v1")
+    self.root.join("fast_check_cache_v2")
   }
 
   /// Path for caching node analysis.
   pub fn node_analysis_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
-    self.root.join("node_analysis_cache_v1")
+    self.root.join("node_analysis_cache_v2")
   }
 
   /// Path for the cache used for type checking.
   pub fn type_checking_cache_db_file_path(&self) -> PathBuf {
     // bump this version name to invalidate the entire cache
-    self.root.join("check_cache_v1")
+    self.root.join("check_cache_v2")
   }
 
   /// Path to the registries cache, used for the lps.
@@ -142,12 +147,6 @@ impl DenoDir {
     self.root.join("npm")
   }
 
-  /// Path for the V8 code cache.
-  pub fn code_cache_db_file_path(&self) -> PathBuf {
-    // bump this version name to invalidate the entire cache
-    self.root.join("v8_code_cache_v1")
-  }
-
   /// Path used for the REPL history file.
   /// Can be overridden or disabled by setting `DENO_REPL_HISTORY` environment variable.
   pub fn repl_history_file_path(&self) -> Option<PathBuf> {
@@ -170,7 +169,7 @@ impl DenoDir {
 
 /// To avoid the poorly managed dirs crate
 #[cfg(not(windows))]
-mod dirs {
+pub mod dirs {
   use std::path::PathBuf;
 
   pub fn cache_dir() -> Option<PathBuf> {
@@ -228,7 +227,7 @@ mod dirs {
 // https://github.com/dirs-dev/dirs-sys-rs/blob/ec7cee0b3e8685573d847f0a0f60aae3d9e07fa2/src/lib.rs#L140-L164
 // MIT license. Copyright (c) 2018-2019 dirs-rs contributors
 #[cfg(windows)]
-mod dirs {
+pub mod dirs {
   use std::ffi::OsString;
   use std::os::windows::ffi::OsStringExt;
   use std::path::PathBuf;

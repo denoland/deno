@@ -22,15 +22,11 @@ Deno.test(
 				.statusText,
 		)
 		const u8a =
-			new Uint8Array(
-				await response
-					.arrayBuffer(),
-			)
+			await response
+				.bytes()
 		const u8a1 =
-			new Uint8Array(
-				await response1
-					.arrayBuffer(),
-			)
+			await response1
+				.bytes()
 		for (
 			let i = 0;
 			i <

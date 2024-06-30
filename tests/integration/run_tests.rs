@@ -1,14 +1,22 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use bytes::Bytes;
-use deno_core::serde_json::json;
-use deno_core::url;
-use deno_fetch::reqwest;
-use pretty_assertions::assert_eq;
+use std::io::BufReader;
+use std::io::Cursor;
 use std::io::Read;
 use std::io::Write;
 use std::process::Command;
 use std::process::Stdio;
+use std::sync::Arc;
+
+use bytes::Bytes;
+use deno_core::serde_json::json;
+use deno_core::url;
+use deno_fetch::reqwest;
+use deno_tls::rustls;
+use deno_tls::rustls::ClientConnection;
+use deno_tls::rustls_pemfile;
+use deno_tls::TlsStream;
+use pretty_assertions::assert_eq;
 use test_util as util;
 use test_util::itest;
 use test_util::TempDir;
@@ -20,6 +28,8 @@ use util::env_vars_for_npm_tests;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
+
+const CODE_CACHE_DB_FILE_NAME: &str = "v8_code_cache_v2";
 
 itest!(stdout_write_all {
   args: "run --quiet run/stdout_write_all.ts",
@@ -224,12 +234,6 @@ itest!(_044_bad_resource {
   args: "run --quiet --reload --allow-read run/044_bad_resource.ts",
   output: "run/044_bad_resource.ts.out",
   exit_code: 1,
-});
-
-itest!(_045_proxy {
-  args: "run -L debug --allow-net --allow-env --allow-run --allow-read --reload --quiet run/045_proxy_test.ts",
-  output: "run/045_proxy_test.ts.out",
-  http_server: true,
 });
 
 itest!(_046_tsx {
@@ -819,40 +823,6 @@ itest!(lock_check_ok2 {
   http_server: true,
 });
 
-itest!(lock_dynamic_imports {
-  args: "run --lock=run/lock_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/run/013_dynamic_import.ts",
-  output: "run/lock_dynamic_imports.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_check_err {
-  args: "run --lock=run/lock_check_err.json http://127.0.0.1:4545/run/003_relative_import.ts",
-  output: "run/lock_check_err.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_check_err2 {
-  args: "run --lock=run/lock_check_err2.json run/019_media_types.ts",
-  output: "run/lock_check_err2.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(config_file_lock_path {
-  args: "run --config=run/config_file_lock_path.json run/019_media_types.ts",
-  output: "run/config_file_lock_path.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_flag_overrides_config_file_lock_path {
-  args: "run --lock=run/lock_check_ok2.json --config=run/config_file_lock_path.json run/019_media_types.ts",
-  output: "run/019_media_types.ts.out",
-  http_server: true,
-});
-
 itest!(lock_v2_check_ok {
   args:
     "run --quiet --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
@@ -863,33 +833,6 @@ itest!(lock_v2_check_ok {
 itest!(lock_v2_check_ok2 {
   args: "run --lock=run/lock_v2_check_ok2.json run/019_media_types.ts",
   output: "run/019_media_types.ts.out",
-  http_server: true,
-});
-
-itest!(lock_v2_dynamic_imports {
-  args: "run --lock=run/lock_v2_dynamic_imports.json --allow-read --allow-net http://127.0.0.1:4545/run/013_dynamic_import.ts",
-  output: "run/lock_v2_dynamic_imports.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_v2_check_err {
-  args: "run --lock=run/lock_v2_check_err.json http://127.0.0.1:4545/run/003_relative_import.ts",
-  output: "run/lock_v2_check_err.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_v2_check_err2 {
-  args: "run --lock=run/lock_v2_check_err2.json run/019_media_types.ts",
-  output: "run/lock_v2_check_err2.out",
-  exit_code: 10,
-  http_server: true,
-});
-
-itest!(lock_only_http_and_https {
-  args: "run --lock=run/lock_only_http_and_https/deno.lock run/lock_only_http_and_https/main.ts",
-  output: "run/lock_only_http_and_https/main.out",
   http_server: true,
 });
 
@@ -968,12 +911,11 @@ fn lock_redirects() {
     .new_command()
     .args("run main.ts Hi there")
     .run()
-    .assert_matches_text(
-      concat!(
-        "Download http://localhost:4545/echo.ts\n",
-        "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-        "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
-        "Hi, there",
+    .assert_matches_text(concat!(
+      "Download http://localhost:4545/echo.ts\n",
+      "Download http://localhost:4260/@denotest/esm-basic\n",
+      "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
+      "Hi, there",
     ));
   util::assertions::assert_wildcard_match(
     &temp_dir.read_to_string("deno.lock"),
@@ -2824,6 +2766,9 @@ mod permissions {
 
   #[test]
   fn net_fetch_allow_localhost_4545() {
+    // ensure the http server is running for those tests so they run
+    // deterministically whether the http server is running or not
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
         "run --allow-net=localhost:4545 run/complex_permissions_test.ts netFetch http://localhost:4545/",
@@ -2836,6 +2781,7 @@ mod permissions {
 
   #[test]
   fn net_fetch_allow_deno_land() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
         "run --allow-net=deno.land run/complex_permissions_test.ts netFetch http://localhost:4545/",
@@ -2848,6 +2794,7 @@ mod permissions {
 
   #[test]
   fn net_fetch_localhost_4545_fail() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
         "run --allow-net=localhost:4545 run/complex_permissions_test.ts netFetch http://localhost:4546/",
@@ -2860,6 +2807,7 @@ mod permissions {
 
   #[test]
   fn net_fetch_localhost() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
         "run --allow-net=localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
@@ -2872,6 +2820,7 @@ mod permissions {
 
   #[test]
   fn net_connect_allow_localhost_ip_4555() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
         "run --allow-net=127.0.0.1:4545 run/complex_permissions_test.ts netConnect 127.0.0.1:4545",
@@ -2884,6 +2833,7 @@ mod permissions {
 
   #[test]
   fn net_connect_allow_deno_land() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
         "run --allow-net=deno.land run/complex_permissions_test.ts netConnect 127.0.0.1:4546",
@@ -2896,6 +2846,7 @@ mod permissions {
 
   #[test]
   fn net_connect_allow_localhost_ip_4545_fail() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
         "run --allow-net=127.0.0.1:4545 run/complex_permissions_test.ts netConnect 127.0.0.1:4546",
@@ -2908,6 +2859,7 @@ mod permissions {
 
   #[test]
   fn net_connect_allow_localhost_ip() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
         "run --allow-net=127.0.0.1 run/complex_permissions_test.ts netConnect 127.0.0.1:4545 127.0.0.1:4546 127.0.0.1:4547",
@@ -2920,9 +2872,10 @@ mod permissions {
 
   #[test]
   fn net_listen_allow_localhost_4555() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=localhost:4558 run/complex_permissions_test.ts netListen localhost:4558",
+        "run --allow-net=localhost:4588 run/complex_permissions_test.ts netListen localhost:4588",
         None,
         None,
         false,
@@ -2932,6 +2885,7 @@ mod permissions {
 
   #[test]
   fn net_listen_allow_deno_land() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
         "run --allow-net=deno.land run/complex_permissions_test.ts netListen localhost:4545",
@@ -2944,6 +2898,7 @@ mod permissions {
 
   #[test]
   fn net_listen_allow_localhost_4555_fail() {
+    let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
         "run --allow-net=localhost:4555 run/complex_permissions_test.ts netListen localhost:4556",
@@ -2956,6 +2911,7 @@ mod permissions {
 
   #[test]
   fn net_listen_allow_localhost() {
+    let _http_guard = util::http_server();
     // Port 4600 is chosen to not collide with those used by
     // target/debug/test_server
     let (_, err) = util::run_and_collect_output(
@@ -3186,6 +3142,20 @@ itest!(byte_order_mark {
   args: "run --no-check run/byte_order_mark.ts",
   output: "run/byte_order_mark.out",
 });
+
+#[test]
+#[cfg(windows)]
+fn process_stdin_read_unblock() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdin_unblock.mjs"])
+    .with_pty(|mut console| {
+      console.write_raw("b");
+      console.human_delay();
+      console.write_line_raw("s");
+      console.expect_all(&["1", "1"]);
+    });
+}
 
 #[test]
 fn issue9750() {
@@ -4041,11 +4011,8 @@ async fn test_resolve_dns() {
     )
     .unwrap();
     let lexer = Lexer::new(&zone_file);
-    let records = Parser::new().parse(
-      lexer,
-      Some(Name::from_str("example.com").unwrap()),
-      None,
-    );
+    let records =
+      Parser::new().parse(lexer, Some(Name::from_str("example.com").unwrap()));
     if records.is_err() {
       panic!("failed to parse: {:?}", records.err())
     }
@@ -4547,32 +4514,11 @@ async fn websocket_server_idletimeout() {
   assert_eq!(child.wait().unwrap().code(), Some(123));
 }
 
-itest!(auto_discover_lockfile {
-  args: "run run/auto_discover_lockfile/main.ts",
-  output: "run/auto_discover_lockfile/main.out",
-  http_server: true,
-  exit_code: 10,
-});
-
 itest!(no_lock_flag {
   args: "run --no-lock run/no_lock_flag/main.ts",
   output: "run/no_lock_flag/main.out",
   http_server: true,
   exit_code: 0,
-});
-
-itest!(config_file_lock_false {
-  args: "run --config=run/config_file_lock_boolean/false.json run/config_file_lock_boolean/main.ts",
-  output: "run/config_file_lock_boolean/false.main.out",
-  http_server: true,
-  exit_code: 0,
-});
-
-itest!(config_file_lock_true {
-  args: "run --config=run/config_file_lock_boolean/true.json run/config_file_lock_boolean/main.ts",
-  output: "run/config_file_lock_boolean/true.main.out",
-  http_server: true,
-  exit_code: 10,
 });
 
 itest!(permission_args {
@@ -4595,8 +4541,8 @@ fn file_fetcher_preserves_permissions() {
     .args("repl --quiet")
     .with_pty(|mut console| {
       console.write_line(
-      "const a = await import('http://localhost:4545/run/019_media_types.ts');",
-    );
+        "const a = await import('http://localhost:4545/run/019_media_types.ts');",
+      );
       console.expect("Allow?");
       console.human_delay();
       console.write_line_raw("y");
@@ -4797,21 +4743,17 @@ console.log(returnsHi());"#,
     .join("mod1.ts");
   mod1_file.write("export function returnsHi() { return 'bye bye bye'; }");
 
-  // won't match the lockfile now
-  deno_run_cmd
-    .run()
-    .assert_matches_text(r#"error: The source code is invalid, as it does not match the expected hash in the lock file.
-  Specifier: http://localhost:4545/subdir/mod1.ts
-  Lock file: [WILDCARD]deno.lock
-"#)
-    .assert_exit_code(10);
+  // this is fine with a lockfile because users are supposed to be able
+  // to modify the vendor folder
+  deno_run_cmd.run().assert_matches_text("bye bye bye\n");
 
   // try updating by deleting the lockfile
   let lockfile = temp_dir.path().join("deno.lock");
   lockfile.remove_file();
   cache_command.run();
 
-  // now it should run
+  // should still run and the lockfile should be recreated
+  // (though with the checksum from the vendor folder)
   deno_run_cmd.run().assert_matches_text("bye bye bye\n");
   assert!(lockfile.exists());
 
@@ -5101,8 +5043,8 @@ fn run_etag_delete_source_cache() {
 
 #[test]
 fn code_cache_test() {
-  let deno_dir = TempDir::new();
   let test_context = TestContextBuilder::new().use_temp_cwd().build();
+  let deno_dir = test_context.deno_dir();
   let temp_dir = test_context.temp_dir();
   temp_dir.write("main.js", "console.log('Hello World - A');");
 
@@ -5110,20 +5052,17 @@ fn code_cache_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("main.js")
+      .args("run -Ldebug main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("Hello World - A[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]");
-    assert!(!output.stderr().contains("V8 code cache hit"));
+    assert_not_contains!(output.stderr(), "V8 code cache hit");
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5131,35 +5070,28 @@ fn code_cache_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("main.js")
+      .args("run -Ldebug main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("Hello World - A[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.js[WILDCARD]");
-    assert!(!output.stderr().contains("Updating V8 code cache"));
+    assert_not_contains!(output.stderr(), "Updating V8 code cache");
   }
 
   // Rerun with --no-code-cache.
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("--no-code-cache")
-      .arg("main.js")
+      .args("run -Ldebug --no-code-cache main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("Hello World - A[WILDCARD]")
       .skip_stderr_check();
-    assert!(!output.stderr().contains("V8 code cache"));
+    assert_not_contains!(output.stderr(), "V8 code cache");
   }
 
   // Modify the script, and make sure that the cache is rejected.
@@ -5167,27 +5099,21 @@ fn code_cache_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("main.js")
+      .args("run -Ldebug main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("Hello World - B[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]");
-    assert!(!output.stderr().contains("V8 code cache hit"));
+    assert_not_contains!(output.stderr(), "V8 code cache hit");
   }
 }
 
 #[test]
 fn code_cache_npm_test() {
-  let deno_dir = TempDir::new();
-  let test_context = TestContextBuilder::new()
-    .use_temp_cwd()
-    .use_http_server()
-    .build();
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let deno_dir = test_context.deno_dir();
   let temp_dir = test_context.temp_dir();
   temp_dir.write(
     "main.js",
@@ -5198,23 +5124,18 @@ fn code_cache_npm_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .envs(env_vars_for_npm_tests())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("-A")
-      .arg("main.js")
+      .args("run -Ldebug -A main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("Hello World[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/npm/registry/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
-    assert!(!output.stderr().contains("V8 code cache hit"));
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
+    assert_not_contains!(output.stderr(), "V8 code cache hit");
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5222,30 +5143,22 @@ fn code_cache_npm_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .envs(env_vars_for_npm_tests())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("-A")
-      .arg("main.js")
+      .args("run -Ldebug -A main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("Hello World[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/npm/registry/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
-    assert!(!output.stderr().contains("Updating V8 code cache"));
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/chalk/5.[WILDCARD]/source/index.js[WILDCARD]");
+    assert_not_contains!(output.stderr(), "Updating V8 code cache");
   }
 }
 
 #[test]
 fn code_cache_npm_with_require_test() {
-  let deno_dir = TempDir::new();
-  let test_context = TestContextBuilder::new()
-    .use_temp_cwd()
-    .use_http_server()
-    .build();
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let deno_dir = test_context.deno_dir();
   let temp_dir = test_context.temp_dir();
   temp_dir.write(
     "main.js",
@@ -5256,25 +5169,20 @@ fn code_cache_npm_with_require_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .envs(env_vars_for_npm_tests())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("-A")
-      .arg("main.js")
+      .args("run -Ldebug -A main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("function[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/npm/registry/browserslist/[WILDCARD]/index.js[WILDCARD]");
-    assert!(!output.stderr().contains("V8 code cache hit"));
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for ES module: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]Updating V8 code cache for script: file:///[WILDCARD]/browserslist/[WILDCARD]/index.js[WILDCARD]");
+    assert_not_contains!(output.stderr(), "V8 code cache hit");
 
     // Check that the code cache database exists.
-    let code_cache_path = deno_dir.path().join("v8_code_cache_v1");
+    let code_cache_path = deno_dir.path().join(CODE_CACHE_DB_FILE_NAME);
     assert!(code_cache_path.exists());
   }
 
@@ -5282,22 +5190,64 @@ fn code_cache_npm_with_require_test() {
   {
     let output = test_context
       .new_command()
-      .env("DENO_DIR", deno_dir.path())
-      .envs(env_vars_for_npm_tests())
-      .arg("run")
-      .arg("-Ldebug")
-      .arg("-A")
-      .arg("main.js")
+      .args("run -Ldebug -A main.js")
       .split_output()
       .run();
 
     output
       .assert_stdout_matches_text("function[WILDCARD]")
       .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/main.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/npm/registry/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
-      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/npm/registry/browserslist/[WILDCARD]/index.js[WILDCARD]");
-    assert!(!output.stderr().contains("Updating V8 code cache"));
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for ES module: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/autoprefixer/[WILDCARD]/autoprefixer.js[WILDCARD]")
+      .assert_stderr_matches_text("[WILDCARD]V8 code cache hit for script: file:///[WILDCARD]/browserslist/[WILDCARD]/index.js[WILDCARD]");
+    assert_not_contains!(output.stderr(), "Updating V8 code cache");
+  }
+}
+
+#[test]
+fn code_cache_npm_cjs_wrapper_module_many_exports() {
+  // The code cache was being invalidated because the CJS wrapper module
+  // had indeterministic output.
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write(
+    "main.js",
+    // this package has a few exports
+    "import { hello } from \"npm:@denotest/cjs-reexport-collision\";hello.sayHello();",
+  );
+
+  // First run with no prior cache.
+  {
+    let output = test_context
+      .new_command()
+      .args("run -Ldebug -A main.js")
+      .split_output()
+      .run();
+
+    assert_not_contains!(output.stderr(), "V8 code cache hit");
+    assert_contains!(output.stderr(), "Updating V8 code cache");
+    output.skip_stdout_check();
+  }
+
+  // 2nd run with cache.
+  {
+    let output = test_context
+      .new_command()
+      .args("run -Ldebug -A main.js")
+      .split_output()
+      .run();
+    assert_contains!(output.stderr(), "V8 code cache hit");
+    assert_not_contains!(output.stderr(), "Updating V8 code cache");
+    output.skip_stdout_check();
+
+    // should have two occurrences of this (one for entrypoint and one for wrapper module)
+    assert_eq!(
+      output
+        .stderr()
+        .split("V8 code cache hit for ES module")
+        .count(),
+      3
+    );
   }
 }
 
@@ -5328,4 +5278,106 @@ fn node_process_stdin_unref_with_pty() {
       // if process.stdin.unref is called, the program immediately ends by skipping reading from stdin.
       console.expect("START\r\nEND\r\n");
     });
+}
+
+#[tokio::test]
+async fn listen_tls_alpn() {
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./cert/listen_tls_alpn.ts")
+    .arg("4504")
+    .stdout_piped()
+    .spawn()
+    .unwrap();
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut msg = [0; 5];
+  let read = stdout.read(&mut msg).unwrap();
+  assert_eq!(read, 5);
+  assert_eq!(&msg, b"READY");
+
+  let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
+    "../testdata/tls/RootCA.crt"
+  )));
+  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let mut root_store = rustls::RootCertStore::empty();
+  root_store.add_parsable_certificates(&certs);
+  let mut cfg = rustls::ClientConfig::builder()
+    .with_safe_defaults()
+    .with_root_certificates(root_store)
+    .with_no_client_auth();
+  cfg.alpn_protocols.push(b"foobar".to_vec());
+  let cfg = Arc::new(cfg);
+
+  let hostname = rustls::ServerName::try_from("localhost").unwrap();
+
+  let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
+    .await
+    .unwrap();
+  let mut tls_stream = TlsStream::new_client_side(
+    tcp_stream,
+    ClientConnection::new(cfg, hostname).unwrap(),
+    None,
+  );
+
+  let handshake = tls_stream.handshake().await.unwrap();
+
+  assert_eq!(handshake.alpn, Some(b"foobar".to_vec()));
+
+  let status = child.wait().unwrap();
+  assert!(status.success());
+}
+
+#[tokio::test]
+async fn listen_tls_alpn_fail() {
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./cert/listen_tls_alpn_fail.ts")
+    .arg("4505")
+    .stdout_piped()
+    .spawn()
+    .unwrap();
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut msg = [0; 5];
+  let read = stdout.read(&mut msg).unwrap();
+  assert_eq!(read, 5);
+  assert_eq!(&msg, b"READY");
+
+  let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
+    "../testdata/tls/RootCA.crt"
+  )));
+  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let mut root_store = rustls::RootCertStore::empty();
+  root_store.add_parsable_certificates(&certs);
+  let mut cfg = rustls::ClientConfig::builder()
+    .with_safe_defaults()
+    .with_root_certificates(root_store)
+    .with_no_client_auth();
+  cfg.alpn_protocols.push(b"boofar".to_vec());
+  let cfg = Arc::new(cfg);
+
+  let hostname = rustls::ServerName::try_from("localhost").unwrap();
+
+  let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
+    .await
+    .unwrap();
+  let mut tls_stream = TlsStream::new_client_side(
+    tcp_stream,
+    ClientConnection::new(cfg, hostname).unwrap(),
+    None,
+  );
+
+  tls_stream.handshake().await.unwrap_err();
+
+  let status = child.wait().unwrap();
+  assert!(status.success());
 }

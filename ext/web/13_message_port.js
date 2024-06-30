@@ -150,7 +150,7 @@ class MessagePort extends EventTarget {
    * @param {any} message
    * @param {object[] | StructuredSerializeOptions} transferOrOptions
    */
-  postMessage(message, transferOrOptions = {}) {
+  postMessage(message, transferOrOptions = { __proto__: null }) {
     webidl.assertBranded(this, MessagePortPrototype);
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);

@@ -50,6 +50,7 @@ impl JsonReporter {
   }
 }
 
+#[allow(clippy::print_stdout)]
 impl BenchReporter for JsonReporter {
   fn report_group_summary(&mut self) {}
   #[cold]
@@ -58,7 +59,7 @@ impl BenchReporter for JsonReporter {
   fn report_end(&mut self, _report: &BenchReport) {
     match write_json_to_stdout(self) {
       Ok(_) => (),
-      Err(e) => println!("{e}"),
+      Err(e) => println!("{}", e),
     }
   }
 
@@ -118,6 +119,7 @@ impl ConsoleReporter {
   }
 }
 
+#[allow(clippy::print_stdout)]
 impl BenchReporter for ConsoleReporter {
   #[cold]
   fn report_plan(&mut self, plan: &BenchPlan) {
@@ -167,7 +169,7 @@ impl BenchReporter for ConsoleReporter {
   fn report_register(&mut self, _desc: &BenchDescription) {}
 
   fn report_wait(&mut self, desc: &BenchDescription) {
-    self.name = desc.name.clone();
+    self.name.clone_from(&desc.name);
 
     match &desc.group {
       None => {}

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_webstorage"
-version = "0.143.0"
+version = "0.153.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,4 +17,3 @@ path = "lib.rs"
 deno_core.workspace = true
 deno_web.workspace = true
 rusqlite.workspace = true
-serde.workspace = true
