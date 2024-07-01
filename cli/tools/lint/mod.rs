@@ -91,28 +91,15 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
         Ok(async move {
           let factory = CliFactory::from_flags(flags)?;
           let cli_options = factory.cli_options();
-          let mut linter = WorkspaceLinter::new(
-            factory.caches()?.clone(),
-            factory.module_graph_creator().await?.clone(),
-            cli_options.workspace.clone(),
-            &cli_options.resolve_workspace_lint_options(&lint_flags)?,
-          );
           let lint_config = cli_options.resolve_lint_config()?;
-          for (ctx, lint_options) in
-            cli_options.resolve_lint_options_for_members(&lint_flags)?
-          {
-            let files =
-              collect_lint_files(cli_options, lint_options.files.clone())
-                .and_then(|files| {
-                  if files.is_empty() {
-                    Err(generic_error("No target files found."))
-                  } else {
-                    Ok(files)
-                  }
-                })?;
-            _ = watcher_communicator.watch_paths(files.clone());
+          let mut paths_with_options_batches =
+            resolve_paths_with_options_batches(cli_options, &lint_flags)?;
+          for paths_with_options in &mut paths_with_options_batches {
+            _ = watcher_communicator
+              .watch_paths(paths_with_options.paths.clone());
 
-            let lint_paths = if let Some(paths) = &changed_paths {
+            let files = std::mem::take(&mut paths_with_options.paths);
+            paths_with_options.paths = if let Some(paths) = &changed_paths {
               // lint all files on any changed (https://github.com/denoland/deno/issues/12446)
               files
                 .iter()
@@ -126,13 +113,25 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
             } else {
               files
             };
+          }
+
+          let mut linter = WorkspaceLinter::new(
+            factory.caches()?.clone(),
+            factory.module_graph_creator().await?.clone(),
+            cli_options.workspace.clone(),
+            &cli_options.resolve_workspace_lint_options(&lint_flags)?,
+          );
+          for paths_with_options in paths_with_options_batches {
             linter
-              .lint_files(lint_options, lint_config.clone(), ctx, lint_paths)
+              .lint_files(
+                paths_with_options.options,
+                lint_config.clone(),
+                paths_with_options.ctx,
+                paths_with_options.paths,
+              )
               .await?;
           }
-          if linter.file_count == 0 {
-            return Err(generic_error("No target files found."));
-          }
+
           linter.finish();
 
           Ok(())
@@ -174,17 +173,17 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
         cli_options.workspace.clone(),
         &workspace_lint_options,
       );
-      for (ctx, lint_options) in
-        cli_options.resolve_lint_options_for_members(&lint_flags)?
-      {
-        let files = &lint_options.files;
-        let target_files = collect_lint_files(cli_options, files.clone())?;
+      let paths_with_options_batches =
+        resolve_paths_with_options_batches(cli_options, &lint_flags)?;
+      for paths_with_options in paths_with_options_batches {
         linter
-          .lint_files(lint_options, lint_config.clone(), ctx, target_files)
+          .lint_files(
+            paths_with_options.options,
+            lint_config.clone(),
+            paths_with_options.ctx,
+            paths_with_options.paths,
+          )
           .await?;
-      }
-      if linter.file_count == 0 {
-        return Err(generic_error("No target files found."));
       }
       linter.finish()
     };
@@ -194,6 +193,36 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
   }
 
   Ok(())
+}
+
+struct PathsWithOptions {
+  ctx: WorkspaceMemberContext,
+  paths: Vec<PathBuf>,
+  options: LintOptions,
+}
+
+fn resolve_paths_with_options_batches(
+  cli_options: &CliOptions,
+  lint_flags: &LintFlags,
+) -> Result<Vec<PathsWithOptions>, AnyError> {
+  let members_lint_options =
+    cli_options.resolve_lint_options_for_members(lint_flags)?;
+  let mut paths_with_options_batches =
+    Vec::with_capacity(members_lint_options.len());
+  for (ctx, lint_options) in members_lint_options {
+    let files = collect_lint_files(cli_options, lint_options.files.clone())?;
+    if !files.is_empty() {
+      paths_with_options_batches.push(PathsWithOptions {
+        ctx,
+        paths: files,
+        options: lint_options,
+      });
+    }
+  }
+  if paths_with_options_batches.is_empty() {
+    return Err(generic_error("No target files found."));
+  }
+  Ok(paths_with_options_batches)
 }
 
 type WorkspaceModuleGraphFuture =
@@ -277,12 +306,6 @@ impl WorkspaceLinter {
           .collect::<HashSet<_>>();
         futures.push(
           async move {
-            // let graph = module_graph_creator
-            //   .create_and_validate_publish_graph(
-            //     &vec![publish_config.clone()],
-            //     true,
-            //   )
-            //   .await?;
             let graph = workspace_module_graph_future
               .await
               .map_err(|err| anyhow!("{:#}", err))?;

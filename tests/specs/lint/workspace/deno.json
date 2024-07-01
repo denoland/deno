@@ -1,0 +1,11 @@
+{
+  "workspace": [
+    "./a",
+    "./b"
+  ],
+  "lint": {
+    "rules": {
+      "include": ["no-eval"]
+    }
+  }
+}

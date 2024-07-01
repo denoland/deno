@@ -129,6 +129,12 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
+struct PathsWithOptions {
+  base: PathBuf,
+  paths: Vec<PathBuf>,
+  options: FmtOptions,
+}
+
 fn resolve_paths_with_options_batches(
   cli_options: &CliOptions,
   fmt_flags: &FmtFlags,
@@ -152,12 +158,6 @@ fn resolve_paths_with_options_batches(
     return Err(generic_error("No target files found."));
   }
   Ok(paths_with_options_batches)
-}
-
-struct PathsWithOptions {
-  base: PathBuf,
-  paths: Vec<PathBuf>,
-  options: FmtOptions,
 }
 
 async fn format_files(
