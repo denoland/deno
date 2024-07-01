@@ -26,10 +26,12 @@ use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_cache_dir::HttpCache;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_graph::source::Resolver;
 use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
+use deno_lockfile::Lockfile;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolution;
@@ -108,6 +110,7 @@ impl LspScopeResolver {
     )));
     let redirect_resolver = Some(Arc::new(RedirectResolver::new(
       cache.for_specifier(config_data.map(|d| &d.scope)),
+      config_data.and_then(|d| d.lockfile.as_deref()),
     )));
     let npm_graph_resolver = graph_resolver.create_graph_npm_resolver();
     let graph_imports = config_data
@@ -220,6 +223,10 @@ impl LspResolver {
       std::iter::once(&self.unscoped).chain(self.by_scope.values())
     {
       resolver.jsr_resolver.as_ref().inspect(|r| r.did_cache());
+      resolver
+        .redirect_resolver
+        .as_ref()
+        .inspect(|r| r.did_cache());
     }
   }
 
@@ -543,13 +550,36 @@ impl std::fmt::Debug for RedirectResolver {
 }
 
 impl RedirectResolver {
-  fn new(cache: Arc<dyn HttpCache>) -> Self {
+  fn new(
+    cache: Arc<dyn HttpCache>,
+    lockfile: Option<&Mutex<Lockfile>>,
+  ) -> Self {
+    let entries = DashMap::new();
+    if let Some(lockfile) = lockfile {
+      for (source, destination) in &lockfile.lock().content.redirects {
+        let Ok(source) = ModuleSpecifier::parse(source) else {
+          continue;
+        };
+        let Ok(destination) = ModuleSpecifier::parse(destination) else {
+          continue;
+        };
+        entries.insert(
+          source,
+          Some(Arc::new(RedirectEntry {
+            headers: Default::default(),
+            target: destination.clone(),
+            destination: Some(destination.clone()),
+          })),
+        );
+        entries.insert(destination, None);
+      }
+    }
     Self {
       get_headers: Box::new(move |specifier| {
         let cache_key = cache.cache_item_key(specifier).ok()?;
         cache.read_headers(&cache_key).ok().flatten()
       }),
-      entries: Default::default(),
+      entries,
     }
   }
 
@@ -628,6 +658,10 @@ impl RedirectResolver {
       current = Cow::Owned(entry.target.clone())
     }
     result
+  }
+
+  fn did_cache(&self) {
+    self.entries.retain(|_, entry| entry.is_some());
   }
 }
 
