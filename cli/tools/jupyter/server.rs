@@ -31,13 +31,13 @@ use jupyter_runtime::ReplyError;
 use jupyter_runtime::ReplyStatus;
 use jupyter_runtime::StreamContent;
 
-use super::ReplSessionProxyChannels;
+use super::JupyterReplProxy;
 
 pub struct JupyterServer {
   execution_count: usize,
   last_execution_request: Arc<Mutex<Option<JupyterMessage>>>,
   iopub_connection: Arc<Mutex<KernelIoPubConnection>>,
-  repl_session_proxy: ReplSessionProxyChannels,
+  repl_session_proxy: JupyterReplProxy,
 }
 
 pub struct StartupData {
@@ -49,7 +49,7 @@ impl JupyterServer {
   pub async fn start(
     connection_info: ConnectionInfo,
     mut stdio_rx: mpsc::UnboundedReceiver<StreamContent>,
-    repl_session_proxy: ReplSessionProxyChannels,
+    repl_session_proxy: JupyterReplProxy,
     setup_tx: oneshot::Sender<StartupData>,
   ) -> Result<(), AnyError> {
     let mut heartbeat =
@@ -643,7 +643,7 @@ fn kernel_info() -> messaging::KernelInfoReply {
 }
 
 async fn publish_result(
-  repl_session_proxy: &mut ReplSessionProxyChannels,
+  repl_session_proxy: &mut JupyterReplProxy,
   evaluate_result: &cdp::RemoteObject,
   execution_count: usize,
 ) -> Result<Option<HashMap<String, serde_json::Value>>, AnyError> {
@@ -696,14 +696,14 @@ fn is_word_boundary(c: char) -> bool {
 
 // TODO(bartlomieju): dedup with repl::editor
 async fn get_global_lexical_scope_names(
-  repl_session_proxy: &mut ReplSessionProxyChannels,
+  repl_session_proxy: &mut JupyterReplProxy,
 ) -> Vec<String> {
   repl_session_proxy.global_lexical_scope_names().await.names
 }
 
 // TODO(bartlomieju): dedup with repl::editor
 async fn get_expression_property_names(
-  repl_session_proxy: &mut ReplSessionProxyChannels,
+  repl_session_proxy: &mut JupyterReplProxy,
   expr: &str,
 ) -> Vec<String> {
   // try to get the properties from the expression
@@ -733,7 +733,7 @@ async fn get_expression_property_names(
 
 // TODO(bartlomieju): dedup with repl::editor
 async fn get_expression_type(
-  repl_session_proxy: &mut ReplSessionProxyChannels,
+  repl_session_proxy: &mut JupyterReplProxy,
   expr: &str,
 ) -> Option<String> {
   evaluate_expression(repl_session_proxy, expr)
@@ -743,7 +743,7 @@ async fn get_expression_type(
 
 // TODO(bartlomieju): dedup with repl::editor
 async fn get_object_expr_properties(
-  repl_session_proxy: &mut ReplSessionProxyChannels,
+  repl_session_proxy: &mut JupyterReplProxy,
   object_expr: &str,
 ) -> Option<Vec<String>> {
   let evaluate_result =
@@ -763,7 +763,7 @@ async fn get_object_expr_properties(
 
 // TODO(bartlomieju): dedup with repl::editor
 async fn evaluate_expression(
-  repl_session_proxy: &mut ReplSessionProxyChannels,
+  repl_session_proxy: &mut JupyterReplProxy,
   expr: &str,
 ) -> Option<cdp::EvaluateResponse> {
   let evaluate_response = repl_session_proxy.evaluate(expr.to_string()).await?;
