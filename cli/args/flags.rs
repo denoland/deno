@@ -1100,6 +1100,8 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
     <g>DENO_NO_UPDATE_CHECK</> Set to disable checking if a newer Deno version is
                          available
 
+    <g>DENO_SERVE_ADDRESS</>   Default listening address for `Deno.serve()`
+
     <g>DENO_TLS_CA_STORE</>    Comma-separated list of order dependent certificate
                          stores. Possible values: "system", "mozilla".
                          Defaults to "mozilla".
