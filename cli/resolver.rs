@@ -147,12 +147,13 @@ impl CliNodeResolver {
     let package_folder = self
       .npm_resolver
       .resolve_pkg_folder_from_deno_module_req(req, referrer)?;
-    let maybe_resolution = self.resolve_package_sub_path_from_deno_module(
-      &package_folder,
-      sub_path,
-      referrer,
-      mode,
-    )?;
+    let maybe_resolution = self
+      .maybe_resolve_package_sub_path_from_deno_module(
+        &package_folder,
+        sub_path,
+        referrer,
+        mode,
+      )?;
     match maybe_resolution {
       Some(resolution) => Ok(resolution),
       None => {
@@ -176,6 +177,31 @@ impl CliNodeResolver {
   }
 
   pub fn resolve_package_sub_path_from_deno_module(
+    &self,
+    package_folder: &Path,
+    sub_path: Option<&str>,
+    referrer: &ModuleSpecifier,
+    mode: NodeResolutionMode,
+  ) -> Result<NodeResolution, AnyError> {
+    self
+      .maybe_resolve_package_sub_path_from_deno_module(
+        package_folder,
+        sub_path,
+        referrer,
+        mode,
+      )?
+      .ok_or_else(|| {
+        anyhow!(
+          "Failed resolving '{}' in '{}'.",
+          sub_path
+            .map(|s| format!("/{}", s))
+            .unwrap_or_else(|| ".".to_string()),
+          package_folder.display(),
+        )
+      })
+  }
+
+  pub fn maybe_resolve_package_sub_path_from_deno_module(
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
@@ -540,18 +566,19 @@ impl Resolver for CliGraphResolver {
                 )
                 .map_err(|e| ResolveError::Other(e.into()))
                 .and_then(|pkg_folder| {
-                  let maybe_specifier = self
-                    .node_resolver
-                    .as_ref()
-                    .unwrap()
-                    .resolve_package_sub_path_from_deno_module(
-                      pkg_folder,
-                      sub_path.as_deref(),
-                      referrer,
-                      to_node_mode(mode),
-                    )?;
-                  // todo(THIS PR): don't unwrap
-                  Ok(maybe_specifier.unwrap().into_url())
+                  Ok(
+                    self
+                      .node_resolver
+                      .as_ref()
+                      .unwrap()
+                      .resolve_package_sub_path_from_deno_module(
+                        pkg_folder,
+                        sub_path.as_deref(),
+                        referrer,
+                        to_node_mode(mode),
+                      )?
+                      .into_url(),
+                  )
                 }),
             })
         }
@@ -567,15 +594,16 @@ impl Resolver for CliGraphResolver {
             .workspace_resolver
             .resolve_workspace_pkg_json_folder_for_npm_specifier(req_ref.req())
           {
-            let maybe_specifier = node_resolver
-              .resolve_package_sub_path_from_deno_module(
-                pkg_folder,
-                req_ref.sub_path(),
-                referrer,
-                to_node_mode(mode),
-              )?;
-            // todo(THIS PR): don't unwrap
-            return Ok(maybe_specifier.unwrap().into_url());
+            return Ok(
+              node_resolver
+                .resolve_package_sub_path_from_deno_module(
+                  pkg_folder,
+                  req_ref.sub_path(),
+                  referrer,
+                  to_node_mode(mode),
+                )?
+                .into_url(),
+            );
           }
         }
       }

@@ -189,17 +189,18 @@ impl ModuleLoader for EmbeddedModuleLoader {
               alias,
               version_req,
             )?;
-          let maybe_specifier = self
-            .shared
-            .node_resolver
-            .resolve_package_sub_path_from_deno_module(
-              pkg_folder,
-              sub_path.as_deref(),
-              &referrer,
-              NodeResolutionMode::Execution,
-            )?;
-          // todo(THIS PR): don't unwrap
-          Ok(maybe_specifier.unwrap().into_url())
+          Ok(
+            self
+              .shared
+              .node_resolver
+              .resolve_package_sub_path_from_deno_module(
+                pkg_folder,
+                sub_path.as_deref(),
+                &referrer,
+                NodeResolutionMode::Execution,
+              )?
+              .into_url(),
+          )
         }
       },
       Ok(MappedResolution::Normal(specifier))
