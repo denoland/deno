@@ -956,9 +956,14 @@ fn open_with_access_check(
     };
     (*access_check)(true, &path, &options)?;
 
-    // For windows
-    #[allow(unused_mut)]
     let mut opts: fs::OpenOptions = open_options(options);
+    #[cfg(windows)]
+    {
+      // allow opening directories
+      use std::os::windows::fs::OpenOptionsExt;
+      opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
+    }
+
     #[cfg(unix)]
     {
       // Don't follow symlinks on open -- we must always pass fully-resolved files
@@ -972,7 +977,15 @@ fn open_with_access_check(
 
     Ok(opts.open(&path)?)
   } else {
-    let opts = open_options(options);
+    // for unix
+    #[allow(unused_mut)]
+    let mut opts = open_options(options);
+    #[cfg(windows)]
+    {
+      // allow opening directories
+      use std::os::windows::fs::OpenOptionsExt;
+      opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
+    }
     Ok(opts.open(path)?)
   }
 }
