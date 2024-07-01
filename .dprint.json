@@ -27,6 +27,7 @@
     "cli/tsc/dts/lib.dom*.d.ts",
     "cli/tsc/dts/lib.es*.d.ts",
     "cli/tsc/dts/typescript.d.ts",
+    "tests/specs/fmt",
     "tests/node_compat/test",
     "tests/registry/",
     "tests/testdata/file_extensions/ts_with_js_extension.js",

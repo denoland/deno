@@ -289,7 +289,6 @@ impl BenchOptions {
 
 #[derive(Clone, Debug)]
 pub struct FmtOptions {
-  pub check: bool,
   pub options: FmtOptionsConfig,
   pub files: FilePatterns,
 }
@@ -303,7 +302,6 @@ impl Default for FmtOptions {
 impl FmtOptions {
   pub fn new_with_base(base: PathBuf) -> Self {
     Self {
-      check: false,
       options: FmtOptionsConfig::default(),
       files: FilePatterns::new_with_base(base),
     }
@@ -315,7 +313,6 @@ impl FmtOptions {
     maybe_flags_base: Option<&Path>,
   ) -> Result<Self, AnyError> {
     Ok(Self {
-      check: fmt_flags.check,
       options: resolve_fmt_options(fmt_flags, fmt_config.options),
       files: resolve_files(
         fmt_config.files,
