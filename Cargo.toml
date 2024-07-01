@@ -118,8 +118,8 @@ http = "1.0"
 http-body-util = "0.1"
 http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
-hyper = { version = "=1.3.1", features = ["full"] }
-hyper-util = { version = "=0.1.5", features = ["tokio", "server", "server-auto"] }
+hyper = { version = "=1.4.0", features = ["full"] }
+hyper-util = { version = "=0.1.6", features = ["tokio", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
 jsonc-parser = { version = "=0.23.0", features = ["serde"] }
@@ -376,7 +376,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
-
-[patch.crates-io]
-hyper = { git = "https://github.com/hyperium/hyper", branch = "client-try-send" }
-hyper-util = { git = "https://github.com/hyperium/hyper-util", branch = "client-pool-try-send" }
