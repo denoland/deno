@@ -1,11 +1,11 @@
 {
   "tests": {
-    "root_check": {
+    "root": {
       "args": "lint",
       "exitCode": 1,
       "output": "root.out"
     },
-    "subdir_check": {
+    "subdir": {
       "args": "lint",
       "cwd": "a",
       "exitCode": 1,
