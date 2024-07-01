@@ -339,11 +339,11 @@ internals.jupyter = { formatInner };
 function enableJupyter() {
   const { op_jupyter_broadcast, op_jupyter_input } = core.ops;
 
-  async function input(
+  function input(
     prompt,
     password,
   ) {
-    return await op_jupyter_input(prompt, password);
+    return op_jupyter_input(prompt, password);
   }
 
   async function broadcast(
@@ -426,8 +426,8 @@ function enableJupyter() {
    * @param {string} message - The message to display.
    * @returns {Promise<boolean>} User confirmation.
    */
-  async function confirm(message = "Confirm") {
-    const answer = await input(`${message} [y/N] `, false);
+  function confirm(message = "Confirm") {
+    const answer = input(`${message} [y/N] `, false);
     return answer === "Y" || answer === "y";
   }
 
@@ -439,7 +439,7 @@ function enableJupyter() {
    * @param {boolean} options.password Hide the output characters
    * @returns {Promise<string>} The user input.
    */
-  async function prompt(
+  function prompt(
     message = "Prompt",
     defaultValue = "",
     { password = false } = {},
@@ -447,7 +447,7 @@ function enableJupyter() {
     if (defaultValue != "") {
       message += ` [${defaultValue}]`;
     }
-    const answer = await input(`${message}`, password);
+    const answer = input(`${message}`, password);
 
     if (answer === "") {
       return defaultValue;
