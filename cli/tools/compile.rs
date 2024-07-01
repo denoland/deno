@@ -81,12 +81,13 @@ pub async fn compile(
       ts_config_for_emit.ts_config,
     )?;
   let parser = parsed_source_cache.as_capturing_parser();
-  let eszip = eszip::EszipV2::from_graph(
+  let eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
     graph,
-    &parser,
+    parser,
     transpile_options,
     emit_options,
-  )?;
+    relative_file_base: None,
+  })?;
 
   log::info!(
     "{} {} to {}",

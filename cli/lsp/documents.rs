@@ -144,6 +144,20 @@ impl AssetOrDocument {
     }
   }
 
+  pub fn file_referrer(&self) -> Option<&ModuleSpecifier> {
+    match self {
+      AssetOrDocument::Asset(_) => None,
+      AssetOrDocument::Document(doc) => doc.file_referrer(),
+    }
+  }
+
+  pub fn scope(&self) -> Option<&ModuleSpecifier> {
+    match self {
+      AssetOrDocument::Asset(_) => None,
+      AssetOrDocument::Document(doc) => doc.scope(),
+    }
+  }
+
   pub fn maybe_semantic_tokens(&self) -> Option<lsp::SemanticTokens> {
     match self {
       AssetOrDocument::Asset(_) => None,
@@ -304,7 +318,7 @@ impl Document {
     file_referrer: Option<ModuleSpecifier>,
   ) -> Arc<Self> {
     let file_referrer = Some(&specifier)
-      .filter(|s| s.scheme() == "file")
+      .filter(|s| cache.is_valid_file_referrer(s))
       .cloned()
       .or(file_referrer);
     let media_type = resolve_media_type(
@@ -605,6 +619,13 @@ impl Document {
     self.file_referrer.as_ref()
   }
 
+  pub fn scope(&self) -> Option<&ModuleSpecifier> {
+    self
+      .file_referrer
+      .as_ref()
+      .and_then(|r| self.config.tree.scope_for_specifier(r))
+  }
+
   pub fn content(&self) -> &Arc<str> {
     &self.text
   }
@@ -783,7 +804,7 @@ impl FileSystemDocuments {
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<Arc<Document>> {
     let file_referrer = Some(specifier)
-      .filter(|s| s.scheme() == "file")
+      .filter(|s| cache.is_valid_file_referrer(s))
       .or(file_referrer);
     let new_fs_version = calculate_fs_version(cache, specifier, file_referrer);
     let old_doc = self.docs.get(specifier).map(|v| v.value().clone());
@@ -926,9 +947,9 @@ pub struct Documents {
   /// The npm package requirements found in npm specifiers.
   npm_reqs_by_scope:
     Arc<BTreeMap<Option<ModuleSpecifier>, BTreeSet<PackageReq>>>,
-  /// Gets if any document had a node: specifier such that a @types/node package
-  /// should be injected.
-  has_injected_types_node_package: bool,
+  /// Config scopes that contain a node: specifier such that a @types/node
+  /// package should be injected.
+  scopes_with_node_specifier: Arc<HashSet<Option<ModuleSpecifier>>>,
 }
 
 impl Documents {
@@ -1030,13 +1051,16 @@ impl Documents {
     &self,
     specifier: &'a ModuleSpecifier,
   ) -> Option<Cow<'a, ModuleSpecifier>> {
-    if specifier.scheme() == "file" {
-      Some(Cow::Borrowed(specifier))
-    } else {
-      self
-        .get(specifier)
-        .and_then(|d| d.file_referrer().cloned().map(Cow::Owned))
+    if self.is_valid_file_referrer(specifier) {
+      return Some(Cow::Borrowed(specifier));
     }
+    self
+      .get(specifier)
+      .and_then(|d| d.file_referrer().cloned().map(Cow::Owned))
+  }
+
+  pub fn is_valid_file_referrer(&self, specifier: &ModuleSpecifier) -> bool {
+    self.cache.is_valid_file_referrer(specifier)
   }
 
   /// Return `true` if the provided specifier can be resolved to a document,
@@ -1122,10 +1146,10 @@ impl Documents {
     self.npm_reqs_by_scope.clone()
   }
 
-  /// Returns if a @types/node package was injected into the npm
-  /// resolver based on the state of the documents.
-  pub fn has_injected_types_node_package(&self) -> bool {
-    self.has_injected_types_node_package
+  pub fn scopes_with_node_specifier(
+    &self,
+  ) -> &Arc<HashSet<Option<ModuleSpecifier>>> {
+    &self.scopes_with_node_specifier
   }
 
   /// Return a document for the specifier.
@@ -1346,20 +1370,18 @@ impl Documents {
   /// document.
   fn calculate_npm_reqs_if_dirty(&mut self) {
     let mut npm_reqs_by_scope: BTreeMap<_, BTreeSet<_>> = Default::default();
-    let mut scopes_with_node_builtin_specifier = HashSet::new();
+    let mut scopes_with_specifier = HashSet::new();
     let is_fs_docs_dirty = self.file_system_docs.set_dirty(false);
     if !is_fs_docs_dirty && !self.dirty {
       return;
     }
     let mut visit_doc = |doc: &Arc<Document>| {
-      let scope = doc
-        .file_referrer()
-        .and_then(|r| self.config.tree.scope_for_specifier(r));
+      let scope = doc.scope();
       let reqs = npm_reqs_by_scope.entry(scope.cloned()).or_default();
       for dependency in doc.dependencies().values() {
         if let Some(dep) = dependency.get_code() {
           if dep.scheme() == "node" {
-            scopes_with_node_builtin_specifier.insert(scope.cloned());
+            scopes_with_specifier.insert(scope.cloned());
           }
           if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
             reqs.insert(reference.into_inner().req);
@@ -1402,15 +1424,15 @@ impl Documents {
     // Ensure a @types/node package exists when any module uses a node: specifier.
     // Unlike on the command line, here we just add @types/node to the npm package
     // requirements since this won't end up in the lockfile.
-    for scope in scopes_with_node_builtin_specifier {
-      let reqs = npm_reqs_by_scope.entry(scope).or_default();
+    for scope in &scopes_with_specifier {
+      let reqs = npm_reqs_by_scope.entry(scope.clone()).or_default();
       if !reqs.iter().any(|r| r.name == "@types/node") {
-        self.has_injected_types_node_package = true;
         reqs.insert(PackageReq::from_str("@types/node").unwrap());
       }
     }
 
     self.npm_reqs_by_scope = Arc::new(npm_reqs_by_scope);
+    self.scopes_with_node_specifier = Arc::new(scopes_with_specifier);
     self.dirty = false;
   }
 
@@ -1428,20 +1450,25 @@ impl Documents {
         return Some((specifier.clone(), MediaType::Dts));
       }
     }
-
-    if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return self
-        .resolver
-        .npm_to_file_url(&npm_ref, referrer, file_referrer);
+    let mut specifier = specifier.clone();
+    let mut media_type = None;
+    if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&specifier) {
+      let (s, mt) =
+        self
+          .resolver
+          .npm_to_file_url(&npm_ref, referrer, file_referrer)?;
+      specifier = s;
+      media_type = Some(mt);
     }
-    let Some(doc) = self.get_or_load(specifier, referrer) else {
-      return Some((specifier.clone(), MediaType::from_specifier(specifier)));
+    let Some(doc) = self.get_or_load(&specifier, referrer) else {
+      let media_type =
+        media_type.unwrap_or_else(|| MediaType::from_specifier(&specifier));
+      return Some((specifier, media_type));
     };
     if let Some(types) = doc.maybe_types_dependency().maybe_specifier() {
-      self.resolve_dependency(types, specifier, file_referrer)
+      self.resolve_dependency(types, &specifier, file_referrer)
     } else {
-      let media_type = doc.media_type();
-      Some((doc.specifier().clone(), media_type))
+      Some((doc.specifier().clone(), doc.media_type()))
     }
   }
 }
@@ -1574,7 +1601,8 @@ mod tests {
 
   async fn setup() -> (Documents, LspCache, TempDir) {
     let temp_dir = TempDir::new();
-    let cache = LspCache::new(Some(temp_dir.uri()));
+    temp_dir.create_dir_all(".deno_dir");
+    let cache = LspCache::new(Some(temp_dir.uri().join(".deno_dir").unwrap()));
     let config = Config::default();
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);

@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use dashmap::DashSet;
 use deno_ast::MediaType;
+use deno_config::package_json::PackageJsonDeps;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -21,7 +22,6 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_runtime::deno_node::parse_npm_pkg_name;
-use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
@@ -34,10 +34,8 @@ use import_map::ImportMap;
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
 use crate::args::PackageJsonDepsProvider;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
@@ -95,11 +93,8 @@ impl CliNodeResolver {
   pub fn get_closest_package_json(
     &self,
     referrer: &ModuleSpecifier,
-    permissions: &mut dyn NodePermissions,
-  ) -> Result<Option<Rc<PackageJson>>, AnyError> {
-    self
-      .node_resolver
-      .get_closest_package_json(referrer, permissions)
+  ) -> Result<Option<Arc<PackageJson>>, AnyError> {
+    self.node_resolver.get_closest_package_json(referrer)
   }
 
   pub fn resolve_if_in_npm_package(

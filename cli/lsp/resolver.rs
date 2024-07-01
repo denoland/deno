@@ -26,10 +26,12 @@ use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_cache_dir::HttpCache;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_graph::source::Resolver;
 use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
+use deno_lockfile::Lockfile;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolution;
@@ -48,7 +50,6 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use super::cache::LspCache;
@@ -109,6 +110,7 @@ impl LspScopeResolver {
     )));
     let redirect_resolver = Some(Arc::new(RedirectResolver::new(
       cache.for_specifier(config_data.map(|d| &d.scope)),
+      config_data.and_then(|d| d.lockfile.as_deref()),
     )));
     let npm_graph_resolver = graph_resolver.create_graph_npm_resolver();
     let graph_imports = config_data
@@ -221,6 +223,10 @@ impl LspResolver {
       std::iter::once(&self.unscoped).chain(self.by_scope.values())
     {
       resolver.jsr_resolver.as_ref().inspect(|r| r.did_cache());
+      resolver
+        .redirect_resolver
+        .as_ref()
+        .inspect(|r| r.did_cache());
     }
   }
 
@@ -272,20 +278,20 @@ impl LspResolver {
 
   pub fn graph_imports_by_referrer(
     &self,
+    file_referrer: &ModuleSpecifier,
   ) -> IndexMap<&ModuleSpecifier, Vec<&ModuleSpecifier>> {
-    self
-      .by_scope
+    let resolver = self.get_scope_resolver(Some(file_referrer));
+    resolver
+      .graph_imports
       .iter()
-      .flat_map(|(_, r)| {
-        r.graph_imports.iter().map(|(s, i)| {
-          (
-            s,
-            i.dependencies
-              .values()
-              .flat_map(|d| d.get_type().or_else(|| d.get_code()))
-              .collect(),
-          )
-        })
+      .map(|(s, i)| {
+        (
+          s,
+          i.dependencies
+            .values()
+            .flat_map(|d| d.get_type().or_else(|| d.get_code()))
+            .collect(),
+        )
       })
       .collect()
   }
@@ -359,15 +365,12 @@ impl LspResolver {
   pub fn get_closest_package_json(
     &self,
     referrer: &ModuleSpecifier,
-  ) -> Result<Option<Rc<PackageJson>>, AnyError> {
+  ) -> Result<Option<Arc<PackageJson>>, AnyError> {
     let resolver = self.get_scope_resolver(Some(referrer));
     let Some(node_resolver) = resolver.node_resolver.as_ref() else {
       return Ok(None);
     };
-    node_resolver.get_closest_package_json(
-      referrer,
-      &mut deno_runtime::deno_node::AllowAllNodePermissions,
-    )
+    node_resolver.get_closest_package_json(referrer)
   }
 
   pub fn resolve_redirects(
@@ -462,7 +465,7 @@ async fn create_npm_resolver(
         config_data
           .and_then(|d| d.package_json.as_ref())
           .map(|package_json| {
-            package_json::get_local_package_json_version_reqs(package_json)
+            package_json.resolve_local_package_json_version_reqs()
           }),
       )),
       npmrc: config_data
@@ -506,7 +509,7 @@ fn create_graph_resolver(
       config_data
         .and_then(|d| d.package_json.as_ref())
         .map(|package_json| {
-          package_json::get_local_package_json_version_reqs(package_json)
+          package_json.resolve_local_package_json_version_reqs()
         }),
     )),
     maybe_jsx_import_source_config: config_file
@@ -547,13 +550,36 @@ impl std::fmt::Debug for RedirectResolver {
 }
 
 impl RedirectResolver {
-  fn new(cache: Arc<dyn HttpCache>) -> Self {
+  fn new(
+    cache: Arc<dyn HttpCache>,
+    lockfile: Option<&Mutex<Lockfile>>,
+  ) -> Self {
+    let entries = DashMap::new();
+    if let Some(lockfile) = lockfile {
+      for (source, destination) in &lockfile.lock().content.redirects {
+        let Ok(source) = ModuleSpecifier::parse(source) else {
+          continue;
+        };
+        let Ok(destination) = ModuleSpecifier::parse(destination) else {
+          continue;
+        };
+        entries.insert(
+          source,
+          Some(Arc::new(RedirectEntry {
+            headers: Default::default(),
+            target: destination.clone(),
+            destination: Some(destination.clone()),
+          })),
+        );
+        entries.insert(destination, None);
+      }
+    }
     Self {
       get_headers: Box::new(move |specifier| {
         let cache_key = cache.cache_item_key(specifier).ok()?;
         cache.read_headers(&cache_key).ok().flatten()
       }),
-      entries: Default::default(),
+      entries,
     }
   }
 
@@ -632,6 +658,10 @@ impl RedirectResolver {
       current = Cow::Owned(entry.target.clone())
     }
     result
+  }
+
+  fn did_cache(&self) {
+    self.entries.retain(|_, entry| entry.is_some());
   }
 }
 
