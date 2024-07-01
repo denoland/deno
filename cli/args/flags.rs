@@ -133,6 +133,10 @@ impl Default for DocSourceFileFlag {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocHtmlFlag {
   pub name: Option<String>,
+  pub category_docs_path: Option<String>,
+  pub symbol_redirect_map_path: Option<String>,
+  pub default_symbol_map_path: Option<String>,
+  pub strip_trailing_html: bool,
   pub output: String,
 }
 
@@ -1795,6 +1799,37 @@ Show documentation for runtime built-ins:
             .require_equals(true)
         )
         .arg(
+          Arg::new("category-docs")
+            .long("category-docs")
+            .help("Path to a JSON file keyed by category and an optional value of a markdown doc")
+            .requires("html")
+            .action(ArgAction::Set)
+            .require_equals(true)
+        )
+        .arg(
+          Arg::new("symbol-redirect-map")
+            .long("symbol-redirect-map")
+            .help("Path to a JSON file keyed by file, with an inner map of symbol to an external link")
+            .requires("html")
+            .action(ArgAction::Set)
+            .require_equals(true)
+        )
+        .arg(
+          Arg::new("strip-trailing-html")
+            .long("strip-trailing-html")
+            .help("Remove trailing .html from various links. Will still generate files with a .html extension.")
+            .requires("html")
+            .action(ArgAction::SetTrue)
+        )
+        .arg(
+          Arg::new("default-symbol-map")
+            .long("default-symbol-map")
+            .help("Uses the provided mapping of default name to wanted name for usage blocks.")
+            .requires("html")
+            .action(ArgAction::Set)
+            .require_equals(true)
+        )
+        .arg(
           Arg::new("output")
             .long("output")
             .help("Directory for HTML documentation output")
@@ -2635,7 +2670,7 @@ Directory arguments are expanded to all contained files matching the glob
       Arg::new("clean")
         .long("clean")
         .help("Empty the temporary coverage profile data directory before running tests.
-        
+
 Note: running multiple `deno test --clean` calls in series or parallel for the same coverage directory may cause race conditions.")
         .action(ArgAction::SetTrue),
     )
@@ -3879,10 +3914,23 @@ fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let filter = matches.remove_one::<String>("filter");
   let html = if matches.get_flag("html") {
     let name = matches.remove_one::<String>("name");
+    let category_docs_path = matches.remove_one::<String>("category-docs");
+    let symbol_redirect_map_path =
+      matches.remove_one::<String>("symbol-redirect-map");
+    let strip_trailing_html = matches.get_flag("strip-trailing-html");
+    let default_symbol_map_path =
+      matches.remove_one::<String>("default-symbol-map");
     let output = matches
       .remove_one::<String>("output")
       .unwrap_or(String::from("./docs/"));
-    Some(DocHtmlFlag { name, output })
+    Some(DocHtmlFlag {
+      name,
+      category_docs_path,
+      symbol_redirect_map_path,
+      default_symbol_map_path,
+      strip_trailing_html,
+      output,
+    })
   } else {
     None
   };
@@ -8789,6 +8837,10 @@ mod tests {
           lint: false,
           html: Some(DocHtmlFlag {
             name: Some("My library".to_string()),
+            category_docs_path: None,
+            symbol_redirect_map_path: None,
+            default_symbol_map_path: None,
+            strip_trailing_html: false,
             output: String::from("./docs/"),
           }),
           source_files: DocSourceFileFlag::Paths(svec!["path/to/module.ts"]),
@@ -8815,6 +8867,10 @@ mod tests {
           json: false,
           html: Some(DocHtmlFlag {
             name: Some("My library".to_string()),
+            category_docs_path: None,
+            symbol_redirect_map_path: None,
+            default_symbol_map_path: None,
+            strip_trailing_html: false,
             output: String::from("./foo"),
           }),
           lint: true,
