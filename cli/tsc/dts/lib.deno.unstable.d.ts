@@ -371,11 +371,6 @@ declare namespace Deno {
     /** When `true`, function calls will run on a dedicated blocking thread and
      * will return a `Promise` resolving to the `result`. */
     nonblocking?: NonBlocking;
-    /** When `true`, function calls can safely callback into JavaScript or
-     * trigger a garbage collection event.
-     *
-     * @default {false} */
-    callback?: boolean;
     /** When `true`, dlopen will not fail if the symbol is not found.
      * Instead, the symbol will be set to `null`.
      *
