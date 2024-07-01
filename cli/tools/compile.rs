@@ -24,50 +24,6 @@ pub async fn compile(
   flags: Flags,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
-  fn resolve_root_dir(
-    graph: &deno_graph::ModuleGraph,
-    starting_dir: &ModuleSpecifier,
-    node_modules_dir: Option<&PathBuf>,
-  ) -> ModuleSpecifier {
-    fn select_common_root<'a>(a: &'a str, b: &'a str) -> &'a str {
-      let min_length = a.len().min(b.len());
-
-      let mut last_slash = 0;
-      for i in 0..min_length {
-        if a.as_bytes()[i] == b.as_bytes()[i] && a.as_bytes()[i] == b'/' {
-          last_slash = i;
-        } else if a.as_bytes()[i] != b.as_bytes()[i] {
-          break;
-        }
-      }
-
-      // Return the common root path up to the last common slash.
-      // This returns a slice of the original string 'a', up to and including the last matching '/'.
-      &a[..=last_slash]
-    }
-
-    let node_modules_dir = node_modules_dir
-      .and_then(|p| ModuleSpecifier::from_directory_path(p).ok());
-    let mut found_dir = starting_dir.as_str();
-    for specifier in graph
-      .specifiers()
-      .map(|(s, _)| s)
-      .chain(node_modules_dir.iter())
-    {
-      if specifier.scheme() == "file" {
-        // todo(THIS PR): handle this ending up with a path at the root dir of file:///
-        found_dir = select_common_root(found_dir, specifier.as_str());
-      }
-    }
-    let found_dir = found_dir
-      .strip_suffix('/')
-      .unwrap_or(found_dir)
-      .rfind('/')
-      .map(|i| &found_dir[..i + 1])
-      .unwrap_or(found_dir);
-    ModuleSpecifier::parse(found_dir).unwrap()
-  }
-
   let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let module_graph_creator = factory.module_graph_creator().await?;
@@ -127,10 +83,14 @@ pub async fn compile(
       ts_config_for_emit.ts_config,
     )?;
   let parser = parsed_source_cache.as_capturing_parser();
-  let root_dir_url = resolve_root_dir(
-    &graph,
+  let root_dir_url = resolve_root_dir_from_specifiers(
     cli_options.workspace.root_folder().0,
-    cli_options.node_modules_dir_path(),
+    graph.specifiers().map(|(s, _)| s).chain(
+      cli_options
+        .node_modules_dir_path()
+        .and_then(|p| ModuleSpecifier::from_directory_path(p).ok())
+        .iter(),
+    ),
   );
   let root_dir_url = EszipRelativeFileBaseUrl::new(&root_dir_url);
   let eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
@@ -291,6 +251,68 @@ fn get_os_specific_filepath(
   }
 }
 
+fn resolve_root_dir_from_specifiers<'a>(
+  starting_dir: &ModuleSpecifier,
+  specifiers: impl Iterator<Item = &'a ModuleSpecifier>,
+) -> ModuleSpecifier {
+  fn select_common_root<'a>(a: &'a str, b: &'a str) -> &'a str {
+    let min_length = a.len().min(b.len());
+
+    let mut last_slash = 0;
+    for i in 0..min_length {
+      if a.as_bytes()[i] == b.as_bytes()[i] && a.as_bytes()[i] == b'/' {
+        last_slash = i;
+      } else if a.as_bytes()[i] != b.as_bytes()[i] {
+        break;
+      }
+    }
+
+    // Return the common root path up to the last common slash.
+    // This returns a slice of the original string 'a', up to and including the last matching '/'.
+    let common = &a[..=last_slash];
+    if cfg!(windows) && common == "file:///" {
+      a
+    } else {
+      common
+    }
+  }
+
+  fn is_file_system_root(url: &str) -> bool {
+    let Some(path) = url.strip_prefix("file:///") else {
+      return false;
+    };
+    if cfg!(windows) {
+      let Some((_drive, path)) = path.split_once('/') else {
+        return true;
+      };
+      path.is_empty()
+    } else {
+      path.is_empty()
+    }
+  }
+
+  let mut found_dir = starting_dir.as_str();
+  if !is_file_system_root(found_dir) {
+    for specifier in specifiers {
+      if specifier.scheme() == "file" {
+        found_dir = select_common_root(found_dir, specifier.as_str());
+      }
+    }
+  }
+  let found_dir = if is_file_system_root(found_dir) {
+    found_dir
+  } else {
+    // include the parent dir name because it helps create some context
+    found_dir
+      .strip_suffix('/')
+      .unwrap_or(found_dir)
+      .rfind('/')
+      .map(|i| &found_dir[..i + 1])
+      .unwrap_or(found_dir)
+  };
+  ModuleSpecifier::parse(found_dir).unwrap()
+}
+
 #[cfg(test)]
 mod test {
   pub use super::*;
@@ -364,5 +386,39 @@ mod test {
     run_test("C:\\my-exe.exe", Some("windows"), "C:\\my-exe.exe");
     run_test("C:\\my-exe.0.1.2", Some("windows"), "C:\\my-exe.0.1.2.exe");
     run_test("my-exe-0.1.2", Some("linux"), "my-exe-0.1.2");
+  }
+
+  #[test]
+  fn test_resolve_root_dir_from_specifiers() {
+    fn resolve(start: &str, specifiers: &[&str]) -> String {
+      let specifiers = specifiers
+        .iter()
+        .map(|s| ModuleSpecifier::parse(s).unwrap())
+        .collect::<Vec<_>>();
+      resolve_root_dir_from_specifiers(
+        &ModuleSpecifier::parse(start).unwrap(),
+        specifiers.iter(),
+      )
+      .to_string()
+    }
+
+    assert_eq!(resolve("file:///a/b/c", &["file:///a/b/c/d"]), "file:///a/");
+    assert_eq!(
+      resolve("file:///a/b/c/", &["file:///a/b/c/d"]),
+      "file:///a/b/"
+    );
+    assert_eq!(
+      resolve("file:///a/b/c/", &["file:///a/b/c/d", "file:///a/b/c/e"]),
+      "file:///a/b/"
+    );
+    assert_eq!(resolve("file:///", &["file:///a/b/c/d"]), "file:///");
+    if cfg!(windows) {
+      assert_eq!(resolve("file:///c:/", &["file:///c:/test"]), "file:///c:/");
+      // this will ignore the other one because it's on a separate drive
+      assert_eq!(
+        resolve("file:///c:/a/b/c/", &["file:///v:/a/b/c/d"]),
+        "file:///c:/a/b/"
+      );
+    }
   }
 }
