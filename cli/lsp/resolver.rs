@@ -3,6 +3,7 @@
 use crate::args::create_default_npmrc;
 use crate::args::CacheSetting;
 use crate::args::PackageJsonInstallDepsProvider;
+use crate::args::CliLockfile;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
@@ -109,6 +110,7 @@ impl LspScopeResolver {
     )));
     let redirect_resolver = Some(Arc::new(RedirectResolver::new(
       cache.for_specifier(config_data.map(|d| &d.scope)),
+      config_data.and_then(|d| d.lockfile.clone()),
     )));
     let npm_graph_resolver = graph_resolver.create_graph_npm_resolver();
     let graph_imports = config_data
@@ -221,6 +223,10 @@ impl LspResolver {
       std::iter::once(&self.unscoped).chain(self.by_scope.values())
     {
       resolver.jsr_resolver.as_ref().inspect(|r| r.did_cache());
+      resolver
+        .redirect_resolver
+        .as_ref()
+        .inspect(|r| r.did_cache());
     }
   }
 
@@ -547,13 +553,36 @@ impl std::fmt::Debug for RedirectResolver {
 }
 
 impl RedirectResolver {
-  fn new(cache: Arc<dyn HttpCache>) -> Self {
+  fn new(
+    cache: Arc<dyn HttpCache>,
+    lockfile: Option<Arc<CliLockfile>>,
+  ) -> Self {
+    let entries = DashMap::new();
+    if let Some(lockfile) = lockfile {
+      for (source, destination) in &lockfile.lock().content.redirects {
+        let Ok(source) = ModuleSpecifier::parse(source) else {
+          continue;
+        };
+        let Ok(destination) = ModuleSpecifier::parse(destination) else {
+          continue;
+        };
+        entries.insert(
+          source,
+          Some(Arc::new(RedirectEntry {
+            headers: Default::default(),
+            target: destination.clone(),
+            destination: Some(destination.clone()),
+          })),
+        );
+        entries.insert(destination, None);
+      }
+    }
     Self {
       get_headers: Box::new(move |specifier| {
         let cache_key = cache.cache_item_key(specifier).ok()?;
         cache.read_headers(&cache_key).ok().flatten()
       }),
-      entries: Default::default(),
+      entries,
     }
   }
 
@@ -632,6 +661,10 @@ impl RedirectResolver {
       current = Cow::Owned(entry.target.clone())
     }
     result
+  }
+
+  fn did_cache(&self) {
+    self.entries.retain(|_, entry| entry.is_some());
   }
 }
 
