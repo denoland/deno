@@ -128,7 +128,7 @@ pub async fn compile(
 
   // set it as executable
   #[cfg(unix)]
-  let write_result = if write_result.is_ok() {
+  let write_result = write_result.and_then(|_| {
     use std::os::unix::fs::PermissionsExt;
     let perms = std::fs::Permissions::from_mode(0o755);
     std::fs::set_permissions(&temp_path, perms).with_context(|| {
@@ -137,23 +137,23 @@ pub async fn compile(
         temp_path.display()
       )
     })
-  } else {
-    write_result
-  };
+  });
+
+  let write_result = write_result.and_then(|_| {
+    std::fs::rename(&temp_path, &output_path).with_context(|| {
+      format!(
+        "Renaming temporary file '{}' to '{}'",
+        temp_path.display(),
+        output_path.display()
+      )
+    })
+  });
 
   if let Err(err) = write_result {
     // errored, so attempt to remove the temporary file
     let _ = std::fs::remove_file(temp_path);
     return Err(err);
   }
-
-  std::fs::rename(&temp_path, &output_path).with_context(|| {
-    format!(
-      "Renaming temporary file '{}' to '{}'",
-      temp_path.display(),
-      output_path.display()
-    )
-  })?;
 
   Ok(())
 }
