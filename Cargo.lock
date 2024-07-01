@@ -439,6 +439,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "bindgen"
+version = "0.69.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a00dc851838a2120612785d195287475a3ac45514741da670b735818822129a0"
+dependencies = [
+ "bitflags 2.5.0",
+ "cexpr",
+ "clang-sys",
+ "itertools",
+ "lazy_static",
+ "lazycell",
+ "log",
+ "prettyplease 0.2.17",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash",
+ "shlex",
+ "syn 2.0.58",
+ "which 4.4.2",
+]
+
+[[package]]
 name = "bit-set"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -597,6 +620,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cexpr"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fac387a98bb7c37292057cffc56d62ecb629900026402633ae9160df93a8766"
+dependencies = [
+ "nom 7.1.3",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -626,6 +658,17 @@ checksum = "773f3b9af64447d2ce9850330c473515014aa235e6a783b02db81ff39e4a3dad"
 dependencies = [
  "crypto-common",
  "inout",
+]
+
+[[package]]
+name = "clang-sys"
+version = "1.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b023947811758c97c59bf9d1c188fd619ad4718dcaa767947df1cadb14f39f4"
+dependencies = [
+ "glob",
+ "libc",
+ "libloading 0.8.3",
 ]
 
 [[package]]
@@ -1292,9 +1335,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.291.0"
+version = "0.292.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec3d6bd1d8fc2858208a55aa492d43d92de7d42b9f434f0a7ed251befaf27a3c"
+checksum = "248b86ab980532603f44c14e1c079881133fc54be4c5c716d5333c67952293d2"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1755,9 +1798,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.167.0"
+version = "0.168.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b573e543149e9a37cdf9cf37b88d778215a8eff7da8211b94f84d3d155cfe3f5"
+checksum = "81638e46cda0051461c034e6aeef73d7184264fffface2372586a6ce410a0e89"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -3762,6 +3805,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "lazycell"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
+
+[[package]]
 name = "lexical-core"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4893,6 +4942,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "prettyplease"
+version = "0.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d3928fb5db768cb86f891ff014f0144589297e3c6a1aba6ed7cecfdace270c7"
+dependencies = [
+ "proc-macro2",
+ "syn 2.0.58",
+]
+
+[[package]]
 name = "primeorder"
 version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4986,7 +5045,7 @@ dependencies = [
  "log",
  "multimap",
  "petgraph",
- "prettyplease",
+ "prettyplease 0.1.25",
  "prost",
  "prost-types",
  "regex",
@@ -5771,9 +5830,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.200.0"
+version = "0.201.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "579057484ec81c031826ca53bc5b4ab5d1273fcd5cc4c8057c0f0cd1e57dfa65"
+checksum = "4f7436cf7c06303e6570fea42ec827e47111a77edbf6b40fcfc05424da4d01c0"
 dependencies = [
  "num-bigint",
  "serde",
@@ -5845,6 +5904,12 @@ checksum = "da03fa3b94cc19e3ebfc88c4229c49d8f08cdbd1228870a45f0ffdf84988e14b"
 dependencies = [
  "dirs",
 ]
+
+[[package]]
+name = "shlex"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "signal-hook"
@@ -7365,16 +7430,18 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.93.1"
+version = "0.95.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82943fec029559cb43f9d7fc36e2bb85121534702d6f893554e737d1b147d140"
+checksum = "c4395d3c43b81368d91335ffc78d71cb6e3288d311ab6a55094634cb2afdc5c5"
 dependencies = [
+ "bindgen",
  "bitflags 2.5.0",
  "fslock",
  "gzip-header",
  "home",
  "miniz_oxide",
  "once_cell",
+ "paste",
  "which 6.0.1",
 ]
 
