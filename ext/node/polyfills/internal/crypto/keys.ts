@@ -4,6 +4,13 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { primordials } from "ext:core/mod.js";
+
+const {
+  ObjectDefineProperties,
+  SymbolToStringTag,
+} = primordials;
+
 import {
   op_node_create_private_key,
   op_node_create_public_key,
@@ -208,6 +215,14 @@ export class KeyObject {
     notImplemented("crypto.KeyObject.prototype.asymmetricKeyType");
   }
 }
+
+ObjectDefineProperties(KeyObject.prototype, {
+  [SymbolToStringTag]: {
+    __proto__: null,
+    configurable: true,
+    value: "KeyObject",
+  },
+});
 
 export interface JsonWebKeyInput {
   key: JsonWebKey;
