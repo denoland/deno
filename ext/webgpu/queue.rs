@@ -3,12 +3,14 @@
 use crate::command_encoder::WebGpuCommandBuffer;
 use crate::Instance;
 use deno_core::error::AnyError;
+use deno_core::futures::channel::oneshot;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use serde::Deserialize;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use super::error::WebGpuResult;
@@ -140,4 +142,33 @@ pub fn op_webgpu_write_texture(
     &data_layout,
     &size
   ))
+}
+
+#[op2(async)]
+#[serde]
+pub async fn op_webgpu_queue_on_submitted_work_done(
+  state: Rc<RefCell<OpState>>,
+  #[smi] queue_rid: ResourceId,
+) -> Result<(), AnyError> {
+  let (sender, receiver) = oneshot::channel::<()>();
+
+  {
+    let state_ = state.borrow();
+    let instance = state_.borrow::<Instance>();
+
+    let queue_resource = state_.resource_table.get::<WebGpuQueue>(queue_rid)?;
+    let queue = queue_resource.1;
+
+    let closure = wgpu_core::device::queue::SubmittedWorkDoneClosure::from_rust(
+      Box::new(|| {
+        sender.send(()).unwrap();
+      }),
+    );
+
+    gfx_select!(queue => instance.queue_on_submitted_work_done(queue, closure))?;
+  }
+
+  receiver.await?;
+
+  Ok(())
 }

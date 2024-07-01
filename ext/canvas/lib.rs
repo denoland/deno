@@ -1,13 +1,14 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
 use image::imageops::FilterType;
-use image::ColorType;
-use image::ImageDecoder;
+use image::ExtendedColorType;
+use image::GenericImageView;
+use image::ImageEncoder;
 use image::Pixel;
+use image::RgbImage;
 use image::RgbaImage;
 use serde::Deserialize;
 use serde::Serialize;
@@ -44,15 +45,14 @@ fn op_image_process(
   #[buffer] buf: &[u8],
   #[serde] args: ImageProcessArgs,
 ) -> Result<ToJsBuffer, AnyError> {
-  let view =
-    RgbaImage::from_vec(args.width, args.height, buf.to_vec()).unwrap();
+  let view = RgbImage::from_vec(args.width, args.height, buf.to_vec()).unwrap();
 
   let surface = if !(args.width == args.surface_width
     && args.height == args.surface_height
     && args.input_x == 0
     && args.input_y == 0)
   {
-    let mut surface = RgbaImage::new(args.surface_width, args.surface_height);
+    let mut surface = RgbImage::new(args.surface_width, args.surface_height);
 
     image::imageops::overlay(&mut surface, &view, args.input_x, args.input_y);
 
@@ -105,7 +105,7 @@ fn op_image_process(
     }
   }
 
-  Ok(image_out.to_vec().into())
+  Ok(image_out.into_raw().into())
 }
 
 #[derive(Debug, Serialize)]
@@ -118,35 +118,42 @@ struct DecodedPng {
 #[op2]
 #[serde]
 fn op_image_decode_png(#[buffer] buf: &[u8]) -> Result<DecodedPng, AnyError> {
-  let png = image::codecs::png::PngDecoder::new(buf)?;
-
-  let (width, height) = png.dimensions();
-
-  // TODO(@crowlKats): maybe use DynamicImage https://docs.rs/image/0.24.7/image/enum.DynamicImage.html ?
-  if png.color_type() != ColorType::Rgba8 {
-    return Err(type_error(format!(
-      "Color type '{:?}' not supported",
-      png.color_type()
-    )));
-  }
-
-  // read_image will assert that the buffer is the correct size, so we need to fill it with zeros
-  let mut png_data = vec![0_u8; png.total_bytes() as usize];
-
-  png.read_image(&mut png_data)?;
+  let reader = std::io::BufReader::new(std::io::Cursor::new(buf));
+  let decoder = image::codecs::png::PngDecoder::new(reader)?;
+  let image = image::DynamicImage::from_decoder(decoder)?;
+  let (width, height) = image.dimensions();
 
   Ok(DecodedPng {
-    data: png_data.into(),
+    data: image.into_rgba8().into_raw().into(),
     width,
     height,
   })
 }
 
+#[op2]
+#[serde]
+fn op_image_encode_png(
+  #[buffer] buf: &[u8],
+  width: u32,
+  height: u32,
+) -> Result<Option<ToJsBuffer>, AnyError> {
+  let mut out = vec![];
+  let png = image::codecs::png::PngEncoder::new(&mut out);
+
+  if png
+    .write_image(buf, width, height, ExtendedColorType::Rgba8)
+    .is_err()
+  {
+    return Ok(None);
+  };
+  Ok(Some(out.into()))
+}
+
 deno_core::extension!(
   deno_canvas,
   deps = [deno_webidl, deno_web, deno_webgpu],
-  ops = [op_image_process, op_image_decode_png],
-  lazy_loaded_esm = ["01_image.js"],
+  ops = [op_image_process, op_image_decode_png, op_image_encode_png],
+  lazy_loaded_esm = ["01_image.js", "02_canvas.js"],
 );
 
 pub fn get_declaration() -> PathBuf {

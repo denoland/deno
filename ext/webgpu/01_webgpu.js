@@ -13,6 +13,7 @@ const {
 } = core;
 import {
   op_webgpu_buffer_get_map_async,
+  op_webgpu_buffer_get_map_blocking,
   op_webgpu_buffer_get_mapped_range,
   op_webgpu_buffer_unmap,
   op_webgpu_command_encoder_begin_compute_pass,
@@ -87,6 +88,7 @@ import {
   op_webgpu_request_device,
   op_webgpu_write_buffer,
   op_webgpu_write_texture,
+  op_webgpu_queue_on_submitted_work_done,
 } from "ext:core/ops";
 const {
   ArrayBuffer,
@@ -161,6 +163,7 @@ const _dimension = Symbol("[[dimension]]");
 const _format = Symbol("[[format]]");
 const _type = Symbol("[[type]]");
 const _count = Symbol("[[count]]");
+const _mapBlocking = Symbol("[[mapBlocking]]");
 
 /**
  * @param {any} self
@@ -1933,7 +1936,8 @@ class GPUQueue {
 
   onSubmittedWorkDone() {
     webidl.assertBranded(this, GPUQueuePrototype);
-    return PromiseResolve();
+
+    return op_webgpu_queue_on_submitted_work_done(this[_rid]);
   }
 
   /**
@@ -2238,6 +2242,27 @@ class GPUBuffer {
     }
     this[_state] = "mapped";
     this[_mappingRange] = [offset, offset + rangeSize];
+    /** @type {[ArrayBuffer, number, number][] | null} */
+    this[_mappedRanges] = [];
+  }
+
+  [_mapBlocking](mode) {
+    const device = assertDevice(this, "", "this");
+    const bufferRid = assertResource(this, "", "this");
+
+    const rangeSize = MathMax(0, this[_size]);
+
+    this[_mapMode] = mode;
+    op_webgpu_buffer_get_map_blocking(
+      bufferRid,
+      device.rid,
+      mode,
+      0,
+      rangeSize,
+    );
+
+    this[_state] = "mapped";
+    this[_mappingRange] = [0, rangeSize];
     /** @type {[ArrayBuffer, number, number][] | null} */
     this[_mappedRanges] = [];
   }
@@ -7409,6 +7434,15 @@ const dictMembersGPUCanvasConfiguration = [
     defaultValue: GPUTextureUsage.RENDER_ATTACHMENT,
   },
   {
+    key: "viewFormats",
+    converter: webidl.createSequenceConverter(
+      webidl.converters["GPUTextureFormat"],
+    ),
+    get defaultValue() {
+      return [];
+    },
+  },
+  {
     key: "alphaMode",
     converter: webidl.converters["GPUCanvasAlphaMode"],
     defaultValue: "opaque",
@@ -7418,25 +7452,6 @@ const dictMembersGPUCanvasConfiguration = [
   {
     key: "presentMode",
     converter: webidl.converters["GPUPresentMode"],
-  },
-  {
-    key: "width",
-    converter: webidl.converters["long"],
-    required: true,
-  },
-  {
-    key: "height",
-    converter: webidl.converters["long"],
-    required: true,
-  },
-  {
-    key: "viewFormats",
-    converter: webidl.createSequenceConverter(
-      webidl.converters["GPUTextureFormat"],
-    ),
-    get defaultValue() {
-      return [];
-    },
   },
 ];
 webidl.converters["GPUCanvasConfiguration"] = webidl
@@ -7448,6 +7463,7 @@ webidl.converters["GPUCanvasConfiguration"] = webidl
 const gpu = webidl.createBranded(GPU);
 export {
   _device,
+  _mapBlocking,
   assertDevice,
   createGPUTexture,
   GPU,

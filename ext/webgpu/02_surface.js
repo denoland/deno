@@ -23,6 +23,7 @@ const {
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 const _surfaceRid = Symbol("[[surfaceRid]]");
 const _configuration = Symbol("[[configuration]]");
@@ -49,7 +50,7 @@ class GPUCanvasContext {
   configure(configuration) {
     webidl.assertBranded(this, GPUCanvasContextPrototype);
     const prefix = "Failed to execute 'configure' on 'GPUCanvasContext'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     configuration = webidl.converters.GPUCanvasConfiguration(configuration, {
       prefix,
       context: "Argument 1",
@@ -58,10 +59,7 @@ class GPUCanvasContext {
     const { _device, assertDevice } = loadWebGPU();
     this[_device] = configuration.device[_device];
     this[_configuration] = configuration;
-    const device = assertDevice(this, {
-      prefix,
-      context: "configuration.device",
-    });
+    const device = assertDevice(this, prefix, "configuration.device");
 
     const { err } = op_webgpu_surface_configure({
       surfaceRid: this[_surfaceRid],
@@ -96,7 +94,7 @@ class GPUCanvasContext {
     }
     const { createGPUTexture, assertDevice } = loadWebGPU();
 
-    const device = assertDevice(this, { prefix, context: "this" });
+    const device = assertDevice(this, prefix, "this");
 
     if (this[_currentTexture]) {
       return this[_currentTexture];
@@ -134,10 +132,7 @@ class GPUCanvasContext {
 
     webidl.assertBranded(this, GPUCanvasContextPrototype);
     const prefix = "Failed to execute 'present' on 'GPUCanvasContext'";
-    const device = assertDevice(this[_currentTexture], {
-      prefix,
-      context: "this",
-    });
+    const device = assertDevice(this[_currentTexture], prefix, "this");
     op_webgpu_surface_present(device.rid, this[_surfaceRid]);
     this[_currentTexture].destroy();
     this[_currentTexture] = undefined;
@@ -165,8 +160,6 @@ function createCanvasContext(options) {
   canvasContext[_canvas] = options.canvas;
   return canvasContext;
 }
-
-// External webgpu surfaces
 
 // TODO(@littledivy): This will extend `OffscreenCanvas` when we add it.
 class UnsafeWindowSurface {
