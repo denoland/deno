@@ -2,8 +2,8 @@
 
 use crate::args::create_default_npmrc;
 use crate::args::CacheSetting;
-use crate::args::PackageJsonInstallDepsProvider;
 use crate::args::CliLockfile;
+use crate::args::PackageJsonInstallDepsProvider;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
