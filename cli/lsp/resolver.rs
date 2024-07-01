@@ -3,6 +3,7 @@
 use crate::args::create_default_npmrc;
 use crate::args::package_json;
 use crate::args::CacheSetting;
+use crate::args::CliLockfile;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
@@ -26,12 +27,10 @@ use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_cache_dir::HttpCache;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_graph::source::Resolver;
 use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
-use deno_lockfile::Lockfile;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolution;
@@ -110,7 +109,7 @@ impl LspScopeResolver {
     )));
     let redirect_resolver = Some(Arc::new(RedirectResolver::new(
       cache.for_specifier(config_data.map(|d| &d.scope)),
-      config_data.and_then(|d| d.lockfile.as_deref()),
+      config_data.and_then(|d| d.lockfile.clone()),
     )));
     let npm_graph_resolver = graph_resolver.create_graph_npm_resolver();
     let graph_imports = config_data
@@ -552,7 +551,7 @@ impl std::fmt::Debug for RedirectResolver {
 impl RedirectResolver {
   fn new(
     cache: Arc<dyn HttpCache>,
-    lockfile: Option<&Mutex<Lockfile>>,
+    lockfile: Option<Arc<CliLockfile>>,
   ) -> Self {
     let entries = DashMap::new();
     if let Some(lockfile) = lockfile {
