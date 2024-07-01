@@ -744,6 +744,7 @@ dependencies = [
  "pretty_assertions",
  "regex",
  "serde",
+ "tempfile",
  "test_server",
  "tokio",
  "tower-lsp",
