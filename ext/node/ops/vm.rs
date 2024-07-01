@@ -29,7 +29,7 @@ pub struct Script {
   inner: i::ContextifyScript,
 }
 
-impl deno_core::GcResource for Script {}
+impl deno_core::GarbageCollected for Script {}
 
 impl Script {
   fn new(
