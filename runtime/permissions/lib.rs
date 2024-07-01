@@ -713,9 +713,16 @@ impl NetDescriptor {
   pub fn from_cli_arg(s: &str) -> Result<Self, AnyError> {
     let lowercased = s.to_lowercase();
     let extracted_host = lowercased.as_str();
-    let (host_str, port) = split_host_port(extracted_host)?;
+    let (host_str, mut port) = split_host_port(extracted_host)?;
     let host =
       Host::from_host_and_origin_host(host_str.as_str(), extracted_host)?;
+
+    if host.is_ipv6()
+      && (!extracted_host.contains('[') || !extracted_host.contains(']'))
+    {
+      port = None;
+    }
+
     Ok(NetDescriptor(host, port))
   }
 

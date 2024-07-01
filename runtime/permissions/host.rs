@@ -2,6 +2,7 @@
 
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
+use deno_core::url::quirks::domain_to_ascii;
 use fqdn::FQDN;
 use std::fmt;
 use std::net::Ipv4Addr;
@@ -24,9 +25,20 @@ impl Host {
       return Ok(Host::Ipv6(ipv6));
     }
 
-    let host = FQDN::from_str(host).map_err(|_| {
+    if let Ok(ipv6) = origin_host.parse::<Ipv6Addr>() {
+      return Ok(Host::Ipv6(ipv6));
+    }
+
+    let mut ascii_host = domain_to_ascii(host);
+
+    if ascii_host.is_empty() {
+      ascii_host = host.to_string();
+    }
+
+    let host = FQDN::from_str(&ascii_host).map_err(|_| {
       uri_error(format!("Failed to parse host: {}\n", origin_host))
     })?;
+
     let host_string = host.to_string();
 
     if let Ok(ipv4) = host_string.parse::<Ipv4Addr>() {
@@ -34,6 +46,10 @@ impl Host {
     }
 
     Ok(Host::FQDN(host))
+  }
+
+  pub fn is_ipv6(&self) -> bool {
+    matches!(self, Host::Ipv6(_))
   }
 }
 

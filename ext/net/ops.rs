@@ -85,10 +85,17 @@ pub struct IpAddr {
 fn normalize_ip_addr(addr: &mut IpAddr) -> Result<(), AnyError> {
   let lowercased = addr.hostname.as_str().to_lowercase();
   let extracted_host = lowercased.as_str();
-  let (host_str, port) = split_host_port(extracted_host)?;
-  addr.hostname =
-    Host::from_host_and_origin_host(host_str.as_str(), extracted_host)?
-      .to_string();
+  let (host_str, mut port) = split_host_port(extracted_host)?;
+  let host =
+    Host::from_host_and_origin_host(host_str.as_str(), extracted_host)?;
+  addr.hostname = host.to_string();
+
+  if host.is_ipv6()
+    && (!extracted_host.contains('[') || !extracted_host.contains(']'))
+  {
+    port = None;
+  }
+
   if let Some(port) = port {
     addr.port = port;
   }
