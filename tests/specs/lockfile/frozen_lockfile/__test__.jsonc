@@ -20,7 +20,7 @@
           "exitCode": 1
         },
         {
-          // now fix it
+          // update the lockfile
           "args": "cache sub.ts",
           "output": "update_lockfile.out"
         },
@@ -94,6 +94,62 @@
         {
           "args": "run --frozen add.ts",
           "output": "1 + 2 = 3\n"
+        }
+      ]
+    },
+    "errors_if_creates_lockfile": {
+      "steps": [
+        {
+          "args": [
+            "eval",
+            "Deno.statSync('lock.json')"
+          ],
+          "output": "[WILDCARD]NotFound[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          "args": "run --frozen add.ts",
+          "output": "no_lockfile_run.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "non_analyzable_dynamic_npm": {
+      "steps": [
+        {
+          "args": "cache add.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --frozen sub-dynamic.ts",
+          "output": "frozen_new_dep_dynamic_npm.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "non_analyzable_dynamic_jsr": {
+      "steps": [
+        {
+          "args": "cache add.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --frozen --allow-net jsr-dynamic.ts",
+          "output": "frozen_new_dep_dynamic_jsr.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "non_analyzable_dynamic_http": {
+      "steps": [
+        {
+          "args": "cache add.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --frozen --allow-net http-dynamic.ts",
+          "output": "frozen_new_dep_dynamic_http.out",
+          "exitCode": 1
         }
       ]
     }
