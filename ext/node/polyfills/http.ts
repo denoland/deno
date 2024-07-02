@@ -623,50 +623,6 @@ class ClientRequest extends OutgoingMessage {
       client[internalRidSymbol],
       this._bodyWriteRid,
     );
-  }
-
-  _implicitHeader() {
-    if (this._header) {
-      throw new ERR_HTTP_HEADERS_SENT("render");
-    }
-    this._storeHeader(
-      this.method + " " + this.path + " HTTP/1.1\r\n",
-      this[kOutHeaders],
-    );
-  }
-
-  _getClient(): Deno.HttpClient | undefined {
-    return undefined;
-  }
-
-  // TODO(bartlomieju): handle error
-  onSocket(socket, _err) {
-    nextTick(() => {
-      this.socket = socket;
-      this.emit("socket", socket);
-    });
-  }
-
-  // deno-lint-ignore no-explicit-any
-  end(chunk?: any, encoding?: any, cb?: any): this {
-    if (typeof chunk === "function") {
-      cb = chunk;
-      chunk = null;
-      encoding = null;
-    } else if (typeof encoding === "function") {
-      cb = encoding;
-      encoding = null;
-    }
-
-    this.finished = true;
-    if (chunk) {
-      this.write_(chunk, encoding, null, true);
-    } else if (!this._headerSent) {
-      this._contentLength = 0;
-      this._implicitHeader();
-      this._send("", "latin1");
-    }
-    this._bodyWriter?.close();
 
     (async () => {
       try {
@@ -786,6 +742,50 @@ class ClientRequest extends OutgoingMessage {
         }
       }
     })();
+  }
+
+  _implicitHeader() {
+    if (this._header) {
+      throw new ERR_HTTP_HEADERS_SENT("render");
+    }
+    this._storeHeader(
+      this.method + " " + this.path + " HTTP/1.1\r\n",
+      this[kOutHeaders],
+    );
+  }
+
+  _getClient(): Deno.HttpClient | undefined {
+    return undefined;
+  }
+
+  // TODO(bartlomieju): handle error
+  onSocket(socket, _err) {
+    nextTick(() => {
+      this.socket = socket;
+      this.emit("socket", socket);
+    });
+  }
+
+  // deno-lint-ignore no-explicit-any
+  end(chunk?: any, encoding?: any, cb?: any): this {
+    if (typeof chunk === "function") {
+      cb = chunk;
+      chunk = null;
+      encoding = null;
+    } else if (typeof encoding === "function") {
+      cb = encoding;
+      encoding = null;
+    }
+
+    this.finished = true;
+    if (chunk) {
+      this.write_(chunk, encoding, null, true);
+    } else if (!this._headerSent) {
+      this._contentLength = 0;
+      this._implicitHeader();
+      this._send("", "latin1");
+    }
+    this._bodyWriter?.close();
   }
 
   abort() {
