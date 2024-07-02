@@ -2113,8 +2113,8 @@ function readableByteStreamControllerRespond(controller, bytesWritten) {
       throw new RangeError("bytesWritten out of range");
     }
   }
-  // deno-lint-ignore prefer-primordials
   firstDescriptor.buffer = ArrayBufferPrototypeTransferToFixedLength(
+    // deno-lint-ignore prefer-primordials
     firstDescriptor.buffer,
   );
   readableByteStreamControllerRespondInternal(controller, bytesWritten);
@@ -2477,8 +2477,8 @@ function readableByteStreamControllerConvertPullIntoDescriptor(
   // deno-lint-ignore prefer-primordials
   assert(bytesFilled <= pullIntoDescriptor.byteLength);
   assert((bytesFilled % elementSize) === 0);
-  // deno-lint-ignore prefer-primordials
   const buffer = ArrayBufferPrototypeTransferToFixedLength(
+    // deno-lint-ignore prefer-primordials
     pullIntoDescriptor.buffer,
   );
   return new pullIntoDescriptor.viewConstructor(
