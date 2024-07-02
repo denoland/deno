@@ -394,7 +394,7 @@ impl HttpClient {
         {
           return Ok(FetchOnceResult::RequestError(err.to_string()));
         }
-        return Err(err.into());
+        return Err(err);
       }
     };
 

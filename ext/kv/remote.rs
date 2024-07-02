@@ -12,7 +12,6 @@ use bytes::Bytes;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::Stream;
-use deno_core::futures::TryStreamExt as _;
 use deno_core::OpState;
 use deno_fetch::create_http_client;
 use deno_fetch::CreateHttpClientOptions;
@@ -141,7 +140,7 @@ impl RemoteResponse for FetchResponse {
   fn stream(
     self,
   ) -> impl Stream<Item = Result<Bytes, anyhow::Error>> + Send + Sync {
-    self.0.into_body().into_data_stream().map_err(|e| e.into())
+    self.0.into_body().into_data_stream()
   }
   async fn text(self) -> Result<String, anyhow::Error> {
     let bytes = self.bytes().await?;
