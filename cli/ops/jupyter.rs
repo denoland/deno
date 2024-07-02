@@ -45,11 +45,11 @@ pub async fn op_jupyter_broadcast(
 
     (
       s.borrow::<Arc<Mutex<KernelIoPubConnection>>>().clone(),
-      s.borrow::<Rc<RefCell<Option<JupyterMessage>>>>().clone(),
+      s.borrow::<Arc<Mutex<Option<JupyterMessage>>>>().clone(),
     )
   };
 
-  let maybe_last_request = last_execution_request.borrow().clone();
+  let maybe_last_request = last_execution_request.lock().await.clone();
   if let Some(last_request) = maybe_last_request {
     let content = JupyterMessageContent::from_type_and_content(
       &message_type,
