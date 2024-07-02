@@ -1,1 +1,2 @@
-const { subtract } = await import("npm:" + "@denotest/subtract@1");
+const scheme = "npm:";
+const { subtract } = await import(scheme + "@denotest/subtract@1");

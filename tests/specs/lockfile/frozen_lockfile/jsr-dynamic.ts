@@ -1,1 +1,2 @@
-const { add } = await import("jsr:" + "@denotest/add@1");
+const scheme = "jsr:";
+const { add } = await import(scheme + "@denotest/add@1");

@@ -10,6 +10,6 @@ changes:
 14 | +        "integrity": "[WILDCARD]",
 15 | +        "dependencies": {}
 16 | +      }
-const { subtract } = await import("npm:" + "@denotest/subtract@1");
+const { subtract } = await import(scheme + "@denotest/subtract@1");
                      ^
     at [WILDCARD]

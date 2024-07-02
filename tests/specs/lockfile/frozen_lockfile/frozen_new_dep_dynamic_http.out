@@ -5,6 +5,6 @@ changes:
 14 | +  "remote": {
 15 | +    "http://localhost:4545/welcome.ts": "[WILDCARD]"
 16 | +  }
-const _ = await import("http://" + "localhost:4545/welcome.ts");
+const _ = await import(scheme + "localhost:4545/welcome.ts");
           ^
     at [WILDCARD]
