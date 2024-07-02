@@ -157,8 +157,11 @@ impl CliLockfile {
     }
   }
   pub fn error_if_changed(&self) -> Result<(), AnyError> {
+    if !self.frozen {
+      return Ok(());
+    }
     let lockfile = self.lockfile.lock();
-    if self.frozen && lockfile.has_content_changed {
+    if lockfile.has_content_changed {
       let suggested = if *super::DENO_FUTURE {
         "`deno cache --frozen=false`, `deno install --frozen=false`,"
       } else {
