@@ -536,15 +536,49 @@ fn test_proxy_from_env() {
     Intercept::parse_with(Filter::All, s).unwrap()
   }
 
-  let normal = parse("http://127.0.0.1:6666");
-  assert_eq!(normal.dst, "http://127.0.0.1:6666");
-  assert!(normal.auth.is_none());
+  // normal
+  match parse("http://127.0.0.1:6666").target {
+    Target::Http { dst, auth } => {
+      assert_eq!(dst, "http://127.0.0.1:6666");
+      assert!(auth.is_none());
+    },
+    _ => panic!("bad target"),
+  }
 
-  let without_scheme = parse("127.0.0.1:6666");
-  assert_eq!(without_scheme.dst, "http://127.0.0.1:6666");
+  // without scheme
+  match parse("127.0.0.1:6666").target {
+    Target::Http { dst, auth } => {
+      assert_eq!(dst, "http://127.0.0.1:6666");
+      assert!(auth.is_none());
+    },
+    _ => panic!("bad target"),
+  }
 
-  let with_userinfo = parse("user:pass@127.0.0.1:6666");
-  assert_eq!(with_userinfo.dst, "http://127.0.0.1:6666");
-  assert!(with_userinfo.auth.is_some());
-  assert!(with_userinfo.auth.unwrap().is_sensitive());
+  // with userinfo
+  match parse("user:pass@127.0.0.1:6666").target {
+    Target::Http { dst, auth } => {
+      assert_eq!(dst, "http://127.0.0.1:6666");
+      assert!(auth.is_some());
+      assert!(auth.unwrap().is_sensitive());
+    },
+    _ => panic!("bad target"),
+  }
+
+  // socks
+  match parse("socks5://user:pass@127.0.0.1:6666").target {
+    Target::Socks { dst, auth } => {
+      assert_eq!(dst, "socks5://127.0.0.1:6666");
+      assert!(auth.is_some());
+    },
+    _ => panic!("bad target"),
+  }
+
+  // socks5h
+  match parse("socks5h://localhost:6666").target {
+    Target::Socks { dst, auth } => {
+      assert_eq!(dst, "socks5h://localhost:6666");
+      assert!(auth.is_some());
+    },
+    _ => panic!("bad target"),
+  }
 }
