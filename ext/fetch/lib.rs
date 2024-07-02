@@ -82,6 +82,8 @@ pub struct Options {
   pub user_agent: String,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub proxy: Option<Proxy>,
+  pub request_builder_hook:
+    Option<fn(&mut http::Request<ReqBody>) -> Result<(), AnyError>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: TlsKeys,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
@@ -102,6 +104,7 @@ impl Default for Options {
       user_agent: "".to_string(),
       root_cert_store_provider: None,
       proxy: None,
+      request_builder_hook: None,
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: TlsKeys::Null,
       file_fetch_handler: Rc::new(DefaultFileFetchHandler),
@@ -442,6 +445,11 @@ where
         request
           .headers_mut()
           .insert(ACCEPT_ENCODING, HeaderValue::from_static("identity"));
+      }
+
+      let options = state.borrow::<Options>();
+      if let Some(request_builder_hook) = options.request_builder_hook {
+        request_builder_hook(&mut request)?;
       }
 
       let cancel_handle = CancelHandle::new_rc();
