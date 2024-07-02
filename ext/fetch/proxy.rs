@@ -240,7 +240,7 @@ pub enum Proxied<T> {
   /// Not proxied
   HttpForward(T),
   /// Tunneled through HTTP CONNECT
-  HttpTunneled(TokioIo<TlsStream<TokioIo<T>>>),
+  HttpTunneled(Box<TokioIo<TlsStream<TokioIo<T>>>>),
   /// Tunneled through SOCKS
   Socks(TokioIo<TcpStream>),
   /// Tunneled through SOCKS and TLS
@@ -292,7 +292,7 @@ where
                   tokio_io,
                 )
                 .await?;
-              Ok(Proxied::HttpTunneled(TokioIo::new(io)))
+              Ok(Proxied::HttpTunneled(Box::new(TokioIo::new(io))))
             } else {
               Ok(Proxied::HttpForward(io))
             }
@@ -308,7 +308,7 @@ where
               proxy_dst.host().unwrap(),
               proxy_dst.port().map(|p| p.as_u16()).unwrap_or(1080),
             );
-            let host = orig_dst.host().ok_or_else(|| "no host in url")?;
+            let host = orig_dst.host().ok_or("no host in url")?;
             let port = match orig_dst.port() {
               Some(p) => p.as_u16(),
               None if is_https => 443,

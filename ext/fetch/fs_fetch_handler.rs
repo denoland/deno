@@ -39,8 +39,7 @@ impl FetchHandler for FsFetchHandler {
       let response = http::Response::builder()
         .status(StatusCode::OK)
         .body(body)
-        .map_err(|_| ())?
-        .into();
+        .map_err(|_| ())?;
       Ok::<_, ()>(response)
     }
     .map_err(move |_| {

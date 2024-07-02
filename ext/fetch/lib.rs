@@ -82,6 +82,7 @@ pub struct Options {
   pub user_agent: String,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub proxy: Option<Proxy>,
+  #[allow(clippy::type_complexity)]
   pub request_builder_hook:
     Option<fn(&mut http::Request<ReqBody>) -> Result<(), AnyError>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
@@ -460,7 +461,6 @@ where
           .send(request)
           .or_cancel(cancel_handle_)
           .await
-          .map(|res| res.map_err(|err| err.into()))
       };
 
       let request_rid = state.resource_table.add(FetchRequestResource {
