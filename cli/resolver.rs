@@ -824,7 +824,10 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
         };
 
         let top_level_result = if self.found_package_json_dep_flag.is_raised() {
-          npm_resolver.ensure_top_level_package_json_install().await
+          npm_resolver
+            .ensure_top_level_package_json_install()
+            .await
+            .map(|_| ())
         } else {
           Ok(())
         };
