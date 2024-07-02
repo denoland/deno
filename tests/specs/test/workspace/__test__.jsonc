@@ -1,0 +1,20 @@
+{
+  "tests": {
+    "root": {
+      "args": "test",
+      "output": "root.out",
+      "exitCode": 1
+    },
+    "package_a": {
+      "args": "test",
+      "cwd": "package-a",
+      "output": "package_a.out"
+    },
+    "package_b": {
+      "args": "test",
+      "cwd": "package-b",
+      "output": "package_b.out",
+      "exitCode": 1
+    }
+  }
+}
