@@ -16,8 +16,9 @@ use tower_service::Service;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ProxyConnector<C> {
-  proxies: Arc<[Intercept]>,
   connector: C,
+  proxies: Arc<[Intercept]>,
+  user_agent: Option<HeaderValue>,
 }
 
 #[derive(Debug, Clone)]
@@ -140,9 +141,14 @@ impl<C> ProxyConnector<C> {
     Arc<[Intercept]>: From<I>,
   {
     ProxyConnector {
-      proxies: Arc::from(intercepts),
       connector,
+      proxies: Arc::from(intercepts),
+      user_agent: None,
     }
+  }
+
+  pub(crate) fn user_agent(&mut self, val: HeaderValue) {
+    self.user_agent = Some(val);
   }
 
   fn intercept(&self, dst: &Uri) -> Option<&Intercept> {
@@ -184,10 +190,12 @@ where
 
   fn call(&mut self, dst: Uri) -> Self::Future {
     if let Some(intercept) = self.intercept(&dst) {
+      let user_agent = self.user_agent.clone();
+      let auth = intercept.auth.clone();
       let connecting = self.connector.call(intercept.dst.clone());
       return Box::pin(async move {
         let mut io = connecting.await.map_err(Into::into)?;
-        tunnel(&mut io, dst, None).await?;
+        tunnel(&mut io, dst, user_agent, auth).await?;
         Ok(io)
       });
     }
@@ -198,6 +206,7 @@ where
 async fn tunnel<T>(
   io: &mut T,
   dst: Uri,
+  user_agent: Option<HeaderValue>,
   auth: Option<HeaderValue>,
 ) -> Result<(), BoxError>
 where
@@ -224,14 +233,12 @@ where
   )
   .into_bytes();
 
-  /*
   // user-agent
   if let Some(user_agent) = user_agent {
-      buf.extend_from_slice(b"User-Agent: ");
-      buf.extend_from_slice(user_agent.as_bytes());
-      buf.extend_from_slice(b"\r\n");
+    buf.extend_from_slice(b"User-Agent: ");
+    buf.extend_from_slice(user_agent.as_bytes());
+    buf.extend_from_slice(b"\r\n");
   }
-  */
 
   // proxy-authorization
   if let Some(value) = auth {

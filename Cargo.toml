@@ -176,7 +176,7 @@ thiserror = "1.0.61"
 tokio = { version = "1.36.0", features = ["full"] }
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
 tokio-util = "0.7.4"
-tower = { version = "0.4.13", default-features = false, featuers = ["util"] }
+tower = { version = "0.4.13", default-features = false, features = ["util"] }
 tower-lsp = { version = "=0.20.0", features = ["proposed"] }
 tower-http = { version = "0.5.2", features = ["decompression-br", "decompression-gzip"] }
 tower-service = "0.3.2"

@@ -995,7 +995,7 @@ pub fn create_http_client(
   let connector = HttpsConnector::from((http_connector, tls_config));
 
   let user_agent = user_agent
-    .parse()
+    .parse::<HeaderValue>()
     .map_err(|_| type_error("illegal characters in User-Agent"))?;
 
   let mut builder =
@@ -1011,7 +1011,8 @@ pub fn create_http_client(
     }
     intercepts.insert(0, intercept);
   }
-  let connector = proxy::ProxyConnector::new(intercepts, connector);
+  let mut connector = proxy::ProxyConnector::new(intercepts, connector);
+  connector.user_agent(user_agent.clone());
 
   if let Some(pool_max_idle_per_host) = options.pool_max_idle_per_host {
     builder.pool_max_idle_per_host(pool_max_idle_per_host);
