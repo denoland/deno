@@ -56,30 +56,110 @@ impl Hasher {
   }
 }
 
+macro_rules! match_fixed_digest {
+  ($algorithm_name:expr, fn <$type:ident>() $body:block, _ => $other:block) => {
+    match $algorithm_name {
+      "blake2b512" => {
+        type $type = ::blake2::Blake2b512;
+        $body
+      }
+      "blake2s256" => {
+        type $type = ::blake2::Blake2s256;
+        $body
+      }
+      _ => match_fixed_digest_with_eager_block_buffer!($algorithm_name, fn <$type>() $body, _ => $other)
+    }
+  };
+}
+pub(crate) use match_fixed_digest;
+
+macro_rules! match_fixed_digest_with_eager_block_buffer {
+  ($algorithm_name:expr, fn <$type:ident>() $body:block, _ => $other:block) => {
+    match $algorithm_name {
+      "rsa-sm3" | "sm3" | "sm3withrsaencryption" => {
+        type $type = ::sm3::Sm3;
+        $body
+      }
+      "md5-sha1" => {
+        type $type = crate::ops::crypto::md5_sha1::Md5Sha1;
+        $body
+      }
+      _ => match_fixed_digest_with_oid!($algorithm_name, fn <$type>() $body, _ => $other)
+    }
+  };
+}
+pub(crate) use match_fixed_digest_with_eager_block_buffer;
+
+macro_rules! match_fixed_digest_with_oid {
+  ($algorithm_name:expr, fn <$type:ident>() $body:block, _ => $other:block) => {
+    match $algorithm_name {
+      "rsa-md5" | "md5" | "md5withrsaencryption" | "ssl3-md5" => {
+        type $type = ::md5::Md5;
+        $body
+      }
+      "rsa-ripemd160" | "ripemd" | "ripemd160" | "ripemd160withrsa"
+      | "rmd160" => {
+        type $type = ::ripemd::Ripemd160;
+        $body
+      }
+      "rsa-sha1"
+      | "rsa-sha1-2"
+      | "sha1"
+      | "sha1-2"
+      | "sha1withrsaencryption"
+      | "ssl3-sha1" => {
+        type $type = ::sha1::Sha1;
+        $body
+      }
+      "rsa-sha224" | "sha224" | "sha224withrsaencryption" => {
+        type $type = ::sha2::Sha224;
+        $body
+      }
+      "rsa-sha256" | "sha256" | "sha256withrsaencryption" => {
+        type $type = ::sha2::Sha256;
+        $body
+      }
+      "rsa-sha384" | "sha384" | "sha384withrsaencryption" => {
+        type $type = ::sha2::Sha384;
+        $body
+      }
+      "rsa-sha512" | "sha512" | "sha512withrsaencryption" => {
+        type $type = ::sha2::Sha512;
+        $body
+      }
+      "rsa-sha512/224" | "sha512-224" | "sha512-224withrsaencryption" => {
+        type $type = ::sha2::Sha512_224;
+        $body
+      }
+      "rsa-sha512/256" | "sha512-256" | "sha512-256withrsaencryption" => {
+        type $type = ::sha2::Sha512_256;
+        $body
+      }
+      "rsa-sha3-224" | "id-rsassa-pkcs1-v1_5-with-sha3-224" | "sha3-224" => {
+        type $type = ::sha3::Sha3_224;
+        $body
+      }
+      "rsa-sha3-256" | "id-rsassa-pkcs1-v1_5-with-sha3-256" | "sha3-256" => {
+        type $type = ::sha3::Sha3_256;
+        $body
+      }
+      "rsa-sha3-384" | "id-rsassa-pkcs1-v1_5-with-sha3-384" | "sha3-384" => {
+        type $type = ::sha3::Sha3_384;
+        $body
+      }
+      "rsa-sha3-512" | "id-rsassa-pkcs1-v1_5-with-sha3-512" | "sha3-512" => {
+        type $type = ::sha3::Sha3_512;
+        $body
+      }
+      _ => $other,
+    }
+  };
+}
+
+pub(crate) use match_fixed_digest_with_oid;
+
 pub enum Hash {
-  Blake2b512(Box<blake2::Blake2b512>),
-  Blake2s256(Box<blake2::Blake2s256>),
-
-  Md4(Box<md4::Md4>),
-  Md5(Box<md5::Md5>),
-
-  Ripemd160(Box<ripemd::Ripemd160>),
-
-  Sha1(Box<sha1::Sha1>),
-
-  Sha224(Box<sha2::Sha224>),
-  Sha256(Box<sha2::Sha256>),
-  Sha384(Box<sha2::Sha384>),
-  Sha512(Box<sha2::Sha512>),
-  Sha512_224(Box<sha2::Sha512_224>),
-  Sha512_256(Box<sha2::Sha512_256>),
-
-  Sha3_224(Box<sha3::Sha3_224>),
-  Sha3_256(Box<sha3::Sha3_256>),
-  Sha3_384(Box<sha3::Sha3_384>),
-  Sha3_512(Box<sha3::Sha3_512>),
-
-  Sm3(Box<sm3::Sm3>),
+  FixedSize(Box<dyn DynDigest>),
 
   Shake128(Box<sha3::Shake128>, /* output_length: */ Option<usize>),
   Shake256(Box<sha3::Shake256>, /* output_length: */ Option<usize>),
@@ -98,105 +178,32 @@ impl Hash {
       _ => {}
     }
 
-    let algorithm = match algorithm_name {
-      "blake2b512" => Blake2b512(Default::default()),
-      "blake2s256" => Blake2s256(Default::default()),
-
-      "md4" => Md4(Default::default()),
-      "md5" => Md5(Default::default()),
-
-      "ripemd160" => Ripemd160(Default::default()),
-
-      "sha1" => Sha1(Default::default()),
-      "sha224" => Sha224(Default::default()),
-      "sha256" => Sha256(Default::default()),
-      "sha384" => Sha384(Default::default()),
-      "sha512" => Sha512(Default::default()),
-      "sha512-224" => Sha512_224(Default::default()),
-      "sha512-256" => Sha512_256(Default::default()),
-
-      "sha3-224" => Sha3_224(Default::default()),
-      "sha3-256" => Sha3_256(Default::default()),
-      "sha3-384" => Sha3_384(Default::default()),
-      "sha3-512" => Sha3_512(Default::default()),
-
-      "sm3" => Sm3(Default::default()),
-
+    let algorithm = match_fixed_digest!(
+      algorithm_name,
+      fn <D>() {
+        let digest: D = Digest::new();
+        if let Some(length) = output_length {
+          if length != digest.output_size() {
+            return Err(generic_error(
+              "Output length mismatch for non-extendable algorithm",
+            ));
+          }
+        }
+        FixedSize(Box::new(digest))
+      },
       _ => {
         return Err(generic_error(format!(
           "Digest method not supported: {algorithm_name}"
         )))
       }
-    };
-    if let Some(length) = output_length {
-      if length != algorithm.output_length() {
-        return Err(generic_error(
-          "Output length mismatch for non-extendable algorithm",
-        ));
-      }
-    }
+    );
+
     Ok(algorithm)
-  }
-
-  pub fn output_length(&self) -> usize {
-    match self {
-      Blake2b512(context) => context.output_size(),
-      Blake2s256(context) => context.output_size(),
-
-      Md4(context) => context.output_size(),
-      Md5(context) => context.output_size(),
-
-      Ripemd160(context) => context.output_size(),
-
-      Sha1(context) => context.output_size(),
-      Sha224(context) => context.output_size(),
-      Sha256(context) => context.output_size(),
-      Sha384(context) => context.output_size(),
-      Sha512(context) => context.output_size(),
-      Sha512_224(context) => context.output_size(),
-      Sha512_256(context) => context.output_size(),
-
-      Sha3_224(context) => context.output_size(),
-      Sha3_256(context) => context.output_size(),
-      Sha3_384(context) => context.output_size(),
-      Sha3_512(context) => context.output_size(),
-
-      Sm3(context) => context.output_size(),
-
-      Shake128(_, _) => unreachable!(
-        "output_length() should not be called on extendable algorithms"
-      ),
-      Shake256(_, _) => unreachable!(
-        "output_length() should not be called on extendable algorithms"
-      ),
-    }
   }
 
   pub fn update(&mut self, data: &[u8]) {
     match self {
-      Blake2b512(context) => Digest::update(&mut **context, data),
-      Blake2s256(context) => Digest::update(&mut **context, data),
-
-      Md4(context) => Digest::update(&mut **context, data),
-      Md5(context) => Digest::update(&mut **context, data),
-
-      Ripemd160(context) => Digest::update(&mut **context, data),
-
-      Sha1(context) => Digest::update(&mut **context, data),
-      Sha224(context) => Digest::update(&mut **context, data),
-      Sha256(context) => Digest::update(&mut **context, data),
-      Sha384(context) => Digest::update(&mut **context, data),
-      Sha512(context) => Digest::update(&mut **context, data),
-      Sha512_224(context) => Digest::update(&mut **context, data),
-      Sha512_256(context) => Digest::update(&mut **context, data),
-
-      Sha3_224(context) => Digest::update(&mut **context, data),
-      Sha3_256(context) => Digest::update(&mut **context, data),
-      Sha3_384(context) => Digest::update(&mut **context, data),
-      Sha3_512(context) => Digest::update(&mut **context, data),
-
-      Sm3(context) => Digest::update(&mut **context, data),
-
+      FixedSize(context) => DynDigest::update(&mut **context, data),
       Shake128(context, _) => Update::update(&mut **context, data),
       Shake256(context, _) => Update::update(&mut **context, data),
     };
@@ -204,28 +211,7 @@ impl Hash {
 
   pub fn digest_and_drop(self) -> Box<[u8]> {
     match self {
-      Blake2b512(context) => context.finalize(),
-      Blake2s256(context) => context.finalize(),
-
-      Md4(context) => context.finalize(),
-      Md5(context) => context.finalize(),
-
-      Ripemd160(context) => context.finalize(),
-
-      Sha1(context) => context.finalize(),
-      Sha224(context) => context.finalize(),
-      Sha256(context) => context.finalize(),
-      Sha384(context) => context.finalize(),
-      Sha512(context) => context.finalize(),
-      Sha512_224(context) => context.finalize(),
-      Sha512_256(context) => context.finalize(),
-
-      Sha3_224(context) => context.finalize(),
-      Sha3_256(context) => context.finalize(),
-      Sha3_384(context) => context.finalize(),
-      Sha3_512(context) => context.finalize(),
-
-      Sm3(context) => context.finalize(),
+      FixedSize(context) => context.finalize(),
 
       // The default output lengths align with Node.js
       Shake128(context, output_length) => {
@@ -242,69 +228,77 @@ impl Hash {
     output_length: Option<usize>,
   ) -> Result<Self, AnyError> {
     let hash = match self {
-      Shake128(context, _) => {
-        return Ok(Shake128(context.clone(), output_length))
+      FixedSize(context) => {
+        if let Some(length) = output_length {
+          if length != context.output_size() {
+            return Err(generic_error(
+              "Output length mismatch for non-extendable algorithm",
+            ));
+          }
+        }
+        FixedSize(context.box_clone())
       }
-      Shake256(context, _) => {
-        return Ok(Shake256(context.clone(), output_length))
-      }
 
-      Blake2b512(context) => Blake2b512(context.clone()),
-      Blake2s256(context) => Blake2s256(context.clone()),
-
-      Md4(context) => Md4(context.clone()),
-      Md5(context) => Md5(context.clone()),
-
-      Ripemd160(context) => Ripemd160(context.clone()),
-
-      Sha1(context) => Sha1(context.clone()),
-      Sha224(context) => Sha224(context.clone()),
-      Sha256(context) => Sha256(context.clone()),
-      Sha384(context) => Sha384(context.clone()),
-      Sha512(context) => Sha512(context.clone()),
-      Sha512_224(context) => Sha512_224(context.clone()),
-      Sha512_256(context) => Sha512_256(context.clone()),
-
-      Sha3_224(context) => Sha3_224(context.clone()),
-      Sha3_256(context) => Sha3_256(context.clone()),
-      Sha3_384(context) => Sha3_384(context.clone()),
-      Sha3_512(context) => Sha3_512(context.clone()),
-
-      Sm3(context) => Sm3(context.clone()),
+      Shake128(context, _) => Shake128(context.clone(), output_length),
+      Shake256(context, _) => Shake256(context.clone(), output_length),
     };
-
-    if let Some(length) = output_length {
-      if length != hash.output_length() {
-        return Err(generic_error(
-          "Output length mismatch for non-extendable algorithm",
-        ));
-      }
-    }
-
     Ok(hash)
   }
 
   pub fn get_hashes() -> Vec<&'static str> {
     vec![
-      "blake2s256",
+      "RSA-MD5",
+      "RSA-RIPEMD160",
+      "RSA-SHA1",
+      "RSA-SHA1-2",
+      "RSA-SHA224",
+      "RSA-SHA256",
+      "RSA-SHA3-224",
+      "RSA-SHA3-256",
+      "RSA-SHA3-384",
+      "RSA-SHA3-512",
+      "RSA-SHA384",
+      "RSA-SHA512",
+      "RSA-SHA512/224",
+      "RSA-SHA512/256",
+      "RSA-SM3",
       "blake2b512",
-      "md4",
+      "blake2s256",
+      "id-rsassa-pkcs1-v1_5-with-sha3-224",
+      "id-rsassa-pkcs1-v1_5-with-sha3-256",
+      "id-rsassa-pkcs1-v1_5-with-sha3-384",
+      "id-rsassa-pkcs1-v1_5-with-sha3-512",
       "md5",
+      "md5-sha1",
+      "md5WithRSAEncryption",
+      "ripemd",
       "ripemd160",
+      "ripemd160WithRSA",
+      "rmd160",
       "sha1",
+      "sha1WithRSAEncryption",
       "sha224",
+      "sha224WithRSAEncryption",
       "sha256",
-      "sha384",
-      "sha512",
-      "sha512-224",
-      "sha512-256",
+      "sha256WithRSAEncryption",
       "sha3-224",
       "sha3-256",
       "sha3-384",
       "sha3-512",
+      "sha384",
+      "sha384WithRSAEncryption",
+      "sha512",
+      "sha512-224",
+      "sha512-224WithRSAEncryption",
+      "sha512-256",
+      "sha512-256WithRSAEncryption",
+      "sha512WithRSAEncryption",
       "shake128",
       "shake256",
       "sm3",
+      "sm3WithRSAEncryption",
+      "ssl3-md5",
+      "ssl3-sha1",
     ]
   }
 }

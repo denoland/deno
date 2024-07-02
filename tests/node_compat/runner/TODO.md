@@ -505,7 +505,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-crypto-op-during-process-exit.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-op-during-process-exit.js)
 - [parallel/test-crypto-padding-aes256.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-padding-aes256.js)
 - [parallel/test-crypto-padding.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-padding.js)
-- [parallel/test-crypto-pbkdf2.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-pbkdf2.js)
 - [parallel/test-crypto-private-decrypt-gh32240.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-private-decrypt-gh32240.js)
 - [parallel/test-crypto-psychic-signatures.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-psychic-signatures.js)
 - [parallel/test-crypto-publicDecrypt-fails-first-time.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-crypto-publicDecrypt-fails-first-time.js)
