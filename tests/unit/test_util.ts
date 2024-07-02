@@ -25,6 +25,8 @@ export { delay } from "@std/async/delay.ts";
 export { readLines } from "@std/io/read_lines.ts";
 export { parse as parseArgs } from "@std/flags/mod.ts";
 
+export const DENO_FUTURE = Deno.env.get("DENO_FUTURE") === "1";
+
 export function pathToAbsoluteFileUrl(path: string): URL {
   path = resolve(path);
 
