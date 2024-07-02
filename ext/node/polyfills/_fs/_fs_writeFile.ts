@@ -24,13 +24,14 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { FsFile } from "ext:deno_fs/30_fs.js";
+import { FileHandle } from "../internal/fs/handle.ts";
 
 interface Writer {
   write(p: Uint8Array): Promise<number>;
 }
 
 export function writeFile(
-  pathOrRid: string | number | URL,
+  pathOrFileHandleOrFd: string | number | URL | FileHandle,
   data: string | Uint8Array,
   optOrCallback: Encodings | CallbackWithError | WriteFileOptions | undefined,
   callback?: CallbackWithError,
@@ -44,7 +45,9 @@ export function writeFile(
     throw new TypeError("Callback must be a function.");
   }
 
-  pathOrRid = pathOrRid instanceof URL ? pathFromURL(pathOrRid) : pathOrRid;
+  pathOrFileHandleOrFd = pathOrFileHandleOrFd instanceof URL
+    ? pathFromURL(pathOrFileHandleOrFd)
+    : pathOrFileHandleOrFd;
 
   const flag: string | undefined = isFileOptions(options)
     ? options.flag
@@ -62,20 +65,27 @@ export function writeFile(
     data = Buffer.from(data, encoding);
   }
 
-  const isRid = typeof pathOrRid === "number";
+  if (pathOrFileHandleOrFd instanceof FileHandle) {
+    pathOrFileHandleOrFd = pathOrFileHandleOrFd.fd;
+  }
+
+  const isFd = typeof pathOrFileHandleOrFd === "number";
   let file;
 
   let error: Error | null = null;
   (async () => {
     try {
-      file = isRid
-        ? new FsFile(pathOrRid as number, Symbol.for("Deno.internal.FsFile"))
-        : await Deno.open(pathOrRid as string, openOptions);
+      file = isFd
+        ? new FsFile(
+          pathOrFileHandleOrFd as number,
+          Symbol.for("Deno.internal.FsFile"),
+        )
+        : await Deno.open(pathOrFileHandleOrFd as string, openOptions);
 
       // ignore mode because it's not supported on windows
       // TODO(@bartlomieju): remove `!isWindows` when `Deno.chmod` is supported
-      if (!isRid && mode && !isWindows) {
-        await Deno.chmod(pathOrRid as string, mode);
+      if (!isFd && mode && !isWindows) {
+        await Deno.chmod(pathOrFileHandleOrFd as string, mode);
       }
 
       const signal: AbortSignal | undefined = isFileOptions(options)
@@ -83,29 +93,33 @@ export function writeFile(
         : undefined;
       await writeAll(file, data as Uint8Array, { signal });
     } catch (e) {
-      error = e instanceof Error
+      error = e instanceof AbortError
+        ? e
+        : e instanceof Error
         ? denoErrorToNodeError(e, { syscall: "write" })
         : new Error("[non-error thrown]");
     } finally {
       // Make sure to close resource
-      if (!isRid && file) file.close();
+      if (!isFd && file) file.close();
       callbackFn(error);
     }
   })();
 }
 
 export const writeFilePromise = promisify(writeFile) as (
-  pathOrRid: string | number | URL,
+  pathOrFdOrFileHandle: string | number | URL | FileHandle,
   data: string | Uint8Array,
   options?: Encodings | WriteFileOptions,
 ) => Promise<void>;
 
 export function writeFileSync(
-  pathOrRid: string | number | URL,
+  pathOrFdOrFileHandle: string | number | URL,
   data: string | Uint8Array,
   options?: Encodings | WriteFileOptions,
 ) {
-  pathOrRid = pathOrRid instanceof URL ? pathFromURL(pathOrRid) : pathOrRid;
+  pathOrFdOrFileHandle = pathOrFdOrFileHandle instanceof URL
+    ? pathFromURL(pathOrFdOrFileHandle)
+    : pathOrFdOrFileHandle;
 
   const flag: string | undefined = isFileOptions(options)
     ? options.flag
@@ -123,19 +137,26 @@ export function writeFileSync(
     data = Buffer.from(data, encoding);
   }
 
-  const isRid = typeof pathOrRid === "number";
+  if (pathOrFdOrFileHandle instanceof FileHandle) {
+    pathOrFdOrFileHandle = pathOrFdOrFileHandle.fd;
+  }
+
+  const isFd = typeof pathOrFdOrFileHandle === "number";
   let file;
 
   let error: Error | null = null;
   try {
-    file = isRid
-      ? new FsFile(pathOrRid as number, Symbol.for("Deno.internal.FsFile"))
-      : Deno.openSync(pathOrRid as string, openOptions);
+    file = isFd
+      ? new FsFile(
+        pathOrFdOrFileHandle as number,
+        Symbol.for("Deno.internal.FsFile"),
+      )
+      : Deno.openSync(pathOrFdOrFileHandle as string, openOptions);
 
     // ignore mode because it's not supported on windows
     // TODO(@bartlomieju): remove `!isWindows` when `Deno.chmod` is supported
-    if (!isRid && mode && !isWindows) {
-      Deno.chmodSync(pathOrRid as string, mode);
+    if (!isFd && mode && !isWindows) {
+      Deno.chmodSync(pathOrFdOrFileHandle as string, mode);
     }
 
     // TODO(crowlKats): duplicate from runtime/js/13_buffer.js
@@ -144,12 +165,14 @@ export function writeFileSync(
       nwritten += file.writeSync((data as Uint8Array).subarray(nwritten));
     }
   } catch (e) {
-    error = e instanceof Error
+    error = e instanceof AbortError
+      ? e
+      : e instanceof Error
       ? denoErrorToNodeError(e, { syscall: "write" })
       : new Error("[non-error thrown]");
   } finally {
     // Make sure to close resource
-    if (!isRid && file) file.close();
+    if (!isFd && file) file.close();
   }
 
   if (error) throw error;

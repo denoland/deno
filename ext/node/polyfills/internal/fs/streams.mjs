@@ -30,6 +30,10 @@ import {
 import { finished, Readable, Writable } from "node:stream";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
+import { FileHandle } from "./handle.ts";
+import { primordials } from "ext:core/mod.js";
+const { FunctionPrototypeBind, PromisePrototypeThen } = primordials;
+
 const kIoDone = Symbol("kIoDone");
 const kIsPerformingIO = Symbol("kIsPerformingIO");
 
@@ -78,6 +82,40 @@ function _construct(callback) {
   }
 }
 
+const FileHandleOperations = (handle) => {
+  return {
+    open: (_path, _flags, _mode, _cb) => {
+      throw new ERR_METHOD_NOT_IMPLEMENTED("open()");
+    },
+    close: (_fd, cb) => {
+      // TODO(lucacasonato): implement unref for filehandle
+      // handle[kUnref]();
+      PromisePrototypeThen(handle.close(), () => cb(), cb);
+    },
+    read: (_fd, buf, offset, length, pos, cb) => {
+      PromisePrototypeThen(
+        handle.read(buf, offset, length, pos),
+        (r) => cb(null, r.bytesRead, r.buffer),
+        (err) => cb(err, 0, buf),
+      );
+    },
+    write: (_fd, buf, offset, length, pos, cb) => {
+      PromisePrototypeThen(
+        handle.write(buf, offset, length, pos),
+        (r) => cb(null, r.bytesWritten, r.buffer),
+        (err) => cb(err, 0, buf),
+      );
+    },
+    writev: (_fd, buffers, pos, cb) => {
+      PromisePrototypeThen(
+        handle.writev(buffers, pos),
+        (r) => cb(null, r.bytesWritten, r.buffers),
+        (err) => cb(err, 0, buffers),
+      );
+    },
+  };
+};
+
 function close(stream, err, cb) {
   if (!stream.fd) {
     cb(err);
@@ -103,9 +141,25 @@ function importFd(stream, options) {
         { write: fsWrite, writev: fsWritev, close: fsClose };
     }
     return options.fd;
+  } else if (
+    typeof options.fd === "object" &&
+    options.fd instanceof FileHandle
+  ) {
+    // When fd is a FileHandle we can listen for 'close' events
+    if (options.fs) {
+      // FileHandle is not supported with custom fs operations
+      throw new ERR_METHOD_NOT_IMPLEMENTED("FileHandle with fs");
+    }
+    stream[kFs] = FileHandleOperations(options.fd);
+    options.fd.on("close", FunctionPrototypeBind(stream.close, stream));
+    return options.fd.fd;
   }
 
-  throw new ERR_INVALID_ARG_TYPE("options.fd", ["number"], options.fd);
+  throw new ERR_INVALID_ARG_TYPE(
+    "options.fd",
+    ["number", "FileHandle"],
+    options.fd,
+  );
 }
 
 export function ReadStream(path, options) {
