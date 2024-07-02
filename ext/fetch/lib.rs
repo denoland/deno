@@ -456,12 +456,8 @@ where
       let cancel_handle = CancelHandle::new_rc();
       let cancel_handle_ = cancel_handle.clone();
 
-      let fut = async move {
-        client
-          .send(request)
-          .or_cancel(cancel_handle_)
-          .await
-      };
+      let fut =
+        async move { client.send(request).or_cancel(cancel_handle_).await };
 
       let request_rid = state.resource_table.add(FetchRequestResource {
         future: Box::pin(fut),

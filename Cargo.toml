@@ -239,13 +239,6 @@ opt-level = 3
 [profile.dev.package.v8]
 opt-level = 1
 
-[profile.dev]
-debug = 0
-opt-level = 'z'
-
-[profile.test]
-debug = 0
-
 # Optimize these packages for performance.
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.bench.package.async-compression]
