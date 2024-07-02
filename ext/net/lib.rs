@@ -11,6 +11,9 @@ mod tcp;
 
 use deno_core::error::AnyError;
 use deno_core::OpState;
+use deno_permissions::host::split_host_port;
+use deno_permissions::host::Host;
+use deno_permissions::NetDescriptor;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::RootCertStoreProvider;
 use std::path::Path;
@@ -19,10 +22,46 @@ use std::sync::Arc;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "net";
 
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct NetPermissionHost {
+  pub host: Host,
+  pub port: Option<u16>,
+}
+
+impl NetPermissionHost {
+  pub fn from_host_and_maybe_port(
+    host: &str,
+    port: Option<u16>,
+  ) -> Result<Self, AnyError> {
+    let lowercased = host.to_lowercase();
+    let extracted_host = lowercased.as_str();
+    let (host_str, mut port_) = split_host_port(extracted_host)?;
+    let host =
+      Host::from_host_and_origin_host(host_str.as_str(), extracted_host)?;
+
+    if host.is_ipv6()
+      && (!extracted_host.contains('[') || !extracted_host.contains(']'))
+    {
+      port_ = None;
+    }
+
+    let final_port = if let Some(port_) = port_ {
+      Some(port_)
+    } else {
+      port
+    };
+
+    Ok(NetPermissionHost {
+      host,
+      port: final_port,
+    })
+  }
+}
+
 pub trait NetPermissions {
-  fn check_net<T: AsRef<str>>(
+  fn check_net(
     &mut self,
-    _host: &(T, Option<u16>),
+    _host: &NetPermissionHost,
     _api_name: &str,
   ) -> Result<(), AnyError>;
   fn check_read(&mut self, _p: &Path, _api_name: &str) -> Result<(), AnyError>;
@@ -32,12 +71,18 @@ pub trait NetPermissions {
 
 impl NetPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
-  fn check_net<T: AsRef<str>>(
+  fn check_net(
     &mut self,
-    host: &(T, Option<u16>),
+    host: &NetPermissionHost,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    deno_permissions::PermissionsContainer::check_net(self, host, api_name)
+    let _host = host.clone().host;
+    let _port = host.clone().port;
+    deno_permissions::PermissionsContainer::check_net(
+      self,
+      &NetDescriptor(_host, _port),
+      api_name,
+    )
   }
 
   #[inline(always)]
@@ -177,4 +222,93 @@ mod ops_unix {
   stub_op!(op_node_unstable_net_listen_unixpacket<P>);
   stub_op!(op_net_recv_unixpacket);
   stub_op!(op_net_send_unixpacket<P>);
+}
+
+#[cfg(test)]
+mod tests {
+  use super::NetPermissionHost;
+  use deno_permissions::host::Host;
+  use fqdn::FQDN;
+  use std::net::Ipv4Addr;
+  use std::net::Ipv6Addr;
+  use std::str::FromStr;
+
+  #[test]
+  fn test_net_permission_host_parsing() {
+    // Parsing host address without a port
+    assert_eq!(
+      NetPermissionHost::from_host_and_maybe_port("deno.land.", None).unwrap(),
+      NetPermissionHost {
+        host: Host::FQDN(FQDN::from_str("deno.land").unwrap()),
+        port: None
+      }
+    );
+
+    // Parsing host address with a port
+    assert_eq!(
+      NetPermissionHost::from_host_and_maybe_port("deno.land:80", None)
+        .unwrap(),
+      NetPermissionHost {
+        host: Host::FQDN(FQDN::from_str("deno.land").unwrap()),
+        port: Some(80)
+      }
+    );
+
+    // Parsing an IPv4 address
+    assert_eq!(
+      NetPermissionHost::from_host_and_maybe_port("127.0.0.1", None).unwrap(),
+      NetPermissionHost {
+        host: Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)),
+        port: None
+      }
+    );
+
+    // Parsing an IPv4 address with a port
+    assert_eq!(
+      NetPermissionHost::from_host_and_maybe_port("127.0.0.1:80", None)
+        .unwrap(),
+      NetPermissionHost {
+        host: Host::Ipv4(Ipv4Addr::new(127, 0, 0, 1)),
+        port: Some(80)
+      }
+    );
+
+    // Parsing an IPv6 address
+    assert_eq!(
+      NetPermissionHost::from_host_and_maybe_port(
+        "[2606:4700:4700::1111]",
+        None
+      )
+      .unwrap(),
+      NetPermissionHost {
+        host: Host::Ipv6(Ipv6Addr::new(
+          0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111
+        )),
+        port: None
+      }
+    );
+
+    // Parsing an IPv6 address with a port
+    assert_eq!(
+      NetPermissionHost::from_host_and_maybe_port(
+        "[2606:4700:4700::1111]:80",
+        None
+      )
+      .unwrap(),
+      NetPermissionHost {
+        host: Host::Ipv6(Ipv6Addr::new(
+          0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111
+        )),
+        port: Some(80)
+      }
+    );
+
+    // Parsing invalid host with special characters
+    assert_eq!(
+      NetPermissionHost::from_host_and_maybe_port("foo@bar.com.", None)
+        .unwrap_err()
+        .to_string(),
+      "Failed to parse host: foo@bar.com.\n"
+    );
+  }
 }

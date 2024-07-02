@@ -5,6 +5,7 @@ use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
 use crate::tcp::TcpListener;
+use crate::NetPermissionHost;
 use crate::NetPermissions;
 use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
@@ -22,6 +23,8 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_permissions::host::split_host_port;
+use deno_permissions::host::Host;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
@@ -57,6 +60,46 @@ pub struct TlsHandshakeInfo {
 pub struct IpAddr {
   pub hostname: String,
   pub port: u16,
+}
+
+/// Normalize and validates the hostname and port in the given `IpAddr` structure.
+///
+/// This function extracts the hostname and port from the provided `IpAddr` structure,
+/// validates them, and updates the structure with the correctly formatted hostname and port.
+/// This is necessary to ensure that the hostname and port are valid before they are used
+/// in network operations such as `Deno.connect` and `Deno.listen`.
+///
+/// # Arguments
+///
+/// * `addr` - A mutable reference to an `IpAddr` structure containing the hostname and port.
+///
+/// # Returns
+///
+/// * `Result<(), AnyError>` - Returns `Ok(())` if the hostname and port are successfully
+///   validated and updated, otherwise returns an error.
+///
+/// # Errors
+///
+/// This function will return an error if the hostname cannot be parsed or if any validation fails.
+///
+fn normalize_ip_addr(addr: &mut IpAddr) -> Result<(), AnyError> {
+  let lowercased = addr.hostname.as_str().to_lowercase();
+  let extracted_host = lowercased.as_str();
+  let (host_str, mut port) = split_host_port(extracted_host)?;
+  let host =
+    Host::from_host_and_origin_host(host_str.as_str(), extracted_host)?;
+  addr.hostname = host.to_string();
+
+  if host.is_ipv6()
+    && (!extracted_host.contains('[') || !extracted_host.contains(']'))
+  {
+    port = None;
+  }
+
+  if let Some(port) = port {
+    addr.port = port;
+  }
+  Ok(())
 }
 
 impl From<SocketAddr> for IpAddr {
@@ -133,18 +176,21 @@ pub async fn op_net_recv_udp(
 pub async fn op_net_send_udp<NP>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-  #[serde] addr: IpAddr,
+  #[serde] mut addr: IpAddr,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<usize, AnyError>
 where
   NP: NetPermissions + 'static,
 {
+  normalize_ip_addr(&mut addr)?;
   {
-    let mut s = state.borrow_mut();
-    s.borrow_mut::<NP>().check_net(
-      &(&addr.hostname, Some(addr.port)),
-      "Deno.DatagramConn.send()",
+    let host = NetPermissionHost::from_host_and_maybe_port(
+      &addr.hostname,
+      Some(addr.port),
     )?;
+    let mut s = state.borrow_mut();
+    s.borrow_mut::<NP>()
+      .check_net(&host, "Deno.DatagramConn.send()")?;
   }
   let addr = resolve_addr(&addr.hostname, addr.port)
     .await?
@@ -293,11 +339,12 @@ pub async fn op_net_set_multi_ttl_udp(
 #[serde]
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
-  #[serde] addr: IpAddr,
+  #[serde] mut addr: IpAddr,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
+  normalize_ip_addr(&mut addr)?;
   op_net_connect_tcp_inner::<NP>(state, addr).await
 }
 
@@ -310,10 +357,14 @@ where
   NP: NetPermissions + 'static,
 {
   {
+    let host = NetPermissionHost::from_host_and_maybe_port(
+      &addr.hostname,
+      Some(addr.port),
+    )?;
     let mut state_ = state.borrow_mut();
     state_
       .borrow_mut::<NP>()
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")?;
+      .check_net(&host, "Deno.connect()")?;
   }
 
   let addr = resolve_addr(&addr.hostname, addr.port)
@@ -351,18 +402,21 @@ impl Resource for UdpSocketResource {
 #[serde]
 pub fn op_net_listen_tcp<NP>(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[serde] mut addr: IpAddr,
   reuse_port: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
+  normalize_ip_addr(&mut addr)?;
   if reuse_port {
     super::check_unstable(state, "Deno.listen({ reusePort: true })");
   }
-  state
-    .borrow_mut::<NP>()
-    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listen()")?;
+  let host = NetPermissionHost::from_host_and_maybe_port(
+    &addr.hostname,
+    Some(addr.port),
+  )?;
+  state.borrow_mut::<NP>().check_net(&host, "Deno.listen()")?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
@@ -384,9 +438,13 @@ fn net_listen_udp<NP>(
 where
   NP: NetPermissions + 'static,
 {
+  let host = NetPermissionHost::from_host_and_maybe_port(
+    &addr.hostname,
+    Some(addr.port),
+  )?;
   state
     .borrow_mut::<NP>()
-    .check_net(&(&addr.hostname, Some(addr.port)), "Deno.listenDatagram()")?;
+    .check_net(&host, "Deno.listenDatagram()")?;
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
@@ -446,13 +504,14 @@ where
 #[serde]
 pub fn op_net_listen_udp<NP>(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[serde] mut addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
+  normalize_ip_addr(&mut addr)?;
   super::check_unstable(state, "Deno.listenDatagram");
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
@@ -461,13 +520,14 @@ where
 #[serde]
 pub fn op_node_unstable_net_listen_udp<NP>(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[serde] mut addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
 {
+  normalize_ip_addr(&mut addr)?;
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
@@ -583,7 +643,8 @@ where
       let socker_addr = &ns.socket_addr;
       let ip = socker_addr.ip().to_string();
       let port = socker_addr.port();
-      perm.check_net(&(ip, Some(port)), "Deno.resolveDns()")?;
+      let host = NetPermissionHost::from_host_and_maybe_port(&ip, Some(port))?;
+      perm.check_net(&host, "Deno.resolveDns()")?;
     }
   }
 
@@ -976,9 +1037,9 @@ mod tests {
   struct TestPermission {}
 
   impl NetPermissions for TestPermission {
-    fn check_net<T: AsRef<str>>(
+    fn check_net(
       &mut self,
-      _host: &(T, Option<u16>),
+      _host: &NetPermissionHost,
       _api_name: &str,
     ) -> Result<(), AnyError> {
       Ok(())
@@ -1097,5 +1158,39 @@ mod tests {
     let stream = wr.as_ref().as_ref();
     let socket = socket2::SockRef::from(stream);
     test_fn(socket);
+  }
+
+  #[test]
+  fn test_process_ip_addr() {
+    let mut ip_addr = IpAddr {
+      hostname: "192.0.2.1.".to_string(),
+      port: 80,
+    };
+    normalize_ip_addr(&mut ip_addr).unwrap();
+    assert_eq!(ip_addr.hostname, "192.0.2.1");
+    assert_eq!(ip_addr.port, 80);
+
+    let mut ip_addr = IpAddr {
+      hostname: "golang.org.".to_string(),
+      port: 80,
+    };
+    normalize_ip_addr(&mut ip_addr).unwrap();
+    assert_eq!(ip_addr.hostname, "golang.org");
+    assert_eq!(ip_addr.port, 80);
+
+    let mut ip_addr = IpAddr {
+      hostname: "192.0.2.1:90".to_string(),
+      port: 0,
+    };
+    normalize_ip_addr(&mut ip_addr).unwrap();
+    assert_eq!(ip_addr.hostname, "192.0.2.1");
+    assert_eq!(ip_addr.port, 90);
+
+    let mut ip_addr = IpAddr {
+      hostname: "[::1]:".to_string(),
+      port: 80,
+    };
+    let result = normalize_ip_addr(&mut ip_addr);
+    assert!(result.is_err());
   }
 }

@@ -1694,6 +1694,7 @@ dependencies = [
  "deno_core",
  "deno_permissions",
  "deno_tls",
+ "fqdn",
  "pin-project",
  "rustls-tokio-stream",
  "serde",
