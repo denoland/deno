@@ -3393,7 +3393,10 @@ fn frozen_lockfile_arg() -> Arg {
   Arg::new("frozen")
     .long("frozen")
     .alias("frozen-lockfile")
-    .action(ArgAction::SetTrue)
+    .value_parser(value_parser!(bool))
+    .num_args(0..=1)
+    .require_equals(true)
+    .default_missing_value("true")
     .help("Error out if lockfile is out of date")
 }
 
@@ -4683,8 +4686,8 @@ fn cached_only_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn frozen_lockfile_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  if matches.get_flag("frozen") {
-    flags.frozen_lockfile = true;
+  if let Some(&v) = matches.get_one::<bool>("frozen") {
+    flags.frozen_lockfile = v;
   }
 }
 
@@ -9865,5 +9868,34 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn run_with_frozen_lockfile() {
+    let cases = [
+      (Some("--frozen"), true),
+      (Some("--frozen=true"), true),
+      (Some("--frozen=false"), false),
+      (None, false),
+    ];
+    for (flag, frozen) in cases {
+      let mut args = svec!["deno", "run"];
+      if let Some(f) = flag {
+        args.push(f.into());
+      }
+      args.push("script.ts".into());
+      let r = flags_from_vec(args);
+      assert_eq!(
+        r.unwrap(),
+        Flags {
+          subcommand: DenoSubcommand::Run(RunFlags::new_default(
+            "script.ts".to_string(),
+          )),
+          frozen_lockfile: frozen,
+          code_cache_enabled: true,
+          ..Flags::default()
+        }
+      );
+    }
   }
 }
