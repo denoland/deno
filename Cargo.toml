@@ -120,8 +120,8 @@ http-body-util = "0.1.2"
 http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
 hyper = { version = "=1.4.0", features = ["full"] }
-hyper-util = { version = "=0.1.6", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 hyper-rustls = { version = "0.26.0" }
+hyper-util = { version = "=0.1.6", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
 jsonc-parser = { version = "=0.23.0", features = ["serde"] }
@@ -179,8 +179,8 @@ tokio-rustls = "0.25.0"
 tokio-socks = "0.5.1"
 tokio-util = "0.7.4"
 tower = { version = "0.4.13", default-features = false, features = ["util"] }
-tower-lsp = { version = "=0.20.0", features = ["proposed"] }
 tower-http = { version = "0.5.2", features = ["decompression-br", "decompression-gzip"] }
+tower-lsp = { version = "=0.20.0", features = ["proposed"] }
 tower-service = "0.3.2"
 twox-hash = "=1.6.3"
 # Upgrading past 2.4.1 may cause WPT failures

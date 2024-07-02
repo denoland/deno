@@ -359,7 +359,8 @@ async fn tunnel<T>(
 where
   T: hyper::rt::Read + hyper::rt::Write + Unpin,
 {
-  use tokio::io::{AsyncReadExt, AsyncWriteExt};
+  use tokio::io::AsyncReadExt;
+  use tokio::io::AsyncWriteExt;
 
   let host = dst.host().expect("proxy dst has host");
   let port = match dst.port() {
