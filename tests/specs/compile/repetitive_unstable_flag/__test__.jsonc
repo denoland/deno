@@ -1,0 +1,13 @@
+{
+  "steps": [
+    {
+      "args": "compile --unstable-kv -A --output out main.ts",
+      "output": "compile.out"
+    },
+    {
+      "commandName": "./out",
+      "args": [],
+      "output": "main.out"
+    }
+  ]
+}

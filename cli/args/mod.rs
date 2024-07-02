@@ -1773,14 +1773,28 @@ impl CliOptions {
       .map(|c| c.json.unstable.clone())
       .unwrap_or_default();
 
-    from_config_file.extend_from_slice(&self.flags.unstable_config.features);
+    self
+      .flags
+      .unstable_config
+      .features
+      .iter()
+      .for_each(|feature| {
+        if !from_config_file.contains(feature) {
+          from_config_file.push(feature.to_string());
+        }
+      });
 
     if *DENO_FUTURE {
-      from_config_file.extend_from_slice(&[
+      let future_features = [
         deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string(),
         deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string(),
         deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME.to_string(),
-      ]);
+      ];
+      future_features.iter().for_each(|future_feature| {
+        if !from_config_file.contains(future_feature) {
+          from_config_file.push(future_feature.to_string());
+        }
+      });
     }
 
     from_config_file
