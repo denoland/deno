@@ -1,3 +1,5 @@
+// Copyright 2024 the Deno authors. All rights reserved. MIT license.
+
 use std::env;
 use std::future::Future;
 use std::pin::Pin;
