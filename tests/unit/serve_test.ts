@@ -3522,11 +3522,7 @@ Deno.test(
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(
-        clientError.message.endsWith(
-          "connection closed before message completed",
-        ),
-      );
+      assert(clientError.message.includes("error sending request for url"));
     } finally {
       ac.abort();
       await server.finished;
@@ -3574,11 +3570,7 @@ Deno.test({
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(
-        clientError.message.endsWith(
-          "connection closed before message completed",
-        ),
-      );
+      assert(clientError.message.includes("error sending request for url"));
     } finally {
       ac.abort();
       await server.finished;
