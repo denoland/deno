@@ -1,8 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::http_util;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_runtime::deno_fetch::reqwest;
+use deno_runtime::deno_fetch;
 use lsp_types::Url;
 use serde::de::DeserializeOwned;
 
@@ -82,7 +83,7 @@ impl std::fmt::Debug for ApiError {
 impl std::error::Error for ApiError {}
 
 pub async fn parse_response<T: DeserializeOwned>(
-  response: reqwest::Response,
+  response: http::Response<deno_fetch::ResBody>,
 ) -> Result<T, ApiError> {
   let status = response.status();
   let x_deno_ray = response
@@ -90,7 +91,7 @@ pub async fn parse_response<T: DeserializeOwned>(
     .get("x-deno-ray")
     .and_then(|value| value.to_str().ok())
     .map(|s| s.to_string());
-  let text = response.text().await.unwrap();
+  let text = http_util::body_to_string(response).await.unwrap();
 
   if !status.is_success() {
     match serde_json::from_str::<ApiError>(&text) {
@@ -122,9 +123,9 @@ pub async fn get_scope(
   client: &HttpClient,
   registry_api_url: &Url,
   scope: &str,
-) -> Result<reqwest::Response, AnyError> {
+) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
   let scope_url = format!("{}scopes/{}", registry_api_url, scope);
-  let response = client.get(&scope_url).send().await?;
+  let response = client.get(scope_url.parse()?)?.send().await?;
   Ok(response)
 }
 
@@ -141,9 +142,9 @@ pub async fn get_package(
   registry_api_url: &Url,
   scope: &str,
   package: &str,
-) -> Result<reqwest::Response, AnyError> {
+) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
   let package_url = get_package_api_url(registry_api_url, scope, package);
-  let response = client.get(&package_url).send().await?;
+  let response = client.get(package_url.parse()?)?.send().await?;
   Ok(response)
 }
 

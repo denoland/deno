@@ -29,6 +29,7 @@ denokv_remote.workspace = true
 denokv_sqlite.workspace = true
 faster-hex.workspace = true
 http.workspace = true
+http-body-util.workspace = true
 log.workspace = true
 num-bigint.workspace = true
 prost.workspace = true

@@ -115,11 +115,13 @@ futures = "0.3.21"
 glob = "0.3.1"
 h2 = "0.4.4"
 http = "1.0"
-http-body-util = "0.1"
+http-body = "1.0"
+http-body-util = "0.1.2"
 http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
 hyper = { version = "=1.4.0", features = ["full"] }
-hyper-util = { version = "=0.1.6", features = ["tokio", "server", "server-auto"] }
+hyper-util = { version = "=0.1.6", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
+hyper-rustls = { version = "0.26.0" }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
 jsonc-parser = { version = "=0.23.0", features = ["serde"] }
@@ -174,7 +176,10 @@ thiserror = "1.0.61"
 tokio = { version = "1.36.0", features = ["full"] }
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
 tokio-util = "0.7.4"
+tower = { version = "0.4.13", default-features = false, featuers = ["util"] }
 tower-lsp = { version = "=0.20.0", features = ["proposed"] }
+tower-http = { version = "0.5.2", features = ["decompression-br", "decompression-gzip"] }
+tower-service = "0.3.2"
 twox-hash = "=1.6.3"
 # Upgrading past 2.4.1 may cause WPT failures
 url = { version = "< 2.5.0", features = ["serde", "expose_internals"] }
@@ -231,6 +236,13 @@ opt-level = 3
 # rusty-v8 needs at least -O1 to not miscompile
 [profile.dev.package.v8]
 opt-level = 1
+
+[profile.dev]
+debug = 0
+opt-level = 'z'
+
+[profile.test]
+debug = 0
 
 # Optimize these packages for performance.
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
