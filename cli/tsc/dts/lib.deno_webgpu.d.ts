@@ -1706,7 +1706,7 @@ declare type GPUErrorFilter = "out-of-memory" | "validation" | "internal";
  * @category GPU
  * @experimental
  */
-declare class GPUUncapturedErrorEvent extends EventTarget {
+declare class GPUUncapturedErrorEvent extends Event {
   constructor(
     type: string,
     gpuUncapturedErrorEventInitDict: GPUUncapturedErrorEventInit,
