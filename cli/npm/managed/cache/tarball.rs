@@ -11,12 +11,12 @@ use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
+use deno_core::url::Url;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_semver::package::PackageNv;
-use reqwest::StatusCode;
-use reqwest::Url;
+use http::StatusCode;
 
 use crate::args::CacheSetting;
 use crate::http_util::DownloadError;

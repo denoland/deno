@@ -27,12 +27,12 @@ use h2;
 use h2::Reason;
 use h2::RecvStream;
 use http;
+use http::header::HeaderName;
+use http::header::HeaderValue;
 use http::request::Parts;
 use http::HeaderMap;
 use http::Response;
 use http::StatusCode;
-use reqwest::header::HeaderName;
-use reqwest::header::HeaderValue;
 use url::Url;
 
 pub struct Http2Client {

@@ -571,7 +571,7 @@ async fn get_latest_version(
   check_kind: UpgradeCheckKind,
 ) -> Result<String, AnyError> {
   let url = get_url(release_kind, env!("TARGET"), check_kind);
-  let text = client.download_text(url).await?;
+  let text = client.download_text(url.parse()?).await?;
   Ok(normalize_version_from_server(release_kind, &text))
 }
 
@@ -624,7 +624,7 @@ async fn download_package(
     // text above which will stay alive after the progress bars are complete
     let progress = progress_bar.update("");
     client
-      .download_with_progress(download_url, None, &progress)
+      .download_with_progress(download_url.parse()?, None, &progress)
       .await?
   };
   match maybe_bytes {

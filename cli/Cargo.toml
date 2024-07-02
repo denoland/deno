@@ -107,6 +107,10 @@ faster-hex.workspace = true
 flate2.workspace = true
 fs3.workspace = true
 glob = "0.3.1"
+http.workspace = true
+http-body.workspace = true
+http-body-util.workspace = true
+hyper-util.workspace = true
 ignore = "0.4"
 import_map = { version = "=0.20.0", features = ["ext"] }
 indexmap.workspace = true
@@ -129,7 +133,6 @@ phf.workspace = true
 quick-junit = "^0.3.5"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
-reqwest.workspace = true
 ring.workspace = true
 rustyline.workspace = true
 rustyline-derive = "=0.7.0"
