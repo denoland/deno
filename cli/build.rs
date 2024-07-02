@@ -235,6 +235,7 @@ mod ts {
       "es2023",
       "es2023.array",
       "es2023.collection",
+      "es2023.intl",
       "esnext",
       "esnext.array",
       "esnext.collection",
@@ -243,6 +244,8 @@ mod ts {
       "esnext.intl",
       "esnext.object",
       "esnext.promise",
+      "esnext.regexp",
+      "esnext.string",
     ];
 
     let path_dts = cwd.join("tsc/dts");
@@ -311,7 +314,7 @@ mod ts {
 
   pub(crate) fn version() -> String {
     let file_text = std::fs::read_to_string("tsc/00_typescript.js").unwrap();
-    let version_text = "  version = \"";
+    let version_text = " version = \"";
     for line in file_text.lines() {
       if let Some(index) = line.find(version_text) {
         let remaining_line = &line[index + version_text.len()..];
@@ -453,7 +456,7 @@ fn main() {
   );
 
   let ts_version = ts::version();
-  debug_assert_eq!(ts_version, "5.4.5"); // bump this assertion when it changes
+  debug_assert_eq!(ts_version, "5.5.2"); // bump this assertion when it changes
   println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 

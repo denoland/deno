@@ -74,7 +74,7 @@ itest!(check_node_builtin_modules_ts {
 });
 
 itest!(check_node_builtin_modules_js {
-  args: "check --quiet check/node_builtin_modules/mod.js",
+  args: "check --quiet --all check/node_builtin_modules/mod.js",
   output: "check/node_builtin_modules/mod.js.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 1,
