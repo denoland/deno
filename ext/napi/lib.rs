@@ -562,7 +562,10 @@ where
 
   // SAFETY: opening a DLL calls dlopen
   #[cfg(not(unix))]
-  let library = match unsafe { Library::load_with_flags(&path, flags) } {
+  let library = match unsafe {
+    install_load_library_hook();
+    Library::load_with_flags(&path, flags)
+  } {
     Ok(lib) => lib,
     Err(e) => return Err(type_error(e.to_string())),
   };
@@ -601,4 +604,47 @@ where
   std::mem::forget(library);
 
   Ok(exports)
+}
+
+use minhook::MinHook;
+use widestring::U16CStr;
+use winapi::shared::minwindef::{DWORD, HMODULE, LPVOID};
+use winapi::shared::ntdef::HANDLE;
+use winapi::um::libloaderapi::GetModuleHandleW;
+use winapi::um::winnt::LPCWSTR;
+
+type LoadLibraryExWType =
+  unsafe extern "system" fn(LPCWSTR, HANDLE, DWORD) -> HMODULE;
+static ORIGINAL_LOAD_LIBRARY_EX_W: std::sync::OnceLock<LoadLibraryExWType> =
+  std::sync::OnceLock::new();
+
+fn install_load_library_hook() {
+  ORIGINAL_LOAD_LIBRARY_EX_W.get_or_init(|| unsafe {
+    let original = MinHook::create_hook_api(
+      "KernelBase.dll",
+      "LoadLibraryExW",
+      load_library_ex_w_hook as LPVOID,
+    )
+    .unwrap();
+    MinHook::enable_all_hooks().expect("Failed to enable hooks");
+    std::mem::transmute(original)
+  });
+}
+
+unsafe extern "system" fn load_library_ex_w_hook(
+  lib_file_name: LPCWSTR,
+  file: HANDLE,
+  flags: DWORD,
+) -> HMODULE {
+  if U16CStr::from_ptr_str(lib_file_name)
+    .to_string_lossy()
+    .to_lowercase()
+    == "node.exe"
+  {
+    // Return HMODULE of current process
+    return GetModuleHandleW(std::ptr::null());
+  }
+
+  let original_load_library_ex_w = ORIGINAL_LOAD_LIBRARY_EX_W.get().unwrap();
+  original_load_library_ex_w(lib_file_name, file, flags)
 }

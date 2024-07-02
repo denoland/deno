@@ -17,3 +17,8 @@ path = "lib.rs"
 deno_core.workspace = true
 deno_permissions.workspace = true
 libloading = { version = "0.7" }
+
+[target.'cfg(windows)'.dependencies]
+minhook = "0.5.0"
+widestring = "1.1.0"
+winapi.workspace = true
