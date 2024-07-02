@@ -9,6 +9,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::cdp;
+use crate::ops::jupyter::CommContainer;
 use crate::tools::repl;
 use deno_core::error::AnyError;
 use deno_core::futures;
@@ -20,7 +21,7 @@ use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 
 use jupyter_runtime::messaging;
-use jupyter_runtime::AsChildOf;
+// use jupyter_runtime::AsChildOf;
 use jupyter_runtime::ConnectionInfo;
 use jupyter_runtime::JupyterMessage;
 use jupyter_runtime::JupyterMessageContent;
@@ -39,6 +40,7 @@ pub struct JupyterServer {
   // points.
   iopub_connection: Arc<Mutex<KernelIoPubConnection>>,
   repl_session: repl::ReplSession,
+  comm_container: CommContainer,
 }
 
 impl JupyterServer {
@@ -61,12 +63,15 @@ impl JupyterServer {
     let iopub_connection = Arc::new(Mutex::new(iopub_connection));
     let last_execution_request = Rc::new(RefCell::new(None));
 
+    let comm_container = CommContainer::default();
+
     // Store `iopub_connection` in the op state so it's accessible to the runtime API.
     {
       let op_state_rc = repl_session.worker.js_runtime.op_state();
       let mut op_state = op_state_rc.borrow_mut();
       op_state.put(iopub_connection.clone());
       op_state.put(last_execution_request.clone());
+      op_state.put(comm_container.clone());
     }
 
     let cancel_handle = CancelHandle::new_rc();
@@ -76,6 +81,7 @@ impl JupyterServer {
       iopub_connection: iopub_connection.clone(),
       last_execution_request: last_execution_request.clone(),
       repl_session,
+      comm_container,
     };
 
     let handle1 = deno_core::unsync::spawn(async move {
@@ -211,6 +217,7 @@ impl JupyterServer {
       .send_iopub(messaging::Status::busy().as_child_of(parent))
       .await?;
 
+    eprintln!("msg type on shell {}", msg.message_type());
     match msg.content {
       JupyterMessageContent::ExecuteRequest(execute_request) => {
         self
@@ -351,17 +358,7 @@ impl JupyterServer {
       JupyterMessageContent::KernelInfoRequest(_) => {
         connection.send(kernel_info().as_child_of(parent)).await?;
       }
-      JupyterMessageContent::CommOpen(comm) => {
-        connection
-          .send(
-            messaging::CommClose {
-              comm_id: comm.comm_id,
-              data: Default::default(),
-            }
-            .as_child_of(parent),
-          )
-          .await?;
-      }
+
       JupyterMessageContent::HistoryRequest(_req) => {
         connection
           .send(
@@ -378,11 +375,28 @@ impl JupyterServer {
         // TODO(@zph): implement input reply from https://github.com/denoland/deno/pull/23592
         // NOTE: This will belong on the stdin channel, not the shell channel
       }
+      JupyterMessageContent::CommOpen(comm) => {
+        eprintln!("comm_open");
+        self
+          .comm_container
+          .create(&comm.comm_id.0, &comm.target_name, None);
+
+        // connection
+        //   .send(
+        //     messaging::CommClose {
+        //       comm_id: comm.comm_id,
+        //       data: Default::default(),
+        //     }
+        //     .as_child_of(parent),
+        //   )
+        //   .await?;
+      }
       JupyterMessageContent::CommInfoRequest(_req) => {
+        eprintln!("comm_open");
         connection
           .send(
             messaging::CommInfoReply {
-              comms: Default::default(),
+              comms: self.comm_container.comms(),
               status: ReplyStatus::Ok,
               error: None,
             }
@@ -390,8 +404,16 @@ impl JupyterServer {
           )
           .await?;
       }
-      JupyterMessageContent::CommMsg(_)
-      | JupyterMessageContent::CommClose(_) => {
+      JupyterMessageContent::CommMsg(comm) => {
+        eprintln!("got comm msg {:#?}", comm);
+        let comm_container = self.comm_container.0.lock();
+        let comm_channel = comm_container.get(&comm.comm_id.0).unwrap();
+        // todo?: send the msg.metadata
+        eprintln!("sending message");
+        let _ = comm_channel.sender.send((comm, msg.buffers));
+        eprintln!("message sent on the channel");
+      }
+      JupyterMessageContent::CommClose(_) => {
         // Do nothing with regular comm messages
       }
       // Any unknown message type is ignored
@@ -424,7 +446,7 @@ impl JupyterServer {
     self
       .send_iopub(
         messaging::ExecuteInput {
-          execution_count: self.execution_count,
+          execution_count: self.execution_count.into(),
           code: execute_request.code.clone(),
         }
         .as_child_of(parent_message),
@@ -452,7 +474,7 @@ impl JupyterServer {
         connection
           .send(
             messaging::ExecuteReply {
-              execution_count: self.execution_count,
+              execution_count: self.execution_count.into(),
               status: ReplyStatus::Error,
               payload: Default::default(),
               user_expressions: None,
@@ -477,7 +499,7 @@ impl JupyterServer {
       connection
         .send(
           messaging::ExecuteReply {
-            execution_count: self.execution_count,
+            execution_count: self.execution_count.into(),
             status: ReplyStatus::Ok,
             user_expressions: None,
             payload: Default::default(),
@@ -577,13 +599,13 @@ impl JupyterServer {
       connection
         .send(
           messaging::ExecuteReply {
-            execution_count: self.execution_count,
+            execution_count: self.execution_count.into(),
             status: ReplyStatus::Error,
-            error: Some(ReplyError {
+            error: Some(Box::new(ReplyError {
               ename,
               evalue,
               traceback,
-            }),
+            })),
             user_expressions: None,
             payload: Default::default(),
           }
