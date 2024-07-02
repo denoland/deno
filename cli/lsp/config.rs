@@ -1825,7 +1825,7 @@ fn resolve_node_modules_dir(
 }
 
 fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<CliLockfile> {
-  match CliLockfile::read_from_path(lockfile_path) {
+  match CliLockfile::read_from_path(lockfile_path, false) {
     Ok(value) => {
       if value.filename.exists() {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)
