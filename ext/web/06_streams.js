@@ -31,7 +31,7 @@ const {
   ArrayBufferPrototypeGetByteLength,
   ArrayBufferPrototypeGetDetached,
   ArrayBufferPrototypeSlice,
-  ArrayBufferPrototypeTransfer,
+  ArrayBufferPrototypeTransferToFixedLength,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -1350,7 +1350,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
       "chunk's buffer is detached and so cannot be enqueued",
     );
   }
-  const transferredBuffer = ArrayBufferPrototypeTransfer(buffer);
+  const transferredBuffer = ArrayBufferPrototypeTransferToFixedLength(buffer);
   if (controller[_pendingPullIntos].length !== 0) {
     const firstPendingPullInto = controller[_pendingPullIntos][0];
     // deno-lint-ignore prefer-primordials
@@ -1360,7 +1360,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
       );
     }
     readableByteStreamControllerInvalidateBYOBRequest(controller);
-    firstPendingPullInto.buffer = ArrayBufferPrototypeTransfer(
+    firstPendingPullInto.buffer = ArrayBufferPrototypeTransferToFixedLength(
       // deno-lint-ignore prefer-primordials
       firstPendingPullInto.buffer,
     );
@@ -2020,7 +2020,7 @@ function readableByteStreamControllerPullInto(
   assert(minimumFill % elementSize === 0);
 
   try {
-    buffer = ArrayBufferPrototypeTransfer(buffer);
+    buffer = ArrayBufferPrototypeTransferToFixedLength(buffer);
   } catch (e) {
     readIntoRequest.errorSteps(e);
     return;
@@ -2114,7 +2114,9 @@ function readableByteStreamControllerRespond(controller, bytesWritten) {
     }
   }
   // deno-lint-ignore prefer-primordials
-  firstDescriptor.buffer = ArrayBufferPrototypeTransfer(firstDescriptor.buffer);
+  firstDescriptor.buffer = ArrayBufferPrototypeTransferToFixedLength(
+    firstDescriptor.buffer,
+  );
   readableByteStreamControllerRespondInternal(controller, bytesWritten);
 }
 
@@ -2331,7 +2333,7 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
       "The region specified by view is larger than byobRequest",
     );
   }
-  firstDescriptor.buffer = ArrayBufferPrototypeTransfer(buffer);
+  firstDescriptor.buffer = ArrayBufferPrototypeTransferToFixedLength(buffer);
   readableByteStreamControllerRespondInternal(controller, byteLength);
 }
 
@@ -2476,7 +2478,9 @@ function readableByteStreamControllerConvertPullIntoDescriptor(
   assert(bytesFilled <= pullIntoDescriptor.byteLength);
   assert((bytesFilled % elementSize) === 0);
   // deno-lint-ignore prefer-primordials
-  const buffer = ArrayBufferPrototypeTransfer(pullIntoDescriptor.buffer);
+  const buffer = ArrayBufferPrototypeTransferToFixedLength(
+    pullIntoDescriptor.buffer,
+  );
   return new pullIntoDescriptor.viewConstructor(
     buffer,
     // deno-lint-ignore prefer-primordials
