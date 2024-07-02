@@ -630,11 +630,6 @@ class ClientRequest extends OutgoingMessage {
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
         }
-        try {
-          cb?.();
-        } catch (_) {
-          //
-        }
         if (this._timeout) {
           this._timeout.removeEventListener("abort", this._timeoutCb);
           webClearTimeout(this._timeout[timerId]);
@@ -786,6 +781,11 @@ class ClientRequest extends OutgoingMessage {
       this._send("", "latin1");
     }
     this._bodyWriter?.close();
+    try {
+      cb?.();
+    } catch (_) {
+      //
+    }
   }
 
   abort() {
