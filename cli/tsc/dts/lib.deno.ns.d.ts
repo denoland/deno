@@ -1964,7 +1964,10 @@ declare namespace Deno {
    * @tags allow-read, allow-write
    * @category File System
    */
-  export function create(path: string | URL): Promise<FsFile>;
+  export function create(
+    path: string | URL,
+    options?: CreateOptions,
+  ): Promise<FsFile>;
 
   /** Creates a file if none exists or truncates an existing file and returns
    *  an instance of {@linkcode Deno.FsFile}.
@@ -1978,7 +1981,10 @@ declare namespace Deno {
    * @tags allow-read, allow-write
    * @category File System
    */
-  export function createSync(path: string | URL): FsFile;
+  export function createSync(
+    path: string | URL,
+    options?: CreateOptions,
+  ): FsFile;
 
   /** Read from a resource ID (`rid`) into an array buffer (`buffer`).
    *
@@ -2329,9 +2335,24 @@ declare namespace Deno {
      */
     readonly rid: number;
     /** A {@linkcode ReadableStream} instance representing to the byte contents
-     * of the file. This makes it easy to interoperate with other web streams
-     * based APIs.
+     * of the file.
      *
+     * When the readable stream hits the end of the file (EOF), the stream will
+     * end. Additionally, the underlying file handle is automatically closed.
+     * This means that other APIs on this file handle will no longer work after
+     * the stream ends and the end of file (EOF) is reached. In particular, the
+     * writable stream will no longer work after EOF is reached.
+     *
+     * This behavior can be changed by setting the `preventCloseOnEOF` to `true`
+     * when creating the `FsFile` instance with {@linkcode Deno.open} or
+     * similar. This will prevent the file handle from being closed
+     * automatically when the stream reaches EOF.
+     *
+     * You do not need to manually close the file handle with `file.close()`
+     * when using the readable stream. The file handle is automatically closed
+     * when the stream ends.
+     *
+     * @example Read the contents of a file using a readable stream:
      * ```ts
      * using file = await Deno.open("my_file.txt", { read: true });
      * const decoder = new TextDecoder();
@@ -2339,12 +2360,32 @@ declare namespace Deno {
      *   console.log(decoder.decode(chunk));
      * }
      * ```
+     *
+     * @example Respond to a HTTP request with the contents of a file:
+     * ```ts
+     * Deno.serve(() => {
+     *   const file = await Deno.open("my_file.txt", { read: true });
+     *   return new Response(file.readable);
+     * });
+     * ```
      */
     readonly readable: ReadableStream<Uint8Array>;
     /** A {@linkcode WritableStream} instance to write the contents of the
-     * file. This makes it easy to interoperate with other web streams based
-     * APIs.
+     * file.
      *
+     * When the writable stream is closed, the underlying file handle is also
+     * closed automatically. This means that APIs on this file handle will no
+     * longer work after the stream is closed.
+     *
+     * This means that other APIs on this file handle will no longer work after
+     * the stream is closed.
+     *
+     * To not close the file handle automatically, for example when wanting
+     * reusing the file handle, one should not close the writable stream. When
+     * using `.pipeTo()` to write to this writable, this can be done by setting
+     * the `preventClose` option in `PipeOptions` to `true`.
+     *
+     * @example Write to a file using a writable stream:
      * ```ts
      * const items = ["hello", "world"];
      * using file = await Deno.open("my_file.txt", { write: true });
@@ -2353,6 +2394,15 @@ declare namespace Deno {
      * for (const item of items) {
      *   await writer.write(encoder.encode(item));
      * }
+     * ```
+     *
+     * @example Write a HTTP request body to a file:
+     * ```ts
+     * Deno.serve(async (req) => {
+     *   const file = await Deno.open("my_file.txt", { write: true });
+     *   await req.body.pipeTo(file.writable);
+     *   return new Response();
+     * });
      * ```
      */
     readonly writable: WritableStream<Uint8Array>;
@@ -2798,7 +2848,13 @@ declare namespace Deno {
      * for migration instructions.
      */
     readonly rid: number;
-    /** A readable stream interface to `stdin`. */
+    /**
+     * A readable stream interface to `stdin`.
+     *
+     * When the readable stream hits the end of the file (EOF), the stream will
+     * be closed. This means that stdin can then not be used for any other
+     * file operations.
+     */
     readonly readable: ReadableStream<Uint8Array>;
     /**
      * Set TTY to be under raw mode or not. In raw mode, characters are read and
@@ -2846,7 +2902,26 @@ declare namespace Deno {
      * for migration instructions.
      */
     readonly rid: number;
-    /** A writable stream interface to `stdout`. */
+    /**
+     * A writable stream interface to `stdout`.
+     *
+     * When the writable stream is closed, stdout is also closed automatically.
+     * This means that other APIs operating on stdout will no longer work after
+     * the stream is closed. In particular, `console.log` will no longer work
+     * after the stream is closed.
+     *
+     * When wanting to write to `stdout` without closing the file handle, for
+     * example when wanting to write multiple times to `stdout`, one should not
+     * close the writable stream. When using `ReadableStream#pipeTo()` to write
+     * to this writable, this can be done by setting the `preventClose` option
+     * in `PipeOptions` to `true`.
+     *
+     * @example Writing a file to `stdout`:
+     * ```ts
+     * const file = await Deno.open("my_file.txt");
+     * await file.readable.pipeTo(Deno.stdout.writable, { preventClose: true }); // do not close stdout after finishing writing
+     * ```
+     */
     readonly writable: WritableStream<Uint8Array>;
     /**
      * Checks if `stdout` is a TTY (terminal).
@@ -2880,7 +2955,26 @@ declare namespace Deno {
      * for migration instructions.
      */
     readonly rid: number;
-    /** A writable stream interface to `stderr`. */
+    /**
+     * A writable stream interface to `stderr`.
+     *
+     * When the writable stream is closed, stderr is also closed automatically.
+     * This means that other APIs operating on stderr will no longer work after
+     * the stream is closed. In particular, `console.error` will no longer work
+     * after the stream is closed.
+     *
+     * When wanting to write to `stderr` without closing the file handle, for
+     * example when wanting to write multiple times to `stderr`, one should not
+     * close the writable stream. When using `ReadableStream#pipeTo()` to write
+     * to this writable, this can be done by setting the `preventClose` option
+     * in `PipeOptions` to `true`.
+     *
+     * @example Writing a file to `stderr`:
+     * ```ts
+     * const file = await Deno.open("my_file.txt");
+     * await file.readable.pipeTo(Deno.stderr.writable, { preventClose: true }); // do not close stderr after finishing writing
+     * ```
+     */
     readonly writable: WritableStream<Uint8Array>;
     /**
      * Checks if `stderr` is a TTY (terminal).
@@ -2946,6 +3040,31 @@ declare namespace Deno {
      *
      * Ignored on Windows. */
     mode?: number;
+    /** Prevent the file from being closed automatically when the readable
+     * stream reaches EOF. This allows the file to be reused for further writes
+     * or reads.
+     *
+     * @default {false} */
+    preventCloseOnEOF?: boolean;
+  }
+
+  /*
+   * Options which can be set when doing {@linkcode Deno.create} and
+   * {@linkcode Deno.createSync}.
+   *
+   * @category File System */
+  export interface CreateOptions {
+    /** Permissions to use when creating the file (defaults to `0o666`, before
+     * the process's umask).
+     *
+     * Ignored on Windows. */
+    mode?: number;
+    /** Prevent the file from being closed automatically when the readable
+     * stream reaches EOF. This allows the file to be reused for further writes
+     * or reads.
+     *
+     * @default {false} */
+    preventCloseOnEOF?: boolean;
   }
 
   /**
@@ -4636,8 +4755,54 @@ declare namespace Deno {
    * @category Sub Process
    */
   export class ChildProcess implements AsyncDisposable {
+    /**
+     * The `stdin` of the child process, when `stdin` is set to `"piped"`.
+     *
+     * This writable stream can be used to write data to the child process.
+     *
+     * When closing the writable stream, the underlying stdin pipe will be
+     * closed. This means that the child process will receive an EOF on its
+     * stdin.
+     *
+     * To write multiple times to stdin, one must not close the writable stream
+     * after each write. Instead, the writable stream should be closed after all
+     * writes are done. To not close a writable stream when writing with
+     * `ReadableStream#pipeTo`, set the `preventClose` option to `true` in the
+     * `PipeOptions`.
+     *
+     * If `stdin` is not set to `"piped"`, accessing this field will throw a
+     * `TypeError`.
+     */
     get stdin(): WritableStream<Uint8Array>;
+    /**
+     * The `stdout` of the child process, when `stdout` is set to `"piped"`.
+     *
+     * This readable stream can be used to read data from the child process.
+     * When the child process writes data to its stdout, it can be read from
+     * this stream.
+     *
+     * When the child process closes its stdout, the readable stream will be
+     * closed too once it has read all the data written by the child process
+     * before the stdout was closed.
+     *
+     * If `stdout` is not set to `"piped"`, accessing this field will throw a
+     * `TypeError`.
+     */
     get stdout(): ReadableStream<Uint8Array>;
+    /**
+     * The `stderr` of the child process, when `stderr` is set to `"piped"`.
+     *
+     * This readable stream can be used to read data from the child process.
+     * When the child process writes data to its stderr, it can be read from
+     * this stream.
+     *
+     * When the child process closes its stderr, the readable stream will be
+     * closed too once it has read all the data written by the child process
+     * before the stderr was closed.
+     *
+     * If `stderr` is not set to `"piped"`, accessing this field will throw a
+     * `TypeError`.
+     */
     get stderr(): ReadableStream<Uint8Array>;
     readonly pid: number;
     /** Get the status of the child. */
@@ -4646,7 +4811,20 @@ declare namespace Deno {
     /** Waits for the child to exit completely, returning all its output and
      * status. */
     output(): Promise<CommandOutput>;
-    /** Kills the process with given {@linkcode Deno.Signal}.
+    /** Sends the given {@linkcode Deno.Signal} to the child process.
+     *
+     * Process shutdown is asynchronous, so the process may still be running
+     * when this function returns. To wait for the process to exit, use
+     * {@linkcode Deno.ChildProcess.status}.
+     *
+     * Some signals may not result in the subprocess exiting at all - this is
+     * generally dependent on the subprocess itself. Some signals, like
+     * `SIGTERM` will usually cause the subprocess to exit after a short time,
+     * but badly behaved subprocesses may ignore the signal entirely. To
+     * forcibly terminate a subprocess, use `SIGKILL`. Even when using
+     * `SIGKILL`, the subprocess may take a while to actually exit - always
+     * use {@linkcode Deno.ChildProcess.status} to wait for the subprocess to
+     * exit.
      *
      * Defaults to `SIGTERM` if no signal is provided.
      *
