@@ -68,7 +68,10 @@ declare var DOMException: {
   readonly DATA_CLONE_ERR: 25;
 };
 
-/** @category Events */
+/** Specifies the options that can be passed to the constructor of an `Event`
+ * object.
+ *
+ * @category Events */
 declare interface EventInit {
   bubbles?: boolean;
   cancelable?: boolean;
@@ -208,12 +211,17 @@ declare var EventTarget: {
   new (): EventTarget;
 };
 
-/** @category Events */
+/** Represents a function type that can be used as an event listener in various
+ * contexts. Functions matching this type will receive an {@linkcode Event} as the first parameter.
+ *
+ * @category Events */
 declare interface EventListener {
   (evt: Event): void | Promise<void>;
 }
 
-/** @category Events */
+/** EventListenerObject interface defines objects that can handle events
+ *
+ * @category Events */
 declare interface EventListenerObject {
   handleEvent(evt: Event): void | Promise<void>;
 }
@@ -225,20 +233,33 @@ declare type EventListenerOrEventListenerObject =
 
 /** @category Events */
 declare interface AddEventListenerOptions extends EventListenerOptions {
-  once?: boolean;
+  /** When set to true, indicates that the event listener should be automatically removed after its first invocation. */
   passive?: boolean;
+  /** When set to true, signals to the browser that the event listener will not call `preventDefault()`. */
   signal?: AbortSignal;
+  /** Allows the event listener to be associated with an `AbortSignal` from an `AbortController`, to allow removal of the event listener by calling `abort()` on the associated `AbortController`. */
+  once?: boolean;
 }
 
-/** @category Events */
+/** Specifies options that can be passed to event listeners
+ *
+ *  @category Events */
 declare interface EventListenerOptions {
+  /**  If true, event listener will be triggered during the capturing phase.
+   * If false or not provided, the event listener will be triggered during the bubbling phase. */
   capture?: boolean;
 }
 
-/** @category Events */
+/** Defines three additional optional properties specific to tracking the
+ * progress of an operation: `lengthComputable`, `loaded`, and `total`.
+ *
+ *  @category Events */
 declare interface ProgressEventInit extends EventInit {
+  /** A boolean value indicating whether the total size of the operation is known. This allows consumers of the event to determine if they can calculate a percentage completion. */
   lengthComputable?: boolean;
+  /** A number representing the amount of work that has been completed. Typically used in conjunction with total to calculate how far along the operation is. */
   loaded?: number;
+  /** Total amount of work to be done. When used with loaded, it allows for the calculation of the operation's completion percentage. */
   total?: number;
 }
 
@@ -287,9 +308,13 @@ declare function atob(s: string): string;
  */
 declare function btoa(s: string): string;
 
-/** @category Encoding */
+/** Specifies options that can be passed to a TextDecoder instance.
+ *
+ * @category Encoding */
 declare interface TextDecoderOptions {
+  /** When `true`, indicates that the `TextDecoder` should throw an error if it encounters an invalid byte sequence for the chosen encoding.  When `false` or not provided, the `TextDecoder` will replace invalid byte sequences with a replacement character, typically `�`, and continue decoding. */
   fatal?: boolean;
+  /**  If set to `true`, the `TextDecoder` will ignore any BOM. If `false` or not provided, and if the encoding allows for a BOM (such as UTF-8, UTF-16), the `TextDecoder` will use the BOM to determine the text's endianness and then remove it from the output. */
   ignoreBOM?: boolean;
 }
 
@@ -311,19 +336,32 @@ declare interface TextDecoder {
   decode(input?: BufferSource, options?: TextDecodeOptions): string;
 }
 
-/** @category Encoding */
+/** TextDecoder's constructor function can take up to two optional parameters:
+ * `label`: A string parameter that specifies the encoding to use for decoding.
+ * (If not provided the default is UTF-8.)
+ * `options`: An object of type `TextDecoderOptions` which allows for further
+ * customization of the decoding process.
+ *
+ * @category Encoding */
 declare var TextDecoder: {
   readonly prototype: TextDecoder;
   new (label?: string, options?: TextDecoderOptions): TextDecoder;
 };
 
-/** @category Encoding */
+/** Represents the result of an encoding operation performed by a TextEncoder.
+ *
+ *  @category Encoding */
 declare interface TextEncoderEncodeIntoResult {
+  /** Indicates the number of characters (or code units) from the input that were read and processed during the encoding operation */
   read: number;
+  /** Signifies the number of bytes that were written to the output buffer as a result of the encoding process  */
   written: number;
 }
 
-/** @category Encoding */
+/** A utility for encoding strings into a binary format, specifically using
+ * UTF-8 encoding.
+ *
+ * @category Encoding */
 declare interface TextEncoder {
   /** Returns "utf-8". */
   readonly encoding: "utf-8";
@@ -338,7 +376,10 @@ declare var TextEncoder: {
   new (): TextEncoder;
 };
 
-/** @category Encoding */
+/** A stream-based text decoder for efficient processing of large or
+ * streaming text data.
+ *
+ *  @category Encoding */
 declare interface TextDecoderStream {
   /** Returns encoding's name, lowercased. */
   readonly encoding: string;
@@ -357,7 +398,9 @@ declare var TextDecoderStream: {
   new (label?: string, options?: TextDecoderOptions): TextDecoderStream;
 };
 
-/** @category Encoding */
+/** Stream-based mechanism for encoding text into a stream of UTF-8 encoded data
+ *
+ *  @category Encoding */
 declare interface TextEncoderStream {
   /** Returns "utf-8". */
   readonly encoding: "utf-8";
@@ -576,13 +619,18 @@ declare var File: {
   new (fileBits: BlobPart[], fileName: string, options?: FilePropertyBag): File;
 };
 
-/** @category Streams */
+/**  The result object from reading a stream when the stream has been fully
+ * consumed or closed.
+ *
+ * @category Streams */
 declare interface ReadableStreamDefaultReadDoneResult {
   done: true;
   value?: undefined;
 }
 
-/** @category Streams */
+/** The result object from reading a stream that is not yet finished
+ *
+ * @category Streams */
 declare interface ReadableStreamDefaultReadValueResult<T> {
   done: false;
   value: T;
@@ -593,7 +641,9 @@ declare type ReadableStreamDefaultReadResult<T> =
   | ReadableStreamDefaultReadValueResult<T>
   | ReadableStreamDefaultReadDoneResult;
 
-/** @category Streams */
+/** An object that allows you to read from a readable stream
+ *
+ * @category Streams */
 declare interface ReadableStreamDefaultReader<R = any> {
   readonly closed: Promise<void>;
   cancel(reason?: any): Promise<void>;
@@ -607,13 +657,17 @@ declare var ReadableStreamDefaultReader: {
   new <R>(stream: ReadableStream<R>): ReadableStreamDefaultReader<R>;
 };
 
-/** @category Streams */
+/** The result of an operation, specifically in the context of reading from a stream using a "bring your own buffer" (BYOB) strategy.
+ *
+ * @category Streams */
 declare interface ReadableStreamBYOBReadDoneResult<V extends ArrayBufferView> {
   done: true;
   value?: V;
 }
 
-/** @category Streams */
+/** The result of a read operation from a stream using a "bring your own buffer" (BYOB) strategy.
+ *
+ * @category Streams */
 declare interface ReadableStreamBYOBReadValueResult<V extends ArrayBufferView> {
   done: false;
   value: V;
@@ -629,7 +683,9 @@ declare interface ReadableStreamBYOBReaderReadOptions {
   min?: number;
 }
 
-/** @category Streams */
+/** Provides a set of methods for reading binary data from a stream using a buffer provided by the developer, with mechanisms for handling stream closure, cancellation, and locking
+ *
+ *  @category Streams */
 declare interface ReadableStreamBYOBReader {
   readonly closed: Promise<void>;
   cancel(reason?: any): Promise<void>;
@@ -646,7 +702,9 @@ declare var ReadableStreamBYOBReader: {
   new (stream: ReadableStream<Uint8Array>): ReadableStreamBYOBReader;
 };
 
-/** @category Streams */
+/** Notify the stream about the amount of data processed and to supply new buffers as needed.
+ *
+ * @category Streams */
 declare interface ReadableStreamBYOBRequest {
   readonly view: ArrayBufferView | null;
   respond(bytesWritten: number): void;
@@ -659,12 +717,16 @@ declare var ReadableStreamBYOBRequest: {
   new (): never;
 };
 
-/** @category Streams */
+/** A callback function type for managing a readable byte stream.
+ *
+ * @category Streams */
 declare interface ReadableByteStreamControllerCallback {
   (controller: ReadableByteStreamController): void | PromiseLike<void>;
 }
 
-/** @category Streams */
+/** A structure for implementing sources of binary data.
+ *
+ * @category Streams */
 declare interface UnderlyingByteSource {
   autoAllocateChunkSize?: number;
   cancel?: ReadableStreamErrorCallback;
@@ -673,7 +735,11 @@ declare interface UnderlyingByteSource {
   type: "bytes";
 }
 
-/** @category Streams */
+/** A contract for objects that can consume data chunks, providing hooks for
+ * initialization `start`, writing data `write`, handling errors `abort`, and
+ * closing the stream `close`.
+ *
+ * @category Streams */
 declare interface UnderlyingSink<W = any> {
   abort?: WritableStreamErrorCallback;
   close?: WritableStreamDefaultControllerCloseCallback;
@@ -682,7 +748,9 @@ declare interface UnderlyingSink<W = any> {
   write?: WritableStreamDefaultControllerWriteCallback<W>;
 }
 
-/** @category Streams */
+/** Outlines the structure for objects that can serve as the underlying source of data for a `ReadableStream`
+ *
+ * @category Streams */
 declare interface UnderlyingSource<R = any> {
   cancel?: ReadableStreamErrorCallback;
   pull?: ReadableStreamDefaultControllerCallback<R>;
@@ -690,7 +758,9 @@ declare interface UnderlyingSource<R = any> {
   type?: undefined;
 }
 
-/** @category Streams */
+/** Callback function to handle errors in the context of readable streams
+ *
+ *  @category Streams */
 declare interface ReadableStreamErrorCallback {
   (reason: any): void | PromiseLike<void>;
 }
@@ -700,7 +770,9 @@ declare interface ReadableStreamDefaultControllerCallback<R> {
   (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
 }
 
-/** @category Streams */
+/** Control the state and behavior of a readable stream
+ *
+ * @category Streams */
 declare interface ReadableStreamDefaultController<R = any> {
   readonly desiredSize: number | null;
   close(): void;
@@ -714,7 +786,9 @@ declare var ReadableStreamDefaultController: {
   new (): never;
 };
 
-/** @category Streams */
+/** Manage the flow of byte data in a stream, including buffering, closing the stream, and handling errors.
+ *
+ *  @category Streams */
 declare interface ReadableByteStreamController {
   readonly byobRequest: ReadableStreamBYOBRequest | null;
   readonly desiredSize: number | null;
@@ -729,7 +803,9 @@ declare var ReadableByteStreamController: {
   new (): never;
 };
 
-/** @category Streams */
+/** Fine grained control over {@linkcode ReadableStream.pipeTo} operations, allowing for the prevention of stream closing, cancellation, or aborting.
+ *
+ *  @category Streams */
 declare interface PipeOptions {
   preventAbort?: boolean;
   preventCancel?: boolean;
@@ -935,7 +1011,9 @@ declare var TransformStreamDefaultController: {
   new (): never;
 };
 
-/** @category Streams */
+/** Define custom behavior for transforming data in streams
+ *
+ * @category Streams */
 declare interface Transformer<I = any, O = any> {
   flush?: TransformStreamDefaultControllerCallback<O>;
   readableType?: undefined;
@@ -1242,12 +1320,16 @@ declare function reportError(
 /** @category Platform */
 declare type PredefinedColorSpace = "srgb" | "display-p3";
 
-/** @category Platform */
+/** Color space settings for {@linkcode ImageData} objects.
+ *
+ *  @category Platform */
 declare interface ImageDataSettings {
   readonly colorSpace?: PredefinedColorSpace;
 }
 
-/** @category Platform */
+/** An object representing the underlying data that backs an image.
+ *
+ * @category Platform */
 declare interface ImageData {
   readonly colorSpace: PredefinedColorSpace;
   readonly data: Uint8ClampedArray;
