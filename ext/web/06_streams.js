@@ -14,7 +14,6 @@ const {
   isTypedArray,
 } = core;
 import {
-  op_arraybuffer_was_detached,
   // TODO(mmastrac): use readAll
   op_read_all,
   op_readable_stream_resource_allocate,
@@ -25,13 +24,14 @@ import {
   op_readable_stream_resource_write_buf,
   op_readable_stream_resource_write_error,
   op_readable_stream_resource_write_sync,
-  op_transfer_arraybuffer,
 } from "ext:core/ops";
 const {
   ArrayBuffer,
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
+  ArrayBufferPrototypeGetDetached,
   ArrayBufferPrototypeSlice,
+  ArrayBufferPrototypeTransferToFixedLength,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -279,8 +279,7 @@ function isDetachedBuffer(O) {
   if (isSharedArrayBuffer(O)) {
     return false;
   }
-  return ArrayBufferPrototypeGetByteLength(O) === 0 &&
-    op_arraybuffer_was_detached(O);
+  return ArrayBufferPrototypeGetDetached(O);
 }
 
 /**
@@ -295,14 +294,6 @@ function canTransferArrayBuffer(O) {
   }
   // TODO(@crowlKats): 4. If SameValue(O.[[ArrayBufferDetachKey]], undefined) is false, return false.
   return true;
-}
-
-/**
- * @param {ArrayBufferLike} O
- * @returns {ArrayBufferLike}
- */
-function transferArrayBuffer(O) {
-  return op_transfer_arraybuffer(O);
 }
 
 /**
@@ -1359,7 +1350,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
       "chunk's buffer is detached and so cannot be enqueued",
     );
   }
-  const transferredBuffer = transferArrayBuffer(buffer);
+  const transferredBuffer = ArrayBufferPrototypeTransferToFixedLength(buffer);
   if (controller[_pendingPullIntos].length !== 0) {
     const firstPendingPullInto = controller[_pendingPullIntos][0];
     // deno-lint-ignore prefer-primordials
@@ -1369,7 +1360,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
       );
     }
     readableByteStreamControllerInvalidateBYOBRequest(controller);
-    firstPendingPullInto.buffer = transferArrayBuffer(
+    firstPendingPullInto.buffer = ArrayBufferPrototypeTransferToFixedLength(
       // deno-lint-ignore prefer-primordials
       firstPendingPullInto.buffer,
     );
@@ -2029,7 +2020,7 @@ function readableByteStreamControllerPullInto(
   assert(minimumFill % elementSize === 0);
 
   try {
-    buffer = transferArrayBuffer(buffer);
+    buffer = ArrayBufferPrototypeTransferToFixedLength(buffer);
   } catch (e) {
     readIntoRequest.errorSteps(e);
     return;
@@ -2122,8 +2113,10 @@ function readableByteStreamControllerRespond(controller, bytesWritten) {
       throw new RangeError("bytesWritten out of range");
     }
   }
-  // deno-lint-ignore prefer-primordials
-  firstDescriptor.buffer = transferArrayBuffer(firstDescriptor.buffer);
+  firstDescriptor.buffer = ArrayBufferPrototypeTransferToFixedLength(
+    // deno-lint-ignore prefer-primordials
+    firstDescriptor.buffer,
+  );
   readableByteStreamControllerRespondInternal(controller, bytesWritten);
 }
 
@@ -2340,7 +2333,7 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
       "The region specified by view is larger than byobRequest",
     );
   }
-  firstDescriptor.buffer = transferArrayBuffer(buffer);
+  firstDescriptor.buffer = ArrayBufferPrototypeTransferToFixedLength(buffer);
   readableByteStreamControllerRespondInternal(controller, byteLength);
 }
 
@@ -2484,8 +2477,10 @@ function readableByteStreamControllerConvertPullIntoDescriptor(
   // deno-lint-ignore prefer-primordials
   assert(bytesFilled <= pullIntoDescriptor.byteLength);
   assert((bytesFilled % elementSize) === 0);
-  // deno-lint-ignore prefer-primordials
-  const buffer = transferArrayBuffer(pullIntoDescriptor.buffer);
+  const buffer = ArrayBufferPrototypeTransferToFixedLength(
+    // deno-lint-ignore prefer-primordials
+    pullIntoDescriptor.buffer,
+  );
   return new pullIntoDescriptor.viewConstructor(
     buffer,
     // deno-lint-ignore prefer-primordials

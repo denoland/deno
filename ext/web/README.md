@@ -143,7 +143,6 @@ Following ops are provided, which can be accessed through `Deno.ops`:
 - op_compression_finish
 - op_now
 - op_defer
-- op_transfer_arraybuffer
 - op_readable_stream_resource_allocate
 - op_readable_stream_resource_allocate_sized
 - op_readable_stream_resource_get_sink
