@@ -1,1 +1,1 @@
-import "http://localhost:4545/welcome.ts";
+const _ = await import("http://" + "localhost:4545/welcome.ts");
