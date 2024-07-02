@@ -14,7 +14,6 @@ const {
   isTypedArray,
 } = core;
 import {
-  op_arraybuffer_was_detached,
   // TODO(mmastrac): use readAll
   op_read_all,
   op_readable_stream_resource_allocate,
@@ -31,6 +30,7 @@ const {
   ArrayBuffer,
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
+  ArrayBufferPrototypeGetDetached,
   ArrayBufferPrototypeSlice,
   ArrayPrototypeMap,
   ArrayPrototypePush,
@@ -279,8 +279,7 @@ function isDetachedBuffer(O) {
   if (isSharedArrayBuffer(O)) {
     return false;
   }
-  return ArrayBufferPrototypeGetByteLength(O) === 0 &&
-    op_arraybuffer_was_detached(O);
+  return ArrayBufferPrototypeGetDetached(O);
 }
 
 /**
