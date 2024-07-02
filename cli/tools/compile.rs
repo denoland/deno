@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
 use deno_terminal::colors;
+use rand::Rng;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -97,8 +98,20 @@ pub async fn compile(
   );
   validate_output_path(&output_path)?;
 
-  let mut file = std::fs::File::create(&output_path)
-    .with_context(|| format!("Opening file '{}'", output_path.display()))?;
+  let mut temp_filename = output_path.file_name().unwrap().to_owned();
+  temp_filename.push(format!(
+    ".tmp-{}",
+    faster_hex::hex_encode(
+      &rand::thread_rng().gen::<[u8; 8]>(),
+      &mut [0u8; 16]
+    )
+    .unwrap()
+  ));
+  let temp_path = output_path.with_file_name(temp_filename);
+
+  let mut file = std::fs::File::create(&temp_path).with_context(|| {
+    format!("Opening temporary file '{}'", temp_path.display())
+  })?;
   let write_result = binary_writer
     .write_bin(
       &mut file,
@@ -108,20 +121,38 @@ pub async fn compile(
       cli_options,
     )
     .await
-    .with_context(|| format!("Writing {}", output_path.display()));
+    .with_context(|| {
+      format!("Writing temporary file '{}'", temp_path.display())
+    });
   drop(file);
-  if let Err(err) = write_result {
-    // errored, so attempt to remove the output path
-    let _ = std::fs::remove_file(output_path);
-    return Err(err);
-  }
 
   // set it as executable
   #[cfg(unix)]
-  {
+  let write_result = write_result.and_then(|_| {
     use std::os::unix::fs::PermissionsExt;
-    let perms = std::fs::Permissions::from_mode(0o777);
-    std::fs::set_permissions(output_path, perms)?;
+    let perms = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(&temp_path, perms).with_context(|| {
+      format!(
+        "Setting permissions on temporary file '{}'",
+        temp_path.display()
+      )
+    })
+  });
+
+  let write_result = write_result.and_then(|_| {
+    std::fs::rename(&temp_path, &output_path).with_context(|| {
+      format!(
+        "Renaming temporary file '{}' to '{}'",
+        temp_path.display(),
+        output_path.display()
+      )
+    })
+  });
+
+  if let Err(err) = write_result {
+    // errored, so attempt to remove the temporary file
+    let _ = std::fs::remove_file(temp_path);
+    return Err(err);
   }
 
   Ok(())

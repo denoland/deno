@@ -144,7 +144,7 @@ impl ZlibInner {
         self.err = self.strm.inflate(self.flush);
         // TODO(@littledivy): Use if let chain when it is stable.
         // https://github.com/rust-lang/rust/issues/53667
-        // 
+        //
         // Data was encoded with dictionary
         if let (Z_NEED_DICT, Some(dictionary)) = (self.err, &self.dictionary) {
           self.err = self.strm.inflate_set_dictionary(dictionary);
@@ -233,7 +233,7 @@ struct Zlib {
   inner: RefCell<Option<ZlibInner>>,
 }
 
-impl deno_core::GcResource for Zlib {}
+impl deno_core::GarbageCollected for Zlib {}
 
 impl deno_core::Resource for Zlib {
   fn name(&self) -> Cow<str> {
