@@ -54,6 +54,7 @@ os_pipe.workspace = true
 pretty_assertions.workspace = true
 regex.workspace = true
 serde.workspace = true
+tempfile.workspace = true
 test_util.workspace = true
 tokio.workspace = true
 tower-lsp.workspace = true

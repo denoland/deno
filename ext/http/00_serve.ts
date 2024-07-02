@@ -595,6 +595,48 @@ function serve(arg1, arg2) {
     options = { __proto__: null };
   }
 
+  const canOverrideOptions = !ObjectHasOwn(options, "path")
+    && !ObjectHasOwn(options, "hostname")
+    && !ObjectHasOwn(options, "port");
+  const env = Deno.permissions.querySync({ name: "env", variable: "DENO_SERVE_ADDRESS" }).state === "granted"
+    && Deno.env.get("DENO_SERVE_ADDRESS");
+
+  if (canOverrideOptions && env) {
+    const delim = env.indexOf("/");
+    if (delim >= 0) {
+      const network = env.slice(0, delim);
+      const address = env.slice(delim + 1);
+
+      switch (network) {
+        case "tcp": {
+          const ipv6Delim = address.indexOf("]");
+          let hostname: string;
+          let port: number;
+          if (ipv6Delim >= 0) {
+            hostname = address.slice(0, ipv6Delim + 1);
+            port = parseInt(address.slice(ipv6Delim + 2));
+          } else {
+            const [hostname_, port_] = address.split(":");
+            hostname = hostname_;
+            port = parseInt(port_);
+          }
+          if (!Number.isSafeInteger(port) || port < 0 || port > 65535) {
+            throw new TypeError(`DENO_SERVE_ADDRESS: Invalid port: ${port}`);
+          }
+          options.hostname = hostname;
+          options.port = port;
+          break;
+        }
+        case "unix": {
+          options.path = address;
+          break;
+        }
+        default:
+          console.error(`DENO_SERVE_ADDRESS: Invalid network type: ${network}`);
+      }
+    }
+  }
+
   const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
   const signal = options.signal;
