@@ -847,6 +847,10 @@ declare namespace Deno {
       system: "cocoa" | "win32" | "x11" | "wayland",
       windowHandle: Deno.PointerValue<unknown>,
       displayHandle: Deno.PointerValue<unknown>,
+      options: {
+        width: number;
+        height: number;
+      },
     );
     getContext(context: "webgpu"): GPUCanvasContext;
     present(): void;

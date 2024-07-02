@@ -228,11 +228,23 @@ Deno.test({
 
   assertThrows(
     () => {
-      new Deno.UnsafeWindowSurface("cocoa", null, null);
+      new Deno.UnsafeWindowSurface("cocoa", null, null, {
+        width: 0,
+        height: 0,
+      });
     },
   );
 
   device.destroy();
+});
+
+Deno.test(function webgpuWindowSurfaceNoWidthHeight() {
+  assertThrows(
+    () => {
+      // @ts-expect-error width and height are required
+      new Deno.UnsafeWindowSurface("x11", null, null);
+    },
+  );
 });
 
 Deno.test(function getPreferredCanvasFormat() {
