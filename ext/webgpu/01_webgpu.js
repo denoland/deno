@@ -1680,7 +1680,7 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(renderPipeline);
-    return renderPipeline;
+    return PromiseResolve(renderPipeline);
   }
 
   /**
