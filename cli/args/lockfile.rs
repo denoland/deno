@@ -160,9 +160,9 @@ impl CliLockfile {
     let lockfile = self.lockfile.lock();
     if self.frozen && lockfile.has_content_changed {
       let suggested = if *super::DENO_FUTURE {
-        "`deno cache`, `deno install`,"
+        "`deno cache --frozen=false`, `deno install --frozen=false`,"
       } else {
-        "`deno cache`"
+        "`deno cache --frozen=false`"
       };
 
       let contents =
@@ -172,7 +172,7 @@ impl CliLockfile {
       // has an extra newline at the end
       let diff = diff.trim_end();
       Err(deno_core::anyhow::anyhow!(
-        "The lockfile is out of date. Run {suggested} or rerun without the `--frozen` flag to update it.\nchanges:\n{diff}"
+        "The lockfile is out of date. Run {suggested} or rerun with `--frozen=false` to update it.\nchanges:\n{diff}"
       ))
     } else {
       Ok(())

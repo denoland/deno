@@ -1,5 +1,5 @@
 Download http://localhost:4260/@denotest/add
-error: The lockfile is out of date. Run `deno cache` or rerun without the `--frozen` flag to update it.
+error: The lockfile is out of date. Run `deno cache --frozen=false` or rerun with `--frozen=false` to update it.
 changes:
  1 | -
  1 | +{
@@ -10,7 +10,7 @@ changes:
  6 | +    },
  7 | +    "npm": {
  8 | +      "@denotest/add@1.0.0": {
- 9 | +        "integrity": "sha512-vlb1k92Nai4CoHz1Z0XfhHLyaVXgvZSJjsQVooMsk/rdSAoRb1Qm8/DRsOdC6dnKGIQ4feIcUAP9JpHlukICYw==",
+ 9 | +        "integrity": "[WILDCARD]",
 10 | +        "dependencies": {}
 11 | +      }
 12 | +    }
