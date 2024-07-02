@@ -1479,6 +1479,8 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-rustls",
+ "tokio-socks",
  "tokio-util",
  "tower",
  "tower-http",

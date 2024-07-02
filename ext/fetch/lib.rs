@@ -989,10 +989,11 @@ pub fn create_http_client(
     alpn_protocols.push("http/1.1".into());
   }
   tls_config.alpn_protocols = alpn_protocols;
+  let tls_config = Arc::from(tls_config);
 
   let mut http_connector = HttpConnector::new();
   http_connector.enforce_http(false);
-  let connector = HttpsConnector::from((http_connector, tls_config));
+  let connector = HttpsConnector::from((http_connector, tls_config.clone()));
 
   let user_agent = user_agent
     .parse::<HeaderValue>()
@@ -1005,13 +1006,15 @@ pub fn create_http_client(
 
   let mut intercepts = proxy::from_env();
   if let Some(proxy) = options.proxy {
-    let mut intercept = proxy::Intercept::all(proxy.url.parse()?);
+    let mut intercept = proxy::Intercept::all(&proxy.url)
+      .ok_or_else(|| type_error("invalid proxy url"))?;
     if let Some(basic_auth) = &proxy.basic_auth {
-      intercept.basic_auth(&basic_auth.username, &basic_auth.password);
+      intercept.set_auth(&basic_auth.username, &basic_auth.password);
     }
     intercepts.insert(0, intercept);
   }
-  let mut connector = proxy::ProxyConnector::new(intercepts, connector);
+  let mut connector =
+    proxy::ProxyConnector::new(intercepts, connector, tls_config);
   connector.user_agent(user_agent.clone());
 
   if let Some(pool_max_idle_per_host) = options.pool_max_idle_per_host {

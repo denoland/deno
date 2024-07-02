@@ -8,24 +8,48 @@ use std::task::Context;
 use std::task::Poll;
 
 use deno_core::futures::TryFutureExt;
+use deno_tls::rustls::ClientConfig as TlsConfig;
 
 use http::header::HeaderValue;
 use http::uri::Scheme;
 use http::Uri;
+use hyper_util::client::legacy::connect::Connected;
+use hyper_util::client::legacy::connect::Connection;
+use hyper_util::rt::TokioIo;
+use tokio::net::TcpStream;
+use tokio_rustls::client::TlsStream;
+use tokio_rustls::TlsConnector;
+use tokio_socks::tcp::Socks5Stream;
 use tower_service::Service;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ProxyConnector<C> {
   connector: C,
   proxies: Arc<[Intercept]>,
+  tls: Arc<TlsConfig>,
   user_agent: Option<HeaderValue>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct Intercept {
   filter: Filter,
-  dst: Uri,
-  auth: Option<HeaderValue>,
+  target: Target,
+}
+
+#[derive(Clone)]
+enum Target {
+  Http {
+    dst: Uri,
+    auth: Option<HeaderValue>,
+  },
+  Https {
+    dst: Uri,
+    auth: Option<HeaderValue>,
+  },
+  Socks {
+    dst: Uri,
+    auth: Option<(String, String)>,
+  },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -85,27 +109,38 @@ fn parse_env_var(name: &str, filter: Filter) -> Option<Intercept> {
 }
 
 impl Intercept {
-  pub(crate) fn all(dst: Uri) -> Self {
-    Self {
-      filter: Filter::All,
-      dst,
-      auth: None,
-    }
+  pub(crate) fn all(s: &str) -> Option<Self> {
+    Self::parse_with(Filter::All, s)
   }
 
-  pub(crate) fn basic_auth(&mut self, user: &str, pass: &str) {
-    self.auth = Some(basic_auth(user, pass));
+  pub(crate) fn set_auth(&mut self, user: &str, pass: &str) {
+    match self.target {
+      Target::Http { ref mut auth, .. } => {
+        *auth = Some(basic_auth(user, pass));
+      }
+      Target::Https { ref mut auth, .. } => {
+        *auth = Some(basic_auth(user, pass));
+      }
+      Target::Socks { ref mut auth, .. } => {
+        *auth = Some((user.into(), pass.into()));
+      }
+    }
   }
 
   fn parse_with(filter: Filter, val: &str) -> Option<Self> {
     let uri = val.parse::<Uri>().ok()?;
 
     let mut builder = Uri::builder();
-    let mut auth = None;
+    let mut is_socks = false;
+    let mut http_auth = None;
+    let mut socks_auth = None;
 
     builder = builder.scheme(match uri.scheme() {
       Some(s) => {
         if s == &Scheme::HTTP || s == &Scheme::HTTPS {
+          s.clone()
+        } else if s.as_str() == "socks" || s.as_str() == "socks5h" {
+          is_socks = true;
           s.clone()
         } else {
           // can't use this proxy scheme
@@ -120,7 +155,11 @@ impl Intercept {
 
     if let Some((userinfo, host_port)) = authority.as_str().split_once('@') {
       let (user, pass) = userinfo.split_once(':')?;
-      auth = Some(basic_auth(user, pass));
+      if is_socks {
+        socks_auth = Some((user.into(), pass.into()));
+      } else {
+        http_auth = Some(basic_auth(user, pass));
+      }
       builder = builder.authority(host_port);
     } else {
       builder = builder.authority(authority.clone());
@@ -131,18 +170,44 @@ impl Intercept {
 
     let dst = builder.build().ok()?;
 
-    Some(Intercept { filter, dst, auth })
+    let target = match dst.scheme().unwrap().as_str() {
+      "https" => Target::Https {
+        dst,
+        auth: http_auth,
+      },
+      "http" => Target::Http {
+        dst,
+        auth: http_auth,
+      },
+      "socks" => Target::Socks {
+        dst,
+        auth: socks_auth,
+      },
+      // shouldn't happen
+      _ => return None,
+    };
+
+    Some(Intercept { filter, target })
+  }
+}
+
+impl std::fmt::Debug for Intercept {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("Intercept")
+      .field("filter", &self.filter)
+      .finish()
   }
 }
 
 impl<C> ProxyConnector<C> {
-  pub(crate) fn new<I>(intercepts: I, connector: C) -> Self
+  pub(crate) fn new<I>(intercepts: I, connector: C, tls: Arc<TlsConfig>) -> Self
   where
     Arc<[Intercept]>: From<I>,
   {
     ProxyConnector {
       connector,
       proxies: Arc::from(intercepts),
+      tls,
       user_agent: None,
     }
   }
@@ -170,6 +235,18 @@ impl<C> ProxyConnector<C> {
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
+// These variatns are not to be inspected.
+pub enum Proxied<T> {
+  /// Not proxied
+  HttpForward(T),
+  /// Tunneled through HTTP CONNECT
+  HttpTunneled(TokioIo<TlsStream<TokioIo<T>>>),
+  /// Tunneled through SOCKS
+  Socks(TokioIo<TcpStream>),
+  /// Tunneled through SOCKS and TLS
+  SocksTls(TokioIo<TlsStream<TokioIo<TokioIo<TcpStream>>>>),
+}
+
 impl<C> Service<Uri> for ProxyConnector<C>
 where
   C: Service<Uri>,
@@ -177,7 +254,7 @@ where
   C::Future: Send + 'static,
   C::Error: Into<BoxError> + 'static,
 {
-  type Response = C::Response;
+  type Response = Proxied<C::Response>;
   type Error = BoxError;
   type Future = BoxFuture<Result<Self::Response, Self::Error>>;
 
@@ -188,31 +265,100 @@ where
     self.connector.poll_ready(cx).map_err(Into::into)
   }
 
-  fn call(&mut self, dst: Uri) -> Self::Future {
-    if let Some(intercept) = self.intercept(&dst) {
+  fn call(&mut self, orig_dst: Uri) -> Self::Future {
+    if let Some(intercept) = self.intercept(&orig_dst).cloned() {
+      let is_https = orig_dst.scheme() == Some(&Scheme::HTTPS);
       let user_agent = self.user_agent.clone();
-      let auth = intercept.auth.clone();
-      let connecting = self.connector.call(intercept.dst.clone());
-      return Box::pin(async move {
-        let mut io = connecting.await.map_err(Into::into)?;
-        tunnel(&mut io, dst, user_agent, auth).await?;
-        Ok(io)
-      });
+      return match intercept.target {
+        Target::Http {
+          dst: proxy_dst,
+          auth,
+        }
+        | Target::Https {
+          dst: proxy_dst,
+          auth,
+        } => {
+          let connecting = self.connector.call(proxy_dst);
+          let tls = TlsConnector::from(self.tls.clone());
+          Box::pin(async move {
+            let mut io = connecting.await.map_err(Into::into)?;
+
+            if is_https {
+              tunnel(&mut io, &orig_dst, user_agent, auth).await?;
+              let tokio_io = TokioIo::new(io);
+              let io = tls
+                .connect(
+                  TryFrom::try_from(orig_dst.host().unwrap().to_owned())?,
+                  tokio_io,
+                )
+                .await?;
+              Ok(Proxied::HttpTunneled(TokioIo::new(io)))
+            } else {
+              Ok(Proxied::HttpForward(io))
+            }
+          })
+        }
+        Target::Socks {
+          dst: proxy_dst,
+          auth,
+        } => {
+          let tls = TlsConnector::from(self.tls.clone());
+          Box::pin(async move {
+            let socks_addr = (
+              proxy_dst.host().unwrap(),
+              proxy_dst.port().map(|p| p.as_u16()).unwrap_or(1080),
+            );
+            let host = orig_dst.host().ok_or_else(|| "no host in url")?;
+            let port = match orig_dst.port() {
+              Some(p) => p.as_u16(),
+              None if is_https => 443,
+              _ => 80,
+            };
+            let io = if let Some((user, pass)) = auth {
+              Socks5Stream::connect_with_password(
+                socks_addr,
+                (host, port),
+                &user,
+                &pass,
+              )
+              .await?
+            } else {
+              Socks5Stream::connect(socks_addr, (host, port)).await?
+            };
+            let io = TokioIo::new(io.into_inner());
+
+            if is_https {
+              let tokio_io = TokioIo::new(io);
+              let io = tls
+                .connect(TryFrom::try_from(host.to_owned())?, tokio_io)
+                .await?;
+              Ok(Proxied::SocksTls(TokioIo::new(io)))
+            } else {
+              Ok(Proxied::Socks(io))
+            }
+          })
+        }
+      };
     }
-    Box::pin(self.connector.call(dst).map_err(Into::into))
+    Box::pin(
+      self
+        .connector
+        .call(orig_dst)
+        .map_ok(Proxied::HttpForward)
+        .map_err(Into::into),
+    )
   }
 }
 
 async fn tunnel<T>(
   io: &mut T,
-  dst: Uri,
+  dst: &Uri,
   user_agent: Option<HeaderValue>,
   auth: Option<HeaderValue>,
 ) -> Result<(), BoxError>
 where
   T: hyper::rt::Read + hyper::rt::Write + Unpin,
 {
-  use hyper_util::rt::TokioIo;
   use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
   let host = dst.host().expect("proxy dst has host");
@@ -279,6 +425,106 @@ where
       return Err("proxy authentication required".into());
     } else {
       return Err("unsuccessful tunnel".into());
+    }
+  }
+}
+
+impl<T> hyper::rt::Read for Proxied<T>
+where
+  T: hyper::rt::Read + hyper::rt::Write + Unpin,
+{
+  fn poll_read(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    buf: hyper::rt::ReadBufCursor<'_>,
+  ) -> Poll<Result<(), std::io::Error>> {
+    match *self {
+      Proxied::HttpForward(ref mut p) => Pin::new(p).poll_read(cx, buf),
+      Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_read(cx, buf),
+      Proxied::Socks(ref mut p) => Pin::new(p).poll_read(cx, buf),
+      Proxied::SocksTls(ref mut p) => Pin::new(p).poll_read(cx, buf),
+    }
+  }
+}
+
+impl<T> hyper::rt::Write for Proxied<T>
+where
+  T: hyper::rt::Read + hyper::rt::Write + Unpin,
+{
+  fn poll_write(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    buf: &[u8],
+  ) -> Poll<Result<usize, std::io::Error>> {
+    match *self {
+      Proxied::HttpForward(ref mut p) => Pin::new(p).poll_write(cx, buf),
+      Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_write(cx, buf),
+      Proxied::Socks(ref mut p) => Pin::new(p).poll_write(cx, buf),
+      Proxied::SocksTls(ref mut p) => Pin::new(p).poll_write(cx, buf),
+    }
+  }
+
+  fn poll_flush(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), std::io::Error>> {
+    match *self {
+      Proxied::HttpForward(ref mut p) => Pin::new(p).poll_flush(cx),
+      Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_flush(cx),
+      Proxied::Socks(ref mut p) => Pin::new(p).poll_flush(cx),
+      Proxied::SocksTls(ref mut p) => Pin::new(p).poll_flush(cx),
+    }
+  }
+
+  fn poll_shutdown(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), std::io::Error>> {
+    match *self {
+      Proxied::HttpForward(ref mut p) => Pin::new(p).poll_shutdown(cx),
+      Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_shutdown(cx),
+      Proxied::Socks(ref mut p) => Pin::new(p).poll_shutdown(cx),
+      Proxied::SocksTls(ref mut p) => Pin::new(p).poll_shutdown(cx),
+    }
+  }
+
+  fn is_write_vectored(&self) -> bool {
+    match *self {
+      Proxied::HttpForward(ref p) => p.is_write_vectored(),
+      Proxied::HttpTunneled(ref p) => p.is_write_vectored(),
+      Proxied::Socks(ref p) => p.is_write_vectored(),
+      Proxied::SocksTls(ref p) => p.is_write_vectored(),
+    }
+  }
+
+  fn poll_write_vectored(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+    bufs: &[std::io::IoSlice<'_>],
+  ) -> Poll<Result<usize, std::io::Error>> {
+    match *self {
+      Proxied::HttpForward(ref mut p) => {
+        Pin::new(p).poll_write_vectored(cx, bufs)
+      }
+      Proxied::HttpTunneled(ref mut p) => {
+        Pin::new(p).poll_write_vectored(cx, bufs)
+      }
+      Proxied::Socks(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
+      Proxied::SocksTls(ref mut p) => Pin::new(p).poll_write_vectored(cx, bufs),
+    }
+  }
+}
+
+impl<T> Connection for Proxied<T>
+where
+  T: Connection,
+{
+  fn connected(&self) -> Connected {
+    match self {
+      Proxied::HttpForward(ref p) => p.connected().proxy(true),
+      Proxied::HttpTunneled(ref p) => p.inner().get_ref().0.connected(),
+      Proxied::Socks(ref p) => p.connected(),
+      Proxied::SocksTls(ref p) => p.inner().get_ref().0.connected(),
     }
   }
 }

@@ -175,6 +175,8 @@ termcolor = "1.1.3"
 thiserror = "1.0.61"
 tokio = { version = "1.36.0", features = ["full"] }
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
+tokio-rustls = "0.25.0"
+tokio-socks = "0.5.1"
 tokio-util = "0.7.4"
 tower = { version = "0.4.13", default-features = false, features = ["util"] }
 tower-lsp = { version = "=0.20.0", features = ["proposed"] }
