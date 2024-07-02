@@ -5,6 +5,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
+import {
+  getAsyncContext,
+  setAsyncContext,
+} from "ext:runtime/01_async_context.js";
 
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
@@ -13,6 +17,7 @@ import { FixedQueue } from "ext:deno_node/internal/fixed_queue.ts";
 interface Tock {
   callback: (...args: Array<unknown>) => void;
   args: Array<unknown>;
+  snapshot: unknown;
 }
 
 let nextTickEnabled = false;
@@ -23,7 +28,7 @@ export function enableNextTick() {
 const queue = new FixedQueue();
 
 export function processTicksAndRejections() {
-  let tock;
+  let tock: Tock;
   do {
     // deno-lint-ignore no-cond-assign
     while (tock = queue.shift()) {
@@ -31,9 +36,11 @@ export function processTicksAndRejections() {
       // const asyncId = tock[async_id_symbol];
       // emitBefore(asyncId, tock[trigger_async_id_symbol], tock);
 
+      const oldContext = getAsyncContext();
       try {
-        const callback = (tock as Tock).callback;
-        if ((tock as Tock).args === undefined) {
+        setAsyncContext(tock.snapshot);
+        const callback = tock.callback;
+        if (tock.args === undefined) {
           callback();
         } else {
           const args = (tock as Tock).args;
@@ -58,6 +65,7 @@ export function processTicksAndRejections() {
         // FIXME(bartlomieju): Deno currently doesn't support async hooks
         // if (destroyHooksExist())
         // emitDestroy(asyncId);
+        setAsyncContext(oldContext);
       }
 
       // FIXME(bartlomieju): Deno currently doesn't support async hooks
@@ -143,6 +151,7 @@ export function nextTick<T extends Array<unknown>>(
     // FIXME(bartlomieju): Deno currently doesn't support async hooks
     // [async_id_symbol]: asyncId,
     // [trigger_async_id_symbol]: triggerAsyncId,
+    snapshot: getAsyncContext(),
     callback,
     args: args_,
   };
