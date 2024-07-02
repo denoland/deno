@@ -24,7 +24,6 @@ import {
   op_readable_stream_resource_write_buf,
   op_readable_stream_resource_write_error,
   op_readable_stream_resource_write_sync,
-  op_transfer_arraybuffer,
 } from "ext:core/ops";
 const {
   ArrayBuffer,
@@ -32,6 +31,7 @@ const {
   ArrayBufferPrototypeGetByteLength,
   ArrayBufferPrototypeGetDetached,
   ArrayBufferPrototypeSlice,
+  ArrayBufferPrototypeTransfer,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -294,14 +294,6 @@ function canTransferArrayBuffer(O) {
   }
   // TODO(@crowlKats): 4. If SameValue(O.[[ArrayBufferDetachKey]], undefined) is false, return false.
   return true;
-}
-
-/**
- * @param {ArrayBufferLike} O
- * @returns {ArrayBufferLike}
- */
-function transferArrayBuffer(O) {
-  return op_transfer_arraybuffer(O);
 }
 
 /**
@@ -1358,7 +1350,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
       "chunk's buffer is detached and so cannot be enqueued",
     );
   }
-  const transferredBuffer = transferArrayBuffer(buffer);
+  const transferredBuffer = ArrayBufferPrototypeTransfer(buffer);
   if (controller[_pendingPullIntos].length !== 0) {
     const firstPendingPullInto = controller[_pendingPullIntos][0];
     // deno-lint-ignore prefer-primordials
@@ -1368,7 +1360,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
       );
     }
     readableByteStreamControllerInvalidateBYOBRequest(controller);
-    firstPendingPullInto.buffer = transferArrayBuffer(
+    firstPendingPullInto.buffer = ArrayBufferPrototypeTransfer(
       // deno-lint-ignore prefer-primordials
       firstPendingPullInto.buffer,
     );
@@ -2028,7 +2020,7 @@ function readableByteStreamControllerPullInto(
   assert(minimumFill % elementSize === 0);
 
   try {
-    buffer = transferArrayBuffer(buffer);
+    buffer = ArrayBufferPrototypeTransfer(buffer);
   } catch (e) {
     readIntoRequest.errorSteps(e);
     return;
@@ -2122,7 +2114,7 @@ function readableByteStreamControllerRespond(controller, bytesWritten) {
     }
   }
   // deno-lint-ignore prefer-primordials
-  firstDescriptor.buffer = transferArrayBuffer(firstDescriptor.buffer);
+  firstDescriptor.buffer = ArrayBufferPrototypeTransfer(firstDescriptor.buffer);
   readableByteStreamControllerRespondInternal(controller, bytesWritten);
 }
 
@@ -2339,7 +2331,7 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
       "The region specified by view is larger than byobRequest",
     );
   }
-  firstDescriptor.buffer = transferArrayBuffer(buffer);
+  firstDescriptor.buffer = ArrayBufferPrototypeTransfer(buffer);
   readableByteStreamControllerRespondInternal(controller, byteLength);
 }
 
@@ -2484,7 +2476,7 @@ function readableByteStreamControllerConvertPullIntoDescriptor(
   assert(bytesFilled <= pullIntoDescriptor.byteLength);
   assert((bytesFilled % elementSize) === 0);
   // deno-lint-ignore prefer-primordials
-  const buffer = transferArrayBuffer(pullIntoDescriptor.buffer);
+  const buffer = ArrayBufferPrototypeTransfer(pullIntoDescriptor.buffer);
   return new pullIntoDescriptor.viewConstructor(
     buffer,
     // deno-lint-ignore prefer-primordials
