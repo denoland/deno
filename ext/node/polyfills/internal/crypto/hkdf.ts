@@ -23,6 +23,7 @@ import {
 } from "ext:deno_node/internal/crypto/util.ts";
 import {
   createSecretKey,
+  getKeyMaterial,
   isKeyObject,
   KeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
@@ -35,7 +36,7 @@ import {
 
 const validateParameters = hideStackFrames((hash, key, salt, info, length) => {
   validateString(hash, "digest");
-  key = new Uint8Array(prepareKey(key));
+  key = getKeyMaterial(prepareKey(key));
   validateByteSource(salt, "salt");
   validateByteSource(info, "info");
 
@@ -108,6 +109,8 @@ export function hkdf(
 
   validateFunction(callback, "callback");
 
+  hash = hash.toLowerCase();
+
   op_node_hkdf_async(hash, key, salt, info, length)
     .then((okm) => callback(null, okm.buffer))
     .catch((err) => callback(new ERR_CRYPTO_INVALID_DIGEST(err), undefined));
@@ -127,6 +130,8 @@ export function hkdfSync(
     info,
     length,
   ));
+
+  hash = hash.toLowerCase();
 
   const okm = new Uint8Array(length);
   try {

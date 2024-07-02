@@ -46,8 +46,12 @@ use spki::EncodePublicKey;
 mod cipher;
 mod dh;
 mod digest;
+mod md5_sha1;
 mod primes;
 pub mod x509;
+
+use self::digest::match_fixed_digest_with_eager_block_buffer;
+use self::digest::match_fixed_digest_with_oid;
 
 #[op2(fast)]
 pub fn op_node_check_prime(
@@ -382,33 +386,30 @@ pub fn op_node_sign(
     RSA_ENCRYPTION_OID => {
       use rsa::pkcs1v15::SigningKey;
       let key = RsaPrivateKey::from_pkcs1_der(pkey)?;
-      Ok(
-        match digest_type {
-          "sha224" => {
-            let signing_key = SigningKey::<sha2::Sha224>::new(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          "sha256" => {
-            let signing_key = SigningKey::<sha2::Sha256>::new(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          "sha384" => {
-            let signing_key = SigningKey::<sha2::Sha384>::new(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          "sha512" => {
-            let signing_key = SigningKey::<sha2::Sha512>::new(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          _ => {
-            return Err(type_error(format!(
-              "Unknown digest algorithm: {}",
-              digest_type
-            )))
-          }
+
+      // md5-sha1 is special, because it's not wrapped in an ASN.1 DigestInfo
+      // (so has no prefix).
+      // See https://github.com/openssl/openssl/blob/af82623d32962b3eff5b0f0b0dedec5eb730b231/crypto/rsa/rsa_sign.c#L285
+      if digest_type == "md5-sha1" {
+        let signing_key = SigningKey::<md5_sha1::Md5Sha1>::new_unprefixed(key);
+        let signature = signing_key.sign_prehash(digest)?.to_vec();
+        return Ok(signature.into());
+      }
+
+      let signature = match_fixed_digest_with_oid!(
+        digest_type,
+        fn <D>() {
+          let signing_key = SigningKey::<D>::new(key);
+          signing_key.sign_prehash(digest)?.to_vec()
+        },
+        _ => {
+          return Err(type_error(format!(
+            "digest not allowed for RSA signature: {}",
+            digest_type
+          )))
         }
-        .into(),
-      )
+      );
+      Ok(signature.into())
     }
     // signature structure encoding is DER by default for DSA and ECDSA.
     //
@@ -456,29 +457,35 @@ pub fn op_node_verify(
           )))
         }
       };
-      Ok(match digest_type {
-        "sha224" => VerifyingKey::<sha2::Sha224>::new(key)
+
+      // md5-sha1 is special, because it's not wrapped in an ASN.1 DigestInfo
+      // (so has no prefix).
+      // See https://github.com/openssl/openssl/blob/af82623d32962b3eff5b0f0b0dedec5eb730b231/crypto/rsa/rsa_sign.c#L285
+      if digest_type == "md5-sha1" {
+        let verifying_key =
+          VerifyingKey::<md5_sha1::Md5Sha1>::new_unprefixed(key);
+        let verified = verifying_key
           .verify_prehash(digest, &signature.try_into()?)
-          .is_ok(),
-        "sha256" => VerifyingKey::<sha2::Sha256>::new(key)
-          .verify_prehash(digest, &signature.try_into()?)
-          .is_ok(),
-        "sha384" => VerifyingKey::<sha2::Sha384>::new(key)
-          .verify_prehash(digest, &signature.try_into()?)
-          .is_ok(),
-        "sha512" => VerifyingKey::<sha2::Sha512>::new(key)
-          .verify_prehash(digest, &signature.try_into()?)
-          .is_ok(),
+          .is_ok();
+        return Ok(verified);
+      }
+
+      Ok(match_fixed_digest_with_oid!(
+        digest_type,
+        fn <D>() {
+          let verifying_key = VerifyingKey::<D>::new(key);
+          verifying_key.verify_prehash(digest, &signature.try_into()?).is_ok()
+        },
         _ => {
           return Err(type_error(format!(
-            "Unknown digest algorithm: {}",
+            "digest not allowed for RSA signature: {}",
             digest_type
           )))
         }
-      })
+      ))
     }
     _ => Err(type_error(format!(
-      "Verifying with {} keys is not supported yet",
+      "Verifying with {} keys is not supported",
       key_type
     ))),
   }
@@ -488,28 +495,22 @@ fn pbkdf2_sync(
   password: &[u8],
   salt: &[u8],
   iterations: u32,
-  digest: &str,
+  algorithm_name: &str,
   derived_key: &mut [u8],
 ) -> Result<(), AnyError> {
-  macro_rules! pbkdf2_hmac {
-    ($digest:ty) => {{
-      pbkdf2::pbkdf2_hmac::<$digest>(password, salt, iterations, derived_key)
-    }};
-  }
-
-  match digest {
-    "md4" => pbkdf2_hmac!(md4::Md4),
-    "md5" => pbkdf2_hmac!(md5::Md5),
-    "ripemd160" => pbkdf2_hmac!(ripemd::Ripemd160),
-    "sha1" => pbkdf2_hmac!(sha1::Sha1),
-    "sha224" => pbkdf2_hmac!(sha2::Sha224),
-    "sha256" => pbkdf2_hmac!(sha2::Sha256),
-    "sha384" => pbkdf2_hmac!(sha2::Sha384),
-    "sha512" => pbkdf2_hmac!(sha2::Sha512),
-    _ => return Err(type_error("Unknown digest")),
-  }
-
-  Ok(())
+  match_fixed_digest_with_eager_block_buffer!(
+    algorithm_name,
+    fn <D>() {
+      pbkdf2::pbkdf2_hmac::<D>(password, salt, iterations, derived_key);
+      Ok(())
+    },
+    _ => {
+      Err(type_error(format!(
+        "unsupported digest: {}",
+        algorithm_name
+      )))
+    }
+  )
 }
 
 #[op2]
@@ -558,50 +559,40 @@ pub async fn op_node_generate_secret_async(#[smi] len: i32) -> ToJsBuffer {
 }
 
 fn hkdf_sync(
-  hash: &str,
+  digest_algorithm: &str,
   ikm: &[u8],
   salt: &[u8],
   info: &[u8],
   okm: &mut [u8],
 ) -> Result<(), AnyError> {
-  macro_rules! hkdf {
-    ($hash:ty) => {{
-      let hk = Hkdf::<$hash>::new(Some(salt), ikm);
+  match_fixed_digest_with_eager_block_buffer!(
+    digest_algorithm,
+    fn <D>() {
+      let hk = Hkdf::<D>::new(Some(salt), ikm);
       hk.expand(info, okm)
-        .map_err(|_| type_error("HKDF-Expand failed"))?;
-    }};
-  }
-
-  match hash {
-    "md4" => hkdf!(md4::Md4),
-    "md5" => hkdf!(md5::Md5),
-    "ripemd160" => hkdf!(ripemd::Ripemd160),
-    "sha1" => hkdf!(sha1::Sha1),
-    "sha224" => hkdf!(sha2::Sha224),
-    "sha256" => hkdf!(sha2::Sha256),
-    "sha384" => hkdf!(sha2::Sha384),
-    "sha512" => hkdf!(sha2::Sha512),
-    _ => return Err(type_error("Unknown digest")),
-  }
-
-  Ok(())
+        .map_err(|_| type_error("HKDF-Expand failed"))
+    },
+    _ => {
+      Err(type_error(format!("Unsupported digest: {}", digest_algorithm)))
+    }
+  )
 }
 
 #[op2(fast)]
 pub fn op_node_hkdf(
-  #[string] hash: &str,
+  #[string] digest_algorithm: &str,
   #[buffer] ikm: &[u8],
   #[buffer] salt: &[u8],
   #[buffer] info: &[u8],
   #[buffer] okm: &mut [u8],
 ) -> Result<(), AnyError> {
-  hkdf_sync(hash, ikm, salt, info, okm)
+  hkdf_sync(digest_algorithm, ikm, salt, info, okm)
 }
 
 #[op2(async)]
 #[serde]
 pub async fn op_node_hkdf_async(
-  #[string] hash: String,
+  #[string] digest_algorithm: String,
   #[buffer] ikm: JsBuffer,
   #[buffer] salt: JsBuffer,
   #[buffer] info: JsBuffer,
@@ -609,7 +600,7 @@ pub async fn op_node_hkdf_async(
 ) -> Result<ToJsBuffer, AnyError> {
   spawn_blocking(move || {
     let mut okm = vec![0u8; okm_len];
-    hkdf_sync(&hash, &ikm, &salt, &info, &mut okm)?;
+    hkdf_sync(&digest_algorithm, &ikm, &salt, &info, &mut okm)?;
     Ok(okm.into())
   })
   .await?

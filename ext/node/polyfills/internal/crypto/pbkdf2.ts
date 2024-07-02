@@ -7,8 +7,19 @@ import { op_node_pbkdf2, op_node_pbkdf2_async } from "ext:core/ops";
 
 import { Buffer } from "node:buffer";
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
+import {
+  validateFunction,
+  validateString,
+  validateUint32,
+} from "ext:deno_node/internal/validators.mjs";
+import { getArrayBufferOrView } from "ext:deno_node/internal/crypto/keys.ts";
+import {
+  ERR_CRYPTO_INVALID_DIGEST,
+  ERR_OUT_OF_RANGE,
+} from "ext:deno_node/internal/errors.ts";
 
 export const MAX_ALLOC = Math.pow(2, 30) - 1;
+export const MAX_I32 = 2 ** 31 - 1;
 
 export type NormalizedAlgorithms =
   | "md5"
@@ -29,6 +40,30 @@ export type Algorithms =
   | "sha384"
   | "sha512";
 
+function check(
+  password: HASH_DATA,
+  salt: HASH_DATA,
+  iterations: number,
+  keylen: number,
+  digest: string,
+) {
+  validateString(digest, "digest");
+  password = getArrayBufferOrView(password, "password", "buffer");
+  salt = getArrayBufferOrView(salt, "salt", "buffer");
+  validateUint32(iterations, "iterations", true);
+  validateUint32(keylen, "keylen");
+
+  if (iterations > MAX_I32) {
+    throw new ERR_OUT_OF_RANGE("iterations", `<= ${MAX_I32}`, iterations);
+  }
+
+  if (keylen > MAX_I32) {
+    throw new ERR_OUT_OF_RANGE("keylen", `<= ${MAX_I32}`, keylen);
+  }
+
+  return { password, salt, iterations, keylen, digest };
+}
+
 /**
  * @param iterations Needs to be higher or equal than zero
  * @param keylen  Needs to be higher or equal than zero but less than max allocation size (2^30)
@@ -39,18 +74,21 @@ export function pbkdf2Sync(
   salt: HASH_DATA,
   iterations: number,
   keylen: number,
-  digest: Algorithms = "sha1",
+  digest: string,
 ): Buffer {
-  if (typeof iterations !== "number" || iterations < 0) {
-    throw new TypeError("Bad iterations");
-  }
-  if (typeof keylen !== "number" || keylen < 0 || keylen > MAX_ALLOC) {
-    throw new TypeError("Bad key length");
-  }
+  ({ password, salt, iterations, keylen, digest } = check(
+    password,
+    salt,
+    iterations,
+    keylen,
+    digest,
+  ));
+
+  digest = digest.toLowerCase() as NormalizedAlgorithms;
 
   const DK = new Uint8Array(keylen);
   if (!op_node_pbkdf2(password, salt, iterations, digest, DK)) {
-    throw new Error("Invalid digest");
+    throw new ERR_CRYPTO_INVALID_DIGEST(digest);
   }
 
   return Buffer.from(DK);
@@ -66,15 +104,25 @@ export function pbkdf2(
   salt: HASH_DATA,
   iterations: number,
   keylen: number,
-  digest: Algorithms = "sha1",
+  digest: string,
   callback: (err: Error | null, derivedKey?: Buffer) => void,
 ) {
-  if (typeof iterations !== "number" || iterations < 0) {
-    throw new TypeError("Bad iterations");
+  if (typeof digest === "function") {
+    callback = digest;
+    digest = undefined as unknown as string;
   }
-  if (typeof keylen !== "number" || keylen < 0 || keylen > MAX_ALLOC) {
-    throw new TypeError("Bad key length");
-  }
+
+  ({ password, salt, iterations, keylen, digest } = check(
+    password,
+    salt,
+    iterations,
+    keylen,
+    digest,
+  ));
+
+  validateFunction(callback, "callback");
+
+  digest = digest.toLowerCase() as NormalizedAlgorithms;
 
   op_node_pbkdf2_async(
     password,

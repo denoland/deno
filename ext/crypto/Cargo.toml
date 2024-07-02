@@ -35,7 +35,7 @@ ring = { workspace = true, features = ["std"] }
 rsa.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
-sha1 = { version = "0.10.6", features = ["oid"] }
+sha1.workspace = true
 sha2.workspace = true
 signature.workspace = true
 spki.workspace = true
