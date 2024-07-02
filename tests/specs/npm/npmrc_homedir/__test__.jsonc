@@ -1,9 +1,9 @@
 {
-  "if": "unix",
   "tempDir": true,
   "envs": {
     "DENO_FUTURE": "1",
-    "HOME": "$PWD/../"
+    "HOME": "$PWD/../",
+    "USERPROFILE": "$PWD\\..\\"
   },
   "cwd": "subdir",
   "args": "install",

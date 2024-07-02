@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::GcResource;
+use deno_core::GarbageCollected;
 use digest::Digest;
 use digest::DynDigest;
 use digest::ExtendableOutput;
@@ -13,7 +13,7 @@ pub struct Hasher {
   pub hash: Rc<RefCell<Option<Hash>>>,
 }
 
-impl GcResource for Hasher {}
+impl GarbageCollected for Hasher {}
 
 impl Hasher {
   pub fn new(
