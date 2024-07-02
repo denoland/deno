@@ -53,7 +53,6 @@ import {
 } from "ext:deno_web/06_streams.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
-import { type } from "../webidl/00_webidl.js";
 
 async function write(rid, data) {
   return await core.write(rid, data);
