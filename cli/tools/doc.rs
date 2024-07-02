@@ -187,31 +187,32 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       Default::default()
     };
 
-    let rewrite_map =
-      if let Some(config_file) = cli_options.maybe_config_file().clone() {
-        let config = config_file.to_exports_config()?;
+    let rewrite_map = if let Some(config_file) =
+      cli_options.workspace.resolve_start_ctx().maybe_deno_json()
+    {
+      let config = config_file.to_exports_config()?;
 
-        let rewrite_map = config
-          .clone()
-          .into_map()
-          .into_keys()
-          .map(|key| {
-            Ok((
-              config.get_resolved(&key)?.unwrap(),
-              key
-                .strip_prefix('.')
-                .unwrap_or(&key)
-                .strip_prefix('/')
-                .unwrap_or(&key)
-                .to_owned(),
-            ))
-          })
-          .collect::<Result<IndexMap<_, _>, AnyError>>()?;
+      let rewrite_map = config
+        .clone()
+        .into_map()
+        .into_keys()
+        .map(|key| {
+          Ok((
+            config.get_resolved(&key)?.unwrap(),
+            key
+              .strip_prefix('.')
+              .unwrap_or(&key)
+              .strip_prefix('/')
+              .unwrap_or(&key)
+              .to_owned(),
+          ))
+        })
+        .collect::<Result<IndexMap<_, _>, AnyError>>()?;
 
-        Some(rewrite_map)
-      } else {
-        None
-      };
+      Some(rewrite_map)
+    } else {
+      None
+    };
 
     generate_docs_directory(
       doc_nodes_by_url,

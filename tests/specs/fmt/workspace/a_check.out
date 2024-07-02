@@ -1,0 +1,6 @@
+
+from [WILDLINE]a.ts:
+1 | -console.log("a");
+1 | +console.log('a')
+
+error: Found 1 not formatted file in 2 files

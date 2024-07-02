@@ -2,19 +2,19 @@
   "imports": {
     "chalk": "npm:chalk",
     "chalk/": "npm:/chalk/",
-    "qwerqwer": "jsr:qwerqwer@^0.0.0",
-    "qwerqwer/": "jsr:/qwerqwer@^0.0.0/",
     "asdfasdfasdf": "jsr:asdfasdfasdf@^0.0.0",
-    "asdfasdfasdf/": "jsr:/asdfasdfasdf@^0.0.0/"
+    "asdfasdfasdf/": "jsr:/asdfasdfasdf@^0.0.0/",
+    "qwerqwer": "jsr:qwerqwer@^0.0.0",
+    "qwerqwer/": "jsr:/qwerqwer@^0.0.0/"
   },
   "scopes": {
-    "./foo/": {
-      "~/": "./foo/",
-      "foo/": "./foo/bar/"
-    },
     "./bar/": {
       "@/": "./bar/",
       "secret_mod/": "./bar/some_mod/"
+    },
+    "./foo/": {
+      "~/": "./foo/",
+      "foo/": "./foo/bar/"
     }
   }
 }

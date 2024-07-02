@@ -2,5 +2,5 @@
   "args": "run -A main.ts",
   "output": "main.out",
   "tempDir": true,
-  "exitCode": 1
+  "exitCode": 0
 }

@@ -183,7 +183,7 @@ impl TypeChecker {
       self.module_graph_builder.build_fast_check_graph(
         &mut graph,
         BuildFastCheckGraphOptions {
-          workspace_fast_check: false,
+          workspace_fast_check: deno_graph::WorkspaceFastCheckOption::Disabled,
         },
       )?;
     }

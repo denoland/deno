@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "lz-string": "*",
-    "@types/lz-string": "*"
+    "lz-string": "1.5",
+    "@types/lz-string": "1.5"
   }
 }

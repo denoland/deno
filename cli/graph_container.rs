@@ -98,7 +98,7 @@ impl MainModuleGraphContainer {
     &self,
     files: &[String],
   ) -> Result<Vec<ModuleSpecifier>, AnyError> {
-    let excludes = self.cli_options.resolve_config_excludes()?;
+    let excludes = self.cli_options.workspace.resolve_config_excludes()?;
     Ok(
       files
         .iter()

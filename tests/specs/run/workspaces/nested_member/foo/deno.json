@@ -3,5 +3,6 @@
   "version": "0.0.0",
   "imports": {
     "~/": "./"
-  }
+  },
+  "exports": "./mod.ts"
 }

@@ -163,6 +163,9 @@ pub struct WatcherCommunicator {
 
 impl WatcherCommunicator {
   pub fn watch_paths(&self, paths: Vec<PathBuf>) -> Result<(), AnyError> {
+    if paths.is_empty() {
+      return Ok(());
+    }
     self.paths_to_watch_tx.send(paths).map_err(AnyError::from)
   }
 

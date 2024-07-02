@@ -1,0 +1,15 @@
+{
+  "tests": {
+    "root": {
+      "args": "lint",
+      "output": "lint.out",
+      "exitCode": 1
+    },
+    "subdir": {
+      "cwd": "sub",
+      "args": "lint",
+      "output": "lint.out",
+      "exitCode": 1
+    }
+  }
+}

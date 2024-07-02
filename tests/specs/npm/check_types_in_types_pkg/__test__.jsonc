@@ -1,0 +1,28 @@
+{
+  "tempDir": true,
+  "tests": {
+    "byonm": {
+      "envs": {
+        "DENO_FUTURE": "1"
+      },
+      "steps": [{
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "check --quiet main.ts",
+        "exitCode": 1,
+        "output": "expected.out"
+      }]
+    },
+    "auto_install": {
+      "args": "check --node-modules-dir=true --quiet main_auto_install.ts",
+      "exitCode": 1,
+      "output": "expected.out"
+    },
+    "global_folder": {
+      "args": "check --node-modules-dir=false --quiet main_auto_install.ts",
+      "exitCode": 1,
+      "output": "expected.out"
+    }
+  }
+}

@@ -1,0 +1,3 @@
+[# not the best error, but it did resolve because there was no exports specified]
+error: Module not found "file:///[WILDLINE]/c/non-existent".
+    at file:///[WILDLINE]/b/no-exports-sub-path-not-exists.ts:1:20

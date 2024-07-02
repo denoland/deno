@@ -1,6 +1,6 @@
-Check file:///[WILDCARD]/bar/mod.ts
+Check file:///[WILDLINE]/bar/mod.ts
 Checking for slow types in the public API...
-Check file:///[WILDCARD]/bar/mod.ts
+Check file:///[WILDLINE]/bar/mod.ts
 Publishing @foo/bar@1.0.0 ...
 Successfully published @foo/bar@1.0.0
 Visit http://127.0.0.1:4250/@foo/bar@1.0.0 for details

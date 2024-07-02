@@ -59,7 +59,7 @@ impl<'a> ImportMapBuilder<'a> {
 
   pub fn into_import_map(
     self,
-    original_import_map: Option<&ImportMap>,
+    maybe_original_import_map: Option<&ImportMap>,
   ) -> ImportMap {
     fn get_local_imports(
       new_relative_path: &str,
@@ -99,7 +99,7 @@ impl<'a> ImportMapBuilder<'a> {
 
     let mut import_map = ImportMap::new(self.base_dir.clone());
 
-    if let Some(original_im) = original_import_map {
+    if let Some(original_im) = maybe_original_import_map {
       let original_base_dir = ModuleSpecifier::from_directory_path(
         original_im
           .base_url()
@@ -183,8 +183,8 @@ pub struct BuildImportMapInput<'a> {
   pub modules: &'a [&'a Module],
   pub graph: &'a ModuleGraph,
   pub mappings: &'a Mappings,
-  pub original_import_map: Option<&'a ImportMap>,
-  pub jsx_import_source: Option<&'a JsxImportSourceConfig>,
+  pub maybe_original_import_map: Option<&'a ImportMap>,
+  pub maybe_jsx_import_source: Option<&'a JsxImportSourceConfig>,
   pub resolver: &'a dyn deno_graph::source::Resolver,
   pub parsed_source_cache: &'a ParsedSourceCache,
 }
@@ -197,8 +197,8 @@ pub fn build_import_map(
     modules,
     graph,
     mappings,
-    original_import_map,
-    jsx_import_source,
+    maybe_original_import_map,
+    maybe_jsx_import_source,
     resolver,
     parsed_source_cache,
   } = input;
@@ -212,7 +212,7 @@ pub fn build_import_map(
   }
 
   // add the jsx import source to the destination import map, if mapped in the original import map
-  if let Some(jsx_import_source) = jsx_import_source {
+  if let Some(jsx_import_source) = maybe_jsx_import_source {
     if let Some(specifier_text) = jsx_import_source.maybe_specifier_text() {
       if let Ok(resolved_url) = resolver.resolve(
         &specifier_text,
@@ -228,7 +228,7 @@ pub fn build_import_map(
     }
   }
 
-  Ok(builder.into_import_map(original_import_map).to_json())
+  Ok(builder.into_import_map(maybe_original_import_map).to_json())
 }
 
 fn visit_modules(

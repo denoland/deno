@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_config::package_json::PackageJsonDepValue;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -87,13 +88,22 @@ impl ByonmCliNpmResolver {
       req: &PackageReq,
       pkg_json: &PackageJson,
     ) -> Option<String> {
-      let deps = pkg_json.resolve_local_package_json_version_reqs();
+      let deps = pkg_json.resolve_local_package_json_deps();
       for (key, value) in deps {
         if let Ok(value) = value {
-          if value.name == req.name
-            && value.version_req.intersects(&req.version_req)
-          {
-            return Some(key);
+          match value {
+            PackageJsonDepValue::Req(dep_req) => {
+              if dep_req.name == req.name
+                && dep_req.version_req.intersects(&req.version_req)
+              {
+                return Some(key);
+              }
+            }
+            PackageJsonDepValue::Workspace(_workspace) => {
+              if key == req.name && req.version_req.tag() == Some("workspace") {
+                return Some(key);
+              }
+            }
           }
         }
       }

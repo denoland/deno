@@ -4,5 +4,6 @@
   "imports": {
     "@/": "./",
     "secret_mod/": "./some_mod/"
-  }
+  },
+  "exports": "./mod.ts"
 }

@@ -1,1 +1,4 @@
-error: Workspace member 'foo/bar' is nested within other workspace member 'foo'
+Download http://localhost:4260/chalk
+Download http://localhost:4260/chalk/chalk-5.0.1.tgz
+buzz from foo
+[Function: chalk] createChalk { level: 0 }

@@ -1705,11 +1705,17 @@ fn collect_specifiers_with_test_mode(
 async fn fetch_specifiers_with_test_mode(
   cli_options: &CliOptions,
   file_fetcher: &FileFetcher,
-  files: FilePatterns,
+  member_patterns: impl Iterator<Item = FilePatterns>,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
-  let mut specifiers_with_mode =
-    collect_specifiers_with_test_mode(cli_options, files, doc)?;
+  let mut specifiers_with_mode = member_patterns
+    .map(|files| {
+      collect_specifiers_with_test_mode(cli_options, files.clone(), doc)
+    })
+    .collect::<Result<Vec<_>, _>>()?
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
 
   for (specifier, mode) in &mut specifiers_with_mode {
     let file = file_fetcher
@@ -1731,7 +1737,8 @@ pub async fn run_tests(
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
-  let test_options = cli_options.resolve_test_options(test_flags)?;
+  let workspace_test_options =
+    cli_options.resolve_workspace_test_options(&test_flags);
   let file_fetcher = factory.file_fetcher()?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
@@ -1740,15 +1747,17 @@ pub async fn run_tests(
     Permissions::from_options(&cli_options.permissions_options()?)?;
   let log_level = cli_options.log_level();
 
+  let members_with_test_options =
+    cli_options.resolve_test_options_for_members(&test_flags)?;
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
     cli_options,
     file_fetcher,
-    test_options.files.clone(),
-    &test_options.doc,
+    members_with_test_options.into_iter().map(|(_, v)| v.files),
+    &workspace_test_options.doc,
   )
   .await?;
 
-  if !test_options.allow_none && specifiers_with_mode.is_empty() {
+  if !workspace_test_options.allow_none && specifiers_with_mode.is_empty() {
     return Err(generic_error("No test modules found"));
   }
 
@@ -1761,7 +1770,7 @@ pub async fn run_tests(
   )
   .await?;
 
-  if test_options.no_run {
+  if workspace_test_options.no_run {
     return Ok(());
   }
 
@@ -1787,16 +1796,16 @@ pub async fn run_tests(
           ))
         },
       )?,
-      concurrent_jobs: test_options.concurrent_jobs,
-      fail_fast: test_options.fail_fast,
+      concurrent_jobs: workspace_test_options.concurrent_jobs,
+      fail_fast: workspace_test_options.fail_fast,
       log_level,
-      filter: test_options.filter.is_some(),
-      reporter: test_options.reporter,
-      junit_path: test_options.junit_path,
+      filter: workspace_test_options.filter.is_some(),
+      reporter: workspace_test_options.reporter,
+      junit_path: workspace_test_options.junit_path,
       specifier: TestSpecifierOptions {
-        filter: TestFilter::from_flag(&test_options.filter),
-        shuffle: test_options.shuffle,
-        trace_leaks: test_options.trace_leaks,
+        filter: TestFilter::from_flag(&workspace_test_options.filter),
+        shuffle: workspace_test_options.shuffle,
+        trace_leaks: workspace_test_options.trace_leaks,
       },
     },
   )
@@ -1838,34 +1847,47 @@ pub async fn run_tests_with_watch(
         let factory = CliFactoryBuilder::new()
           .build_from_flags_for_watcher(flags, watcher_communicator.clone())?;
         let cli_options = factory.cli_options();
-        let test_options = cli_options.resolve_test_options(test_flags)?;
+        let workspace_test_options =
+          cli_options.resolve_workspace_test_options(&test_flags);
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        if let Some(set) = &test_options.files.include {
-          let watch_paths = set.base_paths();
-          if !watch_paths.is_empty() {
-            let _ = watcher_communicator.watch_paths(watch_paths);
-          }
-        }
-
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
         let log_level = cli_options.log_level();
         let cli_options = cli_options.clone();
         let module_graph_creator = factory.module_graph_creator().await?;
         let file_fetcher = factory.file_fetcher()?;
-        let test_modules = if test_options.doc {
-          collect_specifiers(
-            test_options.files.clone(),
-            cli_options.vendor_dir_path().map(ToOwned::to_owned),
-            |e| is_supported_test_ext(e.path),
-          )
-        } else {
-          collect_specifiers(
-            test_options.files.clone(),
-            cli_options.vendor_dir_path().map(ToOwned::to_owned),
-            is_supported_test_path_predicate,
-          )
-        }?;
+        let members_with_test_options =
+          cli_options.resolve_test_options_for_members(&test_flags)?;
+        let watch_paths = members_with_test_options
+          .iter()
+          .filter_map(|(_, test_options)| {
+            test_options
+              .files
+              .include
+              .as_ref()
+              .map(|set| set.base_paths())
+          })
+          .flatten()
+          .collect::<Vec<_>>();
+        let _ = watcher_communicator.watch_paths(watch_paths);
+        let test_modules = members_with_test_options
+          .iter()
+          .map(|(_, test_options)| {
+            collect_specifiers(
+              test_options.files.clone(),
+              cli_options.vendor_dir_path().map(ToOwned::to_owned),
+              if workspace_test_options.doc {
+                Box::new(|e: WalkEntry| is_supported_test_ext(e.path))
+                  as Box<dyn Fn(WalkEntry) -> bool>
+              } else {
+                Box::new(is_supported_test_path_predicate)
+              },
+            )
+          })
+          .collect::<Result<Vec<_>, _>>()?
+          .into_iter()
+          .flatten()
+          .collect::<Vec<_>>();
 
         let permissions =
           Permissions::from_options(&cli_options.permissions_options()?)?;
@@ -1898,8 +1920,8 @@ pub async fn run_tests_with_watch(
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
           &cli_options,
           file_fetcher,
-          test_options.files.clone(),
-          &test_options.doc,
+          members_with_test_options.into_iter().map(|(_, v)| v.files),
+          &workspace_test_options.doc,
         )
         .await?
         .into_iter()
@@ -1915,7 +1937,7 @@ pub async fn run_tests_with_watch(
         )
         .await?;
 
-        if test_options.no_run {
+        if workspace_test_options.no_run {
           return Ok(());
         }
 
@@ -1938,16 +1960,16 @@ pub async fn run_tests_with_watch(
                 ))
               },
             )?,
-            concurrent_jobs: test_options.concurrent_jobs,
-            fail_fast: test_options.fail_fast,
+            concurrent_jobs: workspace_test_options.concurrent_jobs,
+            fail_fast: workspace_test_options.fail_fast,
             log_level,
-            filter: test_options.filter.is_some(),
-            reporter: test_options.reporter,
-            junit_path: test_options.junit_path,
+            filter: workspace_test_options.filter.is_some(),
+            reporter: workspace_test_options.reporter,
+            junit_path: workspace_test_options.junit_path,
             specifier: TestSpecifierOptions {
-              filter: TestFilter::from_flag(&test_options.filter),
-              shuffle: test_options.shuffle,
-              trace_leaks: test_options.trace_leaks,
+              filter: TestFilter::from_flag(&workspace_test_options.filter),
+              shuffle: workspace_test_options.shuffle,
+              trace_leaks: workspace_test_options.trace_leaks,
             },
           },
         )

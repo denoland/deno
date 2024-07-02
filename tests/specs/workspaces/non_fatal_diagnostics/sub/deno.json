@@ -1,0 +1,8 @@
+{
+  "lint": {
+    "report": "compact"
+  },
+  "compilerOptions": {
+    "strict": true
+  }
+}
