@@ -541,7 +541,7 @@ fn test_proxy_from_env() {
     Target::Http { dst, auth } => {
       assert_eq!(dst, "http://127.0.0.1:6666");
       assert!(auth.is_none());
-    },
+    }
     _ => panic!("bad target"),
   }
 
@@ -550,7 +550,7 @@ fn test_proxy_from_env() {
     Target::Http { dst, auth } => {
       assert_eq!(dst, "http://127.0.0.1:6666");
       assert!(auth.is_none());
-    },
+    }
     _ => panic!("bad target"),
   }
 
@@ -560,7 +560,7 @@ fn test_proxy_from_env() {
       assert_eq!(dst, "http://127.0.0.1:6666");
       assert!(auth.is_some());
       assert!(auth.unwrap().is_sensitive());
-    },
+    }
     _ => panic!("bad target"),
   }
 
@@ -569,7 +569,7 @@ fn test_proxy_from_env() {
     Target::Socks { dst, auth } => {
       assert_eq!(dst, "socks5://127.0.0.1:6666");
       assert!(auth.is_some());
-    },
+    }
     _ => panic!("bad target"),
   }
 
@@ -578,7 +578,7 @@ fn test_proxy_from_env() {
     Target::Socks { dst, auth } => {
       assert_eq!(dst, "socks5h://localhost:6666");
       assert!(auth.is_some());
-    },
+    }
     _ => panic!("bad target"),
   }
 }
