@@ -5,6 +5,8 @@
 
 "use strict";
 
+import { primordials } from "ext:core/mod.js";
+const { DatePrototypeGetTime } = primordials;
 import { Buffer } from "node:buffer";
 import {
   ERR_FS_EISDIR,
@@ -698,7 +700,7 @@ export function toUnixTimestamp(time, name = "time") {
   }
   if (isDate(time)) {
     // Convert to 123.456 UNIX timestamp
-    return Date.getTime(time) / 1000;
+    return DatePrototypeGetTime(time) / 1000;
   }
   throw new ERR_INVALID_ARG_TYPE(name, ["Date", "Time in seconds"], time);
 }

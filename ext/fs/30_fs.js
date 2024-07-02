@@ -473,8 +473,8 @@ function toUnixTimeFromEpoch(value) {
     ];
   }
 
-  const seconds = value;
-  const nanoseconds = 0;
+  const seconds = MathTrunc(value);
+  const nanoseconds = MathTrunc((value * 1e3) - (seconds * 1e3)) * 1e6;
 
   return [
     seconds,

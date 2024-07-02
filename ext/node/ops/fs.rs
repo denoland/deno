@@ -222,3 +222,54 @@ where
     Err(anyhow!("Unsupported platform."))
   }
 }
+
+#[op2(fast)]
+pub fn op_node_lutimes_sync<P>(
+  state: &mut OpState,
+  #[string] path: &str,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
+) -> Result<(), AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  let path = Path::new(path);
+
+  state
+    .borrow_mut::<P>()
+    .check_write_with_api_name(path, Some("node:fs.lutimes"))?;
+
+  let fs = state.borrow::<FileSystemRc>();
+  fs.lutime_sync(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)?;
+  Ok(())
+}
+
+#[op2(async)]
+pub async fn op_node_lutimes<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+  #[number] atime_secs: i64,
+  #[smi] atime_nanos: u32,
+  #[number] mtime_secs: i64,
+  #[smi] mtime_nanos: u32,
+) -> Result<(), AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  let path = PathBuf::from(path);
+
+  let fs = {
+    let mut state = state.borrow_mut();
+    state
+      .borrow_mut::<P>()
+      .check_write_with_api_name(&path, Some("node:fs.lutimesSync"))?;
+    state.borrow::<FileSystemRc>().clone()
+  };
+
+  fs.lutime_async(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+    .await?;
+
+  Ok(())
+}

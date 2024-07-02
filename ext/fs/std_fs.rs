@@ -274,6 +274,35 @@ impl FileSystem for RealFs {
     .await?
   }
 
+  fn lutime_sync(
+    &self,
+    path: &Path,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
+    let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
+    filetime::set_symlink_file_times(path, atime, mtime).map_err(Into::into)
+  }
+
+  async fn lutime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
+    let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
+    spawn_blocking(move || {
+      filetime::set_symlink_file_times(path, atime, mtime).map_err(Into::into)
+    })
+    .await?
+  }
+
   fn write_file_sync(
     &self,
     path: &Path,
@@ -927,9 +956,14 @@ fn open_with_access_check(
     };
     (*access_check)(true, &path, &options)?;
 
-    // For windows
-    #[allow(unused_mut)]
     let mut opts: fs::OpenOptions = open_options(options);
+    #[cfg(windows)]
+    {
+      // allow opening directories
+      use std::os::windows::fs::OpenOptionsExt;
+      opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
+    }
+
     #[cfg(unix)]
     {
       // Don't follow symlinks on open -- we must always pass fully-resolved files
@@ -943,7 +977,15 @@ fn open_with_access_check(
 
     Ok(opts.open(&path)?)
   } else {
-    let opts = open_options(options);
+    // for unix
+    #[allow(unused_mut)]
+    let mut opts = open_options(options);
+    #[cfg(windows)]
+    {
+      // allow opening directories
+      use std::os::windows::fs::OpenOptionsExt;
+      opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
+    }
     Ok(opts.open(path)?)
   }
 }
