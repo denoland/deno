@@ -7,7 +7,7 @@
     },
     "subdir": {
       "args": "lint",
-      "cwd": "a",
+      "cwd": "package-a",
       "exitCode": 1,
       "output": "a.out"
     }

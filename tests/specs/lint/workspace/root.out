@@ -29,7 +29,7 @@ error[no-explicit-any]: `any` type is not allowed
 
 
 error[no-eval]: `eval` call is not allowed
- --> [WILDLINE]a\a.ts:1:1
+ --> [WILDLINE]package-a[WILDCHAR]a.ts:1:1
   | 
 1 | eval("");
   | ^^^^^^^^
@@ -39,7 +39,7 @@ error[no-eval]: `eval` call is not allowed
 
 
 error[no-await-in-loop]: Unexpected `await` inside a loop.
- --> [WILDLINE]a\a.ts:4:3
+ --> [WILDLINE]package-a[WILDCHAR]a.ts:4:3
   | 
 4 |   await Deno.open("test");
   |   ^^^^^^^^^^^^^^^^^^^^^^^
@@ -49,7 +49,7 @@ error[no-await-in-loop]: Unexpected `await` inside a loop.
 
 
 error[no-explicit-any]: `any` type is not allowed
- --> [WILDLINE]a.ts:9:25
+ --> [WILDLINE]package-a[WILDCHAR]a.ts:9:25
   | 
 9 | export function test(): any {
   |                         ^^^
@@ -59,7 +59,7 @@ error[no-explicit-any]: `any` type is not allowed
 
 
 error[no-eval]: `eval` call is not allowed
- --> [WILDLINE]b.ts:1:1
+ --> [WILDLINE]package-b[WILDCHAR]b.ts:1:1
   | 
 1 | eval("");
   | ^^^^^^^^
