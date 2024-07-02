@@ -706,14 +706,20 @@ mod test {
 
     // make a request to the redirect server
     let text = client
-      .download_text("http://localhost:4546/subdir/redirects/redirect1.js")
+      .download_text(
+        Url::parse("http://localhost:4546/subdir/redirects/redirect1.js")
+          .unwrap(),
+      )
       .await
       .unwrap();
     assert_eq!(text, "export const redirect = 1;\n");
 
     // now make one to the infinite redirects server
     let err = client
-      .download_text("http://localhost:4549/subdir/redirects/redirect1.js")
+      .download_text(
+        Url::parse("http://localhost:4549/subdir/redirects/redirect1.js")
+          .unwrap(),
+      )
       .await
       .err()
       .unwrap();

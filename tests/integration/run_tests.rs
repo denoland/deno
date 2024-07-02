@@ -11,7 +11,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use deno_core::serde_json::json;
 use deno_core::url;
-use deno_fetch::reqwest;
+
 use deno_tls::rustls;
 use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls_pemfile;
