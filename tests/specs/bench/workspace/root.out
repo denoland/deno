@@ -1,0 +1,16 @@
+Check file:///[WILDLINE]/package-a/mod.bench.ts
+Check file:///[WILDLINE]/package-b/mod.bench.ts
+cpu: [WILDLINE]
+runtime: [WILDLINE]
+
+file:///[WILDLINE]/package-a/mod.bench.ts
+benchmark[WILDLINE]
+---[WILDLINE]
+add[WILDLINE]
+
+
+file:///[WILDLINE]/package-b/mod.bench.ts
+benchmark[WILDLINE]
+---[WILDLINE]
+addOne[WILDLINE]
+
