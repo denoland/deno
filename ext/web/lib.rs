@@ -87,7 +87,6 @@ deno_core::extension!(deno_web,
     compression::op_compression_finish,
     op_now<P>,
     op_defer,
-    op_transfer_arraybuffer,
     stream_resource::op_readable_stream_resource_allocate,
     stream_resource::op_readable_stream_resource_allocate_sized,
     stream_resource::op_readable_stream_resource_get_sink,
@@ -422,19 +421,6 @@ fn op_encoding_encode_into_fast(
     Cow::Owned(v) => v[..boundary].encode_utf16().count() as u32,
   };
   out_buf[1] = boundary as u32;
-}
-
-#[op2]
-fn op_transfer_arraybuffer<'a>(
-  scope: &mut v8::HandleScope<'a>,
-  ab: &v8::ArrayBuffer,
-) -> Result<v8::Local<'a, v8::ArrayBuffer>, AnyError> {
-  if !ab.is_detachable() {
-    return Err(type_error("ArrayBuffer is not detachable"));
-  }
-  let bs = ab.get_backing_store();
-  ab.detach(None);
-  Ok(v8::ArrayBuffer::with_backing_store(scope, &bs))
 }
 
 pub fn get_declaration() -> PathBuf {

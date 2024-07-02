@@ -9189,6 +9189,63 @@ fn lsp_redirect_quick_fix() {
 }
 
 #[test]
+fn lsp_lockfile_redirect_resolution() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  temp_dir.write("deno.lock", json!({
+    "version": "3",
+    "redirects": {
+      "http://localhost:4545/subdir/mod1.ts": "http://localhost:4545/subdir/mod2.ts",
+    },
+    "remote": {},
+  }).to_string());
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"http://localhost:4545/subdir/mod1.ts\";\n",
+    },
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+    }),
+  );
+  client.read_diagnostics();
+  let res = client.write_request(
+    "textDocument/definition",
+    json!({
+      "textDocument": { "uri": temp_dir.uri().join("file.ts").unwrap() },
+      "position": { "line": 0, "character": 7 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "targetUri": "deno:/http/localhost%3A4545/subdir/mod2.ts",
+      "targetRange": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 1, "character": 0 },
+      },
+      "targetSelectionRange": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 1, "character": 0 },
+      },
+    }]),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_diagnostics_deprecated() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();

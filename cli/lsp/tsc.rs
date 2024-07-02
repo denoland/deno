@@ -463,7 +463,7 @@ impl TsServer {
     let mut diagnostics_map = IndexMap::with_capacity(specifiers.len());
     let mut specifiers_by_scope = BTreeMap::new();
     for specifier in specifiers {
-      let scope = if specifier.scheme() == "file" {
+      let scope = if snapshot.documents.is_valid_file_referrer(&specifier) {
         snapshot
           .config
           .tree
