@@ -338,6 +338,12 @@ itest!(junit_multiple_test_files {
   exit_code: 1,
 });
 
+itest!(junit_strip_ansi {
+  args: "test --reporter junit test/fail_color.ts",
+  output: "test/junit_strip_ansi.junit.out",
+  exit_code: 1,
+});
+
 #[test]
 fn junit_path() {
   let context = TestContextBuilder::new().use_temp_cwd().build();

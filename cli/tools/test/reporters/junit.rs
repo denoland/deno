@@ -3,6 +3,8 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
 
+use console_static_text::ansi::strip_ansi_codes;
+
 use super::fmt::to_relative_path_or_remote_url;
 use super::*;
 
@@ -31,13 +33,19 @@ impl JunitTestReporter {
     match status {
       TestResult::Ok => quick_junit::TestCaseStatus::success(),
       TestResult::Ignored => quick_junit::TestCaseStatus::skipped(),
-      TestResult::Failed(failure) => quick_junit::TestCaseStatus::NonSuccess {
-        kind: quick_junit::NonSuccessKind::Failure,
-        message: Some(failure.overview()),
-        ty: None,
-        description: Some(failure.detail()),
-        reruns: vec![],
-      },
+      TestResult::Failed(failure) => {
+        let message = failure.overview();
+        let detail = failure.detail();
+        let message_stripped = strip_ansi_codes(message.as_str());
+        let detail_stripped = strip_ansi_codes(detail.as_str());
+        quick_junit::TestCaseStatus::NonSuccess {
+          kind: quick_junit::NonSuccessKind::Failure,
+          message: Some(message_stripped.into()),
+          ty: None,
+          description: Some(detail_stripped.into()),
+          reruns: vec![],
+        }
+      }
       TestResult::Cancelled => quick_junit::TestCaseStatus::NonSuccess {
         kind: quick_junit::NonSuccessKind::Error,
         message: Some("Cancelled".to_string()),
@@ -55,11 +63,15 @@ impl JunitTestReporter {
       TestStepResult::Ok => quick_junit::TestCaseStatus::success(),
       TestStepResult::Ignored => quick_junit::TestCaseStatus::skipped(),
       TestStepResult::Failed(failure) => {
+        let message = failure.overview();
+        let detail = failure.detail();
+        let message_stripped = strip_ansi_codes(message.as_str());
+        let detail_stripped = strip_ansi_codes(detail.as_str());
         quick_junit::TestCaseStatus::NonSuccess {
           kind: quick_junit::NonSuccessKind::Failure,
-          message: Some(failure.overview()),
+          message: Some(message_stripped.into()),
           ty: None,
-          description: Some(failure.detail()),
+          description: Some(detail_stripped.into()),
           reruns: vec![],
         }
       }

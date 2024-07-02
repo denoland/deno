@@ -1,0 +1,24 @@
+Check file:///[WILDCARD]/test/fail_color.ts
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="deno test" tests="3" failures="3" errors="0" time="[WILDCARD]">
+    <testsuite name="./test/fail_color.ts" tests="3" disabled="0" errors="0" failures="3">
+        <testcase name="fail color" classname="./test/fail_color.ts" time="[WILDCARD]" line="1" col="6">
+            <failure message="Uncaught Error: RedMessage: This should be red text">Error: RedMessage: This should be red text
+  throw new Error(`RedMessage: \x1b[31mThis should be red text\x1b[39m`);
+        ^
+    at file:///[WILDCARD]/test/fail_color.ts:2:9</failure>
+        </testcase>
+        <testcase name="step fail color" classname="./test/fail_color.ts" time="[WILDCARD]" line="6" col="6">
+            <failure message="1 test step failed">1 test step failed.</failure>
+        </testcase>
+        <testcase name="step fail color &gt; step" classname="./test/fail_color.ts" time="[WILDCARD]" line="7" col="11">
+            <failure message="Uncaught Error: RedMessage: This should be red text">Error: RedMessage: This should be red text
+    throw new Error(`RedMessage: \x1b[31mThis should be red text\x1b[39m`);
+          ^
+    at file:///[WILDCARD]/test/fail_color.ts:8:11
+    at [WILDCARD]
+    at file:///[WILDCARD]/test/fail_color.ts:7:11</failure>
+        </testcase>
+    </testsuite>
+</testsuites>
+error: Test failed
