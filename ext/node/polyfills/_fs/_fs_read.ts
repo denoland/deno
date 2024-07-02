@@ -26,7 +26,7 @@ type readSyncOptions = {
 type BinaryCallback = (
   err: Error | null,
   bytesRead: number | null,
-  data?: Buffer,
+  data?: Buffer | Uint8Array,
 ) => void;
 type Callback = BinaryCallback;
 
@@ -86,6 +86,7 @@ export function read(
   } else {
     const opt = optOrBufferOrCb as ReadOptions;
     if (
+      opt?.buffer !== undefined && 
       !(opt.buffer instanceof Buffer) && !(opt.buffer instanceof Uint8Array)
     ) {
       throw new ERR_INVALID_ARG_TYPE("buffer", [
@@ -94,10 +95,10 @@ export function read(
         "DataView",
       ], optOrBufferOrCb);
     }
-    offset = opt.offset ?? 0;
-    buffer = opt.buffer ?? Buffer.alloc(16384);
-    length = opt.length ?? buffer.byteLength;
-    position = opt.position ?? null;
+    offset = opt?.offset ?? 0;
+    buffer = opt?.buffer ?? Buffer.alloc(16384);
+    length = opt?.length ?? (buffer.byteLength - offset);
+    position = opt?.position ?? null;
   }
 
   if (position == null) {
@@ -111,18 +112,19 @@ export function read(
 
   (async () => {
     try {
+      const readBuf = new Uint8Array(buffer.buffer, offset, length);
       let nread: number | null;
       if (typeof position === "number" && position >= 0) {
         const currentPosition = await fs.seek(fd, 0, io.SeekMode.Current);
         // We use sync calls below to avoid being affected by others during
         // these calls.
         fs.seekSync(fd, position, io.SeekMode.Start);
-        nread = io.readSync(fd, buffer);
+        nread = io.readSync(fd, readBuf);
         fs.seekSync(fd, currentPosition, io.SeekMode.Start);
       } else {
-        nread = await io.read(fd, buffer);
+        nread = await io.read(fd, readBuf);
       }
-      cb(null, nread ?? 0, Buffer.from(buffer.buffer, offset, length));
+      cb(null, nread ?? 0, buffer);
     } catch (error) {
       cb(error as Error, null);
     }
@@ -166,7 +168,7 @@ export function readSync(
   } else if (offsetOrOpt !== undefined) {
     const opt = offsetOrOpt as readSyncOptions;
     offset = opt.offset ?? 0;
-    length = opt.length ?? buffer.byteLength;
+    length = opt.length ?? (buffer.byteLength - offset);
     position = opt.position ?? null;
   }
 
@@ -183,7 +185,8 @@ export function readSync(
     fs.seekSync(fd, position, io.SeekMode.Start);
   }
 
-  const numberOfBytesRead = io.readSync(fd, buffer);
+  const readBuf = new Uint8Array(buffer.buffer, offset, length);
+  const numberOfBytesRead = io.readSync(fd, readBuf);
 
   if (typeof position === "number" && position >= 0) {
     fs.seekSync(fd, currentPosition, io.SeekMode.Start);
