@@ -50,7 +50,21 @@ pub fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
     "main_test.ts",
     include_str!("./templates/main_test.ts"),
   )?;
-  create_file(&dir, "deno.json", include_str!("./templates/deno.json"))?;
+
+  if init_flags.lib {
+    // Extract the directory name to use as the project name
+    let project_name = dir
+      .file_name()
+      .unwrap_or_else(|| dir.as_os_str())
+      .to_str()
+      .unwrap();
+
+    let template_content = include_str!("./templates/deno_lib.json");
+    let new_content = template_content.replace("{{name}}", project_name);
+    create_file(&dir, "deno.json", &new_content)?;
+  } else {
+    create_file(&dir, "deno.json", include_str!("./templates/deno.json"))?;
+  }
 
   info!("✅ {}", colors::green("Project initialized"));
   info!("");
