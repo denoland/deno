@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::IsStandaloneBinary;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_terminal::colors;
@@ -274,8 +275,10 @@ impl PermissionPrompter for TtyPrompter {
     message: &str,
     name: &str,
     api_name: Option<&str>,
-    is_unary: bool,
+    mut is_unary: bool,
   ) -> PromptResponse {
+    is_unary = is_unary
+      && !IsStandaloneBinary::get_instance(false).is_standalone_binary();
     if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
       return PromptResponse::Deny;
     };
@@ -326,7 +329,11 @@ impl PermissionPrompter for TtyPrompter {
       if let Some(api_name) = api_name.clone() {
         writeln!(&mut output, "├ Requested by `{api_name}` API.").unwrap();
       }
-      let msg = format!("Run again with --allow-{name} to bypass this prompt.");
+      let msg = if !is_unary {
+        format!("Specify the required permissions during compile time using `deno compile --allow-{name}`.")
+      } else {
+        format!("Run again with --allow-{name} to bypass this prompt.")
+      };
       writeln!(&mut output, "├ {}", colors::italic(&msg)).unwrap();
       write!(&mut output, "└ {}", colors::bold("Allow?")).unwrap();
       write!(&mut output, " {opts} > ").unwrap();
