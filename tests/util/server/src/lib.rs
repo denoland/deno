@@ -750,12 +750,14 @@ pub fn wildcard_match_detailed(
           }
           None => {
             let was_wildcard_or_line = was_last_wildcard || was_last_wildline;
-            let mut max_found_index = 0;
+            let mut max_search_text_found_index = 0;
+            let mut max_current_text_found_index = 0;
             for (index, _) in search_text.char_indices() {
               let sub_string = &search_text[..index];
               if let Some(found_index) = current_text.find(sub_string) {
                 if was_wildcard_or_line || found_index == 0 {
-                  max_found_index = index;
+                  max_search_text_found_index = index;
+                  max_current_text_found_index = found_index;
                 } else {
                   break;
                 }
@@ -763,11 +765,11 @@ pub fn wildcard_match_detailed(
                 break;
               }
             }
-            if !was_wildcard_or_line && max_found_index > 0 {
+            if !was_wildcard_or_line && max_search_text_found_index > 0 {
               output_lines.push(format!(
                 "<FOUND>{}</FOUND>",
                 colors::gray(annotate_whitespace(
-                  &search_text[..max_found_index]
+                  &search_text[..max_search_text_found_index]
                 ))
               ));
             }
@@ -777,18 +779,19 @@ pub fn wildcard_match_detailed(
               if was_wildcard_or_line {
                 search_text
               } else {
-                &search_text[max_found_index..]
+                &search_text[max_search_text_found_index..]
               },
             )));
-            if was_wildcard_or_line && max_found_index > 0 {
+            if was_wildcard_or_line && max_search_text_found_index > 0 {
               output_lines.push(format!(
                 "==== MAX FOUND ====\n{}",
                 colors::red(annotate_whitespace(
-                  &search_text[..max_found_index]
+                  &search_text[..max_search_text_found_index]
                 ))
               ));
             }
-            let actual_next_text = &current_text[max_found_index..];
+            let actual_next_text =
+              &current_text[max_current_text_found_index..];
             let max_next_text_len = 40;
             let next_text_len =
               std::cmp::min(max_next_text_len, actual_next_text.len());
