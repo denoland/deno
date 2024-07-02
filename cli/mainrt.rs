@@ -22,6 +22,7 @@ mod util;
 mod version;
 mod worker;
 
+use crate::args::load_env_variables_from_env_file;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -79,6 +80,8 @@ fn main() {
     match standalone {
       Ok(Some(future)) => {
         let (metadata, eszip) = future.await?;
+        util::logger::init(metadata.log_level);
+        load_env_variables_from_env_file(metadata.env_file.as_ref());
         let exit_code = standalone::run(eszip, metadata).await?;
         std::process::exit(exit_code);
       }
