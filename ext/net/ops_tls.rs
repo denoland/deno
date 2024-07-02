@@ -299,7 +299,8 @@ where
   };
 
   {
-    let host = NetPermissionHost::from_host_and_maybe_port(hostname, Some(0))?;
+    let host =
+      NetPermissionHost::from_host_and_maybe_port(hostname.as_str(), Some(0))?;
     let mut s = state.borrow_mut();
     let permissions = s.borrow_mut::<NP>();
     permissions.check_net(&host, "Deno.startTls()")?;
