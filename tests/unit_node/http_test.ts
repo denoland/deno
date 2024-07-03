@@ -1200,7 +1200,9 @@ Deno.test("[node/http] http.request() post streaming body works", async () => {
   });
 
   const deferred = Promise.withResolvers<void>();
-  const timeout = setTimeout(() => {deferred.reject(new Error("timeout"))}, 5000);
+  const timeout = setTimeout(() => {
+    deferred.reject(new Error("timeout"));
+  }, 5000);
   server.listen(0, () => {
     // deno-lint-ignore no-explicit-any
     const port = (server.address() as any).port;
