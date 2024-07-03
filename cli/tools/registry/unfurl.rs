@@ -92,8 +92,11 @@ impl<'a> SpecifierUnfurler<'a> {
               None
             }
           },
-          Err(_err) => {
-            // todo(dsherret): this should be surfaced somehow
+          Err(err) => {
+            log::warn!(
+              "Ignoring failed to resolve package.json dependency. {:#}",
+              err
+            );
             None
           }
         },

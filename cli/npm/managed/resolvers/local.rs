@@ -484,7 +484,7 @@ async fn sync_resolution_with_fs(
 
   // 7. Create symlinks for the workspace packages
   {
-    // todo(dsherret): this is not exactly correct because it should
+    // todo(#24419): this is not exactly correct because it should
     // install correctly for a workspace (potentially in sub directories),
     // but this is good enough for a first pass
     for workspace in pkg_json_deps_provider.workspace_pkgs() {

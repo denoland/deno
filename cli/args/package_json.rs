@@ -13,7 +13,7 @@ pub struct InstallNpmWorkspacePkg {
   pub pkg_dir: PathBuf,
 }
 
-// todo(dsherret): this is not correct, but it's good enough for now.
+// todo(#24419): this is not correct, but it's good enough for now.
 // We need deno_npm to be able to understand workspace packages and
 // then have a way to properly lay them out on the file system
 #[derive(Debug, Default)]

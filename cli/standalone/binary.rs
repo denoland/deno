@@ -675,8 +675,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             builder.add_dir_recursive(&folder)?;
           }
 
-          // flatten all the registries folders into a single "node_modules/localhost" folder
-          // that will be used by deno_compile when loading the npm cache
+          // Flatten all the registries folders into a single "node_modules/localhost" folder
+          // that will be used by denort when loading the npm cache. This avoids us exposing
+          // the user's private registry information and means we don't have to bother
+          // serializing all the different registry config into the binary.
           builder.with_root_dir(|root_dir| {
             root_dir.name = "node_modules".to_string();
             let mut new_entries = Vec::with_capacity(root_dir.entries.len());

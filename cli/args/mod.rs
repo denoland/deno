@@ -870,40 +870,44 @@ impl CliOptions {
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
-    let additional_config_file_names: &[&'static str] =
-      if matches!(flags.subcommand, DenoSubcommand::Publish(..)) {
-        &["jsr.json", "jsr.jsonc"]
-      } else {
-        &[]
+    let config_fs_adapter = DenoConfigFsAdapter::new(&RealFs);
+    let resolve_workspace_discover_options = || {
+      let additional_config_file_names: &'static [&'static str] =
+        if matches!(flags.subcommand, DenoSubcommand::Publish(..)) {
+          &["jsr.json", "jsr.jsonc"]
+        } else {
+          &[]
+        };
+      let config_parse_options = deno_config::ConfigParseOptions {
+        include_task_comments: matches!(
+          flags.subcommand,
+          DenoSubcommand::Task(..)
+        ),
       };
-    let config_parse_options = deno_config::ConfigParseOptions {
-      include_task_comments: matches!(
-        flags.subcommand,
-        DenoSubcommand::Task(..)
-      ),
+      let discover_pkg_json = flags.config_flag
+        != deno_config::ConfigFlag::Disabled
+        && !flags.no_npm
+        && !has_flag_env_var("DENO_NO_PACKAGE_JSON");
+      if !discover_pkg_json {
+        log::debug!("package.json auto-discovery is disabled");
+      }
+      WorkspaceDiscoverOptions {
+        fs: &config_fs_adapter,
+        pkg_json_cache: Some(
+          &deno_runtime::deno_node::PackageJsonThreadLocalCache,
+        ),
+        config_parse_options,
+        additional_config_file_names,
+        discover_pkg_json,
+      }
     };
-    let discover_pkg_json = flags.config_flag
-      != deno_config::ConfigFlag::Disabled
-      && !flags.no_npm
-      && !has_flag_env_var("DENO_NO_PACKAGE_JSON");
-    if !discover_pkg_json {
-      log::debug!("package.json auto-discovery is disabled");
-    }
 
     let workspace = match &flags.config_flag {
       deno_config::ConfigFlag::Discover => {
         if let Some(start_dirs) = flags.config_path_args(&initial_cwd) {
           Workspace::discover(
             WorkspaceDiscoverStart::Dirs(&start_dirs),
-            &WorkspaceDiscoverOptions {
-              fs: &DenoConfigFsAdapter::new(&RealFs),
-              pkg_json_cache: Some(
-                &deno_runtime::deno_node::PackageJsonThreadLocalCache,
-              ),
-              config_parse_options,
-              additional_config_file_names,
-              discover_pkg_json,
-            },
+            &resolve_workspace_discover_options(),
           )?
         } else {
           Workspace::empty(Arc::new(
@@ -915,15 +919,7 @@ impl CliOptions {
         let config_path = normalize_path(initial_cwd.join(path));
         Workspace::discover(
           WorkspaceDiscoverStart::ConfigFile(&config_path),
-          &WorkspaceDiscoverOptions {
-            fs: &DenoConfigFsAdapter::new(&RealFs),
-            pkg_json_cache: Some(
-              &deno_runtime::deno_node::PackageJsonThreadLocalCache,
-            ),
-            config_parse_options,
-            additional_config_file_names,
-            discover_pkg_json,
-          },
+          &resolve_workspace_discover_options(),
         )?
       }
       deno_config::ConfigFlag::Disabled => Workspace::empty(Arc::new(
@@ -932,9 +928,6 @@ impl CliOptions {
     };
 
     for diagnostic in workspace.diagnostics() {
-      if diagnostic.kind.is_fatal() {
-        return Err(diagnostic.into());
-      }
       log::warn!("{}", colors::yellow(diagnostic));
     }
 
@@ -956,7 +949,7 @@ impl CliOptions {
       root_folder.pkg_json.as_deref(),
     )?;
 
-    log::debug!("Finished config discovery.");
+    log::debug!("Finished config loading.");
 
     Self::new(
       flags,
