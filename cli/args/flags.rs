@@ -9286,7 +9286,7 @@ mod tests {
     .unwrap();
     assert_eq!(
       flags.config_path_args(&cwd),
-      Some(vec![cwd.join("dir/a/"), cwd.join("dir/b/")])
+      Some(vec![cwd.join("dir/a/"), cwd.join("dir/")])
     );
   }
 

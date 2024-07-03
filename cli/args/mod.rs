@@ -955,6 +955,9 @@ impl CliOptions {
       root_folder.deno_json.as_deref(),
       root_folder.pkg_json.as_deref(),
     )?;
+
+    log::debug!("Finished config discovery.");
+
     Self::new(
       flags,
       initial_cwd,
