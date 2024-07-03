@@ -349,4 +349,29 @@ impl FileSystem for DenoCompileFileSystem {
       .utime_async(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
       .await
   }
+
+  fn lutime_sync(
+    &self,
+    path: &Path,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.lutime_sync(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+  }
+  async fn lutime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs
+      .lutime_async(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+      .await
+  }
 }

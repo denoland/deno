@@ -221,6 +221,23 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     mtime_nanos: u32,
   ) -> FsResult<()>;
 
+  fn lutime_sync(
+    &self,
+    path: &Path,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()>;
+  async fn lutime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()>;
+
   fn write_file_sync(
     &self,
     path: &Path,
