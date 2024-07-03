@@ -1826,7 +1826,7 @@ Deno.test(
         await fetch(`http://${addr}/`);
       },
       TypeError,
-      "error sending request",
+      "client error",
     );
 
     listener.close();
@@ -1882,7 +1882,7 @@ Deno.test(
         await response.arrayBuffer();
       },
       Error,
-      "error decoding response body",
+      "body",
     );
 
     listener.close();
