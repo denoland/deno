@@ -466,6 +466,10 @@ async fn resolve_shim_data(
     executable_args.push("--cached-only".to_string());
   }
 
+  if flags.frozen_lockfile {
+    executable_args.push("--frozen".to_string());
+  }
+
   if resolve_no_prompt(&flags.permissions) {
     executable_args.push("--no-prompt".to_string());
   }

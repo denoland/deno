@@ -705,21 +705,13 @@ pub fn get_root_cert_store(
   for store in ca_stores.iter() {
     match store.as_str() {
       "mozilla" => {
-        root_cert_store.add_trust_anchors(
-          webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
-            rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-              ta.subject,
-              ta.spki,
-              ta.name_constraints,
-            )
-          }),
-        );
+        root_cert_store.extend(webpki_roots::TLS_SERVER_ROOTS.to_vec());
       }
       "system" => {
         let roots = load_native_certs().expect("could not load platform certs");
         for root in roots {
           root_cert_store
-            .add(&rustls::Certificate(root.0))
+            .add(rustls::pki_types::CertificateDer::from(root.0))
             .expect("Failed to add platform cert to root cert store");
         }
       }
@@ -743,17 +735,17 @@ pub fn get_root_cert_store(
           RootCertStoreLoadError::CaFileOpenError(err.to_string())
         })?;
         let mut reader = BufReader::new(certfile);
-        rustls_pemfile::certs(&mut reader)
+        rustls_pemfile::certs(&mut reader).collect::<Result<Vec<_>, _>>()
       }
       CaData::Bytes(data) => {
         let mut reader = BufReader::new(Cursor::new(data));
-        rustls_pemfile::certs(&mut reader)
+        rustls_pemfile::certs(&mut reader).collect::<Result<Vec<_>, _>>()
       }
     };
 
     match result {
       Ok(certs) => {
-        root_cert_store.add_parsable_certificates(&certs);
+        root_cert_store.add_parsable_certificates(certs);
       }
       Err(e) => {
         return Err(RootCertStoreLoadError::FailedAddPemFile(e.to_string()));
@@ -1781,14 +1773,28 @@ impl CliOptions {
       .map(|c| c.json.unstable.clone())
       .unwrap_or_default();
 
-    from_config_file.extend_from_slice(&self.flags.unstable_config.features);
+    self
+      .flags
+      .unstable_config
+      .features
+      .iter()
+      .for_each(|feature| {
+        if !from_config_file.contains(feature) {
+          from_config_file.push(feature.to_string());
+        }
+      });
 
     if *DENO_FUTURE {
-      from_config_file.extend_from_slice(&[
+      let future_features = [
         deno_runtime::deno_ffi::UNSTABLE_FEATURE_NAME.to_string(),
         deno_runtime::deno_fs::UNSTABLE_FEATURE_NAME.to_string(),
         deno_runtime::deno_webgpu::UNSTABLE_FEATURE_NAME.to_string(),
-      ]);
+      ];
+      future_features.iter().for_each(|future_feature| {
+        if !from_config_file.contains(future_feature) {
+          from_config_file.push(future_feature.to_string());
+        }
+      });
     }
 
     from_config_file

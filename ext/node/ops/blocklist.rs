@@ -22,7 +22,7 @@ pub struct BlockListResource {
   blocklist: RefCell<BlockList>,
 }
 
-impl deno_core::GcResource for BlockListResource {}
+impl deno_core::GarbageCollected for BlockListResource {}
 
 #[derive(Serialize)]
 struct SocketAddressSerialization(String, String);
