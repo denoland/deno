@@ -3522,7 +3522,7 @@ Deno.test(
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(clientError.message.includes("error sending request for url"));
+      assert(clientError.message.includes("client error"));
     } finally {
       ac.abort();
       await server.finished;
@@ -3570,7 +3570,7 @@ Deno.test({
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(clientError.message.includes("error sending request for url"));
+      assert(clientError.message.includes("client error"));
     } finally {
       ac.abort();
       await server.finished;
