@@ -892,9 +892,9 @@ impl CliOptions {
 
     let workspace = match &flags.config_flag {
       deno_config::ConfigFlag::Discover => {
-        if let Some(start_dir) = flags.config_path_arg(&initial_cwd) {
+        if let Some(start_dirs) = flags.config_path_args(&initial_cwd) {
           Workspace::discover(
-            WorkspaceDiscoverStart::Dir(&start_dir),
+            WorkspaceDiscoverStart::Dirs(&start_dirs),
             &WorkspaceDiscoverOptions {
               fs: &DenoConfigFsAdapter::new(&RealFs),
               pkg_json_cache: Some(

@@ -36,6 +36,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::args::resolve_no_prompt;
+use crate::util::collections::CheckedSet;
 use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
@@ -862,28 +863,41 @@ impl Flags {
     args
   }
 
-  /// Extract the directory path the config file should be discovered from.
+  /// Extract the directory paths the config file should be discovered from.
   ///
   /// Returns `None` if the config file should not be auto-discovered.
-  pub fn config_path_arg(&self, current_dir: &Path) -> Option<PathBuf> {
+  pub fn config_path_args(&self, current_dir: &Path) -> Option<Vec<PathBuf>> {
+    fn resolve_multiple_files(
+      files: &[String],
+      current_dir: &Path,
+    ) -> Vec<PathBuf> {
+      let mut seen = CheckedSet::with_capacity(files.len());
+      let result = files
+        .iter()
+        .filter_map(|p| {
+          let path = normalize_path(current_dir.join(p).parent()?);
+          if seen.insert(&path) {
+            Some(path)
+          } else {
+            None
+          }
+        })
+        .collect::<Vec<_>>();
+      if result.is_empty() {
+        vec![current_dir.to_path_buf()]
+      } else {
+        result
+      }
+    }
+
     use DenoSubcommand::*;
     match &self.subcommand {
-      Fmt(FmtFlags { files, .. }) => Some(
-        files
-          .include
-          .iter()
-          .filter_map(|p| Some(normalize_path(current_dir.join(p).parent()?)))
-          .next()
-          .unwrap_or_else(|| current_dir.to_path_buf()),
-      ),
-      Lint(LintFlags { files, .. }) => Some(
-        files
-          .include
-          .iter()
-          .filter_map(|p| Some(normalize_path(current_dir.join(p).parent()?)))
-          .next()
-          .unwrap_or_else(|| current_dir.to_path_buf()),
-      ),
+      Fmt(FmtFlags { files, .. }) => {
+        Some(resolve_multiple_files(&files.include, current_dir))
+      }
+      Lint(LintFlags { files, .. }) => {
+        Some(resolve_multiple_files(&files.include, current_dir))
+      }
       Run(RunFlags { script, .. })
       | Compile(CompileFlags {
         source_file: script,
@@ -894,9 +908,9 @@ impl Flags {
             || module_specifier.scheme() == "npm"
           {
             if let Ok(p) = module_specifier.to_file_path() {
-              Some(p.parent().unwrap().to_path_buf())
+              Some(vec![p.parent().unwrap().to_path_buf()])
             } else {
-              Some(current_dir.to_path_buf())
+              Some(vec![current_dir.to_path_buf()])
             }
           } else {
             // When the entrypoint doesn't have file: scheme (it's the remote
@@ -904,7 +918,7 @@ impl Flags {
             None
           }
         } else {
-          Some(current_dir.to_path_buf())
+          Some(vec![current_dir.to_path_buf()])
         }
       }
       Task(TaskFlags {
@@ -914,11 +928,11 @@ impl Flags {
         // attempt to resolve the config file from the task subcommand's
         // `--cwd` when specified
         match canonicalize_path(&PathBuf::from(path)) {
-          Ok(path) => Some(path),
-          Err(_) => Some(current_dir.to_path_buf()),
+          Ok(path) => Some(vec![path]),
+          Err(_) => Some(vec![current_dir.to_path_buf()]),
         }
       }
-      _ => Some(current_dir.to_path_buf()),
+      _ => Some(vec![current_dir.to_path_buf()]),
     }
   }
 
@@ -9236,30 +9250,44 @@ mod tests {
   fn test_config_path_args() {
     let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
     let cwd = std::env::current_dir().unwrap();
-    assert_eq!(flags.config_path_arg(&cwd), Some(cwd.clone()));
+
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
 
     let flags = flags_from_vec(svec!["deno", "run", "sub_dir/foo.js"]).unwrap();
     let cwd = std::env::current_dir().unwrap();
     assert_eq!(
-      flags.config_path_arg(&cwd),
-      Some(cwd.join("sub_dir").clone())
+      flags.config_path_args(&cwd),
+      Some(vec![cwd.join("sub_dir").clone()])
     );
 
     let flags =
       flags_from_vec(svec!["deno", "run", "https://example.com/foo.js"])
         .unwrap();
-    assert_eq!(flags.config_path_arg(&cwd), None);
+    assert_eq!(flags.config_path_args(&cwd), None);
 
     let flags =
-      flags_from_vec(svec!["deno", "lint", "dir/a.js", "dir/b.js"]).unwrap();
-    assert_eq!(flags.config_path_arg(&cwd), Some(cwd.join("dir")));
+      flags_from_vec(svec!["deno", "lint", "dir/a/a.js", "dir/b/b.js"])
+        .unwrap();
+    assert_eq!(
+      flags.config_path_args(&cwd),
+      Some(vec![cwd.join("dir/a/"), cwd.join("dir/b/")])
+    );
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
-    assert_eq!(flags.config_path_arg(&cwd), Some(cwd.clone()));
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
 
-    let flags =
-      flags_from_vec(svec!["deno", "fmt", "dir/a.js", "dir/b.js"]).unwrap();
-    assert_eq!(flags.config_path_arg(&cwd), Some(cwd.join("dir")));
+    let flags = flags_from_vec(svec![
+      "deno",
+      "fmt",
+      "dir/a/a.js",
+      "dir/a/a2.js",
+      "dir/b.js"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags.config_path_args(&cwd),
+      Some(vec![cwd.join("dir/a/"), cwd.join("dir/b/")])
+    );
   }
 
   #[test]
