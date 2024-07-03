@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::env::current_exe;
 use std::ffi::OsString;
 use std::fs;
@@ -26,6 +27,7 @@ use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::NpmSystemInfo;
+use deno_runtime::deno_tls::rustls::crypto::hash::Hash;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReqSpecifierParseError;
@@ -142,7 +144,7 @@ pub struct Metadata {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub maybe_import_map: Option<(Url, String)>,
   pub entrypoint: ModuleSpecifier,
-  pub env_file: Option<String>,
+  pub env_vars_from_env_file: HashMap<String, String>,
   pub node_modules: Option<NodeModules>,
   pub disable_deprecated_api_warning: bool,
   pub unstable_config: UnstableConfig,
@@ -618,6 +620,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         }
       };
 
+    let mut env_vars_from_env_file: HashMap<String, String> = HashMap::new();
+    if let Some(env_filename) = cli_options.get_env_file_name() {
+      if let Ok(env_vars_found) = get_file_env_vars(env_filename) {
+        env_vars_found.iter().for_each(|env_var| {
+          env_vars_from_env_file
+            .insert(env_var.0.to_string(), env_var.1.to_string());
+        });
+      }
+    }
+
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
       seed: cli_options.seed(),
@@ -631,7 +643,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       ca_stores: cli_options.ca_stores().clone(),
       ca_data,
       entrypoint: entrypoint.clone(),
-      env_file: cli_options.get_env_file_name(),
+      env_vars_from_env_file,
       maybe_import_map,
       node_modules,
       disable_deprecated_api_warning: cli_options
@@ -702,6 +714,22 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     }
   }
+}
+
+/// This function returns the environment variables specified in the passed
+/// environment file, as a hashmap wrapped in a Result object.
+fn get_file_env_vars(
+  filename: String,
+) -> Result<HashMap<String, String>, dotenvy::Error> {
+  let mut file_env_vars = HashMap::new();
+  for item in dotenvy::from_filename_iter(filename)? {
+    if item.is_err() {
+      return Ok(file_env_vars);
+    }
+    let (key, val) = item.unwrap();
+    file_env_vars.insert(key, val);
+  }
+  Ok(file_env_vars)
 }
 
 /// This function sets the subsystem field in the PE header to 2 (GUI subsystem)

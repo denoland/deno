@@ -22,7 +22,6 @@ mod util;
 mod version;
 mod worker;
 
-use crate::args::load_env_variables_from_env_file;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -32,6 +31,7 @@ pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::env;
 use std::env::current_exe;
 
@@ -71,6 +71,14 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   }
 }
 
+fn load_env_vars(env_vars: &HashMap<String, String>) {
+  env_vars.iter().for_each(|env_var| {
+    if env::var(env_var.0).is_err() {
+      std::env::set_var(env_var.0, env_var.1);
+    }
+  })
+}
+
 fn main() {
   let args: Vec<_> = env::args_os().collect();
   let current_exe_path = current_exe().unwrap();
@@ -81,7 +89,7 @@ fn main() {
       Ok(Some(future)) => {
         let (metadata, eszip) = future.await?;
         util::logger::init(metadata.log_level);
-        load_env_variables_from_env_file(metadata.env_file.as_ref());
+        load_env_vars(&metadata.env_vars_from_env_file);
         let exit_code = standalone::run(eszip, metadata).await?;
         std::process::exit(exit_code);
       }
