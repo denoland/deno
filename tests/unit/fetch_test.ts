@@ -688,7 +688,7 @@ Deno.test(
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip, br\r\n",
+      "accept-encoding: gzip,br\r\n",
       `host: ${addr}\r\n\r\n`,
     ].join("");
     assertEquals(actual, expected);
@@ -720,7 +720,7 @@ Deno.test(
       "accept: text/html\r\n",
       "accept-language: en-US\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip, br\r\n",
+      "accept-encoding: gzip,br\r\n",
       `host: ${addr}\r\n\r\n`,
     ].join("");
     assertEquals(actual, expected);
@@ -757,7 +757,7 @@ Deno.test(
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip, br\r\n",
+      "accept-encoding: gzip,br\r\n",
       `host: ${addr}\r\n`,
       `\r\n`,
       body,
@@ -796,7 +796,7 @@ Deno.test(
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip, br\r\n",
+      "accept-encoding: gzip,br\r\n",
       `host: ${addr}\r\n`,
       `\r\n`,
       bodyStr,
@@ -829,7 +829,7 @@ Deno.test(
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip, br\r\n",
+      "accept-encoding: gzip,br\r\n",
       `host: ${addr}\r\n\r\n`,
     ].join("");
     assertEquals(actual, expected);
@@ -861,7 +861,7 @@ Deno.test(
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip, br\r\n\r\n",
+      "accept-encoding: gzip,br\r\n\r\n",
     ].join("");
     assertEquals(actual, expected);
   },
@@ -1228,7 +1228,7 @@ Deno.test(
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip, br\r\n",
+      "accept-encoding: gzip,br\r\n",
       `host: ${addr}\r\n`,
       `transfer-encoding: chunked\r\n\r\n`,
       "B\r\n",
