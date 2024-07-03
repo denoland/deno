@@ -7840,7 +7840,7 @@ mod tests {
         unsafely_ignore_certificate_errors: Some(svec![
           "deno.land",
           "localhost",
-          "::",
+          "[::]",
           "127.0.0.1",
           "[::1]",
           "1.2.3.4"
@@ -7868,7 +7868,7 @@ mod tests {
         unsafely_ignore_certificate_errors: Some(svec![
           "deno.land",
           "localhost",
-          "::",
+          "[::]",
           "127.0.0.1",
           "[::1]",
           "1.2.3.4"
