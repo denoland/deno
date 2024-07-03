@@ -541,28 +541,6 @@ pub async fn op_fetch_send(
   let res = match request.future.await {
     Ok(Ok(res)) => res,
     Ok(Err(err)) => {
-      // We're going to try and rescue the error cause from a stream and return it from this fetch.
-      // If any error in the chain is a reqwest body error, return that as a special result we can use to
-      // reconstruct an error chain (eg: `new TypeError(..., { cause: new Error(...) })`).
-      // TODO(mmastrac): it would be a lot easier if we just passed a v8::Global through here instead
-      let mut err_ref: &dyn std::error::Error = err.as_ref();
-      while let Some(err) = std::error::Error::source(err_ref) {
-        // TODO(sean)
-        if let Some(err) = err.downcast_ref::<hyper::Error>() {
-          if true {
-            //err.is_body() {
-            // Extracts the next error cause and uses that for the message
-            if let Some(err) = std::error::Error::source(err) {
-              return Ok(FetchResponse {
-                error: Some(err.to_string()),
-                ..Default::default()
-              });
-            }
-          }
-        }
-        err_ref = err;
-      }
-
       return Err(type_error(err.to_string()));
     }
     Err(_) => return Err(type_error("request was cancelled")),
