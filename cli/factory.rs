@@ -374,6 +374,7 @@ impl CliFactory {
                   if config.package_json_deps.is_empty()
                     && config.dependencies.is_empty()
                   {
+                    // exclude empty workspace members
                     return None;
                   }
                   config

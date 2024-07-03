@@ -1,5 +1,6 @@
 {
   "workspace": [
-    "./pkg"
+    "./pkg",
+    "./pkg-no-deps"
   ]
 }
