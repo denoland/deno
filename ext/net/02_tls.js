@@ -17,7 +17,6 @@ import {
   op_tls_start,
 } from "ext:core/ops";
 const {
-  Number,
   ObjectDefineProperty,
   TypeError,
   SymbolFor,
