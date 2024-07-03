@@ -4441,7 +4441,7 @@ fn op_resolve_inner(
   let specifiers = state
     .state_snapshot
     .documents
-    .resolve(&args.specifiers, &referrer)
+    .resolve(&args.specifiers, &referrer, state.last_scope.as_ref())
     .into_iter()
     .map(|o| {
       o.map(|(s, mt)| {
@@ -4507,29 +4507,13 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
   let scopes_with_node_specifier =
     state.state_snapshot.documents.scopes_with_node_specifier();
   if scopes_with_node_specifier.contains(&None) {
-    let req_ref =
-      deno_semver::npm::NpmPackageReqReference::from_str("npm:@types/node")
-        .unwrap();
-    if let Some((specifier, _)) = state.state_snapshot.resolver.npm_to_file_url(
-      &req_ref,
-      &ModuleSpecifier::parse("file:///").unwrap(),
-      None,
-    ) {
-      result.unscoped.insert(specifier.to_string());
-    }
+    result
+      .unscoped
+      .insert("asset:///node_types.d.ts".to_string());
   }
   for (scope, script_names) in &mut result.by_scope {
     if scopes_with_node_specifier.contains(&Some(scope.clone())) {
-      let req_ref =
-        deno_semver::npm::NpmPackageReqReference::from_str("npm:@types/node")
-          .unwrap();
-      if let Some((specifier, _)) = state
-        .state_snapshot
-        .resolver
-        .npm_to_file_url(&req_ref, scope, Some(scope))
-      {
-        script_names.insert(specifier.to_string());
-      }
+      script_names.insert("asset:///node_types.d.ts".to_string());
     }
   }
 
