@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::collections::VecDeque;
 use std::env::current_exe;
 use std::ffi::OsString;
 use std::fs;
@@ -31,6 +32,7 @@ use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReqSpecifierParseError;
 use eszip::EszipRelativeFileBaseUrl;
+use indexmap::IndexMap;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
@@ -46,6 +48,8 @@ use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
+use crate::standalone::virtual_fs::VfsEntry;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
@@ -670,21 +674,80 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)?;
             builder.add_dir_recursive(&folder)?;
           }
-          // overwrite the root directory's name to obscure the user's registry url
-          builder.set_root_dir_name("node_modules".to_string());
+
+          // flatten all the registries folders into a single "node_modules/localhost" folder
+          // that will be used by deno_compile when loading the npm cache
+          builder.with_root_dir(|root_dir| {
+            root_dir.name = "node_modules".to_string();
+            let mut new_entries = Vec::with_capacity(root_dir.entries.len());
+            let mut localhost_entries = IndexMap::new();
+            for entry in std::mem::take(&mut root_dir.entries) {
+              match entry {
+                VfsEntry::Dir(dir) => {
+                  for entry in dir.entries {
+                    log::debug!(
+                      "Flattening {} into node_modules",
+                      entry.name()
+                    );
+                    if let Some(existing) =
+                      localhost_entries.insert(entry.name().to_string(), entry)
+                    {
+                      panic!(
+                        "Unhandled scenario where a duplicate entry was found: {:?}",
+                        existing
+                      );
+                    }
+                  }
+                }
+                VfsEntry::File(_) | VfsEntry::Symlink(_) => {
+                  new_entries.push(entry);
+                }
+              }
+            }
+            new_entries.push(VfsEntry::Dir(VirtualDirectory {
+              name: "localhost".to_string(),
+              entries: localhost_entries.into_iter().map(|(_, v)| v).collect(),
+            }));
+            // needs to be sorted by name
+            new_entries.sort_by(|a, b| a.name().cmp(b.name()));
+            root_dir.entries = new_entries;
+          });
+
           Ok(builder)
         }
       }
-      InnerCliNpmResolverRef::Byonm(npm_resolver) => {
+      InnerCliNpmResolverRef::Byonm(_) => {
         maybe_warn_different_system(&self.npm_system_info);
-        // the root_node_modules directory will always exist for byonm
-        let node_modules_path = npm_resolver.root_node_modules_path().unwrap();
         let mut builder = VfsBuilder::new(root_path.to_path_buf())?;
         for pkg_json in cli_options.workspace.package_jsons() {
           builder.add_file_at_path(&pkg_json.path)?;
         }
-        if node_modules_path.exists() {
-          builder.add_dir_recursive(node_modules_path)?;
+        // traverse and add all the node_modules directories in the workspace
+        let mut pending_dirs = VecDeque::new();
+        pending_dirs.push_back(
+          cli_options
+            .workspace
+            .root_folder()
+            .0
+            .to_file_path()
+            .unwrap(),
+        );
+        while let Some(pending_dir) = pending_dirs.pop_front() {
+          let entries = fs::read_dir(&pending_dir).with_context(|| {
+            format!("Failed reading: {}", pending_dir.display())
+          })?;
+          for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_dir() {
+              continue;
+            }
+            if path.ends_with("node_modules") {
+              builder.add_dir_recursive(&path)?;
+            } else {
+              pending_dirs.push_back(path);
+            }
+          }
         }
         Ok(builder)
       }

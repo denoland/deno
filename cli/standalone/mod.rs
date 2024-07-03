@@ -51,6 +51,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -468,9 +469,15 @@ pub async fn run(
               // this is only used for installing packages, which isn't necessary with deno compile
               PackageJsonInstallDepsProvider::empty(),
             ),
-            // Packages from different registries are already inlined in the ESZip,
-            // so no need to create actual `.npmrc` configuration.
-            npmrc: create_default_npmrc(),
+            // create an npmrc that uses the fake npm_registry_url to resolve packages
+            npmrc: Arc::new(ResolvedNpmRc {
+              default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
+                registry_url: npm_registry_url.clone(),
+                config: Default::default(),
+              },
+              scopes: Default::default(),
+              registry_configs: Default::default(),
+            }),
           },
         ))
         .await?;

@@ -93,6 +93,7 @@ pub async fn compile(
         .iter(),
     ),
   );
+  log::debug!("Binary root dir: {}", root_dir_url);
   let root_dir_url = EszipRelativeFileBaseUrl::new(&root_dir_url);
   let eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
     graph,
