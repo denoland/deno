@@ -23,6 +23,7 @@ use deno_lockfile::Lockfile;
 pub struct CliLockfile {
   lockfile: Mutex<Lockfile>,
   pub filename: PathBuf,
+  pub frozen: bool,
 }
 
 pub struct Guard<'a, T> {
@@ -44,11 +45,12 @@ impl<'a, T> std::ops::DerefMut for Guard<'a, T> {
 }
 
 impl CliLockfile {
-  pub fn new(lockfile: Lockfile) -> Self {
+  pub fn new(lockfile: Lockfile, frozen: bool) -> Self {
     let filename = lockfile.filename.clone();
     Self {
       lockfile: Mutex::new(lockfile),
       filename,
+      frozen,
     }
   }
 
@@ -71,6 +73,7 @@ impl CliLockfile {
   }
 
   pub fn write_if_changed(&self) -> Result<(), AnyError> {
+    self.error_if_changed()?;
     let mut lockfile = self.lockfile.lock();
     let Some(bytes) = lockfile.resolve_write_bytes() else {
       return Ok(()); // nothing to do
@@ -127,23 +130,55 @@ impl CliLockfile {
     };
 
     let lockfile = if flags.lock_write {
-      CliLockfile::new(Lockfile::new_empty(filename, true))
+      CliLockfile::new(
+        Lockfile::new_empty(filename, true),
+        flags.frozen_lockfile,
+      )
     } else {
-      Self::read_from_path(filename)?
+      Self::read_from_path(filename, flags.frozen_lockfile)?
     };
     Ok(Some(lockfile))
   }
-  pub fn read_from_path(filename: PathBuf) -> Result<CliLockfile, AnyError> {
+  pub fn read_from_path(
+    filename: PathBuf,
+    frozen: bool,
+  ) -> Result<CliLockfile, AnyError> {
     match std::fs::read_to_string(&filename) {
-      Ok(text) => Ok(CliLockfile::new(Lockfile::with_lockfile_content(
-        filename, &text, false,
-      )?)),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        Ok(CliLockfile::new(Lockfile::new_empty(filename, false)))
-      }
+      Ok(text) => Ok(CliLockfile::new(
+        Lockfile::with_lockfile_content(filename, &text, false)?,
+        frozen,
+      )),
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(
+        CliLockfile::new(Lockfile::new_empty(filename, false), frozen),
+      ),
       Err(err) => Err(err).with_context(|| {
         format!("Failed reading lockfile '{}'", filename.display())
       }),
+    }
+  }
+  pub fn error_if_changed(&self) -> Result<(), AnyError> {
+    if !self.frozen {
+      return Ok(());
+    }
+    let lockfile = self.lockfile.lock();
+    if lockfile.has_content_changed {
+      let suggested = if *super::DENO_FUTURE {
+        "`deno cache --frozen=false`, `deno install --frozen=false`,"
+      } else {
+        "`deno cache --frozen=false`"
+      };
+
+      let contents =
+        std::fs::read_to_string(&lockfile.filename).unwrap_or_default();
+      let new_contents = lockfile.as_json_string();
+      let diff = crate::util::diff::diff(&contents, &new_contents);
+      // has an extra newline at the end
+      let diff = diff.trim_end();
+      Err(deno_core::anyhow::anyhow!(
+        "The lockfile is out of date. Run {suggested} or rerun with `--frozen=false` to update it.\nchanges:\n{diff}"
+      ))
+    } else {
+      Ok(())
     }
   }
 }
