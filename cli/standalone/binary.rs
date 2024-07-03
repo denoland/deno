@@ -622,7 +622,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let mut env_vars_from_env_file: HashMap<String, String> = HashMap::new();
     if let Some(env_filename) = cli_options.get_env_file_name() {
-      if let Ok(env_vars_found) = get_file_env_vars(env_filename) {
+      if let Ok(env_vars_found) = get_file_env_vars(env_filename.to_string()) {
+        log::info!("{} environment variables within the file \"{}\" are embedded to the generated executable file", crate::colors::yellow("Warning"), env_filename);
         env_vars_found.iter().for_each(|env_var| {
           env_vars_from_env_file
             .insert(env_var.0.to_string(), env_var.1.to_string());
