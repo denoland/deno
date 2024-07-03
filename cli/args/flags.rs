@@ -524,6 +524,7 @@ pub struct Flags {
   pub argv: Vec<String>,
   pub subcommand: DenoSubcommand,
 
+  pub frozen_lockfile: bool,
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<CaData>,
   pub cache_blocklist: Vec<String>,
@@ -1490,12 +1491,15 @@ Future runs of this module will trigger no downloads or compilation unless
 --reload is specified.",
     )
     .defer(|cmd| {
-      compile_args(cmd).arg(check_arg(false)).arg(
-        Arg::new("file")
-          .num_args(1..)
-          .required(true)
-          .value_hint(ValueHint::FilePath),
-      )
+      compile_args(cmd)
+        .arg(check_arg(false))
+        .arg(
+          Arg::new("file")
+            .num_args(1..)
+            .required(true)
+            .value_hint(ValueHint::FilePath),
+        )
+        .arg(frozen_lockfile_arg())
     })
 }
 
@@ -3274,6 +3278,7 @@ fn runtime_args(
     app
   };
   app
+    .arg(frozen_lockfile_arg())
     .arg(cached_only_arg())
     .arg(location_arg())
     .arg(v8_flags_arg())
@@ -3385,6 +3390,17 @@ fn cached_only_arg() -> Arg {
     .long("cached-only")
     .action(ArgAction::SetTrue)
     .help("Require that remote dependencies are already cached")
+}
+
+fn frozen_lockfile_arg() -> Arg {
+  Arg::new("frozen")
+    .long("frozen")
+    .alias("frozen-lockfile")
+    .value_parser(value_parser!(bool))
+    .num_args(0..=1)
+    .require_equals(true)
+    .default_missing_value("true")
+    .help("Error out if lockfile is out of date")
 }
 
 /// Used for subcommands that operate on executable scripts only.
@@ -3777,6 +3793,7 @@ fn bundle_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn cache_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   compile_args_parse(flags, matches);
+  frozen_lockfile_arg_parse(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
 }
@@ -4579,6 +4596,7 @@ fn runtime_args_parse(
 ) {
   compile_args_parse(flags, matches);
   cached_only_arg_parse(flags, matches);
+  frozen_lockfile_arg_parse(flags, matches);
   if include_perms {
     permission_args_parse(flags, matches);
   }
@@ -4667,6 +4685,12 @@ fn strace_ops_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn cached_only_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if matches.get_flag("cached-only") {
     flags.cached_only = true;
+  }
+}
+
+fn frozen_lockfile_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if let Some(&v) = matches.get_one::<bool>("frozen") {
+    flags.frozen_lockfile = v;
   }
 }
 
@@ -9862,5 +9886,34 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn run_with_frozen_lockfile() {
+    let cases = [
+      (Some("--frozen"), true),
+      (Some("--frozen=true"), true),
+      (Some("--frozen=false"), false),
+      (None, false),
+    ];
+    for (flag, frozen) in cases {
+      let mut args = svec!["deno", "run"];
+      if let Some(f) = flag {
+        args.push(f.into());
+      }
+      args.push("script.ts".into());
+      let r = flags_from_vec(args);
+      assert_eq!(
+        r.unwrap(),
+        Flags {
+          subcommand: DenoSubcommand::Run(RunFlags::new_default(
+            "script.ts".to_string(),
+          )),
+          frozen_lockfile: frozen,
+          code_cache_enabled: true,
+          ..Flags::default()
+        }
+      );
+    }
   }
 }
