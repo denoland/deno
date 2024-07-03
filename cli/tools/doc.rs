@@ -179,6 +179,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
               deno_doc::html::DocNodeKindWithDrilldown::Other(node.kind),
             inner: std::sync::Arc::new(node),
             drilldown_parent_kind: None,
+            parent: None,
           })
           .collect::<Vec<_>>(),
       )
@@ -186,7 +187,38 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       Default::default()
     };
 
-    generate_docs_directory(doc_nodes_by_url, html_options, deno_ns)
+    let rewrite_map =
+      if let Some(config_file) = cli_options.maybe_config_file().clone() {
+        let config = config_file.to_exports_config()?;
+
+        let rewrite_map = config
+          .clone()
+          .into_map()
+          .into_keys()
+          .map(|key| {
+            Ok((
+              config.get_resolved(&key)?.unwrap(),
+              key
+                .strip_prefix('.')
+                .unwrap_or(&key)
+                .strip_prefix('/')
+                .unwrap_or(&key)
+                .to_owned(),
+            ))
+          })
+          .collect::<Result<IndexMap<_, _>, AnyError>>()?;
+
+        Some(rewrite_map)
+      } else {
+        None
+      };
+
+    generate_docs_directory(
+      doc_nodes_by_url,
+      html_options,
+      deno_ns,
+      rewrite_map,
+    )
   } else {
     let modules_len = doc_nodes_by_url.len();
     let doc_nodes =
@@ -210,6 +242,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
 
 struct DocResolver {
   deno_ns: std::collections::HashSet<Vec<String>>,
+  strip_trailing_html: bool,
 }
 
 impl deno_doc::html::HrefResolver for DocResolver {
@@ -218,7 +251,17 @@ impl deno_doc::html::HrefResolver for DocResolver {
     current: UrlResolveKind,
     target: UrlResolveKind,
   ) -> String {
-    deno_doc::html::href_path_resolve(current, target)
+    let path = deno_doc::html::href_path_resolve(current, target);
+    if self.strip_trailing_html {
+      if let Some(path) = path
+        .strip_suffix("index.html")
+        .or_else(|| path.strip_suffix(".html"))
+      {
+        return path.to_owned();
+      }
+    }
+
+    path
   }
 
   fn resolve_global_symbol(&self, symbol: &[String]) -> Option<String> {
@@ -257,21 +300,158 @@ impl deno_doc::html::HrefResolver for DocResolver {
   }
 }
 
+struct DenoDocResolver(bool);
+
+impl deno_doc::html::HrefResolver for DenoDocResolver {
+  fn resolve_path(
+    &self,
+    current: UrlResolveKind,
+    target: UrlResolveKind,
+  ) -> String {
+    let path = deno_doc::html::href_path_resolve(current, target);
+    if self.0 {
+      if let Some(path) = path
+        .strip_suffix("index.html")
+        .or_else(|| path.strip_suffix(".html"))
+      {
+        return path.to_owned();
+      }
+    }
+
+    path
+  }
+
+  fn resolve_global_symbol(&self, _symbol: &[String]) -> Option<String> {
+    None
+  }
+
+  fn resolve_import_href(
+    &self,
+    _symbol: &[String],
+    _src: &str,
+  ) -> Option<String> {
+    None
+  }
+
+  fn resolve_usage(&self, _current_resolve: UrlResolveKind) -> Option<String> {
+    None
+  }
+
+  fn resolve_source(&self, _location: &deno_doc::Location) -> Option<String> {
+    None
+  }
+}
+
+struct NodeDocResolver(bool);
+
+impl deno_doc::html::HrefResolver for NodeDocResolver {
+  fn resolve_path(
+    &self,
+    current: UrlResolveKind,
+    target: UrlResolveKind,
+  ) -> String {
+    let path = deno_doc::html::href_path_resolve(current, target);
+    if self.0 {
+      if let Some(path) = path
+        .strip_suffix("index.html")
+        .or_else(|| path.strip_suffix(".html"))
+      {
+        return path.to_owned();
+      }
+    }
+
+    path
+  }
+
+  fn resolve_global_symbol(&self, _symbol: &[String]) -> Option<String> {
+    None
+  }
+
+  fn resolve_import_href(
+    &self,
+    _symbol: &[String],
+    _src: &str,
+  ) -> Option<String> {
+    None
+  }
+
+  fn resolve_usage(&self, current_resolve: UrlResolveKind) -> Option<String> {
+    current_resolve
+      .get_file()
+      .map(|file| format!("node:{}", file.path))
+  }
+
+  fn resolve_source(&self, _location: &deno_doc::Location) -> Option<String> {
+    None
+  }
+}
+
 fn generate_docs_directory(
   doc_nodes_by_url: IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: &DocHtmlFlag,
   deno_ns: std::collections::HashSet<Vec<String>>,
+  rewrite_map: Option<IndexMap<ModuleSpecifier, String>>,
 ) -> Result<(), AnyError> {
   let cwd = std::env::current_dir().context("Failed to get CWD")?;
   let output_dir_resolved = cwd.join(&html_options.output);
 
+  let internal_env = std::env::var("DENO_INTERNAL_HTML_DOCS").ok();
+
+  let href_resolver: Rc<dyn deno_doc::html::HrefResolver> = if internal_env
+    .as_ref()
+    .is_some_and(|internal_html_docs| internal_html_docs == "node")
+  {
+    Rc::new(NodeDocResolver(html_options.strip_trailing_html))
+  } else if internal_env
+    .as_ref()
+    .is_some_and(|internal_html_docs| internal_html_docs == "deno")
+    || deno_ns.is_empty()
+  {
+    Rc::new(DenoDocResolver(html_options.strip_trailing_html))
+  } else {
+    Rc::new(DocResolver {
+      deno_ns,
+      strip_trailing_html: html_options.strip_trailing_html,
+    })
+  };
+
+  let category_docs =
+    if let Some(category_docs_path) = &html_options.category_docs_path {
+      let content = std::fs::read(category_docs_path)?;
+      Some(deno_core::serde_json::from_slice(&content)?)
+    } else {
+      None
+    };
+
+  let symbol_redirect_map = if let Some(symbol_redirect_map_path) =
+    &html_options.symbol_redirect_map_path
+  {
+    let content = std::fs::read(symbol_redirect_map_path)?;
+    Some(deno_core::serde_json::from_slice(&content)?)
+  } else {
+    None
+  };
+
+  let default_symbol_map = if let Some(default_symbol_map_path) =
+    &html_options.default_symbol_map_path
+  {
+    let content = std::fs::read(default_symbol_map_path)?;
+    Some(deno_core::serde_json::from_slice(&content)?)
+  } else {
+    None
+  };
+
   let options = deno_doc::html::GenerateOptions {
     package_name: html_options.name.clone(),
     main_entrypoint: None,
-    rewrite_map: None,
-    href_resolver: Rc::new(DocResolver { deno_ns }),
+    rewrite_map,
+    href_resolver,
     usage_composer: None,
     composable_output: false,
+    category_docs,
+    disable_search: internal_env.is_some(),
+    symbol_redirect_map,
+    default_symbol_map,
   };
 
   let files = deno_doc::html::generate(options, doc_nodes_by_url)

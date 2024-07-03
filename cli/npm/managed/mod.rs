@@ -9,7 +9,6 @@ use cache::TarballCache;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
@@ -27,7 +26,7 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use resolution::AddPkgReqsResult;
 
-use crate::args::Lockfile;
+use crate::args::CliLockfile;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::args::PackageJsonDepsProvider;
@@ -53,13 +52,13 @@ mod resolution;
 mod resolvers;
 
 pub enum CliNpmResolverManagedSnapshotOption {
-  ResolveFromLockfile(Arc<Mutex<Lockfile>>),
+  ResolveFromLockfile(Arc<CliLockfile>),
   Specified(Option<ValidSerializedNpmResolutionSnapshot>),
 }
 
 pub struct CliNpmResolverManagedCreateOptions {
   pub snapshot: CliNpmResolverManagedSnapshotOption,
-  pub maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  pub maybe_lockfile: Option<Arc<CliLockfile>>,
   pub fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
   pub http_client_provider: Arc<crate::http_util::HttpClientProvider>,
   pub npm_global_cache_dir: PathBuf,
@@ -128,7 +127,7 @@ pub async fn create_managed_npm_resolver(
 fn create_inner(
   fs: Arc<dyn deno_runtime::deno_fs::FileSystem>,
   http_client_provider: Arc<HttpClientProvider>,
-  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
   npm_rc: Arc<ResolvedNpmRc>,
@@ -205,14 +204,11 @@ async fn resolve_snapshot(
 ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
   match snapshot {
     CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
-      if !lockfile.lock().overwrite {
+      if !lockfile.overwrite() {
         let snapshot = snapshot_from_lockfile(lockfile.clone(), api)
           .await
           .with_context(|| {
-            format!(
-              "failed reading lockfile '{}'",
-              lockfile.lock().filename.display()
-            )
+            format!("failed reading lockfile '{}'", lockfile.filename.display())
           })?;
         Ok(Some(snapshot))
       } else {
@@ -224,7 +220,7 @@ async fn resolve_snapshot(
 }
 
 async fn snapshot_from_lockfile(
-  lockfile: Arc<Mutex<Lockfile>>,
+  lockfile: Arc<CliLockfile>,
   api: &dyn NpmRegistryApi,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
   let (incomplete_snapshot, skip_integrity_check) = {
@@ -250,7 +246,7 @@ async fn snapshot_from_lockfile(
 pub struct ManagedCliNpmResolver {
   fs: Arc<dyn FileSystem>,
   fs_resolver: Arc<dyn NpmPackageFsResolver>,
-  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
   package_json_deps_provider: Arc<PackageJsonDepsProvider>,
@@ -274,7 +270,7 @@ impl ManagedCliNpmResolver {
   pub fn new(
     fs: Arc<dyn FileSystem>,
     fs_resolver: Arc<dyn NpmPackageFsResolver>,
-    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+    maybe_lockfile: Option<Arc<CliLockfile>>,
     npm_api: Arc<CliNpmRegistryApi>,
     npm_cache: Arc<NpmCache>,
     package_json_deps_provider: Arc<PackageJsonDepsProvider>,
@@ -365,12 +361,15 @@ impl ManagedCliNpmResolver {
   }
 
   /// Adds package requirements to the resolver and ensures everything is setup.
+  /// This includes setting up the `node_modules` directory, if applicable.
   pub async fn add_package_reqs(
     &self,
     packages: &[PackageReq],
   ) -> Result<(), AnyError> {
-    let result = self.add_package_reqs_raw(packages).await;
-    result.dependencies_result
+    self
+      .add_package_reqs_raw(packages)
+      .await
+      .dependencies_result
   }
 
   pub async fn add_package_reqs_raw(
@@ -385,6 +384,12 @@ impl ManagedCliNpmResolver {
     }
 
     let mut result = self.resolution.add_package_reqs(packages).await;
+
+    if result.dependencies_result.is_ok() {
+      if let Some(lockfile) = self.maybe_lockfile.as_ref() {
+        result.dependencies_result = lockfile.error_if_changed();
+      }
+    }
     if result.dependencies_result.is_ok() {
       result.dependencies_result =
         self.cache_packages().await.map_err(AnyError::from);
@@ -446,14 +451,19 @@ impl ManagedCliNpmResolver {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
   }
 
+  /// Ensures that the top level `package.json` dependencies are installed.
+  /// This may set up the `node_modules` directory.
+  ///
+  /// Returns `true` if any changes (such as caching packages) were made.
+  /// If this returns `false`, `node_modules` has _not_ been set up.
   pub async fn ensure_top_level_package_json_install(
     &self,
-  ) -> Result<(), AnyError> {
+  ) -> Result<bool, AnyError> {
     let Some(reqs) = self.package_json_deps_provider.reqs() else {
-      return Ok(());
+      return Ok(false);
     };
     if !self.top_level_install_flag.raise() {
-      return Ok(()); // already did this
+      return Ok(false); // already did this
     }
     // check if something needs resolving before bothering to load all
     // the package information (which is slow)
@@ -464,11 +474,11 @@ impl ManagedCliNpmResolver {
       log::debug!(
         "All package.json deps resolvable. Skipping top level install."
       );
-      return Ok(()); // everything is already resolvable
+      return Ok(false); // everything is already resolvable
     }
 
     let reqs = reqs.into_iter().cloned().collect::<Vec<_>>();
-    self.add_package_reqs(&reqs).await
+    self.add_package_reqs(&reqs).await.map(|_| true)
   }
 
   pub async fn cache_package_info(

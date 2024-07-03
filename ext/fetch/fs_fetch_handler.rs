@@ -31,7 +31,7 @@ impl FetchHandler for FsFetchHandler {
       let file = tokio::fs::File::open(path).map_err(|_| ()).await?;
       let stream = ReaderStream::new(file);
       let body = reqwest::Body::wrap_stream(stream);
-      let response = http_v02::Response::builder()
+      let response = http::Response::builder()
         .status(StatusCode::OK)
         .body(body)
         .map_err(|_| ())?

@@ -2,9 +2,9 @@
 use anyhow::anyhow;
 use futures::Stream;
 use futures::StreamExt;
-use rustls::Certificate;
-use rustls::PrivateKey;
 use rustls_tokio_stream::rustls;
+use rustls_tokio_stream::rustls::pki_types::CertificateDer;
+use rustls_tokio_stream::rustls::pki_types::PrivateKeyDer;
 use rustls_tokio_stream::TlsStream;
 use std::io;
 use std::num::NonZeroUsize;
@@ -68,30 +68,30 @@ pub fn get_tls_config(
   let key_file = std::fs::File::open(key_path)?;
   let ca_file = std::fs::File::open(ca_path)?;
 
-  let certs: Vec<Certificate> = {
+  let certs_result: Result<Vec<CertificateDer<'static>>, io::Error> = {
     let mut cert_reader = io::BufReader::new(cert_file);
-    rustls_pemfile::certs(&mut cert_reader)
-      .unwrap()
-      .into_iter()
-      .map(Certificate)
-      .collect()
+    rustls_pemfile::certs(&mut cert_reader).collect()
   };
+  let certs = certs_result?;
 
   let mut ca_cert_reader = io::BufReader::new(ca_file);
   let ca_cert = rustls_pemfile::certs(&mut ca_cert_reader)
-    .expect("Cannot load CA certificate")
-    .remove(0);
+    .collect::<Vec<_>>()
+    .remove(0)?;
 
   let mut key_reader = io::BufReader::new(key_file);
   let key = {
-    let pkcs8_key = rustls_pemfile::pkcs8_private_keys(&mut key_reader)
-      .expect("Cannot load key file");
-    let rsa_key = rustls_pemfile::rsa_private_keys(&mut key_reader)
-      .expect("Cannot load key file");
-    if !pkcs8_key.is_empty() {
-      Some(pkcs8_key[0].clone())
-    } else if !rsa_key.is_empty() {
-      Some(rsa_key[0].clone())
+    let pkcs8_keys = rustls_pemfile::pkcs8_private_keys(&mut key_reader)
+      .collect::<Result<Vec<_>, _>>()?;
+    let rsa_keys = rustls_pemfile::rsa_private_keys(&mut key_reader)
+      .collect::<Result<Vec<_>, _>>()?;
+
+    if !pkcs8_keys.is_empty() {
+      let key = pkcs8_keys[0].clone_key();
+      Some(PrivateKeyDer::from(key))
+    } else if !rsa_keys.is_empty() {
+      let key = rsa_keys[0].clone_key();
+      Some(PrivateKeyDer::from(key))
     } else {
       None
     }
@@ -100,18 +100,19 @@ pub fn get_tls_config(
   match key {
     Some(key) => {
       let mut root_cert_store = rustls::RootCertStore::empty();
-      root_cert_store.add(&rustls::Certificate(ca_cert)).unwrap();
+      root_cert_store.add(ca_cert).unwrap();
 
       // Allow (but do not require) client authentication.
+      let client_verifier = rustls::server::WebPkiClientVerifier::builder(
+        Arc::new(root_cert_store),
+      )
+      .allow_unauthenticated()
+      .build()
+      .unwrap();
 
       let mut config = rustls::ServerConfig::builder()
-        .with_safe_defaults()
-        .with_client_cert_verifier(Arc::new(
-          rustls::server::AllowAnyAnonymousOrAuthenticatedClient::new(
-            root_cert_store,
-          ),
-        ))
-        .with_single_cert(certs, PrivateKey(key))
+        .with_client_cert_verifier(client_verifier)
+        .with_single_cert(certs, key)
         .map_err(|e| anyhow!("Error setting cert: {:?}", e))
         .unwrap();
 

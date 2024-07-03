@@ -10109,8 +10109,8 @@
       "Blob-text.any.worker.html": true,
       "Blob-in-worker.worker.html": true,
       "Blob-constructor-dom.window.html": false,
-      "Blob-bytes.any.html": false,
-      "Blob-bytes.any.worker.html": false,
+      "Blob-bytes.any.html": true,
+      "Blob-bytes.any.worker.html": true,
       "Blob-constructor-endings.html": false
     },
     "file": {
@@ -10183,9 +10183,6 @@
       "filereader_result.any.worker.html": true
     },
     "idlharness.any.html": [
-      "Blob interface: operation bytes()",
-      "Blob interface: new Blob([\"TEST\"]) must inherit property \"bytes()\" with the proper type",
-      "Blob interface: new File([\"myFileBits\"], \"myFileName\") must inherit property \"bytes()\" with the proper type",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
@@ -10196,9 +10193,6 @@
       "FileList interface: attribute length"
     ],
     "idlharness.any.worker.html": [
-      "Blob interface: operation bytes()",
-      "Blob interface: new Blob([\"TEST\"]) must inherit property \"bytes()\" with the proper type",
-      "Blob interface: new File([\"myFileBits\"], \"myFileName\") must inherit property \"bytes()\" with the proper type",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
@@ -10220,7 +10214,6 @@
     ],
     "FileReaderSync.worker.html": false,
     "idlharness.worker.html": [
-      "Blob interface: operation bytes()",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
@@ -10265,7 +10258,6 @@
       "Service worker test setup"
     ],
     "idlharness.html": [
-      "Blob interface: operation bytes()",
       "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
