@@ -306,7 +306,6 @@ where
   Ok(())
 }
 
-
 #[op2(fast)]
 pub fn op_fs_remove_sync<P>(
   state: &mut OpState,
