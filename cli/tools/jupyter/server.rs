@@ -3,6 +3,10 @@
 // This file is forked/ported from <https://github.com/evcxr/evcxr>
 // Copyright 2020 The Evcxr Authors. MIT license.
 
+// NOTE(bartlomieju): unfortunately it appears that clippy is broken
+// and can't allow a single line ignore for `await_holding_lock`.
+#![allow(clippy::await_holding_lock)]
+
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -100,20 +104,16 @@ impl JupyterServer {
 
     let stdin_fut = deno_core::unsync::spawn(async move {
       loop {
-        eprintln!("kernel recv proxy msg");
         let Some(msg) = stdin_rx1.recv().await else {
           return;
         };
-        eprintln!("kernel send stdin msg");
         let Ok(()) = stdin_connection.send(msg).await else {
           return;
         };
 
-        eprintln!("kernel recv stdin msg");
         let Ok(msg) = stdin_connection.read().await else {
           return;
         };
-        eprintln!("kernel proxy send stdin msg");
         let Ok(()) = stdin_tx2.send(msg) else {
           return;
         };
@@ -192,8 +192,10 @@ impl JupyterServer {
       return;
     };
 
-    let mut iopub_conn = iopub_connection.lock();
-    let result = iopub_conn.send(stdio_msg.as_child_of(&exec_request)).await;
+    let result = iopub_connection
+      .lock()
+      .send(stdio_msg.as_child_of(&exec_request))
+      .await;
 
     if let Err(err) = result {
       log::error!("Output error: {}", err);

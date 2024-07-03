@@ -1,5 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// NOTE(bartlomieju): unfortunately it appears that clippy is broken
+// and can't allow a single line ignore for `await_holding_lock`.
+#![allow(clippy::await_holding_lock)]
+
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -43,7 +47,6 @@ pub fn op_jupyter_input(
   #[string] prompt: String,
   is_password: bool,
 ) -> Result<Option<String>, AnyError> {
-  eprintln!("op_jupyter_input start");
   let (last_execution_request, stdin_connection_proxy) = {
     (
       state.borrow::<Arc<Mutex<Option<JupyterMessage>>>>().clone(),
@@ -84,12 +87,10 @@ pub fn op_jupyter_input(
       Some(&last_request),
     );
 
-    eprintln!("op_jupyter_input sending proxy msg");
     let Ok(()) = stdin_connection_proxy.lock().tx.send(msg) else {
       return Ok(None);
     };
 
-    eprintln!("op_jupyter_input blocking recv msg");
     let join_handle = std::thread::spawn(move || {
       stdin_connection_proxy.lock().rx.blocking_recv()
     });
@@ -100,7 +101,6 @@ pub fn op_jupyter_input(
     let JupyterMessageContent::InputReply(msg) = response.content else {
       return Ok(None);
     };
-    eprintln!("op_jupyter_input done");
 
     return Ok(Some(msg.value));
   }
@@ -145,7 +145,7 @@ pub async fn op_jupyter_broadcast(
       .with_metadata(metadata)
       .with_buffers(buffers.into_iter().map(|b| b.to_vec().into()).collect());
 
-    (iopub_connection.lock()).send(jupyter_message).await?;
+    iopub_connection.lock().send(jupyter_message).await?;
   }
 
   Ok(())
