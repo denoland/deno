@@ -780,12 +780,21 @@ class ClientRequest extends OutgoingMessage {
       this._implicitHeader();
       this._send("", "latin1");
     }
-    this._bodyWriter?.close();
-    try {
-      cb?.();
-    } catch (_) {
-      //
-    }
+    (async () => {
+      try {
+        await this._bodyWriter?.close();
+      } catch (_) {
+        // The readable stream resource is dropped right after
+        // read is complete closing the writable stream resource.
+        // If we try to close the writer again, it will result in an
+        // error which we can safely ignore.
+      }
+      try {
+        cb?.();
+      } catch (_) {
+        //
+      }
+    })();
   }
 
   abort() {
