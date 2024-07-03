@@ -178,6 +178,24 @@ impl FileSystem for InMemoryFs {
     self.chown_sync(&path, uid, gid)
   }
 
+  fn lchown_sync(
+    &self,
+    _path: &Path,
+    _uid: Option<u32>,
+    _gid: Option<u32>,
+  ) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  async fn lchown_async(
+    &self,
+    path: PathBuf,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    self.lchown_sync(&path, uid, gid)
+  }
+
   fn remove_sync(&self, _path: &Path, _recursive: bool) -> FsResult<()> {
     Err(FsError::NotSupported)
   }
