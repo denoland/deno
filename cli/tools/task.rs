@@ -9,12 +9,14 @@ use crate::npm::InnerCliNpmResolverRef;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::fs::canonicalize_path;
 use deno_config::workspace::TaskOrScript;
+use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceTasksConfig;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
+use deno_core::normalize_path;
 use deno_runtime::deno_node::NodeResolver;
 use deno_semver::package::PackageNv;
 use deno_task_shell::ExecutableCommand;
@@ -29,6 +31,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 use tokio::task::LocalSet;
 
 // WARNING: Do not depend on this env var in user code. It's not stable API.
@@ -62,7 +65,11 @@ pub async fn execute_script(
   let task_name = match &task_flags.task {
     Some(task) => task,
     None => {
-      print_available_tasks(&mut std::io::stdout(), &tasks_config)?;
+      print_available_tasks(
+        &mut std::io::stdout(),
+        &cli_options.workspace,
+        &tasks_config,
+      )?;
       return Ok(1);
     }
   };
@@ -77,7 +84,7 @@ pub async fn execute_script(
         let cwd = match task_flags.cwd {
           Some(path) => canonicalize_path(&PathBuf::from(path))
             .context("failed canonicalizing --cwd")?,
-          None => dir_url.to_file_path().unwrap(),
+          None => normalize_path(dir_url.to_file_path().unwrap()),
         };
 
         let custom_commands =
@@ -107,7 +114,7 @@ pub async fn execute_script(
 
         let cwd = match task_flags.cwd {
           Some(path) => canonicalize_path(&PathBuf::from(path))?,
-          None => dir_url.to_file_path().unwrap(),
+          None => normalize_path(dir_url.to_file_path().unwrap()),
         };
 
         // At this point we already checked if the task name exists in package.json.
@@ -147,7 +154,11 @@ pub async fn execute_script(
     None => {
       log::error!("Task not found: {task_name}");
       if log::log_enabled!(log::Level::Error) {
-        print_available_tasks(&mut std::io::stderr(), &tasks_config)?;
+        print_available_tasks(
+          &mut std::io::stderr(),
+          &cli_options.workspace,
+          &tasks_config,
+        )?;
       }
       Ok(1)
     }
@@ -255,9 +266,11 @@ fn real_env_vars() -> HashMap<String, String> {
 
 fn print_available_tasks(
   writer: &mut dyn std::io::Write,
+  workspace: &Arc<Workspace>,
   tasks_config: &WorkspaceTasksConfig,
 ) -> Result<(), std::io::Error> {
   writeln!(writer, "{}", colors::green("Available tasks:"))?;
+  let is_cwd_root_dir = tasks_config.root.is_none();
 
   if tasks_config.is_empty() {
     writeln!(
@@ -272,14 +285,16 @@ fn print_available_tasks(
       let Some(config) = maybe_config else {
         continue;
       };
-      for (is_deno, (key, task)) in config
+      for (is_root, is_deno, (key, task)) in config
         .deno_json
         .as_ref()
         .map(|config| {
+          let is_root = !is_cwd_root_dir
+            && config.folder_url == *workspace.root_folder().0.as_ref();
           config
             .tasks
             .iter()
-            .map(|(k, t)| (true, (k, Cow::Borrowed(t))))
+            .map(move |(k, t)| (is_root, true, (k, Cow::Borrowed(t))))
         })
         .into_iter()
         .flatten()
@@ -288,8 +303,11 @@ fn print_available_tasks(
             .package_json
             .as_ref()
             .map(|config| {
-              config.tasks.iter().map(|(k, v)| {
+              let is_root = !is_cwd_root_dir
+                && config.folder_url == *workspace.root_folder().0.as_ref();
+              config.tasks.iter().map(move |(k, v)| {
                 (
+                  is_root,
                   false,
                   (k, Cow::Owned(deno_config::Task::Definition(v.clone()))),
                 )
@@ -306,7 +324,13 @@ fn print_available_tasks(
           writer,
           "- {}{}",
           colors::cyan(key),
-          if is_deno {
+          if is_root {
+            if is_deno {
+              format!(" {}", colors::italic_gray("(workspace)"))
+            } else {
+              format!(" {}", colors::italic_gray("(workspace package.json)"))
+            }
+          } else if is_deno {
             "".to_string()
           } else {
             format!(" {}", colors::italic_gray("(package.json)"))
