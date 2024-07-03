@@ -245,6 +245,8 @@ type BoxError = Box<dyn std::error::Error + Send + Sync>;
 // These variatns are not to be inspected.
 pub enum Proxied<T> {
   /// Not proxied
+  PassThrough(T),
+  /// An HTTP forwarding proxy needed absolute-form
   HttpForward(T),
   /// Tunneled through HTTP CONNECT
   HttpTunneled(Box<TokioIo<TlsStream<TokioIo<T>>>>),
@@ -351,7 +353,7 @@ where
       self
         .connector
         .call(orig_dst)
-        .map_ok(Proxied::HttpForward)
+        .map_ok(Proxied::PassThrough)
         .map_err(Into::into),
     )
   }
@@ -447,6 +449,7 @@ where
     buf: hyper::rt::ReadBufCursor<'_>,
   ) -> Poll<Result<(), std::io::Error>> {
     match *self {
+      Proxied::PassThrough(ref mut p) => Pin::new(p).poll_read(cx, buf),
       Proxied::HttpForward(ref mut p) => Pin::new(p).poll_read(cx, buf),
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_read(cx, buf),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_read(cx, buf),
@@ -465,6 +468,7 @@ where
     buf: &[u8],
   ) -> Poll<Result<usize, std::io::Error>> {
     match *self {
+      Proxied::PassThrough(ref mut p) => Pin::new(p).poll_write(cx, buf),
       Proxied::HttpForward(ref mut p) => Pin::new(p).poll_write(cx, buf),
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_write(cx, buf),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_write(cx, buf),
@@ -477,6 +481,7 @@ where
     cx: &mut Context<'_>,
   ) -> Poll<Result<(), std::io::Error>> {
     match *self {
+      Proxied::PassThrough(ref mut p) => Pin::new(p).poll_flush(cx),
       Proxied::HttpForward(ref mut p) => Pin::new(p).poll_flush(cx),
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_flush(cx),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_flush(cx),
@@ -489,6 +494,7 @@ where
     cx: &mut Context<'_>,
   ) -> Poll<Result<(), std::io::Error>> {
     match *self {
+      Proxied::PassThrough(ref mut p) => Pin::new(p).poll_shutdown(cx),
       Proxied::HttpForward(ref mut p) => Pin::new(p).poll_shutdown(cx),
       Proxied::HttpTunneled(ref mut p) => Pin::new(p).poll_shutdown(cx),
       Proxied::Socks(ref mut p) => Pin::new(p).poll_shutdown(cx),
@@ -498,6 +504,7 @@ where
 
   fn is_write_vectored(&self) -> bool {
     match *self {
+      Proxied::PassThrough(ref p) => p.is_write_vectored(),
       Proxied::HttpForward(ref p) => p.is_write_vectored(),
       Proxied::HttpTunneled(ref p) => p.is_write_vectored(),
       Proxied::Socks(ref p) => p.is_write_vectored(),
@@ -511,6 +518,9 @@ where
     bufs: &[std::io::IoSlice<'_>],
   ) -> Poll<Result<usize, std::io::Error>> {
     match *self {
+      Proxied::PassThrough(ref mut p) => {
+        Pin::new(p).poll_write_vectored(cx, bufs)
+      }
       Proxied::HttpForward(ref mut p) => {
         Pin::new(p).poll_write_vectored(cx, bufs)
       }
@@ -529,6 +539,7 @@ where
 {
   fn connected(&self) -> Connected {
     match self {
+      Proxied::PassThrough(ref p) => p.connected(),
       Proxied::HttpForward(ref p) => p.connected().proxy(true),
       Proxied::HttpTunneled(ref p) => p.inner().get_ref().0.connected(),
       Proxied::Socks(ref p) => p.connected(),
