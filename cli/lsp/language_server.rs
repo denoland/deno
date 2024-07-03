@@ -321,7 +321,7 @@ impl LanguageServer {
       inner.resolver.did_cache();
       inner.refresh_npm_specifiers().await;
       inner.diagnostics_server.invalidate_all();
-      inner.project_changed([], false);
+      inner.project_changed([], true);
       inner
         .ts_server
         .cleanup_semantic_cache(inner.snapshot())
