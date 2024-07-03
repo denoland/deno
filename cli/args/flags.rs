@@ -7828,7 +7828,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--unsafely-ignore-certificate-errors=deno.land,localhost,::,127.0.0.1,[::1],1.2.3.4",
+      "--unsafely-ignore-certificate-errors=deno.land,localhost,[::],127.0.0.1,[::1],1.2.3.4",
       "script.ts"
     ]);
     assert_eq!(
@@ -7856,7 +7856,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "repl",
-      "--unsafely-ignore-certificate-errors=deno.land,localhost,::,127.0.0.1,[::1],1.2.3.4"]);
+      "--unsafely-ignore-certificate-errors=deno.land,localhost,[::],127.0.0.1,[::1],1.2.3.4"]);
     assert_eq!(
       r.unwrap(),
       Flags {
