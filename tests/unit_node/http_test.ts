@@ -9,6 +9,7 @@ import fs from "node:fs";
 
 import { assert, assertEquals, fail } from "@std/assert/mod.ts";
 import { assertSpyCalls, spy } from "@std/testing/mock.ts";
+import { fromFileUrl, relative } from "@std/path/mod.ts";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
@@ -1206,7 +1207,10 @@ Deno.test("[node/http] http.request() post streaming body works", async () => {
   server.listen(0, () => {
     // deno-lint-ignore no-explicit-any
     const port = (server.address() as any).port;
-    const filePath = "lorem_ipsum_512kb.txt";
+    const filePath = relative(
+      Deno.cwd(),
+      fromFileUrl(new URL("./testdata/lorem_ipsum_512kb.txt", import.meta.url)),
+    );
     const contentLength = 524289;
 
     const options = {
