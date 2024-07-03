@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+//! Parts of this module should be able to be replaced with other crates
+//! eventually, once generic versions appear in hyper-util, et al.
+
 use std::env;
 use std::future::Future;
 use std::net::IpAddr;

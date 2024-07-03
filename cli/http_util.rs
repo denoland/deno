@@ -389,9 +389,7 @@ impl HttpClient {
     let response = match self.client.clone().send(request).await {
       Ok(resp) => resp,
       Err(err) => {
-        if is_error_connect(&err)
-        /*|| err.is_timeout()*/
-        {
+        if is_error_connect(&err) {
           return Ok(FetchOnceResult::RequestError(err.to_string()));
         }
         return Err(err);
