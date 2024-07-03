@@ -323,6 +323,7 @@
       "test-fs-chmod-mask.js",
       "test-fs-chmod.js",
       "test-fs-chown-type-check.js",
+      "test-fs-lchown.js",
       "test-fs-copyfile.js",
       "test-fs-empty-readStream.js",
       "test-fs-mkdir.js",
