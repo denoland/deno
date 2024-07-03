@@ -4203,8 +4203,7 @@ struct State {
   response_tx: Option<oneshot::Sender<Result<String, AnyError>>>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
-  root_referrers: HashMap<ModuleSpecifier, ModuleSpecifier>,
-  last_referrer: Option<ModuleSpecifier>,
+  last_scope: Option<ModuleSpecifier>,
   token: CancellationToken,
   pending_requests: Option<UnboundedReceiver<Request>>,
   mark: Option<PerformanceMark>,
@@ -4223,8 +4222,7 @@ impl State {
       response_tx: None,
       state_snapshot,
       specifier_map,
-      root_referrers: Default::default(),
-      last_referrer: None,
+      last_scope: None,
       token: Default::default(),
       mark: None,
       pending_requests: Some(pending_requests),
@@ -4232,18 +4230,13 @@ impl State {
   }
 
   fn get_document(&self, specifier: &ModuleSpecifier) -> Option<Arc<Document>> {
-    if let Some(referrer) = self.root_referrers.get(specifier) {
-      self
-        .state_snapshot
-        .documents
-        .get_or_load(specifier, referrer)
-    } else if let Some(referrer) = &self.last_referrer {
-      self
-        .state_snapshot
-        .documents
-        .get_or_load(specifier, referrer)
+    if let Some(scope) = &self.last_scope {
+      self.state_snapshot.documents.get_or_load(specifier, scope)
     } else {
-      self.state_snapshot.documents.get(specifier)
+      self
+        .state_snapshot
+        .documents
+        .get_or_load(specifier, &ModuleSpecifier::parse("file:///").unwrap())
     }
   }
 
@@ -4422,6 +4415,7 @@ async fn op_poll_requests(
   state.response_tx = Some(response_tx);
   let id = state.last_id;
   state.last_id += 1;
+  state.last_scope.clone_from(&scope);
   let mark = state
     .performance
     .mark_with_args(format!("tsc.host.{}", request.method()), &request);
@@ -4447,7 +4441,7 @@ fn op_resolve_inner(
   let specifiers = state
     .state_snapshot
     .documents
-    .resolve(&args.specifiers, &referrer)
+    .resolve(&args.specifiers, &referrer, state.last_scope.as_ref())
     .into_iter()
     .map(|o| {
       o.map(|(s, mt)| {
@@ -4458,7 +4452,6 @@ fn op_resolve_inner(
       })
     })
     .collect();
-  state.last_referrer = Some(referrer);
   state.performance.measure(mark);
   Ok(specifiers)
 }
@@ -4471,7 +4464,7 @@ fn op_respond(
 ) {
   let state = state.borrow_mut::<State>();
   state.performance.measure(state.mark.take().unwrap());
-  state.last_referrer = None;
+  state.last_scope = None;
   let response = if !error.is_empty() {
     Err(anyhow!("tsc error: {error}"))
   } else {
@@ -4526,17 +4519,13 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
 
   // inject these next because they're global
   for (scope, script_names) in &mut result.by_scope {
-    for (referrer, specifiers) in state
+    for (_, specifiers) in state
       .state_snapshot
       .resolver
       .graph_imports_by_referrer(scope)
     {
       for specifier in specifiers {
         script_names.insert(specifier.to_string());
-        state
-          .root_referrers
-          .entry(specifier.clone())
-          .or_insert(referrer.clone());
       }
     }
   }
