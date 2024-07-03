@@ -361,12 +361,15 @@ impl ManagedCliNpmResolver {
   }
 
   /// Adds package requirements to the resolver and ensures everything is setup.
+  /// This includes setting up the `node_modules` directory, if applicable.
   pub async fn add_package_reqs(
     &self,
     packages: &[PackageReq],
   ) -> Result<(), AnyError> {
-    let result = self.add_package_reqs_raw(packages).await;
-    result.dependencies_result
+    self
+      .add_package_reqs_raw(packages)
+      .await
+      .dependencies_result
   }
 
   pub async fn add_package_reqs_raw(
@@ -381,6 +384,12 @@ impl ManagedCliNpmResolver {
     }
 
     let mut result = self.resolution.add_package_reqs(packages).await;
+
+    if result.dependencies_result.is_ok() {
+      if let Some(lockfile) = self.maybe_lockfile.as_ref() {
+        result.dependencies_result = lockfile.error_if_changed();
+      }
+    }
     if result.dependencies_result.is_ok() {
       result.dependencies_result =
         self.cache_packages().await.map_err(AnyError::from);
@@ -442,14 +451,19 @@ impl ManagedCliNpmResolver {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
   }
 
+  /// Ensures that the top level `package.json` dependencies are installed.
+  /// This may set up the `node_modules` directory.
+  ///
+  /// Returns `true` if any changes (such as caching packages) were made.
+  /// If this returns `false`, `node_modules` has _not_ been set up.
   pub async fn ensure_top_level_package_json_install(
     &self,
-  ) -> Result<(), AnyError> {
+  ) -> Result<bool, AnyError> {
     let Some(reqs) = self.package_json_deps_provider.reqs() else {
-      return Ok(());
+      return Ok(false);
     };
     if !self.top_level_install_flag.raise() {
-      return Ok(()); // already did this
+      return Ok(false); // already did this
     }
     // check if something needs resolving before bothering to load all
     // the package information (which is slow)
@@ -460,11 +474,11 @@ impl ManagedCliNpmResolver {
       log::debug!(
         "All package.json deps resolvable. Skipping top level install."
       );
-      return Ok(()); // everything is already resolvable
+      return Ok(false); // everything is already resolvable
     }
 
     let reqs = reqs.into_iter().cloned().collect::<Vec<_>>();
-    self.add_package_reqs(&reqs).await
+    self.add_package_reqs(&reqs).await.map(|_| true)
   }
 
   pub async fn cache_package_info(
