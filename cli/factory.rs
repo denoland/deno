@@ -364,9 +364,19 @@ impl CliFactory {
                   }
                   relative_path
                 },
-                WorkspaceMemberConfig {
-                  package_json_deps: pkg_json_deps(folder.pkg_json.as_deref()),
-                  dependencies: deno_json_deps(folder.deno_json.as_deref()),
+                {
+                  let config = WorkspaceMemberConfig {
+                    package_json_deps: pkg_json_deps(
+                      folder.pkg_json.as_deref(),
+                    ),
+                    dependencies: deno_json_deps(folder.deno_json.as_deref()),
+                  };
+                  if config.package_json_deps.is_empty()
+                    && config.dependencies.is_empty()
+                  {
+                    return None;
+                  }
+                  config
                 },
               ))
             })
