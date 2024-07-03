@@ -105,12 +105,17 @@ pub(crate) fn basic_auth(user: &str, pass: &str) -> HeaderValue {
 
 fn parse_env_var(name: &str, filter: Filter) -> Option<Intercept> {
   let val = env::var(name).ok()?;
-  Intercept::parse_with(filter, &val)
+  let target = Target::parse(&val)?;
+  Some(Intercept { filter, target })
 }
 
 impl Intercept {
   pub(crate) fn all(s: &str) -> Option<Self> {
-    Self::parse_with(Filter::All, s)
+    let target = Target::parse(s)?;
+    Some(Intercept {
+      filter: Filter::All,
+      target,
+    })
   }
 
   pub(crate) fn set_auth(&mut self, user: &str, pass: &str) {
@@ -126,8 +131,18 @@ impl Intercept {
       }
     }
   }
+}
 
-  fn parse_with(filter: Filter, val: &str) -> Option<Self> {
+impl std::fmt::Debug for Intercept {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("Intercept")
+      .field("filter", &self.filter)
+      .finish()
+  }
+}
+
+impl Target {
+  fn parse(val: &str) -> Option<Self> {
     let uri = val.parse::<Uri>().ok()?;
 
     let mut builder = Uri::builder();
@@ -139,7 +154,7 @@ impl Intercept {
       Some(s) => {
         if s == &Scheme::HTTP || s == &Scheme::HTTPS {
           s.clone()
-        } else if s.as_str() == "socks" || s.as_str() == "socks5h" {
+        } else if s.as_str() == "socks5" || s.as_str() == "socks5h" {
           is_socks = true;
           s.clone()
         } else {
@@ -179,7 +194,7 @@ impl Intercept {
         dst,
         auth: http_auth,
       },
-      "socks" => Target::Socks {
+      "socks5" | "socks5h" => Target::Socks {
         dst,
         auth: socks_auth,
       },
@@ -187,15 +202,7 @@ impl Intercept {
       _ => return None,
     };
 
-    Some(Intercept { filter, target })
-  }
-}
-
-impl std::fmt::Debug for Intercept {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("Intercept")
-      .field("filter", &self.filter)
-      .finish()
+    Some(target)
   }
 }
 
@@ -531,13 +538,13 @@ where
 }
 
 #[test]
-fn test_proxy_from_env() {
-  fn parse(s: &str) -> Intercept {
-    Intercept::parse_with(Filter::All, s).unwrap()
+fn test_proxy_parse_from_env() {
+  fn parse(s: &str) -> Target {
+    Target::parse(s).unwrap()
   }
 
   // normal
-  match parse("http://127.0.0.1:6666").target {
+  match parse("http://127.0.0.1:6666") {
     Target::Http { dst, auth } => {
       assert_eq!(dst, "http://127.0.0.1:6666");
       assert!(auth.is_none());
@@ -546,7 +553,7 @@ fn test_proxy_from_env() {
   }
 
   // without scheme
-  match parse("127.0.0.1:6666").target {
+  match parse("127.0.0.1:6666") {
     Target::Http { dst, auth } => {
       assert_eq!(dst, "http://127.0.0.1:6666");
       assert!(auth.is_none());
@@ -555,7 +562,7 @@ fn test_proxy_from_env() {
   }
 
   // with userinfo
-  match parse("user:pass@127.0.0.1:6666").target {
+  match parse("user:pass@127.0.0.1:6666") {
     Target::Http { dst, auth } => {
       assert_eq!(dst, "http://127.0.0.1:6666");
       assert!(auth.is_some());
@@ -565,7 +572,7 @@ fn test_proxy_from_env() {
   }
 
   // socks
-  match parse("socks5://user:pass@127.0.0.1:6666").target {
+  match parse("socks5://user:pass@127.0.0.1:6666") {
     Target::Socks { dst, auth } => {
       assert_eq!(dst, "socks5://127.0.0.1:6666");
       assert!(auth.is_some());
@@ -574,10 +581,10 @@ fn test_proxy_from_env() {
   }
 
   // socks5h
-  match parse("socks5h://localhost:6666").target {
+  match parse("socks5h://localhost:6666") {
     Target::Socks { dst, auth } => {
       assert_eq!(dst, "socks5h://localhost:6666");
-      assert!(auth.is_some());
+      assert!(auth.is_none());
     }
     _ => panic!("bad target"),
   }
