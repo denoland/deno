@@ -354,14 +354,16 @@ impl CliFactory {
             .filter(|(folder_url, _)| *folder_url != root_url)
             .filter_map(|(folder_url, folder)| {
               Some((
-                folder
-                  .deno_json
-                  .as_ref()
-                  .and_then(|d| d.json.name.clone())
-                  .or_else(|| {
-                    folder.pkg_json.as_ref().and_then(|d| d.name.clone())
-                  })
-                  .or_else(|| root_url.make_relative(folder_url))?, // should never be None here
+                {
+                  // should never be None here, but just ignore members that
+                  // do fail for this
+                  let mut relative_path = root_url.make_relative(folder_url)?;
+                  if relative_path.ends_with('/') {
+                    // make it slightly cleaner by removing the trailing slash
+                    relative_path.pop();
+                  }
+                  relative_path
+                },
                 WorkspaceMemberConfig {
                   package_json_deps: pkg_json_deps(folder.pkg_json.as_deref()),
                   dependencies: deno_json_deps(folder.deno_json.as_deref()),

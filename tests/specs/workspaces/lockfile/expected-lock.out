@@ -13,7 +13,7 @@
   "remote": {},
   "workspace": {
     "members": {
-      "@scope/pkg": {
+      "pkg": {
         "dependencies": [
           "jsr:@denotest/add@1"
         ]
