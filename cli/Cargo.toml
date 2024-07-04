@@ -107,7 +107,6 @@ faster-hex.workspace = true
 flate2.workspace = true
 fs3.workspace = true
 glob = "0.3.1"
-ignore = "0.4"
 import_map = { version = "=0.20.0", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser.workspace = true
@@ -149,7 +148,6 @@ tower-lsp.workspace = true
 twox-hash.workspace = true
 typed-arena = "=2.0.1"
 uuid = { workspace = true, features = ["serde"] }
-walkdir = "=2.3.2"
 zeromq.workspace = true
 zstd.workspace = true
 
@@ -164,6 +162,7 @@ nix.workspace = true
 deno_bench_util.workspace = true
 pretty_assertions.workspace = true
 test_util.workspace = true
+walkdir = "=2.3.2"
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.

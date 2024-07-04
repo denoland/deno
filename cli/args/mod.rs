@@ -1966,9 +1966,8 @@ pub fn config_to_deno_graph_workspace_member(
 
 #[cfg(test)]
 mod test {
-  use crate::util::fs::FileCollector;
-
   use super::*;
+  use deno_config::glob::FileCollector;
   use pretty_assertions::assert_eq;
 
   #[test]
@@ -2113,7 +2112,7 @@ mod test {
     let mut files = FileCollector::new(|_| true)
       .ignore_git_folder()
       .ignore_node_modules()
-      .collect_file_patterns(resolved_files)
+      .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, resolved_files)
       .unwrap();
 
     files.sort();
