@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::config_to_deno_graph_workspace_member;
 use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
@@ -18,12 +19,13 @@ use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
+use deno_config::workspace::JsrPackageConfig;
 use deno_emit::LoaderChecksum;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleLoadError;
+use deno_graph::WorkspaceFastCheckOption;
 use deno_runtime::fs_util::specifier_to_file_path;
 
-use deno_config::WorkspaceMemberConfig;
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -240,12 +242,12 @@ impl ModuleGraphCreator {
 
   pub async fn create_and_validate_publish_graph(
     &self,
-    packages: &[WorkspaceMemberConfig],
+    package_configs: &[JsrPackageConfig],
     build_fast_check_graph: bool,
   ) -> Result<ModuleGraph, AnyError> {
     let mut roots = Vec::new();
-    for package in packages {
-      roots.extend(package.config_file.resolve_export_value_urls()?);
+    for package_config in package_configs {
+      roots.extend(package_config.config_file.resolve_export_value_urls()?);
     }
     let mut graph = self
       .create_graph_with_options(CreateGraphOptions {
@@ -260,10 +262,16 @@ impl ModuleGraphCreator {
       self.type_check_graph(graph.clone()).await?;
     }
     if build_fast_check_graph {
+      let fast_check_workspace_members = package_configs
+        .iter()
+        .map(|p| config_to_deno_graph_workspace_member(&p.config_file))
+        .collect::<Result<Vec<_>, _>>()?;
       self.module_graph_builder.build_fast_check_graph(
         &mut graph,
         BuildFastCheckGraphOptions {
-          workspace_fast_check: true,
+          workspace_fast_check: WorkspaceFastCheckOption::Enabled(
+            &fast_check_workspace_members,
+          ),
         },
       )?;
     }
@@ -340,10 +348,10 @@ impl ModuleGraphCreator {
   }
 }
 
-pub struct BuildFastCheckGraphOptions {
+pub struct BuildFastCheckGraphOptions<'a> {
   /// Whether to do fast check on workspace members. This
   /// is mostly only useful when publishing.
-  pub workspace_fast_check: bool,
+  pub workspace_fast_check: deno_graph::WorkspaceFastCheckOption<'a>,
 }
 
 pub struct ModuleGraphBuilder {
@@ -622,7 +630,10 @@ impl ModuleGraphBuilder {
     }
 
     log::debug!("Building fast check graph");
-    let fast_check_cache = if !options.workspace_fast_check {
+    let fast_check_cache = if matches!(
+      options.workspace_fast_check,
+      deno_graph::WorkspaceFastCheckOption::Disabled
+    ) {
       Some(cache::FastCheckCache::new(self.caches.fast_check_db()))
     } else {
       None
@@ -631,11 +642,6 @@ impl ModuleGraphBuilder {
     let cli_resolver = &self.resolver;
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.create_graph_npm_resolver();
-    let workspace_members = if options.workspace_fast_check {
-      Some(self.options.resolve_deno_graph_workspace_members()?)
-    } else {
-      None
-    };
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
@@ -645,11 +651,7 @@ impl ModuleGraphBuilder {
         module_parser: Some(&parser),
         resolver: Some(graph_resolver),
         npm_resolver: Some(&graph_npm_resolver),
-        workspace_fast_check: if let Some(members) = &workspace_members {
-          deno_graph::WorkspaceFastCheckOption::Enabled(members)
-        } else {
-          deno_graph::WorkspaceFastCheckOption::Disabled
-        },
+        workspace_fast_check: options.workspace_fast_check,
       },
     );
     Ok(())

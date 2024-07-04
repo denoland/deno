@@ -89,6 +89,7 @@ pub struct TestContextBuilder {
   use_http_server: bool,
   use_temp_cwd: bool,
   use_symlinked_temp_dir: bool,
+  use_canonicalized_temp_dir: bool,
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
@@ -140,6 +141,23 @@ impl TestContextBuilder {
   #[deprecated]
   pub fn use_symlinked_temp_dir(mut self) -> Self {
     self.use_symlinked_temp_dir = true;
+    self
+  }
+
+  /// Causes the temp directory to go to its canonicalized path instead
+  /// of being in a symlinked temp dir on the CI.
+  ///
+  /// Note: This method is not actually deprecated. It's just deprecated
+  /// to discourage its use. Use it sparingly and document why you're using
+  /// it. You better have a good reason other than being lazy!
+  ///
+  /// If your tests are failing because the temp dir is symlinked on the CI,
+  /// then it likely means your code doesn't properly handle when Deno is running
+  /// in a symlinked directory. That's a bug and you should fix it without using
+  /// this.
+  #[deprecated]
+  pub fn use_canonicalized_temp_dir(mut self) -> Self {
+    self.use_canonicalized_temp_dir = true;
     self
   }
 
@@ -207,13 +225,21 @@ impl TestContextBuilder {
       panic!("{}", err);
     }
 
-    let temp_dir_path = self
-      .temp_dir_path
-      .clone()
-      .unwrap_or_else(std::env::temp_dir);
-    let deno_dir = TempDir::new_in(&temp_dir_path);
-    let temp_dir = TempDir::new_in(&temp_dir_path);
+    let temp_dir_path = PathRef::new(
+      self
+        .temp_dir_path
+        .clone()
+        .unwrap_or_else(std::env::temp_dir),
+    );
+    let temp_dir_path = if self.use_canonicalized_temp_dir {
+      temp_dir_path.canonicalize()
+    } else {
+      temp_dir_path
+    };
+    let deno_dir = TempDir::new_in(temp_dir_path.as_path());
+    let temp_dir = TempDir::new_in(temp_dir_path.as_path());
     let temp_dir = if self.use_symlinked_temp_dir {
+      assert!(!self.use_canonicalized_temp_dir); // code doesn't handle using both of these
       TempDir::new_symlinked(temp_dir)
     } else {
       temp_dir

@@ -909,10 +909,12 @@
     "historical.any.html": false,
     "historical.any.worker.html": false,
     "idlharness.https.any.html": [
-      "Window interface: attribute crypto"
+      "Window interface: attribute crypto",
+      "SubtleCrypto interface: operation deriveBits(AlgorithmIdentifier, CryptoKey, unsigned long)"
     ],
     "idlharness.https.any.worker.html": [
-      "WorkerGlobalScope interface: attribute crypto"
+      "WorkerGlobalScope interface: attribute crypto",
+      "SubtleCrypto interface: operation deriveBits(AlgorithmIdentifier, CryptoKey, unsigned long)"
     ],
     "import_export": {
       "ec_importKey.https.any.html": [
