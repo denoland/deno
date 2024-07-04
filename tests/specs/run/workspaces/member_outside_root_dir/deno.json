@@ -1,9 +1,0 @@
-{
-  "workspaces": [
-    "foo",
-    "../other_folder"
-  ],
-  "imports": {
-    "chalk": "npm:chalk"
-  }
-}

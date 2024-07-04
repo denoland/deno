@@ -623,61 +623,12 @@ class ClientRequest extends OutgoingMessage {
       client[internalRidSymbol],
       this._bodyWriteRid,
     );
-  }
-
-  _implicitHeader() {
-    if (this._header) {
-      throw new ERR_HTTP_HEADERS_SENT("render");
-    }
-    this._storeHeader(
-      this.method + " " + this.path + " HTTP/1.1\r\n",
-      this[kOutHeaders],
-    );
-  }
-
-  _getClient(): Deno.HttpClient | undefined {
-    return undefined;
-  }
-
-  // TODO(bartlomieju): handle error
-  onSocket(socket, _err) {
-    nextTick(() => {
-      this.socket = socket;
-      this.emit("socket", socket);
-    });
-  }
-
-  // deno-lint-ignore no-explicit-any
-  end(chunk?: any, encoding?: any, cb?: any): this {
-    if (typeof chunk === "function") {
-      cb = chunk;
-      chunk = null;
-      encoding = null;
-    } else if (typeof encoding === "function") {
-      cb = encoding;
-      encoding = null;
-    }
-
-    this.finished = true;
-    if (chunk) {
-      this.write_(chunk, encoding, null, true);
-    } else if (!this._headerSent) {
-      this._contentLength = 0;
-      this._implicitHeader();
-      this._send("", "latin1");
-    }
-    this._bodyWriter?.close();
 
     (async () => {
       try {
         const res = await op_fetch_send(this._req.requestRid);
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
-        }
-        try {
-          cb?.();
-        } catch (_) {
-          //
         }
         if (this._timeout) {
           this._timeout.removeEventListener("abort", this._timeoutCb);
@@ -784,6 +735,64 @@ class ClientRequest extends OutgoingMessage {
         } else {
           this.emit("error", err);
         }
+      }
+    })();
+  }
+
+  _implicitHeader() {
+    if (this._header) {
+      throw new ERR_HTTP_HEADERS_SENT("render");
+    }
+    this._storeHeader(
+      this.method + " " + this.path + " HTTP/1.1\r\n",
+      this[kOutHeaders],
+    );
+  }
+
+  _getClient(): Deno.HttpClient | undefined {
+    return undefined;
+  }
+
+  // TODO(bartlomieju): handle error
+  onSocket(socket, _err) {
+    nextTick(() => {
+      this.socket = socket;
+      this.emit("socket", socket);
+    });
+  }
+
+  // deno-lint-ignore no-explicit-any
+  end(chunk?: any, encoding?: any, cb?: any): this {
+    if (typeof chunk === "function") {
+      cb = chunk;
+      chunk = null;
+      encoding = null;
+    } else if (typeof encoding === "function") {
+      cb = encoding;
+      encoding = null;
+    }
+
+    this.finished = true;
+    if (chunk) {
+      this.write_(chunk, encoding, null, true);
+    } else if (!this._headerSent) {
+      this._contentLength = 0;
+      this._implicitHeader();
+      this._send("", "latin1");
+    }
+    (async () => {
+      try {
+        await this._bodyWriter?.close();
+      } catch (_) {
+        // The readable stream resource is dropped right after
+        // read is complete closing the writable stream resource.
+        // If we try to close the writer again, it will result in an
+        // error which we can safely ignore.
+      }
+      try {
+        cb?.();
+      } catch (_) {
+        //
       }
     })();
   }
