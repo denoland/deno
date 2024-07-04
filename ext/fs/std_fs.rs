@@ -816,14 +816,14 @@ fn stat_extra(
 
     let file_info = query_file_information(file_handle)?;
     if file_info.BasicInformation.FileAttributes
-      & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT as u32
+      & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT
       != 0
     {
       fsstat.is_symlink = true;
     }
 
     if file_info.BasicInformation.FileAttributes
-      & winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY as u32
+      & winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY
       != 0
     {
       fsstat.mode |= libc::S_IFDIR as u32;
@@ -834,7 +834,7 @@ fn stat_extra(
     }
 
     if file_info.BasicInformation.FileAttributes
-      & winapi::um::winnt::FILE_ATTRIBUTE_READONLY as u32
+      & winapi::um::winnt::FILE_ATTRIBUTE_READONLY
       != 0
     {
       fsstat.mode |=
