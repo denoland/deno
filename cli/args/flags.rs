@@ -2462,7 +2462,6 @@ fn repl_subcommand() -> Command {
 
 fn run_subcommand() -> Command {
   runtime_args(Command::new("run"), true, true)
-    .alias("r")
     .arg(check_arg(false))
     .arg(watch_arg(true))
     .arg(watch_exclude_arg())
