@@ -400,7 +400,7 @@ fn collect_lint_files(
   FileCollector::new(|e| is_script_ext(e.path))
     .ignore_git_folder()
     .ignore_node_modules()
-    .set_vendor_folder(cli_options.vendor_dir_path())
+    .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
     .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
 

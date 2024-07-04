@@ -10,6 +10,7 @@ mod package_json;
 use deno_ast::SourceMapOption;
 use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
@@ -861,7 +862,10 @@ impl CliOptions {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
     let config_fs_adapter = DenoConfigFsAdapter::new(&RealFs);
-    let vendor_flag = flags.vendor;
+    let maybe_vendor_override = flags.vendor.map(|v| match v {
+      true => VendorEnablement::Enable { cwd: &initial_cwd },
+      false => VendorEnablement::Disable,
+    });
     let resolve_workspace_discover_options = || {
       let additional_config_file_names: &'static [&'static str] =
         if matches!(flags.subcommand, DenoSubcommand::Publish(..)) {
@@ -890,14 +894,15 @@ impl CliOptions {
         config_parse_options,
         additional_config_file_names,
         discover_pkg_json,
-        use_vendor_folder_override: vendor_flag,
+        maybe_vendor_override,
       }
     };
     let resolve_empty_options = || WorkspaceEmptyOptions {
       root_dir: Arc::new(
         ModuleSpecifier::from_directory_path(&initial_cwd).unwrap(),
       ),
-      use_vendor_dir: vendor_flag.unwrap_or(false),
+      use_vendor_dir: maybe_vendor_override
+        .unwrap_or(VendorEnablement::Disable),
     };
 
     let workspace = match &flags.config_flag {
@@ -1274,7 +1279,7 @@ impl CliOptions {
       .or_else(|| self.workspace.node_modules_dir())
   }
 
-  pub fn vendor_dir_path(&self) -> Option<PathBuf> {
+  pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
     self.workspace.vendor_dir_path()
   }
 

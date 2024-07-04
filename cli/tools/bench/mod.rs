@@ -424,7 +424,7 @@ pub async fn run_benchmarks(
     .map(|(_, bench_options)| {
       collect_specifiers(
         bench_options.files.clone(),
-        cli_options.vendor_dir_path(),
+        cli_options.vendor_dir_path().map(ToOwned::to_owned),
         is_supported_bench_path,
       )
     })
@@ -509,7 +509,7 @@ pub async fn run_benchmarks_with_watch(
           .map(|(_, bench_options)| {
             collect_specifiers(
               bench_options.files.clone(),
-              cli_options.vendor_dir_path(),
+              cli_options.vendor_dir_path().map(ToOwned::to_owned),
               is_supported_bench_path,
             )
           })

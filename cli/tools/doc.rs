@@ -115,7 +115,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
           ),
           exclude: Default::default(),
         },
-        cli_options.vendor_dir_path(),
+        cli_options.vendor_dir_path().map(ToOwned::to_owned),
         |_| true,
       )?;
       let graph = module_graph_creator
