@@ -65,19 +65,6 @@ pub fn op_jupyter_input(
       return Ok(None);
     }
 
-    // TODO(Bartlomieju): this comment can probably be removed since passing `parent`
-    // in `JupyterMessage::new` takes care of setting up the identity
-    /*
-     * Using with_identities() because of jupyter client docs instruction
-     * Requires cloning identities per :
-     * https://jupyter-client.readthedocs.io/en/latest/messaging.html#messages-on-the-stdin-router-dealer-channel
-     * The stdin socket of the client is required to have the
-     *  same zmq IDENTITY as the client’s shell socket.
-     *  Because of this, the input_request must be sent with the same IDENTITY
-     *  routing prefix as the execute_reply in order for the frontend to receive the message.
-     * """
-     */
-
     let msg = JupyterMessage::new(
       InputRequest {
         prompt,
