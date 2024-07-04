@@ -399,8 +399,19 @@ c.on("update", data => {
 */
 
 function enableJupyter() {
-  const { op_jupyter_broadcast, op_jupyter_comm_recv, op_jupyter_comm_open } =
-    core.ops;
+  const {
+    op_jupyter_broadcast,
+    op_jupyter_input,
+    op_jupyter_comm_recv,
+    op_jupyter_comm_open,
+  } = core.ops;
+
+  function input(
+    prompt,
+    password,
+  ) {
+    return op_jupyter_input(prompt, password);
+  }
 
   function comm(commId, targetName, msgCallback) {
     op_jupyter_comm_open(commId, targetName);
@@ -514,6 +525,45 @@ function enableJupyter() {
     return;
   }
 
+  /**
+   * Prompt for user confirmation (in Jupyter Notebook context)
+   * Override confirm and prompt because they depend on a tty
+   * and in the Deno.jupyter environment that doesn't exist.
+   * @param {string} message - The message to display.
+   * @returns {Promise<boolean>} User confirmation.
+   */
+  function confirm(message = "Confirm") {
+    const answer = input(`${message} [y/N] `, false);
+    return answer === "Y" || answer === "y";
+  }
+
+  /**
+   * Prompt for user input (in Jupyter Notebook context)
+   * @param {string} message - The message to display.
+   * @param {string} defaultValue - The value used if none is provided.
+   * @param {object} options Options
+   * @param {boolean} options.password Hide the output characters
+   * @returns {Promise<string>} The user input.
+   */
+  function prompt(
+    message = "Prompt",
+    defaultValue = "",
+    { password = false } = {},
+  ) {
+    if (defaultValue != "") {
+      message += ` [${defaultValue}]`;
+    }
+    const answer = input(`${message}`, password);
+
+    if (answer === "") {
+      return defaultValue;
+    }
+
+    return answer;
+  }
+
+  globalThis.confirm = confirm;
+  globalThis.prompt = prompt;
   globalThis.Deno.jupyter = {
     broadcast,
     comm,

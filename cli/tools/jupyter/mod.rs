@@ -178,6 +178,7 @@ pub async fn kernel(
     op_state.put(startup_data.iopub_connection.clone());
     op_state.put(startup_data.last_execution_request.clone());
     op_state.put(startup_data.comm_container.clone());
+    op_state.put(startup_data.stdin_connection_proxy.clone());
   }
 
   repl_session_proxy.start().await;
