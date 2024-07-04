@@ -3,6 +3,9 @@
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
+use deno_config::package_json::PackageJsonDepValue;
+use deno_config::workspace::MappedResolution;
+use deno_config::workspace::WorkspaceResolver;
 use deno_core::ModuleSpecifier;
 use deno_graph::DependencyDescriptor;
 use deno_graph::DynamicTemplatePart;
@@ -10,7 +13,6 @@ use deno_graph::ParserModuleAnalyzer;
 use deno_graph::TypeScriptReference;
 use deno_runtime::deno_node::is_builtin_node_module;
 
-use crate::resolver::MappedSpecifierResolver;
 use crate::resolver::SloppyImportsResolver;
 
 #[derive(Debug, Clone)]
@@ -39,20 +41,20 @@ impl SpecifierUnfurlerDiagnostic {
 }
 
 pub struct SpecifierUnfurler<'a> {
-  mapped_resolver: &'a MappedSpecifierResolver,
   sloppy_imports_resolver: Option<&'a SloppyImportsResolver>,
+  workspace_resolver: &'a WorkspaceResolver,
   bare_node_builtins: bool,
 }
 
 impl<'a> SpecifierUnfurler<'a> {
   pub fn new(
-    mapped_resolver: &'a MappedSpecifierResolver,
     sloppy_imports_resolver: Option<&'a SloppyImportsResolver>,
+    workspace_resolver: &'a WorkspaceResolver,
     bare_node_builtins: bool,
   ) -> Self {
     Self {
-      mapped_resolver,
       sloppy_imports_resolver,
+      workspace_resolver,
       bare_node_builtins,
     }
   }
@@ -62,12 +64,46 @@ impl<'a> SpecifierUnfurler<'a> {
     referrer: &ModuleSpecifier,
     specifier: &str,
   ) -> Option<String> {
-    let resolved =
-      if let Ok(resolved) = self.mapped_resolver.resolve(specifier, referrer) {
-        resolved.into_specifier()
-      } else {
-        None
-      };
+    let resolved = if let Ok(resolved) =
+      self.workspace_resolver.resolve(specifier, referrer)
+    {
+      match resolved {
+        MappedResolution::Normal(specifier)
+        | MappedResolution::ImportMap(specifier) => Some(specifier),
+        MappedResolution::PackageJson {
+          sub_path,
+          dep_result,
+          ..
+        } => match dep_result {
+          Ok(dep) => match dep {
+            PackageJsonDepValue::Req(req) => ModuleSpecifier::parse(&format!(
+              "npm:{}{}",
+              req,
+              sub_path
+                .as_ref()
+                .map(|s| format!("/{}", s))
+                .unwrap_or_default()
+            ))
+            .ok(),
+            PackageJsonDepValue::Workspace(_) => {
+              log::warn!(
+                "package.json workspace entries are not implemented yet for publishing."
+              );
+              None
+            }
+          },
+          Err(err) => {
+            log::warn!(
+              "Ignoring failed to resolve package.json dependency. {:#}",
+              err
+            );
+            None
+          }
+        },
+      }
+    } else {
+      None
+    };
     let resolved = match resolved {
       Some(resolved) => resolved,
       None if self.bare_node_builtins && is_builtin_node_module(specifier) => {
@@ -305,8 +341,6 @@ fn to_range(
 mod tests {
   use std::sync::Arc;
 
-  use crate::args::PackageJsonDepsProvider;
-
   use super::*;
   use deno_ast::MediaType;
   use deno_ast::ModuleSpecifier;
@@ -355,19 +389,17 @@ mod tests {
         }
       }),
     );
-    let mapped_resolver = MappedSpecifierResolver::new(
-      Some(Arc::new(import_map)),
-      Arc::new(PackageJsonDepsProvider::new(Some(
-        package_json.resolve_local_package_json_version_reqs(),
-      ))),
+    let workspace_resolver = WorkspaceResolver::new_raw(
+      Some(import_map),
+      vec![Arc::new(package_json)],
+      deno_config::workspace::PackageJsonDepResolution::Enabled,
     );
-
     let fs = Arc::new(RealFs);
     let sloppy_imports_resolver = SloppyImportsResolver::new(fs);
 
     let unfurler = SpecifierUnfurler::new(
-      &mapped_resolver,
       Some(&sloppy_imports_resolver),
+      &workspace_resolver,
       true,
     );
 

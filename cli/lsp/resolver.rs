@@ -1,9 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::create_default_npmrc;
-use crate::args::package_json;
 use crate::args::CacheSetting;
 use crate::args::CliLockfile;
+use crate::args::PackageJsonInstallDepsProvider;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
@@ -26,6 +26,8 @@ use crate::util::progress_bar::ProgressBarStyle;
 use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_cache_dir::HttpCache;
+use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::WorkspaceResolver;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_graph::source::Resolver;
@@ -43,7 +45,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
-use package_json::PackageJsonDepsProvider;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -460,13 +461,10 @@ async fn create_npm_resolver(
       text_only_progress_bar: ProgressBar::new(ProgressBarStyle::TextOnly),
       maybe_node_modules_path: config_data
         .and_then(|d| d.node_modules_dir.clone()),
-      package_json_deps_provider: Arc::new(PackageJsonDepsProvider::new(
-        config_data
-          .and_then(|d| d.package_json.as_ref())
-          .map(|package_json| {
-            package_json.resolve_local_package_json_version_reqs()
-          }),
-      )),
+      // only used for top level install, so we can ignore this
+      package_json_deps_provider: Arc::new(
+        PackageJsonInstallDepsProvider::empty(),
+      ),
       npmrc: config_data
         .and_then(|d| d.npmrc.clone())
         .unwrap_or_else(create_default_npmrc),
@@ -504,16 +502,22 @@ fn create_graph_resolver(
   Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
     node_resolver: node_resolver.cloned(),
     npm_resolver: npm_resolver.cloned(),
-    package_json_deps_provider: Arc::new(PackageJsonDepsProvider::new(
+    workspace_resolver: Arc::new(WorkspaceResolver::new_raw(
+      config_data.and_then(|d| d.import_map.as_ref().map(|i| (**i).clone())),
       config_data
-        .and_then(|d| d.package_json.as_ref())
-        .map(|package_json| {
-          package_json.resolve_local_package_json_version_reqs()
-        }),
+        .and_then(|d| d.package_json.clone())
+        .into_iter()
+        .collect(),
+      if config_data.map(|d| d.byonm).unwrap_or(false) {
+        PackageJsonDepResolution::Disabled
+      } else {
+        // todo(dsherret): this should also be disabled for when using
+        // auto-install with a node_modules directory
+        PackageJsonDepResolution::Enabled
+      },
     )),
     maybe_jsx_import_source_config: config_file
       .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten()),
-    maybe_import_map: config_data.and_then(|d| d.import_map.clone()),
     maybe_vendor_dir: config_data.and_then(|d| d.vendor_dir.as_ref()),
     bare_node_builtins_enabled: config_file
       .map(|cf| cf.has_unstable("bare-node-builtins"))

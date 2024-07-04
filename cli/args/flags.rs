@@ -9,11 +9,13 @@ use clap::ArgMatches;
 use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
+use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::ConfigFlag;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
@@ -34,6 +36,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::args::resolve_no_prompt;
+use crate::util::collections::CheckedSet;
 use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
@@ -43,6 +46,29 @@ use super::DENO_FUTURE;
 pub struct FileFlags {
   pub ignore: Vec<String>,
   pub include: Vec<String>,
+}
+
+impl FileFlags {
+  pub fn as_file_patterns(
+    &self,
+    base: &Path,
+  ) -> Result<FilePatterns, AnyError> {
+    Ok(FilePatterns {
+      include: if self.include.is_empty() {
+        None
+      } else {
+        Some(PathOrPatternSet::from_include_relative_path_or_patterns(
+          base,
+          &self.include,
+        )?)
+      },
+      exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
+        base,
+        &self.ignore,
+      )?,
+      base: base.to_path_buf(),
+    })
+  }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -156,7 +182,7 @@ pub struct EvalFlags {
   pub code: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct FmtFlags {
   pub check: bool,
   pub files: FileFlags,
@@ -235,7 +261,7 @@ pub struct UninstallFlags {
   pub kind: UninstallKind,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct LintFlags {
   pub files: FileFlags,
   pub rules: bool,
@@ -323,7 +349,7 @@ pub struct TaskFlags {
   pub task: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum TestReporterConfig {
   #[default]
   Pretty,
@@ -838,30 +864,54 @@ impl Flags {
     args
   }
 
-  /// Extract path arguments for config search paths.
-  /// If it returns Some(vec), the config should be discovered
-  /// from the passed `current_dir` after trying to discover from each entry in
-  /// the returned vector.
-  /// If it returns None, the config file shouldn't be discovered at all.
+  /// Extract the directory paths the config file should be discovered from.
+  ///
+  /// Returns `None` if the config file should not be auto-discovered.
   pub fn config_path_args(&self, current_dir: &Path) -> Option<Vec<PathBuf>> {
-    use DenoSubcommand::*;
+    fn resolve_multiple_files(
+      files: &[String],
+      current_dir: &Path,
+    ) -> Vec<PathBuf> {
+      let mut seen = CheckedSet::with_capacity(files.len());
+      let result = files
+        .iter()
+        .filter_map(|p| {
+          let path = normalize_path(current_dir.join(p).parent()?);
+          if seen.insert(&path) {
+            Some(path)
+          } else {
+            None
+          }
+        })
+        .collect::<Vec<_>>();
+      if result.is_empty() {
+        vec![current_dir.to_path_buf()]
+      } else {
+        result
+      }
+    }
 
+    use DenoSubcommand::*;
     match &self.subcommand {
       Fmt(FmtFlags { files, .. }) => {
-        Some(files.include.iter().map(|p| current_dir.join(p)).collect())
+        Some(resolve_multiple_files(&files.include, current_dir))
       }
       Lint(LintFlags { files, .. }) => {
-        Some(files.include.iter().map(|p| current_dir.join(p)).collect())
+        Some(resolve_multiple_files(&files.include, current_dir))
       }
-      Run(RunFlags { script, .. }) => {
+      Run(RunFlags { script, .. })
+      | Compile(CompileFlags {
+        source_file: script,
+        ..
+      }) => {
         if let Ok(module_specifier) = resolve_url_or_path(script, current_dir) {
           if module_specifier.scheme() == "file"
             || module_specifier.scheme() == "npm"
           {
             if let Ok(p) = module_specifier.to_file_path() {
-              Some(vec![p])
+              Some(vec![p.parent().unwrap().to_path_buf()])
             } else {
-              Some(vec![])
+              Some(vec![current_dir.to_path_buf()])
             }
           } else {
             // When the entrypoint doesn't have file: scheme (it's the remote
@@ -869,7 +919,7 @@ impl Flags {
             None
           }
         } else {
-          Some(vec![])
+          Some(vec![current_dir.to_path_buf()])
         }
       }
       Task(TaskFlags {
@@ -880,57 +930,10 @@ impl Flags {
         // `--cwd` when specified
         match canonicalize_path(&PathBuf::from(path)) {
           Ok(path) => Some(vec![path]),
-          Err(_) => Some(vec![]),
+          Err(_) => Some(vec![current_dir.to_path_buf()]),
         }
       }
-      _ => Some(vec![]),
-    }
-  }
-
-  /// Extract path argument for `package.json` search paths.
-  /// If it returns Some(path), the `package.json` should be discovered
-  /// from the `path` dir.
-  /// If it returns None, the `package.json` file shouldn't be discovered at
-  /// all.
-  pub fn package_json_search_dir(&self, current_dir: &Path) -> Option<PathBuf> {
-    use DenoSubcommand::*;
-
-    match &self.subcommand {
-      Run(RunFlags { script, .. }) | Serve(ServeFlags { script, .. }) => {
-        let module_specifier = resolve_url_or_path(script, current_dir).ok()?;
-        if module_specifier.scheme() == "file" {
-          let p = module_specifier
-            .to_file_path()
-            .unwrap()
-            .parent()?
-            .to_owned();
-          Some(p)
-        } else if module_specifier.scheme() == "npm" {
-          Some(current_dir.to_path_buf())
-        } else {
-          None
-        }
-      }
-      Task(TaskFlags { cwd: Some(cwd), .. }) => {
-        resolve_url_or_path(cwd, current_dir)
-          .ok()?
-          .to_file_path()
-          .ok()
-      }
-      Task(_) | Check(_) | Coverage(_) | Cache(_) | Info(_) | Eval(_)
-      | Test(_) | Bench(_) | Repl(_) | Compile(_) | Publish(_) => {
-        Some(current_dir.to_path_buf())
-      }
-      Add(_) | Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_)
-      | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types | Upgrade(_)
-      | Vendor(_) => None,
-      Install(_) => {
-        if *DENO_FUTURE {
-          Some(current_dir.to_path_buf())
-        } else {
-          None
-        }
-      }
+      _ => Some(vec![current_dir.to_path_buf()]),
     }
   }
 
@@ -9271,7 +9274,15 @@ mod tests {
   fn test_config_path_args() {
     let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
     let cwd = std::env::current_dir().unwrap();
-    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.join("foo.js")]));
+
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
+
+    let flags = flags_from_vec(svec!["deno", "run", "sub_dir/foo.js"]).unwrap();
+    let cwd = std::env::current_dir().unwrap();
+    assert_eq!(
+      flags.config_path_args(&cwd),
+      Some(vec![cwd.join("sub_dir").clone()])
+    );
 
     let flags =
       flags_from_vec(svec!["deno", "run", "https://example.com/foo.js"])
@@ -9279,20 +9290,27 @@ mod tests {
     assert_eq!(flags.config_path_args(&cwd), None);
 
     let flags =
-      flags_from_vec(svec!["deno", "lint", "dir/a.js", "dir/b.js"]).unwrap();
+      flags_from_vec(svec!["deno", "lint", "dir/a/a.js", "dir/b/b.js"])
+        .unwrap();
     assert_eq!(
       flags.config_path_args(&cwd),
-      Some(vec![cwd.join("dir/a.js"), cwd.join("dir/b.js")])
+      Some(vec![cwd.join("dir/a/"), cwd.join("dir/b/")])
     );
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
-    assert!(flags.config_path_args(&cwd).unwrap().is_empty());
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.clone()]));
 
-    let flags =
-      flags_from_vec(svec!["deno", "fmt", "dir/a.js", "dir/b.js"]).unwrap();
+    let flags = flags_from_vec(svec![
+      "deno",
+      "fmt",
+      "dir/a/a.js",
+      "dir/a/a2.js",
+      "dir/b.js"
+    ])
+    .unwrap();
     assert_eq!(
       flags.config_path_args(&cwd),
-      Some(vec![cwd.join("dir/a.js"), cwd.join("dir/b.js")])
+      Some(vec![cwd.join("dir/a/"), cwd.join("dir/")])
     );
   }
 

@@ -1113,7 +1113,9 @@ fn lock_deno_json_package_json_deps_workspace() {
 
   // deno.json
   let deno_json = temp_dir.join("deno.json");
-  deno_json.write_json(&json!({}));
+  deno_json.write_json(&json!({
+    "nodeModulesDir": true
+  }));
 
   // package.json
   let package_json = temp_dir.join("package.json");
@@ -1147,16 +1149,23 @@ fn lock_deno_json_package_json_deps_workspace() {
   let lockfile = temp_dir.join("deno.lock");
   let esm_basic_integrity =
     get_lockfile_npm_package_integrity(&lockfile, "@denotest/esm-basic@1.0.0");
+  let cjs_default_export_integrity = get_lockfile_npm_package_integrity(
+    &lockfile,
+    "@denotest/cjs-default-export@1.0.0",
+  );
 
-  // no "workspace" because deno isn't smart enough to figure this out yet
-  // since it discovered the package.json in a folder different from the lockfile
   lockfile.assert_matches_json(json!({
     "version": "3",
     "packages": {
       "specifiers": {
+        "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
         "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
       },
       "npm": {
+        "@denotest/cjs-default-export@1.0.0": {
+          "integrity": cjs_default_export_integrity,
+          "dependencies": {}
+        },
         "@denotest/esm-basic@1.0.0": {
           "integrity": esm_basic_integrity,
           "dependencies": {}
@@ -1164,6 +1173,22 @@ fn lock_deno_json_package_json_deps_workspace() {
       }
     },
     "remote": {},
+    "workspace": {
+      "packageJson": {
+        "dependencies": [
+          "npm:@denotest/cjs-default-export@1"
+        ]
+      },
+      "members": {
+        "package-a": {
+          "packageJson": {
+            "dependencies": [
+              "npm:@denotest/esm-basic@1"
+            ]
+          }
+        }
+      }
+    }
   }));
 
   // run a command that causes discovery of the root package.json beside the lockfile
@@ -1201,6 +1226,15 @@ fn lock_deno_json_package_json_deps_workspace() {
         "dependencies": [
           "npm:@denotest/cjs-default-export@1"
         ]
+      },
+      "members": {
+        "package-a": {
+          "packageJson": {
+            "dependencies": [
+              "npm:@denotest/esm-basic@1"
+            ]
+          }
+        }
       }
     }
   });

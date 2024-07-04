@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::args::PackageJsonInstallDepsProvider;
 use crate::cache::CACHE_PERM;
 use crate::npm::cache_dir::mixed_case_package_name_decode;
 use crate::util::fs::atomic_write_file_with_retries;
@@ -57,6 +58,7 @@ use super::common::RegistryReadPermissionChecker;
 pub struct LocalNpmPackageResolver {
   cache: Arc<NpmCache>,
   fs: Arc<dyn deno_fs::FileSystem>,
+  pkg_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
   progress_bar: ProgressBar,
   resolution: Arc<NpmResolution>,
   tarball_cache: Arc<TarballCache>,
@@ -67,9 +69,11 @@ pub struct LocalNpmPackageResolver {
 }
 
 impl LocalNpmPackageResolver {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     cache: Arc<NpmCache>,
     fs: Arc<dyn deno_fs::FileSystem>,
+    pkg_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
     progress_bar: ProgressBar,
     resolution: Arc<NpmResolution>,
     tarball_cache: Arc<TarballCache>,
@@ -79,6 +83,7 @@ impl LocalNpmPackageResolver {
     Self {
       cache,
       fs: fs.clone(),
+      pkg_json_deps_provider,
       progress_bar,
       resolution,
       tarball_cache,
@@ -221,6 +226,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     sync_resolution_with_fs(
       &self.resolution.snapshot(),
       &self.cache,
+      &self.pkg_json_deps_provider,
       &self.progress_bar,
       &self.tarball_cache,
       &self.root_node_modules_path,
@@ -244,12 +250,13 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
 async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
   cache: &Arc<NpmCache>,
+  pkg_json_deps_provider: &PackageJsonInstallDepsProvider,
   progress_bar: &ProgressBar,
   tarball_cache: &Arc<TarballCache>,
   root_node_modules_dir_path: &Path,
   system_info: &NpmSystemInfo,
 ) -> Result<(), AnyError> {
-  if snapshot.is_empty() {
+  if snapshot.is_empty() && pkg_json_deps_provider.workspace_pkgs().is_empty() {
     return Ok(()); // don't create the directory
   }
 
@@ -473,6 +480,19 @@ async fn sync_resolution_with_fs(
   {
     let bin_entries = std::mem::take(&mut *bin_entries.borrow_mut());
     bin_entries.finish(snapshot, &bin_node_modules_dir_path)?;
+  }
+
+  // 7. Create symlinks for the workspace packages
+  {
+    // todo(#24419): this is not exactly correct because it should
+    // install correctly for a workspace (potentially in sub directories),
+    // but this is good enough for a first pass
+    for workspace in pkg_json_deps_provider.workspace_pkgs() {
+      symlink_package_dir(
+        &workspace.pkg_dir,
+        &root_node_modules_dir_path.join(&workspace.alias),
+      )?;
+    }
   }
 
   setup_cache.save();
