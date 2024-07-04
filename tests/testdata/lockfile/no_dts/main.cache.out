@@ -1,2 +1,3 @@
+Warning "--lock-write" flag is deprecated and will be removed in Deno 2.
 Download http://localhost:4545/lockfile/no_dts/mod.js
 Download http://localhost:4545/lockfile/no_dts/mod.d.ts
