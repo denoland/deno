@@ -8,24 +8,30 @@ use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::fs::canonicalize_path;
+use deno_config::workspace::TaskOrScript;
+use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceTasksConfig;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
+use deno_core::normalize_path;
 use deno_runtime::deno_node::NodeResolver;
 use deno_semver::package::PackageNv;
 use deno_task_shell::ExecutableCommand;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
-use indexmap::IndexMap;
 use lazy_regex::Lazy;
 use regex::Regex;
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 use tokio::task::LocalSet;
 
 // WARNING: Do not depend on this env var in user code. It's not stable API.
@@ -38,27 +44,10 @@ pub async fn execute_script(
 ) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
-  let tasks_config = cli_options.resolve_tasks_config()?;
-  let maybe_package_json = cli_options.maybe_package_json();
-  let package_json_scripts = maybe_package_json
-    .as_ref()
-    .and_then(|p| p.scripts.clone())
-    .unwrap_or_default();
-
-  let task_name = match &task_flags.task {
-    Some(task) => task,
-    None => {
-      print_available_tasks(
-        &mut std::io::stdout(),
-        &tasks_config,
-        &package_json_scripts,
-      )?;
-      return Ok(1);
-    }
-  };
-  let npm_resolver = factory.npm_resolver().await?;
-  let node_resolver = factory.node_resolver().await?;
-  let env_vars = real_env_vars();
+  let start_ctx = cli_options.workspace.resolve_start_ctx();
+  if !start_ctx.has_deno_or_pkg_json() {
+    bail!("deno task couldn't find deno.json(c). See https://deno.land/manual@v{}/getting_started/configuration_file", env!("CARGO_PKG_VERSION"))
+  }
   let force_use_pkg_json = std::env::var_os(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME)
     .map(|v| {
       // always remove so sub processes don't inherit this env var
@@ -66,118 +55,113 @@ pub async fn execute_script(
       v == "1"
     })
     .unwrap_or(false);
+  let tasks_config = start_ctx.to_tasks_config()?;
+  let tasks_config = if force_use_pkg_json {
+    tasks_config.with_only_pkg_json()
+  } else {
+    tasks_config
+  };
 
-  if let Some(
-    deno_config::Task::Definition(script)
-    | deno_config::Task::Commented {
-      definition: script, ..
-    },
-  ) = tasks_config.get(task_name).filter(|_| !force_use_pkg_json)
-  {
-    let config_file_url = cli_options.maybe_config_file_specifier().unwrap();
-    let config_file_path = if config_file_url.scheme() == "file" {
-      config_file_url.to_file_path().unwrap()
-    } else {
-      bail!("Only local configuration files are supported")
-    };
-    let cwd = match task_flags.cwd {
-      Some(path) => canonicalize_path(&PathBuf::from(path))
-        .context("failed canonicalizing --cwd")?,
-      None => config_file_path.parent().unwrap().to_owned(),
-    };
-
-    let custom_commands =
-      resolve_custom_commands(npm_resolver.as_ref(), node_resolver)?;
-    run_task(RunTaskOptions {
-      task_name,
-      script,
-      cwd: &cwd,
-      init_cwd: cli_options.initial_cwd(),
-      env_vars,
-      argv: cli_options.argv(),
-      custom_commands,
-      root_node_modules_dir: npm_resolver
-        .root_node_modules_path()
-        .map(|p| p.as_path()),
-    })
-    .await
-  } else if package_json_scripts.contains_key(task_name) {
-    let package_json_deps_provider = factory.package_json_deps_provider();
-
-    if let Some(package_deps) = package_json_deps_provider.deps() {
-      for (key, value) in package_deps {
-        if let Err(err) = value {
-          log::info!(
-            "{} Ignoring dependency '{}' in package.json because its version requirement failed to parse: {:#}",
-            colors::yellow("Warning"),
-            key,
-            err,
-          );
-        }
-      }
+  let task_name = match &task_flags.task {
+    Some(task) => task,
+    None => {
+      print_available_tasks(
+        &mut std::io::stdout(),
+        &cli_options.workspace,
+        &tasks_config,
+      )?;
+      return Ok(1);
     }
+  };
 
-    // ensure the npm packages are installed if using a node_modules
-    // directory and managed resolver
-    if cli_options.has_node_modules_dir() {
-      if let Some(npm_resolver) = npm_resolver.as_managed() {
-        npm_resolver.ensure_top_level_package_json_install().await?;
-      }
-    }
+  let npm_resolver = factory.npm_resolver().await?;
+  let node_resolver = factory.node_resolver().await?;
+  let env_vars = real_env_vars();
 
-    let cwd = match task_flags.cwd {
-      Some(path) => canonicalize_path(&PathBuf::from(path))?,
-      None => maybe_package_json
-        .as_ref()
-        .unwrap()
-        .path
-        .parent()
-        .unwrap()
-        .to_owned(),
-    };
+  match tasks_config.task(task_name) {
+    Some((dir_url, task_or_script)) => match task_or_script {
+      TaskOrScript::Task(_tasks, script) => {
+        let cwd = match task_flags.cwd {
+          Some(path) => canonicalize_path(&PathBuf::from(path))
+            .context("failed canonicalizing --cwd")?,
+          None => normalize_path(dir_url.to_file_path().unwrap()),
+        };
 
-    // At this point we already checked if the task name exists in package.json.
-    // We can therefore check for "pre" and "post" scripts too, since we're only
-    // dealing with package.json here and not deno.json
-    let task_names = vec![
-      format!("pre{}", task_name),
-      task_name.clone(),
-      format!("post{}", task_name),
-    ];
-    let custom_commands =
-      resolve_custom_commands(npm_resolver.as_ref(), node_resolver)?;
-    for task_name in &task_names {
-      if let Some(script) = package_json_scripts.get(task_name) {
-        let exit_code = run_task(RunTaskOptions {
+        let custom_commands =
+          resolve_custom_commands(npm_resolver.as_ref(), node_resolver)?;
+        run_task(RunTaskOptions {
           task_name,
           script,
           cwd: &cwd,
           init_cwd: cli_options.initial_cwd(),
-          env_vars: env_vars.clone(),
+          env_vars,
           argv: cli_options.argv(),
-          custom_commands: custom_commands.clone(),
+          custom_commands,
           root_node_modules_dir: npm_resolver
             .root_node_modules_path()
             .map(|p| p.as_path()),
         })
-        .await?;
-        if exit_code > 0 {
-          return Ok(exit_code);
-        }
+        .await
       }
-    }
+      TaskOrScript::Script(scripts, _script) => {
+        // ensure the npm packages are installed if using a node_modules
+        // directory and managed resolver
+        if cli_options.has_node_modules_dir() {
+          if let Some(npm_resolver) = npm_resolver.as_managed() {
+            npm_resolver.ensure_top_level_package_json_install().await?;
+          }
+        }
 
-    Ok(0)
-  } else {
-    log::error!("Task not found: {task_name}");
-    if log::log_enabled!(log::Level::Error) {
-      print_available_tasks(
-        &mut std::io::stderr(),
-        &tasks_config,
-        &package_json_scripts,
-      )?;
+        let cwd = match task_flags.cwd {
+          Some(path) => canonicalize_path(&PathBuf::from(path))?,
+          None => normalize_path(dir_url.to_file_path().unwrap()),
+        };
+
+        // At this point we already checked if the task name exists in package.json.
+        // We can therefore check for "pre" and "post" scripts too, since we're only
+        // dealing with package.json here and not deno.json
+        let task_names = vec![
+          format!("pre{}", task_name),
+          task_name.clone(),
+          format!("post{}", task_name),
+        ];
+        let custom_commands =
+          resolve_custom_commands(npm_resolver.as_ref(), node_resolver)?;
+        for task_name in &task_names {
+          if let Some(script) = scripts.get(task_name) {
+            let exit_code = run_task(RunTaskOptions {
+              task_name,
+              script,
+              cwd: &cwd,
+              init_cwd: cli_options.initial_cwd(),
+              env_vars: env_vars.clone(),
+              argv: cli_options.argv(),
+              custom_commands: custom_commands.clone(),
+              root_node_modules_dir: npm_resolver
+                .root_node_modules_path()
+                .map(|p| p.as_path()),
+            })
+            .await?;
+            if exit_code > 0 {
+              return Ok(exit_code);
+            }
+          }
+        }
+
+        Ok(0)
+      }
+    },
+    None => {
+      log::error!("Task not found: {task_name}");
+      if log::log_enabled!(log::Level::Error) {
+        print_available_tasks(
+          &mut std::io::stderr(),
+          &cli_options.workspace,
+          &tasks_config,
+        )?;
+      }
+      Ok(1)
     }
-    Ok(1)
   }
 }
 
@@ -282,53 +266,92 @@ fn real_env_vars() -> HashMap<String, String> {
 
 fn print_available_tasks(
   writer: &mut dyn std::io::Write,
-  tasks_config: &IndexMap<String, deno_config::Task>,
-  package_json_scripts: &IndexMap<String, String>,
+  workspace: &Arc<Workspace>,
+  tasks_config: &WorkspaceTasksConfig,
 ) -> Result<(), std::io::Error> {
   writeln!(writer, "{}", colors::green("Available tasks:"))?;
+  let is_cwd_root_dir = tasks_config.root.is_none();
 
-  if tasks_config.is_empty() && package_json_scripts.is_empty() {
+  if tasks_config.is_empty() {
     writeln!(
       writer,
       "  {}",
       colors::red("No tasks found in configuration file")
     )?;
   } else {
-    for (is_deno, (key, task)) in tasks_config
-      .iter()
-      .map(|(k, t)| (true, (k, t.clone())))
-      .chain(
-        package_json_scripts
-          .iter()
-          .filter(|(key, _)| !tasks_config.contains_key(*key))
-          .map(|(k, v)| (false, (k, deno_config::Task::Definition(v.clone())))),
-      )
-    {
-      writeln!(
-        writer,
-        "- {}{}",
-        colors::cyan(key),
-        if is_deno {
-          "".to_string()
-        } else {
-          format!(" {}", colors::italic_gray("(package.json)"))
-        }
-      )?;
-      let definition = match &task {
-        deno_config::Task::Definition(definition) => definition,
-        deno_config::Task::Commented { definition, .. } => definition,
+    let mut seen_task_names =
+      HashSet::with_capacity(tasks_config.tasks_count());
+    for maybe_config in [&tasks_config.member, &tasks_config.root] {
+      let Some(config) = maybe_config else {
+        continue;
       };
-      if let deno_config::Task::Commented { comments, .. } = &task {
-        let slash_slash = colors::italic_gray("//");
-        for comment in comments {
-          writeln!(
-            writer,
-            "    {slash_slash} {}",
-            colors::italic_gray(comment)
-          )?;
+      for (is_root, is_deno, (key, task)) in config
+        .deno_json
+        .as_ref()
+        .map(|config| {
+          let is_root = !is_cwd_root_dir
+            && config.folder_url == *workspace.root_folder().0.as_ref();
+          config
+            .tasks
+            .iter()
+            .map(move |(k, t)| (is_root, true, (k, Cow::Borrowed(t))))
+        })
+        .into_iter()
+        .flatten()
+        .chain(
+          config
+            .package_json
+            .as_ref()
+            .map(|config| {
+              let is_root = !is_cwd_root_dir
+                && config.folder_url == *workspace.root_folder().0.as_ref();
+              config.tasks.iter().map(move |(k, v)| {
+                (
+                  is_root,
+                  false,
+                  (k, Cow::Owned(deno_config::Task::Definition(v.clone()))),
+                )
+              })
+            })
+            .into_iter()
+            .flatten(),
+        )
+      {
+        if !seen_task_names.insert(key) {
+          continue; // already seen
         }
+        writeln!(
+          writer,
+          "- {}{}",
+          colors::cyan(key),
+          if is_root {
+            if is_deno {
+              format!(" {}", colors::italic_gray("(workspace)"))
+            } else {
+              format!(" {}", colors::italic_gray("(workspace package.json)"))
+            }
+          } else if is_deno {
+            "".to_string()
+          } else {
+            format!(" {}", colors::italic_gray("(package.json)"))
+          }
+        )?;
+        let definition = match task.as_ref() {
+          deno_config::Task::Definition(definition) => definition,
+          deno_config::Task::Commented { definition, .. } => definition,
+        };
+        if let deno_config::Task::Commented { comments, .. } = task.as_ref() {
+          let slash_slash = colors::italic_gray("//");
+          for comment in comments {
+            writeln!(
+              writer,
+              "    {slash_slash} {}",
+              colors::italic_gray(comment)
+            )?;
+          }
+        }
+        writeln!(writer, "    {definition}")?;
       }
-      writeln!(writer, "    {definition}")?;
     }
   }
 

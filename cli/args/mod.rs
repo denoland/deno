@@ -5,21 +5,30 @@ mod flags;
 mod flags_net;
 mod import_map;
 mod lockfile;
-pub mod package_json;
+mod package_json;
 
-pub use self::import_map::resolve_import_map;
-use ::import_map::ImportMap;
 use deno_ast::SourceMapOption;
-use deno_config::package_json::PackageJsonDeps;
+use deno_config::workspace::CreateResolverOptions;
+use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceDiscoverOptions;
+use deno_config::workspace::WorkspaceDiscoverStart;
+use deno_config::workspace::WorkspaceMemberContext;
+use deno_config::workspace::WorkspaceResolver;
+use deno_config::WorkspaceLintConfig;
+use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
 use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
+use deno_runtime::deno_fs::DenoConfigFsAdapter;
+use deno_runtime::deno_fs::RealFs;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
-use indexmap::IndexMap;
+use import_map::resolve_import_map_value_from_specifier;
 
 pub use deno_config::glob::FilePatterns;
 pub use deno_config::BenchConfig;
@@ -32,10 +41,9 @@ pub use deno_config::TsConfig;
 pub use deno_config::TsConfigForEmit;
 pub use deno_config::TsConfigType;
 pub use deno_config::TsTypeLib;
-pub use deno_config::WorkspaceConfig;
 pub use flags::*;
 pub use lockfile::CliLockfile;
-pub use package_json::PackageJsonDepsProvider;
+pub use package_json::PackageJsonInstallDepsProvider;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -68,7 +76,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
-use crate::args::import_map::enhance_import_map_value_with_workspace_members;
 use crate::cache;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -243,37 +250,45 @@ impl CacheSetting {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BenchOptions {
-  pub files: FilePatterns,
+pub struct WorkspaceBenchOptions {
   pub filter: Option<String>,
   pub json: bool,
   pub no_run: bool,
 }
 
-impl BenchOptions {
-  pub fn resolve(
-    maybe_bench_config: Option<BenchConfig>,
-    maybe_bench_flags: Option<BenchFlags>,
-    initial_cwd: &Path,
-  ) -> Result<Self, AnyError> {
-    let bench_flags = maybe_bench_flags.unwrap_or_default();
-    Ok(Self {
-      files: resolve_files(
-        maybe_bench_config.map(|c| c.files),
-        Some(bench_flags.files),
-        initial_cwd,
-      )?,
-      filter: bench_flags.filter,
+impl WorkspaceBenchOptions {
+  pub fn resolve(bench_flags: &BenchFlags) -> Self {
+    Self {
+      filter: bench_flags.filter.clone(),
       json: bench_flags.json,
       no_run: bench_flags.no_run,
+    }
+  }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BenchOptions {
+  pub files: FilePatterns,
+}
+
+impl BenchOptions {
+  pub fn resolve(
+    bench_config: BenchConfig,
+    bench_flags: &BenchFlags,
+    maybe_flags_base: Option<&Path>,
+  ) -> Result<Self, AnyError> {
+    Ok(Self {
+      files: resolve_files(
+        bench_config.files,
+        &bench_flags.files,
+        maybe_flags_base,
+      )?,
     })
   }
 }
 
 #[derive(Clone, Debug)]
 pub struct FmtOptions {
-  pub check: bool,
   pub options: FmtOptionsConfig,
   pub files: FilePatterns,
 }
@@ -287,79 +302,66 @@ impl Default for FmtOptions {
 impl FmtOptions {
   pub fn new_with_base(base: PathBuf) -> Self {
     Self {
-      check: false,
       options: FmtOptionsConfig::default(),
       files: FilePatterns::new_with_base(base),
     }
   }
 
   pub fn resolve(
-    maybe_fmt_config: Option<FmtConfig>,
-    maybe_fmt_flags: Option<FmtFlags>,
-    initial_cwd: &Path,
+    fmt_config: FmtConfig,
+    fmt_flags: &FmtFlags,
+    maybe_flags_base: Option<&Path>,
   ) -> Result<Self, AnyError> {
-    let (maybe_config_options, maybe_config_files) =
-      maybe_fmt_config.map(|c| (c.options, c.files)).unzip();
-
     Ok(Self {
-      check: maybe_fmt_flags.as_ref().map(|f| f.check).unwrap_or(false),
-      options: resolve_fmt_options(
-        maybe_fmt_flags.as_ref(),
-        maybe_config_options,
-      ),
+      options: resolve_fmt_options(fmt_flags, fmt_config.options),
       files: resolve_files(
-        maybe_config_files,
-        maybe_fmt_flags.map(|f| f.files),
-        initial_cwd,
+        fmt_config.files,
+        &fmt_flags.files,
+        maybe_flags_base,
       )?,
     })
   }
 }
 
 fn resolve_fmt_options(
-  fmt_flags: Option<&FmtFlags>,
-  options: Option<FmtOptionsConfig>,
+  fmt_flags: &FmtFlags,
+  mut options: FmtOptionsConfig,
 ) -> FmtOptionsConfig {
-  let mut options = options.unwrap_or_default();
+  if let Some(use_tabs) = fmt_flags.use_tabs {
+    options.use_tabs = Some(use_tabs);
+  }
 
-  if let Some(fmt_flags) = fmt_flags {
-    if let Some(use_tabs) = fmt_flags.use_tabs {
-      options.use_tabs = Some(use_tabs);
-    }
+  if let Some(line_width) = fmt_flags.line_width {
+    options.line_width = Some(line_width.get());
+  }
 
-    if let Some(line_width) = fmt_flags.line_width {
-      options.line_width = Some(line_width.get());
-    }
+  if let Some(indent_width) = fmt_flags.indent_width {
+    options.indent_width = Some(indent_width.get());
+  }
 
-    if let Some(indent_width) = fmt_flags.indent_width {
-      options.indent_width = Some(indent_width.get());
-    }
+  if let Some(single_quote) = fmt_flags.single_quote {
+    options.single_quote = Some(single_quote);
+  }
 
-    if let Some(single_quote) = fmt_flags.single_quote {
-      options.single_quote = Some(single_quote);
-    }
+  if let Some(prose_wrap) = &fmt_flags.prose_wrap {
+    options.prose_wrap = Some(match prose_wrap.as_str() {
+      "always" => ProseWrap::Always,
+      "never" => ProseWrap::Never,
+      "preserve" => ProseWrap::Preserve,
+      // validators in `flags.rs` makes other values unreachable
+      _ => unreachable!(),
+    });
+  }
 
-    if let Some(prose_wrap) = &fmt_flags.prose_wrap {
-      options.prose_wrap = Some(match prose_wrap.as_str() {
-        "always" => ProseWrap::Always,
-        "never" => ProseWrap::Never,
-        "preserve" => ProseWrap::Preserve,
-        // validators in `flags.rs` makes other values unreachable
-        _ => unreachable!(),
-      });
-    }
-
-    if let Some(no_semis) = &fmt_flags.no_semicolons {
-      options.semi_colons = Some(!no_semis);
-    }
+  if let Some(no_semis) = &fmt_flags.no_semicolons {
+    options.semi_colons = Some(!no_semis);
   }
 
   options
 }
 
-#[derive(Clone)]
-pub struct TestOptions {
-  pub files: FilePatterns,
+#[derive(Clone, Debug)]
+pub struct WorkspaceTestOptions {
   pub doc: bool,
   pub no_run: bool,
   pub fail_fast: Option<NonZeroUsize>,
@@ -372,37 +374,47 @@ pub struct TestOptions {
   pub junit_path: Option<String>,
 }
 
-impl TestOptions {
-  pub fn resolve(
-    maybe_test_config: Option<TestConfig>,
-    maybe_test_flags: Option<TestFlags>,
-    initial_cwd: &Path,
-  ) -> Result<Self, AnyError> {
-    let test_flags = maybe_test_flags.unwrap_or_default();
-
-    Ok(Self {
-      files: resolve_files(
-        maybe_test_config.map(|c| c.files),
-        Some(test_flags.files),
-        initial_cwd,
-      )?,
+impl WorkspaceTestOptions {
+  pub fn resolve(test_flags: &TestFlags) -> Self {
+    Self {
       allow_none: test_flags.allow_none,
       concurrent_jobs: test_flags
         .concurrent_jobs
         .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
       doc: test_flags.doc,
       fail_fast: test_flags.fail_fast,
-      filter: test_flags.filter,
+      filter: test_flags.filter.clone(),
       no_run: test_flags.no_run,
       shuffle: test_flags.shuffle,
       trace_leaks: test_flags.trace_leaks,
       reporter: test_flags.reporter,
-      junit_path: test_flags.junit_path,
+      junit_path: test_flags.junit_path.clone(),
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct TestOptions {
+  pub files: FilePatterns,
+}
+
+impl TestOptions {
+  pub fn resolve(
+    test_config: TestConfig,
+    test_flags: TestFlags,
+    maybe_flags_base: Option<&Path>,
+  ) -> Result<Self, AnyError> {
+    Ok(Self {
+      files: resolve_files(
+        test_config.files,
+        &test_flags.files,
+        maybe_flags_base,
+      )?,
     })
   }
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug)]
 pub enum LintReporterKind {
   #[default]
   Pretty,
@@ -411,10 +423,45 @@ pub enum LintReporterKind {
 }
 
 #[derive(Clone, Debug)]
+pub struct WorkspaceLintOptions {
+  pub reporter_kind: LintReporterKind,
+}
+
+impl WorkspaceLintOptions {
+  pub fn resolve(
+    lint_config: &WorkspaceLintConfig,
+    lint_flags: &LintFlags,
+  ) -> Result<Self, AnyError> {
+    let mut maybe_reporter_kind = if lint_flags.json {
+      Some(LintReporterKind::Json)
+    } else if lint_flags.compact {
+      Some(LintReporterKind::Compact)
+    } else {
+      None
+    };
+
+    if maybe_reporter_kind.is_none() {
+      // Flag not set, so try to get lint reporter from the config file.
+      maybe_reporter_kind = match lint_config.report.as_deref() {
+        Some("json") => Some(LintReporterKind::Json),
+        Some("compact") => Some(LintReporterKind::Compact),
+        Some("pretty") => Some(LintReporterKind::Pretty),
+        Some(_) => {
+          bail!("Invalid lint report type in config file")
+        }
+        None => None,
+      }
+    }
+    Ok(Self {
+      reporter_kind: maybe_reporter_kind.unwrap_or_default(),
+    })
+  }
+}
+
+#[derive(Clone, Debug)]
 pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
-  pub reporter_kind: LintReporterKind,
   pub fix: bool,
 }
 
@@ -429,122 +476,56 @@ impl LintOptions {
     Self {
       rules: Default::default(),
       files: FilePatterns::new_with_base(base),
-      reporter_kind: Default::default(),
       fix: false,
     }
   }
 
   pub fn resolve(
-    maybe_lint_config: Option<LintConfig>,
-    maybe_lint_flags: Option<LintFlags>,
-    initial_cwd: &Path,
+    lint_config: LintConfig,
+    lint_flags: LintFlags,
+    maybe_flags_base: Option<&Path>,
   ) -> Result<Self, AnyError> {
-    let fix = maybe_lint_flags.as_ref().map(|f| f.fix).unwrap_or(false);
-    let mut maybe_reporter_kind =
-      maybe_lint_flags.as_ref().and_then(|lint_flags| {
-        if lint_flags.json {
-          Some(LintReporterKind::Json)
-        } else if lint_flags.compact {
-          Some(LintReporterKind::Compact)
-        } else {
-          None
-        }
-      });
-
-    if maybe_reporter_kind.is_none() {
-      // Flag not set, so try to get lint reporter from the config file.
-      if let Some(lint_config) = &maybe_lint_config {
-        maybe_reporter_kind = match lint_config.report.as_deref() {
-          Some("json") => Some(LintReporterKind::Json),
-          Some("compact") => Some(LintReporterKind::Compact),
-          Some("pretty") => Some(LintReporterKind::Pretty),
-          Some(_) => {
-            bail!("Invalid lint report type in config file")
-          }
-          None => None,
-        }
-      }
-    }
-
-    let (
-      maybe_file_flags,
-      maybe_rules_tags,
-      maybe_rules_include,
-      maybe_rules_exclude,
-    ) = maybe_lint_flags
-      .map(|f| {
-        (
-          f.files,
-          f.maybe_rules_tags,
-          f.maybe_rules_include,
-          f.maybe_rules_exclude,
-        )
-      })
-      .unwrap_or_default();
-
-    let (maybe_config_files, maybe_config_rules) =
-      maybe_lint_config.map(|c| (c.files, c.rules)).unzip();
     Ok(Self {
-      reporter_kind: maybe_reporter_kind.unwrap_or_default(),
       files: resolve_files(
-        maybe_config_files,
-        Some(maybe_file_flags),
-        initial_cwd,
+        lint_config.files,
+        &lint_flags.files,
+        maybe_flags_base,
       )?,
       rules: resolve_lint_rules_options(
-        maybe_config_rules,
-        maybe_rules_tags,
-        maybe_rules_include,
-        maybe_rules_exclude,
+        lint_config.rules,
+        lint_flags.maybe_rules_tags,
+        lint_flags.maybe_rules_include,
+        lint_flags.maybe_rules_exclude,
       ),
-      fix,
+      fix: lint_flags.fix,
     })
   }
 }
 
 fn resolve_lint_rules_options(
-  maybe_lint_rules_config: Option<LintRulesConfig>,
+  config_rules: LintRulesConfig,
   mut maybe_rules_tags: Option<Vec<String>>,
   mut maybe_rules_include: Option<Vec<String>>,
   mut maybe_rules_exclude: Option<Vec<String>>,
 ) -> LintRulesConfig {
-  if let Some(config_rules) = maybe_lint_rules_config {
-    // Try to get configured rules. CLI flags take precedence
-    // over config file, i.e. if there's `rules.include` in config file
-    // and `--rules-include` CLI flag, only the flag value is taken into account.
-    if maybe_rules_include.is_none() {
-      maybe_rules_include = config_rules.include;
-    }
-    if maybe_rules_exclude.is_none() {
-      maybe_rules_exclude = config_rules.exclude;
-    }
-    if maybe_rules_tags.is_none() {
-      maybe_rules_tags = config_rules.tags;
-    }
+  // Try to get configured rules. CLI flags take precedence
+  // over config file, i.e. if there's `rules.include` in config file
+  // and `--rules-include` CLI flag, only the flag value is taken into account.
+  if maybe_rules_include.is_none() {
+    maybe_rules_include = config_rules.include;
   }
+  if maybe_rules_exclude.is_none() {
+    maybe_rules_exclude = config_rules.exclude;
+  }
+  if maybe_rules_tags.is_none() {
+    maybe_rules_tags = config_rules.tags;
+  }
+
   LintRulesConfig {
     exclude: maybe_rules_exclude,
     include: maybe_rules_include,
     tags: maybe_rules_tags,
   }
-}
-
-/// Discover `package.json` file. If `maybe_stop_at` is provided, we will stop
-/// crawling up the directory tree at that path.
-fn discover_package_json(
-  flags: &Flags,
-  maybe_stop_at: Option<PathBuf>,
-  current_dir: &Path,
-) -> Result<Option<Arc<PackageJson>>, AnyError> {
-  // TODO(bartlomieju): discover for all subcommands, but print warnings that
-  // `package.json` is ignored in bundle/compile/etc.
-
-  if let Some(package_json_dir) = flags.package_json_search_dir(current_dir) {
-    return package_json::discover_from(&package_json_dir, maybe_stop_at);
-  }
-
-  log::debug!("No package.json file found");
-  Ok(None)
 }
 
 /// Discover `.npmrc` file - currently we only support it next to `package.json`
@@ -798,12 +779,10 @@ pub struct CliOptions {
   initial_cwd: PathBuf,
   maybe_node_modules_folder: Option<PathBuf>,
   maybe_vendor_folder: Option<PathBuf>,
-  maybe_config_file: Option<ConfigFile>,
-  maybe_package_json: Option<Arc<PackageJson>>,
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   overrides: CliOptionOverrides,
-  maybe_workspace_config: Option<WorkspaceConfig>,
+  pub workspace: Arc<Workspace>,
   pub disable_deprecated_api_warning: bool,
   pub verbose_deprecated_api_warning: bool,
 }
@@ -812,10 +791,9 @@ impl CliOptions {
   pub fn new(
     flags: Flags,
     initial_cwd: PathBuf,
-    maybe_config_file: Option<ConfigFile>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
-    maybe_package_json: Option<Arc<PackageJson>>,
     npmrc: Arc<ResolvedNpmRc>,
+    workspace: Arc<Workspace>,
     force_global_cache: bool,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
@@ -836,24 +814,23 @@ impl CliOptions {
     }
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
+    let root_folder = workspace.root_folder().1;
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
-      maybe_config_file.as_ref(),
-      maybe_package_json.as_deref(),
+      root_folder.deno_json.as_deref(),
+      root_folder.pkg_json.as_deref(),
     )
     .with_context(|| "Resolving node_modules folder.")?;
     let maybe_vendor_folder = if force_global_cache {
       None
     } else {
-      resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref())
+      resolve_vendor_folder(
+        &initial_cwd,
+        &flags,
+        root_folder.deno_json.as_deref(),
+      )
     };
-    let maybe_workspace_config =
-      if let Some(config_file) = maybe_config_file.as_ref() {
-        config_file.to_workspace_config()?
-      } else {
-        None
-      };
 
     if let Some(env_file_name) = &flags.env_file {
       match from_filename(env_file_name) {
@@ -879,14 +856,12 @@ impl CliOptions {
     Ok(Self {
       flags,
       initial_cwd,
-      maybe_config_file,
       maybe_lockfile,
-      maybe_package_json,
       npmrc,
       maybe_node_modules_folder,
       maybe_vendor_folder,
       overrides: Default::default(),
-      maybe_workspace_config,
+      workspace,
       disable_deprecated_api_warning,
       verbose_deprecated_api_warning,
     })
@@ -895,50 +870,71 @@ impl CliOptions {
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
-    let additional_config_file_names =
-      if matches!(flags.subcommand, DenoSubcommand::Publish(..)) {
-        Some(vec!["jsr.json", "jsr.jsonc"])
-      } else {
-        None
+    let config_fs_adapter = DenoConfigFsAdapter::new(&RealFs);
+    let resolve_workspace_discover_options = || {
+      let additional_config_file_names: &'static [&'static str] =
+        if matches!(flags.subcommand, DenoSubcommand::Publish(..)) {
+          &["jsr.json", "jsr.jsonc"]
+        } else {
+          &[]
+        };
+      let config_parse_options = deno_config::ConfigParseOptions {
+        include_task_comments: matches!(
+          flags.subcommand,
+          DenoSubcommand::Task(..)
+        ),
       };
-    let parse_options = deno_config::ParseOptions {
-      include_task_comments: matches!(
-        flags.subcommand,
-        DenoSubcommand::Task(..)
-      ),
-    };
-    let maybe_config_file = ConfigFile::discover(
-      &flags.config_flag,
-      flags.config_path_args(&initial_cwd),
-      &initial_cwd,
-      additional_config_file_names,
-      &parse_options,
-    )?;
-
-    let mut maybe_package_json = None;
-    if flags.config_flag == deno_config::ConfigFlag::Disabled
-      || flags.no_npm
-      || has_flag_env_var("DENO_NO_PACKAGE_JSON")
-    {
-      log::debug!("package.json auto-discovery is disabled")
-    } else if let Some(config_file) = &maybe_config_file {
-      let specifier = config_file.specifier.clone();
-      if specifier.scheme() == "file" {
-        let maybe_stop_at = specifier
-          .to_file_path()
-          .unwrap()
-          .parent()
-          .map(|p| p.to_path_buf());
-
-        maybe_package_json =
-          discover_package_json(&flags, maybe_stop_at, &initial_cwd)?;
+      let discover_pkg_json = flags.config_flag
+        != deno_config::ConfigFlag::Disabled
+        && !flags.no_npm
+        && !has_flag_env_var("DENO_NO_PACKAGE_JSON");
+      if !discover_pkg_json {
+        log::debug!("package.json auto-discovery is disabled");
       }
-    } else {
-      maybe_package_json = discover_package_json(&flags, None, &initial_cwd)?;
+      WorkspaceDiscoverOptions {
+        fs: &config_fs_adapter,
+        pkg_json_cache: Some(
+          &deno_runtime::deno_node::PackageJsonThreadLocalCache,
+        ),
+        config_parse_options,
+        additional_config_file_names,
+        discover_pkg_json,
+      }
+    };
+
+    let workspace = match &flags.config_flag {
+      deno_config::ConfigFlag::Discover => {
+        if let Some(start_dirs) = flags.config_path_args(&initial_cwd) {
+          Workspace::discover(
+            WorkspaceDiscoverStart::Dirs(&start_dirs),
+            &resolve_workspace_discover_options(),
+          )?
+        } else {
+          Workspace::empty(Arc::new(
+            ModuleSpecifier::from_directory_path(&initial_cwd).unwrap(),
+          ))
+        }
+      }
+      deno_config::ConfigFlag::Path(path) => {
+        let config_path = normalize_path(initial_cwd.join(path));
+        Workspace::discover(
+          WorkspaceDiscoverStart::ConfigFile(&config_path),
+          &resolve_workspace_discover_options(),
+        )?
+      }
+      deno_config::ConfigFlag::Disabled => Workspace::empty(Arc::new(
+        ModuleSpecifier::from_directory_path(&initial_cwd).unwrap(),
+      )),
+    };
+
+    for diagnostic in workspace.diagnostics() {
+      log::warn!("{}", colors::yellow(diagnostic));
     }
+
+    let root_folder = workspace.root_folder().1;
     let (npmrc, _) = discover_npmrc(
-      maybe_package_json.as_ref().map(|p| p.path.clone()),
-      maybe_config_file.as_ref().and_then(|cf| {
+      root_folder.pkg_json.as_ref().map(|p| p.path.clone()),
+      root_folder.deno_json.as_ref().and_then(|cf| {
         if cf.specifier.scheme() == "file" {
           Some(cf.specifier.to_file_path().unwrap())
         } else {
@@ -949,16 +945,18 @@ impl CliOptions {
 
     let maybe_lock_file = CliLockfile::discover(
       &flags,
-      maybe_config_file.as_ref(),
-      maybe_package_json.as_deref(),
+      root_folder.deno_json.as_deref(),
+      root_folder.pkg_json.as_deref(),
     )?;
+
+    log::debug!("Finished config loading.");
+
     Self::new(
       flags,
       initial_cwd,
-      maybe_config_file,
       maybe_lock_file.map(Arc::new),
-      maybe_package_json,
       npmrc,
+      Arc::new(workspace),
       false,
     )
   }
@@ -966,10 +964,6 @@ impl CliOptions {
   #[inline(always)]
   pub fn initial_cwd(&self) -> &Path {
     &self.initial_cwd
-  }
-
-  pub fn maybe_config_file_specifier(&self) -> Option<ModuleSpecifier> {
-    self.maybe_config_file.as_ref().map(|f| f.specifier.clone())
   }
 
   pub fn graph_kind(&self) -> GraphKind {
@@ -1057,70 +1051,78 @@ impl CliOptions {
       Some(maybe_url) => Ok(maybe_url),
       None => resolve_import_map_specifier(
         self.flags.import_map_path.as_deref(),
-        self.maybe_config_file.as_ref(),
+        self.workspace.root_folder().1.deno_json.as_deref(),
         &self.initial_cwd,
       ),
     }
   }
 
-  pub async fn resolve_import_map(
+  pub async fn create_workspace_resolver(
     &self,
     file_fetcher: &FileFetcher,
-  ) -> Result<Option<ImportMap>, AnyError> {
-    if let Some(workspace_config) = self.maybe_workspace_config.as_ref() {
-      let root_config_file = self.maybe_config_file.as_ref().unwrap();
-      let base_import_map_config = ::import_map::ext::ImportMapConfig {
-        base_url: root_config_file.specifier.clone(),
-        import_map_value: root_config_file.to_import_map_value_from_imports(),
-      };
-      let children_configs = workspace_config
-        .members
-        .iter()
-        .map(|member| ::import_map::ext::ImportMapConfig {
-          base_url: member.config_file.specifier.clone(),
-          import_map_value: member
-            .config_file
-            .to_import_map_value_from_imports(),
-        })
-        .collect();
-
-      let (import_map_url, import_map) =
-        ::import_map::ext::create_synthetic_import_map(
-          base_import_map_config,
-          children_configs,
-        );
-      let import_map = enhance_import_map_value_with_workspace_members(
-        import_map,
-        &workspace_config.members,
-      );
-      log::debug!(
-        "Workspace config generated this import map {}",
-        serde_json::to_string_pretty(&import_map).unwrap()
-      );
-      let maybe_import_map_result =
-        import_map::import_map_from_value(import_map_url, import_map).map(Some);
-
-      return maybe_import_map_result;
-    }
-
-    if self
+  ) -> Result<WorkspaceResolver, AnyError> {
+    let overrode_no_import_map = self
       .overrides
       .import_map_specifier
       .as_ref()
       .map(|s| s.is_none())
-      == Some(true)
-    {
-      // overrode to not use an import map
-      return Ok(None);
-    }
-
-    let import_map_specifier = self.resolve_specified_import_map_specifier()?;
-    resolve_import_map(
-      import_map_specifier.as_ref(),
-      self.maybe_config_file().as_ref(),
-      file_fetcher,
+      == Some(true);
+    let cli_arg_specified_import_map = if overrode_no_import_map {
+      // use a fake empty import map
+      Some(deno_config::workspace::SpecifiedImportMap {
+        base_url: self
+          .workspace
+          .root_folder()
+          .0
+          .join("import_map.json")
+          .unwrap(),
+        value: serde_json::Value::Object(Default::default()),
+      })
+    } else {
+      let maybe_import_map_specifier =
+        self.resolve_specified_import_map_specifier()?;
+      match maybe_import_map_specifier {
+        Some(specifier) => {
+          let value =
+            resolve_import_map_value_from_specifier(&specifier, file_fetcher)
+              .await
+              .with_context(|| {
+                format!("Unable to load '{}' import map", specifier)
+              })?;
+          Some(deno_config::workspace::SpecifiedImportMap {
+            base_url: specifier,
+            value,
+          })
+        }
+        None => None,
+      }
+    };
+    Ok(
+      self
+        .workspace
+        .create_resolver(
+          CreateResolverOptions {
+            // todo(dsherret): this should be false for nodeModulesDir: true
+            pkg_json_dep_resolution: if self.use_byonm() {
+              PackageJsonDepResolution::Disabled
+            } else {
+              PackageJsonDepResolution::Enabled
+            },
+            specified_import_map: cli_arg_specified_import_map,
+          },
+          |specifier| {
+            let specifier = specifier.clone();
+            async move {
+              let file = file_fetcher
+                .fetch(&specifier, &PermissionsContainer::allow_all())
+                .await?
+                .into_text_decoded()?;
+              Ok(file.source.to_string())
+            }
+          },
+        )
+        .await?,
     )
-    .await
   }
 
   pub fn node_ipc_fd(&self) -> Option<i64> {
@@ -1155,22 +1157,18 @@ impl CliOptions {
   }
 
   pub fn resolve_main_module(&self) -> Result<ModuleSpecifier, AnyError> {
-    match &self.flags.subcommand {
+    let main_module = match &self.flags.subcommand {
       DenoSubcommand::Bundle(bundle_flags) => {
-        resolve_url_or_path(&bundle_flags.source_file, self.initial_cwd())
-          .map_err(AnyError::from)
+        resolve_url_or_path(&bundle_flags.source_file, self.initial_cwd())?
       }
       DenoSubcommand::Compile(compile_flags) => {
-        resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())
-          .map_err(AnyError::from)
+        resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
       }
       DenoSubcommand::Eval(_) => {
-        resolve_url_or_path("./$deno$eval", self.initial_cwd())
-          .map_err(AnyError::from)
+        resolve_url_or_path("./$deno$eval", self.initial_cwd())?
       }
       DenoSubcommand::Repl(_) => {
-        resolve_url_or_path("./$deno$repl.ts", self.initial_cwd())
-          .map_err(AnyError::from)
+        resolve_url_or_path("./$deno$repl.ts", self.initial_cwd())?
       }
       DenoSubcommand::Run(run_flags) => {
         if run_flags.is_stdin() {
@@ -1179,25 +1177,24 @@ impl CliOptions {
             .and_then(|cwd| {
               resolve_url_or_path("./$deno$stdin.ts", &cwd)
                 .map_err(AnyError::from)
-            })
+            })?
         } else if run_flags.watch.is_some() {
-          resolve_url_or_path(&run_flags.script, self.initial_cwd())
-            .map_err(AnyError::from)
+          resolve_url_or_path(&run_flags.script, self.initial_cwd())?
         } else if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
-          ModuleSpecifier::parse(&run_flags.script).map_err(AnyError::from)
+          ModuleSpecifier::parse(&run_flags.script)?
         } else {
-          resolve_url_or_path(&run_flags.script, self.initial_cwd())
-            .map_err(AnyError::from)
+          resolve_url_or_path(&run_flags.script, self.initial_cwd())?
         }
       }
       DenoSubcommand::Serve(run_flags) => {
-        resolve_url_or_path(&run_flags.script, self.initial_cwd())
-          .map_err(AnyError::from)
+        resolve_url_or_path(&run_flags.script, self.initial_cwd())?
       }
       _ => {
         bail!("No main module.")
       }
-    }
+    };
+
+    Ok(main_module)
   }
 
   pub fn resolve_file_header_overrides(
@@ -1266,11 +1263,9 @@ impl CliOptions {
       initial_cwd: self.initial_cwd.clone(),
       maybe_node_modules_folder: Some(path),
       maybe_vendor_folder: self.maybe_vendor_folder.clone(),
-      maybe_config_file: self.maybe_config_file.clone(),
-      maybe_package_json: self.maybe_package_json.clone(),
       npmrc: self.npmrc.clone(),
       maybe_lockfile: self.maybe_lockfile.clone(),
-      maybe_workspace_config: self.maybe_workspace_config.clone(),
+      workspace: self.workspace.clone(),
       overrides: self.overrides.clone(),
       disable_deprecated_api_warning: self.disable_deprecated_api_warning,
       verbose_deprecated_api_warning: self.verbose_deprecated_api_warning,
@@ -1278,12 +1273,10 @@ impl CliOptions {
   }
 
   pub fn node_modules_dir_enablement(&self) -> Option<bool> {
-    self.flags.node_modules_dir.or_else(|| {
-      self
-        .maybe_config_file
-        .as_ref()
-        .and_then(|c| c.json.node_modules_dir)
-    })
+    self
+      .flags
+      .node_modules_dir
+      .or_else(|| self.workspace.node_modules_dir())
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
@@ -1304,10 +1297,7 @@ impl CliOptions {
     &self,
     config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, AnyError> {
-    let result = deno_config::get_ts_config_for_emit(
-      config_type,
-      self.maybe_config_file.as_ref(),
-    );
+    let result = self.workspace.resolve_ts_config_for_emit(config_type);
 
     match result {
       Ok(mut ts_config_for_emit) => {
@@ -1346,101 +1336,83 @@ impl CliOptions {
     self.maybe_lockfile.clone()
   }
 
-  pub fn resolve_tasks_config(
-    &self,
-  ) -> Result<IndexMap<String, deno_config::Task>, AnyError> {
-    if let Some(config_file) = &self.maybe_config_file {
-      config_file.resolve_tasks_config()
-    } else if self.maybe_package_json.is_some() {
-      Ok(Default::default())
-    } else {
-      bail!("deno task couldn't find deno.json(c). See https://deno.land/manual@v{}/getting_started/configuration_file", env!("CARGO_PKG_VERSION"))
-    }
-  }
-
-  /// Return the JSX import source configuration.
-  pub fn to_maybe_jsx_import_source_config(
-    &self,
-  ) -> Result<Option<JsxImportSourceConfig>, AnyError> {
-    match self.maybe_config_file.as_ref() {
-      Some(config) => config.to_maybe_jsx_import_source_config(),
-      None => Ok(None),
-    }
-  }
-
   /// Return any imports that should be brought into the scope of the module
   /// graph.
   pub fn to_maybe_imports(
     &self,
   ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
-    if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_maybe_imports().map(|maybe_imports| {
-        maybe_imports
-          .into_iter()
-          .map(|(referrer, imports)| deno_graph::ReferrerImports {
-            referrer,
-            imports,
-          })
-          .collect()
-      })
-    } else {
-      Ok(Vec::new())
-    }
-  }
-
-  pub fn maybe_config_file(&self) -> &Option<ConfigFile> {
-    &self.maybe_config_file
-  }
-
-  pub fn maybe_workspace_config(&self) -> &Option<WorkspaceConfig> {
-    &self.maybe_workspace_config
-  }
-
-  pub fn maybe_package_json(&self) -> Option<&Arc<PackageJson>> {
-    self.maybe_package_json.as_ref()
+    self.workspace.to_maybe_imports().map(|maybe_imports| {
+      maybe_imports
+        .into_iter()
+        .map(|(referrer, imports)| deno_graph::ReferrerImports {
+          referrer,
+          imports,
+        })
+        .collect()
+    })
   }
 
   pub fn npmrc(&self) -> &Arc<ResolvedNpmRc> {
     &self.npmrc
   }
 
-  pub fn maybe_package_json_deps(&self) -> Option<PackageJsonDeps> {
-    if matches!(
-      self.flags.subcommand,
-      DenoSubcommand::Task(TaskFlags { task: None, .. })
-    ) {
-      // don't have any package json dependencies for deno task with no args
-      None
-    } else {
-      self
-        .maybe_package_json()
-        .as_ref()
-        .map(|p| p.resolve_local_package_json_version_reqs())
+  pub fn resolve_fmt_options_for_members(
+    &self,
+    fmt_flags: &FmtFlags,
+  ) -> Result<Vec<FmtOptions>, AnyError> {
+    let cli_arg_patterns =
+      fmt_flags.files.as_file_patterns(self.initial_cwd())?;
+    let member_ctxs =
+      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
+    let mut result = Vec::with_capacity(member_ctxs.len());
+    for member_ctx in &member_ctxs {
+      let options = self.resolve_fmt_options(fmt_flags, member_ctx)?;
+      result.push(options);
     }
+    Ok(result)
   }
 
   pub fn resolve_fmt_options(
     &self,
-    fmt_flags: FmtFlags,
+    fmt_flags: &FmtFlags,
+    ctx: &WorkspaceMemberContext,
   ) -> Result<FmtOptions, AnyError> {
-    let maybe_fmt_config = if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_fmt_config()?
-    } else {
-      None
-    };
-    FmtOptions::resolve(maybe_fmt_config, Some(fmt_flags), &self.initial_cwd)
+    let fmt_config = ctx.to_fmt_config()?;
+    FmtOptions::resolve(fmt_config, fmt_flags, Some(&self.initial_cwd))
+  }
+
+  pub fn resolve_workspace_lint_options(
+    &self,
+    lint_flags: &LintFlags,
+  ) -> Result<WorkspaceLintOptions, AnyError> {
+    let lint_config = self.workspace.to_lint_config()?;
+    WorkspaceLintOptions::resolve(&lint_config, lint_flags)
+  }
+
+  pub fn resolve_lint_options_for_members(
+    &self,
+    lint_flags: &LintFlags,
+  ) -> Result<Vec<(WorkspaceMemberContext, LintOptions)>, AnyError> {
+    let cli_arg_patterns =
+      lint_flags.files.as_file_patterns(self.initial_cwd())?;
+    let member_ctxs =
+      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
+    let mut result = Vec::with_capacity(member_ctxs.len());
+    for member_ctx in member_ctxs {
+      let options =
+        self.resolve_lint_options(lint_flags.clone(), &member_ctx)?;
+      result.push((member_ctx, options));
+    }
+    Ok(result)
   }
 
   pub fn resolve_lint_options(
     &self,
     lint_flags: LintFlags,
+    ctx: &WorkspaceMemberContext,
   ) -> Result<LintOptions, AnyError> {
-    let maybe_lint_config = if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_lint_config()?
-    } else {
-      None
-    };
-    LintOptions::resolve(maybe_lint_config, Some(lint_flags), &self.initial_cwd)
+    let lint_config = ctx.to_lint_config()?;
+    LintOptions::resolve(lint_config, lint_flags, Some(&self.initial_cwd))
   }
 
   pub fn resolve_lint_config(
@@ -1464,104 +1436,80 @@ impl CliOptions {
     })
   }
 
-  pub fn resolve_config_excludes(&self) -> Result<PathOrPatternSet, AnyError> {
-    let maybe_config_files = if let Some(config_file) = &self.maybe_config_file
-    {
-      Some(config_file.to_files_config()?)
-    } else {
-      None
-    };
-    Ok(maybe_config_files.map(|f| f.exclude).unwrap_or_default())
+  pub fn resolve_workspace_test_options(
+    &self,
+    test_flags: &TestFlags,
+  ) -> WorkspaceTestOptions {
+    WorkspaceTestOptions::resolve(test_flags)
+  }
+
+  pub fn resolve_test_options_for_members(
+    &self,
+    test_flags: &TestFlags,
+  ) -> Result<Vec<(WorkspaceMemberContext, TestOptions)>, AnyError> {
+    let cli_arg_patterns =
+      test_flags.files.as_file_patterns(self.initial_cwd())?;
+    let member_ctxs =
+      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
+    let mut result = Vec::with_capacity(member_ctxs.len());
+    for member_ctx in member_ctxs {
+      let options =
+        self.resolve_test_options(test_flags.clone(), &member_ctx)?;
+      result.push((member_ctx, options));
+    }
+    Ok(result)
+  }
+
+  pub fn resolve_workspace_bench_options(
+    &self,
+    bench_flags: &BenchFlags,
+  ) -> WorkspaceBenchOptions {
+    WorkspaceBenchOptions::resolve(bench_flags)
   }
 
   pub fn resolve_test_options(
     &self,
     test_flags: TestFlags,
+    ctx: &WorkspaceMemberContext,
   ) -> Result<TestOptions, AnyError> {
-    let maybe_test_config = if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_test_config()?
-    } else {
-      None
-    };
-    TestOptions::resolve(maybe_test_config, Some(test_flags), &self.initial_cwd)
+    let test_config = ctx.to_test_config()?;
+    TestOptions::resolve(test_config, test_flags, Some(&self.initial_cwd))
+  }
+
+  pub fn resolve_bench_options_for_members(
+    &self,
+    bench_flags: &BenchFlags,
+  ) -> Result<Vec<(WorkspaceMemberContext, BenchOptions)>, AnyError> {
+    let cli_arg_patterns =
+      bench_flags.files.as_file_patterns(self.initial_cwd())?;
+    let member_ctxs =
+      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
+    let mut result = Vec::with_capacity(member_ctxs.len());
+    for member_ctx in member_ctxs {
+      let options = self.resolve_bench_options(bench_flags, &member_ctx)?;
+      result.push((member_ctx, options));
+    }
+    Ok(result)
   }
 
   pub fn resolve_bench_options(
     &self,
-    bench_flags: BenchFlags,
+    bench_flags: &BenchFlags,
+    ctx: &WorkspaceMemberContext,
   ) -> Result<BenchOptions, AnyError> {
-    let maybe_bench_config = if let Some(config_file) = &self.maybe_config_file
-    {
-      config_file.to_bench_config()?
-    } else {
-      None
-    };
-    BenchOptions::resolve(
-      maybe_bench_config,
-      Some(bench_flags),
-      &self.initial_cwd,
-    )
+    let bench_config = ctx.to_bench_config()?;
+    BenchOptions::resolve(bench_config, bench_flags, Some(&self.initial_cwd))
   }
 
   pub fn resolve_deno_graph_workspace_members(
     &self,
   ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
-    fn workspace_config_to_workspace_members(
-      workspace_config: &deno_config::WorkspaceConfig,
-    ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
-      workspace_config
-        .members
-        .iter()
-        .map(|member| {
-          config_to_workspace_member(&member.config_file).with_context(|| {
-            format!(
-              "Failed to resolve configuration for '{}' workspace member at '{}'",
-              member.member_name,
-              member.config_file.specifier.as_str()
-            )
-          })
-        })
-        .collect()
-    }
-
-    fn config_to_workspace_member(
-      config: &ConfigFile,
-    ) -> Result<deno_graph::WorkspaceMember, AnyError> {
-      let nv = deno_semver::package::PackageNv {
-        name: match &config.json.name {
-          Some(name) => name.clone(),
-          None => bail!("Missing 'name' field in config file."),
-        },
-        version: match &config.json.version {
-          Some(name) => deno_semver::Version::parse_standard(name)?,
-          None => bail!("Missing 'version' field in config file."),
-        },
-      };
-      Ok(deno_graph::WorkspaceMember {
-        base: config.specifier.join("./").unwrap(),
-        nv,
-        exports: config.to_exports_config()?.into_map(),
-      })
-    }
-
-    let maybe_workspace_config = self.maybe_workspace_config();
-    if let Some(wc) = maybe_workspace_config {
-      workspace_config_to_workspace_members(wc)
-    } else {
-      Ok(
-        self
-          .maybe_config_file()
-          .as_ref()
-          .and_then(|c| match config_to_workspace_member(c) {
-            Ok(m) => Some(vec![m]),
-            Err(e) => {
-              log::debug!("Deno config was not a package: {:#}", e);
-              None
-            }
-          })
-          .unwrap_or_default(),
-      )
-    }
+    self
+      .workspace
+      .jsr_packages()
+      .into_iter()
+      .map(|pkg| config_to_deno_graph_workspace_member(&pkg.config_file))
+      .collect::<Result<Vec<_>, _>>()
   }
 
   /// Vector of user script CLI arguments.
@@ -1578,11 +1526,7 @@ impl CliOptions {
   }
 
   pub fn check_js(&self) -> bool {
-    self
-      .maybe_config_file
-      .as_ref()
-      .map(|cf| cf.get_check_js())
-      .unwrap_or(false)
+    self.workspace.check_js()
   }
 
   pub fn coverage_dir(&self) -> Option<String> {
@@ -1729,17 +1673,17 @@ impl CliOptions {
 
   pub fn unstable_bare_node_builtins(&self) -> bool {
     self.flags.unstable_config.bare_node_builtins
-      || self
-        .maybe_config_file()
-        .as_ref()
-        .map(|c| c.has_unstable("bare-node-builtins"))
-        .unwrap_or(false)
+      || self.workspace.has_unstable("bare-node-builtins")
   }
 
   pub fn use_byonm(&self) -> bool {
     if self.enable_future_features()
       && self.node_modules_dir_enablement().is_none()
-      && self.maybe_package_json.is_some()
+      && self
+        .workspace
+        .config_folders()
+        .values()
+        .any(|f| f.pkg_json.is_some())
     {
       return true;
     }
@@ -1750,28 +1694,16 @@ impl CliOptions {
         .as_ref()
         .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
         .unwrap_or(false)
-      || self
-        .maybe_config_file()
-        .as_ref()
-        .map(|c| c.has_unstable("byonm"))
-        .unwrap_or(false)
+      || self.workspace.has_unstable("byonm")
   }
 
   pub fn unstable_sloppy_imports(&self) -> bool {
     self.flags.unstable_config.sloppy_imports
-      || self
-        .maybe_config_file()
-        .as_ref()
-        .map(|c| c.has_unstable("sloppy-imports"))
-        .unwrap_or(false)
+      || self.workspace.has_unstable("sloppy-imports")
   }
 
   pub fn unstable_features(&self) -> Vec<String> {
-    let mut from_config_file = self
-      .maybe_config_file()
-      .as_ref()
-      .map(|c| c.json.unstable.clone())
-      .unwrap_or_default();
+    let mut from_config_file = self.workspace.unstable_features().to_vec();
 
     self
       .flags
@@ -1824,11 +1756,17 @@ impl CliOptions {
     {
       full_paths.push(import_map_path);
     }
-    if let Some(specifier) = self.maybe_config_file_specifier() {
-      if specifier.scheme() == "file" {
-        if let Ok(path) = specifier.to_file_path() {
-          full_paths.push(path);
+
+    for (_, folder) in self.workspace.config_folders() {
+      if let Some(deno_json) = &folder.deno_json {
+        if deno_json.specifier.scheme() == "file" {
+          if let Ok(path) = deno_json.specifier.to_file_path() {
+            full_paths.push(path);
+          }
         }
+      }
+      if let Some(pkg_json) = &folder.pkg_json {
+        full_paths.push(pkg_json.path.clone());
       }
     }
     full_paths
@@ -1938,8 +1876,9 @@ impl StorageKeyResolver {
       // otherwise we will use the path to the config file or None to
       // fall back to using the main module's path
       options
-        .maybe_config_file
-        .as_ref()
+        .workspace
+        .resolve_start_ctx()
+        .maybe_deno_json()
         .map(|config_file| Some(config_file.specifier.to_string()))
     })
   }
@@ -1967,29 +1906,25 @@ impl StorageKeyResolver {
 /// over config file, i.e. if there's `files.ignore` in config file
 /// and `--ignore` CLI flag, only the flag value is taken into account.
 fn resolve_files(
-  maybe_files_config: Option<FilePatterns>,
-  maybe_file_flags: Option<FileFlags>,
-  initial_cwd: &Path,
+  mut files_config: FilePatterns,
+  file_flags: &FileFlags,
+  maybe_flags_base: Option<&Path>,
 ) -> Result<FilePatterns, AnyError> {
-  let mut maybe_files_config = maybe_files_config
-    .unwrap_or_else(|| FilePatterns::new_with_base(initial_cwd.to_path_buf()));
-  if let Some(file_flags) = maybe_file_flags {
-    if !file_flags.include.is_empty() {
-      maybe_files_config.include =
-        Some(PathOrPatternSet::from_include_relative_path_or_patterns(
-          initial_cwd,
-          &file_flags.include,
-        )?);
-    }
-    if !file_flags.ignore.is_empty() {
-      maybe_files_config.exclude =
-        PathOrPatternSet::from_exclude_relative_path_or_patterns(
-          initial_cwd,
-          &file_flags.ignore,
-        )?;
-    }
+  if !file_flags.include.is_empty() {
+    files_config.include =
+      Some(PathOrPatternSet::from_include_relative_path_or_patterns(
+        maybe_flags_base.unwrap_or(&files_config.base),
+        &file_flags.include,
+      )?);
   }
-  Ok(maybe_files_config)
+  if !file_flags.ignore.is_empty() {
+    files_config.exclude =
+      PathOrPatternSet::from_exclude_relative_path_or_patterns(
+        maybe_flags_base.unwrap_or(&files_config.base),
+        &file_flags.ignore,
+      )?;
+  }
+  Ok(files_config)
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.
@@ -2007,6 +1942,26 @@ pub fn npm_pkg_req_ref_to_binary_command(
 ) -> String {
   let binary_name = req_ref.sub_path().unwrap_or(req_ref.req().name.as_str());
   binary_name.to_string()
+}
+
+pub fn config_to_deno_graph_workspace_member(
+  config: &ConfigFile,
+) -> Result<deno_graph::WorkspaceMember, AnyError> {
+  let nv = deno_semver::package::PackageNv {
+    name: match &config.json.name {
+      Some(name) => name.clone(),
+      None => bail!("Missing 'name' field in config file."),
+    },
+    version: match &config.json.version {
+      Some(name) => deno_semver::Version::parse_standard(name)?,
+      None => bail!("Missing 'version' field in config file."),
+    },
+  };
+  Ok(deno_graph::WorkspaceMember {
+    base: config.specifier.join("./").unwrap(),
+    nv,
+    exports: config.to_exports_config()?.into_map(),
+  })
 }
 
 #[cfg(test)]
@@ -2027,7 +1982,7 @@ mod test {
     let config_file = ConfigFile::new(
       config_text,
       config_specifier,
-      &deno_config::ParseOptions::default(),
+      &deno_config::ConfigParseOptions::default(),
     )
     .unwrap();
     let actual = resolve_import_map_specifier(
@@ -2051,7 +2006,7 @@ mod test {
     let config_file = ConfigFile::new(
       config_text,
       config_specifier,
-      &deno_config::ParseOptions::default(),
+      &deno_config::ConfigParseOptions::default(),
     )
     .unwrap();
     let actual = resolve_import_map_specifier(
@@ -2130,7 +2085,7 @@ mod test {
     assert!(error.to_string().starts_with("Failed to expand glob"));
 
     let resolved_files = resolve_files(
-      Some(FilePatterns {
+      FilePatterns {
         base: temp_dir_path.to_path_buf(),
         include: Some(
           PathOrPatternSet::from_include_relative_path_or_patterns(
@@ -2149,9 +2104,9 @@ mod test {
           &["nested/**/*bazz.ts".to_string()],
         )
         .unwrap(),
-      }),
-      None,
-      temp_dir_path,
+      },
+      &Default::default(),
+      Some(temp_dir_path),
     )
     .unwrap();
 

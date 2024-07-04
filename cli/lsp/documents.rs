@@ -1751,7 +1751,7 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &deno_config::ParseOptions::default(),
+            &deno_config::ConfigParseOptions::default(),
           )
           .unwrap(),
         )
@@ -1795,7 +1795,7 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &deno_config::ParseOptions::default(),
+            &deno_config::ConfigParseOptions::default(),
           )
           .unwrap(),
         )

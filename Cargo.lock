@@ -1308,9 +1308,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.17.0"
+version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01b0852c0dd8594926d51a5dae80cd1679f87f79a7c02415e60625d6ee2a99ba"
+checksum = "ddc80f97cffe52c9a430201f288111fc89d33491b1675c0e01feb3a497ce76b3"
 dependencies = [
  "anyhow",
  "deno_semver",
@@ -1947,9 +1947,9 @@ dependencies = [
 
 [[package]]
 name = "deno_unsync"
-version = "0.3.4"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7557a5e9278b9a5cc8056dc37062ea4344770bda4eeb5973c7cbb7ebf636b9a4"
+checksum = "10eb3aaf83c3431d4215741140ec3a63b0c0edb972ee898c89bdf8462e9e136b"
 dependencies = [
  "tokio",
 ]
