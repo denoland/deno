@@ -1253,6 +1253,6 @@ Deno.test("[node/http] http.request() post streaming body works", async () => {
 });
 
 Deno.test("[node/http] Server.address() can be null", () => {
-  const server = http.createServer((req, res) => res.end("it works"));
+  const server = http.createServer((_req, res) => res.end("it works"));
   assertEquals(server.address(), null);
 });
