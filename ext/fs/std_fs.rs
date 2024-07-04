@@ -769,6 +769,30 @@ fn stat_extra(
     Ok(info.dwVolumeSerialNumber as u64)
   }
 
+  use ntapi::ntioapi::FILE_ALL_INFORMATION;
+
+  unsafe fn query_file_information(
+    handle: winapi::shared::ntdef::HANDLE,
+  ) -> std::io::Result<FILE_ALL_INFORMATION> {
+    use ntapi::ntioapi::FileAllInformation;
+    use ntapi::ntioapi::NtQueryInformationFile;
+
+    let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
+    let status = NtQueryInformationFile(
+      handle,
+      std::ptr::null_mut(),
+      info.as_mut_ptr() as *mut _,
+      std::mem::size_of::<FILE_ALL_INFORMATION>() as _,
+      FileAllInformation,
+    );
+
+    if status < 0 {
+      return Err(std::io::Error::last_os_error());
+    }
+
+    Ok(info.assume_init())
+  }
+
   // SAFETY: winapi calls
   unsafe {
     let mut path: Vec<_> = path.as_os_str().encode_wide().collect();
@@ -789,6 +813,37 @@ fn stat_extra(
     let result = get_dev(file_handle);
     CloseHandle(file_handle);
     fsstat.dev = result?;
+
+    let file_info = query_file_information(file_handle)?;
+    if file_info.BasicInformation.FileAttributes
+      & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT as u32
+      != 0
+    {
+      fsstat.is_symlink = true;
+    }
+
+    if file_info.BasicInformation.FileAttributes
+      & winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY as u32
+      != 0
+    {
+      fsstat.mode |= libc::S_IFDIR as u32;
+      fsstat.size = 0;
+    } else {
+      fsstat.mode |= libc::S_IFREG as u32;
+      fsstat.size = *file_info.StandardInformation.EndOfFile.QuadPart() as _;
+    }
+
+    if file_info.BasicInformation.FileAttributes
+      & winapi::um::winnt::FILE_ATTRIBUTE_READONLY as u32
+      != 0
+    {
+      fsstat.mode |=
+        (libc::S_IREAD | (libc::S_IREAD >> 3) | (libc::S_IREAD >> 6)) as u32;
+    } else {
+      fsstat.mode |= ((libc::S_IREAD | libc::S_IWRITE)
+        | ((libc::S_IREAD | libc::S_IWRITE) >> 3)
+        | ((libc::S_IREAD | libc::S_IWRITE) >> 6)) as u32;
+    }
 
     Ok(())
   }
