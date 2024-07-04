@@ -86,7 +86,7 @@ export function read(
   } else {
     const opt = optOrBufferOrCb as ReadOptions;
     if (
-      opt?.buffer !== undefined && 
+      opt?.buffer !== undefined &&
       !(opt.buffer instanceof Buffer) && !(opt.buffer instanceof Uint8Array)
     ) {
       throw new ERR_INVALID_ARG_TYPE("buffer", [
