@@ -1,2 +1,0 @@
-error: The '@package/scope' member cannot have the same name as the member at 'file:///[WILDLINE]/duplicate/deno.json'.
-    at file:///[WILDLINE]/sub/deno.json
