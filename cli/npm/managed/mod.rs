@@ -29,7 +29,7 @@ use resolution::AddPkgReqsResult;
 use crate::args::CliLockfile;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
-use crate::args::PackageJsonDepsProvider;
+use crate::args::PackageJsonInstallDepsProvider;
 use crate::cache::FastInsecureHasher;
 use crate::http_util::HttpClientProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
@@ -66,7 +66,7 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   pub maybe_node_modules_path: Option<PathBuf>,
   pub npm_system_info: NpmSystemInfo,
-  pub package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+  pub package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
   pub npmrc: Arc<ResolvedNpmRc>,
 }
 
@@ -131,7 +131,7 @@ fn create_inner(
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
   npm_rc: Arc<ResolvedNpmRc>,
-  package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+  package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
   text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   node_modules_dir_path: Option<PathBuf>,
   npm_system_info: NpmSystemInfo,
@@ -152,6 +152,7 @@ fn create_inner(
   let fs_resolver = create_npm_fs_resolver(
     fs.clone(),
     npm_cache.clone(),
+    &package_json_deps_provider,
     &text_only_progress_bar,
     resolution.clone(),
     tarball_cache.clone(),
@@ -249,7 +250,7 @@ pub struct ManagedCliNpmResolver {
   maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
-  package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+  package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
   resolution: Arc<NpmResolution>,
   tarball_cache: Arc<TarballCache>,
   text_only_progress_bar: ProgressBar,
@@ -273,7 +274,7 @@ impl ManagedCliNpmResolver {
     maybe_lockfile: Option<Arc<CliLockfile>>,
     npm_api: Arc<CliNpmRegistryApi>,
     npm_cache: Arc<NpmCache>,
-    package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+    package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
     resolution: Arc<NpmResolution>,
     tarball_cache: Arc<TarballCache>,
     text_only_progress_bar: ProgressBar,
@@ -459,12 +460,14 @@ impl ManagedCliNpmResolver {
   pub async fn ensure_top_level_package_json_install(
     &self,
   ) -> Result<bool, AnyError> {
-    let Some(reqs) = self.package_json_deps_provider.reqs() else {
-      return Ok(false);
-    };
     if !self.top_level_install_flag.raise() {
       return Ok(false); // already did this
     }
+    let reqs = self.package_json_deps_provider.remote_pkg_reqs();
+    if reqs.is_empty() {
+      return Ok(false);
+    }
+
     // check if something needs resolving before bothering to load all
     // the package information (which is slow)
     if reqs
@@ -477,8 +480,7 @@ impl ManagedCliNpmResolver {
       return Ok(false); // everything is already resolvable
     }
 
-    let reqs = reqs.into_iter().cloned().collect::<Vec<_>>();
-    self.add_package_reqs(&reqs).await.map(|_| true)
+    self.add_package_reqs(reqs).await.map(|_| true)
   }
 
   pub async fn cache_package_info(
@@ -563,6 +565,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       create_npm_fs_resolver(
         self.fs.clone(),
         self.npm_cache.clone(),
+        &self.package_json_deps_provider,
         &self.text_only_progress_bar,
         npm_resolution.clone(),
         self.tarball_cache.clone(),

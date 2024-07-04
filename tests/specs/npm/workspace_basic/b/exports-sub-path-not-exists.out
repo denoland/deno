@@ -1,0 +1,2 @@
+error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './non-existent' is not defined by "exports" in '[WILDLINE]package.json' imported from '[WILDLINE]exports-sub-path-not-exists.ts'
+    at file:///[WILDLINE]exports-sub-path-not-exists.ts:1:20

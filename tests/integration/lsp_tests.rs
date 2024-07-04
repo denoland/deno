@@ -6900,7 +6900,7 @@ fn lsp_completions() {
     json!({
       "label": "build",
       "kind": 6,
-      "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\" | \"aarch64\";\n    os: \"darwin\" | \"linux\" | \"android\" | \"windows\" | \"freebsd\" | \"netbsd\" | \"aix\" | \"solaris\" | \"illumos\";\n    vendor: string;\n    env?: string | undefined;\n}",
+      "detail": "const Deno.build: {\n    target: string;\n    arch: \"x86_64\" | \"aarch64\";\n    os: \"darwin\" | \"linux\" | \"android\" | \"windows\" | \"freebsd\" | \"netbsd\" | \"aix\" | \"solaris\" | \"illumos\";\n    vendor: string;\n    env?: string;\n}",
       "documentation": {
         "kind": "markdown",
         "value": "Information related to the build of the current Deno runtime.\n\nUsers are discouraged from code branching based on this information, as\nassumptions about what is available in what build environment might change\nover time. Developers should specifically sniff out the features they\nintend to use.\n\nThe intended use for the information is for logging and debugging purposes.\n\n*@category* - Runtime"
@@ -8603,6 +8603,69 @@ fn lsp_completions_node_specifier() {
   assert!(list.items.iter().any(|i| i.label == "writeFile"));
   assert!(list.items.iter().any(|i| i.label == "writeFileSync"));
 
+  client.shutdown();
+}
+
+#[test]
+fn lsp_completions_node_specifier_node_modules_dir() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    temp_dir.path().join("deno.json"),
+    json!({
+      "nodeModulesDir": true,
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import fs from \"node:fs\";\n",
+    },
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+    }),
+  );
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("file.ts").unwrap(),
+        "version": 2,
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 1, "character": 0 },
+            "end": { "line": 1, "character": 0 },
+          },
+          "text": "fs.",
+        },
+      ],
+    }),
+  );
+  let list = client.get_completion_list(
+    temp_dir.uri().join("file.ts").unwrap(),
+    (1, 3),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": ".",
+    }),
+  );
+  assert!(!list.is_incomplete);
+  assert!(list.items.iter().any(|i| i.label == "writeFile"));
+  assert!(list.items.iter().any(|i| i.label == "writeFileSync"));
   client.shutdown();
 }
 
@@ -12988,7 +13051,7 @@ fn lsp_deno_json_workspace_fmt_config() {
   temp_dir.write(
     "deno.json",
     json!({
-      "workspaces": ["project1", "project2"],
+      "workspace": ["project1", "project2"],
       "fmt": {
         "semiColons": false,
       },
@@ -13111,7 +13174,7 @@ fn lsp_deno_json_workspace_lint_config() {
   temp_dir.write(
     "deno.json",
     json!({
-      "workspaces": ["project1", "project2"],
+      "workspace": ["project1", "project2"],
       "lint": {
         "rules": {
           "include": ["camelcase"],
@@ -13252,7 +13315,7 @@ fn lsp_deno_json_workspace_import_map() {
   temp_dir.write(
     "project1/deno.json",
     json!({
-      "workspaces": ["project2"],
+      "workspace": ["project2"],
       "imports": {
         "foo": "./foo1.ts",
       },
@@ -13313,7 +13376,7 @@ fn lsp_deno_json_workspace_jsr_resolution() {
   temp_dir.write(
     "deno.json",
     json!({
-      "workspaces": ["project1"],
+      "workspace": ["project1"],
     })
     .to_string(),
   );

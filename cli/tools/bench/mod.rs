@@ -407,7 +407,8 @@ pub async fn run_benchmarks(
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
   let cli_options = CliOptions::from_flags(flags)?;
-  let bench_options = cli_options.resolve_bench_options(bench_flags)?;
+  let workspace_bench_options =
+    cli_options.resolve_workspace_bench_options(&bench_flags);
   let factory = CliFactory::from_cli_options(Arc::new(cli_options));
   let cli_options = factory.cli_options();
   // Various bench files should not share the same permissions in terms of
@@ -416,11 +417,21 @@ pub async fn run_benchmarks(
   let permissions =
     Permissions::from_options(&cli_options.permissions_options()?)?;
 
-  let specifiers = collect_specifiers(
-    bench_options.files,
-    cli_options.vendor_dir_path().map(ToOwned::to_owned),
-    is_supported_bench_path,
-  )?;
+  let members_with_bench_options =
+    cli_options.resolve_bench_options_for_members(&bench_flags)?;
+  let specifiers = members_with_bench_options
+    .iter()
+    .map(|(_, bench_options)| {
+      collect_specifiers(
+        bench_options.files.clone(),
+        cli_options.vendor_dir_path().map(ToOwned::to_owned),
+        is_supported_bench_path,
+      )
+    })
+    .collect::<Result<Vec<_>, _>>()?
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
 
   if specifiers.is_empty() {
     return Err(generic_error("No bench modules found"));
@@ -429,7 +440,7 @@ pub async fn run_benchmarks(
   let main_graph_container = factory.main_module_graph_container().await?;
   main_graph_container.check_specifiers(&specifiers).await?;
 
-  if bench_options.no_run {
+  if workspace_bench_options.no_run {
     return Ok(());
   }
 
@@ -441,8 +452,8 @@ pub async fn run_benchmarks(
     &permissions,
     specifiers,
     BenchSpecifierOptions {
-      filter: TestFilter::from_flag(&bench_options.filter),
-      json: bench_options.json,
+      filter: TestFilter::from_flag(&workspace_bench_options.filter),
+      json: workspace_bench_options.json,
       log_level,
     },
   )
@@ -472,24 +483,40 @@ pub async fn run_benchmarks_with_watch(
         let factory = CliFactoryBuilder::new()
           .build_from_flags_for_watcher(flags, watcher_communicator.clone())?;
         let cli_options = factory.cli_options();
-        let bench_options = cli_options.resolve_bench_options(bench_flags)?;
+        let workspace_bench_options =
+          cli_options.resolve_workspace_bench_options(&bench_flags);
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        if let Some(set) = &bench_options.files.include {
-          let watch_paths = set.base_paths();
-          if !watch_paths.is_empty() {
-            let _ = watcher_communicator.watch_paths(watch_paths);
-          }
-        }
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
         let module_graph_creator = factory.module_graph_creator().await?;
-
-        let bench_modules = collect_specifiers(
-          bench_options.files.clone(),
-          cli_options.vendor_dir_path().map(ToOwned::to_owned),
-          is_supported_bench_path,
-        )?;
+        let members_with_bench_options =
+          cli_options.resolve_bench_options_for_members(&bench_flags)?;
+        let watch_paths = members_with_bench_options
+          .iter()
+          .filter_map(|(_, bench_options)| {
+            bench_options
+              .files
+              .include
+              .as_ref()
+              .map(|set| set.base_paths())
+          })
+          .flatten()
+          .collect::<Vec<_>>();
+        let _ = watcher_communicator.watch_paths(watch_paths);
+        let collected_bench_modules = members_with_bench_options
+          .iter()
+          .map(|(_, bench_options)| {
+            collect_specifiers(
+              bench_options.files.clone(),
+              cli_options.vendor_dir_path().map(ToOwned::to_owned),
+              is_supported_bench_path,
+            )
+          })
+          .collect::<Result<Vec<_>, _>>()?
+          .into_iter()
+          .flatten()
+          .collect::<Vec<_>>();
 
         // Various bench files should not share the same permissions in terms of
         // `PermissionsContainer` - otherwise granting/revoking permissions in one
@@ -498,7 +525,7 @@ pub async fn run_benchmarks_with_watch(
           Permissions::from_options(&cli_options.permissions_options()?)?;
 
         let graph = module_graph_creator
-          .create_graph(graph_kind, bench_modules)
+          .create_graph(graph_kind, collected_bench_modules.clone())
           .await?;
         module_graph_creator.graph_valid(&graph)?;
         let bench_modules = &graph.roots;
@@ -524,16 +551,10 @@ pub async fn run_benchmarks_with_watch(
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
 
-        // todo(dsherret): why are we collecting specifiers twice in a row?
-        // Seems like a perf bug.
-        let specifiers = collect_specifiers(
-          bench_options.files,
-          cli_options.vendor_dir_path().map(ToOwned::to_owned),
-          is_supported_bench_path,
-        )?
-        .into_iter()
-        .filter(|specifier| bench_modules_to_reload.contains(specifier))
-        .collect::<Vec<ModuleSpecifier>>();
+        let specifiers = collected_bench_modules
+          .into_iter()
+          .filter(|specifier| bench_modules_to_reload.contains(specifier))
+          .collect::<Vec<ModuleSpecifier>>();
 
         factory
           .main_module_graph_container()
@@ -541,7 +562,7 @@ pub async fn run_benchmarks_with_watch(
           .check_specifiers(&specifiers)
           .await?;
 
-        if bench_options.no_run {
+        if workspace_bench_options.no_run {
           return Ok(());
         }
 
@@ -551,8 +572,8 @@ pub async fn run_benchmarks_with_watch(
           &permissions,
           specifiers,
           BenchSpecifierOptions {
-            filter: TestFilter::from_flag(&bench_options.filter),
-            json: bench_options.json,
+            filter: TestFilter::from_flag(&workspace_bench_options.filter),
+            json: workspace_bench_options.json,
             log_level,
           },
         )
