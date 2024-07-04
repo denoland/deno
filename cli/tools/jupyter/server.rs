@@ -93,7 +93,7 @@ impl JupyterServer {
       iopub_connection: iopub_connection.clone(),
       last_execution_request: last_execution_request.clone(),
       stdin_connection_proxy,
-      comm_container: comm_container,
+      comm_container: comm_container.clone(),
     }) else {
       bail!("Failed to send startup data");
     };
@@ -264,7 +264,7 @@ impl JupyterServer {
       .send_iopub(messaging::Status::busy().as_child_of(parent))
       .await?;
 
-    eprintln!("msg type on shell {}", msg.message_type());
+    // eprintln!("msg type on shell {}", msg.message_type());
     match msg.content {
       JupyterMessageContent::ExecuteRequest(execute_request) => {
         self
@@ -427,7 +427,7 @@ impl JupyterServer {
         // NOTE: This will belong on the stdin channel, not the shell channel
       }
       JupyterMessageContent::CommOpen(comm) => {
-        eprintln!("comm_open");
+        // eprintln!("comm_open");
         self
           .comm_container
           .create(&comm.comm_id.0, &comm.target_name, None);
@@ -443,7 +443,7 @@ impl JupyterServer {
         //   .await?;
       }
       JupyterMessageContent::CommInfoRequest(_req) => {
-        eprintln!("comm_open");
+        // eprintln!("comm_open");
         connection
           .send(
             messaging::CommInfoReply {
@@ -456,13 +456,13 @@ impl JupyterServer {
           .await?;
       }
       JupyterMessageContent::CommMsg(comm) => {
-        eprintln!("got comm msg {:#?}", comm);
+        // eprintln!("got comm msg {:#?}", comm);
         let comm_container = self.comm_container.0.lock();
         let comm_channel = comm_container.get(&comm.comm_id.0).unwrap();
         // todo?: send the msg.metadata
-        eprintln!("sending message");
+        // eprintln!("sending message");
         let _ = comm_channel.sender.send((comm, msg.buffers));
-        eprintln!("message sent on the channel");
+        // eprintln!("message sent on the channel");
       }
       JupyterMessageContent::CommClose(_) => {
         // Do nothing with regular comm messages

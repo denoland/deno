@@ -110,7 +110,7 @@ pub fn op_jupyter_comm_open(
 ) {
   let container = state.borrow_mut::<CommContainer>();
   container.create(&comm_id, &target_name, None);
-  eprintln!("created comm {} {}", comm_id, target_name);
+  // eprintln!("created comm {} {}", comm_id, target_name);
 }
 
 #[op2(async)]
@@ -130,9 +130,9 @@ pub async fn op_jupyter_comm_recv(
     comm.receiver.resubscribe()
   };
 
-  eprintln!("starting receive");
+  // eprintln!("starting receive");
   let (msg, buffers) = receiver.recv().await.unwrap();
-  eprintln!("received");
+  // eprintln!("received");
   (
     serde_json::to_value(msg).unwrap(),
     buffers
@@ -168,11 +168,10 @@ pub fn op_jupyter_input(
     }
 
     let msg = JupyterMessage::new(
-      InputRequest {
+      JupyterMessageContent::InputRequest(InputRequest {
         prompt,
         password: is_password,
-      }
-      .into(),
+      }),
       Some(&last_request),
     );
 
@@ -251,13 +250,13 @@ pub fn op_print(
   let sender = state.borrow_mut::<mpsc::UnboundedSender<StreamContent>>();
 
   if is_err {
-    if let Err(err) = sender.send(StreamContent::stderr(msg.into())) {
+    if let Err(err) = sender.send(StreamContent::stderr(msg)) {
       log::error!("Failed to send stderr message: {}", err);
     }
     return Ok(());
   }
 
-  if let Err(err) = sender.send(StreamContent::stdout(msg.into())) {
+  if let Err(err) = sender.send(StreamContent::stdout(msg)) {
     log::error!("Failed to send stdout message: {}", err);
   }
   Ok(())
