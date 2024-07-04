@@ -122,7 +122,6 @@ pub async fn execute_script(
     if cli_options.has_node_modules_dir() {
       if let Some(npm_resolver) = npm_resolver.as_managed() {
         npm_resolver.ensure_top_level_package_json_install().await?;
-        npm_resolver.resolve_pending().await?;
       }
     }
 
@@ -368,7 +367,7 @@ impl ShellCommand for NpmCommand {
     }
 
     // fallback to running the real npm command
-    let npm_path = match context.resolve_command_path("npm") {
+    let npm_path = match context.state.resolve_command_path("npm") {
       Ok(path) => path,
       Err(err) => {
         let _ = context.stderr.write_line(&format!("{}", err));
@@ -389,7 +388,7 @@ impl ShellCommand for NpxCommand {
     mut context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     if let Some(first_arg) = context.args.first().cloned() {
-      if let Some(command) = context.state.resolve_command(&first_arg) {
+      if let Some(command) = context.state.resolve_custom_command(&first_arg) {
         let context = ShellCommandContext {
           args: context.args.iter().skip(1).cloned().collect::<Vec<_>>(),
           ..context
@@ -397,7 +396,7 @@ impl ShellCommand for NpxCommand {
         command.execute(context)
       } else {
         // can't find the command, so fallback to running the real npx command
-        let npx_path = match context.resolve_command_path("npx") {
+        let npx_path = match context.state.resolve_command_path("npx") {
           Ok(npx) => npx,
           Err(err) => {
             let _ = context.stderr.write_line(&format!("{}", err));

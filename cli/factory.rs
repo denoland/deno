@@ -1,10 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::deno_json::deno_json_deps;
+use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::args::Lockfile;
 use crate::args::PackageJsonDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
@@ -35,7 +35,6 @@ use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverByonmCreateOptions;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
-use crate::npm::CliNpmResolverManagedPackageJsonInstallerOption;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::resolver::CjsResolutionStore;
 use crate::resolver::CliGraphResolver;
@@ -57,7 +56,6 @@ use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::parking_lot::Mutex;
 use deno_core::FeatureChecker;
 
 use deno_lockfile::WorkspaceMemberConfig;
@@ -157,7 +155,7 @@ struct CliFactoryServices {
   emitter: Deferred<Arc<Emitter>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
-  lockfile: Deferred<Option<Arc<Mutex<Lockfile>>>>,
+  lockfile: Deferred<Option<Arc<CliLockfile>>>,
   maybe_import_map: Deferred<Option<Arc<ImportMap>>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
@@ -305,8 +303,8 @@ impl CliFactory {
     self.services.fs.get_or_init(|| Arc::new(deno_fs::RealFs))
   }
 
-  pub fn maybe_lockfile(&self) -> &Option<Arc<Mutex<Lockfile>>> {
-    fn check_no_npm(lockfile: &Mutex<Lockfile>, options: &CliOptions) -> bool {
+  pub fn maybe_lockfile(&self) -> &Option<Arc<CliLockfile>> {
+    fn check_no_npm(lockfile: &CliLockfile, options: &CliOptions) -> bool {
       if options.no_npm() {
         return true;
       }
@@ -315,9 +313,8 @@ impl CliFactory {
       // any package.jsons that are in different folders
       options
         .maybe_package_json()
-        .as_ref()
         .map(|package_json| {
-          package_json.path.parent() != lockfile.lock().filename.parent()
+          package_json.path.parent() != lockfile.filename.parent()
         })
         .unwrap_or(false)
     }
@@ -339,7 +336,6 @@ impl CliFactory {
               .unwrap_or_default()
           })
           .unwrap_or_default();
-        let mut lockfile = lockfile.lock();
         let config = match self.options.maybe_workspace_config() {
           Some(workspace_config) => deno_lockfile::WorkspaceConfig {
             root: WorkspaceMemberConfig {
@@ -441,10 +437,8 @@ impl CliFactory {
             cache_setting: self.options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
             maybe_node_modules_path: self.options.node_modules_dir_path().cloned(),
-            package_json_installer:
-              CliNpmResolverManagedPackageJsonInstallerOption::ConditionalInstall(
+            package_json_deps_provider:
                 self.package_json_deps_provider().clone(),
-              ),
             npm_system_info: self.options.npm_system_info(),
             npmrc: self.options.npmrc().clone()
           })
@@ -867,7 +861,6 @@ impl CliFactory {
       // integration.
       skip_op_registration: self.options.sub_command().is_run(),
       log_level: self.options.log_level().unwrap_or(log::Level::Info).into(),
-      coverage_dir: self.options.coverage_dir(),
       enable_op_summary_metrics: self.options.enable_op_summary_metrics(),
       enable_testing_features: self.options.enable_testing_features(),
       has_node_modules_dir: self.options.has_node_modules_dir(),

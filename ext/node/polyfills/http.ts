@@ -623,61 +623,12 @@ class ClientRequest extends OutgoingMessage {
       client[internalRidSymbol],
       this._bodyWriteRid,
     );
-  }
-
-  _implicitHeader() {
-    if (this._header) {
-      throw new ERR_HTTP_HEADERS_SENT("render");
-    }
-    this._storeHeader(
-      this.method + " " + this.path + " HTTP/1.1\r\n",
-      this[kOutHeaders],
-    );
-  }
-
-  _getClient(): Deno.HttpClient | undefined {
-    return undefined;
-  }
-
-  // TODO(bartlomieju): handle error
-  onSocket(socket, _err) {
-    nextTick(() => {
-      this.socket = socket;
-      this.emit("socket", socket);
-    });
-  }
-
-  // deno-lint-ignore no-explicit-any
-  end(chunk?: any, encoding?: any, cb?: any): this {
-    if (typeof chunk === "function") {
-      cb = chunk;
-      chunk = null;
-      encoding = null;
-    } else if (typeof encoding === "function") {
-      cb = encoding;
-      encoding = null;
-    }
-
-    this.finished = true;
-    if (chunk) {
-      this.write_(chunk, encoding, null, true);
-    } else if (!this._headerSent) {
-      this._contentLength = 0;
-      this._implicitHeader();
-      this._send("", "latin1");
-    }
-    this._bodyWriter?.close();
 
     (async () => {
       try {
         const res = await op_fetch_send(this._req.requestRid);
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
-        }
-        try {
-          cb?.();
-        } catch (_) {
-          //
         }
         if (this._timeout) {
           this._timeout.removeEventListener("abort", this._timeoutCb);
@@ -784,6 +735,64 @@ class ClientRequest extends OutgoingMessage {
         } else {
           this.emit("error", err);
         }
+      }
+    })();
+  }
+
+  _implicitHeader() {
+    if (this._header) {
+      throw new ERR_HTTP_HEADERS_SENT("render");
+    }
+    this._storeHeader(
+      this.method + " " + this.path + " HTTP/1.1\r\n",
+      this[kOutHeaders],
+    );
+  }
+
+  _getClient(): Deno.HttpClient | undefined {
+    return undefined;
+  }
+
+  // TODO(bartlomieju): handle error
+  onSocket(socket, _err) {
+    nextTick(() => {
+      this.socket = socket;
+      this.emit("socket", socket);
+    });
+  }
+
+  // deno-lint-ignore no-explicit-any
+  end(chunk?: any, encoding?: any, cb?: any): this {
+    if (typeof chunk === "function") {
+      cb = chunk;
+      chunk = null;
+      encoding = null;
+    } else if (typeof encoding === "function") {
+      cb = encoding;
+      encoding = null;
+    }
+
+    this.finished = true;
+    if (chunk) {
+      this.write_(chunk, encoding, null, true);
+    } else if (!this._headerSent) {
+      this._contentLength = 0;
+      this._implicitHeader();
+      this._send("", "latin1");
+    }
+    (async () => {
+      try {
+        await this._bodyWriter?.close();
+      } catch (_) {
+        // The readable stream resource is dropped right after
+        // read is complete closing the writable stream resource.
+        // If we try to close the writer again, it will result in an
+        // error which we can safely ignore.
+      }
+      try {
+        cb?.();
+      } catch (_) {
+        //
       }
     })();
   }
@@ -1333,7 +1342,8 @@ function onError(self, error, cb) {
 export class ServerResponse extends NodeWritable {
   statusCode = 200;
   statusMessage?: string = undefined;
-  #headers = new Headers({});
+  #headers: Record<string, string | string[]> = { __proto__: null };
+  #hasNonStringHeaders: boolean = false;
   #readable: ReadableStream;
   override writable = true;
   // used by `npm:on-finished`
@@ -1345,10 +1355,14 @@ export class ServerResponse extends NodeWritable {
   #socketOverride: any | null = null;
 
   static #enqueue(controller: ReadableStreamDefaultController, chunk: Chunk) {
-    if (typeof chunk === "string") {
-      controller.enqueue(ENCODER.encode(chunk));
-    } else {
-      controller.enqueue(chunk);
+    try {
+      if (typeof chunk === "string") {
+        controller.enqueue(ENCODER.encode(chunk));
+      } else {
+        controller.enqueue(chunk);
+      }
+    } catch (_) {
+      // The stream might have been closed. Ignore the error.
     }
   }
 
@@ -1411,32 +1425,55 @@ export class ServerResponse extends NodeWritable {
     this.socket = socket;
   }
 
-  setHeader(name: string, value: string) {
-    this.#headers.set(name, value);
+  setHeader(name: string, value: string | string[]) {
+    if (Array.isArray(value)) {
+      this.#hasNonStringHeaders = true;
+    }
+    this.#headers[name] = value;
+    return this;
+  }
+
+  appendHeader(name: string, value: string | string[]) {
+    if (Array.isArray(value)) {
+      this.#hasNonStringHeaders = true;
+    }
+    if (this.#headers[name] === undefined) {
+      this.#headers[name] = value;
+    } else {
+      if (!Array.isArray(this.#headers[name])) {
+        this.#headers[name] = [this.#headers[name]];
+      }
+      const header = this.#headers[name];
+      if (Array.isArray(value)) {
+        header.push(...value);
+      } else {
+        header.push(value);
+      }
+    }
     return this;
   }
 
   getHeader(name: string) {
-    return this.#headers.get(name) ?? undefined;
+    return this.#headers[name];
   }
   removeHeader(name: string) {
-    return this.#headers.delete(name);
+    delete this.#headers[name];
   }
   getHeaderNames() {
-    return Array.from(this.#headers.keys());
+    return Object.keys(this.#headers);
   }
   getHeaders() {
-    return Object.fromEntries(this.#headers.entries());
+    return { __proto__: null, ...this.#headers };
   }
   hasHeader(name: string) {
-    return this.#headers.has(name);
+    return Object.hasOwn(this.#headers, name);
   }
 
   writeHead(status: number, headers: Record<string, string> = {}) {
     this.statusCode = status;
     for (const k in headers) {
       if (Object.hasOwn(headers, k)) {
-        this.#headers.set(k, headers[k]);
+        this.setHeader(k, headers[k]);
       }
     }
     return this;
@@ -1461,9 +1498,26 @@ export class ServerResponse extends NodeWritable {
     if (ServerResponse.#bodyShouldBeNull(this.statusCode)) {
       body = null;
     }
+    let headers: Record<string, string> | [string, string][] = this
+      .#headers as Record<string, string>;
+    if (this.#hasNonStringHeaders) {
+      headers = [];
+      // Guard is not needed as this is a null prototype object.
+      // deno-lint-ignore guard-for-in
+      for (const key in this.#headers) {
+        const entry = this.#headers[key];
+        if (Array.isArray(entry)) {
+          for (const value of entry) {
+            headers.push([key, value]);
+          }
+        } else {
+          headers.push([key, entry]);
+        }
+      }
+    }
     this.#resolve(
       new Response(body, {
-        headers: this.#headers,
+        headers,
         status: this.statusCode,
         statusText: this.statusMessage,
       }),
@@ -1473,11 +1527,11 @@ export class ServerResponse extends NodeWritable {
   // deno-lint-ignore no-explicit-any
   override end(chunk?: any, encoding?: any, cb?: any): this {
     this.finished = true;
-    if (!chunk && this.#headers.has("transfer-encoding")) {
+    if (!chunk && "transfer-encoding" in this.#headers) {
       // FIXME(bnoordhuis) Node sends a zero length chunked body instead, i.e.,
       // the trailing "0\r\n", but respondWith() just hangs when I try that.
-      this.#headers.set("content-length", "0");
-      this.#headers.delete("transfer-encoding");
+      this.#headers["content-length"] = "0";
+      delete this.#headers["transfer-encoding"];
     }
 
     // @ts-expect-error The signature for cb is stricter than the one implemented here
@@ -1754,14 +1808,38 @@ export class ServerImpl extends EventEmitter {
     }
 
     if (listening && this.#ac) {
-      this.#ac.abort();
-      this.#ac = undefined;
+      if (this.#server) {
+        this.#server.shutdown();
+      } else if (this.#ac) {
+        this.#ac.abort();
+        this.#ac = undefined;
+      }
     } else {
       this.#serveDeferred!.resolve();
     }
 
     this.#server = undefined;
     return this;
+  }
+
+  closeAllConnections() {
+    if (this.#hasClosed) {
+      return;
+    }
+    if (this.#ac) {
+      this.#ac.abort();
+      this.#ac = undefined;
+    }
+  }
+
+  closeIdleConnections() {
+    if (this.#hasClosed) {
+      return;
+    }
+
+    if (this.#server) {
+      this.#server.shutdown();
+    }
   }
 
   address() {

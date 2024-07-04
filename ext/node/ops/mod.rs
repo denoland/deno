@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+pub mod blocklist;
 pub mod buffer;
 pub mod crypto;
 pub mod fs;

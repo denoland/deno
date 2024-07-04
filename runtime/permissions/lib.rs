@@ -592,7 +592,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
 
     match flag {
       ChildUnaryPermissionArg::Inherit => {
-        perms = self.clone();
+        perms.clone_from(self);
       }
       ChildUnaryPermissionArg::Granted => {
         if self.check_all_api(None).is_err() {
@@ -615,10 +615,12 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
       }
     }
     perms.flag_denied_global = self.flag_denied_global;
-    perms.flag_denied_list = self.flag_denied_list.clone();
     perms.prompt_denied_global = self.prompt_denied_global;
-    perms.prompt_denied_list = self.prompt_denied_list.clone();
     perms.prompt = self.prompt;
+    perms.flag_denied_list.clone_from(&self.flag_denied_list);
+    perms
+      .prompt_denied_list
+      .clone_from(&self.prompt_denied_list);
 
     Ok(perms)
   }
@@ -864,11 +866,11 @@ impl From<PathBuf> for RunDescriptor {
   }
 }
 
-impl ToString for RunDescriptor {
-  fn to_string(&self) -> String {
+impl std::fmt::Display for RunDescriptor {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      RunDescriptor::Name(s) => s.clone(),
-      RunDescriptor::Path(p) => p.to_string_lossy().to_string(),
+      RunDescriptor::Name(s) => f.write_str(s),
+      RunDescriptor::Path(p) => f.write_str(&p.display().to_string()),
     }
   }
 }

@@ -25,7 +25,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_terminal::colors;
 
-use crate::args::write_lockfile_if_has_changes;
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
@@ -71,7 +70,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     // write out the lockfile if there is one
     if let Some(lockfile) = &maybe_lockfile {
       graph_exit_lock_errors(&graph);
-      write_lockfile_if_has_changes(&mut lockfile.lock())?;
+      lockfile.write_if_changed()?;
     }
 
     if info_flags.json {

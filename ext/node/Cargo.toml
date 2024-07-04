@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.92.0"
+version = "0.95.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,14 +17,17 @@ path = "lib.rs"
 aead-gcm-stream = "0.1"
 aes.workspace = true
 async-trait.workspace = true
+blake2 = "0.10.6"
 brotli.workspace = true
 bytes.workspace = true
 cbc.workspace = true
 const-oid = "0.9.5"
 data-encoding.workspace = true
+deno_config = { workspace = true, default-features = false, features = ["package_json"] }
 deno_core.workspace = true
 deno_fetch.workspace = true
 deno_fs.workspace = true
+deno_io.workspace = true
 deno_media_type.workspace = true
 deno_net.workspace = true
 deno_permissions.workspace = true
@@ -35,12 +38,13 @@ ecb.workspace = true
 elliptic-curve.workspace = true
 errno = "0.2.8"
 faster-hex.workspace = true
-h2 = { version = "0.3.26", features = ["unstable"] }
+h2.workspace = true
 hkdf.workspace = true
 home = "0.5.9"
-http_v02.workspace = true
+http.workspace = true
 idna = "0.3.0"
 indexmap.workspace = true
+ipnetwork = "0.20.0"
 k256 = "0.13.1"
 lazy-regex.workspace = true
 libc.workspace = true
@@ -67,10 +71,12 @@ rsa.workspace = true
 scrypt = "0.11.0"
 sec1 = "0.7"
 serde = "1.0.149"
-sha-1 = "0.10.0"
+sha1.workspace = true
 sha2.workspace = true
+sha3 = "0.10.8"
 signature.workspace = true
 simd-json = "0.13.4"
+sm3 = "0.4.2"
 spki.workspace = true
 tokio.workspace = true
 url.workspace = true

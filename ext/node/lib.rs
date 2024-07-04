@@ -32,10 +32,16 @@ mod path;
 mod polyfill;
 mod resolution;
 
+pub use deno_config::package_json::PackageJson;
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
-pub use ops::v8::VM_CONTEXT_INDEX;
-pub use package_json::PackageJson;
+use ops::vm;
+pub use ops::vm::create_v8_context;
+pub use ops::vm::init_global_template;
+pub use ops::vm::ContextInitMode;
+pub use ops::vm::VM_CONTEXT_INDEX;
+pub use package_json::load_pkg_json;
+pub use package_json::PackageJsonThreadLocalCache;
 pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
@@ -226,6 +232,15 @@ deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   parameters = [P: NodePermissions],
   ops = [
+    ops::blocklist::op_socket_address_parse,
+    ops::blocklist::op_socket_address_get_serialization,
+
+    ops::blocklist::op_blocklist_new,
+    ops::blocklist::op_blocklist_add_address,
+    ops::blocklist::op_blocklist_add_range,
+    ops::blocklist::op_blocklist_add_subnet,
+    ops::blocklist::op_blocklist_check,
+
     ops::buffer::op_is_ascii,
     ops::buffer::op_is_utf8,
     ops::crypto::op_node_create_decipheriv,
@@ -300,6 +315,8 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_fs_exists_sync<P>,
     ops::fs::op_node_cp_sync<P>,
     ops::fs::op_node_cp<P>,
+    ops::fs::op_node_lutimes_sync<P>,
+    ops::fs::op_node_lutimes<P>,
     ops::fs::op_node_statfs<P>,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
@@ -319,7 +336,6 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_close,
     ops::zlib::op_zlib_close_if_pending,
     ops::zlib::op_zlib_write,
-    ops::zlib::op_zlib_write_async,
     ops::zlib::op_zlib_init,
     ops::zlib::op_zlib_reset,
     ops::zlib::brotli::op_brotli_compress,
@@ -412,6 +428,7 @@ deno_core::extension!(deno_node,
     "_fs/_fs_futimes.ts",
     "_fs/_fs_link.ts",
     "_fs/_fs_lstat.ts",
+    "_fs/_fs_lutimes.ts",
     "_fs/_fs_mkdir.ts",
     "_fs/_fs_mkdtemp.ts",
     "_fs/_fs_open.ts",
@@ -485,6 +502,7 @@ deno_core::extension!(deno_node,
     "internal_binding/uv.ts",
     "internal/assert.mjs",
     "internal/async_hooks.ts",
+    "internal/blocklist.mjs",
     "internal/buffer.mjs",
     "internal/child_process.ts",
     "internal/cli_table.ts",
@@ -579,7 +597,7 @@ deno_core::extension!(deno_node,
     "node:constants" = "constants.ts",
     "node:crypto" = "crypto.ts",
     "node:dgram" = "dgram.ts",
-    "node:diagnostics_channel" = "diagnostics_channel.ts",
+    "node:diagnostics_channel" = "diagnostics_channel.js",
     "node:dns" = "dns.ts",
     "node:dns/promises" = "dns/promises.ts",
     "node:domain" = "domain.ts",
@@ -641,7 +659,64 @@ deno_core::extension!(deno_node,
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
-    let mut external_references = Vec::with_capacity(7);
+    let mut external_references = Vec::with_capacity(14);
+
+    vm::GETTER_MAP_FN.with(|getter| {
+      external_references.push(ExternalReference {
+        named_getter: *getter,
+      });
+    });
+    vm::SETTER_MAP_FN.with(|setter| {
+      external_references.push(ExternalReference {
+        named_setter: *setter,
+      });
+    });
+    vm::DELETER_MAP_FN.with(|deleter| {
+      external_references.push(ExternalReference {
+        named_getter: *deleter,
+      },);
+    });
+    vm::ENUMERATOR_MAP_FN.with(|enumerator| {
+      external_references.push(ExternalReference {
+        enumerator: *enumerator,
+      });
+    });
+    vm::DEFINER_MAP_FN.with(|definer| {
+      external_references.push(ExternalReference {
+        named_definer: *definer,
+      });
+    });
+    vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
+      external_references.push(ExternalReference {
+        named_getter: *descriptor,
+      });
+    });
+
+    vm::INDEXED_GETTER_MAP_FN.with(|getter| {
+      external_references.push(ExternalReference {
+        indexed_getter: *getter,
+      });
+    });
+    vm::INDEXED_SETTER_MAP_FN.with(|setter| {
+      external_references.push(ExternalReference {
+        indexed_setter: *setter,
+      });
+    });
+    vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
+      external_references.push(ExternalReference {
+        indexed_getter: *deleter,
+      });
+    });
+    vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
+      external_references.push(ExternalReference {
+        indexed_definer: *definer,
+      });
+    });
+    vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
+      external_references.push(ExternalReference {
+        indexed_getter: *descriptor,
+      });
+    });
 
     global::GETTER_MAP_FN.with(|getter| {
       external_references.push(ExternalReference {

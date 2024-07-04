@@ -4,7 +4,7 @@ use crate::*;
 #[repr(C)]
 #[derive(Debug)]
 pub struct CallbackInfo {
-  pub env: napi_env,
+  pub env: *mut Env,
   pub cb: napi_callback,
   pub cb_info: napi_callback_info,
   pub args: *const c_void,
@@ -13,7 +13,7 @@ pub struct CallbackInfo {
 impl CallbackInfo {
   #[inline]
   pub fn new_raw(
-    env: napi_env,
+    env: *mut Env,
     cb: napi_callback,
     cb_info: napi_callback_info,
   ) -> *mut Self {
@@ -41,38 +41,27 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
   let info = unsafe { &mut *info_ptr };
   info.args = &args as *const _ as *const c_void;
 
-  if let Some(f) = info.cb {
-    // SAFETY: calling user provided function pointer.
-    let value = unsafe { f(info.env, info_ptr as *mut _) };
-    if let Some(exc) = unsafe { &mut *(info.env as *mut Env) }
-      .last_exception
-      .take()
-    {
-      let scope = unsafe { &mut v8::CallbackScope::new(callback_info) };
-      let exc = v8::Local::new(scope, exc);
-      scope.throw_exception(exc);
-    }
-    if let Some(value) = *value {
-      rv.set(value);
-    }
+  // SAFETY: calling user provided function pointer.
+  let value = unsafe { (info.cb)(info.env as napi_env, info_ptr as *mut _) };
+  if let Some(exc) = unsafe { &mut *info.env }.last_exception.take() {
+    let scope = unsafe { &mut v8::CallbackScope::new(callback_info) };
+    let exc = v8::Local::new(scope, exc);
+    scope.throw_exception(exc);
+  }
+  if let Some(value) = *value {
+    rv.set(value);
   }
 }
 
-/// # Safety
-/// env_ptr must be valid
-pub unsafe fn create_function<'a>(
-  env_ptr: *mut Env,
+pub fn create_function<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  env: *mut Env,
   name: Option<v8::Local<v8::String>>,
   cb: napi_callback,
   cb_info: napi_callback_info,
-) -> v8::Local<'a, v8::Function> {
-  let env = unsafe { &mut *env_ptr };
-  let scope = &mut env.scope();
-
-  let external = v8::External::new(
-    scope,
-    CallbackInfo::new_raw(env_ptr as _, cb, cb_info) as *mut _,
-  );
+) -> v8::Local<'s, v8::Function> {
+  let external =
+    v8::External::new(scope, CallbackInfo::new_raw(env, cb, cb_info) as *mut _);
   let function = v8::Function::builder_raw(call_fn)
     .data(external.into())
     .build(scope)
@@ -85,21 +74,15 @@ pub unsafe fn create_function<'a>(
   function
 }
 
-/// # Safety
-/// env_ptr must be valid
-pub unsafe fn create_function_template<'a>(
-  env_ptr: *mut Env,
+pub fn create_function_template<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  env: *mut Env,
   name: Option<v8::Local<v8::String>>,
   cb: napi_callback,
   cb_info: napi_callback_info,
-) -> v8::Local<'a, v8::FunctionTemplate> {
-  let env = unsafe { &mut *env_ptr };
-  let scope = &mut env.scope();
-
-  let external = v8::External::new(
-    scope,
-    CallbackInfo::new_raw(env_ptr as _, cb, cb_info) as *mut _,
-  );
+) -> v8::Local<'s, v8::FunctionTemplate> {
+  let external =
+    v8::External::new(scope, CallbackInfo::new_raw(env, cb, cb_info) as *mut _);
   let function = v8::FunctionTemplate::builder_raw(call_fn)
     .data(external.into())
     .build(scope);

@@ -66,7 +66,7 @@
     "node:constants": "../ext/node/polyfills/constants.ts",
     "node:crypto": "../ext/node/polyfills/crypto.ts",
     "node:dgram": "../ext/node/polyfills/dgram.ts",
-    "node:diagnostics_channel": "../ext/node/polyfills/diagnostics_channel.ts",
+    "node:diagnostics_channel": "../ext/node/polyfills/diagnostics_channel.js",
     "node:dns": "../ext/node/polyfills/dns.ts",
     "node:dns/promises": "../ext/node/polyfills/dns/promises.ts",
     "node:domain": "../ext/node/polyfills/domain.ts",

@@ -1116,3 +1116,7 @@ Deno.test("process.listeners - include SIG* events", () => {
   process.off("SIGINT", listener2);
   assertEquals(process.listeners("SIGINT").length, 0);
 });
+
+Deno.test(function processVersionsOwnProperty() {
+  assert(Object.prototype.hasOwnProperty.call(process, "versions"));
+});

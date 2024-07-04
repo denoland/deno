@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::resolve_no_prompt;
-use crate::args::write_lockfile_if_has_changes;
 use crate::args::AddFlags;
 use crate::args::CaData;
 use crate::args::Flags;
@@ -273,7 +272,7 @@ async fn install_local(
   crate::module_loader::load_top_level_deps(&factory).await?;
 
   if let Some(lockfile) = factory.cli_options().maybe_lockfile() {
-    write_lockfile_if_has_changes(&mut lockfile.lock())?;
+    lockfile.write_if_changed()?;
   }
 
   Ok(())
@@ -287,13 +286,20 @@ pub async fn install_command(
     log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
   }
 
-  let install_flags_global = match install_flags.kind {
-    InstallKind::Global(flags) => flags,
-    InstallKind::Local(maybe_add_flags) => {
-      return install_local(flags, maybe_add_flags).await
+  match install_flags.kind {
+    InstallKind::Global(global_flags) => {
+      install_global(flags, global_flags).await
     }
-  };
+    InstallKind::Local(maybe_add_flags) => {
+      install_local(flags, maybe_add_flags).await
+    }
+  }
+}
 
+async fn install_global(
+  flags: Flags,
+  install_flags_global: InstallFlagsGlobal,
+) -> Result<(), AnyError> {
   // ensure the module is cached
   let factory = CliFactory::from_flags(flags.clone())?;
   factory
@@ -458,6 +464,10 @@ async fn resolve_shim_data(
 
   if flags.cached_only {
     executable_args.push("--cached-only".to_string());
+  }
+
+  if flags.frozen_lockfile {
+    executable_args.push("--frozen".to_string());
   }
 
   if resolve_no_prompt(&flags.permissions) {

@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::jsr_url;
+use crate::args::CliLockfile;
 use crate::args::CliOptions;
-use crate::args::Lockfile;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
 use crate::cache::GlobalHttpCache;
@@ -160,6 +160,10 @@ pub fn graph_valid(
   if let Some(error) = errors.next() {
     Err(error)
   } else {
+    // finally surface the npm resolution result
+    if let Err(err) = &graph.npm_dep_graph_result {
+      return Err(custom_error(get_error_class_name(err), format!("{}", err)));
+    }
     Ok(())
   }
 }
@@ -350,7 +354,7 @@ pub struct ModuleGraphBuilder {
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_info_cache: Arc<ModuleInfoCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
-  lockfile: Option<Arc<Mutex<Lockfile>>>,
+  lockfile: Option<Arc<CliLockfile>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   emit_cache: cache::EmitCache,
   file_fetcher: Arc<FileFetcher>,
@@ -367,7 +371,7 @@ impl ModuleGraphBuilder {
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_info_cache: Arc<ModuleInfoCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
-    lockfile: Option<Arc<Mutex<Lockfile>>>,
+    lockfile: Option<Arc<CliLockfile>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     emit_cache: cache::EmitCache,
     file_fetcher: Arc<FileFetcher>,
@@ -408,7 +412,7 @@ impl ModuleGraphBuilder {
       }
     }
 
-    struct LockfileLocker<'a>(&'a Mutex<Lockfile>);
+    struct LockfileLocker<'a>(&'a CliLockfile);
 
     impl<'a> deno_graph::source::Locker for LockfileLocker<'a> {
       fn get_remote_checksum(
@@ -562,29 +566,8 @@ impl ModuleGraphBuilder {
     let initial_redirects_len = graph.redirects.len();
     let initial_package_deps_len = graph.packages.package_deps_sum();
     let initial_package_mappings_len = graph.packages.mappings().len();
-    let initial_npm_packages = graph.npm_packages.len();
 
     graph.build(roots, loader, options).await;
-
-    let has_npm_packages_changed =
-      graph.npm_packages.len() != initial_npm_packages;
-    // skip installing npm packages if we don't have to
-    if is_first_execution
-      && self.npm_resolver.root_node_modules_path().is_some()
-      || has_npm_packages_changed
-    {
-      if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-        // ensure that the top level package.json is installed if a
-        // specifier was matched in the package.json
-        if self.resolver.found_package_json_dep() {
-          npm_resolver.ensure_top_level_package_json_install().await?;
-        }
-
-        // resolve the dependencies of any pending dependencies
-        // that were inserted by building the graph
-        npm_resolver.resolve_pending().await?;
-      }
-    }
 
     let has_redirects_changed = graph.redirects.len() != initial_redirects_len;
     let has_jsr_package_deps_changed =
@@ -860,7 +843,7 @@ fn get_resolution_error_bare_specifier(
   error: &ResolutionError,
 ) -> Option<&str> {
   if let ResolutionError::InvalidSpecifier {
-    error: SpecifierError::ImportPrefixMissing(specifier, _),
+    error: SpecifierError::ImportPrefixMissing { specifier, .. },
     ..
   } = error
   {
@@ -1082,7 +1065,10 @@ mod test {
           start: Position::zeroed(),
           end: Position::zeroed(),
         },
-        error: SpecifierError::ImportPrefixMissing(input.to_string(), None),
+        error: SpecifierError::ImportPrefixMissing {
+          specifier: input.to_string(),
+          referrer: None,
+        },
       };
       assert_eq!(get_resolution_error_bare_node_specifier(&err), output,);
     }

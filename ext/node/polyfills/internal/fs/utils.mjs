@@ -5,6 +5,8 @@
 
 "use strict";
 
+import { primordials } from "ext:core/mod.js";
+const { DatePrototypeGetTime } = primordials;
 import { Buffer } from "node:buffer";
 import {
   ERR_FS_EISDIR,
@@ -23,7 +25,6 @@ import {
   isUint8Array,
 } from "ext:deno_node/internal/util/types.ts";
 import { once } from "ext:deno_node/internal/util.mjs";
-import { deprecate } from "node:util";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 import {
   validateAbortSignal,
@@ -699,7 +700,7 @@ export function toUnixTimestamp(time, name = "time") {
   }
   if (isDate(time)) {
     // Convert to 123.456 UNIX timestamp
-    return Date.getTime(time) / 1000;
+    return DatePrototypeGetTime(time) / 1000;
   }
   throw new ERR_INVALID_ARG_TYPE(name, ["Date", "Time in seconds"], time);
 }
@@ -959,24 +960,13 @@ export const getValidMode = hideStackFrames((mode, type) => {
 
 export const validateStringAfterArrayBufferView = hideStackFrames(
   (buffer, name) => {
-    if (typeof buffer === "string") {
-      return;
+    if (typeof buffer !== "string") {
+      throw new ERR_INVALID_ARG_TYPE(
+        name,
+        ["string", "Buffer", "TypedArray", "DataView"],
+        buffer,
+      );
     }
-
-    if (
-      typeof buffer === "object" &&
-      buffer !== null &&
-      typeof buffer.toString === "function" &&
-      Object.prototype.hasOwnProperty.call(buffer, "toString")
-    ) {
-      return;
-    }
-
-    throw new ERR_INVALID_ARG_TYPE(
-      name,
-      ["string", "Buffer", "TypedArray", "DataView"],
-      buffer,
-    );
   },
 );
 
@@ -1005,12 +995,6 @@ export const constants = {
   kWriteFileMaxChunkSize,
 };
 
-export const showStringCoercionDeprecation = deprecate(
-  () => {},
-  "Implicit coercion of objects with own toString property is deprecated.",
-  "DEP0162",
-);
-
 export default {
   constants,
   assertEncoding,
@@ -1030,7 +1014,6 @@ export default {
   preprocessSymlinkDestination,
   realpathCacheKey,
   getStatsFromBinding,
-  showStringCoercionDeprecation,
   stringToFlags,
   stringToSymlinkType,
   Stats,

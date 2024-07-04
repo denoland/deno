@@ -16,10 +16,12 @@ use deno_graph::Resolution;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::jsr::JsrPackageReqReference;
+use indexmap::Equivalent;
 use indexmap::IndexSet;
 use log::error;
 use serde::Deserialize;
 use serde_json::from_value;
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -84,7 +86,6 @@ use super::tsc::TsServer;
 use super::urls;
 use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
-use crate::args::write_lockfile_if_has_changes;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
@@ -210,7 +211,7 @@ pub struct Inner {
   pub ts_server: Arc<TsServer>,
   /// A map of specifiers and URLs used to translate over the LSP.
   pub url_map: urls::LspUrlMap,
-  workspace_files: BTreeSet<ModuleSpecifier>,
+  workspace_files: IndexSet<ModuleSpecifier>,
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
   workspace_files_hash: u64,
@@ -272,8 +273,7 @@ impl LanguageServer {
       // Update the lockfile on the file system with anything new
       // found after caching
       if let Some(lockfile) = cli_options.maybe_lockfile() {
-        let mut lockfile = lockfile.lock();
-        if let Err(err) = write_lockfile_if_has_changes(&mut lockfile) {
+        if let Err(err) = &lockfile.write_if_changed() {
           lsp_warn!("{:#}", err);
         }
       }
@@ -321,7 +321,7 @@ impl LanguageServer {
       inner.resolver.did_cache();
       inner.refresh_npm_specifiers().await;
       inner.diagnostics_server.invalidate_all();
-      inner.project_changed([], false);
+      inner.project_changed([], true);
       inner
         .ts_server
         .cleanup_semantic_cache(inner.snapshot())
@@ -445,7 +445,7 @@ impl LanguageServer {
     if capable {
       let mut scopes = Vec::with_capacity(folders.len() + 1);
       scopes.push(None);
-      for (_, folder) in &folders {
+      for (_, folder) in folders.as_ref() {
         scopes.push(Some(folder.uri.clone()));
       }
       let configs = client
@@ -460,7 +460,7 @@ impl LanguageServer {
         let mut configs = configs.into_iter();
         let unscoped = configs.next().unwrap();
         let mut folder_settings = Vec::with_capacity(folders.len());
-        for (folder_uri, _) in &folders {
+        for (folder_uri, _) in folders.as_ref() {
           folder_settings.push((folder_uri.clone(), configs.next().unwrap()));
         }
         let mut inner = self.inner.write().await;
@@ -569,7 +569,11 @@ impl Inner {
       } else {
         let navigation_tree: tsc::NavigationTree = self
           .ts_server
-          .get_navigation_tree(self.snapshot(), specifier.clone())
+          .get_navigation_tree(
+            self.snapshot(),
+            specifier.clone(),
+            asset_or_doc.scope().cloned(),
+          )
           .await?;
         let navigation_tree = Arc::new(navigation_tree);
         match asset_or_doc {
@@ -681,7 +685,7 @@ impl Inner {
   pub fn update_cache(&mut self) {
     let mark = self.performance.mark("lsp.update_cache");
     self.cache.update_config(&self.config);
-    self.url_map.set_cache(self.cache.root_vendor().cloned());
+    self.url_map.set_cache(&self.cache);
     self.performance.measure(mark);
   }
 
@@ -801,12 +805,12 @@ impl Inner {
     })
   }
 
-  fn walk_workspace(config: &Config) -> (BTreeSet<ModuleSpecifier>, bool) {
+  fn walk_workspace(config: &Config) -> (IndexSet<ModuleSpecifier>, bool) {
     if !config.workspace_capable() {
       log::debug!("Skipped workspace walk due to client incapability.");
       return (Default::default(), false);
     }
-    let mut workspace_files = Default::default();
+    let mut workspace_files = IndexSet::default();
     let entry_limit = 1000;
     let mut pending = VecDeque::new();
     let mut entry_count = 0;
@@ -816,14 +820,37 @@ impl Inner {
       .filter_map(|p| specifier_to_file_path(&p.0).ok())
       .collect::<Vec<_>>();
     roots.sort();
-    for i in 0..roots.len() {
-      if i == 0 || !roots[i].starts_with(&roots[i - 1]) {
-        if let Ok(read_dir) = std::fs::read_dir(&roots[i]) {
-          pending.push_back((roots[i].clone(), read_dir));
+    let roots = roots
+      .iter()
+      .enumerate()
+      .filter(|(i, root)| *i == 0 || !root.starts_with(&roots[i - 1]))
+      .map(|(_, r)| r.clone())
+      .collect::<Vec<_>>();
+    let mut root_ancestors = BTreeSet::new();
+    for root in roots {
+      for ancestor in root.ancestors().skip(1) {
+        if root_ancestors.insert(ancestor.to_path_buf()) {
+          break;
+        }
+      }
+      if let Ok(read_dir) = std::fs::read_dir(&root) {
+        pending.push_back((root, read_dir));
+      }
+    }
+    for root_ancestor in root_ancestors {
+      for deno_json in ["deno.json", "deno.jsonc"] {
+        let path = root_ancestor.join(deno_json);
+        if path.exists() {
+          if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+            workspace_files.insert(specifier);
+          }
         }
       }
     }
     while let Some((parent_path, read_dir)) = pending.pop_front() {
+      // Sort entries from each dir for consistency across operating systems.
+      let mut dir_files = BTreeSet::new();
+      let mut dir_subdirs = BTreeMap::new();
       for entry in read_dir {
         let Ok(entry) = entry else {
           continue;
@@ -836,17 +863,15 @@ impl Inner {
         let Ok(specifier) = ModuleSpecifier::from_file_path(&path) else {
           continue;
         };
-        // TODO(nayeemrmn): Don't walk folders that are `None` here and aren't
-        // in a `deno.json` scope.
-        if config.settings.specifier_enabled(&specifier) == Some(false) {
-          continue;
-        }
         let Ok(file_type) = entry.file_type() else {
           continue;
         };
         let Some(file_name) = path.file_name() else {
           continue;
         };
+        if config.settings.specifier_enabled(&specifier) == Some(false) {
+          continue;
+        }
         if file_type.is_dir() {
           let dir_name = file_name.to_string_lossy().to_lowercase();
           // We ignore these directories by default because there is a
@@ -865,7 +890,7 @@ impl Inner {
             continue;
           }
           if let Ok(read_dir) = std::fs::read_dir(&path) {
-            pending.push_back((path, read_dir));
+            dir_subdirs.insert(specifier, (path, read_dir));
           }
         } else if file_type.is_file()
           || file_type.is_symlink()
@@ -900,9 +925,11 @@ impl Inner {
               }
             }
           }
-          workspace_files.insert(specifier);
+          dir_files.insert(specifier);
         }
       }
+      workspace_files.extend(dir_files);
+      pending.extend(dir_subdirs.into_values());
     }
     (workspace_files, false)
   }
@@ -1029,8 +1056,10 @@ impl Inner {
         params.text_document.uri
       );
     }
-    let file_referrer = (params.text_document.uri.scheme() == "file")
-      .then(|| params.text_document.uri.clone());
+    let file_referrer = (self
+      .documents
+      .is_valid_file_referrer(&params.text_document.uri))
+    .then(|| params.text_document.uri.clone());
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -1041,8 +1070,8 @@ impl Inner {
       params.text_document.text.into(),
       file_referrer,
     );
-    self.project_changed([(document.specifier(), ChangeKind::Opened)], false);
     if document.is_diagnosable() {
+      self.project_changed([(document.specifier(), ChangeKind::Opened)], false);
       self.refresh_npm_specifiers().await;
       self.diagnostics_server.invalidate(&[specifier]);
       self.send_diagnostics_update();
@@ -1063,11 +1092,21 @@ impl Inner {
     ) {
       Ok(document) => {
         if document.is_diagnosable() {
+          let old_scopes_with_node_specifier =
+            self.documents.scopes_with_node_specifier().clone();
+          self.refresh_npm_specifiers().await;
+          let mut config_changed = false;
+          if !self
+            .documents
+            .scopes_with_node_specifier()
+            .equivalent(&old_scopes_with_node_specifier)
+          {
+            config_changed = true;
+          }
           self.project_changed(
             [(document.specifier(), ChangeKind::Modified)],
-            false,
+            config_changed,
           );
-          self.refresh_npm_specifiers().await;
           self.diagnostics_server.invalidate(&[specifier]);
           self.send_diagnostics_update();
           self.send_testing_update();
@@ -1107,14 +1146,12 @@ impl Inner {
   }
 
   async fn refresh_npm_specifiers(&mut self) {
-    let package_reqs = self.documents.npm_package_reqs();
+    let package_reqs = self.documents.npm_reqs_by_scope();
     let resolver = self.resolver.clone();
     // spawn due to the lsp's `Send` requirement
-    let handle =
-      spawn(async move { resolver.set_npm_package_reqs(&package_reqs).await });
-    if let Err(err) = handle.await.unwrap() {
-      lsp_warn!("Could not set npm package requirements. {:#}", err);
-    }
+    spawn(async move { resolver.set_npm_reqs(&package_reqs).await })
+      .await
+      .ok();
   }
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
@@ -1271,8 +1308,10 @@ impl Inner {
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    let file_referrer = (params.text_document.uri.scheme() == "file")
-      .then(|| params.text_document.uri.clone());
+    let file_referrer = (self
+      .documents
+      .is_valid_file_referrer(&params.text_document.uri))
+    .then(|| params.text_document.uri.clone());
     let mut specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -1307,12 +1346,14 @@ impl Inner {
 
     // spawn a blocking task to allow doing other work while this is occurring
     let text_edits = deno_core::unsync::spawn_blocking({
-      let fmt_options = self
+      let mut fmt_options = self
         .config
         .tree
         .fmt_options_for_specifier(&specifier)
         .options
         .clone();
+      fmt_options.use_tabs = Some(!params.options.insert_spaces);
+      fmt_options.indent_width = Some(params.options.tab_size as u8);
       let document = document.clone();
       move || {
         let format_result = match document.maybe_parsed_source() {
@@ -1375,7 +1416,7 @@ impl Inner {
 
     let mark = self.performance.mark_with_args("lsp.hover", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
-    let file_referrer = asset_or_doc.document().and_then(|d| d.file_referrer());
+    let file_referrer = asset_or_doc.file_referrer();
     let hover = if let Some((_, dep, range)) = asset_or_doc
       .get_maybe_dependency(&params.text_document_position_params.position)
     {
@@ -1435,7 +1476,12 @@ impl Inner {
         line_index.offset_tsc(params.text_document_position_params.position)?;
       let maybe_quick_info = self
         .ts_server
-        .get_quick_info(self.snapshot(), specifier.clone(), position)
+        .get_quick_info(
+          self.snapshot(),
+          specifier.clone(),
+          position,
+          asset_or_doc.scope().cloned(),
+        )
         .await?;
       maybe_quick_info.map(|qi| qi.to_hover(line_index, self))
     };
@@ -1564,6 +1610,7 @@ impl Inner {
                   &self.config,
                   &specifier,
                 ),
+                asset_or_doc.scope().cloned(),
               )
               .await;
             for action in actions {
@@ -1658,6 +1705,7 @@ impl Inner {
         )),
         params.context.trigger_kind,
         only,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
     let mut refactor_actions = Vec::<CodeAction>::new();
@@ -1708,6 +1756,10 @@ impl Inner {
           error!("Unable to decode code action data: {:#}", err);
           LspError::invalid_params("The CodeAction's data is invalid.")
         })?;
+      let scope = self
+        .get_asset_or_document(&code_action_data.specifier)
+        .ok()
+        .and_then(|d| d.scope().cloned());
       let combined_code_actions = self
         .ts_server
         .get_combined_code_fix(
@@ -1723,6 +1775,7 @@ impl Inner {
             &self.config,
             &code_action_data.specifier,
           ),
+          scope,
         )
         .await?;
       if combined_code_actions.commands.is_some() {
@@ -1777,6 +1830,7 @@ impl Inner {
             &self.config,
             &action_data.specifier,
           )),
+          asset_or_doc.scope().cloned(),
         )
         .await?;
       code_action.edit = refactor_edit_info.to_workspace_edit(self)?;
@@ -1792,11 +1846,15 @@ impl Inner {
 
   pub fn get_ts_response_import_mapper(
     &self,
-    _referrer: &ModuleSpecifier,
+    file_referrer: &ModuleSpecifier,
   ) -> TsResponseImportMapper {
     TsResponseImportMapper::new(
       &self.documents,
-      self.config.tree.root_import_map().map(|i| i.as_ref()),
+      self
+        .config
+        .tree
+        .data_for_specifier(file_referrer)
+        .and_then(|d| d.import_map.as_ref().map(|i| i.as_ref())),
       self.resolver.as_ref(),
     )
   }
@@ -1916,6 +1974,7 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
         files_to_search,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -1956,7 +2015,11 @@ impl Inner {
         specifier.clone(),
         line_index.offset_tsc(params.text_document_position.position)?,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        lsp_warn!("Unable to find references: {err}");
+        LspError::internal_error()
+      })?;
 
     if let Some(symbols) = maybe_referenced_symbols {
       let mut results = Vec::new();
@@ -1973,11 +2036,7 @@ impl Inner {
             self.get_asset_or_document(&reference_specifier)?;
           asset_or_doc.line_index()
         };
-        results.push(
-          reference
-            .entry
-            .to_location(reference_line_index, &self.url_map),
-        );
+        results.push(reference.entry.to_location(reference_line_index, self));
       }
 
       self.performance.measure(mark);
@@ -2013,6 +2072,7 @@ impl Inner {
         self.snapshot(),
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -2051,6 +2111,7 @@ impl Inner {
         self.snapshot(),
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -2099,6 +2160,7 @@ impl Inner {
       .map(|s| s.suggest.include_completions_for_import_statements)
       .unwrap_or(true)
     {
+      let file_referrer = asset_or_doc.file_referrer().unwrap_or(&specifier);
       response = completions::get_import_completions(
         &specifier,
         &params.text_document_position.position,
@@ -2109,7 +2171,11 @@ impl Inner {
         &self.npm_search_api,
         &self.documents,
         self.resolver.as_ref(),
-        self.config.tree.root_import_map().map(|i| i.as_ref()),
+        self
+          .config
+          .tree
+          .data_for_specifier(file_referrer)
+          .and_then(|d| d.import_map.as_ref().map(|i| i.as_ref())),
       )
       .await;
     }
@@ -2126,6 +2192,7 @@ impl Inner {
         };
       let position =
         line_index.offset_tsc(params.text_document_position.position)?;
+      let scope = asset_or_doc.scope();
       let maybe_completion_info = self
         .ts_server
         .get_completions(
@@ -2146,6 +2213,7 @@ impl Inner {
             .fmt_options_for_specifier(&specifier)
             .options)
             .into(),
+          scope.cloned(),
         )
         .await;
 
@@ -2187,6 +2255,10 @@ impl Inner {
         })?;
       if let Some(data) = &data.tsc {
         let specifier = &data.specifier;
+        let scope = self
+          .get_asset_or_document(specifier)
+          .ok()
+          .and_then(|d| d.scope().cloned());
         let result = self
           .ts_server
           .get_completion_details(
@@ -2208,6 +2280,7 @@ impl Inner {
               ),
               ..data.into()
             },
+            scope,
           )
           .await;
         match result {
@@ -2277,7 +2350,11 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        lsp_warn!("{:#}", err);
+        LspError::internal_error()
+      })?;
 
     let result = if let Some(implementations) = maybe_implementations {
       let mut links = Vec::new();
@@ -2315,7 +2392,11 @@ impl Inner {
 
     let outlining_spans = self
       .ts_server
-      .get_outlining_spans(self.snapshot(), specifier)
+      .get_outlining_spans(
+        self.snapshot(),
+        specifier,
+        asset_or_doc.scope().cloned(),
+      )
       .await?;
 
     let response = if !outlining_spans.is_empty() {
@@ -2364,7 +2445,11 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.item.selection_range.start)?,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        lsp_warn!("{:#}", err);
+        LspError::internal_error()
+      })?;
 
     let maybe_root_path_owned = self
       .config
@@ -2408,6 +2493,7 @@ impl Inner {
         self.snapshot(),
         specifier,
         line_index.offset_tsc(params.item.selection_range.start)?,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -2455,6 +2541,7 @@ impl Inner {
         self.snapshot(),
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -2517,7 +2604,11 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.text_document_position.position)?,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        lsp_warn!("{:#}", err);
+        LspError::internal_error()
+      })?;
 
     if let Some(locations) = maybe_locations {
       let rename_locations = tsc::RenameLocations { locations };
@@ -2562,6 +2653,7 @@ impl Inner {
           self.snapshot(),
           specifier.clone(),
           line_index.offset_tsc(position)?,
+          asset_or_doc.scope().cloned(),
         )
         .await?;
 
@@ -2605,6 +2697,7 @@ impl Inner {
         self.snapshot(),
         specifier,
         0..line_index.text_content_length_utf16().into(),
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -2660,6 +2753,7 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.range.start)?
           ..line_index.offset_tsc(params.range.end)?,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -2712,6 +2806,7 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
         options,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -2767,7 +2862,11 @@ impl Inner {
               ..Default::default()
             },
           )
-          .await?,
+          .await
+          .map_err(|err| {
+            lsp_warn!("{:#}", err);
+            LspError::internal_error()
+          })?,
       );
     }
     file_text_changes_to_workspace_edit(&changes, self)
@@ -2790,7 +2889,11 @@ impl Inner {
           file: None,
         },
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        error!("{:#}", err);
+        LspError::invalid_request()
+      })?;
 
     let maybe_symbol_information = if navigate_to_items.is_empty() {
       None
@@ -2817,7 +2920,15 @@ impl Inner {
     self.ts_server.project_changed(
       self.snapshot(),
       modified_scripts,
-      config_changed,
+      config_changed.then(|| {
+        self
+          .config
+          .tree
+          .data_by_scope()
+          .iter()
+          .map(|(s, d)| (s.clone(), d.ts_config.clone()))
+          .collect()
+      }),
     );
   }
 
@@ -3120,7 +3231,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
           )
         })
         .collect::<Vec<(ModuleSpecifier, WorkspaceFolder)>>();
-      for (specifier, folder) in &inner.config.workspace_folders {
+      for (specifier, folder) in inner.config.workspace_folders.as_ref() {
         if !params.event.removed.is_empty()
           && params.event.removed.iter().any(|f| f.uri == folder.uri)
         {
@@ -3416,7 +3527,7 @@ impl Inner {
     let mark = self
       .performance
       .mark_with_args("lsp.cache", (&specifiers, &referrer));
-    let config_data = self.config.tree.root_data();
+    let config_data = self.config.tree.data_for_specifier(&referrer);
     let mut roots = if !specifiers.is_empty() {
       specifiers
     } else {
@@ -3425,13 +3536,17 @@ impl Inner {
 
     // always include the npm packages since resolution of one npm package
     // might affect the resolution of other npm packages
-    roots.extend(
-      self
-        .documents
-        .npm_package_reqs()
-        .iter()
-        .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
-    );
+    if let Some(npm_reqs) = self
+      .documents
+      .npm_reqs_by_scope()
+      .get(&config_data.map(|d| d.scope.clone()))
+    {
+      roots.extend(
+        npm_reqs
+          .iter()
+          .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
+      );
+    }
 
     let workspace_settings = self.config.workspace_settings();
     let cli_options = CliOptions::new(
@@ -3460,7 +3575,7 @@ impl Inner {
       self.initial_cwd.clone(),
       config_data.and_then(|d| d.config_file.as_deref().cloned()),
       config_data.and_then(|d| d.lockfile.clone()),
-      config_data.and_then(|d| d.package_json.as_deref().cloned()),
+      config_data.and_then(|d| d.package_json.clone()),
       config_data
         .and_then(|d| d.npmrc.clone())
         .unwrap_or_else(create_default_npmrc),
@@ -3546,6 +3661,7 @@ impl Inner {
           &self.config,
           &specifier,
         ),
+        asset_or_doc.scope().cloned(),
       )
       .await?;
     let maybe_inlay_hints = maybe_inlay_hints.map(|hints| {
@@ -3688,7 +3804,7 @@ mod tests {
     temp_dir.create_dir_all("root1/node_modules/");
     temp_dir.write("root1/node_modules/mod.ts", ""); // no, node_modules
 
-    temp_dir.create_dir_all("root1/sub_dir");
+    temp_dir.create_dir_all("root1/folder");
     temp_dir.create_dir_all("root1/target");
     temp_dir.create_dir_all("root1/node_modules");
     temp_dir.create_dir_all("root1/.git");
@@ -3706,14 +3822,15 @@ mod tests {
     temp_dir.write("root1/other.txt", ""); // no, text file
     temp_dir.write("root1/other.wasm", ""); // no, don't load wasm
     temp_dir.write("root1/Cargo.toml", ""); // no
-    temp_dir.write("root1/sub_dir/mod.ts", ""); // yes
-    temp_dir.write("root1/sub_dir/data.min.ts", ""); // no, minified file
+    temp_dir.write("root1/folder/mod.ts", ""); // yes
+    temp_dir.write("root1/folder/data.min.ts", ""); // no, minified file
     temp_dir.write("root1/.git/main.ts", ""); // no, .git folder
     temp_dir.write("root1/node_modules/main.ts", ""); // no, because it's in a node_modules folder
     temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
 
     temp_dir.create_dir_all("root2/folder");
     temp_dir.create_dir_all("root2/sub_folder");
+    temp_dir.create_dir_all("root2/root2.1");
     temp_dir.write("root2/file1.ts", ""); // yes, enabled
     temp_dir.write("root2/file2.ts", ""); // no, not enabled
     temp_dir.write("root2/folder/main.ts", ""); // yes, enabled
@@ -3721,14 +3838,21 @@ mod tests {
     temp_dir.write("root2/sub_folder/a.js", ""); // no, not enabled
     temp_dir.write("root2/sub_folder/b.ts", ""); // no, not enabled
     temp_dir.write("root2/sub_folder/c.js", ""); // no, not enabled
+    temp_dir.write("root2/root2.1/main.ts", ""); // yes, enabled as separate root
 
     temp_dir.create_dir_all("root3/");
     temp_dir.write("root3/mod.ts", ""); // no, not enabled
 
+    temp_dir.create_dir_all("root4_parent/root4");
+    temp_dir.write("root4_parent/deno.json", ""); // yes, enabled as deno.json above root
+    temp_dir.write("root4_parent/root4/main.ts", ""); // yes, enabled
+
     let mut config = Config::new_with_roots(vec![
       temp_dir.uri().join("root1/").unwrap(),
       temp_dir.uri().join("root2/").unwrap(),
+      temp_dir.uri().join("root2/root2.1/").unwrap(),
       temp_dir.uri().join("root3/").unwrap(),
+      temp_dir.uri().join("root4_parent/root4/").unwrap(),
     ]);
     config.set_client_capabilities(ClientCapabilities {
       workspace: Some(Default::default()),
@@ -3757,9 +3881,23 @@ mod tests {
           },
         ),
         (
+          temp_dir.uri().join("root2/root2.1/").unwrap(),
+          WorkspaceSettings {
+            enable: Some(true),
+            ..Default::default()
+          },
+        ),
+        (
           temp_dir.uri().join("root3/").unwrap(),
           WorkspaceSettings {
             enable: Some(false),
+            ..Default::default()
+          },
+        ),
+        (
+          temp_dir.uri().join("root4_parent/root4/").unwrap(),
+          WorkspaceSettings {
+            enable: Some(true),
             ..Default::default()
           },
         ),
@@ -3771,6 +3909,7 @@ mod tests {
     assert_eq!(
       json!(workspace_files),
       json!([
+        temp_dir.uri().join("root4_parent/deno.json").unwrap(),
         temp_dir.uri().join("root1/mod0.ts").unwrap(),
         temp_dir.uri().join("root1/mod1.js").unwrap(),
         temp_dir.uri().join("root1/mod2.tsx").unwrap(),
@@ -3781,9 +3920,11 @@ mod tests {
         temp_dir.uri().join("root1/mod7.d.mts").unwrap(),
         temp_dir.uri().join("root1/mod8.json").unwrap(),
         temp_dir.uri().join("root1/mod9.jsonc").unwrap(),
-        temp_dir.uri().join("root1/sub_dir/mod.ts").unwrap(),
         temp_dir.uri().join("root2/file1.ts").unwrap(),
+        temp_dir.uri().join("root4_parent/root4/main.ts").unwrap(),
+        temp_dir.uri().join("root1/folder/mod.ts").unwrap(),
         temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+        temp_dir.uri().join("root2/root2.1/main.ts").unwrap(),
       ])
     );
   }

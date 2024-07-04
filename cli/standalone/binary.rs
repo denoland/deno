@@ -15,6 +15,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use deno_ast::ModuleSpecifier;
+use deno_config::package_json::PackageJsonDepValueParseError;
+use deno_config::package_json::PackageJsonDeps;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -24,14 +26,13 @@ use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::NpmSystemInfo;
+use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReqSpecifierParseError;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::args::package_json::PackageJsonDepValueParseError;
-use crate::args::package_json::PackageJsonDeps;
 use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
@@ -55,15 +56,15 @@ const MAGIC_TRAILER: &[u8; 8] = b"d3n0l4nd";
 
 #[derive(Serialize, Deserialize)]
 enum SerializablePackageJsonDepValueParseError {
-  Specifier(String),
+  VersionReq(String),
   Unsupported { scheme: String },
 }
 
 impl SerializablePackageJsonDepValueParseError {
   pub fn from_err(err: PackageJsonDepValueParseError) -> Self {
     match err {
-      PackageJsonDepValueParseError::Specifier(err) => {
-        Self::Specifier(err.source.to_string())
+      PackageJsonDepValueParseError::VersionReq(err) => {
+        Self::VersionReq(err.source.to_string())
       }
       PackageJsonDepValueParseError::Unsupported { scheme } => {
         Self::Unsupported { scheme }
@@ -73,12 +74,10 @@ impl SerializablePackageJsonDepValueParseError {
 
   pub fn into_err(self) -> PackageJsonDepValueParseError {
     match self {
-      SerializablePackageJsonDepValueParseError::Specifier(source) => {
-        PackageJsonDepValueParseError::Specifier(
-          VersionReqSpecifierParseError {
-            source: monch::ParseErrorFailureError::new(source),
-          },
-        )
+      SerializablePackageJsonDepValueParseError::VersionReq(source) => {
+        PackageJsonDepValueParseError::VersionReq(NpmVersionReqParseError {
+          source: monch::ParseErrorFailureError::new(source),
+        })
       }
       SerializablePackageJsonDepValueParseError::Unsupported { scheme } => {
         PackageJsonDepValueParseError::Unsupported { scheme }
