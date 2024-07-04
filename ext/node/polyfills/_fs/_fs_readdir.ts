@@ -133,7 +133,7 @@ export function readdirSync(
 
   try {
     path = path.toString();
-    for (const file of Deno.readDirSync(path.toString())) {
+    for (const file of Deno.readDirSync(path)) {
       if (options?.withFileTypes) {
         file.parentPath = path;
         result.push(toDirent(file));
