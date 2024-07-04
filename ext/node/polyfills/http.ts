@@ -1349,7 +1349,6 @@ export class ServerResponse extends NodeWritable {
   // used by `npm:on-finished`
   finished = false;
   headersSent = false;
-  #firstChunk: Chunk | null = null;
   #resolve: (value: Response | PromiseLike<Response>) => void;
   // deno-lint-ignore no-explicit-any
   #socketOverride: any | null = null;
@@ -1386,28 +1385,25 @@ export class ServerResponse extends NodeWritable {
       autoDestroy: true,
       defaultEncoding: "utf-8",
       emitClose: true,
+      // FIXME: writes don't work when a socket is assigned and then
+      // detached.
       write: (chunk, encoding, cb) => {
+        // Writes chunks are directly written to the socket if
+        // one is assigned via assignSocket()
         if (this.#socketOverride && this.#socketOverride.writable) {
           this.#socketOverride.write(chunk, encoding);
           return cb();
         }
         if (!this.headersSent) {
-          if (this.#firstChunk === null) {
-            this.#firstChunk = chunk;
-            return cb();
-          } else {
-            ServerResponse.#enqueue(controller, this.#firstChunk);
-            this.#firstChunk = null;
-            this.respond(false);
-          }
+          ServerResponse.#enqueue(controller, chunk);
+          this.respond(false);
+          return cb();
         }
         ServerResponse.#enqueue(controller, chunk);
         return cb();
       },
       final: (cb) => {
-        if (this.#firstChunk) {
-          this.respond(true, this.#firstChunk);
-        } else if (!this.headersSent) {
+        if (!this.headersSent) {
           this.respond(true);
         }
         controller.close();

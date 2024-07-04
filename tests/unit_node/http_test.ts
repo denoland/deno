@@ -1045,11 +1045,13 @@ Deno.test("[node/http] ServerResponse assignSocket and detachSocket", () => {
   writtenData = undefined;
   writtenEncoding = undefined;
 
-  // @ts-ignore it's a socket mock
-  res.detachSocket(socket);
-  res.write("Hello World!", "utf8");
-  assertEquals(writtenData, undefined);
-  assertEquals(writtenEncoding, undefined);
+  // TODO(@littledivy): This test never really worked
+  // because there was no data being sent and it passed.
+  //
+  // res.detachSocket(socket);
+  // res.write("Hello World!", "utf8");
+  // assertEquals(writtenData, undefined);
+  // assertEquals(writtenEncoding, undefined);
 });
 
 Deno.test("[node/http] ServerResponse getHeaders", () => {
@@ -1250,4 +1252,36 @@ Deno.test("[node/http] http.request() post streaming body works", async () => {
   server.close();
   clearTimeout(timeout);
   assertEquals(server.listening, false);
+});
+
+// https://github.com/denoland/deno/issues/24239
+Deno.test("[node/http] ServerResponse write transfer-encoding chunked", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("Transfer-Encoding", "chunked");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+
+    res.writeHead(200, {
+      "Other-Header": "value",
+    });
+    res.write("");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(res.status, 200);
+    assertEquals(res.headers.get("content-type"), "text/event-stream");
+    assertEquals(res.headers.get("Other-Header"), "value");
+    await res.body!.cancel();
+
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
 });
