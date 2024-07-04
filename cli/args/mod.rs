@@ -1102,10 +1102,17 @@ impl CliOptions {
         .workspace
         .create_resolver(
           CreateResolverOptions {
-            // todo(dsherret): this should be false for nodeModulesDir: true
-            pkg_json_dep_resolution: if self.use_byonm() {
+            pkg_json_dep_resolution: if matches!(
+              self.flags.subcommand,
+              DenoSubcommand::Publish(..)
+            ) {
+              // always use package.json dep resolution when publishing so that the
+              // unfurler can map dependencies to what's found in a package.json
+              PackageJsonDepResolution::Enabled
+            } else if self.use_byonm() {
               PackageJsonDepResolution::Disabled
             } else {
+              // todo(dsherret): this should be false for nodeModulesDir: true
               PackageJsonDepResolution::Enabled
             },
             specified_import_map: cli_arg_specified_import_map,

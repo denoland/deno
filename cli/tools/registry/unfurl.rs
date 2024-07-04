@@ -148,6 +148,12 @@ impl<'a> SpecifierUnfurler<'a> {
     if relative_resolved == specifier {
       None // nothing to unfurl
     } else {
+      log::debug!(
+        "Unfurled specifier: {} from {} -> {}",
+        specifier,
+        referrer,
+        relative_resolved
+      );
       Some(relative_resolved)
     }
   }
