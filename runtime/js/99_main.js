@@ -92,15 +92,7 @@ import {
 import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
-import {
-  SymbolAsyncDispose,
-  SymbolDispose,
-  SymbolMetadata,
-} from "ext:deno_web/00_infra.js";
-// deno-lint-ignore prefer-primordials
-if (Symbol.asyncDispose) {
-  throw "V8 supports Symbol.asyncDispose now, no need to shim it!";
-}
+import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
   throw "V8 supports Symbol.metadata now, no need to shim it!";
@@ -108,12 +100,6 @@ if (Symbol.metadata) {
 ObjectDefineProperties(Symbol, {
   dispose: {
     value: SymbolDispose,
-    enumerable: false,
-    writable: false,
-    configurable: false,
-  },
-  asyncDispose: {
-    value: SymbolAsyncDispose,
     enumerable: false,
     writable: false,
     configurable: false,

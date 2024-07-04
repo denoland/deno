@@ -32,6 +32,7 @@ mod path;
 mod polyfill;
 mod resolution;
 
+pub use deno_config::package_json::PackageJson;
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
 use ops::vm;
@@ -39,7 +40,8 @@ pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
-pub use package_json::PackageJson;
+pub use package_json::load_pkg_json;
+pub use package_json::PackageJsonThreadLocalCache;
 pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
@@ -313,6 +315,8 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_fs_exists_sync<P>,
     ops::fs::op_node_cp_sync<P>,
     ops::fs::op_node_cp<P>,
+    ops::fs::op_node_lutimes_sync<P>,
+    ops::fs::op_node_lutimes<P>,
     ops::fs::op_node_statfs<P>,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
@@ -424,6 +428,7 @@ deno_core::extension!(deno_node,
     "_fs/_fs_futimes.ts",
     "_fs/_fs_link.ts",
     "_fs/_fs_lstat.ts",
+    "_fs/_fs_lutimes.ts",
     "_fs/_fs_mkdir.ts",
     "_fs/_fs_mkdtemp.ts",
     "_fs/_fs_open.ts",

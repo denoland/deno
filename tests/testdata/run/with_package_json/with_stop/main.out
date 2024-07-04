@@ -1,5 +1,4 @@
 [WILDCARD]Config file found at '[WILDCARD]with_package_json[WILDCARD]with_stop[WILDCARD]some[WILDCARD]nested[WILDCARD]deno.json'
-[WILDCARD]No package.json file found
 [WILDCARD]
 error: Relative import path "chalk" not prefixed with / or ./ or ../
     at file:///[WILDCARD]with_package_json/with_stop/some/nested/dir/main.ts:3:19
