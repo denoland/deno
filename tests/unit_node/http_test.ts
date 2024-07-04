@@ -1048,8 +1048,10 @@ Deno.test("[node/http] ServerResponse assignSocket and detachSocket", () => {
   // TODO(@littledivy): This test never really worked
   // because there was no data being sent and it passed.
   //
+  // @ts-ignore it's a socket mock
   // res.detachSocket(socket);
   // res.write("Hello World!", "utf8");
+  //
   // assertEquals(writtenData, undefined);
   // assertEquals(writtenEncoding, undefined);
 });
