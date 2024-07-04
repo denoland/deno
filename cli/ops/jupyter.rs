@@ -91,6 +91,8 @@ pub fn op_jupyter_input(
       return Ok(None);
     };
 
+    // Need to spawn a separate thread here, because `blocking_recv()` can't
+    // be used from the Tokio runtime context.
     let join_handle = std::thread::spawn(move || {
       stdin_connection_proxy.lock().rx.blocking_recv()
     });
