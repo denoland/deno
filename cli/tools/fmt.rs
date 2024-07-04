@@ -199,7 +199,7 @@ fn collect_fmt_files(
   FileCollector::new(|e| is_supported_ext_fmt(e.path))
     .ignore_git_folder()
     .ignore_node_modules()
-    .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+    .set_vendor_folder(cli_options.vendor_dir_path())
     .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
 

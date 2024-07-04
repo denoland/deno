@@ -1660,16 +1660,14 @@ fn collect_specifiers_with_test_mode(
   let vendor_folder = cli_options.vendor_dir_path();
   let module_specifiers = collect_specifiers(
     files.clone(),
-    vendor_folder.map(ToOwned::to_owned),
+    vendor_folder.clone(),
     is_supported_test_path_predicate,
   )?;
 
   if *include_inline {
-    return collect_specifiers(
-      files,
-      vendor_folder.map(ToOwned::to_owned),
-      |e| is_supported_test_ext(e.path),
-    )
+    return collect_specifiers(files, vendor_folder.clone(), |e| {
+      is_supported_test_ext(e.path)
+    })
     .map(|specifiers| {
       specifiers
         .into_iter()
@@ -1875,7 +1873,7 @@ pub async fn run_tests_with_watch(
           .map(|(_, test_options)| {
             collect_specifiers(
               test_options.files.clone(),
-              cli_options.vendor_dir_path().map(ToOwned::to_owned),
+              cli_options.vendor_dir_path(),
               if workspace_test_options.doc {
                 Box::new(|e: WalkEntry| is_supported_test_ext(e.path))
                   as Box<dyn Fn(WalkEntry) -> bool>

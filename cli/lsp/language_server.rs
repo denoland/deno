@@ -3568,6 +3568,11 @@ impl Inner {
         },
         additional_config_file_names: &[],
         discover_pkg_json: true,
+        use_vendor_folder_override: if force_global_cache {
+          Some(false)
+        } else {
+          None
+        },
       },
     )?);
     let cli_options = CliOptions::new(

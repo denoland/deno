@@ -339,7 +339,7 @@ fn collect_paths(
   })
   .ignore_git_folder()
   .ignore_node_modules()
-  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .set_vendor_folder(cli_options.vendor_dir_path())
   .use_gitignore()
   .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, file_patterns)
 }

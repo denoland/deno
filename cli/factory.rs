@@ -502,7 +502,7 @@ impl CliFactory {
               .options
               .workspace
               .to_maybe_jsx_import_source_config()?,
-            maybe_vendor_dir: self.options.vendor_dir_path(),
+            maybe_vendor_dir: self.options.vendor_dir_path().as_ref(),
           })))
         }
         .boxed_local(),
