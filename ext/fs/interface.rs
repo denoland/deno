@@ -344,9 +344,6 @@ impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
     &self,
     path: &Path,
   ) -> Result<deno_config::fs::FsMetadata, std::io::Error> {
-    // todo(dsherret): stat_sync from deno_fs is probably
-    // too heavy and we should introduce a lighter version
-    // that uses less syscalls
     self
       .0
       .stat_sync(path)
