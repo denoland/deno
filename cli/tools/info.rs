@@ -42,19 +42,20 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = factory.maybe_lockfile();
-    let maybe_imports_map = factory.maybe_import_map().await?;
+    let resolver = factory.workspace_resolver().await?;
 
-    let maybe_import_specifier = if let Some(imports_map) = maybe_imports_map {
-      if let Ok(imports_specifier) =
-        imports_map.resolve(&specifier, imports_map.base_url())
-      {
-        Some(imports_specifier)
+    let maybe_import_specifier =
+      if let Some(import_map) = resolver.maybe_import_map() {
+        if let Ok(imports_specifier) =
+          import_map.resolve(&specifier, import_map.base_url())
+        {
+          Some(imports_specifier)
+        } else {
+          None
+        }
       } else {
         None
-      }
-    } else {
-      None
-    };
+      };
 
     let specifier = match maybe_import_specifier {
       Some(specifier) => specifier,
