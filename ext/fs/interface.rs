@@ -72,7 +72,6 @@ pub enum FsFileType {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsDirEntry {
-  pub parent_path: String,
   pub name: String,
   pub is_file: bool,
   pub is_directory: bool,

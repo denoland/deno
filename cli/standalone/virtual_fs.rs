@@ -787,7 +787,6 @@ impl FileBackedVfs {
         .entries
         .iter()
         .map(|entry| FsDirEntry {
-          parent_path: path.to_string_lossy().into_owned(),
           name: entry.name().to_string(),
           is_file: matches!(entry, VfsEntry::File(_)),
           is_directory: matches!(entry, VfsEntry::Dir(_)),
