@@ -25,7 +25,6 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
 use jupyter_runtime::messaging;
-// use jupyter_runtime::AsChildOf;
 use jupyter_runtime::ConnectionInfo;
 use jupyter_runtime::JupyterMessage;
 use jupyter_runtime::JupyterMessageContent;
@@ -431,16 +430,6 @@ impl JupyterServer {
         self
           .comm_container
           .create(&comm.comm_id.0, &comm.target_name, None);
-
-        // connection
-        //   .send(
-        //     messaging::CommClose {
-        //       comm_id: comm.comm_id,
-        //       data: Default::default(),
-        //     }
-        //     .as_child_of(parent),
-        //   )
-        //   .await?;
       }
       JupyterMessageContent::CommInfoRequest(_req) => {
         // eprintln!("comm_open");
@@ -458,14 +447,16 @@ impl JupyterServer {
       JupyterMessageContent::CommMsg(comm) => {
         // eprintln!("got comm msg {:#?}", comm);
         let comm_container = self.comm_container.0.lock();
-        let comm_channel = comm_container.get(&comm.comm_id.0).unwrap();
-        // todo?: send the msg.metadata
-        // eprintln!("sending message");
-        let _ = comm_channel.sender.send((comm, msg.buffers));
-        // eprintln!("message sent on the channel");
+        if let Some(comm_channel) = comm_container.get(&comm.comm_id.0) {
+          // TODO: should we send the `comm.metadata`?
+          // eprintln!("sending message");
+          let _ = comm_channel.sender.send((comm, msg.buffers));
+          // eprintln!("message sent on the channel");
+        };
       }
-      JupyterMessageContent::CommClose(_) => {
-        // Do nothing with regular comm messages
+      JupyterMessageContent::CommClose(comm_close_msg) => {
+        let mut comm_container = self.comm_container.0.lock();
+        let _ = comm_container.remove(&comm_close_msg.comm_id.0);
       }
       // Any unknown message type is ignored
       _ => {

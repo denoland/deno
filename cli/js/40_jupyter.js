@@ -336,40 +336,6 @@ async function formatInner(obj, raw) {
 
 internals.jupyter = { formatInner };
 
-/**
-class CommMessage(TypedDict):
-    header: dict
-    # typically UUID, must be unique per message
-    msg_id: str
-    msg_type: str
-    parent_header: dict
-    metadata: dict
-    content: <custom payload>
-    buffers: list[memoryview]
-((async) => {
-  const data = await Deno.jupyter.comms.recv("1234-5678");
-})();
-((async) => {
-  const data = await Deno.jupyter.comms.recv("1234-5678");
-})();
-const comm = await Deno.jupyter.comms.open("1234-5678");
-const data = await comm.recv();
-const data = await Deno.jupyter.comms.recv("1234-5678");
-c = Comm("1234-5678")
-c.on("update", data => {
-    console.log(data);
-    Deno.jupyter.broadcast(...);
-});
-{
-    msg_type: "comm_msg",
-    content: {
-        comm_id: "1234-5678",
-        data: {
-        }
-    }
-}
-*/
-
 function enableJupyter() {
   const {
     op_jupyter_broadcast,
