@@ -23,7 +23,6 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_runtime::deno_fs::FileSystem;
 use deno_terminal::colors;
 use http_body_util::BodyExt;
 use lsp_types::Url;
