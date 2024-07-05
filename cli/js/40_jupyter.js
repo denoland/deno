@@ -92,14 +92,9 @@ function isDataFrameLike(obj) {
     return false;
   }
   const df = obj;
-  return (
-    df.schema !== void 0 &&
-    typeof df.schema === "object" &&
-    df.head !== void 0 &&
-    typeof df.head === "function" &&
-    df.toRecords !== void 0 &&
-    typeof df.toRecords === "function"
-  );
+  return df.schema !== void 0 && typeof df.schema === "object" &&
+    df.head !== void 0 && typeof df.head === "function" &&
+    df.toRecords !== void 0 && typeof df.toRecords === "function";
 }
 /**
  * Map Polars DataType to JSON Schema data types.
@@ -163,15 +158,13 @@ function extractDataFrame(df) {
   });
   htmlTable += "</tr></thead>";
   htmlTable += "<tbody>";
-  df.head(10)
-    .toRecords()
-    .forEach((row) => {
-      htmlTable += "<tr>";
-      schema.fields.forEach((field) => {
-        htmlTable += `<td>${escapeHTML(String(row[field.name]))}</td>`;
-      });
-      htmlTable += "</tr>";
+  df.head(10).toRecords().forEach((row) => {
+    htmlTable += "<tr>";
+    schema.fields.forEach((field) => {
+      htmlTable += `<td>${escapeHTML(String(row[field.name]))}</td>`;
     });
+    htmlTable += "</tr>";
+  });
   htmlTable += "</tbody></table>";
   return {
     "application/vnd.dataresource+json": { data, schema },
@@ -186,32 +179,19 @@ function isCanvasLike(obj) {
 
 /** Possible HTML and SVG Elements */
 function isSVGElementLike(obj) {
-  return (
-    obj !== null &&
-    typeof obj === "object" &&
-    "outerHTML" in obj &&
-    typeof obj.outerHTML === "string" &&
-    obj.outerHTML.startsWith("<svg")
-  );
+  return obj !== null && typeof obj === "object" && "outerHTML" in obj &&
+    typeof obj.outerHTML === "string" && obj.outerHTML.startsWith("<svg");
 }
 
 function isHTMLElementLike(obj) {
-  return (
-    obj !== null &&
-    typeof obj === "object" &&
-    "outerHTML" in obj &&
-    typeof obj.outerHTML === "string"
-  );
+  return obj !== null && typeof obj === "object" && "outerHTML" in obj &&
+    typeof obj.outerHTML === "string";
 }
 
 /** Check to see if an object already contains a `Symbol.for("Jupyter.display") */
 function hasDisplaySymbol(obj) {
-  return (
-    obj !== null &&
-    typeof obj === "object" &&
-    $display in obj &&
-    typeof obj[$display] === "function"
-  );
+  return obj !== null && typeof obj === "object" && $display in obj &&
+    typeof obj[$display] === "function";
 }
 
 function makeDisplayable(obj) {
@@ -366,33 +346,25 @@ class CommMessage(TypedDict):
     metadata: dict
     content: <custom payload>
     buffers: list[memoryview]
-
 ((async) => {
   const data = await Deno.jupyter.comms.recv("1234-5678");
 })();
 ((async) => {
   const data = await Deno.jupyter.comms.recv("1234-5678");
 })();
-
 const comm = await Deno.jupyter.comms.open("1234-5678");
 const data = await comm.recv();
-
 const data = await Deno.jupyter.comms.recv("1234-5678");
-
 c = Comm("1234-5678")
-
 c.on("update", data => {
     console.log(data);
     Deno.jupyter.broadcast(...);
 });
-
-
 {
     msg_type: "comm_msg",
     content: {
         comm_id: "1234-5678",
         data: {
-
         }
     }
 }
@@ -566,7 +538,6 @@ function enableJupyter() {
   globalThis.prompt = prompt;
   globalThis.Deno.jupyter = {
     broadcast,
-    comm,
     display,
     format,
     md,
