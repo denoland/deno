@@ -71,9 +71,17 @@ export function readFile(
 
   const encoding = getEncoding(optOrCallback);
 
-  let p: Promise<Uint8Array>;
+  let fd: number | undefined;
   if (path instanceof FileHandle) {
-    const fsFile = new FsFile(path.fd, Symbol.for("Deno.internal.FsFile"));
+    fd = path.fd;
+  } else if (typeof path === "number") {
+    fd = path;
+  }
+
+  let p: Promise<Uint8Array>;
+
+  if (fd !== null) {
+    const fsFile = new FsFile(fd, Symbol.for("Deno.internal.FsFile"));
     p = readAll(fsFile);
   } else {
     p = Deno.readFile(path);

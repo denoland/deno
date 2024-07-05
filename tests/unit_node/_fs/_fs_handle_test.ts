@@ -35,24 +35,50 @@ Deno.test("read specify opt", async function () {
   const byteLength = "hello world".length;
 
   const opt = {
-    buffer: new Buffer(byteLength),
+    buffer: Buffer.alloc(byteLength),
     offset: 6,
     length: 5,
   };
   let res = await fileHandle.read(opt);
 
-  assertEquals(res.bytesRead, byteLength);
-  assertEquals(new TextDecoder().decode(res.buffer as Uint8Array), "world");
+  assertEquals(res.bytesRead, 5);
+  // deno-fmt-ignore
+  assertEquals(res.buffer as Uint8Array, Buffer.from([
+    0, 0, 0, 0, 0, 0,
+    // hello
+    0x68, 0x65, 0x6c, 0x6c, 0x6f,
+  ]))
 
   const opt2 = {
-    buffer: new Buffer(byteLength),
+    buffer: Buffer.alloc(byteLength),
     length: 5,
     position: 0,
   };
   res = await fileHandle.read(opt2);
 
-  assertEquals(res.bytesRead, byteLength);
-  assertEquals(decoder.decode(res.buffer as Uint8Array), "hello");
+  assertEquals(res.bytesRead, 5);
+  // deno-fmt-ignore
+  assertEquals(res.buffer as Uint8Array, Buffer.from([
+    // hello
+    0x68, 0x65, 0x6c, 0x6c, 0x6f,
+    0, 0, 0, 0, 0, 0,
+  ]))
+
+  const opt3 = {
+    buffer: Buffer.alloc(byteLength),
+    offset: 6,
+    length: 5,
+    position: 6,
+  };
+  res = await fileHandle.read(opt3);
+
+  assertEquals(res.bytesRead, 5);
+  // deno-fmt-ignore
+  assertEquals(res.buffer as Uint8Array, Buffer.from([
+    0, 0, 0, 0, 0, 0,
+    // world
+    0x77, 0x6f, 0x72, 0x6c, 0x64,
+  ]))
 
   await fileHandle.close();
 });
