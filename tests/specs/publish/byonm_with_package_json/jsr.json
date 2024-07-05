@@ -1,0 +1,12 @@
+{
+  "name": "@scope/package",
+  "version": "0.0.0",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publish": {
+    "include": [
+      "src/**/*"
+    ]
+  }
+}
