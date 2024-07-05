@@ -40,7 +40,7 @@ pub async fn vendor(
 ) -> Result<(), AnyError> {
   log::info!(
     "{}",
-    colors::yellow("⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.\nUse `--vendor` flag with subcommands or place `\"vendor\": true` in your config file."),
+    crate::colors::yellow("⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.\nUse `--vendor` flag with subcommands or place `\"vendor\": true` in your config file."),
   );
 
   let mut cli_options = CliOptions::from_flags(flags)?;
