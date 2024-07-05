@@ -3568,6 +3568,11 @@ impl Inner {
         },
         additional_config_file_names: &[],
         discover_pkg_json: true,
+        maybe_vendor_override: if force_global_cache {
+          Some(deno_config::workspace::VendorEnablement::Disable)
+        } else {
+          None
+        },
       },
     )?);
     let cli_options = CliOptions::new(
