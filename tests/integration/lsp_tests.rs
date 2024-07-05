@@ -12606,10 +12606,12 @@ fn lsp_deno_json_scopes_node_modules_dir() {
       "position": { "line": 0, "character": 7 },
     }),
   );
+  let canon_temp_dir =
+    Url::from_directory_path(temp_dir.path().canonicalize()).unwrap();
   assert_eq!(
     res,
     json!([{
-      "targetUri": temp_dir.uri().join("project1/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap(),
+      "targetUri": canon_temp_dir.join("project1/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -12659,7 +12661,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": temp_dir.uri().join("project2/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap(),
+      "targetUri": canon_temp_dir.join("project2/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -12709,7 +12711,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": temp_dir.uri().join("project2/project3/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap(),
+      "targetUri": canon_temp_dir.join("project2/project3/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -13734,10 +13736,12 @@ fn lsp_deno_json_workspace_node_modules_dir() {
       "position": { "line": 0, "character": 7 },
     }),
   );
+  let canon_temp_dir =
+    Url::from_directory_path(temp_dir.path().canonicalize()).unwrap();
   assert_eq!(
     res,
     json!([{
-      "targetUri": temp_dir.uri().join("project1/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap(),
+      "targetUri": canon_temp_dir.join("project1/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
