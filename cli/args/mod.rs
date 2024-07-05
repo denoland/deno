@@ -393,18 +393,11 @@ pub struct TestOptions {
 }
 
 impl TestOptions {
-  pub fn resolve(
-    test_config: TestConfig,
-    test_flags: TestFlags,
-    maybe_flags_base: Option<&Path>,
-  ) -> Result<Self, AnyError> {
-    Ok(Self {
-      files: resolve_files(
-        test_config.files,
-        &test_flags.files,
-        maybe_flags_base,
-      )?,
-    })
+  pub fn resolve(test_config: TestConfig, _test_flags: &TestFlags) -> Self {
+    // this is the same, but keeping the same pattern as everywhere else for the future
+    Self {
+      files: test_config.files,
+    }
   }
 }
 
@@ -1412,12 +1405,12 @@ impl CliOptions {
   ) -> Result<Vec<(WorkspaceMemberContext, TestOptions)>, AnyError> {
     let cli_arg_patterns =
       test_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_ctxs =
-      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
+    let member_ctxs = self
+      .workspace
+      .resolve_test_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_ctxs.len());
-    for member_ctx in member_ctxs {
-      let options =
-        self.resolve_test_options(test_flags.clone(), &member_ctx)?;
+    for (member_ctx, config) in member_ctxs {
+      let options = TestOptions::resolve(config, test_flags);
       result.push((member_ctx, options));
     }
     Ok(result)
@@ -1428,15 +1421,6 @@ impl CliOptions {
     bench_flags: &BenchFlags,
   ) -> WorkspaceBenchOptions {
     WorkspaceBenchOptions::resolve(bench_flags)
-  }
-
-  pub fn resolve_test_options(
-    &self,
-    test_flags: TestFlags,
-    ctx: &WorkspaceMemberContext,
-  ) -> Result<TestOptions, AnyError> {
-    let test_config = ctx.to_test_config()?;
-    TestOptions::resolve(test_config, test_flags, Some(&self.initial_cwd))
   }
 
   pub fn resolve_bench_options_for_members(
