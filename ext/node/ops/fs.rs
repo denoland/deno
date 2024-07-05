@@ -311,6 +311,6 @@ where
       .check_write_with_api_name(&path, Some("node:fs.lchown"))?;
     state.borrow::<FileSystemRc>().clone()
   };
-  fs.lchown_async(path.clone(), uid, gid).await?;
+  fs.lchown_async(path, uid, gid).await?;
   Ok(())
 }
