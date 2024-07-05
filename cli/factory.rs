@@ -55,6 +55,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use deno_config::package_json::PackageJsonDepValue;
+use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceResolver;
 use deno_config::ConfigFile;
 use deno_core::error::AnyError;
@@ -458,7 +459,15 @@ impl CliFactory {
       .get_or_try_init_async(async {
         let resolver = self
           .options
-          .create_workspace_resolver(self.file_fetcher()?)
+          .create_workspace_resolver(
+            self.file_fetcher()?,
+            if self.options.use_byonm() {
+              PackageJsonDepResolution::Disabled
+            } else {
+              // todo(dsherret): this should be false for nodeModulesDir: true
+              PackageJsonDepResolution::Enabled
+            },
+          )
           .await?;
         if !resolver.diagnostics().is_empty() {
           warn!(
@@ -759,6 +768,7 @@ impl CliFactory {
       self.file_fetcher()?,
       self.http_client_provider(),
       self.npm_resolver().await?.as_ref(),
+      self.workspace_resolver().await?.as_ref(),
       self.options.npm_system_info(),
     ))
   }

@@ -9,11 +9,11 @@ use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
 use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
-use crate::util::fs::FileCollector;
 use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
@@ -408,7 +408,7 @@ fn collect_coverages(
   .ignore_git_folder()
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(file_patterns)?;
+  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, file_patterns)?;
 
   let coverage_patterns = FilePatterns {
     base: initial_cwd.to_path_buf(),

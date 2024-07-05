@@ -18,6 +18,7 @@ use std::process::Command;
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -376,6 +377,7 @@ pub struct DenoCompileBinaryWriter<'a> {
   file_fetcher: &'a FileFetcher,
   http_client_provider: &'a HttpClientProvider,
   npm_resolver: &'a dyn CliNpmResolver,
+  workspace_resolver: &'a WorkspaceResolver,
   npm_system_info: NpmSystemInfo,
 }
 
@@ -386,6 +388,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     file_fetcher: &'a FileFetcher,
     http_client_provider: &'a HttpClientProvider,
     npm_resolver: &'a dyn CliNpmResolver,
+    workspace_resolver: &'a WorkspaceResolver,
     npm_system_info: NpmSystemInfo,
   ) -> Self {
     Self {
@@ -393,6 +396,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       file_fetcher,
       http_client_provider,
       npm_resolver,
+      workspace_resolver,
       npm_system_info,
     }
   }
@@ -419,17 +423,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       set_windows_binary_to_gui(&mut original_binary)?;
     }
-    self
-      .write_standalone_binary(
-        writer,
-        original_binary,
-        eszip,
-        root_dir_url,
-        entrypoint,
-        cli_options,
-        compile_flags,
-      )
-      .await
+    self.write_standalone_binary(
+      writer,
+      original_binary,
+      eszip,
+      root_dir_url,
+      entrypoint,
+      cli_options,
+      compile_flags,
+    )
   }
 
   async fn get_base_binary(
@@ -512,7 +514,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   /// This functions creates a standalone deno binary by appending a bundle
   /// and magic trailer to the currently executing binary.
   #[allow(clippy::too_many_arguments)]
-  async fn write_standalone_binary(
+  fn write_standalone_binary(
     &self,
     writer: &mut impl Write,
     original_bin: Vec<u8>,
@@ -530,9 +532,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       Some(CaData::Bytes(bytes)) => Some(bytes.clone()),
       None => None,
     };
-    let workspace_resolver = cli_options
-      .create_workspace_resolver(self.file_fetcher)
-      .await?;
     let root_path = root_dir_url.inner().to_file_path().unwrap();
     let (npm_vfs, npm_files, node_modules) = match self.npm_resolver.as_inner()
     {
@@ -599,7 +598,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       ca_data,
       entrypoint_key: root_dir_url.specifier_key(entrypoint).into_owned(),
       workspace_resolver: SerializedWorkspaceResolver {
-        import_map: workspace_resolver.maybe_import_map().map(|i| {
+        import_map: self.workspace_resolver.maybe_import_map().map(|i| {
           SerializedWorkspaceResolverImportMap {
             specifier: if i.base_url().scheme() == "file" {
               root_dir_url.specifier_key(i.base_url()).into_owned()
@@ -610,7 +609,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             json: i.to_json(),
           }
         }),
-        package_jsons: workspace_resolver
+        package_jsons: self
+          .workspace_resolver
           .package_jsons()
           .map(|pkg_json| {
             (
@@ -621,7 +621,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             )
           })
           .collect(),
-        pkg_json_resolution: workspace_resolver.pkg_json_dep_resolution(),
+        pkg_json_resolution: self.workspace_resolver.pkg_json_dep_resolution(),
       },
       node_modules,
       disable_deprecated_api_warning: cli_options

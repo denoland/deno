@@ -19,10 +19,10 @@ use crate::factory::CliFactory;
 use crate::util::diff::diff;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
-use crate::util::fs::FileCollector;
 use crate::util::path::get_extension;
 use async_trait::async_trait;
 use deno_ast::ParsedSource;
+use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
@@ -200,7 +200,7 @@ fn collect_fmt_files(
     .ignore_git_folder()
     .ignore_node_modules()
     .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-    .collect_file_patterns(files)
+    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
