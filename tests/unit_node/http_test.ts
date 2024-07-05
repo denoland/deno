@@ -1287,3 +1287,8 @@ Deno.test("[node/http] ServerResponse write transfer-encoding chunked", async ()
 
   await promise;
 });
+
+Deno.test("[node/http] Server.address() can be null", () => {
+  const server = http.createServer((_req, res) => res.end("it works"));
+  assertEquals(server.address(), null);
+});

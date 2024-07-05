@@ -1653,7 +1653,7 @@ export class ServerImpl extends EventEmitter {
   #httpConnections: Set<Deno.HttpConn> = new Set();
   #listener?: Deno.Listener;
 
-  #addr: Deno.NetAddr;
+  #addr: Deno.NetAddr | null = null;
   #hasClosed = false;
   #server: Deno.HttpServer;
   #unref = false;
@@ -1839,6 +1839,7 @@ export class ServerImpl extends EventEmitter {
   }
 
   address() {
+    if (this.#addr === null) return null;
     return {
       port: this.#addr.port,
       address: this.#addr.hostname,

@@ -814,7 +814,6 @@ fn read_dir(path: &Path) -> FsResult<Vec<FsDirEntry>> {
         };
       }
       Some(FsDirEntry {
-        parent_path: path.to_string_lossy().to_string(),
         name,
         is_file: method_or_false!(is_file),
         is_directory: method_or_false!(is_dir),
