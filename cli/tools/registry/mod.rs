@@ -12,7 +12,7 @@ use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::JsrPackageConfig;
-use deno_config::workspace::WorkspaceResolver;
+use deno_config::workspace::PackageJsonDepResolution;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -24,7 +24,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_runtime::deno_fetch::reqwest;
-use deno_runtime::deno_fs::FileSystem;
 use deno_terminal::colors;
 use lsp_types::Url;
 use serde::Deserialize;
@@ -81,8 +80,6 @@ pub async fn publish(
   let auth_method =
     get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
-  let workspace_resolver = cli_factory.workspace_resolver().await?.clone();
-
   let directory_path = cli_factory.cli_options().initial_cwd();
   let cli_options = cli_factory.cli_options();
   let publish_configs = cli_options.workspace.jsr_packages_for_publish();
@@ -103,6 +100,20 @@ pub async fn publish(
       }
     }
   }
+  let specifier_unfurler = Arc::new(SpecifierUnfurler::new(
+    if cli_options.unstable_sloppy_imports() {
+      Some(SloppyImportsResolver::new(cli_factory.fs().clone()))
+    } else {
+      None
+    },
+    cli_options
+      .create_workspace_resolver(
+        cli_factory.file_fetcher()?,
+        PackageJsonDepResolution::Enabled,
+      )
+      .await?,
+    cli_options.unstable_bare_node_builtins(),
+  ));
 
   let diagnostics_collector = PublishDiagnosticsCollector::default();
   let publish_preparer = PublishPreparer::new(
@@ -110,9 +121,8 @@ pub async fn publish(
     cli_factory.module_graph_creator().await?.clone(),
     cli_factory.parsed_source_cache().clone(),
     cli_factory.type_checker().await?.clone(),
-    cli_factory.fs().clone(),
     cli_factory.cli_options().clone(),
-    workspace_resolver,
+    specifier_unfurler,
   );
 
   let prepared_data = publish_preparer
@@ -191,8 +201,7 @@ struct PublishPreparer {
   source_cache: Arc<ParsedSourceCache>,
   type_checker: Arc<TypeChecker>,
   cli_options: Arc<CliOptions>,
-  sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
-  workspace_resolver: Arc<WorkspaceResolver>,
+  specifier_unfurler: Arc<SpecifierUnfurler>,
 }
 
 impl PublishPreparer {
@@ -201,23 +210,16 @@ impl PublishPreparer {
     module_graph_creator: Arc<ModuleGraphCreator>,
     source_cache: Arc<ParsedSourceCache>,
     type_checker: Arc<TypeChecker>,
-    fs: Arc<dyn FileSystem>,
     cli_options: Arc<CliOptions>,
-    workspace_resolver: Arc<WorkspaceResolver>,
+    specifier_unfurler: Arc<SpecifierUnfurler>,
   ) -> Self {
-    let sloppy_imports_resolver = if cli_options.unstable_sloppy_imports() {
-      Some(Arc::new(SloppyImportsResolver::new(fs.clone())))
-    } else {
-      None
-    };
     Self {
       graph_diagnostics_collector,
       module_graph_creator,
       source_cache,
       type_checker,
       cli_options,
-      sloppy_imports_resolver,
-      workspace_resolver,
+      specifier_unfurler,
     }
   }
 
@@ -432,18 +434,11 @@ impl PublishPreparer {
 
     let tarball = deno_core::unsync::spawn_blocking({
       let diagnostics_collector = diagnostics_collector.clone();
-      let workspace_resolver = self.workspace_resolver.clone();
-      let sloppy_imports_resolver = self.sloppy_imports_resolver.clone();
+      let unfurler = self.specifier_unfurler.clone();
       let cli_options = self.cli_options.clone();
       let source_cache = self.source_cache.clone();
       let config_path = config_path.clone();
       move || {
-        let bare_node_builtins = cli_options.unstable_bare_node_builtins();
-        let unfurler = SpecifierUnfurler::new(
-          sloppy_imports_resolver.as_deref(),
-          &workspace_resolver,
-          bare_node_builtins,
-        );
         let root_specifier =
           ModuleSpecifier::from_directory_path(&root_dir).unwrap();
         let publish_paths =

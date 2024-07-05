@@ -5,6 +5,7 @@ use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_config::package_json::PackageJsonDepValue;
 use deno_config::workspace::MappedResolution;
+use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::ModuleSpecifier;
 use deno_graph::DependencyDescriptor;
@@ -40,18 +41,22 @@ impl SpecifierUnfurlerDiagnostic {
   }
 }
 
-pub struct SpecifierUnfurler<'a> {
-  sloppy_imports_resolver: Option<&'a SloppyImportsResolver>,
-  workspace_resolver: &'a WorkspaceResolver,
+pub struct SpecifierUnfurler {
+  sloppy_imports_resolver: Option<SloppyImportsResolver>,
+  workspace_resolver: WorkspaceResolver,
   bare_node_builtins: bool,
 }
 
-impl<'a> SpecifierUnfurler<'a> {
+impl SpecifierUnfurler {
   pub fn new(
-    sloppy_imports_resolver: Option<&'a SloppyImportsResolver>,
-    workspace_resolver: &'a WorkspaceResolver,
+    sloppy_imports_resolver: Option<SloppyImportsResolver>,
+    workspace_resolver: WorkspaceResolver,
     bare_node_builtins: bool,
   ) -> Self {
+    debug_assert_eq!(
+      workspace_resolver.pkg_json_dep_resolution(),
+      PackageJsonDepResolution::Enabled
+    );
     Self {
       sloppy_imports_resolver,
       workspace_resolver,
@@ -136,7 +141,7 @@ impl<'a> SpecifierUnfurler<'a> {
     //   resolved
     // };
     let resolved =
-      if let Some(sloppy_imports_resolver) = self.sloppy_imports_resolver {
+      if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
         sloppy_imports_resolver
           .resolve(&resolved, deno_graph::source::ResolutionMode::Execution)
           .as_specifier()
@@ -148,6 +153,12 @@ impl<'a> SpecifierUnfurler<'a> {
     if relative_resolved == specifier {
       None // nothing to unfurl
     } else {
+      log::debug!(
+        "Unfurled specifier: {} from {} -> {}",
+        specifier,
+        referrer,
+        relative_resolved
+      );
       Some(relative_resolved)
     }
   }
@@ -395,11 +406,9 @@ mod tests {
       deno_config::workspace::PackageJsonDepResolution::Enabled,
     );
     let fs = Arc::new(RealFs);
-    let sloppy_imports_resolver = SloppyImportsResolver::new(fs);
-
     let unfurler = SpecifierUnfurler::new(
-      Some(&sloppy_imports_resolver),
-      &workspace_resolver,
+      Some(SloppyImportsResolver::new(fs)),
+      workspace_resolver,
       true,
     );
 

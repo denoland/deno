@@ -1061,6 +1061,7 @@ impl CliOptions {
   pub async fn create_workspace_resolver(
     &self,
     file_fetcher: &FileFetcher,
+    pkg_json_dep_resolution: PackageJsonDepResolution,
   ) -> Result<WorkspaceResolver, AnyError> {
     let overrode_no_import_map = self
       .overrides
@@ -1103,12 +1104,7 @@ impl CliOptions {
         .workspace
         .create_resolver(
           CreateResolverOptions {
-            // todo(dsherret): this should be false for nodeModulesDir: true
-            pkg_json_dep_resolution: if self.use_byonm() {
-              PackageJsonDepResolution::Disabled
-            } else {
-              PackageJsonDepResolution::Enabled
-            },
+            pkg_json_dep_resolution,
             specified_import_map: cli_arg_specified_import_map,
           },
           |specifier| {
