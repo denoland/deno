@@ -1710,7 +1710,8 @@ export class ServerImpl extends EventEmitter {
       port,
     } as Deno.NetAddr;
     this.listening = true;
-    nextTick(() => this._serve());
+    // nextTick(() => this._serve());
+    this._serve();
 
     return this;
   }

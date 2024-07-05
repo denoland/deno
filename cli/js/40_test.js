@@ -519,32 +519,47 @@ function wrapTest(desc) {
 globalThis.Deno.test = test;
 
 /**
- * @type {Array<{name: string, before?: () => any, after?: () => any}>}
+ * @type {Array<{name: string, before?: () => any, after?: () => any, ignore: boolean}>}
  */
-const stack = [{ name: "<root>", before: undefined, after: undefined }];
+const stack = [{
+  name: "<root>",
+  before: undefined,
+  after: undefined,
+  ignore: false,
+}];
 
 /**
  * @param {string} name
  * @param {() => void} fn
  */
 function describe(name, fn) {
-  stack.push({ name, before: undefined, after: undefined });
+  stack.push({ name, before: undefined, after: undefined, ignore: false });
   try {
     fn();
   } finally {
     stack.pop();
   }
 }
+describe.skip = (name, fn) => {
+  stack.push({ name, before: undefined, after: undefined, ignore: true });
+  try {
+    fn();
+  } finally {
+    stack.pop();
+  }
+};
 
 /**
  * @param {string} name
  * @param {() => Promise<unknown> | unknown} fn
  */
-function it(name, fn) {
+function it(name, fn, only = false) {
+  let ignore = false;
   let testName = "";
   if (stack.length > 0) {
     for (let i = 0; i < stack.length; i++) {
       const item = stack[i];
+      if (item.ignore) ignore = true;
       if (i > 0) {
         testName += item.name + " > ";
       }
@@ -552,8 +567,20 @@ function it(name, fn) {
   }
 
   testName += name;
-  Deno.test(testName, fn);
+
+  if (ignore) {
+    Deno.test.ignore(testName, fn);
+  } else {
+    Deno.test(
+      testName,
+      { sanitizeOps: false, sanitizeResources: false, only },
+      fn,
+    );
+  }
 }
+it.only = (name, fn) => {
+  return it(name, fn, true);
+};
 
 /**
  * @param {() => any)} fn
@@ -562,6 +589,19 @@ function beforeAll(fn) {
   stack[stack.length - 1].before = fn;
 }
 
+// Jest sets this to "test" if it's not already set
+if (Deno.env.get("NODE_ENV") === undefined) {
+  Deno.env.set("NODE_ENV", "test");
+}
+
+const jest = {
+  spy(fn) {
+  },
+  spyOn(obj, prop) {
+  },
+};
+
+globalThis.jest = jest;
 globalThis.describe = describe;
 globalThis.it = it;
 globalThis.before = beforeAll;
