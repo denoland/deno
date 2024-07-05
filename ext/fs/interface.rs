@@ -146,6 +146,19 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     gid: Option<u32>,
   ) -> FsResult<()>;
 
+  fn lchown_sync(
+    &self,
+    path: &Path,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()>;
+  async fn lchown_async(
+    &self,
+    path: PathBuf,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()>;
+
   fn remove_sync(&self, path: &Path, recursive: bool) -> FsResult<()>;
   async fn remove_async(&self, path: PathBuf, recursive: bool) -> FsResult<()>;
 

@@ -794,7 +794,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-fs-fmap.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-fmap.js)
 - [parallel/test-fs-fsync.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-fsync.js)
 - [parallel/test-fs-lchmod.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-lchmod.js)
-- [parallel/test-fs-lchown.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-lchown.js)
 - [parallel/test-fs-link.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-link.js)
 - [parallel/test-fs-long-path.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-long-path.js)
 - [parallel/test-fs-make-callback.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-fs-make-callback.js)
