@@ -1947,9 +1947,9 @@ dependencies = [
 
 [[package]]
 name = "deno_unsync"
-version = "0.3.8"
+version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23235530c0116a1ca27f0f16edd2961ba2b5a4a3ea01e56ddb0d9802cfe91a94"
+checksum = "c3c8b95582c2023dbb66fccc37421b374026f5915fa507d437cb566904db9a3a"
 dependencies = [
  "parking_lot 0.12.3",
  "tokio",
@@ -7680,7 +7680,7 @@ dependencies = [
  "log",
  "naga",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.3",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -7722,7 +7722,7 @@ dependencies = [
  "ndk-sys",
  "objc",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.3",
  "profiling",
  "range-alloc",
  "raw-window-handle",
