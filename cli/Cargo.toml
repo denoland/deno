@@ -44,7 +44,7 @@ default = ["upgrade", "__vendored_zlib_ng"]
 upgrade = []
 # A dev feature to disable creations and loading of snapshots in favor of
 # loading JS sources at runtime.
-__runtime_js_sources = ["deno_runtime/__runtime_js_sources"]
+hmr = ["deno_runtime/hmr"]
 # Vendor zlib as zlib-ng
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 
