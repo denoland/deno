@@ -7859,7 +7859,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--unsafely-ignore-certificate-errors=deno.land,localhost,::,127.0.0.1,[::1],1.2.3.4",
+      "--unsafely-ignore-certificate-errors=deno.land,localhost,[::],127.0.0.1,[::1],1.2.3.4",
       "script.ts"
     ]);
     assert_eq!(
@@ -7871,7 +7871,7 @@ mod tests {
         unsafely_ignore_certificate_errors: Some(svec![
           "deno.land",
           "localhost",
-          "::",
+          "[::]",
           "127.0.0.1",
           "[::1]",
           "1.2.3.4"
@@ -7887,7 +7887,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "repl",
-      "--unsafely-ignore-certificate-errors=deno.land,localhost,::,127.0.0.1,[::1],1.2.3.4"]);
+      "--unsafely-ignore-certificate-errors=deno.land,localhost,[::],127.0.0.1,[::1],1.2.3.4"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7899,7 +7899,7 @@ mod tests {
         unsafely_ignore_certificate_errors: Some(svec![
           "deno.land",
           "localhost",
-          "::",
+          "[::]",
           "127.0.0.1",
           "[::1]",
           "1.2.3.4"
@@ -8091,7 +8091,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--allow-net=deno.land,deno.land:80,::,127.0.0.1,[::1],1.2.3.4:5678,:5678,[::1]:8080",
+      "--allow-net=deno.land,deno.land:80,[::],127.0.0.1,[::1],1.2.3.4:5678,:5678,[::1]:8080",
       "script.ts"
     ]);
     assert_eq!(
@@ -8104,7 +8104,7 @@ mod tests {
           allow_net: Some(svec![
             "deno.land",
             "deno.land:80",
-            "::",
+            "[::]",
             "127.0.0.1",
             "[::1]",
             "1.2.3.4:5678",
@@ -8126,7 +8126,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--deny-net=deno.land,deno.land:80,::,127.0.0.1,[::1],1.2.3.4:5678,:5678,[::1]:8080",
+      "--deny-net=deno.land,deno.land:80,[::],127.0.0.1,[::1],1.2.3.4:5678,:5678,[::1]:8080",
       "script.ts"
     ]);
     assert_eq!(
@@ -8139,7 +8139,7 @@ mod tests {
           deny_net: Some(svec![
             "deno.land",
             "deno.land:80",
-            "::",
+            "[::]",
             "127.0.0.1",
             "[::1]",
             "1.2.3.4:5678",
