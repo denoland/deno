@@ -274,18 +274,11 @@ pub struct BenchOptions {
 }
 
 impl BenchOptions {
-  pub fn resolve(
-    bench_config: BenchConfig,
-    bench_flags: &BenchFlags,
-    maybe_flags_base: Option<&Path>,
-  ) -> Result<Self, AnyError> {
-    Ok(Self {
-      files: resolve_files(
-        bench_config.files,
-        &bench_flags.files,
-        maybe_flags_base,
-      )?,
-    })
+  pub fn resolve(bench_config: BenchConfig, _bench_flags: &BenchFlags) -> Self {
+    // this is the same, but keeping the same pattern as everywhere else for the future
+    Self {
+      files: bench_config.files,
+    }
   }
 }
 
@@ -1429,23 +1422,15 @@ impl CliOptions {
   ) -> Result<Vec<(WorkspaceMemberContext, BenchOptions)>, AnyError> {
     let cli_arg_patterns =
       bench_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_ctxs =
-      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
+    let member_ctxs = self
+      .workspace
+      .resolve_bench_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_ctxs.len());
-    for member_ctx in member_ctxs {
-      let options = self.resolve_bench_options(bench_flags, &member_ctx)?;
+    for (member_ctx, config) in member_ctxs {
+      let options = BenchOptions::resolve(config, bench_flags);
       result.push((member_ctx, options));
     }
     Ok(result)
-  }
-
-  pub fn resolve_bench_options(
-    &self,
-    bench_flags: &BenchFlags,
-    ctx: &WorkspaceMemberContext,
-  ) -> Result<BenchOptions, AnyError> {
-    let bench_config = ctx.to_bench_config()?;
-    BenchOptions::resolve(bench_config, bench_flags, Some(&self.initial_cwd))
   }
 
   pub fn resolve_deno_graph_workspace_members(
@@ -1824,31 +1809,6 @@ impl StorageKeyResolver {
   }
 }
 
-/// Collect included and ignored files. CLI flags take precedence
-/// over config file, i.e. if there's `files.ignore` in config file
-/// and `--ignore` CLI flag, only the flag value is taken into account.
-fn resolve_files(
-  mut files_config: FilePatterns,
-  file_flags: &FileFlags,
-  maybe_flags_base: Option<&Path>,
-) -> Result<FilePatterns, AnyError> {
-  if !file_flags.include.is_empty() {
-    files_config.include =
-      Some(PathOrPatternSet::from_include_relative_path_or_patterns(
-        maybe_flags_base.unwrap_or(&files_config.base),
-        &file_flags.include,
-      )?);
-  }
-  if !file_flags.ignore.is_empty() {
-    files_config.exclude =
-      PathOrPatternSet::from_exclude_relative_path_or_patterns(
-        maybe_flags_base.unwrap_or(&files_config.base),
-        &file_flags.ignore,
-      )?;
-  }
-  Ok(files_config)
-}
-
 /// Resolves the no_prompt value based on the cli flags and environment.
 pub fn resolve_no_prompt(flags: &PermissionFlags) -> bool {
   flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
@@ -1967,95 +1927,6 @@ mod test {
     // test empty
     let resolver = StorageKeyResolver::empty();
     assert_eq!(resolver.resolve_storage_key(&specifier), None);
-  }
-
-  #[test]
-  fn resolve_files_test() {
-    use test_util::TempDir;
-    let temp_dir = TempDir::new();
-
-    temp_dir.create_dir_all("data");
-    temp_dir.create_dir_all("nested");
-    temp_dir.create_dir_all("nested/foo");
-    temp_dir.create_dir_all("nested/fizz");
-    temp_dir.create_dir_all("pages");
-
-    temp_dir.write("data/tes.ts", "");
-    temp_dir.write("data/test1.js", "");
-    temp_dir.write("data/test1.ts", "");
-    temp_dir.write("data/test12.ts", "");
-
-    temp_dir.write("nested/foo/foo.ts", "");
-    temp_dir.write("nested/foo/bar.ts", "");
-    temp_dir.write("nested/foo/fizz.ts", "");
-    temp_dir.write("nested/foo/bazz.ts", "");
-
-    temp_dir.write("nested/fizz/foo.ts", "");
-    temp_dir.write("nested/fizz/bar.ts", "");
-    temp_dir.write("nested/fizz/fizz.ts", "");
-    temp_dir.write("nested/fizz/bazz.ts", "");
-
-    temp_dir.write("pages/[id].ts", "");
-
-    let temp_dir_path = temp_dir.path().as_path();
-    let error = PathOrPatternSet::from_include_relative_path_or_patterns(
-      temp_dir_path,
-      &["data/**********.ts".to_string()],
-    )
-    .unwrap_err();
-    assert!(error.to_string().starts_with("Failed to expand glob"));
-
-    let resolved_files = resolve_files(
-      FilePatterns {
-        base: temp_dir_path.to_path_buf(),
-        include: Some(
-          PathOrPatternSet::from_include_relative_path_or_patterns(
-            temp_dir_path,
-            &[
-              "data/test1.?s".to_string(),
-              "nested/foo/*.ts".to_string(),
-              "nested/fizz/*.ts".to_string(),
-              "pages/[id].ts".to_string(),
-            ],
-          )
-          .unwrap(),
-        ),
-        exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
-          temp_dir_path,
-          &["nested/**/*bazz.ts".to_string()],
-        )
-        .unwrap(),
-      },
-      &Default::default(),
-      Some(temp_dir_path),
-    )
-    .unwrap();
-
-    let mut files = FileCollector::new(|_| true)
-      .ignore_git_folder()
-      .ignore_node_modules()
-      .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, resolved_files)
-      .unwrap();
-
-    files.sort();
-
-    assert_eq!(
-      files,
-      vec![
-        "data/test1.js",
-        "data/test1.ts",
-        "nested/fizz/bar.ts",
-        "nested/fizz/fizz.ts",
-        "nested/fizz/foo.ts",
-        "nested/foo/bar.ts",
-        "nested/foo/fizz.ts",
-        "nested/foo/foo.ts",
-        "pages/[id].ts",
-      ]
-      .into_iter()
-      .map(|p| deno_core::normalize_path(temp_dir_path.join(p)))
-      .collect::<Vec<_>>()
-    );
   }
 
   #[test]
