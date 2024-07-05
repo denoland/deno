@@ -1650,9 +1650,6 @@ export function Server(opts, requestListener?: ServerHandler): ServerImpl {
 }
 
 export class ServerImpl extends EventEmitter {
-  #httpConnections: Set<Deno.HttpConn> = new Set();
-  #listener?: Deno.Listener;
-
   #addr: Deno.NetAddr | null = null;
   #hasClosed = false;
   #server: Deno.HttpServer;
