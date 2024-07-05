@@ -717,8 +717,13 @@ impl FromStr for Host {
       }
       Ok(Host::Ip(ip))
     } else {
+      let lower = if s.chars().all(|c| c.is_ascii_lowercase()) {
+        Cow::Borrowed(s)
+      } else {
+        Cow::Owned(s.to_ascii_lowercase())
+      };
       let fqdn =
-        FQDN::from_str(s).with_context(|| format!("invalid host: '{s}'"))?;
+        FQDN::from_str(&lower).with_context(|| format!("invalid host: '{s}'"))?;
       if fqdn.is_root() {
         return Err(uri_error(format!("invalid empty host: '{s}'")));
       }
@@ -3496,6 +3501,7 @@ mod tests {
   fn test_host_parse() {
     let hosts = &[
       ("deno.land", Some(Host::Fqdn(fqdn!("deno.land")))),
+      ("DENO.land", Some(Host::Fqdn(fqdn!("deno.land")))),
       ("deno.land.", Some(Host::Fqdn(fqdn!("deno.land")))),
       (
         "1.1.1.1",
@@ -3535,6 +3541,10 @@ mod tests {
     let cases = &[
       (
         "deno.land",
+        Some(NetDescriptor(Host::Fqdn(fqdn!("deno.land")), None)),
+      ),
+      (
+        "DENO.land",
         Some(NetDescriptor(Host::Fqdn(fqdn!("deno.land")), None)),
       ),
       (
