@@ -273,3 +273,44 @@ where
 
   Ok(())
 }
+
+#[op2]
+pub fn op_node_lchown_sync<P>(
+  state: &mut OpState,
+  #[string] path: String,
+  uid: Option<u32>,
+  gid: Option<u32>,
+) -> Result<(), AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  let path = PathBuf::from(path);
+  state
+    .borrow_mut::<P>()
+    .check_write_with_api_name(&path, Some("node:fs.lchownSync"))?;
+  let fs = state.borrow::<FileSystemRc>();
+  fs.lchown_sync(&path, uid, gid)?;
+  Ok(())
+}
+
+#[op2(async)]
+pub async fn op_node_lchown<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+  uid: Option<u32>,
+  gid: Option<u32>,
+) -> Result<(), AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  let path = PathBuf::from(path);
+  let fs = {
+    let mut state = state.borrow_mut();
+    state
+      .borrow_mut::<P>()
+      .check_write_with_api_name(&path, Some("node:fs.lchown"))?;
+    state.borrow::<FileSystemRc>().clone()
+  };
+  fs.lchown_async(path, uid, gid).await?;
+  Ok(())
+}

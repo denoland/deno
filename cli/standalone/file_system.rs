@@ -145,6 +145,26 @@ impl FileSystem for DenoCompileFileSystem {
     RealFs.chown_async(path, uid, gid).await
   }
 
+  fn lchown_sync(
+    &self,
+    path: &Path,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.lchown_sync(path, uid, gid)
+  }
+
+  async fn lchown_async(
+    &self,
+    path: PathBuf,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.lchown_async(path, uid, gid).await
+  }
+
   fn remove_sync(&self, path: &Path, recursive: bool) -> FsResult<()> {
     self.error_if_in_vfs(path)?;
     RealFs.remove_sync(path, recursive)

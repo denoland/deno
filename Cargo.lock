@@ -1148,7 +1148,6 @@ dependencies = [
  "fs3",
  "glibc_version",
  "glob",
- "ignore",
  "import_map",
  "indexmap",
  "jsonc-parser",
@@ -1308,13 +1307,14 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.19.1"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddc80f97cffe52c9a430201f288111fc89d33491b1675c0e01feb3a497ce76b3"
+checksum = "64772162a8e8c1b3a9c48b4a0924e29f5b8f0ae23ea2027361937e96d04d493d"
 dependencies = [
  "anyhow",
  "deno_semver",
  "glob",
+ "ignore",
  "import_map",
  "indexmap",
  "jsonc-parser",
