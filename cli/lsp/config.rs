@@ -1299,10 +1299,21 @@ impl ConfigData {
       }
     };
 
-    let vendor_dir = config_file.as_ref().and_then(|c| c.vendor_dir_path());
+    let vendor_dir = if let Some(workspace_root) = workspace_root {
+      workspace_root.vendor_dir.clone()
+    } else {
+      config_file.as_ref().and_then(|c| c.vendor_dir_path())
+    };
 
     // Load lockfile
-    let lockfile = config_file.as_ref().and_then(resolve_lockfile_from_config);
+    let lockfile = if let Some(workspace_root) = workspace_root {
+      workspace_root.lockfile.clone()
+    } else {
+      config_file
+        .as_ref()
+        .and_then(resolve_lockfile_from_config)
+        .map(Arc::new)
+    };
     if let Some(lockfile) = &lockfile {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile.filename)
       {
@@ -1370,23 +1381,31 @@ impl ConfigData {
       })
       .map(|(r, _)| r)
       .ok();
-    let byonm = std::env::var("DENO_UNSTABLE_BYONM").is_ok()
-      || config_file
-        .as_ref()
-        .map(|c| c.has_unstable("byonm"))
-        .unwrap_or(false)
-      || (*DENO_FUTURE
-        && package_json.is_some()
-        && config_file
+    let byonm = if let Some(workspace_root) = workspace_root {
+      workspace_root.byonm
+    } else {
+      std::env::var("DENO_UNSTABLE_BYONM").is_ok()
+        || config_file
           .as_ref()
-          .map(|c| c.json.node_modules_dir.is_none())
-          .unwrap_or(true));
+          .map(|c| c.has_unstable("byonm"))
+          .unwrap_or(false)
+        || (*DENO_FUTURE
+          && package_json.is_some()
+          && config_file
+            .as_ref()
+            .map(|c| c.json.node_modules_dir.is_none())
+            .unwrap_or(true))
+    };
     if byonm {
       lsp_log!("  Enabled 'bring your own node_modules'.");
     }
-    let node_modules_dir = config_file
-      .as_ref()
-      .and_then(|c| resolve_node_modules_dir(c, byonm));
+    let node_modules_dir = if let Some(workspace_root) = workspace_root {
+      workspace_root.node_modules_dir.clone()
+    } else {
+      config_file
+        .as_ref()
+        .and_then(|c| resolve_node_modules_dir(c, byonm))
+    };
 
     // Load import map
     let mut import_map = None;
@@ -1541,7 +1560,7 @@ impl ConfigData {
       byonm,
       node_modules_dir,
       vendor_dir,
-      lockfile: lockfile.map(Arc::new),
+      lockfile,
       package_json: package_json.map(Arc::new),
       npmrc,
       import_map,
