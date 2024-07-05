@@ -517,3 +517,52 @@ function wrapTest(desc) {
 }
 
 globalThis.Deno.test = test;
+
+/**
+ * @type {Array<{name: string, before?: () => any, after?: () => any}>}
+ */
+const stack = [{ name: "<root>", before: undefined, after: undefined }];
+
+/**
+ * @param {string} name
+ * @param {() => void} fn
+ */
+function describe(name, fn) {
+  stack.push({ name, before: undefined, after: undefined });
+  try {
+    fn();
+  } finally {
+    stack.pop();
+  }
+}
+
+/**
+ * @param {string} name
+ * @param {() => Promise<unknown> | unknown} fn
+ */
+function it(name, fn) {
+  let testName = "";
+  if (stack.length > 0) {
+    for (let i = 0; i < stack.length; i++) {
+      const item = stack[i];
+      if (i > 0) {
+        testName += item.name + " > ";
+      }
+    }
+  }
+
+  testName += name;
+  Deno.test(testName, fn);
+}
+
+/**
+ * @param {() => any)} fn
+ */
+function beforeAll(fn) {
+  stack[stack.length - 1].before = fn;
+}
+
+globalThis.describe = describe;
+globalThis.it = it;
+globalThis.before = beforeAll;
+globalThis.beforeAll = beforeAll;
