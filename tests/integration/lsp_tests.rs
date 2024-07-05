@@ -12606,6 +12606,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
       "position": { "line": 0, "character": 7 },
     }),
   );
+  // The temp dir is symlinked in macos, and `node_modules` is canonicalized.
   let canon_temp_dir =
     Url::from_directory_path(temp_dir.path().canonicalize()).unwrap();
   assert_eq!(
@@ -13736,6 +13737,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
       "position": { "line": 0, "character": 7 },
     }),
   );
+  // The temp dir is symlinked in macos, and `node_modules` is canonicalized.
   let canon_temp_dir =
     Url::from_directory_path(temp_dir.path().canonicalize()).unwrap();
   assert_eq!(
