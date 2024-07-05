@@ -1131,10 +1131,10 @@ class SubtleCrypto {
    * @param {number | null} length
    * @returns {Promise<ArrayBuffer>}
    */
-  async deriveBits(algorithm, baseKey, length) {
+  async deriveBits(algorithm, baseKey, length = null) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'deriveBits' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 3, prefix);
+    webidl.requiredArguments(arguments.length, 2, prefix);
     algorithm = webidl.converters.AlgorithmIdentifier(
       algorithm,
       prefix,
