@@ -350,6 +350,27 @@ impl FileSystem for InMemoryFs {
     self.utime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
   }
 
+  fn lutime_sync(
+    &self,
+    _path: &Path,
+    _atime_secs: i64,
+    _atime_nanos: u32,
+    _mtime_secs: i64,
+    _mtime_nanos: u32,
+  ) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn lutime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    self.lutime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+  }
+
   fn write_file_sync(
     &self,
     path: &Path,

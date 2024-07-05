@@ -2,7 +2,7 @@
 
 use super::logging::lsp_log;
 use crate::args::discover_npmrc;
-use crate::args::read_lockfile_at_path;
+use crate::args::CliLockfile;
 use crate::args::ConfigFile;
 use crate::args::FmtOptions;
 use crate::args::LintOptions;
@@ -16,9 +16,7 @@ use crate::util::fs::canonicalize_path_maybe_not_exists;
 use deno_ast::MediaType;
 use deno_config::FmtOptionsConfig;
 use deno_config::TsConfig;
-use deno_core::anyhow::anyhow;
 use deno_core::normalize_path;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -27,8 +25,9 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_lint::linter::LintConfig;
-use deno_lockfile::Lockfile;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_runtime::deno_fs::DenoConfigFsAdapter;
+use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fs_util::specifier_to_file_path;
@@ -937,7 +936,7 @@ impl Config {
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
     let config_file = self.tree.config_file_for_specifier(specifier);
     if let Some(cf) = config_file {
-      if let Ok(files) = cf.to_files_config() {
+      if let Ok(files) = cf.to_exclude_files_config() {
         if !files.matches_specifier(specifier) {
           return false;
         }
@@ -954,7 +953,7 @@ impl Config {
     specifier: &ModuleSpecifier,
   ) -> bool {
     if let Some(cf) = self.tree.config_file_for_specifier(specifier) {
-      if let Some(options) = cf.to_test_config().ok().flatten() {
+      if let Ok(options) = cf.to_test_config() {
         if !options.files.matches_specifier(specifier) {
           return false;
         }
@@ -1111,7 +1110,7 @@ pub struct ConfigData {
   pub byonm: bool,
   pub node_modules_dir: Option<PathBuf>,
   pub vendor_dir: Option<PathBuf>,
-  pub lockfile: Option<Arc<Mutex<Lockfile>>>,
+  pub lockfile: Option<Arc<CliLockfile>>,
   pub package_json: Option<Arc<PackageJson>>,
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
   pub import_map: Option<Arc<ImportMap>>,
@@ -1137,8 +1136,9 @@ impl ConfigData {
   ) -> Self {
     if let Some(specifier) = config_file_specifier {
       match ConfigFile::from_specifier(
+        &DenoConfigFsAdapter::new(&RealFs),
         specifier.clone(),
-        &deno_config::ParseOptions::default(),
+        &deno_config::ConfigParseOptions::default(),
       ) {
         Ok(config_file) => {
           lsp_log!(
@@ -1232,13 +1232,7 @@ impl ConfigData {
         .and_then(|config_file| {
           config_file
             .to_fmt_config()
-            .and_then(|o| {
-              let base_path = config_file
-                .specifier
-                .to_file_path()
-                .map_err(|_| anyhow!("Invalid base path."))?;
-              FmtOptions::resolve(o, None, &base_path)
-            })
+            .and_then(|o| FmtOptions::resolve(o, &Default::default(), None))
             .inspect_err(|err| {
               lsp_warn!("  Couldn't read formatter configuration: {}", err)
             })
@@ -1266,13 +1260,7 @@ impl ConfigData {
         .and_then(|config_file| {
           config_file
             .to_lint_config()
-            .and_then(|o| {
-              let base_path = config_file
-                .specifier
-                .to_file_path()
-                .map_err(|_| anyhow!("Invalid base path."))?;
-              LintOptions::resolve(o, None, &base_path)
-            })
+            .and_then(|o| LintOptions::resolve(o, Default::default(), None))
             .inspect_err(|err| {
               lsp_warn!("  Couldn't read lint configuration: {}", err)
             })
@@ -1553,7 +1541,7 @@ impl ConfigData {
       byonm,
       node_modules_dir,
       vendor_dir,
-      lockfile: lockfile.map(Mutex::new).map(Arc::new),
+      lockfile: lockfile.map(Arc::new),
       package_json: package_json.map(Arc::new),
       npmrc,
       import_map,
@@ -1786,7 +1774,9 @@ impl ConfigTree {
   }
 }
 
-fn resolve_lockfile_from_config(config_file: &ConfigFile) -> Option<Lockfile> {
+fn resolve_lockfile_from_config(
+  config_file: &ConfigFile,
+) -> Option<CliLockfile> {
   let lockfile_path = match config_file.resolve_lockfile_path() {
     Ok(Some(value)) => value,
     Ok(None) => return None,
@@ -1824,8 +1814,8 @@ fn resolve_node_modules_dir(
   canonicalize_path_maybe_not_exists(&node_modules_dir).ok()
 }
 
-fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<Lockfile> {
-  match read_lockfile_at_path(lockfile_path) {
+fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<CliLockfile> {
+  match CliLockfile::read_from_path(lockfile_path, false) {
     Ok(value) => {
       if value.filename.exists() {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)
@@ -2115,7 +2105,7 @@ mod tests {
         ConfigFile::new(
           "{}",
           root_uri.join("deno.json").unwrap(),
-          &deno_config::ParseOptions::default(),
+          &deno_config::ConfigParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2173,7 +2163,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &deno_config::ParseOptions::default(),
+          &deno_config::ConfigParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2199,7 +2189,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &deno_config::ParseOptions::default(),
+          &deno_config::ConfigParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2217,7 +2207,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &deno_config::ParseOptions::default(),
+          &deno_config::ConfigParseOptions::default(),
         )
         .unwrap(),
       )

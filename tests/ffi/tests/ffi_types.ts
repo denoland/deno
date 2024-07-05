@@ -5,7 +5,7 @@
 const remote = Deno.dlopen(
   "dummy_lib.so",
   {
-    method1: { parameters: ["usize", "bool"], result: "void", callback: true },
+    method1: { parameters: ["usize", "bool"], result: "void" },
     method2: { parameters: [], result: "void" },
     method3: { parameters: ["usize"], result: "void" },
     method4: { parameters: ["isize"], result: "void" },

@@ -318,7 +318,7 @@ impl Document {
     file_referrer: Option<ModuleSpecifier>,
   ) -> Arc<Self> {
     let file_referrer = Some(&specifier)
-      .filter(|s| s.scheme() == "file")
+      .filter(|s| cache.is_valid_file_referrer(s))
       .cloned()
       .or(file_referrer);
     let media_type = resolve_media_type(
@@ -804,7 +804,7 @@ impl FileSystemDocuments {
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<Arc<Document>> {
     let file_referrer = Some(specifier)
-      .filter(|s| s.scheme() == "file")
+      .filter(|s| cache.is_valid_file_referrer(s))
       .or(file_referrer);
     let new_fs_version = calculate_fs_version(cache, specifier, file_referrer);
     let old_doc = self.docs.get(specifier).map(|v| v.value().clone());
@@ -1051,13 +1051,16 @@ impl Documents {
     &self,
     specifier: &'a ModuleSpecifier,
   ) -> Option<Cow<'a, ModuleSpecifier>> {
-    if specifier.scheme() == "file" {
-      Some(Cow::Borrowed(specifier))
-    } else {
-      self
-        .get(specifier)
-        .and_then(|d| d.file_referrer().cloned().map(Cow::Owned))
+    if self.is_valid_file_referrer(specifier) {
+      return Some(Cow::Borrowed(specifier));
     }
+    self
+      .get(specifier)
+      .and_then(|d| d.file_referrer().cloned().map(Cow::Owned))
+  }
+
+  pub fn is_valid_file_referrer(&self, specifier: &ModuleSpecifier) -> bool {
+    self.cache.is_valid_file_referrer(specifier)
   }
 
   /// Return `true` if the provided specifier can be resolved to a document,
@@ -1243,9 +1246,13 @@ impl Documents {
     &self,
     specifiers: &[String],
     referrer: &ModuleSpecifier,
+    file_referrer: Option<&ModuleSpecifier>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
     let document = self.get(referrer);
-    let file_referrer = document.as_ref().and_then(|d| d.file_referrer());
+    let file_referrer = document
+      .as_ref()
+      .and_then(|d| d.file_referrer())
+      .or(file_referrer);
     let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
     for specifier in specifiers {
@@ -1447,20 +1454,25 @@ impl Documents {
         return Some((specifier.clone(), MediaType::Dts));
       }
     }
-
-    if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return self
-        .resolver
-        .npm_to_file_url(&npm_ref, referrer, file_referrer);
+    let mut specifier = specifier.clone();
+    let mut media_type = None;
+    if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&specifier) {
+      let (s, mt) =
+        self
+          .resolver
+          .npm_to_file_url(&npm_ref, referrer, file_referrer)?;
+      specifier = s;
+      media_type = Some(mt);
     }
-    let Some(doc) = self.get_or_load(specifier, referrer) else {
-      return Some((specifier.clone(), MediaType::from_specifier(specifier)));
+    let Some(doc) = self.get_or_load(&specifier, referrer) else {
+      let media_type =
+        media_type.unwrap_or_else(|| MediaType::from_specifier(&specifier));
+      return Some((specifier, media_type));
     };
     if let Some(types) = doc.maybe_types_dependency().maybe_specifier() {
-      self.resolve_dependency(types, specifier, file_referrer)
+      self.resolve_dependency(types, &specifier, file_referrer)
     } else {
-      let media_type = doc.media_type();
-      Some((doc.specifier().clone(), media_type))
+      Some((doc.specifier().clone(), doc.media_type()))
     }
   }
 }
@@ -1593,7 +1605,8 @@ mod tests {
 
   async fn setup() -> (Documents, LspCache, TempDir) {
     let temp_dir = TempDir::new();
-    let cache = LspCache::new(Some(temp_dir.uri()));
+    temp_dir.create_dir_all(".deno_dir");
+    let cache = LspCache::new(Some(temp_dir.uri().join(".deno_dir").unwrap()));
     let config = Config::default();
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
@@ -1738,7 +1751,7 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &deno_config::ParseOptions::default(),
+            &deno_config::ConfigParseOptions::default(),
           )
           .unwrap(),
         )
@@ -1782,7 +1795,7 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &deno_config::ParseOptions::default(),
+            &deno_config::ConfigParseOptions::default(),
           )
           .unwrap(),
         )
