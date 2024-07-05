@@ -594,6 +594,11 @@ if (Deno.env.get("NODE_ENV") === undefined) {
   Deno.env.set("NODE_ENV", "test");
 }
 
+function beforeEach(fn) {
+}
+function afterEach(fn) {
+}
+
 const jest = {
   spy(fn) {
   },
@@ -606,3 +611,5 @@ globalThis.describe = describe;
 globalThis.it = it;
 globalThis.before = beforeAll;
 globalThis.beforeAll = beforeAll;
+globalThis.beforeEach = beforeEach;
+globalThis.afterEach = afterEach;
