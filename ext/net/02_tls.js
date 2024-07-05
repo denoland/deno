@@ -22,7 +22,7 @@ const {
   SymbolFor,
 } = primordials;
 
-import { Conn, Listener } from "ext:deno_net/01_net.js";
+import { Conn, Listener, validatePort } from "ext:deno_net/01_net.js";
 
 class TlsConn extends Conn {
   #rid = 0;
