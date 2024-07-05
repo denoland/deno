@@ -69,10 +69,10 @@ pub enum FsFileType {
   Junction,
 }
 
+/// WARNING: This is part of the public JS Deno API.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsDirEntry {
-  pub parent_path: String,
   pub name: String,
   pub is_file: bool,
   pub is_directory: bool,
