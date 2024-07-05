@@ -80,7 +80,7 @@ export function readFile(
 
   let p: Promise<Uint8Array>;
 
-  if (fd !== null) {
+  if (fd !== undefined) {
     const fsFile = new FsFile(fd, Symbol.for("Deno.internal.FsFile"));
     p = readAll(fsFile);
   } else {
