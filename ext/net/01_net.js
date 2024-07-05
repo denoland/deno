@@ -562,7 +562,7 @@ function validatePort(maybePort) {
   }
   if (maybePort === "") throw new TypeError("Invalid port: ''");
   const port = Number(maybePort);
-  if (NumberIsNaN(port) || !NumberIsInteger(maybePort)) {
+  if (NumberIsNaN(port) || !NumberIsInteger(port)) {
     throw new TypeError(`Invalid port: '${maybePort}'`);
   }
   if (port < 0 || port > 65535) {
