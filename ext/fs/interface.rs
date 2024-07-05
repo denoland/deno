@@ -367,7 +367,7 @@ impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
         entries
           .into_iter()
           .map(|e| deno_config::fs::FsDirEntry {
-            path: PathBuf::from(e.parent_path).join(e.name),
+            path: path.join(e.name),
             metadata: deno_config::fs::FsMetadata {
               is_file: e.is_file,
               is_directory: e.is_directory,
