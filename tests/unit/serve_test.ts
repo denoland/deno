@@ -853,7 +853,7 @@ Deno.test({ permissions: { net: true } }, function invalidPortTooSmall() {
         handler: (_request) => new Response(),
         port: -111,
       }),
-    TypeError,
+    RangeError,
     `Invalid port (out of range): '-111'`,
   );
 });
@@ -865,7 +865,7 @@ Deno.test({ permissions: { net: true } }, function invalidPortTooLarge() {
         handler: (_request) => new Response(),
         port: 100000,
       }),
-    TypeError,
+    RangeError,
     `Invalid port (out of range): '100000'`,
   );
 });
@@ -878,7 +878,7 @@ Deno.test({ permissions: { net: true } }, function invalidPortType() {
         port: true as unknown as number,
       }),
     TypeError,
-    `Invalid port: 'true'`,
+    `Invalid port (expected number): 'true'`,
   );
 });
 
