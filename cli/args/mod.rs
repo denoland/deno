@@ -85,7 +85,7 @@ use crate::version;
 
 use deno_config::glob::PathOrPatternSet;
 use deno_config::FmtConfig;
-use deno_config::LintConfigWithFiles;
+use deno_config::LintConfig;
 use deno_config::TestConfig;
 
 pub fn npm_registry_url() -> &'static Url {
@@ -309,19 +309,11 @@ impl FmtOptions {
     }
   }
 
-  pub fn resolve(
-    fmt_config: FmtConfig,
-    fmt_flags: &FmtFlags,
-    maybe_flags_base: Option<&Path>,
-  ) -> Result<Self, AnyError> {
-    Ok(Self {
+  pub fn resolve(fmt_config: FmtConfig, fmt_flags: &FmtFlags) -> Self {
+    Self {
       options: resolve_fmt_options(fmt_flags, fmt_config.options),
-      files: resolve_files(
-        fmt_config.files,
-        &fmt_flags.files,
-        maybe_flags_base,
-      )?,
-    })
+      files: fmt_config.files,
+    }
   }
 }
 
@@ -482,14 +474,11 @@ impl LintOptions {
     }
   }
 
-  pub fn resolve(
-    lint_config: LintConfigWithFiles,
-    lint_flags: &LintFlags,
-  ) -> Self {
+  pub fn resolve(lint_config: LintConfig, lint_flags: &LintFlags) -> Self {
     Self {
       files: lint_config.files,
       rules: resolve_lint_rules_options(
-        lint_config.config.rules,
+        lint_config.options.rules,
         lint_flags.maybe_rules_tags.clone(),
         lint_flags.maybe_rules_include.clone(),
         lint_flags.maybe_rules_exclude.clone(),
@@ -1350,26 +1339,18 @@ impl CliOptions {
   pub fn resolve_fmt_options_for_members(
     &self,
     fmt_flags: &FmtFlags,
-  ) -> Result<Vec<FmtOptions>, AnyError> {
+  ) -> Result<Vec<(WorkspaceMemberContext, FmtOptions)>, AnyError> {
     let cli_arg_patterns =
       fmt_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_ctxs =
-      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
-    let mut result = Vec::with_capacity(member_ctxs.len());
-    for member_ctx in &member_ctxs {
-      let options = self.resolve_fmt_options(fmt_flags, member_ctx)?;
-      result.push(options);
+    let member_configs = self
+      .workspace
+      .resolve_fmt_config_for_members(&cli_arg_patterns)?;
+    let mut result = Vec::with_capacity(member_configs.len());
+    for (ctx, config) in member_configs {
+      let options = FmtOptions::resolve(config, fmt_flags);
+      result.push((ctx, options));
     }
     Ok(result)
-  }
-
-  pub fn resolve_fmt_options(
-    &self,
-    fmt_flags: &FmtFlags,
-    ctx: &WorkspaceMemberContext,
-  ) -> Result<FmtOptions, AnyError> {
-    let fmt_config = ctx.to_fmt_config()?;
-    FmtOptions::resolve(fmt_config, fmt_flags, Some(&self.initial_cwd))
   }
 
   pub fn resolve_workspace_lint_options(

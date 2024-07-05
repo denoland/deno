@@ -151,10 +151,9 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       let reporter_lock = Arc::new(Mutex::new(create_reporter(
         workspace_lint_options.reporter_kind,
       )));
-      let lint_config_with_files = start_ctx
+      let lint_config = start_ctx
         .to_lint_config(FilePatterns::new_with_base(start_ctx.dir_path()))?;
-      let lint_options =
-        LintOptions::resolve(lint_config_with_files, &lint_flags);
+      let lint_options = LintOptions::resolve(lint_config, &lint_flags);
       let lint_rules = get_config_rules_err_empty(
         lint_options.rules,
         start_ctx.maybe_deno_json().map(|c| c.as_ref()),
