@@ -1260,7 +1260,7 @@ impl ConfigData {
         .and_then(|config_file| {
           config_file
             .to_lint_config()
-            .and_then(|o| LintOptions::resolve(o, Default::default(), None))
+            .map(|o| LintOptions::resolve(o, &Default::default()))
             .inspect_err(|err| {
               lsp_warn!("  Couldn't read lint configuration: {}", err)
             })

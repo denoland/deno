@@ -865,19 +865,19 @@ impl Flags {
     args
   }
 
-  /// Extract the directory paths the config file should be discovered from.
+  /// Extract the paths the config file should be discovered from.
   ///
   /// Returns `None` if the config file should not be auto-discovered.
   pub fn config_path_args(&self, current_dir: &Path) -> Option<Vec<PathBuf>> {
     fn resolve_multiple_files(
-      files: &[String],
+      files_or_dirs: &[String],
       current_dir: &Path,
     ) -> Vec<PathBuf> {
-      let mut seen = CheckedSet::with_capacity(files.len());
-      let result = files
+      let mut seen = CheckedSet::with_capacity(files_or_dirs.len());
+      let result = files_or_dirs
         .iter()
         .filter_map(|p| {
-          let path = normalize_path(current_dir.join(p).parent()?);
+          let path = normalize_path(current_dir.join(p));
           if seen.insert(&path) {
             Some(path)
           } else {

@@ -85,7 +85,7 @@ use crate::version;
 
 use deno_config::glob::PathOrPatternSet;
 use deno_config::FmtConfig;
-use deno_config::LintConfig;
+use deno_config::LintConfigWithFiles;
 use deno_config::TestConfig;
 
 pub fn npm_registry_url() -> &'static Url {
@@ -483,24 +483,19 @@ impl LintOptions {
   }
 
   pub fn resolve(
-    lint_config: LintConfig,
-    lint_flags: LintFlags,
-    maybe_flags_base: Option<&Path>,
-  ) -> Result<Self, AnyError> {
-    Ok(Self {
-      files: resolve_files(
-        lint_config.files,
-        &lint_flags.files,
-        maybe_flags_base,
-      )?,
+    lint_config: LintConfigWithFiles,
+    lint_flags: &LintFlags,
+  ) -> Self {
+    Self {
+      files: lint_config.files,
       rules: resolve_lint_rules_options(
-        lint_config.rules,
-        lint_flags.maybe_rules_tags,
-        lint_flags.maybe_rules_include,
-        lint_flags.maybe_rules_exclude,
+        lint_config.config.rules,
+        lint_flags.maybe_rules_tags.clone(),
+        lint_flags.maybe_rules_include.clone(),
+        lint_flags.maybe_rules_exclude.clone(),
       ),
       fix: lint_flags.fix,
-    })
+    }
   }
 }
 
@@ -907,9 +902,9 @@ impl CliOptions {
 
     let workspace = match &flags.config_flag {
       deno_config::ConfigFlag::Discover => {
-        if let Some(start_dirs) = flags.config_path_args(&initial_cwd) {
+        if let Some(start_paths) = flags.config_path_args(&initial_cwd) {
           Workspace::discover(
-            WorkspaceDiscoverStart::Dirs(&start_dirs),
+            WorkspaceDiscoverStart::Paths(&start_paths),
             &resolve_workspace_discover_options(),
           )?
         } else {
@@ -1391,27 +1386,18 @@ impl CliOptions {
   ) -> Result<Vec<(WorkspaceMemberContext, LintOptions)>, AnyError> {
     let cli_arg_patterns =
       lint_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_ctxs =
-      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
-    let mut result = Vec::with_capacity(member_ctxs.len());
-    for member_ctx in member_ctxs {
-      let options =
-        self.resolve_lint_options(lint_flags.clone(), &member_ctx)?;
-      result.push((member_ctx, options));
+    let member_configs = self
+      .workspace
+      .resolve_lint_config_for_members(&cli_arg_patterns)?;
+    let mut result = Vec::with_capacity(member_configs.len());
+    for (ctx, config) in member_configs {
+      let options = LintOptions::resolve(config, lint_flags);
+      result.push((ctx, options));
     }
     Ok(result)
   }
 
-  pub fn resolve_lint_options(
-    &self,
-    lint_flags: LintFlags,
-    ctx: &WorkspaceMemberContext,
-  ) -> Result<LintOptions, AnyError> {
-    let lint_config = ctx.to_lint_config()?;
-    LintOptions::resolve(lint_config, lint_flags, Some(&self.initial_cwd))
-  }
-
-  pub fn resolve_lint_config(
+  pub fn resolve_deno_lint_config(
     &self,
   ) -> Result<deno_lint::linter::LintConfig, AnyError> {
     let ts_config_result =
