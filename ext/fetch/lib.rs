@@ -230,23 +230,6 @@ pub struct ResourceToBodyAdapter(
   Option<Pin<Box<dyn Future<Output = Result<BufView, Error>>>>>,
 );
 
-// We use this to wrap possible user errors of the request body,
-// so it can pulled back out again later on.
-#[derive(Debug)]
-struct ResourceBodyError(Error);
-
-impl std::fmt::Display for ResourceBodyError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.write_str("resource body error")
-  }
-}
-
-impl std::error::Error for ResourceBodyError {
-  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    Some(&*self.0)
-  }
-}
-
 impl ResourceToBodyAdapter {
   pub fn new(resource: Rc<dyn Resource>) -> Self {
     let future = resource.clone().read(64 * 1024);
@@ -279,7 +262,7 @@ impl Stream for ResourceToBodyAdapter {
             this.1 = Some(this.0.clone().read(64 * 1024));
             Poll::Ready(Some(Ok(buf.to_vec().into())))
           }
-          Err(err) => Poll::Ready(Some(Err(ResourceBodyError(err).into()))),
+          Err(err) => Poll::Ready(Some(Err(err))),
         },
       }
     } else {
@@ -559,16 +542,18 @@ pub async fn op_fetch_send(
     Ok(Ok(res)) => res,
     Ok(Err(err)) => {
       // We're going to try and rescue the error cause from a stream and return it from this fetch.
-      // If any error in the chain is a ResourceBodyError, return that as a special result we can use to
+      // If any error in the chain is a hyper body error, return that as a special result we can use to
       // reconstruct an error chain (eg: `new TypeError(..., { cause: new Error(...) })`).
       // TODO(mmastrac): it would be a lot easier if we just passed a v8::Global through here instead
       let mut err_ref: &dyn std::error::Error = err.as_ref();
       while let Some(err) = std::error::Error::source(err_ref) {
-        if let Some(err) = err.downcast_ref::<ResourceBodyError>() {
-          return Ok(FetchResponse {
-            error: Some(err.0.to_string()),
-            ..Default::default()
-          });
+        if let Some(err) = err.downcast_ref::<hyper::Error>() {
+          if let Some(err) = std::error::Error::source(err) {
+            return Ok(FetchResponse {
+              error: Some(err.to_string()),
+              ..Default::default()
+            });
+          }
         }
         err_ref = err;
       }
