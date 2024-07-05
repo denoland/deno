@@ -722,8 +722,8 @@ impl FromStr for Host {
       } else {
         Cow::Owned(s.to_ascii_lowercase())
       };
-      let fqdn =
-        FQDN::from_str(&lower).with_context(|| format!("invalid host: '{s}'"))?;
+      let fqdn = FQDN::from_str(&lower)
+        .with_context(|| format!("invalid host: '{s}'"))?;
       if fqdn.is_root() {
         return Err(uri_error(format!("invalid empty host: '{s}'")));
       }
