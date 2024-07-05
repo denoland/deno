@@ -27,6 +27,11 @@ import { fstat, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
 import { fsync, fsyncSync } from "ext:deno_node/_fs/_fs_fsync.ts";
 import { ftruncate, ftruncateSync } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 import { futimes, futimesSync } from "ext:deno_node/_fs/_fs_futimes.ts";
+import {
+  lchown,
+  lchownPromise,
+  lchownSync,
+} from "ext:deno_node/_fs/_fs_lchown.ts";
 import { link, linkPromise, linkSync } from "ext:deno_node/_fs/_fs_link.ts";
 import { lstat, lstatPromise, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
 import {
@@ -173,7 +178,7 @@ const promises = {
   unlink: unlinkPromise,
   chmod: chmodPromise,
   // lchmod: promisify(lchmod),
-  // lchown: promisify(lchown),
+  lchown: lchownPromise,
   chown: chownPromise,
   utimes: utimesPromise,
   lutimes: lutimesPromise,
@@ -218,6 +223,8 @@ export default {
   ftruncateSync,
   futimes,
   futimesSync,
+  lchown,
+  lchownSync,
   link,
   linkSync,
   lstat,

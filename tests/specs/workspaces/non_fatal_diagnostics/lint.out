@@ -1,5 +1,5 @@
-The 'compilerOptions' field can only be specified in the root workspace deno.json file.
+The "compilerOptions" field can only be specified in the root workspace deno.json file.
     at file:///[WILDLINE]/sub/deno.json
-The 'lint.report' field can only be specified in the root workspace deno.json file.
+The "lint.report" field can only be specified in the root workspace deno.json file.
     at file:///[WILDLINE]/sub/deno.json
 Checked 1 file
