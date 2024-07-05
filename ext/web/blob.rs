@@ -9,7 +9,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::JsBuffer;
@@ -165,7 +165,7 @@ impl BlobPart for SlicedBlobPart {
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_blob_create_part(
   state: &mut OpState,
@@ -183,7 +183,7 @@ pub struct SliceOptions {
   len: usize,
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_blob_slice_part(
   state: &mut OpState,
@@ -210,7 +210,7 @@ pub fn op_blob_slice_part(
   Ok(id)
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_blob_read_part(
   state: Rc<RefCell<OpState>>,
@@ -226,13 +226,13 @@ pub async fn op_blob_read_part(
   Ok(ToJsBuffer::from(buf.to_vec()))
 }
 
-#[op2]
+#[op]
 pub fn op_blob_remove_part(state: &mut OpState, #[serde] id: Uuid) {
   let blob_store = state.borrow::<Arc<BlobStore>>();
   blob_store.remove_part(&id);
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_blob_create_object_url(
   state: &mut OpState,
@@ -259,7 +259,7 @@ pub fn op_blob_create_object_url(
   Ok(url.to_string())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_blob_revoke_object_url(
   state: &mut OpState,
   #[string] url: &str,
@@ -282,7 +282,7 @@ pub struct ReturnBlobPart {
   pub size: usize,
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_blob_from_object_url(
   state: &mut OpState,

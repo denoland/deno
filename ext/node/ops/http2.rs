@@ -9,7 +9,7 @@ use std::task::Poll;
 use bytes::Bytes;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::serde::Serialize;
 use deno_core::AsyncRefCell;
 use deno_core::BufView;
@@ -110,7 +110,7 @@ impl Resource for Http2ServerSendResponse {
   }
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_http2_connect(
   state: Rc<RefCell<OpState>>,
@@ -139,7 +139,7 @@ pub async fn op_http2_connect(
   Ok((client_rid, conn_rid))
 }
 
-#[op2(async)]
+#[op(async)]
 #[smi]
 pub async fn op_http2_listen(
   state: Rc<RefCell<OpState>>,
@@ -159,7 +159,7 @@ pub async fn op_http2_listen(
   )
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_http2_accept(
   state: Rc<RefCell<OpState>>,
@@ -226,7 +226,7 @@ pub async fn op_http2_accept(
   }
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_http2_send_response(
   state: Rc<RefCell<OpState>>,
@@ -258,7 +258,7 @@ pub async fn op_http2_send_response(
   Ok((rid, stream_id.into()))
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_http2_poll_client_connection(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -280,7 +280,7 @@ pub async fn op_http2_poll_client_connection(
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_http2_client_request(
   state: Rc<RefCell<OpState>>,
@@ -339,7 +339,7 @@ pub async fn op_http2_client_request(
   Ok((stream_rid, stream_id.into()))
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_http2_client_send_data(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
@@ -356,7 +356,7 @@ pub async fn op_http2_client_send_data(
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_http2_client_reset_stream(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
@@ -371,7 +371,7 @@ pub async fn op_http2_client_reset_stream(
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_http2_client_send_trailers(
   state: Rc<RefCell<OpState>>,
   #[smi] stream_rid: ResourceId,
@@ -403,7 +403,7 @@ pub struct Http2ClientResponse {
   status_code: u16,
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_http2_client_get_response(
   state: Rc<RefCell<OpState>>,
@@ -476,7 +476,7 @@ fn poll_data_or_trailers(
   }
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_http2_client_get_response_body_chunk(
   state: Rc<RefCell<OpState>>,
@@ -525,7 +525,7 @@ pub async fn op_http2_client_get_response_body_chunk(
   }
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_http2_client_get_response_trailers(
   state: Rc<RefCell<OpState>>,

@@ -14,7 +14,7 @@ use deno_core::anyhow::Context;
 use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
@@ -389,7 +389,7 @@ fn normalize_specifier(
   resolve_url_or_path(specifier, current_dir).map_err(|err| err.into())
 }
 
-#[op2]
+#[op]
 #[string]
 fn op_create_hash(s: &mut OpState, #[string] text: &str) -> String {
   op_create_hash_inner(s, text)
@@ -411,7 +411,7 @@ struct EmitArgs {
   file_name: String,
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_emit(
   state: &mut OpState,
   #[string] data: String,
@@ -467,7 +467,7 @@ struct LoadResponse {
   script_kind: i32,
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_load(
   state: &mut OpState,
@@ -589,7 +589,7 @@ pub struct ResolveArgs {
   pub specifiers: Vec<String>,
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_resolve(
   state: &mut OpState,
@@ -804,7 +804,7 @@ fn resolve_non_graph_specifier_types(
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_is_node_file(state: &mut OpState, #[string] path: &str) -> bool {
   let state = state.borrow::<State>();
   match ModuleSpecifier::parse(path) {
@@ -825,7 +825,7 @@ struct RespondArgs {
 
 // TODO(bartlomieju): this mechanism is questionable.
 // Can't we use something more efficient here?
-#[op2]
+#[op]
 fn op_respond(state: &mut OpState, #[serde] args: RespondArgs) {
   op_respond_inner(state, args)
 }

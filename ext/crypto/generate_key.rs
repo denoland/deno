@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ToJsBuffer;
 use elliptic_curve::rand_core::OsRng;
@@ -42,7 +42,7 @@ pub enum GenerateKeyOptions {
   },
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_crypto_generate_key(
   #[serde] opts: GenerateKeyOptions,

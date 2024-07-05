@@ -23,7 +23,7 @@ use deno_core::error::AnyError;
 use deno_core::external;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::TryFutureExt;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::serde_v8::from_v8;
 use deno_core::unsync::spawn;
 use deno_core::unsync::JoinHandle;
@@ -153,7 +153,7 @@ macro_rules! clone_external {
   }};
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_http_upgrade_raw(
   state: &mut OpState,
@@ -224,7 +224,7 @@ pub fn op_http_upgrade_raw(
   )
 }
 
-#[op2(async)]
+#[op(async)]
 #[smi]
 pub async fn op_http_upgrade_websocket_next(
   state: Rc<RefCell<OpState>>,
@@ -256,7 +256,7 @@ pub async fn op_http_upgrade_websocket_next(
   ws_create_server_stream(&mut state.borrow_mut(), stream, bytes)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_http_set_promise_complete(external: *const c_void, status: u16) {
   let http =
     // SAFETY: external is deleted before calling this op.
@@ -273,7 +273,7 @@ fn set_promise_complete(http: Rc<HttpRecord>, status: u16) {
   http.complete();
 }
 
-#[op2]
+#[op]
 pub fn op_http_get_request_method_and_url<'scope, HTTP>(
   scope: &mut v8::HandleScope<'scope>,
   external: *const c_void,
@@ -339,7 +339,7 @@ where
   v8::Array::new_with_elements(scope, vec.as_slice())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_http_get_request_header(
   external: *const c_void,
@@ -353,7 +353,7 @@ pub fn op_http_get_request_header(
   value.map(|value| value.as_bytes().into())
 }
 
-#[op2]
+#[op]
 pub fn op_http_get_request_headers<'scope>(
   scope: &mut v8::HandleScope<'scope>,
   external: *const c_void,
@@ -423,7 +423,7 @@ pub fn op_http_get_request_headers<'scope>(
   v8::Array::new_with_elements(scope, vec.as_slice())
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_http_read_request_body(
   state: Rc<RefCell<OpState>>,
@@ -444,7 +444,7 @@ pub fn op_http_read_request_body(
   rid
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_http_set_response_header(
   external: *const c_void,
   #[string(onebyte)] name: Cow<[u8]>,
@@ -466,7 +466,7 @@ pub fn op_http_set_response_header(
   response_parts.headers.append(name, value);
 }
 
-#[op2]
+#[op]
 pub fn op_http_set_response_headers(
   scope: &mut v8::HandleScope,
   external: *const c_void,
@@ -500,7 +500,7 @@ pub fn op_http_set_response_headers(
   }
 }
 
-#[op2]
+#[op]
 pub fn op_http_set_response_trailers(
   external: *const c_void,
   #[serde] trailers: Vec<(ByteString, ByteString)>,
@@ -676,7 +676,7 @@ fn set_response(
 
 /// Returned promise resolves when body streaming finishes.
 /// Call [`op_http_close_after_finish`] when done with the external.
-#[op2(async)]
+#[op(async)]
 pub async fn op_http_set_response_body_resource(
   state: Rc<RefCell<OpState>>,
   external: *const c_void,
@@ -719,7 +719,7 @@ pub async fn op_http_set_response_body_resource(
   Ok(http.response_body_finished().await)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_http_close_after_finish(external: *const c_void) {
   let http =
     // SAFETY: external is deleted before calling this op.
@@ -727,7 +727,7 @@ pub fn op_http_close_after_finish(external: *const c_void) {
   http.close_after_finish();
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_http_set_response_body_text(
   external: *const c_void,
   #[string] text: String,
@@ -745,7 +745,7 @@ pub fn op_http_set_response_body_text(
   }
 }
 
-#[op2]
+#[op]
 pub fn op_http_set_response_body_bytes(
   external: *const c_void,
   #[buffer] buffer: JsBuffer,
@@ -970,7 +970,7 @@ impl Drop for HttpJoinHandle {
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_http_serve<HTTP>(
   state: Rc<RefCell<OpState>>,
@@ -1019,7 +1019,7 @@ where
   ))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_http_serve_on<HTTP>(
   state: Rc<RefCell<OpState>>,
@@ -1058,7 +1058,7 @@ where
 
 /// Synchronous, non-blocking call to see if there are any further HTTP requests. If anything
 /// goes wrong in this method we return null and let the async handler pick up the real error.
-#[op2(fast)]
+#[op(fast)]
 pub fn op_http_try_wait(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1084,7 +1084,7 @@ pub fn op_http_try_wait(
   ptr.into_raw()
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_http_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1134,7 +1134,7 @@ pub async fn op_http_wait(
 }
 
 /// Cancels the HTTP handle.
-#[op2(fast)]
+#[op(fast)]
 pub fn op_http_cancel(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1154,7 +1154,7 @@ pub fn op_http_cancel(
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_http_close(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1273,7 +1273,7 @@ impl Resource for UpgradeStream {
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_can_write_vectored(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1281,7 +1281,7 @@ pub fn op_can_write_vectored(
   state.resource_table.get::<UpgradeStream>(rid).is_ok()
 }
 
-#[op2(async)]
+#[op(async)]
 #[number]
 pub async fn op_raw_write_vectored(
   state: Rc<RefCell<OpState>>,

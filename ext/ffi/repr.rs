@@ -5,7 +5,7 @@ use crate::FfiPermissions;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::v8;
 use deno_core::OpState;
 use std::ffi::c_char;
@@ -13,7 +13,7 @@ use std::ffi::c_void;
 use std::ffi::CStr;
 use std::ptr;
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ffi_ptr_create<FP>(
   state: &mut OpState,
   #[bigint] ptr_number: usize,
@@ -28,7 +28,7 @@ where
   Ok(ptr_number as *mut c_void)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ffi_ptr_equals<FP>(
   state: &mut OpState,
   a: *const c_void,
@@ -44,7 +44,7 @@ where
   Ok(a == b)
 }
 
-#[op2]
+#[op]
 pub fn op_ffi_ptr_of<FP>(
   state: &mut OpState,
   #[anybuffer] buf: *const u8,
@@ -59,7 +59,7 @@ where
   Ok(buf as *mut c_void)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ffi_ptr_of_exact<FP>(
   state: &mut OpState,
   buf: v8::Local<v8::ArrayBufferView>,
@@ -80,7 +80,7 @@ where
   Ok(buf.as_ptr() as _)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ffi_ptr_offset<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
@@ -111,7 +111,7 @@ unsafe extern "C" fn noop_deleter_callback(
 ) {
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[bigint]
 pub fn op_ffi_ptr_value<FP>(
   state: &mut OpState,
@@ -127,7 +127,7 @@ where
   Ok(ptr as usize)
 }
 
-#[op2]
+#[op]
 pub fn op_ffi_get_buf<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut OpState,
@@ -161,7 +161,7 @@ where
   Ok(array_buffer)
 }
 
-#[op2]
+#[op]
 pub fn op_ffi_buf_copy_into<FP>(
   state: &mut OpState,
   src: *mut c_void,
@@ -195,7 +195,7 @@ where
   }
 }
 
-#[op2]
+#[op]
 pub fn op_ffi_cstr_read<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut OpState,
@@ -224,7 +224,7 @@ where
   Ok(value)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ffi_read_bool<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
@@ -246,7 +246,7 @@ where
   Ok(unsafe { ptr::read_unaligned::<bool>(ptr.offset(offset) as *const bool) })
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ffi_read_u8<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
@@ -270,7 +270,7 @@ where
   })
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ffi_read_i8<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
@@ -294,7 +294,7 @@ where
   })
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ffi_read_u16<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
@@ -318,7 +318,7 @@ where
   })
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ffi_read_i16<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
@@ -342,7 +342,7 @@ where
   })
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ffi_read_u32<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
@@ -364,7 +364,7 @@ where
   Ok(unsafe { ptr::read_unaligned::<u32>(ptr.offset(offset) as *const u32) })
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ffi_read_i32<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
@@ -386,7 +386,7 @@ where
   Ok(unsafe { ptr::read_unaligned::<i32>(ptr.offset(offset) as *const i32) })
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[bigint]
 pub fn op_ffi_read_u64<FP>(
   state: &mut OpState,
@@ -414,7 +414,7 @@ where
   Ok(value)
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[bigint]
 pub fn op_ffi_read_i64<FP>(
   state: &mut OpState,
@@ -442,7 +442,7 @@ where
   Ok(value)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ffi_read_f32<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
@@ -464,7 +464,7 @@ where
   Ok(unsafe { ptr::read_unaligned::<f32>(ptr.offset(offset) as *const f32) })
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ffi_read_f64<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
@@ -486,7 +486,7 @@ where
   Ok(unsafe { ptr::read_unaligned::<f64>(ptr.offset(offset) as *const f64) })
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ffi_read_ptr<FP>(
   state: &mut OpState,
   ptr: *mut c_void,

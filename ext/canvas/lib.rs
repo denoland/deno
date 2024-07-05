@@ -2,7 +2,7 @@
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::ToJsBuffer;
 use image::imageops::FilterType;
 use image::ColorType;
@@ -38,7 +38,7 @@ struct ImageProcessArgs {
   premultiply: Option<bool>,
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_image_process(
   #[buffer] buf: &[u8],
@@ -115,7 +115,7 @@ struct DecodedPng {
   height: u32,
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_image_decode_png(#[buffer] buf: &[u8]) -> Result<DecodedPng, AnyError> {
   let png = image::codecs::png::PngDecoder::new(buf)?;

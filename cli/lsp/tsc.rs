@@ -45,7 +45,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::serde::de;
@@ -4267,13 +4267,13 @@ impl State {
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_is_cancelled(state: &mut OpState) -> bool {
   let state = state.borrow_mut::<State>();
   state.token.is_cancelled()
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
   let mark = state.performance.mark("tsc.op.op_is_node_file");
@@ -4294,7 +4294,7 @@ struct LoadResponse {
   is_cjs: bool,
 }
 
-#[op2]
+#[op]
 fn op_load<'s>(
   scope: &'s mut v8::HandleScope,
   state: &mut OpState,
@@ -4327,7 +4327,7 @@ fn op_load<'s>(
   Ok(serialized)
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_release(
   state: &mut OpState,
   #[string] specifier: &str,
@@ -4342,7 +4342,7 @@ fn op_release(
   Ok(())
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_resolve(
   state: &mut OpState,
@@ -4390,7 +4390,7 @@ impl<'a> ToV8<'a> for TscRequestArray {
   }
 }
 
-#[op2(async)]
+#[op(async)]
 #[to_v8]
 async fn op_poll_requests(
   state: Rc<RefCell<OpState>>,
@@ -4456,7 +4456,7 @@ fn op_resolve_inner(
   Ok(specifiers)
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_respond(
   state: &mut OpState,
   #[string] response: String,
@@ -4486,7 +4486,7 @@ struct ScriptNames {
   by_scope: BTreeMap<ModuleSpecifier, IndexSet<String>>,
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_script_names(state: &mut OpState) -> ScriptNames {
   let state = state.borrow_mut::<State>();
@@ -4582,7 +4582,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
   result
 }
 
-#[op2]
+#[op]
 #[string]
 fn op_script_version(
   state: &mut OpState,
@@ -4596,7 +4596,7 @@ fn op_script_version(
   Ok(r)
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[number]
 fn op_project_version(state: &mut OpState) -> usize {
   let state: &mut State = state.borrow_mut::<State>();

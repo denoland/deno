@@ -4,7 +4,7 @@ use super::utils::into_string;
 use crate::worker::ExitCode;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::OpState;
@@ -73,7 +73,7 @@ deno_core::extension!(
   },
 );
 
-#[op2]
+#[op]
 #[string]
 fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
   let current_exe = env::current_exe().unwrap();
@@ -88,7 +88,7 @@ fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
   into_string(path.into_os_string())
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_set_env(
   state: &mut OpState,
   #[string] key: &str,
@@ -112,14 +112,14 @@ fn op_set_env(
   Ok(())
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, AnyError> {
   state.borrow_mut::<PermissionsContainer>().check_env_all()?;
   Ok(env::vars().collect())
 }
 
-#[op2]
+#[op]
 #[string]
 fn op_get_env(
   state: &mut OpState,
@@ -148,7 +148,7 @@ fn op_get_env(
   Ok(r)
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_delete_env(
   state: &mut OpState,
   #[string] key: String,
@@ -161,24 +161,24 @@ fn op_delete_env(
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_set_exit_code(state: &mut OpState, #[smi] code: i32) {
   state.borrow_mut::<ExitCode>().set(code);
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 fn op_get_exit_code(state: &mut OpState) -> i32 {
   state.borrow_mut::<ExitCode>().get()
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_exit(state: &mut OpState) {
   let code = state.borrow::<ExitCode>().get();
   std::process::exit(code)
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
   state
@@ -187,7 +187,7 @@ fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
   Ok(sys_info::loadavg())
 }
 
-#[op2]
+#[op]
 #[string]
 fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
   state
@@ -196,7 +196,7 @@ fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
   Ok(sys_info::hostname())
 }
 
-#[op2]
+#[op]
 #[string]
 fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
   state
@@ -205,7 +205,7 @@ fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
   Ok(sys_info::os_release())
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_network_interfaces(
   state: &mut OpState,
@@ -257,7 +257,7 @@ impl From<netif::Interface> for NetworkInterface {
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_system_memory_info(
   state: &mut OpState,
@@ -269,7 +269,7 @@ fn op_system_memory_info(
 }
 
 #[cfg(not(windows))]
-#[op2]
+#[op]
 #[smi]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
@@ -283,7 +283,7 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 }
 
 #[cfg(windows)]
-#[op2]
+#[op]
 #[smi]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
@@ -293,7 +293,7 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 }
 
 #[cfg(not(windows))]
-#[op2]
+#[op]
 #[smi]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
@@ -307,7 +307,7 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
 }
 
 #[cfg(windows)]
-#[op2]
+#[op]
 #[smi]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   state
@@ -326,7 +326,7 @@ struct MemoryUsage {
   external: usize,
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_runtime_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
   let mut s = v8::HeapStatistics::default();
@@ -494,7 +494,7 @@ fn os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
   Ok(sys_info::os_uptime())
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[number]
 fn op_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
   os_uptime(state)

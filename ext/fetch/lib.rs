@@ -23,7 +23,7 @@ use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
@@ -301,7 +301,7 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 #[allow(clippy::too_many_arguments)]
 pub fn op_fetch<FP>(
@@ -490,7 +490,7 @@ pub struct FetchResponse {
   pub error: Option<String>,
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
@@ -566,7 +566,7 @@ pub async fn op_fetch_send(
   })
 }
 
-#[op2(async)]
+#[op(async)]
 #[smi]
 pub async fn op_fetch_response_upgrade(
   state: Rc<RefCell<OpState>>,
@@ -838,7 +838,7 @@ fn default_true() -> bool {
   true
 }
 
-#[op2]
+#[op]
 #[smi]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
@@ -983,7 +983,7 @@ pub fn create_http_client(
   builder.build().map_err(|e| e.into())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_utf8_to_byte_string(
   #[string] input: String,

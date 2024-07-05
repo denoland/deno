@@ -8,7 +8,7 @@ use crate::turbocall;
 use crate::FfiPermissions;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::v8;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -111,7 +111,7 @@ pub struct FfiLoadArgs {
   symbols: HashMap<String, ForeignSymbol>,
 }
 
-#[op2]
+#[op]
 pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut OpState,

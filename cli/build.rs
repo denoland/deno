@@ -10,7 +10,7 @@ mod ts {
   use super::*;
   use deno_core::error::custom_error;
   use deno_core::error::AnyError;
-  use deno_core::op2;
+  use deno_core::op;
   use deno_core::OpState;
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
   use serde::Serialize;
@@ -27,7 +27,7 @@ mod ts {
     node_built_in_module_names: Vec<String>,
   }
 
-  #[op2]
+  #[op]
   #[serde]
   fn op_build_info(state: &mut OpState) -> BuildInfoResponse {
     let build_specifier = "asset:///bootstrap.ts".to_string();
@@ -47,12 +47,12 @@ mod ts {
     }
   }
 
-  #[op2(fast)]
+  #[op(fast)]
   fn op_is_node_file() -> bool {
     false
   }
 
-  #[op2]
+  #[op]
   #[string]
   fn op_script_version(
     _state: &mut OpState,
@@ -69,7 +69,7 @@ mod ts {
     script_kind: i32,
   }
 
-  #[op2]
+  #[op]
   #[serde]
   // using the same op that is used in `tsc.rs` for loading modules and reading
   // files, but a slightly different implementation at build time.

@@ -13,7 +13,7 @@ const foobar: FooInterface = {
 
 const i: SomeInterface = {
   prop: 1,
-  prop2: "asdf",
+  prop: "asdf",
 };
 
 const fizzbuzz: Fizzbuzz = {

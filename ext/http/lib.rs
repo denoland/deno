@@ -22,7 +22,7 @@ use deno_core::futures::stream::Peekable;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::unsync::spawn;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -540,7 +540,7 @@ struct NextRequestResponse(
   String,
 );
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 async fn op_http_accept(
   state: Rc<RefCell<OpState>>,
@@ -650,7 +650,7 @@ fn req_headers(
   headers
 }
 
-#[op2(async)]
+#[op(async)]
 async fn op_http_write_headers(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: u32,
@@ -720,7 +720,7 @@ async fn op_http_write_headers(
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_http_headers(
   state: &mut OpState,
@@ -873,7 +873,7 @@ fn should_compress(headers: &hyper_v014::HeaderMap) -> bool {
       .unwrap_or_default()
 }
 
-#[op2(async)]
+#[op(async)]
 async fn op_http_write_resource(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -932,7 +932,7 @@ async fn op_http_write_resource(
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 async fn op_http_write(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -985,7 +985,7 @@ async fn op_http_write(
 /// Gracefully closes the write half of the HTTP stream. Note that this does not
 /// remove the HTTP stream resource from the resource table; it still has to be
 /// closed with `Deno.core.close()`.
-#[op2(async)]
+#[op(async)]
 async fn op_http_shutdown(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1020,7 +1020,7 @@ async fn op_http_shutdown(
   Ok(())
 }
 
-#[op2]
+#[op]
 #[string]
 fn op_http_websocket_accept_header(
   #[string] key: String,
@@ -1032,7 +1032,7 @@ fn op_http_websocket_accept_header(
   Ok(BASE64_STANDARD.encode(digest))
 }
 
-#[op2(async)]
+#[op(async)]
 #[smi]
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,

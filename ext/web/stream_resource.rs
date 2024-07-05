@@ -3,7 +3,7 @@ use bytes::BytesMut;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::external;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::serde_v8::V8Slice;
 use deno_core::unsync::TaskQueue;
 use deno_core::AsyncResult;
@@ -448,7 +448,7 @@ impl Future for CompletionHandle {
 }
 
 /// Allocate a resource that wraps a ReadableStream.
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_readable_stream_resource_allocate(state: &mut OpState) -> ResourceId {
   let completion = CompletionHandle::default();
@@ -463,7 +463,7 @@ pub fn op_readable_stream_resource_allocate(state: &mut OpState) -> ResourceId {
 }
 
 /// Allocate a resource that wraps a ReadableStream, with a size hint.
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_readable_stream_resource_allocate_sized(
   state: &mut OpState,
@@ -480,7 +480,7 @@ pub fn op_readable_stream_resource_allocate_sized(
   state.resource_table.add(resource)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_readable_stream_resource_get_sink(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -510,7 +510,7 @@ fn drop_sender(sender: *const c_void) {
   }
 }
 
-#[op2(async)]
+#[op(async)]
 pub fn op_readable_stream_resource_write_buf(
   sender: *const c_void,
   #[buffer] buffer: JsBuffer,
@@ -525,7 +525,7 @@ pub fn op_readable_stream_resource_write_buf(
 
 /// Write to the channel synchronously, returning 0 if the channel was closed, 1 if we wrote
 /// successfully, 2 if the channel was full and we need to block.
-#[op2]
+#[op]
 pub fn op_readable_stream_resource_write_sync(
   sender: *const c_void,
   #[buffer] buffer: JsBuffer,
@@ -543,7 +543,7 @@ pub fn op_readable_stream_resource_write_sync(
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_readable_stream_resource_write_error(
   sender: *const c_void,
   #[string] error: String,
@@ -554,14 +554,14 @@ pub fn op_readable_stream_resource_write_error(
   !sender.closed()
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_readable_stream_resource_close(sender: *const c_void) {
   get_sender(sender).close();
   drop_sender(sender);
 }
 
-#[op2(async)]
+#[op(async)]
 pub fn op_readable_stream_resource_await_close(
   state: &mut OpState,
   #[smi] rid: ResourceId,

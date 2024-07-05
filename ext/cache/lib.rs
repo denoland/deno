@@ -8,7 +8,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::ByteString;
@@ -114,7 +114,7 @@ pub trait Cache: Clone + 'static {
     -> Result<bool, AnyError>;
 }
 
-#[op2(async)]
+#[op(async)]
 #[number]
 pub async fn op_cache_storage_open<CA>(
   state: Rc<RefCell<OpState>>,
@@ -127,7 +127,7 @@ where
   cache.storage_open(cache_name).await
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_cache_storage_has<CA>(
   state: Rc<RefCell<OpState>>,
   #[string] cache_name: String,
@@ -139,7 +139,7 @@ where
   cache.storage_has(cache_name).await
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_cache_storage_delete<CA>(
   state: Rc<RefCell<OpState>>,
   #[string] cache_name: String,
@@ -151,7 +151,7 @@ where
   cache.storage_delete(cache_name).await
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_cache_put<CA>(
   state: Rc<RefCell<OpState>>,
   #[serde] request_response: CachePutRequest,
@@ -167,7 +167,7 @@ where
   cache.put(request_response, resource).await
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_cache_match<CA>(
   state: Rc<RefCell<OpState>>,
@@ -187,7 +187,7 @@ where
   }
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_cache_delete<CA>(
   state: Rc<RefCell<OpState>>,
   #[serde] request: CacheDeleteRequest,

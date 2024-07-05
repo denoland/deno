@@ -2,7 +2,7 @@
 
 use crate::WebGpuQuerySet;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -43,7 +43,7 @@ impl Resource for WebGpuCommandBuffer {
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_create_command_encoder(
   state: &mut OpState,
@@ -97,7 +97,7 @@ pub struct GPURenderPassTimestampWrites {
   end_of_pass_write_index: Option<u32>,
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_command_encoder_begin_render_pass(
   state: &mut OpState,
@@ -237,7 +237,7 @@ pub struct GPUComputePassTimestampWrites {
   end_of_pass_write_index: Option<u32>,
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_command_encoder_begin_compute_pass(
   state: &mut OpState,
@@ -284,7 +284,7 @@ pub fn op_webgpu_command_encoder_begin_compute_pass(
   Ok(WebGpuResult::rid(rid))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_command_encoder_copy_buffer_to_buffer(
   state: &mut OpState,
@@ -338,7 +338,7 @@ pub struct GpuImageCopyTexture {
   pub aspect: wgpu_types::TextureAspect,
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
   state: &mut OpState,
@@ -383,7 +383,7 @@ pub fn op_webgpu_command_encoder_copy_buffer_to_texture(
   ))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
   state: &mut OpState,
@@ -428,7 +428,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_buffer(
   ))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_command_encoder_copy_texture_to_texture(
   state: &mut OpState,
@@ -471,7 +471,7 @@ pub fn op_webgpu_command_encoder_copy_texture_to_texture(
   ))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_command_encoder_clear_buffer(
   state: &mut OpState,
@@ -497,7 +497,7 @@ pub fn op_webgpu_command_encoder_clear_buffer(
   ))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_command_encoder_push_debug_group(
   state: &mut OpState,
@@ -513,7 +513,7 @@ pub fn op_webgpu_command_encoder_push_debug_group(
   gfx_ok!(command_encoder => instance.command_encoder_push_debug_group(command_encoder, group_label))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_command_encoder_pop_debug_group(
   state: &mut OpState,
@@ -528,7 +528,7 @@ pub fn op_webgpu_command_encoder_pop_debug_group(
   gfx_ok!(command_encoder => instance.command_encoder_pop_debug_group(command_encoder))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_command_encoder_insert_debug_marker(
   state: &mut OpState,
@@ -547,7 +547,7 @@ pub fn op_webgpu_command_encoder_insert_debug_marker(
   ))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_command_encoder_write_timestamp(
   state: &mut OpState,
@@ -571,7 +571,7 @@ pub fn op_webgpu_command_encoder_write_timestamp(
   ))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_command_encoder_resolve_query_set(
   state: &mut OpState,
@@ -604,7 +604,7 @@ pub fn op_webgpu_command_encoder_resolve_query_set(
   ))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_command_encoder_finish(
   state: &mut OpState,

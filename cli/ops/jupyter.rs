@@ -10,7 +10,7 @@ use jupyter_runtime::KernelIoPubConnection;
 use jupyter_runtime::StreamContent;
 
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::serde_json;
 use deno_core::OpState;
 use tokio::sync::mpsc;
@@ -32,7 +32,7 @@ deno_core::extension!(deno_jupyter,
   },
 );
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_jupyter_broadcast(
   state: Rc<RefCell<OpState>>,
   #[string] message_type: String,
@@ -77,7 +77,7 @@ pub async fn op_jupyter_broadcast(
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_print(
   state: &mut OpState,
   #[string] msg: &str,

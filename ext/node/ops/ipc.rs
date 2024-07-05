@@ -20,7 +20,7 @@ mod impl_ {
 
   use deno_core::error::bad_resource_id;
   use deno_core::error::AnyError;
-  use deno_core::op2;
+  use deno_core::op;
   use deno_core::serde_json;
   use deno_core::AsyncRefCell;
   use deno_core::CancelFuture;
@@ -44,7 +44,7 @@ mod impl_ {
   type NamedPipeClient = tokio::net::windows::named_pipe::NamedPipeClient;
 
   // Open IPC pipe from bootstrap options.
-  #[op2]
+  #[op]
   #[smi]
   pub fn op_node_child_ipc_pipe(
     state: &mut OpState,
@@ -59,7 +59,7 @@ mod impl_ {
     ))
   }
 
-  #[op2(async)]
+  #[op(async)]
   pub async fn op_node_ipc_write(
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
@@ -74,7 +74,7 @@ mod impl_ {
     Ok(())
   }
 
-  #[op2(async)]
+  #[op(async)]
   #[serde]
   pub async fn op_node_ipc_read(
     state: Rc<RefCell<OpState>>,

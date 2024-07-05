@@ -4,7 +4,7 @@ use super::check_unstable;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -587,7 +587,7 @@ fn spawn_child(
   })
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_spawn_child(
   state: &mut OpState,
@@ -598,7 +598,7 @@ fn op_spawn_child(
   spawn_child(state, command, pipe_rid)
 }
 
-#[op2(async)]
+#[op(async)]
 #[allow(clippy::await_holding_refcell_ref)]
 #[serde]
 async fn op_spawn_wait(
@@ -616,7 +616,7 @@ async fn op_spawn_wait(
   result
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_spawn_sync(
   state: &mut OpState,
@@ -648,7 +648,7 @@ fn op_spawn_sync(
   })
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_spawn_kill(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -707,7 +707,7 @@ mod deprecated {
     stderr_rid: Option<ResourceId>,
   }
 
-  #[op2]
+  #[op]
   #[serde]
   pub fn op_run(
     state: &mut OpState,
@@ -831,7 +831,7 @@ mod deprecated {
     exit_signal: i32,
   }
 
-  #[op2(async)]
+  #[op(async)]
   #[serde]
   pub async fn op_run_status(
     state: Rc<RefCell<OpState>>,
@@ -917,7 +917,7 @@ mod deprecated {
     }
   }
 
-  #[op2(fast)]
+  #[op(fast)]
   pub fn op_kill(
     state: &mut OpState,
     #[smi] pid: i32,

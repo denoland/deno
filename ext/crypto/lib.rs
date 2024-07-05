@@ -10,7 +10,7 @@ use deno_core::error::custom_error;
 use deno_core::error::not_supported;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::ToJsBuffer;
 
 use deno_core::unsync::spawn_blocking;
@@ -120,7 +120,7 @@ deno_core::extension!(deno_crypto,
   },
 );
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_crypto_base64url_decode(
   #[string] data: String,
@@ -129,14 +129,14 @@ pub fn op_crypto_base64url_decode(
   Ok(data.into())
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_crypto_base64url_encode(#[buffer] data: JsBuffer) -> String {
   let data: String = BASE64_URL_SAFE_NO_PAD.encode(data);
   data
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_crypto_get_random_values(
   state: &mut OpState,
   #[buffer] out: &mut [u8],
@@ -192,7 +192,7 @@ pub struct SignArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_crypto_sign_key(
   #[serde] args: SignArg,
@@ -311,7 +311,7 @@ pub struct VerifyArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_crypto_verify_key(
   #[serde] args: VerifyArg,
   #[buffer] zero_copy: JsBuffer,
@@ -435,7 +435,7 @@ pub struct DeriveKeyArg {
   info: Option<JsBuffer>,
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_crypto_derive_bits(
   #[serde] args: DeriveKeyArg,
@@ -608,7 +608,7 @@ fn read_rsa_public_key(key_data: KeyData) -> Result<RsaPublicKey, AnyError> {
   Ok(public_key)
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, AnyError> {
   let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
@@ -625,7 +625,7 @@ pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, AnyError> {
   Ok(uuid.to_string())
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_crypto_subtle_digest(
   #[serde] algorithm: CryptoHash,
@@ -649,7 +649,7 @@ pub struct WrapUnwrapKeyArg {
   algorithm: Algorithm,
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_crypto_wrap_key(
   #[serde] args: WrapUnwrapKeyArg,
@@ -679,7 +679,7 @@ pub fn op_crypto_wrap_key(
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_crypto_unwrap_key(
   #[serde] args: WrapUnwrapKeyArg,

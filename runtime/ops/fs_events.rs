@@ -10,7 +10,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 
-use deno_core::op2;
+use deno_core::op;
 
 use deno_permissions::PermissionsContainer;
 use notify::event::Event as NotifyEvent;
@@ -92,7 +92,7 @@ pub struct OpenArgs {
   paths: Vec<String>,
 }
 
-#[op2]
+#[op]
 #[smi]
 fn op_fs_events_open(
   state: &mut OpState,
@@ -131,7 +131,7 @@ fn op_fs_events_open(
   Ok(rid)
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 async fn op_fs_events_poll(
   state: Rc<RefCell<OpState>>,

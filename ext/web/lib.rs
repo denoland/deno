@@ -9,7 +9,7 @@ mod timers;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ByteString;
@@ -129,7 +129,7 @@ deno_core::extension!(deno_web,
   }
 );
 
-#[op2]
+#[op]
 #[serde]
 fn op_base64_decode(#[string] input: String) -> Result<ToJsBuffer, AnyError> {
   let mut s = input.into_bytes();
@@ -138,7 +138,7 @@ fn op_base64_decode(#[string] input: String) -> Result<ToJsBuffer, AnyError> {
   Ok(s.into())
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_base64_atob(#[serde] mut s: ByteString) -> Result<ByteString, AnyError> {
   let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
@@ -158,13 +158,13 @@ fn forgiving_base64_decode_inplace(
   Ok(decoded.len())
 }
 
-#[op2]
+#[op]
 #[string]
 fn op_base64_encode(#[buffer] s: &[u8]) -> String {
   forgiving_base64_encode(s)
 }
 
-#[op2]
+#[op]
 #[string]
 fn op_base64_btoa(#[serde] s: ByteString) -> String {
   forgiving_base64_encode(s.as_ref())
@@ -176,7 +176,7 @@ fn forgiving_base64_encode(s: &[u8]) -> String {
   base64_simd::STANDARD.encode_to_string(s)
 }
 
-#[op2]
+#[op]
 #[string]
 fn op_encoding_normalize_label(
   #[string] label: String,
@@ -190,7 +190,7 @@ fn op_encoding_normalize_label(
   Ok(encoding.name().to_lowercase())
 }
 
-#[op2]
+#[op]
 fn op_encoding_decode_utf8<'a>(
   scope: &mut v8::HandleScope<'a>,
   #[anybuffer] zero_copy: &[u8],
@@ -223,7 +223,7 @@ fn op_encoding_decode_utf8<'a>(
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_encoding_decode_single(
   #[anybuffer] data: &[u8],
@@ -277,7 +277,7 @@ fn op_encoding_decode_single(
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 fn op_encoding_new_decoder(
   state: &mut OpState,
@@ -305,7 +305,7 @@ fn op_encoding_new_decoder(
   Ok(rid)
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_encoding_decode(
   state: &mut OpState,
@@ -363,7 +363,7 @@ impl Resource for TextDecoderResource {
   }
 }
 
-#[op2(fast(op_encoding_encode_into_fast))]
+#[op(fast(op_encoding_encode_into_fast))]
 fn op_encoding_encode_into(
   scope: &mut v8::HandleScope,
   input: v8::Local<v8::Value>,
@@ -384,7 +384,7 @@ fn op_encoding_encode_into(
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_encoding_encode_into_fast(
   #[string] input: Cow<'_, str>,
   #[buffer] buffer: &mut [u8],

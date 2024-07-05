@@ -3,7 +3,7 @@
 #![warn(unsafe_op_in_unsafe_fn)]
 
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -395,7 +395,7 @@ pub struct GpuDeviceRes {
   is_software: bool,
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_request_adapter(
   state: Rc<RefCell<OpState>>,
@@ -662,7 +662,7 @@ impl From<GpuRequiredFeatures> for wgpu_types::Features {
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_request_device(
   state: Rc<RefCell<OpState>>,
@@ -726,7 +726,7 @@ pub struct GPUAdapterInfo {
   description: String,
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_request_adapter_info(
   state: Rc<RefCell<OpState>>,
@@ -775,7 +775,7 @@ impl From<GpuQueryType> for wgpu_types::QueryType {
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_create_query_set(
   state: &mut OpState,

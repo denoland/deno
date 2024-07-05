@@ -4,7 +4,7 @@ mod urlpattern;
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
@@ -32,7 +32,7 @@ deno_core::extension!(
 );
 
 /// Parse `href` with a `base_href`. Fills the out `buf` with URL components.
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_url_parse_with_base(
   state: &mut OpState,
@@ -56,14 +56,14 @@ pub enum ParseStatus {
 
 struct UrlSerialization(String);
 
-#[op2]
+#[op]
 #[string]
 pub fn op_url_get_serialization(state: &mut OpState) -> String {
   state.take::<UrlSerialization>().0
 }
 
 /// Parse `href` without a `base_url`. Fills the out `buf` with URL components.
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_url_parse(
   state: &mut OpState,
@@ -144,7 +144,7 @@ pub enum UrlSetter {
 
 const NO_PORT: u32 = 65536;
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_url_reparse(
   state: &mut OpState,
@@ -213,7 +213,7 @@ pub fn op_url_reparse(
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_url_parse_search_params(
   #[string] args: Option<String>,
@@ -233,7 +233,7 @@ pub fn op_url_parse_search_params(
   Ok(params)
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_url_stringify_search_params(
   #[serde] args: Vec<(String, String)>,

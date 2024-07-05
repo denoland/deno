@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -19,7 +19,7 @@ impl Resource for WebGpuComputePass {
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_compute_pass_set_pipeline(
   state: &mut OpState,
@@ -42,7 +42,7 @@ pub fn op_webgpu_compute_pass_set_pipeline(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_compute_pass_dispatch_workgroups(
   state: &mut OpState,
@@ -65,7 +65,7 @@ pub fn op_webgpu_compute_pass_dispatch_workgroups(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_compute_pass_dispatch_workgroups_indirect(
   state: &mut OpState,
@@ -89,7 +89,7 @@ pub fn op_webgpu_compute_pass_dispatch_workgroups_indirect(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_compute_pass_end(
   state: &mut OpState,
@@ -114,7 +114,7 @@ pub fn op_webgpu_compute_pass_end(
   ))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_compute_pass_set_bind_group(
   state: &mut OpState,
@@ -152,7 +152,7 @@ pub fn op_webgpu_compute_pass_set_bind_group(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_compute_pass_push_debug_group(
   state: &mut OpState,
@@ -172,7 +172,7 @@ pub fn op_webgpu_compute_pass_push_debug_group(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_compute_pass_pop_debug_group(
   state: &mut OpState,
@@ -189,7 +189,7 @@ pub fn op_webgpu_compute_pass_pop_debug_group(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_compute_pass_insert_debug_marker(
   state: &mut OpState,

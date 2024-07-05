@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_permissions::PermissionsContainer;
@@ -15,7 +15,7 @@ deno_core::extension!(
   },
 );
 
-#[op2]
+#[op]
 #[string]
 fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
   let main_url = state.borrow::<ModuleSpecifier>();
@@ -31,7 +31,7 @@ fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
 
 /// This is an op instead of being done at initialization time because
 /// it's expensive to retrieve the ppid on Windows.
-#[op2(fast)]
+#[op(fast)]
 #[number]
 pub fn op_ppid() -> i64 {
   #[cfg(windows)]

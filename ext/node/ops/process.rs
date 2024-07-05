@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use deno_permissions::PermissionsContainer;
 
@@ -46,7 +46,7 @@ fn kill(pid: i32, _sig: i32) -> i32 {
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_process_kill(
   state: &mut OpState,
   #[smi] pid: i32,
@@ -58,7 +58,7 @@ pub fn op_node_process_kill(
   Ok(kill(pid, sig))
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_process_abort() {
   std::process::abort();
 }

@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -581,7 +581,7 @@ pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
 }
 
 #[cfg(unix)]
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 fn op_signal_bind(
   state: &mut OpState,
@@ -620,7 +620,7 @@ fn op_signal_bind(
 }
 
 #[cfg(windows)]
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 fn op_signal_bind(
   state: &mut OpState,
@@ -645,7 +645,7 @@ fn op_signal_bind(
   Ok(rid)
 }
 
-#[op2(async)]
+#[op(async)]
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -664,7 +664,7 @@ async fn op_signal_poll(
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_signal_unbind(
   state: &mut OpState,
   #[smi] rid: ResourceId,

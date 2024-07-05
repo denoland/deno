@@ -12,7 +12,7 @@ use crate::tools::test::TestStepResult;
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -47,7 +47,7 @@ deno_core::extension!(deno_test,
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
@@ -74,7 +74,7 @@ pub fn op_pledge_test_permissions(
   Ok(token)
 }
 
-#[op2]
+#[op]
 pub fn op_restore_test_permissions(
   state: &mut OpState,
   #[serde] token: Uuid,
@@ -96,7 +96,7 @@ pub fn op_restore_test_permissions(
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[allow(clippy::too_many_arguments)]
-#[op2]
+#[op]
 fn op_register_test(
   state: &mut OpState,
   #[global] function: v8::Global<v8::Function>,
@@ -138,13 +138,13 @@ fn op_register_test(
   Ok(())
 }
 
-#[op2]
+#[op]
 #[string]
 fn op_test_get_origin(state: &mut OpState) -> String {
   state.borrow::<ModuleSpecifier>().to_string()
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 #[allow(clippy::too_many_arguments)]
 fn op_register_test_step(
@@ -179,13 +179,13 @@ fn op_register_test_step(
   Ok(id)
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_test_event_step_wait(state: &mut OpState, #[smi] id: usize) {
   let sender = state.borrow_mut::<TestEventSender>();
   sender.send(TestEvent::StepWait(id)).ok();
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_test_event_step_result_ok(
   state: &mut OpState,
   #[smi] id: usize,
@@ -197,7 +197,7 @@ fn op_test_event_step_result_ok(
     .ok();
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_test_event_step_result_ignored(
   state: &mut OpState,
   #[smi] id: usize,
@@ -209,7 +209,7 @@ fn op_test_event_step_result_ignored(
     .ok();
 }
 
-#[op2]
+#[op]
 fn op_test_event_step_result_failed(
   state: &mut OpState,
   #[smi] id: usize,

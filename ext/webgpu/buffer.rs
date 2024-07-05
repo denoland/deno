@@ -2,7 +2,7 @@
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -37,7 +37,7 @@ impl Resource for WebGpuBufferMapped {
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_create_buffer(
   state: &mut OpState,
@@ -68,7 +68,7 @@ pub fn op_webgpu_create_buffer(
   ) => state, WebGpuBuffer)
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_webgpu_buffer_get_map_async(
   state: Rc<RefCell<OpState>>,
@@ -135,7 +135,7 @@ pub async fn op_webgpu_buffer_get_map_async(
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_buffer_get_mapped_range(
   state: &mut OpState,
@@ -169,7 +169,7 @@ pub fn op_webgpu_buffer_get_mapped_range(
   Ok(WebGpuResult::rid(rid))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_buffer_unmap(
   state: &mut OpState,

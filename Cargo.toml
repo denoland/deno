@@ -376,3 +376,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
+
+[patch.crates-io]
+deno_core = { git = "https://github.com/littledivy/deno_core", branch = "rename_op2_to_op" }

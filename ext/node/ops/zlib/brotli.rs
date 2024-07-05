@@ -11,7 +11,7 @@ use brotli::BrotliState;
 use brotli::Decompressor;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -32,7 +32,7 @@ fn encoder_mode(mode: u32) -> Result<BrotliEncoderMode, AnyError> {
   })
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[number]
 pub fn op_brotli_compress(
   #[buffer] buffer: &[u8],
@@ -80,7 +80,7 @@ fn max_compressed_size(input_size: usize) -> usize {
   }
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_brotli_compress_async(
   #[buffer] input: JsBuffer,
@@ -122,7 +122,7 @@ struct BrotliCompressCtx {
 
 impl Resource for BrotliCompressCtx {}
 
-#[op2]
+#[op]
 #[smi]
 pub fn op_create_brotli_compress(
   state: &mut OpState,
@@ -144,7 +144,7 @@ fn encoder_param(param: u8) -> BrotliEncoderParameter {
   unsafe { std::mem::transmute(param as u32) }
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[number]
 pub fn op_brotli_compress_stream(
   state: &mut OpState,
@@ -174,7 +174,7 @@ pub fn op_brotli_compress_stream(
   Ok(output_offset)
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[number]
 pub fn op_brotli_compress_stream_end(
   state: &mut OpState,
@@ -210,7 +210,7 @@ fn brotli_decompress(buffer: &[u8]) -> Result<ToJsBuffer, AnyError> {
   Ok(output.into())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_brotli_decompress(
   #[buffer] buffer: &[u8],
@@ -218,7 +218,7 @@ pub fn op_brotli_decompress(
   brotli_decompress(buffer)
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_brotli_decompress_async(
   #[buffer] buffer: JsBuffer,
@@ -232,7 +232,7 @@ struct BrotliDecompressCtx {
 
 impl Resource for BrotliDecompressCtx {}
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_create_brotli_decompress(state: &mut OpState) -> u32 {
   let inst = BrotliState::new(
@@ -245,7 +245,7 @@ pub fn op_create_brotli_decompress(state: &mut OpState) -> u32 {
   })
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[number]
 pub fn op_brotli_decompress_stream(
   state: &mut OpState,
@@ -274,7 +274,7 @@ pub fn op_brotli_decompress_stream(
   Ok(output_offset)
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[number]
 pub fn op_brotli_decompress_stream_end(
   state: &mut OpState,

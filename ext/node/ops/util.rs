@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
@@ -18,7 +18,7 @@ enum HandleType {
   Unknown,
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_guess_handle_type(
   state: &mut OpState,
   rid: u32,

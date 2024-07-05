@@ -2,7 +2,7 @@
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -48,7 +48,7 @@ pub struct CreateRenderBundleEncoderArgs {
   stencil_read_only: bool,
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_create_render_bundle_encoder(
   state: &mut OpState,
@@ -94,7 +94,7 @@ pub fn op_webgpu_create_render_bundle_encoder(
   Ok(WebGpuResult::rid_err(rid, maybe_err))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_bundle_encoder_finish(
   state: &mut OpState,
@@ -121,7 +121,7 @@ pub fn op_webgpu_render_bundle_encoder_finish(
   ) => state, WebGpuRenderBundle)
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_bundle_encoder_set_bind_group(
   state: &mut OpState,
@@ -165,7 +165,7 @@ pub fn op_webgpu_render_bundle_encoder_set_bind_group(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_bundle_encoder_push_debug_group(
   state: &mut OpState,
@@ -190,7 +190,7 @@ pub fn op_webgpu_render_bundle_encoder_push_debug_group(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
   state: &mut OpState,
@@ -208,7 +208,7 @@ pub fn op_webgpu_render_bundle_encoder_pop_debug_group(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_bundle_encoder_insert_debug_marker(
   state: &mut OpState,
@@ -233,7 +233,7 @@ pub fn op_webgpu_render_bundle_encoder_insert_debug_marker(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_bundle_encoder_set_pipeline(
   state: &mut OpState,
@@ -257,7 +257,7 @@ pub fn op_webgpu_render_bundle_encoder_set_pipeline(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
   state: &mut OpState,
@@ -287,7 +287,7 @@ pub fn op_webgpu_render_bundle_encoder_set_index_buffer(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
   state: &mut OpState,
@@ -324,7 +324,7 @@ pub fn op_webgpu_render_bundle_encoder_set_vertex_buffer(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_bundle_encoder_draw(
   state: &mut OpState,
@@ -350,7 +350,7 @@ pub fn op_webgpu_render_bundle_encoder_draw(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_bundle_encoder_draw_indexed(
   state: &mut OpState,
@@ -378,7 +378,7 @@ pub fn op_webgpu_render_bundle_encoder_draw_indexed(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_bundle_encoder_draw_indirect(
   state: &mut OpState,

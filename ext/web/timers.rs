@@ -2,7 +2,7 @@
 
 //! This module helps deno implement timers and performance APIs.
 
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use std::time::Instant;
 
@@ -23,7 +23,7 @@ pub type StartTime = Instant;
 // since the start time of the deno runtime.
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
-#[op2(fast)]
+#[op(fast)]
 pub fn op_now<TP>(state: &mut OpState, #[buffer] buf: &mut [u8])
 where
   TP: TimersPermission + 'static,
@@ -51,5 +51,5 @@ where
 }
 
 #[allow(clippy::unused_async)]
-#[op2(async(lazy), fast)]
+#[op(async(lazy), fast)]
 pub async fn op_defer() {}

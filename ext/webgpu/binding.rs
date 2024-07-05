@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -162,7 +162,7 @@ impl From<GpuBindingType> for wgpu_types::BindingType {
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_create_bind_group_layout(
   state: &mut OpState,
@@ -201,7 +201,7 @@ pub fn op_webgpu_create_bind_group_layout(
   ) => state, WebGpuBindGroupLayout)
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_create_pipeline_layout(
   state: &mut OpState,
@@ -247,7 +247,7 @@ pub struct GpuBindGroupEntry {
   size: Option<u64>,
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_create_bind_group(
   state: &mut OpState,

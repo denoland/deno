@@ -8,7 +8,7 @@
 use core::ptr::NonNull;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::url::Url;
 use deno_core::ExternalOpsTracker;
 use deno_core::OpState;
@@ -493,7 +493,7 @@ impl NapiPermissions for deno_permissions::PermissionsContainer {
   }
 }
 
-#[op2(reentrant)]
+#[op(reentrant)]
 fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   op_state: Rc<RefCell<OpState>>,

@@ -2,7 +2,7 @@
 
 use base64::Engine;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
@@ -88,7 +88,7 @@ pub enum ImportKeyResult {
   Hmac { raw_data: RustRawKeyData },
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_crypto_import_key(
   #[serde] opts: ImportKeyOptions,

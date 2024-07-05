@@ -2,7 +2,7 @@
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -39,7 +39,7 @@ impl Resource for CompressionResource {
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_compression_new(
   state: &mut OpState,
@@ -66,7 +66,7 @@ pub fn op_compression_new(
   state.resource_table.add(resource)
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_compression_write(
   state: &mut OpState,
@@ -111,7 +111,7 @@ pub fn op_compression_write(
   Ok(out.into())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_compression_finish(
   state: &mut OpState,

@@ -1,13 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::op2;
+use deno_core::op;
 use deno_core::v8;
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_v8_cached_data_version_tag() -> u32 {
   v8::script_compiler::cached_data_version_tag()
 }
 
-#[op2]
+#[op]
 pub fn op_v8_get_heap_statistics(
   scope: &mut v8::HandleScope,
   #[buffer] buffer: &mut [f64],

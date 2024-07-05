@@ -6,7 +6,7 @@ use std::fmt;
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use rusqlite::params;
 use rusqlite::Connection;
@@ -102,7 +102,7 @@ fn get_webstorage(
   Ok(conn)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_webstorage_length(
   state: &mut OpState,
   persistent: bool,
@@ -115,7 +115,7 @@ pub fn op_webstorage_length(
   Ok(length)
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_webstorage_key(
   state: &mut OpState,
@@ -148,7 +148,7 @@ fn size_check(input: usize) -> Result<(), AnyError> {
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_webstorage_set(
   state: &mut OpState,
   #[string] key: &str,
@@ -172,7 +172,7 @@ pub fn op_webstorage_set(
   Ok(())
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_webstorage_get(
   state: &mut OpState,
@@ -189,7 +189,7 @@ pub fn op_webstorage_get(
   Ok(val)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_webstorage_remove(
   state: &mut OpState,
   #[string] key_name: &str,
@@ -203,7 +203,7 @@ pub fn op_webstorage_remove(
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_webstorage_clear(
   state: &mut OpState,
   persistent: bool,
@@ -216,7 +216,7 @@ pub fn op_webstorage_clear(
   Ok(())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webstorage_iterate_keys(
   state: &mut OpState,

@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::op2;
+use deno_core::op;
 use deno_core::v8;
 use std::path::PathBuf;
 
@@ -13,7 +13,7 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_console.d.ts")
 }
 
-#[op2]
+#[op]
 pub fn op_preview_entries<'s>(
   scope: &mut v8::HandleScope<'s>,
   object: &v8::Object,

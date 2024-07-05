@@ -11,7 +11,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::JsBuffer;
@@ -76,7 +76,7 @@ fn map_permission_error(
   }
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_fs_cwd<P>(state: &mut OpState) -> Result<String, AnyError>
 where
@@ -91,7 +91,7 @@ where
   Ok(path_str)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_chdir<P>(
   state: &mut OpState,
   #[string] directory: &str,
@@ -107,7 +107,7 @@ where
     .context_path("chdir", &d)
 }
 
-#[op2]
+#[op]
 pub fn op_fs_umask(
   state: &mut OpState,
   mask: Option<u32>,
@@ -118,7 +118,7 @@ where
   state.borrow::<FileSystemRc>().umask(mask).context("umask")
 }
 
-#[op2]
+#[op]
 #[smi]
 pub fn op_fs_open_sync<P>(
   state: &mut OpState,
@@ -145,7 +145,7 @@ where
   Ok(rid)
 }
 
-#[op2(async)]
+#[op(async)]
 #[smi]
 pub async fn op_fs_open_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -173,7 +173,7 @@ where
   Ok(rid)
 }
 
-#[op2]
+#[op]
 pub fn op_fs_mkdir_sync<P>(
   state: &mut OpState,
   #[string] path: String,
@@ -198,7 +198,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_mkdir_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -225,7 +225,7 @@ where
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_chmod_sync<P>(
   state: &mut OpState,
   #[string] path: String,
@@ -243,7 +243,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_chmod_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -264,7 +264,7 @@ where
   Ok(())
 }
 
-#[op2]
+#[op]
 pub fn op_fs_chown_sync<P>(
   state: &mut OpState,
   #[string] path: String,
@@ -284,7 +284,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_chown_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -306,7 +306,7 @@ where
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_remove_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
@@ -328,7 +328,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_remove_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -361,7 +361,7 @@ where
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_copy_file_sync<P>(
   state: &mut OpState,
   #[string] from: &str,
@@ -384,7 +384,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_copy_file_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] from: String,
@@ -411,7 +411,7 @@ where
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_stat_sync<P>(
   state: &mut OpState,
   #[string] path: String,
@@ -431,7 +431,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_fs_stat_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -454,7 +454,7 @@ where
   Ok(SerializableStat::from(stat))
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_lstat_sync<P>(
   state: &mut OpState,
   #[string] path: String,
@@ -474,7 +474,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_fs_lstat_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -497,7 +497,7 @@ where
   Ok(SerializableStat::from(stat))
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_fs_realpath_sync<P>(
   state: &mut OpState,
@@ -522,7 +522,7 @@ where
   Ok(path_string)
 }
 
-#[op2(async)]
+#[op(async)]
 #[string]
 pub async fn op_fs_realpath_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -552,7 +552,7 @@ where
   Ok(path_string)
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_fs_read_dir_sync<P>(
   state: &mut OpState,
@@ -573,7 +573,7 @@ where
   Ok(entries)
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_fs_read_dir_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -600,7 +600,7 @@ where
   Ok(entries)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_rename_sync<P>(
   state: &mut OpState,
   #[string] oldpath: String,
@@ -624,7 +624,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_rename_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] oldpath: String,
@@ -652,7 +652,7 @@ where
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_link_sync<P>(
   state: &mut OpState,
   #[string] oldpath: &str,
@@ -677,7 +677,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_link_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] oldpath: String,
@@ -706,7 +706,7 @@ where
   Ok(())
 }
 
-#[op2]
+#[op]
 pub fn op_fs_symlink_sync<P>(
   state: &mut OpState,
   #[string] oldpath: &str,
@@ -730,7 +730,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_symlink_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] oldpath: String,
@@ -758,7 +758,7 @@ where
   Ok(())
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_fs_read_link_sync<P>(
   state: &mut OpState,
@@ -780,7 +780,7 @@ where
   Ok(target_string)
 }
 
-#[op2(async)]
+#[op(async)]
 #[string]
 pub async fn op_fs_read_link_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -807,7 +807,7 @@ where
   Ok(target_string)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_truncate_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
@@ -829,7 +829,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_truncate_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -855,7 +855,7 @@ where
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_utime_sync<P>(
   state: &mut OpState,
   #[string] path: &str,
@@ -878,7 +878,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_utime_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -911,7 +911,7 @@ where
   Ok(())
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_fs_make_temp_dir_sync<P>(
   state: &mut OpState,
@@ -946,7 +946,7 @@ where
   .context("tmpdir")
 }
 
-#[op2(async)]
+#[op(async)]
 #[string]
 pub async fn op_fs_make_temp_dir_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -980,7 +980,7 @@ where
   .context("tmpdir")
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_fs_make_temp_file_sync<P>(
   state: &mut OpState,
@@ -1021,7 +1021,7 @@ where
   .context("tmpfile")
 }
 
-#[op2(async)]
+#[op(async)]
 #[string]
 pub async fn op_fs_make_temp_file_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -1175,7 +1175,7 @@ fn tmp_name(
   Ok(path)
 }
 
-#[op2]
+#[op]
 pub fn op_fs_write_file_sync<P>(
   state: &mut OpState,
   #[string] path: String,
@@ -1201,7 +1201,7 @@ where
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 #[allow(clippy::too_many_arguments)]
 pub async fn op_fs_write_file_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -1255,7 +1255,7 @@ where
   Ok(())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_fs_read_file_sync<P>(
   state: &mut OpState,
@@ -1276,7 +1276,7 @@ where
   Ok(buf.into())
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_fs_read_file_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -1318,7 +1318,7 @@ where
   Ok(buf.into())
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_fs_read_file_text_sync<P>(
   state: &mut OpState,
@@ -1339,7 +1339,7 @@ where
   Ok(str)
 }
 
-#[op2(async)]
+#[op(async)]
 #[string]
 pub async fn op_fs_read_file_text_async<P>(
   state: Rc<RefCell<OpState>>,
@@ -1394,7 +1394,7 @@ fn to_seek_from(offset: i64, whence: i32) -> Result<SeekFrom, AnyError> {
   Ok(seek_from)
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[number]
 pub fn op_fs_seek_sync(
   state: &mut OpState,
@@ -1408,7 +1408,7 @@ pub fn op_fs_seek_sync(
   Ok(cursor)
 }
 
-#[op2(async)]
+#[op(async)]
 #[number]
 pub async fn op_fs_seek_async(
   state: Rc<RefCell<OpState>>,
@@ -1422,7 +1422,7 @@ pub async fn op_fs_seek_async(
   Ok(cursor)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_fdatasync_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1432,7 +1432,7 @@ pub fn op_fs_fdatasync_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_fdatasync_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1442,7 +1442,7 @@ pub async fn op_fs_fdatasync_async(
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_fsync_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1452,7 +1452,7 @@ pub fn op_fs_fsync_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_fsync_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1462,7 +1462,7 @@ pub async fn op_fs_fsync_async(
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_file_stat_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1475,7 +1475,7 @@ pub fn op_fs_file_stat_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_fs_file_stat_async(
   state: Rc<RefCell<OpState>>,
@@ -1486,7 +1486,7 @@ pub async fn op_fs_file_stat_async(
   Ok(stat.into())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_flock_sync_unstable(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1498,7 +1498,7 @@ pub fn op_fs_flock_sync_unstable(
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_flock_async_unstable(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1510,7 +1510,7 @@ pub async fn op_fs_flock_async_unstable(
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_funlock_sync_unstable(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1521,7 +1521,7 @@ pub fn op_fs_funlock_sync_unstable(
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_funlock_async_unstable(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1532,7 +1532,7 @@ pub async fn op_fs_funlock_async_unstable(
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_flock_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1543,7 +1543,7 @@ pub fn op_fs_flock_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_flock_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1554,7 +1554,7 @@ pub async fn op_fs_flock_async(
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_funlock_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1564,7 +1564,7 @@ pub fn op_fs_funlock_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_funlock_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1574,7 +1574,7 @@ pub async fn op_fs_funlock_async(
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_ftruncate_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1585,7 +1585,7 @@ pub fn op_fs_ftruncate_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_ftruncate_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1596,7 +1596,7 @@ pub async fn op_fs_ftruncate_async(
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_fs_futime_sync(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -1610,7 +1610,7 @@ pub fn op_fs_futime_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_fs_futime_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

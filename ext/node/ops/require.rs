@@ -4,7 +4,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::normalize_path;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::url::Url;
 use deno_core::JsRuntimeInspector;
 use deno_core::ModuleSpecifier;
@@ -35,7 +35,7 @@ where
   resolver.ensure_read_permission(permissions, file_path)
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_require_init_paths() -> Vec<String> {
   // todo(dsherret): this code is node compat mode specific and
@@ -86,7 +86,7 @@ pub fn op_require_init_paths() -> Vec<String> {
   vec![]
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_require_node_module_paths<P>(
   state: &mut OpState,
@@ -142,7 +142,7 @@ where
   Ok(paths)
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_require_proxy_path(#[string] filename: String) -> String {
   // Allow a directory to be passed as the filename
@@ -163,7 +163,7 @@ pub fn op_require_proxy_path(#[string] filename: String) -> String {
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_require_is_request_relative(#[string] request: String) -> bool {
   if request.starts_with("./") || request.starts_with("../") || request == ".."
   {
@@ -183,7 +183,7 @@ pub fn op_require_is_request_relative(#[string] request: String) -> bool {
   false
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_require_resolve_deno_dir(
   state: &mut OpState,
@@ -202,7 +202,7 @@ pub fn op_require_resolve_deno_dir(
     .map(|p| p.to_string_lossy().to_string())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_require_is_deno_dir_package(
   state: &mut OpState,
   #[string] path: String,
@@ -211,7 +211,7 @@ pub fn op_require_is_deno_dir_package(
   resolver.in_npm_package_at_file_path(&PathBuf::from(path))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_require_resolve_lookup_paths(
   #[string] request: String,
@@ -253,12 +253,12 @@ pub fn op_require_resolve_lookup_paths(
   Some(vec![p.parent().unwrap().to_string_lossy().to_string()])
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_require_path_is_absolute(#[string] p: String) -> bool {
   PathBuf::from(p).is_absolute()
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_require_stat<P>(
   state: &mut OpState,
   #[string] path: String,
@@ -280,7 +280,7 @@ where
   Ok(-1)
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_require_real_path<P>(
   state: &mut OpState,
@@ -308,13 +308,13 @@ fn path_resolve(parts: Vec<String>) -> String {
   normalize_path(p).to_string_lossy().to_string()
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_require_path_resolve(#[serde] parts: Vec<String>) -> String {
   path_resolve(parts)
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_require_path_dirname(
   #[string] request: String,
@@ -327,7 +327,7 @@ pub fn op_require_path_dirname(
   }
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_require_path_basename(
   #[string] request: String,
@@ -340,7 +340,7 @@ pub fn op_require_path_basename(
   }
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_require_try_self_parent_path<P>(
   state: &mut OpState,
@@ -371,7 +371,7 @@ where
   Ok(None)
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_require_try_self<P>(
   state: &mut OpState,
@@ -436,7 +436,7 @@ where
   }
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_require_read_file<P>(
   state: &mut OpState,
@@ -451,7 +451,7 @@ where
   Ok(fs.read_text_file_lossy_sync(&file_path, None)?)
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_require_as_file_path(#[string] file_or_url: String) -> String {
   if let Ok(url) = Url::parse(&file_or_url) {
@@ -463,7 +463,7 @@ pub fn op_require_as_file_path(#[string] file_or_url: String) -> String {
   file_or_url
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_require_resolve_exports<P>(
   state: &mut OpState,
@@ -521,7 +521,7 @@ where
   }))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_require_read_closest_package_json<P>(
   state: &mut OpState,
@@ -540,7 +540,7 @@ where
     .map(|maybe_pkg| maybe_pkg.map(|pkg| (*pkg).clone()))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_require_read_package_scope<P>(
   state: &mut OpState,
@@ -562,7 +562,7 @@ where
     .map(|pkg| (*pkg).clone())
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_require_package_imports_resolve<P>(
   state: &mut OpState,
@@ -598,7 +598,7 @@ where
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_require_break_on_next_statement(state: &mut OpState) {
   let inspector = state.borrow::<Rc<RefCell<JsRuntimeInspector>>>();
   inspector

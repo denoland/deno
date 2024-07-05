@@ -2,7 +2,7 @@
 
 use super::WebGpuResult;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -36,7 +36,7 @@ pub struct SurfaceConfigureArgs {
   view_formats: Vec<wgpu_types::TextureFormat>,
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_surface_configure(
   state: &mut OpState,
@@ -69,7 +69,7 @@ pub fn op_webgpu_surface_configure(
   Ok(WebGpuResult::maybe_err(err))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_surface_get_current_texture(
   state: &mut OpState,
@@ -102,7 +102,7 @@ pub fn op_webgpu_surface_get_current_texture(
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_webgpu_surface_present(
   state: &mut OpState,
   #[smi] device_rid: ResourceId,

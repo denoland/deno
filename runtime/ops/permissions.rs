@@ -6,7 +6,7 @@ use ::deno_permissions::PermissionsContainer;
 use deno_core::error::custom_error;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::url;
 use deno_core::OpState;
 use serde::Deserialize;
@@ -51,7 +51,7 @@ impl From<PermissionState> for PermissionStatus {
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_query_permission(
   state: &mut OpState,
@@ -86,7 +86,7 @@ pub fn op_query_permission(
   Ok(PermissionStatus::from(perm))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_revoke_permission(
   state: &mut OpState,
@@ -121,7 +121,7 @@ pub fn op_revoke_permission(
   Ok(PermissionStatus::from(perm))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_request_permission(
   state: &mut OpState,

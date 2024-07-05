@@ -24,9 +24,9 @@
 // - https://github.com/libuv/libuv/blob/master/src/win/error.c
 #![allow(unused)]
 
-use deno_core::op2;
+use deno_core::op;
 
-#[op2]
+#[op]
 #[string]
 pub fn op_node_sys_to_uv_error(err: i32) -> String {
   let uv_err = match err {

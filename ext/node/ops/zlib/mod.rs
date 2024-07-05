@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use zlib::*;
@@ -241,7 +241,7 @@ impl deno_core::Resource for Zlib {
   }
 }
 
-#[op2]
+#[op]
 #[cppgc]
 pub fn op_zlib_new(#[smi] mode: i32) -> Result<Zlib, AnyError> {
   let mode = Mode::try_from(mode)?;
@@ -256,7 +256,7 @@ pub fn op_zlib_new(#[smi] mode: i32) -> Result<Zlib, AnyError> {
   })
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_zlib_close(#[cppgc] resource: &Zlib) -> Result<(), AnyError> {
   let mut resource = resource.inner.borrow_mut();
   let zlib = resource
@@ -270,7 +270,7 @@ pub fn op_zlib_close(#[cppgc] resource: &Zlib) -> Result<(), AnyError> {
 }
 
 #[allow(clippy::too_many_arguments)]
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_zlib_write(
   #[cppgc] resource: &Zlib,
@@ -298,7 +298,7 @@ pub fn op_zlib_write(
   Ok(zlib.err)
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_zlib_init(
   #[cppgc] resource: &Zlib,
@@ -346,7 +346,7 @@ pub fn op_zlib_init(
   Ok(zlib.err)
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_zlib_reset(#[cppgc] resource: &Zlib) -> Result<i32, AnyError> {
   let mut zlib = resource.inner.borrow_mut();
@@ -359,7 +359,7 @@ pub fn op_zlib_reset(#[cppgc] resource: &Zlib) -> Result<i32, AnyError> {
   Ok(zlib.err)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_zlib_close_if_pending(
   #[cppgc] resource: &Zlib,
 ) -> Result<(), AnyError> {

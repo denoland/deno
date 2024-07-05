@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -116,7 +116,7 @@ impl Resource for MessagePortResource {
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_message_port_create_entangled(
   state: &mut OpState,
@@ -197,7 +197,7 @@ pub struct JsMessageData {
   pub transferables: Vec<JsTransferable>,
 }
 
-#[op2]
+#[op]
 pub fn op_message_port_post_message(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -215,7 +215,7 @@ pub fn op_message_port_post_message(
   resource.port.send(state, data)
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_message_port_recv_message(
   state: Rc<RefCell<OpState>>,
@@ -232,7 +232,7 @@ pub async fn op_message_port_recv_message(
   resource.port.recv(state).or_cancel(cancel).await?
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_message_port_recv_message_sync(
   state: &mut OpState, // Rc<RefCell<OpState>>,

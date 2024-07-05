@@ -3,7 +3,7 @@
 use curve25519_dalek::montgomery::MontgomeryPoint;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use elliptic_curve::subtle::ConstantTimeEq;
@@ -13,7 +13,7 @@ use spki::der::asn1::BitString;
 use spki::der::Decode;
 use spki::der::Encode;
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_crypto_generate_x25519_keypair(
   #[buffer] pkey: &mut [u8],
   #[buffer] pubkey: &mut [u8],
@@ -36,7 +36,7 @@ pub fn op_crypto_generate_x25519_keypair(
 
 const MONTGOMERY_IDENTITY: MontgomeryPoint = MontgomeryPoint([0; 32]);
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_crypto_derive_bits_x25519(
   #[buffer] k: &[u8],
   #[buffer] u: &[u8],
@@ -57,7 +57,7 @@ pub fn op_crypto_derive_bits_x25519(
 pub const X25519_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.110");
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_crypto_import_spki_x25519(
   #[buffer] key_data: &[u8],
   #[buffer] out: &mut [u8],
@@ -80,7 +80,7 @@ pub fn op_crypto_import_spki_x25519(
   true
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_crypto_import_pkcs8_x25519(
   #[buffer] key_data: &[u8],
   #[buffer] out: &mut [u8],
@@ -109,7 +109,7 @@ pub fn op_crypto_import_pkcs8_x25519(
   true
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_crypto_export_spki_x25519(
   #[buffer] pubkey: &[u8],
@@ -132,7 +132,7 @@ pub fn op_crypto_export_spki_x25519(
   )
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_crypto_export_pkcs8_x25519(
   #[buffer] pkey: &[u8],

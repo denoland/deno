@@ -2,7 +2,7 @@
 
 use deno_core::anyhow::Error;
 use deno_core::error::range_error;
-use deno_core::op2;
+use deno_core::op;
 
 use std::borrow::Cow;
 
@@ -91,7 +91,7 @@ fn to_unicode(input: &str) -> Result<String, Error> {
 
 /// Converts a domain to unicode with behavior that is
 /// compatible with the `punycode` module in node.js
-#[op2]
+#[op]
 #[string]
 pub fn op_node_idna_punycode_to_ascii(
   #[string] domain: String,
@@ -101,7 +101,7 @@ pub fn op_node_idna_punycode_to_ascii(
 
 /// Converts a domain to ASCII with behavior that is
 /// compatible with the `punycode` module in node.js
-#[op2]
+#[op]
 #[string]
 pub fn op_node_idna_punycode_to_unicode(
   #[string] domain: String,
@@ -111,7 +111,7 @@ pub fn op_node_idna_punycode_to_unicode(
 
 /// Converts a domain to ASCII as per the IDNA spec
 /// (specifically UTS #46)
-#[op2]
+#[op]
 #[string]
 pub fn op_node_idna_domain_to_ascii(
   #[string] domain: String,
@@ -121,13 +121,13 @@ pub fn op_node_idna_domain_to_ascii(
 
 /// Converts a domain to Unicode as per the IDNA spec
 /// (specifically UTS #46)
-#[op2]
+#[op]
 #[string]
 pub fn op_node_idna_domain_to_unicode(#[string] domain: String) -> String {
   idna::domain_to_unicode(&domain).0
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_node_idna_punycode_decode(
   #[string] domain: String,
@@ -154,7 +154,7 @@ pub fn op_node_idna_punycode_decode(
     .ok_or_else(|| deno_core::error::range_error("Invalid input"))
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_node_idna_punycode_encode(#[string] domain: String) -> String {
   idna::punycode::encode_str(&domain).unwrap_or_default()

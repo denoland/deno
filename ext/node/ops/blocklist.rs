@@ -10,7 +10,7 @@ use std::net::SocketAddr;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 
 use ipnetwork::IpNetwork;
@@ -27,7 +27,7 @@ impl deno_core::GarbageCollected for BlockListResource {}
 #[derive(Serialize)]
 struct SocketAddressSerialization(String, String);
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_socket_address_parse(
   state: &mut OpState,
   #[string] addr: &str,
@@ -56,7 +56,7 @@ pub fn op_socket_address_parse(
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_socket_address_get_serialization(
   state: &mut OpState,
@@ -64,7 +64,7 @@ pub fn op_socket_address_get_serialization(
   Ok(state.take::<SocketAddressSerialization>())
 }
 
-#[op2]
+#[op]
 #[cppgc]
 pub fn op_blocklist_new() -> BlockListResource {
   let blocklist = BlockList::new();
@@ -73,7 +73,7 @@ pub fn op_blocklist_new() -> BlockListResource {
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_blocklist_add_address(
   #[cppgc] wrap: &BlockListResource,
   #[string] addr: &str,
@@ -81,7 +81,7 @@ pub fn op_blocklist_add_address(
   wrap.blocklist.borrow_mut().add_address(addr)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_blocklist_add_range(
   #[cppgc] wrap: &BlockListResource,
   #[string] start: &str,
@@ -90,7 +90,7 @@ pub fn op_blocklist_add_range(
   wrap.blocklist.borrow_mut().add_range(start, end)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_blocklist_add_subnet(
   #[cppgc] wrap: &BlockListResource,
   #[string] addr: &str,
@@ -99,7 +99,7 @@ pub fn op_blocklist_add_subnet(
   wrap.blocklist.borrow_mut().add_subnet(addr, prefix)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_blocklist_check(
   #[cppgc] wrap: &BlockListResource,
   #[string] addr: &str,

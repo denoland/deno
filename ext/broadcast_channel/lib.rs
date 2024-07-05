@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -42,7 +42,7 @@ pub trait BroadcastChannel: Clone {
 
 pub type Message = (String, Vec<u8>);
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_broadcast_subscribe<BC>(
   state: &mut OpState,
@@ -61,7 +61,7 @@ where
   Ok(state.resource_table.add(resource))
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_broadcast_unsubscribe<BC>(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -74,7 +74,7 @@ where
   bc.unsubscribe(&resource)
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_broadcast_send<BC>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -89,7 +89,7 @@ where
   bc.send(&resource, name, buf.to_vec()).await
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_broadcast_recv<BC>(
   state: Rc<RefCell<OpState>>,

@@ -6,7 +6,7 @@ use deno_core::error::invalid_hostname;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::unsync::spawn;
 use deno_core::url;
 use deno_core::AsyncMutFuture;
@@ -130,7 +130,7 @@ impl Resource for WsCancelResource {
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
-#[op2]
+#[op]
 #[smi]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
@@ -392,7 +392,7 @@ fn populate_common_request_headers(
   Ok(request)
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
@@ -576,7 +576,7 @@ fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   });
 }
 
-#[op2]
+#[op]
 pub fn op_ws_send_binary(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -585,7 +585,7 @@ pub fn op_ws_send_binary(
   send_binary(state, rid, data)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ws_send_binary_ab(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -594,7 +594,7 @@ pub fn op_ws_send_binary_ab(
   send_binary(state, rid, data)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_ws_send_text(
   state: &mut OpState,
   #[smi] rid: ResourceId,
@@ -620,7 +620,7 @@ pub fn op_ws_send_text(
 }
 
 /// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
-#[op2(async)]
+#[op(async)]
 pub async fn op_ws_send_binary_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -638,7 +638,7 @@ pub async fn op_ws_send_binary_async(
 }
 
 /// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
-#[op2(async)]
+#[op(async)]
 pub async fn op_ws_send_text_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -659,7 +659,7 @@ pub async fn op_ws_send_text_async(
 
 const EMPTY_PAYLOAD: &[u8] = &[];
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_ws_get_buffered_amount(
   state: &mut OpState,
@@ -673,7 +673,7 @@ pub fn op_ws_get_buffered_amount(
     .get() as u32
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_ws_send_ping(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -691,7 +691,7 @@ pub async fn op_ws_send_ping(
     .await
 }
 
-#[op2(async(lazy))]
+#[op(async(lazy))]
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -716,7 +716,7 @@ pub async fn op_ws_close(
   Ok(())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_ws_get_buffer(
   state: &mut OpState,
@@ -728,7 +728,7 @@ pub fn op_ws_get_buffer(
   resource.buffer.take().map(ToJsBuffer::from)
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_ws_get_buffer_as_string(
   state: &mut OpState,
@@ -740,7 +740,7 @@ pub fn op_ws_get_buffer_as_string(
   resource.string.take()
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_ws_get_error(state: &mut OpState, #[smi] rid: ResourceId) -> String {
   let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
@@ -750,7 +750,7 @@ pub fn op_ws_get_error(state: &mut OpState, #[smi] rid: ResourceId) -> String {
   resource.error.take().unwrap_or_default()
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

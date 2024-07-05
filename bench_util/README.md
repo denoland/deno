@@ -10,7 +10,7 @@ use deno_bench_util::bencher::Bencher;
 
 use deno_core::Extension;
 
-#[op2]
+#[op]
 #[number]
 fn op_nop() -> usize {
   9

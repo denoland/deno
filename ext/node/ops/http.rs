@@ -2,7 +2,7 @@
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::url::Url;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -22,7 +22,7 @@ use reqwest::header::CONTENT_LENGTH;
 use reqwest::Body;
 use reqwest::Method;
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_http_request<P>(
   state: &mut OpState,

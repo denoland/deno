@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::v8;
 
 use x509_parser::der_parser::asn1_rs::Any;
@@ -46,7 +46,7 @@ impl std::ops::Deref for Certificate {
   }
 }
 
-#[op2]
+#[op]
 pub fn op_node_x509_parse<'s>(
   scope: &'s mut v8::HandleScope,
   #[buffer] buf: &[u8],
@@ -75,12 +75,12 @@ pub fn op_node_x509_parse<'s>(
   Ok(obj)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_x509_ca(#[cppgc] cert: &Certificate) -> Result<bool, AnyError> {
   Ok(cert.is_ca())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_x509_check_email(
   #[cppgc] cert: &Certificate,
   #[string] email: &str,
@@ -115,7 +115,7 @@ pub fn op_node_x509_check_email(
   Ok(false)
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_node_x509_fingerprint(
   #[cppgc] cert: &Certificate,
@@ -123,7 +123,7 @@ pub fn op_node_x509_fingerprint(
   Ok(cert.fingerprint::<sha1::Sha1>())
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_node_x509_fingerprint256(
   #[cppgc] cert: &Certificate,
@@ -131,7 +131,7 @@ pub fn op_node_x509_fingerprint256(
   Ok(cert.fingerprint::<sha2::Sha256>())
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_node_x509_fingerprint512(
   #[cppgc] cert: &Certificate,
@@ -139,7 +139,7 @@ pub fn op_node_x509_fingerprint512(
   Ok(cert.fingerprint::<sha2::Sha512>())
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_node_x509_get_issuer(
   #[cppgc] cert: &Certificate,
@@ -147,7 +147,7 @@ pub fn op_node_x509_get_issuer(
   Ok(x509name_to_string(cert.issuer(), oid_registry())?)
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_node_x509_get_subject(
   #[cppgc] cert: &Certificate,
@@ -215,7 +215,7 @@ fn x509name_to_string(
   })
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_node_x509_get_valid_from(
   #[cppgc] cert: &Certificate,
@@ -223,7 +223,7 @@ pub fn op_node_x509_get_valid_from(
   Ok(cert.validity().not_before.to_string())
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_node_x509_get_valid_to(
   #[cppgc] cert: &Certificate,
@@ -231,7 +231,7 @@ pub fn op_node_x509_get_valid_to(
   Ok(cert.validity().not_after.to_string())
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_node_x509_get_serial_number(
   #[cppgc] cert: &Certificate,
@@ -241,7 +241,7 @@ pub fn op_node_x509_get_serial_number(
   Ok(s)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_x509_key_usage(
   #[cppgc] cert: &Certificate,
 ) -> Result<u16, AnyError> {

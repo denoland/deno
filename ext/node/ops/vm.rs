@@ -2,7 +2,7 @@
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::v8;
 
 use super::vm_internal as i;
@@ -79,7 +79,7 @@ impl Script {
   }
 }
 
-#[op2]
+#[op]
 pub fn op_vm_create_script<'a>(
   scope: &mut v8::HandleScope<'a>,
   source: v8::Local<'a, v8::String>,
@@ -88,7 +88,7 @@ pub fn op_vm_create_script<'a>(
   Ok(deno_core::cppgc::make_cppgc_object(scope, script))
 }
 
-#[op2(reentrant)]
+#[op(reentrant)]
 pub fn op_vm_script_run_in_context<'a>(
   scope: &mut v8::HandleScope<'a>,
   #[cppgc] script: &Script,
@@ -97,7 +97,7 @@ pub fn op_vm_script_run_in_context<'a>(
   script.run_in_context(scope, sandbox)
 }
 
-#[op2(reentrant)]
+#[op(reentrant)]
 pub fn op_vm_script_run_in_this_context<'a>(
   scope: &'a mut v8::HandleScope,
   #[cppgc] script: &Script,
@@ -105,7 +105,7 @@ pub fn op_vm_script_run_in_this_context<'a>(
   script.run_in_this_context(scope)
 }
 
-#[op2]
+#[op]
 pub fn op_vm_create_context(
   scope: &mut v8::HandleScope,
   sandbox_obj: v8::Local<v8::Object>,
@@ -119,7 +119,7 @@ pub fn op_vm_create_context(
   i::ContextifyContext::attach(scope, sandbox_obj);
 }
 
-#[op2]
+#[op]
 pub fn op_vm_is_context(
   scope: &mut v8::HandleScope,
   sandbox_obj: v8::Local<v8::Value>,

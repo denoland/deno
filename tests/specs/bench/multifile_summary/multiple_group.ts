@@ -1,5 +1,5 @@
 Deno.bench("noop", { group: "noop" }, () => {});
-Deno.bench("noop2", { group: "noop", baseline: true }, () => {});
+Deno.bench("noop", { group: "noop", baseline: true }, () => {});
 
 Deno.bench("noop3", { group: "url" }, () => {});
 

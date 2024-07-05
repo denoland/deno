@@ -2,7 +2,7 @@
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
@@ -49,7 +49,7 @@ mod digest;
 mod primes;
 pub mod x509;
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_check_prime(
   #[bigint] num: i64,
   #[number] checks: usize,
@@ -57,7 +57,7 @@ pub fn op_node_check_prime(
   primes::is_probably_prime(&BigInt::from(num), checks)
 }
 
-#[op2]
+#[op]
 pub fn op_node_check_prime_bytes(
   #[anybuffer] bytes: &[u8],
   #[number] checks: usize,
@@ -66,7 +66,7 @@ pub fn op_node_check_prime_bytes(
   Ok(primes::is_probably_prime(&candidate, checks))
 }
 
-#[op2(async)]
+#[op(async)]
 pub async fn op_node_check_prime_async(
   #[bigint] num: i64,
   #[number] checks: usize,
@@ -80,7 +80,7 @@ pub async fn op_node_check_prime_async(
   )
 }
 
-#[op2(async)]
+#[op(async)]
 pub fn op_node_check_prime_bytes_async(
   #[anybuffer] bytes: &[u8],
   #[number] checks: usize,
@@ -95,7 +95,7 @@ pub fn op_node_check_prime_bytes_async(
   })
 }
 
-#[op2]
+#[op]
 #[cppgc]
 pub fn op_node_create_hash(
   #[string] algorithm: &str,
@@ -104,13 +104,13 @@ pub fn op_node_create_hash(
   digest::Hasher::new(algorithm, output_length.map(|l| l as usize))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_get_hashes() -> Vec<&'static str> {
   digest::Hash::get_hashes()
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_hash_update(
   #[cppgc] hasher: &digest::Hasher,
   #[buffer] data: &[u8],
@@ -118,7 +118,7 @@ pub fn op_node_hash_update(
   hasher.update(data)
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_hash_update_str(
   #[cppgc] hasher: &digest::Hasher,
   #[string] data: &str,
@@ -126,7 +126,7 @@ pub fn op_node_hash_update_str(
   hasher.update(data.as_bytes())
 }
 
-#[op2]
+#[op]
 #[buffer]
 pub fn op_node_hash_digest(
   #[cppgc] hasher: &digest::Hasher,
@@ -134,7 +134,7 @@ pub fn op_node_hash_digest(
   hasher.digest()
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_node_hash_digest_hex(
   #[cppgc] hasher: &digest::Hasher,
@@ -143,7 +143,7 @@ pub fn op_node_hash_digest_hex(
   Some(faster_hex::hex_string(&digest))
 }
 
-#[op2]
+#[op]
 #[cppgc]
 pub fn op_node_hash_clone(
   #[cppgc] hasher: &digest::Hasher,
@@ -152,7 +152,7 @@ pub fn op_node_hash_clone(
   hasher.clone_inner(output_length.map(|l| l as usize))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_private_encrypt(
   #[serde] key: StringOrBuffer,
@@ -179,7 +179,7 @@ pub fn op_node_private_encrypt(
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_private_decrypt(
   #[serde] key: StringOrBuffer,
@@ -195,7 +195,7 @@ pub fn op_node_private_decrypt(
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_public_encrypt(
   #[serde] key: StringOrBuffer,
@@ -216,7 +216,7 @@ pub fn op_node_public_encrypt(
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_node_create_cipheriv(
   state: &mut OpState,
@@ -232,7 +232,7 @@ pub fn op_node_create_cipheriv(
   )
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_cipheriv_set_aad(
   state: &mut OpState,
   #[smi] rid: u32,
@@ -246,7 +246,7 @@ pub fn op_node_cipheriv_set_aad(
   true
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_cipheriv_encrypt(
   state: &mut OpState,
   #[smi] rid: u32,
@@ -261,7 +261,7 @@ pub fn op_node_cipheriv_encrypt(
   true
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_cipheriv_final(
   state: &mut OpState,
@@ -275,7 +275,7 @@ pub fn op_node_cipheriv_final(
   context.r#final(input, output)
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_node_create_decipheriv(
   state: &mut OpState,
@@ -291,7 +291,7 @@ pub fn op_node_create_decipheriv(
   )
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_decipheriv_set_aad(
   state: &mut OpState,
   #[smi] rid: u32,
@@ -305,7 +305,7 @@ pub fn op_node_decipheriv_set_aad(
   true
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_decipheriv_decrypt(
   state: &mut OpState,
   #[smi] rid: u32,
@@ -320,7 +320,7 @@ pub fn op_node_decipheriv_decrypt(
   true
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_decipheriv_final(
   state: &mut OpState,
   #[smi] rid: u32,
@@ -334,7 +334,7 @@ pub fn op_node_decipheriv_final(
   context.r#final(input, output, auth_tag)
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_sign(
   #[buffer] digest: &[u8],
@@ -433,7 +433,7 @@ pub fn op_node_sign(
   }
 }
 
-#[op2]
+#[op]
 pub fn op_node_verify(
   #[buffer] digest: &[u8],
   #[string] digest_type: &str,
@@ -512,7 +512,7 @@ fn pbkdf2_sync(
   Ok(())
 }
 
-#[op2]
+#[op]
 pub fn op_node_pbkdf2(
   #[serde] password: StringOrBuffer,
   #[serde] salt: StringOrBuffer,
@@ -523,7 +523,7 @@ pub fn op_node_pbkdf2(
   pbkdf2_sync(&password, &salt, iterations, digest, derived_key).is_ok()
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_node_pbkdf2_async(
   #[serde] password: StringOrBuffer,
@@ -540,12 +540,12 @@ pub async fn op_node_pbkdf2_async(
   .await?
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_generate_secret(#[buffer] buf: &mut [u8]) {
   rand::thread_rng().fill(buf);
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_node_generate_secret_async(#[smi] len: i32) -> ToJsBuffer {
   spawn_blocking(move || {
@@ -587,7 +587,7 @@ fn hkdf_sync(
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_hkdf(
   #[string] hash: &str,
   #[buffer] ikm: &[u8],
@@ -598,7 +598,7 @@ pub fn op_node_hkdf(
   hkdf_sync(hash, ikm, salt, info, okm)
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_node_hkdf_async(
   #[string] hash: String,
@@ -637,7 +637,7 @@ fn generate_rsa(
   Ok((private_key_der.into(), public_key_der.into()))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_generate_rsa(
   #[number] modulus_length: usize,
@@ -646,7 +646,7 @@ pub fn op_node_generate_rsa(
   generate_rsa(modulus_length, public_exponent)
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_node_generate_rsa_async(
   #[number] modulus_length: usize,
@@ -655,7 +655,7 @@ pub async fn op_node_generate_rsa_async(
   spawn_blocking(move || generate_rsa(modulus_length, public_exponent)).await?
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_node_export_rsa_public_pem(
   #[buffer] pkcs1_der: &[u8],
@@ -665,7 +665,7 @@ pub fn op_node_export_rsa_public_pem(
   Ok(export)
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_export_rsa_spki_der(
   #[buffer] pkcs1_der: &[u8],
@@ -712,7 +712,7 @@ fn dsa_generate(
   ))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_dsa_generate(
   #[number] modulus_length: usize,
@@ -721,7 +721,7 @@ pub fn op_node_dsa_generate(
   dsa_generate(modulus_length, divisor_length)
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_node_dsa_generate_async(
   #[number] modulus_length: usize,
@@ -759,7 +759,7 @@ fn ec_generate(
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_ec_generate(
   #[string] named_curve: &str,
@@ -767,7 +767,7 @@ pub fn op_node_ec_generate(
   ec_generate(named_curve)
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_node_ec_generate_async(
   #[string] named_curve: String,
@@ -790,14 +790,14 @@ fn ed25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   Ok((seed.into(), public_key.into()))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_ed25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError>
 {
   ed25519_generate()
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_node_ed25519_generate_async(
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
@@ -827,13 +827,13 @@ fn x25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   Ok((pkey_copy.into(), pubkey.to_vec().into()))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_x25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   x25519_generate()
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_node_x25519_generate_async(
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
@@ -859,7 +859,7 @@ fn dh_generate_group(
   ))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_dh_generate_group(
   #[string] group_name: &str,
@@ -867,7 +867,7 @@ pub fn op_node_dh_generate_group(
   dh_generate_group(group_name)
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_node_dh_generate_group_async(
   #[string] group_name: String,
@@ -891,7 +891,7 @@ fn dh_generate(
   ))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_dh_generate(
   #[serde] prime: Option<&[u8]>,
@@ -902,7 +902,7 @@ pub fn op_node_dh_generate(
 }
 
 // TODO(lev): This duplication should be avoided.
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_dh_generate2(
   #[buffer] prime: JsBuffer,
@@ -912,7 +912,7 @@ pub fn op_node_dh_generate2(
   dh_generate(Some(prime).as_deref(), prime_len, generator)
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_dh_compute_secret(
   #[buffer] prime: JsBuffer,
@@ -927,7 +927,7 @@ pub fn op_node_dh_compute_secret(
   Ok(shared_secret.to_bytes_be().into())
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_node_dh_generate_async(
   #[buffer] prime: Option<JsBuffer>,
@@ -938,7 +938,7 @@ pub async fn op_node_dh_generate_async(
     .await?
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_node_random_int(
   #[smi] min: i32,
@@ -983,7 +983,7 @@ fn scrypt(
 }
 
 #[allow(clippy::too_many_arguments)]
-#[op2]
+#[op]
 pub fn op_node_scrypt_sync(
   #[serde] password: StringOrBuffer,
   #[serde] salt: StringOrBuffer,
@@ -1006,7 +1006,7 @@ pub fn op_node_scrypt_sync(
   )
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_node_scrypt_async(
   #[serde] password: StringOrBuffer,
@@ -1040,7 +1040,7 @@ pub async fn op_node_scrypt_async(
   .await?
 }
 
-#[op2]
+#[op]
 #[buffer]
 pub fn op_node_ecdh_encode_pubkey(
   #[string] curve: &str,
@@ -1109,7 +1109,7 @@ pub fn op_node_ecdh_encode_pubkey(
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_ecdh_generate_keys(
   #[string] curve: &str,
   #[buffer] pubbuf: &mut [u8],
@@ -1156,7 +1156,7 @@ pub fn op_node_ecdh_generate_keys(
   }
 }
 
-#[op2]
+#[op]
 pub fn op_node_ecdh_compute_secret(
   #[string] curve: &str,
   #[buffer] this_priv: Option<JsBuffer>,
@@ -1235,7 +1235,7 @@ pub fn op_node_ecdh_compute_secret(
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_node_ecdh_compute_public_key(
   #[string] curve: &str,
   #[buffer] privkey: &[u8],
@@ -1284,13 +1284,13 @@ fn gen_prime(size: usize) -> ToJsBuffer {
   primes::Prime::generate(size).0.to_bytes_be().into()
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_gen_prime(#[number] size: usize) -> ToJsBuffer {
   gen_prime(size)
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_node_gen_prime_async(
   #[number] size: usize,
@@ -1489,7 +1489,7 @@ fn parse_private_key(
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_create_private_key(
   #[buffer] key: &[u8],
@@ -1599,7 +1599,7 @@ fn parse_public_key(
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_node_create_public_key(
   #[buffer] key: &[u8],

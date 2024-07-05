@@ -5,7 +5,7 @@ mod sync_fetch;
 use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WebWorkerType;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::CancelFuture;
 use deno_core::OpState;
 use deno_web::JsMessageData;
@@ -26,7 +26,7 @@ deno_core::extension!(
   ],
 );
 
-#[op2]
+#[op]
 fn op_worker_post_message(
   state: &mut OpState,
   #[serde] data: JsMessageData,
@@ -36,7 +36,7 @@ fn op_worker_post_message(
   Ok(())
 }
 
-#[op2(async(lazy), fast)]
+#[op(async(lazy), fast)]
 #[serde]
 async fn op_worker_recv_message(
   state: Rc<RefCell<OpState>>,
@@ -52,7 +52,7 @@ async fn op_worker_recv_message(
     .await?
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_worker_close(state: &mut OpState) {
   // Notify parent that we're finished
   let mut handle = state.borrow_mut::<WebWorkerInternalHandle>().clone();
@@ -60,7 +60,7 @@ fn op_worker_close(state: &mut OpState) {
   handle.terminate();
 }
 
-#[op2]
+#[op]
 #[serde]
 fn op_worker_get_type(state: &mut OpState) -> WebWorkerType {
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();

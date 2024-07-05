@@ -6,7 +6,7 @@ use const_oid::AssociatedOid;
 use const_oid::ObjectIdentifier;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::ToJsBuffer;
 use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
@@ -94,7 +94,7 @@ pub enum ExportKeyResult {
   },
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_crypto_export_key(
   #[serde] opts: ExportKeyOptions,

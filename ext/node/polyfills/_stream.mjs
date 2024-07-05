@@ -1382,7 +1382,7 @@ var require_operators = __commonJS({
         validateAbortSignal(options.signal, "options.signal");
       }
       number = toIntegerOrInfinity(number);
-      return async function* drop2() {
+      return async function* drop() {
         var _options$signal8;
         if (
           options !== null && options !== void 0 &&

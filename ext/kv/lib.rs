@@ -21,7 +21,7 @@ use deno_core::error::get_custom_error_class;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::serde_v8::AnyValue;
 use deno_core::serde_v8::BigInt;
 use deno_core::AsyncRefCell;
@@ -126,7 +126,7 @@ impl Resource for DatabaseWatcherResource {
   }
 }
 
-#[op2(async)]
+#[op(async)]
 #[smi]
 async fn op_kv_database_open<DBH>(
   state: Rc<RefCell<OpState>>,
@@ -264,7 +264,7 @@ type SnapshotReadRange = (
   Option<ByteString>,
 );
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 async fn op_kv_snapshot_read<DBH>(
   state: Rc<RefCell<OpState>>,
@@ -345,7 +345,7 @@ impl<QMH: QueueMessageHandle + 'static> Resource for QueueMessageResource<QMH> {
   }
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 async fn op_kv_dequeue_next_message<DBH>(
   state: Rc<RefCell<OpState>>,
@@ -381,7 +381,7 @@ where
   Ok(Some((payload, handle_rid)))
 }
 
-#[op2]
+#[op]
 #[smi]
 fn op_kv_watch<DBH>(
   state: &mut OpState,
@@ -427,7 +427,7 @@ enum WatchEntry {
   Unchanged,
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 async fn op_kv_watch_next(
   state: Rc<RefCell<OpState>>,
@@ -477,7 +477,7 @@ async fn op_kv_watch_next(
   Ok(Some(entries))
 }
 
-#[op2(async)]
+#[op(async)]
 async fn op_kv_finish_dequeued_message<DBH>(
   state: Rc<RefCell<OpState>>,
   #[smi] handle_rid: ResourceId,
@@ -763,7 +763,7 @@ fn decode_selector_and_cursor(
   Ok((first_key, last_key))
 }
 
-#[op2(async)]
+#[op(async)]
 #[string]
 async fn op_kv_atomic_write<DBH>(
   state: Rc<RefCell<OpState>>,
@@ -869,7 +869,7 @@ where
 // (prefix, start, end)
 type EncodeCursorRangeSelector = (Option<KvKey>, Option<KvKey>, Option<KvKey>);
 
-#[op2]
+#[op]
 #[string]
 fn op_kv_encode_cursor(
   #[serde] (prefix, start, end): EncodeCursorRangeSelector,

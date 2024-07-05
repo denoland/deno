@@ -17,7 +17,7 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::invalid_hostname;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -193,13 +193,13 @@ pub struct StartTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
-#[op2]
+#[op]
 #[cppgc]
 pub fn op_tls_key_null() -> TlsKeysHolder {
   TlsKeysHolder::from(TlsKeys::Null)
 }
 
-#[op2]
+#[op]
 #[cppgc]
 pub fn op_tls_key_static(
   #[string] cert: &str,
@@ -214,7 +214,7 @@ pub fn op_tls_key_static(
 }
 
 /// Legacy op -- will be removed in Deno 2.0.
-#[op2]
+#[op]
 #[cppgc]
 pub fn op_tls_key_static_from_file<NP>(
   state: &mut OpState,
@@ -239,7 +239,7 @@ where
   Ok(TlsKeysHolder::from(TlsKeys::Static(TlsKey(cert, key))))
 }
 
-#[op2]
+#[op]
 pub fn op_tls_cert_resolver_create<'s>(
   scope: &mut v8::HandleScope<'s>,
 ) -> v8::Local<'s, v8::Array> {
@@ -252,7 +252,7 @@ pub fn op_tls_cert_resolver_create<'s>(
   v8::Array::new_with_elements(scope, &[resolver.into(), lookup.into()])
 }
 
-#[op2(async)]
+#[op(async)]
 #[string]
 pub async fn op_tls_cert_resolver_poll(
   #[cppgc] lookup: &TlsKeyLookup,
@@ -260,7 +260,7 @@ pub async fn op_tls_cert_resolver_poll(
   lookup.poll().await
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_tls_cert_resolver_resolve(
   #[cppgc] lookup: &TlsKeyLookup,
   #[string] sni: String,
@@ -273,7 +273,7 @@ pub fn op_tls_cert_resolver_resolve(
   Ok(())
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_tls_cert_resolver_resolve_error(
   #[cppgc] lookup: &TlsKeyLookup,
   #[string] sni: String,
@@ -282,7 +282,7 @@ pub fn op_tls_cert_resolver_resolve_error(
   lookup.resolve(sni, Err(anyhow!(error)))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
@@ -367,7 +367,7 @@ where
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_net_connect_tls<NP>(
   state: Rc<RefCell<OpState>>,
@@ -477,7 +477,7 @@ pub struct ListenTlsArgs {
   reuse_port: bool,
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_net_listen_tls<NP>(
   state: &mut OpState,
@@ -541,7 +541,7 @@ where
   Ok((rid, IpAddr::from(local_addr)))
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_net_accept_tls(
   state: Rc<RefCell<OpState>>,
@@ -579,7 +579,7 @@ pub async fn op_net_accept_tls(
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,

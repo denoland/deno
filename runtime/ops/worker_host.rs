@@ -11,7 +11,7 @@ use crate::web_worker::WorkerId;
 use crate::web_worker::WorkerMetadata;
 use crate::worker::FormatJsErrorFn;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::serde::Deserialize;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -120,7 +120,7 @@ pub struct CreateWorkerArgs {
 }
 
 /// Create worker as the host
-#[op2]
+#[op]
 #[serde]
 fn op_create_worker(
   state: &mut OpState,
@@ -241,7 +241,7 @@ fn op_create_worker(
   Ok(worker_id)
 }
 
-#[op2]
+#[op]
 fn op_host_terminate_worker(state: &mut OpState, #[serde] id: WorkerId) {
   if let Some(worker_thread) = state.borrow_mut::<WorkersTable>().remove(&id) {
     worker_thread.terminate();
@@ -291,7 +291,7 @@ fn close_channel(
 }
 
 /// Get control event from guest worker as host
-#[op2(async)]
+#[op(async)]
 #[serde]
 async fn op_host_recv_ctrl(
   state: Rc<RefCell<OpState>>,
@@ -334,7 +334,7 @@ async fn op_host_recv_ctrl(
   }
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,
@@ -373,7 +373,7 @@ async fn op_host_recv_message(
 }
 
 /// Post message to guest worker as host
-#[op2]
+#[op]
 fn op_host_post_message(
   state: &mut OpState,
   #[serde] id: WorkerId,

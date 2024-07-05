@@ -4,7 +4,7 @@ use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use rand::rngs::OsRng;
@@ -15,7 +15,7 @@ use spki::der::asn1::BitString;
 use spki::der::Decode;
 use spki::der::Encode;
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_crypto_generate_ed25519_keypair(
   #[buffer] pkey: &mut [u8],
   #[buffer] pubkey: &mut [u8],
@@ -31,7 +31,7 @@ pub fn op_crypto_generate_ed25519_keypair(
   true
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_crypto_sign_ed25519(
   #[buffer] key: &[u8],
   #[buffer] data: &[u8],
@@ -45,7 +45,7 @@ pub fn op_crypto_sign_ed25519(
   true
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_crypto_verify_ed25519(
   #[buffer] pubkey: &[u8],
   #[buffer] data: &[u8],
@@ -60,7 +60,7 @@ pub fn op_crypto_verify_ed25519(
 pub const ED25519_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.112");
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_crypto_import_spki_ed25519(
   #[buffer] key_data: &[u8],
   #[buffer] out: &mut [u8],
@@ -83,7 +83,7 @@ pub fn op_crypto_import_spki_ed25519(
   true
 }
 
-#[op2(fast)]
+#[op(fast)]
 pub fn op_crypto_import_pkcs8_ed25519(
   #[buffer] key_data: &[u8],
   #[buffer] out: &mut [u8],
@@ -112,7 +112,7 @@ pub fn op_crypto_import_pkcs8_ed25519(
   true
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_crypto_export_spki_ed25519(
   #[buffer] pubkey: &[u8],
@@ -135,7 +135,7 @@ pub fn op_crypto_export_spki_ed25519(
   )
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_crypto_export_pkcs8_ed25519(
   #[buffer] pkey: &[u8],
@@ -160,7 +160,7 @@ pub fn op_crypto_export_pkcs8_ed25519(
 
 // 'x' from Section 2 of RFC 8037
 // https://www.rfc-editor.org/rfc/rfc8037#section-2
-#[op2]
+#[op]
 #[string]
 pub fn op_crypto_jwk_x_ed25519(
   #[buffer] pkey: &[u8],

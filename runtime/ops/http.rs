@@ -5,7 +5,7 @@ use std::rc::Rc;
 use deno_core::error::bad_resource;
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
@@ -18,7 +18,7 @@ pub const UNSTABLE_FEATURE_NAME: &str = "http";
 
 deno_core::extension!(deno_http_runtime, ops = [op_http_start],);
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 fn op_http_start(
   state: &mut OpState,

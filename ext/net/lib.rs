@@ -153,17 +153,17 @@ deno_core::extension!(deno_net,
 #[cfg(not(unix))]
 mod ops_unix {
   use crate::NetPermissions;
-  use deno_core::op2;
+  use deno_core::op;
 
   macro_rules! stub_op {
     ($name:ident) => {
-      #[op2(fast)]
+      #[op(fast)]
       pub fn $name() {
         panic!("Unsupported on non-unix platforms")
       }
     };
     ($name:ident<P>) => {
-      #[op2(fast)]
+      #[op(fast)]
       pub fn $name<P: NetPermissions>() {
         panic!("Unsupported on non-unix platforms")
       }

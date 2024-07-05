@@ -10,7 +10,7 @@ use std::rc::Rc;
 use deno_core::error::get_custom_error_class;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -49,7 +49,7 @@ impl<EH: CronHandle + 'static> Resource for CronResource<EH> {
   }
 }
 
-#[op2]
+#[op]
 #[smi]
 fn op_cron_create<C>(
   state: Rc<RefCell<OpState>>,
@@ -87,7 +87,7 @@ where
   Ok(handle_rid)
 }
 
-#[op2(async)]
+#[op(async)]
 async fn op_cron_next<C>(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

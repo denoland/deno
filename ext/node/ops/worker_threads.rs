@@ -2,7 +2,7 @@
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
@@ -26,7 +26,7 @@ where
   resolver.ensure_read_permission(permissions, file_path)
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_worker_threads_filename<P>(
   state: &mut OpState,

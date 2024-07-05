@@ -2881,7 +2881,7 @@ assert.strictEqual(
 {
   class Foo extends Map {
     prop = false;
-    prop2 = true;
+    prop = true;
     get abc() {
       return true;
     }
@@ -2913,14 +2913,14 @@ assert.strictEqual(
 
   assert.strictEqual(
     inspect(bar),
-    'Bar(0) [Map] { prop: true, prop2: true, abc: true }'
+    'Bar(0) [Map] { prop: true, prop: true, abc: true }'
   );
   // TODO(wafuwafu13): Fix
   // assert.strictEqual(
   //   inspect(bar, { showHidden: true, getters: true, colors: false }),
   //   'Bar(0) [Map] {\n' +
   //   '  prop: true,\n' +
-  //   '  prop2: true,\n' +
+  //   '  prop: true,\n' +
   //   '  abc: true,\n' +
   //   "  [xyz]: [Getter: 'YES!'],\n" +
   //   '  [def]: [Getter/Setter: false]\n' +
@@ -2930,7 +2930,7 @@ assert.strictEqual(
   //   inspect(bar, { showHidden: true, getters: false, colors: true }),
   //   'Bar(0) [Map] {\n' +
   //   '  prop: \x1B[33mtrue\x1B[39m,\n' +
-  //   '  prop2: \x1B[33mtrue\x1B[39m,\n' +
+  //   '  prop: \x1B[33mtrue\x1B[39m,\n' +
   //   '  abc: \x1B[33mtrue\x1B[39m,\n' +
   //   '  \x1B[2m[xyz]: \x1B[36m[Getter]\x1B[39m\x1B[22m,\n' +
   //   '  \x1B[2m[def]: \x1B[36m[Getter/Setter]\x1B[39m\x1B[22m\n' +

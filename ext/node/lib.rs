@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
@@ -206,13 +206,13 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   set
 });
 
-#[op2]
+#[op]
 #[string]
 fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
   let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) else {
     return false;
@@ -221,7 +221,7 @@ fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
   promise.state() == v8::PromiseState::Rejected
 }
 
-#[op2]
+#[op]
 #[string]
 fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
   let npm_resolver = state.borrow_mut::<NpmResolverRc>();

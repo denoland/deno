@@ -8,7 +8,7 @@ runtime: deno [WILDCARD] ([WILDCARD])
 benchmark           time (avg)        iter/s             (min … max)       p75       p99      p995
 -------------------------------------------------------------------- -----------------------------
 noop [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
-noop2 [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+noop [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
 
 summary
   noo[WILDCARD]
@@ -46,7 +46,7 @@ benchmark           time (avg)        iter/s             (min … max)       p75
 
 group noop
 noop [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
-noop2 [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
+noop [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
 
 summary
   noo[WILDCARD]

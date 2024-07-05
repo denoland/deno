@@ -19,12 +19,12 @@ TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
         at [WILDCARD]/@denotest/types_imported/1.0.0/index.d.ts:2:5
 
 TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
-  prop2: "asdf",
+  prop: "asdf",
   ~~~~~
     at [WILDCARD]/npm/types/main.ts:[WILDCARD]
 
-    The expected type comes from property 'prop2' which is declared here on type 'SomeInterface'
-        prop2: number;
+    The expected type comes from property 'prop' which is declared here on type 'SomeInterface'
+        prop: number;
         ~~~~~
         at [WILDCARD]/@denotest/types_imported/1.0.0/index.d.ts:3:5
 

@@ -2,7 +2,7 @@
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use std::ffi::c_void;
@@ -16,7 +16,7 @@ use std::ptr::NonNull;
 
 use crate::surface::WebGpuSurface;
 
-#[op2(fast)]
+#[op(fast)]
 #[smi]
 pub fn op_webgpu_surface_create(
   state: &mut OpState,

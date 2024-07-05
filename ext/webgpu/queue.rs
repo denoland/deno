@@ -3,7 +3,7 @@
 use crate::command_encoder::WebGpuCommandBuffer;
 use crate::Instance;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -24,7 +24,7 @@ impl Resource for WebGpuQueue {
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_queue_submit(
   state: &mut OpState,
@@ -74,7 +74,7 @@ impl From<GpuImageDataLayout> for wgpu_types::ImageDataLayout {
   }
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_write_buffer(
   state: &mut OpState,
@@ -108,7 +108,7 @@ pub fn op_webgpu_write_buffer(
   Ok(WebGpuResult::maybe_err(maybe_err))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_write_texture(
   state: &mut OpState,

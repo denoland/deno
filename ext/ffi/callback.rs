@@ -5,7 +5,7 @@ use crate::symbol::NativeType;
 use crate::FfiPermissions;
 use crate::ForeignFunction;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::v8;
 use deno_core::v8::TryCatch;
 use deno_core::CancelFuture;
@@ -519,7 +519,7 @@ unsafe fn do_ffi_callback(
   };
 }
 
-#[op2(async)]
+#[op(async)]
 pub fn op_ffi_unsafe_callback_ref(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -547,7 +547,7 @@ pub struct RegisterCallbackArgs {
   result: NativeType,
 }
 
-#[op2]
+#[op]
 pub fn op_ffi_unsafe_callback_create<FP, 'scope>(
   state: &mut OpState,
   scope: &mut v8::HandleScope<'scope>,
@@ -621,7 +621,7 @@ where
   Ok(array_value)
 }
 
-#[op2]
+#[op]
 pub fn op_ffi_unsafe_callback_close(
   state: &mut OpState,
   scope: &mut v8::HandleScope,

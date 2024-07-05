@@ -11,7 +11,7 @@ use crate::ForeignFunction;
 use deno_core::anyhow::anyhow;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8::ExternalPointer;
 use deno_core::unsync::spawn_blocking;
@@ -272,7 +272,7 @@ fn ffi_call(
   }
 }
 
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub fn op_ffi_call_ptr_nonblocking<FP>(
   scope: &mut v8::HandleScope,
@@ -318,7 +318,7 @@ where
 }
 
 /// A non-blocking FFI call.
-#[op2(async)]
+#[op(async)]
 #[serde]
 pub fn op_ffi_call_nonblocking(
   scope: &mut v8::HandleScope,
@@ -368,7 +368,7 @@ pub fn op_ffi_call_nonblocking(
   })
 }
 
-#[op2(reentrant)]
+#[op(reentrant)]
 #[serde]
 pub fn op_ffi_call_ptr<FP>(
   scope: &mut v8::HandleScope,

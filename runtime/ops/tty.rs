@@ -3,7 +3,7 @@
 use std::io::Error;
 
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use rustyline::config::Configurer;
 use rustyline::error::ReadlineError;
@@ -84,7 +84,7 @@ fn mode_raw_input_off(original_mode: DWORD) -> DWORD {
   original_mode & !wincon::ENABLE_VIRTUAL_TERMINAL_INPUT | COOKED_MODE
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_set_raw(
   state: &mut OpState,
   rid: u32,
@@ -285,7 +285,7 @@ fn op_set_raw(
   }
 }
 
-#[op2(fast)]
+#[op(fast)]
 fn op_console_size(
   state: &mut OpState,
   #[buffer] result: &mut [u32],
@@ -403,7 +403,7 @@ mod tests {
   }
 }
 
-#[op2]
+#[op]
 #[string]
 pub fn op_read_line_prompt(
   #[string] prompt_text: &str,

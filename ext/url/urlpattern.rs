@@ -2,14 +2,14 @@
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 
 use urlpattern::quirks;
 use urlpattern::quirks::MatchInput;
 use urlpattern::quirks::StringOrInit;
 use urlpattern::quirks::UrlPattern;
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_urlpattern_parse(
   #[serde] input: StringOrInit,
@@ -27,7 +27,7 @@ pub fn op_urlpattern_parse(
   Ok(pattern)
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_urlpattern_process_match_input(
   #[serde] input: StringOrInit,

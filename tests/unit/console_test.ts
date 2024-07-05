@@ -2113,11 +2113,11 @@ Deno.test(function inspectProxy() {
           };
         },
         ownKeys() {
-          return ["prop1", "prop2"];
+          return ["prop1", "prop"];
         },
       }),
     )),
-    `Object [MyProxy] { prop1: 5, prop2: 5 }`,
+    `Object [MyProxy] { prop1: 5, prop: 5 }`,
   );
   assertEquals(
     stripColor(Deno.inspect(

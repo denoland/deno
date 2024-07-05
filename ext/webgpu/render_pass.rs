@@ -2,7 +2,7 @@
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -33,7 +33,7 @@ pub struct RenderPassSetViewportArgs {
   max_depth: f32,
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_set_viewport(
   state: &mut OpState,
@@ -56,7 +56,7 @@ pub fn op_webgpu_render_pass_set_viewport(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_set_scissor_rect(
   state: &mut OpState,
@@ -81,7 +81,7 @@ pub fn op_webgpu_render_pass_set_scissor_rect(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_set_blend_constant(
   state: &mut OpState,
@@ -100,7 +100,7 @@ pub fn op_webgpu_render_pass_set_blend_constant(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_set_stencil_reference(
   state: &mut OpState,
@@ -119,7 +119,7 @@ pub fn op_webgpu_render_pass_set_stencil_reference(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_begin_occlusion_query(
   state: &mut OpState,
@@ -138,7 +138,7 @@ pub fn op_webgpu_render_pass_begin_occlusion_query(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_end_occlusion_query(
   state: &mut OpState,
@@ -155,7 +155,7 @@ pub fn op_webgpu_render_pass_end_occlusion_query(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_execute_bundles(
   state: &mut OpState,
@@ -185,7 +185,7 @@ pub fn op_webgpu_render_pass_execute_bundles(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_end(
   state: &mut OpState,
@@ -207,7 +207,7 @@ pub fn op_webgpu_render_pass_end(
   gfx_ok!(command_encoder => instance.command_encoder_run_render_pass(command_encoder, render_pass))
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_set_bind_group(
   state: &mut OpState,
@@ -245,7 +245,7 @@ pub fn op_webgpu_render_pass_set_bind_group(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_push_debug_group(
   state: &mut OpState,
@@ -265,7 +265,7 @@ pub fn op_webgpu_render_pass_push_debug_group(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_pop_debug_group(
   state: &mut OpState,
@@ -282,7 +282,7 @@ pub fn op_webgpu_render_pass_pop_debug_group(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_insert_debug_marker(
   state: &mut OpState,
@@ -302,7 +302,7 @@ pub fn op_webgpu_render_pass_insert_debug_marker(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_set_pipeline(
   state: &mut OpState,
@@ -325,7 +325,7 @@ pub fn op_webgpu_render_pass_set_pipeline(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_set_index_buffer(
   state: &mut OpState,
@@ -361,7 +361,7 @@ pub fn op_webgpu_render_pass_set_index_buffer(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_set_vertex_buffer(
   state: &mut OpState,
@@ -398,7 +398,7 @@ pub fn op_webgpu_render_pass_set_vertex_buffer(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_draw(
   state: &mut OpState,
@@ -423,7 +423,7 @@ pub fn op_webgpu_render_pass_draw(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_draw_indexed(
   state: &mut OpState,
@@ -450,7 +450,7 @@ pub fn op_webgpu_render_pass_draw_indexed(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_draw_indirect(
   state: &mut OpState,
@@ -474,7 +474,7 @@ pub fn op_webgpu_render_pass_draw_indirect(
   Ok(WebGpuResult::empty())
 }
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_webgpu_render_pass_draw_indexed_indirect(
   state: &mut OpState,

@@ -7,7 +7,7 @@ use std::time;
 use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op2;
+use deno_core::op;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -43,7 +43,7 @@ deno_core::extension!(deno_bench,
   },
 );
 
-#[op2]
+#[op]
 #[string]
 fn op_bench_get_origin(state: &mut OpState) -> String {
   state.borrow::<ModuleSpecifier>().to_string()
@@ -52,7 +52,7 @@ fn op_bench_get_origin(state: &mut OpState) -> String {
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
 
-#[op2]
+#[op]
 #[serde]
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
@@ -80,7 +80,7 @@ pub fn op_pledge_test_permissions(
   Ok(token)
 }
 
-#[op2]
+#[op]
 pub fn op_restore_test_permissions(
   state: &mut OpState,
   #[serde] token: Uuid,
@@ -102,7 +102,7 @@ pub fn op_restore_test_permissions(
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[allow(clippy::too_many_arguments)]
-#[op2]
+#[op]
 fn op_register_bench(
   state: &mut OpState,
   #[global] function: v8::Global<v8::Function>,
@@ -142,7 +142,7 @@ fn op_register_bench(
   Ok(())
 }
 
-#[op2]
+#[op]
 fn op_dispatch_bench_event(state: &mut OpState, #[serde] event: BenchEvent) {
   assert!(
     matches!(event, BenchEvent::Output(_)),
@@ -152,7 +152,7 @@ fn op_dispatch_bench_event(state: &mut OpState, #[serde] event: BenchEvent) {
   sender.send(event).ok();
 }
 
-#[op2(fast)]
+#[op(fast)]
 #[number]
 fn op_bench_now(state: &mut OpState) -> Result<u64, AnyError> {
   let ns = state.borrow::<time::Instant>().elapsed().as_nanos();
