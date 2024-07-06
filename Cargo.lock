@@ -3190,9 +3190,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.14.3"
+version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "290f1a1d9242c78d09ce40a5e87e7554ee637af1351968159f4952f028f75604"
+checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
 dependencies = [
  "ahash",
  "allocator-api2",
@@ -5739,9 +5739,12 @@ dependencies = [
 
 [[package]]
 name = "seen_set"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61f862a15939da1018f58959f85d0e8a3520aec2c79f8e75f8d59af6b2d3fde5"
+checksum = "e0dc209f87296582f9095a3d9ff4f0c2dbafc09b6ccd77b0b658e263488e5ba6"
+dependencies = [
+ "hashbrown",
+]
 
 [[package]]
 name = "semver"
