@@ -327,6 +327,7 @@
       "test-fs-chown-type-check.js",
       "test-fs-copyfile.js",
       "test-fs-empty-readStream.js",
+      "test-fs-lchown.js",
       "test-fs-mkdir.js",
       "test-fs-open-flags.js",
       "test-fs-open-mode-mask.js",

@@ -1302,7 +1302,13 @@ impl ConfigData {
     let vendor_dir = if let Some(workspace_root) = workspace_root {
       workspace_root.vendor_dir.clone()
     } else {
-      config_file.as_ref().and_then(|c| c.vendor_dir_path())
+      config_file.as_ref().and_then(|c| {
+        if c.vendor() == Some(true) {
+          Some(c.specifier.to_file_path().ok()?.parent()?.join("vendor"))
+        } else {
+          None
+        }
+      })
     };
 
     // Load lockfile
