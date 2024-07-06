@@ -95,9 +95,11 @@ impl PublishOrderGraph {
     package_name: &String,
     mut visited: SeenSet<String>,
   ) -> usize {
-    if !visited.insert(package_name) {
+    if visited.contains(package_name) {
       return 0; // cycle
     }
+
+    visited.insert(package_name);
 
     let Some(parents) = self.reverse_map.get(package_name) else {
       return 0;
