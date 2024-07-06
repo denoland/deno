@@ -75,6 +75,25 @@ where
   Ok(euid)
 }
 
+#[op2(fast)]
+pub fn op_getegid<P>(state: &mut OpState) -> Result<u32, AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  {
+    let permissions = state.borrow_mut::<P>();
+    permissions.check_sys("getegid", "node:os.getegid()")?;
+  }
+
+  #[cfg(windows)]
+  let egid = 0;
+  #[cfg(unix)]
+  // SAFETY: Call to libc getegid.
+  let egid = unsafe { libc::getegid() };
+
+  Ok(egid)
+}
+
 #[op2]
 #[serde]
 pub fn op_cpus<P>(state: &mut OpState) -> Result<Vec<cpus::CpuInfo>, AnyError>

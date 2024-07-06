@@ -44,7 +44,7 @@ default = ["upgrade", "__vendored_zlib_ng"]
 upgrade = []
 # A dev feature to disable creations and loading of snapshots in favor of
 # loading JS sources at runtime.
-__runtime_js_sources = ["deno_runtime/__runtime_js_sources"]
+hmr = ["deno_runtime/hmr"]
 # Vendor zlib as zlib-ng
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 
@@ -65,9 +65,9 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = { workspace = true }
-deno_config = "=0.16.4"
+deno_config = { workspace = true, features = ["workspace"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.140.0", features = ["html", "syntect"] }
+deno_doc = { version = "=0.141.0", features = ["html", "syntect"] }
 deno_emit = "=0.43.0"
 deno_graph = { version = "=0.79.0", features = ["tokio_executor"] }
 deno_lint = { version = "=0.60.0", features = ["docs"] }
@@ -107,7 +107,6 @@ faster-hex.workspace = true
 flate2.workspace = true
 fs3.workspace = true
 glob = "0.3.1"
-ignore = "0.4"
 import_map = { version = "=0.20.0", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser.workspace = true
@@ -149,7 +148,6 @@ tower-lsp.workspace = true
 twox-hash.workspace = true
 typed-arena = "=2.0.1"
 uuid = { workspace = true, features = ["serde"] }
-walkdir = "=2.3.2"
 zeromq.workspace = true
 zstd.workspace = true
 
@@ -164,6 +162,7 @@ nix.workspace = true
 deno_bench_util.workspace = true
 pretty_assertions.workspace = true
 test_util.workspace = true
+walkdir = "=2.3.2"
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.

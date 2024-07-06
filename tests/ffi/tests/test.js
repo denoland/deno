@@ -214,12 +214,10 @@ const dylib = Deno.dlopen(libPath, {
   call_stored_function: {
     parameters: [],
     result: "void",
-    callback: true,
   },
   call_stored_function_2: {
     parameters: ["u8"],
     result: "void",
-    callback: true,
   },
   log_many_parameters: {
     parameters: ["u8", "u16", "u32", "u64", "f64", "f32", "i64", "i32", "i16", "i8", "isize", "usize", "f64", "f32", "f64", "f32", "f64", "f32", "f64"],

@@ -14,5 +14,7 @@ const IMPORT_PATH_FILE_PATH = join(
 setTimeout(async () => {
   console.log("Dynamic importing");
   const importPath = (await Deno.readTextFile(IMPORT_PATH_FILE_PATH)).trim();
-  import(importPath).then(() => console.log("Dynamic import done."));
+  import(import.meta.resolve(importPath)).then(() =>
+    console.log("Dynamic import done.")
+  );
 }, 0);

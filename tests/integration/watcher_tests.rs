@@ -1547,7 +1547,7 @@ async fn run_watch_dynamic_imports() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
   wait_contains("Process started", &mut stderr_lines).await;
-  wait_contains("No package.json file found", &mut stderr_lines).await;
+  wait_contains("Finished config loading.", &mut stderr_lines).await;
 
   wait_contains(
     "Hopefully dynamic import will be watched...",
@@ -1714,7 +1714,7 @@ console.log("Listening...")
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
   wait_contains("Process started", &mut stderr_lines).await;
-  wait_contains("No package.json file found", &mut stderr_lines).await;
+  wait_contains("Finished config loading.", &mut stderr_lines).await;
 
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
   wait_contains("Listening...", &mut stdout_lines).await;
@@ -1787,7 +1787,7 @@ export function foo() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
   wait_contains("Process started", &mut stderr_lines).await;
-  wait_contains("No package.json file found", &mut stderr_lines).await;
+  wait_contains("Finished config loading.", &mut stderr_lines).await;
 
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
   wait_contains("5 <h1>Hello</h1>", &mut stdout_lines).await;
@@ -1846,7 +1846,7 @@ export function foo() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
   wait_contains("Process started", &mut stderr_lines).await;
-  wait_contains("No package.json file found", &mut stderr_lines).await;
+  wait_contains("Finished config loading.", &mut stderr_lines).await;
 
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
   wait_contains("<h1>asd1</h1>", &mut stdout_lines).await;
@@ -1912,7 +1912,7 @@ export function foo() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
   wait_contains("Process started", &mut stderr_lines).await;
-  wait_contains("No package.json file found", &mut stderr_lines).await;
+  wait_contains("Finished config loading.", &mut stderr_lines).await;
 
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
   wait_contains("2 <h1>asd1</h1>", &mut stdout_lines).await;
