@@ -83,7 +83,6 @@ use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
 
-use deno_config::glob::PathOrPatternSet;
 use deno_config::FmtConfig;
 use deno_config::LintConfig;
 use deno_config::TestConfig;
@@ -1848,9 +1847,9 @@ pub fn config_to_deno_graph_workspace_member(
 
 #[cfg(test)]
 mod test {
-  use super::*;
-  use deno_config::glob::FileCollector;
   use pretty_assertions::assert_eq;
+
+  use super::*;
 
   #[test]
   fn resolve_import_map_flags_take_precedence() {

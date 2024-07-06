@@ -25,6 +25,7 @@ use log::debug;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::env;
 use std::ffi::OsString;
 use std::net::SocketAddr;
@@ -36,7 +37,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::args::resolve_no_prompt;
-use crate::util::collections::CheckedSet;
 use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
@@ -873,12 +873,12 @@ impl Flags {
       files_or_dirs: &[String],
       current_dir: &Path,
     ) -> Vec<PathBuf> {
-      let mut seen = CheckedSet::with_capacity(files_or_dirs.len());
+      let mut seen = HashSet::with_capacity(files_or_dirs.len());
       let result = files_or_dirs
         .iter()
         .filter_map(|p| {
           let path = normalize_path(current_dir.join(p));
-          if seen.insert(&path) {
+          if seen.insert(path.clone()) {
             Some(path)
           } else {
             None
@@ -9298,7 +9298,7 @@ mod tests {
         .unwrap();
     assert_eq!(
       flags.config_path_args(&cwd),
-      Some(vec![cwd.join("dir/a/"), cwd.join("dir/b/")])
+      Some(vec![cwd.join("dir/a/a.js"), cwd.join("dir/b/b.js")])
     );
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
@@ -9314,7 +9314,11 @@ mod tests {
     .unwrap();
     assert_eq!(
       flags.config_path_args(&cwd),
-      Some(vec![cwd.join("dir/a/"), cwd.join("dir/")])
+      Some(vec![
+        cwd.join("dir/a/a.js"),
+        cwd.join("dir/a/a2.js"),
+        cwd.join("dir/b.js")
+      ])
     );
   }
 
