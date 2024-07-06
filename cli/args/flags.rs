@@ -23,6 +23,7 @@ use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use log::debug;
 use log::Level;
+use seen_set::SeenSet;
 use serde::Deserialize;
 use serde::Serialize;
 use std::env;
@@ -36,7 +37,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::args::resolve_no_prompt;
-use crate::util::collections::CheckedSet;
 use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
@@ -873,7 +873,7 @@ impl Flags {
       files: &[String],
       current_dir: &Path,
     ) -> Vec<PathBuf> {
-      let mut seen = CheckedSet::with_capacity(files.len());
+      let mut seen = SeenSet::with_capacity(files.len());
       let result = files
         .iter()
         .filter_map(|p| {
@@ -9298,7 +9298,7 @@ mod tests {
         .unwrap();
     assert_eq!(
       flags.config_path_args(&cwd),
-      Some(vec![cwd.join("dir/a/"), cwd.join("dir/b/")])
+      Some(vec![cwd.join("dir/a/a.js"), cwd.join("dir/b/b.js")])
     );
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
@@ -9314,7 +9314,11 @@ mod tests {
     .unwrap();
     assert_eq!(
       flags.config_path_args(&cwd),
-      Some(vec![cwd.join("dir/a/"), cwd.join("dir/")])
+      Some(vec![
+        cwd.join("dir/a/a.js"),
+        cwd.join("dir/a/a2.js"),
+        cwd.join("dir/b.js")
+      ])
     );
   }
 

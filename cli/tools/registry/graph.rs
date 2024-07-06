@@ -15,6 +15,7 @@ use deno_graph::WalkOptions;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use lsp_types::Url;
+use seen_set::SeenSet;
 
 use crate::cache::ParsedSourceCache;
 
@@ -37,7 +38,7 @@ impl GraphDiagnosticsCollector {
     graph: &ModuleGraph,
     diagnostics_collector: &PublishDiagnosticsCollector,
   ) -> Result<(), AnyError> {
-    let mut visited = HashSet::new();
+    let mut visited = SeenSet::new();
     let mut skip_specifiers: HashSet<Url> = HashSet::new();
 
     let mut collect_if_invalid =
@@ -45,7 +46,7 @@ impl GraphDiagnosticsCollector {
        source_text: &Arc<str>,
        specifier_text: &str,
        resolution: &ResolutionResolved| {
-        if visited.insert(resolution.specifier.clone()) {
+        if visited.insert(&resolution.specifier) {
           match resolution.specifier.scheme() {
             "file" | "data" | "node" => {}
             "jsr" => {

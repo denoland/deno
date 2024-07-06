@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -14,6 +13,7 @@ use deno_core::parking_lot::Mutex;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
+use seen_set::SeenSet;
 
 use crate::args::CacheSetting;
 use crate::util::sync::AtomicFlag;
@@ -86,7 +86,7 @@ struct CliNpmRegistryApiInner {
   cache: Arc<NpmCache>,
   force_reload_flag: AtomicFlag,
   mem_cache: Mutex<HashMap<String, CacheItem>>,
-  previously_reloaded_packages: Mutex<HashSet<String>>,
+  previously_reloaded_packages: Mutex<SeenSet<String>>,
   registry_info_downloader: Arc<RegistryInfoDownloader>,
 }
 
@@ -110,7 +110,7 @@ impl CliNpmRegistryApiInner {
               if (api.cache.cache_setting().should_use_for_npm_package(&name) && !api.force_reload_flag.is_raised())
                 // if this has been previously reloaded, then try loading from the
                 // file system cache
-                || !api.previously_reloaded_packages.lock().insert(name.to_string())
+                || !api.previously_reloaded_packages.lock().insert(&name)
               {
                 // attempt to load from the file cache
                 if let Some(info) = api.load_file_cached_package_info(&name).await {

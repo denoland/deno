@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
@@ -18,6 +17,7 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_semver::package::PackageNv;
+use seen_set::SeenSet;
 
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
@@ -39,7 +39,7 @@ pub struct NpmCache {
   cache_setting: CacheSetting,
   npmrc: Arc<ResolvedNpmRc>,
   /// ensures a package is only downloaded once per run
-  previously_reloaded_packages: Mutex<HashSet<PackageNv>>,
+  previously_reloaded_packages: Mutex<SeenSet<PackageNv>>,
 }
 
 impl NpmCache {
@@ -71,10 +71,7 @@ impl NpmCache {
   /// and imports a dynamic import that imports the same package again for example.
   pub fn should_use_cache_for_package(&self, package: &PackageNv) -> bool {
     self.cache_setting.should_use_for_npm_package(&package.name)
-      || !self
-        .previously_reloaded_packages
-        .lock()
-        .insert(package.clone())
+      || !self.previously_reloaded_packages.lock().insert(package)
   }
 
   /// Ensures a copy of the package exists in the global cache.

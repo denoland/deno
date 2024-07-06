@@ -132,6 +132,7 @@ reqwest.workspace = true
 ring.workspace = true
 rustyline.workspace = true
 rustyline-derive = "=0.7.0"
+seen_set = "=0.1.0"
 serde.workspace = true
 serde_repr.workspace = true
 sha2.workspace = true

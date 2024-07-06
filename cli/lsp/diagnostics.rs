@@ -49,8 +49,8 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use log::error;
+use seen_set::SeenSet;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
@@ -126,7 +126,7 @@ impl DiagnosticsPublisher {
   ) -> usize {
     let mut diagnostics_by_specifier =
       self.diagnostics_by_specifier.lock().await;
-    let mut seen_specifiers = HashSet::with_capacity(diagnostics.len());
+    let mut seen_specifiers = SeenSet::with_capacity(diagnostics.len());
     let mut messages_sent = 0;
 
     for record in diagnostics {
@@ -134,7 +134,7 @@ impl DiagnosticsPublisher {
         return messages_sent;
       }
 
-      seen_specifiers.insert(record.specifier.clone());
+      seen_specifiers.insert(&record.specifier);
 
       let diagnostics_by_source = diagnostics_by_specifier
         .entry(record.specifier.clone())

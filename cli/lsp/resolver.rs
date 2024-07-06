@@ -23,6 +23,7 @@ use crate::resolver::SloppyImportsResolver;
 use crate::resolver::WorkerCliNpmGraphResolver;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+
 use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_cache_dir::HttpCache;
@@ -45,11 +46,11 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
+use seen_set::SeenSet;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use super::cache::LspCache;
@@ -644,7 +645,7 @@ impl RedirectResolver {
   fn chain(&self, specifier: &Url) -> Vec<(Url, Arc<RedirectEntry>)> {
     self.resolve(specifier);
     let mut result = vec![];
-    let mut seen = HashSet::new();
+    let mut seen: SeenSet<Url> = SeenSet::new();
     let mut current = Cow::Borrowed(specifier);
     loop {
       let Some(maybe_entry) = self.entries.get(&current) else {
@@ -654,7 +655,7 @@ impl RedirectResolver {
         break;
       };
       result.push((current.as_ref().clone(), entry.clone()));
-      seen.insert(current.as_ref().clone());
+      seen.insert(&current);
       if seen.contains(&entry.target) {
         break;
       }

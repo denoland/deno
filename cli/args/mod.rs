@@ -1937,9 +1937,10 @@ pub fn config_to_deno_graph_workspace_member(
 
 #[cfg(test)]
 mod test {
-  use super::*;
   use deno_config::glob::FileCollector;
   use pretty_assertions::assert_eq;
+
+  use super::*;
 
   #[test]
   fn resolve_import_map_flags_take_precedence() {

@@ -9,6 +9,7 @@ use deno_config::workspace::JsrPackageConfig;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_graph::ModuleGraph;
+use seen_set::SeenSet;
 
 pub struct PublishOrderGraph {
   packages: HashMap<String, HashSet<String>>,
@@ -22,7 +23,7 @@ impl PublishOrderGraph {
       .in_degree
       .iter()
       .filter_map(|(name, &degree)| if degree == 0 { Some(name) } else { None })
-      .map(|item| (item.clone(), self.compute_depth(item, HashSet::new())))
+      .map(|item| (item.clone(), self.compute_depth(item, SeenSet::new())))
       .collect::<Vec<_>>();
 
     // sort by depth to in order to prioritize those packages
@@ -53,9 +54,9 @@ impl PublishOrderGraph {
   pub fn ensure_no_pending(&self) -> Result<(), AnyError> {
     // this is inefficient, but that's ok because it's simple and will
     // only ever happen when there's an error
-    fn identify_cycle<'a>(
-      current_name: &'a String,
-      mut visited: HashSet<&'a String>,
+    fn identify_cycle(
+      current_name: &String,
+      mut visited: SeenSet<String>,
       packages: &HashMap<String, HashSet<String>>,
     ) -> Option<Vec<String>> {
       if visited.insert(current_name) {
@@ -80,7 +81,7 @@ impl PublishOrderGraph {
       let mut pkg_names = self.in_degree.keys().collect::<Vec<_>>();
       pkg_names.sort(); // determinism
       let mut cycle =
-        identify_cycle(pkg_names[0], HashSet::new(), &self.packages).unwrap();
+        identify_cycle(pkg_names[0], SeenSet::new(), &self.packages).unwrap();
       cycle.reverse();
       bail!(
         "Circular package dependency detected: {}",
@@ -92,13 +93,11 @@ impl PublishOrderGraph {
   fn compute_depth(
     &self,
     package_name: &String,
-    mut visited: HashSet<String>,
+    mut visited: SeenSet<String>,
   ) -> usize {
-    if visited.contains(package_name) {
+    if !visited.insert(package_name) {
       return 0; // cycle
     }
-
-    visited.insert(package_name.clone());
 
     let Some(parents) = self.reverse_map.get(package_name) else {
       return 0;

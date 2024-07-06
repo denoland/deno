@@ -1177,6 +1177,7 @@ dependencies = [
  "runtimelib",
  "rustyline",
  "rustyline-derive",
+ "seen_set",
  "serde",
  "serde_json",
  "serde_repr",
@@ -5735,6 +5736,12 @@ dependencies = [
  "core-foundation-sys",
  "libc",
 ]
+
+[[package]]
+name = "seen_set"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61f862a15939da1018f58959f85d0e8a3520aec2c79f8e75f8d59af6b2d3fde5"
 
 [[package]]
 name = "semver"

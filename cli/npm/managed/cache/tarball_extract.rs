@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
@@ -15,6 +14,7 @@ use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_npm::registry::NpmPackageVersionDistInfoIntegrity;
 use deno_semver::package::PackageNv;
 use flate2::read::GzDecoder;
+use seen_set::SeenSet;
 use tar::Archive;
 use tar::EntryType;
 
@@ -150,7 +150,7 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
   let mut archive = Archive::new(tar);
   archive.set_overwrite(true);
   archive.set_preserve_permissions(true);
-  let mut created_dirs = HashSet::new();
+  let mut created_dirs = SeenSet::new();
 
   for entry in archive.entries()? {
     let mut entry = entry?;
@@ -171,7 +171,7 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
     } else {
       absolute_path.parent().unwrap()
     };
-    if created_dirs.insert(dir_path.to_path_buf()) {
+    if created_dirs.insert(dir_path) {
       fs::create_dir_all(dir_path)?;
       let canonicalized_dir = fs::canonicalize(dir_path)?;
       if !canonicalized_dir.starts_with(&output_folder) {
