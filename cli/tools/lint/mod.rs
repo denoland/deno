@@ -8,6 +8,7 @@ use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
+use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceMemberContext;
@@ -60,7 +61,6 @@ use crate::tools::fmt::run_parallelized;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::specifier_from_file_path;
-use crate::util::fs::FileCollector;
 use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 
@@ -401,7 +401,7 @@ fn collect_lint_files(
     .ignore_git_folder()
     .ignore_node_modules()
     .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-    .collect_file_patterns(files)
+    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
 
 #[allow(clippy::print_stdout)]

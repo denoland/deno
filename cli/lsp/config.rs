@@ -1299,7 +1299,13 @@ impl ConfigData {
       }
     };
 
-    let vendor_dir = config_file.as_ref().and_then(|c| c.vendor_dir_path());
+    let vendor_dir = config_file.as_ref().and_then(|c| {
+      if c.vendor() == Some(true) {
+        Some(c.specifier.to_file_path().ok()?.parent()?.join("vendor"))
+      } else {
+        None
+      }
+    });
 
     // Load lockfile
     let lockfile = config_file.as_ref().and_then(resolve_lockfile_from_config);

@@ -2,17 +2,17 @@
 
 use log::debug;
 
-#[cfg(not(feature = "__runtime_js_sources"))]
+#[cfg(not(feature = "hmr"))]
 static CLI_SNAPSHOT: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/CLI_SNAPSHOT.bin"));
 
 pub fn deno_isolate_init() -> Option<&'static [u8]> {
   debug!("Deno isolate init with snapshots.");
-  #[cfg(not(feature = "__runtime_js_sources"))]
+  #[cfg(not(feature = "hmr"))]
   {
     Some(CLI_SNAPSHOT)
   }
-  #[cfg(feature = "__runtime_js_sources")]
+  #[cfg(feature = "hmr")]
   {
     None
   }
