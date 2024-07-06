@@ -361,7 +361,11 @@ impl DomainMatcher {
 }
 
 impl<C> ProxyConnector<C> {
-  pub(crate) fn new(proxies: Arc<Proxies>, connector: C, tls: Arc<TlsConfig>) -> Self {
+  pub(crate) fn new(
+    proxies: Arc<Proxies>,
+    connector: C,
+    tls: Arc<TlsConfig>,
+  ) -> Self {
     ProxyConnector {
       connector,
       proxies,
@@ -389,7 +393,7 @@ impl Proxies {
     match intercept.target {
       // Only if the proxy target is http
       Target::Http { ref auth, .. } => auth.as_ref(),
-      _ => None
+      _ => None,
     }
   }
 
