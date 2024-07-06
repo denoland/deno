@@ -5434,8 +5434,9 @@ dependencies = [
 
 [[package]]
 name = "runtimelib"
-version = "0.12.0"
-source = "git+https://github.com/runtimed/runtimed.git?branch=comm-id-public#799d9840fa524001874c35a127ab4e6b6dea2364"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b49e5dcc04df0bac7762a7130e181d18bca309c9a21002a617a8656eedbb4e0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

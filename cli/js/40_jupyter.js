@@ -366,10 +366,7 @@ function enableJupyter() {
           break;
         }
 
-        msgCallback?.({
-          ...data,
-          buffers,
-        });
+        msgCallback?.(data, buffers);
       }
     })();
 
