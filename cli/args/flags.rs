@@ -9298,7 +9298,7 @@ mod tests {
         .unwrap();
     assert_eq!(
       flags.config_path_args(&cwd),
-      Some(vec![cwd.join("dir/a/a.js"), cwd.join("dir/b/b.js")])
+      Some(vec![cwd.join("dir/a/"), cwd.join("dir/b/")])
     );
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
@@ -9314,11 +9314,7 @@ mod tests {
     .unwrap();
     assert_eq!(
       flags.config_path_args(&cwd),
-      Some(vec![
-        cwd.join("dir/a/a.js"),
-        cwd.join("dir/a/a2.js"),
-        cwd.join("dir/b.js")
-      ])
+      Some(vec![cwd.join("dir/a/"), cwd.join("dir/")])
     );
   }
 
