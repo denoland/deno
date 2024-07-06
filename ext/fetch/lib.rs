@@ -54,6 +54,7 @@ use http::header::HeaderValue;
 use http::header::ACCEPT_ENCODING;
 use http::header::CONTENT_LENGTH;
 use http::header::HOST;
+use http::header::PROXY_AUTHORIZATION;
 use http::header::RANGE;
 use http::header::USER_AGENT;
 use http::Method;
@@ -996,17 +997,18 @@ pub fn create_http_client(
   builder.timer(TokioTimer::new());
   builder.pool_timer(TokioTimer::new());
 
-  let mut intercepts = proxy::from_env();
+  let mut proxies = proxy::from_env();
   if let Some(proxy) = options.proxy {
     let mut intercept = proxy::Intercept::all(&proxy.url)
       .ok_or_else(|| type_error("invalid proxy url"))?;
     if let Some(basic_auth) = &proxy.basic_auth {
       intercept.set_auth(&basic_auth.username, &basic_auth.password);
     }
-    intercepts.insert(0, intercept);
+    proxies.prepend(intercept);
   }
+  let proxies = Arc::new(proxies);
   let mut connector =
-    proxy::ProxyConnector::new(intercepts, connector, tls_config);
+    proxy::ProxyConnector::new(proxies.clone(), connector, tls_config);
   connector.user_agent(user_agent.clone());
 
   if let Some(pool_max_idle_per_host) = options.pool_max_idle_per_host {
@@ -1035,6 +1037,7 @@ pub fn create_http_client(
 
   Ok(Client {
     inner: decompress,
+    proxies,
     user_agent,
   })
 }
@@ -1050,6 +1053,8 @@ pub fn op_utf8_to_byte_string(
 #[derive(Clone, Debug)]
 pub struct Client {
   inner: Decompression<hyper_util::client::legacy::Client<Connector, ReqBody>>,
+  // Used to check whether to include a proxy-authorization header
+  proxies: Arc<proxy::Proxies>,
   user_agent: HeaderValue,
 }
 
@@ -1064,6 +1069,10 @@ impl Client {
       .headers_mut()
       .entry(USER_AGENT)
       .or_insert_with(|| self.user_agent.clone());
+
+    if let Some(auth) = self.proxies.http_forward_auth(req.uri()) {
+      req.headers_mut().insert(PROXY_AUTHORIZATION, auth.clone());
+    }
 
     let resp = self.inner.oneshot(req).await?;
     Ok(resp.map(|b| b.map_err(|e| anyhow!(e)).boxed()))

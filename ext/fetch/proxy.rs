@@ -30,10 +30,15 @@ use tower_service::Service;
 #[derive(Debug, Clone)]
 pub(crate) struct ProxyConnector<C> {
   connector: C,
-  no_proxy: Arc<Option<NoProxy>>,
-  proxies: Arc<[Intercept]>,
+  proxies: Arc<Proxies>,
   tls: Arc<TlsConfig>,
   user_agent: Option<HeaderValue>,
+}
+
+#[derive(Debug)]
+pub(crate) struct Proxies {
+  no: Option<NoProxy>,
+  intercepts: Vec<Intercept>,
 }
 
 #[derive(Clone)]
@@ -65,32 +70,34 @@ enum Filter {
   All,
 }
 
-pub(crate) fn from_env() -> Vec<Intercept> {
-  let mut proxies = Vec::new();
+pub(crate) fn from_env() -> Proxies {
+  let mut intercepts = Vec::new();
 
   if let Some(proxy) = parse_env_var("ALL_PROXY", Filter::All) {
-    proxies.push(proxy);
+    intercepts.push(proxy);
   } else if let Some(proxy) = parse_env_var("all_proxy", Filter::All) {
-    proxies.push(proxy);
+    intercepts.push(proxy);
   }
 
   if let Some(proxy) = parse_env_var("HTTPS_PROXY", Filter::Https) {
-    proxies.push(proxy);
+    intercepts.push(proxy);
   } else if let Some(proxy) = parse_env_var("https_proxy", Filter::Https) {
-    proxies.push(proxy);
+    intercepts.push(proxy);
   }
 
   // In a CGI context, headers become environment variables. So, "Proxy:" becomes HTTP_PROXY.
   // To prevent an attacker from injecting a proxy, check if we are in CGI.
   if env::var_os("REQUEST_METHOD").is_none() {
     if let Some(proxy) = parse_env_var("HTTP_PROXY", Filter::Http) {
-      proxies.push(proxy);
+      intercepts.push(proxy);
     } else if let Some(proxy) = parse_env_var("http_proxy", Filter::Https) {
-      proxies.push(proxy);
+      intercepts.push(proxy);
     }
   }
 
-  proxies
+  let no = NoProxy::from_env();
+
+  Proxies { intercepts, no }
 }
 
 pub(crate) fn basic_auth(user: &str, pass: &str) -> HeaderValue {
@@ -354,14 +361,10 @@ impl DomainMatcher {
 }
 
 impl<C> ProxyConnector<C> {
-  pub(crate) fn new<I>(intercepts: I, connector: C, tls: Arc<TlsConfig>) -> Self
-  where
-    Arc<[Intercept]>: From<I>,
-  {
+  pub(crate) fn new(proxies: Arc<Proxies>, connector: C, tls: Arc<TlsConfig>) -> Self {
     ProxyConnector {
       connector,
-      no_proxy: Arc::new(NoProxy::from_env()),
-      proxies: Arc::from(intercepts),
+      proxies,
       tls,
       user_agent: None,
     }
@@ -372,13 +375,32 @@ impl<C> ProxyConnector<C> {
   }
 
   fn intercept(&self, dst: &Uri) -> Option<&Intercept> {
-    if let Some(no_proxy) = self.no_proxy.as_ref() {
+    self.proxies.intercept(dst)
+  }
+}
+
+impl Proxies {
+  pub(crate) fn prepend(&mut self, intercept: Intercept) {
+    self.intercepts.insert(0, intercept);
+  }
+
+  pub(crate) fn http_forward_auth(&self, dst: &Uri) -> Option<&HeaderValue> {
+    let intercept = self.intercept(dst)?;
+    match intercept.target {
+      // Only if the proxy target is http
+      Target::Http { ref auth, .. } => auth.as_ref(),
+      _ => None
+    }
+  }
+
+  fn intercept(&self, dst: &Uri) -> Option<&Intercept> {
+    if let Some(no_proxy) = self.no.as_ref() {
       if no_proxy.contains(dst.host()?) {
         return None;
       }
     }
 
-    for intercept in &*self.proxies {
+    for intercept in &self.intercepts {
       return match (
         intercept.filter,
         dst.scheme().map(Scheme::as_str).unwrap_or(""),
