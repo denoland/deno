@@ -4038,15 +4038,15 @@ Deno.test(
 Deno.test({
   name: "HTTP Server test (error on non-unix platform)",
   ignore: Deno.build.os !== "windows",
-}, async () => {
+}, () => {
   try {
     const ac = new AbortController();
     const server = Deno.serve({
       path: "path/to/socket",
       handler: (_req) => new Response("Hello, world"),
       signal: ac.signal,
-      onListen({ path }) {
-        console.log("Server started at ${path}");
+      onListen({ path: _path }) {
+        console.log("Server started at ${_path}");
       },
     });
     server.finished.then(() => console.log("Server closed"));
