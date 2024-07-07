@@ -130,6 +130,10 @@ impl CliLockfile {
     };
 
     let lockfile = if flags.lock_write {
+      log::warn!(
+        "{} \"--lock-write\" flag is deprecated and will be removed in Deno 2.",
+        crate::colors::yellow("Warning")
+      );
       CliLockfile::new(
         Lockfile::new_empty(filename, true),
         flags.frozen_lockfile,

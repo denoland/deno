@@ -10,9 +10,11 @@ mod package_json;
 use deno_ast::SourceMapOption;
 use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
+use deno_config::workspace::WorkspaceEmptyOptions;
 use deno_config::workspace::WorkspaceMemberContext;
 use deno_config::workspace::WorkspaceResolver;
 use deno_config::WorkspaceLintConfig;
@@ -794,7 +796,6 @@ pub struct CliOptions {
   flags: Flags,
   initial_cwd: PathBuf,
   maybe_node_modules_folder: Option<PathBuf>,
-  maybe_vendor_folder: Option<PathBuf>,
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   overrides: CliOptionOverrides,
@@ -838,15 +839,6 @@ impl CliOptions {
       root_folder.pkg_json.as_deref(),
     )
     .with_context(|| "Resolving node_modules folder.")?;
-    let maybe_vendor_folder = if force_global_cache {
-      None
-    } else {
-      resolve_vendor_folder(
-        &initial_cwd,
-        &flags,
-        root_folder.deno_json.as_deref(),
-      )
-    };
 
     load_env_variables_from_env_file(flags.env_file.as_ref());
 
@@ -863,7 +855,6 @@ impl CliOptions {
       maybe_lockfile,
       npmrc,
       maybe_node_modules_folder,
-      maybe_vendor_folder,
       overrides: Default::default(),
       workspace,
       disable_deprecated_api_warning,
@@ -875,6 +866,10 @@ impl CliOptions {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
     let config_fs_adapter = DenoConfigFsAdapter::new(&RealFs);
+    let maybe_vendor_override = flags.vendor.map(|v| match v {
+      true => VendorEnablement::Enable { cwd: &initial_cwd },
+      false => VendorEnablement::Disable,
+    });
     let resolve_workspace_discover_options = || {
       let additional_config_file_names: &'static [&'static str] =
         if matches!(flags.subcommand, DenoSubcommand::Publish(..)) {
@@ -903,7 +898,15 @@ impl CliOptions {
         config_parse_options,
         additional_config_file_names,
         discover_pkg_json,
+        maybe_vendor_override,
       }
+    };
+    let resolve_empty_options = || WorkspaceEmptyOptions {
+      root_dir: Arc::new(
+        ModuleSpecifier::from_directory_path(&initial_cwd).unwrap(),
+      ),
+      use_vendor_dir: maybe_vendor_override
+        .unwrap_or(VendorEnablement::Disable),
     };
 
     let workspace = match &flags.config_flag {
@@ -914,9 +917,7 @@ impl CliOptions {
             &resolve_workspace_discover_options(),
           )?
         } else {
-          Workspace::empty(Arc::new(
-            ModuleSpecifier::from_directory_path(&initial_cwd).unwrap(),
-          ))
+          Workspace::empty(resolve_empty_options())
         }
       }
       deno_config::ConfigFlag::Path(path) => {
@@ -926,9 +927,9 @@ impl CliOptions {
           &resolve_workspace_discover_options(),
         )?
       }
-      deno_config::ConfigFlag::Disabled => Workspace::empty(Arc::new(
-        ModuleSpecifier::from_directory_path(&initial_cwd).unwrap(),
-      )),
+      deno_config::ConfigFlag::Disabled => {
+        Workspace::empty(resolve_empty_options())
+      }
     };
 
     for diagnostic in workspace.diagnostics() {
@@ -1064,6 +1065,7 @@ impl CliOptions {
   pub async fn create_workspace_resolver(
     &self,
     file_fetcher: &FileFetcher,
+    pkg_json_dep_resolution: PackageJsonDepResolution,
   ) -> Result<WorkspaceResolver, AnyError> {
     let overrode_no_import_map = self
       .overrides
@@ -1106,12 +1108,7 @@ impl CliOptions {
         .workspace
         .create_resolver(
           CreateResolverOptions {
-            // todo(dsherret): this should be false for nodeModulesDir: true
-            pkg_json_dep_resolution: if self.use_byonm() {
-              PackageJsonDepResolution::Disabled
-            } else {
-              PackageJsonDepResolution::Enabled
-            },
+            pkg_json_dep_resolution,
             specified_import_map: cli_arg_specified_import_map,
           },
           |specifier| {
@@ -1270,7 +1267,6 @@ impl CliOptions {
       flags: self.flags.clone(),
       initial_cwd: self.initial_cwd.clone(),
       maybe_node_modules_folder: Some(path),
-      maybe_vendor_folder: self.maybe_vendor_folder.clone(),
       npmrc: self.npmrc.clone(),
       maybe_lockfile: self.maybe_lockfile.clone(),
       workspace: self.workspace.clone(),
@@ -1288,7 +1284,7 @@ impl CliOptions {
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
-    self.maybe_vendor_folder.as_ref()
+    self.workspace.vendor_dir_path()
   }
 
   pub fn resolve_root_cert_store_provider(
@@ -1813,31 +1809,6 @@ fn resolve_node_modules_folder(
   Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
 }
 
-fn resolve_vendor_folder(
-  cwd: &Path,
-  flags: &Flags,
-  maybe_config_file: Option<&ConfigFile>,
-) -> Option<PathBuf> {
-  let use_vendor_dir = flags
-    .vendor
-    .or_else(|| maybe_config_file.and_then(|c| c.json.vendor))
-    .unwrap_or(false);
-  // Unlike the node_modules directory, there is no need to canonicalize
-  // this directory because it's just used as a cache and the resolved
-  // specifier is not based on the canonicalized path (unlike the modules
-  // in the node_modules folder).
-  if !use_vendor_dir {
-    None
-  } else if let Some(config_path) = maybe_config_file
-    .as_ref()
-    .and_then(|c| c.specifier.to_file_path().ok())
-  {
-    Some(config_path.parent().unwrap().join("vendor"))
-  } else {
-    Some(cwd.join("vendor"))
-  }
-}
-
 fn resolve_import_map_specifier(
   maybe_import_map_path: Option<&str>,
   maybe_config_file: Option<&ConfigFile>,
@@ -1974,9 +1945,8 @@ pub fn config_to_deno_graph_workspace_member(
 
 #[cfg(test)]
 mod test {
-  use crate::util::fs::FileCollector;
-
   use super::*;
+  use deno_config::glob::FileCollector;
   use pretty_assertions::assert_eq;
 
   #[test]
@@ -2121,7 +2091,7 @@ mod test {
     let mut files = FileCollector::new(|_| true)
       .ignore_git_folder()
       .ignore_node_modules()
-      .collect_file_patterns(resolved_files)
+      .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, resolved_files)
       .unwrap();
 
     files.sort();

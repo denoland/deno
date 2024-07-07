@@ -67,10 +67,6 @@ export class SignImpl extends Writable {
 
     algorithm = algorithm.toLowerCase();
 
-    if (algorithm.startsWith("rsa-")) {
-      // Allows RSA-[digest_algorithm] as a valid algorithm
-      algorithm = algorithm.slice(4);
-    }
     this.#digestType = algorithm;
     this.hash = createHash(this.#digestType);
   }
@@ -120,11 +116,6 @@ export class VerifyImpl extends Writable {
     });
 
     algorithm = algorithm.toLowerCase();
-
-    if (algorithm.startsWith("rsa-")) {
-      // Allows RSA-[digest_algorithm] as a valid algorithm
-      algorithm = algorithm.slice(4);
-    }
 
     this.#digestType = algorithm;
     this.hash = createHash(this.#digestType);

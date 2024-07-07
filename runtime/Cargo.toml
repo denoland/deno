@@ -22,7 +22,7 @@ include_js_files_for_snapshotting = [
 ]
 # A dev feature to disable creations and loading of snapshots in favor of
 # loading JS sources at runtime.
-__runtime_js_sources = ["include_js_files_for_snapshotting"]
+hmr = ["include_js_files_for_snapshotting"]
 # Signal that only snapshotted JS sources should be used. This will
 # conditionally exclude the runtime source transpilation logic, and add an
 # assertion that a snapshot is provided.

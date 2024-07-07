@@ -1,6 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { pbkdf2, pbkdf2Sync } from "node:crypto";
 import { assert, assertEquals } from "@std/assert/mod.ts";
+import nodeFixtures from "../testdata/crypto_digest_fixtures.json" with {
+  type: "json",
+};
 
 type Algorithms =
   | "md5"
@@ -375,6 +378,35 @@ Deno.test("pbkdf2Sync hashes data correctly", () => {
       }
     }
   });
+});
+
+Deno.test("crypto.pbkdf2Sync - compare with node", async (t) => {
+  const DATA = "Hello, world!";
+  const SALT = "salt";
+  const ITERATIONS = 1000;
+  const KEY_LEN = 64;
+
+  for (const { digest, pkdf2 } of nodeFixtures) {
+    await t.step({
+      name: digest,
+      ignore: digest.includes("blake"),
+      fn() {
+        let actual: string | null;
+        try {
+          actual = pbkdf2Sync(
+            DATA,
+            SALT,
+            ITERATIONS,
+            KEY_LEN,
+            digest as Algorithms,
+          ).toString("hex");
+        } catch {
+          actual = null;
+        }
+        assertEquals(actual, pkdf2);
+      },
+    });
+  }
 });
 
 // TODO(@littledivy): assertCallbackErrorUncaught exits for async operations on the thread pool.
