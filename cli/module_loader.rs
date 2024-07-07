@@ -72,13 +72,17 @@ use deno_semver::npm::NpmPackageReqReference;
 pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
   let npm_resolver = factory.npm_resolver().await?;
   if let Some(npm_resolver) = npm_resolver.as_managed() {
-    npm_resolver.ensure_top_level_package_json_install().await?;
-    // TODO(nathanwhit): we call `cache_packages` if the lockfile is modified,
-    // so by calling it here it's possible we end up calling it twice
-    npm_resolver.cache_packages().await?;
+    if !npm_resolver.ensure_top_level_package_json_install().await? {
+      if let Some(lockfile) = factory.maybe_lockfile() {
+        lockfile.error_if_changed()?;
+      }
+
+      npm_resolver.cache_packages().await?;
+    }
   }
   // cache as many entries in the import map as we can
-  if let Some(import_map) = factory.maybe_import_map().await? {
+  let resolver = factory.workspace_resolver().await?;
+  if let Some(import_map) = resolver.maybe_import_map() {
     let roots = import_map
       .imports()
       .entries()
@@ -507,7 +511,7 @@ impl<TGraphContainer: ModuleGraphContainer>
           .as_managed()
           .unwrap() // byonm won't create a Module::Npm
           .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
-        let maybe_resolution = self
+        self
           .shared
           .node_resolver
           .resolve_package_sub_path_from_deno_module(
@@ -518,11 +522,8 @@ impl<TGraphContainer: ModuleGraphContainer>
           )
           .with_context(|| {
             format!("Could not resolve '{}'.", module.nv_reference)
-          })?;
-        match maybe_resolution {
-          Some(res) => res.into_url(),
-          None => return Err(generic_error("not found")),
-        }
+          })?
+          .into_url()
       }
       Some(Module::Node(module)) => module.specifier.clone(),
       Some(Module::Js(module)) => module.specifier.clone(),

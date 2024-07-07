@@ -4,10 +4,8 @@ use ::deno_permissions::parse_sys_kind;
 use ::deno_permissions::PermissionState;
 use ::deno_permissions::PermissionsContainer;
 use deno_core::error::custom_error;
-use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
-use deno_core::url;
 use deno_core::OpState;
 use serde::Deserialize;
 use serde::Serialize;
@@ -65,7 +63,7 @@ pub fn op_query_permission(
     "net" => permissions.net.query(
       match args.host.as_deref() {
         None => None,
-        Some(h) => Some(parse_host(h)?),
+        Some(h) => Some(h.parse()?),
       }
       .as_ref(),
     ),
@@ -100,7 +98,7 @@ pub fn op_revoke_permission(
     "net" => permissions.net.revoke(
       match args.host.as_deref() {
         None => None,
-        Some(h) => Some(parse_host(h)?),
+        Some(h) => Some(h.parse()?),
       }
       .as_ref(),
     ),
@@ -135,7 +133,7 @@ pub fn op_request_permission(
     "net" => permissions.net.request(
       match args.host.as_deref() {
         None => None,
-        Some(h) => Some(parse_host(h)?),
+        Some(h) => Some(h.parse()?),
       }
       .as_ref(),
     ),
@@ -154,14 +152,4 @@ pub fn op_request_permission(
     }
   };
   Ok(PermissionStatus::from(perm))
-}
-
-fn parse_host(host_str: &str) -> Result<(String, Option<u16>), AnyError> {
-  let url = url::Url::parse(&format!("http://{host_str}/"))
-    .map_err(|_| uri_error("Invalid host"))?;
-  if url.path() != "/" {
-    return Err(uri_error("Invalid host"));
-  }
-  let hostname = url.host_str().unwrap();
-  Ok((hostname.to_string(), url.port()))
 }

@@ -2,6 +2,6 @@ Check file:///[WILDLINE]/mod.ts
 Checking for slow types in the public API...
 Check file:///[WILDLINE]/mod.ts
 Simulating publish of @scope/package@0.0.0 with files:
-   file:///[WILDLINE]/deno.jsonc (300B)
-   file:///[WILDLINE]/mod.ts (129B)
+   file:///[WILDLINE]/deno.jsonc ([WILDLINE])
+   file:///[WILDLINE]/mod.ts ([WILDLINE])
 Warning Aborting due to --dry-run

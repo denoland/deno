@@ -274,6 +274,53 @@ impl FileSystem for RealFs {
     .await?
   }
 
+  fn lutime_sync(
+    &self,
+    path: &Path,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
+    let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
+    filetime::set_symlink_file_times(path, atime, mtime).map_err(Into::into)
+  }
+
+  async fn lutime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
+    let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
+    spawn_blocking(move || {
+      filetime::set_symlink_file_times(path, atime, mtime).map_err(Into::into)
+    })
+    .await?
+  }
+
+  fn lchown_sync(
+    &self,
+    path: &Path,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    lchown(path, uid, gid)
+  }
+
+  async fn lchown_async(
+    &self,
+    path: PathBuf,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    spawn_blocking(move || lchown(&path, uid, gid)).await?
+  }
+
   fn write_file_sync(
     &self,
     path: &Path,
@@ -399,6 +446,31 @@ fn chown(path: &Path, uid: Option<u32>, gid: Option<u32>) -> FsResult<()> {
 // TODO: implement chown for Windows
 #[cfg(not(unix))]
 fn chown(_path: &Path, _uid: Option<u32>, _gid: Option<u32>) -> FsResult<()> {
+  Err(FsError::NotSupported)
+}
+
+#[cfg(unix)]
+fn lchown(path: &Path, uid: Option<u32>, gid: Option<u32>) -> FsResult<()> {
+  use std::os::unix::ffi::OsStrExt;
+  let c_path = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+  // -1 = leave unchanged
+  let uid = uid
+    .map(|uid| uid as libc::uid_t)
+    .unwrap_or(-1i32 as libc::uid_t);
+  let gid = gid
+    .map(|gid| gid as libc::gid_t)
+    .unwrap_or(-1i32 as libc::gid_t);
+  // SAFETY: `c_path` is a valid C string and lives throughout this function call.
+  let result = unsafe { libc::lchown(c_path.as_ptr(), uid, gid) };
+  if result != 0 {
+    return Err(io::Error::last_os_error().into());
+  }
+  Ok(())
+}
+
+// TODO: implement lchown for Windows
+#[cfg(not(unix))]
+fn lchown(_path: &Path, _uid: Option<u32>, _gid: Option<u32>) -> FsResult<()> {
   Err(FsError::NotSupported)
 }
 
@@ -785,7 +857,6 @@ fn read_dir(path: &Path) -> FsResult<Vec<FsDirEntry>> {
         };
       }
       Some(FsDirEntry {
-        parent_path: path.to_string_lossy().to_string(),
         name,
         is_file: method_or_false!(is_file),
         is_directory: method_or_false!(is_dir),
@@ -927,9 +998,14 @@ fn open_with_access_check(
     };
     (*access_check)(true, &path, &options)?;
 
-    // For windows
-    #[allow(unused_mut)]
     let mut opts: fs::OpenOptions = open_options(options);
+    #[cfg(windows)]
+    {
+      // allow opening directories
+      use std::os::windows::fs::OpenOptionsExt;
+      opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
+    }
+
     #[cfg(unix)]
     {
       // Don't follow symlinks on open -- we must always pass fully-resolved files
@@ -943,7 +1019,15 @@ fn open_with_access_check(
 
     Ok(opts.open(&path)?)
   } else {
-    let opts = open_options(options);
+    // for unix
+    #[allow(unused_mut)]
+    let mut opts = open_options(options);
+    #[cfg(windows)]
+    {
+      // allow opening directories
+      use std::os::windows::fs::OpenOptionsExt;
+      opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
+    }
     Ok(opts.open(path)?)
   }
 }
