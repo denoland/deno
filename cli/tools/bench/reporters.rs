@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::io::Stdout;
+
 use serde::Serialize;
 
 use super::*;
@@ -300,46 +302,131 @@ impl BenchReporter for ConsoleReporter {
   }
 }
 
-pub struct CsvReporter(Vec<CsvReporterOutput>);
+pub struct CsvReporter {
+  benches: Vec<CsvReporterBench>,
+}
 
 impl CsvReporter {
   pub fn new() -> Self {
-    Self(Vec::new())
+    Self {
+      benches: Vec::new(),
+    }
   }
 }
 
-pub struct CsvReporterOutput;
+pub struct CsvReporterBench {
+  origin: String,
+  group: Option<String>,
+  name: String,
+  baseline: bool,
+  results: Vec<BenchResult>,
+}
 
 impl BenchReporter for CsvReporter {
-  fn report_group_summary(&mut self) {
-    println!("Report Group Summary")
+  fn report_group_summary(&mut self) {}
+
+  fn report_plan(&mut self, _plan: &BenchPlan) {}
+
+  fn report_end(&mut self, _report: &BenchReport) {
+    match write_csv_to_stdout(self) {
+      Ok(_) => (),
+      Err(e) => println!("{}", e),
+    }
   }
 
-  fn report_plan(&mut self, plan: &BenchPlan) {
-    println!("Bench plan: {plan:?}");
-  }
+  fn report_register(&mut self, _desc: &BenchDescription) {}
 
-  fn report_end(&mut self, report: &BenchReport) {
-    println!("Report end: {report:?}")
-  }
+  fn report_wait(&mut self, _desc: &BenchDescription) {}
 
-  fn report_register(&mut self, desc: &BenchDescription) {
-    println!("Report register: {desc:?}")
-  }
-
-  fn report_wait(&mut self, desc: &BenchDescription) {
-    println!("Report wait: {desc:?}")
-  }
-
-  fn report_output(&mut self, output: &str) {
-    println!("Report output: {output}")
-  }
+  fn report_output(&mut self, _output: &str) {}
 
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult) {
-    println!("Report result: {desc:?}");
+    if desc.warmup {
+      return;
+    }
+
+    let maybe_bench = self.benches.iter_mut().find(|bench| {
+      bench.origin == desc.origin
+        && bench.group == desc.group
+        && bench.name == desc.name
+        && bench.baseline == desc.baseline
+    });
+
+    if let Some(bench) = maybe_bench {
+      bench.results.push(result.clone());
+    } else {
+      self.benches.push(CsvReporterBench {
+        origin: desc.origin.clone(),
+        group: desc.group.clone(),
+        name: desc.name.clone(),
+        baseline: desc.baseline,
+        results: vec![result.clone()],
+      });
+    }
   }
 
-  fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>) {
-    println!("Uncaught error. Origin: {origin}, error: {error}")
+  fn report_uncaught_error(&mut self, _origin: &str, _error: Box<JsError>) {}
+}
+
+fn write_csv_to_stdout(reporter: &CsvReporter) -> Result<(), std::io::Error> {
+  let mut errors = Vec::new();
+  {
+    let mut writer = csv::Writer::from_writer(std::io::stdout());
+    writer.write_record(&[
+      "origin", "group", "name", "baseline", "avg", "min", "max", "p75", "p99",
+      "p995",
+    ])?;
+    for bench in &reporter.benches {
+      for result in &bench.results {
+        match result {
+          BenchResult::Ok(stats) => {
+            writer.write_record(&[
+              &bench.origin,
+              &bench.group.as_deref().unwrap_or("").to_string(),
+              &bench.name,
+              &bench.baseline.to_string(),
+              &stats.avg.to_string(),
+              &stats.min.to_string(),
+              &stats.max.to_string(),
+              &stats.p75.to_string(),
+              &stats.p99.to_string(),
+              &stats.p995.to_string(),
+            ])?;
+          }
+
+          BenchResult::Failed(js_error) => {
+            errors.push(js_error);
+            writer.write_record(&[
+              &bench.origin,
+              &bench.group.as_deref().unwrap_or("").to_string(),
+              &bench.name,
+              &bench.baseline.to_string(),
+              "NaN",
+              "NaN",
+              "NaN",
+              "NaN",
+              "NaN",
+              "NaN",
+            ])?;
+          }
+        }
+      }
+    }
   }
+
+  for js_error in &errors {
+    eprintln!(
+      "{}: {}",
+      colors::red_bold("error"),
+      format_test_error(js_error)
+    );
+  }
+
+  if !errors.is_empty() {
+    eprintln!("Some benchmarks failed. See above for details.");
+    eprintln!("Errors most likely originated from a dangling promise, event/timeout handler or top-level code.");
+    eprintln!();
+  }
+
+  Ok(())
 }
