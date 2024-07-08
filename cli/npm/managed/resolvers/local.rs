@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::args::AllowScripts;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
@@ -67,6 +68,7 @@ pub struct LocalNpmPackageResolver {
   root_node_modules_url: Url,
   system_info: NpmSystemInfo,
   registry_read_permission_checker: RegistryReadPermissionChecker,
+  allow_scripts: AllowScripts,
 }
 
 impl LocalNpmPackageResolver {
@@ -80,6 +82,7 @@ impl LocalNpmPackageResolver {
     tarball_cache: Arc<TarballCache>,
     node_modules_folder: PathBuf,
     system_info: NpmSystemInfo,
+    allow_scripts: AllowScripts,
   ) -> Self {
     Self {
       cache,
@@ -96,6 +99,7 @@ impl LocalNpmPackageResolver {
         .unwrap(),
       root_node_modules_path: node_modules_folder,
       system_info,
+      allow_scripts,
     }
   }
 
@@ -244,6 +248,8 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       &self.tarball_cache,
       &self.root_node_modules_path,
       &self.system_info,
+      self,
+      &self.allow_scripts,
     )
     .await
   }
@@ -268,6 +274,7 @@ async fn sync_resolution_with_fs(
   tarball_cache: &Arc<TarballCache>,
   root_node_modules_dir_path: &Path,
   system_info: &NpmSystemInfo,
+  allow_scripts: &AllowScripts,
 ) -> Result<(), AnyError> {
   if snapshot.is_empty() && pkg_json_deps_provider.workspace_pkgs().is_empty() {
     return Ok(()); // don't create the directory

@@ -1730,6 +1730,10 @@ impl CliOptions {
     }
     full_paths
   }
+
+  pub fn allowed_scripts(&self) -> &AllowScripts {
+    &self.flags.allow_scripts
+  }
 }
 
 /// Resolves the path to use for a local node_modules folder.
