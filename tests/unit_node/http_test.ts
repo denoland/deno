@@ -142,6 +142,121 @@ Deno.test("[node/http] chunked response", async () => {
   }
 });
 
+Deno.test("[node/http] .writeHead()", async (t) => {
+  await t.step("send status code", async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http.createServer((_req, res) => {
+      res.writeHead(404);
+      res.end();
+    });
+    server.listen(async () => {
+      const res = await fetch(
+        // deno-lint-ignore no-explicit-any
+        `http://127.0.0.1:${(server.address() as any).port}/`,
+      );
+      await res.body?.cancel();
+      assertEquals(res.status, 404);
+
+      server.close(() => resolve());
+    });
+
+    await promise;
+  });
+
+  // TODO: hyper doesn't support custom status text
+  // await t.step("send status + custom status text", async () => {
+  //   const { promise, resolve } = Promise.withResolvers<void>();
+  //   const server = http.createServer((_req, res) => {
+  //     res.writeHead(404, "some text");
+  //     res.end();
+  //   });
+  //   server.listen(async () => {
+  //     const res = await fetch(
+  //       // deno-lint-ignore no-explicit-any
+  //       `http://127.0.0.1:${(server.address() as any).port}/`,
+  //     );
+  //     await res.body?.cancel();
+  //     assertEquals(res.status, 404);
+  //     assertEquals(res.statusText, "some text");
+
+  //     server.close(() => resolve());
+  //   });
+
+  //   await promise;
+  // });
+
+  await t.step("send status + custom status text + headers obj", async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http.createServer((_req, res) => {
+      res.writeHead(404, "some text", { foo: "bar" });
+      res.end();
+    });
+    server.listen(async () => {
+      const res = await fetch(
+        // deno-lint-ignore no-explicit-any
+        `http://127.0.0.1:${(server.address() as any).port}/`,
+      );
+      await res.body?.cancel();
+      assertEquals(res.status, 404);
+      // TODO: hyper doesn't support custom status text
+      // assertEquals(res.statusText, "some text");
+      assertEquals(res.headers.get("foo"), "bar");
+
+      server.close(() => resolve());
+    });
+
+    await promise;
+  });
+
+  await t.step("send status + headers obj", async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, {
+        foo: "bar",
+        bar: ["foo1", "foo2"],
+        foobar: 1,
+      });
+      res.end();
+    });
+    server.listen(async () => {
+      const res = await fetch(
+        // deno-lint-ignore no-explicit-any
+        `http://127.0.0.1:${(server.address() as any).port}/`,
+      );
+      await res.body?.cancel();
+      assertEquals(res.status, 200);
+      assertEquals(res.headers.get("foo"), "bar");
+      assertEquals(res.headers.get("bar"), "foo1, foo2");
+      assertEquals(res.headers.get("foobar"), "1");
+
+      server.close(() => resolve());
+    });
+
+    await promise;
+  });
+
+  await t.step("send status + headers array", async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, [["foo", "bar"]]);
+      res.end();
+    });
+    server.listen(async () => {
+      const res = await fetch(
+        // deno-lint-ignore no-explicit-any
+        `http://127.0.0.1:${(server.address() as any).port}/`,
+      );
+      await res.body?.cancel();
+      assertEquals(res.status, 200);
+      assertEquals(res.headers.get("foo"), "bar");
+
+      server.close(() => resolve());
+    });
+
+    await promise;
+  });
+});
+
 // Test empty chunks: https://github.com/denoland/deno/issues/17194
 Deno.test("[node/http] empty chunk in the middle of response", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
