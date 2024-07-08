@@ -126,8 +126,8 @@ verify on GitHub that everything looks correct.
 - [ ] Publish the release on Github
 
 - [ ] Run
-      https://github.com/denoland/dotcom/actions/workflows/update_version.yml
-      to automatically open a PR.
+      https://github.com/denoland/dotcom/actions/workflows/update_version.yml to
+      automatically open a PR.
   - [ ] Merge the PR.
 
 - [ ] Run
