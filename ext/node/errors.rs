@@ -51,7 +51,7 @@ pub enum ResolvePkgSubpathFromDenoModuleErrorKind {
   UrlToNodeResolution(#[from] UrlToNodeResolutionError),
 }
 
-// todo(THIS PR): how to make this a TypeError. Does it matter?
+// todo(https://github.com/denoland/deno_core/issues/810): make this a TypeError
 #[derive(Debug, Clone, Error)]
 #[error(
   "[ERR_INVALID_MODULE_SPECIFIER] Invalid module '{}' {}{}",
@@ -214,7 +214,7 @@ pub enum UrlToNodeResolutionErrorKind {
   ClosestPkgJson(#[from] ClosestPkgJsonError),
 }
 
-// todo(THIS PR): this should be a TypeError
+// todo(https://github.com/denoland/deno_core/issues/810): make this a TypeError
 #[derive(Debug, Error)]
 #[error(
   "[ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier \"{}\" is not defined{}{}",
