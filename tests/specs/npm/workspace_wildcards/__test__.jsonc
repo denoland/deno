@@ -1,0 +1,4 @@
+{
+  "args": "run --node-modules-dir main.ts",
+  "output": "main.out"
+}
