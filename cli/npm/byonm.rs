@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::errors::PackageFolderResolveError;
+use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
 use deno_runtime::deno_node::load_pkg_json;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NpmResolver;
@@ -174,43 +175,45 @@ impl NpmResolver for ByonmCliNpmResolver {
       fs: &dyn FileSystem,
       name: &str,
       referrer: &ModuleSpecifier,
-    ) -> Result<PathBuf, AnyError> {
-      let referrer_file = specifier_to_file_path(referrer)?;
-      let mut current_folder = referrer_file.parent().unwrap();
-      loop {
-        let node_modules_folder = if current_folder.ends_with("node_modules") {
-          Cow::Borrowed(current_folder)
-        } else {
-          Cow::Owned(current_folder.join("node_modules"))
-        };
+    ) -> Result<PathBuf, PackageFolderResolveError> {
+      let maybe_referrer_file = specifier_to_file_path(referrer).ok();
+      let maybe_start_folder =
+        maybe_referrer_file.as_ref().and_then(|f| f.parent());
+      if let Some(start_folder) = maybe_start_folder {
+        for current_folder in start_folder.ancestors() {
+          let node_modules_folder = if current_folder.ends_with("node_modules")
+          {
+            Cow::Borrowed(current_folder)
+          } else {
+            Cow::Owned(current_folder.join("node_modules"))
+          };
 
-        let sub_dir = join_package_name(&node_modules_folder, name);
-        if fs.is_dir_sync(&sub_dir) {
-          return Ok(sub_dir);
-        }
-
-        if let Some(parent) = current_folder.parent() {
-          current_folder = parent;
-        } else {
-          break;
+          let sub_dir = join_package_name(&node_modules_folder, name);
+          if fs.is_dir_sync(&sub_dir) {
+            return Ok(sub_dir);
+          }
         }
       }
 
-      Err(PackageFolderResolveError::NotFoundPackage {
-        package_name: name.to_string(),
-        referrer: referrer.clone(),
-        referrer_extra: None,
-      })
+      Err(
+        PackageFolderResolveErrorKind::NotFoundPackage {
+          package_name: name.to_string(),
+          referrer: referrer.clone(),
+          referrer_extra: None,
+        }
+        .into(),
+      )
     }
 
     let path = inner(&*self.fs, name, referrer)?;
-    Ok(self.fs.realpath_sync(&path).map_err(|err| {
-      PackageFolderResolveError::Io {
+    self.fs.realpath_sync(&path).map_err(|err| {
+      PackageFolderResolveErrorKind::Io {
         package_name: name.to_string(),
         referrer: referrer.clone(),
         source: err.into_io_error(),
       }
-    }))
+      .into()
+    })
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {

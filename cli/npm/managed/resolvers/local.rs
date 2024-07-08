@@ -30,6 +30,7 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::errors::PackageFolderResolveError;
+use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
 use deno_runtime::deno_node::NodePermissions;
 use deno_semver::package::PackageNv;
 use serde::Deserialize;
@@ -114,7 +115,7 @@ impl LocalNpmPackageResolver {
   fn resolve_folder_for_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError> {
+  ) -> Result<Option<PathBuf>, std::io::Error> {
     let Some(relative_url) =
       self.root_node_modules_url.make_relative(specifier)
     else {
@@ -131,7 +132,6 @@ impl LocalNpmPackageResolver {
     // in `node_modules` directory of the referrer.
     canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())
       .map(Some)
-      .map_err(|err| err.into())
   }
 
   fn resolve_package_folder_from_specifier(
@@ -156,23 +156,20 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     Some(&self.root_node_modules_path)
   }
 
-  fn package_folder(&self, id: &NpmPackageId) -> Result<PathBuf, AnyError> {
-    match self.resolution.resolve_pkg_cache_folder_id_from_pkg_id(id) {
-      // package is stored at:
-      // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
-      Some(cache_folder_id) => Ok(
-        self
-          .root_node_modules_path
-          .join(".deno")
-          .join(get_package_folder_id_folder_name(&cache_folder_id))
-          .join("node_modules")
-          .join(&cache_folder_id.nv.name),
-      ),
-      None => bail!(
-        "Could not find package information for '{}'",
-        id.as_serialized()
-      ),
-    }
+  fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
+    let cache_folder_id = self
+      .resolution
+      .resolve_pkg_cache_folder_id_from_pkg_id(id)?;
+    // package is stored at:
+    // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
+    Some(
+      self
+        .root_node_modules_path
+        .join(".deno")
+        .join(get_package_folder_id_folder_name(&cache_folder_id))
+        .join("node_modules")
+        .join(&cache_folder_id.nv.name),
+    )
   }
 
   fn resolve_package_folder_from_package(
@@ -182,16 +179,19 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   ) -> Result<PathBuf, PackageFolderResolveError> {
     let maybe_local_path = self
       .resolve_folder_for_specifier(referrer)
-      .map_err(|err| PackageFolderResolveError::Io {
+      .map_err(|err| PackageFolderResolveErrorKind::Io {
         package_name: name.to_string(),
         referrer: referrer.clone(),
         source: err,
       })?;
     let Some(local_path) = maybe_local_path else {
-      return Err(PackageFolderResolveError::NotFoundReferrer {
-        referrer: referrer.clone(),
-        referrer_extra: None,
-      });
+      return Err(
+        PackageFolderResolveErrorKind::NotFoundReferrer {
+          referrer: referrer.clone(),
+          referrer_extra: None,
+        }
+        .into(),
+      );
     };
     let package_root_path = self.resolve_package_root(&local_path);
     let mut current_folder = package_root_path.as_path();
@@ -213,11 +213,14 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       }
     }
 
-    Err(PackageFolderResolveError::NotFoundPackage {
-      package_name: name.to_string(),
-      referrer: referrer.clone(),
-      referrer_extra: None,
-    })
+    Err(
+      PackageFolderResolveErrorKind::NotFoundPackage {
+        package_name: name.to_string(),
+        referrer: referrer.clone(),
+        referrer_extra: None,
+      }
+      .into(),
+    )
   }
 
   fn resolve_package_cache_folder_id_from_specifier(

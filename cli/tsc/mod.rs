@@ -739,7 +739,7 @@ fn resolve_graph_specifier_types(
           npm.node_resolver.resolve_package_subpath_from_deno_module(
             &package_folder,
             module.nv_reference.sub_path(),
-            referrer,
+            Some(referrer),
             NodeResolutionMode::Types,
           )?;
         Ok(Some(NodeResolution::into_specifier_and_media_type(
@@ -793,7 +793,7 @@ fn resolve_non_graph_specifier_types(
       .resolve_package_subpath_from_deno_module(
         &package_folder,
         npm_req_ref.sub_path(),
-        referrer,
+        Some(referrer),
         NodeResolutionMode::Types,
       )?;
     Ok(Some(NodeResolution::into_specifier_and_media_type(

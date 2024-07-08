@@ -321,7 +321,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
             &package_json_path,
             &package_subpath,
             exports,
-            referrer,
+            Some(referrer),
             NodeModuleKind::Esm,
             conditions,
             mode,

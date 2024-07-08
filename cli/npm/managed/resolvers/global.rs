@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_npm::NpmPackageCacheFolderId;
@@ -16,6 +15,7 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::errors::PackageFolderResolveError;
+use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
 use deno_runtime::deno_node::NodePermissions;
 
 use super::super::cache::NpmCache;
@@ -66,12 +66,11 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     None
   }
 
-  fn package_folder(&self, id: &NpmPackageId) -> Result<PathBuf, AnyError> {
+  fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
     let folder_id = self
       .resolution
-      .resolve_pkg_cache_folder_id_from_pkg_id(id)
-      .unwrap();
-    Ok(self.cache.package_folder_for_id(&folder_id))
+      .resolve_pkg_cache_folder_id_from_pkg_id(id)?;
+    Some(self.cache.package_folder_for_id(&folder_id))
   }
 
   fn resolve_package_folder_from_package(
@@ -80,35 +79,56 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, PackageFolderResolveError> {
     use deno_npm::resolution::PackageNotFoundFromReferrerError;
-    let Some(referrer_pkg_id) = self
+    let Some(referrer_cache_folder_id) = self
       .cache
       .resolve_package_folder_id_from_specifier(referrer)
     else {
-      return Err(PackageFolderResolveError::NotFoundReferrer {
-        referrer: referrer.clone(),
-        referrer_extra: None,
-      });
+      return Err(
+        PackageFolderResolveErrorKind::NotFoundReferrer {
+          referrer: referrer.clone(),
+          referrer_extra: None,
+        }
+        .into(),
+      );
     };
     let resolve_result = self
       .resolution
-      .resolve_package_from_package(name, &referrer_pkg_id);
+      .resolve_package_from_package(name, &referrer_cache_folder_id);
     match resolve_result {
-      Ok(pkg) => self.package_folder(&pkg.id),
-      Err(err) => match err {
-        PackageNotFoundFromReferrerError::Referrer(cache_folder_id) => {
-          PackageFolderResolveError::NotFoundReferrer {
+      Ok(pkg) => match self.maybe_package_folder(&pkg.id) {
+        Some(folder) => Ok(folder),
+        None => Err(
+          PackageFolderResolveErrorKind::NotFoundPackage {
+            package_name: name.to_string(),
+            referrer: referrer.clone(),
+            referrer_extra: Some(format!(
+              "{} -> {}",
+              referrer_cache_folder_id,
+              pkg.id.as_serialized()
+            )),
+          }
+          .into(),
+        ),
+      },
+      Err(err) => match *err {
+        PackageNotFoundFromReferrerError::Referrer(cache_folder_id) => Err(
+          PackageFolderResolveErrorKind::NotFoundReferrer {
             referrer: referrer.clone(),
             referrer_extra: Some(cache_folder_id.to_string()),
           }
-        }
+          .into(),
+        ),
         PackageNotFoundFromReferrerError::Package {
           name,
           referrer: cache_folder_id_referrer,
-        } => PackageFolderResolveError::NotFoundPackage {
-          package_name: name,
-          referrer: referrer.clone(),
-          referrer_extra: Some(cache_folder_id_referrer.to_string()),
-        },
+        } => Err(
+          PackageFolderResolveErrorKind::NotFoundPackage {
+            package_name: name,
+            referrer: referrer.clone(),
+            referrer_extra: Some(cache_folder_id_referrer.to_string()),
+          }
+          .into(),
+        ),
       },
     }
   }

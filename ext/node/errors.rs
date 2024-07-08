@@ -11,12 +11,42 @@ use thiserror::Error;
 use crate::NodeModuleKind;
 use crate::NodeResolutionMode;
 
+macro_rules! kinded_err {
+  ($name:ident, $kind_name:ident) => {
+    #[derive(Error, Debug)]
+    #[error(transparent)]
+    pub struct $name(pub Box<$kind_name>);
+
+    impl $name {
+      pub fn as_kind(&self) -> &$kind_name {
+        &self.0
+      }
+
+      pub fn into_kind(self) -> $kind_name {
+        *self.0
+      }
+    }
+
+    impl<E> From<E> for $name
+    where
+      $kind_name: From<E>,
+    {
+      fn from(err: E) -> Self {
+        $name(Box::new($kind_name::from(err)))
+      }
+    }
+  };
+}
+
+kinded_err!(
+  ResolvePkgSubpathFromDenoModuleError,
+  ResolvePkgSubpathFromDenoModuleErrorKind
+);
+
 #[derive(Debug, Error)]
-pub enum ResolvePkgSubpathFromDenoModuleError {
+pub enum ResolvePkgSubpathFromDenoModuleErrorKind {
   #[error(transparent)]
   PackageSubpathResolve(#[from] PackageSubpathResolveError),
-  #[error(transparent)]
-  FinalizeResolution(#[from] FinalizeResolutionError),
   #[error(transparent)]
   UrlToNodeResolution(#[from] UrlToNodeResolutionError),
 }
@@ -24,15 +54,15 @@ pub enum ResolvePkgSubpathFromDenoModuleError {
 // todo(THIS PR): how to make this a TypeError. Does it matter?
 #[derive(Debug, Clone, Error)]
 #[error(
-  "[ERR_INVALID_MODULE_SPECIFIER] Invalid module \"{}\" {}{}",
+  "[ERR_INVALID_MODULE_SPECIFIER] Invalid module '{}' {}{}",
   request,
   reason,
-  maybe_base.as_ref().map(|base| format!(" imported from {}", base)).unwrap_or_default()
+  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default()
 )]
 pub struct InvalidModuleSpecifierError {
   pub request: String,
   pub reason: Cow<'static, str>,
-  pub maybe_base: Option<String>,
+  pub maybe_referrer: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -41,8 +71,10 @@ pub enum LegacyMainResolveError {
   PathToDeclarationUrl(PathToDeclarationUrlError),
 }
 
+kinded_err!(PackageFolderResolveError, PackageFolderResolveErrorKind);
+
 #[derive(Debug, Error)]
-pub enum PackageFolderResolveError {
+pub enum PackageFolderResolveErrorKind {
   #[error(
     "Could not find package '{}' from referrer '{}'{}.",
     package_name,
@@ -74,8 +106,10 @@ pub enum PackageFolderResolveError {
   },
 }
 
+kinded_err!(PackageSubpathResolveError, PackageSubpathResolveErrorKind);
+
 #[derive(Debug, Error)]
-pub enum PackageSubpathResolveError {
+pub enum PackageSubpathResolveErrorKind {
   #[error(transparent)]
   PkgJsonLoad(#[from] deno_config::package_json::PackageJsonLoadError),
   #[error(transparent)]
@@ -92,14 +126,19 @@ pub enum PackageSubpathResolveError {
 
 #[derive(Debug, Error)]
 #[error(
-  "Target '{}' not found from '{}' from {}referrer {}{}.",
+  "Target '{}' not found from '{}'{}{}.",
   target,
   pkg_json_path.display(),
-  match referrer_kind {
-    NodeModuleKind::Esm => "",
-    NodeModuleKind::Cjs => "cjs ",
-  },
-  referrer,
+  maybe_referrer.as_ref().map(|r|
+    format!(
+      " from{} referrer {}",
+      match referrer_kind {
+        NodeModuleKind::Esm => "",
+        NodeModuleKind::Cjs => " cjs",
+      },
+      r
+    )
+  ).unwrap_or_default(),
   match mode {
     NodeResolutionMode::Execution => "",
     NodeResolutionMode::Types => " for types",
@@ -108,13 +147,15 @@ pub enum PackageSubpathResolveError {
 pub struct PackageTargetNotFoundError {
   pub pkg_json_path: PathBuf,
   pub target: String,
-  pub referrer: ModuleSpecifier,
+  pub maybe_referrer: Option<ModuleSpecifier>,
   pub referrer_kind: NodeModuleKind,
   pub mode: NodeResolutionMode,
 }
 
+kinded_err!(PackageTargetResolveError, PackageTargetResolveErrorKind);
+
 #[derive(Debug, Error)]
-pub enum PackageTargetResolveError {
+pub enum PackageTargetResolveErrorKind {
   #[error(transparent)]
   NotFound(#[from] PackageTargetNotFoundError),
   #[error(transparent)]
@@ -127,8 +168,10 @@ pub enum PackageTargetResolveError {
   PathToDeclarationUrl(#[from] PathToDeclarationUrlError),
 }
 
+kinded_err!(PackageExportsResolveError, PackageExportsResolveErrorKind);
+
 #[derive(Debug, Error)]
-pub enum PackageExportsResolveError {
+pub enum PackageExportsResolveErrorKind {
   #[error(transparent)]
   PackagePathNotExported(#[from] PackagePathNotExportedError),
   #[error(transparent)]
@@ -141,8 +184,10 @@ pub enum PathToDeclarationUrlError {
   SubPath(#[from] PackageSubpathResolveError),
 }
 
+kinded_err!(ClosestPkgJsonError, ClosestPkgJsonErrorKind);
+
 #[derive(Debug, Error)]
-pub enum ClosestPkgJsonError {
+pub enum ClosestPkgJsonErrorKind {
   #[error("Failed canonicalizing package.json directory '{dir_path}'.")]
   CanonicalizingDir {
     dir_path: PathBuf,
@@ -159,8 +204,10 @@ pub struct TypeScriptNotSupportedInNpmError {
   pub specifier: ModuleSpecifier,
 }
 
+kinded_err!(UrlToNodeResolutionError, UrlToNodeResolutionErrorKind);
+
 #[derive(Debug, Error)]
-pub enum UrlToNodeResolutionError {
+pub enum UrlToNodeResolutionErrorKind {
   #[error(transparent)]
   TypeScriptNotSupported(#[from] TypeScriptNotSupportedInNpmError),
   #[error(transparent)]
@@ -170,19 +217,21 @@ pub enum UrlToNodeResolutionError {
 // todo(THIS PR): this should be a TypeError
 #[derive(Debug, Error)]
 #[error(
-  "[ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier \"{}\" is not defined{} imported from {}",
+  "[ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier \"{}\" is not defined{}{}",
   name,
   package_json_path.as_ref().map(|p| format!(" in package {}", p.display())).unwrap_or_default(),
-  referrer,
+  maybe_referrer.as_ref().map(|r| format!(" imported from '{}'", r)).unwrap_or_default(),
 )]
 pub struct PackageImportNotDefinedError {
   pub name: String,
   pub package_json_path: Option<PathBuf>,
-  pub referrer: ModuleSpecifier,
+  pub maybe_referrer: Option<ModuleSpecifier>,
 }
 
+kinded_err!(PackageImportsResolveError, PackageImportsResolveErrorKind);
+
 #[derive(Debug, Error)]
-pub enum PackageImportsResolveError {
+pub enum PackageImportsResolveErrorKind {
   #[error(transparent)]
   ClosestPkgJson(ClosestPkgJsonError),
   #[error(transparent)]
@@ -193,8 +242,10 @@ pub enum PackageImportsResolveError {
   Target(#[from] PackageTargetResolveError),
 }
 
+kinded_err!(PackageResolveError, PackageResolveErrorKind);
+
 #[derive(Debug, Error)]
-pub enum PackageResolveError {
+pub enum PackageResolveErrorKind {
   #[error(transparent)]
   ClosestPkgJson(#[from] ClosestPkgJsonError),
   #[error(transparent)]
@@ -233,8 +284,10 @@ pub enum NodeResolveError {
   FinalizeResolution(#[from] FinalizeResolutionError),
 }
 
+kinded_err!(FinalizeResolutionError, FinalizeResolutionErrorKind);
+
 #[derive(Debug, Error)]
-pub enum FinalizeResolutionError {
+pub enum FinalizeResolutionErrorKind {
   #[error(transparent)]
   InvalidModuleSpecifierError(#[from] InvalidModuleSpecifierError),
   #[error(transparent)]
@@ -244,18 +297,27 @@ pub enum FinalizeResolutionError {
 }
 
 #[derive(Debug, Error)]
-#[error("[ERR_MODULE_NOT_FOUND] Cannot find {typ} \"{specifier}\" imported from \"{referrer}\"")]
+#[error(
+  "[ERR_MODULE_NOT_FOUND] Cannot find {} '{}'{}",
+  typ,
+  specifier,
+  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default()
+)]
 pub struct ModuleNotFoundError {
   pub specifier: ModuleSpecifier,
-  pub referrer: ModuleSpecifier,
+  pub maybe_referrer: Option<ModuleSpecifier>,
   pub typ: &'static str,
 }
 
 #[derive(Debug, Error)]
-#[error("[ERR_UNSUPPORTED_DIR_IMPORT] Directory import '{dir_url}' is not supported resolving ES modules imported from {referrer}")]
+#[error(
+  "[ERR_UNSUPPORTED_DIR_IMPORT] Directory import '{}' is not supported resolving ES modules{}",
+  dir_url,
+  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
+)]
 pub struct UnsupportedDirImportError {
   pub dir_url: ModuleSpecifier,
-  pub referrer: ModuleSpecifier,
+  pub maybe_referrer: Option<ModuleSpecifier>,
 }
 
 #[derive(Debug)]
@@ -296,9 +358,9 @@ impl std::fmt::Display for InvalidPackageTargetError {
       )?;
     };
 
-    if let Some(base) = &self.maybe_referrer {
-      write!(f, " imported from {base}");
-    };
+    if let Some(referrer) = &self.maybe_referrer {
+      write!(f, " imported from '{}'", referrer)?;
+    }
     if rel_error {
       write!(f, "; target must start with \"./\"")?;
     }
@@ -342,7 +404,7 @@ impl std::fmt::Display for PackagePathNotExportedError {
     };
 
     if let Some(referrer) = &self.maybe_referrer {
-      write!(f, " imported from '{referrer}'")?;
+      write!(f, " imported from '{}'", referrer)?;
     }
     Ok(())
   }

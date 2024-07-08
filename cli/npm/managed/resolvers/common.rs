@@ -32,10 +32,19 @@ pub trait NpmPackageFsResolver: Send + Sync {
   /// The local node_modules folder if it is applicable to the implementation.
   fn node_modules_path(&self) -> Option<&PathBuf>;
 
+  fn maybe_package_folder(&self, package_id: &NpmPackageId) -> Option<PathBuf>;
+
   fn package_folder(
     &self,
     package_id: &NpmPackageId,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<PathBuf, AnyError> {
+    self.maybe_package_folder(package_id).ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "Package folder not found for '{}'",
+        package_id.as_serialized()
+      )
+    })
+  }
 
   fn resolve_package_folder_from_package(
     &self,
