@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
-/// <reference path="../../core/internal.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
 const {

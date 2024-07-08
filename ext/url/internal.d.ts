@@ -7,6 +7,8 @@ declare module "ext:deno_url/00_url.js" {
   const URL: typeof URL;
   const URLSearchParams: typeof URLSearchParams;
   function parseUrlEncoded(bytes: Uint8Array): [string, string][];
+
+  const URLPrototype: typeof URL.prototype;
 }
 
 declare module "ext:deno_url/01_urlpattern.js" {

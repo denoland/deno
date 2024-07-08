@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+// @ts-check
+
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
   isDate,

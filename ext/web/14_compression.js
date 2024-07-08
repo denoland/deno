@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
-/// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="./internal.d.ts" />
 /// <reference path="./lib.deno_web.d.ts" />
 

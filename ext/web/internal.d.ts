@@ -44,6 +44,7 @@ declare module "ext:deno_web/00_infra.js" {
   function forgivingBase64UrlEncode(data: Uint8Array | string): string;
   function forgivingBase64UrlDecode(data: string): Uint8Array;
   function serializeJSValueToJSONString(value: unknown): string;
+  function pathFromURL(url: URL): string;
 }
 
 declare module "ext:deno_web/01_dom_exception.js" {

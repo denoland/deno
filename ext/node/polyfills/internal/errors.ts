@@ -2489,7 +2489,7 @@ export class ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL extends NodeTypeError {
 }
 
 export class ERR_PARSE_ARGS_UNKNOWN_OPTION extends NodeTypeError {
-  constructor(option, allowPositionals) {
+  constructor(option: string, allowPositionals: boolean) {
     const suggestDashDash = allowPositionals
       ? ". To specify a positional " +
         "argument starting with a '-', place it at the end of the command after " +

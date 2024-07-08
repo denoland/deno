@@ -170,6 +170,8 @@ function validateString(value, name) {
 /**
  * @param {unknown} value
  * @param {string} name
+ * @param {number} [min]
+ * @param {number} [max]
  */
 function validateNumber(value, name, min = undefined, max) {
   if (typeof value !== "number") {

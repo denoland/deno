@@ -106,7 +106,7 @@ export function normalizeString(
   return res;
 }
 
-function formatExt(ext) {
+function formatExt(ext: string | undefined) {
   return ext ? `${ext[0] === "." ? "" : "."}${ext}` : "";
 }
 

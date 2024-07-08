@@ -20,6 +20,7 @@ import {
   notImplemented,
   TextEncodings,
 } from "ext:deno_node/_utils.ts";
+import type { Buffer } from "node:buffer";
 
 export type CallbackWithError = (err: ErrnoException | null) => void;
 

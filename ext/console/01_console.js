@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-/// <reference path="../../core/internal.d.ts" />
-
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
   isAnyArrayBuffer,

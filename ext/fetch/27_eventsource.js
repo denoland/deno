@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-/// <reference path="../../core/internal.d.ts" />
+// @ts-check
 
 import { primordials } from "ext:core/mod.js";
 import { op_utf8_to_byte_string } from "ext:core/ops";
