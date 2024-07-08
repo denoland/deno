@@ -248,7 +248,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       &self.tarball_cache,
       &self.root_node_modules_path,
       &self.system_info,
-      self,
       &self.allow_scripts,
     )
     .await
@@ -265,6 +264,54 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   }
 }
 
+// take in root node_modules, create baseline custom_commands. then
+// for the individual package, take the package node_modules && add bin entries to existing
+// baseline (so they take precedence). need to make sure that we actually do bin entries for
+// the package
+fn resolve_custom_commands_from_folder(
+  pkg: &NpmResolutionPackage,
+  root_node_modules_dir_path: &Path,
+) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
+  let mut custom_commands = crate::task_runner::TaskCustomCommands::new();
+  custom_commands
+    .insert("npx".to_string(), Rc::new(crate::task_runner::NpxCommand));
+
+  custom_commands
+    .insert("npm".to_string(), Rc::new(crate::task_runner::NpmCommand));
+
+  custom_commands
+    .insert("node".to_string(), Rc::new(crate::task_runner::NodeCommand));
+
+  custom_commands.insert(
+    "node-gyp".to_string(),
+    Rc::new(crate::task_runner::NodeGypCommand),
+  );
+  custom_commands.extend(
+    crate::task_runner::resolve_npm_commands_from_bin_dir(
+      root_node_modules_dir_path,
+    ),
+  );
+  Ok(custom_commands)
+}
+
+fn can_run_scripts(allow_scripts: &AllowScripts, package: &PackageNv) -> bool {
+  match allow_scripts {
+    AllowScripts::All => true,
+    // TODO: make this more correct
+    AllowScripts::Some(allow_list) => {
+      allow_list.contains(&package.name)
+        || allow_list.contains(&package.name.to_lowercase())
+    }
+    AllowScripts::None => false,
+  }
+}
+
+fn has_lifecycle_scripts(package: &NpmResolutionPackage) -> bool {
+  package.scripts.contains_key("preinstall")
+    || package.scripts.contains_key("install")
+    || package.scripts.contains_key("postinstall")
+}
+
 /// Creates a pnpm style folder structure.
 async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
@@ -278,6 +325,11 @@ async fn sync_resolution_with_fs(
 ) -> Result<(), AnyError> {
   if snapshot.is_empty() && pkg_json_deps_provider.workspace_pkgs().is_empty() {
     return Ok(()); // don't create the directory
+  }
+  // HACK
+  if crate::task_runner::is_task_subprocess() {
+    // don't run this in a subprocess
+    return Ok(());
   }
 
   let deno_local_registry_dir = root_node_modules_dir_path.join(".deno");
@@ -313,6 +365,7 @@ async fn sync_resolution_with_fs(
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
   let bin_entries = Rc::new(RefCell::new(bin_entries::BinEntries::new()));
+  let mut packages_with_scripts = Vec::with_capacity(16);
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
       newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -337,6 +390,7 @@ async fn sync_resolution_with_fs(
       // are forced to be recreated
       setup_cache.remove_dep(&package_folder_name);
 
+      let folder_path = folder_path.clone();
       let bin_entries_to_setup = bin_entries.clone();
       cache_futures.push(async move {
         tarball_cache
@@ -373,6 +427,23 @@ async fn sync_resolution_with_fs(
         drop(pb_guard); // explicit for clarity
         Ok::<_, AnyError>(())
       });
+    }
+
+    if has_lifecycle_scripts(package)
+      && can_run_scripts(&allow_scripts, &package.id.nv)
+    {
+      let scripts_run = folder_path.join(".scripts-run");
+      if !scripts_run.exists() {
+        eprintln!("adding package with scripts: {}", package.id.nv.name);
+        let sub_node_modules = folder_path.join("node_modules");
+        let package_path =
+          join_package_name(&sub_node_modules, &package.id.nv.name);
+        packages_with_scripts.push((
+          package.clone(),
+          package_path,
+          scripts_run,
+        ));
+      }
     }
   }
 
@@ -513,6 +584,40 @@ async fn sync_resolution_with_fs(
         &root_node_modules_dir_path.join(&workspace.alias),
       )?;
     }
+  }
+
+  for (package, package_path, scripts_run_path) in packages_with_scripts {
+    let custom_commands = resolve_custom_commands_from_folder(
+      &package,
+      root_node_modules_dir_path,
+    )?;
+    eprintln!("package with scripts: {}", package.id.nv.name);
+    for script_name in ["preinstall", "install", "postinstall"] {
+      if let Some(script) = package.scripts.get(script_name) {
+        eprintln!("running script: {}; for {}", script_name, package.id.nv);
+        let exit_code =
+          crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
+            task_name: script_name,
+            script: &script,
+            cwd: &package_path,
+            env_vars: crate::task_runner::real_env_vars(),
+            custom_commands: custom_commands.clone(),
+            // todo: wrong
+            init_cwd: &package_path,
+            argv: &[],
+            root_node_modules_dir: Some(root_node_modules_dir_path),
+          })
+          .await?;
+        if exit_code != 0 {
+          bail!(
+            "script '{}' failed with exit code {}",
+            script_name,
+            exit_code
+          );
+        }
+      }
+    }
+    fs::write(scripts_run_path, "")?;
   }
 
   setup_cache.save();

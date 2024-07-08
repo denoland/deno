@@ -160,6 +160,74 @@ impl ShellCommand for NpmCommand {
   }
 }
 
+// WARNING: Do not depend on this env var in user code. It's not stable API.
+pub(crate) const DENO_TASK_SUBPROCESS_HIDDEN_ENV_VAR_NAME: &str =
+  "DENO_INTERNAL_TASK_SUBPROCESS";
+
+pub(crate) fn is_task_subprocess() -> bool {
+  std::env::var(DENO_TASK_SUBPROCESS_HIDDEN_ENV_VAR_NAME).is_ok()
+}
+
+pub struct NodeCommand;
+
+impl ShellCommand for NodeCommand {
+  fn execute(
+    &self,
+    context: ShellCommandContext,
+  ) -> LocalBoxFuture<'static, ExecuteResult> {
+    // TODO: use node if we can't use deno (fallback on error? based on args?)
+    let mut args = Vec::with_capacity(context.args.len());
+    args.extend(["run", "-A"].into_iter().map(|s| s.to_string()));
+    args.extend(context.args.iter().cloned());
+
+    eprintln!("running node with deno: {:?}", args);
+    let mut state = context.state;
+    state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
+    state.apply_env_var(DENO_TASK_SUBPROCESS_HIDDEN_ENV_VAR_NAME, "1");
+    return ExecutableCommand::new(
+      "deno".to_string(),
+      std::env::current_exe().unwrap(),
+      // "node".to_string().into(),
+    )
+    .execute(ShellCommandContext {
+      args,
+      state,
+      ..context
+    });
+  }
+}
+
+pub struct NodeGypCommand;
+
+impl ShellCommand for NodeGypCommand {
+  fn execute(
+    &self,
+    context: ShellCommandContext,
+  ) -> LocalBoxFuture<'static, ExecuteResult> {
+    // TODO: decide whether we force users to add an explicit dep on
+    // node-gyp (also need to respect the version in package.json)
+    let mut args = Vec::with_capacity(context.args.len());
+    args.extend(
+      ["run", "-A", "npm:node-gyp"]
+        .into_iter()
+        .map(|s| s.to_string()),
+    );
+    args.extend(context.args.iter().cloned());
+    let mut state = context.state;
+    state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
+    state.apply_env_var(DENO_TASK_SUBPROCESS_HIDDEN_ENV_VAR_NAME, "1");
+    return ExecutableCommand::new(
+      "deno".to_string(),
+      std::env::current_exe().unwrap(),
+    )
+    .execute(ShellCommandContext {
+      args,
+      state,
+      ..context
+    });
+  }
+}
+
 pub struct NpxCommand;
 
 impl ShellCommand for NpxCommand {
@@ -220,12 +288,19 @@ impl ShellCommand for NpmPackageBinCommand {
         format!("npm:{}/{}", self.npm_package, self.name)
       },
     ];
+    let mut state = context.state;
+    state.apply_env_var(DENO_TASK_SUBPROCESS_HIDDEN_ENV_VAR_NAME, "1");
+
     args.extend(context.args);
     let executable_command = deno_task_shell::ExecutableCommand::new(
       "deno".to_string(),
       std::env::current_exe().unwrap(),
     );
-    executable_command.execute(ShellCommandContext { args, ..context })
+    executable_command.execute(ShellCommandContext {
+      args,
+      state,
+      ..context
+    })
   }
 }
 
@@ -256,6 +331,9 @@ impl ShellCommand for NodeModulesFileRunCommand {
     context
       .state
       .apply_env_var("DENO_INTERNAL_NPM_CMD_NAME", &self.command_name);
+    context
+      .state
+      .apply_env_var(DENO_TASK_SUBPROCESS_HIDDEN_ENV_VAR_NAME, "1");
     executable_command.execute(ShellCommandContext { args, ..context })
   }
 }
@@ -277,7 +355,7 @@ pub fn resolve_custom_commands(
   Ok(commands)
 }
 
-fn resolve_npm_commands_from_bin_dir(
+pub fn resolve_npm_commands_from_bin_dir(
   node_modules_dir: &Path,
 ) -> HashMap<String, Rc<dyn ShellCommand>> {
   let mut result = HashMap::<String, Rc<dyn ShellCommand>>::new();
