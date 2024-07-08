@@ -101,7 +101,7 @@ console_static_text = "=0.8.1"
 data-encoding = "2.3.3"
 data-url = "=0.3.0"
 deno_cache_dir = "=0.10.0"
-deno_config = { version = "=0.20.0", default-features = false }
+deno_config = { version = "=0.20.1", default-features = false }
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
