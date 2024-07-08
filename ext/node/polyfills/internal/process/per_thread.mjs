@@ -3,7 +3,6 @@
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
-// @ts-check
 
 const kInternal = Symbol("internal properties");
 
