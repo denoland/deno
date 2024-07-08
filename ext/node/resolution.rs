@@ -874,15 +874,15 @@ impl NodeResolver {
             last_error = None;
             continue;
           }
-          Err(e) => {
-            // todo(THIS PR): don't do this anymore!!
-            let err_string = e.to_string();
-            last_error = Some(e);
-            if err_string.starts_with("[ERR_INVALID_PACKAGE_TARGET]") {
+          Err(e) => match e.as_kind() {
+            PackageTargetResolveErrorKind::InvalidPackageTarget(_) => {
+              last_error = Some(e);
               continue;
             }
-            return Err(last_error.unwrap());
-          }
+            _ => {
+              return Err(e);
+            }
+          },
         }
       }
       if last_error.is_none() {
