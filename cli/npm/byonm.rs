@@ -11,6 +11,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::errors::PackageFolderResolveError;
 use deno_runtime::deno_node::load_pkg_json;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NpmResolver;
@@ -168,7 +169,7 @@ impl NpmResolver for ByonmCliNpmResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, PackageFolderResolveError> {
     fn inner(
       fs: &dyn FileSystem,
       name: &str,
@@ -195,15 +196,21 @@ impl NpmResolver for ByonmCliNpmResolver {
         }
       }
 
-      bail!(
-        "could not find package '{}' from referrer '{}'.",
-        name,
-        referrer
-      );
+      Err(PackageFolderResolveError::NotFoundPackage {
+        package_name: name.to_string(),
+        referrer: referrer.clone(),
+        referrer_extra: None,
+      })
     }
 
     let path = inner(&*self.fs, name, referrer)?;
-    Ok(self.fs.realpath_sync(&path)?)
+    Ok(self.fs.realpath_sync(&path).map_err(|err| {
+      PackageFolderResolveError::Io {
+        package_name: name.to_string(),
+        referrer: referrer.clone(),
+        source: err.into_io_error(),
+      }
+    }))
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {

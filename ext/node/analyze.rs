@@ -278,6 +278,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     }
   }
 
+  // todo(dsherret): what is going on here? Isn't this a bunch of duplicate code?
   fn resolve(
     &self,
     specifier: &str,
@@ -314,15 +315,18 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     let maybe_package_json = load_pkg_json(&*self.fs, &package_json_path)?;
     if let Some(package_json) = maybe_package_json {
       if let Some(exports) = &package_json.exports {
-        return self.node_resolver.package_exports_resolve(
-          &package_json_path,
-          &package_subpath,
-          exports,
-          referrer,
-          NodeModuleKind::Esm,
-          conditions,
-          mode,
-        );
+        return self
+          .node_resolver
+          .package_exports_resolve(
+            &package_json_path,
+            &package_subpath,
+            exports,
+            referrer,
+            NodeModuleKind::Esm,
+            conditions,
+            mode,
+          )
+          .map_err(AnyError::from);
       }
 
       // old school

@@ -15,16 +15,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::args::PackageJsonInstallDepsProvider;
-use crate::cache::CACHE_PERM;
-use crate::npm::cache_dir::mixed_case_package_name_decode;
-use crate::util::fs::atomic_write_file_with_retries;
-use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
-use crate::util::fs::clone_dir_recursive;
-use crate::util::fs::symlink_dir;
-use crate::util::fs::LaxSingleProcessFsFlag;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::progress_bar::ProgressMessagePrompt;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -39,12 +29,23 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
+use deno_runtime::deno_node::errors::PackageFolderResolveError;
 use deno_runtime::deno_node::NodePermissions;
 use deno_semver::package::PackageNv;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::args::PackageJsonInstallDepsProvider;
+use crate::cache::CACHE_PERM;
+use crate::npm::cache_dir::mixed_case_package_name_decode;
 use crate::npm::cache_dir::mixed_case_package_name_encode;
+use crate::util::fs::atomic_write_file_with_retries;
+use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
+use crate::util::fs::clone_dir_recursive;
+use crate::util::fs::symlink_dir;
+use crate::util::fs::LaxSingleProcessFsFlag;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressMessagePrompt;
 
 use super::super::cache::NpmCache;
 use super::super::cache::TarballCache;
@@ -178,9 +179,19 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError> {
-    let Some(local_path) = self.resolve_folder_for_specifier(referrer)? else {
-      bail!("could not find npm package for '{}'", referrer);
+  ) -> Result<PathBuf, PackageFolderResolveError> {
+    let maybe_local_path = self
+      .resolve_folder_for_specifier(referrer)
+      .map_err(|err| PackageFolderResolveError::Io {
+        package_name: name.to_string(),
+        referrer: referrer.clone(),
+        source: err,
+      })?;
+    let Some(local_path) = maybe_local_path else {
+      return Err(PackageFolderResolveError::NotFoundReferrer {
+        referrer: referrer.clone(),
+        referrer_extra: None,
+      });
     };
     let package_root_path = self.resolve_package_root(&local_path);
     let mut current_folder = package_root_path.as_path();
@@ -202,11 +213,11 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       }
     }
 
-    bail!(
-      "could not find package '{}' from referrer '{}'.",
-      name,
-      referrer
-    );
+    Err(PackageFolderResolveError::NotFoundPackage {
+      package_name: name.to_string(),
+      referrer: referrer.clone(),
+      referrer_extra: None,
+    })
   }
 
   fn resolve_package_cache_folder_id_from_specifier(

@@ -15,6 +15,7 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::errors::PackageFolderResolveError;
 use deno_runtime::deno_node::NodePermissions;
 
 use super::super::cache::NpmCache;
@@ -77,17 +78,39 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, PackageFolderResolveError> {
+    use deno_npm::resolution::PackageNotFoundFromReferrerError;
     let Some(referrer_pkg_id) = self
       .cache
       .resolve_package_folder_id_from_specifier(referrer)
     else {
-      bail!("could not find npm package for '{}'", referrer);
+      return Err(PackageFolderResolveError::NotFoundReferrer {
+        referrer: referrer.clone(),
+        referrer_extra: None,
+      });
     };
-    let pkg = self
+    let resolve_result = self
       .resolution
-      .resolve_package_from_package(name, &referrer_pkg_id)?;
-    self.package_folder(&pkg.id)
+      .resolve_package_from_package(name, &referrer_pkg_id);
+    match resolve_result {
+      Ok(pkg) => self.package_folder(&pkg.id),
+      Err(err) => match err {
+        PackageNotFoundFromReferrerError::Referrer(cache_folder_id) => {
+          PackageFolderResolveError::NotFoundReferrer {
+            referrer: referrer.clone(),
+            referrer_extra: Some(cache_folder_id.to_string()),
+          }
+        }
+        PackageNotFoundFromReferrerError::Package {
+          name,
+          referrer: cache_folder_id_referrer,
+        } => PackageFolderResolveError::NotFoundPackage {
+          package_name: name,
+          referrer: referrer.clone(),
+          referrer_extra: Some(cache_folder_id_referrer.to_string()),
+        },
+      },
+    }
   }
 
   fn resolve_package_cache_folder_id_from_specifier(

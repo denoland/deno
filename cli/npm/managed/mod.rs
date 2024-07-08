@@ -522,12 +522,17 @@ impl NpmResolver for ManagedCliNpmResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, PackageFolderResolveError> {
     let path = self
       .fs_resolver
       .resolve_package_folder_from_package(name, referrer)?;
     let path =
-      canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())?;
+      canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())
+        .map_err(|err| PackageFolderResolveError::Io {
+          package_name: name.to_string(),
+          referrer: referrer.clone(),
+          source: err,
+        })?;
     log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
     Ok(path)
   }
