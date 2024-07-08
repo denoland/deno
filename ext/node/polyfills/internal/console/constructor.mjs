@@ -4,8 +4,6 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-// @ts-check
-
 import { op_preview_entries } from "ext:core/ops";
 
 // Mock trace for now
