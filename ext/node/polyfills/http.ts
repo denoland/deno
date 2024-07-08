@@ -1459,7 +1459,7 @@ export class ServerResponse extends NodeWritable {
   getHeaderNames() {
     return Object.keys(this.#headers);
   }
-  getHeaders(): Record<string, string> {
+  getHeaders(): Record<string, string | number | string[]> {
     // @ts-ignore Ignore null __proto__
     return { __proto__: null, ...this.#headers };
   }
