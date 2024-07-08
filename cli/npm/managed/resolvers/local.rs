@@ -7,6 +7,7 @@ mod bin_entries;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -502,10 +503,13 @@ async fn sync_resolution_with_fs(
   Ok(())
 }
 
+// Uses BTreeMap to preserve the ordering of the elements in memory, to ensure
+// the file generated from this datastructure is deterministic.
+// See: https://github.com/denoland/deno/issues/24479
 /// Represents a dependency at `node_modules/.deno/<package_id>/`
 struct SetupCacheDep<'a> {
-  previous: Option<&'a HashMap<String, String>>,
-  current: &'a mut HashMap<String, String>,
+  previous: Option<&'a BTreeMap<String, String>>,
+  current: &'a mut BTreeMap<String, String>,
 }
 
 impl<'a> SetupCacheDep<'a> {
@@ -521,11 +525,14 @@ impl<'a> SetupCacheDep<'a> {
   }
 }
 
+// Uses BTreeMap to preserve the ordering of the elements in memory, to ensure
+// the file generated from this datastructure is deterministic.
+// See: https://github.com/denoland/deno/issues/24479
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct SetupCacheData {
-  root_symlinks: HashMap<String, String>,
-  deno_symlinks: HashMap<String, String>,
-  dep_symlinks: HashMap<String, HashMap<String, String>>,
+  root_symlinks: BTreeMap<String, String>,
+  deno_symlinks: BTreeMap<String, String>,
+  dep_symlinks: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 /// It is very slow to try to re-setup the symlinks each time, so this will
