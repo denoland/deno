@@ -1620,7 +1620,7 @@ fn has_supported_test_path_name(path: &Path) -> bool {
 
     path
       .components()
-      .any(|seg| seg.as_os_str().to_string_lossy() == "__tests__")
+      .any(|seg| seg.as_os_str().to_str() == Some("__tests__"))
   } else {
     false
   }
