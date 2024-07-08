@@ -408,7 +408,10 @@ Process.prototype.config = {
   target_defaults: {
     default_configuration: "Release",
   },
-  variables: {},
+  variables: {
+    llvm_version: "0.0",
+    enable_lto: "false",
+  },
 };
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
@@ -933,6 +936,10 @@ internals.__bootstrapNodeProcess = function (
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
     pid = Deno.pid;
+
+    // this is the llvm version used in rustc 1.79.0
+    Process.prototype.config["variables"]["llvm_version"] =
+      Deno.build.os === "darwin" ? "18.1" : "0.0";
 
     initializeDebugEnv(nodeDebug);
 
