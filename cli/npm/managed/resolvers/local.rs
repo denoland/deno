@@ -17,7 +17,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
@@ -710,6 +709,7 @@ fn junction_or_symlink_dir(
   old_path: &Path,
   new_path: &Path,
 ) -> Result<(), AnyError> {
+  use deno_core::anyhow::bail;
   // Use junctions because they're supported on ntfs file systems without
   // needing to elevate privileges on Windows
 
