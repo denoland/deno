@@ -3557,7 +3557,7 @@ impl Inner {
       .unwrap_or_else(|| self.initial_cwd.clone());
     // todo: we need a way to convert config data to a Workspace
     let workspace = Arc::new(Workspace::discover(
-      deno_config::workspace::WorkspaceDiscoverStart::Dirs(&[
+      deno_config::workspace::WorkspaceDiscoverStart::Paths(&[
         initial_cwd.clone()
       ]),
       &WorkspaceDiscoverOptions {

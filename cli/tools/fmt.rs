@@ -53,8 +53,9 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
   if fmt_flags.is_stdin() {
     let cli_options = CliOptions::from_flags(flags)?;
     let start_ctx = cli_options.workspace.resolve_start_ctx();
-    let fmt_options =
-      cli_options.resolve_fmt_options(&fmt_flags, &start_ctx)?;
+    let fmt_config = start_ctx
+      .to_fmt_config(FilePatterns::new_with_base(start_ctx.dir_path()))?;
+    let fmt_options = FmtOptions::resolve(fmt_config, &fmt_flags);
     return format_stdin(
       &fmt_flags,
       fmt_options,
@@ -143,7 +144,7 @@ fn resolve_paths_with_options_batches(
     cli_options.resolve_fmt_options_for_members(fmt_flags)?;
   let mut paths_with_options_batches =
     Vec::with_capacity(members_fmt_options.len());
-  for member_fmt_options in members_fmt_options {
+  for (_ctx, member_fmt_options) in members_fmt_options {
     let files =
       collect_fmt_files(cli_options, member_fmt_options.files.clone())?;
     if !files.is_empty() {

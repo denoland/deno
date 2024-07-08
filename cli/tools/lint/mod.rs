@@ -91,7 +91,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
         Ok(async move {
           let factory = CliFactory::from_flags(flags)?;
           let cli_options = factory.cli_options();
-          let lint_config = cli_options.resolve_lint_config()?;
+          let lint_config = cli_options.resolve_deno_lint_config()?;
           let mut paths_with_options_batches =
             resolve_paths_with_options_batches(cli_options, &lint_flags)?;
           for paths_with_options in &mut paths_with_options_batches {
@@ -143,7 +143,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     let factory = CliFactory::from_flags(flags)?;
     let cli_options = factory.cli_options();
     let is_stdin = lint_flags.is_stdin();
-    let lint_config = cli_options.resolve_lint_config()?;
+    let deno_lint_config = cli_options.resolve_deno_lint_config()?;
     let workspace_lint_options =
       cli_options.resolve_workspace_lint_options(&lint_flags)?;
     let success = if is_stdin {
@@ -151,14 +151,15 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       let reporter_lock = Arc::new(Mutex::new(create_reporter(
         workspace_lint_options.reporter_kind,
       )));
-      let lint_options =
-        cli_options.resolve_lint_options(lint_flags, &start_ctx)?;
+      let lint_config = start_ctx
+        .to_lint_config(FilePatterns::new_with_base(start_ctx.dir_path()))?;
+      let lint_options = LintOptions::resolve(lint_config, &lint_flags);
       let lint_rules = get_config_rules_err_empty(
         lint_options.rules,
         start_ctx.maybe_deno_json().map(|c| c.as_ref()),
       )?;
       let file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
-      let r = lint_stdin(&file_path, lint_rules.rules, lint_config);
+      let r = lint_stdin(&file_path, lint_rules.rules, deno_lint_config);
       let success = handle_lint_result(
         &file_path.to_string_lossy(),
         r,
@@ -179,7 +180,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
         linter
           .lint_files(
             paths_with_options.options,
-            lint_config.clone(),
+            deno_lint_config.clone(),
             paths_with_options.ctx,
             paths_with_options.paths,
           )
@@ -618,7 +619,7 @@ fn apply_lint_fixes(
 fn lint_stdin(
   file_path: &Path,
   lint_rules: Vec<&'static dyn LintRule>,
-  config: LintConfig,
+  deno_lint_config: LintConfig,
 ) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
   let mut source_code = String::new();
   if stdin().read_to_string(&mut source_code).is_err() {
@@ -632,7 +633,7 @@ fn lint_stdin(
       specifier: specifier_from_file_path(file_path)?,
       source_code: deno_ast::strip_bom(source_code),
       media_type: MediaType::TypeScript,
-      config,
+      config: deno_lint_config,
     })
     .map_err(AnyError::from)
 }
