@@ -481,7 +481,11 @@ impl ModuleGraphBuilder {
       }
     }
 
-    let maybe_imports = self.options.to_maybe_imports()?;
+    let maybe_imports = if options.graph_kind.include_types() {
+      self.options.to_compiler_option_types()?
+    } else {
+      Vec::new()
+    };
     let analyzer = self
       .module_info_cache
       .as_module_analyzer(&self.parsed_source_cache);
