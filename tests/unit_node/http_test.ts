@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import EventEmitter from "node:events";
-import http, { type RequestOptions } from "node:http";
+import http, { type RequestOptions, type ServerResponse } from "node:http";
 import url from "node:url";
 import https from "node:https";
 import net from "node:net";
@@ -143,10 +143,13 @@ Deno.test("[node/http] chunked response", async () => {
 });
 
 Deno.test("[node/http] .writeHead()", async (t) => {
-  await t.step("send status code", async () => {
+  async function testWriteHead(
+    onRequest: (res: ServerResponse) => void,
+    onResponse: (res: Response) => void,
+  ) {
     const { promise, resolve } = Promise.withResolvers<void>();
     const server = http.createServer((_req, res) => {
-      res.writeHead(404);
+      onRequest(res);
       res.end();
     });
     server.listen(async () => {
@@ -155,105 +158,74 @@ Deno.test("[node/http] .writeHead()", async (t) => {
         `http://127.0.0.1:${(server.address() as any).port}/`,
       );
       await res.body?.cancel();
-      assertEquals(res.status, 404);
+
+      onResponse(res);
 
       server.close(() => resolve());
     });
 
     await promise;
+  }
+
+  await t.step("send status code", async () => {
+    await testWriteHead(
+      (res) => res.writeHead(404),
+      (res) => {
+        assertEquals(res.status, 404);
+      },
+    );
   });
 
-  // TODO: hyper doesn't support custom status text
+  // TODO(@marvinhagemeister): hyper doesn't support custom status text
   // await t.step("send status + custom status text", async () => {
-  //   const { promise, resolve } = Promise.withResolvers<void>();
-  //   const server = http.createServer((_req, res) => {
-  //     res.writeHead(404, "some text");
-  //     res.end();
-  //   });
-  //   server.listen(async () => {
-  //     const res = await fetch(
-  //       // deno-lint-ignore no-explicit-any
-  //       `http://127.0.0.1:${(server.address() as any).port}/`,
-  //     );
-  //     await res.body?.cancel();
-  //     assertEquals(res.status, 404);
-  //     assertEquals(res.statusText, "some text");
-
-  //     server.close(() => resolve());
-  //   });
-
-  //   await promise;
+  //   await testWriteHead(
+  //     (res) => res.writeHead(404, "some text"),
+  //     (res) => {
+  //       assertEquals(res.status, 404);
+  //       assertEquals(res.statusText, "some text");
+  //     },
+  //   );
   // });
 
   await t.step("send status + custom status text + headers obj", async () => {
-    const { promise, resolve } = Promise.withResolvers<void>();
-    const server = http.createServer((_req, res) => {
-      res.writeHead(404, "some text", { foo: "bar" });
-      res.end();
-    });
-    server.listen(async () => {
-      const res = await fetch(
-        // deno-lint-ignore no-explicit-any
-        `http://127.0.0.1:${(server.address() as any).port}/`,
-      );
-      await res.body?.cancel();
-      assertEquals(res.status, 404);
-      // TODO: hyper doesn't support custom status text
-      // assertEquals(res.statusText, "some text");
-      assertEquals(res.headers.get("foo"), "bar");
-
-      server.close(() => resolve());
-    });
-
-    await promise;
+    await testWriteHead(
+      (res) => res.writeHead(404, "some text", { foo: "bar" }),
+      (res) => {
+        assertEquals(res.status, 404);
+        // TODO(@marvinhagemeister): hyper doesn't support custom
+        // status text
+        // assertEquals(res.statusText, "some text");
+        assertEquals(res.headers.get("foo"), "bar");
+      },
+    );
   });
 
   await t.step("send status + headers obj", async () => {
-    const { promise, resolve } = Promise.withResolvers<void>();
-    const server = http.createServer((_req, res) => {
-      res.writeHead(200, {
-        foo: "bar",
-        bar: ["foo1", "foo2"],
-        foobar: 1,
-      });
-      res.end();
-    });
-    server.listen(async () => {
-      const res = await fetch(
-        // deno-lint-ignore no-explicit-any
-        `http://127.0.0.1:${(server.address() as any).port}/`,
-      );
-      await res.body?.cancel();
-      assertEquals(res.status, 200);
-      assertEquals(res.headers.get("foo"), "bar");
-      assertEquals(res.headers.get("bar"), "foo1, foo2");
-      assertEquals(res.headers.get("foobar"), "1");
-
-      server.close(() => resolve());
-    });
-
-    await promise;
+    await testWriteHead(
+      (res) => {
+        res.writeHead(200, {
+          foo: "bar",
+          bar: ["foo1", "foo2"],
+          foobar: 1,
+        });
+      },
+      (res) => {
+        assertEquals(res.status, 200);
+        assertEquals(res.headers.get("foo"), "bar");
+        assertEquals(res.headers.get("bar"), "foo1, foo2");
+        assertEquals(res.headers.get("foobar"), "1");
+      },
+    );
   });
 
   await t.step("send status + headers array", async () => {
-    const { promise, resolve } = Promise.withResolvers<void>();
-    const server = http.createServer((_req, res) => {
-      res.writeHead(200, [["foo", "bar"]]);
-      res.end();
-    });
-    server.listen(async () => {
-      const res = await fetch(
-        // deno-lint-ignore no-explicit-any
-        `http://127.0.0.1:${(server.address() as any).port}/`,
-      );
-      await res.body?.cancel();
-      assertEquals(res.status, 200);
-      assertEquals(res.headers.get("foo"), "bar");
-
-      server.close(() => resolve());
-    });
-
-    await promise;
+    await testWriteHead(
+      (res) => res.writeHead(200, [["foo", "bar"]]),
+      (res) => {
+        assertEquals(res.status, 200);
+        assertEquals(res.headers.get("foo"), "bar");
+      },
+    );
   });
 });
 
