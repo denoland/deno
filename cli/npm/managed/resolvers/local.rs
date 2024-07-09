@@ -296,15 +296,15 @@ fn resolve_custom_commands_from_folder(
 
 fn can_run_scripts(
   allow_scripts: &PackagesAllowedScripts,
-  package: &PackageNv,
+  package_nv: &PackageNv,
 ) -> bool {
   match allow_scripts {
     PackagesAllowedScripts::All => true,
     // TODO: make this more correct
-    PackagesAllowedScripts::Some(allow_list) => {
-      allow_list.contains(&package.name)
-        || allow_list.contains(&package.name.to_lowercase())
-    }
+    PackagesAllowedScripts::Some(allow_list) => allow_list.iter().any(|s| {
+      let s = s.strip_prefix("npm:").unwrap_or(s);
+      s == package_nv.name || s == package_nv.to_string()
+    }),
     PackagesAllowedScripts::None => false,
   }
 }
