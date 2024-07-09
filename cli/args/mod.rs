@@ -1668,6 +1668,34 @@ impl CliOptions {
       });
     }
 
+    if !from_config_file.is_empty() {
+      // collect unstable granular flags
+      let mut all_valid_unstable_flags: Vec<&str> =
+        crate::UNSTABLE_GRANULAR_FLAGS
+          .iter()
+          .map(|granular_flag| granular_flag.0)
+          .collect();
+
+      let mut another_unstable_flags =
+        Vec::from(["sloppy-imports", "byonm", "bare-node-builtins"]);
+      // add more unstable flags to the same vector holding granular flags
+      all_valid_unstable_flags.append(&mut another_unstable_flags);
+
+      // check and warn if the unstable flag of config file isn't supported, by
+      // iterating through the vector holding the unstable flags
+      for unstable_value_from_config_file in &from_config_file {
+        if !all_valid_unstable_flags
+          .contains(&unstable_value_from_config_file.as_str())
+        {
+          log::warn!(
+            "{} '{}' isn't a valid unstable feature",
+            colors::yellow("Warning"),
+            unstable_value_from_config_file
+          );
+        }
+      }
+    }
+
     from_config_file
   }
 
