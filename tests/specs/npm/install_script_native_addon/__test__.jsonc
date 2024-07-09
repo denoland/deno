@@ -1,0 +1,27 @@
+{
+  "tests": {
+    "install_script_cache": {
+      "tempDir": true,
+      "steps": [
+        {
+          "args": "cache --allow-scripts=@denotest/node-addon main.js",
+          "output": "[WILDCARD]gyp info ok \n"
+        },
+        {
+          "args": "run -A main.js",
+          "output": "world\n"
+        }
+      ]
+    },
+    "run_without_script": {
+      "tempDir": true,
+      "steps": [
+        {
+          "args": "run -A main.js",
+          "output": "not_run.out",
+          "exitCode": 1
+        }
+      ]
+    }
+  }
+}
