@@ -937,10 +937,6 @@ internals.__bootstrapNodeProcess = function (
     platform = isWindows ? "win32" : Deno.build.os;
     pid = Deno.pid;
 
-    // this is the llvm version used in rustc 1.79.0
-    Process.prototype.config["variables"]["llvm_version"] =
-      Deno.build.os === "darwin" ? "18.1" : "0.0";
-
     initializeDebugEnv(nodeDebug);
 
     delete internals.__bootstrapNodeProcess;
