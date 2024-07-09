@@ -5,6 +5,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_ast::MediaType;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
@@ -173,7 +174,16 @@ impl ShellCommand for NodeCommand {
     // run with deno if it's a simple invocation, fall back to node
     // if there are extra flags
     let mut args = Vec::with_capacity(context.args.len());
-    if context.args.len() > 1 && context.args[0].starts_with('-') {
+    if context.args.len() > 1
+      && (
+        context.args[0].starts_with('-') // has a flag
+        || !matches!(
+          MediaType::from_str(&context.args[0]),
+          MediaType::Cjs | MediaType::Mjs | MediaType::JavaScript
+        )
+        // not a script file
+      )
+    {
       return ExecutableCommand::new(
         "node".to_string(),
         "node".to_string().into(),
