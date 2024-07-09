@@ -210,22 +210,6 @@ pub fn ts_config_to_transpile_and_emit_options(
   ))
 }
 
-pub fn load_env_variables_from_env_file(filename: Option<&String>) {
-  if let Some(env_file_name) = filename {
-    match from_filename(env_file_name) {
-      Ok(_) => (),
-      Err(error) => {
-        match error {
-            dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
-            dotenvy::Error::Io(_)=> log::info!("{} The `--env` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
-            dotenvy::Error::EnvVar(_)=> log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
-            _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
-          }
-      }
-    }
-  }
-}
-
 /// Indicates how cached source files should be handled.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum CacheSetting {
@@ -1122,8 +1106,8 @@ impl CliOptions {
     }
   }
 
-  pub fn get_env_file_name(&self) -> Option<String> {
-    self.flags.env_file.clone()
+  pub fn env_file_name(&self) -> Option<&String> {
+    self.flags.env_file.as_ref()
   }
 
   pub fn enable_future_features(&self) -> bool {
@@ -1879,6 +1863,23 @@ pub fn config_to_deno_graph_workspace_member(
     nv,
     exports: config.to_exports_config()?.into_map(),
   })
+}
+
+fn load_env_variables_from_env_file(filename: Option<&String>) {
+  let Some(env_file_name) = filename else {
+    return;
+  };
+  match from_filename(env_file_name) {
+    Ok(_) => (),
+    Err(error) => {
+      match error {
+          dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
+          dotenvy::Error::Io(_)=> log::info!("{} The `--env` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
+          dotenvy::Error::EnvVar(_)=> log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
+          _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+        }
+    }
+  }
 }
 
 #[cfg(test)]

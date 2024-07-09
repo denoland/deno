@@ -1,4 +1,5 @@
 {
+  "tempDir": true,
   "steps": [
     {
       "args": "compile -A --output out --env=environment.env main.ts",

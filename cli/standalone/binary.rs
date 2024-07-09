@@ -586,16 +586,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     };
 
-    let mut env_vars_from_env_file: HashMap<String, String> = HashMap::new();
-    if let Some(env_filename) = cli_options.get_env_file_name() {
-      if let Ok(env_vars_found) = get_file_env_vars(env_filename.to_string()) {
-        log::info!("{} environment variables within the file \"{}\" are embedded to the generated executable file", crate::colors::yellow("Warning"), env_filename);
-        env_vars_found.iter().for_each(|env_var| {
-          env_vars_from_env_file
-            .insert(env_var.0.to_string(), env_var.1.to_string());
-        });
+    let env_vars_from_env_file = match cli_options.env_file_name() {
+      Some(env_filename) => {
+        log::info!("{} Environment variables from the file \"{}\" were embedded in the generated executable file", crate::colors::yellow("Warning"), env_filename);
+        get_file_env_vars(env_filename.to_string())?
       }
-    }
+      None => Default::default(),
+    };
 
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
@@ -771,17 +768,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   }
 }
 
-/// This function returns the environment variables specified in the passed
-/// environment file, as a hashmap wrapped in a Result object.
+/// This function returns the environment variables specified
+/// in the passed environment file.
 fn get_file_env_vars(
   filename: String,
 ) -> Result<HashMap<String, String>, dotenvy::Error> {
   let mut file_env_vars = HashMap::new();
   for item in dotenvy::from_filename_iter(filename)? {
-    if item.is_err() {
-      return Ok(file_env_vars);
-    }
-    let (key, val) = item.unwrap();
+    let Ok((key, val)) = item else {
+      continue; // this failure will be warned about on load
+    };
     file_env_vars.insert(key, val);
   }
   Ok(file_env_vars)
