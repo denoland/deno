@@ -558,7 +558,9 @@ fn update_existing_empty_config_test() {
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
     format!(
-      "Download http://localhost:4545/vendor/logger.ts\n{}\n\n{}",
+      "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.
+Add `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.
+Download http://localhost:4545/vendor/logger.ts\n{}\n\n{}",
       vendored_text("1 module", "vendor2"),
       success_text_updated_deno_json("vendor2",)
     )
@@ -584,6 +586,8 @@ fn vendor_npm_node_specifiers() {
   let output = context.new_command().args("vendor my_app.ts").run();
   output.assert_matches_text(format!(
     concat!(
+      "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.\n",
+      "Add `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.\n",
       "Download http://localhost:4545/vendor/npm_and_node_specifier.ts\n",
       "Download http://localhost:4260/@denotest/esm-basic\n",
       "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
@@ -661,6 +665,8 @@ fn vendor_only_npm_specifiers() {
   let output = context.new_command().args("vendor my_app.ts").run();
   output.assert_matches_text(format!(
     concat!(
+      "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.\n",
+      "Add `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.\n",
       "Download http://localhost:4260/@denotest/esm-basic\n",
       "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
       "{}\n",
