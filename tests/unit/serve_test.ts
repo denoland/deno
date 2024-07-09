@@ -4053,6 +4053,7 @@ Deno.test({
       server.finished.then(() => console.log("Server closed"));
       console.log("Closing server...");
       ac.abort();
+      await new Promise((resolve) => setTimeout(resolve, 100)); // Example of awaiting something
     },
     Error,
     'Operation `"op_net_listen_unix"` not supported on non-unix platforms.',
