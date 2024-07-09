@@ -158,14 +158,28 @@ mod ops_unix {
   macro_rules! stub_op {
     ($name:ident) => {
       #[op2(fast)]
-      pub fn $name() {
-        panic!("Unsupported on non-unix platforms")
+      pub fn $name() -> Result<(), std::io::Error> {
+        let error_msg = format!(
+          "Operation `{:?}` not supported on non-unix platforms.",
+          stringify!($name)
+        );
+        Err(std::io::Error::new(
+          std::io::ErrorKind::Unsupported,
+          error_msg,
+        ))
       }
     };
     ($name:ident<P>) => {
       #[op2(fast)]
-      pub fn $name<P: NetPermissions>() {
-        panic!("Unsupported on non-unix platforms")
+      pub fn $name<P: NetPermissions>() -> Result<(), std::io::Error> {
+        let error_msg = format!(
+          "Operation `{:?}` not supported on non-unix platforms.",
+          stringify!($name)
+        );
+        Err(std::io::Error::new(
+          std::io::ErrorKind::Unsupported,
+          error_msg,
+        ))
       }
     };
   }
