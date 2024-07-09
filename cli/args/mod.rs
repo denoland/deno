@@ -1301,9 +1301,7 @@ impl CliOptions {
     self.maybe_lockfile.clone()
   }
 
-  /// Return any imports that should be brought into the scope of the module
-  /// graph.
-  pub fn to_maybe_imports(
+  pub fn to_compiler_option_types(
     &self,
   ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
     self.workspace.to_maybe_imports().map(|maybe_imports| {
