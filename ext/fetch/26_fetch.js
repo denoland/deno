@@ -169,7 +169,7 @@ async function mainFetch(req, recursive, terminator) {
   try {
     resp = await opFetchSend(requestRid);
   } catch (err) {
-    if (terminator.aborted) return;
+    if (terminator.aborted) return abortedNetworkError();
     throw err;
   } finally {
     if (cancelHandleRid !== null) {
@@ -305,7 +305,7 @@ function httpRedirectFetch(request, response, terminator) {
  * @param {RequestInfo} input
  * @param {RequestInit} init
  */
-function fetch(input, init = {}) {
+function fetch(input, init = { __proto__: null }) {
   // There is an async dispatch later that causes a stack trace disconnect.
   // We reconnect it by assigning the result of that dispatch to `opPromise`,
   // awaiting `opPromise` in an inner function also named `fetch()` and
@@ -313,7 +313,7 @@ function fetch(input, init = {}) {
   let opPromise = undefined;
   // 1.
   const result = new Promise((resolve, reject) => {
-    const prefix = "Failed to call 'fetch'";
+    const prefix = "Failed to execute 'fetch'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     // 2.
     const requestObject = new Request(input, init);
@@ -425,7 +425,7 @@ function handleWasmStreaming(source, rid) {
   try {
     const res = webidl.converters["Response"](
       source,
-      "Failed to call 'WebAssembly.compileStreaming'",
+      "Failed to execute 'WebAssembly.compileStreaming'",
       "Argument 1",
     );
 

@@ -57,7 +57,7 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { ReadableStream } from "ext:deno_web/06_streams.js";
+import { ReadableStream } from "./06_streams.js";
 import { URL } from "ext:deno_url/00_url.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
@@ -223,7 +223,7 @@ class Blob {
    * @param {BlobPart[]} blobParts
    * @param {BlobPropertyBag} options
    */
-  constructor(blobParts = [], options = {}) {
+  constructor(blobParts = [], options = { __proto__: null }) {
     const prefix = "Failed to construct 'Blob'";
     blobParts = webidl.converters["sequence<BlobPart>"](
       blobParts,
@@ -387,14 +387,9 @@ class Blob {
   }
 
   /**
-   * @returns {Promise<string>}
+   * @param {number} size
+   * @returns {Promise<Uint8Array>}
    */
-  async text() {
-    webidl.assertBranded(this, BlobPrototype);
-    const buffer = await this.#u8Array(this.size);
-    return core.decode(buffer);
-  }
-
   async #u8Array(size) {
     const bytes = new Uint8Array(size);
     const partIterator = toIterator(this[_parts]);
@@ -414,12 +409,29 @@ class Blob {
   }
 
   /**
+   * @returns {Promise<string>}
+   */
+  async text() {
+    webidl.assertBranded(this, BlobPrototype);
+    const buffer = await this.#u8Array(this.size);
+    return core.decode(buffer);
+  }
+
+  /**
    * @returns {Promise<ArrayBuffer>}
    */
   async arrayBuffer() {
     webidl.assertBranded(this, BlobPrototype);
     const buf = await this.#u8Array(this.size);
     return TypedArrayPrototypeGetBuffer(buf);
+  }
+
+  /**
+   * @returns {Promise<Uint8Array>}
+   */
+  async bytes() {
+    webidl.assertBranded(this, BlobPrototype);
+    return await this.#u8Array(this.size);
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -500,7 +512,7 @@ class File extends Blob {
    * @param {string} fileName
    * @param {FilePropertyBag} options
    */
-  constructor(fileBits, fileName, options = {}) {
+  constructor(fileBits, fileName, options = { __proto__: null }) {
     const prefix = "Failed to construct 'File'";
     webidl.requiredArguments(arguments.length, 2, prefix);
 

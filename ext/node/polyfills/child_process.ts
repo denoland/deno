@@ -120,9 +120,13 @@ export function fork(
       if (flag.startsWith("--max-old-space-size")) {
         execArgv.splice(index, 1);
         v8Flags.push(flag);
+      } else if (flag.startsWith("--enable-source-maps")) {
+        // https://github.com/denoland/deno/issues/21750
+        execArgv.splice(index, 1);
       }
     }
   }
+
   const stringifiedV8Flags: string[] = [];
   if (v8Flags.length > 0) {
     stringifiedV8Flags.push("--v8-flags=" + v8Flags.join(","));

@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::cache::LocalLspHttpCache;
-
 use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -11,6 +9,8 @@ use deno_core::ModuleSpecifier;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+use super::cache::LspCache;
 
 /// Used in situations where a default URL needs to be used where otherwise a
 /// panic is undesired.
@@ -156,13 +156,13 @@ pub enum LspUrlKind {
 /// to allow the Deno language server to manage these as virtual documents.
 #[derive(Debug, Default, Clone)]
 pub struct LspUrlMap {
-  local_http_cache: Option<Arc<LocalLspHttpCache>>,
+  cache: LspCache,
   inner: Arc<Mutex<LspUrlMapInner>>,
 }
 
 impl LspUrlMap {
-  pub fn set_cache(&mut self, http_cache: Option<Arc<LocalLspHttpCache>>) {
-    self.local_http_cache = http_cache;
+  pub fn set_cache(&mut self, cache: &LspCache) {
+    self.cache = cache.clone();
   }
 
   /// Normalize a specifier that is used internally within Deno (or tsc) to a
@@ -170,13 +170,12 @@ impl LspUrlMap {
   pub fn normalize_specifier(
     &self,
     specifier: &ModuleSpecifier,
+    file_referrer: Option<&ModuleSpecifier>,
   ) -> Result<LspClientUrl, AnyError> {
-    if let Some(cache) = &self.local_http_cache {
-      if matches!(specifier.scheme(), "http" | "https") {
-        if let Some(file_url) = cache.get_file_url(specifier) {
-          return Ok(LspClientUrl(file_url));
-        }
-      }
+    if let Some(file_url) =
+      self.cache.vendored_specifier(specifier, file_referrer)
+    {
+      return Ok(LspClientUrl(file_url));
     }
     let mut inner = self.inner.lock();
     if let Some(url) = inner.get_url(specifier).cloned() {
@@ -220,14 +219,8 @@ impl LspUrlMap {
   /// so we need to force it to in the mapping and nee to explicitly state whether
   /// this is a file or directory url.
   pub fn normalize_url(&self, url: &Url, kind: LspUrlKind) -> ModuleSpecifier {
-    if let Some(cache) = &self.local_http_cache {
-      if url.scheme() == "file" {
-        if let Ok(path) = url.to_file_path() {
-          if let Some(remote_url) = cache.get_remote_url(&path) {
-            return remote_url;
-          }
-        }
-      }
+    if let Some(remote_url) = self.cache.unvendored_specifier(url) {
+      return remote_url;
     }
     let mut inner = self.inner.lock();
     if let Some(specifier) = inner.get_specifier(url).cloned() {
@@ -296,7 +289,7 @@ mod tests {
     let map = LspUrlMap::default();
     let fixture = resolve_url("https://deno.land/x/pkg@1.0.0/mod.ts").unwrap();
     let actual_url = map
-      .normalize_specifier(&fixture)
+      .normalize_specifier(&fixture, None)
       .expect("could not handle specifier");
     let expected_url =
       Url::parse("deno:/https/deno.land/x/pkg%401.0.0/mod.ts").unwrap();
@@ -318,7 +311,7 @@ mod tests {
     assert_eq!(&actual_specifier, &expected_specifier);
 
     let actual_url = map
-      .normalize_specifier(&actual_specifier)
+      .normalize_specifier(&actual_specifier, None)
       .unwrap()
       .as_url()
       .clone();
@@ -331,7 +324,7 @@ mod tests {
     let map = LspUrlMap::default();
     let fixture = resolve_url("https://cdn.skypack.dev/-/postcss@v8.2.9-E4SktPp9c0AtxrJHp8iV/dist=es2020,mode=types/lib/postcss.d.ts").unwrap();
     let actual_url = map
-      .normalize_specifier(&fixture)
+      .normalize_specifier(&fixture, None)
       .expect("could not handle specifier");
     let expected_url = Url::parse("deno:/https/cdn.skypack.dev/-/postcss%40v8.2.9-E4SktPp9c0AtxrJHp8iV/dist%3Des2020%2Cmode%3Dtypes/lib/postcss.d.ts").unwrap();
     assert_eq!(actual_url.as_url(), &expected_url);
@@ -346,7 +339,7 @@ mod tests {
     let map = LspUrlMap::default();
     let fixture = resolve_url("data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=").unwrap();
     let actual_url = map
-      .normalize_specifier(&fixture)
+      .normalize_specifier(&fixture, None)
       .expect("could not handle specifier");
     let expected_url = Url::parse("deno:/c21c7fc382b2b0553dc0864aa81a3acacfb7b3d1285ab5ae76da6abec213fb37/data_url.ts").unwrap();
     assert_eq!(actual_url.as_url(), &expected_url);
@@ -361,7 +354,7 @@ mod tests {
     let map = LspUrlMap::default();
     let fixture = resolve_url("http://localhost:8000/mod.ts").unwrap();
     let actual_url = map
-      .normalize_specifier(&fixture)
+      .normalize_specifier(&fixture, None)
       .expect("could not handle specifier");
     let expected_url =
       Url::parse("deno:/http/localhost%3A8000/mod.ts").unwrap();

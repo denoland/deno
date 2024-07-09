@@ -4,7 +4,6 @@ pub mod dynamic;
 mod interface;
 pub mod remote;
 pub mod sqlite;
-mod time;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -12,6 +11,7 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::Duration;
 
+use anyhow::bail;
 use base64::prelude::BASE64_URL_SAFE;
 use base64::Engine;
 use chrono::DateTime;
@@ -55,7 +55,6 @@ use denokv_proto::WatchStream;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
-use time::utc_now;
 
 pub use crate::interface::*;
 
@@ -234,7 +233,7 @@ impl TryFrom<KvEntry> for ToV8KvEntry {
         .map(key_part_to_v8)
         .collect(),
       value: entry.value.into(),
-      versionstamp: hex::encode(entry.versionstamp).into(),
+      versionstamp: faster_hex::hex_string(&entry.versionstamp).into(),
     })
   }
 }
@@ -511,7 +510,10 @@ fn check_from_v8(value: V8KvCheck) -> Result<Check, AnyError> {
   let versionstamp = match value.1 {
     Some(data) => {
       let mut out = [0u8; 10];
-      hex::decode_to_slice(data, &mut out)
+      if data.len() != out.len() * 2 {
+        bail!(type_error("invalid versionstamp"));
+      }
+      faster_hex::hex_decode(&data, &mut out)
         .map_err(|_| type_error("invalid versionstamp"))?;
       Some(out)
     }
@@ -532,7 +534,12 @@ fn mutation_from_v8(
   let kind = match (value.1.as_str(), value.2) {
     ("set", Some(value)) => MutationKind::Set(value.try_into()?),
     ("delete", None) => MutationKind::Delete,
-    ("sum", Some(value)) => MutationKind::Sum(value.try_into()?),
+    ("sum", Some(value)) => MutationKind::Sum {
+      value: value.try_into()?,
+      min_v8: vec![],
+      max_v8: vec![],
+      clamp: false,
+    },
     ("min", Some(value)) => MutationKind::Min(value.try_into()?),
     ("max", Some(value)) => MutationKind::Max(value.try_into()?),
     ("setSuffixVersionstampedKey", Some(value)) => {
@@ -605,17 +612,36 @@ impl RawSelector {
         start: None,
         end: None,
       }),
-      (Some(prefix), Some(start), None) => Ok(Self::Prefixed {
-        prefix,
-        start: Some(start),
-        end: None,
-      }),
-      (Some(prefix), None, Some(end)) => Ok(Self::Prefixed {
-        prefix,
-        start: None,
-        end: Some(end),
-      }),
-      (None, Some(start), Some(end)) => Ok(Self::Range { start, end }),
+      (Some(prefix), Some(start), None) => {
+        if !start.starts_with(&prefix) || start.len() == prefix.len() {
+          return Err(type_error(
+            "start key is not in the keyspace defined by prefix",
+          ));
+        }
+        Ok(Self::Prefixed {
+          prefix,
+          start: Some(start),
+          end: None,
+        })
+      }
+      (Some(prefix), None, Some(end)) => {
+        if !end.starts_with(&prefix) || end.len() == prefix.len() {
+          return Err(type_error(
+            "end key is not in the keyspace defined by prefix",
+          ));
+        }
+        Ok(Self::Prefixed {
+          prefix,
+          start: None,
+          end: Some(end),
+        })
+      }
+      (None, Some(start), Some(end)) => {
+        if start > end {
+          return Err(type_error("start key is greater than end key"));
+        }
+        Ok(Self::Range { start, end })
+      }
       (None, Some(start), None) => {
         let end = start.iter().copied().chain(Some(0)).collect();
         Ok(Self::Range { start, end })
@@ -749,7 +775,7 @@ async fn op_kv_atomic_write<DBH>(
 where
   DBH: DatabaseHandler + 'static,
 {
-  let current_timestamp = utc_now();
+  let current_timestamp = chrono::Utc::now();
   let db = {
     let state = state.borrow();
     let resource =
@@ -837,7 +863,7 @@ where
 
   let result = db.atomic_write(atomic_write).await?;
 
-  Ok(result.map(|res| hex::encode(res.versionstamp)))
+  Ok(result.map(|res| faster_hex::hex_string(&res.versionstamp)))
 }
 
 // (prefix, start, end)

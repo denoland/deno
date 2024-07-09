@@ -4,9 +4,9 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const {
   isDate,
   internalRidSymbol,
+  createCancelHandle,
 } = core;
 import {
-  op_cancel_handle,
   op_fs_chdir,
   op_fs_chmod_async,
   op_fs_chmod_sync,
@@ -16,21 +16,21 @@ import {
   op_fs_copy_file_sync,
   op_fs_cwd,
   op_fs_fdatasync_async,
-  op_fs_fdatasync_async_unstable,
   op_fs_fdatasync_sync,
-  op_fs_fdatasync_sync_unstable,
+  op_fs_file_stat_async,
+  op_fs_file_stat_sync,
   op_fs_flock_async,
+  op_fs_flock_async_unstable,
   op_fs_flock_sync,
-  op_fs_fstat_async,
-  op_fs_fstat_sync,
+  op_fs_flock_sync_unstable,
   op_fs_fsync_async,
-  op_fs_fsync_async_unstable,
   op_fs_fsync_sync,
-  op_fs_fsync_sync_unstable,
   op_fs_ftruncate_async,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
+  op_fs_funlock_async_unstable,
   op_fs_funlock_sync,
+  op_fs_funlock_sync_unstable,
   op_fs_futime_async,
   op_fs_futime_sync,
   op_fs_link_async,
@@ -72,6 +72,7 @@ import {
   op_fs_utime_sync,
   op_fs_write_file_async,
   op_fs_write_file_sync,
+  op_set_raw,
 } from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
@@ -89,6 +90,7 @@ const {
   SymbolAsyncIterator,
   SymbolIterator,
   SymbolFor,
+  TypeError,
   Uint32Array,
 } = primordials;
 
@@ -157,7 +159,7 @@ function chdir(directory) {
   op_fs_chdir(pathFromURL(directory));
 }
 
-function makeTempDirSync(options = {}) {
+function makeTempDirSync(options = { __proto__: null }) {
   return op_fs_make_temp_dir_sync(
     options.dir,
     options.prefix,
@@ -165,7 +167,7 @@ function makeTempDirSync(options = {}) {
   );
 }
 
-function makeTempDir(options = {}) {
+function makeTempDir(options = { __proto__: null }) {
   return op_fs_make_temp_dir_async(
     options.dir,
     options.prefix,
@@ -173,7 +175,7 @@ function makeTempDir(options = {}) {
   );
 }
 
-function makeTempFileSync(options = {}) {
+function makeTempFileSync(options = { __proto__: null }) {
   return op_fs_make_temp_file_sync(
     options.dir,
     options.prefix,
@@ -181,7 +183,7 @@ function makeTempFileSync(options = {}) {
   );
 }
 
-function makeTempFile(options = {}) {
+function makeTempFile(options = { __proto__: null }) {
   return op_fs_make_temp_file_async(
     options.dir,
     options.prefix,
@@ -243,7 +245,7 @@ function realPath(path) {
 
 function removeSync(
   path,
-  options = {},
+  options = { __proto__: null },
 ) {
   op_fs_remove_sync(
     pathFromURL(path),
@@ -253,7 +255,7 @@ function removeSync(
 
 async function remove(
   path,
-  options = {},
+  options = { __proto__: null },
 ) {
   await op_fs_remove_async(
     pathFromURL(path),
@@ -396,12 +398,12 @@ function parseFileInfo(response) {
 }
 
 function fstatSync(rid) {
-  op_fs_fstat_sync(rid, statBuf);
+  op_fs_file_stat_sync(rid, statBuf);
   return statStruct(statBuf);
 }
 
 async function fstat(rid) {
-  return parseFileInfo(await op_fs_fstat_async(rid));
+  return parseFileInfo(await op_fs_file_stat_async(rid));
 }
 
 async function lstat(path) {
@@ -471,8 +473,8 @@ function toUnixTimeFromEpoch(value) {
     ];
   }
 
-  const seconds = value;
-  const nanoseconds = 0;
+  const seconds = MathTrunc(value);
+  const nanoseconds = MathTrunc((value * 1e3) - (seconds * 1e3)) * 1e6;
 
   return [
     seconds,
@@ -579,19 +581,19 @@ async function fsync(rid) {
 }
 
 function flockSync(rid, exclusive) {
-  op_fs_flock_sync(rid, exclusive === true);
+  op_fs_flock_sync_unstable(rid, exclusive === true);
 }
 
 async function flock(rid, exclusive) {
-  await op_fs_flock_async(rid, exclusive === true);
+  await op_fs_flock_async_unstable(rid, exclusive === true);
 }
 
 function funlockSync(rid) {
-  op_fs_funlock_sync(rid);
+  op_fs_funlock_sync_unstable(rid);
 }
 
 async function funlock(rid) {
-  await op_fs_funlock_async(rid);
+  await op_fs_funlock_async_unstable(rid);
 }
 
 function seekSync(
@@ -672,6 +674,11 @@ class FsFile {
         new Error().stack,
         "Use `Deno.open` or `Deno.openSync` instead.",
       );
+      if (internals.future) {
+        throw new TypeError(
+          "`Deno.FsFile` cannot be constructed, use `Deno.open()` or `Deno.openSync()` instead.",
+        );
+      }
     }
   }
 
@@ -725,11 +732,11 @@ class FsFile {
   }
 
   async syncData() {
-    await op_fs_fdatasync_async_unstable(this.#rid);
+    await op_fs_fdatasync_async(this.#rid);
   }
 
   syncDataSync() {
-    op_fs_fdatasync_sync_unstable(this.#rid);
+    op_fs_fdatasync_sync(this.#rid);
   }
 
   close() {
@@ -751,11 +758,11 @@ class FsFile {
   }
 
   async sync() {
-    await op_fs_fsync_async_unstable(this.#rid);
+    await op_fs_fsync_async(this.#rid);
   }
 
   syncSync() {
-    op_fs_fsync_sync_unstable(this.#rid);
+    op_fs_fsync_sync(this.#rid);
   }
 
   async utime(atime, mtime) {
@@ -764,6 +771,15 @@ class FsFile {
 
   utimeSync(atime, mtime) {
     futimeSync(this.#rid, atime, mtime);
+  }
+
+  isTerminal() {
+    return core.isTerminal(this.#rid);
+  }
+
+  setRaw(mode, options = { __proto__: null }) {
+    const cbreak = !!(options.cbreak ?? false);
+    op_set_raw(this.#rid, mode, cbreak);
   }
 
   lockSync(exclusive = false) {
@@ -823,7 +839,7 @@ async function readFile(path, options) {
   let abortHandler;
   if (options?.signal) {
     options.signal.throwIfAborted();
-    cancelRid = op_cancel_handle();
+    cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
@@ -853,7 +869,7 @@ async function readTextFile(path, options) {
   let abortHandler;
   if (options?.signal) {
     options.signal.throwIfAborted();
-    cancelRid = op_cancel_handle();
+    cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
@@ -877,7 +893,7 @@ async function readTextFile(path, options) {
 function writeFileSync(
   path,
   data,
-  options = {},
+  options = { __proto__: null },
 ) {
   options.signal?.throwIfAborted();
   op_fs_write_file_sync(
@@ -893,13 +909,13 @@ function writeFileSync(
 async function writeFile(
   path,
   data,
-  options = {},
+  options = { __proto__: null },
 ) {
   let cancelRid;
   let abortHandler;
   if (options.signal) {
     options.signal.throwIfAborted();
-    cancelRid = op_cancel_handle();
+    cancelRid = createCancelHandle();
     abortHandler = () => core.tryClose(cancelRid);
     options.signal[abortSignal.add](abortHandler);
   }
@@ -910,6 +926,7 @@ async function writeFile(
         append: options.append ?? false,
         create: options.create ?? true,
         createNew: options.createNew ?? false,
+        truncate: !(options.append ?? false),
         write: true,
       });
       await data.pipeTo(file.writable, {
@@ -939,7 +956,7 @@ async function writeFile(
 function writeTextFileSync(
   path,
   data,
-  options = {},
+  options = { __proto__: null },
 ) {
   const encoder = new TextEncoder();
   return writeFileSync(path, encoder.encode(data), options);
@@ -948,7 +965,7 @@ function writeTextFileSync(
 function writeTextFile(
   path,
   data,
-  options = {},
+  options = { __proto__: null },
 ) {
   if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, data)) {
     return writeFile(

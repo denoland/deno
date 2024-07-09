@@ -10,37 +10,51 @@ import "node:module";
 
 let initialized = false;
 
-function initialize(
-  usesLocalNodeModulesDir,
-  argv0,
-) {
-  if (initialized) {
-    throw Error("Node runtime already initialized");
-  }
-  initialized = true;
-  if (usesLocalNodeModulesDir) {
-    requireImpl.setUsesLocalNodeModulesDir();
-  }
-  const nativeModuleExports = requireImpl.nativeModuleExports;
-  nodeGlobals.Buffer = nativeModuleExports["buffer"].Buffer;
-  nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
-  nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
-  nodeGlobals.clearTimeout = nativeModuleExports["timers"].clearTimeout;
-  nodeGlobals.console = nativeModuleExports["console"];
-  nodeGlobals.global = globalThis;
-  nodeGlobals.process = nativeModuleExports["process"];
-  nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
-  nodeGlobals.setInterval = nativeModuleExports["timers"].setInterval;
-  nodeGlobals.setTimeout = nativeModuleExports["timers"].setTimeout;
-  nodeGlobals.performance = nativeModuleExports["perf_hooks"].performance;
+function initialize(args) {
+  const {
+    usesLocalNodeModulesDir,
+    argv0,
+    runningOnMainThread,
+    workerId,
+    maybeWorkerMetadata,
+    nodeDebug,
+    warmup = false,
+  } = args;
+  if (!warmup) {
+    if (initialized) {
+      throw Error("Node runtime already initialized");
+    }
+    initialized = true;
+    if (usesLocalNodeModulesDir) {
+      requireImpl.setUsesLocalNodeModulesDir();
+    }
 
-  // FIXME(bartlomieju): not nice to depend on `Deno` namespace here
-  // but it's the only way to get `args` and `version` and this point.
-  internals.__bootstrapNodeProcess(argv0, Deno.args, Deno.version);
-  internals.__initWorkerThreads();
-  internals.__setupChildProcessIpcChannel();
-  // `Deno[Deno.internal].requireImpl` will be unreachable after this line.
-  delete internals.requireImpl;
+    // FIXME(bartlomieju): not nice to depend on `Deno` namespace here
+    // but it's the only way to get `args` and `version` and this point.
+    internals.__bootstrapNodeProcess(
+      argv0,
+      Deno.args,
+      Deno.version,
+      nodeDebug ?? "",
+    );
+    internals.__initWorkerThreads(
+      runningOnMainThread,
+      workerId,
+      maybeWorkerMetadata,
+    );
+    internals.__setupChildProcessIpcChannel();
+    // `Deno[Deno.internal].requireImpl` will be unreachable after this line.
+    delete internals.requireImpl;
+  } else {
+    // Warm up the process module
+    internals.__bootstrapNodeProcess(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true,
+    );
+  }
 }
 
 function loadCjsModule(moduleName, isMain, inspectBrk) {
@@ -56,3 +70,16 @@ internals.node = {
   initialize,
   loadCjsModule,
 };
+
+const nativeModuleExports = requireImpl.nativeModuleExports;
+nodeGlobals.Buffer = nativeModuleExports["buffer"].Buffer;
+nodeGlobals.clearImmediate = nativeModuleExports["timers"].clearImmediate;
+nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
+nodeGlobals.clearTimeout = nativeModuleExports["timers"].clearTimeout;
+nodeGlobals.console = nativeModuleExports["console"];
+nodeGlobals.global = globalThis;
+nodeGlobals.process = nativeModuleExports["process"];
+nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
+nodeGlobals.setInterval = nativeModuleExports["timers"].setInterval;
+nodeGlobals.setTimeout = nativeModuleExports["timers"].setTimeout;
+nodeGlobals.performance = nativeModuleExports["perf_hooks"].performance;

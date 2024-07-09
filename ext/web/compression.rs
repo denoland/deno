@@ -116,25 +116,35 @@ pub fn op_compression_write(
 pub fn op_compression_finish(
   state: &mut OpState,
   #[smi] rid: ResourceId,
+  report_errors: bool,
 ) -> Result<ToJsBuffer, AnyError> {
   let resource = state.resource_table.take::<CompressionResource>(rid)?;
   let resource = Rc::try_unwrap(resource).unwrap();
   let inner = resource.0.into_inner();
-  let out: Vec<u8> = match inner {
+  let out = match inner {
     Inner::DeflateDecoder(d) => {
-      d.finish().map_err(|e| type_error(e.to_string()))?
+      d.finish().map_err(|e| type_error(e.to_string()))
     }
     Inner::DeflateEncoder(d) => {
-      d.finish().map_err(|e| type_error(e.to_string()))?
+      d.finish().map_err(|e| type_error(e.to_string()))
     }
     Inner::DeflateRawDecoder(d) => {
-      d.finish().map_err(|e| type_error(e.to_string()))?
+      d.finish().map_err(|e| type_error(e.to_string()))
     }
     Inner::DeflateRawEncoder(d) => {
-      d.finish().map_err(|e| type_error(e.to_string()))?
+      d.finish().map_err(|e| type_error(e.to_string()))
     }
-    Inner::GzDecoder(d) => d.finish().map_err(|e| type_error(e.to_string()))?,
-    Inner::GzEncoder(d) => d.finish().map_err(|e| type_error(e.to_string()))?,
+    Inner::GzDecoder(d) => d.finish().map_err(|e| type_error(e.to_string())),
+    Inner::GzEncoder(d) => d.finish().map_err(|e| type_error(e.to_string())),
   };
-  Ok(out.into())
+  match out {
+    Err(err) => {
+      if report_errors {
+        Err(err)
+      } else {
+        Ok(Vec::with_capacity(0).into())
+      }
+    }
+    Ok(out) => Ok(out.into()),
+  }
 }

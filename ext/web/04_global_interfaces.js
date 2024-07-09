@@ -3,13 +3,13 @@
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 
-import { EventTarget } from "ext:deno_web/02_event.js";
 import { primordials } from "ext:core/mod.js";
 const {
   Symbol,
   SymbolToStringTag,
   TypeError,
 } = primordials;
+import { EventTarget } from "./02_event.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 

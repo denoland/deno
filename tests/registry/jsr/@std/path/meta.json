@@ -1,0 +1,8 @@
+{
+  "scope": "std",
+  "name": "path",
+  "latest": "0.220.1",
+  "versions": {
+    "0.220.1": {}
+  }
+}

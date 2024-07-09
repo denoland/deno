@@ -1,9 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core } from "ext:core/mod.js";
-import { op_lazy_load_esm } from "ext:core/ops";
 
-import * as util from "ext:runtime/06_util.js";
 import * as event from "ext:deno_web/02_event.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import * as base64 from "ext:deno_web/05_base64.js";
@@ -32,214 +30,165 @@ import * as messagePort from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import { webgpu, webGPUNonEnumerable } from "ext:deno_webgpu/00_init.js";
+import * as imageData from "ext:deno_web/16_image_data.js";
+import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import { unstableIds } from "ext:runtime/90_deno_ns.js";
 
-let image;
-
-function ImageNonEnumerable(getter) {
-  let valueIsSet = false;
-  let value;
-
-  return {
-    get() {
-      loadImage();
-
-      if (valueIsSet) {
-        return value;
-      } else {
-        return getter();
-      }
-    },
-    set(v) {
-      loadImage();
-
-      valueIsSet = true;
-      value = v;
-    },
-    enumerable: false,
-    configurable: true,
-  };
-}
-function ImageWritable(getter) {
-  let valueIsSet = false;
-  let value;
-
-  return {
-    get() {
-      loadImage();
-
-      if (valueIsSet) {
-        return value;
-      } else {
-        return getter();
-      }
-    },
-    set(v) {
-      loadImage();
-
-      valueIsSet = true;
-      value = v;
-    },
-    enumerable: true,
-    configurable: true,
-  };
-}
-function loadImage() {
-  if (!image) {
-    image = op_lazy_load_esm("ext:deno_canvas/01_image.js");
-  }
-}
+const loadImage = core.createLazyLoader("ext:deno_canvas/01_image.js");
 
 // https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
 const windowOrWorkerGlobalScope = {
-  AbortController: util.nonEnumerable(abortSignal.AbortController),
-  AbortSignal: util.nonEnumerable(abortSignal.AbortSignal),
-  Blob: util.nonEnumerable(file.Blob),
-  ByteLengthQueuingStrategy: util.nonEnumerable(
+  AbortController: core.propNonEnumerable(abortSignal.AbortController),
+  AbortSignal: core.propNonEnumerable(abortSignal.AbortSignal),
+  Blob: core.propNonEnumerable(file.Blob),
+  ByteLengthQueuingStrategy: core.propNonEnumerable(
     streams.ByteLengthQueuingStrategy,
   ),
-  CloseEvent: util.nonEnumerable(event.CloseEvent),
-  CompressionStream: util.nonEnumerable(compression.CompressionStream),
-  CountQueuingStrategy: util.nonEnumerable(
+  CloseEvent: core.propNonEnumerable(event.CloseEvent),
+  CompressionStream: core.propNonEnumerable(compression.CompressionStream),
+  CountQueuingStrategy: core.propNonEnumerable(
     streams.CountQueuingStrategy,
   ),
-  CryptoKey: util.nonEnumerable(crypto.CryptoKey),
-  CustomEvent: util.nonEnumerable(event.CustomEvent),
-  DecompressionStream: util.nonEnumerable(compression.DecompressionStream),
-  DOMException: util.nonEnumerable(DOMException),
-  ErrorEvent: util.nonEnumerable(event.ErrorEvent),
-  Event: util.nonEnumerable(event.Event),
-  EventTarget: util.nonEnumerable(event.EventTarget),
-  File: util.nonEnumerable(file.File),
-  FileReader: util.nonEnumerable(fileReader.FileReader),
-  FormData: util.nonEnumerable(formData.FormData),
-  Headers: util.nonEnumerable(headers.Headers),
-  ImageData: ImageNonEnumerable(() => image.ImageData),
-  ImageBitmap: ImageNonEnumerable(() => image.ImageBitmap),
-  MessageEvent: util.nonEnumerable(event.MessageEvent),
-  Performance: util.nonEnumerable(performance.Performance),
-  PerformanceEntry: util.nonEnumerable(performance.PerformanceEntry),
-  PerformanceMark: util.nonEnumerable(performance.PerformanceMark),
-  PerformanceMeasure: util.nonEnumerable(performance.PerformanceMeasure),
-  PromiseRejectionEvent: util.nonEnumerable(event.PromiseRejectionEvent),
-  ProgressEvent: util.nonEnumerable(event.ProgressEvent),
-  ReadableStream: util.nonEnumerable(streams.ReadableStream),
-  ReadableStreamDefaultReader: util.nonEnumerable(
+  CryptoKey: core.propNonEnumerable(crypto.CryptoKey),
+  CustomEvent: core.propNonEnumerable(event.CustomEvent),
+  DecompressionStream: core.propNonEnumerable(compression.DecompressionStream),
+  DOMException: core.propNonEnumerable(DOMException),
+  ErrorEvent: core.propNonEnumerable(event.ErrorEvent),
+  Event: core.propNonEnumerable(event.Event),
+  EventTarget: core.propNonEnumerable(event.EventTarget),
+  File: core.propNonEnumerable(file.File),
+  FileReader: core.propNonEnumerable(fileReader.FileReader),
+  FormData: core.propNonEnumerable(formData.FormData),
+  Headers: core.propNonEnumerable(headers.Headers),
+  ImageData: core.propNonEnumerable(imageData.ImageData),
+  ImageBitmap: core.propNonEnumerableLazyLoaded(
+    (image) => image.ImageBitmap,
+    loadImage,
+  ),
+  MessageEvent: core.propNonEnumerable(event.MessageEvent),
+  Performance: core.propNonEnumerable(performance.Performance),
+  PerformanceEntry: core.propNonEnumerable(performance.PerformanceEntry),
+  PerformanceMark: core.propNonEnumerable(performance.PerformanceMark),
+  PerformanceMeasure: core.propNonEnumerable(performance.PerformanceMeasure),
+  PromiseRejectionEvent: core.propNonEnumerable(event.PromiseRejectionEvent),
+  ProgressEvent: core.propNonEnumerable(event.ProgressEvent),
+  ReadableStream: core.propNonEnumerable(streams.ReadableStream),
+  ReadableStreamDefaultReader: core.propNonEnumerable(
     streams.ReadableStreamDefaultReader,
   ),
-  Request: util.nonEnumerable(request.Request),
-  Response: util.nonEnumerable(response.Response),
-  TextDecoder: util.nonEnumerable(encoding.TextDecoder),
-  TextEncoder: util.nonEnumerable(encoding.TextEncoder),
-  TextDecoderStream: util.nonEnumerable(encoding.TextDecoderStream),
-  TextEncoderStream: util.nonEnumerable(encoding.TextEncoderStream),
-  TransformStream: util.nonEnumerable(streams.TransformStream),
-  URL: util.nonEnumerable(url.URL),
-  URLPattern: util.nonEnumerable(urlPattern.URLPattern),
-  URLSearchParams: util.nonEnumerable(url.URLSearchParams),
-  WebSocket: util.nonEnumerable(webSocket.WebSocket),
-  MessageChannel: util.nonEnumerable(messagePort.MessageChannel),
-  MessagePort: util.nonEnumerable(messagePort.MessagePort),
-  Worker: util.nonEnumerable(worker.Worker),
-  WritableStream: util.nonEnumerable(streams.WritableStream),
-  WritableStreamDefaultWriter: util.nonEnumerable(
+  Request: core.propNonEnumerable(request.Request),
+  Response: core.propNonEnumerable(response.Response),
+  TextDecoder: core.propNonEnumerable(encoding.TextDecoder),
+  TextEncoder: core.propNonEnumerable(encoding.TextEncoder),
+  TextDecoderStream: core.propNonEnumerable(encoding.TextDecoderStream),
+  TextEncoderStream: core.propNonEnumerable(encoding.TextEncoderStream),
+  TransformStream: core.propNonEnumerable(streams.TransformStream),
+  URL: core.propNonEnumerable(url.URL),
+  URLPattern: core.propNonEnumerable(urlPattern.URLPattern),
+  URLSearchParams: core.propNonEnumerable(url.URLSearchParams),
+  WebSocket: core.propNonEnumerable(webSocket.WebSocket),
+  MessageChannel: core.propNonEnumerable(messagePort.MessageChannel),
+  MessagePort: core.propNonEnumerable(messagePort.MessagePort),
+  Worker: core.propNonEnumerable(worker.Worker),
+  WritableStream: core.propNonEnumerable(streams.WritableStream),
+  WritableStreamDefaultWriter: core.propNonEnumerable(
     streams.WritableStreamDefaultWriter,
   ),
-  WritableStreamDefaultController: util.nonEnumerable(
+  WritableStreamDefaultController: core.propNonEnumerable(
     streams.WritableStreamDefaultController,
   ),
-  ReadableByteStreamController: util.nonEnumerable(
+  ReadableByteStreamController: core.propNonEnumerable(
     streams.ReadableByteStreamController,
   ),
-  ReadableStreamBYOBReader: util.nonEnumerable(
+  ReadableStreamBYOBReader: core.propNonEnumerable(
     streams.ReadableStreamBYOBReader,
   ),
-  ReadableStreamBYOBRequest: util.nonEnumerable(
+  ReadableStreamBYOBRequest: core.propNonEnumerable(
     streams.ReadableStreamBYOBRequest,
   ),
-  ReadableStreamDefaultController: util.nonEnumerable(
+  ReadableStreamDefaultController: core.propNonEnumerable(
     streams.ReadableStreamDefaultController,
   ),
-  TransformStreamDefaultController: util.nonEnumerable(
+  TransformStreamDefaultController: core.propNonEnumerable(
     streams.TransformStreamDefaultController,
   ),
-  atob: util.writable(base64.atob),
-  btoa: util.writable(base64.btoa),
-  createImageBitmap: ImageWritable(() => image.createImageBitmap),
-  clearInterval: util.writable(timers.clearInterval),
-  clearTimeout: util.writable(timers.clearTimeout),
+  atob: core.propWritable(base64.atob),
+  btoa: core.propWritable(base64.btoa),
+  createImageBitmap: core.propWritableLazyLoaded(
+    (image) => image.createImageBitmap,
+    loadImage,
+  ),
+  clearInterval: core.propWritable(timers.clearInterval),
+  clearTimeout: core.propWritable(timers.clearTimeout),
   caches: {
     enumerable: true,
     configurable: true,
     get: caches.cacheStorage,
   },
-  CacheStorage: util.nonEnumerable(caches.CacheStorage),
-  Cache: util.nonEnumerable(caches.Cache),
-  console: util.nonEnumerable(
+  CacheStorage: core.propNonEnumerable(caches.CacheStorage),
+  Cache: core.propNonEnumerable(caches.Cache),
+  console: core.propNonEnumerable(
     new console.Console((msg, level) => core.print(msg, level > 1)),
   ),
-  crypto: util.readOnly(crypto.crypto),
-  Crypto: util.nonEnumerable(crypto.Crypto),
-  SubtleCrypto: util.nonEnumerable(crypto.SubtleCrypto),
-  fetch: util.writable(fetch.fetch),
-  EventSource: util.writable(eventSource.EventSource),
-  performance: util.writable(performance.performance),
-  reportError: util.writable(event.reportError),
-  setInterval: util.writable(timers.setInterval),
-  setTimeout: util.writable(timers.setTimeout),
-  structuredClone: util.writable(messagePort.structuredClone),
+  crypto: core.propReadOnly(crypto.crypto),
+  Crypto: core.propNonEnumerable(crypto.Crypto),
+  SubtleCrypto: core.propNonEnumerable(crypto.SubtleCrypto),
+  fetch: core.propWritable(fetch.fetch),
+  EventSource: core.propWritable(eventSource.EventSource),
+  performance: core.propWritable(performance.performance),
+  reportError: core.propWritable(event.reportError),
+  setInterval: core.propWritable(timers.setInterval),
+  setTimeout: core.propWritable(timers.setTimeout),
+  structuredClone: core.propWritable(messagePort.structuredClone),
   // Branding as a WebIDL object
-  [webidl.brand]: util.nonEnumerable(webidl.brand),
+  [webidl.brand]: core.propNonEnumerable(webidl.brand),
 };
 
-const unstableForWindowOrWorkerGlobalScope = {};
+const unstableForWindowOrWorkerGlobalScope = { __proto__: null };
 unstableForWindowOrWorkerGlobalScope[unstableIds.broadcastChannel] = {
-  BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
+  BroadcastChannel: core.propNonEnumerable(broadcastChannel.BroadcastChannel),
 };
 unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
-  WebSocketStream: util.nonEnumerable(webSocketStream.WebSocketStream),
+  WebSocketStream: core.propNonEnumerable(webSocketStream.WebSocketStream),
+  WebSocketError: core.propNonEnumerable(webSocketStream.WebSocketError),
 };
+// deno-fmt-ignore
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {
-  GPU: webGPUNonEnumerable(() => webgpu.GPU),
-  GPUAdapter: webGPUNonEnumerable(() => webgpu.GPUAdapter),
-  GPUAdapterInfo: webGPUNonEnumerable(() => webgpu.GPUAdapterInfo),
-  GPUSupportedLimits: webGPUNonEnumerable(() => webgpu.GPUSupportedLimits),
-  GPUSupportedFeatures: webGPUNonEnumerable(() => webgpu.GPUSupportedFeatures),
-  GPUDeviceLostInfo: webGPUNonEnumerable(() => webgpu.GPUDeviceLostInfo),
-  GPUDevice: webGPUNonEnumerable(() => webgpu.GPUDevice),
-  GPUQueue: webGPUNonEnumerable(() => webgpu.GPUQueue),
-  GPUBuffer: webGPUNonEnumerable(() => webgpu.GPUBuffer),
-  GPUBufferUsage: webGPUNonEnumerable(() => webgpu.GPUBufferUsage),
-  GPUMapMode: webGPUNonEnumerable(() => webgpu.GPUMapMode),
-  GPUTextureUsage: webGPUNonEnumerable(() => webgpu.GPUTextureUsage),
-  GPUTexture: webGPUNonEnumerable(() => webgpu.GPUTexture),
-  GPUTextureView: webGPUNonEnumerable(() => webgpu.GPUTextureView),
-  GPUSampler: webGPUNonEnumerable(() => webgpu.GPUSampler),
-  GPUBindGroupLayout: webGPUNonEnumerable(() => webgpu.GPUBindGroupLayout),
-  GPUPipelineLayout: webGPUNonEnumerable(() => webgpu.GPUPipelineLayout),
-  GPUBindGroup: webGPUNonEnumerable(() => webgpu.GPUBindGroup),
-  GPUShaderModule: webGPUNonEnumerable(() => webgpu.GPUShaderModule),
-  GPUShaderStage: webGPUNonEnumerable(() => webgpu.GPUShaderStage),
-  GPUComputePipeline: webGPUNonEnumerable(() => webgpu.GPUComputePipeline),
-  GPURenderPipeline: webGPUNonEnumerable(() => webgpu.GPURenderPipeline),
-  GPUColorWrite: webGPUNonEnumerable(() => webgpu.GPUColorWrite),
-  GPUCommandEncoder: webGPUNonEnumerable(() => webgpu.GPUCommandEncoder),
-  GPURenderPassEncoder: webGPUNonEnumerable(() => webgpu.GPURenderPassEncoder),
-  GPUComputePassEncoder: webGPUNonEnumerable(() =>
-    webgpu.GPUComputePassEncoder
-  ),
-  GPUCommandBuffer: webGPUNonEnumerable(() => webgpu.GPUCommandBuffer),
-  GPURenderBundleEncoder: webGPUNonEnumerable(() =>
-    webgpu.GPURenderBundleEncoder
-  ),
-  GPURenderBundle: webGPUNonEnumerable(() => webgpu.GPURenderBundle),
-  GPUQuerySet: webGPUNonEnumerable(() => webgpu.GPUQuerySet),
-  GPUError: webGPUNonEnumerable(() => webgpu.GPUError),
-  GPUValidationError: webGPUNonEnumerable(() => webgpu.GPUValidationError),
-  GPUOutOfMemoryError: webGPUNonEnumerable(() => webgpu.GPUOutOfMemoryError),
-  GPUCanvasContext: webGPUNonEnumerable(() => webgpuSurface.GPUCanvasContext),
+  GPU: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPU, loadWebGPU),
+  GPUAdapter: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUAdapter, loadWebGPU),
+  GPUAdapterInfo: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUAdapterInfo, loadWebGPU),
+  GPUSupportedLimits: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUSupportedLimits, loadWebGPU),
+  GPUSupportedFeatures: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUSupportedFeatures, loadWebGPU),
+  GPUDeviceLostInfo: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUDeviceLostInfo, loadWebGPU),
+  GPUDevice: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUDevice, loadWebGPU),
+  GPUQueue: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUQueue, loadWebGPU),
+  GPUBuffer: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUBuffer, loadWebGPU),
+  GPUBufferUsage: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUBufferUsage, loadWebGPU),
+  GPUMapMode: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUMapMode, loadWebGPU),
+  GPUTextureUsage: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUTextureUsage, loadWebGPU),
+  GPUTexture: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUTexture, loadWebGPU),
+  GPUTextureView: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUTextureView, loadWebGPU),
+  GPUSampler: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUSampler, loadWebGPU),
+  GPUBindGroupLayout: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUBindGroupLayout, loadWebGPU),
+  GPUPipelineLayout: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUPipelineLayout, loadWebGPU),
+  GPUBindGroup: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUBindGroup, loadWebGPU),
+  GPUShaderModule: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUShaderModule, loadWebGPU),
+  GPUShaderStage: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUShaderStage, loadWebGPU),
+  GPUComputePipeline: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUComputePipeline, loadWebGPU),
+  GPURenderPipeline: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPURenderPipeline, loadWebGPU),
+  GPUColorWrite: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUColorWrite, loadWebGPU),
+  GPUCommandEncoder: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUCommandEncoder, loadWebGPU),
+  GPURenderPassEncoder: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPURenderPassEncoder, loadWebGPU),
+  GPUComputePassEncoder: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUComputePassEncoder, loadWebGPU),
+  GPUCommandBuffer: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUCommandBuffer, loadWebGPU),
+  GPURenderBundleEncoder: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPURenderBundleEncoder, loadWebGPU),
+  GPURenderBundle: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPURenderBundle, loadWebGPU),
+  GPUQuerySet: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUQuerySet, loadWebGPU),
+  GPUError: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUError, loadWebGPU),
+  GPUValidationError: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUValidationError, loadWebGPU),
+  GPUOutOfMemoryError: core.propNonEnumerableLazyLoaded((webgpu) => webgpu.GPUOutOfMemoryError, loadWebGPU),
+  GPUCanvasContext: core.propNonEnumerable(webgpuSurface.GPUCanvasContext),
 };
 
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };

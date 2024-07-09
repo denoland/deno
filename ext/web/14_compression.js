@@ -19,7 +19,7 @@ const {
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { TransformStream } from "ext:deno_web/06_streams.js";
+import { TransformStream } from "./06_streams.js";
 
 webidl.converters.CompressionFormat = webidl.createEnumConverter(
   "CompressionFormat",
@@ -50,8 +50,11 @@ class CompressionStream {
         maybeEnqueue(controller, output);
       },
       flush(controller) {
-        const output = op_compression_finish(rid);
+        const output = op_compression_finish(rid, true);
         maybeEnqueue(controller, output);
+      },
+      cancel: (_reason) => {
+        op_compression_finish(rid, false);
       },
     });
 
@@ -109,8 +112,11 @@ class DecompressionStream {
         maybeEnqueue(controller, output);
       },
       flush(controller) {
-        const output = op_compression_finish(rid);
+        const output = op_compression_finish(rid, true);
         maybeEnqueue(controller, output);
+      },
+      cancel: (_reason) => {
+        op_compression_finish(rid, false);
       },
     });
 

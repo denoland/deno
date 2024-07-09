@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::lsp::logging::lsp_warn;
+
 use super::analysis::source_range_to_lsp_range;
 use super::config::CodeLensSettings;
 use super::language_server;
@@ -27,6 +29,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
+use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::lsp_types as lsp;
 
 static ABSTRACT_MODIFIER: Lazy<Regex> = lazy_regex!(r"\babstract\b");
@@ -67,7 +70,7 @@ impl DenoTestCollector {
 
   fn add_code_lenses<N: AsRef<str>>(&mut self, name: N, range: &SourceRange) {
     let range =
-      source_range_to_lsp_range(range, self.parsed_source.text_info());
+      source_range_to_lsp_range(range, self.parsed_source.text_info_lazy());
     self.add_code_lens(&name, range, "▶\u{fe0e} Run Test", false);
     self.add_code_lens(&name, range, "Debug", true);
   }
@@ -260,7 +263,11 @@ async fn resolve_implementation_code_lens(
       data.specifier.clone(),
       line_index.offset_tsc(code_lens.range.start)?,
     )
-    .await?;
+    .await
+    .map_err(|err| {
+      lsp_warn!("{err}");
+      LspError::internal_error()
+    })?;
   if let Some(implementations) = maybe_implementations {
     let mut locations = Vec::new();
     for implementation in implementations {
@@ -340,7 +347,7 @@ async fn resolve_references_code_lens(
       locations.push(
         reference
           .entry
-          .to_location(asset_or_doc.line_index(), &language_server.url_map),
+          .to_location(asset_or_doc.line_index(), language_server),
       );
     }
     Ok(locations)
@@ -357,7 +364,11 @@ async fn resolve_references_code_lens(
       data.specifier.clone(),
       line_index.offset_tsc(code_lens.range.start)?,
     )
-    .await?;
+    .await
+    .map_err(|err| {
+      lsp_warn!("Unable to find references: {err}");
+      LspError::internal_error()
+    })?;
   let locations = get_locations(maybe_referenced_symbols, language_server)?;
   let title = if locations.len() == 1 {
     "1 reference".to_string()
@@ -406,7 +417,7 @@ pub async fn resolve_code_lens(
 
 pub fn collect_test(
   specifier: &ModuleSpecifier,
-  parsed_source: ParsedSource,
+  parsed_source: &ParsedSource,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
   let mut collector =
     DenoTestCollector::new(specifier.clone(), parsed_source.clone());
@@ -415,7 +426,7 @@ pub fn collect_test(
 }
 
 /// Return tsc navigation tree code lenses.
-pub async fn collect_tsc(
+pub fn collect_tsc(
   specifier: &ModuleSpecifier,
   code_lens_settings: &CodeLensSettings,
   line_index: Arc<LineIndex>,
@@ -505,6 +516,7 @@ pub async fn collect_tsc(
           ));
         }
         tsc::ScriptElementKind::LocalFunctionElement
+        | tsc::ScriptElementKind::MemberFunctionElement
         | tsc::ScriptElementKind::MemberGetAccessorElement
         | tsc::ScriptElementKind::MemberSetAccessorElement
         | tsc::ScriptElementKind::ConstructorImplementationElement
@@ -536,7 +548,6 @@ pub async fn collect_tsc(
 #[cfg(test)]
 mod tests {
   use deno_ast::MediaType;
-  use deno_ast::SourceTextInfo;
 
   use super::*;
 
@@ -560,8 +571,8 @@ mod tests {
       Deno.test(`test template literal name`, () => {});
     "#;
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: specifier.to_string(),
-      text_info: SourceTextInfo::new(source.into()),
+      specifier: specifier.clone(),
+      text: source.into(),
       media_type: MediaType::TypeScript,
       capture_tokens: true,
       scope_analysis: true,

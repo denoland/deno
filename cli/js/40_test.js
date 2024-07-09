@@ -3,28 +3,34 @@
 import { core, primordials } from "ext:core/mod.js";
 import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
 
-const ops = core.ops;
+// TODO(mmastrac): We cannot import these from "ext:core/ops" yet
+const {
+  op_register_test_step,
+  op_register_test,
+  op_test_event_step_result_failed,
+  op_test_event_step_result_ignored,
+  op_test_event_step_result_ok,
+  op_test_event_step_wait,
+  op_test_get_origin,
+} = core.ops;
 const {
   ArrayPrototypeFilter,
-  ArrayPrototypeJoin,
   ArrayPrototypePush,
-  ArrayPrototypeShift,
   DateNow,
   Error,
   Map,
   MapPrototypeGet,
-  MapPrototypeHas,
   MapPrototypeSet,
-  ObjectKeys,
-  Promise,
   SafeArrayIterator,
-  Set,
   SymbolToStringTag,
   TypeError,
 } = primordials;
 
 import { setExitHandler } from "ext:runtime/30_os.js";
-import { setTimeout } from "ext:deno_web/02_timers.js";
+
+// Capture `Deno` global so that users deleting or mangling it, won't
+// have impact on our sanitizers.
+const DenoNs = globalThis.Deno;
 
 /**
  * @typedef {{
@@ -85,439 +91,6 @@ import { setTimeout } from "ext:deno_web/02_timers.js";
 /** @type {Map<number, TestState | TestStepState>} */
 const testStates = new Map();
 
-const opSanitizerDelayResolveQueue = [];
-let hasSetOpSanitizerDelayMacrotask = false;
-
-// Even if every resource is closed by the end of a test, there can be a delay
-// until the pending ops have all finished. This function returns a promise
-// that resolves when it's (probably) fine to run the op sanitizer.
-//
-// This is implemented by adding a macrotask callback that runs after the
-// all ready async ops resolve, and the timer macrotask. Using just a macrotask
-// callback without delaying is sufficient, because when the macrotask callback
-// runs after async op dispatch, we know that all async ops that can currently
-// return `Poll::Ready` have done so, and have been dispatched to JS.
-//
-// Worker ops are an exception to this, because there is no way for the user to
-// await shutdown of the worker from the thread calling `worker.terminate()`.
-// Because of this, we give extra leeway for worker ops to complete, by waiting
-// for a whole millisecond if there are pending worker ops.
-function opSanitizerDelay(hasPendingWorkerOps) {
-  if (!hasSetOpSanitizerDelayMacrotask) {
-    core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
-    hasSetOpSanitizerDelayMacrotask = true;
-  }
-  const p = new Promise((resolve) => {
-    // Schedule an async op to complete immediately to ensure the macrotask is
-    // run. We rely on the fact that enqueueing the resolver callback during the
-    // timeout callback will mean that the resolver gets called in the same
-    // event loop tick as the timeout callback.
-    setTimeout(() => {
-      ArrayPrototypePush(opSanitizerDelayResolveQueue, resolve);
-    }, hasPendingWorkerOps ? 1 : 0);
-  });
-  return p;
-}
-
-function handleOpSanitizerDelayMacrotask() {
-  const resolve = ArrayPrototypeShift(opSanitizerDelayResolveQueue);
-  if (resolve) {
-    resolve();
-    return opSanitizerDelayResolveQueue.length === 0;
-  }
-  return undefined; // we performed no work, so can skip microtasks checkpoint
-}
-
-// An async operation to $0 was started in this test, but never completed. This is often caused by not $1.
-// An async operation to $0 was started in this test, but never completed. Async operations should not complete in a test if they were not started in that test.
-// deno-fmt-ignore
-const OP_DETAILS = {
-    "op_blob_read_part": ["read from a Blob or File", "awaiting the result of a Blob or File read"],
-    "op_broadcast_recv": ["receive a message from a BroadcastChannel", "closing the BroadcastChannel"],
-    "op_broadcast_send": ["send a message to a BroadcastChannel", "closing the BroadcastChannel"],
-    "op_chmod_async": ["change the permissions of a file", "awaiting the result of a `Deno.chmod` call"],
-    "op_chown_async": ["change the owner of a file", "awaiting the result of a `Deno.chown` call"],
-    "op_copy_file_async": ["copy a file", "awaiting the result of a `Deno.copyFile` call"],
-    "op_crypto_decrypt": ["decrypt data", "awaiting the result of a `crypto.subtle.decrypt` call"],
-    "op_crypto_derive_bits": ["derive bits from a key", "awaiting the result of a `crypto.subtle.deriveBits` call"],
-    "op_crypto_encrypt": ["encrypt data", "awaiting the result of a `crypto.subtle.encrypt` call"],
-    "op_crypto_generate_key": ["generate a key", "awaiting the result of a `crypto.subtle.generateKey` call"],
-    "op_crypto_sign_key": ["sign data", "awaiting the result of a `crypto.subtle.sign` call"],
-    "op_crypto_subtle_digest": ["digest data", "awaiting the result of a `crypto.subtle.digest` call"],
-    "op_crypto_verify_key": ["verify data", "awaiting the result of a `crypto.subtle.verify` call"],
-    "op_net_recv_udp": ["receive a datagram message via UDP", "awaiting the result of `Deno.DatagramConn#receive` call, or not breaking out of a for await loop looping over a `Deno.DatagramConn`"],
-    "op_net_recv_unixpacket": ["receive a datagram message via Unixpacket", "awaiting the result of `Deno.DatagramConn#receive` call, or not breaking out of a for await loop looping over a `Deno.DatagramConn`"],
-    "op_net_send_udp": ["send a datagram message via UDP", "awaiting the result of `Deno.DatagramConn#send` call"],
-    "op_net_send_unixpacket": ["send a datagram message via Unixpacket", "awaiting the result of `Deno.DatagramConn#send` call"],
-    "op_dns_resolve": ["resolve a DNS name", "awaiting the result of a `Deno.resolveDns` call"],
-    "op_fdatasync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `file.fdatasync` call"],
-    "op_fetch_send": ["send a HTTP request", "awaiting the result of a `fetch` call"],
-    "op_ffi_call_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"],
-    "op_ffi_call_ptr_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"],
-    "op_flock_async": ["lock a file", "awaiting the result of a `Deno.flock` call"],
-    "op_fs_events_poll": ["get the next file system event", "breaking out of a for await loop looping over `Deno.FsEvents`"],
-    "op_fstat_async": ["get file metadata", "awaiting the result of a `Deno.File#fstat` call"],
-    "op_fsync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `file.fsync` call"],
-    "op_ftruncate_async": ["truncate a file", "awaiting the result of a `Deno.ftruncate` call"],
-    "op_funlock_async": ["unlock a file", "awaiting the result of a `Deno.funlock` call"],
-    "op_futime_async": ["change file timestamps", "awaiting the result of a `Deno.futime` call"],
-    "op_http_accept": ["accept a HTTP request", "closing a `Deno.HttpConn`"],
-    "op_http_shutdown": ["shutdown a HTTP connection", "awaiting `Deno.HttpEvent#respondWith`"],
-    "op_http_upgrade_websocket": ["upgrade a HTTP connection to a WebSocket", "awaiting `Deno.HttpEvent#respondWith`"],
-    "op_http_write_headers": ["write HTTP response headers", "awaiting `Deno.HttpEvent#respondWith`"],
-    "op_http_write": ["write HTTP response body", "awaiting `Deno.HttpEvent#respondWith`"],
-    "op_link_async": ["create a hard link", "awaiting the result of a `Deno.link` call"],
-    "op_make_temp_dir_async": ["create a temporary directory", "awaiting the result of a `Deno.makeTempDir` call"],
-    "op_make_temp_file_async": ["create a temporary file", "awaiting the result of a `Deno.makeTempFile` call"],
-    "op_message_port_recv_message": ["receive a message from a MessagePort", "awaiting the result of not closing a `MessagePort`"],
-    "op_mkdir_async": ["create a directory", "awaiting the result of a `Deno.mkdir` call"],
-    "op_net_accept_tcp": ["accept a TCP stream", "closing a `Deno.Listener`"],
-    "op_net_accept_unix": ["accept a Unix stream", "closing a `Deno.Listener`"],
-    "op_net_connect_tcp": ["connect to a TCP server", "awaiting a `Deno.connect` call"],
-    "op_net_connect_unix": ["connect to a Unix server", "awaiting a `Deno.connect` call"],
-    "op_open_async": ["open a file", "awaiting the result of a `Deno.open` call"],
-    "op_read_dir_async": ["read a directory", "collecting all items in the async iterable returned from a `Deno.readDir` call"],
-    "op_read_link_async": ["read a symlink", "awaiting the result of a `Deno.readLink` call"],
-    "op_realpath_async": ["resolve a path", "awaiting the result of a `Deno.realpath` call"],
-    "op_remove_async": ["remove a file or directory", "awaiting the result of a `Deno.remove` call"],
-    "op_rename_async": ["rename a file or directory", "awaiting the result of a `Deno.rename` call"],
-    "op_run_status": ["get the status of a subprocess", "awaiting the result of a `Deno.Process#status` call"],
-    "op_seek_async": ["seek in a file", "awaiting the result of a `Deno.File#seek` call"],
-    "op_signal_poll": ["get the next signal", "un-registering a OS signal handler"],
-    "op_sleep": ["sleep for a duration", "cancelling a `setTimeout` or `setInterval` call"],
-    "op_stat_async": ["get file metadata", "awaiting the result of a `Deno.stat` call"],
-    "op_symlink_async": ["create a symlink", "awaiting the result of a `Deno.symlink` call"],
-    "op_net_accept_tls": ["accept a TLS stream", "closing a `Deno.TlsListener`"],
-    "op_net_connect_tls": ["connect to a TLS server", "awaiting a `Deno.connectTls` call"],
-    "op_tls_handshake": ["perform a TLS handshake", "awaiting a `Deno.TlsConn#handshake` call"],
-    "op_tls_start": ["start a TLS connection", "awaiting a `Deno.startTls` call"],
-    "op_truncate_async": ["truncate a file", "awaiting the result of a `Deno.truncate` call"],
-    "op_utime_async": ["change file timestamps", "awaiting the result of a `Deno.utime` call"],
-    "op_host_recv_message": ["receive a message from a web worker", "terminating a `Worker`"],
-    "op_host_recv_ctrl": ["receive a message from a web worker", "terminating a `Worker`"],
-    "op_webgpu_buffer_get_map_async": ["map a WebGPU buffer", "awaiting the result of a `GPUBuffer#mapAsync` call"],
-	  "op_webgpu_request_adapter": ["request a WebGPU adapter", "awaiting the result of a `navigator.gpu.requestAdapter` call"],
-	  "op_webgpu_request_device": ["request a WebGPU device", "awaiting the result of a `GPUAdapter#requestDevice` call"],
-	  "op_ws_close": ["close a WebSocket", "awaiting until the `close` event is emitted on a `WebSocket`, or the `WebSocketStream#closed` promise resolves"],
-    "op_ws_create": ["create a WebSocket", "awaiting until the `open` event is emitted on a `WebSocket`, or the result of a `WebSocketStream#connection` promise"],
-    "op_ws_next_event": ["receive the next message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
-    "op_ws_send_text": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
-    "op_ws_send_binary": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
-    "op_ws_send_binary_ab": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
-    "op_ws_send_ping": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
-    "op_ws_send_pong": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
-    "op_spawn_wait": ["wait for a subprocess to exit", "awaiting the result of a `Deno.Process#status` call"],
-  };
-
-let opIdHostRecvMessage = -1;
-let opIdHostRecvCtrl = -1;
-let opNames = null;
-
-function populateOpNames() {
-  opNames = ops.op_op_names();
-  opIdHostRecvMessage = opNames.indexOf("op_host_recv_message");
-  opIdHostRecvCtrl = opNames.indexOf("op_host_recv_ctrl");
-}
-
-// Wrap test function in additional assertion that makes sure
-// the test case does not leak async "ops" - ie. number of async
-// completed ops after the test is the same as number of dispatched
-// ops. Note that "unref" ops are ignored since in nature that are
-// optional.
-function assertOps(fn) {
-  /** @param desc {TestDescription | TestStepDescription} */
-  return async function asyncOpSanitizer(desc) {
-    if (opNames === null) populateOpNames();
-    const res = ops.op_test_op_sanitizer_collect(
-      desc.id,
-      false,
-      opIdHostRecvMessage,
-      opIdHostRecvCtrl,
-    );
-    if (res !== 0) {
-      await opSanitizerDelay(res === 2);
-      ops.op_test_op_sanitizer_collect(
-        desc.id,
-        true,
-        opIdHostRecvMessage,
-        opIdHostRecvCtrl,
-      );
-    }
-    const preTraces = new Map(core.opCallTraces);
-    let postTraces;
-    let report = null;
-
-    try {
-      const innerResult = await fn(desc);
-      if (innerResult) return innerResult;
-    } finally {
-      let res = ops.op_test_op_sanitizer_finish(
-        desc.id,
-        false,
-        opIdHostRecvMessage,
-        opIdHostRecvCtrl,
-      );
-      if (res === 1 || res === 2) {
-        await opSanitizerDelay(res === 2);
-        res = ops.op_test_op_sanitizer_finish(
-          desc.id,
-          true,
-          opIdHostRecvMessage,
-          opIdHostRecvCtrl,
-        );
-      }
-      postTraces = new Map(core.opCallTraces);
-      if (res === 3) {
-        report = ops.op_test_op_sanitizer_report(desc.id);
-      }
-    }
-
-    if (report === null) return null;
-
-    const details = [];
-    for (const opReport of report) {
-      const opName = opNames[opReport.id];
-      const diff = opReport.diff;
-
-      if (diff > 0) {
-        const [name, hint] = OP_DETAILS[opName] || [opName, null];
-        const count = diff;
-        let message = `${count} async operation${
-          count === 1 ? "" : "s"
-        } to ${name} ${
-          count === 1 ? "was" : "were"
-        } started in this test, but never completed.`;
-        if (hint) {
-          message += ` This is often caused by not ${hint}.`;
-        }
-        const traces = [];
-        for (const [id, { opName: traceOpName, stack }] of postTraces) {
-          if (traceOpName !== opName) continue;
-          if (MapPrototypeHas(preTraces, id)) continue;
-          ArrayPrototypePush(traces, stack);
-        }
-        if (traces.length === 1) {
-          message += " The operation was started here:\n";
-          message += traces[0];
-        } else if (traces.length > 1) {
-          message += " The operations were started here:\n";
-          message += ArrayPrototypeJoin(traces, "\n\n");
-        }
-        ArrayPrototypePush(details, message);
-      } else if (diff < 0) {
-        const [name, hint] = OP_DETAILS[opName] || [opName, null];
-        const count = -diff;
-        let message = `${count} async operation${
-          count === 1 ? "" : "s"
-        } to ${name} ${
-          count === 1 ? "was" : "were"
-        } started before this test, but ${
-          count === 1 ? "was" : "were"
-        } completed during the test. Async operations should not complete in a test if they were not started in that test.`;
-        if (hint) {
-          message += ` This is often caused by not ${hint}.`;
-        }
-        const traces = [];
-        for (const [id, { opName: traceOpName, stack }] of preTraces) {
-          if (opName !== traceOpName) continue;
-          if (MapPrototypeHas(postTraces, id)) continue;
-          ArrayPrototypePush(traces, stack);
-        }
-        if (traces.length === 1) {
-          message += " The operation was started here:\n";
-          message += traces[0];
-        } else if (traces.length > 1) {
-          message += " The operations were started here:\n";
-          message += ArrayPrototypeJoin(traces, "\n\n");
-        }
-        ArrayPrototypePush(details, message);
-      } else {
-        throw new Error("unreachable");
-      }
-    }
-
-    return {
-      failed: { leakedOps: [details, core.isOpCallTracingEnabled()] },
-    };
-  };
-}
-
-function prettyResourceNames(name) {
-  switch (name) {
-    case "fsFile":
-      return ["A file", "opened", "closed"];
-    case "fetchRequest":
-      return ["A fetch request", "started", "finished"];
-    case "fetchRequestBody":
-      return ["A fetch request body", "created", "closed"];
-    case "fetchResponse":
-      return ["A fetch response body", "created", "consumed"];
-    case "httpClient":
-      return ["An HTTP client", "created", "closed"];
-    case "dynamicLibrary":
-      return ["A dynamic library", "loaded", "unloaded"];
-    case "httpConn":
-      return ["An inbound HTTP connection", "accepted", "closed"];
-    case "httpStream":
-      return ["An inbound HTTP request", "accepted", "closed"];
-    case "tcpStream":
-      return ["A TCP connection", "opened/accepted", "closed"];
-    case "unixStream":
-      return ["A Unix connection", "opened/accepted", "closed"];
-    case "tlsStream":
-      return ["A TLS connection", "opened/accepted", "closed"];
-    case "tlsListener":
-      return ["A TLS listener", "opened", "closed"];
-    case "unixListener":
-      return ["A Unix listener", "opened", "closed"];
-    case "unixDatagram":
-      return ["A Unix datagram", "opened", "closed"];
-    case "tcpListener":
-      return ["A TCP listener", "opened", "closed"];
-    case "udpSocket":
-      return ["A UDP socket", "opened", "closed"];
-    case "timer":
-      return ["A timer", "started", "fired/cleared"];
-    case "textDecoder":
-      return ["A text decoder", "created", "finished"];
-    case "messagePort":
-      return ["A message port", "created", "closed"];
-    case "webSocketStream":
-      return ["A WebSocket", "opened", "closed"];
-    case "fsEvents":
-      return ["A file system watcher", "created", "closed"];
-    case "childStdin":
-      return ["A child process stdin", "opened", "closed"];
-    case "childStdout":
-      return ["A child process stdout", "opened", "closed"];
-    case "childStderr":
-      return ["A child process stderr", "opened", "closed"];
-    case "child":
-      return ["A child process", "started", "closed"];
-    case "signal":
-      return ["A signal listener", "created", "fired/cleared"];
-    case "stdin":
-      return ["The stdin pipe", "opened", "closed"];
-    case "stdout":
-      return ["The stdout pipe", "opened", "closed"];
-    case "stderr":
-      return ["The stderr pipe", "opened", "closed"];
-    case "compression":
-      return ["A CompressionStream", "created", "closed"];
-    default:
-      return [`A "${name}" resource`, "created", "cleaned up"];
-  }
-}
-
-function resourceCloseHint(name) {
-  switch (name) {
-    case "fsFile":
-      return "Close the file handle by calling `file.close()`.";
-    case "fetchRequest":
-      return "Await the promise returned from `fetch()` or abort the fetch with an abort signal.";
-    case "fetchRequestBody":
-      return "Terminate the request body `ReadableStream` by closing or erroring it.";
-    case "fetchResponse":
-      return "Consume or close the response body `ReadableStream`, e.g `await resp.text()` or `await resp.body.cancel()`.";
-    case "httpClient":
-      return "Close the HTTP client by calling `httpClient.close()`.";
-    case "dynamicLibrary":
-      return "Unload the dynamic library by calling `dynamicLibrary.close()`.";
-    case "httpConn":
-      return "Close the inbound HTTP connection by calling `httpConn.close()`.";
-    case "httpStream":
-      return "Close the inbound HTTP request by responding with `e.respondWith()` or closing the HTTP connection.";
-    case "tcpStream":
-      return "Close the TCP connection by calling `tcpConn.close()`.";
-    case "unixStream":
-      return "Close the Unix socket connection by calling `unixConn.close()`.";
-    case "tlsStream":
-      return "Close the TLS connection by calling `tlsConn.close()`.";
-    case "tlsListener":
-      return "Close the TLS listener by calling `tlsListener.close()`.";
-    case "unixListener":
-      return "Close the Unix socket listener by calling `unixListener.close()`.";
-    case "unixDatagram":
-      return "Close the Unix datagram socket by calling `unixDatagram.close()`.";
-    case "tcpListener":
-      return "Close the TCP listener by calling `tcpListener.close()`.";
-    case "udpSocket":
-      return "Close the UDP socket by calling `udpSocket.close()`.";
-    case "timer":
-      return "Clear the timer by calling `clearInterval` or `clearTimeout`.";
-    case "textDecoder":
-      return "Close the text decoder by calling `textDecoder.decode('')` or `await textDecoderStream.readable.cancel()`.";
-    case "messagePort":
-      return "Close the message port by calling `messagePort.close()`.";
-    case "webSocketStream":
-      return "Close the WebSocket by calling `webSocket.close()`.";
-    case "fsEvents":
-      return "Close the file system watcher by calling `watcher.close()`.";
-    case "childStdin":
-      return "Close the child process stdin by calling `proc.stdin.close()`.";
-    case "childStdout":
-      return "Close the child process stdout by calling `proc.stdout.close()` or `await child.stdout.cancel()`.";
-    case "childStderr":
-      return "Close the child process stderr by calling `proc.stderr.close()` or `await child.stderr.cancel()`.";
-    case "child":
-      return "Close the child process by calling `proc.kill()` or `proc.close()`.";
-    case "signal":
-      return "Clear the signal listener by calling `Deno.removeSignalListener`.";
-    case "stdin":
-      return "Close the stdin pipe by calling `Deno.stdin.close()`.";
-    case "stdout":
-      return "Close the stdout pipe by calling `Deno.stdout.close()`.";
-    case "stderr":
-      return "Close the stderr pipe by calling `Deno.stderr.close()`.";
-    case "compression":
-      return "Close the compression stream by calling `await stream.writable.close()`.";
-    default:
-      return "Close the resource before the end of the test.";
-  }
-}
-
-// Wrap test function in additional assertion that makes sure
-// the test case does not "leak" resources - ie. resource table after
-// the test has exactly the same contents as before the test.
-function assertResources(fn) {
-  /** @param desc {TestDescription | TestStepDescription} */
-  return async function resourceSanitizer(desc) {
-    const pre = core.resources();
-    const innerResult = await fn(desc);
-    if (innerResult) return innerResult;
-    const post = core.resources();
-
-    const allResources = new Set([
-      ...new SafeArrayIterator(ObjectKeys(pre)),
-      ...new SafeArrayIterator(ObjectKeys(post)),
-    ]);
-
-    const details = [];
-    for (const resource of allResources) {
-      const preResource = pre[resource];
-      const postResource = post[resource];
-      if (preResource === postResource) continue;
-
-      if (preResource === undefined) {
-        const [name, action1, action2] = prettyResourceNames(postResource);
-        const hint = resourceCloseHint(postResource);
-        const detail =
-          `${name} (rid ${resource}) was ${action1} during the test, but not ${action2} during the test. ${hint}`;
-        ArrayPrototypePush(details, detail);
-      } else {
-        const [name, action1, action2] = prettyResourceNames(preResource);
-        const detail =
-          `${name} (rid ${resource}) was ${action1} before the test started, but was ${action2} during the test. Do not close resources in a test that were not created during that test.`;
-        ArrayPrototypePush(details, detail);
-      }
-    }
-    if (details.length == 0) {
-      return null;
-    }
-    return { failed: { leakedResources: details } };
-  };
-}
-
 // Wrap test function in additional assertion that makes sure
 // that the test case does not accidentally exit prematurely.
 function assertExit(fn, isTest) {
@@ -532,7 +105,20 @@ function assertExit(fn, isTest) {
 
     try {
       const innerResult = await fn(...new SafeArrayIterator(params));
-      if (innerResult) return innerResult;
+      const exitCode = DenoNs.exitCode;
+      if (exitCode !== 0) {
+        // Reset the code to allow other tests to run...
+        DenoNs.exitCode = 0;
+        // ...and fail the current test.
+        throw new Error(
+          `${
+            isTest ? "Test case" : "Bench"
+          } finished with exit code set to ${exitCode}.`,
+        );
+      }
+      if (innerResult) {
+        return innerResult;
+      }
     } finally {
       setExitHandler(null);
     }
@@ -620,12 +206,20 @@ function wrapInner(fn) {
 const registerTestIdRetBuf = new Uint32Array(1);
 const registerTestIdRetBufU8 = new Uint8Array(registerTestIdRetBuf.buffer);
 
+// As long as we're using one isolate per test, we can cache the origin since it won't change
+let cachedOrigin = undefined;
+
 function testInner(
   nameOrFnOrOptions,
   optionsOrFn,
   maybeFn,
-  overrides = {},
+  overrides = { __proto__: null },
 ) {
+  // No-op if we're not running in `deno test` subcommand.
+  if (typeof op_register_test !== "function") {
+    return;
+  }
+
   let testDesc;
   const defaults = {
     ignore: false,
@@ -711,22 +305,28 @@ function testInner(
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
 
+  if (cachedOrigin == undefined) {
+    cachedOrigin = op_test_get_origin();
+  }
+
   testDesc.location = core.currentUserCallSite();
   testDesc.fn = wrapTest(testDesc);
   testDesc.name = escapeName(testDesc.name);
 
-  const origin = ops.op_register_test(
+  op_register_test(
     testDesc.fn,
     testDesc.name,
     testDesc.ignore,
     testDesc.only,
+    testDesc.sanitizeOps,
+    testDesc.sanitizeResources,
     testDesc.location.fileName,
     testDesc.location.lineNumber,
     testDesc.location.columnNumber,
     registerTestIdRetBufU8,
   );
   testDesc.id = registerTestIdRetBuf[0];
-  testDesc.origin = origin;
+  testDesc.origin = cachedOrigin;
   MapPrototypeSet(testStates, testDesc.id, {
     context: createTestContext(testDesc),
     children: [],
@@ -772,11 +372,11 @@ function stepReportResult(desc, result, elapsed) {
     stepReportResult(childDesc, { failed: "incomplete" }, 0);
   }
   if (result === "ok") {
-    ops.op_test_event_step_result_ok(desc.id, elapsed);
+    op_test_event_step_result_ok(desc.id, elapsed);
   } else if (result === "ignored") {
-    ops.op_test_event_step_result_ignored(desc.id, elapsed);
+    op_test_event_step_result_ignored(desc.id, elapsed);
   } else {
-    ops.op_test_event_step_result_failed(desc.id, result.failed, elapsed);
+    op_test_event_step_result_failed(desc.id, result.failed, elapsed);
   }
 }
 
@@ -863,7 +463,7 @@ function createTestContext(desc) {
       stepDesc.name = escapeName(stepDesc.name);
       stepDesc.rootName = escapeName(rootName);
       stepDesc.fn = wrapTest(stepDesc);
-      const id = ops.op_register_test_step(
+      const id = op_register_test_step(
         stepDesc.name,
         stepDesc.location.fileName,
         stepDesc.location.lineNumber,
@@ -887,7 +487,7 @@ function createTestContext(desc) {
         stepDesc,
       );
 
-      ops.op_test_event_step_wait(stepDesc.id);
+      op_test_event_step_wait(stepDesc.id);
       const earlier = DateNow();
       const result = await stepDesc.fn(stepDesc);
       const elapsed = DateNow() - earlier;
@@ -907,12 +507,6 @@ function createTestContext(desc) {
  */
 function wrapTest(desc) {
   let testFn = wrapInner(desc.fn);
-  if (desc.sanitizeOps) {
-    testFn = assertOps(testFn);
-  }
-  if (desc.sanitizeResources) {
-    testFn = assertResources(testFn);
-  }
   if (desc.sanitizeExit) {
     testFn = assertExit(testFn, true);
   }

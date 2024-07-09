@@ -820,21 +820,25 @@ Object.defineProperty(OutgoingMessage.prototype, "_headerNames", {
   ),
 });
 
-export const validateHeaderName = hideStackFrames((name) => {
-  if (typeof name !== "string" || !name || !checkIsHttpToken(name)) {
-    throw new ERR_INVALID_HTTP_TOKEN("Header name", name);
-  }
-});
+export const validateHeaderName = hideStackFrames(
+  (name: string, label?: string): void => {
+    if (typeof name !== "string" || !name || !checkIsHttpToken(name)) {
+      throw new ERR_INVALID_HTTP_TOKEN(label || "Header name", name);
+    }
+  },
+);
 
-export const validateHeaderValue = hideStackFrames((name, value) => {
-  if (value === undefined) {
-    throw new ERR_HTTP_INVALID_HEADER_VALUE(value, name);
-  }
-  if (checkInvalidHeaderChar(value)) {
-    debug('Header "%s" contains invalid characters', name);
-    throw new ERR_INVALID_CHAR("header content", name);
-  }
-});
+export const validateHeaderValue = hideStackFrames(
+  (name: string, value: string): void => {
+    if (value === undefined) {
+      throw new ERR_HTTP_INVALID_HEADER_VALUE(value, name);
+    }
+    if (checkInvalidHeaderChar(value)) {
+      debug('Header "%s" contains invalid characters', name);
+      throw new ERR_INVALID_CHAR("header content", name);
+    }
+  },
+);
 
 export function parseUniqueHeadersOption(headers) {
   if (!Array.isArray(headers)) {

@@ -1,0 +1,22 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "compile --allow-net --cert ../RootCA.pem cafile_ts_fetch.ts",
+    "cwd": "cert",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./cafile_ts_fetch.exe",
+    "cwd": "cert",
+    "args": [],
+    "flaky": true,
+    "output": "[WILDCARD]\nHello\n"
+  }, {
+    "if": "unix",
+    "commandName": "./cafile_ts_fetch",
+    "cwd": "cert",
+    "args": [],
+    "flaky": true,
+    "output": "[WILDCARD]\nHello\n"
+  }]
+}

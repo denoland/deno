@@ -9,8 +9,8 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use deno_runtime::colors;
 use deno_runtime::deno_node::NodeResolver;
+use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -19,17 +19,25 @@ use crate::args::TsConfig;
 use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
+use crate::cache::CacheDBHash;
 use crate::cache::Caches;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
+use crate::graph_util::BuildFastCheckGraphOptions;
+use crate::graph_util::ModuleGraphBuilder;
 use crate::npm::CliNpmResolver;
 use crate::tsc;
 use crate::tsc::Diagnostics;
-use crate::version;
+use crate::util::path::to_percent_decoded_str;
 
 /// Options for performing a check of a module graph. Note that the decision to
 /// emit or not is determined by the `ts_config` settings.
 pub struct CheckOptions {
+  /// Whether to build the fast check type graph if necessary.
+  ///
+  /// Note: For perf reasons, the fast check type graph is only
+  /// built if type checking is necessary.
+  pub build_fast_check_graph: bool,
   /// Default type library to type check with.
   pub lib: TsTypeLib,
   /// Whether to log about any ignored compiler options.
@@ -37,11 +45,14 @@ pub struct CheckOptions {
   /// If true, valid `.tsbuildinfo` files will be ignored and type checking
   /// will always occur.
   pub reload: bool,
+  /// Mode to type check with.
+  pub type_check_mode: TypeCheckMode,
 }
 
 pub struct TypeChecker {
   caches: Arc<Caches>,
   cli_options: Arc<CliOptions>,
+  module_graph_builder: Arc<ModuleGraphBuilder>,
   node_resolver: Arc<NodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
 }
@@ -50,12 +61,14 @@ impl TypeChecker {
   pub fn new(
     caches: Arc<Caches>,
     cli_options: Arc<CliOptions>,
+    module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<NodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
   ) -> Self {
     Self {
       caches,
       cli_options,
+      module_graph_builder,
       node_resolver,
       npm_resolver,
     }
@@ -67,12 +80,12 @@ impl TypeChecker {
   /// before the function is called.
   pub async fn check(
     &self,
-    graph: Arc<ModuleGraph>,
+    graph: ModuleGraph,
     options: CheckOptions,
-  ) -> Result<(), AnyError> {
-    let diagnostics = self.check_diagnostics(graph, options).await?;
+  ) -> Result<Arc<ModuleGraph>, AnyError> {
+    let (graph, diagnostics) = self.check_diagnostics(graph, options).await?;
     if diagnostics.is_empty() {
-      Ok(())
+      Ok(graph)
     } else {
       Err(diagnostics.into())
     }
@@ -84,11 +97,11 @@ impl TypeChecker {
   /// before the function is called.
   pub async fn check_diagnostics(
     &self,
-    graph: Arc<ModuleGraph>,
+    mut graph: ModuleGraph,
     options: CheckOptions,
-  ) -> Result<Diagnostics, AnyError> {
-    if graph.roots.is_empty() {
-      return Ok(Default::default());
+  ) -> Result<(Arc<ModuleGraph>, Diagnostics), AnyError> {
+    if !options.type_check_mode.is_true() || graph.roots.is_empty() {
+      return Ok((graph.into(), Default::default()));
     }
 
     // node built-in specifiers use the @types/node package to determine
@@ -110,11 +123,8 @@ impl TypeChecker {
       }
     }
 
+    let type_check_mode = options.type_check_mode;
     let ts_config = ts_config_result.ts_config;
-    let type_check_mode = self.cli_options.type_check_mode();
-    let debug = self.cli_options.log_level() == Some(log::Level::Debug);
-    let cache = TypeCheckCache::new(self.caches.type_checking_cache_db());
-    let check_js = ts_config.get_check_js();
     let maybe_check_hash = match self.npm_resolver.check_state_hash() {
       Some(npm_check_hash) => {
         match get_check_hash(
@@ -123,7 +133,9 @@ impl TypeChecker {
           type_check_mode,
           &ts_config,
         ) {
-          CheckHashResult::NoFiles => return Ok(Default::default()),
+          CheckHashResult::NoFiles => {
+            return Ok((graph.into(), Default::default()))
+          }
           CheckHashResult::Hash(hash) => Some(hash),
         }
       }
@@ -131,20 +143,26 @@ impl TypeChecker {
     };
 
     // do not type check if we know this is type checked
+    let cache = TypeCheckCache::new(self.caches.type_checking_cache_db());
     if !options.reload {
       if let Some(check_hash) = maybe_check_hash {
         if cache.has_check_hash(check_hash) {
-          return Ok(Default::default());
+          log::debug!("Already type checked.");
+          return Ok((graph.into(), Default::default()));
         }
       }
     }
 
     for root in &graph.roots {
       let root_str = root.as_str();
-      log::info!("{} {}", colors::green("Check"), root_str);
+      log::info!(
+        "{} {}",
+        colors::green("Check"),
+        to_percent_decoded_str(root_str)
+      );
     }
 
-    let root_names = get_tsc_roots(&graph, check_js);
+    let check_js = ts_config.get_check_js();
     // while there might be multiple roots, we can't "merge" the build info, so we
     // try to retrieve the build info for first root, which is the most common use
     // case.
@@ -156,14 +174,25 @@ impl TypeChecker {
     // to make tsc build info work, we need to consistently hash modules, so that
     // tsc can better determine if an emit is still valid or not, so we provide
     // that data here.
-    let hash_data = FastInsecureHasher::new()
+    let hash_data = FastInsecureHasher::new_deno_versioned()
       .write(&ts_config.as_bytes())
-      .write_str(version::deno())
       .finish();
 
+    // add fast check to the graph before getting the roots
+    if options.build_fast_check_graph {
+      self.module_graph_builder.build_fast_check_graph(
+        &mut graph,
+        BuildFastCheckGraphOptions {
+          workspace_fast_check: deno_graph::WorkspaceFastCheckOption::Disabled,
+        },
+      )?;
+    }
+
+    let root_names = get_tsc_roots(&graph, check_js);
+    let graph = Arc::new(graph);
     let response = tsc::exec(tsc::Request {
       config: ts_config,
-      debug,
+      debug: self.cli_options.log_level() == Some(log::Level::Debug),
       graph: graph.clone(),
       hash_data,
       maybe_npm: Some(tsc::RequestNpmState {
@@ -175,28 +204,13 @@ impl TypeChecker {
       check_mode: type_check_mode,
     })?;
 
-    let mut diagnostics = if type_check_mode == TypeCheckMode::Local {
-      response.diagnostics.filter(|d| {
-        if let Some(file_name) = &d.file_name {
-          if !file_name.starts_with("http") {
-            if ModuleSpecifier::parse(file_name)
-              .map(|specifier| !self.node_resolver.in_npm_package(&specifier))
-              .unwrap_or(true)
-            {
-              Some(d.clone())
-            } else {
-              None
-            }
-          } else {
-            None
-          }
-        } else {
-          Some(d.clone())
-        }
-      })
-    } else {
-      response.diagnostics
-    };
+    let mut diagnostics = response.diagnostics.filter(|d| {
+      if self.is_remote_diagnostic(d) {
+        type_check_mode == TypeCheckMode::All && d.include_when_remote()
+      } else {
+        true
+      }
+    });
 
     diagnostics.apply_fast_check_source_maps(&graph);
 
@@ -212,12 +226,26 @@ impl TypeChecker {
 
     log::debug!("{}", response.stats);
 
-    Ok(diagnostics)
+    Ok((graph, diagnostics))
+  }
+
+  fn is_remote_diagnostic(&self, d: &tsc::Diagnostic) -> bool {
+    let Some(file_name) = &d.file_name else {
+      return false;
+    };
+    if file_name.starts_with("https://") || file_name.starts_with("http://") {
+      return true;
+    }
+    // check if in an npm package
+    let Ok(specifier) = ModuleSpecifier::parse(file_name) else {
+      return false;
+    };
+    self.node_resolver.in_npm_package(&specifier)
   }
 }
 
 enum CheckHashResult {
-  Hash(u64),
+  Hash(CacheDBHash),
   NoFiles,
 }
 
@@ -229,7 +257,7 @@ fn get_check_hash(
   type_check_mode: TypeCheckMode,
   ts_config: &TsConfig,
 ) -> CheckHashResult {
-  let mut hasher = FastInsecureHasher::new();
+  let mut hasher = FastInsecureHasher::new_deno_versioned();
   hasher.write_u8(match type_check_mode {
     TypeCheckMode::All => 0,
     TypeCheckMode::Local => 1,
@@ -278,6 +306,7 @@ fn get_check_hash(
 
         hasher.write_str(module.specifier.as_str());
         hasher.write_str(
+          // the fast check module will only be set when publishing
           module
             .fast_check_module()
             .map(|s| s.source.as_ref())
@@ -310,7 +339,7 @@ fn get_check_hash(
     // no files to type check
     CheckHashResult::NoFiles
   } else {
-    CheckHashResult::Hash(hasher.finish())
+    CheckHashResult::Hash(CacheDBHash::new(hasher.finish()))
   }
 }
 

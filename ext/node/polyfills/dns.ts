@@ -92,7 +92,7 @@ import {
   GetAddrInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { toASCII } from "node:punycode";
+import { domainToASCII } from "ext:deno_node/internal/idna.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
 function onlookup(
@@ -264,7 +264,13 @@ export function lookup(
   req.hostname = hostname;
   req.oncomplete = all ? onlookupall : onlookup;
 
-  const err = getaddrinfo(req, toASCII(hostname), family, hints, verbatim);
+  const err = getaddrinfo(
+    req,
+    domainToASCII(hostname),
+    family,
+    hints,
+    verbatim,
+  );
 
   if (err) {
     nextTick(
@@ -332,7 +338,7 @@ function resolver(bindingName: keyof ChannelWrapQuery) {
 
     req.ttl = !!(options && (options as ResolveOptions).ttl);
 
-    const err = this._handle[bindingName](req, toASCII(name));
+    const err = this._handle[bindingName](req, domainToASCII(name));
 
     if (err) {
       throw dnsException(err, bindingName, name);

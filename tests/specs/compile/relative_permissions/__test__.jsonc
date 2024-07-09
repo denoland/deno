@@ -1,0 +1,26 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    "args": "compile --output=main --no-prompt --allow-read=a.txt main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": [],
+    "output": "No such file[WILDCARD]"
+  }, {
+    "if": "unix",
+    "args": [
+      "eval",
+      "Deno.mkdirSync('sub_dir');"
+    ],
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "../main",
+    "cwd": "sub_dir",
+    "args": [],
+    "output": "No such file[WILDCARD]"
+  }]
+}

@@ -20,6 +20,7 @@ import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
 import { emitWarning } from "node:process";
 import {
   clearTimeout as clearTimeout_,
+  setImmediate as setImmediate_,
   setInterval as setInterval_,
   setTimeout as setTimeout_,
 } from "ext:deno_web/02_timers.js";
@@ -113,6 +114,35 @@ Timeout.prototype.hasRef = function () {
 
 Timeout.prototype[Symbol.toPrimitive] = function () {
   return this[kTimerId];
+};
+
+// Immediate constructor function.
+export function Immediate(callback, ...args) {
+  this._immediateId = setImmediate_(callback, ...args);
+}
+
+// Make sure the linked list only shows the minimal necessary information.
+Immediate.prototype[inspect.custom] = function (_, options) {
+  return inspect(this, {
+    ...options,
+    // Only inspect one level.
+    depth: 0,
+    // It should not recurse.
+    customInspect: false,
+  });
+};
+
+// FIXME(nathanwhit): actually implement {ref,unref,hasRef} once deno_core supports it
+Immediate.prototype.unref = function () {
+  return this;
+};
+
+Immediate.prototype.ref = function () {
+  return this;
+};
+
+Immediate.prototype.hasRef = function () {
+  return true;
 };
 
 /**

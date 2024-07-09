@@ -2,22 +2,19 @@
 
 //! This module helps deno implement timers and performance APIs.
 
-use crate::hr_timer_lock::hr_timer_lock;
-use deno_core::error::AnyError;
 use deno_core::op2;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
 use deno_core::OpState;
-use deno_core::Resource;
-use deno_core::ResourceId;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::time::Duration;
 use std::time::Instant;
 
 pub trait TimersPermission {
   fn allow_hrtime(&mut self) -> bool;
+}
+
+impl TimersPermission for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn allow_hrtime(&mut self) -> bool {
+    deno_permissions::PermissionsContainer::allow_hrtime(self)
+  }
 }
 
 pub type StartTime = Instant;
@@ -53,61 +50,6 @@ where
   buf[1] = subsec_nanos;
 }
 
-pub struct TimerHandle(Rc<CancelHandle>);
-
-impl Resource for TimerHandle {
-  fn name(&self) -> Cow<str> {
-    "timer".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.0.cancel();
-  }
-}
-
-/// Creates a [`TimerHandle`] resource that can be used to cancel invocations of
-/// [`op_sleep`].
-#[op2(fast)]
-#[smi]
-pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
-  state
-    .resource_table
-    .add(TimerHandle(CancelHandle::new_rc()))
-}
-
-/// Waits asynchronously until either `millis` milliseconds have passed or the
-/// [`TimerHandle`] resource given by `rid` has been canceled.
-///
-/// If the timer is canceled, this returns `false`. Otherwise, it returns `true`.
+#[allow(clippy::unused_async)]
 #[op2(async(lazy), fast)]
-pub async fn op_sleep(
-  state: Rc<RefCell<OpState>>,
-  #[smi] millis: u64,
-  #[smi] rid: ResourceId,
-) -> Result<bool, AnyError> {
-  // If the timer is not present in the resource table it was cancelled before
-  // this op was polled.
-  let Ok(handle) = state.borrow().resource_table.get::<TimerHandle>(rid) else {
-    return Ok(false);
-  };
-
-  // If a timer is requested with <=100ms resolution, request the high-res timer. Since the default
-  // Windows timer period is 15ms, this means a 100ms timer could fire at 115ms (15% late). We assume that
-  // timers longer than 100ms are a reasonable cutoff here.
-
-  // The high-res timers on Windows are still limited. Unfortunately this means that our shortest duration 4ms timers
-  // can still be 25% late, but without a more complex timer system or spinning on the clock itself, we're somewhat
-  // bounded by the OS' scheduler itself.
-  let _hr_timer_lock = if millis <= 100 {
-    Some(hr_timer_lock())
-  } else {
-    None
-  };
-
-  let res = tokio::time::sleep(Duration::from_millis(millis))
-    .or_cancel(handle.0.clone())
-    .await;
-
-  // We release the high-res timer lock here, either by being cancelled or resolving.
-  Ok(res.is_ok())
-}
+pub async fn op_defer() {}

@@ -3,7 +3,7 @@
 
 import { Buffer } from "../../buffer.ts";
 
-export type HASH_DATA = string | ArrayBufferView | Buffer;
+export type HASH_DATA = string | ArrayBufferView | Buffer | ArrayBuffer;
 
 export type BinaryToTextEncoding = "base64" | "base64url" | "hex" | "binary";
 
@@ -16,7 +16,7 @@ export type Encoding =
   | CharacterEncoding
   | LegacyCharacterEncoding;
 
-export type ECDHKeyFormat = "compressed" | "uncompressed" | "hybrid";
+export type ECDHKeyFormat = "compressed" | "uncompressed";
 
 export type BinaryLike = string | ArrayBufferView;
 

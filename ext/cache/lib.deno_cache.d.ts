@@ -5,10 +5,10 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category Cache API */
+/** @category Cache */
 declare var caches: CacheStorage;
 
-/** @category Cache API */
+/** @category Cache */
 declare interface CacheStorage {
   /** Open a cache storage for the provided name. */
   open(cacheName: string): Promise<Cache>;
@@ -18,7 +18,7 @@ declare interface CacheStorage {
   delete(cacheName: string): Promise<boolean>;
 }
 
-/** @category Cache API */
+/** @category Cache */
 declare interface Cache {
   /**
    * Put the provided request/response into the cache.
@@ -52,19 +52,19 @@ declare interface Cache {
   ): Promise<boolean>;
 }
 
-/** @category Cache API */
+/** @category Cache */
 declare var Cache: {
   readonly prototype: Cache;
   new (): never;
 };
 
-/** @category Cache API */
+/** @category Cache */
 declare var CacheStorage: {
   readonly prototype: CacheStorage;
   new (): never;
 };
 
-/** @category Cache API */
+/** @category Cache */
 declare interface CacheQueryOptions {
   ignoreMethod?: boolean;
   ignoreSearch?: boolean;

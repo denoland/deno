@@ -1,0 +1,22 @@
+{
+  "version": "3",
+  "packages": {
+    "specifiers": {
+      "jsr:@denotest/add": "jsr:@denotest/add@1.0.0",
+      "npm:@denotest/esm-basic@^1.0.0": "npm:@denotest/esm-basic@1.0.0"
+    },
+    "jsr": {
+      "@denotest/add@1.0.0": [WILDCARD]
+    },
+    "npm": {
+      "@denotest/esm-basic@1.0.0": [WILDCARD]
+    }
+  },
+  "remote": [WILDCARD],
+  "workspace": {
+    "dependencies": [
+      "jsr:@denotest/add",
+      "npm:@denotest/esm-basic@^1.0.0"
+    ]
+  }
+}

@@ -5,10 +5,11 @@
 // Thank you! We love Go! <3
 
 import { core, internals, primordials } from "ext:core/mod.js";
-import { op_is_terminal, op_stdin_set_raw } from "ext:core/ops";
+import { op_set_raw } from "ext:core/ops";
 const {
   Uint8Array,
   ArrayPrototypePush,
+  Symbol,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeGetByteLength,
@@ -40,7 +41,7 @@ async function copy(
   internals.warnOnDeprecatedApi(
     "Deno.copy()",
     new Error().stack,
-    "Use `copy()` from `https://deno.land/std/io/copy.ts` instead.",
+    "Use `copy()` from `https://jsr.io/@std/io/doc/copy/~` instead.",
   );
   let n = 0;
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
@@ -181,9 +182,14 @@ const STDIN_RID = 0;
 const STDOUT_RID = 1;
 const STDERR_RID = 2;
 
+const REF = Symbol("REF");
+const UNREF = Symbol("UNREF");
+
 class Stdin {
   #rid = STDIN_RID;
+  #ref = true;
   #readable;
+  #opPromise;
 
   constructor() {
   }
@@ -197,8 +203,14 @@ class Stdin {
     return this.#rid;
   }
 
-  read(p) {
-    return read(this.#rid, p);
+  async read(p) {
+    if (p.length === 0) return 0;
+    this.#opPromise = core.read(this.#rid, p);
+    if (!this.#ref) {
+      core.unrefOpPromise(this.#opPromise);
+    }
+    const nread = await this.#opPromise;
+    return nread === 0 ? null : nread;
   }
 
   readSync(p) {
@@ -216,13 +228,27 @@ class Stdin {
     return this.#readable;
   }
 
-  setRaw(mode, options = {}) {
+  setRaw(mode, options = { __proto__: null }) {
     const cbreak = !!(options.cbreak ?? false);
-    op_stdin_set_raw(mode, cbreak);
+    op_set_raw(this.#rid, mode, cbreak);
   }
 
   isTerminal() {
-    return op_is_terminal(this.#rid);
+    return core.isTerminal(this.#rid);
+  }
+
+  [REF]() {
+    this.#ref = true;
+    if (this.#opPromise) {
+      core.refOpPromise(this.#opPromise);
+    }
+  }
+
+  [UNREF]() {
+    this.#ref = false;
+    if (this.#opPromise) {
+      core.unrefOpPromise(this.#opPromise);
+    }
   }
 }
 
@@ -262,7 +288,7 @@ class Stdout {
   }
 
   isTerminal() {
-    return op_is_terminal(this.#rid);
+    return core.isTerminal(this.#rid);
   }
 }
 
@@ -302,7 +328,7 @@ class Stderr {
   }
 
   isTerminal() {
-    return op_is_terminal(this.#rid);
+    return core.isTerminal(this.#rid);
   }
 }
 
@@ -318,6 +344,7 @@ export {
   readAll,
   readAllSync,
   readSync,
+  REF,
   SeekMode,
   Stderr,
   stderr,
@@ -327,6 +354,7 @@ export {
   Stdout,
   stdout,
   STDOUT_RID,
+  UNREF,
   write,
   writeSync,
 };

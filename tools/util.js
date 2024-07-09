@@ -5,16 +5,16 @@ import {
   join,
   resolve,
   toFileUrl,
-} from "../test_util/std/path/mod.ts";
+} from "../tests/util/std/path/mod.ts";
 import { wait } from "https://deno.land/x/wait@0.1.13/mod.ts";
 export { dirname, fromFileUrl, join, resolve, toFileUrl };
-export { existsSync, walk } from "../test_util/std/fs/mod.ts";
-export { TextLineStream } from "../test_util/std/streams/text_line_stream.ts";
-export { delay } from "../test_util/std/async/delay.ts";
+export { existsSync, walk } from "../tests/util/std/fs/mod.ts";
+export { TextLineStream } from "../tests/util/std/streams/text_line_stream.ts";
+export { delay } from "../tests/util/std/async/delay.ts";
 
 // [toolName] --version output
 const versions = {
-  "dlint": "dlint 0.52.2",
+  "dlint": "dlint 0.60.0",
 };
 
 const compressed = new Set(["ld64.lld", "rcodesign"]);
@@ -31,11 +31,17 @@ async function getFilesFromGit(baseDir, args) {
     throw new Error("gitLsFiles failed");
   }
 
-  const files = output.split("\0").filter((line) => line.length > 0).map(
-    (filePath) => {
-      return Deno.realPathSync(join(baseDir, filePath));
-    },
-  );
+  const files = output
+    .split("\0")
+    .filter((line) => line.length > 0)
+    .map((filePath) => {
+      try {
+        return Deno.realPathSync(join(baseDir, filePath));
+      } catch {
+        return null;
+      }
+    })
+    .filter((filePath) => filePath !== null);
 
   return files;
 }
@@ -175,7 +181,7 @@ export function getPrebuiltToolPath(toolName) {
   return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
 }
 
-const commitId = "5f2097d8247c7fbe30ba227f894d70ae5c1524c7";
+const commitId = "b8aac22e0cd7c1c6557a56a813fe0c25486fafee";
 const downloadUrl =
   `https://raw.githubusercontent.com/denoland/deno_third_party/${commitId}/prebuilt/${platformDirName}`;
 
@@ -227,6 +233,12 @@ export async function downloadPrebuilt(toolName) {
       );
     }
     spinner.text = `Successfully downloaded: ${toolName}`;
+    try {
+      // necessary on Windows it seems
+      await Deno.remove(toolPath);
+    } catch {
+      // ignore
+    }
     await Deno.rename(tempFile, toolPath);
   } catch (e) {
     spinner.fail();

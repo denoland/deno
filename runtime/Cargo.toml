@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.144.0"
+version = "0.166.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -22,7 +22,7 @@ include_js_files_for_snapshotting = [
 ]
 # A dev feature to disable creations and loading of snapshots in favor of
 # loading JS sources at runtime.
-__runtime_js_sources = ["include_js_files_for_snapshotting"]
+hmr = ["include_js_files_for_snapshotting"]
 # Signal that only snapshotted JS sources should be used. This will
 # conditionally exclude the runtime source transpilation logic, and add an
 # assertion that a snapshot is provided.
@@ -33,12 +33,8 @@ name = "deno_runtime"
 path = "lib.rs"
 
 [[example]]
-name = "extension_with_esm"
-path = "examples/extension_with_esm/main.rs"
-
-[[example]]
-name = "extension_with_ops"
-path = "examples/extension_with_ops/main.rs"
+name = "extension"
+path = "examples/extension/main.rs"
 
 [build-dependencies]
 deno_ast.workspace = true
@@ -69,7 +65,6 @@ flate2 = { workspace = true, features = ["default"] }
 serde.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
-winres.workspace = true
 winapi.workspace = true
 
 [dependencies]
@@ -90,6 +85,8 @@ deno_kv.workspace = true
 deno_napi.workspace = true
 deno_net.workspace = true
 deno_node.workspace = true
+deno_permissions.workspace = true
+deno_terminal.workspace = true
 deno_tls.workspace = true
 deno_url.workspace = true
 deno_web.workspace = true
@@ -98,12 +95,9 @@ deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
 
-console_static_text.workspace = true
 dlopen2.workspace = true
 encoding_rs.workspace = true
 fastwebsockets.workspace = true
-filetime = "0.2.16"
-fs3.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
@@ -114,19 +108,19 @@ log.workspace = true
 netif = "0.1.6"
 notify.workspace = true
 once_cell.workspace = true
+percent-encoding.workspace = true
 regex.workspace = true
-ring.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
 serde.workspace = true
+signal-hook = "0.3.17"
 signal-hook-registry = "1.4.0"
-termcolor = "1.1.3"
 tokio.workspace = true
 tokio-metrics.workspace = true
+twox-hash.workspace = true
 uuid.workspace = true
 which = "4.2.5"
 
 [target.'cfg(windows)'.dependencies]
-fwdansi.workspace = true
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
 ntapi = "0.4.0"
 windows-sys.workspace = true

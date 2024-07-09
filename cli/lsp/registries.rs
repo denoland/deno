@@ -17,7 +17,7 @@ use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
 use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FileFetcher;
-use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -30,7 +30,7 @@ use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use log::error;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -416,22 +416,26 @@ enum VariableItems {
 #[derive(Debug, Clone)]
 pub struct ModuleRegistry {
   origins: HashMap<String, Vec<RegistryConfiguration>>,
-  pub file_fetcher: FileFetcher,
+  pub location: PathBuf,
+  pub file_fetcher: Arc<FileFetcher>,
   http_cache: Arc<GlobalHttpCache>,
 }
 
 impl ModuleRegistry {
-  pub fn new(location: PathBuf, http_client: Arc<HttpClient>) -> Self {
+  pub fn new(
+    location: PathBuf,
+    http_client_provider: Arc<HttpClientProvider>,
+  ) -> Self {
     // the http cache should always be the global one for registry completions
     let http_cache = Arc::new(GlobalHttpCache::new(
-      location,
+      location.clone(),
       crate::cache::RealDenoCacheEnv,
     ));
     let mut file_fetcher = FileFetcher::new(
       http_cache.clone(),
       CacheSetting::RespectHeaders,
       true,
-      http_client,
+      http_client_provider,
       Default::default(),
       None,
     );
@@ -439,7 +443,8 @@ impl ModuleRegistry {
 
     Self {
       origins: HashMap::new(),
-      file_fetcher,
+      location,
+      file_fetcher: Arc::new(file_fetcher),
       http_cache,
     }
   }
@@ -488,10 +493,12 @@ impl ModuleRegistry {
   }
 
   /// Disable a registry, removing its configuration, if any, from memory.
-  pub async fn disable(&mut self, origin: &str) -> Result<(), AnyError> {
-    let origin = base_url(&Url::parse(origin)?);
+  pub fn disable(&mut self, origin: &str) {
+    let Ok(origin_url) = Url::parse(origin) else {
+      return;
+    };
+    let origin = base_url(&origin_url);
     self.origins.remove(&origin);
-    Ok(())
   }
 
   /// Check to see if the given origin has a registry configuration.
@@ -508,15 +515,21 @@ impl ModuleRegistry {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
-    let fetch_result = self
-      .file_fetcher
-      .fetch_with_options(FetchOptions {
-        specifier,
-        permissions: PermissionsContainer::allow_all(),
-        maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
-        maybe_cache_setting: None,
-      })
-      .await;
+    // spawn due to the lsp's `Send` requirement
+    let fetch_result = deno_core::unsync::spawn({
+      let file_fetcher = self.file_fetcher.clone();
+      let specifier = specifier.clone();
+      async move {
+        file_fetcher
+        .fetch_with_options(FetchOptions {
+          specifier: &specifier,
+          permissions: &PermissionsContainer::allow_all(),
+          maybe_accept: Some("application/vnd.deno.reg.v2+json, application/vnd.deno.reg.v1+json;q=0.9, application/json;q=0.8"),
+          maybe_cache_setting: None,
+        })
+        .await
+      }
+    }).await?;
     // if there is an error fetching, we will cache an empty file, so that
     // subsequent requests they are just an empty doc which will error without
     // needing to connect to the remote URL. We will cache it for 1 week.
@@ -536,13 +549,17 @@ impl ModuleRegistry {
 
   /// Enable a registry by attempting to retrieve its configuration and
   /// validating it.
-  pub async fn enable(&mut self, origin: &str) -> Result<(), AnyError> {
-    let origin_url = Url::parse(origin)?;
+  pub async fn enable(&mut self, origin: &str) {
+    let Ok(origin_url) = Url::parse(origin) else {
+      return;
+    };
     let origin = base_url(&origin_url);
     #[allow(clippy::map_entry)]
     // we can't use entry().or_insert_with() because we can't use async closures
     if !self.origins.contains_key(&origin) {
-      let specifier = origin_url.join(CONFIG_PATH)?;
+      let Ok(specifier) = origin_url.join(CONFIG_PATH) else {
+        return;
+      };
       match self.fetch_config(&specifier).await {
         Ok(configs) => {
           self.origins.insert(origin, configs);
@@ -557,8 +574,6 @@ impl ModuleRegistry {
         }
       }
     }
-
-    Ok(())
   }
 
   #[cfg(test)]
@@ -606,13 +621,20 @@ impl ModuleRegistry {
           None,
         )
         .ok()?;
-        let file = self
-          .file_fetcher
-          .fetch(&endpoint, PermissionsContainer::allow_all())
-          .await
-          .ok()?
-          .into_text_decoded()
-          .ok()?;
+        let file_fetcher = self.file_fetcher.clone();
+        // spawn due to the lsp's `Send` requirement
+        let file = deno_core::unsync::spawn({
+          async move {
+            file_fetcher
+              .fetch(&endpoint, &PermissionsContainer::allow_all())
+              .await
+              .ok()?
+              .into_text_decoded()
+              .ok()
+          }
+        })
+        .await
+        .ok()??;
         let documentation: lsp::Documentation =
           serde_json::from_str(&file.source).ok()?;
         return match documentation {
@@ -972,13 +994,18 @@ impl ModuleRegistry {
     url: &str,
   ) -> Option<lsp::Documentation> {
     let specifier = Url::parse(url).ok()?;
-    let file = self
-      .file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
-      .await
-      .ok()?
-      .into_text_decoded()
-      .ok()?;
+    let file_fetcher = self.file_fetcher.clone();
+    // spawn due to the lsp's `Send` requirement
+    let file = deno_core::unsync::spawn(async move {
+      file_fetcher
+        .fetch(&specifier, &PermissionsContainer::allow_all())
+        .await
+        .ok()?
+        .into_text_decoded()
+        .ok()
+    })
+    .await
+    .ok()??;
     serde_json::from_str(&file.source).ok()
   }
 
@@ -1031,19 +1058,27 @@ impl ModuleRegistry {
 
   async fn get_items(&self, url: &str) -> Option<VariableItems> {
     let specifier = ModuleSpecifier::parse(url).ok()?;
-    let file = self
-      .file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
-      .await
-      .map_err(|err| {
-        error!(
-          "Internal error fetching endpoint \"{}\". {}",
-          specifier, err
-        );
-      })
-      .ok()?
-      .into_text_decoded()
-      .ok()?;
+    // spawn due to the lsp's `Send` requirement
+    let file = deno_core::unsync::spawn({
+      let file_fetcher = self.file_fetcher.clone();
+      let specifier = specifier.clone();
+      async move {
+        file_fetcher
+          .fetch(&specifier, &PermissionsContainer::allow_all())
+          .await
+          .map_err(|err| {
+            error!(
+              "Internal error fetching endpoint \"{}\". {}",
+              specifier, err
+            );
+          })
+          .ok()?
+          .into_text_decoded()
+          .ok()
+      }
+    })
+    .await
+    .ok()??;
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
         error!(
@@ -1069,19 +1104,27 @@ impl ModuleRegistry {
           error!("Internal error mapping endpoint \"{}\". {}", url, err);
         })
         .ok()?;
-    let file = self
-      .file_fetcher
-      .fetch(&specifier, PermissionsContainer::allow_all())
-      .await
-      .map_err(|err| {
-        error!(
-          "Internal error fetching endpoint \"{}\". {}",
-          specifier, err
-        );
-      })
-      .ok()?
-      .into_text_decoded()
-      .ok()?;
+    // spawn due to the lsp's `Send` requirement
+    let file = deno_core::unsync::spawn({
+      let file_fetcher = self.file_fetcher.clone();
+      let specifier = specifier.clone();
+      async move {
+        file_fetcher
+          .fetch(&specifier, &PermissionsContainer::allow_all())
+          .await
+          .map_err(|err| {
+            error!(
+              "Internal error fetching endpoint \"{}\". {}",
+              specifier, err
+            );
+          })
+          .ok()?
+          .into_text_decoded()
+          .ok()
+      }
+    })
+    .await
+    .ok()??;
     let items: VariableItems = serde_json::from_str(&file.source)
       .map_err(|err| {
         error!(
@@ -1091,6 +1134,10 @@ impl ModuleRegistry {
       })
       .ok()?;
     Some(items)
+  }
+
+  pub fn clear_cache(&self) {
+    self.file_fetcher.clear_memory_files();
   }
 }
 
@@ -1254,12 +1301,11 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
-    let mut module_registry =
-      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
-    module_registry
-      .enable("http://localhost:4545/")
-      .await
-      .expect("could not enable");
+    let mut module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
+    module_registry.enable("http://localhost:4545/").await;
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1315,12 +1361,11 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
-    let mut module_registry =
-      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
-    module_registry
-      .enable("http://localhost:4545/")
-      .await
-      .expect("could not enable");
+    let mut module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
+    module_registry.enable("http://localhost:4545/").await;
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -1538,8 +1583,10 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
-    let mut module_registry =
-      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
+    let mut module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-key-first.json")
       .await
@@ -1608,8 +1655,10 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
-    let mut module_registry =
-      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
+    let mut module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-complex.json")
       .await
@@ -1659,8 +1708,10 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
-    let module_registry =
-      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
+    let module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
     let result = module_registry.check_origin("http://localhost:4545").await;
     assert!(result.is_ok());
   }
@@ -1670,8 +1721,10 @@ mod tests {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("registries").to_path_buf();
-    let module_registry =
-      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
+    let module_registry = ModuleRegistry::new(
+      location,
+      Arc::new(HttpClientProvider::new(None, None)),
+    );
     let result = module_registry.check_origin("https://example.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();

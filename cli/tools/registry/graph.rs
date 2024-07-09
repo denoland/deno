@@ -1,201 +1,204 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashSet;
-use std::collections::VecDeque;
+use std::sync::Arc;
 
-use deno_ast::ModuleSpecifier;
-use deno_config::ConfigFile;
-use deno_config::WorkspaceConfig;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
+use deno_ast::swc::common::comments::CommentKind;
+use deno_ast::ParsedSource;
+use deno_ast::SourceRangedForSpanned;
+use deno_ast::SourceTextInfo;
 use deno_core::error::AnyError;
-use deno_graph::FastCheckDiagnostic;
 use deno_graph::ModuleEntryRef;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
 use deno_graph::WalkOptions;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
 use lsp_types::Url;
+
+use crate::cache::ParsedSourceCache;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
 
-#[derive(Debug)]
-pub struct MemberRoots {
-  pub name: String,
-  pub dir_url: ModuleSpecifier,
-  pub exports: Vec<ModuleSpecifier>,
+pub struct GraphDiagnosticsCollector {
+  parsed_source_cache: Arc<ParsedSourceCache>,
 }
 
-pub fn get_workspace_member_roots(
-  config: &WorkspaceConfig,
-) -> Result<Vec<MemberRoots>, AnyError> {
-  let mut members = Vec::with_capacity(config.members.len());
-  let mut seen_names = HashSet::with_capacity(config.members.len());
-  for member in &config.members {
-    if !seen_names.insert(&member.package_name) {
-      bail!(
-        "Cannot have two workspace packages with the same name ('{}' at {})",
-        member.package_name,
-        member.path.display(),
-      );
+impl GraphDiagnosticsCollector {
+  pub fn new(parsed_source_cache: Arc<ParsedSourceCache>) -> Self {
+    Self {
+      parsed_source_cache,
     }
-    members.push(MemberRoots {
-      name: member.package_name.clone(),
-      dir_url: member.config_file.specifier.join("./").unwrap().clone(),
-      exports: resolve_config_file_roots_from_exports(&member.config_file)?,
-    });
   }
-  Ok(members)
+
+  pub fn collect_diagnostics_for_graph(
+    &self,
+    graph: &ModuleGraph,
+    diagnostics_collector: &PublishDiagnosticsCollector,
+  ) -> Result<(), AnyError> {
+    let mut visited = HashSet::new();
+    let mut skip_specifiers: HashSet<Url> = HashSet::new();
+
+    let mut collect_if_invalid =
+      |skip_specifiers: &mut HashSet<Url>,
+       source_text: &Arc<str>,
+       specifier_text: &str,
+       resolution: &ResolutionResolved| {
+        if visited.insert(resolution.specifier.clone()) {
+          match resolution.specifier.scheme() {
+            "file" | "data" | "node" => {}
+            "jsr" => {
+              skip_specifiers.insert(resolution.specifier.clone());
+
+              // check for a missing version constraint
+              if let Ok(jsr_req_ref) =
+                JsrPackageReqReference::from_specifier(&resolution.specifier)
+              {
+                if jsr_req_ref.req().version_req.version_text() == "*" {
+                  let maybe_version = graph
+                    .packages
+                    .mappings()
+                    .get(jsr_req_ref.req())
+                    .map(|nv| nv.version.clone());
+                  diagnostics_collector.push(
+                    PublishDiagnostic::MissingConstraint {
+                      specifier: resolution.specifier.clone(),
+                      specifier_text: specifier_text.to_string(),
+                      resolved_version: maybe_version,
+                      text_info: SourceTextInfo::new(source_text.clone()),
+                      referrer: resolution.range.clone(),
+                    },
+                  );
+                }
+              }
+            }
+            "npm" => {
+              skip_specifiers.insert(resolution.specifier.clone());
+
+              // check for a missing version constraint
+              if let Ok(jsr_req_ref) =
+                NpmPackageReqReference::from_specifier(&resolution.specifier)
+              {
+                if jsr_req_ref.req().version_req.version_text() == "*" {
+                  let maybe_version = graph
+                    .get(&resolution.specifier)
+                    .and_then(|m| m.npm())
+                    .map(|n| n.nv_reference.nv().version.clone());
+                  diagnostics_collector.push(
+                    PublishDiagnostic::MissingConstraint {
+                      specifier: resolution.specifier.clone(),
+                      specifier_text: specifier_text.to_string(),
+                      resolved_version: maybe_version,
+                      text_info: SourceTextInfo::new(source_text.clone()),
+                      referrer: resolution.range.clone(),
+                    },
+                  );
+                }
+              }
+            }
+            "http" | "https" => {
+              skip_specifiers.insert(resolution.specifier.clone());
+              diagnostics_collector.push(
+                PublishDiagnostic::InvalidExternalImport {
+                  kind: format!("non-JSR '{}'", resolution.specifier.scheme()),
+                  text_info: SourceTextInfo::new(source_text.clone()),
+                  imported: resolution.specifier.clone(),
+                  referrer: resolution.range.clone(),
+                },
+              );
+            }
+            _ => {
+              skip_specifiers.insert(resolution.specifier.clone());
+              diagnostics_collector.push(
+                PublishDiagnostic::InvalidExternalImport {
+                  kind: format!("'{}'", resolution.specifier.scheme()),
+                  text_info: SourceTextInfo::new(source_text.clone()),
+                  imported: resolution.specifier.clone(),
+                  referrer: resolution.range.clone(),
+                },
+              );
+            }
+          }
+        }
+      };
+
+    let options = WalkOptions {
+      check_js: true,
+      follow_dynamic: true,
+      // search the entire graph and not just the fast check subset
+      prefer_fast_check_graph: false,
+      follow_type_only: true,
+    };
+    let mut iter = graph.walk(graph.roots.iter(), options);
+    while let Some((specifier, entry)) = iter.next() {
+      if skip_specifiers.contains(specifier) {
+        iter.skip_previous_dependencies();
+        continue;
+      }
+
+      let ModuleEntryRef::Module(module) = entry else {
+        continue;
+      };
+      let Some(module) = module.js() else {
+        continue;
+      };
+
+      let parsed_source = self
+        .parsed_source_cache
+        .get_parsed_source_from_js_module(module)?;
+      check_for_banned_triple_slash_directives(
+        &parsed_source,
+        diagnostics_collector,
+      );
+
+      for (specifier_text, dep) in &module.dependencies {
+        if let Some(resolved) = dep.maybe_code.ok() {
+          collect_if_invalid(
+            &mut skip_specifiers,
+            &module.source,
+            specifier_text,
+            resolved,
+          );
+        }
+        if let Some(resolved) = dep.maybe_type.ok() {
+          collect_if_invalid(
+            &mut skip_specifiers,
+            &module.source,
+            specifier_text,
+            resolved,
+          );
+        }
+      }
+    }
+
+    Ok(())
+  }
 }
 
-pub fn resolve_config_file_roots_from_exports(
-  config_file: &ConfigFile,
-) -> Result<Vec<ModuleSpecifier>, AnyError> {
-  let exports_config = config_file
-    .to_exports_config()
-    .with_context(|| {
-      format!("Failed to parse exports at {}", config_file.specifier)
-    })?
-    .into_map();
-  let mut exports = Vec::with_capacity(exports_config.len());
-  for (_, value) in exports_config {
-    let entry_point =
-      config_file.specifier.join(&value).with_context(|| {
-        format!("Failed to join {} with {}", config_file.specifier, value)
-      })?;
-    exports.push(entry_point);
-  }
-  Ok(exports)
-}
-
-pub fn collect_invalid_external_imports(
-  graph: &ModuleGraph,
+fn check_for_banned_triple_slash_directives(
+  parsed_source: &ParsedSource,
   diagnostics_collector: &PublishDiagnosticsCollector,
 ) {
-  let mut visited = HashSet::new();
-  let mut skip_specifiers: HashSet<Url> = HashSet::new();
+  let triple_slash_re = lazy_regex::regex!(
+    r#"^/\s+<reference\s+(no-default-lib\s*=\s*"true"|lib\s*=\s*("[^"]+"|'[^']+'))\s*/>\s*$"#
+  );
 
-  let mut collect_if_invalid =
-    |skip_specifiers: &mut HashSet<Url>, resolution: &ResolutionResolved| {
-      if visited.insert(resolution.specifier.clone()) {
-        match resolution.specifier.scheme() {
-          "file" | "data" | "node" => {}
-          "jsr" | "npm" => {
-            skip_specifiers.insert(resolution.specifier.clone());
-          }
-          "http" | "https" => {
-            skip_specifiers.insert(resolution.specifier.clone());
-            diagnostics_collector.push(
-              PublishDiagnostic::InvalidExternalImport {
-                kind: format!("non-JSR '{}'", resolution.specifier.scheme()),
-                imported: resolution.specifier.clone(),
-                referrer: resolution.range.clone(),
-              },
-            );
-          }
-          _ => {
-            skip_specifiers.insert(resolution.specifier.clone());
-            diagnostics_collector.push(
-              PublishDiagnostic::InvalidExternalImport {
-                kind: format!("'{}'", resolution.specifier.scheme()),
-                imported: resolution.specifier.clone(),
-                referrer: resolution.range.clone(),
-              },
-            );
-          }
-        }
-      }
-    };
-
-  let options = WalkOptions {
-    check_js: true,
-    follow_dynamic: true,
-    follow_type_only: true,
+  let Some(comments) = parsed_source.get_leading_comments() else {
+    return;
   };
-  let mut iter = graph.walk(&graph.roots, options);
-  while let Some((specifier, entry)) = iter.next() {
-    if skip_specifiers.contains(specifier) {
-      iter.skip_previous_dependencies();
+  for comment in comments {
+    if comment.kind != CommentKind::Line {
       continue;
     }
-
-    let ModuleEntryRef::Module(module) = entry else {
-      continue;
-    };
-    let Some(module) = module.js() else {
-      continue;
-    };
-
-    for (_, dep) in &module.dependencies {
-      if let Some(resolved) = dep.maybe_code.ok() {
-        collect_if_invalid(&mut skip_specifiers, resolved);
-      }
-      if let Some(resolved) = dep.maybe_type.ok() {
-        collect_if_invalid(&mut skip_specifiers, resolved);
-      }
+    if triple_slash_re.is_match(&comment.text) {
+      diagnostics_collector.push(
+        PublishDiagnostic::BannedTripleSlashDirectives {
+          specifier: parsed_source.specifier().clone(),
+          range: comment.range(),
+          text_info: parsed_source.text_info_lazy().clone(),
+        },
+      );
     }
   }
-}
-
-/// Collects diagnostics from the module graph for the given packages.
-/// Returns true if any diagnostics were collected.
-pub fn collect_fast_check_type_graph_diagnostics(
-  graph: &ModuleGraph,
-  packages: &[MemberRoots],
-  diagnostics_collector: &PublishDiagnosticsCollector,
-) -> bool {
-  let mut seen_diagnostics = HashSet::new();
-  let mut seen_modules = HashSet::with_capacity(graph.specifiers_count());
-  for package in packages {
-    let mut pending = VecDeque::new();
-    for export in &package.exports {
-      if seen_modules.insert(export.clone()) {
-        pending.push_back(export.clone());
-      }
-    }
-
-    'analyze_package: while let Some(specifier) = pending.pop_front() {
-      let Ok(Some(module)) = graph.try_get_prefer_types(&specifier) else {
-        continue;
-      };
-      let Some(es_module) = module.js() else {
-        continue;
-      };
-      if let Some(diagnostic) = es_module.fast_check_diagnostic() {
-        for diagnostic in diagnostic.flatten_multiple() {
-          if !seen_diagnostics.insert(diagnostic.message_with_range_for_test())
-          {
-            continue;
-          }
-          diagnostics_collector
-            .push(PublishDiagnostic::FastCheck(diagnostic.clone()));
-          if matches!(
-            diagnostic,
-            FastCheckDiagnostic::UnsupportedJavaScriptEntrypoint { .. }
-          ) {
-            break 'analyze_package; // no need to keep analyzing this package
-          }
-        }
-      }
-
-      // analyze the next dependencies
-      for dep in es_module.dependencies_prefer_fast_check().values() {
-        let Some(specifier) = graph.resolve_dependency_from_dep(dep, true)
-        else {
-          continue;
-        };
-
-        let dep_in_same_package =
-          specifier.as_str().starts_with(package.dir_url.as_str());
-        if dep_in_same_package {
-          let is_new = seen_modules.insert(specifier.clone());
-          if is_new {
-            pending.push_back(specifier.clone());
-          }
-        }
-      }
-    }
-  }
-
-  !seen_diagnostics.is_empty()
 }

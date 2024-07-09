@@ -1,0 +1,4 @@
+error: Uncaught SyntaxError: Unexpected identifier 'assert'
+import foo from "./main.json" assert { type: "json" };
+                              ^
+    at <anonymous> (file:///[WILDCARD]/main.js:[WILDCARD])

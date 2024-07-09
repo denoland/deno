@@ -13,10 +13,10 @@ use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::WorkerExecutionMode;
 use rustyline::error::ReadlineError;
-use tokio::sync::mpsc::unbounded_channel;
 
 mod channel;
 mod editor;
@@ -30,10 +30,10 @@ use editor::EditorHelper;
 use editor::ReplEditor;
 pub use session::EvaluationOutput;
 pub use session::ReplSession;
+pub use session::TsEvaluateResponse;
 pub use session::REPL_INTERNALS_NAME;
 
-use super::test::TestEvent;
-use super::test::TestEventSender;
+use super::test::create_single_test_event_channel;
 
 struct Repl {
   session: ReplSession,
@@ -41,6 +41,7 @@ struct Repl {
   message_handler: RustylineSyncMessageHandler,
 }
 
+#[allow(clippy::print_stdout)]
 impl Repl {
   async fn run(&mut self) -> Result<(), AnyError> {
     loop {
@@ -62,7 +63,7 @@ impl Repl {
             break;
           }
 
-          println!("{output}");
+          println!("{}", output);
         }
         Err(ReadlineError::Interrupted) => {
           if self.editor.should_exit_on_interrupt() {
@@ -76,7 +77,7 @@ impl Repl {
           break;
         }
         Err(err) => {
-          println!("Error: {err:?}");
+          println!("Error: {:?}", err);
           break;
         }
       }
@@ -86,6 +87,7 @@ impl Repl {
   }
 }
 
+#[allow(clippy::print_stdout)]
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
   message_handler: &mut RustylineSyncMessageHandler,
@@ -147,18 +149,19 @@ async fn read_eval_file(
     deno_core::resolve_url_or_path(eval_file, cli_options.initial_cwd())?;
 
   let file = file_fetcher
-    .fetch(&specifier, PermissionsContainer::allow_all())
+    .fetch(&specifier, &PermissionsContainer::allow_all())
     .await?;
 
   Ok(file.into_text_decoded()?.source)
 }
 
+#[allow(clippy::print_stdout)]
 pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
   let main_module = cli_options.resolve_main_module()?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options(),
+    &cli_options.permissions_options()?,
   )?);
   let npm_resolver = factory.npm_resolver().await?.clone();
   let resolver = factory.resolver().await?.clone();
@@ -168,16 +171,14 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     .deno_dir()
     .ok()
     .and_then(|dir| dir.repl_history_file_path());
-  let (test_event_sender, test_event_receiver) =
-    unbounded_channel::<TestEvent>();
-  let test_event_sender = TestEventSender::new(test_event_sender);
+  let (worker, test_event_receiver) = create_single_test_event_channel();
+  let test_event_sender = worker.sender;
   let mut worker = worker_factory
     .create_custom_worker(
+      WorkerExecutionMode::Repl,
       main_module.clone(),
       permissions,
-      vec![crate::ops::testing::deno_test::init_ops(
-        test_event_sender.clone(),
-      )],
+      vec![crate::ops::testing::deno_test::init_ops(test_event_sender)],
       Default::default(),
     )
     .await?;
@@ -189,7 +190,6 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     resolver,
     worker,
     main_module,
-    test_event_sender,
     test_event_receiver,
   )
   .await?;

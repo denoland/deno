@@ -21,9 +21,8 @@ fn setup() -> Vec<Extension> {
     esm_entry_point = "ext:bench_setup/setup",
     esm = ["ext:bench_setup/setup" = {
       source = r#"
-        import { setTimeout, handleTimerMacrotask } from "ext:deno_web/02_timers.js";
+        import { setTimeout } from "ext:deno_web/02_timers.js";
         globalThis.setTimeout = setTimeout;
-        Deno.core.setMacrotaskCallback(handleTimerMacrotask);
       "#
     }],
     state = |state| {

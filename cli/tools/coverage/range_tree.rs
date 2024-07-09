@@ -150,7 +150,7 @@ impl<'rt> RangeTree<'rt> {
     Self::from_sorted_ranges_inner(
       rta,
       &mut ranges.iter().peekable(),
-      ::std::usize::MAX,
+      usize::MAX,
       0,
     )
   }

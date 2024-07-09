@@ -5,51 +5,23 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category Web APIs */
-declare type PredefinedColorSpace = "srgb" | "display-p3";
-
-/** @category Web APIs */
-declare interface ImageDataSettings {
-  readonly colorSpace?: PredefinedColorSpace;
-}
-
-/** @category Web APIs */
-declare interface ImageData {
-  readonly colorSpace: PredefinedColorSpace;
-  readonly data: Uint8ClampedArray;
-  readonly height: number;
-  readonly width: number;
-}
-
-/** @category Web APIs */
-declare var ImageData: {
-  prototype: ImageData;
-  new (sw: number, sh: number, settings?: ImageDataSettings): ImageData;
-  new (
-    data: Uint8ClampedArray,
-    sw: number,
-    sh?: number,
-    settings?: ImageDataSettings,
-  ): ImageData;
-};
-
-/** @category Web APIs */
+/** @category Canvas */
 declare type ColorSpaceConversion = "default" | "none";
 
-/** @category Web APIs */
+/** @category Canvas */
 declare type ImageOrientation = "flipY" | "from-image" | "none";
 
-/** @category Web APIs */
+/** @category Canvas */
 declare type PremultiplyAlpha = "default" | "none" | "premultiply";
 
-/** @category Web APIs */
+/** @category Canvas */
 declare type ResizeQuality = "high" | "low" | "medium" | "pixelated";
 
-/** @category Web APIs */
+/** @category Canvas */
 declare type ImageBitmapSource = Blob | ImageData;
 
-/** @category Web APIs */
-interface ImageBitmapOptions {
+/** @category Canvas */
+declare interface ImageBitmapOptions {
   colorSpaceConversion?: ColorSpaceConversion;
   imageOrientation?: ImageOrientation;
   premultiplyAlpha?: PremultiplyAlpha;
@@ -58,12 +30,12 @@ interface ImageBitmapOptions {
   resizeWidth?: number;
 }
 
-/** @category Web APIs */
+/** @category Canvas */
 declare function createImageBitmap(
   image: ImageBitmapSource,
   options?: ImageBitmapOptions,
 ): Promise<ImageBitmap>;
-/** @category Web APIs */
+/** @category Canvas */
 declare function createImageBitmap(
   image: ImageBitmapSource,
   sx: number,
@@ -73,14 +45,14 @@ declare function createImageBitmap(
   options?: ImageBitmapOptions,
 ): Promise<ImageBitmap>;
 
-/** @category Web APIs */
-interface ImageBitmap {
+/** @category Canvas */
+declare interface ImageBitmap {
   readonly height: number;
   readonly width: number;
   close(): void;
 }
 
-/** @category Web APIs */
+/** @category Canvas */
 declare var ImageBitmap: {
   prototype: ImageBitmap;
   new (): ImageBitmap;

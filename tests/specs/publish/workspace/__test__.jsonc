@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "workspace": {
+      "args": "publish --token 'sadfasdf'",
+      "output": "workspace.out"
+    },
+    "individual": {
+      "cwd": "./bar",
+      "args": "publish --token 'sadfasdf'",
+      "output": "workspace_individual.out"
+    }
+  }
+}

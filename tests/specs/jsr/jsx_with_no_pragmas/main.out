@@ -1,0 +1,7 @@
+Download [WILDCARD]
+error: Uncaught (in promise) ReferenceError: React is not defined
+  return renderToString(<div>foo.jsx</div>);
+                        ^
+    at render (http://127.0.0.1:4250/@denotest/jsx-with-no-pragmas/1.0.0/foo.jsx:4:25)
+    at render (http://127.0.0.1:4250/@denotest/jsx-with-no-pragmas/1.0.0/mod.ts:5:15)
+    at file:///[WILDCARD]/jsr/jsx_with_no_pragmas/main.ts:3:1

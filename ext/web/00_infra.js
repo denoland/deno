@@ -463,6 +463,9 @@ export const SymbolDispose = Symbol.dispose ?? Symbol("Symbol.dispose");
 // deno-lint-ignore prefer-primordials
 export const SymbolAsyncDispose = Symbol.asyncDispose ??
   Symbol("Symbol.asyncDispose");
+// deno-lint-ignore prefer-primordials
+export const SymbolMetadata = Symbol.metadata ??
+  Symbol("Symbol.metadata");
 
 export {
   ASCII_ALPHA,

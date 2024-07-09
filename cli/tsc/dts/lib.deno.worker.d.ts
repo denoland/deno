@@ -6,13 +6,13 @@
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
 
-/** @category Web Workers */
+/** @category Workers */
 declare interface WorkerGlobalScopeEventMap {
   "error": ErrorEvent;
   "unhandledrejection": PromiseRejectionEvent;
 }
 
-/** @category Web Workers */
+/** @category Workers */
 declare interface WorkerGlobalScope extends EventTarget {
   readonly location: WorkerLocation;
   readonly navigator: WorkerNavigator;
@@ -54,13 +54,13 @@ declare interface WorkerGlobalScope extends EventTarget {
   caches: CacheStorage;
 }
 
-/** @category Web Workers */
+/** @category Workers */
 declare var WorkerGlobalScope: {
   readonly prototype: WorkerGlobalScope;
   new (): never;
 };
 
-/** @category Web APIs */
+/** @category Platform */
 declare interface WorkerNavigator {
   readonly gpu: GPU;
   readonly hardwareConcurrency: number;
@@ -69,23 +69,23 @@ declare interface WorkerNavigator {
   readonly languages: string[];
 }
 
-/** @category Web APIs */
+/** @category Platform */
 declare var WorkerNavigator: {
   readonly prototype: WorkerNavigator;
   new (): never;
 };
 
-/** @category Web APIs */
+/** @category Platform */
 declare var navigator: WorkerNavigator;
 
-/** @category Web Workers */
+/** @category Workers */
 declare interface DedicatedWorkerGlobalScopeEventMap
   extends WorkerGlobalScopeEventMap {
   "message": MessageEvent;
   "messageerror": MessageEvent;
 }
 
-/** @category Web APIs */
+/** @category Platform */
 declare interface DedicatedWorkerGlobalScope extends WorkerGlobalScope {
   readonly name: string;
   onmessage:
@@ -125,34 +125,34 @@ declare interface DedicatedWorkerGlobalScope extends WorkerGlobalScope {
   ): void;
 }
 
-/** @category Web APIs */
+/** @category Platform */
 declare var DedicatedWorkerGlobalScope: {
   readonly prototype: DedicatedWorkerGlobalScope;
   new (): never;
 };
 
-/** @category Web Workers */
+/** @category Workers */
 declare var name: string;
-/** @category Web Workers */
+/** @category Workers */
 declare var onmessage:
   | ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any)
   | null;
-/** @category Web Workers */
+/** @category Workers */
 declare var onmessageerror:
   | ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any)
   | null;
-/** @category Web Workers */
+/** @category Workers */
 declare function close(): void;
-/** @category Web Workers */
+/** @category Workers */
 declare function postMessage(message: any, transfer: Transferable[]): void;
-/** @category Web Workers */
+/** @category Workers */
 declare function postMessage(
   message: any,
   options?: StructuredSerializeOptions,
 ): void;
-/** @category Web APIs */
+/** @category Platform */
 declare var navigator: WorkerNavigator;
-/** @category Web APIs */
+/** @category Platform */
 declare var onerror:
   | ((this: DedicatedWorkerGlobalScope, ev: ErrorEvent) => any)
   | null;
@@ -160,9 +160,9 @@ declare var onerror:
 declare var onunhandledrejection:
   | ((this: DedicatedWorkerGlobalScope, ev: PromiseRejectionEvent) => any)
   | null;
-/** @category Web Workers */
+/** @category Workers */
 declare var self: WorkerGlobalScope & typeof globalThis;
-/** @category DOM Events */
+/** @category Events */
 declare function addEventListener<
   K extends keyof DedicatedWorkerGlobalScopeEventMap,
 >(
@@ -173,13 +173,13 @@ declare function addEventListener<
   ) => any,
   options?: boolean | AddEventListenerOptions,
 ): void;
-/** @category DOM Events */
+/** @category Events */
 declare function addEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,
   options?: boolean | AddEventListenerOptions,
 ): void;
-/** @category DOM Events */
+/** @category Events */
 declare function removeEventListener<
   K extends keyof DedicatedWorkerGlobalScopeEventMap,
 >(
@@ -190,7 +190,7 @@ declare function removeEventListener<
   ) => any,
   options?: boolean | EventListenerOptions,
 ): void;
-/** @category DOM Events */
+/** @category Events */
 declare function removeEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,
@@ -203,7 +203,7 @@ declare function removeEventListener(
  * is initialized for each worker and is available via the
  * WorkerGlobalScope.location property obtained by calling self.location.
  *
- * @category Web APIs
+ * @category Platform
  */
 declare interface WorkerLocation {
   readonly hash: string;
@@ -224,7 +224,7 @@ declare interface WorkerLocation {
  * is initialized for each worker and is available via the
  * WorkerGlobalScope.location property obtained by calling self.location.
  *
- * @category Web APIs
+ * @category Platform
  */
 declare var WorkerLocation: {
   readonly prototype: WorkerLocation;
@@ -233,5 +233,5 @@ declare var WorkerLocation: {
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
 // The types there must first be split into window, worker and global types.
-/** @category Web APIs */
+/** @category Platform */
 declare var location: WorkerLocation;

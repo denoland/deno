@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_io"
-version = "0.46.0"
+version = "0.68.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -18,8 +18,14 @@ async-trait.workspace = true
 deno_core.workspace = true
 filetime.workspace = true
 fs3.workspace = true
+log.workspace = true
 once_cell.workspace = true
 tokio.workspace = true
 
+[target.'cfg(not(windows))'.dependencies]
+os_pipe.workspace = true
+
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["winbase", "processenv"] }
+winapi = { workspace = true, features = ["winbase", "processenv", "errhandlingapi"] }
+rand.workspace = true
+parking_lot.workspace = true

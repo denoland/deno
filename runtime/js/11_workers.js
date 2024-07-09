@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_create_worker,
   op_host_post_message,
@@ -14,6 +14,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   String,
   StringPrototypeStartsWith,
+  Symbol,
   SymbolFor,
   SymbolIterator,
   SymbolToStringTag,
@@ -45,6 +46,7 @@ function createWorker(
   permissions,
   name,
   workerType,
+  closeOnIdle,
 ) {
   return op_create_worker({
     hasSourceCode,
@@ -53,6 +55,7 @@ function createWorker(
     sourceCode,
     specifier,
     workerType,
+    closeOnIdle,
   });
 }
 
@@ -72,9 +75,14 @@ function hostRecvMessage(id) {
   return op_host_recv_message(id);
 }
 
+const privateWorkerRef = Symbol();
+
 class Worker extends EventTarget {
   #id = 0;
   #name = "";
+  #refCount = 1;
+  #messagePromise = undefined;
+  #controlPromise = undefined;
 
   // "RUNNING" | "CLOSED" | "TERMINATED"
   // "TERMINATED" means that any controls or messages received will be
@@ -83,7 +91,7 @@ class Worker extends EventTarget {
   // still be messages left to receive.
   #status = "RUNNING";
 
-  constructor(specifier, options = {}) {
+  constructor(specifier, options = { __proto__: null }) {
     super();
     specifier = String(specifier);
     const {
@@ -120,12 +128,37 @@ class Worker extends EventTarget {
       hasSourceCode,
       sourceCode,
       deno?.permissions,
-      name,
+      this.#name,
       workerType,
+      false,
     );
     this.#id = id;
     this.#pollControl();
     this.#pollMessages();
+  }
+
+  [privateWorkerRef](ref) {
+    if (ref) {
+      this.#refCount++;
+    } else {
+      this.#refCount--;
+    }
+
+    if (!ref && this.#refCount == 0) {
+      if (this.#controlPromise) {
+        core.unrefOpPromise(this.#controlPromise);
+      }
+      if (this.#messagePromise) {
+        core.unrefOpPromise(this.#messagePromise);
+      }
+    } else if (ref && this.#refCount == 1) {
+      if (this.#controlPromise) {
+        core.refOpPromise(this.#controlPromise);
+      }
+      if (this.#messagePromise) {
+        core.refOpPromise(this.#messagePromise);
+      }
+    }
   }
 
   #handleError(e) {
@@ -151,7 +184,11 @@ class Worker extends EventTarget {
 
   #pollControl = async () => {
     while (this.#status === "RUNNING") {
-      const { 0: type, 1: data } = await hostRecvCtrl(this.#id);
+      this.#controlPromise = hostRecvCtrl(this.#id);
+      if (this.#refCount < 1) {
+        core.unrefOpPromise(this.#controlPromise);
+      }
+      const { 0: type, 1: data } = await this.#controlPromise;
 
       // If terminate was called then we ignore all messages
       if (this.#status === "TERMINATED") {
@@ -182,7 +219,11 @@ class Worker extends EventTarget {
 
   #pollMessages = async () => {
     while (this.#status !== "TERMINATED") {
-      const data = await hostRecvMessage(this.#id);
+      this.#messagePromise = hostRecvMessage(this.#id);
+      if (this.#refCount < 1) {
+        core.unrefOpPromise(this.#messagePromise);
+      }
+      const data = await this.#messagePromise;
       if (this.#status === "TERMINATED" || data === null) {
         return;
       }
@@ -213,7 +254,7 @@ class Worker extends EventTarget {
     }
   };
 
-  postMessage(message, transferOrOptions = {}) {
+  postMessage(message, transferOrOptions = { __proto__: null }) {
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     message = webidl.converters.any(message);

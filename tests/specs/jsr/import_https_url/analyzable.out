@@ -1,0 +1,8 @@
+Download http://127.0.0.1:4250/@denotest/import-https-url/meta.json
+Download http://127.0.0.1:4250/@denotest/import-https-url/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/import-https-url/1.0.0/analyzable.ts
+Download http://localhost:4545/welcome.ts
+error: Uncaught (in promise) TypeError: Importing http://localhost:4545/welcome.ts blocked. JSR packages cannot import non-JSR remote modules for security reasons.
+await import("http://localhost:4545/welcome.ts");
+^
+    at async http://127.0.0.1:4250/@denotest/import-https-url/1.0.0/analyzable.ts:1:1
