@@ -1,0 +1,14 @@
+preinstall
+deno preinstall.js
+node preinstall.js
+install
+hello from install script
+postinstall
+ _____________
+< postinstall >
+ -------------
+        \   ^__^
+         \  (oo)\_______
+            (__)\       )\/\
+                ||----w |
+                ||     ||

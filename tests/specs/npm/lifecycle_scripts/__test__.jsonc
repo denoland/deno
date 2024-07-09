@@ -1,6 +1,6 @@
 {
   "tests": {
-    "install_script_cache": {
+    "node_gyp": {
       "tempDir": true,
       "steps": [
         {
@@ -13,17 +13,17 @@
         }
       ]
     },
-    "run_without_script": {
+    "run_without_scripts": {
       "tempDir": true,
       "steps": [
         {
           "args": "run -A main.js",
-          "output": "not_run.out",
+          "output": "node_gyp_not_run.out",
           "exitCode": 1
         }
       ]
     },
-    "install_script_implicit_node_gyp": {
+    "implicit_node_gyp": {
       "tempDir": true,
       "steps": [
         {
@@ -32,7 +32,45 @@
             "PATH": ""
           },
           "args": "cache --allow-scripts implicit_node_gyp.js",
+          "output": "node_gyp_not_found.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "lifecycle_scripts": {
+      "tempDir": true,
+      "steps": [
+        {
+          // without running scripts (should warn)
+          "args": "cache all_lifecycles.js",
+          "output": "all_lifecycles_not_run.out"
+        },
+        {
+          // now run scripts
+          "args": "cache --allow-scripts all_lifecycles.js",
+          // this test package covers running preinstall, install, and postinstall scripts
+          // it also exercises running bin packages (esbuild in this case), using `node` in a script
+          // (with and without node-only CLI flags), and using `npx` in a script
+          "output": "all_lifecycles.out"
+        }
+      ]
+    },
+    "future_install_lifecycle_scripts": {
+      "tempDir": true,
+      "envs": {
+        "DENO_FUTURE": "1"
+      },
+      "steps": [
+        {
+          "args": [
+            "eval",
+            "Deno.writeTextFileSync('package.json', '{\"dependencies\":{ \"@denotest/node-lifecycle-scripts\": \"*\" } }')"
+          ],
           "output": ""
+        },
+        {
+          "args": "install",
+          "output": "future_install_all_lifecycles_not_run.out"
         }
       ]
     }
