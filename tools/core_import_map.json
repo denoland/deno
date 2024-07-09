@@ -1,5 +1,7 @@
 {
   "imports": {
+    "ext:core/mod.js": "./core.d.ts",
+    "ext:core/ops": "./ops.d.ts",
     "ext:deno_broadcast_channel/01_broadcast_channel.js": "../ext/broadcast_channel/01_broadcast_channel.js",
     "ext:deno_cache/01_cache.js": "../ext/cache/01_cache.js",
     "ext:deno_canvas/01_image.js": "../ext/canvas/01_image.js",
