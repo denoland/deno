@@ -6,7 +6,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_config::package_json::PackageJsonDeps;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -41,7 +40,6 @@ use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageReqReference;
 use deno_terminal::colors;
 use tokio::select;
 
@@ -117,7 +115,6 @@ pub struct CliMainWorkerOptions {
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub unstable: bool,
   pub skip_op_registration: bool,
-  pub maybe_root_package_json_deps: Option<PackageJsonDeps>,
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
   pub create_coverage_collector: Option<CreateCoverageCollectorCb>,
 }
@@ -479,29 +476,6 @@ impl CliMainWorkerFactory {
     let (main_module, is_main_cjs) = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
     {
-      let package_ref = if package_ref.req().version_req.version_text() == "*" {
-        // When using the wildcard version, select the same version used in the
-        // package.json deps in order to prevent adding new dependency version
-        shared
-          .options
-          .maybe_root_package_json_deps
-          .as_ref()
-          .and_then(|deps| {
-            deps
-              .values()
-              .filter_map(|v| v.as_ref().ok())
-              .find(|dep| dep.name == package_ref.req().name)
-              .map(|dep| {
-                NpmPackageReqReference::new(PackageReqReference {
-                  req: dep.clone(),
-                  sub_path: package_ref.sub_path().map(|s| s.to_string()),
-                })
-              })
-          })
-          .unwrap_or(package_ref)
-      } else {
-        package_ref
-      };
       if let Some(npm_resolver) = shared.npm_resolver.as_managed() {
         npm_resolver
           .add_package_reqs(&[package_ref.req().clone()])

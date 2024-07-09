@@ -266,6 +266,12 @@ pub mod dirs {
   }
 
   pub fn home_dir() -> Option<PathBuf> {
+    if let Some(userprofile) = std::env::var_os("USERPROFILE") {
+      if !userprofile.is_empty() {
+        return Some(PathBuf::from(userprofile));
+      }
+    }
+
     known_folder(&knownfolders::FOLDERID_Profile)
   }
 }

@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -182,7 +183,7 @@ pub struct VendorOutput {
 pub struct VendorTestBuilder {
   entry_points: Vec<ModuleSpecifier>,
   loader: TestLoader,
-  original_import_map: Option<ImportMap>,
+  maybe_original_import_map: Option<ImportMap>,
   environment: TestVendorEnvironment,
   jsx_import_source_config: Option<JsxImportSourceConfig>,
 }
@@ -207,7 +208,7 @@ impl VendorTestBuilder {
     &mut self,
     import_map: ImportMap,
   ) -> &mut Self {
-    self.original_import_map = Some(import_map);
+    self.maybe_original_import_map = Some(import_map);
     self
   }
 
@@ -234,7 +235,7 @@ impl VendorTestBuilder {
     let parsed_source_cache = ParsedSourceCache::default();
     let resolver = Arc::new(build_resolver(
       self.jsx_import_source_config.clone(),
-      self.original_import_map.clone(),
+      self.maybe_original_import_map.clone(),
     ));
     super::build::build(super::build::BuildInput {
       entry_points,
@@ -257,7 +258,7 @@ impl VendorTestBuilder {
       },
       parsed_source_cache: &parsed_source_cache,
       output_dir: &output_dir,
-      maybe_original_import_map: self.original_import_map.as_ref(),
+      maybe_original_import_map: self.maybe_original_import_map.as_ref(),
       maybe_jsx_import_source: self.jsx_import_source_config.as_ref(),
       resolver: resolver.as_graph_resolver(),
       environment: &self.environment,
@@ -287,15 +288,18 @@ impl VendorTestBuilder {
 
 fn build_resolver(
   maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
-  original_import_map: Option<ImportMap>,
+  maybe_original_import_map: Option<ImportMap>,
 ) -> CliGraphResolver {
   CliGraphResolver::new(CliGraphResolverOptions {
     node_resolver: None,
     npm_resolver: None,
     sloppy_imports_resolver: None,
-    package_json_deps_provider: Default::default(),
+    workspace_resolver: Arc::new(WorkspaceResolver::new_raw(
+      maybe_original_import_map,
+      Vec::new(),
+      deno_config::workspace::PackageJsonDepResolution::Enabled,
+    )),
     maybe_jsx_import_source_config,
-    maybe_import_map: original_import_map.map(Arc::new),
     maybe_vendor_dir: None,
     bare_node_builtins_enabled: false,
   })

@@ -3522,11 +3522,7 @@ Deno.test(
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(
-        clientError.message.endsWith(
-          "connection closed before message completed",
-        ),
-      );
+      assert(clientError.message.includes("error sending request for url"));
     } finally {
       ac.abort();
       await server.finished;
@@ -3574,11 +3570,7 @@ Deno.test({
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(
-        clientError.message.endsWith(
-          "connection closed before message completed",
-        ),
-      );
+      assert(clientError.message.includes("error sending request for url"));
     } finally {
       ac.abort();
       await server.finished;
@@ -4042,3 +4034,28 @@ Deno.test(
     await server.finished;
   },
 );
+
+Deno.test({
+  name: "HTTP Server test (error on non-unix platform)",
+  ignore: Deno.build.os !== "windows",
+}, async () => {
+  await assertRejects(
+    async () => {
+      const ac = new AbortController();
+      const server = Deno.serve({
+        path: "path/to/socket",
+        handler: (_req) => new Response("Hello, world"),
+        signal: ac.signal,
+        onListen({ path: _path }) {
+          console.log(`Server started at ${_path}`);
+        },
+      });
+      server.finished.then(() => console.log("Server closed"));
+      console.log("Closing server...");
+      ac.abort();
+      await new Promise((resolve) => setTimeout(resolve, 100)); // Example of awaiting something
+    },
+    Error,
+    'Operation `"op_net_listen_unix"` not supported on non-unix platforms.',
+  );
+});

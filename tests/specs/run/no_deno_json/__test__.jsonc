@@ -1,36 +1,43 @@
 {
   "tempDir": true,
-  "steps": [{
-    // --no-config
-    "args": "run -L debug -A --no-config noconfig.ts",
-    "output": "noconfig.out",
-    "cwd": "code"
-  }, {
-    // --no-npm
-    "args": "run -L debug -A --no-npm noconfig.ts",
-    "output": "noconfig.out",
-    "cwd": "code"
-  }, {
-    // not auto-discovered with env var
-    "args": "run -L debug -A noconfig.ts",
-    "output": "noconfig.out",
-    "cwd": "code",
-    "envs": {
-      "DENO_NO_PACKAGE_JSON": "1"
+  "tests": {
+    "no_config": {
+      // --no-config
+      "args": "run -L debug -A --no-config noconfig.ts",
+      "output": "noconfig.out",
+      "cwd": "code"
+    },
+    "no_npm": {
+      // --no-npm
+      "args": "run -L debug -A --no-npm noconfig.ts",
+      "output": "noconfig.out",
+      "cwd": "code"
+    },
+    "no_pkg_json_env_var": {
+      // not auto-discovered with env var
+      "args": "run -L debug -A noconfig.ts",
+      "output": "no_package_json.out",
+      "cwd": "code",
+      "envs": {
+        "DENO_NO_PACKAGE_JSON": "1"
+      }
+    },
+    "no_pkg_json_imports": {
+      // this should not use --quiet because we should ensure no package.json install occurs
+      "args": "run -A no_package_json_imports.ts",
+      "output": "no_package_json_imports.out",
+      "cwd": "code"
+    },
+    "auto_discovered": {
+      // auto-discovered node_modules relative package.json
+      "args": "run -A main.js",
+      "output": "code/sub_dir/main.out",
+      "cwd": "code/sub_dir"
+    },
+    "auto_discovered_arg": {
+      // auto-discovered for local script arg
+      "args": "run -L debug -A code/main.ts", // notice this is not in the sub dir
+      "output": "main.out"
     }
-  }, {
-    // this should not use --quiet because we should ensure no package.json install occurs
-    "args": "run -A no_package_json_imports.ts",
-    "output": "no_package_json_imports.out",
-    "cwd": "code"
-  }, {
-    // auto-discovered node_modules relative package.json
-    "args": "run -A main.js",
-    "output": "code/sub_dir/main.out",
-    "cwd": "code/sub_dir"
-  }, {
-    // auto-discovered for local script arg
-    "args": "run -L debug -A code/main.ts", // notice this is not in the sub dir
-    "output": "main.out"
-  }]
+  }
 }
