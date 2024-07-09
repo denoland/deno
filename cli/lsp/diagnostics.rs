@@ -1,11 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis;
-use super::cache;
 use super::client::Client;
-use super::config::ConfigSnapshot;
+use super::config::Config;
 use super::documents;
 use super::documents::Document;
+use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::language_server;
 use super::language_server::StateSnapshot;
@@ -21,7 +21,7 @@ use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
-use crate::tools::lint::get_configured_rules;
+use crate::util::path::to_percent_decoded_str;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
@@ -39,6 +39,7 @@ use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_lint::linter::LintConfig;
 use deno_lint::rules::LintRule;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
@@ -46,6 +47,7 @@ use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
+use import_map::ImportMap;
 use log::error;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -61,11 +63,10 @@ use tower_lsp::lsp_types as lsp;
 #[derive(Debug)]
 pub struct DiagnosticServerUpdateMessage {
   pub snapshot: Arc<StateSnapshot>,
-  pub config: Arc<ConfigSnapshot>,
-  pub lint_options: LintOptions,
   pub url_map: LspUrlMap,
 }
 
+#[derive(Debug)]
 struct DiagnosticRecord {
   pub specifier: ModuleSpecifier,
   pub versioned: VersionedDiagnostics,
@@ -120,6 +121,7 @@ impl DiagnosticsPublisher {
     source: DiagnosticSource,
     diagnostics: DiagnosticVec,
     url_map: &LspUrlMap,
+    documents: &Documents,
     token: &CancellationToken,
   ) -> usize {
     let mut diagnostics_by_specifier =
@@ -153,12 +155,12 @@ impl DiagnosticsPublisher {
       self
         .state
         .update(&record.specifier, version, &all_specifier_diagnostics);
+      let file_referrer = documents.get_file_referrer(&record.specifier);
       self
         .client
-        .when_outside_lsp_lock()
         .publish_diagnostics(
           url_map
-            .normalize_specifier(&record.specifier)
+            .normalize_specifier(&record.specifier, file_referrer.as_deref())
             .unwrap_or(LspClientUrl::new(record.specifier)),
           all_specifier_diagnostics,
           version,
@@ -184,12 +186,12 @@ impl DiagnosticsPublisher {
         if let Some(removed_value) = maybe_removed_value {
           // clear out any diagnostics for this specifier
           self.state.update(specifier, removed_value.version, &[]);
+          let file_referrer = documents.get_file_referrer(specifier);
           self
             .client
-            .when_outside_lsp_lock()
             .publish_diagnostics(
               url_map
-                .normalize_specifier(specifier)
+                .normalize_specifier(specifier, file_referrer.as_deref())
                 .unwrap_or_else(|_| LspClientUrl::new(specifier.clone())),
               Vec::new(),
               removed_value.version,
@@ -457,13 +459,7 @@ impl DiagnosticsServer {
                 }
               };
               let ChannelUpdateMessage {
-                message:
-                  DiagnosticServerUpdateMessage {
-                    snapshot,
-                    config,
-                    lint_options,
-                    url_map,
-                  },
+                message: DiagnosticServerUpdateMessage { snapshot, url_map },
                 batch_index,
               } = message;
               let url_map = Arc::new(url_map);
@@ -480,7 +476,7 @@ impl DiagnosticsServer {
                 let token = token.clone();
                 let ts_diagnostics_store = ts_diagnostics_store.clone();
                 let snapshot = snapshot.clone();
-                let config = config.clone();
+                let config = snapshot.config.clone();
                 let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_ts_handle {
@@ -514,6 +510,7 @@ impl DiagnosticsServer {
                         "Error generating TypeScript diagnostics: {}",
                         err
                       );
+                      token.cancel();
                     }
                   })
                   .unwrap_or_default();
@@ -526,6 +523,7 @@ impl DiagnosticsServer {
                         DiagnosticSource::Ts,
                         diagnostics,
                         &url_map,
+                        snapshot.documents.as_ref(),
                         &token,
                       )
                       .await;
@@ -554,7 +552,7 @@ impl DiagnosticsServer {
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let token = token.clone();
                 let snapshot = snapshot.clone();
-                let config = config.clone();
+                let config = snapshot.config.clone();
                 let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_deps_handle {
@@ -563,6 +561,7 @@ impl DiagnosticsServer {
                   let mark = performance.mark("lsp.update_diagnostics_deps");
                   let diagnostics = spawn_blocking({
                     let token = token.clone();
+                    let snapshot = snapshot.clone();
                     move || generate_deno_diagnostics(&snapshot, &config, token)
                   })
                   .await
@@ -575,6 +574,7 @@ impl DiagnosticsServer {
                         DiagnosticSource::Deno,
                         diagnostics,
                         &url_map,
+                        snapshot.documents.as_ref(),
                         &token,
                       )
                       .await;
@@ -603,7 +603,7 @@ impl DiagnosticsServer {
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let token = token.clone();
                 let snapshot = snapshot.clone();
-                let config = config.clone();
+                let config = snapshot.config.clone();
                 let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_lint_handle {
@@ -612,14 +612,8 @@ impl DiagnosticsServer {
                   let mark = performance.mark("lsp.update_diagnostics_lint");
                   let diagnostics = spawn_blocking({
                     let token = token.clone();
-                    move || {
-                      generate_lint_diagnostics(
-                        &snapshot,
-                        &config,
-                        &lint_options,
-                        token,
-                      )
-                    }
+                    let snapshot = snapshot.clone();
+                    move || generate_lint_diagnostics(&snapshot, &config, token)
                   })
                   .await
                   .unwrap();
@@ -631,6 +625,7 @@ impl DiagnosticsServer {
                         DiagnosticSource::Lint,
                         diagnostics,
                         &url_map,
+                        snapshot.documents.as_ref(),
                         &token,
                       )
                       .await;
@@ -790,22 +785,23 @@ fn ts_json_to_diagnostics(
 
 fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
-  config: &ConfigSnapshot,
-  lint_options: &LintOptions,
+  config: &Config,
   token: CancellationToken,
 ) -> DiagnosticVec {
   let documents = snapshot
     .documents
     .documents(DocumentsFilter::OpenDiagnosable);
-  let lint_rules = get_configured_rules(
-    lint_options.rules.clone(),
-    config.config_file.as_ref(),
-  )
-  .rules;
+  let config_data_by_scope = config.tree.data_by_scope();
   let mut diagnostics_vec = Vec::new();
   for document in documents {
-    let settings =
-      config.workspace_settings_for_specifier(document.specifier());
+    let specifier = document.specifier();
+    if specifier.scheme() != "file" {
+      continue;
+    }
+    if !config.specifier_enabled(specifier) {
+      continue;
+    }
+    let settings = config.workspace_settings_for_specifier(specifier);
     if !settings.lint {
       continue;
     }
@@ -814,21 +810,40 @@ fn generate_lint_diagnostics(
       break;
     }
     // ignore any npm package files
-    if let Some(npm) = &snapshot.npm {
-      if npm.node_resolver.in_npm_package(document.specifier()) {
-        continue;
-      }
+    if snapshot.resolver.in_node_modules(specifier) {
+      continue;
     }
     let version = document.maybe_lsp_version();
+    let (lint_options, lint_config, lint_rules) = config
+      .tree
+      .scope_for_specifier(specifier)
+      .and_then(|s| config_data_by_scope.get(s))
+      .map(|d| {
+        (
+          d.lint_options.clone(),
+          d.lint_config.clone(),
+          d.lint_rules.clone(),
+        )
+      })
+      .unwrap_or_else(|| {
+        (
+          Arc::default(),
+          LintConfig {
+            default_jsx_factory: None,
+            default_jsx_fragment_factory: None,
+          },
+          Arc::default(),
+        )
+      });
     diagnostics_vec.push(DiagnosticRecord {
-      specifier: document.specifier().clone(),
+      specifier: specifier.clone(),
       versioned: VersionedDiagnostics {
         version,
         diagnostics: generate_document_lint_diagnostics(
-          config,
-          lint_options,
-          lint_rules.clone(),
           &document,
+          &lint_options,
+          lint_config,
+          lint_rules.rules.clone(),
         ),
       },
     });
@@ -837,21 +852,18 @@ fn generate_lint_diagnostics(
 }
 
 fn generate_document_lint_diagnostics(
-  config: &ConfigSnapshot,
-  lint_options: &LintOptions,
-  lint_rules: Vec<&'static dyn LintRule>,
   document: &Document,
+  lint_options: &LintOptions,
+  lint_config: LintConfig,
+  lint_rules: Vec<&'static dyn LintRule>,
 ) -> Vec<lsp::Diagnostic> {
-  if !config.specifier_enabled(document.specifier()) {
-    return Vec::new();
-  }
   if !lint_options.files.matches_specifier(document.specifier()) {
     return Vec::new();
   }
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
       if let Ok(references) =
-        analysis::get_lint_references(&parsed_source, lint_rules)
+        analysis::get_lint_references(parsed_source, lint_rules, lint_config)
       {
         references
           .into_iter()
@@ -871,7 +883,7 @@ fn generate_document_lint_diagnostics(
 
 async fn generate_ts_diagnostics(
   snapshot: Arc<language_server::StateSnapshot>,
-  config: &ConfigSnapshot,
+  config: &Config,
   ts_server: &tsc::TsServer,
   token: CancellationToken,
 ) -> Result<DiagnosticVec, AnyError> {
@@ -1014,11 +1026,14 @@ impl DenoDiagnostic {
         } else {
           match err {
             ResolutionError::InvalidDowngrade { .. } => "invalid-downgrade",
+            ResolutionError::InvalidJsrHttpsTypesImport { .. } => {
+              "invalid-jsr-https-types-import"
+            }
             ResolutionError::InvalidLocalImport { .. } => {
               "invalid-local-import"
             }
             ResolutionError::InvalidSpecifier { error, .. } => match error {
-              SpecifierError::ImportPrefixMissing(_, _) => {
+              SpecifierError::ImportPrefixMissing { .. } => {
                 "import-prefix-missing"
               }
               SpecifierError::InvalidUrl(_) => "invalid-url",
@@ -1219,8 +1234,10 @@ impl DenoDiagnostic {
       specifier: &ModuleSpecifier,
       sloppy_resolution: SloppyImportsResolution,
     ) -> String {
-      let mut message =
-        format!("Unable to load a local module: {}\n", specifier);
+      let mut message = format!(
+        "Unable to load a local module: {}\n",
+        to_percent_decoded_str(specifier.as_ref())
+      );
       if let Some(additional_message) =
         sloppy_resolution.as_suggestion_message()
       {
@@ -1241,7 +1258,7 @@ impl DenoDiagnostic {
       Self::NoCacheJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing jsr package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
-        let sloppy_resolution = SloppyImportsResolver::resolve_with_fs(&deno_fs::RealFs, specifier, ResolutionMode::Execution);
+        let sloppy_resolution = SloppyImportsResolver::new(Arc::new(deno_fs::RealFs)).resolve(specifier, ResolutionMode::Execution);
         let data = sloppy_resolution.as_lsp_quick_fix_message().map(|message| {
           json!({
             "specifier": specifier,
@@ -1304,6 +1321,8 @@ fn diagnose_resolution(
   resolution: &Resolution,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
+  referrer_doc: &Document,
+  import_map: Option<&ImportMap>,
 ) -> Vec<DenoDiagnostic> {
   fn check_redirect_diagnostic(
     specifier: &ModuleSpecifier,
@@ -1336,16 +1355,26 @@ fn diagnose_resolution(
   match resolution {
     Resolution::Ok(resolved) => {
       let specifier = &resolved.specifier;
-      // If the module is a remote module and has a `X-Deno-Warning` header, we
-      // want a warning diagnostic with that message.
-      if let Some(metadata) = snapshot.cache_metadata.get(specifier) {
-        if let Some(message) =
-          metadata.get(&cache::MetadataKey::Warning).cloned()
-        {
-          diagnostics.push(DenoDiagnostic::DenoWarn(message));
+      let managed_npm_resolver = snapshot
+        .resolver
+        .maybe_managed_npm_resolver(referrer_doc.file_referrer());
+      for (_, headers) in snapshot
+        .resolver
+        .redirect_chain_headers(specifier, referrer_doc.file_referrer())
+      {
+        if let Some(message) = headers.get("x-deno-warning") {
+          diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
         }
       }
-      if let Some(doc) = snapshot.documents.get(specifier) {
+      if let Some(doc) = snapshot
+        .documents
+        .get_or_load(specifier, referrer_doc.specifier())
+      {
+        if let Some(headers) = doc.maybe_headers() {
+          if let Some(message) = headers.get("x-deno-warning") {
+            diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
+          }
+        }
         if let Some(diagnostic) = check_redirect_diagnostic(specifier, &doc) {
           diagnostics.push(diagnostic);
         }
@@ -1373,11 +1402,7 @@ fn diagnose_resolution(
       } else if let Ok(pkg_ref) =
         NpmPackageReqReference::from_specifier(specifier)
       {
-        if let Some(npm_resolver) = snapshot
-          .npm
-          .as_ref()
-          .and_then(|n| n.npm_resolver.as_managed())
-        {
+        if let Some(npm_resolver) = managed_npm_resolver {
           // show diagnostics for npm package references that aren't cached
           let req = pkg_ref.into_inner().req;
           if !npm_resolver.is_pkg_req_folder_cached(&req) {
@@ -1392,7 +1417,7 @@ fn diagnose_resolution(
             .push(DenoDiagnostic::InvalidNodeSpecifier(specifier.clone()));
         } else if module_name == dependency_key {
           let mut is_mapped = false;
-          if let Some(import_map) = &snapshot.maybe_import_map {
+          if let Some(import_map) = import_map {
             if let Resolution::Ok(resolved) = &resolution {
               if import_map.resolve(module_name, &resolved.specifier).is_ok() {
                 is_mapped = true;
@@ -1404,11 +1429,7 @@ fn diagnose_resolution(
             diagnostics
               .push(DenoDiagnostic::BareNodeSpecifier(module_name.to_string()));
           }
-        } else if let Some(npm_resolver) = snapshot
-          .npm
-          .as_ref()
-          .and_then(|n| n.npm_resolver.as_managed())
-        {
+        } else if let Some(npm_resolver) = managed_npm_resolver {
           // check that a @types/node package exists in the resolver
           let types_node_req = PackageReq::from_str("@types/node").unwrap();
           if !npm_resolver.is_pkg_req_folder_cached(&types_node_req) {
@@ -1445,17 +1466,21 @@ fn diagnose_resolution(
 fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   snapshot: &language_server::StateSnapshot,
-  referrer: &ModuleSpecifier,
+  referrer_doc: &Document,
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
-  if let Some(npm) = &snapshot.npm {
-    if npm.npm_resolver.in_npm_package(referrer) {
-      return; // ignore, surface typescript errors instead
-    }
+  let referrer = referrer_doc.specifier();
+  if snapshot.resolver.in_node_modules(referrer) {
+    return; // ignore, surface typescript errors instead
   }
 
-  if let Some(import_map) = &snapshot.maybe_import_map {
+  let import_map = snapshot
+    .config
+    .tree
+    .data_for_specifier(referrer_doc.file_referrer().unwrap_or(referrer))
+    .and_then(|d| d.import_map.as_ref());
+  if let Some(import_map) = import_map {
     if let Resolution::Ok(resolved) = &dependency.maybe_code {
       if let Some(to) = import_map.lookup(&resolved.specifier, referrer) {
         if dependency_key != to {
@@ -1504,6 +1529,8 @@ fn diagnose_dependency(
       },
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
+      referrer_doc,
+      import_map.map(|i| i.as_ref()),
     )
     .iter()
     .flat_map(|diag| {
@@ -1526,6 +1553,8 @@ fn diagnose_dependency(
         &dependency.maybe_type,
         dependency.is_dynamic,
         dependency.maybe_attribute_type.as_deref(),
+        referrer_doc,
+        import_map.map(|i| i.as_ref()),
       )
       .iter()
       .map(|diag| diag.to_lsp_diagnostic(&range)),
@@ -1538,7 +1567,7 @@ fn diagnose_dependency(
 /// an import map to shorten an URL.
 fn generate_deno_diagnostics(
   snapshot: &language_server::StateSnapshot,
-  config: &ConfigSnapshot,
+  config: &Config,
   token: CancellationToken,
 ) -> DiagnosticVec {
   let mut diagnostics_vec = Vec::new();
@@ -1557,7 +1586,7 @@ fn generate_deno_diagnostics(
         diagnose_dependency(
           &mut diagnostics,
           snapshot,
-          specifier,
+          &document,
           dependency_key,
           dependency,
         );
@@ -1577,33 +1606,65 @@ fn generate_deno_diagnostics(
 
 #[cfg(test)]
 mod tests {
+
   use super::*;
-  use crate::cache::GlobalHttpCache;
-  use crate::cache::RealDenoCacheEnv;
-  use crate::lsp::config::ConfigSnapshot;
+  use crate::lsp::cache::LspCache;
+  use crate::lsp::config::Config;
   use crate::lsp::config::Settings;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
-  use deno_config::glob::FilePatterns;
+  use crate::lsp::resolver::LspResolver;
+  use deno_config::ConfigFile;
   use pretty_assertions::assert_eq;
-  use std::path::Path;
-  use std::path::PathBuf;
   use std::sync::Arc;
   use test_util::TempDir;
 
-  fn mock_state_snapshot(
-    fixtures: &[(&str, &str, i32, LanguageId)],
-    location: &Path,
+  fn mock_config() -> Config {
+    let root_uri = resolve_url("file:///").unwrap();
+    Config {
+      settings: Arc::new(Settings {
+        unscoped: Arc::new(WorkspaceSettings {
+          enable: Some(true),
+          lint: true,
+          ..Default::default()
+        }),
+        ..Default::default()
+      }),
+      workspace_folders: Arc::new(vec![(
+        root_uri.clone(),
+        lsp::WorkspaceFolder {
+          uri: root_uri,
+          name: "".to_string(),
+        },
+      )]),
+      ..Default::default()
+    }
+  }
+
+  async fn setup(
+    sources: &[(&str, &str, i32, LanguageId)],
     maybe_import_map: Option<(&str, &str)>,
   ) -> StateSnapshot {
-    let cache = Arc::new(GlobalHttpCache::new(
-      location.to_path_buf(),
-      RealDenoCacheEnv,
-    ));
-    let mut documents = Documents::new(cache);
-    for (specifier, source, version, language_id) in fixtures {
+    let temp_dir = TempDir::new();
+    let cache = LspCache::new(Some(temp_dir.uri()));
+    let mut config = Config::new_with_roots([resolve_url("file:///").unwrap()]);
+    if let Some((base_url, json_string)) = maybe_import_map {
+      let base_url = resolve_url(base_url).unwrap();
+      let config_file = ConfigFile::new(
+        json_string,
+        base_url,
+        &deno_config::ConfigParseOptions::default(),
+      )
+      .unwrap();
+      config.tree.inject_config_file(config_file).await;
+    }
+    let resolver =
+      Arc::new(LspResolver::from_config(&config, &cache, None).await);
+    let mut documents = Documents::default();
+    documents.update_config(&config, &resolver, &cache, &Default::default());
+    for (specifier, source, version, language_id) in sources {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
       documents.open(
@@ -1611,66 +1672,21 @@ mod tests {
         *version,
         *language_id,
         (*source).into(),
+        None,
       );
     }
-    let maybe_import_map = maybe_import_map.map(|(base, json_string)| {
-      let base_url = ModuleSpecifier::parse(base).unwrap();
-      let result = import_map::parse_from_json(&base_url, json_string).unwrap();
-      if !result.diagnostics.is_empty() {
-        panic!("unexpected import map diagnostics");
-      }
-      Arc::new(result.import_map)
-    });
     StateSnapshot {
-      documents,
-      maybe_import_map,
+      project_version: 0,
+      documents: Arc::new(documents),
       assets: Default::default(),
-      cache_metadata: cache::CacheMetadata::new(Arc::new(
-        GlobalHttpCache::new(location.to_path_buf(), RealDenoCacheEnv),
-      )),
-      config: Default::default(),
-      npm: None,
+      config: Arc::new(config),
+      resolver,
     }
-  }
-
-  fn mock_config() -> ConfigSnapshot {
-    let root_uri = resolve_url("file:///").unwrap();
-    ConfigSnapshot {
-      settings: Settings {
-        unscoped: WorkspaceSettings {
-          enable: Some(true),
-          lint: true,
-          ..Default::default()
-        },
-        ..Default::default()
-      },
-      workspace_folders: vec![(
-        root_uri.clone(),
-        lsp::WorkspaceFolder {
-          uri: root_uri,
-          name: "".to_string(),
-        },
-      )],
-      ..Default::default()
-    }
-  }
-
-  fn setup(
-    temp_dir: &TempDir,
-    sources: &[(&str, &str, i32, LanguageId)],
-    maybe_import_map: Option<(&str, &str)>,
-  ) -> (StateSnapshot, PathBuf) {
-    let location = temp_dir.path().join("deps").to_path_buf();
-    let state_snapshot =
-      mock_state_snapshot(sources, &location, maybe_import_map);
-    (state_snapshot, location)
   }
 
   #[tokio::test]
   async fn test_enabled_then_disabled_specifier() {
-    let temp_dir = TempDir::new();
-    let (snapshot, cache_location) = setup(
-      &temp_dir,
+    let snapshot = setup(
       &[(
         "file:///a.ts",
         r#"import * as b from "./b.ts";
@@ -1681,17 +1697,11 @@ let c: number = "a";
         LanguageId::TypeScript,
       )],
       None,
-    );
+    )
+    .await;
     let snapshot = Arc::new(snapshot);
-    let cache =
-      Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
-    let ts_server = TsServer::new(Default::default(), cache);
-    ts_server.start(None);
-    let lint_options = LintOptions {
-      rules: Default::default(),
-      files: FilePatterns::new_with_base(temp_dir.path().to_path_buf()),
-      reporter_kind: Default::default(),
-    };
+    let ts_server = TsServer::new(Default::default());
+    ts_server.start(None).unwrap();
 
     // test enabled
     {
@@ -1699,7 +1709,6 @@ let c: number = "a";
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &enabled_config,
-        &lint_options,
         Default::default(),
       );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 6);
@@ -1711,7 +1720,7 @@ let c: number = "a";
       )
       .await
       .unwrap();
-      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 5);
+      assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
       let diagnostics = generate_deno_diagnostics(
         &snapshot,
         &enabled_config,
@@ -1723,15 +1732,17 @@ let c: number = "a";
     // now test disabled specifier
     {
       let mut disabled_config = mock_config();
-      disabled_config.settings.unscoped = WorkspaceSettings {
-        enable: Some(false),
-        ..Default::default()
-      };
+      disabled_config.set_workspace_settings(
+        WorkspaceSettings {
+          enable: Some(false),
+          ..Default::default()
+        },
+        vec![],
+      );
 
       let diagnostics = generate_lint_diagnostics(
         &snapshot,
         &disabled_config,
-        &lint_options,
         Default::default(),
       );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
@@ -1756,6 +1767,9 @@ let c: number = "a";
   fn get_diagnostics_for_single(
     diagnostic_vec: DiagnosticVec,
   ) -> Vec<lsp::Diagnostic> {
+    if diagnostic_vec.is_empty() {
+      return vec![];
+    }
     assert_eq!(diagnostic_vec.len(), 1);
     diagnostic_vec
       .into_iter()
@@ -1767,9 +1781,7 @@ let c: number = "a";
 
   #[tokio::test]
   async fn test_deno_diagnostics_with_import_map() {
-    let temp_dir = TempDir::new();
-    let (snapshot, _) = setup(
-      &temp_dir,
+    let snapshot = setup(
       &[
         (
           "file:///std/assert/mod.ts",
@@ -1792,7 +1804,8 @@ let c: number = "a";
         }
       }"#,
       )),
-    );
+    )
+    .await;
     let config = mock_config();
     let token = CancellationToken::new();
     let actual = generate_deno_diagnostics(&snapshot, &config, token);
@@ -1904,9 +1917,7 @@ let c: number = "a";
 
   #[tokio::test]
   async fn duplicate_diagnostics_for_duplicate_imports() {
-    let temp_dir = TempDir::new();
-    let (snapshot, _) = setup(
-      &temp_dir,
+    let snapshot = setup(
       &[(
         "file:///a.ts",
         r#"
@@ -1918,7 +1929,8 @@ let c: number = "a";
         LanguageId::TypeScript,
       )],
       None,
-    );
+    )
+    .await;
     let config = mock_config();
     let token = CancellationToken::new();
     let actual = generate_deno_diagnostics(&snapshot, &config, token);
@@ -1975,6 +1987,48 @@ let c: number = "a";
           "source": "deno",
           "message": "Relative import path \"bad.d.ts\" not prefixed with / or ./ or ../",
         },
+      ])
+    );
+  }
+
+  #[tokio::test]
+  async fn unable_to_load_a_local_module() {
+    let snapshot = setup(
+      &[(
+        "file:///a.ts",
+        r#"
+        import { 東京 } from "./🦕.ts";
+        "#,
+        1,
+        LanguageId::TypeScript,
+      )],
+      None,
+    )
+    .await;
+    let config = mock_config();
+    let token = CancellationToken::new();
+    let actual = generate_deno_diagnostics(&snapshot, &config, token);
+    assert_eq!(actual.len(), 1);
+    let record = actual.first().unwrap();
+    assert_eq!(
+      json!(record.versioned.diagnostics),
+      json!([
+        {
+          "range": {
+            "start": {
+              "line": 1,
+              "character": 27
+            },
+            "end": {
+              "line": 1,
+              "character": 35
+            }
+          },
+          "severity": 1,
+          "code": "no-local",
+          "source": "deno",
+          "message": "Unable to load a local module: file:///🦕.ts\nPlease check the file path.",
+        }
       ])
     );
   }

@@ -8,6 +8,7 @@ use once_cell::sync::OnceCell;
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::check::TYPE_CHECK_CACHE_DB;
+use super::code_cache::CODE_CACHE_DB;
 use super::deno_dir::DenoDirProvider;
 use super::fast_check::FAST_CHECK_CACHE_DB;
 use super::incremental::INCREMENTAL_CACHE_DB;
@@ -22,6 +23,7 @@ pub struct Caches {
   fast_check_db: OnceCell<CacheDB>,
   node_analysis_db: OnceCell<CacheDB>,
   type_checking_cache_db: OnceCell<CacheDB>,
+  code_cache_db: OnceCell<CacheDB>,
 }
 
 impl Caches {
@@ -34,6 +36,7 @@ impl Caches {
       fast_check_db: Default::default(),
       node_analysis_db: Default::default(),
       type_checking_cache_db: Default::default(),
+      code_cache_db: Default::default(),
     }
   }
 
@@ -122,6 +125,18 @@ impl Caches {
         .get_or_create()
         .ok()
         .map(|dir| dir.type_checking_cache_db_file_path()),
+    )
+  }
+
+  pub fn code_cache_db(&self) -> CacheDB {
+    Self::make_db(
+      &self.code_cache_db,
+      &CODE_CACHE_DB,
+      self
+        .dir_provider
+        .get_or_create()
+        .ok()
+        .map(|dir| dir.code_cache_db_file_path()),
     )
   }
 }

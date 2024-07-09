@@ -33,7 +33,7 @@ import {
   HTTP_WHITESPACE,
   HTTP_WHITESPACE_PREFIX_RE,
   HTTP_WHITESPACE_SUFFIX_RE,
-} from "ext:deno_web/00_infra.js";
+} from "./00_infra.js";
 
 /**
  * @typedef MimeType

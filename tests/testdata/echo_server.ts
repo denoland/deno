@@ -1,4 +1,4 @@
-import { copy } from "../../tests/util/std/streams/copy.ts";
+import { copy } from "../../tests/util/std/io/copy.ts";
 const addr = Deno.args[0] || "0.0.0.0:4544";
 const [hostname, port] = addr.split(":");
 const listener = Deno.listen({ hostname, port: Number(port) });

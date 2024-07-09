@@ -9,7 +9,7 @@ import {
   op_host_recv_message,
   op_host_terminate_worker,
   op_message_port_recv_message_sync,
-  op_require_read_closest_package_json,
+  op_worker_threads_filename,
 } from "ext:core/ops";
 import {
   deserializeJsMessageData,
@@ -17,32 +17,40 @@ import {
   MessagePort,
   MessagePortIdSymbol,
   MessagePortPrototype,
+  MessagePortReceiveMessageOnPortSymbol,
+  nodeWorkerThreadCloseCb,
+  refMessagePort,
   serializeJsMessageData,
+  unrefPollForMessages,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { log } from "ext:runtime/06_util.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
-import { isAbsolute, resolve } from "node:path";
+import process from "node:process";
 
-const { ObjectPrototypeIsPrototypeOf } = primordials;
+const { JSONParse, JSONStringify, ObjectPrototypeIsPrototypeOf } = primordials;
 const {
   Error,
+  ObjectHasOwn,
+  PromiseResolve,
+  SafeSet,
   Symbol,
   SymbolFor,
   SymbolIterator,
-  StringPrototypeEndsWith,
-  StringPrototypeReplace,
-  StringPrototypeMatch,
-  StringPrototypeReplaceAll,
-  StringPrototypeToString,
   StringPrototypeTrim,
   SafeWeakMap,
-  SafeRegExp,
   SafeMap,
   TypeError,
 } = primordials;
+
+const debugWorkerThreads = false;
+function debugWT(...args) {
+  if (debugWorkerThreads) {
+    // deno-lint-ignore prefer-primordials
+    console.log(...args);
+  }
+}
 
 export interface WorkerOptions {
   // only for typings
@@ -66,75 +74,6 @@ export interface WorkerOptions {
   name?: string;
 }
 
-const WHITESPACE_ENCODINGS: Record<string, string> = {
-  "\u0009": "%09",
-  "\u000A": "%0A",
-  "\u000B": "%0B",
-  "\u000C": "%0C",
-  "\u000D": "%0D",
-  "\u0020": "%20",
-};
-
-function encodeWhitespace(string: string): string {
-  return StringPrototypeReplaceAll(string, new SafeRegExp(/[\s]/g), (c) => {
-    return WHITESPACE_ENCODINGS[c] ?? c;
-  });
-}
-
-function toFileUrlPosix(path: string): URL {
-  if (!isAbsolute(path)) {
-    throw new TypeError("Must be an absolute path.");
-  }
-  const url = new URL("file:///");
-  url.pathname = encodeWhitespace(
-    StringPrototypeReplace(
-      StringPrototypeReplace(path, new SafeRegExp(/%/g), "%25"),
-      new SafeRegExp(/\\/g),
-      "%5C",
-    ),
-  );
-  return url;
-}
-
-function toFileUrlWin32(path: string): URL {
-  if (!isAbsolute(path)) {
-    throw new TypeError("Must be an absolute path.");
-  }
-  const { 0: _, 1: hostname, 2: pathname } = StringPrototypeMatch(
-    path,
-    new SafeRegExp(/^(?:[/\\]{2}([^/\\]+)(?=[/\\](?:[^/\\]|$)))?(.*)/),
-  );
-  const url = new URL("file:///");
-  url.pathname = encodeWhitespace(
-    StringPrototypeReplace(pathname, new SafeRegExp(/%/g), "%25"),
-  );
-  if (hostname != null && hostname != "localhost") {
-    url.hostname = hostname;
-    if (!url.hostname) {
-      throw new TypeError("Invalid hostname.");
-    }
-  }
-  return url;
-}
-
-/**
- * Converts a path string to a file URL.
- *
- * ```ts
- *      toFileUrl("/home/foo"); // new URL("file:///home/foo")
- *      toFileUrl("\\home\\foo"); // new URL("file:///home/foo")
- *      toFileUrl("C:\\Users\\foo"); // new URL("file:///C:/Users/foo")
- *      toFileUrl("\\\\127.0.0.1\\home\\foo"); // new URL("file://127.0.0.1/home/foo")
- * ```
- * @param path to convert to file URL
- */
-function toFileUrl(path: string): URL {
-  return core.build.os == "windows"
-    ? toFileUrlWin32(path)
-    : toFileUrlPosix(path);
-}
-
-let threads = 0;
 const privateWorkerRef = Symbol("privateWorkerRef");
 class NodeWorker extends EventEmitter {
   #id = 0;
@@ -163,29 +102,23 @@ class NodeWorker extends EventEmitter {
 
   constructor(specifier: URL | string, options?: WorkerOptions) {
     super();
-    if (options?.eval === true) {
+
+    if (
+      typeof specifier === "object" &&
+      !(specifier.protocol === "data:" || specifier.protocol === "file:")
+    ) {
+      throw new TypeError(
+        "node:worker_threads support only 'file:' and 'data:' URLs",
+      );
+    }
+    if (options?.eval) {
       specifier = `data:text/javascript,${specifier}`;
-    } else if (typeof specifier === "string") {
-      specifier = resolve(specifier);
-      let pkg;
-      try {
-        pkg = op_require_read_closest_package_json(specifier);
-      } catch (_) {
-        // empty catch block when package json might not be present
-      }
-      if (
-        !(StringPrototypeEndsWith(
-          StringPrototypeToString(specifier),
-          ".mjs",
-        )) ||
-        (pkg && pkg.exists && pkg.typ == "module")
-      ) {
-        const cwdFileUrl = toFileUrl(Deno.cwd());
-        specifier =
-          `data:text/javascript,(async function() {const { createRequire } = await import("node:module");const require = createRequire("${cwdFileUrl}");require("${specifier}");})();`;
-      } else {
-        specifier = toFileUrl(specifier as string);
-      }
+    } else if (
+      !(typeof specifier === "object" && specifier.protocol === "data:")
+    ) {
+      // deno-lint-ignore prefer-primordials
+      specifier = specifier.toString();
+      specifier = op_worker_threads_filename(specifier);
     }
 
     // TODO(bartlomieu): this doesn't match the Node.js behavior, it should be
@@ -195,12 +128,19 @@ class NodeWorker extends EventEmitter {
       name = "[worker eval]";
     }
     this.#name = name;
-    this.threadId = ++threads;
 
+    // One of the most common usages will be to pass `process.env` here,
+    // but because `process.env` is a Proxy in Deno, we need to get a plain
+    // object out of it - otherwise we'll run in `DataCloneError`s.
+    // See https://github.com/denoland/deno/issues/23522.
+    let env_ = undefined;
+    if (options?.env) {
+      env_ = JSONParse(JSONStringify(options?.env));
+    }
     const serializedWorkerMetadata = serializeJsMessageData({
       workerData: options?.workerData,
       environmentData: environmentData,
-      threadId: this.threadId,
+      env: env_,
     }, options?.transferList ?? []);
     const id = op_create_worker(
       {
@@ -211,10 +151,12 @@ class NodeWorker extends EventEmitter {
         permissions: null,
         name: this.#name,
         workerType: "module",
+        closeOnIdle: true,
       },
       serializedWorkerMetadata,
     );
     this.#id = id;
+    this.threadId = id;
     this.#pollControl();
     this.#pollMessages();
     // https://nodejs.org/api/worker_threads.html#event-online
@@ -271,7 +213,7 @@ class NodeWorker extends EventEmitter {
           break;
         }
         case 3: { // Close
-          log(`Host got "close" message from worker: ${this.#name}`);
+          debugWT(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
           return;
         }
@@ -341,7 +283,8 @@ class NodeWorker extends EventEmitter {
       this.#status = "TERMINATED";
       op_host_terminate_worker(this.#id);
     }
-    this.emit("exit", 1);
+    this.emit("exit", 0);
+    return PromiseResolve(0);
   }
 
   ref() {
@@ -390,6 +333,7 @@ let parentPort: ParentPort = null as any;
 
 internals.__initWorkerThreads = (
   runningOnMainThread: boolean,
+  workerId,
   maybeWorkerMetadata,
 ) => {
   isMainThread = runningOnMainThread;
@@ -413,15 +357,21 @@ internals.__initWorkerThreads = (
     >();
 
     parentPort = self as ParentPort;
-    if (typeof maybeWorkerMetadata !== "undefined") {
+    threadId = workerId;
+    if (maybeWorkerMetadata) {
       const { 0: metadata, 1: _ } = maybeWorkerMetadata;
       workerData = metadata.workerData;
       environmentData = metadata.environmentData;
-      threadId = metadata.threadId;
+      const env = metadata.env;
+      if (env) {
+        process.env = env;
+      }
     }
     defaultExport.workerData = workerData;
     defaultExport.parentPort = parentPort;
     defaultExport.threadId = threadId;
+
+    patchMessagePortIfFound(workerData);
 
     parentPort.off = parentPort.removeListener = function (
       this: ParentPort,
@@ -438,7 +388,11 @@ internals.__initWorkerThreads = (
       listener,
     ) {
       // deno-lint-ignore no-explicit-any
-      const _listener = (ev: any) => listener(ev.data);
+      const _listener = (ev: any) => {
+        const message = ev.data;
+        patchMessagePortIfFound(message);
+        return listener(message);
+      };
       listeners.set(listener, _listener);
       this.addEventListener(name, _listener);
       return this;
@@ -465,6 +419,12 @@ internals.__initWorkerThreads = (
     parentPort.addEventListener("offline", () => {
       parentPort.emit("close");
     });
+    parentPort.unref = () => {
+      parentPort[unrefPollForMessages] = true;
+    };
+    parentPort.ref = () => {
+      parentPort[unrefPollForMessages] = false;
+    };
   }
 };
 
@@ -500,15 +460,111 @@ export function receiveMessageOnPort(port: MessagePort): object | undefined {
     err["code"] = "ERR_INVALID_ARG_TYPE";
     throw err;
   }
+  port[MessagePortReceiveMessageOnPortSymbol] = true;
   const data = op_message_port_recv_message_sync(port[MessagePortIdSymbol]);
   if (data === null) return undefined;
   return { message: deserializeJsMessageData(data)[0] };
 }
 
+class NodeMessageChannel {
+  port1: MessagePort;
+  port2: MessagePort;
+
+  constructor() {
+    const { port1, port2 } = new MessageChannel();
+    this.port1 = webMessagePortToNodeMessagePort(port1);
+    this.port2 = webMessagePortToNodeMessagePort(port2);
+  }
+}
+
+const listeners = new SafeWeakMap<
+  // deno-lint-ignore no-explicit-any
+  (...args: any[]) => void,
+  // deno-lint-ignore no-explicit-any
+  (ev: any) => any
+>();
+function webMessagePortToNodeMessagePort(port: MessagePort) {
+  port.on = port.addListener = function (this: MessagePort, name, listener) {
+    // deno-lint-ignore no-explicit-any
+    const _listener = (ev: any) => {
+      patchMessagePortIfFound(ev.data);
+      listener(ev.data);
+    };
+    if (name == "message") {
+      if (port.onmessage === null) {
+        port.onmessage = _listener;
+      } else {
+        port.addEventListener("message", _listener);
+      }
+    } else if (name == "messageerror") {
+      if (port.onmessageerror === null) {
+        port.onmessageerror = _listener;
+      } else {
+        port.addEventListener("messageerror", _listener);
+      }
+    } else if (name == "close") {
+      port.addEventListener("close", _listener);
+    } else {
+      throw new Error(`Unknown event: "${name}"`);
+    }
+    listeners.set(listener, _listener);
+    return this;
+  };
+  port.off = port.removeListener = function (
+    this: MessagePort,
+    name,
+    listener,
+  ) {
+    if (name == "message") {
+      port.removeEventListener("message", listeners.get(listener)!);
+    } else if (name == "messageerror") {
+      port.removeEventListener("messageerror", listeners.get(listener)!);
+    } else if (name == "close") {
+      port.removeEventListener("close", listeners.get(listener)!);
+    } else {
+      throw new Error(`Unknown event: "${name}"`);
+    }
+    listeners.delete(listener);
+    return this;
+  };
+  port[nodeWorkerThreadCloseCb] = () => {
+    port.dispatchEvent(new Event("close"));
+  };
+  port.unref = () => {
+    port[refMessagePort](false);
+  };
+  port.ref = () => {
+    port[refMessagePort](true);
+  };
+  return port;
+}
+
+// TODO(@marvinhagemeister): Recursively iterating over all message
+// properties seems slow.
+// Maybe there is a way we can patch the prototype of MessagePort _only_
+// inside worker_threads? For now correctness is more important than perf.
+// deno-lint-ignore no-explicit-any
+function patchMessagePortIfFound(data: any, seen = new SafeSet<any>()) {
+  if (data === null || typeof data !== "object" || seen.has(data)) {
+    return;
+  }
+  seen.add(data);
+
+  if (ObjectPrototypeIsPrototypeOf(MessagePortPrototype, data)) {
+    webMessagePortToNodeMessagePort(data);
+  } else {
+    for (const obj in data as Record<string, unknown>) {
+      if (ObjectHasOwn(data, obj)) {
+        patchMessagePortIfFound(data[obj], seen);
+      }
+    }
+  }
+}
+
 export {
   BroadcastChannel,
-  MessageChannel,
   MessagePort,
+  NodeMessageChannel as MessageChannel,
   NodeWorker as Worker,
   parentPort,
   threadId,
@@ -520,7 +576,7 @@ const defaultExport = {
   moveMessagePortToContext,
   receiveMessageOnPort,
   MessagePort,
-  MessageChannel,
+  MessageChannel: NodeMessageChannel,
   BroadcastChannel,
   Worker: NodeWorker,
   getEnvironmentData,

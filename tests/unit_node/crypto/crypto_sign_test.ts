@@ -3,6 +3,9 @@
 import { assert, assertEquals } from "@std/testing/asserts.ts";
 import { createSign, createVerify, sign, verify } from "node:crypto";
 import { Buffer } from "node:buffer";
+import fixtures from "../testdata/crypto_digest_fixtures.json" with {
+  type: "json",
+};
 
 const rsaPrivatePem = Buffer.from(
   await Deno.readFile(
@@ -126,4 +129,53 @@ Deno.test({
       }
     }
   },
+});
+
+Deno.test({
+  name: "crypto.createSign|sign - EC PRIVATE KEY",
+  fn() {
+    const pem = `-----BEGIN EC PRIVATE KEY-----
+MDECAQEEIIThPSZ00CNW1UD5Ju9mhplv6SSs3T5objYjlx11gHW9oAoGCCqGSM49
+AwEH
+-----END EC PRIVATE KEY-----`;
+    createSign("SHA256").update("test").sign(pem, "base64");
+  },
+});
+
+Deno.test("crypto.createSign|sign - compare with node", async (t) => {
+  const DATA = "Hello, world!";
+  const privateKey = Deno.readTextFileSync(
+    new URL(import.meta.resolve("../testdata/rsa_private.pem")),
+  );
+  for (const { digest, signature } of fixtures) {
+    await t.step(digest, () => {
+      let actual: string | null;
+      try {
+        const s = createSign(digest);
+        s.update(DATA);
+        actual = s.sign(privateKey).toString("hex");
+      } catch {
+        actual = null;
+      }
+      assertEquals(actual, signature);
+    });
+  }
+});
+
+Deno.test("crypto.createVerify|verify - compare with node", async (t) => {
+  const DATA = "Hello, world!";
+  const publicKey = Deno.readTextFileSync(
+    new URL(import.meta.resolve("../testdata/rsa_public.pem")),
+  );
+  for (const { digest, signature } of fixtures) {
+    await t.step({
+      name: digest,
+      ignore: signature === null,
+      fn: () => {
+        const s = createVerify(digest);
+        s.update(DATA);
+        s.verify(publicKey, signature!);
+      },
+    });
+  }
 });

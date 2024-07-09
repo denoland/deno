@@ -795,8 +795,6 @@ impl Compiler {
 
 #[derive(Debug)]
 pub struct MatchResult {
-  pub path: String,
-  pub index: usize,
   pub params: HashMap<StringOrNumber, StringOrVec>,
 }
 
@@ -824,9 +822,6 @@ impl Matcher {
   /// Match a string path, optionally returning the match result.
   pub fn matches(&self, path: &str) -> Option<MatchResult> {
     let caps = self.re.captures(path).ok()??;
-    let m = caps.get(0)?;
-    let path = m.as_str().to_string();
-    let index = m.start();
     let mut params = HashMap::new();
     if let Some(keys) = &self.maybe_keys {
       for (i, key) in keys.iter().enumerate() {
@@ -852,11 +847,7 @@ impl Matcher {
       }
     }
 
-    Some(MatchResult {
-      path,
-      index,
-      params,
-    })
+    Some(MatchResult { params })
   }
 }
 

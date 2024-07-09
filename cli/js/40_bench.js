@@ -9,7 +9,12 @@ import {
 } from "ext:cli/40_test_common.js";
 import { Console } from "ext:deno_console/01_console.js";
 import { setExitHandler } from "ext:runtime/30_os.js";
-const ops = core.ops;
+const {
+  op_register_bench,
+  op_bench_get_origin,
+  op_dispatch_bench_event,
+  op_bench_now,
+} = core.ops;
 const {
   ArrayPrototypePush,
   Error,
@@ -30,12 +35,23 @@ let currentBenchUserExplicitEnd = null;
 
 let registeredWarmupBench = false;
 
+const registerBenchIdRetBuf = new Uint32Array(1);
+const registerBenchIdRetBufU8 = new Uint8Array(registerBenchIdRetBuf.buffer);
+
+// As long as we're using one isolate per test, we can cache the origin since it won't change
+let cachedOrigin = undefined;
+
 // Main bench function provided by Deno.
 function bench(
   nameOrFnOrOptions,
   optionsOrFn,
   maybeFn,
 ) {
+  // No-op if we're not running in `deno bench` subcommand.
+  if (typeof op_register_bench !== "function") {
+    return;
+  }
+
   if (!registeredWarmupBench) {
     registeredWarmupBench = true;
     const warmupBenchDesc = {
@@ -49,10 +65,22 @@ function bench(
       permissions: null,
       warmup: true,
     };
+    if (cachedOrigin == undefined) {
+      cachedOrigin = op_bench_get_origin();
+    }
     warmupBenchDesc.fn = wrapBenchmark(warmupBenchDesc);
-    const { id, origin } = ops.op_register_bench(warmupBenchDesc);
-    warmupBenchDesc.id = id;
-    warmupBenchDesc.origin = origin;
+    op_register_bench(
+      warmupBenchDesc.fn,
+      warmupBenchDesc.name,
+      warmupBenchDesc.baseline,
+      warmupBenchDesc.group,
+      warmupBenchDesc.ignore,
+      warmupBenchDesc.only,
+      warmupBenchDesc.warmup,
+      registerBenchIdRetBufU8,
+    );
+    warmupBenchDesc.id = registerBenchIdRetBufU8[0];
+    warmupBenchDesc.origin = cachedOrigin;
   }
 
   let benchDesc;
@@ -139,10 +167,21 @@ function bench(
   benchDesc.fn = wrapBenchmark(benchDesc);
   benchDesc.warmup = false;
   benchDesc.name = escapeName(benchDesc.name);
-
-  const { id, origin } = ops.op_register_bench(benchDesc);
-  benchDesc.id = id;
-  benchDesc.origin = origin;
+  if (cachedOrigin == undefined) {
+    cachedOrigin = op_bench_get_origin();
+  }
+  op_register_bench(
+    benchDesc.fn,
+    benchDesc.name,
+    benchDesc.baseline,
+    benchDesc.group,
+    benchDesc.ignore,
+    benchDesc.only,
+    false,
+    registerBenchIdRetBufU8,
+  );
+  benchDesc.id = registerBenchIdRetBufU8[0];
+  benchDesc.origin = cachedOrigin;
 }
 
 function compareMeasurements(a, b) {
@@ -381,7 +420,7 @@ function wrapBenchmark(desc) {
 
     try {
       globalThis.console = new Console((s) => {
-        ops.op_dispatch_bench_event({ output: s });
+        op_dispatch_bench_event({ output: s });
       });
 
       if (desc.permissions) {
@@ -420,7 +459,7 @@ function wrapBenchmark(desc) {
 }
 
 function benchNow() {
-  return ops.op_bench_now();
+  return op_bench_now();
 }
 
 globalThis.Deno.bench = bench;

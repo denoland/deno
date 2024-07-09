@@ -1,0 +1,5 @@
+{
+  "args": "check --config sub_dir/deno.json main.ts",
+  "output": "main.out",
+  "exitCode": 1
+}

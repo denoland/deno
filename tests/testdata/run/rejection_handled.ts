@@ -14,4 +14,4 @@ setTimeout(async () => {
 
 setTimeout(() => {
   console.log("Success");
-}, 50);
+}, 1000);

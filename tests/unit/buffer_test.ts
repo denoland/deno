@@ -11,6 +11,7 @@ import {
   assertRejects,
   assertThrows,
 } from "./test_util.ts";
+import { writeAllSync } from "../util/std/io/write_all.ts";
 
 const MAX_SIZE = 2 ** 32 - 2;
 // N controls how many iterations of certain checks are performed.
@@ -405,7 +406,7 @@ Deno.test(function testBufferBytesArrayBufferLength() {
     const bufSize = 64 * 1024;
     const bytes = new TextEncoder().encode("a".repeat(bufSize));
     const reader = new Deno.Buffer();
-    Deno.writeAllSync(reader, bytes);
+    writeAllSync(reader, bytes);
 
     const writer = new Deno.Buffer();
     writer.readFromSync(reader);
@@ -421,7 +422,7 @@ Deno.test(function testBufferBytesCopyFalse() {
   const bufSize = 64 * 1024;
   const bytes = new TextEncoder().encode("a".repeat(bufSize));
   const reader = new Deno.Buffer();
-  Deno.writeAllSync(reader, bytes);
+  writeAllSync(reader, bytes);
 
   const writer = new Deno.Buffer();
   writer.readFromSync(reader);
@@ -436,7 +437,7 @@ Deno.test(function testBufferBytesCopyFalseGrowExactBytes() {
   const bufSize = 64 * 1024;
   const bytes = new TextEncoder().encode("a".repeat(bufSize));
   const reader = new Deno.Buffer();
-  Deno.writeAllSync(reader, bytes);
+  writeAllSync(reader, bytes);
 
   const writer = new Deno.Buffer();
   writer.grow(bufSize);

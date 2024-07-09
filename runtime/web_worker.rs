@@ -1,10 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::permissions::PermissionsContainer;
+use crate::ops::worker_host::WorkersTable;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
+use crate::worker::create_op_metrics;
 use crate::worker::import_meta_resolve_callback;
 use crate::worker::validate_import_attributes_callback;
 use crate::worker::FormatJsErrorFn;
@@ -12,7 +13,6 @@ use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
-use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::channel::mpsc;
@@ -26,6 +26,7 @@ use deno_core::serde_json::json;
 use deno_core::v8;
 use deno_core::CancelHandle;
 use deno_core::CompiledWasmModuleStore;
+use deno_core::DetachedBuffer;
 use deno_core::Extension;
 use deno_core::FeatureChecker;
 use deno_core::GetErrorClassFn;
@@ -34,7 +35,6 @@ use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
-use deno_core::OpMetricsSummaryTracker;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
@@ -44,42 +44,59 @@ use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_node::NodeResolver;
+use deno_permissions::PermissionsContainer;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
+use deno_tls::TlsKeys;
 use deno_web::create_entangled_message_port;
+use deno_web::serialize_transferables;
 use deno_web::BlobStore;
 use deno_web::JsMessageData;
 use deno_web::MessagePort;
+use deno_web::Transferable;
 use log::debug;
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+
+pub struct WorkerMetadata {
+  pub buffer: DetachedBuffer,
+  pub transferables: Vec<Transferable>,
+}
+
+static WORKER_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct WorkerId(u32);
+impl WorkerId {
+  pub fn new() -> WorkerId {
+    let id = WORKER_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
+    WorkerId(id)
+  }
+}
+impl fmt::Display for WorkerId {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "worker-{}", self.0)
+  }
+}
+impl Default for WorkerId {
+  fn default() -> Self {
+    Self::new()
+  }
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WebWorkerType {
   Classic,
   Module,
-}
-
-#[derive(
-  Debug, Default, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize,
-)]
-pub struct WorkerId(u32);
-impl fmt::Display for WorkerId {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "worker-{}", self.0)
-  }
-}
-impl WorkerId {
-  pub fn next(&self) -> Option<WorkerId> {
-    self.0.checked_add(1).map(WorkerId)
-  }
 }
 
 /// Events that are sent to host from child
@@ -327,13 +344,16 @@ pub struct WebWorker {
   id: WorkerId,
   pub js_runtime: JsRuntime,
   pub name: String,
+  close_on_idle: bool,
+  has_executed_main_module: bool,
   internal_handle: WebWorkerInternalHandle,
   pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
   poll_for_messages_fn: Option<v8::Global<v8::Value>>,
+  has_message_event_listener_fn: Option<v8::Global<v8::Value>>,
   bootstrap_fn_global: Option<v8::Global<v8::Function>>,
   // Consumed when `bootstrap_fn` is called
-  maybe_worker_metadata: Option<JsMessageData>,
+  maybe_worker_metadata: Option<WorkerMetadata>,
 }
 
 pub struct WebWorkerOptions {
@@ -345,6 +365,7 @@ pub struct WebWorkerOptions {
   pub seed: Option<u64>,
   pub fs: Arc<dyn FileSystem>,
   pub module_loader: Rc<dyn ModuleLoader>,
+  pub node_resolver: Option<Arc<NodeResolver>>,
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
@@ -359,7 +380,9 @@ pub struct WebWorkerOptions {
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub feature_checker: Arc<FeatureChecker>,
-  pub maybe_worker_metadata: Option<JsMessageData>,
+  pub strace_ops: Option<Vec<String>>,
+  pub close_on_idle: bool,
+  pub maybe_worker_metadata: Option<WorkerMetadata>,
 }
 
 impl WebWorker {
@@ -390,7 +413,6 @@ impl WebWorker {
         enable_testing_features: bool,
       },
       state = |state, options| {
-        state.put(options.permissions.0.clone());
         state.put::<PermissionsContainer>(options.permissions);
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
@@ -457,7 +479,7 @@ impl WebWorker {
             unsafely_ignore_certificate_errors: options
               .unsafely_ignore_certificate_errors
               .clone(),
-            client_cert_chain_and_key: None,
+            client_cert_chain_and_key: TlsKeys::Null,
             proxy: None,
           },
         ),
@@ -470,6 +492,7 @@ impl WebWorker {
         options.fs.clone(),
       ),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
+        options.node_resolver,
         options.npm_resolver,
         options.fs,
       ),
@@ -495,8 +518,11 @@ impl WebWorker {
       ops::web_worker::deno_web_worker::init_ops_and_esm(),
     ];
 
-    #[cfg(__runtime_js_sources)]
-    assert!(cfg!(not(feature = "only_snapshotted_js_sources")), "'__runtime_js_sources' is incompatible with 'only_snapshotted_js_sources'.");
+    #[cfg(hmr)]
+    assert!(
+      cfg!(not(feature = "only_snapshotted_js_sources")),
+      "'hmr' is incompatible with 'only_snapshotted_js_sources'."
+    );
 
     for extension in &mut extensions {
       if options.startup_snapshot.is_some() {
@@ -511,17 +537,11 @@ impl WebWorker {
     #[cfg(feature = "only_snapshotted_js_sources")]
     options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
 
-    // Hook up the summary metrics if the user or subcommand requested them
-    let (op_summary_metrics, op_metrics_factory_fn) =
-      if options.bootstrap.enable_op_summary_metrics {
-        let op_summary_metrics = Rc::new(OpMetricsSummaryTracker::default());
-        (
-          Some(op_summary_metrics.clone()),
-          Some(op_summary_metrics.op_metrics_factory_fn(|_| true)),
-        )
-      } else {
-        (None, None)
-      };
+    // Get our op metrics
+    let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
+      options.bootstrap.enable_op_summary_metrics,
+      options.strace_ops,
+    );
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
@@ -605,7 +625,10 @@ impl WebWorker {
         worker_type: options.worker_type,
         main_module,
         poll_for_messages_fn: None,
+        has_message_event_listener_fn: None,
         bootstrap_fn_global: Some(bootstrap_fn_global),
+        close_on_idle: options.close_on_idle,
+        has_executed_main_module: false,
         maybe_worker_metadata: options.maybe_worker_metadata,
       },
       external_handle,
@@ -613,7 +636,8 @@ impl WebWorker {
   }
 
   pub fn bootstrap(&mut self, options: &BootstrapOptions) {
-    self.js_runtime.op_state().borrow_mut().put(options.clone());
+    let op_state = self.js_runtime.op_state();
+    op_state.borrow_mut().put(options.clone());
     // Instead of using name for log we use `worker-${id}` because
     // WebWorkers can have empty string as name.
     {
@@ -624,7 +648,16 @@ impl WebWorker {
       let undefined = v8::undefined(scope);
       let mut worker_data: v8::Local<v8::Value> = v8::undefined(scope).into();
       if let Some(data) = self.maybe_worker_metadata.take() {
-        worker_data = deno_core::serde_v8::to_v8(scope, data).unwrap();
+        let js_transferables = serialize_transferables(
+          &mut op_state.borrow_mut(),
+          data.transferables,
+        );
+        let js_message_data = JsMessageData {
+          data: data.buffer,
+          transferables: js_transferables,
+        };
+        worker_data =
+          deno_core::serde_v8::to_v8(scope, js_message_data).unwrap();
       }
       let name_str: v8::Local<v8::Value> =
         v8::String::new(scope, &self.name).unwrap().into();
@@ -632,29 +665,41 @@ impl WebWorker {
         v8::String::new(scope, &format!("{}", self.id))
           .unwrap()
           .into();
+      let id: v8::Local<v8::Value> =
+        v8::Integer::new(scope, self.id.0 as i32).into();
       bootstrap_fn
         .call(
           scope,
           undefined.into(),
-          &[args, name_str, id_str, worker_data],
+          &[args, name_str, id_str, id, worker_data],
         )
         .unwrap();
+
+      let context = scope.get_current_context();
+      let global = context.global(scope);
+      let poll_for_messages_str =
+        v8::String::new_external_onebyte_static(scope, b"pollForMessages")
+          .unwrap();
+      let poll_for_messages_fn = global
+        .get(scope, poll_for_messages_str.into())
+        .expect("get globalThis.pollForMessages");
+      global.delete(scope, poll_for_messages_str.into());
+      self.poll_for_messages_fn =
+        Some(v8::Global::new(scope, poll_for_messages_fn));
+
+      let has_message_event_listener_str =
+        v8::String::new_external_onebyte_static(
+          scope,
+          b"hasMessageEventListener",
+        )
+        .unwrap();
+      let has_message_event_listener_fn = global
+        .get(scope, has_message_event_listener_str.into())
+        .expect("get globalThis.hasMessageEventListener");
+      global.delete(scope, has_message_event_listener_str.into());
+      self.has_message_event_listener_fn =
+        Some(v8::Global::new(scope, has_message_event_listener_fn));
     }
-    // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.
-    // Save a reference to function that will start polling for messages
-    // from a worker host; it will be called after the user code is loaded.
-    let script = ascii_str!(
-      r#"
-    const pollForMessages = globalThis.pollForMessages;
-    delete globalThis.pollForMessages;
-    pollForMessages
-    "#
-    );
-    let poll_for_messages_fn = self
-      .js_runtime
-      .execute_script(located_script_name!(), script)
-      .expect("Failed to execute worker bootstrap script");
-    self.poll_for_messages_fn = Some(poll_for_messages_fn);
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
@@ -723,6 +768,7 @@ impl WebWorker {
 
       maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
+        self.has_executed_main_module = true;
         maybe_result
       }
 
@@ -759,8 +805,13 @@ impl WebWorker {
           return Poll::Ready(Err(e));
         }
 
+        if self.close_on_idle {
+          return Poll::Ready(Ok(()));
+        }
+
         // TODO(mmastrac): we don't want to test this w/classic workers because
         // WPT triggers a failure here. This is only exposed via --enable-testing-features-do-not-use.
+        #[allow(clippy::print_stderr)]
         if self.worker_type == WebWorkerType::Module {
           panic!(
             "coding error: either js is polling or the worker is terminated"
@@ -770,7 +821,22 @@ impl WebWorker {
           Poll::Ready(Ok(()))
         }
       }
-      Poll::Pending => Poll::Pending,
+      Poll::Pending => {
+        // This is special code path for workers created from `node:worker_threads`
+        // module that have different semantics than Web workers.
+        // We want the worker thread to terminate automatically if we've done executing
+        // Top-Level await, there are no child workers spawned by that workers
+        // and there's no "message" event listener.
+        if self.close_on_idle
+          && self.has_executed_main_module
+          && !self.has_child_workers()
+          && !self.has_message_event_listener()
+        {
+          Poll::Ready(Ok(()))
+        } else {
+          Poll::Pending
+        }
+      }
     }
   }
 
@@ -792,8 +858,34 @@ impl WebWorker {
     // This call may return `None` if worker is terminated.
     fn_.call(scope, undefined.into(), &[]);
   }
+
+  fn has_message_event_listener(&mut self) -> bool {
+    let has_message_event_listener_fn =
+      self.has_message_event_listener_fn.as_ref().unwrap();
+    let scope = &mut self.js_runtime.handle_scope();
+    let has_message_event_listener =
+      v8::Local::<v8::Value>::new(scope, has_message_event_listener_fn);
+    let fn_ =
+      v8::Local::<v8::Function>::try_from(has_message_event_listener).unwrap();
+    let undefined = v8::undefined(scope);
+    // This call may return `None` if worker is terminated.
+    match fn_.call(scope, undefined.into(), &[]) {
+      Some(result) => result.is_true(),
+      None => false,
+    }
+  }
+
+  fn has_child_workers(&mut self) -> bool {
+    !self
+      .js_runtime
+      .op_state()
+      .borrow()
+      .borrow::<WorkersTable>()
+      .is_empty()
+  }
 }
 
+#[allow(clippy::print_stderr)]
 fn print_worker_error(
   error: &AnyError,
   name: &str,

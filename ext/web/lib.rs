@@ -28,7 +28,6 @@ use std::cell::RefCell;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::usize;
 
 use crate::blob::op_blob_create_object_url;
 use crate::blob::op_blob_create_part;
@@ -43,12 +42,15 @@ pub use crate::blob::BlobStore;
 pub use crate::blob::InMemoryBlobPart;
 
 pub use crate::message_port::create_entangled_message_port;
+pub use crate::message_port::deserialize_js_transferables;
 use crate::message_port::op_message_port_create_entangled;
 use crate::message_port::op_message_port_post_message;
 use crate::message_port::op_message_port_recv_message;
 use crate::message_port::op_message_port_recv_message_sync;
+pub use crate::message_port::serialize_transferables;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
+pub use crate::message_port::Transferable;
 
 use crate::timers::op_defer;
 use crate::timers::op_now;
@@ -85,7 +87,6 @@ deno_core::extension!(deno_web,
     compression::op_compression_finish,
     op_now<P>,
     op_defer,
-    op_transfer_arraybuffer,
     stream_resource::op_readable_stream_resource_allocate,
     stream_resource::op_readable_stream_resource_allocate_sized,
     stream_resource::op_readable_stream_resource_get_sink,
@@ -420,19 +421,6 @@ fn op_encoding_encode_into_fast(
     Cow::Owned(v) => v[..boundary].encode_utf16().count() as u32,
   };
   out_buf[1] = boundary as u32;
-}
-
-#[op2]
-fn op_transfer_arraybuffer<'a>(
-  scope: &mut v8::HandleScope<'a>,
-  ab: &v8::ArrayBuffer,
-) -> Result<v8::Local<'a, v8::ArrayBuffer>, AnyError> {
-  if !ab.is_detachable() {
-    return Err(type_error("ArrayBuffer is not detachable"));
-  }
-  let bs = ab.get_backing_store();
-  ab.detach(None);
-  Ok(v8::ArrayBuffer::with_backing_store(scope, &bs))
 }
 
 pub fn get_declaration() -> PathBuf {

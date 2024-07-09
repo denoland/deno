@@ -1,0 +1,8 @@
+{
+  "envs": {
+    "DENO_CERT": "$PWD/RootCA.pem"
+  },
+  "flaky": true,
+  "args": "cache https://localhost:5545/cert/cafile_url_imports.ts",
+  "output": "[WILDCARD]"
+}

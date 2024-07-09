@@ -1,0 +1,7 @@
+{
+  "tasks": {
+    // some docs
+    // on what this does
+    "lint": "deno lint"
+  }
+}

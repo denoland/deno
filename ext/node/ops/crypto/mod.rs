@@ -7,9 +7,9 @@ use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
 use deno_core::OpState;
-use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ToJsBuffer;
+use elliptic_curve::sec1::ToEncodedPoint;
 use hkdf::Hkdf;
 use num_bigint::BigInt;
 use num_bigint_dig::BigUint;
@@ -20,6 +20,7 @@ use rand::distributions::Uniform;
 use rand::thread_rng;
 use rand::Rng;
 use rsa::pkcs1::DecodeRsaPrivateKey;
+use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs8;
 use rsa::pkcs8::der::asn1;
 use rsa::pkcs8::der::Decode;
@@ -40,12 +41,17 @@ use rsa::Oaep;
 use rsa::Pkcs1v15Encrypt;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
+use spki::EncodePublicKey;
 
 mod cipher;
 mod dh;
 mod digest;
+mod md5_sha1;
 mod primes;
 pub mod x509;
+
+use self::digest::match_fixed_digest_with_eager_block_buffer;
+use self::digest::match_fixed_digest_with_oid;
 
 #[op2(fast)]
 pub fn op_node_check_prime(
@@ -93,18 +99,13 @@ pub fn op_node_check_prime_bytes_async(
   })
 }
 
-#[op2(fast)]
-#[smi]
+#[op2]
+#[cppgc]
 pub fn op_node_create_hash(
-  state: &mut OpState,
   #[string] algorithm: &str,
-) -> u32 {
-  state
-    .resource_table
-    .add(match digest::Context::new(algorithm) {
-      Ok(context) => context,
-      Err(_) => return 0,
-    })
+  output_length: Option<u32>,
+) -> Result<digest::Hasher, AnyError> {
+  digest::Hasher::new(algorithm, output_length.map(|l| l as usize))
 }
 
 #[op2]
@@ -115,65 +116,44 @@ pub fn op_node_get_hashes() -> Vec<&'static str> {
 
 #[op2(fast)]
 pub fn op_node_hash_update(
-  state: &mut OpState,
-  #[smi] rid: u32,
+  #[cppgc] hasher: &digest::Hasher,
   #[buffer] data: &[u8],
 ) -> bool {
-  let context = match state.resource_table.get::<digest::Context>(rid) {
-    Ok(context) => context,
-    _ => return false,
-  };
-  context.update(data);
-  true
+  hasher.update(data)
 }
 
 #[op2(fast)]
 pub fn op_node_hash_update_str(
-  state: &mut OpState,
-  #[smi] rid: u32,
+  #[cppgc] hasher: &digest::Hasher,
   #[string] data: &str,
 ) -> bool {
-  let context = match state.resource_table.get::<digest::Context>(rid) {
-    Ok(context) => context,
-    _ => return false,
-  };
-  context.update(data.as_bytes());
-  true
+  hasher.update(data.as_bytes())
 }
 
 #[op2]
-#[serde]
+#[buffer]
 pub fn op_node_hash_digest(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> Result<ToJsBuffer, AnyError> {
-  let context = state.resource_table.take::<digest::Context>(rid)?;
-  let context = Rc::try_unwrap(context)
-    .map_err(|_| type_error("Hash context is already in use"))?;
-  Ok(context.digest()?.into())
+  #[cppgc] hasher: &digest::Hasher,
+) -> Option<Box<[u8]>> {
+  hasher.digest()
 }
 
 #[op2]
 #[string]
 pub fn op_node_hash_digest_hex(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> Result<String, AnyError> {
-  let context = state.resource_table.take::<digest::Context>(rid)?;
-  let context = Rc::try_unwrap(context)
-    .map_err(|_| type_error("Hash context is already in use"))?;
-  let digest = context.digest()?;
-  Ok(faster_hex::hex_string(&digest))
+  #[cppgc] hasher: &digest::Hasher,
+) -> Option<String> {
+  let digest = hasher.digest()?;
+  Some(faster_hex::hex_string(&digest))
 }
 
-#[op2(fast)]
-#[smi]
+#[op2]
+#[cppgc]
 pub fn op_node_hash_clone(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> Result<ResourceId, AnyError> {
-  let context = state.resource_table.get::<digest::Context>(rid)?;
-  Ok(state.resource_table.add(context.as_ref().clone()))
+  #[cppgc] hasher: &digest::Hasher,
+  output_length: Option<u32>,
+) -> Result<Option<digest::Hasher>, AnyError> {
+  hasher.clone_inner(output_length.map(|l| l as usize))
 }
 
 #[op2]
@@ -372,50 +352,82 @@ pub fn op_node_sign(
 
   let oid;
   let pkey = match format {
-    "pem" => {
-      if label == "PRIVATE KEY" {
+    "pem" => match label {
+      "PRIVATE KEY" => {
         let pk_info = pkcs8::PrivateKeyInfo::try_from(doc.as_bytes())?;
         oid = pk_info.algorithm.oid;
         pk_info.private_key
-      } else if label == "RSA PRIVATE KEY" {
+      }
+      "RSA PRIVATE KEY" => {
         oid = RSA_ENCRYPTION_OID;
         doc.as_bytes()
-      } else {
-        return Err(type_error("Invalid PEM label"));
       }
-    }
+      "EC PRIVATE KEY" => {
+        let ec_pk = sec1::EcPrivateKey::from_der(doc.as_bytes())?;
+        match ec_pk.parameters {
+          Some(sec1::EcParameters::NamedCurve(o)) => {
+            oid = o;
+            ec_pk.private_key
+          }
+          // https://datatracker.ietf.org/doc/html/rfc5915#section-3
+          //
+          // Though the ASN.1 indicates that
+          // the parameters field is OPTIONAL, implementations that conform to
+          // this document MUST always include the parameters field.
+          _ => return Err(type_error("invalid ECPrivateKey params")),
+        }
+      }
+      _ => return Err(type_error("Invalid PEM label")),
+    },
     _ => return Err(type_error("Unsupported key format")),
   };
+
   match oid {
     RSA_ENCRYPTION_OID => {
       use rsa::pkcs1v15::SigningKey;
       let key = RsaPrivateKey::from_pkcs1_der(pkey)?;
-      Ok(
-        match digest_type {
-          "sha224" => {
-            let signing_key = SigningKey::<sha2::Sha224>::new(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          "sha256" => {
-            let signing_key = SigningKey::<sha2::Sha256>::new(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          "sha384" => {
-            let signing_key = SigningKey::<sha2::Sha384>::new(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          "sha512" => {
-            let signing_key = SigningKey::<sha2::Sha512>::new(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          _ => {
-            return Err(type_error(format!(
-              "Unknown digest algorithm: {}",
-              digest_type
-            )))
-          }
+
+      // md5-sha1 is special, because it's not wrapped in an ASN.1 DigestInfo
+      // (so has no prefix).
+      // See https://github.com/openssl/openssl/blob/af82623d32962b3eff5b0f0b0dedec5eb730b231/crypto/rsa/rsa_sign.c#L285
+      if digest_type == "md5-sha1" {
+        let signing_key = SigningKey::<md5_sha1::Md5Sha1>::new_unprefixed(key);
+        let signature = signing_key.sign_prehash(digest)?.to_vec();
+        return Ok(signature.into());
+      }
+
+      let signature = match_fixed_digest_with_oid!(
+        digest_type,
+        fn <D>() {
+          let signing_key = SigningKey::<D>::new(key);
+          signing_key.sign_prehash(digest)?.to_vec()
+        },
+        _ => {
+          return Err(type_error(format!(
+            "digest not allowed for RSA signature: {}",
+            digest_type
+          )))
         }
-        .into(),
+      );
+      Ok(signature.into())
+    }
+    // signature structure encoding is DER by default for DSA and ECDSA.
+    //
+    // TODO(@littledivy): Validate public_key if present
+    ID_SECP256R1_OID => {
+      let key = p256::ecdsa::SigningKey::from_slice(pkey)?;
+      Ok(
+        key
+          .sign_prehash(digest)
+          .map(|sig: p256::ecdsa::Signature| sig.to_der().to_vec().into())?,
+      )
+    }
+    ID_SECP384R1_OID => {
+      let key = p384::ecdsa::SigningKey::from_slice(pkey)?;
+      Ok(
+        key
+          .sign_prehash(digest)
+          .map(|sig: p384::ecdsa::Signature| sig.to_der().to_vec().into())?,
       )
     }
     _ => Err(type_error("Unsupported signing key")),
@@ -445,29 +457,35 @@ pub fn op_node_verify(
           )))
         }
       };
-      Ok(match digest_type {
-        "sha224" => VerifyingKey::<sha2::Sha224>::new(key)
+
+      // md5-sha1 is special, because it's not wrapped in an ASN.1 DigestInfo
+      // (so has no prefix).
+      // See https://github.com/openssl/openssl/blob/af82623d32962b3eff5b0f0b0dedec5eb730b231/crypto/rsa/rsa_sign.c#L285
+      if digest_type == "md5-sha1" {
+        let verifying_key =
+          VerifyingKey::<md5_sha1::Md5Sha1>::new_unprefixed(key);
+        let verified = verifying_key
           .verify_prehash(digest, &signature.try_into()?)
-          .is_ok(),
-        "sha256" => VerifyingKey::<sha2::Sha256>::new(key)
-          .verify_prehash(digest, &signature.try_into()?)
-          .is_ok(),
-        "sha384" => VerifyingKey::<sha2::Sha384>::new(key)
-          .verify_prehash(digest, &signature.try_into()?)
-          .is_ok(),
-        "sha512" => VerifyingKey::<sha2::Sha512>::new(key)
-          .verify_prehash(digest, &signature.try_into()?)
-          .is_ok(),
+          .is_ok();
+        return Ok(verified);
+      }
+
+      Ok(match_fixed_digest_with_oid!(
+        digest_type,
+        fn <D>() {
+          let verifying_key = VerifyingKey::<D>::new(key);
+          verifying_key.verify_prehash(digest, &signature.try_into()?).is_ok()
+        },
         _ => {
           return Err(type_error(format!(
-            "Unknown digest algorithm: {}",
+            "digest not allowed for RSA signature: {}",
             digest_type
           )))
         }
-      })
+      ))
     }
     _ => Err(type_error(format!(
-      "Verifying with {} keys is not supported yet",
+      "Verifying with {} keys is not supported",
       key_type
     ))),
   }
@@ -477,28 +495,22 @@ fn pbkdf2_sync(
   password: &[u8],
   salt: &[u8],
   iterations: u32,
-  digest: &str,
+  algorithm_name: &str,
   derived_key: &mut [u8],
 ) -> Result<(), AnyError> {
-  macro_rules! pbkdf2_hmac {
-    ($digest:ty) => {{
-      pbkdf2::pbkdf2_hmac::<$digest>(password, salt, iterations, derived_key)
-    }};
-  }
-
-  match digest {
-    "md4" => pbkdf2_hmac!(md4::Md4),
-    "md5" => pbkdf2_hmac!(md5::Md5),
-    "ripemd160" => pbkdf2_hmac!(ripemd::Ripemd160),
-    "sha1" => pbkdf2_hmac!(sha1::Sha1),
-    "sha224" => pbkdf2_hmac!(sha2::Sha224),
-    "sha256" => pbkdf2_hmac!(sha2::Sha256),
-    "sha384" => pbkdf2_hmac!(sha2::Sha384),
-    "sha512" => pbkdf2_hmac!(sha2::Sha512),
-    _ => return Err(type_error("Unknown digest")),
-  }
-
-  Ok(())
+  match_fixed_digest_with_eager_block_buffer!(
+    algorithm_name,
+    fn <D>() {
+      pbkdf2::pbkdf2_hmac::<D>(password, salt, iterations, derived_key);
+      Ok(())
+    },
+    _ => {
+      Err(type_error(format!(
+        "unsupported digest: {}",
+        algorithm_name
+      )))
+    }
+  )
 }
 
 #[op2]
@@ -547,50 +559,40 @@ pub async fn op_node_generate_secret_async(#[smi] len: i32) -> ToJsBuffer {
 }
 
 fn hkdf_sync(
-  hash: &str,
+  digest_algorithm: &str,
   ikm: &[u8],
   salt: &[u8],
   info: &[u8],
   okm: &mut [u8],
 ) -> Result<(), AnyError> {
-  macro_rules! hkdf {
-    ($hash:ty) => {{
-      let hk = Hkdf::<$hash>::new(Some(salt), ikm);
+  match_fixed_digest_with_eager_block_buffer!(
+    digest_algorithm,
+    fn <D>() {
+      let hk = Hkdf::<D>::new(Some(salt), ikm);
       hk.expand(info, okm)
-        .map_err(|_| type_error("HKDF-Expand failed"))?;
-    }};
-  }
-
-  match hash {
-    "md4" => hkdf!(md4::Md4),
-    "md5" => hkdf!(md5::Md5),
-    "ripemd160" => hkdf!(ripemd::Ripemd160),
-    "sha1" => hkdf!(sha1::Sha1),
-    "sha224" => hkdf!(sha2::Sha224),
-    "sha256" => hkdf!(sha2::Sha256),
-    "sha384" => hkdf!(sha2::Sha384),
-    "sha512" => hkdf!(sha2::Sha512),
-    _ => return Err(type_error("Unknown digest")),
-  }
-
-  Ok(())
+        .map_err(|_| type_error("HKDF-Expand failed"))
+    },
+    _ => {
+      Err(type_error(format!("Unsupported digest: {}", digest_algorithm)))
+    }
+  )
 }
 
 #[op2(fast)]
 pub fn op_node_hkdf(
-  #[string] hash: &str,
+  #[string] digest_algorithm: &str,
   #[buffer] ikm: &[u8],
   #[buffer] salt: &[u8],
   #[buffer] info: &[u8],
   #[buffer] okm: &mut [u8],
 ) -> Result<(), AnyError> {
-  hkdf_sync(hash, ikm, salt, info, okm)
+  hkdf_sync(digest_algorithm, ikm, salt, info, okm)
 }
 
 #[op2(async)]
 #[serde]
 pub async fn op_node_hkdf_async(
-  #[string] hash: String,
+  #[string] digest_algorithm: String,
   #[buffer] ikm: JsBuffer,
   #[buffer] salt: JsBuffer,
   #[buffer] info: JsBuffer,
@@ -598,7 +600,7 @@ pub async fn op_node_hkdf_async(
 ) -> Result<ToJsBuffer, AnyError> {
   spawn_blocking(move || {
     let mut okm = vec![0u8; okm_len];
-    hkdf_sync(&hash, &ikm, &salt, &info, &mut okm)?;
+    hkdf_sync(&digest_algorithm, &ikm, &salt, &info, &mut okm)?;
     Ok(okm.into())
   })
   .await?
@@ -644,13 +646,32 @@ pub async fn op_node_generate_rsa_async(
   spawn_blocking(move || generate_rsa(modulus_length, public_exponent)).await?
 }
 
+#[op2]
+#[string]
+pub fn op_node_export_rsa_public_pem(
+  #[buffer] pkcs1_der: &[u8],
+) -> Result<String, AnyError> {
+  let public_key = RsaPublicKey::from_pkcs1_der(pkcs1_der)?;
+  let export = public_key.to_public_key_pem(Default::default())?;
+  Ok(export)
+}
+
+#[op2]
+#[serde]
+pub fn op_node_export_rsa_spki_der(
+  #[buffer] pkcs1_der: &[u8],
+) -> Result<ToJsBuffer, AnyError> {
+  let public_key = RsaPublicKey::from_pkcs1_der(pkcs1_der)?;
+  let export = public_key.to_public_key_der()?.to_vec();
+  Ok(export.into())
+}
+
 fn dsa_generate(
   modulus_length: usize,
   divisor_length: usize,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   let mut rng = rand::thread_rng();
   use dsa::pkcs8::EncodePrivateKey;
-  use dsa::pkcs8::EncodePublicKey;
   use dsa::Components;
   use dsa::KeySize;
   use dsa::SigningKey;
@@ -703,26 +724,30 @@ pub async fn op_node_dsa_generate_async(
 fn ec_generate(
   named_curve: &str,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
-  use ring::signature::EcdsaKeyPair;
-  use ring::signature::KeyPair;
+  let mut rng = rand::thread_rng();
+  // TODO(@littledivy): Support public key point encoding.
+  // Default is uncompressed.
+  match named_curve {
+    "P-256" | "prime256v1" | "secp256r1" => {
+      let key = p256::SecretKey::random(&mut rng);
+      let public_key = key.public_key();
 
-  let curve = match named_curve {
-    "P-256" => &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
-    "P-384" => &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING,
-    _ => return Err(type_error("Unsupported named curve")),
-  };
+      Ok((
+        key.to_bytes().to_vec().into(),
+        public_key.to_encoded_point(false).as_ref().to_vec().into(),
+      ))
+    }
+    "P-384" | "prime384v1" | "secp384r1" => {
+      let key = p384::SecretKey::random(&mut rng);
+      let public_key = key.public_key();
 
-  let rng = ring::rand::SystemRandom::new();
-
-  let pkcs8 = EcdsaKeyPair::generate_pkcs8(curve, &rng)
-    .map_err(|_| type_error("Failed to generate EC key"))?;
-
-  let public_key = EcdsaKeyPair::from_pkcs8(curve, pkcs8.as_ref(), &rng)
-    .map_err(|_| type_error("Failed to generate EC key"))?
-    .public_key()
-    .as_ref()
-    .to_vec();
-  Ok((pkcs8.as_ref().to_vec().into(), public_key.into()))
+      Ok((
+        key.to_bytes().to_vec().into(),
+        public_key.to_encoded_point(false).as_ref().to_vec().into(),
+      ))
+    }
+    _ => Err(type_error("Unsupported named curve")),
+  }
 }
 
 #[op2]
@@ -1006,46 +1031,119 @@ pub async fn op_node_scrypt_async(
   .await?
 }
 
+#[op2]
+#[buffer]
+pub fn op_node_ecdh_encode_pubkey(
+  #[string] curve: &str,
+  #[buffer] pubkey: &[u8],
+  compress: bool,
+) -> Result<Vec<u8>, AnyError> {
+  use elliptic_curve::sec1::FromEncodedPoint;
+
+  match curve {
+    "secp256k1" => {
+      let pubkey =
+        elliptic_curve::PublicKey::<k256::Secp256k1>::from_encoded_point(
+          &elliptic_curve::sec1::EncodedPoint::<k256::Secp256k1>::from_bytes(
+            pubkey,
+          )?,
+        );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
+
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    "prime256v1" | "secp256r1" => {
+      let pubkey = elliptic_curve::PublicKey::<NistP256>::from_encoded_point(
+        &elliptic_curve::sec1::EncodedPoint::<NistP256>::from_bytes(pubkey)?,
+      );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
+
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    "secp384r1" => {
+      let pubkey = elliptic_curve::PublicKey::<NistP384>::from_encoded_point(
+        &elliptic_curve::sec1::EncodedPoint::<NistP384>::from_bytes(pubkey)?,
+      );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
+
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    "secp224r1" => {
+      let pubkey = elliptic_curve::PublicKey::<NistP224>::from_encoded_point(
+        &elliptic_curve::sec1::EncodedPoint::<NistP224>::from_bytes(pubkey)?,
+      );
+      // CtOption does not expose its variants.
+      if pubkey.is_none().into() {
+        return Err(type_error("Invalid public key"));
+      }
+
+      let pubkey = pubkey.unwrap();
+
+      Ok(pubkey.to_encoded_point(compress).as_ref().to_vec())
+    }
+    &_ => Err(type_error("Unsupported curve")),
+  }
+}
+
 #[op2(fast)]
-#[smi]
 pub fn op_node_ecdh_generate_keys(
   #[string] curve: &str,
   #[buffer] pubbuf: &mut [u8],
   #[buffer] privbuf: &mut [u8],
-) -> Result<ResourceId, AnyError> {
+  #[string] format: &str,
+) -> Result<(), AnyError> {
   let mut rng = rand::thread_rng();
+  let compress = format == "compressed";
   match curve {
     "secp256k1" => {
       let privkey =
         elliptic_curve::SecretKey::<k256::Secp256k1>::random(&mut rng);
       let pubkey = privkey.public_key();
-      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
       privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
 
-      Ok(0)
+      Ok(())
     }
     "prime256v1" | "secp256r1" => {
       let privkey = elliptic_curve::SecretKey::<NistP256>::random(&mut rng);
       let pubkey = privkey.public_key();
-      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
       privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
-      Ok(0)
+
+      Ok(())
     }
     "secp384r1" => {
       let privkey = elliptic_curve::SecretKey::<NistP384>::random(&mut rng);
       let pubkey = privkey.public_key();
-      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
       privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
-      Ok(0)
+
+      Ok(())
     }
     "secp224r1" => {
       let privkey = elliptic_curve::SecretKey::<NistP224>::random(&mut rng);
       let pubkey = privkey.public_key();
-      pubbuf.copy_from_slice(pubkey.to_sec1_bytes().as_ref());
+      pubbuf.copy_from_slice(pubkey.to_encoded_point(compress).as_ref());
       privbuf.copy_from_slice(privkey.to_nonzero_scalar().to_bytes().as_ref());
-      Ok(0)
+
+      Ok(())
     }
-    &_ => todo!(),
+    &_ => Err(type_error(format!("Unsupported curve: {}", curve))),
   }
 }
 
@@ -1211,6 +1309,8 @@ pub enum AsymmetricKeyDetails {
   #[serde(rename = "ec")]
   #[serde(rename_all = "camelCase")]
   Ec { named_curve: String },
+  #[serde(rename = "dh")]
+  Dh,
 }
 
 // https://oidref.com/
@@ -1270,6 +1370,8 @@ static MGF1_SHA1_MASK_ALGORITHM: Lazy<
 
 pub const RSA_ENCRYPTION_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
+pub const DH_KEY_AGREEMENT_OID: const_oid::ObjectIdentifier =
+  const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.3.1");
 pub const RSASSA_PSS_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.10");
 pub const EC_OID: const_oid::ObjectIdentifier =
@@ -1286,6 +1388,7 @@ pub const EC_OID: const_oid::ObjectIdentifier =
 // }
 pub struct PssPrivateKeyParameters<'a> {
   pub hash_algorithm: rsa::pkcs8::AlgorithmIdentifierRef<'a>,
+  #[allow(dead_code)]
   pub mask_gen_algorithm: rsa::pkcs8::AlgorithmIdentifierRef<'a>,
   pub salt_length: u32,
 }
@@ -1354,11 +1457,13 @@ fn parse_private_key(
 ) -> Result<pkcs8::SecretDocument, AnyError> {
   match format {
     "pem" => {
-      let (label, doc) =
-        pkcs8::SecretDocument::from_pem(std::str::from_utf8(key).unwrap())?;
-      if label != "PRIVATE KEY" {
-        return Err(type_error("Invalid PEM label"));
-      }
+      let pem = std::str::from_utf8(key).map_err(|err| {
+        type_error(format!(
+          "Invalid PEM private key: not valid utf8 starting at byte {}",
+          err.valid_up_to()
+        ))
+      })?;
+      let (_, doc) = pkcs8::SecretDocument::from_pem(pem)?;
       Ok(doc)
     }
     "der" => {
@@ -1404,6 +1509,7 @@ pub fn op_node_create_private_key(
         .into(),
       })
     }
+    DH_KEY_AGREEMENT_OID => Ok(AsymmetricKeyDetails::Dh),
     RSASSA_PSS_OID => {
       let params = PssPrivateKeyParameters::try_from(
         pk_info
@@ -1452,6 +1558,122 @@ pub fn op_node_create_private_key(
         named_curve: named_curve.to_string(),
       })
     }
+    _ => Err(type_error("Unsupported algorithm")),
+  }
+}
+
+fn parse_public_key(
+  key: &[u8],
+  format: &str,
+  type_: &str,
+) -> Result<pkcs8::Document, AnyError> {
+  match format {
+    "pem" => {
+      let pem = std::str::from_utf8(key).map_err(|err| {
+        type_error(format!(
+          "Invalid PEM private key: not valid utf8 starting at byte {}",
+          err.valid_up_to()
+        ))
+      })?;
+      let (label, doc) = pkcs8::Document::from_pem(pem)?;
+      if label != "PUBLIC KEY" {
+        return Err(type_error("Invalid PEM label"));
+      }
+      Ok(doc)
+    }
+    "der" => match type_ {
+      "pkcs1" => pkcs8::Document::from_pkcs1_der(key)
+        .map_err(|_| type_error("Invalid PKCS1 public key")),
+      _ => Err(type_error(format!("Unsupported key type: {}", type_))),
+    },
+    _ => Err(type_error(format!("Unsupported key format: {}", format))),
+  }
+}
+
+#[op2]
+#[serde]
+pub fn op_node_create_public_key(
+  #[buffer] key: &[u8],
+  #[string] format: &str,
+  #[string] type_: &str,
+) -> Result<AsymmetricKeyDetails, AnyError> {
+  let mut doc = None;
+
+  let pk_info = if type_ != "spki" {
+    doc.replace(parse_public_key(key, format, type_)?);
+    spki::SubjectPublicKeyInfoRef::try_from(doc.as_ref().unwrap().as_bytes())?
+  } else {
+    spki::SubjectPublicKeyInfoRef::try_from(key)?
+  };
+
+  let alg = pk_info.algorithm.oid;
+
+  match alg {
+    RSA_ENCRYPTION_OID => {
+      let public_key = rsa::pkcs1::RsaPublicKey::from_der(
+        pk_info.subject_public_key.raw_bytes(),
+      )?;
+      let modulus_length = public_key.modulus.as_bytes().len() * 8;
+
+      Ok(AsymmetricKeyDetails::Rsa {
+        modulus_length,
+        public_exponent: BigInt::from_bytes_be(
+          num_bigint::Sign::Plus,
+          public_key.public_exponent.as_bytes(),
+        )
+        .into(),
+      })
+    }
+    RSASSA_PSS_OID => {
+      let params = PssPrivateKeyParameters::try_from(
+        pk_info
+          .algorithm
+          .parameters
+          .ok_or_else(|| type_error("Malformed parameters".to_string()))?,
+      )
+      .map_err(|_| type_error("Malformed parameters".to_string()))?;
+
+      let hash_alg = params.hash_algorithm;
+      let hash_algorithm = match hash_alg.oid {
+        ID_SHA1_OID => "sha1",
+        ID_SHA256_OID => "sha256",
+        ID_SHA384_OID => "sha384",
+        ID_SHA512_OID => "sha512",
+        _ => return Err(type_error("Unsupported hash algorithm")),
+      };
+
+      let public_key = rsa::pkcs1::RsaPublicKey::from_der(
+        pk_info.subject_public_key.raw_bytes(),
+      )?;
+      let modulus_length = public_key.modulus.as_bytes().len() * 8;
+      Ok(AsymmetricKeyDetails::RsaPss {
+        modulus_length,
+        public_exponent: BigInt::from_bytes_be(
+          num_bigint::Sign::Plus,
+          public_key.public_exponent.as_bytes(),
+        )
+        .into(),
+        hash_algorithm: hash_algorithm.to_string(),
+        salt_length: params.salt_length,
+      })
+    }
+    EC_OID => {
+      let named_curve = pk_info
+        .algorithm
+        .parameters_oid()
+        .map_err(|_| type_error("malformed parameters"))?;
+      let named_curve = match named_curve {
+        ID_SECP256R1_OID => "p256",
+        ID_SECP384R1_OID => "p384",
+        ID_SECP521R1_OID => "p521",
+        _ => return Err(type_error("Unsupported named curve")),
+      };
+
+      Ok(AsymmetricKeyDetails::Ec {
+        named_curve: named_curve.to_string(),
+      })
+    }
+    DH_KEY_AGREEMENT_OID => Ok(AsymmetricKeyDetails::Dh),
     _ => Err(type_error("Unsupported algorithm")),
   }
 }

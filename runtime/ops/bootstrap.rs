@@ -16,7 +16,8 @@ deno_core::extension!(
     op_bootstrap_language,
     op_bootstrap_log_level,
     op_bootstrap_no_color,
-    op_bootstrap_is_tty,
+    op_bootstrap_is_stdout_tty,
+    op_bootstrap_is_stderr_tty,
     op_bootstrap_unstable_args,
     op_snapshot_options,
   ],
@@ -30,13 +31,33 @@ deno_core::extension!(
   },
 );
 
-#[derive(Serialize, Default)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotOptions {
   pub deno_version: String,
   pub ts_version: String,
   pub v8_version: &'static str,
   pub target: String,
+}
+
+impl Default for SnapshotOptions {
+  fn default() -> Self {
+    let arch = std::env::consts::ARCH;
+    let platform = std::env::consts::OS;
+    let target = match platform {
+      "macos" => format!("{}-apple-darwin", arch),
+      "linux" => format!("{}-unknown-linux-gnu", arch),
+      "windows" => format!("{}-pc-windows-msvc", arch),
+      rest => format!("{}-{}", arch, rest),
+    };
+
+    Self {
+      deno_version: "dev".to_owned(),
+      ts_version: "n/a".to_owned(),
+      v8_version: deno_core::v8_version(),
+      target,
+    }
+  }
 }
 
 // Note: Called at snapshot time, op perf is not a concern.
@@ -106,7 +127,13 @@ pub fn op_bootstrap_no_color(state: &mut OpState) -> bool {
 }
 
 #[op2(fast)]
-pub fn op_bootstrap_is_tty(state: &mut OpState) -> bool {
+pub fn op_bootstrap_is_stdout_tty(state: &mut OpState) -> bool {
   let options = state.borrow::<BootstrapOptions>();
-  options.is_tty
+  options.is_stdout_tty
+}
+
+#[op2(fast)]
+pub fn op_bootstrap_is_stderr_tty(state: &mut OpState) -> bool {
+  let options = state.borrow::<BootstrapOptions>();
+  options.is_stderr_tty
 }

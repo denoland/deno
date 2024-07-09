@@ -2,14 +2,10 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
-import {
-  aggregateTwoErrors,
-  ERR_MULTIPLE_CALLBACK,
-} from "ext:deno_node/internal/errors.ts";
+import { aggregateTwoErrors } from "ext:deno_node/internal/errors.ts";
 import * as process from "ext:deno_node/_process/process.ts";
 
 const kDestroy = Symbol("kDestroy");
-const kConstruct = Symbol("kConstruct");
 
 function checkError(err, w, r) {
   if (err) {
@@ -155,37 +151,6 @@ function emitErrorNT(self, err) {
   self.emit("error", err);
 }
 
-function undestroy() {
-  const r = this._readableState;
-  const w = this._writableState;
-
-  if (r) {
-    r.constructed = true;
-    r.closed = false;
-    r.closeEmitted = false;
-    r.destroyed = false;
-    r.errored = null;
-    r.errorEmitted = false;
-    r.reading = false;
-    r.ended = false;
-    r.endEmitted = false;
-  }
-
-  if (w) {
-    w.constructed = true;
-    w.destroyed = false;
-    w.closed = false;
-    w.closeEmitted = false;
-    w.errored = null;
-    w.errorEmitted = false;
-    w.ended = false;
-    w.ending = false;
-    w.finalCalled = false;
-    w.prefinished = false;
-    w.finished = false;
-  }
-}
-
 function errorOrDestroy(stream, err, sync) {
   // We have tests that rely on errors being emitted
   // in the same tick, so changing this is semver major.
@@ -220,104 +185,5 @@ function errorOrDestroy(stream, err, sync) {
   }
 }
 
-function construct(stream, cb) {
-  if (typeof stream._construct !== "function") {
-    return;
-  }
-
-  const r = stream._readableState;
-  const w = stream._writableState;
-
-  if (r) {
-    r.constructed = false;
-  }
-  if (w) {
-    w.constructed = false;
-  }
-
-  stream.once(kConstruct, cb);
-
-  if (stream.listenerCount(kConstruct) > 1) {
-    // Duplex
-    return;
-  }
-
-  process.nextTick(constructNT, stream);
-}
-
-function constructNT(stream) {
-  let called = false;
-
-  function onConstruct(err) {
-    if (called) {
-      errorOrDestroy(stream, err ?? new ERR_MULTIPLE_CALLBACK());
-      return;
-    }
-    called = true;
-
-    const r = stream._readableState;
-    const w = stream._writableState;
-    const s = w || r;
-
-    if (r) {
-      r.constructed = true;
-    }
-    if (w) {
-      w.constructed = true;
-    }
-
-    if (s.destroyed) {
-      stream.emit(kDestroy, err);
-    } else if (err) {
-      errorOrDestroy(stream, err, true);
-    } else {
-      process.nextTick(emitConstructNT, stream);
-    }
-  }
-
-  try {
-    const result = stream._construct(onConstruct);
-    if (result != null) {
-      const then = result.then;
-      if (typeof then === "function") {
-        then.call(
-          result,
-          function () {
-            process.nextTick(onConstruct, null);
-          },
-          function (err) {
-            process.nextTick(onConstruct, err);
-          },
-        );
-      }
-    }
-  } catch (err) {
-    onConstruct(err);
-  }
-}
-
-function emitConstructNT(stream) {
-  stream.emit(kConstruct);
-}
-
-function isRequest(stream) {
-  return stream && stream.setHeader && typeof stream.abort === "function";
-}
-
-// Normalize destroy for legacy.
-function destroyer(stream, err) {
-  if (!stream) return;
-  if (isRequest(stream)) return stream.abort();
-  if (isRequest(stream.req)) return stream.req.abort();
-  if (typeof stream.destroy === "function") return stream.destroy(err);
-  if (typeof stream.close === "function") return stream.close();
-}
-
-export default {
-  construct,
-  destroyer,
-  destroy,
-  undestroy,
-  errorOrDestroy,
-};
-export { construct, destroy, destroyer, errorOrDestroy, undestroy };
+export default { destroy, errorOrDestroy };
+export { destroy, errorOrDestroy };

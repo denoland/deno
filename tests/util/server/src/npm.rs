@@ -13,10 +13,51 @@ use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use tar::Builder;
 
-use crate::testdata_path;
+use crate::tests_path;
+use crate::PathRef;
 
-pub static CUSTOM_NPM_PACKAGE_CACHE: Lazy<CustomNpmPackageCache> =
-  Lazy::new(CustomNpmPackageCache::default);
+pub const DENOTEST_SCOPE_NAME: &str = "@denotest";
+pub const DENOTEST2_SCOPE_NAME: &str = "@denotest2";
+
+pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
+  TestNpmRegistry::new(
+    NpmRegistryKind::Public,
+    &format!(
+      "http://localhost:{}",
+      crate::servers::PUBLIC_NPM_REGISTRY_PORT
+    ),
+    "npm",
+  )
+});
+
+pub static PRIVATE_TEST_NPM_REGISTRY_1: Lazy<TestNpmRegistry> =
+  Lazy::new(|| {
+    TestNpmRegistry::new(
+      NpmRegistryKind::Private,
+      &format!(
+        "http://localhost:{}",
+        crate::servers::PRIVATE_NPM_REGISTRY_1_PORT
+      ),
+      "npm-private",
+    )
+  });
+
+pub static PRIVATE_TEST_NPM_REGISTRY_2: Lazy<TestNpmRegistry> =
+  Lazy::new(|| {
+    TestNpmRegistry::new(
+      NpmRegistryKind::Private,
+      &format!(
+        "http://localhost:{}",
+        crate::servers::PRIVATE_NPM_REGISTRY_2_PORT
+      ),
+      "npm-private2",
+    )
+  });
+
+pub enum NpmRegistryKind {
+  Public,
+  Private,
+}
 
 struct CustomNpmPackage {
   pub registry_file: String,
@@ -24,11 +65,34 @@ struct CustomNpmPackage {
 }
 
 /// Creates tarballs and a registry json file for npm packages
-/// in the `testdata/npm/registry/@denotest` directory.
-#[derive(Default)]
-pub struct CustomNpmPackageCache(Mutex<HashMap<String, CustomNpmPackage>>);
+/// in the `tests/registry/npm/@denotest` directory.
+pub struct TestNpmRegistry {
+  #[allow(unused)]
+  kind: NpmRegistryKind,
+  // Eg. http://localhost:4544/
+  hostname: String,
+  /// Path in the tests/registry folder (Eg. npm)
+  local_path: String,
 
-impl CustomNpmPackageCache {
+  cache: Mutex<HashMap<String, CustomNpmPackage>>,
+}
+
+impl TestNpmRegistry {
+  pub fn new(kind: NpmRegistryKind, hostname: &str, local_path: &str) -> Self {
+    let hostname = hostname.strip_suffix('/').unwrap_or(hostname).to_string();
+
+    Self {
+      hostname,
+      local_path: local_path.to_string(),
+      kind,
+      cache: Default::default(),
+    }
+  }
+
+  pub fn root_dir(&self) -> PathRef {
+    tests_path().join("registry").join(&self.local_path)
+  }
+
   pub fn tarball_bytes(
     &self,
     name: &str,
@@ -45,26 +109,72 @@ impl CustomNpmPackageCache {
     self.get_package_property(name, |p| p.registry_file.as_bytes().to_vec())
   }
 
+  pub fn package_url(&self, package_name: &str) -> String {
+    format!("http://{}/{}/", self.hostname, package_name)
+  }
+
   fn get_package_property<TResult>(
     &self,
     package_name: &str,
     func: impl FnOnce(&CustomNpmPackage) -> TResult,
   ) -> Result<Option<TResult>> {
     // it's ok if multiple threads race here as they will do the same work twice
-    if !self.0.lock().contains_key(package_name) {
-      match get_npm_package(package_name)? {
+    if !self.cache.lock().contains_key(package_name) {
+      match get_npm_package(&self.hostname, &self.local_path, package_name)? {
         Some(package) => {
-          self.0.lock().insert(package_name.to_string(), package);
+          self.cache.lock().insert(package_name.to_string(), package);
         }
         None => return Ok(None),
       }
     }
-    Ok(self.0.lock().get(package_name).map(func))
+    Ok(self.cache.lock().get(package_name).map(func))
+  }
+
+  pub fn get_test_scope_and_package_name_with_path_from_uri_path<'s>(
+    &self,
+    uri_path: &'s str,
+  ) -> Option<(&'s str, &'s str)> {
+    let prefix1 = format!("/{}/", DENOTEST_SCOPE_NAME);
+    let prefix2 = format!("/{}%2f", DENOTEST_SCOPE_NAME);
+
+    let maybe_package_name_with_path = uri_path
+      .strip_prefix(&prefix1)
+      .or_else(|| uri_path.strip_prefix(&prefix2));
+
+    if let Some(package_name_with_path) = maybe_package_name_with_path {
+      return Some((DENOTEST_SCOPE_NAME, package_name_with_path));
+    }
+
+    let prefix1 = format!("/{}/", DENOTEST2_SCOPE_NAME);
+    let prefix2 = format!("/{}%2f", DENOTEST2_SCOPE_NAME);
+
+    let maybe_package_name_with_path = uri_path
+      .strip_prefix(&prefix1)
+      .or_else(|| uri_path.strip_prefix(&prefix2));
+
+    if let Some(package_name_with_path) = maybe_package_name_with_path {
+      return Some((DENOTEST2_SCOPE_NAME, package_name_with_path));
+    }
+
+    None
   }
 }
 
-fn get_npm_package(package_name: &str) -> Result<Option<CustomNpmPackage>> {
-  let package_folder = testdata_path().join("npm/registry").join(package_name);
+fn get_npm_package(
+  registry_hostname: &str,
+  local_path: &str,
+  package_name: &str,
+) -> Result<Option<CustomNpmPackage>> {
+  let registry_hostname = if package_name == "@denotest/tarballs-privateserver2"
+  {
+    "http://localhost:4262"
+  } else {
+    registry_hostname
+  };
+  let package_folder = tests_path()
+    .join("registry")
+    .join(local_path)
+    .join(package_name);
   if !package_folder.exists() {
     return Ok(None);
   }
@@ -111,18 +221,16 @@ fn get_npm_package(package_name: &str) -> Result<Option<CustomNpmPackage>> {
     dist.insert("shasum".to_string(), "dummy-value".into());
     dist.insert(
       "tarball".to_string(),
-      format!(
-        "http://localhost:4545/npm/registry/{package_name}/{version}.tgz"
-      )
-      .into(),
+      format!("{registry_hostname}/{package_name}/{version}.tgz").into(),
     );
 
     tarballs.insert(version.clone(), tarball_bytes);
     let package_json_path = version_folder.join("package.json");
-    let package_json_text = fs::read_to_string(&package_json_path)
-      .with_context(|| {
+    let package_json_bytes =
+      fs::read(&package_json_path).with_context(|| {
         format!("Error reading package.json at {}", package_json_path)
       })?;
+    let package_json_text = String::from_utf8_lossy(&package_json_bytes);
     let mut version_info: serde_json::Map<String, serde_json::Value> =
       serde_json::from_str(&package_json_text)?;
     version_info.insert("dist".to_string(), dist.into());

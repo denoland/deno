@@ -1,0 +1,12 @@
+⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.
+[UNORDERED_START]
+Download http://localhost:4545/v1/extensionless
+Download http://localhost:4545/subdir/mod1.ts
+Download http://localhost:4545/subdir/subdir2/mod2.ts
+Download http://localhost:4545/subdir/print_hello.ts
+Download http://127.0.0.1:4250/@denotest/add/meta.json
+Download http://127.0.0.1:4250/@denotest/add/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
+Download http://localhost:4260/@denotest/esm-basic
+Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
+[UNORDERED_END]

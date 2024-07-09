@@ -1,0 +1,7 @@
+{
+  "compilerOptions": {
+    "types": [
+      "./a.d.ts"
+    ]
+  }
+}

@@ -106,21 +106,6 @@ itest!(deno_doc_invalid_url {
   exit_code: 1,
 });
 
-itest!(doc_lock {
-  args: "doc main.ts",
-  http_server: true,
-  cwd: Some("lockfile/basic"),
-  exit_code: 10,
-  output: "lockfile/basic/fail.out",
-});
-
-itest!(doc_no_lock {
-  args: "doc --no-lock main.ts",
-  http_server: true,
-  cwd: Some("lockfile/basic"),
-  output: "lockfile/basic/doc.nolock.out",
-});
-
 #[test]
 fn deno_doc_html() {
   let context = TestContext::default();
@@ -139,15 +124,22 @@ fn deno_doc_html() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stderr(), "Written 10 files to");
+  assert_contains!(output.stderr(), "Written 14 files to");
   assert!(temp_dir.path().join("all_symbols.html").exists());
   assert!(temp_dir.path().join("index.html").exists());
   assert!(temp_dir.path().join("fuse.js").exists());
   assert!(temp_dir.path().join("page.css").exists());
+  assert!(temp_dir.path().join("reset.css").exists());
+  assert!(temp_dir.path().join("script.js").exists());
   assert!(temp_dir.path().join("search.js").exists());
   assert!(temp_dir.path().join("search_index.js").exists());
   assert!(temp_dir.path().join("styles.css").exists());
   assert!(temp_dir.path().join("~/MyInterface.html").exists());
+  assert!(temp_dir.path().join("~/MyInterface.prop.html").exists());
   assert!(temp_dir.path().join("~/MyClass.html").exists());
-  assert!(temp_dir.path().join("~/index.html").exists());
+  assert!(temp_dir.path().join("~/MyClass.prototype.html").exists());
+  assert!(temp_dir
+    .path()
+    .join("~/MyClass.prototype.prop.html")
+    .exists());
 }

@@ -14,6 +14,7 @@ import { core, primordials } from "ext:core/mod.js";
 
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
 import { op_fetch_custom_client } from "ext:core/ops";
+import { loadTlsKeyPair } from "ext:deno_net/02_tls.js";
 
 const { internalRidSymbol } = core;
 const { ObjectDefineProperty } = primordials;
@@ -24,9 +25,11 @@ const { ObjectDefineProperty } = primordials;
  */
 function createHttpClient(options) {
   options.caCerts ??= [];
+  const keyPair = loadTlsKeyPair("Deno.createHttpClient", options);
   return new HttpClient(
     op_fetch_custom_client(
       options,
+      keyPair,
     ),
   );
 }

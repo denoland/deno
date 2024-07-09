@@ -810,3 +810,48 @@ Deno.test(async function spawnCommandNotFoundErrno() {
   });
   await promise;
 });
+
+// https://github.com/denoland/deno/issues/23045
+Deno.test(function spawnCommandNullStdioArray() {
+  const ret = spawnSync(
+    `"${Deno.execPath()}" eval "console.log('hello');console.error('world')"`,
+    {
+      stdio: [null, null, null],
+      shell: true,
+    },
+  );
+
+  assertEquals(ret.status, 0);
+});
+
+Deno.test(
+  function stdinInherit() {
+    const script = `
+      function timeoutPromise(promise, timeout) {
+        return new Promise((resolve, reject) => {
+          const timeoutId = setTimeout(() => {
+            Deno.exit(69);
+          }, timeout);
+          promise.then((value) => {
+            clearTimeout(timeoutId);
+            resolve(value);
+          }, (reason) => {
+            clearTimeout(timeoutId);
+            reject(reason);
+          });
+        });
+      }
+
+      await timeoutPromise(Deno.stdin.read(new Uint8Array(1)), 100)
+    `;
+
+    const output = spawnSync(Deno.execPath(), ["eval", script], {
+      stdio: "inherit",
+    });
+
+    // We want to timeout to occur because the stdin isn't 'null'
+    assertEquals(output.status, 69);
+    assertEquals(output.stdout, null);
+    assertEquals(output.stderr, null);
+  },
+);

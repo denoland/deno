@@ -2,10 +2,12 @@
 
 use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
+use crate::file_fetcher::FetchNoFollowOptions;
 use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::FileOrRedirect;
 use crate::npm::CliNpmResolver;
-use crate::util::fs::atomic_write_file;
+use crate::util::fs::atomic_write_file_with_retries;
 
 use deno_ast::MediaType;
 use deno_core::futures;
@@ -15,7 +17,7 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -25,6 +27,7 @@ use std::time::SystemTime;
 mod cache_db;
 mod caches;
 mod check;
+mod code_cache;
 mod common;
 mod deno_dir;
 mod disk_cache;
@@ -35,9 +38,12 @@ mod module_info;
 mod node;
 mod parsed_source;
 
+pub use cache_db::CacheDBHash;
 pub use caches::Caches;
 pub use check::TypeCheckCache;
+pub use code_cache::CodeCache;
 pub use common::FastInsecureHasher;
+pub use deno_dir::dirs::home_dir;
 pub use deno_dir::DenoDir;
 pub use deno_dir::DenoDirProvider;
 pub use disk_cache::DiskCache;
@@ -69,7 +75,7 @@ impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
     path: &Path,
     bytes: &[u8],
   ) -> std::io::Result<()> {
-    atomic_write_file(path, bytes, CACHE_PERM)
+    atomic_write_file_with_retries(path, bytes, CACHE_PERM)
   }
 
   fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
@@ -96,8 +102,6 @@ pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<RealDenoCacheEnv>;
 pub type LocalLspHttpCache =
   deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
 pub use deno_cache_dir::HttpCache;
-
-use self::module_info::ModuleInfoCacheSourceHash;
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
@@ -190,7 +194,7 @@ impl Loader for FetchCacher {
   }
 
   fn load(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
@@ -224,7 +228,7 @@ impl Loader for FetchCacher {
         LoaderCacheSetting::Reload => {
           if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
             return Err(deno_core::anyhow::anyhow!(
-              "Failed to resolve version constraint. Try running again without --cached-only"
+              "Could not resolve version constraint using only cached data. Try running again without --cached-only"
             ));
           }
           Some(CacheSetting::ReloadAll)
@@ -232,29 +236,40 @@ impl Loader for FetchCacher {
         LoaderCacheSetting::Only => Some(CacheSetting::Only),
       };
       file_fetcher
-        .fetch_with_options(FetchOptions {
-          specifier: &specifier,
-          permissions,
-          maybe_accept: None,
-          maybe_cache_setting: maybe_cache_setting.as_ref(),
-          maybe_checksum: options.maybe_checksum,
+        .fetch_no_follow_with_options(FetchNoFollowOptions {
+          fetch_options: FetchOptions {
+            specifier: &specifier,
+            permissions: &permissions,
+            maybe_accept: None,
+            maybe_cache_setting: maybe_cache_setting.as_ref(),
+          },
+          maybe_checksum: options.maybe_checksum.as_ref(),
         })
         .await
-        .map(|file| {
-          let maybe_headers =
-            match (file.maybe_headers, file_header_overrides.get(&specifier)) {
-              (Some(headers), Some(overrides)) => {
-                Some(headers.into_iter().chain(overrides.clone()).collect())
-              }
-              (Some(headers), None) => Some(headers),
-              (None, Some(overrides)) => Some(overrides.clone()),
-              (None, None) => None,
-            };
-          Ok(Some(LoadResponse::Module {
-            specifier: file.specifier,
-            maybe_headers,
-            content: file.source,
-          }))
+        .map(|file_or_redirect| {
+          match file_or_redirect {
+            FileOrRedirect::File(file) => {
+              let maybe_headers =
+              match (file.maybe_headers, file_header_overrides.get(&specifier)) {
+                (Some(headers), Some(overrides)) => {
+                  Some(headers.into_iter().chain(overrides.clone()).collect())
+                }
+                (Some(headers), None) => Some(headers),
+                (None, Some(overrides)) => Some(overrides.clone()),
+                (None, None) => None,
+              };
+            Ok(Some(LoadResponse::Module {
+              specifier: file.specifier,
+              maybe_headers,
+              content: file.source,
+            }))
+            },
+            FileOrRedirect::Redirect(redirect_specifier) => {
+              Ok(Some(LoadResponse::Redirect {
+                specifier: redirect_specifier,
+              }))
+            },
+          }
         })
         .unwrap_or_else(|err| {
           if let Some(io_err) = err.downcast_ref::<std::io::Error>() {
@@ -272,20 +287,21 @@ impl Loader for FetchCacher {
           }
         })
     }
-    .boxed()
+    .boxed_local()
   }
 
   fn cache_module_info(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     source: &Arc<[u8]>,
     module_info: &deno_graph::ModuleInfo,
   ) {
-    let source_hash = ModuleInfoCacheSourceHash::from_source(source);
+    log::debug!("Caching module info for {}", specifier);
+    let source_hash = CacheDBHash::from_source(source);
     let result = self.module_info_cache.set_module_info(
       specifier,
       MediaType::from_specifier(specifier),
-      &source_hash,
+      source_hash,
       module_info,
     );
     if let Err(err) = result {

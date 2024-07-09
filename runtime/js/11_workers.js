@@ -46,6 +46,7 @@ function createWorker(
   permissions,
   name,
   workerType,
+  closeOnIdle,
 ) {
   return op_create_worker({
     hasSourceCode,
@@ -54,6 +55,7 @@ function createWorker(
     sourceCode,
     specifier,
     workerType,
+    closeOnIdle,
   });
 }
 
@@ -75,14 +77,6 @@ function hostRecvMessage(id) {
 
 const privateWorkerRef = Symbol();
 
-function refWorker(worker) {
-  worker[privateWorkerRef](true);
-}
-
-function unrefWorker(worker) {
-  worker[privateWorkerRef](false);
-}
-
 class Worker extends EventTarget {
   #id = 0;
   #name = "";
@@ -97,7 +91,7 @@ class Worker extends EventTarget {
   // still be messages left to receive.
   #status = "RUNNING";
 
-  constructor(specifier, options = {}) {
+  constructor(specifier, options = { __proto__: null }) {
     super();
     specifier = String(specifier);
     const {
@@ -134,8 +128,9 @@ class Worker extends EventTarget {
       hasSourceCode,
       sourceCode,
       deno?.permissions,
-      name,
+      this.#name,
       workerType,
+      false,
     );
     this.#id = id;
     this.#pollControl();
@@ -259,7 +254,7 @@ class Worker extends EventTarget {
     }
   };
 
-  postMessage(message, transferOrOptions = {}) {
+  postMessage(message, transferOrOptions = { __proto__: null }) {
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     message = webidl.converters.any(message);
@@ -325,4 +320,4 @@ webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
   "module",
 ]);
 
-export { refWorker, unrefWorker, Worker };
+export { Worker };

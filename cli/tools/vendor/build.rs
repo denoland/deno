@@ -2,7 +2,6 @@
 
 use std::fmt::Write as _;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -10,7 +9,6 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
-use deno_core::parking_lot::Mutex;
 use deno_graph::source::ResolutionMode;
 use deno_graph::JsModule;
 use deno_graph::Module;
@@ -20,10 +18,8 @@ use import_map::ImportMap;
 use import_map::SpecifierMap;
 
 use crate::args::JsxImportSourceConfig;
-use crate::args::Lockfile;
 use crate::cache::ParsedSourceCache;
 use crate::graph_util;
-use crate::graph_util::graph_lock_or_exit;
 use crate::tools::vendor::import_map::BuildImportMapInput;
 
 use super::analyze::has_default_export;
@@ -34,19 +30,13 @@ use super::specifiers::is_remote_specifier;
 
 /// Allows substituting the environment for testing purposes.
 pub trait VendorEnvironment {
-  fn cwd(&self) -> Result<PathBuf, AnyError>;
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError>;
   fn write_file(&self, file_path: &Path, bytes: &[u8]) -> Result<(), AnyError>;
-  fn path_exists(&self, path: &Path) -> bool;
 }
 
 pub struct RealVendorEnvironment;
 
 impl VendorEnvironment for RealVendorEnvironment {
-  fn cwd(&self) -> Result<PathBuf, AnyError> {
-    Ok(std::env::current_dir()?)
-  }
-
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError> {
     Ok(std::fs::create_dir_all(dir_path)?)
   }
@@ -54,10 +44,6 @@ impl VendorEnvironment for RealVendorEnvironment {
   fn write_file(&self, file_path: &Path, bytes: &[u8]) -> Result<(), AnyError> {
     std::fs::write(file_path, bytes)
       .with_context(|| format!("Failed writing {}", file_path.display()))
-  }
-
-  fn path_exists(&self, path: &Path) -> bool {
-    path.exists()
   }
 }
 
@@ -73,7 +59,6 @@ pub struct BuildInput<
   pub parsed_source_cache: &'a ParsedSourceCache,
   pub output_dir: &'a Path,
   pub maybe_original_import_map: Option<&'a ImportMap>,
-  pub maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   pub maybe_jsx_import_source: Option<&'a JsxImportSourceConfig>,
   pub resolver: &'a dyn deno_graph::source::Resolver,
   pub environment: &'a TEnvironment,
@@ -96,9 +81,8 @@ pub async fn build<
     build_graph,
     parsed_source_cache,
     output_dir,
-    maybe_original_import_map: original_import_map,
-    maybe_lockfile,
-    maybe_jsx_import_source: jsx_import_source,
+    maybe_original_import_map,
+    maybe_jsx_import_source,
     resolver,
     environment,
   } = input;
@@ -106,12 +90,12 @@ pub async fn build<
   let output_dir_specifier =
     ModuleSpecifier::from_directory_path(output_dir).unwrap();
 
-  if let Some(original_im) = &original_import_map {
+  if let Some(original_im) = &maybe_original_import_map {
     validate_original_import_map(original_im, &output_dir_specifier)?;
   }
 
   // add the jsx import source to the entry points to ensure it is always vendored
-  if let Some(jsx_import_source) = jsx_import_source {
+  if let Some(jsx_import_source) = maybe_jsx_import_source {
     if let Some(specifier_text) = jsx_import_source.maybe_specifier_text() {
       if let Ok(specifier) = resolver.resolve(
         &specifier_text,
@@ -129,20 +113,17 @@ pub async fn build<
 
   let graph = build_graph(entry_points).await?;
 
-  // check the lockfile
-  if let Some(lockfile) = maybe_lockfile {
-    graph_lock_or_exit(&graph, &mut lockfile.lock());
-  }
-
   // surface any errors
+  let real_fs = Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>;
   graph_util::graph_valid(
     &graph,
-    &deno_fs::RealFs,
-    &graph.roots,
+    &real_fs,
+    &graph.roots.iter().cloned().collect::<Vec<_>>(),
     graph_util::GraphValidOptions {
       is_vendoring: true,
       check_js: true,
       follow_type_only: true,
+      exit_lockfile_errors: true,
     },
   )?;
 
@@ -190,8 +171,8 @@ pub async fn build<
       graph: &graph,
       modules: &all_modules,
       mappings: &mappings,
-      original_import_map,
-      jsx_import_source,
+      maybe_original_import_map,
+      maybe_jsx_import_source,
       resolver,
       parsed_source_cache,
     })?;
@@ -1216,6 +1197,7 @@ mod test {
     builder.add_entry_point("/mod.tsx");
     builder.set_jsx_import_source_config(JsxImportSourceConfig {
       default_specifier: Some("preact".to_string()),
+      default_types_specifier: None,
       module: "jsx-runtime".to_string(),
       base_url: builder.resolve_to_url("/deno.json"),
     });
@@ -1265,6 +1247,7 @@ mod test {
     builder.add_entry_point("/mod.ts");
     builder.set_jsx_import_source_config(JsxImportSourceConfig {
       default_specifier: Some("preact".to_string()),
+      default_types_specifier: None,
       module: "jsx-runtime".to_string(),
       base_url: builder.resolve_to_url("/deno.json"),
     });

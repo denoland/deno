@@ -85,7 +85,7 @@ Deno.test(async function blobStream() {
   const read = async (): Promise<void> => {
     const { done, value } = await reader.read();
     if (!done && value) {
-      bytes = concat(bytes, value);
+      bytes = concat([bytes, value]);
       return read();
     }
   };

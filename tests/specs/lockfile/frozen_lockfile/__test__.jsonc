@@ -1,0 +1,157 @@
+{
+  "tempDir": true,
+  "tests": {
+    "error_with_new_npm_dep": {
+      "steps": [
+        {
+          "args": "cache add.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          // sub.ts imports from an npm package
+          // that's not in the lockfile
+          "args": "run --frozen sub.ts",
+          "output": "frozen_new_dep_run.out",
+          "exitCode": 1
+        },
+        {
+          "args": "cache --frozen sub.ts",
+          "output": "frozen_new_dep_cache.out",
+          "exitCode": 1
+        },
+        {
+          // update the lockfile
+          "args": "cache sub.ts",
+          "output": "update_lockfile.out"
+        },
+        {
+          "args": "run --frozen sub.ts",
+          "output": "3 - 2 = 1\n"
+        }
+      ]
+    },
+    "error_with_new_jsr_dep": {
+      "steps": [
+        {
+          "args": "cache jsr.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --frozen jsr2.ts",
+          "output": "frozen_new_dep_jsr_run.out",
+          "exitCode": 1
+        },
+        {
+          "args": "cache --frozen jsr2.ts",
+          "output": "frozen_new_dep_jsr_cache.out",
+          "exitCode": 1
+        },
+        {
+          // update the lockfile
+          "args": "cache jsr2.ts",
+          "output": ""
+        },
+        {
+          "args": "run --frozen jsr2.ts",
+          "output": "1 + 2 = 3\n"
+        }
+      ]
+    },
+    "error_when_package_json_changed": {
+      "steps": [
+        {
+          "args": "cache add.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "Deno.writeTextFileSync(\"package.json\", JSON.stringify({ dependencies: { \"@denotest/bin\": \"0.7.0\" } }))"
+          ],
+          "output": ""
+        },
+        {
+          "args": "cache --frozen add.ts",
+          "output": "frozen_package_json_changed.out",
+          "exitCode": 1
+        },
+        {
+          "envs": {
+            "DENO_FUTURE": "1"
+          },
+          "args": "install --frozen",
+          "output": "frozen_package_json_changed_install.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "no_error_when_in_lockfile": {
+      "steps": [
+        {
+          "args": "cache add.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --frozen add.ts",
+          "output": "1 + 2 = 3\n"
+        }
+      ]
+    },
+    "errors_if_creates_lockfile": {
+      "steps": [
+        {
+          "args": [
+            "eval",
+            "Deno.statSync('lock.json')"
+          ],
+          "output": "[WILDCARD]NotFound[WILDCARD]",
+          "exitCode": 1
+        },
+        {
+          "args": "run --frozen add.ts",
+          "output": "no_lockfile_run.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "non_analyzable_dynamic_npm": {
+      "steps": [
+        {
+          "args": "cache add.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --frozen sub-dynamic.ts",
+          "output": "frozen_new_dep_dynamic_npm.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "non_analyzable_dynamic_jsr": {
+      "steps": [
+        {
+          "args": "cache add.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --frozen --allow-net jsr-dynamic.ts",
+          "output": "frozen_new_dep_dynamic_jsr.out",
+          "exitCode": 1
+        }
+      ]
+    },
+    "non_analyzable_dynamic_http": {
+      "steps": [
+        {
+          "args": "cache add.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --frozen --allow-net http-dynamic.ts",
+          "output": "frozen_new_dep_dynamic_http.out",
+          "exitCode": 1
+        }
+      ]
+    }
+  }
+}

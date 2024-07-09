@@ -1,6 +1,0 @@
-{
-  "workspaces": [
-    "foo",
-    "foo/bar"
-  ]
-}

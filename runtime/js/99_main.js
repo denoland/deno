@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-deprecated-deno-api
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
@@ -7,7 +8,8 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
   op_bootstrap_args,
-  op_bootstrap_is_tty,
+  op_bootstrap_is_stderr_tty,
+  op_bootstrap_is_stdout_tty,
   op_bootstrap_no_color,
   op_bootstrap_pid,
   op_main_module,
@@ -34,6 +36,7 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectHasOwn,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -51,6 +54,7 @@ const {
 const {
   isNativeError,
 } = core;
+import { registerDeclarativeServer } from "ext:deno_http/00_serve.ts";
 import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
@@ -59,10 +63,10 @@ import * as timers from "ext:deno_web/02_timers.js";
 import {
   customInspect,
   getDefaultInspectOptions,
-  getNoColor,
+  getStderrNoColor,
   inspectArgs,
   quoteString,
-  setNoColorFn,
+  setNoColorFns,
 } from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
@@ -88,17 +92,7 @@ import {
 import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
-import {
-  SymbolAsyncDispose,
-  SymbolDispose,
-  SymbolMetadata,
-} from "ext:deno_web/00_infra.js";
-// deno-lint-ignore prefer-primordials
-if (Symbol.dispose) throw "V8 supports Symbol.dispose now, no need to shim it!";
-// deno-lint-ignore prefer-primordials
-if (Symbol.asyncDispose) {
-  throw "V8 supports Symbol.asyncDispose now, no need to shim it!";
-}
+import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
   throw "V8 supports Symbol.metadata now, no need to shim it!";
@@ -106,12 +100,6 @@ if (Symbol.metadata) {
 ObjectDefineProperties(Symbol, {
   dispose: {
     value: SymbolDispose,
-    enumerable: false,
-    writable: false,
-    configurable: false,
-  },
-  asyncDispose: {
-    value: SymbolAsyncDispose,
     enumerable: false,
     writable: false,
     configurable: false,
@@ -248,7 +236,7 @@ function workerClose() {
   op_worker_close();
 }
 
-function postMessage(message, transferOrOptions = {}) {
+function postMessage(message, transferOrOptions = { __proto__: null }) {
   const prefix =
     "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
   webidl.requiredArguments(arguments.length, 1, prefix);
@@ -280,6 +268,11 @@ function postMessage(message, transferOrOptions = {}) {
 let isClosing = false;
 let globalDispatchEvent;
 
+function hasMessageEventListener() {
+  return event.listenerCount(globalThis, "message") > 0 ||
+    messagePort.messageEventListenerCount > 0;
+}
+
 async function pollForMessages() {
   if (!globalDispatchEvent) {
     globalDispatchEvent = FunctionPrototypeBind(
@@ -288,7 +281,12 @@ async function pollForMessages() {
     );
   }
   while (!isClosing) {
-    const data = await op_worker_recv_message();
+    const recvMessage = op_worker_recv_message();
+    if (globalThis[messagePort.unrefPollForMessages] === true) {
+      core.unrefOpPromise(recvMessage);
+    }
+    const data = await recvMessage;
+    // const data = await op_worker_recv_message();
     if (data === null) break;
     const v = messagePort.deserializeJsMessageData(data);
     const message = v[0];
@@ -366,8 +364,10 @@ function importScripts(...urls) {
 
 const opArgs = memoizeLazy(() => op_bootstrap_args());
 const opPid = memoizeLazy(() => op_bootstrap_pid());
-const opPpid = memoizeLazy(() => op_ppid());
-setNoColorFn(() => op_bootstrap_no_color() || !op_bootstrap_is_tty());
+setNoColorFns(
+  () => op_bootstrap_no_color() || !op_bootstrap_is_stdout_tty(),
+  () => op_bootstrap_no_color() || !op_bootstrap_is_stderr_tty(),
+);
 
 function formatException(error) {
   if (
@@ -378,11 +378,11 @@ function formatException(error) {
   } else if (typeof error == "string") {
     return `Uncaught ${
       inspectArgs([quoteString(error, getDefaultInspectOptions())], {
-        colors: !getNoColor(),
+        colors: !getStderrNoColor(),
       })
     }`;
   } else {
-    return `Uncaught ${inspectArgs([error], { colors: !getNoColor() })}`;
+    return `Uncaught ${inspectArgs([error], { colors: !getStderrNoColor() })}`;
   }
 }
 
@@ -518,6 +518,20 @@ function processRejectionHandled(promise, reason) {
   }
 }
 
+function dispatchLoadEvent() {
+  globalThis_.dispatchEvent(new Event("load"));
+}
+
+function dispatchBeforeUnloadEvent() {
+  return globalThis_.dispatchEvent(
+    new Event("beforeunload", { cancelable: true }),
+  );
+}
+
+function dispatchUnloadEvent() {
+  globalThis_.dispatchEvent(new Event("unload"));
+}
+
 let hasBootstrapped = false;
 // Delete the `console` object that V8 automaticaly adds onto the global wrapper
 // object on context creation. We don't want this console object to shadow the
@@ -561,9 +575,11 @@ const NOT_IMPORTED_OPS = [
   "op_bench_now",
   "op_dispatch_bench_event",
   "op_register_bench",
+  "op_bench_get_origin",
 
   // Related to `Deno.jupyter` API
   "op_jupyter_broadcast",
+  "op_jupyter_input",
 
   // Related to `Deno.test()` API
   "op_test_event_step_result_failed",
@@ -625,6 +641,36 @@ const finalDenoNs = {
   bench: () => {},
 };
 
+ObjectDefineProperties(finalDenoNs, {
+  pid: core.propGetterOnly(opPid),
+  // `ppid` should not be memoized.
+  // https://github.com/denoland/deno/issues/23004
+  ppid: core.propGetterOnly(() => op_ppid()),
+  noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
+  args: core.propGetterOnly(opArgs),
+  mainModule: core.propGetterOnly(() => op_main_module()),
+  // TODO(kt3k): Remove this export at v2
+  // See https://github.com/denoland/deno/issues/9294
+  customInspect: {
+    get() {
+      warnOnDeprecatedApi(
+        "Deno.customInspect",
+        new Error().stack,
+        'Use `Symbol.for("Deno.customInspect")` instead.',
+      );
+      return internals.future ? undefined : customInspect;
+    },
+  },
+  exitCode: {
+    get() {
+      return os.getExitCode();
+    },
+    set(value) {
+      os.setExitCode(value);
+    },
+  },
+});
+
 const {
   denoVersion,
   tsVersion,
@@ -632,153 +678,225 @@ const {
   target,
 } = op_snapshot_options();
 
-function bootstrapMainRuntime(runtimeOptions) {
-  if (hasBootstrapped) {
-    throw new Error("Worker runtime already bootstrapped");
-  }
-  const nodeBootstrap = globalThis.nodeBootstrap;
+const executionModes = {
+  none: 0,
+  worker: 1,
+  run: 2,
+  repl: 3,
+  eval: 4,
+  test: 5,
+  bench: 6,
+  serve: 7,
+  jupyter: 8,
+};
 
-  const {
-    0: location_,
-    1: unstableFlag,
-    2: unstableFeatures,
-    3: inspectFlag,
-    5: hasNodeModulesDir,
-    6: argv0,
-    7: shouldDisableDeprecatedApiWarning,
-    8: shouldUseVerboseDeprecatedApiWarning,
-    9: future,
-  } = runtimeOptions;
-
-  removeImportedOps();
-
-  deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
-  verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
-  performance.setTimeOrigin(DateNow());
-  globalThis_ = globalThis;
-
-  // Remove bootstrapping data from the global scope
-  delete globalThis.__bootstrap;
-  delete globalThis.bootstrap;
-  delete globalThis.nodeBootstrap;
-  hasBootstrapped = true;
-
-  // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
-  // writable, so that they can mock it themselves if they like. If the flag was
-  // set, define `globalThis.location`, using the provided value.
-  if (location_ == null) {
-    mainRuntimeGlobalProperties.location = {
-      writable: true,
-    };
-  } else {
-    location.setLocationHref(location_);
-  }
-
-  exposeUnstableFeaturesForWindowOrWorkerGlobalScope({
-    unstableFlag,
-    unstableFeatures,
-  });
-  ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
-  ObjectDefineProperties(globalThis, {
-    // TODO(bartlomieju): in the future we might want to change the
-    // behavior of setting `name` to actually update the process name.
-    // Empty string matches what browsers do.
-    name: core.propWritable(""),
-    close: core.propWritable(windowClose),
-    closed: core.propGetterOnly(() => windowIsClosing),
-  });
-  ObjectSetPrototypeOf(globalThis, Window.prototype);
-
-  if (inspectFlag) {
-    const consoleFromDeno = globalThis.console;
-    core.wrapConsole(consoleFromDeno, core.v8Console);
-  }
-
-  event.setEventTargetData(globalThis);
-  event.saveGlobalThisReference(globalThis);
-
-  event.defineEventHandler(globalThis, "error");
-  event.defineEventHandler(globalThis, "load");
-  event.defineEventHandler(globalThis, "beforeunload");
-  event.defineEventHandler(globalThis, "unload");
-  event.defineEventHandler(globalThis, "unhandledrejection");
-
-  runtimeStart(
-    denoVersion,
-    v8Version,
-    tsVersion,
-    target,
-  );
-
-  ObjectDefineProperties(finalDenoNs, {
-    pid: core.propGetterOnly(opPid),
-    ppid: core.propGetterOnly(opPpid),
-    noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
-    args: core.propGetterOnly(opArgs),
-    mainModule: core.propGetterOnly(() => op_main_module()),
-    // TODO(kt3k): Remove this export at v2
-    // See https://github.com/denoland/deno/issues/9294
-    customInspect: {
-      get() {
-        warnOnDeprecatedApi(
-          "Deno.customInspect",
-          new Error().stack,
-          'Use `Symbol.for("Deno.customInspect")` instead.',
-        );
-        return customInspect;
-      },
-    },
-  });
-
-  // TODO(bartlomieju): deprecate --unstable
-  if (unstableFlag) {
-    ObjectAssign(finalDenoNs, denoNsUnstable);
-    // TODO(bartlomieju): this is not ideal, but because we use `ObjectAssign`
-    // above any properties that are defined elsewhere using `Object.defineProperty`
-    // are lost.
-    let jupyterNs = undefined;
-    ObjectDefineProperty(finalDenoNs, "jupyter", {
-      get() {
-        if (jupyterNs) {
-          return jupyterNs;
-        }
-        throw new Error(
-          "Deno.jupyter is only available in `deno jupyter` subcommand.",
-        );
-      },
-      set(val) {
-        jupyterNs = val;
-      },
-    });
-  } else {
-    for (let i = 0; i <= unstableFeatures.length; i++) {
-      const id = unstableFeatures[i];
-      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+function bootstrapMainRuntime(runtimeOptions, warmup = false) {
+  if (!warmup) {
+    if (hasBootstrapped) {
+      throw new Error("Worker runtime already bootstrapped");
     }
-  }
 
-  if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
-    // Removes the `__proto__` for security reasons.
-    // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-    delete Object.prototype.__proto__;
-  }
+    const {
+      0: location_,
+      1: unstableFlag,
+      2: unstableFeatures,
+      3: inspectFlag,
+      5: hasNodeModulesDir,
+      6: argv0,
+      7: nodeDebug,
+      8: shouldDisableDeprecatedApiWarning,
+      9: shouldUseVerboseDeprecatedApiWarning,
+      10: future,
+      11: mode,
+      12: servePort,
+      13: serveHost,
+    } = runtimeOptions;
 
-  if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
-    // Removes the `Temporal` API.
-    delete globalThis.Temporal;
-    delete globalThis.Date.prototype.toTemporalInstant;
-  }
+    if (mode === executionModes.run || mode === executionModes.serve) {
+      let serve = undefined;
+      core.addMainModuleHandler((main) => {
+        if (ObjectHasOwn(main, "default")) {
+          try {
+            serve = registerDeclarativeServer(main.default);
+          } catch (e) {
+            if (mode === executionModes.serve) {
+              throw e;
+            }
+          }
+        }
 
-  // Setup `Deno` global - we're actually overriding already existing global
-  // `Deno` with `Deno` namespace from "./deno.ts".
-  ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
+        if (mode === executionModes.serve && !serve) {
+          console.error(
+            `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
+            "color: yellow;",
+            "color: inherit;",
+            "font-weight: bold;",
+            "font-weight: normal;",
+          );
+          return;
+        }
 
-  if (nodeBootstrap) {
-    nodeBootstrap(hasNodeModulesDir, argv0, /* runningOnMainThread */ true);
-  }
+        if (serve) {
+          if (mode === executionModes.run) {
+            console.error(
+              `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
+              "color: yellow;",
+              "color: inherit;",
+              "font-weight: bold;",
+              "font-weight: normal;",
+            );
+          }
+          if (mode === executionModes.serve) {
+            serve({ servePort, serveHost });
+          }
+        }
+      });
+    }
 
-  if (future) {
-    delete globalThis.window;
+    // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
+    // class properties within constructors for classes that are not defined
+    // within the Deno namespace.
+    internals.future = future;
+
+    removeImportedOps();
+
+    deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
+    verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
+    performance.setTimeOrigin(DateNow());
+    globalThis_ = globalThis;
+
+    // Remove bootstrapping data from the global scope
+    delete globalThis.__bootstrap;
+    delete globalThis.bootstrap;
+    hasBootstrapped = true;
+
+    // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
+    // writable, so that they can mock it themselves if they like. If the flag was
+    // set, define `globalThis.location`, using the provided value.
+    if (location_ == null) {
+      mainRuntimeGlobalProperties.location = {
+        writable: true,
+      };
+    } else {
+      location.setLocationHref(location_);
+    }
+
+    exposeUnstableFeaturesForWindowOrWorkerGlobalScope({
+      unstableFlag,
+      unstableFeatures,
+    });
+    ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
+    ObjectDefineProperties(globalThis, {
+      // TODO(bartlomieju): in the future we might want to change the
+      // behavior of setting `name` to actually update the process name.
+      // Empty string matches what browsers do.
+      name: core.propWritable(""),
+      close: core.propWritable(windowClose),
+      closed: core.propGetterOnly(() => windowIsClosing),
+    });
+    ObjectSetPrototypeOf(globalThis, Window.prototype);
+
+    if (inspectFlag) {
+      const consoleFromDeno = globalThis.console;
+      core.wrapConsole(consoleFromDeno, core.v8Console);
+    }
+
+    event.defineEventHandler(globalThis, "error");
+    event.defineEventHandler(globalThis, "load");
+    event.defineEventHandler(globalThis, "beforeunload");
+    event.defineEventHandler(globalThis, "unload");
+
+    runtimeStart(
+      denoVersion,
+      v8Version,
+      tsVersion,
+      target,
+    );
+
+    // TODO(bartlomieju): deprecate --unstable
+    if (unstableFlag) {
+      ObjectAssign(finalDenoNs, denoNsUnstable);
+      // TODO(bartlomieju): this is not ideal, but because we use `ObjectAssign`
+      // above any properties that are defined elsewhere using `Object.defineProperty`
+      // are lost.
+      let jupyterNs = undefined;
+      ObjectDefineProperty(finalDenoNs, "jupyter", {
+        get() {
+          if (jupyterNs) {
+            return jupyterNs;
+          }
+          throw new Error(
+            "Deno.jupyter is only available in `deno jupyter` subcommand.",
+          );
+        },
+        set(val) {
+          jupyterNs = val;
+        },
+      });
+    } else {
+      for (let i = 0; i <= unstableFeatures.length; i++) {
+        const id = unstableFeatures[i];
+        ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+      }
+    }
+
+    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
+      // Removes the `__proto__` for security reasons.
+      // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+      delete Object.prototype.__proto__;
+    }
+
+    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
+      // Removes the `Temporal` API.
+      delete globalThis.Temporal;
+      delete globalThis.Date.prototype.toTemporalInstant;
+    }
+
+    // Setup `Deno` global - we're actually overriding already existing global
+    // `Deno` with `Deno` namespace from "./deno.ts".
+    ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
+
+    if (nodeBootstrap) {
+      nodeBootstrap({
+        usesLocalNodeModulesDir: hasNodeModulesDir,
+        runningOnMainThread: true,
+        argv0,
+        nodeDebug,
+      });
+    }
+    if (future) {
+      delete globalThis.window;
+      delete Deno.Buffer;
+      delete Deno.close;
+      delete Deno.copy;
+      delete Deno.File;
+      delete Deno.fstat;
+      delete Deno.fstatSync;
+      delete Deno.ftruncate;
+      delete Deno.ftruncateSync;
+      delete Deno.flock;
+      delete Deno.flockSync;
+      delete Deno.FsFile.prototype.rid;
+      delete Deno.funlock;
+      delete Deno.funlockSync;
+      delete Deno.iter;
+      delete Deno.iterSync;
+      delete Deno.metrics;
+      delete Deno.readAll;
+      delete Deno.readAllSync;
+      delete Deno.read;
+      delete Deno.readSync;
+      delete Deno.resources;
+      delete Deno.seek;
+      delete Deno.seekSync;
+      delete Deno.shutdown;
+      delete Deno.writeAll;
+      delete Deno.writeAllSync;
+      delete Deno.write;
+      delete Deno.writeSync;
+    }
+  } else {
+    // Warmup
   }
 }
 
@@ -786,144 +904,202 @@ function bootstrapWorkerRuntime(
   runtimeOptions,
   name,
   internalName,
+  workerId,
   maybeWorkerMetadata,
+  warmup = false,
 ) {
-  if (hasBootstrapped) {
-    throw new Error("Worker runtime already bootstrapped");
-  }
-
-  const nodeBootstrap = globalThis.nodeBootstrap;
-
-  const {
-    0: location_,
-    1: unstableFlag,
-    2: unstableFeatures,
-    4: enableTestingFeaturesFlag,
-    5: hasNodeModulesDir,
-    6: argv0,
-    7: shouldDisableDeprecatedApiWarning,
-    8: shouldUseVerboseDeprecatedApiWarning,
-  } = runtimeOptions;
-
-  deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
-  verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
-  performance.setTimeOrigin(DateNow());
-  globalThis_ = globalThis;
-
-  removeImportedOps();
-
-  // Remove bootstrapping data from the global scope
-  delete globalThis.__bootstrap;
-  delete globalThis.bootstrap;
-  delete globalThis.nodeBootstrap;
-  hasBootstrapped = true;
-
-  exposeUnstableFeaturesForWindowOrWorkerGlobalScope({
-    unstableFlag,
-    unstableFeatures,
-  });
-  ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
-  ObjectDefineProperties(globalThis, {
-    name: core.propWritable(name),
-    // TODO(bartlomieju): should be readonly?
-    close: core.propNonEnumerable(workerClose),
-    postMessage: core.propWritable(postMessage),
-  });
-  if (enableTestingFeaturesFlag) {
-    ObjectDefineProperty(
-      globalThis,
-      "importScripts",
-      core.propWritable(importScripts),
-    );
-  }
-  ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
-
-  const consoleFromDeno = globalThis.console;
-  core.wrapConsole(consoleFromDeno, core.v8Console);
-
-  event.setEventTargetData(globalThis);
-  event.saveGlobalThisReference(globalThis);
-
-  event.defineEventHandler(self, "message");
-  event.defineEventHandler(self, "error", undefined, true);
-  event.defineEventHandler(self, "unhandledrejection");
-
-  // `Deno.exit()` is an alias to `self.close()`. Setting and exit
-  // code using an op in worker context is a no-op.
-  os.setExitHandler((_exitCode) => {
-    workerClose();
-  });
-
-  runtimeStart(
-    denoVersion,
-    v8Version,
-    tsVersion,
-    target,
-    internalName ?? name,
-  );
-
-  location.setLocationHref(location_);
-
-  globalThis.pollForMessages = pollForMessages;
-
-  // TODO(bartlomieju): deprecate --unstable
-  if (unstableFlag) {
-    ObjectAssign(finalDenoNs, denoNsUnstable);
-  } else {
-    for (let i = 0; i <= unstableFeatures.length; i++) {
-      const id = unstableFeatures[i];
-      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+  if (!warmup) {
+    if (hasBootstrapped) {
+      throw new Error("Worker runtime already bootstrapped");
     }
-  }
 
-  if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
-    // Removes the `__proto__` for security reasons.
-    // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-    delete Object.prototype.__proto__;
-  }
+    const {
+      0: location_,
+      1: unstableFlag,
+      2: unstableFeatures,
+      4: enableTestingFeaturesFlag,
+      5: hasNodeModulesDir,
+      6: argv0,
+      7: nodeDebug,
+      8: shouldDisableDeprecatedApiWarning,
+      9: shouldUseVerboseDeprecatedApiWarning,
+      10: future,
+    } = runtimeOptions;
 
-  if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
-    // Removes the `Temporal` API.
-    delete globalThis.Temporal;
-    delete globalThis.Date.prototype.toTemporalInstant;
-  }
+    // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
+    // class properties within constructors for classes that are not defined
+    // within the Deno namespace.
+    internals.future = future;
 
-  ObjectDefineProperties(finalDenoNs, {
-    pid: core.propGetterOnly(opPid),
-    noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
-    args: core.propGetterOnly(opArgs),
-    // TODO(kt3k): Remove this export at v2
-    // See https://github.com/denoland/deno/issues/9294
-    customInspect: {
-      get() {
-        warnOnDeprecatedApi(
-          "Deno.customInspect",
-          new Error().stack,
-          'Use `Symbol.for("Deno.customInspect")` instead.',
-        );
-        return customInspect;
-      },
-    },
-  });
-  // Setup `Deno` global - we're actually overriding already
-  // existing global `Deno` with `Deno` namespace from "./deno.ts".
-  ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
+    deprecatedApiWarningDisabled = shouldDisableDeprecatedApiWarning;
+    verboseDeprecatedApiWarning = shouldUseVerboseDeprecatedApiWarning;
+    performance.setTimeOrigin(DateNow());
+    globalThis_ = globalThis;
 
-  const workerMetadata = maybeWorkerMetadata
-    ? messagePort.deserializeJsMessageData(maybeWorkerMetadata)
-    : undefined;
+    // Remove bootstrapping data from the global scope
+    delete globalThis.__bootstrap;
+    delete globalThis.bootstrap;
+    hasBootstrapped = true;
 
-  if (nodeBootstrap) {
-    nodeBootstrap(
-      hasNodeModulesDir,
-      argv0,
-      /* runningOnMainThread */ false,
-      workerMetadata,
+    exposeUnstableFeaturesForWindowOrWorkerGlobalScope({
+      unstableFlag,
+      unstableFeatures,
+    });
+    ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
+    ObjectDefineProperties(globalThis, {
+      name: core.propWritable(name),
+      // TODO(bartlomieju): should be readonly?
+      close: core.propNonEnumerable(workerClose),
+      postMessage: core.propWritable(postMessage),
+    });
+    if (enableTestingFeaturesFlag) {
+      ObjectDefineProperty(
+        globalThis,
+        "importScripts",
+        core.propWritable(importScripts),
+      );
+    }
+    ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
+
+    const consoleFromDeno = globalThis.console;
+    core.wrapConsole(consoleFromDeno, core.v8Console);
+
+    event.defineEventHandler(self, "message");
+    event.defineEventHandler(self, "error", undefined, true);
+
+    // `Deno.exit()` is an alias to `self.close()`. Setting and exit
+    // code using an op in worker context is a no-op.
+    os.setExitHandler((_exitCode) => {
+      workerClose();
+    });
+
+    runtimeStart(
+      denoVersion,
+      v8Version,
+      tsVersion,
+      target,
+      internalName ?? name,
     );
+
+    location.setLocationHref(location_);
+
+    globalThis.pollForMessages = pollForMessages;
+    globalThis.hasMessageEventListener = hasMessageEventListener;
+
+    // TODO(bartlomieju): deprecate --unstable
+    if (unstableFlag) {
+      ObjectAssign(finalDenoNs, denoNsUnstable);
+    } else {
+      for (let i = 0; i <= unstableFeatures.length; i++) {
+        const id = unstableFeatures[i];
+        ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+      }
+    }
+
+    // Not available in workers
+    delete finalDenoNs.mainModule;
+
+    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
+      // Removes the `__proto__` for security reasons.
+      // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+      delete Object.prototype.__proto__;
+    }
+
+    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
+      // Removes the `Temporal` API.
+      delete globalThis.Temporal;
+      delete globalThis.Date.prototype.toTemporalInstant;
+    }
+
+    // Setup `Deno` global - we're actually overriding already existing global
+    // `Deno` with `Deno` namespace from "./deno.ts".
+    ObjectDefineProperty(globalThis, "Deno", core.propReadOnly(finalDenoNs));
+
+    const workerMetadata = maybeWorkerMetadata
+      ? messagePort.deserializeJsMessageData(maybeWorkerMetadata)
+      : undefined;
+
+    if (nodeBootstrap) {
+      nodeBootstrap({
+        usesLocalNodeModulesDir: hasNodeModulesDir,
+        runningOnMainThread: false,
+        argv0,
+        workerId,
+        maybeWorkerMetadata: workerMetadata,
+        nodeDebug,
+      });
+    }
+
+    if (future) {
+      delete Deno.Buffer;
+      delete Deno.close;
+      delete Deno.copy;
+      delete Deno.File;
+      delete Deno.fstat;
+      delete Deno.fstatSync;
+      delete Deno.ftruncate;
+      delete Deno.ftruncateSync;
+      delete Deno.flock;
+      delete Deno.flockSync;
+      delete Deno.FsFile.prototype.rid;
+      delete Deno.funlock;
+      delete Deno.funlockSync;
+      delete Deno.iter;
+      delete Deno.iterSync;
+      delete Deno.metrics;
+      delete Deno.readAll;
+      delete Deno.readAllSync;
+      delete Deno.read;
+      delete Deno.readSync;
+      delete Deno.resources;
+      delete Deno.seek;
+      delete Deno.seekSync;
+      delete Deno.shutdown;
+      delete Deno.writeAll;
+      delete Deno.writeAllSync;
+      delete Deno.write;
+      delete Deno.writeSync;
+    }
+  } else {
+    // Warmup
+    return;
   }
 }
+
+const nodeBootstrap = globalThis.nodeBootstrap;
+delete globalThis.nodeBootstrap;
+const dispatchProcessExitEvent = internals.dispatchProcessExitEvent;
+delete internals.dispatchProcessExitEvent;
+const dispatchProcessBeforeExitEvent = internals.dispatchProcessBeforeExitEvent;
+delete internals.dispatchProcessBeforeExitEvent;
 
 globalThis.bootstrap = {
   mainRuntime: bootstrapMainRuntime,
   workerRuntime: bootstrapWorkerRuntime,
+  dispatchLoadEvent,
+  dispatchUnloadEvent,
+  dispatchBeforeUnloadEvent,
+  dispatchProcessExitEvent,
+  dispatchProcessBeforeExitEvent,
 };
+
+event.setEventTargetData(globalThis);
+event.saveGlobalThisReference(globalThis);
+event.defineEventHandler(globalThis, "unhandledrejection");
+
+// Nothing listens to this, but it warms up the code paths for event dispatch
+(new event.EventTarget()).dispatchEvent(new Event("warmup"));
+
+removeImportedOps();
+
+// Run the warmup path through node and runtime/worker bootstrap functions
+bootstrapMainRuntime(undefined, true);
+bootstrapWorkerRuntime(
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  undefined,
+  true,
+);
+nodeBootstrap({ warmup: true });

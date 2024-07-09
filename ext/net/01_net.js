@@ -100,6 +100,12 @@ class Conn {
   #writable;
 
   constructor(rid, remoteAddr, localAddr) {
+    if (internals.future) {
+      ObjectDefineProperty(this, "rid", {
+        enumerable: false,
+        value: undefined,
+      });
+    }
     ObjectDefineProperty(this, internalRidSymbol, {
       enumerable: false,
       value: rid,
@@ -260,6 +266,12 @@ class Listener {
   #promise = null;
 
   constructor(rid, addr) {
+    if (internals.future) {
+      ObjectDefineProperty(this, "rid", {
+        enumerable: false,
+        value: undefined,
+      });
+    }
     ObjectDefineProperty(this, internalRidSymbol, {
       enumerable: false,
       value: rid,
@@ -360,7 +372,7 @@ class Listener {
   }
 }
 
-class Datagram {
+class DatagramConn {
   #rid = 0;
   #addr = null;
   #unref = false;
@@ -553,7 +565,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
           args.loopback ?? false,
         );
         addr.transport = "udp";
-        return new Datagram(rid, addr);
+        return new DatagramConn(rid, addr);
       }
       case "unixpacket": {
         const { 0: rid, 1: path } = unixOpFn(args.path);
@@ -561,7 +573,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
           transport: "unixpacket",
           path,
         };
-        return new Datagram(rid, addr);
+        return new DatagramConn(rid, addr);
       }
       default:
         throw new TypeError(`Unsupported transport: '${transport}'`);

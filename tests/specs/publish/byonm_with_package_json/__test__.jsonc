@@ -1,0 +1,13 @@
+{
+  "envs": {
+    "DENO_FUTURE": "1"
+  },
+  "tempDir": true,
+  "steps": [{
+    "args": "install",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "publish --log-level=debug --dry-run --allow-dirty",
+    "output": "publish.out"
+  }]
+}

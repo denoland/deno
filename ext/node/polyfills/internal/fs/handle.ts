@@ -28,27 +28,27 @@ export class FileHandle extends EventEmitter {
   #rid: number;
   constructor(rid: number) {
     super();
-    this.rid = rid;
+    this.#rid = rid;
   }
 
   get fd() {
-    return this.rid;
+    return this.#rid;
   }
 
   read(
-    buffer: Buffer,
+    buffer: Uint8Array,
     offset?: number,
     length?: number,
     position?: number | null,
   ): Promise<ReadResult>;
   read(options?: ReadOptions): Promise<ReadResult>;
   read(
-    bufferOrOpt: Buffer | ReadOptions,
+    bufferOrOpt: Uint8Array | ReadOptions,
     offset?: number,
     length?: number,
     position?: number | null,
   ): Promise<ReadResult> {
-    if (bufferOrOpt instanceof Buffer) {
+    if (bufferOrOpt instanceof Uint8Array) {
       return new Promise((resolve, reject) => {
         read(
           this.fd,
@@ -90,12 +90,12 @@ export class FileHandle extends EventEmitter {
     encoding: string,
   ): Promise<WriteResult>;
   write(
-    bufferOrStr: Buffer | string,
+    bufferOrStr: Uint8Array | string,
     offsetOrPosition: number,
     lengthOrEncoding: number | string,
     position?: number,
   ): Promise<WriteResult> {
-    if (bufferOrStr instanceof Buffer) {
+    if (bufferOrStr instanceof Uint8Array) {
       const buffer = bufferOrStr;
       const offset = offsetOrPosition;
       const length = lengthOrEncoding;

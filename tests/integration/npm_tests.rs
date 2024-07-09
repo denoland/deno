@@ -3,39 +3,17 @@
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_fetch::reqwest;
 use pretty_assertions::assert_eq;
 use test_util as util;
 use test_util::itest;
+use url::Url;
 use util::assert_contains;
 use util::env_vars_for_npm_tests;
 use util::http_server;
 use util::TestContextBuilder;
 
 // NOTE: See how to make test npm packages at ./testdata/npm/README.md
-
-itest!(es_module {
-  args: "run --allow-read --allow-env npm/esm/main.js",
-  output: "npm/esm/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(es_module_eval {
-  args_vec: vec![
-    "eval",
-    "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk esm loads'));",
-  ],
-  output: "npm/esm/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(es_module_deno_test {
-  args: "test --allow-read --allow-env npm/esm/test.js",
-  output: "npm/esm/test.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
 
 itest!(esm_import_cjs_default {
   args: "run --allow-read --allow-env --quiet --check=all npm/esm_import_cjs_default/main.ts",
@@ -128,22 +106,6 @@ itest!(compare_globals {
   output: "npm/compare_globals/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
-});
-
-itest!(conditional_exports {
-  args: "run --allow-read npm/conditional_exports/main.js",
-  output: "npm/conditional_exports/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
-itest!(conditional_exports_node_modules_dir {
-  args:
-    "run --allow-read --node-modules-dir $TESTDATA/npm/conditional_exports/main.js",
-  output: "npm/conditional_exports/main_node_modules.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  temp_cwd: true,
 });
 
 itest!(dual_cjs_esm {
@@ -252,19 +214,11 @@ itest!(cached_only {
 });
 
 itest!(import_map {
-    args: "run --allow-read --allow-env --import-map npm/import_map/import_map.json npm/import_map/main.js",
-    output: "npm/import_map/main.out",
-    envs: env_vars_for_npm_tests(),
-    http_server: true,
-  });
-
-itest!(lock_file_integrity_failure {
-    args: "run --allow-read --allow-env --lock npm/lock_file/lock.json npm/lock_file/main.js",
-    output: "npm/lock_file/main.out",
-    envs: env_vars_for_npm_tests(),
-    http_server: true,
-    exit_code: 10,
-  });
+  args: "run --allow-read --allow-env --import-map npm/import_map/import_map.json npm/import_map/main.js",
+  output: "npm/import_map/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
 
 itest!(sub_paths {
   args: "run -A --quiet npm/sub_paths/main.jsx",
@@ -959,9 +913,7 @@ fn node_modules_dir_cache() {
   let package_global_cache_dir = deno_dir
     .path()
     .join("npm")
-    .join("localhost_4545")
-    .join("npm")
-    .join("registry")
+    .join("localhost_4260")
     .join("@denotest")
     .join("dual-cjs-esm")
     .join("1.0.0");
@@ -991,7 +943,7 @@ fn node_modules_dir_cache() {
 #[test]
 fn ensure_registry_files_local() {
   // ensures the registry files all point at local tarballs
-  let registry_dir_path = util::testdata_path().join("npm").join("registry");
+  let registry_dir_path = util::tests_path().join("registry").join("npm");
   for entry in std::fs::read_dir(&registry_dir_path).unwrap() {
     let entry = entry.unwrap();
     if entry.metadata().unwrap().is_dir() {
@@ -1010,14 +962,6 @@ fn ensure_registry_files_local() {
     }
   }
 }
-
-itest!(bundle_errors {
-  args: "bundle --quiet npm/esm/main.js",
-  output_str: Some("error: npm specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: npm:/chalk@5.0.1\n"),
-  exit_code: 1,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
 
 itest!(info_chalk_display {
   args: "info --quiet npm/cjs_with_deps/main.js",
@@ -1555,7 +1499,7 @@ fn auto_discover_lock_file() {
     .run();
   output
     .assert_matches_text(
-r#"Download http://localhost:4545/npm/registry/@denotest/bin
+r#"Download http://localhost:4260/@denotest/bin
 error: Integrity check failed for package: "npm:@denotest/bin@1.0.0". Unable to verify that the package
 is the same as when the lockfile was generated.
 
@@ -1566,7 +1510,7 @@ This could be caused by:
   * the lock file may be corrupt
   * the source itself may be corrupt
 
-Use "--lock-write" flag to regenerate the lockfile at "[WILDCARD]deno.lock".
+Use the --lock-write flag to regenerate the lockfile at "[WILDCARD]deno.lock".
 "#)
     .assert_exit_code(10);
 }
@@ -1594,9 +1538,7 @@ fn peer_deps_with_copied_folders_and_lockfile() {
   let grandchild_path = deno_dir
     .path()
     .join("npm")
-    .join("localhost_4545")
-    .join("npm")
-    .join("registry")
+    .join("localhost_4260")
     .join("@denotest")
     .join("peer-dep-test-grandchild");
   assert!(grandchild_path.join("1.0.0").exists());
@@ -1710,8 +1652,8 @@ itest!(non_existent_dep {
   exit_code: 1,
   output_str: Some(concat!(
     "[UNORDERED_START]\n",
-    "Download http://localhost:4545/npm/registry/@denotest/non-existent-dep\n",
-    "Download http://localhost:4545/npm/registry/@denotest/non-existent\n",
+    "Download http://localhost:4260/@denotest/non-existent-dep\n",
+    "Download http://localhost:4260/@denotest/non-existent\n",
     "[UNORDERED_END]\n",
     "error: npm package '@denotest/non-existent' does not exist.\n"
   )),
@@ -1724,14 +1666,8 @@ itest!(non_existent_dep_version {
   exit_code: 1,
   output_str: Some(concat!(
     "[UNORDERED_START]\n",
-    "Download http://localhost:4545/npm/registry/@denotest/non-existent-dep-version\n",
-    "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-    "[UNORDERED_END]\n",
-    // does two downloads because when failing once it max tries to
-    // get the latest version a second time
-    "[UNORDERED_START]\n",
-    "Download http://localhost:4545/npm/registry/@denotest/non-existent-dep-version\n",
-    "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+    "Download http://localhost:4260/@denotest/non-existent-dep-version\n",
+    "Download http://localhost:4260/@denotest/esm-basic\n",
     "[UNORDERED_END]\n",
     "error: Could not find npm package '@denotest/esm-basic' matching '=99.99.99'.\n"
   )),
@@ -1756,7 +1692,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
     version: &str,
   ) {
     let registry_json_path =
-      format!("npm/localhost_4545/npm/registry/{}/registry.json", package);
+      format!("npm/localhost_4260/{}/registry.json", package);
     let mut registry_json: Value =
       serde_json::from_str(&deno_dir.read_to_string(&registry_json_path))
         .unwrap();
@@ -1793,12 +1729,12 @@ fn reload_info_not_found_cache_but_exists_remote() {
     .run();
   output.assert_matches_text(concat!(
     "[UNORDERED_START]\n",
-    "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-    "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
-    "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
-    "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export/1.0.0.tgz\n",
-    "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
-    "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default/1.0.0.tgz\n",
+    "Download http://localhost:4260/@denotest/esm-basic\n",
+    "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
+    "Download http://localhost:4260/@denotest/cjs-default-export\n",
+    "Download http://localhost:4260/@denotest/cjs-default-export/1.0.0.tgz\n",
+    "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
+    "Download http://localhost:4260/@denotest/esm-import-cjs-default/1.0.0.tgz\n",
     "[UNORDERED_END]\n",
   ));
 
@@ -1823,8 +1759,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest/cjs-default-export\n",
       "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
@@ -1855,8 +1791,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest/cjs-default-export\n",
       "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
@@ -1886,6 +1822,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
       .run();
     output.assert_matches_text(concat!(
       "error: Could not find npm package '@denotest/esm-import-cjs-default' matching '1.0.0'.\n",
+      "    at file:///[WILDCARD]/main.ts:1:8\n",
     ));
     output.assert_exit_code(1);
 
@@ -1893,8 +1830,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest/cjs-default-export\n",
       "[UNORDERED_END]\n",
       "[UNORDERED_START]\n",
       "Initialize @denotest/cjs-default-export@1.0.0\n",
@@ -1930,9 +1867,9 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
-      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest/esm-basic\n",
+      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest/cjs-default-export\n",
       "[UNORDERED_END]\n",
       "Initialize @denotest/esm-basic@1.0.0\n",
       "Node esm importing node cjs\n[WILDCARD]",
@@ -1968,9 +1905,9 @@ fn reload_info_not_found_cache_but_exists_remote() {
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
       "[UNORDERED_START]\n",
-      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4260/@denotest/cjs-default-export\n",
+      "Download http://localhost:4260/@denotest/esm-basic\n",
+      "Download http://localhost:4260/@denotest/esm-import-cjs-default\n",
       "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
@@ -2149,13 +2086,11 @@ fn top_level_install_package_json_explicit_opt_in() {
 
   temp_dir.write("main.ts", "console.log(5);");
   let output = test_context.new_command().args("cache main.ts").run();
-  output.assert_matches_text(
-    concat!(
-      "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
-      "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
-      "Initialize @denotest/esm-basic@1.0.0\n",
-    )
-  );
+  output.assert_matches_text(concat!(
+    "Download http://localhost:4260/@denotest/esm-basic\n",
+    "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
+    "Initialize @denotest/esm-basic@1.0.0\n",
+  ));
 
   rm_created_files();
   let output = test_context
@@ -2320,7 +2255,92 @@ console.log(getKind());
     .args("run --allow-read chalk.ts")
     .run();
   output.assert_matches_text(
-    r#"error: Could not find a matching package for 'npm:chalk@5' in '[WILDCARD]package.json'. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.
+    r#"error: Could not find a matching package for 'npm:chalk@5' in a package.json file. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.
+    at file:///[WILDCARD]chalk.ts:1:19
+"#);
+  output.assert_exit_code(1);
+}
+
+#[test]
+fn future_byonm_cjs_esm_packages() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_FUTURE", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
+
+  test_context.run_npm("init -y");
+  test_context.run_npm("install @denotest/esm-basic @denotest/cjs-default-export @denotest/dual-cjs-esm chalk@4 chai@4.3");
+
+  dir.write(
+    "main.ts",
+    r#"
+import { getValue, setValue } from "@denotest/esm-basic";
+
+setValue(2);
+console.log(getValue());
+
+import cjsDefault from "@denotest/cjs-default-export";
+console.log(cjsDefault.default());
+console.log(cjsDefault.named());
+
+import { getKind } from "@denotest/dual-cjs-esm";
+console.log(getKind());
+
+
+"#,
+  );
+  let output = test_context.new_command().args("run --check main.ts").run();
+  output
+    .assert_matches_text("Check file:///[WILDCARD]/main.ts\n2\n1\n2\nesm\n");
+
+  // should not have created the .deno directory
+  assert!(!dir.path().join("node_modules/.deno").exists());
+
+  // try chai
+  dir.write(
+    "chai.ts",
+    r#"import { expect } from "chai";
+
+    const timeout = setTimeout(() => {}, 0);
+    expect(timeout).to.be.a("number");
+    clearTimeout(timeout);"#,
+  );
+  test_context.new_command().args("run chai.ts").run();
+
+  // try chalk cjs
+  dir.write(
+    "chalk.ts",
+    "import chalk from 'chalk'; console.log(chalk.green('chalk cjs loads'));",
+  );
+  let output = test_context
+    .new_command()
+    .args("run --allow-read chalk.ts")
+    .run();
+  output.assert_matches_text("chalk cjs loads\n");
+
+  // try using an npm specifier for chalk that matches the version we installed
+  dir.write(
+    "chalk.ts",
+    "import chalk from 'npm:chalk@4'; console.log(chalk.green('chalk cjs loads'));",
+  );
+  let output = test_context
+    .new_command()
+    .args("run --allow-read chalk.ts")
+    .run();
+  output.assert_matches_text("chalk cjs loads\n");
+
+  // try with one that doesn't match the package.json
+  dir.write(
+    "chalk.ts",
+    "import chalk from 'npm:chalk@5'; console.log(chalk.green('chalk cjs loads'));",
+  );
+  let output = test_context
+    .new_command()
+    .args("run --allow-read chalk.ts")
+    .run();
+  output.assert_matches_text(
+    r#"error: Could not find a matching package for 'npm:chalk@5' in a package.json file. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.
     at file:///[WILDCARD]chalk.ts:1:19
 "#);
   output.assert_exit_code(1);
@@ -2337,6 +2357,52 @@ fn byonm_import_map() {
       "basic": "npm:@denotest/esm-basic"
     },
     "unstable": [ "byonm" ]
+}"#,
+  );
+  dir.write(
+    "package.json",
+    r#"{
+    "name": "my-project",
+    "version": "1.0.0",
+    "type": "module",
+    "dependencies": {
+      "@denotest/esm-basic": "^1.0"
+    }
+}"#,
+  );
+  test_context.run_npm("install");
+
+  dir.write(
+    "main.ts",
+    r#"
+// import map should resolve
+import { getValue } from "basic";
+// and resolving via node resolution
+import { setValue } from "@denotest/esm-basic";
+
+setValue(5);
+console.log(getValue());
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("5\n");
+  let output = test_context.new_command().args("check main.ts").run();
+  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
+}
+
+#[test]
+fn future_byonm_import_map() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_FUTURE", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
+  dir.write(
+    "deno.json",
+    r#"{
+    "imports": {
+      "basic": "npm:@denotest/esm-basic"
+    }
 }"#,
   );
   dir.write(
@@ -2415,6 +2481,50 @@ fn byonm_package_specifier_not_installed_and_invalid_subpath() {
 }
 
 #[test]
+fn future_byonm_package_specifier_not_installed_and_invalid_subpath() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_FUTURE", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
+  dir.path().join("package.json").write_json(&json!({
+    "dependencies": {
+      "chalk": "4",
+      "@denotest/conditional-exports-strict": "1"
+    }
+  }));
+  dir.write(
+    "main.ts",
+    "import chalk from 'chalk'; console.log(chalk.green('hi'));",
+  );
+
+  // no npm install has been run, so this should give an informative error
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: Could not resolve "chalk", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
+    at file:///[WILDCARD]/main.ts:1:19
+"#,
+  );
+  output.assert_exit_code(1);
+
+  // now test for an invalid sub path after doing an npm install
+  dir.write(
+    "main.ts",
+    "import '@denotest/conditional-exports-strict/test';",
+  );
+
+  test_context.run_npm("install");
+
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDCARD]' imported from '[WILDCARD]main.ts'
+    at file:///[WILDCARD]/main.ts:1:8
+"#,
+  );
+  output.assert_exit_code(1);
+}
+
+#[test]
 fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
   let test_context = TestContextBuilder::for_npm()
     .env("DENO_UNSTABLE_BYONM", "1")
@@ -2435,7 +2545,7 @@ fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
   // no npm install has been run, so this should give an informative error
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text(
-    r#"error: Could not find '[WILDCARD]package.json'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
+    r#"error: Could not find "chalk" in a node_modules folder. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
     at file:///[WILDCARD]/main.ts:1:19
 "#,
   );
@@ -2451,8 +2561,52 @@ fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
 
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text(
-    r#"error: Failed resolving package subpath './test' for '[WILDCARD]package.json'
-    at file:///[WILDCARD]/main.ts:1:8
+    r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDLINE]package.json' imported from '[WILDLINE]main.ts'
+    at file:///[WILDLINE]/main.ts:1:8
+"#,
+  );
+  output.assert_exit_code(1);
+}
+
+#[test]
+fn future_byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_FUTURE", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
+  dir.path().join("package.json").write_json(&json!({
+    "dependencies": {
+      "chalk": "4",
+      "@denotest/conditional-exports-strict": "1"
+    }
+  }));
+  dir.write(
+    "main.ts",
+    "import chalk from 'npm:chalk'; console.log(chalk.green('hi'));",
+  );
+
+  // no npm install has been run, so this should give an informative error
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: Could not find "chalk" in a node_modules folder. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
+    at file:///[WILDCARD]/main.ts:1:19
+"#,
+  );
+  output.assert_exit_code(1);
+
+  // now test for an invalid sub path after doing an npm install
+  dir.write(
+    "main.ts",
+    "import 'npm:@denotest/conditional-exports-strict/test';",
+  );
+
+  test_context.run_npm("install");
+
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text(
+    r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDLINE]package.json' imported from '[WILDLINE]main.ts'
+    at file:///[WILDLINE]/main.ts:1:8
 "#,
   );
   output.assert_exit_code(1);
@@ -2463,6 +2617,108 @@ fn byonm_npm_workspaces() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let dir = test_context.temp_dir();
   dir.write("deno.json", r#"{ "unstable": [ "byonm" ] }"#);
+
+  dir.write(
+    "package.json",
+    r#"{
+  "name": "my-workspace",
+  "workspaces": [
+    "project-a",
+    "project-b"
+  ]
+}
+"#,
+  );
+
+  let project_a_dir = dir.path().join("project-a");
+  project_a_dir.create_dir_all();
+  project_a_dir.join("package.json").write_json(&json!({
+    "name": "project-a",
+    "version": "1.0.0",
+    "main": "./index.js",
+    "type": "module",
+    "dependencies": {
+      "chai": "^4.2",
+      "project-b": "^1"
+    }
+  }));
+  project_a_dir.join("index.js").write(
+    r#"
+import { expect } from "chai";
+
+const timeout = setTimeout(() => {}, 0);
+expect(timeout).to.be.a("number");
+clearTimeout(timeout);
+
+export function add(a, b) {
+  return a + b;
+}
+"#,
+  );
+  project_a_dir
+    .join("index.d.ts")
+    .write("export function add(a: number, b: number): number;");
+
+  let project_b_dir = dir.path().join("project-b");
+  project_b_dir.create_dir_all();
+  project_b_dir.join("package.json").write_json(&json!({
+    "name": "project-b",
+    "version": "1.0.0",
+    "type": "module",
+    "dependencies": {
+      "@denotest/esm-basic": "^1.0",
+    }
+  }));
+  project_b_dir.join("main.ts").write(
+    r#"
+import { getValue, setValue } from "@denotest/esm-basic";
+
+setValue(5);
+console.log(getValue());
+
+import { add } from "project-a";
+console.log(add(1, 2));
+"#,
+  );
+
+  test_context.run_npm("install");
+
+  let output = test_context
+    .new_command()
+    .args("run ./project-b/main.ts")
+    .run();
+  output.assert_matches_text("5\n3\n");
+  let output = test_context
+    .new_command()
+    .args("check ./project-b/main.ts")
+    .run();
+  output.assert_matches_text("Check file:///[WILDCARD]/project-b/main.ts\n");
+
+  // Now a file in the main directory should just be able to
+  // import it via node resolution even though a package.json
+  // doesn't exist here
+  dir.write(
+    "main.ts",
+    r#"
+import { getValue, setValue } from "@denotest/esm-basic";
+
+setValue(7);
+console.log(getValue());
+"#,
+  );
+  let output = test_context.new_command().args("run main.ts").run();
+  output.assert_matches_text("7\n");
+  let output = test_context.new_command().args("check main.ts").run();
+  output.assert_matches_text("Check file:///[WILDCARD]/main.ts\n");
+}
+
+#[test]
+fn future_byonm_npm_workspaces() {
+  let test_context = TestContextBuilder::for_npm()
+    .env("DENO_FUTURE", "1")
+    .use_temp_cwd()
+    .build();
+  let dir = test_context.temp_dir();
 
   dir.write(
     "package.json",
@@ -2713,7 +2969,8 @@ fn cjs_export_analysis_import_cjs_directly_relative_import() {
 }
 
 itest!(imports_package_json {
-  args: "run --node-modules-dir=false npm/imports_package_json/main.js",
+  args:
+    "run --no-lock --node-modules-dir=false npm/imports_package_json/main.js",
   output: "npm/imports_package_json/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
@@ -2721,7 +2978,7 @@ itest!(imports_package_json {
 
 itest!(imports_package_json_import_not_defined {
   args:
-    "run --node-modules-dir=false npm/imports_package_json/import_not_defined.js",
+    "run --no-lock --node-modules-dir=false npm/imports_package_json/import_not_defined.js",
   output: "npm/imports_package_json/import_not_defined.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 1,
@@ -2730,7 +2987,7 @@ itest!(imports_package_json_import_not_defined {
 
 itest!(imports_package_json_sub_path_import_not_defined {
   args:
-    "run --node-modules-dir=false npm/imports_package_json/sub_path_import_not_defined.js",
+    "run --no-lock --node-modules-dir=false npm/imports_package_json/sub_path_import_not_defined.js",
   output: "npm/imports_package_json/sub_path_import_not_defined.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 1,
@@ -2738,7 +2995,7 @@ itest!(imports_package_json_sub_path_import_not_defined {
 });
 
 itest!(different_nested_dep_node_modules_dir_false {
-  args: "run --quiet --node-modules-dir=false npm/different_nested_dep/main.js",
+  args: "run --quiet --no-lock --node-modules-dir=false npm/different_nested_dep/main.js",
   output: "npm/different_nested_dep/main.out",
   envs: env_vars_for_npm_tests(),
   exit_code: 0,
@@ -2746,7 +3003,7 @@ itest!(different_nested_dep_node_modules_dir_false {
 });
 
 itest!(different_nested_dep_node_modules_dir_true {
-  args: "run --quiet --node-modules-dir=true main.js",
+  args: "run --no-lock --quiet --node-modules-dir=true main.js",
   output: "npm/different_nested_dep/main.out",
   copy_temp_dir: Some("npm/different_nested_dep/"),
   cwd: Some("npm/different_nested_dep/"),
@@ -2772,6 +3029,23 @@ fn different_nested_dep_byonm() {
 }
 
 #[test]
+fn different_nested_dep_byonm_future() {
+  let test_context = TestContextBuilder::for_npm()
+    .use_copy_temp_dir("npm/different_nested_dep")
+    .cwd("npm/different_nested_dep/")
+    .build();
+
+  test_context.run_npm("install");
+
+  let output = test_context
+    .new_command()
+    .args("run main.js")
+    .env("DENO_FUTURE", "1")
+    .run();
+  output.assert_matches_file("npm/different_nested_dep/main.out");
+}
+
+#[test]
 fn run_cjs_in_node_modules_folder() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
@@ -2790,4 +3064,28 @@ fn run_cjs_in_node_modules_folder() {
     .args("run node_modules/package/main.js")
     .run()
     .assert_matches_text("hi\n");
+}
+
+#[tokio::test]
+async fn test_private_npm_registry() {
+  let _server = http_server();
+
+  // For now just check that private server rejects requests without proper
+  // auth header.
+
+  let client = reqwest::Client::new();
+
+  let url = Url::parse("http://127.0.0.1:4261/@denotest/basic").unwrap();
+
+  let req = reqwest::Request::new(reqwest::Method::GET, url.clone());
+  let resp = client.execute(req).await.unwrap();
+  assert_eq!(resp.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+  let mut req = reqwest::Request::new(reqwest::Method::GET, url.clone());
+  req.headers_mut().insert(
+    reqwest::header::AUTHORIZATION,
+    reqwest::header::HeaderValue::from_static("Bearer private-reg-token"),
+  );
+  let resp = client.execute(req).await.unwrap();
+  assert_eq!(resp.status(), reqwest::StatusCode::OK);
 }

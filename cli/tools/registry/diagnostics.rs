@@ -15,11 +15,13 @@ use deno_ast::diagnostics::DiagnosticSourcePos;
 use deno_ast::diagnostics::DiagnosticSourceRange;
 use deno_ast::swc::common::util::take::Take;
 use deno_ast::SourcePos;
+use deno_ast::SourceRange;
 use deno_ast::SourceRanged;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_graph::FastCheckDiagnostic;
+use deno_semver::Version;
 use lsp_types::Url;
 
 use super::unfurl::SpecifierUnfurlerDiagnostic;
@@ -38,7 +40,7 @@ impl PublishDiagnosticsCollector {
     diagnostics.sort_by_cached_key(|d| d.sorting_key());
 
     for diagnostic in diagnostics {
-      eprint!("{}", diagnostic.display());
+      log::error!("{}", diagnostic.display());
       if matches!(diagnostic.level(), DiagnosticLevel::Error) {
         errors += 1;
       }
@@ -48,18 +50,18 @@ impl PublishDiagnosticsCollector {
     }
     if errors > 0 {
       if has_slow_types_errors {
-        eprintln!(
+        log::error!(
           "This package contains errors for slow types. Fixing these errors will:\n"
         );
-        eprintln!(
+        log::error!(
           "  1. Significantly improve your package users' type checking performance."
         );
-        eprintln!("  2. Improve the automatic documentation generation.");
-        eprintln!("  3. Enable automatic .d.ts generation for Node.js.");
-        eprintln!(
+        log::error!("  2. Improve the automatic documentation generation.");
+        log::error!("  3. Enable automatic .d.ts generation for Node.js.");
+        log::error!(
           "\nDon't want to bother? You can choose to skip this step by"
         );
-        eprintln!("providing the --allow-slow-types flag.\n");
+        log::error!("providing the --allow-slow-types flag.\n");
       }
 
       Err(anyhow!(
@@ -99,6 +101,21 @@ pub enum PublishDiagnostic {
   },
   UnsupportedJsxTsx {
     specifier: Url,
+  },
+  ExcludedModule {
+    specifier: Url,
+  },
+  MissingConstraint {
+    specifier: Url,
+    specifier_text: String,
+    resolved_version: Option<Version>,
+    text_info: SourceTextInfo,
+    referrer: deno_graph::Range,
+  },
+  BannedTripleSlashDirectives {
+    specifier: Url,
+    text_info: SourceTextInfo,
+    range: SourceRange,
   },
 }
 
@@ -145,6 +162,9 @@ impl Diagnostic for PublishDiagnostic {
       UnsupportedFileType { .. } => DiagnosticLevel::Warning,
       InvalidExternalImport { .. } => DiagnosticLevel::Error,
       UnsupportedJsxTsx { .. } => DiagnosticLevel::Warning,
+      ExcludedModule { .. } => DiagnosticLevel::Error,
+      MissingConstraint { .. } => DiagnosticLevel::Error,
+      BannedTripleSlashDirectives { .. } => DiagnosticLevel::Error,
     }
   }
 
@@ -158,6 +178,11 @@ impl Diagnostic for PublishDiagnostic {
       UnsupportedFileType { .. } => Cow::Borrowed("unsupported-file-type"),
       InvalidExternalImport { .. } => Cow::Borrowed("invalid-external-import"),
       UnsupportedJsxTsx { .. } => Cow::Borrowed("unsupported-jsx-tsx"),
+      ExcludedModule { .. } => Cow::Borrowed("excluded-module"),
+      MissingConstraint { .. } => Cow::Borrowed("missing-constraint"),
+      BannedTripleSlashDirectives { .. } => {
+        Cow::Borrowed("banned-triple-slash-directives")
+      }
     }
   }
 
@@ -175,10 +200,27 @@ impl Diagnostic for PublishDiagnostic {
       }
       InvalidExternalImport { kind, .. } => Cow::Owned(format!("invalid import to a {kind} specifier")),
       UnsupportedJsxTsx { .. } => Cow::Borrowed("JSX and TSX files are currently not supported"),
+      ExcludedModule { .. } => Cow::Borrowed("module in package's module graph was excluded from publishing"),
+      MissingConstraint { specifier, .. } => Cow::Owned(format!("specifier '{}' is missing a version constraint", specifier)),
+      BannedTripleSlashDirectives { .. } => Cow::Borrowed("triple slash directives that modify globals are not allowed"),
     }
   }
 
   fn location(&self) -> DiagnosticLocation {
+    fn from_referrer_range<'a>(
+      referrer: &'a deno_graph::Range,
+      text_info: &'a SourceTextInfo,
+    ) -> DiagnosticLocation<'a> {
+      DiagnosticLocation::ModulePosition {
+        specifier: Cow::Borrowed(&referrer.specifier),
+        text_info: Cow::Borrowed(text_info),
+        source_pos: DiagnosticSourcePos::LineAndCol {
+          line: referrer.start.line,
+          column: referrer.start.character,
+        },
+      }
+    }
+
     use PublishDiagnostic::*;
     match &self {
       FastCheck(diagnostic) => diagnostic.location(),
@@ -206,50 +248,42 @@ impl Diagnostic for PublishDiagnostic {
         referrer,
         text_info,
         ..
-      } => DiagnosticLocation::ModulePosition {
-        specifier: Cow::Borrowed(&referrer.specifier),
-        text_info: Cow::Borrowed(text_info),
-        source_pos: DiagnosticSourcePos::LineAndCol {
-          line: referrer.start.line,
-          column: referrer.start.character,
-        },
-      },
+      } => from_referrer_range(referrer, text_info),
       UnsupportedJsxTsx { specifier } => DiagnosticLocation::Module {
         specifier: Cow::Borrowed(specifier),
+      },
+      ExcludedModule { specifier } => DiagnosticLocation::Module {
+        specifier: Cow::Borrowed(specifier),
+      },
+      MissingConstraint {
+        referrer,
+        text_info,
+        ..
+      } => from_referrer_range(referrer, text_info),
+      BannedTripleSlashDirectives {
+        specifier,
+        range,
+        text_info,
+      } => DiagnosticLocation::ModulePosition {
+        specifier: Cow::Borrowed(specifier),
+        source_pos: DiagnosticSourcePos::SourcePos(range.start),
+        text_info: Cow::Borrowed(text_info),
       },
     }
   }
 
   fn snippet(&self) -> Option<DiagnosticSnippet<'_>> {
-    match &self {
-      PublishDiagnostic::FastCheck(diagnostic) => diagnostic.snippet(),
-      PublishDiagnostic::SpecifierUnfurl(diagnostic) => match diagnostic {
-        SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport {
-          text_info,
-          range,
-          ..
-        } => Some(DiagnosticSnippet {
-          source: Cow::Borrowed(text_info),
-          highlight: DiagnosticSnippetHighlight {
-            style: DiagnosticSnippetHighlightStyle::Warning,
-            range: DiagnosticSourceRange {
-              start: DiagnosticSourcePos::SourcePos(range.start),
-              end: DiagnosticSourcePos::SourcePos(range.end),
-            },
-            description: Some("the unanalyzable dynamic import".into()),
-          },
-        }),
-      },
-      PublishDiagnostic::InvalidPath { .. } => None,
-      PublishDiagnostic::DuplicatePath { .. } => None,
-      PublishDiagnostic::UnsupportedFileType { .. } => None,
-      PublishDiagnostic::InvalidExternalImport {
-        referrer,
-        text_info,
-        ..
-      } => Some(DiagnosticSnippet {
+    fn from_range<'a>(
+      text_info: &'a SourceTextInfo,
+      referrer: &'a deno_graph::Range,
+    ) -> Option<DiagnosticSnippet<'a>> {
+      if referrer.start.line == 0 && referrer.start.character == 0 {
+        return None; // no range, probably a jsxImportSource import
+      }
+
+      Some(DiagnosticSnippet {
         source: Cow::Borrowed(text_info),
-        highlight: DiagnosticSnippetHighlight {
+        highlights: vec![DiagnosticSnippetHighlight {
           style: DiagnosticSnippetHighlightStyle::Error,
           range: DiagnosticSourceRange {
             start: DiagnosticSourcePos::LineAndCol {
@@ -262,33 +296,97 @@ impl Diagnostic for PublishDiagnostic {
             },
           },
           description: Some("the specifier".into()),
-        },
+        }],
+      })
+    }
+
+    use PublishDiagnostic::*;
+    match &self {
+      FastCheck(diagnostic) => diagnostic.snippet(),
+      SpecifierUnfurl(diagnostic) => match diagnostic {
+        SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport {
+          text_info,
+          range,
+          ..
+        } => Some(DiagnosticSnippet {
+          source: Cow::Borrowed(text_info),
+          highlights: vec![DiagnosticSnippetHighlight {
+            style: DiagnosticSnippetHighlightStyle::Warning,
+            range: DiagnosticSourceRange {
+              start: DiagnosticSourcePos::SourcePos(range.start),
+              end: DiagnosticSourcePos::SourcePos(range.end),
+            },
+            description: Some("the unanalyzable dynamic import".into()),
+          }],
+        }),
+      },
+      InvalidPath { .. } => None,
+      DuplicatePath { .. } => None,
+      UnsupportedFileType { .. } => None,
+      InvalidExternalImport {
+        referrer,
+        text_info,
+        ..
+      } => from_range(text_info, referrer),
+      UnsupportedJsxTsx { .. } => None,
+      ExcludedModule { .. } => None,
+      MissingConstraint {
+        referrer,
+        text_info,
+        ..
+      } => from_range(text_info, referrer),
+      BannedTripleSlashDirectives {
+        range, text_info, ..
+      } => Some(DiagnosticSnippet {
+        source: Cow::Borrowed(text_info),
+        highlights: vec![DiagnosticSnippetHighlight {
+          style: DiagnosticSnippetHighlightStyle::Error,
+          range: DiagnosticSourceRange {
+            start: DiagnosticSourcePos::SourcePos(range.start),
+            end: DiagnosticSourcePos::SourcePos(range.end),
+          },
+          description: Some("the triple slash directive".into()),
+        }],
       }),
-      PublishDiagnostic::UnsupportedJsxTsx { .. } => None,
     }
   }
 
   fn hint(&self) -> Option<Cow<'_, str>> {
+    use PublishDiagnostic::*;
     match &self {
-      PublishDiagnostic::FastCheck(diagnostic) => diagnostic.hint(),
-      PublishDiagnostic::SpecifierUnfurl(_) => None,
-      PublishDiagnostic::InvalidPath { .. } => Some(
+      FastCheck(diagnostic) => diagnostic.hint(),
+      SpecifierUnfurl(_) => None,
+      InvalidPath { .. } => Some(
         Cow::Borrowed("rename or remove the file, or add it to 'publish.exclude' in the config file"),
       ),
-      PublishDiagnostic::DuplicatePath { .. } => Some(
+      DuplicatePath { .. } => Some(
         Cow::Borrowed("rename or remove the file"),
       ),
-      PublishDiagnostic::UnsupportedFileType { .. } => Some(
+      UnsupportedFileType { .. } => Some(
         Cow::Borrowed("remove the file, or add it to 'publish.exclude' in the config file"),
       ),
-      PublishDiagnostic::InvalidExternalImport { .. } => Some(Cow::Borrowed("replace this import with one from jsr or npm, or vendor the dependency into your package")),
-      PublishDiagnostic::UnsupportedJsxTsx { .. } => None,
+      InvalidExternalImport { .. } => Some(Cow::Borrowed("replace this import with one from jsr or npm, or vendor the dependency into your package")),
+      UnsupportedJsxTsx { .. } => None,
+      ExcludedModule { .. } => Some(
+        Cow::Borrowed("remove the module from 'exclude' and/or 'publish.exclude' in the config file or use 'publish.exclude' with a negative glob to unexclude from gitignore"),
+      ),
+      MissingConstraint { specifier_text, .. } => {
+        Some(Cow::Borrowed(if specifier_text.starts_with("jsr:") || specifier_text.starts_with("npm:") {
+          "specify a version constraint for the specifier"
+        } else {
+          "specify a version constraint for the specifier in the import map"
+        }))
+      },
+      BannedTripleSlashDirectives { .. } => Some(
+        Cow::Borrowed("remove the triple slash directive"),
+      ),
     }
   }
 
   fn snippet_fixed(&self) -> Option<DiagnosticSnippet<'_>> {
+    use PublishDiagnostic::*;
     match &self {
-      PublishDiagnostic::InvalidExternalImport { imported, .. } => {
+      InvalidExternalImport { imported, .. } => {
         match super::api::get_jsr_alternative(imported) {
           Some(replacement) => {
             let replacement = SourceTextInfo::new(replacement.into());
@@ -296,14 +394,14 @@ impl Diagnostic for PublishDiagnostic {
             let end = replacement.line_end(0);
             Some(DiagnosticSnippet {
               source: Cow::Owned(replacement),
-              highlight: DiagnosticSnippetHighlight {
+              highlights: vec![DiagnosticSnippetHighlight {
                 style: DiagnosticSnippetHighlightStyle::Hint,
                 range: DiagnosticSourceRange {
                   start: DiagnosticSourcePos::SourcePos(start),
                   end: DiagnosticSourcePos::SourcePos(end),
                 },
                 description: Some("try this specifier".into()),
-              },
+              }],
             })
           }
           None => None,
@@ -314,57 +412,82 @@ impl Diagnostic for PublishDiagnostic {
   }
 
   fn info(&self) -> Cow<'_, [Cow<'_, str>]> {
+    use PublishDiagnostic::*;
     match &self {
-      PublishDiagnostic::FastCheck(diagnostic) => {
+      FastCheck(diagnostic) => {
         diagnostic.info()
       }
-      PublishDiagnostic::SpecifierUnfurl(diagnostic) => match diagnostic {
+      SpecifierUnfurl(diagnostic) => match diagnostic {
         SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. } => Cow::Borrowed(&[
           Cow::Borrowed("after publishing this package, imports from the local import map / package.json do not work"),
           Cow::Borrowed("dynamic imports that can not be analyzed at publish time will not be rewritten automatically"),
           Cow::Borrowed("make sure the dynamic import is resolvable at runtime without an import map / package.json")
         ]),
       },
-      PublishDiagnostic::InvalidPath { .. } => Cow::Borrowed(&[
+      InvalidPath { .. } => Cow::Borrowed(&[
         Cow::Borrowed("to portably support all platforms, including windows, the allowed characters in package paths are limited"),
       ]),
-      PublishDiagnostic::DuplicatePath { .. } => Cow::Borrowed(&[
+      DuplicatePath { .. } => Cow::Borrowed(&[
         Cow::Borrowed("to support case insensitive file systems, no two package paths may differ only by case"),
       ]),
-      PublishDiagnostic::UnsupportedFileType { .. } => Cow::Borrowed(&[
+      UnsupportedFileType { .. } => Cow::Borrowed(&[
         Cow::Borrowed("only files and directories are supported"),
         Cow::Borrowed("the file was ignored and will not be published")
       ]),
-      PublishDiagnostic::InvalidExternalImport { imported, .. } => Cow::Owned(vec![
+      InvalidExternalImport { imported, .. } => Cow::Owned(vec![
         Cow::Owned(format!("the import was resolved to '{}'", imported)),
         Cow::Borrowed("this specifier is not allowed to be imported on jsr"),
         Cow::Borrowed("jsr only supports importing `jsr:`, `npm:`, and `data:` specifiers"),
       ]),
-      PublishDiagnostic::UnsupportedJsxTsx { .. } => Cow::Owned(vec![
+      UnsupportedJsxTsx { .. } => Cow::Owned(vec![
         Cow::Borrowed("follow https://github.com/jsr-io/jsr/issues/24 for updates"),
-      ])
+      ]),
+      ExcludedModule { .. } => Cow::Owned(vec![
+        Cow::Borrowed("excluded modules referenced via a package export will error at runtime due to not existing in the package"),
+      ]),
+      MissingConstraint { resolved_version, .. } => Cow::Owned(vec![
+        Cow::Owned(format!(
+          "the specifier resolved to version {} today, but will resolve to a different",
+          resolved_version.as_ref().map(|v| v.to_string()).unwrap_or_else(|| "<unresolved>".to_string())),
+        ),
+        Cow::Borrowed("major version if one is published in the future and potentially break"),
+      ]),
+      BannedTripleSlashDirectives { .. } => Cow::Borrowed(&[
+        Cow::Borrowed("instead instruct the user of your package to specify these directives"),
+        Cow::Borrowed("or set their 'lib' compiler option appropriately"),
+      ]),
     }
   }
 
   fn docs_url(&self) -> Option<Cow<'_, str>> {
+    use PublishDiagnostic::*;
     match &self {
-      PublishDiagnostic::FastCheck(diagnostic) => diagnostic.docs_url(),
-      PublishDiagnostic::SpecifierUnfurl(diagnostic) => match diagnostic {
+      FastCheck(diagnostic) => diagnostic.docs_url(),
+      SpecifierUnfurl(diagnostic) => match diagnostic {
         SpecifierUnfurlerDiagnostic::UnanalyzableDynamicImport { .. } => None,
       },
-      PublishDiagnostic::InvalidPath { .. } => {
+      InvalidPath { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/invalid-path"))
       }
-      PublishDiagnostic::DuplicatePath { .. } => Some(Cow::Borrowed(
+      DuplicatePath { .. } => Some(Cow::Borrowed(
         "https://jsr.io/go/case-insensitive-duplicate-path",
       )),
-      PublishDiagnostic::UnsupportedFileType { .. } => {
+      UnsupportedFileType { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/unsupported-file-type"))
       }
-      PublishDiagnostic::InvalidExternalImport { .. } => {
+      InvalidExternalImport { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/invalid-external-import"))
       }
-      PublishDiagnostic::UnsupportedJsxTsx { .. } => None,
+      UnsupportedJsxTsx { .. } => None,
+      ExcludedModule { .. } => {
+        Some(Cow::Borrowed("https://jsr.io/go/excluded-module"))
+      }
+      MissingConstraint { .. } => {
+        Some(Cow::Borrowed("https://jsr.io/go/missing-constraint"))
+      }
+      BannedTripleSlashDirectives { .. } => Some(Cow::Borrowed(
+        "https://jsr.io/go/banned-triple-slash-directives",
+      )),
     }
   }
 }

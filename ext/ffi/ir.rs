@@ -1,17 +1,14 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::symbol::NativeType;
-use crate::MAX_SAFE_INTEGER;
-use crate::MIN_SAFE_INTEGER;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::serde_v8;
 use deno_core::v8;
 use libffi::middle::Arg;
 use std::ffi::c_void;
 use std::ptr;
 
-pub struct OutBuffer(pub *mut u8, pub usize);
+pub struct OutBuffer(pub *mut u8);
 
 // SAFETY: OutBuffer is allocated by us in 00_ffi.js and is guaranteed to be
 // only used for the purpose of writing return value of structs.
@@ -26,9 +23,8 @@ pub fn out_buffer_as_ptr(
   match out_buffer {
     Some(out_buffer) => {
       let ab = out_buffer.buffer(scope).unwrap();
-      let len = ab.byte_length();
       ab.data()
-        .map(|non_null| OutBuffer(non_null.as_ptr() as *mut u8, len))
+        .map(|non_null| OutBuffer(non_null.as_ptr() as *mut u8))
     }
     None => None,
   }
@@ -85,110 +81,41 @@ impl NativeValue {
     &self,
     scope: &mut v8::HandleScope<'scope>,
     native_type: NativeType,
-  ) -> serde_v8::Value<'scope> {
+  ) -> v8::Local<'scope, v8::Value> {
     match native_type {
-      NativeType::Void => {
-        let local_value: v8::Local<v8::Value> = v8::undefined(scope).into();
-        local_value.into()
-      }
-      NativeType::Bool => {
-        let local_value: v8::Local<v8::Value> =
-          v8::Boolean::new(scope, self.bool_value).into();
-        local_value.into()
-      }
+      NativeType::Void => v8::undefined(scope).into(),
+      NativeType::Bool => v8::Boolean::new(scope, self.bool_value).into(),
       NativeType::U8 => {
-        let local_value: v8::Local<v8::Value> =
-          v8::Integer::new_from_unsigned(scope, self.u8_value as u32).into();
-        local_value.into()
+        v8::Integer::new_from_unsigned(scope, self.u8_value as u32).into()
       }
-      NativeType::I8 => {
-        let local_value: v8::Local<v8::Value> =
-          v8::Integer::new(scope, self.i8_value as i32).into();
-        local_value.into()
-      }
+      NativeType::I8 => v8::Integer::new(scope, self.i8_value as i32).into(),
       NativeType::U16 => {
-        let local_value: v8::Local<v8::Value> =
-          v8::Integer::new_from_unsigned(scope, self.u16_value as u32).into();
-        local_value.into()
+        v8::Integer::new_from_unsigned(scope, self.u16_value as u32).into()
       }
-      NativeType::I16 => {
-        let local_value: v8::Local<v8::Value> =
-          v8::Integer::new(scope, self.i16_value as i32).into();
-        local_value.into()
-      }
+      NativeType::I16 => v8::Integer::new(scope, self.i16_value as i32).into(),
       NativeType::U32 => {
-        let local_value: v8::Local<v8::Value> =
-          v8::Integer::new_from_unsigned(scope, self.u32_value).into();
-        local_value.into()
+        v8::Integer::new_from_unsigned(scope, self.u32_value).into()
       }
-      NativeType::I32 => {
-        let local_value: v8::Local<v8::Value> =
-          v8::Integer::new(scope, self.i32_value).into();
-        local_value.into()
-      }
-      NativeType::U64 => {
-        let value = self.u64_value;
-        let local_value: v8::Local<v8::Value> =
-          if value > MAX_SAFE_INTEGER as u64 {
-            v8::BigInt::new_from_u64(scope, value).into()
-          } else {
-            v8::Number::new(scope, value as f64).into()
-          };
-        local_value.into()
-      }
-      NativeType::I64 => {
-        let value = self.i64_value;
-        let local_value: v8::Local<v8::Value> =
-          if value > MAX_SAFE_INTEGER as i64 || value < MIN_SAFE_INTEGER as i64
-          {
-            v8::BigInt::new_from_i64(scope, self.i64_value).into()
-          } else {
-            v8::Number::new(scope, value as f64).into()
-          };
-        local_value.into()
-      }
+      NativeType::I32 => v8::Integer::new(scope, self.i32_value).into(),
+      NativeType::U64 => v8::BigInt::new_from_u64(scope, self.u64_value).into(),
+      NativeType::I64 => v8::BigInt::new_from_i64(scope, self.i64_value).into(),
       NativeType::USize => {
-        let value = self.usize_value;
-        let local_value: v8::Local<v8::Value> =
-          if value > MAX_SAFE_INTEGER as usize {
-            v8::BigInt::new_from_u64(scope, value as u64).into()
-          } else {
-            v8::Number::new(scope, value as f64).into()
-          };
-        local_value.into()
+        v8::BigInt::new_from_u64(scope, self.usize_value as u64).into()
       }
       NativeType::ISize => {
-        let value = self.isize_value;
-        let local_value: v8::Local<v8::Value> =
-          if !(MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&value) {
-            v8::BigInt::new_from_i64(scope, self.isize_value as i64).into()
-          } else {
-            v8::Number::new(scope, value as f64).into()
-          };
-        local_value.into()
+        v8::BigInt::new_from_i64(scope, self.isize_value as i64).into()
       }
-      NativeType::F32 => {
-        let local_value: v8::Local<v8::Value> =
-          v8::Number::new(scope, self.f32_value as f64).into();
-        local_value.into()
-      }
-      NativeType::F64 => {
-        let local_value: v8::Local<v8::Value> =
-          v8::Number::new(scope, self.f64_value).into();
-        local_value.into()
-      }
+      NativeType::F32 => v8::Number::new(scope, self.f32_value as f64).into(),
+      NativeType::F64 => v8::Number::new(scope, self.f64_value).into(),
       NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
         let local_value: v8::Local<v8::Value> = if self.pointer.is_null() {
           v8::null(scope).into()
         } else {
           v8::External::new(scope, self.pointer).into()
         };
-        local_value.into()
+        local_value
       }
-      NativeType::Struct(_) => {
-        let local_value: v8::Local<v8::Value> = v8::null(scope).into();
-        local_value.into()
-      }
+      NativeType::Struct(_) => v8::null(scope).into(),
     }
   }
 }

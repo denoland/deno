@@ -1,9 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops::TestingFeaturesEnabled;
-use crate::permissions::create_child_permissions;
-use crate::permissions::ChildPermissionsArg;
-use crate::permissions::PermissionsContainer;
 use crate::web_worker::run_web_worker;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
@@ -11,6 +8,7 @@ use crate::web_worker::WebWorkerHandle;
 use crate::web_worker::WebWorkerType;
 use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
+use crate::web_worker::WorkerMetadata;
 use crate::worker::FormatJsErrorFn;
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -19,6 +17,10 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_permissions::create_child_permissions;
+use deno_permissions::ChildPermissionsArg;
+use deno_permissions::PermissionsContainer;
+use deno_web::deserialize_js_transferables;
 use deno_web::JsMessageData;
 use log::debug;
 use std::cell::RefCell;
@@ -35,7 +37,8 @@ pub struct CreateWebWorkerArgs {
   pub permissions: PermissionsContainer,
   pub main_module: ModuleSpecifier,
   pub worker_type: WebWorkerType,
-  pub maybe_worker_metadata: Option<JsMessageData>,
+  pub close_on_idle: bool,
+  pub maybe_worker_metadata: Option<WorkerMetadata>,
 }
 
 pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, SendableWebWorkerHandle)
@@ -94,7 +97,6 @@ deno_core::extension!(
   },
   state = |state, options| {
     state.put::<WorkersTable>(WorkersTable::default());
-    state.put::<WorkerId>(WorkerId::default());
 
     let create_web_worker_cb_holder =
       CreateWebWorkerCbHolder(options.create_web_worker_cb);
@@ -114,6 +116,7 @@ pub struct CreateWorkerArgs {
   source_code: String,
   specifier: String,
   worker_type: WebWorkerType,
+  close_on_idle: bool,
 }
 
 /// Create worker as the host
@@ -153,7 +156,7 @@ fn op_create_worker(
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
-    let mut parent_permissions = parent_permissions.0 .0.lock();
+    let mut parent_permissions = parent_permissions.0.lock();
     let perms =
       create_child_permissions(&mut parent_permissions, child_permissions_arg)?;
     PermissionsContainer::new(perms)
@@ -161,10 +164,9 @@ fn op_create_worker(
     parent_permissions.clone()
   };
   let parent_permissions = parent_permissions.clone();
-  let worker_id = state.take::<WorkerId>();
   let create_web_worker_cb = state.borrow::<CreateWebWorkerCbHolder>().clone();
   let format_js_error_fn = state.borrow::<FormatJsErrorFnHolder>().clone();
-  state.put::<WorkerId>(worker_id.next().unwrap());
+  let worker_id = WorkerId::new();
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
   let worker_name = args_name.unwrap_or_default();
@@ -175,7 +177,16 @@ fn op_create_worker(
 
   // Setup new thread
   let thread_builder = std::thread::Builder::new().name(format!("{worker_id}"));
-
+  let maybe_worker_metadata = if let Some(data) = maybe_worker_metadata {
+    let transferables =
+      deserialize_js_transferables(state, data.transferables)?;
+    Some(WorkerMetadata {
+      buffer: data.data,
+      transferables,
+    })
+  } else {
+    None
+  };
   // Spawn it
   thread_builder.spawn(move || {
     // Any error inside this block is terminal:
@@ -191,6 +202,7 @@ fn op_create_worker(
         permissions: worker_permissions,
         main_module: module_specifier.clone(),
         worker_type,
+        close_on_idle: args.close_on_idle,
         maybe_worker_metadata,
       });
 

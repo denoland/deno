@@ -58,11 +58,6 @@ itest!(multiple_imports {
   http_server: true,
 });
 
-itest!(info_ts_error {
-  args: "info info/031_info_ts_error.ts",
-  output: "info/031_info_ts_error.out",
-});
-
 itest!(info_flag {
   args: "info",
   output: "info/041_info_flag.out",
@@ -95,12 +90,6 @@ itest!(json_file {
   exit_code: 0,
 });
 
-itest!(import_map_info {
-  args:
-    "info --quiet --import-map=import_maps/import_map.json import_maps/test.ts",
-  output: "info/065_import_map_info.out",
-});
-
 itest!(info_json_deps_order {
   args: "info --json info/076_info_json_deps_order.ts",
   output: "info/076_info_json_deps_order.out",
@@ -109,21 +98,6 @@ itest!(info_json_deps_order {
 itest!(info_missing_module {
   args: "info info/error_009_missing_js_module.js",
   output: "info/info_missing_module.out",
-});
-
-itest!(info_lock {
-  args: "info main.ts",
-  http_server: true,
-  cwd: Some("lockfile/basic"),
-  exit_code: 10,
-  output: "lockfile/basic/fail.out",
-});
-
-itest!(info_no_lock {
-  args: "info --no-lock main.ts",
-  http_server: true,
-  cwd: Some("lockfile/basic"),
-  output: "lockfile/basic/info.nolock.out",
 });
 
 itest!(info_recursive_modules {

@@ -1,7 +1,0 @@
-Download http://127.0.0.1:4250/@denotest/module_graph/meta.json
-Download http://127.0.0.1:4250/@denotest/module_graph/1.4.0_meta.json
-[UNORDERED_START]
-Download http://127.0.0.1:4250/@denotest/module_graph/1.4.0/other.ts
-Download http://127.0.0.1:4250/@denotest/module_graph/1.4.0/mod.ts
-[UNORDERED_END]
-Test { other: Other {} }

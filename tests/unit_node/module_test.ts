@@ -1,6 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { createRequire, isBuiltin, Module } from "node:module";
+import {
+  builtinModules,
+  createRequire,
+  findSourceMap,
+  isBuiltin,
+  Module,
+} from "node:module";
 import { assert, assertEquals } from "@std/assert/mod.ts";
 import process from "node:process";
 import * as path from "node:path";
@@ -82,4 +88,14 @@ Deno.test("[node/module isBuiltin] recognizes node builtins", () => {
   assert(!isBuiltin(""));
   // deno-lint-ignore no-explicit-any
   assert(!isBuiltin(undefined as any));
+});
+
+// https://github.com/denoland/deno/issues/22731
+Deno.test("[node/module builtinModules] has 'module' in builtins", () => {
+  assert(builtinModules.includes("module"));
+});
+
+// https://github.com/denoland/deno/issues/18666
+Deno.test("[node/module findSourceMap] is a function", () => {
+  assertEquals(findSourceMap("foo"), undefined);
 });

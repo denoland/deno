@@ -1,15 +1,18 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import EventEmitter from "node:events";
-import http, { type RequestOptions } from "node:http";
+import http, { type RequestOptions, type ServerResponse } from "node:http";
+import url from "node:url";
 import https from "node:https";
 import net from "node:net";
+import fs from "node:fs";
+
 import { assert, assertEquals, fail } from "@std/assert/mod.ts";
 import { assertSpyCalls, spy } from "@std/testing/mock.ts";
+import { fromFileUrl, relative } from "@std/path/mod.ts";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
-import { serve } from "@std/http/server.ts";
 import { execCode } from "../unit/test_util.ts";
 
 Deno.test("[node/http listen]", async () => {
@@ -27,7 +30,9 @@ Deno.test("[node/http listen]", async () => {
     const { promise, resolve } = Promise.withResolvers<void>();
     const server = http.createServer();
 
-    server.listen(() => {
+    server.listen(42453, "localhost", () => {
+      // @ts-ignore address() is not a string
+      assertEquals(server.address()!.address, "127.0.0.1");
       server.close();
     });
     server.on("close", () => {
@@ -137,6 +142,93 @@ Deno.test("[node/http] chunked response", async () => {
   }
 });
 
+Deno.test("[node/http] .writeHead()", async (t) => {
+  async function testWriteHead(
+    onRequest: (res: ServerResponse) => void,
+    onResponse: (res: Response) => void,
+  ) {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http.createServer((_req, res) => {
+      onRequest(res);
+      res.end();
+    });
+    server.listen(async () => {
+      const res = await fetch(
+        // deno-lint-ignore no-explicit-any
+        `http://127.0.0.1:${(server.address() as any).port}/`,
+      );
+      await res.body?.cancel();
+
+      onResponse(res);
+
+      server.close(() => resolve());
+    });
+
+    await promise;
+  }
+
+  await t.step("send status code", async () => {
+    await testWriteHead(
+      (res) => res.writeHead(404),
+      (res) => {
+        assertEquals(res.status, 404);
+      },
+    );
+  });
+
+  // TODO(@marvinhagemeister): hyper doesn't support custom status text
+  // await t.step("send status + custom status text", async () => {
+  //   await testWriteHead(
+  //     (res) => res.writeHead(404, "some text"),
+  //     (res) => {
+  //       assertEquals(res.status, 404);
+  //       assertEquals(res.statusText, "some text");
+  //     },
+  //   );
+  // });
+
+  await t.step("send status + custom status text + headers obj", async () => {
+    await testWriteHead(
+      (res) => res.writeHead(404, "some text", { foo: "bar" }),
+      (res) => {
+        assertEquals(res.status, 404);
+        // TODO(@marvinhagemeister): hyper doesn't support custom
+        // status text
+        // assertEquals(res.statusText, "some text");
+        assertEquals(res.headers.get("foo"), "bar");
+      },
+    );
+  });
+
+  await t.step("send status + headers obj", async () => {
+    await testWriteHead(
+      (res) => {
+        res.writeHead(200, {
+          foo: "bar",
+          bar: ["foo1", "foo2"],
+          foobar: 1,
+        });
+      },
+      (res) => {
+        assertEquals(res.status, 200);
+        assertEquals(res.headers.get("foo"), "bar");
+        assertEquals(res.headers.get("bar"), "foo1, foo2");
+        assertEquals(res.headers.get("foobar"), "1");
+      },
+    );
+  });
+
+  await t.step("send status + headers array", async () => {
+    await testWriteHead(
+      (res) => res.writeHead(200, [["foo", "bar"]]),
+      (res) => {
+        assertEquals(res.status, 200);
+        assertEquals(res.headers.get("foo"), "bar");
+      },
+    );
+  });
+});
+
 // Test empty chunks: https://github.com/denoland/deno/issues/17194
 Deno.test("[node/http] empty chunk in the middle of response", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
@@ -173,12 +265,39 @@ Deno.test("[node/http] server can respond with 101, 204, 205, 304 status", async
         // deno-lint-ignore no-explicit-any
         `http://127.0.0.1:${(server.address() as any).port}/`,
       );
-      await res.arrayBuffer();
+      await res.body?.cancel();
       assertEquals(res.status, status);
       server.close(() => resolve());
     });
     await promise;
   }
+});
+
+Deno.test("[node/http] multiple set-cookie headers", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  const server = http.createServer((_req, res) => {
+    res.setHeader("Set-Cookie", ["foo=bar", "bar=foo"]);
+    assertEquals(res.getHeader("Set-Cookie"), ["foo=bar", "bar=foo"]);
+    res.end();
+  });
+
+  server.listen(async () => {
+    const res = await fetch(
+      // deno-lint-ignore no-explicit-any
+      `http://127.0.0.1:${(server.address() as any).port}/`,
+    );
+    assert(res.ok);
+
+    const setCookieHeaders = res.headers.getSetCookie();
+    assertEquals(setCookieHeaders, ["foo=bar", "bar=foo"]);
+
+    await res.body!.cancel();
+
+    server.close(() => resolve());
+  });
+
+  await promise;
 });
 
 Deno.test("[node/http] IncomingRequest socket has remoteAddress + remotePort", async () => {
@@ -336,20 +455,18 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   const hostname = "localhost";
   const port = 4505;
 
-  // NOTE: Instead of node/http.createServer(), serve() in std/http/server.ts is used.
-  // https://github.com/denoland/deno_std/pull/2755#discussion_r1005592634
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
     requestBody = await req.text();
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const servePromise = serve(handler, {
+  const servePromise = Deno.serve({
     hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
-  });
+  }, handler).finished;
 
   const opts: RequestOptions = {
     host: hostname,
@@ -381,7 +498,12 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   req.write("world");
   req.end();
 
-  await servePromise;
+  await Promise.all([
+    servePromise,
+    // wait 100ms because of the socket.setTimeout(100) above
+    // in order to not cause a flaky test sanitizer failure
+    await new Promise((resolve) => setTimeout(resolve, 100)),
+  ]);
 });
 
 Deno.test("[node/http] send request with chunked body", async () => {
@@ -391,20 +513,18 @@ Deno.test("[node/http] send request with chunked body", async () => {
   const hostname = "localhost";
   const port = 4505;
 
-  // NOTE: Instead of node/http.createServer(), serve() in std/http/server.ts is used.
-  // https://github.com/denoland/deno_std/pull/2755#discussion_r1005592634
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
     requestBody = await req.text();
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const servePromise = serve(handler, {
+  const servePromise = Deno.serve({
     hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
-  });
+  }, handler).finished;
 
   const opts: RequestOptions = {
     host: hostname,
@@ -440,20 +560,18 @@ Deno.test("[node/http] send request with chunked body as default", async () => {
   const hostname = "localhost";
   const port = 4505;
 
-  // NOTE: Instead of node/http.createServer(), serve() in std/http/server.ts is used.
-  // https://github.com/denoland/deno_std/pull/2755#discussion_r1005592634
   const handler = async (req: Request) => {
     requestHeaders = req.headers;
     requestBody = await req.text();
     return new Response("ok");
   };
   const abortController = new AbortController();
-  const servePromise = serve(handler, {
+  const servePromise = Deno.serve({
     hostname,
     port,
     signal: abortController.signal,
     onListen: undefined,
-  });
+  }, handler).finished;
 
   const opts: RequestOptions = {
     host: hostname,
@@ -940,6 +1058,32 @@ Deno.test("[node/http] ServerResponse getHeader", async () => {
   await promise;
 });
 
+Deno.test("[node/http] ServerResponse appendHeader", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.setHeader("foo", "bar");
+    res.appendHeader("foo", "baz");
+    res.appendHeader("foo", ["qux"]);
+    res.appendHeader("foo", ["quux"]);
+    res.appendHeader("Set-Cookie", "a=b");
+    res.appendHeader("Set-Cookie", ["c=d", "e=f"]);
+    res.end("Hello World");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(res.headers.get("foo"), "bar, baz, qux, quux");
+    assertEquals(res.headers.getSetCookie(), ["a=b", "c=d", "e=f"]);
+    assertEquals(await res.text(), "Hello World");
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
 Deno.test("[node/http] IncomingMessage override", () => {
   const req = new http.IncomingMessage(new net.Socket());
   // https://github.com/dougmoscrop/serverless-http/blob/3aaa6d0fe241109a8752efb011c242d249f32368/lib/request.js#L20-L30
@@ -988,11 +1132,15 @@ Deno.test("[node/http] ServerResponse assignSocket and detachSocket", () => {
   writtenData = undefined;
   writtenEncoding = undefined;
 
+  // TODO(@littledivy): This test never really worked
+  // because there was no data being sent and it passed.
+  //
   // @ts-ignore it's a socket mock
-  res.detachSocket(socket);
-  res.write("Hello World!", "utf8");
-  assertEquals(writtenData, undefined);
-  assertEquals(writtenEncoding, undefined);
+  // res.detachSocket(socket);
+  // res.write("Hello World!", "utf8");
+  //
+  // assertEquals(writtenData, undefined);
+  // assertEquals(writtenEncoding, undefined);
 });
 
 Deno.test("[node/http] ServerResponse getHeaders", () => {
@@ -1000,6 +1148,234 @@ Deno.test("[node/http] ServerResponse getHeaders", () => {
   const res = new http.ServerResponse(req);
   res.setHeader("foo", "bar");
   res.setHeader("bar", "baz");
-  assertEquals(res.getHeaderNames(), ["bar", "foo"]);
-  assertEquals(res.getHeaders(), { "bar": "baz", "foo": "bar" });
+  assertEquals(res.getHeaderNames(), ["foo", "bar"]);
+  assertEquals(res.getHeaders(), { "foo": "bar", "bar": "baz" });
+});
+
+Deno.test("[node/http] ServerResponse default status code 200", () => {
+  const req = new http.IncomingMessage(new net.Socket());
+  const res = new http.ServerResponse(req);
+  assertEquals(res.statusCode, 200);
+});
+
+Deno.test("[node/http] maxHeaderSize is defined", () => {
+  assertEquals(http.maxHeaderSize, 16_384);
+});
+
+Deno.test("[node/http] server graceful close", async () => {
+  const server = http.createServer(function (_, response) {
+    response.writeHead(200, {});
+    response.end("ok");
+    server.close();
+  });
+
+  const { promise, resolve } = Promise.withResolvers<void>();
+  server.listen(0, function () {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+    const testURL = url.parse(
+      `http://localhost:${port}`,
+    );
+
+    http.request(testURL, function (response) {
+      assertEquals(response.statusCode, 200);
+      response.on("data", function () {});
+      response.on("end", function () {
+        resolve();
+      });
+    }).end();
+  });
+
+  await promise;
+});
+
+Deno.test("[node/http] server closeAllConnections shutdown", async () => {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      data: "Hello World!",
+    }));
+  });
+
+  server.listen(0);
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(() => {
+    server.close(() => resolve());
+    server.closeAllConnections();
+  }, 2000);
+
+  await promise;
+});
+
+Deno.test("[node/http] server closeIdleConnections shutdown", async () => {
+  const server = http.createServer({ keepAliveTimeout: 60000 }, (_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      data: "Hello World!",
+    }));
+  });
+
+  server.listen(0);
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(() => {
+    server.close(() => resolve());
+    server.closeIdleConnections();
+  }, 2000);
+
+  await promise;
+});
+
+Deno.test("[node/http] client closing a streaming response doesn't terminate server", async () => {
+  let interval: number;
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    interval = setInterval(() => {
+      res.write("Hello, world!\n");
+    }, 100);
+    req.on("end", () => {
+      clearInterval(interval);
+      res.end();
+    });
+    req.on("error", (err) => {
+      console.error("Request error:", err);
+      clearInterval(interval);
+      res.end();
+    });
+  });
+
+  const deferred1 = Promise.withResolvers<void>();
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+
+    // Create a client connection to the server
+    const client = net.createConnection({ port }, () => {
+      console.log("Client connected to server");
+
+      // Write data to the server
+      client.write("GET / HTTP/1.1\r\n");
+      client.write("Host: localhost\r\n");
+      client.write("Connection: close\r\n");
+      client.write("\r\n");
+
+      // End the client connection prematurely while reading data
+      client.on("data", (data) => {
+        assert(data.length > 0);
+        client.end();
+        setTimeout(() => deferred1.resolve(), 100);
+      });
+    });
+  });
+
+  await deferred1.promise;
+  assertEquals(server.listening, true);
+  server.close();
+  assertEquals(server.listening, false);
+  clearInterval(interval!);
+});
+
+Deno.test("[node/http] http.request() post streaming body works", async () => {
+  const server = http.createServer((req, res) => {
+    if (req.method === "POST") {
+      let receivedBytes = 0;
+      req.on("data", (chunk) => {
+        receivedBytes += chunk.length;
+      });
+      req.on("end", () => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ bytes: receivedBytes }));
+      });
+    } else {
+      res.writeHead(405, { "Content-Type": "text/plain" });
+      res.end("Method Not Allowed");
+    }
+  });
+
+  const deferred = Promise.withResolvers<void>();
+  const timeout = setTimeout(() => {
+    deferred.reject(new Error("timeout"));
+  }, 5000);
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+    const filePath = relative(
+      Deno.cwd(),
+      fromFileUrl(new URL("./testdata/lorem_ipsum_512kb.txt", import.meta.url)),
+    );
+    const contentLength = 524289;
+
+    const options = {
+      hostname: "localhost",
+      port: port,
+      path: "/",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Length": contentLength,
+      },
+    };
+
+    const req = http.request(options, (res) => {
+      let responseBody = "";
+      res.on("data", (chunk) => {
+        responseBody += chunk;
+      });
+
+      res.on("end", () => {
+        const response = JSON.parse(responseBody);
+        assertEquals(res.statusCode, 200);
+        assertEquals(response.bytes, contentLength);
+        deferred.resolve();
+      });
+    });
+
+    req.on("error", (e) => {
+      console.error(`Problem with request: ${e.message}`);
+    });
+
+    const readStream = fs.createReadStream(filePath);
+    readStream.pipe(req);
+  });
+  await deferred.promise;
+  assertEquals(server.listening, true);
+  server.close();
+  clearTimeout(timeout);
+  assertEquals(server.listening, false);
+});
+
+// https://github.com/denoland/deno/issues/24239
+Deno.test("[node/http] ServerResponse write transfer-encoding chunked", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("Transfer-Encoding", "chunked");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+
+    res.writeHead(200, {
+      "Other-Header": "value",
+    });
+    res.write("");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(res.status, 200);
+    assertEquals(res.headers.get("content-type"), "text/event-stream");
+    assertEquals(res.headers.get("Other-Header"), "value");
+    await res.body!.cancel();
+
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
+Deno.test("[node/http] Server.address() can be null", () => {
+  const server = http.createServer((_req, res) => res.end("it works"));
+  assertEquals(server.address(), null);
 });

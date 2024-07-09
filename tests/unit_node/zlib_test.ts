@@ -36,14 +36,16 @@ Deno.test("brotli compression async", async () => {
   assertEquals(decompressed.toString(), "hello world");
 });
 
-Deno.test("gzip compression sync", { sanitizeResources: false }, () => {
+Deno.test("gzip compression sync", () => {
   const buf = Buffer.from("hello world");
   const compressed = gzipSync(buf);
   const decompressed = unzipSync(compressed);
   assertEquals(decompressed.toString(), "hello world");
 });
 
-Deno.test("brotli compression", async () => {
+Deno.test("brotli compression", {
+  ignore: true,
+}, async () => {
   const promise = Promise.withResolvers<void>();
   const compress = createBrotliCompress();
   const filePath = relative(
@@ -70,7 +72,7 @@ Deno.test("brotli compression", async () => {
   ]);
 
   const content = Deno.readTextFileSync("lorem_ipsum.txt");
-  assert(content.startsWith("Lorem ipsum dolor sit amet"));
+  assert(content.startsWith("Lorem ipsum dolor sit amet"), content);
   try {
     Deno.removeSync("lorem_ipsum.txt.br");
   } catch {
@@ -92,7 +94,6 @@ Deno.test("brotli end-to-end with 4097 bytes", () => {
 
 Deno.test(
   "zlib create deflate with dictionary",
-  { sanitizeResources: false },
   async () => {
     const { promise, resolve } = Promise.withResolvers<void>();
     const handle = createDeflate({
@@ -109,8 +110,6 @@ Deno.test(
 
 Deno.test(
   "zlib flush i32",
-  // FIXME: Handle is not closed properly
-  { sanitizeResources: false },
   function () {
     const handle = createDeflate({
       // @ts-expect-error: passing non-int flush value
@@ -140,7 +139,6 @@ Deno.test("should work with a buffer from an encoded string", () => {
 
 Deno.test(
   "zlib compression with dataview",
-  { sanitizeResources: false },
   () => {
     const buf = Buffer.from("hello world");
     const compressed = gzipSync(new DataView(buf.buffer));
@@ -149,9 +147,7 @@ Deno.test(
   },
 );
 
-Deno.test("zlib compression with an encoded string", {
-  sanitizeResources: false,
-}, () => {
+Deno.test("zlib compression with an encoded string", () => {
   const encoder = new TextEncoder();
   const buffer = encoder.encode("hello world");
   const compressed = gzipSync(buffer);

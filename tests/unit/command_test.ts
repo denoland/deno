@@ -59,7 +59,13 @@ Deno.test(
     const command = new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
-        "if (new TextDecoder().decode(await Deno.readAll(Deno.stdin)) !== 'hello') throw new Error('Expected \\'hello\\'')",
+        `
+        const buffer = new Uint8Array(5);
+        await Deno.stdin.read(buffer);
+        if (new TextDecoder().decode(buffer) !== "hello") {
+          throw new Error('Expected \\'hello\\'')
+        }
+        `,
       ],
       stdin: "piped",
       stdout: "null",
@@ -214,7 +220,13 @@ Deno.test(
     const command = new Deno.Command(Deno.execPath(), {
       args: [
         "eval",
-        "if (new TextDecoder().decode(await Deno.readAll(Deno.stdin)) !== 'hello') throw new Error('Expected \\'hello\\'')",
+        `
+        const buffer = new Uint8Array(5);
+        await Deno.stdin.read(buffer);
+        if (new TextDecoder().decode(buffer) !== "hello") {
+          throw new Error('Expected \\'hello\\'')
+        }
+        `,
       ],
       stdin: "piped",
       stdout: "null",
@@ -257,8 +269,6 @@ Deno.test(
 
 Deno.test(
   { permissions: { run: true, read: true } },
-  // deno lint bug, see https://github.com/denoland/deno_lint/issues/1206
-  // deno-lint-ignore require-await
   async function childProcessExplicitResourceManagement() {
     let dead = undefined;
     {

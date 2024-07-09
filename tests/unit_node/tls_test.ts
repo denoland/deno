@@ -3,7 +3,6 @@
 import { assertEquals, assertInstanceOf } from "@std/assert/mod.ts";
 import { delay } from "@std/async/delay.ts";
 import { fromFileUrl, join } from "@std/path/mod.ts";
-import { serveTls } from "@std/http/server.ts";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
@@ -13,24 +12,61 @@ const tlsTestdataDir = fromFileUrl(
 );
 const keyFile = join(tlsTestdataDir, "localhost.key");
 const certFile = join(tlsTestdataDir, "localhost.crt");
-const key = await Deno.readTextFile(keyFile);
-const cert = await Deno.readTextFile(certFile);
-const rootCaCert = await Deno.readTextFile(join(tlsTestdataDir, "RootCA.pem"));
+const key = Deno.readTextFileSync(keyFile);
+const cert = Deno.readTextFileSync(certFile);
+const rootCaCert = Deno.readTextFileSync(join(tlsTestdataDir, "RootCA.pem"));
+
+for (
+  const [alpnServer, alpnClient, expected] of [
+    [["a", "b"], ["a"], ["a"]],
+    [["a", "b"], ["b"], ["b"]],
+    [["a", "b"], ["a", "b"], ["a"]],
+    [["a", "b"], [], []],
+    [[], ["a", "b"], []],
+  ]
+) {
+  Deno.test(`tls.connect sends correct ALPN: '${alpnServer}' + '${alpnClient}' = '${expected}'`, async () => {
+    const listener = Deno.listenTls({
+      port: 0,
+      key,
+      cert,
+      alpnProtocols: alpnServer,
+    });
+    const outgoing = tls.connect({
+      host: "localhost",
+      port: listener.addr.port,
+      ALPNProtocols: alpnClient,
+      secureContext: {
+        ca: rootCaCert,
+        // deno-lint-ignore no-explicit-any
+      } as any,
+    });
+
+    const conn = await listener.accept();
+    const handshake = await conn.handshake();
+    assertEquals(handshake.alpnProtocol, expected[0] || null);
+    conn.close();
+    outgoing.destroy();
+    listener.close();
+  });
+}
 
 Deno.test("tls.connect makes tls connection", async () => {
   const ctl = new AbortController();
-  const serve = serveTls(() => new Response("hello"), {
-    port: 8443,
+  let port;
+  const serve = Deno.serve({
+    port: 0,
     key,
     cert,
     signal: ctl.signal,
-  });
+    onListen: (listen) => port = listen.port,
+  }, () => new Response("hello"));
 
   await delay(200);
 
   const conn = tls.connect({
     host: "localhost",
-    port: 8443,
+    port,
     secureContext: {
       ca: rootCaCert,
       // deno-lint-ignore no-explicit-any
@@ -41,26 +77,29 @@ Host: localhost
 Connection: close
 
 `);
-  conn.on("data", (chunk) => {
-    const text = new TextDecoder().decode(chunk);
-    const bodyText = text.split("\r\n\r\n").at(-1)?.trim();
-    assertEquals(bodyText, "hello");
+  const chunk = Promise.withResolvers<Uint8Array>();
+  conn.on("data", (received) => {
     conn.destroy();
     ctl.abort();
+    chunk.resolve(received);
   });
 
-  await serve;
+  await serve.finished;
+
+  const text = new TextDecoder().decode(await chunk.promise);
+  const bodyText = text.split("\r\n\r\n").at(-1)?.trim();
+  assertEquals(bodyText, "hello");
 });
 
 // https://github.com/denoland/deno/pull/20120
 Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
   const ctl = new AbortController();
-  const serve = serveTls(() => new Response("hello"), {
+  const serve = Deno.serve({
     port: 8443,
     key,
     cert,
     signal: ctl.signal,
-  });
+  }, () => new Response("hello"));
 
   await delay(200);
 
@@ -81,7 +120,7 @@ Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
     ctl.abort();
   });
 
-  await serve;
+  await serve.finished;
 });
 
 Deno.test("tls.createServer creates a TLS server", async () => {

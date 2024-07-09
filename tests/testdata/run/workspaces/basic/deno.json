@@ -1,9 +1,0 @@
-{
-  "workspaces": [
-    "foo",
-    "bar"
-  ],
-  "imports": {
-    "chalk": "npm:chalk"
-  }
-}

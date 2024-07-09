@@ -19,6 +19,7 @@ use std::rc::Rc;
 use os_pipe::pipe;
 
 use crate::assertions::assert_wildcard_match;
+use crate::assertions::assert_wildcard_match_with_logger;
 use crate::deno_exe_path;
 use crate::denort_exe_path;
 use crate::env_vars_for_jsr_tests;
@@ -31,6 +32,7 @@ use crate::npm_registry_unset_url;
 use crate::pty::Pty;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
+use crate::tests_path;
 use crate::HttpServerGuard;
 use crate::TempDir;
 
@@ -65,11 +67,29 @@ static HAS_DENO_JSON_IN_WORKING_DIR_ERR: once_cell::sync::Lazy<Option<String>> =
     None
   });
 
+#[derive(Default, Clone)]
+struct DiagnosticLogger(Option<Rc<RefCell<Vec<u8>>>>);
+
+impl DiagnosticLogger {
+  pub fn writeln(&self, text: impl AsRef<str>) {
+    match &self.0 {
+      Some(logger) => {
+        let mut logger = logger.borrow_mut();
+        logger.write_all(text.as_ref().as_bytes()).unwrap();
+        logger.write_all(b"\n").unwrap();
+      }
+      None => eprintln!("{}", text.as_ref()),
+    }
+  }
+}
+
 #[derive(Default)]
 pub struct TestContextBuilder {
+  diagnostic_logger: DiagnosticLogger,
   use_http_server: bool,
   use_temp_cwd: bool,
   use_symlinked_temp_dir: bool,
+  use_canonicalized_temp_dir: bool,
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
@@ -90,6 +110,11 @@ impl TestContextBuilder {
 
   pub fn for_jsr() -> Self {
     Self::new().use_http_server().add_jsr_env_vars()
+  }
+
+  pub fn logging_capture(mut self, logger: Rc<RefCell<Vec<u8>>>) -> Self {
+    self.diagnostic_logger = DiagnosticLogger(Some(logger));
+    self
   }
 
   pub fn temp_dir_path(mut self, path: impl AsRef<Path>) -> Self {
@@ -116,6 +141,23 @@ impl TestContextBuilder {
   #[deprecated]
   pub fn use_symlinked_temp_dir(mut self) -> Self {
     self.use_symlinked_temp_dir = true;
+    self
+  }
+
+  /// Causes the temp directory to go to its canonicalized path instead
+  /// of being in a symlinked temp dir on the CI.
+  ///
+  /// Note: This method is not actually deprecated. It's just deprecated
+  /// to discourage its use. Use it sparingly and document why you're using
+  /// it. You better have a good reason other than being lazy!
+  ///
+  /// If your tests are failing because the temp dir is symlinked on the CI,
+  /// then it likely means your code doesn't properly handle when Deno is running
+  /// in a symlinked directory. That's a bug and you should fix it without using
+  /// this.
+  #[deprecated]
+  pub fn use_canonicalized_temp_dir(mut self) -> Self {
+    self.use_canonicalized_temp_dir = true;
     self
   }
 
@@ -183,13 +225,21 @@ impl TestContextBuilder {
       panic!("{}", err);
     }
 
-    let temp_dir_path = self
-      .temp_dir_path
-      .clone()
-      .unwrap_or_else(std::env::temp_dir);
-    let deno_dir = TempDir::new_in(&temp_dir_path);
-    let temp_dir = TempDir::new_in(&temp_dir_path);
+    let temp_dir_path = PathRef::new(
+      self
+        .temp_dir_path
+        .clone()
+        .unwrap_or_else(std::env::temp_dir),
+    );
+    let temp_dir_path = if self.use_canonicalized_temp_dir {
+      temp_dir_path.canonicalize()
+    } else {
+      temp_dir_path
+    };
+    let deno_dir = TempDir::new_in(temp_dir_path.as_path());
+    let temp_dir = TempDir::new_in(temp_dir_path.as_path());
     let temp_dir = if self.use_symlinked_temp_dir {
+      assert!(!self.use_canonicalized_temp_dir); // code doesn't handle using both of these
       TempDir::new_symlinked(temp_dir)
     } else {
       temp_dir
@@ -202,7 +252,6 @@ impl TestContextBuilder {
     }
 
     let deno_exe = deno_exe_path();
-    println!("deno_exe path {}", deno_exe);
 
     let http_server_guard = if self.use_http_server {
       Some(Rc::new(http_server()))
@@ -224,6 +273,7 @@ impl TestContextBuilder {
       cwd,
       deno_exe,
       envs: self.envs.clone(),
+      diagnostic_logger: self.diagnostic_logger.clone(),
       _http_server_guard: http_server_guard,
       deno_dir,
       temp_dir,
@@ -234,6 +284,7 @@ impl TestContextBuilder {
 #[derive(Clone)]
 pub struct TestContext {
   deno_exe: PathRef,
+  diagnostic_logger: DiagnosticLogger,
   envs: HashMap<String, String>,
   cwd: PathRef,
   _http_server_guard: Option<Rc<HttpServerGuard>>,
@@ -262,14 +313,19 @@ impl TestContext {
 
   pub fn new_command(&self) -> TestCommandBuilder {
     TestCommandBuilder::new(self.deno_dir.clone())
+      .set_diagnostic_logger(self.diagnostic_logger.clone())
       .envs(self.envs.clone())
       .current_dir(&self.cwd)
   }
 
   pub fn new_lsp_command(&self) -> LspClientBuilder {
-    LspClientBuilder::new_with_dir(self.deno_dir.clone())
+    let mut builder = LspClientBuilder::new_with_dir(self.deno_dir.clone())
       .deno_exe(&self.deno_exe)
-      .set_root_dir(self.temp_dir.path().clone())
+      .set_root_dir(self.temp_dir.path().clone());
+    for (key, value) in &self.envs {
+      builder = builder.env(key, value);
+    }
+    builder
   }
 
   pub fn run_npm(&self, args: impl AsRef<str>) {
@@ -345,6 +401,7 @@ impl StdioContainer {
 #[derive(Clone)]
 pub struct TestCommandBuilder {
   deno_dir: TempDir,
+  diagnostic_logger: DiagnosticLogger,
   stdin: Option<StdioContainer>,
   stdout: Option<StdioContainer>,
   stderr: Option<StdioContainer>,
@@ -357,12 +414,14 @@ pub struct TestCommandBuilder {
   args_text: String,
   args_vec: Vec<String>,
   split_output: bool,
+  show_output: bool,
 }
 
 impl TestCommandBuilder {
   pub fn new(deno_dir: TempDir) -> Self {
     Self {
       deno_dir,
+      diagnostic_logger: Default::default(),
       stdin: None,
       stdout: None,
       stderr: None,
@@ -375,6 +434,7 @@ impl TestCommandBuilder {
       command_name: "deno".to_string(),
       args_text: "".to_string(),
       args_vec: Default::default(),
+      show_output: false,
     }
   }
 
@@ -451,6 +511,16 @@ impl TestCommandBuilder {
     self
   }
 
+  /// Set this to enable streaming the output of the command to stderr.
+  ///
+  /// Not deprecated, this is just here so you don't accidentally
+  /// commit code with this enabled.
+  #[deprecated]
+  pub fn show_output(mut self) -> Self {
+    self.show_output = true;
+    self
+  }
+
   pub fn stdin<T: Into<Stdio>>(mut self, cfg: T) -> Self {
     self.stdin = Some(StdioContainer::new(cfg.into()));
     self
@@ -505,14 +575,20 @@ impl TestCommandBuilder {
     self
   }
 
+  fn set_diagnostic_logger(mut self, logger: DiagnosticLogger) -> Self {
+    self.diagnostic_logger = logger;
+    self
+  }
+
   pub fn with_pty(&self, mut action: impl FnMut(Pty)) {
     if !Pty::is_supported() {
       return;
     }
 
-    let args = self.build_args();
+    let cwd = self.build_cwd();
+    let args = self.build_args(&cwd);
     let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
-    let mut envs = self.build_envs();
+    let mut envs = self.build_envs(&cwd);
     if !envs.contains_key("NO_COLOR") {
       // set this by default for pty tests
       envs.insert("NO_COLOR".to_string(), "1".to_string());
@@ -526,15 +602,16 @@ impl TestCommandBuilder {
       }
     }
 
-    let cwd = self
-      .cwd
-      .as_ref()
-      .map(PathBuf::from)
-      .unwrap_or_else(|| std::env::current_dir().unwrap());
     let command_path = self.build_command_path();
 
-    println!("command {} {}", command_path, args.join(" "));
-    println!("command cwd {}", cwd.display());
+    self.diagnostic_logger.writeln(format!(
+      "command {} {}",
+      command_path,
+      args.join(" ")
+    ));
+    self
+      .diagnostic_logger
+      .writeln(format!("command cwd {}", cwd.display()));
     action(Pty::new(command_path.as_path(), &args, &cwd, Some(envs)))
   }
 
@@ -568,10 +645,27 @@ impl TestCommandBuilder {
   }
 
   pub fn run(&self) -> TestCommandOutput {
-    fn read_pipe_to_string(mut pipe: os_pipe::PipeReader) -> String {
-      let mut output = String::new();
-      pipe.read_to_string(&mut output).unwrap();
-      output
+    fn read_pipe_to_string(
+      mut pipe: os_pipe::PipeReader,
+      output_to_stderr: bool,
+    ) -> String {
+      if output_to_stderr {
+        let mut buffer = vec![0; 512];
+        let mut final_data = Vec::new();
+        loop {
+          let size = pipe.read(&mut buffer).unwrap();
+          if size == 0 {
+            break;
+          }
+          final_data.extend(&buffer[..size]);
+          std::io::stderr().write_all(&buffer[..size]).unwrap();
+        }
+        String::from_utf8_lossy(&final_data).to_string()
+      } else {
+        let mut output = String::new();
+        pipe.read_to_string(&mut output).unwrap();
+        output
+      }
     }
 
     fn sanitize_output(text: String, args: &[OsString]) -> String {
@@ -595,11 +689,16 @@ impl TestCommandBuilder {
       let (stderr_reader, stderr_writer) = pipe().unwrap();
       command.stdout(stdout_writer);
       command.stderr(stderr_writer);
+      let show_output = self.show_output;
       (
         None,
         Some((
-          std::thread::spawn(move || read_pipe_to_string(stdout_reader)),
-          std::thread::spawn(move || read_pipe_to_string(stderr_reader)),
+          std::thread::spawn(move || {
+            read_pipe_to_string(stdout_reader, show_output)
+          }),
+          std::thread::spawn(move || {
+            read_pipe_to_string(stderr_reader, show_output)
+          }),
         )),
       )
     } else {
@@ -622,8 +721,9 @@ impl TestCommandBuilder {
     // and dropping it closes them.
     drop(command);
 
-    let combined = combined_reader
-      .map(|pipe| sanitize_output(read_pipe_to_string(pipe), &args));
+    let combined = combined_reader.map(|pipe| {
+      sanitize_output(read_pipe_to_string(pipe, self.show_output), &args)
+    });
 
     let status = process.wait().unwrap();
     let std_out_err = std_out_err_handle.map(|(stdout, stderr)| {
@@ -650,19 +750,25 @@ impl TestCommandBuilder {
       asserted_stdout: RefCell::new(false),
       asserted_stderr: RefCell::new(false),
       asserted_combined: RefCell::new(false),
+      diagnostic_logger: self.diagnostic_logger.clone(),
       _deno_dir: self.deno_dir.clone(),
     }
   }
 
   fn build_command(&self) -> Command {
     let command_path = self.build_command_path();
-    let args = self.build_args();
-    println!("command {} {}", command_path, args.join(" "));
+    let cwd = self.build_cwd();
+    let args = self.build_args(&cwd);
+    self.diagnostic_logger.writeln(format!(
+      "command {} {}",
+      command_path,
+      args.join(" ")
+    ));
     let mut command = Command::new(command_path);
-    if let Some(cwd) = &self.cwd {
-      println!("command cwd {}", cwd);
-      command.current_dir(cwd);
-    }
+    self
+      .diagnostic_logger
+      .writeln(format!("command cwd {}", cwd.display()));
+    command.current_dir(&cwd);
     if let Some(stdin) = &self.stdin {
       command.stdin(stdin.take());
     }
@@ -677,7 +783,7 @@ impl TestCommandBuilder {
     if self.env_clear {
       command.env_clear();
     }
-    let envs = self.build_envs();
+    let envs = self.build_envs(&cwd);
     command.envs(envs);
     command.stdin(Stdio::piped());
     command
@@ -691,12 +797,14 @@ impl TestCommandBuilder {
     };
     if command_name == "deno" {
       deno_exe_path()
+    } else if command_name.starts_with("./") && self.cwd.is_some() {
+      self.cwd.as_ref().unwrap().join(command_name)
     } else {
       PathRef::new(PathBuf::from(command_name))
     }
   }
 
-  fn build_args(&self) -> Vec<String> {
+  fn build_args(&self, cwd: &Path) -> Vec<String> {
     if self.args_vec.is_empty() {
       std::borrow::Cow::Owned(
         self
@@ -713,11 +821,19 @@ impl TestCommandBuilder {
       std::borrow::Cow::Borrowed(&self.args_vec)
     }
     .iter()
-    .map(|arg| arg.replace("$TESTDATA", &testdata_path().to_string_lossy()))
+    .map(|arg| self.replace_vars(arg, cwd))
     .collect::<Vec<_>>()
   }
 
-  fn build_envs(&self) -> HashMap<String, String> {
+  fn build_cwd(&self) -> PathBuf {
+    self
+      .cwd
+      .as_ref()
+      .map(PathBuf::from)
+      .unwrap_or_else(|| std::env::current_dir().unwrap())
+  }
+
+  fn build_envs(&self, cwd: &Path) -> HashMap<String, String> {
     let mut envs = self.envs.clone();
     if !envs.contains_key("DENO_DIR") {
       envs.insert("DENO_DIR".to_string(), self.deno_dir.path().to_string());
@@ -734,7 +850,22 @@ impl TestCommandBuilder {
     for key in &self.envs_remove {
       envs.remove(key);
     }
+
+    // update any test variables in the env value
+    for value in envs.values_mut() {
+      *value = self.replace_vars(value, cwd);
+    }
+
     envs
+  }
+
+  fn replace_vars(&self, text: &str, cwd: &Path) -> String {
+    // todo(dsherret): use monch to extract out the vars
+    text
+      .replace("$DENO_DIR", &self.deno_dir.path().to_string_lossy())
+      .replace("$TESTDATA", &testdata_path().to_string_lossy())
+      .replace("$TESTS", &tests_path().to_string_lossy())
+      .replace("$PWD", &cwd.to_string_lossy())
   }
 }
 
@@ -774,6 +905,7 @@ pub struct TestCommandOutput {
   asserted_stderr: RefCell<bool>,
   asserted_combined: RefCell<bool>,
   asserted_exit_code: RefCell<bool>,
+  diagnostic_logger: DiagnosticLogger,
   // keep alive for the duration of the output reference
   _deno_dir: TempDir,
 }
@@ -781,12 +913,14 @@ pub struct TestCommandOutput {
 impl Drop for TestCommandOutput {
   // assert the output and exit code was asserted
   fn drop(&mut self) {
-    fn panic_unasserted_output(text: &str) {
-      println!("OUTPUT\n{text}\nOUTPUT");
+    fn panic_unasserted_output(output: &TestCommandOutput, text: &str) {
+      output
+        .diagnostic_logger
+        .writeln(format!("OUTPUT\n{}\nOUTPUT", text));
       panic!(concat!(
         "The non-empty text of the command was not asserted. ",
         "Call `output.skip_output_check()` to skip if necessary.",
-      ),);
+      ));
     }
 
     if std::thread::panicking() {
@@ -796,15 +930,15 @@ impl Drop for TestCommandOutput {
     // either the combined output needs to be asserted or both stdout and stderr
     if let Some(combined) = &self.combined {
       if !*self.asserted_combined.borrow() && !combined.is_empty() {
-        panic_unasserted_output(combined);
+        panic_unasserted_output(self, combined);
       }
     }
     if let Some((stdout, stderr)) = &self.std_out_err {
       if !*self.asserted_stdout.borrow() && !stdout.is_empty() {
-        panic_unasserted_output(stdout);
+        panic_unasserted_output(self, stdout);
       }
       if !*self.asserted_stderr.borrow() && !stderr.is_empty() {
-        panic_unasserted_output(stderr);
+        panic_unasserted_output(self, stderr);
       }
     }
 
@@ -910,10 +1044,16 @@ impl TestCommandOutput {
 
   pub fn print_output(&self) {
     if let Some(combined) = &self.combined {
-      println!("OUTPUT\n{combined}\nOUTPUT");
+      self
+        .diagnostic_logger
+        .writeln(format!("OUTPUT\n{combined}\nOUTPUT"));
     } else if let Some((stdout, stderr)) = &self.std_out_err {
-      println!("STDOUT OUTPUT\n{stdout}\nSTDOUT OUTPUT");
-      println!("STDERR OUTPUT\n{stderr}\nSTDERR OUTPUT");
+      self
+        .diagnostic_logger
+        .writeln(format!("STDOUT OUTPUT\n{stdout}\nSTDOUT OUTPUT"));
+      self
+        .diagnostic_logger
+        .writeln(format!("STDERR OUTPUT\n{stderr}\nSTDERR OUTPUT"));
     }
   }
 
@@ -965,7 +1105,14 @@ impl TestCommandOutput {
     actual: &str,
     expected: impl AsRef<str>,
   ) -> &Self {
-    assert_wildcard_match(actual, expected.as_ref());
+    match &self.diagnostic_logger.0 {
+      Some(logger) => assert_wildcard_match_with_logger(
+        actual,
+        expected.as_ref(),
+        &mut *logger.borrow_mut(),
+      ),
+      None => assert_wildcard_match(actual, expected.as_ref()),
+    };
     self
   }
 
@@ -976,7 +1123,9 @@ impl TestCommandOutput {
     file_path: impl AsRef<Path>,
   ) -> &Self {
     let output_path = testdata_path().join(file_path);
-    println!("output path {}", output_path);
+    self
+      .diagnostic_logger
+      .writeln(format!("output path {}", output_path));
     let expected_text = output_path.read_to_string();
     self.inner_assert_matches_text(actual, expected_text)
   }

@@ -256,3 +256,25 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "getCiphers",
+  fn() {
+    assertEquals(crypto.getCiphers().includes("aes-128-cbc"), true);
+  },
+});
+
+Deno.test({
+  name: "getCipherInfo",
+  fn() {
+    const info = crypto.getCipherInfo("aes-128-cbc")!;
+    assertEquals(info.name, "aes-128-cbc");
+    assertEquals(info.keyLength, 16);
+    assertEquals(info.ivLength, 16);
+
+    const info2 = crypto.getCipherInfo("aes128")!;
+    assertEquals(info2.name, "aes-128-cbc");
+    assertEquals(info2.keyLength, 16);
+    assertEquals(info2.ivLength, 16);
+  },
+});

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_kv"
-version = "0.49.0"
+version = "0.66.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,28 +17,25 @@ path = "lib.rs"
 anyhow.workspace = true
 async-trait.workspace = true
 base64.workspace = true
-chrono.workspace = true
+bytes.workspace = true
+chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
 deno_fetch.workspace = true
 deno_node.workspace = true
+deno_permissions.workspace = true
 deno_tls.workspace = true
-deno_unsync = "0.1.1"
 denokv_proto.workspace = true
 denokv_remote.workspace = true
 denokv_sqlite.workspace = true
 faster-hex.workspace = true
+http.workspace = true
 log.workspace = true
 num-bigint.workspace = true
 prost.workspace = true
 rand.workspace = true
-reqwest.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
-serde_json.workspace = true
-termcolor.workspace = true
-tokio.workspace = true
 url.workspace = true
-uuid = { workspace = true, features = ["serde"] }
 
 [build-dependencies]
 prost-build.workspace = true

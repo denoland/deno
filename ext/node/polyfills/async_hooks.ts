@@ -10,6 +10,7 @@
 import { core } from "ext:core/mod.js";
 import { op_node_is_promise_rejected } from "ext:core/ops";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import { newAsyncId } from "ext:deno_node/internal/async_hooks.ts";
 
 function assert(cond: boolean) {
   if (!cond) throw new Error("Assertion failed");
@@ -180,9 +181,16 @@ class AsyncContextFrame {
 export class AsyncResource {
   frame: AsyncContextFrame;
   type: string;
+  #asyncId: number;
+
   constructor(type: string) {
     this.type = type;
     this.frame = AsyncContextFrame.current();
+    this.#asyncId = newAsyncId();
+  }
+
+  asyncId() {
+    return this.#asyncId;
   }
 
   runInAsyncScope(
@@ -198,6 +206,8 @@ export class AsyncResource {
       Scope.exit();
     }
   }
+
+  emitDestroy() {}
 
   bind(fn: (...args: unknown[]) => unknown, thisArg = this) {
     validateFunction(fn, "fn");
@@ -315,6 +325,17 @@ export class AsyncLocalStorage {
       new StorageEntry(this.#key, store),
     );
     Scope.enter(frame);
+  }
+
+  static bind(fn: (...args: unknown[]) => unknown) {
+    return AsyncResource.bind(fn);
+  }
+
+  static snapshot() {
+    return AsyncLocalStorage.bind((
+      cb: (...args: unknown[]) => unknown,
+      ...args: unknown[]
+    ) => cb(...args));
   }
 }
 

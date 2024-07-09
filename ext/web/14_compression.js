@@ -19,7 +19,7 @@ const {
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { TransformStream } from "ext:deno_web/06_streams.js";
+import { TransformStream } from "./06_streams.js";
 
 webidl.converters.CompressionFormat = webidl.createEnumConverter(
   "CompressionFormat",

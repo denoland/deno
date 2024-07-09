@@ -125,7 +125,10 @@ async fn bundle_action(
       );
     }
   } else {
-    println!("{}", bundle_output.code);
+    #[allow(clippy::print_stdout)]
+    {
+      println!("{}", bundle_output.code);
+    }
   }
   Ok(())
 }
@@ -144,15 +147,18 @@ fn bundle_module_graph(
     }
   }
 
+  let (transpile_options, emit_options) =
+    crate::args::ts_config_to_transpile_and_emit_options(
+      ts_config_result.ts_config,
+    )?;
   deno_emit::bundle_graph(
     graph,
     deno_emit::BundleOptions {
       minify: false,
       bundle_type: deno_emit::BundleType::Module,
-      emit_options: crate::args::ts_config_to_emit_options(
-        ts_config_result.ts_config,
-      ),
+      emit_options,
       emit_ignore_directives: true,
+      transpile_options,
     },
   )
 }

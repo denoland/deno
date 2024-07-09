@@ -1,0 +1,5 @@
+// Regression test for https://github.com/denoland/deno/issues/22453
+{
+  "args": "run --v8-flags=--jitless main.js",
+  "output": "main.out"
+}

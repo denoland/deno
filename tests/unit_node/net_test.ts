@@ -55,6 +55,7 @@ Deno.test("[node/net] net.connect().unref() works", async () => {
   const ctl = new AbortController();
   const server = Deno.serve({
     signal: ctl.signal,
+    port: 0, // any available port will do
     handler: () => new Response("hello"),
     onListen: async ({ port, hostname }) => {
       const { stdout, stderr } = await new Deno.Command(Deno.execPath(), {
@@ -198,4 +199,10 @@ Deno.test("[node/net] multiple Sockets should get correct server data", async ()
   for (let i = 0; i < socketCount; i++) {
     assertEquals(sockets[i].events, [`${i}`.repeat(3), `${i}`.repeat(3)]);
   }
+});
+
+Deno.test("[node/net] BlockList doesn't leak resources", () => {
+  const blockList = new net.BlockList();
+  blockList.addAddress("1.1.1.1");
+  assert(blockList.check("1.1.1.1"));
 });

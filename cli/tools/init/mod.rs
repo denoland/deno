@@ -2,7 +2,6 @@
 
 use crate::args::InitFlags;
 use crate::colors;
-use crate::deno_std;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use log::info;
@@ -46,9 +45,11 @@ pub fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   let main_ts = include_str!("./templates/main.ts");
   create_file(&dir, "main.ts", main_ts)?;
 
-  let main_test_ts = include_str!("./templates/main_test.ts")
-    .replace("{CURRENT_STD_URL}", deno_std::CURRENT_STD_URL_STR);
-  create_file(&dir, "main_test.ts", &main_test_ts)?;
+  create_file(
+    &dir,
+    "main_test.ts",
+    include_str!("./templates/main_test.ts"),
+  )?;
   create_file(&dir, "deno.json", include_str!("./templates/deno.json"))?;
 
   info!("✅ {}", colors::green("Project initialized"));

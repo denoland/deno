@@ -1,0 +1,3 @@
+Worker thread started!
+Received message from main thread: Hello from main thread!
+Received message from worker: Reply from worker

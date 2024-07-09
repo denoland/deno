@@ -1,3 +1,8 @@
 export async function myFunction() {
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await new Promise((resolve) =>
+    setTimeout(() => {
+      postMessage("hallo");
+      resolve;
+    }, 100)
+  );
 }

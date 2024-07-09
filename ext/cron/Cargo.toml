@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_cron"
-version = "0.21.0"
+version = "0.38.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,8 +16,7 @@ path = "lib.rs"
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
-chrono.workspace = true
+chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
-deno_unsync = "0.1.1"
 saffron.workspace = true
 tokio.workspace = true

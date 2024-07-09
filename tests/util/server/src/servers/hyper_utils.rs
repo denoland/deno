@@ -31,7 +31,7 @@ pub struct ServerOptions {
   pub kind: ServerKind,
 }
 
-type HandlerOutput =
+pub type HandlerOutput =
   Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error>;
 
 pub async fn run_server<F, S>(options: ServerOptions, handler: F)
@@ -42,6 +42,7 @@ where
   let fut: Pin<Box<dyn Future<Output = Result<(), anyhow::Error>>>> =
     async move {
       let listener = TcpListener::bind(options.addr).await?;
+      println!("ready: {}", options.addr);
       loop {
         let (stream, _) = listener.accept().await?;
         let io = TokioIo::new(stream);
@@ -113,7 +114,7 @@ async fn hyper_serve_connection<I, F, S>(
       builder
         .serve_connection(io, service)
         .await
-        .map_err(|e| anyhow::anyhow!("{}", e))
+        .map_err(|e| anyhow::anyhow!("{:?}", e))
     }
     ServerKind::OnlyHttp1 => {
       let builder = hyper::server::conn::http1::Builder::new();

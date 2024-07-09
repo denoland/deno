@@ -1,7 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import {
   cachedDataVersionTag,
+  deserialize,
   getHeapStatistics,
+  serialize,
   setFlagsFromString,
 } from "node:v8";
 import { assertEquals } from "@std/assert/mod.ts";
@@ -51,5 +53,14 @@ Deno.test({
   name: "setFlagsFromString",
   fn() {
     setFlagsFromString("--allow_natives_syntax");
+  },
+});
+
+Deno.test({
+  name: "serialize deserialize",
+  fn() {
+    const s = serialize({ a: 1 });
+    const d = deserialize(s);
+    assertEquals(d, { a: 1 });
   },
 });

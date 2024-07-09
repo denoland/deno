@@ -1,0 +1,11 @@
+[WILDCARD]Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.
+
+  Specifier: http://localhost:4545/subdir/mt_text_ecmascript.j3.js
+  Actual: 3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18
+  Expected: bad
+
+This could be caused by:
+  * the lock file may be corrupt
+  * the source itself may be corrupt
+
+Use the --lock-write flag to regenerate the lockfile or --reload to reload the source code from the server.

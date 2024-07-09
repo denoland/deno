@@ -19,6 +19,7 @@ use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
 
+use crate::interface::AccessCheckCb;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
 use crate::FileSystem;
@@ -48,6 +49,7 @@ impl InMemoryFs {
         .write_file_sync(
           &path,
           OpenOptions::write(true, false, false, None),
+          None,
           &text.into_bytes(),
         )
         .unwrap();
@@ -82,15 +84,17 @@ impl FileSystem for InMemoryFs {
     &self,
     _path: &Path,
     _options: OpenOptions,
+    _access_check: Option<AccessCheckCb>,
   ) -> FsResult<Rc<dyn File>> {
     Err(FsError::NotSupported)
   }
-  async fn open_async(
-    &self,
+  async fn open_async<'a>(
+    &'a self,
     path: PathBuf,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb<'a>>,
   ) -> FsResult<Rc<dyn File>> {
-    self.open_sync(&path, options)
+    self.open_sync(&path, options, access_check)
   }
 
   fn mkdir_sync(
@@ -172,6 +176,24 @@ impl FileSystem for InMemoryFs {
     gid: Option<u32>,
   ) -> FsResult<()> {
     self.chown_sync(&path, uid, gid)
+  }
+
+  fn lchown_sync(
+    &self,
+    _path: &Path,
+    _uid: Option<u32>,
+    _gid: Option<u32>,
+  ) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  async fn lchown_async(
+    &self,
+    path: PathBuf,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    self.lchown_sync(&path, uid, gid)
   }
 
   fn remove_sync(&self, _path: &Path, _recursive: bool) -> FsResult<()> {
@@ -346,10 +368,32 @@ impl FileSystem for InMemoryFs {
     self.utime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
   }
 
+  fn lutime_sync(
+    &self,
+    _path: &Path,
+    _atime_secs: i64,
+    _atime_nanos: u32,
+    _mtime_secs: i64,
+    _mtime_nanos: u32,
+  ) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn lutime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    self.lutime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+  }
+
   fn write_file_sync(
     &self,
     path: &Path,
     options: OpenOptions,
+    _access_check: Option<AccessCheckCb>,
     data: &[u8],
   ) -> FsResult<()> {
     let path = normalize_path(path);
@@ -397,16 +441,21 @@ impl FileSystem for InMemoryFs {
     }
   }
 
-  async fn write_file_async(
-    &self,
+  async fn write_file_async<'a>(
+    &'a self,
     path: PathBuf,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb<'a>>,
     data: Vec<u8>,
   ) -> FsResult<()> {
-    self.write_file_sync(&path, options, &data)
+    self.write_file_sync(&path, options, access_check, &data)
   }
 
-  fn read_file_sync(&self, path: &Path) -> FsResult<Vec<u8>> {
+  fn read_file_sync(
+    &self,
+    path: &Path,
+    _access_check: Option<AccessCheckCb>,
+  ) -> FsResult<Vec<u8>> {
     let entry = self.get_entry(path);
     match entry {
       Some(entry) => match &*entry {
@@ -419,7 +468,11 @@ impl FileSystem for InMemoryFs {
       None => Err(FsError::Io(Error::new(ErrorKind::NotFound, "Not found"))),
     }
   }
-  async fn read_file_async(&self, path: PathBuf) -> FsResult<Vec<u8>> {
-    self.read_file_sync(&path)
+  async fn read_file_async<'a>(
+    &'a self,
+    path: PathBuf,
+    access_check: Option<AccessCheckCb<'a>>,
+  ) -> FsResult<Vec<u8>> {
+    self.read_file_sync(&path, access_check)
   }
 }

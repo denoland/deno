@@ -346,7 +346,7 @@ function hasBuiltInToString(value) {
     return true;
   }
 
-  // The object has a own `toString` property. Thus it's not not a built-in one.
+  // The object has a own `toString` property. Thus it's not a built-in one.
   if (Object.prototype.hasOwnProperty.call(value, "toString")) {
     return false;
   }

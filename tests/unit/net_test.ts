@@ -1205,6 +1205,7 @@ Deno.test({
         conn.close();
         listener1Recv = true;
         p1 = undefined;
+        listener1.close();
       }).catch(() => {});
     }
     if (!p2) {
@@ -1212,14 +1213,13 @@ Deno.test({
         conn.close();
         listener2Recv = true;
         p2 = undefined;
+        listener2.close();
       }).catch(() => {});
     }
     const conn = await Deno.connect({ port });
     conn.close();
     await Promise.race([p1, p2]);
   }
-  listener1.close();
-  listener2.close();
 });
 
 Deno.test({

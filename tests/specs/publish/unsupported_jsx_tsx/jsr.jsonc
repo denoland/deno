@@ -1,0 +1,11 @@
+{
+  "name": "@foo/bar",
+  "version": "1.0.0",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "npm:preact@10"
+  }
+}

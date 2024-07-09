@@ -1,5 +1,15 @@
 {
   "version": "3",
+  "packages": {
+    "specifiers": {
+      "jsr:@std/yaml@^0.221": "jsr:@std/yaml@0.221.0"
+    },
+    "jsr": {
+      "@std/yaml@0.221.0": {
+        "integrity": "bac8913ee4f6fc600d4b92cc020f755070e22687ad242341f31d123ff690ae98"
+      }
+    }
+  },
   "remote": {
     "https://cdn.skypack.dev/-/@octokit/auth-token@v2.5.0-63e6RmuUEnR1eflFvHL4/dist=es2019,mode=imports/optimized/@octokit/auth-token.js": "5247df74f0bd63d994d1ab5b52265761cf2eb1b67f12171a030ebef4027d5eb6",
     "https://cdn.skypack.dev/-/@octokit/core@v3.6.0-OHRgZVmYvb8jBujJr5vE/dist=es2019,mode=imports/optimized/@octokit/core.js": "a1f82f18dccc5b09d753690a8addd839e4fe0b5a6f6831b17437f136c8921db3",

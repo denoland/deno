@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run
+#!/usr/bin/env -S deno run --allow-write --allow-read --allow-net --allow-env --allow-run
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This script is used to run WPT tests for Deno.
@@ -34,7 +34,7 @@ import {
 } from "./runner/utils.ts";
 import { pooledMap } from "../util/std/async/pool.ts";
 import { blue, bold, green, red, yellow } from "../util/std/fmt/colors.ts";
-import { writeAll, writeAllSync } from "../util/std/streams/write_all.ts";
+import { writeAll, writeAllSync } from "../util/std/io/write_all.ts";
 import { saveExpectation } from "./runner/utils.ts";
 
 class TestFilter {
@@ -72,6 +72,7 @@ switch (command) {
     break;
 
   case "run":
+    await checkPy3Available();
     await cargoBuild();
     await run();
     break;
@@ -245,12 +246,12 @@ async function run() {
       };
       minifiedResults.push(minified);
     }
-    await Deno.writeTextFile(json, JSON.stringify(minifiedResults));
+    await Deno.writeTextFile(json, JSON.stringify(minifiedResults) + "\n");
   }
 
   if (wptreport) {
     const report = await generateWptReport(results, startTime, endTime);
-    await Deno.writeTextFile(wptreport, JSON.stringify(report));
+    await Deno.writeTextFile(wptreport, JSON.stringify(report) + "\n");
   }
 
   const code = reportFinal(results, endTime - startTime);
@@ -384,7 +385,7 @@ async function update() {
   const endTime = new Date().getTime();
 
   if (json) {
-    await Deno.writeTextFile(json, JSON.stringify(results));
+    await Deno.writeTextFile(json, JSON.stringify(results) + "\n");
   }
 
   const resultTests: Record<
@@ -446,7 +447,7 @@ function insertExpectation(
   assert(segment, "segments array must never be empty");
   if (segments.length > 0) {
     if (
-      !currentExpectation[segment] ||
+      currentExpectation[segment] === undefined ||
       Array.isArray(currentExpectation[segment]) ||
       typeof currentExpectation[segment] === "boolean"
     ) {
@@ -458,7 +459,14 @@ function insertExpectation(
       finalExpectation,
     );
   } else {
-    currentExpectation[segment] = finalExpectation;
+    if (
+      currentExpectation[segment] === undefined ||
+      Array.isArray(currentExpectation[segment]) ||
+      typeof currentExpectation[segment] === "boolean" ||
+      (currentExpectation[segment] as { ignore: boolean })?.ignore !== true
+    ) {
+      currentExpectation[segment] = finalExpectation;
+    }
   }
 }
 
@@ -548,6 +556,12 @@ function reportFinal(
       failed ? red("failed") : green("ok")
     }. ${finalPassedCount} passed; ${finalFailedCount} failed; ${finalExpectedFailedAndFailedCount} expected failure; total ${finalTotalCount} (${duration}ms)\n`,
   );
+
+  // We ignore the exit code of the test run because the CI job reports the
+  // results to WPT.fyi, and we still want to report failure.
+  if (Deno.args.includes("--exit-zero")) {
+    return 0;
+  }
 
   return failed ? 1 : 0;
 }

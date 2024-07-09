@@ -2,6 +2,7 @@
 
 use pretty_assertions::assert_eq;
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fs;
 use std::fs::OpenOptions;
@@ -21,7 +22,7 @@ use crate::testdata_path;
 
 /// Represents a path on the file system, which can be used
 /// to perform specific actions.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct PathRef(PathBuf);
 
 impl AsRef<Path> for PathRef {
@@ -124,32 +125,54 @@ impl PathRef {
     fs::read(self).with_context(|| format!("Could not read file: {}", self))
   }
 
+  #[track_caller]
   pub fn read_json<TValue: DeserializeOwned>(&self) -> TValue {
-    serde_json::from_str(&self.read_to_string()).unwrap()
+    serde_json::from_str(&self.read_to_string())
+      .with_context(|| format!("Failed deserializing: {}", self))
+      .unwrap()
   }
 
+  #[track_caller]
   pub fn read_json_value(&self) -> serde_json::Value {
-    serde_json::from_str(&self.read_to_string()).unwrap()
+    serde_json::from_str(&self.read_to_string())
+      .with_context(|| format!("Failed deserializing: {}", self))
+      .unwrap()
   }
 
+  #[track_caller]
+  pub fn read_jsonc_value(&self) -> serde_json::Value {
+    jsonc_parser::parse_to_serde_value(
+      &self.read_to_string(),
+      &Default::default(),
+    )
+    .with_context(|| format!("Failed to parse {}", self))
+    .unwrap()
+    .unwrap_or_else(|| panic!("JSON file was empty for {}", self))
+  }
+
+  #[track_caller]
   pub fn rename(&self, to: impl AsRef<Path>) {
     fs::rename(self, self.join(to)).unwrap();
   }
 
+  #[track_caller]
   pub fn append(&self, text: impl AsRef<str>) {
     let mut file = OpenOptions::new().append(true).open(self).unwrap();
     file.write_all(text.as_ref().as_bytes()).unwrap();
   }
 
-  pub fn write(&self, text: impl AsRef<str>) {
-    fs::write(self, text.as_ref()).unwrap();
+  #[track_caller]
+  pub fn write(&self, text: impl AsRef<[u8]>) {
+    fs::write(self, text).unwrap();
   }
 
+  #[track_caller]
   pub fn write_json<TValue: Serialize>(&self, value: &TValue) {
     let text = serde_json::to_string_pretty(value).unwrap();
     self.write(text);
   }
 
+  #[track_caller]
   pub fn symlink_dir(
     &self,
     oldpath: impl AsRef<Path>,
@@ -169,6 +192,7 @@ impl PathRef {
     }
   }
 
+  #[track_caller]
   pub fn symlink_file(
     &self,
     oldpath: impl AsRef<Path>,
@@ -188,12 +212,14 @@ impl PathRef {
     }
   }
 
+  #[track_caller]
   pub fn read_dir(&self) -> fs::ReadDir {
     fs::read_dir(self.as_path())
       .with_context(|| format!("Reading {}", self.as_path().display()))
       .unwrap()
   }
 
+  #[track_caller]
   pub fn copy(&self, to: &impl AsRef<Path>) {
     std::fs::copy(self.as_path(), to)
       .with_context(|| format!("Copying {} to {}", self, to.as_ref().display()))
@@ -204,6 +230,14 @@ impl PathRef {
   ///
   /// Note: Does not handle symlinks.
   pub fn copy_to_recursive(&self, to: &PathRef) {
+    self.copy_to_recursive_with_exclusions(to, &HashSet::new())
+  }
+
+  pub fn copy_to_recursive_with_exclusions(
+    &self,
+    to: &PathRef,
+    file_exclusions: &HashSet<PathRef>,
+  ) {
     to.create_dir_all();
     let read_dir = self.read_dir();
 
@@ -215,12 +249,13 @@ impl PathRef {
 
       if file_type.is_dir() {
         new_from.copy_to_recursive(&new_to);
-      } else if file_type.is_file() {
+      } else if file_type.is_file() && !file_exclusions.contains(&new_from) {
         new_from.copy(&new_to);
       }
     }
   }
 
+  #[track_caller]
   pub fn make_dir_readonly(&self) {
     self.create_dir_all();
     if cfg!(windows) {
@@ -435,7 +470,7 @@ impl TempDir {
     self.target_path().join(from).rename(to)
   }
 
-  pub fn write(&self, path: impl AsRef<Path>, text: impl AsRef<str>) {
+  pub fn write(&self, path: impl AsRef<Path>, text: impl AsRef<[u8]>) {
     self.target_path().join(path).write(text)
   }
 

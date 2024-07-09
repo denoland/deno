@@ -26,13 +26,13 @@ pub use deno_webidl;
 pub use deno_websocket;
 pub use deno_webstorage;
 
+pub mod code_cache;
 pub mod errors;
 pub mod fmt_errors;
 pub mod fs_util;
 pub mod inspector_server;
 pub mod js;
 pub mod ops;
-pub mod permissions;
 pub mod snapshot;
 pub mod tokio_util;
 pub mod web_worker;
@@ -40,6 +40,7 @@ pub mod worker;
 
 mod worker_bootstrap;
 pub use worker_bootstrap::BootstrapOptions;
+pub use worker_bootstrap::WorkerExecutionMode;
 pub use worker_bootstrap::WorkerLogLevel;
 
 mod shared;
@@ -89,23 +90,28 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[(
     "Enable unstable net APIs",
     7,
   ),
-  ("temporal", "Enable unstable Temporal API", 8),
+  (
+    ops::process::UNSTABLE_FEATURE_NAME,
+    "Enable unstable process APIs",
+    8,
+  ),
+  ("temporal", "Enable unstable Temporal API", 9),
   (
     "unsafe-proto",
     "Enable unsafe __proto__ support. This is a security risk.",
     // This number is used directly in the JS code. Search
     // for "unstableIds" to see where it's used.
-    9,
+    10,
   ),
   (
     deno_webgpu::UNSTABLE_FEATURE_NAME,
     "Enable unstable `WebGPU` API",
-    10,
+    11,
   ),
   (
     ops::worker_host::UNSTABLE_FEATURE_NAME,
     "Enable unstable Web Worker APIs",
-    11,
+    12,
   ),
 ];
 

@@ -30,7 +30,7 @@ Deno.test("[node/timers setInterval]", () => {
   }
 });
 
-Deno.test("[node/timers setImmediate]", () => {
+Deno.test("[node/timers setImmediate]", async () => {
   {
     const { clearImmediate, setImmediate } = timers;
     const imm = setImmediate(() => {});
@@ -39,6 +39,21 @@ Deno.test("[node/timers setImmediate]", () => {
 
   {
     const imm = timers.setImmediate(() => {});
+    timers.clearImmediate(imm);
+  }
+
+  {
+    const deffered = Promise.withResolvers<void>();
+    const imm = timers.setImmediate(
+      (a, b) => {
+        assert(a === 1);
+        assert(b === 2);
+        deffered.resolve();
+      },
+      1,
+      2,
+    );
+    await deffered;
     timers.clearImmediate(imm);
   }
 });
