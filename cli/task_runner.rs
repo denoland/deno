@@ -172,7 +172,6 @@ impl ShellCommand for NodeCommand {
     args.extend(["run", "-A"].into_iter().map(|s| s.to_string()));
     args.extend(context.args.iter().cloned());
 
-    eprintln!("running node with deno: {:?}", args);
     let mut state = context.state;
     state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
     return ExecutableCommand::new(

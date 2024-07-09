@@ -428,7 +428,6 @@ async fn sync_resolution_with_fs(
       let scripts_run = folder_path.join(".scripts-run");
       if can_run_scripts(allow_scripts, &package.id.nv) {
         if !scripts_run.exists() {
-          eprintln!("adding package with scripts: {}", package.id.nv.name);
           let sub_node_modules = folder_path.join("node_modules");
           let package_path =
             join_package_name(&sub_node_modules, &package.id.nv.name);
@@ -586,10 +585,8 @@ async fn sync_resolution_with_fs(
   for (package, package_path, scripts_run_path) in packages_with_scripts {
     let custom_commands =
       resolve_custom_commands_from_folder(root_node_modules_dir_path)?;
-    eprintln!("package with scripts: {}", package.id.nv.name);
     for script_name in ["preinstall", "install", "postinstall"] {
       if let Some(script) = package.scripts.get(script_name) {
-        eprintln!("running script: {}; for {}", script_name, package.id.nv);
         let exit_code =
           crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
             task_name: script_name,
