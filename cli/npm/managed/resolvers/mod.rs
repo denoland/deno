@@ -10,8 +10,8 @@ use std::sync::Arc;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 
-use crate::args::PackagesAllowedScripts;
 use crate::args::PackageJsonInstallDepsProvider;
+use crate::args::PackagesAllowedScripts;
 use crate::util::progress_bar::ProgressBar;
 
 pub use self::common::NpmPackageFsResolver;
