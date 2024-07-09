@@ -1,8 +1,0 @@
-{
-  "name": "{{name}}",
-  "version": "1.0.0",
-  "exports": {},
-  "tasks": {
-    "dev": "deno test --watch mod.ts"
-  }
-}
