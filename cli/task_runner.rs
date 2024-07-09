@@ -195,26 +195,16 @@ impl ShellCommand for NodeGypCommand {
     &self,
     context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
-    // TODO: decide whether we force users to add an explicit dep on
-    // node-gyp (also need to respect the version in package.json)
-    let mut args = Vec::with_capacity(context.args.len());
-    args.extend(
-      ["run", "-A", "npm:node-gyp"]
-        .into_iter()
-        .map(|s| s.to_string()),
-    );
-    args.extend(context.args.iter().cloned());
-    let mut state = context.state;
-    state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
+    // at the moment this shell command is just to give a warning if node-gyp is not found
+    // in the future, we could try to run/install node-gyp for the user with deno
+    if let Err(_) = which::which("node-gyp") {
+      log::warn!("{}: node-gyp was used in a script, but was not listed as a dependency. Either add it as a dependency or install it globally (e.g. `npm install -g node-gyp`)", crate::colors::yellow("warning"));
+    }
     return ExecutableCommand::new(
-      "deno".to_string(),
-      std::env::current_exe().unwrap(),
+      "node-gyp".to_string(),
+      "node-gyp".to_string().into(),
     )
-    .execute(ShellCommandContext {
-      args,
-      state,
-      ..context
-    });
+    .execute(context);
   }
 }
 
