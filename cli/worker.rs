@@ -669,7 +669,7 @@ impl CliMainWorkerFactory {
           self.resolve_binary_entrypoint_fallback(package_folder, sub_path);
         match result {
           Ok(Some(resolution)) => Ok(resolution),
-          Ok(None) => Err(original_err),
+          Ok(None) => Err(original_err.into()),
           Err(fallback_err) => {
             bail!("{:#}\n\nFallback failed: {:#}", original_err, fallback_err)
           }
@@ -692,16 +692,13 @@ impl CliMainWorkerFactory {
       return Ok(None);
     }
 
-    // use a fake referrer since a real one doesn't exist
-    let referrer =
-      ModuleSpecifier::from_directory_path(package_folder).unwrap();
     let Some(resolution) = self
       .shared
       .node_resolver
       .resolve_package_subpath_from_deno_module(
         package_folder,
         sub_path,
-        &referrer,
+        /* referrer */ None,
         NodeResolutionMode::Execution,
       )?
     else {

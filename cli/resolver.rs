@@ -23,6 +23,8 @@ use deno_graph::NpmResolvePkgReqsResult;
 use deno_npm::resolution::NpmResolutionError;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::errors::ClosestPkgJsonError;
+use deno_runtime::deno_node::errors::UrlToNodeResolutionError;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_runtime::deno_node::parse_npm_pkg_name;
 use deno_runtime::deno_node::NodeResolution;
@@ -94,7 +96,7 @@ impl CliNodeResolver {
   pub fn get_closest_package_json(
     &self,
     referrer: &ModuleSpecifier,
-  ) -> Result<Option<Arc<PackageJson>>, AnyError> {
+  ) -> Result<Option<Arc<PackageJson>>, ClosestPkgJsonError> {
     self.node_resolver.get_closest_package_json(referrer)
   }
 
@@ -119,7 +121,10 @@ impl CliNodeResolver {
     mode: NodeResolutionMode,
   ) -> Result<Option<NodeResolution>, AnyError> {
     self.handle_node_resolve_result(
-      self.node_resolver.resolve(specifier, referrer, mode),
+      self
+        .node_resolver
+        .resolve(specifier, referrer, mode)
+        .map_err(AnyError::from),
     )
   }
 
@@ -151,7 +156,7 @@ impl CliNodeResolver {
       .maybe_resolve_package_sub_path_from_deno_module(
         &package_folder,
         sub_path,
-        referrer,
+        Some(referrer),
         mode,
       )?;
     match maybe_resolution {
@@ -180,14 +185,14 @@ impl CliNodeResolver {
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-    referrer: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
     mode: NodeResolutionMode,
   ) -> Result<NodeResolution, AnyError> {
     self
       .maybe_resolve_package_sub_path_from_deno_module(
         package_folder,
         sub_path,
-        referrer,
+        maybe_referrer,
         mode,
       )?
       .ok_or_else(|| {
@@ -205,16 +210,19 @@ impl CliNodeResolver {
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-    referrer: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
     mode: NodeResolutionMode,
   ) -> Result<Option<NodeResolution>, AnyError> {
     self.handle_node_resolve_result(
-      self.node_resolver.resolve_package_subpath_from_deno_module(
-        package_folder,
-        sub_path,
-        referrer,
-        mode,
-      ),
+      self
+        .node_resolver
+        .resolve_package_subpath_from_deno_module(
+          package_folder,
+          sub_path,
+          maybe_referrer,
+          mode,
+        )
+        .map_err(AnyError::from),
     )
   }
 
@@ -252,7 +260,7 @@ impl CliNodeResolver {
   pub fn url_to_node_resolution(
     &self,
     specifier: ModuleSpecifier,
-  ) -> Result<NodeResolution, AnyError> {
+  ) -> Result<NodeResolution, UrlToNodeResolutionError> {
     self.node_resolver.url_to_node_resolution(specifier)
   }
 
@@ -574,7 +582,7 @@ impl Resolver for CliGraphResolver {
                       .resolve_package_sub_path_from_deno_module(
                         pkg_folder,
                         sub_path.as_deref(),
-                        referrer,
+                        Some(referrer),
                         to_node_mode(mode),
                       )?
                       .into_url(),
@@ -599,7 +607,7 @@ impl Resolver for CliGraphResolver {
                 .resolve_package_sub_path_from_deno_module(
                   pkg_folder,
                   req_ref.sub_path(),
-                  referrer,
+                  Some(referrer),
                   to_node_mode(mode),
                 )?
                 .into_url(),
