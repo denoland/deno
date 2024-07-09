@@ -305,6 +305,10 @@ pub fn getter<'s>(
   let reflect_get = v8::Local::new(scope, reflect_get);
   let inner = v8::Local::new(scope, inner);
 
+  if !inner.has_own_property(scope, key).unwrap_or(false) {
+    return v8::Intercepted::No;
+  }
+
   let undefined = v8::undefined(scope);
   let Some(value) = reflect_get.call(
     scope,
