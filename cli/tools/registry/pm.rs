@@ -242,19 +242,15 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
 
   let mut file_to_be_updated_path = config_specifier.to_file_path().unwrap();
 
-  match &config_file {
-    DenoOrPackageJson::Deno(deno_config, ..) => {
-      import_map_file = deno_config.json.import_map.as_ref();
-    }
-    _ => {}
+  if let DenoOrPackageJson::Deno(deno_config, ..) = &config_file {
+    import_map_file = deno_config.json.import_map.as_ref();
   };
 
   if let Some(file) = import_map_file {
     file_to_be_updated_path = file.into();
   }
-  let file_to_be_updated_contents;
-  let ast;
-  file_to_be_updated_contents = {
+
+  let file_to_be_updated_contents = {
     let contents = tokio::fs::read_to_string(&file_to_be_updated_path)
       .await
       .unwrap();
@@ -264,7 +260,7 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
       contents
     }
   };
-  ast = jsonc_parser::parse_to_ast(
+  let ast = jsonc_parser::parse_to_ast(
     &file_to_be_updated_contents,
     &Default::default(),
     &Default::default(),
