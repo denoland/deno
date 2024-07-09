@@ -182,7 +182,6 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   if config_specifier.scheme() != "file" {
     bail!("Can't add dependencies to a remote configuration file");
   }
-  let config_file_path = config_specifier.to_file_path().unwrap();
 
   let http_client = cli_factory.http_client_provider();
 
@@ -239,16 +238,34 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     }
   }
 
-  let config_file_contents = {
-    let contents = tokio::fs::read_to_string(&config_file_path).await.unwrap();
+  let mut import_map_file = None;
+
+  let mut file_to_be_updated_path = config_specifier.to_file_path().unwrap();
+
+  match &config_file {
+    DenoOrPackageJson::Deno(deno_config, ..) => {
+      import_map_file = deno_config.json.import_map.as_ref();
+    }
+    _ => {}
+  };
+
+  if let Some(file) = import_map_file {
+    file_to_be_updated_path = file.into();
+  }
+  let file_to_be_updated_contents;
+  let ast;
+  file_to_be_updated_contents = {
+    let contents = tokio::fs::read_to_string(&file_to_be_updated_path)
+      .await
+      .unwrap();
     if contents.trim().is_empty() {
       "{}\n".into()
     } else {
       contents
     }
   };
-  let ast = jsonc_parser::parse_to_ast(
-    &config_file_contents,
+  ast = jsonc_parser::parse_to_ast(
+    &file_to_be_updated_contents,
     &Default::default(),
     &Default::default(),
   )?;
@@ -290,16 +307,29 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
 
   let fmt_config_options = config_file.fmt_options();
 
-  let new_text = update_config_file_content(
-    obj,
-    &config_file_contents,
-    generated_imports,
-    fmt_config_options,
-    config_file.imports_key(),
-    config_file.file_name(),
-  );
+  let mut new_text: String = "".to_string();
 
-  tokio::fs::write(&config_file_path, new_text)
+  if import_map_file.is_none() {
+    new_text = update_config_file_content(
+      obj,
+      &file_to_be_updated_contents,
+      generated_imports,
+      fmt_config_options,
+      config_file.imports_key(),
+      config_file.file_name(),
+    );
+  } else {
+    new_text = update_import_map_file_content(
+      obj,
+      &file_to_be_updated_contents,
+      generated_imports,
+      fmt_config_options,
+      config_file.imports_key(),
+      &file_to_be_updated_contents,
+    );
+  }
+
+  tokio::fs::write(&file_to_be_updated_path, new_text)
     .await
     .context("Failed to update configuration file")?;
 
@@ -313,6 +343,53 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   }
 
   Ok(())
+}
+
+fn update_import_map_file_content(
+  obj: jsonc_parser::ast::Object,
+  config_file_contents: &str,
+  generated_imports: String,
+  fmt_options: FmtOptionsConfig,
+  imports_key: &str,
+  file_name: &str,
+) -> String {
+  let mut text_changes = vec![];
+  match obj.get(imports_key) {
+    Some(ObjectProp {
+      value: Value::Object(lit),
+      ..
+    }) => text_changes.push(TextChange {
+      range: (lit.range.start + 1)..(lit.range.end - 1),
+      new_text: generated_imports,
+    }),
+    None => {
+      let insert_position = obj.range.end - 1;
+      text_changes.push(TextChange {
+        range: insert_position..insert_position,
+        // NOTE(bartlomieju): adding `\n` here to force the formatter to always
+        // produce a config file that is multline, like so:
+        // ```
+        // {
+        //   "<package_name>": "<registry>:<package_name>@<semver>"
+        // }
+        new_text: format!("\n {generated_imports} "),
+      })
+    }
+    // we verified the shape of `imports`/`dependencies` above
+    Some(_) => unreachable!(),
+  }
+
+  let new_text =
+    deno_ast::apply_text_changes(config_file_contents, text_changes);
+
+  crate::tools::fmt::format_json(
+    &PathBuf::from(file_name),
+    &new_text,
+    &fmt_options,
+  )
+  .ok()
+  .map(|formatted_text| formatted_text.unwrap_or_else(|| new_text.clone()))
+  .unwrap_or(new_text)
 }
 
 struct SelectedPackage {
