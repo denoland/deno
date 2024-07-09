@@ -590,7 +590,7 @@ where
 
   tokio_conn.write_all(&buf).await?;
 
-  let mut buf = [0; 64];
+  let mut buf = [0; 8192];
   let mut pos = 0;
 
   loop {
