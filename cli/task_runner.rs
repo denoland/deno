@@ -160,14 +160,6 @@ impl ShellCommand for NpmCommand {
   }
 }
 
-// WARNING: Do not depend on this env var in user code. It's not stable API.
-pub(crate) const DENO_TASK_SUBPROCESS_HIDDEN_ENV_VAR_NAME: &str =
-  "DENO_INTERNAL_TASK_SUBPROCESS";
-
-pub(crate) fn is_task_subprocess() -> bool {
-  std::env::var(DENO_TASK_SUBPROCESS_HIDDEN_ENV_VAR_NAME).is_ok()
-}
-
 pub struct NodeCommand;
 
 impl ShellCommand for NodeCommand {
@@ -183,7 +175,6 @@ impl ShellCommand for NodeCommand {
     eprintln!("running node with deno: {:?}", args);
     let mut state = context.state;
     state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
-    state.apply_env_var(DENO_TASK_SUBPROCESS_HIDDEN_ENV_VAR_NAME, "1");
     return ExecutableCommand::new(
       "deno".to_string(),
       std::env::current_exe().unwrap(),
@@ -215,7 +206,6 @@ impl ShellCommand for NodeGypCommand {
     args.extend(context.args.iter().cloned());
     let mut state = context.state;
     state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
-    state.apply_env_var(DENO_TASK_SUBPROCESS_HIDDEN_ENV_VAR_NAME, "1");
     return ExecutableCommand::new(
       "deno".to_string(),
       std::env::current_exe().unwrap(),
@@ -263,15 +253,9 @@ impl ShellCommand for NpxCommand {
 }
 
 #[derive(Clone)]
-pub struct NpmPackageBinCommand {
+struct NpmPackageBinCommand {
   name: String,
   npm_package: PackageNv,
-}
-
-impl NpmPackageBinCommand {
-  pub fn new(name: String, npm_package: PackageNv) -> Self {
-    Self { name, npm_package }
-  }
 }
 
 impl ShellCommand for NpmPackageBinCommand {
@@ -288,19 +272,13 @@ impl ShellCommand for NpmPackageBinCommand {
         format!("npm:{}/{}", self.npm_package, self.name)
       },
     ];
-    let mut state = context.state;
-    state.apply_env_var(DENO_TASK_SUBPROCESS_HIDDEN_ENV_VAR_NAME, "1");
 
     args.extend(context.args);
     let executable_command = deno_task_shell::ExecutableCommand::new(
       "deno".to_string(),
       std::env::current_exe().unwrap(),
     );
-    executable_command.execute(ShellCommandContext {
-      args,
-      state,
-      ..context
-    })
+    executable_command.execute(ShellCommandContext { args, ..context })
   }
 }
 
@@ -331,9 +309,6 @@ impl ShellCommand for NodeModulesFileRunCommand {
     context
       .state
       .apply_env_var("DENO_INTERNAL_NPM_CMD_NAME", &self.command_name);
-    context
-      .state
-      .apply_env_var(DENO_TASK_SUBPROCESS_HIDDEN_ENV_VAR_NAME, "1");
     executable_command.execute(ShellCommandContext { args, ..context })
   }
 }

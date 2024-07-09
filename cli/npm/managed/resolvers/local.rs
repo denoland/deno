@@ -269,7 +269,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
 // baseline (so they take precedence). need to make sure that we actually do bin entries for
 // the package
 fn resolve_custom_commands_from_folder(
-  pkg: &NpmResolutionPackage,
   root_node_modules_dir_path: &Path,
 ) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
   let mut custom_commands = crate::task_runner::TaskCustomCommands::new();
@@ -326,11 +325,6 @@ async fn sync_resolution_with_fs(
   if snapshot.is_empty() && pkg_json_deps_provider.workspace_pkgs().is_empty() {
     return Ok(()); // don't create the directory
   }
-  // HACK
-  if crate::task_runner::is_task_subprocess() {
-    // don't run this in a subprocess
-    return Ok(());
-  }
 
   let deno_local_registry_dir = root_node_modules_dir_path.join(".deno");
   let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
@@ -365,7 +359,8 @@ async fn sync_resolution_with_fs(
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
   let bin_entries = Rc::new(RefCell::new(bin_entries::BinEntries::new()));
-  let mut packages_with_scripts = Vec::with_capacity(16);
+  let mut packages_with_scripts = Vec::with_capacity(2);
+  let mut packages_with_scripts_not_run = Vec::new();
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
       newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -429,20 +424,22 @@ async fn sync_resolution_with_fs(
       });
     }
 
-    if has_lifecycle_scripts(package)
-      && can_run_scripts(&allow_scripts, &package.id.nv)
-    {
+    if has_lifecycle_scripts(package) {
       let scripts_run = folder_path.join(".scripts-run");
-      if !scripts_run.exists() {
-        eprintln!("adding package with scripts: {}", package.id.nv.name);
-        let sub_node_modules = folder_path.join("node_modules");
-        let package_path =
-          join_package_name(&sub_node_modules, &package.id.nv.name);
-        packages_with_scripts.push((
-          package.clone(),
-          package_path,
-          scripts_run,
-        ));
+      if can_run_scripts(allow_scripts, &package.id.nv) {
+        if !scripts_run.exists() {
+          eprintln!("adding package with scripts: {}", package.id.nv.name);
+          let sub_node_modules = folder_path.join("node_modules");
+          let package_path =
+            join_package_name(&sub_node_modules, &package.id.nv.name);
+          packages_with_scripts.push((
+            package.clone(),
+            package_path,
+            scripts_run,
+          ));
+        }
+      } else if !scripts_run.exists() {
+        packages_with_scripts_not_run.push(package.id.nv.clone());
       }
     }
   }
@@ -587,10 +584,8 @@ async fn sync_resolution_with_fs(
   }
 
   for (package, package_path, scripts_run_path) in packages_with_scripts {
-    let custom_commands = resolve_custom_commands_from_folder(
-      &package,
-      root_node_modules_dir_path,
-    )?;
+    let custom_commands =
+      resolve_custom_commands_from_folder(root_node_modules_dir_path)?;
     eprintln!("package with scripts: {}", package.id.nv.name);
     for script_name in ["preinstall", "install", "postinstall"] {
       if let Some(script) = package.scripts.get(script_name) {
@@ -618,6 +613,25 @@ async fn sync_resolution_with_fs(
       }
     }
     fs::write(scripts_run_path, "")?;
+  }
+
+  if !packages_with_scripts_not_run.is_empty() {
+    let (maybe_install, maybe_install_example) = if *crate::args::DENO_FUTURE {
+      (
+        " or deno install",
+        " or deno install --allow-scripts=pkg1,pkg2`",
+      )
+    } else {
+      ("", "")
+    };
+    let packages = packages_with_scripts_not_run
+      .iter()
+      .map(|p| p.to_string())
+      .collect::<Vec<_>>()
+      .join(", ");
+    log::warn!("{}: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
+    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with deno cache{maybe_install}
+    (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>`{maybe_install_example}):\n      {packages}", crate::colors::yellow("warning"));
   }
 
   setup_cache.save();
