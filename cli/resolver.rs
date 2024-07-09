@@ -682,7 +682,9 @@ impl Resolver for CliGraphResolver {
           }
         }
       }
-    } else if referrer.scheme() == "file" {
+    }
+
+    if referrer.scheme() == "file" {
       if let Some(node_resolver) = &self.node_resolver {
         let node_result = node_resolver.resolve_if_in_npm_package(
           specifier,
