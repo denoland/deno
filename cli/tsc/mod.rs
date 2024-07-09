@@ -30,6 +30,7 @@ use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
+use deno_runtime::deno_node::NodeModuleKind;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
@@ -585,6 +586,8 @@ pub struct ResolveArgs {
   /// The base specifier that the supplied specifier strings should be resolved
   /// relative to.
   pub base: String,
+  /// If the base is cjs.
+  pub is_base_cjs: bool,
   /// A list of specifiers that should be resolved.
   pub specifiers: Vec<String>,
 }
@@ -594,9 +597,17 @@ pub struct ResolveArgs {
 fn op_resolve(
   state: &mut OpState,
   #[string] base: String,
+  is_base_cjs: bool,
   #[serde] specifiers: Vec<String>,
 ) -> Result<Vec<(String, String)>, AnyError> {
-  op_resolve_inner(state, ResolveArgs { base, specifiers })
+  op_resolve_inner(
+    state,
+    ResolveArgs {
+      base,
+      is_base_cjs,
+      specifiers,
+    },
+  )
 }
 
 #[inline]
@@ -607,6 +618,11 @@ fn op_resolve_inner(
   let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, String)> =
     Vec::with_capacity(args.specifiers.len());
+  let referrer_kind = if args.is_base_cjs {
+    NodeModuleKind::Cjs
+  } else {
+    NodeModuleKind::Esm
+  };
   let referrer = if let Some(remapped_specifier) =
     state.remapped_specifiers.get(&args.base)
   {
@@ -646,7 +662,12 @@ fn op_resolve_inner(
       Some(ResolutionResolved { specifier, .. }) => {
         resolve_graph_specifier_types(specifier, &referrer, state)?
       }
-      _ => resolve_non_graph_specifier_types(&specifier, &referrer, state)?,
+      _ => resolve_non_graph_specifier_types(
+        &specifier,
+        &referrer,
+        referrer_kind,
+        state,
+      )?,
     };
     let result = match maybe_result {
       Some((specifier, media_type)) => {
@@ -766,6 +787,7 @@ fn resolve_graph_specifier_types(
 fn resolve_non_graph_specifier_types(
   specifier: &str,
   referrer: &ModuleSpecifier,
+  referrer_kind: NodeModuleKind,
   state: &State,
 ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
   let npm = match state.maybe_npm.as_ref() {
@@ -777,11 +799,17 @@ fn resolve_non_graph_specifier_types(
     // we're in an npm package, so use node resolution
     Ok(Some(NodeResolution::into_specifier_and_media_type(
       node_resolver
-        .resolve(specifier, referrer, NodeResolutionMode::Types)
+        .resolve(
+          specifier,
+          referrer,
+          referrer_kind,
+          NodeResolutionMode::Types,
+        )
         .ok()
         .flatten(),
     )))
   } else if let Ok(npm_req_ref) = NpmPackageReqReference::from_str(specifier) {
+    debug_assert_eq!(referrer_kind, NodeModuleKind::Esm);
     // todo(dsherret): add support for injecting this in the graph so
     // we don't need this special code here.
     // This could occur when resolving npm:@types/node when it is
@@ -1184,6 +1212,7 @@ mod tests {
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
+        is_base_cjs: false,
         specifiers: vec!["./b.ts".to_string()],
       },
     )
@@ -1206,6 +1235,7 @@ mod tests {
       &mut state,
       ResolveArgs {
         base: "https://deno.land/x/a.ts".to_string(),
+        is_base_cjs: false,
         specifiers: vec!["./bad.ts".to_string()],
       },
     )

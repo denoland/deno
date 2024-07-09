@@ -731,7 +731,7 @@ impl CliFactory {
       .cli_node_resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliNodeResolver::new(
-          Some(self.cjs_resolutions().clone()),
+          self.cjs_resolutions().clone(),
           self.fs().clone(),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),

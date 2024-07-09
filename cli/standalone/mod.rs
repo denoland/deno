@@ -582,7 +582,7 @@ pub async fn run(
     )
   };
   let cli_node_resolver = Arc::new(CliNodeResolver::new(
-    Some(cjs_resolutions.clone()),
+    cjs_resolutions.clone(),
     fs.clone(),
     node_resolver.clone(),
     npm_resolver.clone(),

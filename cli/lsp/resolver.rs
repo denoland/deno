@@ -484,7 +484,7 @@ fn create_node_resolver(
     npm_resolver.clone().into_npm_resolver(),
   ));
   Some(Arc::new(CliNodeResolver::new(
-    None,
+    Default::default(),
     fs,
     node_resolver_inner,
     npm_resolver.clone(),
