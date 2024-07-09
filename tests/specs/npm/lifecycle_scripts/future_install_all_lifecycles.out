@@ -5,6 +5,7 @@ node preinstall.js
 install
 hello from install script
 postinstall
+[WILDCARD]
  _____________
 < postinstall >
  -------------
