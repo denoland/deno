@@ -950,7 +950,7 @@ fn ensure_registry_files_local() {
       let registry_json_path = registry_dir_path
         .join(entry.file_name())
         .join("registry.json");
-      
+
       if registry_json_path.exists() {
         let file_text = std::fs::read_to_string(&registry_json_path).unwrap();
         if file_text.contains(&format!(
