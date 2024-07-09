@@ -615,8 +615,8 @@ async fn sync_resolution_with_fs(
   if !packages_with_scripts_not_run.is_empty() {
     let (maybe_install, maybe_install_example) = if *crate::args::DENO_FUTURE {
       (
-        " or deno install",
-        " or deno install --allow-scripts=pkg1,pkg2`",
+        " or `deno install`",
+        " or `deno install --allow-scripts=pkg1,pkg2`",
       )
     } else {
       ("", "")
@@ -627,7 +627,7 @@ async fn sync_resolution_with_fs(
       .collect::<Vec<_>>()
       .join(", ");
     log::warn!("{}: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
-    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with deno cache{maybe_install}
+    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache`{maybe_install}
     (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>`{maybe_install_example}):\n      {packages}", crate::colors::yellow("warning"));
   }
 
