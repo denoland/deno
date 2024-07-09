@@ -312,6 +312,7 @@ fn has_lifecycle_scripts(package: &NpmResolutionPackage) -> bool {
 }
 
 /// Creates a pnpm style folder structure.
+#[allow(clippy::too_many_arguments)]
 async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
   cache: &Arc<NpmCache>,
@@ -590,7 +591,7 @@ async fn sync_resolution_with_fs(
         let exit_code =
           crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
             task_name: script_name,
-            script: &script,
+            script,
             cwd: &package_path,
             env_vars: crate::task_runner::real_env_vars(),
             custom_commands: custom_commands.clone(),

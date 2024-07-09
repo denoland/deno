@@ -1,11 +1,14 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
-use deno_core::{anyhow::Context, error::AnyError};
 use deno_runtime::deno_node::NodeResolver;
 use deno_semver::package::PackageNv;
 use deno_task_shell::ExecutableCommand;
@@ -182,15 +185,12 @@ impl ShellCommand for NodeCommand {
 
     let mut state = context.state;
     state.apply_env_var(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME, "1");
-    return ExecutableCommand::new(
-      "deno".to_string(),
-      std::env::current_exe().unwrap(),
-    )
-    .execute(ShellCommandContext {
-      args,
-      state,
-      ..context
-    });
+    ExecutableCommand::new("deno".to_string(), std::env::current_exe().unwrap())
+      .execute(ShellCommandContext {
+        args,
+        state,
+        ..context
+      })
   }
 }
 
@@ -203,14 +203,14 @@ impl ShellCommand for NodeGypCommand {
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     // at the moment this shell command is just to give a warning if node-gyp is not found
     // in the future, we could try to run/install node-gyp for the user with deno
-    if let Err(_) = which::which("node-gyp") {
+    if which::which("node-gyp").is_err() {
       log::warn!("{}: node-gyp was used in a script, but was not listed as a dependency. Either add it as a dependency or install it globally (e.g. `npm install -g node-gyp`)", crate::colors::yellow("warning"));
     }
-    return ExecutableCommand::new(
+    ExecutableCommand::new(
       "node-gyp".to_string(),
       "node-gyp".to_string().into(),
     )
-    .execute(context);
+    .execute(context)
   }
 }
 

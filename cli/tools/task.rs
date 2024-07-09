@@ -87,7 +87,7 @@ pub async fn execute_script(
           env_vars,
           custom_commands,
           npm_resolver: npm_resolver.as_ref(),
-          cli_options: &cli_options,
+          cli_options,
         })
         .await
       }
@@ -126,7 +126,7 @@ pub async fn execute_script(
               env_vars: env_vars.clone(),
               custom_commands: custom_commands.clone(),
               npm_resolver: npm_resolver.as_ref(),
-              cli_options: &cli_options,
+              cli_options,
             })
             .await?;
             if exit_code > 0 {
