@@ -303,27 +303,25 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
 
   let fmt_config_options = config_file.fmt_options();
 
-  let mut new_text: String = "".to_string();
-
-  if import_map_file.is_none() {
-    new_text = update_config_file_content(
+  let new_text: String = if import_map_file.is_none() {
+    update_config_file_content(
       obj,
       &file_to_be_updated_contents,
       generated_imports,
       fmt_config_options,
       config_file.imports_key(),
       config_file.file_name(),
-    );
+    )
   } else {
-    new_text = update_import_map_file_content(
+    update_import_map_file_content(
       obj,
       &file_to_be_updated_contents,
       generated_imports,
       fmt_config_options,
       config_file.imports_key(),
       &file_to_be_updated_contents,
-    );
-  }
+    )
+  };
 
   tokio::fs::write(&file_to_be_updated_path, new_text)
     .await
