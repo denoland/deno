@@ -69,6 +69,7 @@ pub enum FsFileType {
   Junction,
 }
 
+/// WARNING: This is part of the public JS Deno API.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsDirEntry {
@@ -145,6 +146,19 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     gid: Option<u32>,
   ) -> FsResult<()>;
 
+  fn lchown_sync(
+    &self,
+    path: &Path,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()>;
+  async fn lchown_async(
+    &self,
+    path: PathBuf,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()>;
+
   fn remove_sync(&self, path: &Path, recursive: bool) -> FsResult<()>;
   async fn remove_async(&self, path: PathBuf, recursive: bool) -> FsResult<()>;
 
@@ -212,6 +226,23 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     mtime_nanos: u32,
   ) -> FsResult<()>;
   async fn utime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()>;
+
+  fn lutime_sync(
+    &self,
+    path: &Path,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()>;
+  async fn lutime_async(
     &self,
     path: PathBuf,
     atime_secs: i64,
@@ -300,6 +331,64 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   ) -> FsResult<String> {
     let buf = self.read_file_async(path, access_check).await?;
     Ok(string_from_utf8_lossy(buf))
+  }
+}
+
+pub struct DenoConfigFsAdapter<'a>(&'a dyn FileSystem);
+
+impl<'a> DenoConfigFsAdapter<'a> {
+  pub fn new(fs: &'a dyn FileSystem) -> Self {
+    Self(fs)
+  }
+}
+
+impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
+  fn read_to_string_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<String, std::io::Error> {
+    self
+      .0
+      .read_text_file_lossy_sync(path, None)
+      .map_err(|err| err.into_io_error())
+  }
+
+  fn stat_sync(
+    &self,
+    path: &Path,
+  ) -> Result<deno_config::fs::FsMetadata, std::io::Error> {
+    self
+      .0
+      .stat_sync(path)
+      .map(|stat| deno_config::fs::FsMetadata {
+        is_file: stat.is_file,
+        is_directory: stat.is_directory,
+        is_symlink: stat.is_symlink,
+      })
+      .map_err(|err| err.into_io_error())
+  }
+
+  fn read_dir(
+    &self,
+    path: &Path,
+  ) -> Result<Vec<deno_config::fs::FsDirEntry>, std::io::Error> {
+    self
+      .0
+      .read_dir_sync(path)
+      .map_err(|err| err.into_io_error())
+      .map(|entries| {
+        entries
+          .into_iter()
+          .map(|e| deno_config::fs::FsDirEntry {
+            path: path.join(e.name),
+            metadata: deno_config::fs::FsMetadata {
+              is_file: e.is_file,
+              is_directory: e.is_directory,
+              is_symlink: e.is_symlink,
+            },
+          })
+          .collect()
+      })
   }
 }
 

@@ -1180,27 +1180,57 @@ fn napi_create_string_utf16(
 #[napi_sym]
 fn node_api_create_external_string_latin1(
   env_ptr: *mut Env,
-  _string: *const c_char,
-  _length: usize,
-  _nogc_finalize_callback: napi_finalize,
-  _finalize_hint: *mut c_void,
-  _result: *mut napi_value,
-  _copied: *mut bool,
+  string: *const c_char,
+  length: usize,
+  nogc_finalize_callback: Option<napi_finalize>,
+  finalize_hint: *mut c_void,
+  result: *mut napi_value,
+  copied: *mut bool,
 ) -> napi_status {
-  return napi_set_last_error(env_ptr, napi_generic_failure);
+  let status =
+    unsafe { napi_create_string_latin1(env_ptr, string, length, result) };
+
+  if status == napi_ok {
+    unsafe {
+      *copied = true;
+    }
+
+    if let Some(finalize) = nogc_finalize_callback {
+      unsafe {
+        finalize(env_ptr as napi_env, string as *mut c_void, finalize_hint);
+      }
+    }
+  }
+
+  status
 }
 
 #[napi_sym]
 fn node_api_create_external_string_utf16(
   env_ptr: *mut Env,
-  _string: *const u16,
-  _length: usize,
-  _nogc_finalize_callback: napi_finalize,
-  _finalize_hint: *mut c_void,
-  _result: *mut napi_value,
-  _copied: *mut bool,
+  string: *const u16,
+  length: usize,
+  nogc_finalize_callback: Option<napi_finalize>,
+  finalize_hint: *mut c_void,
+  result: *mut napi_value,
+  copied: *mut bool,
 ) -> napi_status {
-  return napi_set_last_error(env_ptr, napi_generic_failure);
+  let status =
+    unsafe { napi_create_string_utf16(env_ptr, string, length, result) };
+
+  if status == napi_ok {
+    unsafe {
+      *copied = true;
+    }
+
+    if let Some(finalize) = nogc_finalize_callback {
+      unsafe {
+        finalize(env_ptr as napi_env, string as *mut c_void, finalize_hint);
+      }
+    }
+  }
+
+  status
 }
 
 #[napi_sym]
@@ -2793,8 +2823,8 @@ fn napi_instanceof(
     unsafe {
       napi_throw_type_error(
         env,
-        "ERR_NAPI_CONS_FUNCTION\0".as_ptr() as _,
-        "Constructor must be a function\0".as_ptr() as _,
+        c"ERR_NAPI_CONS_FUNCTION".as_ptr(),
+        c"Constructor must be a function".as_ptr(),
       );
     }
     return napi_function_expected;
@@ -3147,8 +3177,8 @@ fn napi_create_dataview<'s>(
     unsafe {
       return napi_throw_range_error(
           env,
-          "ERR_NAPI_INVALID_DATAVIEW_ARGS\0".as_ptr() as _,
-          "byte_offset + byte_length should be less than or equal to the size in bytes of the array passed in\0".as_ptr() as _,
+          c"ERR_NAPI_INVALID_DATAVIEW_ARGS".as_ptr(),
+          c"byte_offset + byte_length should be less than or equal to the size in bytes of the array passed in".as_ptr(),
         );
     }
   }

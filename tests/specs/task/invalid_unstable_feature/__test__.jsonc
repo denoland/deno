@@ -1,0 +1,6 @@
+{
+  "steps": [{
+    "args": "task start",
+    "output": "invalid_unstable_feature.out"
+  }]
+}

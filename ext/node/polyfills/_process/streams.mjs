@@ -1,8 +1,17 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+import { primordials } from "ext:core/mod.js";
+const {
+  Uint8ArrayPrototype,
+  Error,
+  ObjectDefineProperties,
+  ObjectDefineProperty,
+  TypedArrayPrototypeSlice,
+  PromisePrototypeThen,
+  ObjectValues,
+  ObjectPrototypeIsPrototypeOf,
+} = primordials;
 
 import { Buffer } from "node:buffer";
 import {
@@ -26,7 +35,11 @@ export function createWritableStdioStream(writer, name, warmup = false) {
         );
         return;
       }
-      writer.writeSync(buf instanceof Uint8Array ? buf : Buffer.from(buf, enc));
+      writer.writeSync(
+        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
+          ? buf
+          : Buffer.from(buf, enc),
+      );
       cb();
     },
     destroy(err, cb) {
@@ -39,8 +52,10 @@ export function createWritableStdioStream(writer, name, warmup = false) {
   });
   let fd = -1;
 
+  // deno-lint-ignore prefer-primordials
   if (writer instanceof io.Stdout) {
     fd = io.STDOUT_RID;
+    // deno-lint-ignore prefer-primordials
   } else if (writer instanceof io.Stderr) {
     fd = io.STDERR_RID;
   }
@@ -48,7 +63,7 @@ export function createWritableStdioStream(writer, name, warmup = false) {
   stream.destroySoon = stream.destroy;
   stream._isStdio = true;
   stream.once("close", () => writer?.close());
-  Object.defineProperties(stream, {
+  ObjectDefineProperties(stream, {
     columns: {
       enumerable: true,
       configurable: true,
@@ -69,7 +84,7 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       enumerable: true,
       configurable: true,
       value: () =>
-        writer?.isTerminal() ? Object.values(Deno.consoleSize?.()) : undefined,
+        writer?.isTerminal() ? ObjectValues(Deno.consoleSize?.()) : undefined,
     },
   });
 
@@ -107,14 +122,12 @@ function _guessStdinType(fd) {
 
 const _read = function (size) {
   const p = Buffer.alloc(size || 16 * 1024);
-  io.stdin?.read(p).then(
-    (length) => {
-      this.push(length === null ? null : p.slice(0, length));
-    },
-    (error) => {
-      this.destroy(error);
-    },
-  );
+  PromisePrototypeThen(io.stdin?.read(p), (length) => {
+    // deno-lint-ignore prefer-primordials
+    this.push(length === null ? null : TypedArrayPrototypeSlice(p, 0, length));
+  }, (error) => {
+    this.destroy(error);
+  });
 };
 
 let readStream;
@@ -182,13 +195,14 @@ export const initStdin = (warmup = false) => {
       // Provide a dummy contentless input for e.g. non-console
       // Windows applications.
       stdin = new Readable({ read() {} });
+      // deno-lint-ignore prefer-primordials
       stdin.push(null);
     }
   }
 
   stdin.on("close", () => io.stdin?.close());
   stdin.fd = io.stdin ? io.STDIN_RID : -1;
-  Object.defineProperty(stdin, "isTTY", {
+  ObjectDefineProperty(stdin, "isTTY", {
     enumerable: true,
     configurable: true,
     get() {
@@ -201,7 +215,7 @@ export const initStdin = (warmup = false) => {
     stdin._isRawMode = enable;
     return stdin;
   };
-  Object.defineProperty(stdin, "isRaw", {
+  ObjectDefineProperty(stdin, "isRaw", {
     enumerable: true,
     configurable: true,
     get() {

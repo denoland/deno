@@ -50,6 +50,7 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
 import {
   CloseEvent,
   defineEventHandler,
@@ -423,6 +424,18 @@ class WebSocket extends EventTarget {
     const rid = this[_rid];
     while (this[_readyState] !== CLOSED) {
       const kind = await op_ws_next_event(rid);
+      /* close the connection if read was cancelled, and we didn't get a close frame */
+      if (
+        (this[_readyState] == CLOSING) &&
+        kind <= 3 && this[_role] !== CLIENT
+      ) {
+        this[_readyState] = CLOSED;
+
+        const event = new CloseEvent("close");
+        this.dispatchEvent(event);
+        core.tryClose(rid);
+        break;
+      }
 
       switch (kind) {
         case 0: {

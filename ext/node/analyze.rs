@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -15,13 +16,12 @@ use once_cell::sync::Lazy;
 
 use deno_core::error::AnyError;
 
+use crate::package_json::load_pkg_json;
 use crate::path::to_file_specifier;
 use crate::resolution::NodeResolverRc;
-use crate::AllowAllNodePermissions;
 use crate::NodeModuleKind;
 use crate::NodeResolutionMode;
 use crate::NpmResolverRc;
-use crate::PackageJson;
 use crate::PathClean;
 
 #[derive(Debug, Clone)]
@@ -106,7 +106,8 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         .to_string(),
     ];
 
-    let mut all_exports = analysis.exports.into_iter().collect::<HashSet<_>>();
+    // use a BTreeSet to make the output deterministic for v8's code cache
+    let mut all_exports = analysis.exports.into_iter().collect::<BTreeSet<_>>();
 
     if !analysis.reexports.is_empty() {
       let mut errors = Vec::new();
@@ -159,7 +160,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     &'a self,
     entry_specifier: &url::Url,
     reexports: Vec<String>,
-    all_exports: &mut HashSet<String>,
+    all_exports: &mut BTreeSet<String>,
     // this goes through the modules concurrently, so collect
     // the errors in order to be deterministic
     errors: &mut Vec<anyhow::Error>,
@@ -277,6 +278,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     }
   }
 
+  // todo(dsherret): what is going on here? Isn't this a bunch of duplicate code?
   fn resolve(
     &self,
     specifier: &str,
@@ -310,23 +312,21 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     )?;
 
     let package_json_path = module_dir.join("package.json");
-    let package_json = PackageJson::load(
-      &*self.fs,
-      &*self.npm_resolver,
-      &mut AllowAllNodePermissions,
-      package_json_path.clone(),
-    )?;
-    if package_json.exists {
+    let maybe_package_json = load_pkg_json(&*self.fs, &package_json_path)?;
+    if let Some(package_json) = maybe_package_json {
       if let Some(exports) = &package_json.exports {
-        return self.node_resolver.package_exports_resolve(
-          &package_json_path,
-          &package_subpath,
-          exports,
-          referrer,
-          NodeModuleKind::Esm,
-          conditions,
-          mode,
-        );
+        return self
+          .node_resolver
+          .package_exports_resolve(
+            &package_json_path,
+            &package_subpath,
+            exports,
+            Some(referrer),
+            NodeModuleKind::Esm,
+            conditions,
+            mode,
+          )
+          .map_err(AnyError::from);
       }
 
       // old school
@@ -335,13 +335,9 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         if self.fs.is_dir_sync(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
-          let package_json = PackageJson::load(
-            &*self.fs,
-            &*self.npm_resolver,
-            &mut AllowAllNodePermissions,
-            package_json_path,
-          )?;
-          if package_json.exists {
+          let maybe_package_json =
+            load_pkg_json(&*self.fs, &package_json_path)?;
+          if let Some(package_json) = maybe_package_json {
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
               return Ok(to_file_specifier(&d.join(main).clean()));
             }

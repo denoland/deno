@@ -1,0 +1,9 @@
+Available tasks:
+- echo-package-b
+    echo 'bye'
+- pkg-json-root (workspace package.json)
+    echo pkg-json $PWD
+- pkg-json-root-2 (workspace package.json)
+    echo hi
+- echo-root (workspace)
+    echo $PWD

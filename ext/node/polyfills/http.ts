@@ -3,7 +3,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_fetch_response_upgrade,
   op_fetch_send,
@@ -68,6 +68,7 @@ import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
 
 const { internalRidSymbol } = core;
+const { ArrayIsArray } = primordials;
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -623,61 +624,12 @@ class ClientRequest extends OutgoingMessage {
       client[internalRidSymbol],
       this._bodyWriteRid,
     );
-  }
-
-  _implicitHeader() {
-    if (this._header) {
-      throw new ERR_HTTP_HEADERS_SENT("render");
-    }
-    this._storeHeader(
-      this.method + " " + this.path + " HTTP/1.1\r\n",
-      this[kOutHeaders],
-    );
-  }
-
-  _getClient(): Deno.HttpClient | undefined {
-    return undefined;
-  }
-
-  // TODO(bartlomieju): handle error
-  onSocket(socket, _err) {
-    nextTick(() => {
-      this.socket = socket;
-      this.emit("socket", socket);
-    });
-  }
-
-  // deno-lint-ignore no-explicit-any
-  end(chunk?: any, encoding?: any, cb?: any): this {
-    if (typeof chunk === "function") {
-      cb = chunk;
-      chunk = null;
-      encoding = null;
-    } else if (typeof encoding === "function") {
-      cb = encoding;
-      encoding = null;
-    }
-
-    this.finished = true;
-    if (chunk) {
-      this.write_(chunk, encoding, null, true);
-    } else if (!this._headerSent) {
-      this._contentLength = 0;
-      this._implicitHeader();
-      this._send("", "latin1");
-    }
-    this._bodyWriter?.close();
 
     (async () => {
       try {
         const res = await op_fetch_send(this._req.requestRid);
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
-        }
-        try {
-          cb?.();
-        } catch (_) {
-          //
         }
         if (this._timeout) {
           this._timeout.removeEventListener("abort", this._timeoutCb);
@@ -784,6 +736,64 @@ class ClientRequest extends OutgoingMessage {
         } else {
           this.emit("error", err);
         }
+      }
+    })();
+  }
+
+  _implicitHeader() {
+    if (this._header) {
+      throw new ERR_HTTP_HEADERS_SENT("render");
+    }
+    this._storeHeader(
+      this.method + " " + this.path + " HTTP/1.1\r\n",
+      this[kOutHeaders],
+    );
+  }
+
+  _getClient(): Deno.HttpClient | undefined {
+    return undefined;
+  }
+
+  // TODO(bartlomieju): handle error
+  onSocket(socket, _err) {
+    nextTick(() => {
+      this.socket = socket;
+      this.emit("socket", socket);
+    });
+  }
+
+  // deno-lint-ignore no-explicit-any
+  end(chunk?: any, encoding?: any, cb?: any): this {
+    if (typeof chunk === "function") {
+      cb = chunk;
+      chunk = null;
+      encoding = null;
+    } else if (typeof encoding === "function") {
+      cb = encoding;
+      encoding = null;
+    }
+
+    this.finished = true;
+    if (chunk) {
+      this.write_(chunk, encoding, null, true);
+    } else if (!this._headerSent) {
+      this._contentLength = 0;
+      this._implicitHeader();
+      this._send("", "latin1");
+    }
+    (async () => {
+      try {
+        await this._bodyWriter?.close();
+      } catch (_) {
+        // The readable stream resource is dropped right after
+        // read is complete closing the writable stream resource.
+        // If we try to close the writer again, it will result in an
+        // error which we can safely ignore.
+      }
+      try {
+        cb?.();
+      } catch (_) {
+        //
       }
     })();
   }
@@ -1340,16 +1350,19 @@ export class ServerResponse extends NodeWritable {
   // used by `npm:on-finished`
   finished = false;
   headersSent = false;
-  #firstChunk: Chunk | null = null;
   #resolve: (value: Response | PromiseLike<Response>) => void;
   // deno-lint-ignore no-explicit-any
   #socketOverride: any | null = null;
 
   static #enqueue(controller: ReadableStreamDefaultController, chunk: Chunk) {
-    if (typeof chunk === "string") {
-      controller.enqueue(ENCODER.encode(chunk));
-    } else {
-      controller.enqueue(chunk);
+    try {
+      if (typeof chunk === "string") {
+        controller.enqueue(ENCODER.encode(chunk));
+      } else {
+        controller.enqueue(chunk);
+      }
+    } catch (_) {
+      // The stream might have been closed. Ignore the error.
     }
   }
 
@@ -1373,28 +1386,25 @@ export class ServerResponse extends NodeWritable {
       autoDestroy: true,
       defaultEncoding: "utf-8",
       emitClose: true,
+      // FIXME: writes don't work when a socket is assigned and then
+      // detached.
       write: (chunk, encoding, cb) => {
+        // Writes chunks are directly written to the socket if
+        // one is assigned via assignSocket()
         if (this.#socketOverride && this.#socketOverride.writable) {
           this.#socketOverride.write(chunk, encoding);
           return cb();
         }
         if (!this.headersSent) {
-          if (this.#firstChunk === null) {
-            this.#firstChunk = chunk;
-            return cb();
-          } else {
-            ServerResponse.#enqueue(controller, this.#firstChunk);
-            this.#firstChunk = null;
-            this.respond(false);
-          }
+          ServerResponse.#enqueue(controller, chunk);
+          this.respond(false);
+          return cb();
         }
         ServerResponse.#enqueue(controller, chunk);
         return cb();
       },
       final: (cb) => {
-        if (this.#firstChunk) {
-          this.respond(true, this.#firstChunk);
-        } else if (!this.headersSent) {
+        if (!this.headersSent) {
           this.respond(true);
         }
         controller.close();
@@ -1420,6 +1430,26 @@ export class ServerResponse extends NodeWritable {
     return this;
   }
 
+  appendHeader(name: string, value: string | string[]) {
+    if (Array.isArray(value)) {
+      this.#hasNonStringHeaders = true;
+    }
+    if (this.#headers[name] === undefined) {
+      this.#headers[name] = value;
+    } else {
+      if (!Array.isArray(this.#headers[name])) {
+        this.#headers[name] = [this.#headers[name]];
+      }
+      const header = this.#headers[name];
+      if (Array.isArray(value)) {
+        header.push(...value);
+      } else {
+        header.push(value);
+      }
+    }
+    return this;
+  }
+
   getHeader(name: string) {
     return this.#headers[name];
   }
@@ -1429,20 +1459,65 @@ export class ServerResponse extends NodeWritable {
   getHeaderNames() {
     return Object.keys(this.#headers);
   }
-  getHeaders() {
+  getHeaders(): Record<string, string | number | string[]> {
+    // @ts-ignore Ignore null __proto__
     return { __proto__: null, ...this.#headers };
   }
   hasHeader(name: string) {
     return Object.hasOwn(this.#headers, name);
   }
 
-  writeHead(status: number, headers: Record<string, string> = {}) {
+  writeHead(
+    status: number,
+    statusMessage?: string,
+    headers?:
+      | Record<string, string | number | string[]>
+      | Array<[string, string]>,
+  ): this;
+  writeHead(
+    status: number,
+    headers?:
+      | Record<string, string | number | string[]>
+      | Array<[string, string]>,
+  ): this;
+  writeHead(
+    status: number,
+    statusMessageOrHeaders?:
+      | string
+      | Record<string, string | number | string[]>
+      | Array<[string, string]>,
+    maybeHeaders?:
+      | Record<string, string | number | string[]>
+      | Array<[string, string]>,
+  ): this {
     this.statusCode = status;
-    for (const k in headers) {
-      if (Object.hasOwn(headers, k)) {
-        this.setHeader(k, headers[k]);
+
+    let headers = null;
+    if (typeof statusMessageOrHeaders === "string") {
+      this.statusMessage = statusMessageOrHeaders;
+      if (maybeHeaders !== undefined) {
+        headers = maybeHeaders;
+      }
+    } else if (statusMessageOrHeaders !== undefined) {
+      headers = statusMessageOrHeaders;
+    }
+
+    if (headers !== null) {
+      if (ArrayIsArray(headers)) {
+        headers = headers as Array<[string, string]>;
+        for (let i = 0; i < headers.length; i++) {
+          this.appendHeader(headers[i][0], headers[i][1]);
+        }
+      } else {
+        headers = headers as Record<string, string>;
+        for (const k in headers) {
+          if (Object.hasOwn(headers, k)) {
+            this.setHeader(k, headers[k]);
+          }
+        }
       }
     }
+
     return this;
   }
 
@@ -1621,10 +1696,7 @@ export function Server(opts, requestListener?: ServerHandler): ServerImpl {
 }
 
 export class ServerImpl extends EventEmitter {
-  #httpConnections: Set<Deno.HttpConn> = new Set();
-  #listener?: Deno.Listener;
-
-  #addr: Deno.NetAddr;
+  #addr: Deno.NetAddr | null = null;
   #hasClosed = false;
   #server: Deno.HttpServer;
   #unref = false;
@@ -1810,6 +1882,7 @@ export class ServerImpl extends EventEmitter {
   }
 
   address() {
+    if (this.#addr === null) return null;
     return {
       port: this.#addr.port,
       address: this.#addr.hostname,

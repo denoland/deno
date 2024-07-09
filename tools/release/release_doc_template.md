@@ -125,8 +125,9 @@ verify on GitHub that everything looks correct.
 
 - [ ] Publish the release on Github
 
-- [ ] Update https://github.com/denoland/dotcom/blob/main/versions.json and open
-      a PR.
+- [ ] Run
+      https://github.com/denoland/dotcom/actions/workflows/update_version.yml to
+      automatically open a PR.
   - [ ] Merge the PR.
 
 - [ ] Run
@@ -141,23 +142,6 @@ verify on GitHub that everything looks correct.
 - [ ] **If you are cutting a patch release**: a PR should have been
       automatically opened that forwards the release commit back to main. If so,
       merge it. If not and it failed, please manually create one.
-
-## Updating `deno.land/api` symbols
-
-This should occur after the Deno CLI & std are fully published, as the build
-script generates the symbols based on the latest tags.
-
-- [ ] Run the `release CLI` workflow in the apiland_scripts repo on the main
-      branch:
-      https://github.com/denoland/apiland_scripts/actions/workflows/release_cli.yml
-  - [ ] Verify the workflow ran successfully.
-
-  <details>
-     <summary>Failure Steps</summary>
-
-  1. Clone `deno/apiland_scripts`.
-  2. Execute `deno task release:cli`.
-  </details>
 
 ## Updating `deno_docker`
 

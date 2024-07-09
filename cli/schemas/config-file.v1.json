@@ -604,12 +604,28 @@
         }
       ]
     },
-    "workspaces": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "The members of this workspace."
+    "workspace": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The members of this workspace."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "members": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The members of this workspace."
+            }
+          }
+        }
+      ]
     }
   }
 }

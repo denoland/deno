@@ -1,0 +1,11 @@
+{
+  "workspace": [
+    "./package-a",
+    "./package-b"
+  ],
+  "lint": {
+    "rules": {
+      "include": ["no-eval"]
+    }
+  }
+}

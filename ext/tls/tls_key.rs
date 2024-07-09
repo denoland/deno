@@ -57,6 +57,8 @@ pub enum TlsKeys {
 
 pub struct TlsKeysHolder(RefCell<TlsKeys>);
 
+impl deno_core::GarbageCollected for TlsKeysHolder {}
+
 impl TlsKeysHolder {
   pub fn take(&self) -> TlsKeys {
     std::mem::take(&mut *self.0.borrow_mut())
@@ -227,6 +229,8 @@ pub struct TlsKeyLookup {
   pending:
     RefCell<HashMap<String, broadcast::Sender<Result<TlsKey, ErrorType>>>>,
 }
+
+impl deno_core::GarbageCollected for TlsKeyLookup {}
 
 impl TlsKeyLookup {
   /// Multiple `poll` calls are safe, but this method is not starvation-safe. Generally
