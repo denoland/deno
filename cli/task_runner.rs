@@ -290,9 +290,9 @@ impl ShellCommand for NpmPackageBinCommand {
 
 /// Runs a module in the node_modules folder.
 #[derive(Clone)]
-struct NodeModulesFileRunCommand {
-  command_name: String,
-  path: PathBuf,
+pub struct NodeModulesFileRunCommand {
+  pub command_name: String,
+  pub path: PathBuf,
 }
 
 impl ShellCommand for NodeModulesFileRunCommand {

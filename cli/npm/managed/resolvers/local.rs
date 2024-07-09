@@ -265,12 +265,13 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   }
 }
 
-// take in root node_modules, create baseline custom_commands. then
-// for the individual package, take the package node_modules && add bin entries to existing
-// baseline (so they take precedence). need to make sure that we actually do bin entries for
-// the package
-fn resolve_custom_commands_from_folder(
-  root_node_modules_dir_path: &Path,
+// take in all (non copy) packages from snapshot,
+// and resolve the set of available binaries to create
+// custom commands available to the task runner
+fn resolve_baseline_custom_commands(
+  snapshot: &NpmResolutionSnapshot,
+  packages: &[NpmResolutionPackage],
+  local_registry_dir: &Path,
 ) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
   let mut custom_commands = crate::task_runner::TaskCustomCommands::new();
   custom_commands
@@ -286,12 +287,84 @@ fn resolve_custom_commands_from_folder(
     "node-gyp".to_string(),
     Rc::new(crate::task_runner::NodeGypCommand),
   );
-  custom_commands.extend(
-    crate::task_runner::resolve_npm_commands_from_bin_dir(
-      root_node_modules_dir_path,
-    ),
-  );
-  Ok(custom_commands)
+
+  // TODO: this recreates the bin entries which could be redoing some work, but the ones
+  // we compute earlier in `sync_resolution_with_fs` may not be exhaustive (because we skip
+  // doing it for packages that are set up already.
+  // realistically, scripts won't be run very often so it probably isn't too big of an issue.
+  resolve_custom_commands_from_packages(
+    custom_commands,
+    snapshot,
+    packages,
+    local_registry_dir,
+  )
+}
+
+// resolves the custom commands from an iterator of packages
+// and adds them to the existing custom commands.
+// note that this will overwrite any existing custom commands
+fn resolve_custom_commands_from_packages<
+  'a,
+  P: IntoIterator<Item = &'a NpmResolutionPackage>,
+>(
+  mut commands: crate::task_runner::TaskCustomCommands,
+  snapshot: &'a NpmResolutionSnapshot,
+  packages: P,
+  local_registry_dir: &Path,
+) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
+  let mut bin_entries = bin_entries::BinEntries::new();
+  for package in packages {
+    let package_path =
+      local_node_modules_package_path(local_registry_dir, package);
+
+    if package.bin.is_some() {
+      bin_entries.add(package.clone(), package_path);
+    }
+  }
+  let bins = bin_entries.into_bin_files(snapshot);
+  for (bin_name, script_path) in bins {
+    commands.insert(
+      bin_name.clone(),
+      Rc::new(crate::task_runner::NodeModulesFileRunCommand {
+        command_name: bin_name,
+        path: script_path,
+      }),
+    );
+  }
+
+  Ok(commands)
+}
+
+fn local_node_modules_package_path(
+  local_registry_dir: &Path,
+  package: &NpmResolutionPackage,
+) -> PathBuf {
+  local_registry_dir
+    .join(get_package_folder_id_folder_name(
+      &package.get_package_cache_folder_id(),
+    ))
+    .join("node_modules")
+    .join(&package.id.nv.name)
+}
+
+// resolves the custom commands from the dependencies of a package
+// and adds them to the existing custom commands.
+// note that this will overwrite any existing custom commands.
+fn resolve_custom_commands_from_deps(
+  baseline: crate::task_runner::TaskCustomCommands,
+  package: &NpmResolutionPackage,
+  snapshot: &NpmResolutionSnapshot,
+  local_registry_dir: &Path,
+) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
+  resolve_custom_commands_from_packages(
+    baseline,
+    snapshot,
+    package
+      .dependencies
+      .values()
+      .map(|id| snapshot.package_from_id(id).unwrap()),
+    local_registry_dir,
+  )
 }
 
 fn can_run_scripts(
@@ -587,35 +660,52 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  for (package, package_path, scripts_run_path) in packages_with_scripts {
-    let custom_commands =
-      resolve_custom_commands_from_folder(root_node_modules_dir_path)?;
-    for script_name in ["preinstall", "install", "postinstall"] {
-      if let Some(script) = package.scripts.get(script_name) {
-        let exit_code =
-          crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
-            task_name: script_name,
-            script,
-            cwd: &package_path,
-            env_vars: crate::task_runner::real_env_vars(),
-            custom_commands: custom_commands.clone(),
-            // todo: wrong
-            init_cwd: &package_path,
-            argv: &[],
-            root_node_modules_dir: Some(root_node_modules_dir_path),
-          })
-          .await?;
-        if exit_code != 0 {
-          anyhow::bail!(
-            "script '{}' in '{}' failed with exit code {}",
-            script_name,
-            package.id.nv,
-            exit_code,
-          );
+  if !packages_with_scripts.is_empty() {
+    // get custom commands for each bin available in the node_modules dir (essentially
+    // the scripts that are in `node_modules/.bin`)
+    let base = resolve_baseline_custom_commands(
+      snapshot,
+      &package_partitions.packages,
+      &deno_local_registry_dir,
+    )?;
+
+    for (package, package_path, scripts_run_path) in packages_with_scripts {
+      // add custom commands for binaries from the package's dependencies. this will take precedence over the
+      // baseline commands, so if the package relies on a bin that conflicts with one higher in the dependency tree, the
+      // correct bin will be used.
+      let custom_commands = resolve_custom_commands_from_deps(
+        base.clone(),
+        &package,
+        snapshot,
+        &deno_local_registry_dir,
+      )?;
+      for script_name in ["preinstall", "install", "postinstall"] {
+        if let Some(script) = package.scripts.get(script_name) {
+          let exit_code =
+            crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
+              task_name: script_name,
+              script,
+              cwd: &package_path,
+              env_vars: crate::task_runner::real_env_vars(),
+              custom_commands: custom_commands.clone(),
+              // todo: wrong
+              init_cwd: &package_path,
+              argv: &[],
+              root_node_modules_dir: Some(root_node_modules_dir_path),
+            })
+            .await?;
+          if exit_code != 0 {
+            anyhow::bail!(
+              "script '{}' in '{}' failed with exit code {}",
+              script_name,
+              package.id.nv,
+              exit_code,
+            );
+          }
         }
       }
+      fs::write(scripts_run_path, "")?;
     }
-    fs::write(scripts_run_path, "")?;
   }
 
   if !packages_with_scripts_not_run.is_empty() {
