@@ -1731,7 +1731,7 @@ impl CliOptions {
     full_paths
   }
 
-  pub fn allowed_scripts(&self) -> &AllowScripts {
+  pub fn allowed_scripts(&self) -> &PackagesAllowedScripts {
     &self.flags.allow_scripts
   }
 }

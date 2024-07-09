@@ -10,7 +10,7 @@ use std::sync::Arc;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 
-use crate::args::AllowScripts;
+use crate::args::PackagesAllowedScripts;
 use crate::args::PackageJsonInstallDepsProvider;
 use crate::util::progress_bar::ProgressBar;
 
@@ -33,7 +33,7 @@ pub fn create_npm_fs_resolver(
   tarball_cache: Arc<TarballCache>,
   maybe_node_modules_path: Option<PathBuf>,
   system_info: NpmSystemInfo,
-  allow_scripts: AllowScripts,
+  allow_scripts: PackagesAllowedScripts,
 ) -> Arc<dyn NpmPackageFsResolver> {
   match maybe_node_modules_path {
     Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(

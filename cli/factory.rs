@@ -444,7 +444,7 @@ impl CliFactory {
             )),
             npm_system_info: self.options.npm_system_info(),
             npmrc: self.options.npmrc().clone(),
-            allow_scripts: self.options.allowed_scripts().clone(),
+            allowed_scripts: self.options.allowed_scripts().clone(),
           })
         }).await
       }.boxed_local())

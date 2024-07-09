@@ -15,9 +15,10 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::args::AllowScripts;
+use crate::args::PackagesAllowedScripts;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
@@ -68,7 +69,7 @@ pub struct LocalNpmPackageResolver {
   root_node_modules_url: Url,
   system_info: NpmSystemInfo,
   registry_read_permission_checker: RegistryReadPermissionChecker,
-  allow_scripts: AllowScripts,
+  allow_scripts: PackagesAllowedScripts,
 }
 
 impl LocalNpmPackageResolver {
@@ -82,7 +83,7 @@ impl LocalNpmPackageResolver {
     tarball_cache: Arc<TarballCache>,
     node_modules_folder: PathBuf,
     system_info: NpmSystemInfo,
-    allow_scripts: AllowScripts,
+    allow_scripts: PackagesAllowedScripts,
   ) -> Self {
     Self {
       cache,
@@ -293,15 +294,18 @@ fn resolve_custom_commands_from_folder(
   Ok(custom_commands)
 }
 
-fn can_run_scripts(allow_scripts: &AllowScripts, package: &PackageNv) -> bool {
+fn can_run_scripts(
+  allow_scripts: &PackagesAllowedScripts,
+  package: &PackageNv,
+) -> bool {
   match allow_scripts {
-    AllowScripts::All => true,
+    PackagesAllowedScripts::All => true,
     // TODO: make this more correct
-    AllowScripts::Some(allow_list) => {
+    PackagesAllowedScripts::Some(allow_list) => {
       allow_list.contains(&package.name)
         || allow_list.contains(&package.name.to_lowercase())
     }
-    AllowScripts::None => false,
+    PackagesAllowedScripts::None => false,
   }
 }
 
@@ -321,7 +325,7 @@ async fn sync_resolution_with_fs(
   tarball_cache: &Arc<TarballCache>,
   root_node_modules_dir_path: &Path,
   system_info: &NpmSystemInfo,
-  allow_scripts: &AllowScripts,
+  allow_scripts: &PackagesAllowedScripts,
 ) -> Result<(), AnyError> {
   if snapshot.is_empty() && pkg_json_deps_provider.workspace_pkgs().is_empty() {
     return Ok(()); // don't create the directory
@@ -602,10 +606,11 @@ async fn sync_resolution_with_fs(
           })
           .await?;
         if exit_code != 0 {
-          bail!(
-            "script '{}' failed with exit code {}",
+          anyhow::bail!(
+            "script '{}' in '{}' failed with exit code {}",
             script_name,
-            exit_code
+            package.id.nv,
+            exit_code,
           );
         }
       }

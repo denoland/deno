@@ -507,7 +507,8 @@ pub enum CaData {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
-pub enum AllowScripts {
+/// The set of npm packages that are allowed to run lifecycle scripts.
+pub enum PackagesAllowedScripts {
   All,
   Some(Vec<String>),
   #[default]
@@ -569,7 +570,7 @@ pub struct Flags {
   pub v8_flags: Vec<String>,
   pub code_cache_enabled: bool,
   pub permissions: PermissionFlags,
-  pub allow_scripts: AllowScripts,
+  pub allow_scripts: PackagesAllowedScripts,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -3733,7 +3734,7 @@ fn allow_scripts_arg() -> Arg {
     .require_equals(true)
     .value_name("PACKAGE")
     .value_parser(value_parser!(String))
-    .help("Allow running npm lifecycle scripts")
+    .help("Allow running npm lifecycle scripts for the given packages")
 }
 
 fn allow_scripts_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -3741,9 +3742,9 @@ fn allow_scripts_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     return;
   };
   if parts.len() == 0 {
-    flags.allow_scripts = AllowScripts::All;
+    flags.allow_scripts = PackagesAllowedScripts::All;
   } else {
-    flags.allow_scripts = AllowScripts::Some(parts.collect());
+    flags.allow_scripts = PackagesAllowedScripts::Some(parts.collect());
   }
 }
 
