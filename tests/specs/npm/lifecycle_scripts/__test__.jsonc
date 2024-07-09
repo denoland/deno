@@ -22,6 +22,19 @@
           "exitCode": 1
         }
       ]
+    },
+    "install_script_implicit_node_gyp": {
+      "tempDir": true,
+      "steps": [
+        {
+          "envs": {
+            // I don't think this will work on windows
+            "PATH": ""
+          },
+          "args": "cache --allow-scripts implicit_node_gyp.js",
+          "output": ""
+        }
+      ]
     }
   }
 }
