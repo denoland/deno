@@ -1,4 +1,4 @@
-// deno-lint-ignore-file no-explicit-any
+// deno-lint-ignore-file no-explicit-any camelcase ban-types
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Based on https://github.com/nodejs/node/blob/889ad35d3d41e376870f785b0c1b669cb732013d/typings/primordials.d.ts
