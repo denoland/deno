@@ -3,8 +3,7 @@ deno preinstall.js
 node preinstall.js
 install
 hello from install script
-postinstall
-[WILDCARD]
+postinstall[WILDCARD]
  _____________
 < postinstall >
  -------------
