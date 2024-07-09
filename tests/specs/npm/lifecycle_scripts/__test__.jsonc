@@ -4,7 +4,7 @@
       "tempDir": true,
       "steps": [
         {
-          "args": "cache --allow-scripts=@denotest/node-addon main.js",
+          "args": "cache --allow-scripts=npm:@denotest/node-addon main.js",
           "output": "[WILDCARD]gyp info ok \n"
         },
         {

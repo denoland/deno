@@ -515,6 +515,14 @@ pub enum PackagesAllowedScripts {
   None,
 }
 
+fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
+  if !s.starts_with("npm:") {
+    bail!("Invalid package for --allow-scripts: '{}'. An 'npm:' specifier is required", s);
+  } else {
+    Ok(s.into())
+  }
+}
+
 #[derive(
   Clone, Default, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize,
 )]
@@ -3733,8 +3741,8 @@ fn allow_scripts_arg() -> Arg {
     .use_value_delimiter(true)
     .require_equals(true)
     .value_name("PACKAGE")
-    .value_parser(value_parser!(String))
-    .help("Allow running npm lifecycle scripts for the given packages")
+    .value_parser(parse_packages_allowed_scripts)
+    .help("Allow running npm lifecycle scripts for the given packages. Note: Scripts will only be executed when using a node_modules directory (`--node-modules-dir`)")
 }
 
 fn allow_scripts_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -9957,6 +9965,52 @@ mod tests {
           ..Flags::default()
         }
       );
+    }
+  }
+
+  #[test]
+  fn allow_scripts() {
+    let cases = [
+      (Some("--allow-scripts"), Ok(PackagesAllowedScripts::All)),
+      (None, Ok(PackagesAllowedScripts::None)),
+      (
+        Some("--allow-scripts=npm:foo"),
+        Ok(PackagesAllowedScripts::Some(svec!["npm:foo"])),
+      ),
+      (
+        Some("--allow-scripts=npm:foo,npm:bar"),
+        Ok(PackagesAllowedScripts::Some(svec!["npm:foo", "npm:bar"])),
+      ),
+      (Some("--allow-scripts=foo"), Err("Invalid package")),
+    ];
+    for (flag, value) in cases {
+      let mut args = svec!["deno", "cache"];
+      if let Some(flag) = flag {
+        args.push(flag.into());
+      }
+      args.push("script.ts".into());
+      let r = flags_from_vec(args);
+      match value {
+        Ok(value) => {
+          assert_eq!(
+            r.unwrap(),
+            Flags {
+              subcommand: DenoSubcommand::Cache(CacheFlags {
+                files: svec!["script.ts"],
+              }),
+              allow_scripts: value,
+              ..Flags::default()
+            }
+          );
+        }
+        Err(e) => {
+          let err = r.unwrap_err();
+          assert!(
+            err.to_string().contains(e),
+            "expected to contain '{e}' got '{err}'"
+          );
+        }
+      }
     }
   }
 }
