@@ -1232,7 +1232,7 @@ impl ConfigData {
         .and_then(|config_file| {
           config_file
             .to_fmt_config()
-            .and_then(|o| FmtOptions::resolve(o, &Default::default(), None))
+            .map(|o| FmtOptions::resolve(o, &Default::default()))
             .inspect_err(|err| {
               lsp_warn!("  Couldn't read formatter configuration: {}", err)
             })
@@ -1260,7 +1260,7 @@ impl ConfigData {
         .and_then(|config_file| {
           config_file
             .to_lint_config()
-            .and_then(|o| LintOptions::resolve(o, Default::default(), None))
+            .map(|o| LintOptions::resolve(o, &Default::default()))
             .inspect_err(|err| {
               lsp_warn!("  Couldn't read lint configuration: {}", err)
             })
@@ -1299,16 +1299,27 @@ impl ConfigData {
       }
     };
 
-    let vendor_dir = config_file.as_ref().and_then(|c| {
-      if c.vendor() == Some(true) {
-        Some(c.specifier.to_file_path().ok()?.parent()?.join("vendor"))
-      } else {
-        None
-      }
-    });
+    let vendor_dir = if let Some(workspace_root) = workspace_root {
+      workspace_root.vendor_dir.clone()
+    } else {
+      config_file.as_ref().and_then(|c| {
+        if c.vendor() == Some(true) {
+          Some(c.specifier.to_file_path().ok()?.parent()?.join("vendor"))
+        } else {
+          None
+        }
+      })
+    };
 
     // Load lockfile
-    let lockfile = config_file.as_ref().and_then(resolve_lockfile_from_config);
+    let lockfile = if let Some(workspace_root) = workspace_root {
+      workspace_root.lockfile.clone()
+    } else {
+      config_file
+        .as_ref()
+        .and_then(resolve_lockfile_from_config)
+        .map(Arc::new)
+    };
     if let Some(lockfile) = &lockfile {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile.filename)
       {
@@ -1376,23 +1387,31 @@ impl ConfigData {
       })
       .map(|(r, _)| r)
       .ok();
-    let byonm = std::env::var("DENO_UNSTABLE_BYONM").is_ok()
-      || config_file
-        .as_ref()
-        .map(|c| c.has_unstable("byonm"))
-        .unwrap_or(false)
-      || (*DENO_FUTURE
-        && package_json.is_some()
-        && config_file
+    let byonm = if let Some(workspace_root) = workspace_root {
+      workspace_root.byonm
+    } else {
+      std::env::var("DENO_UNSTABLE_BYONM").is_ok()
+        || config_file
           .as_ref()
-          .map(|c| c.json.node_modules_dir.is_none())
-          .unwrap_or(true));
+          .map(|c| c.has_unstable("byonm"))
+          .unwrap_or(false)
+        || (*DENO_FUTURE
+          && package_json.is_some()
+          && config_file
+            .as_ref()
+            .map(|c| c.json.node_modules_dir.is_none())
+            .unwrap_or(true))
+    };
     if byonm {
       lsp_log!("  Enabled 'bring your own node_modules'.");
     }
-    let node_modules_dir = config_file
-      .as_ref()
-      .and_then(|c| resolve_node_modules_dir(c, byonm));
+    let node_modules_dir = if let Some(workspace_root) = workspace_root {
+      workspace_root.node_modules_dir.clone()
+    } else {
+      config_file
+        .as_ref()
+        .and_then(|c| resolve_node_modules_dir(c, byonm))
+    };
 
     // Load import map
     let mut import_map = None;
@@ -1547,7 +1566,7 @@ impl ConfigData {
       byonm,
       node_modules_dir,
       vendor_dir,
-      lockfile: lockfile.map(Arc::new),
+      lockfile,
       package_json: package_json.map(Arc::new),
       npmrc,
       import_map,

@@ -1611,9 +1611,16 @@ pub(crate) fn is_supported_test_path(path: &Path) -> bool {
 fn has_supported_test_path_name(path: &Path) -> bool {
   if let Some(name) = path.file_stem() {
     let basename = name.to_string_lossy();
-    basename.ends_with("_test")
+    if basename.ends_with("_test")
       || basename.ends_with(".test")
       || basename == "test"
+    {
+      return true;
+    }
+
+    path
+      .components()
+      .any(|seg| seg.as_os_str().to_str() == Some("__tests__"))
   } else {
     false
   }
@@ -2077,6 +2084,18 @@ mod inner_test {
     assert!(is_supported_test_path(Path::new("foo/bar/test.jsx")));
     assert!(is_supported_test_path(Path::new("foo/bar/test.ts")));
     assert!(is_supported_test_path(Path::new("foo/bar/test.tsx")));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.js"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.jsx"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.ts"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.tsx"
+    )));
     assert!(!is_supported_test_path(Path::new("README.md")));
     assert!(!is_supported_test_path(Path::new("lib/typescript.d.ts")));
     assert!(!is_supported_test_path(Path::new("notatest.js")));
