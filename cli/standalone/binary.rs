@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::env::current_exe;
 use std::ffi::OsString;
@@ -96,6 +97,7 @@ pub struct Metadata {
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<Vec<u8>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub env_vars_from_env_file: HashMap<String, String>,
   pub workspace_resolver: SerializedWorkspaceResolver,
   pub entrypoint_key: String,
   pub node_modules: Option<NodeModules>,
@@ -584,6 +586,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     };
 
+    let env_vars_from_env_file = match cli_options.env_file_name() {
+      Some(env_filename) => {
+        log::info!("{} Environment variables from the file \"{}\" were embedded in the generated executable file", crate::colors::yellow("Warning"), env_filename);
+        get_file_env_vars(env_filename.to_string())?
+      }
+      None => Default::default(),
+    };
+
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
       seed: cli_options.seed(),
@@ -596,6 +606,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       log_level: cli_options.log_level(),
       ca_stores: cli_options.ca_stores().clone(),
       ca_data,
+      env_vars_from_env_file,
       entrypoint_key: root_dir_url.specifier_key(entrypoint).into_owned(),
       workspace_resolver: SerializedWorkspaceResolver {
         import_map: self.workspace_resolver.maybe_import_map().map(|i| {
@@ -755,6 +766,21 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     }
   }
+}
+
+/// This function returns the environment variables specified
+/// in the passed environment file.
+fn get_file_env_vars(
+  filename: String,
+) -> Result<HashMap<String, String>, dotenvy::Error> {
+  let mut file_env_vars = HashMap::new();
+  for item in dotenvy::from_filename_iter(filename)? {
+    let Ok((key, val)) = item else {
+      continue; // this failure will be warned about on load
+    };
+    file_env_vars.insert(key, val);
+  }
+  Ok(file_env_vars)
 }
 
 /// This function sets the subsystem field in the PE header to 2 (GUI subsystem)
