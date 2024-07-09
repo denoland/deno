@@ -167,8 +167,16 @@ impl ShellCommand for NodeCommand {
     &self,
     context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
-    // TODO: use node if we can't use deno (fallback on error? based on args?)
+    // run with deno if it's a simple invocation, fall back to node
+    // if there are extra flags
     let mut args = Vec::with_capacity(context.args.len());
+    if context.args.len() > 1 && context.args[0].starts_with('-') {
+      return ExecutableCommand::new(
+        "node".to_string(),
+        "node".to_string().into(),
+      )
+      .execute(context);
+    }
     args.extend(["run", "-A"].into_iter().map(|s| s.to_string()));
     args.extend(context.args.iter().cloned());
 
@@ -177,7 +185,6 @@ impl ShellCommand for NodeCommand {
     return ExecutableCommand::new(
       "deno".to_string(),
       std::env::current_exe().unwrap(),
-      // "node".to_string().into(),
     )
     .execute(ShellCommandContext {
       args,
