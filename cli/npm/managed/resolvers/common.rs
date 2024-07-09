@@ -18,6 +18,7 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::errors::PackageFolderResolveError;
 use deno_runtime::deno_node::NodePermissions;
 
 use crate::npm::managed::cache::TarballCache;
@@ -31,16 +32,25 @@ pub trait NpmPackageFsResolver: Send + Sync {
   /// The local node_modules folder if it is applicable to the implementation.
   fn node_modules_path(&self) -> Option<&PathBuf>;
 
+  fn maybe_package_folder(&self, package_id: &NpmPackageId) -> Option<PathBuf>;
+
   fn package_folder(
     &self,
     package_id: &NpmPackageId,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<PathBuf, AnyError> {
+    self.maybe_package_folder(package_id).ok_or_else(|| {
+      deno_core::anyhow::anyhow!(
+        "Package folder not found for '{}'",
+        package_id.as_serialized()
+      )
+    })
+  }
 
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<PathBuf, PackageFolderResolveError>;
 
   fn resolve_package_cache_folder_id_from_specifier(
     &self,

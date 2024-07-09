@@ -78,6 +78,7 @@ signature.workspace = true
 simd-json = "0.13.4"
 sm3 = "0.4.2"
 spki.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
 winapi.workspace = true

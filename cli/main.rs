@@ -384,10 +384,14 @@ fn resolve_flags_and_init(
         // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
         vec!["--no-harmony-import-assertions".to_string()]
       } else {
-        // If we're still in v1.X version we want to support import assertions.
-        // V8 12.6 unshipped the support by default, so force it by passing a
-        // flag.
-        vec!["--harmony-import-assertions".to_string()]
+        vec![
+          // If we're still in v1.X version we want to support import assertions.
+          // V8 12.6 unshipped the support by default, so force it by passing a
+          // flag.
+          "--harmony-import-assertions".to_string(),
+          // Verify with DENO_FUTURE for now.
+          "--no-maglev".to_string(),
+        ]
       }
     }
   };

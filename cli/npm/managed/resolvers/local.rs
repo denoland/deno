@@ -7,6 +7,7 @@ mod bin_entries;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -15,19 +16,8 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::args::PackageJsonInstallDepsProvider;
-use crate::cache::CACHE_PERM;
-use crate::npm::cache_dir::mixed_case_package_name_decode;
-use crate::util::fs::atomic_write_file_with_retries;
-use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
-use crate::util::fs::clone_dir_recursive;
-use crate::util::fs::symlink_dir;
-use crate::util::fs::LaxSingleProcessFsFlag;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::progress_bar::ProgressMessagePrompt;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
@@ -39,12 +29,24 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
+use deno_runtime::deno_node::errors::PackageFolderResolveError;
+use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
 use deno_runtime::deno_node::NodePermissions;
 use deno_semver::package::PackageNv;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::args::PackageJsonInstallDepsProvider;
+use crate::cache::CACHE_PERM;
+use crate::npm::cache_dir::mixed_case_package_name_decode;
 use crate::npm::cache_dir::mixed_case_package_name_encode;
+use crate::util::fs::atomic_write_file_with_retries;
+use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
+use crate::util::fs::clone_dir_recursive;
+use crate::util::fs::symlink_dir;
+use crate::util::fs::LaxSingleProcessFsFlag;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressMessagePrompt;
 
 use super::super::cache::NpmCache;
 use super::super::cache::TarballCache;
@@ -113,7 +115,7 @@ impl LocalNpmPackageResolver {
   fn resolve_folder_for_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError> {
+  ) -> Result<Option<PathBuf>, std::io::Error> {
     let Some(relative_url) =
       self.root_node_modules_url.make_relative(specifier)
     else {
@@ -130,7 +132,6 @@ impl LocalNpmPackageResolver {
     // in `node_modules` directory of the referrer.
     canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())
       .map(Some)
-      .map_err(|err| err.into())
   }
 
   fn resolve_package_folder_from_specifier(
@@ -155,32 +156,42 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     Some(&self.root_node_modules_path)
   }
 
-  fn package_folder(&self, id: &NpmPackageId) -> Result<PathBuf, AnyError> {
-    match self.resolution.resolve_pkg_cache_folder_id_from_pkg_id(id) {
-      // package is stored at:
-      // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
-      Some(cache_folder_id) => Ok(
-        self
-          .root_node_modules_path
-          .join(".deno")
-          .join(get_package_folder_id_folder_name(&cache_folder_id))
-          .join("node_modules")
-          .join(&cache_folder_id.nv.name),
-      ),
-      None => bail!(
-        "Could not find package information for '{}'",
-        id.as_serialized()
-      ),
-    }
+  fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
+    let cache_folder_id = self
+      .resolution
+      .resolve_pkg_cache_folder_id_from_pkg_id(id)?;
+    // package is stored at:
+    // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
+    Some(
+      self
+        .root_node_modules_path
+        .join(".deno")
+        .join(get_package_folder_id_folder_name(&cache_folder_id))
+        .join("node_modules")
+        .join(&cache_folder_id.nv.name),
+    )
   }
 
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError> {
-    let Some(local_path) = self.resolve_folder_for_specifier(referrer)? else {
-      bail!("could not find npm package for '{}'", referrer);
+  ) -> Result<PathBuf, PackageFolderResolveError> {
+    let maybe_local_path = self
+      .resolve_folder_for_specifier(referrer)
+      .map_err(|err| PackageFolderResolveErrorKind::Io {
+        package_name: name.to_string(),
+        referrer: referrer.clone(),
+        source: err,
+      })?;
+    let Some(local_path) = maybe_local_path else {
+      return Err(
+        PackageFolderResolveErrorKind::NotFoundReferrer {
+          referrer: referrer.clone(),
+          referrer_extra: None,
+        }
+        .into(),
+      );
     };
     let package_root_path = self.resolve_package_root(&local_path);
     let mut current_folder = package_root_path.as_path();
@@ -202,11 +213,14 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       }
     }
 
-    bail!(
-      "could not find package '{}' from referrer '{}'.",
-      name,
-      referrer
-    );
+    Err(
+      PackageFolderResolveErrorKind::NotFoundPackage {
+        package_name: name.to_string(),
+        referrer: referrer.clone(),
+        referrer_extra: None,
+      }
+      .into(),
+    )
   }
 
   fn resolve_package_cache_folder_id_from_specifier(
@@ -502,10 +516,13 @@ async fn sync_resolution_with_fs(
   Ok(())
 }
 
+// Uses BTreeMap to preserve the ordering of the elements in memory, to ensure
+// the file generated from this datastructure is deterministic.
+// See: https://github.com/denoland/deno/issues/24479
 /// Represents a dependency at `node_modules/.deno/<package_id>/`
 struct SetupCacheDep<'a> {
-  previous: Option<&'a HashMap<String, String>>,
-  current: &'a mut HashMap<String, String>,
+  previous: Option<&'a BTreeMap<String, String>>,
+  current: &'a mut BTreeMap<String, String>,
 }
 
 impl<'a> SetupCacheDep<'a> {
@@ -521,11 +538,14 @@ impl<'a> SetupCacheDep<'a> {
   }
 }
 
+// Uses BTreeMap to preserve the ordering of the elements in memory, to ensure
+// the file generated from this datastructure is deterministic.
+// See: https://github.com/denoland/deno/issues/24479
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct SetupCacheData {
-  root_symlinks: HashMap<String, String>,
-  deno_symlinks: HashMap<String, String>,
-  dep_symlinks: HashMap<String, HashMap<String, String>>,
+  root_symlinks: BTreeMap<String, String>,
+  deno_symlinks: BTreeMap<String, String>,
+  dep_symlinks: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 /// It is very slow to try to re-setup the symlinks each time, so this will
@@ -696,6 +716,7 @@ fn junction_or_symlink_dir(
   old_path: &Path,
   new_path: &Path,
 ) -> Result<(), AnyError> {
+  use deno_core::anyhow::bail;
   // Use junctions because they're supported on ntfs file systems without
   // needing to elevate privileges on Windows
 

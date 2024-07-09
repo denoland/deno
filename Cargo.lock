@@ -1786,6 +1786,7 @@ dependencies = [
  "simd-json",
  "sm3",
  "spki",
+ "thiserror",
  "tokio",
  "url",
  "winapi",
