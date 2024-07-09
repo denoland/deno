@@ -2796,8 +2796,10 @@ update to a different location, use the --output flag
     })
 }
 
+// TODO(bartlomieju): this subcommand is now deprecated, remove it in Deno 2.
 fn vendor_subcommand() -> Command {
   Command::new("vendor")
+      .hide(true)
       .about("Vendor remote modules into a local directory")
       .long_about(
         "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.
