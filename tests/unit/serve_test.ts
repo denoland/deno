@@ -4038,26 +4038,23 @@ Deno.test(
 Deno.test({
   name: "HTTP Server test (error on non-unix platform)",
   ignore: Deno.build.os !== "windows",
-}, () => {
-  try {
-    const ac = new AbortController();
-    const server = Deno.serve({
-      path: "path/to/socket",
-      handler: (_req) => new Response("Hello, world"),
-      signal: ac.signal,
-      onListen({ path: _path }) {
-        console.log("Server started at ${_path}");
-      },
-    });
-    server.finished.then(() => console.log("Server closed"));
-    console.log("Closing server...");
-    ac.abort();
-  } catch (error) {
-    assert(error instanceof Error);
-    assert(
-      error.message.includes(
-        'Operation \`"op_net_listen_unix"\` not supported on non-unix platforms.',
-      ),
-    );
-  }
+}, async () => {
+  await assertRejects(
+    async () => {
+      const ac = new AbortController();
+      const server = Deno.serve({
+        path: "path/to/socket",
+        handler: (_req) => new Response("Hello, world"),
+        signal: ac.signal,
+        onListen({ path: _path }) {
+          console.log(`Server started at ${_path}`);
+        },
+      });
+      server.finished.then(() => console.log("Server closed"));
+      console.log("Closing server...");
+      ac.abort();
+    },
+    Error,
+    'Operation `"op_net_listen_unix"` not supported on non-unix platforms.',
+  );
 });
