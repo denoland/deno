@@ -1534,11 +1534,12 @@ impl ConfigData {
 
     let workspace = config_file
       .as_ref()
-      .and_then(|c| c.json.workspace.as_ref().map(|w| (c, w)));
+      .and_then(|c| c.to_workspace_config().ok().flatten().map(|w| (c, w)));
     let is_workspace_root = workspace.is_some();
     let workspace_members = if let Some((config, workspace)) = workspace {
       Arc::new(
         workspace
+          .members
           .iter()
           .flat_map(|p| {
             let dir_specifier = config.specifier.join(p).ok()?;
