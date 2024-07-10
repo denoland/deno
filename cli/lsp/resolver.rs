@@ -279,6 +279,20 @@ impl LspResolver {
     resolver.npm_resolver.as_ref().and_then(|r| r.as_managed())
   }
 
+  pub fn managed_npm_resolvers_by_scope(
+    &self,
+  ) -> BTreeMap<Option<&ModuleSpecifier>, &ManagedCliNpmResolver> {
+    self
+      .by_scope
+      .iter()
+      .map(|(s, r)| (Some(s), r))
+      .chain(std::iter::once((None, &self.unscoped)))
+      .filter_map(|(s, r)| {
+        Some((s, r.npm_resolver.as_ref().and_then(|r| r.as_managed())?))
+      })
+      .collect()
+  }
+
   pub fn graph_imports_by_referrer(
     &self,
     file_referrer: &ModuleSpecifier,

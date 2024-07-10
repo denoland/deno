@@ -1410,6 +1410,25 @@ impl Documents {
       visit_doc(doc);
     }
 
+    let managed_npm_resolvers_by_scope =
+      self.resolver.managed_npm_resolvers_by_scope();
+    for doc in self.open_docs.values() {
+      for (&scope, npm_resolver) in &managed_npm_resolvers_by_scope {
+        let Some(nv) =
+          npm_resolver.resolve_pkg_nv_from_specifier(doc.specifier())
+        else {
+          continue;
+        };
+        let Ok(req) = PackageReq::from_str(&nv.to_string()) else {
+          continue;
+        };
+        npm_reqs_by_scope
+          .entry(scope.cloned())
+          .or_default()
+          .insert(req);
+      }
+    }
+
     // fill the reqs from the lockfile
     for (scope, config_data) in self.config.tree.data_by_scope().as_ref() {
       if let Some(lockfile) = config_data.lockfile.as_ref() {

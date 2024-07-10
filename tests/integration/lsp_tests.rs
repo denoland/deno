@@ -8389,6 +8389,76 @@ fn lsp_npm_specifier_unopened_file() {
 }
 
 #[test]
+fn lsp_npm_open_from_global_cache_resolution() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": true,
+      "lock": false,
+    })
+    .to_string(),
+  );
+  context
+    .new_command()
+    .args("cache npm:strip-ansi@7.0.1")
+    .run()
+    .skip_output_check();
+  let registry_dir_name = context
+    .deno_dir()
+    .path()
+    .join("npm")
+    .read_dir()
+    .next()
+    .unwrap()
+    .unwrap()
+    .file_name();
+  let npm_dir_uri = context
+    .deno_dir()
+    .uri()
+    .join(&format!("npm/{}/", registry_dir_name.to_string_lossy()))
+    .unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": npm_dir_uri.join("strip-ansi/7.0.1/index.js").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": std::fs::read_to_string(npm_dir_uri.join("strip-ansi/7.0.1/index.js").unwrap().to_file_path().unwrap()).unwrap(),
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": context.deno_dir().uri().join("npm/localhost_4260/strip-ansi/7.0.1/index.js").unwrap(),
+      },
+      "position": { "line": 0, "character": 22, }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n\n**Types**: file&#8203;{}\n", context.deno_dir().uri().join("npm/localhost_4260/ansi-regex/6.0.1/index.js").unwrap().as_str().trim_start_matches("file"), context.deno_dir().uri().join("npm/localhost_4260/ansi-regex/6.0.1/index.d.ts").unwrap().as_str().trim_start_matches("file")),
+      },
+      "range": {
+        "start": { "line": 0, "character": 22 },
+        "end": { "line": 0, "character": 34 },
+      },
+    }),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_completions_node_specifier() {
   let context = TestContextBuilder::new()
     .use_http_server()

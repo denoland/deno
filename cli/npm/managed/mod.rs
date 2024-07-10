@@ -340,6 +340,20 @@ impl ManagedCliNpmResolver {
     ))
   }
 
+  /// Resolves the package nv from the provided specifier.
+  pub fn resolve_pkg_nv_from_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<PackageNv> {
+    Some(
+      self
+        .fs_resolver
+        .resolve_package_cache_folder_id_from_specifier(specifier)
+        .ok()??
+        .nv,
+    )
+  }
+
   pub fn resolve_pkg_reqs_from_pkg_id(
     &self,
     id: &NpmPackageId,
