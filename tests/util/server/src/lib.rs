@@ -862,7 +862,7 @@ pub fn wildcard_match_detailed(
         for actual_line in actual_lines {
           let maybe_found_index =
             expected_lines.iter().position(|expected_line| {
-              actual_line == expected_line
+              actual_line == *expected_line
                 || wildcard_match(expected_line, actual_line)
             });
           if let Some(found_index) = maybe_found_index {
