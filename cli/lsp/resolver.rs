@@ -480,8 +480,8 @@ fn create_node_resolver(
 ) -> Option<Arc<CliNodeResolver>> {
   use once_cell::sync::Lazy;
 
-  // todo(dsherret): it's not ideal to share this across all scopes and to
-  // never clear it, but it's fine for the time being.
+  // it's not ideal to share this across all scopes and to
+  // never clear it, but it's fine for the time being
   static CJS_RESOLUTIONS: Lazy<Arc<CjsResolutionStore>> =
     Lazy::new(Default::default);
 
