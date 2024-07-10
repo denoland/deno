@@ -40,6 +40,7 @@ use deno_runtime::deno_node::errors::ClosestPkgJsonError;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -345,13 +346,29 @@ impl LspResolver {
   }
 
   pub fn in_node_modules(&self, specifier: &ModuleSpecifier) -> bool {
-    // consider any /node_modules/ directory as being in the node_modules
-    // folder for the LSP
-    specifier.scheme() == "file"
-      && specifier
-        .path()
-        .to_ascii_lowercase()
-        .contains("/node_modules/")
+    fn has_node_modules_dir(specifier: &ModuleSpecifier) -> bool {
+      // consider any /node_modules/ directory as being in the node_modules
+      // folder for the LSP because it's pretty complicated to deal with multiple scopes
+      specifier.scheme() == "file"
+        && specifier
+          .path()
+          .to_ascii_lowercase()
+          .contains("/node_modules/")
+    }
+
+    let resolver = self.get_scope_resolver(Some(specifier));
+    let global_npm_resolver = resolver
+      .npm_resolver
+      .as_ref()
+      .and_then(|npm_resolver| npm_resolver.as_managed())
+      .filter(|r| r.root_node_modules_path().is_none());
+    if let Some(npm_resolver) = &global_npm_resolver {
+      if npm_resolver.in_npm_package(specifier) {
+        return true;
+      }
+    }
+
+    has_node_modules_dir(specifier)
   }
 
   pub fn node_media_type(
