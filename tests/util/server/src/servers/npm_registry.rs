@@ -297,6 +297,7 @@ async fn download_npm_registry_file(
   testdata_file_path: &PathBuf,
   is_tarball: bool,
 ) -> Result<(), anyhow::Error> {
+  let uri_path = uri_path.trim_start_matches('/');
   let url_parts = uri_path.split('/').collect::<Vec<_>>();
   let package_name = if url_parts[0].starts_with('@') {
     url_parts.into_iter().take(2).collect::<Vec<_>>().join("/")

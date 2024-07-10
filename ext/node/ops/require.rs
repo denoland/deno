@@ -421,7 +421,7 @@ where
       &pkg.path,
       &expansion,
       exports,
-      &referrer,
+      Some(&referrer),
       NodeModuleKind::Cjs,
       resolution::REQUIRE_CONDITIONS,
       NodeResolutionMode::Execution,
@@ -509,7 +509,7 @@ where
     &pkg.path,
     &format!(".{expansion}"),
     exports,
-    &referrer,
+    Some(&referrer),
     NodeModuleKind::Cjs,
     resolution::REQUIRE_CONDITIONS,
     NodeResolutionMode::Execution,
@@ -538,6 +538,7 @@ where
   node_resolver
     .get_closest_package_json(&Url::from_file_path(filename).unwrap())
     .map(|maybe_pkg| maybe_pkg.map(|pkg| (*pkg).clone()))
+    .map_err(AnyError::from)
 }
 
 #[op2]
@@ -586,7 +587,7 @@ where
       deno_core::url::Url::from_file_path(&referrer_filename).unwrap();
     let url = node_resolver.package_imports_resolve(
       &request,
-      &referrer_url,
+      Some(&referrer_url),
       NodeModuleKind::Cjs,
       Some(&pkg),
       resolution::REQUIRE_CONDITIONS,

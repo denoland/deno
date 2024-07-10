@@ -15,7 +15,6 @@ use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
-use crate::util::fs::WalkEntry;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
 use crate::util::path::mapped_specifier_for_tsc;
@@ -27,6 +26,7 @@ use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_ast::SourceRangedForSpanned;
 use deno_config::glob::FilePatterns;
+use deno_config::glob::WalkEntry;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context as _;
@@ -1611,9 +1611,16 @@ pub(crate) fn is_supported_test_path(path: &Path) -> bool {
 fn has_supported_test_path_name(path: &Path) -> bool {
   if let Some(name) = path.file_stem() {
     let basename = name.to_string_lossy();
-    basename.ends_with("_test")
+    if basename.ends_with("_test")
       || basename.ends_with(".test")
       || basename == "test"
+    {
+      return true;
+    }
+
+    path
+      .components()
+      .any(|seg| seg.as_os_str().to_str() == Some("__tests__"))
   } else {
     false
   }
@@ -2077,6 +2084,18 @@ mod inner_test {
     assert!(is_supported_test_path(Path::new("foo/bar/test.jsx")));
     assert!(is_supported_test_path(Path::new("foo/bar/test.ts")));
     assert!(is_supported_test_path(Path::new("foo/bar/test.tsx")));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.js"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.jsx"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.ts"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.tsx"
+    )));
     assert!(!is_supported_test_path(Path::new("README.md")));
     assert!(!is_supported_test_path(Path::new("lib/typescript.d.ts")));
     assert!(!is_supported_test_path(Path::new("notatest.js")));

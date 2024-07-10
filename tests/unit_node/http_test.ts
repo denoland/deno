@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import EventEmitter from "node:events";
-import http, { type RequestOptions } from "node:http";
+import http, { type RequestOptions, type ServerResponse } from "node:http";
 import url from "node:url";
 import https from "node:https";
 import net from "node:net";
@@ -140,6 +140,93 @@ Deno.test("[node/http] chunked response", async () => {
 
     await promise;
   }
+});
+
+Deno.test("[node/http] .writeHead()", async (t) => {
+  async function testWriteHead(
+    onRequest: (res: ServerResponse) => void,
+    onResponse: (res: Response) => void,
+  ) {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const server = http.createServer((_req, res) => {
+      onRequest(res);
+      res.end();
+    });
+    server.listen(async () => {
+      const res = await fetch(
+        // deno-lint-ignore no-explicit-any
+        `http://127.0.0.1:${(server.address() as any).port}/`,
+      );
+      await res.body?.cancel();
+
+      onResponse(res);
+
+      server.close(() => resolve());
+    });
+
+    await promise;
+  }
+
+  await t.step("send status code", async () => {
+    await testWriteHead(
+      (res) => res.writeHead(404),
+      (res) => {
+        assertEquals(res.status, 404);
+      },
+    );
+  });
+
+  // TODO(@marvinhagemeister): hyper doesn't support custom status text
+  // await t.step("send status + custom status text", async () => {
+  //   await testWriteHead(
+  //     (res) => res.writeHead(404, "some text"),
+  //     (res) => {
+  //       assertEquals(res.status, 404);
+  //       assertEquals(res.statusText, "some text");
+  //     },
+  //   );
+  // });
+
+  await t.step("send status + custom status text + headers obj", async () => {
+    await testWriteHead(
+      (res) => res.writeHead(404, "some text", { foo: "bar" }),
+      (res) => {
+        assertEquals(res.status, 404);
+        // TODO(@marvinhagemeister): hyper doesn't support custom
+        // status text
+        // assertEquals(res.statusText, "some text");
+        assertEquals(res.headers.get("foo"), "bar");
+      },
+    );
+  });
+
+  await t.step("send status + headers obj", async () => {
+    await testWriteHead(
+      (res) => {
+        res.writeHead(200, {
+          foo: "bar",
+          bar: ["foo1", "foo2"],
+          foobar: 1,
+        });
+      },
+      (res) => {
+        assertEquals(res.status, 200);
+        assertEquals(res.headers.get("foo"), "bar");
+        assertEquals(res.headers.get("bar"), "foo1, foo2");
+        assertEquals(res.headers.get("foobar"), "1");
+      },
+    );
+  });
+
+  await t.step("send status + headers array", async () => {
+    await testWriteHead(
+      (res) => res.writeHead(200, [["foo", "bar"]]),
+      (res) => {
+        assertEquals(res.status, 200);
+        assertEquals(res.headers.get("foo"), "bar");
+      },
+    );
+  });
 });
 
 // Test empty chunks: https://github.com/denoland/deno/issues/17194
@@ -904,6 +991,33 @@ Deno.test(
     clearTimeout(timerId);
     ac.abort();
     await server.finished;
+  },
+);
+
+Deno.test(
+  "[node/http] client destroy before sending request should not error",
+  () => {
+    const request = http.request("http://localhost:5929/");
+    // Calling this would throw
+    request.destroy();
+  },
+);
+
+Deno.test(
+  "[node/http] destroyed requests should not be sent",
+  async () => {
+    let receivedRequest = false;
+    const server = Deno.serve(() => {
+      receivedRequest = true;
+      return new Response(null);
+    });
+    const request = http.request(`http://localhost:${server.addr.port}/`);
+    request.destroy();
+    request.end("hello");
+
+    await new Promise((r) => setTimeout(r, 500));
+    assertEquals(receivedRequest, false);
+    await server.shutdown();
   },
 );
 

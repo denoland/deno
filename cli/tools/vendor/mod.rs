@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
+use deno_runtime::colors;
 use log::warn;
 
 use crate::args::CliOptions;
@@ -38,6 +39,10 @@ pub async fn vendor(
   flags: Flags,
   vendor_flags: VendorFlags,
 ) -> Result<(), AnyError> {
+  log::info!(
+    "{}",
+    colors::yellow("⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.\nAdd `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead."),
+  );
   let mut cli_options = CliOptions::from_flags(flags)?;
   let raw_output_dir = match &vendor_flags.output_path {
     Some(output_path) => PathBuf::from(output_path).to_owned(),

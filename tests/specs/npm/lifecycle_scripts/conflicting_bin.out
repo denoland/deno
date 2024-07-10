@@ -1,0 +1,13 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest/better-say-hello
+Download http://localhost:4260/@denotest/say-hello-on-install
+Download http://localhost:4260/@denotest/say-hello
+Download http://localhost:4260/@denotest/better-say-hello/1.0.0.tgz
+Download http://localhost:4260/@denotest/say-hello-on-install/1.0.0.tgz
+Download http://localhost:4260/@denotest/say-hello/1.0.0.tgz
+Initialize @denotest/better-say-hello@1.0.0
+Initialize @denotest/say-hello-on-install@1.0.0
+Initialize @denotest/say-hello@1.0.0
+[UNORDERED_END]
+install script
+@denotest/say-hello says hello!
