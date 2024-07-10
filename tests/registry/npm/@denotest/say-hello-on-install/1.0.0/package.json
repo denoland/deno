@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/say-hello-on-install",
+  "version": "1.0.0",
+  "scripts": {
+    "install": "echo 'install script' && say-hello"
+  },
+  "dependencies": {
+    "@denotest/say-hello": "1.0.0"
+  }
+}

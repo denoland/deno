@@ -408,7 +408,10 @@ Process.prototype.config = {
   target_defaults: {
     default_configuration: "Release",
   },
-  variables: {},
+  variables: {
+    llvm_version: "0.0",
+    enable_lto: "false",
+  },
 };
 
 /** https://nodejs.org/api/process.html#process_process_cwd */

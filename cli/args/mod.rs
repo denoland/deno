@@ -793,19 +793,7 @@ impl CliOptions {
     )
     .with_context(|| "Resolving node_modules folder.")?;
 
-    if let Some(env_file_name) = &flags.env_file {
-      match from_filename(env_file_name) {
-          Ok(_) => (),
-          Err(error) => {
-            match error {
-              dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
-              dotenvy::Error::Io(_)=> log::info!("{} The `--env` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
-              dotenvy::Error::EnvVar(_)=>log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
-              _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
-            }
-          }
-        }
-    }
+    load_env_variables_from_env_file(flags.env_file.as_ref());
 
     let disable_deprecated_api_warning = flags.log_level
       == Some(log::Level::Error)
@@ -1118,6 +1106,10 @@ impl CliOptions {
     }
   }
 
+  pub fn env_file_name(&self) -> Option<&String> {
+    self.flags.env_file.as_ref()
+  }
+
   pub fn enable_future_features(&self) -> bool {
     *DENO_FUTURE
   }
@@ -1301,9 +1293,7 @@ impl CliOptions {
     self.maybe_lockfile.clone()
   }
 
-  /// Return any imports that should be brought into the scope of the module
-  /// graph.
-  pub fn to_maybe_imports(
+  pub fn to_compiler_option_types(
     &self,
   ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
     self.workspace.to_maybe_imports().map(|maybe_imports| {
@@ -1730,6 +1720,20 @@ impl CliOptions {
     }
     full_paths
   }
+
+  pub fn lifecycle_scripts_config(&self) -> LifecycleScriptsConfig {
+    LifecycleScriptsConfig {
+      allowed: self.flags.allow_scripts.clone(),
+      initial_cwd: if matches!(
+        self.flags.allow_scripts,
+        PackagesAllowedScripts::None
+      ) {
+        None
+      } else {
+        Some(self.initial_cwd.clone())
+      },
+    }
+  }
 }
 
 /// Resolves the path to use for a local node_modules folder.
@@ -1871,6 +1875,23 @@ pub fn config_to_deno_graph_workspace_member(
     nv,
     exports: config.to_exports_config()?.into_map(),
   })
+}
+
+fn load_env_variables_from_env_file(filename: Option<&String>) {
+  let Some(env_file_name) = filename else {
+    return;
+  };
+  match from_filename(env_file_name) {
+    Ok(_) => (),
+    Err(error) => {
+      match error {
+          dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
+          dotenvy::Error::Io(_)=> log::info!("{} The `--env` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
+          dotenvy::Error::EnvVar(_)=> log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
+          _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+        }
+    }
+  }
 }
 
 #[cfg(test)]

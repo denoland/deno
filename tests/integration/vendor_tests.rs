@@ -12,6 +12,8 @@ use util::http_server;
 use util::new_deno_dir;
 use util::TestContextBuilder;
 
+const DEPRECATION_NOTICE: &str = "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.\nAdd `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.\n";
+
 #[test]
 fn output_dir_exists() {
   let t = TempDir::new();
@@ -30,11 +32,7 @@ fn output_dir_exists() {
   let output = deno.wait_with_output().unwrap();
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
-    concat!(
-      "error: Output directory was not empty. Please specify an empty ",
-      "directory or use --force to ignore this error and potentially ",
-      "overwrite its contents.",
-    ),
+    format!("{}error: Output directory was not empty. Please specify an empty directory or use --force to ignore this error and potentially overwrite its contents.", &DEPRECATION_NOTICE)
   );
   assert!(!output.status.success());
 
@@ -52,11 +50,7 @@ fn output_dir_exists() {
   let output = deno.wait_with_output().unwrap();
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
-    concat!(
-      "error: Output directory was not empty. Please specify an empty ",
-      "directory or use --force to ignore this error and potentially ",
-      "overwrite its contents.",
-    ),
+    format!("{}error: Output directory was not empty. Please specify an empty directory or use --force to ignore this error and potentially overwrite its contents.", &DEPRECATION_NOTICE)
   );
   assert!(!output.status.success());
 
@@ -99,10 +93,12 @@ fn standard_test() {
     String::from_utf8_lossy(&output.stderr).trim(),
     format!(
       concat!(
+        "{}",
         "Download http://localhost:4545/vendor/query_reexport.ts?testing\n",
         "Download http://localhost:4545/vendor/logger.ts?test\n",
         "{}",
       ),
+      &DEPRECATION_NOTICE,
       success_text("2 modules", "vendor2", true),
     )
   );
@@ -184,10 +180,11 @@ fn import_map_output_dir() {
     String::from_utf8_lossy(&output.stderr).trim(),
     format!(
       concat!(
-        "{}\n",
+        "{}{}\n",
         "Download http://localhost:4545/vendor/logger.ts\n",
         "{}\n\n{}",
       ),
+      &DEPRECATION_NOTICE,
       ignoring_import_map_text(),
       vendored_text("1 module", "vendor/"),
       success_text_updated_deno_json("vendor/"),
@@ -215,10 +212,12 @@ fn remote_module_test() {
     String::from_utf8_lossy(&output.stderr).trim(),
     format!(
       concat!(
+        "{}",
         "Download http://localhost:4545/vendor/query_reexport.ts\n",
         "Download http://localhost:4545/vendor/logger.ts?test\n",
         "{}",
       ),
+      &DEPRECATION_NOTICE,
       success_text("2 modules", "vendor/", true),
     )
   );
@@ -274,7 +273,11 @@ fn existing_import_map_no_remote() {
   let output = deno.wait_with_output().unwrap();
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
-    success_text("0 modules", "vendor/", false)
+    format!(
+      "{}{}",
+      &DEPRECATION_NOTICE,
+      success_text("0 modules", "vendor/", false)
+    )
   );
   assert!(output.status.success());
   // it should not have found any remote dependencies because
@@ -348,7 +351,8 @@ fn existing_import_map_mixed_with_remote() {
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
     format!(
-      concat!("Download http://localhost:4545/vendor/mod.ts\n", "{}",),
+      "{}Download http://localhost:4545/vendor/mod.ts\n{}",
+      &DEPRECATION_NOTICE,
       success_text("1 module", "vendor2", true),
     )
   );
@@ -462,7 +466,8 @@ fn dynamic_non_analyzable_import() {
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
     format!(
-      "Download http://localhost:4545/vendor/dynamic_non_analyzable.ts\n{}",
+      "{}Download http://localhost:4545/vendor/dynamic_non_analyzable.ts\n{}",
+      &DEPRECATION_NOTICE,
       success_text("1 module", "vendor/", true),
     )
   );
@@ -502,7 +507,8 @@ fn update_existing_config_test() {
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
     format!(
-      "Download http://localhost:4545/vendor/logger.ts\n{}\n\n{}",
+      "{}Download http://localhost:4545/vendor/logger.ts\n{}\n\n{}",
+      &DEPRECATION_NOTICE,
       vendored_text("1 module", "vendor2"),
       success_text_updated_deno_json("vendor2",)
     )
@@ -552,7 +558,9 @@ fn update_existing_empty_config_test() {
   assert_eq!(
     String::from_utf8_lossy(&output.stderr).trim(),
     format!(
-      "Download http://localhost:4545/vendor/logger.ts\n{}\n\n{}",
+      "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.
+Add `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.
+Download http://localhost:4545/vendor/logger.ts\n{}\n\n{}",
       vendored_text("1 module", "vendor2"),
       success_text_updated_deno_json("vendor2",)
     )
@@ -578,6 +586,8 @@ fn vendor_npm_node_specifiers() {
   let output = context.new_command().args("vendor my_app.ts").run();
   output.assert_matches_text(format!(
     concat!(
+      "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.\n",
+      "Add `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.\n",
       "Download http://localhost:4545/vendor/npm_and_node_specifier.ts\n",
       "Download http://localhost:4260/@denotest/esm-basic\n",
       "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
@@ -598,7 +608,8 @@ fn vendor_npm_node_specifiers() {
   // now try re-vendoring with a lockfile
   let output = context.new_command().args("vendor --force my_app.ts").run();
   output.assert_matches_text(format!(
-    "{}\n{}\n\n{}\n",
+    "{}{}\n{}\n\n{}\n",
+    &DEPRECATION_NOTICE,
     ignoring_import_map_text(),
     vendored_text("1 module", "vendor/"),
     success_text_updated_deno_json("vendor/"),
@@ -613,7 +624,8 @@ fn vendor_npm_node_specifiers() {
     .args("vendor --node-modules-dir=false --force my_app.ts")
     .run();
   output.assert_matches_text(format!(
-    "{}\n{}\n\n{}\n",
+    "{}{}\n{}\n\n{}\n",
+    &DEPRECATION_NOTICE,
     ignoring_import_map_text(),
     vendored_text("1 module", "vendor/"),
     success_text_updated_deno_json("vendor/")
@@ -629,7 +641,8 @@ fn vendor_npm_node_specifiers() {
     .args("vendor --node-modules-dir --force my_app.ts")
     .run();
   output.assert_matches_text(format!(
-    "Initialize @denotest/esm-basic@1.0.0\n{}\n\n{}\n",
+    "{}Initialize @denotest/esm-basic@1.0.0\n{}\n\n{}\n",
+    &DEPRECATION_NOTICE,
     vendored_text("1 module", "vendor/"),
     use_import_map_text("vendor/")
   ));
@@ -652,6 +665,8 @@ fn vendor_only_npm_specifiers() {
   let output = context.new_command().args("vendor my_app.ts").run();
   output.assert_matches_text(format!(
     concat!(
+      "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.\n",
+      "Add `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.\n",
       "Download http://localhost:4260/@denotest/esm-basic\n",
       "Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz\n",
       "{}\n",

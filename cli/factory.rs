@@ -443,7 +443,8 @@ impl CliFactory {
               &self.options.workspace,
             )),
             npm_system_info: self.options.npm_system_info(),
-            npmrc: self.options.npmrc().clone()
+            npmrc: self.options.npmrc().clone(),
+            lifecycle_scripts: self.options.lifecycle_scripts_config(),
           })
         }).await
       }.boxed_local())

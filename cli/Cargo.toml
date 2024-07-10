@@ -148,6 +148,7 @@ tower-lsp.workspace = true
 twox-hash.workspace = true
 typed-arena = "=2.0.1"
 uuid = { workspace = true, features = ["serde"] }
+which.workspace = true
 zeromq.workspace = true
 zstd.workspace = true
 

@@ -28,13 +28,13 @@ use deno_ast::MediaType;
 use deno_cache_dir::HttpCache;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceResolver;
-use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_graph::source::Resolver;
 use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
+use deno_runtime::deno_node::errors::ClosestPkgJsonError;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
@@ -365,7 +365,7 @@ impl LspResolver {
   pub fn get_closest_package_json(
     &self,
     referrer: &ModuleSpecifier,
-  ) -> Result<Option<Arc<PackageJson>>, AnyError> {
+  ) -> Result<Option<Arc<PackageJson>>, ClosestPkgJsonError> {
     let resolver = self.get_scope_resolver(Some(referrer));
     let Some(node_resolver) = resolver.node_resolver.as_ref() else {
       return Ok(None);
@@ -469,6 +469,7 @@ async fn create_npm_resolver(
         .and_then(|d| d.npmrc.clone())
         .unwrap_or_else(create_default_npmrc),
       npm_system_info: NpmSystemInfo::default(),
+      lifecycle_scripts: Default::default(),
     })
   };
   Some(create_cli_npm_resolver_for_lsp(options).await)

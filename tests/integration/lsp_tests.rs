@@ -14275,6 +14275,46 @@ fn sloppy_imports_not_enabled() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/24457.
+#[test]
+fn lsp_byonm_js_import_resolves_to_dts() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "unstable": ["byonm"],
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "postcss": "*",
+      },
+    })
+    .to_string(),
+  );
+  context.run_npm("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("node_modules/postcss/lib/comment.d.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.path().join("node_modules/postcss/lib/comment.d.ts").read_to_string(),
+    }
+  }));
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
 #[test]
 fn decorators_tc39() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
