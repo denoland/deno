@@ -172,6 +172,7 @@ impl NodeResolver {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
+    referrer_kind: NodeModuleKind,
     mode: NodeResolutionMode,
   ) -> Result<Option<NodeResolution>, NodeResolveError> {
     // Note: if we are here, then the referrer is an esm module
@@ -212,8 +213,16 @@ impl NodeResolver {
       }
     }
 
-    let maybe_url =
-      self.module_resolve(specifier, referrer, DEFAULT_CONDITIONS, mode)?;
+    let maybe_url = self.module_resolve(
+      specifier,
+      referrer,
+      referrer_kind,
+      match referrer_kind {
+        NodeModuleKind::Esm => DEFAULT_CONDITIONS,
+        NodeModuleKind::Cjs => REQUIRE_CONDITIONS,
+      },
+      mode,
+    )?;
     let url = match maybe_url {
       Some(url) => url,
       None => return Ok(None),
@@ -229,6 +238,7 @@ impl NodeResolver {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
+    referrer_kind: NodeModuleKind,
     conditions: &[&str],
     mode: NodeResolutionMode,
   ) -> Result<Option<ModuleSpecifier>, NodeResolveError> {
@@ -250,7 +260,7 @@ impl NodeResolver {
       Some(self.package_imports_resolve(
         specifier,
         Some(referrer),
-        NodeModuleKind::Esm,
+        referrer_kind,
         pkg_config.as_deref(),
         conditions,
         mode,
@@ -261,7 +271,7 @@ impl NodeResolver {
       self.package_resolve(
         specifier,
         referrer,
-        NodeModuleKind::Esm,
+        referrer_kind,
         conditions,
         mode,
       )?
@@ -273,13 +283,7 @@ impl NodeResolver {
 
     let maybe_url = if mode.is_types() {
       let file_path = to_file_path(&url);
-      // todo(16370): the referrer module kind is not correct here. I think we need
-      // typescript to tell us if the referrer is esm or cjs
-      self.path_to_declaration_url(
-        file_path,
-        Some(referrer),
-        NodeModuleKind::Esm,
-      )?
+      self.path_to_declaration_url(file_path, Some(referrer), referrer_kind)?
     } else {
       Some(url)
     };
@@ -1319,13 +1323,7 @@ impl NodeResolver {
           source: source.into_io_error(),
         },
       )?);
-    let mut current_dir = current_dir.as_path();
-    let package_json_path = current_dir.join("package.json");
-    if let Some(pkg_json) = self.load_package_json(&package_json_path)? {
-      return Ok(Some(pkg_json));
-    }
-    while let Some(parent) = current_dir.parent() {
-      current_dir = parent;
+    for current_dir in current_dir.ancestors() {
       let package_json_path = current_dir.join("package.json");
       if let Some(pkg_json) = self.load_package_json(&package_json_path)? {
         return Ok(Some(pkg_json));

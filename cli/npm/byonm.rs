@@ -29,7 +29,8 @@ use super::InnerCliNpmResolverRef;
 
 pub struct CliNpmResolverByonmCreateOptions {
   pub fs: Arc<dyn FileSystem>,
-  pub root_node_modules_dir: PathBuf,
+  // todo(dsherret): investigate removing this
+  pub root_node_modules_dir: Option<PathBuf>,
 }
 
 pub fn create_byonm_npm_resolver(
@@ -44,7 +45,7 @@ pub fn create_byonm_npm_resolver(
 #[derive(Debug)]
 pub struct ByonmCliNpmResolver {
   fs: Arc<dyn FileSystem>,
-  root_node_modules_dir: PathBuf,
+  root_node_modules_dir: Option<PathBuf>,
 }
 
 impl ByonmCliNpmResolver {
@@ -131,16 +132,16 @@ impl ByonmCliNpmResolver {
     }
 
     // otherwise, fall fallback to the project's package.json
-    let root_pkg_json_path = self
-      .root_node_modules_dir
-      .parent()
-      .unwrap()
-      .join("package.json");
-    if let Some(pkg_json) =
-      load_pkg_json(self.fs.as_ref(), &root_pkg_json_path)?
-    {
-      if let Some(alias) = resolve_alias_from_pkg_json(req, pkg_json.as_ref()) {
-        return Ok((pkg_json, alias));
+    if let Some(root_node_modules_dir) = &self.root_node_modules_dir {
+      let root_pkg_json_path =
+        root_node_modules_dir.parent().unwrap().join("package.json");
+      if let Some(pkg_json) =
+        load_pkg_json(self.fs.as_ref(), &root_pkg_json_path)?
+      {
+        if let Some(alias) = resolve_alias_from_pkg_json(req, pkg_json.as_ref())
+        {
+          return Ok((pkg_json, alias));
+        }
       }
     }
 
@@ -159,9 +160,10 @@ impl NpmResolver for ByonmCliNpmResolver {
   fn get_npm_process_state(&self) -> String {
     serde_json::to_string(&NpmProcessState {
       kind: NpmProcessStateKind::Byonm,
-      local_node_modules_path: Some(
-        self.root_node_modules_dir.to_string_lossy().to_string(),
-      ),
+      local_node_modules_path: self
+        .root_node_modules_dir
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string()),
     })
     .unwrap()
   }
@@ -256,7 +258,7 @@ impl CliNpmResolver for ByonmCliNpmResolver {
   }
 
   fn root_node_modules_path(&self) -> Option<&PathBuf> {
-    Some(&self.root_node_modules_dir)
+    self.root_node_modules_dir.as_ref()
   }
 
   fn resolve_pkg_folder_from_deno_module_req(
