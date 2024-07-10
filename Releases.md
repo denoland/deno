@@ -9,13 +9,11 @@ https://github.com/denoland/deno_install
 ### 1.45.0 / 2024.07.10
 
 - BREAKING(unstable/ffi): remove callback reentrant flag (#24367)
-- Revert "perf: improve Buffer.from(buf) by 29x" (#24351)
-- Revert `#[cppgc] &mut T` usage (#24304)
 - feat(cli): Add `--frozen` flag to error out if lockfile is out of date
   (#24355)
 - feat(cli): `deno init --lib` (#22499)
-- feat(compile): support --env (#24166)
-- feat(ext/crypto): make deriveBits length parameter optional and nullable
+- feat(compile): support `--env` (#24166)
+- feat(ext/crypto): make `deriveBits` `length` parameter optional and nullable
   (#24426)
 - feat(ext/web): add `Blob.prototype.bytes()` (#24148)
 - feat(jsr): support publishing jsr packages in npm workspaces (#24507)
@@ -24,10 +22,9 @@ https://github.com/denoland/deno_install
 - feat(node): Support executing npm package lifecycle scripts
   (preinstall/install/postinstall) (#24487)
 - feat(workspace): support object config (#24483)
-- feat: Deprecate --lock-write flag (#24436)
+- feat: Deprecate `--lock-write` flag (#24436)
 - feat: Upgrade to TypeScript 5.5.2 (#24326)
 - feat: add `__tests__` to test file detection defaults (#24443)
-- feat: add module.parent (#24333)
 - feat: deprecate `deno vendor` (#22183)
 - feat: npm workspace and better Deno workspace support (#24334)
 - feat: support wildcards in npm workspaces (#24471)
@@ -38,6 +35,7 @@ https://github.com/denoland/deno_install
 - fix(compile): atomically write compile output (#24378)
 - fix(compile): prevent setting unstable feature twice (#24381)
 - fix(ext/node): Add `fs.lutimes` / `fs.lutimesSync` (#23172)
+- fix(ext/node): add `Module.parent` (#24333)
 - fix(ext/node): add ServerResponse#appendHeader (#24216)
 - fix(ext/node): add Symbol.toStringTag to KeyObject instances (#24377)
 - fix(ext/node): discover .npmrc in user's homedir (#24021)
@@ -47,20 +45,9 @@ https://github.com/denoland/deno_install
 - fix(ext/node): ignore stream error during enqueue (#24243)
 - fix(ext/node): make next tick queue resilient to `Array.prototype` tampering
   (#24361)
-- fix(ext/node): rewrite crypto.Hash (#24302)
+- fix(ext/node): rewrite `crypto.Hash` (#24302)
 - fix(ext/node): rewrite digest handling (#24392)
 - fix(ext/node): use cppgc for node:zlib (#24267)
-- fix(ext/node): use primordials in `ext/node/polyfills/_brotli.js` (#24235)
-- fix(ext/node): use primordials in `ext/node/polyfills/_fs/_fs_cp.js` (#24320)
-- fix(ext/node): use primordials in `ext/node/polyfills/_fs/_fs_dir.ts` (#24319)
-- fix(ext/node): use primordials in `ext/node/polyfills/_http_common.ts`
-  (#24281)
-- fix(ext/node): use primordials in `ext/node/polyfills/_process/` (#24282)
-- fix(ext/node): use primordials in `ext/node/polyfills/string_decoder.ts`
-  (#24296)
-- fix(ext/node): use primordials in `ext/node/polyfills/testing.ts` (#24310)
-- fix(ext/node): use primordials in `ext/node/polyfills/timers.ts` (#24311)
-- fix(ext/web): use primordials of ES2024 ArrayBuffer transfer (#24396)
 - fix(ext/webgpu): fix `GPUUncapturedErrorEvent` parent type (#24369)
 - fix(ext/websocket): drop connection when close frame not ack (#24301)
 - fix(lsp): correct scope attribution for injected @types/node (#24404)
@@ -92,18 +79,13 @@ https://github.com/denoland/deno_install
 - fix: do not return undefined for missing global properties (#24474)
 - fix: make .setup-cache.bin in node_modules more reproducible (#24480)
 - fix: memory leak when transpiling (#24490)
-- fix: more node-api fixes (#24220)
 - fix: node-api get_value_string_utf8 should use utf8_length (#24193)
-- fix: only use maglev in DENO_FUTURE for now (#24485)
 - fix: panic when piping "deno help" or "deno --version" (#22917)
-- fix: restore reference to dom.extras in lib.dom.d.ts (#24489)
-- fix: revert accidentally added `parentPath` on `DirEntry` (#24438)
-- fix: test in presence of .npmrc (#24486)
+- fix: test in presence of `.npmrc` (#24486)
 - fix: upgrade deno_core to 0.291.0 (#24297)
 - perf(ext/node): improve `Buffer.from(buffer)` (#24352)
 - perf(ext/websocket): avoid global interceptor overhead (#24284)
 - perf(ws): optimize fastwebsockets in release profile (#24277)
-- perf: improve Buffer.from(buf) by 29x (#24341)
 - perf: optimize Buffer.from("base64") for forgiving-base64 conforming input
   (#24346)
 
