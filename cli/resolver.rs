@@ -27,6 +27,7 @@ use deno_runtime::deno_node::errors::ClosestPkgJsonError;
 use deno_runtime::deno_node::errors::UrlToNodeResolutionError;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_runtime::deno_node::parse_npm_pkg_name;
+use deno_runtime::deno_node::NodeModuleKind;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
@@ -66,8 +67,7 @@ pub struct ModuleCodeStringSource {
 
 #[derive(Debug)]
 pub struct CliNodeResolver {
-  // not used in the LSP
-  cjs_resolutions: Option<Arc<CjsResolutionStore>>,
+  cjs_resolutions: Arc<CjsResolutionStore>,
   fs: Arc<dyn deno_fs::FileSystem>,
   node_resolver: Arc<NodeResolver>,
   // todo(dsherret): remove this pub(crate)
@@ -76,7 +76,7 @@ pub struct CliNodeResolver {
 
 impl CliNodeResolver {
   pub fn new(
-    cjs_resolutions: Option<Arc<CjsResolutionStore>>,
+    cjs_resolutions: Arc<CjsResolutionStore>,
     fs: Arc<dyn deno_fs::FileSystem>,
     node_resolver: Arc<NodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
@@ -120,10 +120,16 @@ impl CliNodeResolver {
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<Option<NodeResolution>, AnyError> {
+    let referrer_kind = if self.cjs_resolutions.contains(referrer) {
+      NodeModuleKind::Cjs
+    } else {
+      NodeModuleKind::Esm
+    };
+
     self.handle_node_resolve_result(
       self
         .node_resolver
-        .resolve(specifier, referrer, mode)
+        .resolve(specifier, referrer, referrer_kind, mode)
         .map_err(AnyError::from),
     )
   }
@@ -241,16 +247,12 @@ impl CliNodeResolver {
       let specifier =
         crate::node::resolve_specifier_into_node_modules(&specifier);
       if self.in_npm_package(&specifier) {
-        if let Some(cjs_resolutions) = &self.cjs_resolutions {
-          let resolution =
-            self.node_resolver.url_to_node_resolution(specifier)?;
-          if let NodeResolution::CommonJs(specifier) = &resolution {
-            cjs_resolutions.insert(specifier.clone());
-          }
-          return Ok(resolution.into_url());
-        } else {
-          return Ok(specifier);
+        let resolution =
+          self.node_resolver.url_to_node_resolution(specifier)?;
+        if let NodeResolution::CommonJs(specifier) = &resolution {
+          self.cjs_resolutions.insert(specifier.clone());
         }
+        return Ok(resolution.into_url());
       }
     }
 
@@ -272,9 +274,7 @@ impl CliNodeResolver {
       Some(response) => {
         if let NodeResolution::CommonJs(specifier) = &response {
           // remember that this was a common js resolution
-          if let Some(cjs_resolutions) = &self.cjs_resolutions {
-            cjs_resolutions.insert(specifier.clone());
-          }
+          self.cjs_resolutions.insert(specifier.clone());
         }
         Ok(Some(response))
       }

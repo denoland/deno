@@ -1297,15 +1297,18 @@ impl CliOptions {
   pub fn to_compiler_option_types(
     &self,
   ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
-    self.workspace.to_maybe_imports().map(|maybe_imports| {
-      maybe_imports
-        .into_iter()
-        .map(|(referrer, imports)| deno_graph::ReferrerImports {
-          referrer,
-          imports,
-        })
-        .collect()
-    })
+    self
+      .workspace
+      .to_compiler_option_types()
+      .map(|maybe_imports| {
+        maybe_imports
+          .into_iter()
+          .map(|(referrer, imports)| deno_graph::ReferrerImports {
+            referrer,
+            imports,
+          })
+          .collect()
+      })
   }
 
   pub fn npmrc(&self) -> &Arc<ResolvedNpmRc> {
