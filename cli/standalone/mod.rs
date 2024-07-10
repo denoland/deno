@@ -197,7 +197,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
               .resolve_package_sub_path_from_deno_module(
                 pkg_folder,
                 sub_path.as_deref(),
-                &referrer,
+                Some(&referrer),
                 NodeResolutionMode::Execution,
               )?
               .into_url(),

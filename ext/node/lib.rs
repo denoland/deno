@@ -168,7 +168,7 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<PathBuf, errors::PackageFolderResolveError>;
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
 

@@ -1,0 +1,22 @@
+{
+  "tasks": {
+    "start": "deno run index.js"
+  },
+  "unstable": [
+    "abc",
+    "byonm",
+    "bare-node-builtins",
+    "sloppy-imports",
+    "unsafe-proto",
+    "webgpu",
+    "broadcast-channel",
+    "worker-options",
+    "cron",
+    "kv",
+    "ffi",
+    "fs",
+    "net",
+    "http",
+    "cba"
+  ]
+}

@@ -350,7 +350,7 @@ impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
     self
       .0
       .read_text_file_lossy_sync(path, None)
-      .map_err(map_deno_fs_to_config_err)
+      .map_err(|err| err.into_io_error())
   }
 
   fn stat_sync(
@@ -365,7 +365,7 @@ impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
         is_directory: stat.is_directory,
         is_symlink: stat.is_symlink,
       })
-      .map_err(map_deno_fs_to_config_err)
+      .map_err(|err| err.into_io_error())
   }
 
   fn read_dir(
@@ -375,7 +375,7 @@ impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
     self
       .0
       .read_dir_sync(path)
-      .map_err(map_deno_fs_to_config_err)
+      .map_err(|err| err.into_io_error())
       .map(|entries| {
         entries
           .into_iter()
@@ -389,22 +389,6 @@ impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
           })
           .collect()
       })
-  }
-}
-
-fn map_deno_fs_to_config_err(fs_err: deno_io::fs::FsError) -> std::io::Error {
-  use deno_io::fs::FsError;
-  use std::io::ErrorKind;
-  match fs_err {
-    FsError::Io(io) => io,
-    FsError::FileBusy => std::io::Error::new(ErrorKind::Other, "file busy"),
-    FsError::NotSupported => {
-      std::io::Error::new(ErrorKind::Other, "not supported")
-    }
-    FsError::PermissionDenied(name) => std::io::Error::new(
-      ErrorKind::PermissionDenied,
-      format!("requires {}", name),
-    ),
   }
 }
 

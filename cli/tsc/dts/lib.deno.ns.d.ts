@@ -6263,6 +6263,8 @@ declare namespace Deno {
   export interface ServeOptions {
     /** The port to listen on.
      *
+     * Set to `0` to listen on any available port.
+     *
      * @default {8000} */
     port?: number;
 
