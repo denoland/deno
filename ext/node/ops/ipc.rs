@@ -18,6 +18,7 @@ mod impl_ {
   use std::task::Context;
   use std::task::Poll;
 
+  use bytes::Buf;
   use deno_core::error::bad_resource_id;
   use deno_core::error::AnyError;
   use deno_core::op2;
@@ -25,6 +26,7 @@ mod impl_ {
   use deno_core::AsyncRefCell;
   use deno_core::CancelFuture;
   use deno_core::CancelHandle;
+  use deno_core::JsBuffer;
   use deno_core::OpState;
   use deno_core::RcRef;
   use deno_core::ResourceId;
@@ -63,14 +65,14 @@ mod impl_ {
   pub async fn op_node_ipc_write(
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
-    #[serde] value: serde_json::Value,
+    #[buffer] value: JsBuffer,
   ) -> Result<(), AnyError> {
     let stream = state
       .borrow()
       .resource_table
       .get::<IpcJsonStreamResource>(rid)
       .map_err(|_| bad_resource_id())?;
-    stream.write_msg(value).await?;
+    stream.write_msg_bytes(value.as_ref()).await?;
     Ok(())
   }
 
@@ -165,18 +167,13 @@ mod impl_ {
       }
     }
 
-    async fn write_msg(
+    async fn write_msg_bytes(
       self: Rc<Self>,
-      msg: serde_json::Value,
+      msg: &[u8],
     ) -> Result<(), AnyError> {
       let mut write_half =
         RcRef::map(self, |r| &r.write_half).borrow_mut().await;
-      // Perf note: We do not benefit from writev here because
-      // we are always allocating a buffer for serialization anyways.
-      let mut buf = Vec::new();
-      serde_json::to_writer(&mut buf, &msg)?;
-      buf.push(b'\n');
-      write_half.write_all(&buf).await?;
+      write_half.write_all_buf(&mut msg.chain(&b"\n"[..])).await?;
       Ok(())
     }
   }
