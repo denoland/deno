@@ -115,7 +115,7 @@ impl LspScopeResolver {
     let npm_graph_resolver = graph_resolver.create_graph_npm_resolver();
     let graph_imports = config_data
       .and_then(|d| d.config_file.as_ref())
-      .and_then(|cf| cf.to_maybe_imports().ok())
+      .and_then(|cf| cf.to_compiler_option_types().ok())
       .map(|imports| {
         Arc::new(
           imports
