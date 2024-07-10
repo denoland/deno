@@ -115,7 +115,8 @@ export function fork(
   // more
   const v8Flags: string[] = [];
   if (Array.isArray(execArgv)) {
-    for (let index = 0; index < execArgv.length; index++) {
+    let index = 0;
+    while (index < execArgv.length) {
       const flag = execArgv[index];
       if (flag.startsWith("--max-old-space-size")) {
         execArgv.splice(index, 1);
@@ -123,6 +124,14 @@ export function fork(
       } else if (flag.startsWith("--enable-source-maps")) {
         // https://github.com/denoland/deno/issues/21750
         execArgv.splice(index, 1);
+      } else if (flag.startsWith("-C") || flag.startsWith("--conditions")) {
+        let rm = 1;
+        if (flag.indexOf("=") === -1) {
+          rm = 2;
+        }
+        execArgv.splice(index, rm);
+      } else {
+        index++;
       }
     }
   }
