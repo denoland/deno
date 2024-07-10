@@ -322,6 +322,7 @@ class ClientRequest extends OutgoingMessage {
   insecureHTTPParser: boolean;
   useChunkedEncodingByDefault: boolean;
   path: string;
+  _req: { requestRid: number; cancelHandleRid: number } | undefined;
 
   constructor(
     input: string | URL,
@@ -819,7 +820,9 @@ class ClientRequest extends OutgoingMessage {
     if (rid) {
       core.tryClose(rid);
     }
-    if (this._req.cancelHandleRid !== null) {
+
+    // Request might be closed before we actually made it
+    if (this._req !== undefined && this._req.cancelHandleRid !== null) {
       core.tryClose(this._req.cancelHandleRid);
     }
     // If we're aborting, we don't care about any more response data.

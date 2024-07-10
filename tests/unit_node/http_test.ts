@@ -994,6 +994,15 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "[node/http] client destroy before sending request should not error",
+  () => {
+    const request = http.request("http://localhost:5929/");
+    // Calling this would throw
+    request.destroy();
+  },
+);
+
 Deno.test("[node/http] node:http exports globalAgent", async () => {
   const http = await import("node:http");
   assert(
