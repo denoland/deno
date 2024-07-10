@@ -356,8 +356,8 @@ impl LspResolver {
           .contains("/node_modules/")
     }
 
-    let resolver = self.get_scope_resolver(Some(specifier));
-    let global_npm_resolver = resolver
+    let global_npm_resolver = self
+      .get_scope_resolver(Some(specifier))
       .npm_resolver
       .as_ref()
       .and_then(|npm_resolver| npm_resolver.as_managed())
