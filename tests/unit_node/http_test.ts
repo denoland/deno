@@ -1012,7 +1012,6 @@ Deno.test(
       return new Response(null);
     });
     const request = http.request(`http://localhost:${server.addr.port}/`);
-    // Calling this would throw
     request.destroy();
     request.end("hello");
 
