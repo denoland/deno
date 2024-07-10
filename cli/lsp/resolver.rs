@@ -4,6 +4,7 @@ use crate::args::create_default_npmrc;
 use crate::args::CacheSetting;
 use crate::args::CliLockfile;
 use crate::args::PackageJsonInstallDepsProvider;
+use crate::args::DENO_FUTURE;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
@@ -16,6 +17,7 @@ use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::ManagedCliNpmResolver;
+use crate::resolver::CjsResolutionStore;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
@@ -343,11 +345,13 @@ impl LspResolver {
   }
 
   pub fn in_node_modules(&self, specifier: &ModuleSpecifier) -> bool {
-    let resolver = self.get_scope_resolver(Some(specifier));
-    if let Some(npm_resolver) = &resolver.npm_resolver {
-      return npm_resolver.in_npm_package(specifier);
-    }
-    false
+    // consider any /node_modules/ directory as being in the node_modules
+    // folder for the LSP
+    specifier.scheme() == "file"
+      && specifier
+        .path()
+        .to_ascii_lowercase()
+        .contains("/node_modules/")
   }
 
   pub fn node_media_type(
@@ -422,20 +426,17 @@ async fn create_npm_resolver(
   cache: &LspCache,
   http_client_provider: &Arc<HttpClientProvider>,
 ) -> Option<Arc<dyn CliNpmResolver>> {
-  let mut byonm_dir = None;
-  if let Some(config_data) = config_data {
-    if config_data.byonm {
-      byonm_dir = Some(config_data.node_modules_dir.clone().or_else(|| {
-        specifier_to_file_path(&config_data.scope)
-          .ok()
-          .map(|p| p.join("node_modules/"))
-      })?)
-    }
-  }
-  let options = if let Some(byonm_dir) = byonm_dir {
+  let enable_byonm = config_data.map(|d| d.byonm).unwrap_or(*DENO_FUTURE);
+  let options = if enable_byonm {
     CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
       fs: Arc::new(deno_fs::RealFs),
-      root_node_modules_dir: byonm_dir,
+      root_node_modules_dir: config_data.and_then(|config_data| {
+        config_data.node_modules_dir.clone().or_else(|| {
+          specifier_to_file_path(&config_data.scope)
+            .ok()
+            .map(|p| p.join("node_modules/"))
+        })
+      }),
     })
   } else {
     CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
@@ -477,6 +478,13 @@ async fn create_npm_resolver(
 fn create_node_resolver(
   npm_resolver: Option<&Arc<dyn CliNpmResolver>>,
 ) -> Option<Arc<CliNodeResolver>> {
+  use once_cell::sync::Lazy;
+
+  // todo(dsherret): it's not ideal to share this across all scopes and to
+  // never clear it, but it's fine for the time being.
+  static CJS_RESOLUTIONS: Lazy<Arc<CjsResolutionStore>> =
+    Lazy::new(Default::default);
+
   let npm_resolver = npm_resolver?;
   let fs = Arc::new(deno_fs::RealFs);
   let node_resolver_inner = Arc::new(NodeResolver::new(
@@ -484,7 +492,7 @@ fn create_node_resolver(
     npm_resolver.clone().into_npm_resolver(),
   ));
   Some(Arc::new(CliNodeResolver::new(
-    Default::default(),
+    CJS_RESOLUTIONS.clone(),
     fs,
     node_resolver_inner,
     npm_resolver.clone(),

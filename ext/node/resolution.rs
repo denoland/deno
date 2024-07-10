@@ -1323,13 +1323,7 @@ impl NodeResolver {
           source: source.into_io_error(),
         },
       )?);
-    let mut current_dir = current_dir.as_path();
-    let package_json_path = current_dir.join("package.json");
-    if let Some(pkg_json) = self.load_package_json(&package_json_path)? {
-      return Ok(Some(pkg_json));
-    }
-    while let Some(parent) = current_dir.parent() {
-      current_dir = parent;
+    for current_dir in current_dir.ancestors() {
       let package_json_path = current_dir.join("package.json");
       if let Some(pkg_json) = self.load_package_json(&package_json_path)? {
         return Ok(Some(pkg_json));

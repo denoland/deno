@@ -409,13 +409,13 @@ impl CliFactory {
         create_cli_npm_resolver(if self.options.use_byonm() && !matches!(self.options.sub_command(), DenoSubcommand::Install(_)) {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
             fs: fs.clone(),
-            root_node_modules_dir: match self.options.node_modules_dir_path() {
+            root_node_modules_dir: Some(match self.options.node_modules_dir_path() {
               Some(node_modules_path) => node_modules_path.to_path_buf(),
               // path needs to be canonicalized for node resolution
               // (node_modules_dir_path above is already canonicalized)
               None => canonicalize_path_maybe_not_exists(self.options.initial_cwd())?
                 .join("node_modules"),
-            },
+            }),
           })
         } else {
           CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
