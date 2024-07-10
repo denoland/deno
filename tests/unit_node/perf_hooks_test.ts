@@ -61,3 +61,10 @@ Deno.test({
     });
   },
 });
+
+Deno.test("[perf_hooks]: eventLoopUtilization", () => {
+  const obj = performance.eventLoopUtilization();
+  assertEquals(typeof obj.idle, "number");
+  assertEquals(typeof obj.active, "number");
+  assertEquals(typeof obj.utilization, "number");
+});

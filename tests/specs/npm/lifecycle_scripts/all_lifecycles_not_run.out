@@ -9,4 +9,4 @@ Initialize @denotest/bin@1.0.0
 warning: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
     This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache`
     (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>`):
-      @denotest/node-lifecycle-scripts@1.0.0
+      npm:@denotest/node-lifecycle-scripts@1.0.0

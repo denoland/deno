@@ -69,7 +69,7 @@ pub enum NodeModules {
     node_modules_dir: Option<String>,
   },
   Byonm {
-    root_node_modules_dir: String,
+    root_node_modules_dir: Option<String>,
   },
 }
 
@@ -572,15 +572,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           Some(root_dir),
           files,
           Some(NodeModules::Byonm {
-            root_node_modules_dir: root_dir_url
-              .specifier_key(
-                &ModuleSpecifier::from_directory_path(
-                  // will always be set for byonm
-                  resolver.root_node_modules_path().unwrap(),
-                )
-                .unwrap(),
-              )
-              .into_owned(),
+            root_node_modules_dir: resolver.root_node_modules_path().map(
+              |node_modules_dir| {
+                root_dir_url
+                  .specifier_key(
+                    &ModuleSpecifier::from_directory_path(node_modules_dir)
+                      .unwrap(),
+                  )
+                  .into_owned()
+              },
+            ),
           }),
         )
       }
