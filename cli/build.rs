@@ -1,9 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::env;
 use std::path::PathBuf;
 
-use deno_core::snapshot_util::*;
+use deno_core::snapshot::*;
 use deno_runtime::*;
 
 mod ts {
@@ -15,6 +15,7 @@ mod ts {
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
   use serde::Serialize;
   use std::collections::HashMap;
+  use std::io::Write;
   use std::path::Path;
   use std::path::PathBuf;
 
@@ -152,6 +153,7 @@ mod ts {
     op_crate_libs.insert("deno.webgpu", deno_webgpu_get_declaration());
     op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
     op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
+    op_crate_libs.insert("deno.canvas", deno_canvas::get_declaration());
     op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
     op_crate_libs.insert(
       "deno.broadcast_channel",
@@ -187,6 +189,7 @@ mod ts {
       "es2015.symbol",
       "es2015.symbol.wellknown",
       "es2016.array.include",
+      "es2016.intl",
       "es2016",
       "es2017",
       "es2017.date",
@@ -232,12 +235,17 @@ mod ts {
       "es2023",
       "es2023.array",
       "es2023.collection",
+      "es2023.intl",
       "esnext",
       "esnext.array",
+      "esnext.collection",
       "esnext.decorators",
       "esnext.disposable",
       "esnext.intl",
       "esnext.object",
+      "esnext.promise",
+      "esnext.regexp",
+      "esnext.string",
     ];
 
     let path_dts = cwd.join("tsc/dts");
@@ -265,33 +273,40 @@ mod ts {
     )
     .unwrap();
 
-    let output = create_snapshot(CreateSnapshotOptions {
-      cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
-      snapshot_path,
-      startup_snapshot: None,
-      extensions: vec![deno_tsc::init_ops_and_esm(
-        op_crate_libs,
-        build_libs,
-        path_dts,
-      )],
-      // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
-      // ~45s on M1 MacBook Pro; without compression it took ~1s.
-      // Thus we're not not using compressed snapshot, trading off
-      // a lot of build time for some startup time in debug build.
-      #[cfg(debug_assertions)]
-      compression_cb: None,
+    let output = create_snapshot(
+      CreateSnapshotOptions {
+        cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
+        startup_snapshot: None,
+        extensions: vec![deno_tsc::init_ops_and_esm(
+          op_crate_libs,
+          build_libs,
+          path_dts,
+        )],
+        extension_transpiler: None,
+        with_runtime_cb: None,
+        skip_op_registration: false,
+      },
+      None,
+    )
+    .unwrap();
 
-      #[cfg(not(debug_assertions))]
-      compression_cb: Some(Box::new(|vec, snapshot_slice| {
-        eprintln!("Compressing TSC snapshot...");
-        vec.extend_from_slice(
-          &zstd::bulk::compress(snapshot_slice, 22)
-            .expect("snapshot compression failed"),
-        );
-      })),
-      with_runtime_cb: None,
-      skip_op_registration: false,
-    });
+    // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
+    // ~45s on M1 MacBook Pro; without compression it took ~1s.
+    // Thus we're not using compressed snapshot, trading off
+    // a lot of build time for some startup time in debug build.
+    let mut file = std::fs::File::create(snapshot_path).unwrap();
+    if cfg!(debug_assertions) {
+      file.write_all(&output.output).unwrap();
+    } else {
+      let mut vec = Vec::with_capacity(output.output.len());
+      vec.extend((output.output.len() as u32).to_le_bytes());
+      vec.extend_from_slice(
+        &zstd::bulk::compress(&output.output, 22)
+          .expect("snapshot compression failed"),
+      );
+      file.write_all(&vec).unwrap();
+    }
+
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());
     }
@@ -299,7 +314,7 @@ mod ts {
 
   pub(crate) fn version() -> String {
     let file_text = std::fs::read_to_string("tsc/00_typescript.js").unwrap();
-    let version_text = "  version = \"";
+    let version_text = " version = \"";
     for line in file_text.lines() {
       if let Some(index) = line.find(version_text) {
         let remaining_line = &line[index + version_text.len()..];
@@ -310,7 +325,7 @@ mod ts {
   }
 }
 
-#[cfg(not(feature = "__runtime_js_sources"))]
+#[cfg(not(feature = "hmr"))]
 fn create_cli_snapshot(snapshot_path: PathBuf) {
   use deno_runtime::ops::bootstrap::SnapshotOptions;
 
@@ -334,6 +349,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
   deno_runtime::snapshot::create_runtime_snapshot(
     snapshot_path,
     snapshot_options,
+    vec![],
   );
 }
 
@@ -374,13 +390,18 @@ fn main() {
     panic!("Cross compiling with snapshot is not supported.");
   }
 
-  let symbols_path = std::path::Path::new("napi").join(
-    format!("generated_symbol_exports_list_{}.def", env::consts::OS).as_str(),
-  )
-  .canonicalize()
-  .expect(
-    "Missing symbols list! Generate using tools/napi/generate_symbols_lists.js",
-  );
+  let symbols_file_name = match env::consts::OS {
+    "android" | "freebsd" | "openbsd" => {
+      "generated_symbol_exports_list_linux.def".to_string()
+    }
+    os => format!("generated_symbol_exports_list_{}.def", os),
+  };
+  let symbols_path = std::path::Path::new("napi")
+    .join(symbols_file_name)
+    .canonicalize()
+    .expect(
+        "Missing symbols list! Generate using tools/napi/generate_symbols_lists.js",
+    );
 
   #[cfg(target_os = "windows")]
   println!(
@@ -413,6 +434,12 @@ fn main() {
     }
   }
 
+  #[cfg(target_os = "android")]
+  println!(
+    "cargo:rustc-link-arg-bin=deno=-Wl,--export-dynamic-symbol-list={}",
+    symbols_path.display()
+  );
+
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
 
@@ -429,7 +456,7 @@ fn main() {
   );
 
   let ts_version = ts::version();
-  debug_assert_eq!(ts_version, "5.3.3"); // bump this assertion when it changes
+  debug_assert_eq!(ts_version, "5.5.2"); // bump this assertion when it changes
   println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 
@@ -442,7 +469,7 @@ fn main() {
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
   ts::create_compiler_snapshot(compiler_snapshot_path, &c);
 
-  #[cfg(not(feature = "__runtime_js_sources"))]
+  #[cfg(not(feature = "hmr"))]
   {
     let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
     create_cli_snapshot(cli_snapshot_path);

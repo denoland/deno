@@ -1,8 +1,7 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod interface;
 pub mod local;
-mod time;
 
 use std::borrow::Cow;
 use std::cell::RefCell;

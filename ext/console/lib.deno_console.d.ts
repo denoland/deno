@@ -1,11 +1,11 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-explicit-any
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category Console and Debugging */
+/** @category I/O */
 declare interface Console {
   assert(condition?: boolean, ...data: any[]): void;
   clear(): void;

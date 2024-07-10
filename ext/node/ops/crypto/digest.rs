@@ -1,130 +1,304 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::type_error;
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::Resource;
+use deno_core::GarbageCollected;
 use digest::Digest;
 use digest::DynDigest;
-use std::borrow::Cow;
+use digest::ExtendableOutput;
+use digest::Update;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub enum Hash {
-  Md4(Box<md4::Md4>),
-  Md5(Box<md5::Md5>),
-  Ripemd160(Box<ripemd::Ripemd160>),
-  Sha1(Box<sha1::Sha1>),
-  Sha224(Box<sha2::Sha224>),
-  Sha256(Box<sha2::Sha256>),
-  Sha384(Box<sha2::Sha384>),
-  Sha512(Box<sha2::Sha512>),
+pub struct Hasher {
+  pub hash: Rc<RefCell<Option<Hash>>>,
 }
 
-pub struct Context {
-  pub hash: Rc<RefCell<Hash>>,
-}
+impl GarbageCollected for Hasher {}
 
-impl Context {
-  pub fn new(algorithm: &str) -> Result<Self, AnyError> {
+impl Hasher {
+  pub fn new(
+    algorithm: &str,
+    output_length: Option<usize>,
+  ) -> Result<Self, AnyError> {
+    let hash = Hash::new(algorithm, output_length)?;
+
     Ok(Self {
-      hash: Rc::new(RefCell::new(Hash::new(algorithm)?)),
+      hash: Rc::new(RefCell::new(Some(hash))),
     })
   }
 
-  pub fn update(&self, data: &[u8]) {
-    self.hash.borrow_mut().update(data);
-  }
-
-  pub fn digest(self) -> Result<Box<[u8]>, AnyError> {
-    let hash = Rc::try_unwrap(self.hash)
-      .map_err(|_| type_error("Hash context is already in use"))?;
-
-    let hash = hash.into_inner();
-    Ok(hash.digest_and_drop())
-  }
-}
-
-impl Clone for Context {
-  fn clone(&self) -> Self {
-    Self {
-      hash: Rc::new(RefCell::new(self.hash.borrow().clone())),
+  pub fn update(&self, data: &[u8]) -> bool {
+    if let Some(hash) = self.hash.borrow_mut().as_mut() {
+      hash.update(data);
+      true
+    } else {
+      false
     }
   }
+
+  pub fn digest(&self) -> Option<Box<[u8]>> {
+    let hash = self.hash.borrow_mut().take()?;
+    Some(hash.digest_and_drop())
+  }
+
+  pub fn clone_inner(
+    &self,
+    output_length: Option<usize>,
+  ) -> Result<Option<Self>, AnyError> {
+    let hash = self.hash.borrow();
+    let Some(hash) = hash.as_ref() else {
+      return Ok(None);
+    };
+    let hash = hash.clone_hash(output_length)?;
+    Ok(Some(Self {
+      hash: Rc::new(RefCell::new(Some(hash))),
+    }))
+  }
 }
 
-impl Resource for Context {
-  fn name(&self) -> Cow<str> {
-    "cryptoDigest".into()
-  }
+macro_rules! match_fixed_digest {
+  ($algorithm_name:expr, fn <$type:ident>() $body:block, _ => $other:block) => {
+    match $algorithm_name {
+      "blake2b512" => {
+        type $type = ::blake2::Blake2b512;
+        $body
+      }
+      "blake2s256" => {
+        type $type = ::blake2::Blake2s256;
+        $body
+      }
+      _ => match_fixed_digest_with_eager_block_buffer!($algorithm_name, fn <$type>() $body, _ => $other)
+    }
+  };
+}
+pub(crate) use match_fixed_digest;
+
+macro_rules! match_fixed_digest_with_eager_block_buffer {
+  ($algorithm_name:expr, fn <$type:ident>() $body:block, _ => $other:block) => {
+    match $algorithm_name {
+      "rsa-sm3" | "sm3" | "sm3withrsaencryption" => {
+        type $type = ::sm3::Sm3;
+        $body
+      }
+      "md5-sha1" => {
+        type $type = crate::ops::crypto::md5_sha1::Md5Sha1;
+        $body
+      }
+      _ => match_fixed_digest_with_oid!($algorithm_name, fn <$type>() $body, _ => $other)
+    }
+  };
+}
+pub(crate) use match_fixed_digest_with_eager_block_buffer;
+
+macro_rules! match_fixed_digest_with_oid {
+  ($algorithm_name:expr, fn <$type:ident>() $body:block, _ => $other:block) => {
+    match $algorithm_name {
+      "rsa-md5" | "md5" | "md5withrsaencryption" | "ssl3-md5" => {
+        type $type = ::md5::Md5;
+        $body
+      }
+      "rsa-ripemd160" | "ripemd" | "ripemd160" | "ripemd160withrsa"
+      | "rmd160" => {
+        type $type = ::ripemd::Ripemd160;
+        $body
+      }
+      "rsa-sha1"
+      | "rsa-sha1-2"
+      | "sha1"
+      | "sha1-2"
+      | "sha1withrsaencryption"
+      | "ssl3-sha1" => {
+        type $type = ::sha1::Sha1;
+        $body
+      }
+      "rsa-sha224" | "sha224" | "sha224withrsaencryption" => {
+        type $type = ::sha2::Sha224;
+        $body
+      }
+      "rsa-sha256" | "sha256" | "sha256withrsaencryption" => {
+        type $type = ::sha2::Sha256;
+        $body
+      }
+      "rsa-sha384" | "sha384" | "sha384withrsaencryption" => {
+        type $type = ::sha2::Sha384;
+        $body
+      }
+      "rsa-sha512" | "sha512" | "sha512withrsaencryption" => {
+        type $type = ::sha2::Sha512;
+        $body
+      }
+      "rsa-sha512/224" | "sha512-224" | "sha512-224withrsaencryption" => {
+        type $type = ::sha2::Sha512_224;
+        $body
+      }
+      "rsa-sha512/256" | "sha512-256" | "sha512-256withrsaencryption" => {
+        type $type = ::sha2::Sha512_256;
+        $body
+      }
+      "rsa-sha3-224" | "id-rsassa-pkcs1-v1_5-with-sha3-224" | "sha3-224" => {
+        type $type = ::sha3::Sha3_224;
+        $body
+      }
+      "rsa-sha3-256" | "id-rsassa-pkcs1-v1_5-with-sha3-256" | "sha3-256" => {
+        type $type = ::sha3::Sha3_256;
+        $body
+      }
+      "rsa-sha3-384" | "id-rsassa-pkcs1-v1_5-with-sha3-384" | "sha3-384" => {
+        type $type = ::sha3::Sha3_384;
+        $body
+      }
+      "rsa-sha3-512" | "id-rsassa-pkcs1-v1_5-with-sha3-512" | "sha3-512" => {
+        type $type = ::sha3::Sha3_512;
+        $body
+      }
+      _ => $other,
+    }
+  };
+}
+
+pub(crate) use match_fixed_digest_with_oid;
+
+pub enum Hash {
+  FixedSize(Box<dyn DynDigest>),
+
+  Shake128(Box<sha3::Shake128>, /* output_length: */ Option<usize>),
+  Shake256(Box<sha3::Shake256>, /* output_length: */ Option<usize>),
 }
 
 use Hash::*;
 
 impl Hash {
-  pub fn new(algorithm_name: &str) -> Result<Self, AnyError> {
-    Ok(match algorithm_name {
-      "md4" => Md4(Default::default()),
-      "md5" => Md5(Default::default()),
-      "ripemd160" => Ripemd160(Default::default()),
-      "sha1" => Sha1(Default::default()),
-      "sha224" => Sha224(Default::default()),
-      "sha256" => Sha256(Default::default()),
-      "sha384" => Sha384(Default::default()),
-      "sha512" => Sha512(Default::default()),
-      _ => return Err(type_error("unsupported algorithm")),
-    })
+  pub fn new(
+    algorithm_name: &str,
+    output_length: Option<usize>,
+  ) -> Result<Self, AnyError> {
+    match algorithm_name {
+      "shake128" => return Ok(Shake128(Default::default(), output_length)),
+      "shake256" => return Ok(Shake256(Default::default(), output_length)),
+      _ => {}
+    }
+
+    let algorithm = match_fixed_digest!(
+      algorithm_name,
+      fn <D>() {
+        let digest: D = Digest::new();
+        if let Some(length) = output_length {
+          if length != digest.output_size() {
+            return Err(generic_error(
+              "Output length mismatch for non-extendable algorithm",
+            ));
+          }
+        }
+        FixedSize(Box::new(digest))
+      },
+      _ => {
+        return Err(generic_error(format!(
+          "Digest method not supported: {algorithm_name}"
+        )))
+      }
+    );
+
+    Ok(algorithm)
   }
 
   pub fn update(&mut self, data: &[u8]) {
     match self {
-      Md4(context) => Digest::update(&mut **context, data),
-      Md5(context) => Digest::update(&mut **context, data),
-      Ripemd160(context) => Digest::update(&mut **context, data),
-      Sha1(context) => Digest::update(&mut **context, data),
-      Sha224(context) => Digest::update(&mut **context, data),
-      Sha256(context) => Digest::update(&mut **context, data),
-      Sha384(context) => Digest::update(&mut **context, data),
-      Sha512(context) => Digest::update(&mut **context, data),
+      FixedSize(context) => DynDigest::update(&mut **context, data),
+      Shake128(context, _) => Update::update(&mut **context, data),
+      Shake256(context, _) => Update::update(&mut **context, data),
     };
   }
 
   pub fn digest_and_drop(self) -> Box<[u8]> {
     match self {
-      Md4(context) => context.finalize(),
-      Md5(context) => context.finalize(),
-      Ripemd160(context) => context.finalize(),
-      Sha1(context) => context.finalize(),
-      Sha224(context) => context.finalize(),
-      Sha256(context) => context.finalize(),
-      Sha384(context) => context.finalize(),
-      Sha512(context) => context.finalize(),
+      FixedSize(context) => context.finalize(),
+
+      // The default output lengths align with Node.js
+      Shake128(context, output_length) => {
+        context.finalize_boxed(output_length.unwrap_or(16))
+      }
+      Shake256(context, output_length) => {
+        context.finalize_boxed(output_length.unwrap_or(32))
+      }
     }
+  }
+
+  pub fn clone_hash(
+    &self,
+    output_length: Option<usize>,
+  ) -> Result<Self, AnyError> {
+    let hash = match self {
+      FixedSize(context) => {
+        if let Some(length) = output_length {
+          if length != context.output_size() {
+            return Err(generic_error(
+              "Output length mismatch for non-extendable algorithm",
+            ));
+          }
+        }
+        FixedSize(context.box_clone())
+      }
+
+      Shake128(context, _) => Shake128(context.clone(), output_length),
+      Shake256(context, _) => Shake256(context.clone(), output_length),
+    };
+    Ok(hash)
   }
 
   pub fn get_hashes() -> Vec<&'static str> {
     vec![
-      "md4",
+      "RSA-MD5",
+      "RSA-RIPEMD160",
+      "RSA-SHA1",
+      "RSA-SHA1-2",
+      "RSA-SHA224",
+      "RSA-SHA256",
+      "RSA-SHA3-224",
+      "RSA-SHA3-256",
+      "RSA-SHA3-384",
+      "RSA-SHA3-512",
+      "RSA-SHA384",
+      "RSA-SHA512",
+      "RSA-SHA512/224",
+      "RSA-SHA512/256",
+      "RSA-SM3",
+      "blake2b512",
+      "blake2s256",
+      "id-rsassa-pkcs1-v1_5-with-sha3-224",
+      "id-rsassa-pkcs1-v1_5-with-sha3-256",
+      "id-rsassa-pkcs1-v1_5-with-sha3-384",
+      "id-rsassa-pkcs1-v1_5-with-sha3-512",
       "md5",
+      "md5-sha1",
+      "md5WithRSAEncryption",
+      "ripemd",
       "ripemd160",
+      "ripemd160WithRSA",
+      "rmd160",
       "sha1",
+      "sha1WithRSAEncryption",
       "sha224",
+      "sha224WithRSAEncryption",
       "sha256",
+      "sha256WithRSAEncryption",
+      "sha3-224",
+      "sha3-256",
+      "sha3-384",
+      "sha3-512",
       "sha384",
+      "sha384WithRSAEncryption",
       "sha512",
+      "sha512-224",
+      "sha512-224WithRSAEncryption",
+      "sha512-256",
+      "sha512-256WithRSAEncryption",
+      "sha512WithRSAEncryption",
+      "shake128",
+      "shake256",
+      "sm3",
+      "sm3WithRSAEncryption",
+      "ssl3-md5",
+      "ssl3-sha1",
     ]
-  }
-}
-
-impl Clone for Hash {
-  fn clone(&self) -> Self {
-    match self {
-      Md4(_) => Md4(Default::default()),
-      Md5(_) => Md5(Default::default()),
-      Ripemd160(_) => Ripemd160(Default::default()),
-      Sha1(_) => Sha1(Default::default()),
-      Sha224(_) => Sha224(Default::default()),
-      Sha256(_) => Sha256(Default::default()),
-      Sha384(_) => Sha384(Default::default()),
-      Sha512(_) => Sha512(Default::default()),
-    }
   }
 }

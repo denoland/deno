@@ -1,0 +1,3 @@
+Task test_using_npm npm run non_existent -- --ignore-scripts
+npm [WILDLINE] Missing script: "non_existent"
+[WILDCARD]

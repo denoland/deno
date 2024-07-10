@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -6,8 +6,9 @@ use std::path::PathBuf;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_core::error::uri_error;
-use deno_core::error::AnyError;
+use deno_config::glob::PathGlobMatch;
+use deno_config::glob::PathOrPattern;
+use deno_config::glob::PathOrPatternSet;
 
 /// Checks if the path has an extension Deno supports for script execution.
 pub fn is_script_ext(path: &Path) -> bool {
@@ -39,6 +40,32 @@ pub fn get_extension(file_path: &Path) -> Option<String> {
     .extension()
     .and_then(|e| e.to_str())
     .map(|e| e.to_lowercase());
+}
+
+pub fn get_atomic_dir_path(file_path: &Path) -> PathBuf {
+  let rand = gen_rand_path_component();
+  let new_file_name = format!(
+    ".{}_{}",
+    file_path
+      .file_name()
+      .map(|f| f.to_string_lossy())
+      .unwrap_or(Cow::Borrowed("")),
+    rand
+  );
+  file_path.with_file_name(new_file_name)
+}
+
+pub fn get_atomic_file_path(file_path: &Path) -> PathBuf {
+  let rand = gen_rand_path_component();
+  let extension = format!("{rand}.tmp");
+  file_path.with_extension(extension)
+}
+
+fn gen_rand_path_component() -> String {
+  (0..4).fold(String::new(), |mut output, _| {
+    output.push_str(&format!("{:02x}", rand::random::<u8>()));
+    output
+  })
 }
 
 /// TypeScript figures out the type of file based on the extension, but we take
@@ -79,49 +106,6 @@ pub fn mapped_specifier_for_tsc(
   }
 }
 
-/// Attempts to convert a specifier to a file path. By default, uses the Url
-/// crate's `to_file_path()` method, but falls back to try and resolve unix-style
-/// paths on Windows.
-pub fn specifier_to_file_path(
-  specifier: &ModuleSpecifier,
-) -> Result<PathBuf, AnyError> {
-  let result = if specifier.scheme() != "file" {
-    Err(())
-  } else if cfg!(windows) {
-    match specifier.to_file_path() {
-      Ok(path) => Ok(path),
-      Err(()) => {
-        // This might be a unix-style path which is used in the tests even on Windows.
-        // Attempt to see if we can convert it to a `PathBuf`. This code should be removed
-        // once/if https://github.com/servo/rust-url/issues/730 is implemented.
-        if specifier.scheme() == "file"
-          && specifier.host().is_none()
-          && specifier.port().is_none()
-          && specifier.path_segments().is_some()
-        {
-          let path_str = specifier.path();
-          match String::from_utf8(
-            percent_encoding::percent_decode(path_str.as_bytes()).collect(),
-          ) {
-            Ok(path_str) => Ok(PathBuf::from(path_str)),
-            Err(_) => Err(()),
-          }
-        } else {
-          Err(())
-        }
-      }
-    }
-  } else {
-    specifier.to_file_path()
-  };
-  match result {
-    Ok(path) => Ok(path),
-    Err(()) => Err(uri_error(format!(
-      "Invalid file path.\n  Specifier: {specifier}"
-    ))),
-  }
-}
-
 /// `from.make_relative(to)` but with fixes.
 pub fn relative_specifier(
   from: &ModuleSpecifier,
@@ -153,25 +137,12 @@ pub fn relative_specifier(
     text.push('/');
   }
 
-  Some(if text.starts_with("../") || text.starts_with("./") {
+  let text = if text.starts_with("../") || text.starts_with("./") {
     text
   } else {
     format!("./{text}")
-  })
-}
-
-/// This function checks if input path has trailing slash or not. If input path
-/// has trailing slash it will return true else it will return false.
-pub fn path_has_trailing_slash(path: &Path) -> bool {
-  if let Some(path_str) = path.to_str() {
-    if cfg!(windows) {
-      path_str.ends_with('\\')
-    } else {
-      path_str.ends_with('/')
-    }
-  } else {
-    false
-  }
+  };
+  Some(to_percent_decoded_str(&text))
 }
 
 /// Gets a path with the specified file stem suffix.
@@ -200,6 +171,11 @@ pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
   } else {
     path.with_file_name(suffix)
   }
+}
+
+#[cfg_attr(windows, allow(dead_code))]
+pub fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
+  pathdiff::diff_paths(to, from)
 }
 
 /// Gets if the provided character is not supported on all
@@ -242,6 +218,56 @@ pub fn root_url_to_safe_local_dirname(root: &ModuleSpecifier) -> PathBuf {
   }
 
   result
+}
+
+/// Slightly different behaviour than the default matching
+/// where an exact path needs to be matched to be opted-in
+/// rather than just a partial directory match.
+///
+/// This is used by the test and bench filtering.
+pub fn matches_pattern_or_exact_path(
+  path_or_pattern_set: &PathOrPatternSet,
+  path: &Path,
+) -> bool {
+  for p in path_or_pattern_set.inner().iter().rev() {
+    match p {
+      PathOrPattern::Path(p) => {
+        if p == path {
+          return true;
+        }
+      }
+      PathOrPattern::NegatedPath(p) => {
+        if path.starts_with(p) {
+          return false;
+        }
+      }
+      PathOrPattern::RemoteUrl(_) => {}
+      PathOrPattern::Pattern(p) => match p.matches_path(path) {
+        PathGlobMatch::Matched => return true,
+        PathGlobMatch::MatchedNegated => return false,
+        PathGlobMatch::NotMatched => {}
+      },
+    }
+  }
+  false
+}
+
+/// For decoding percent-encodeing string
+/// could be used for module specifier string literal of local modules,
+/// or local file path to display `non-ASCII` characters correctly
+/// # Examples
+/// ```
+/// use crate::util::path::to_percent_decoded_str;
+///
+/// let str = to_percent_decoded_str("file:///Users/path/to/%F0%9F%A6%95.ts");
+/// assert_eq!(str, "file:///Users/path/to/🦕.ts");
+/// ```
+pub fn to_percent_decoded_str(s: &str) -> String {
+  match percent_encoding::percent_decode_str(s).decode_utf8() {
+    Ok(s) => s.to_string(),
+    // when failed to decode, return the original string
+    Err(_) => s.to_string(),
+  }
 }
 
 #[cfg(test)]
@@ -288,24 +314,6 @@ mod test {
     assert!(is_importable_ext(Path::new("foo.cts")));
     assert!(is_importable_ext(Path::new("foo.json")));
     assert!(!is_importable_ext(Path::new("foo.mjsx")));
-  }
-
-  #[test]
-  fn test_specifier_to_file_path() {
-    run_success_test("file:///", "/");
-    run_success_test("file:///test", "/test");
-    run_success_test("file:///dir/test/test.txt", "/dir/test/test.txt");
-    run_success_test(
-      "file:///dir/test%20test/test.txt",
-      "/dir/test test/test.txt",
-    );
-
-    fn run_success_test(specifier: &str, expected_path: &str) {
-      let result =
-        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
-          .unwrap();
-      assert_eq!(result, PathBuf::from(expected_path));
-    }
   }
 
   #[test]
@@ -398,31 +406,6 @@ mod test {
   }
 
   #[test]
-  fn test_path_has_trailing_slash() {
-    #[cfg(not(windows))]
-    {
-      run_test("/Users/johndoe/Desktop/deno-project/target/", true);
-      run_test(r"/Users/johndoe/deno-project/target//", true);
-      run_test("/Users/johndoe/Desktop/deno-project", false);
-      run_test(r"/Users/johndoe/deno-project\", false);
-    }
-
-    #[cfg(windows)]
-    {
-      run_test(r"C:\test\deno-project\", true);
-      run_test(r"C:\test\deno-project\\", true);
-      run_test(r"C:\test\file.txt", false);
-      run_test(r"C:\test\file.txt/", false);
-    }
-
-    fn run_test(path_str: &str, expected: bool) {
-      let path = Path::new(path_str);
-      let result = path_has_trailing_slash(path);
-      assert_eq!(result, expected);
-    }
-  }
-
-  #[test]
   fn test_path_with_stem_suffix() {
     assert_eq!(
       path_with_stem_suffix(&PathBuf::from("/"), "_2"),
@@ -460,5 +443,11 @@ mod test {
       path_with_stem_suffix(&PathBuf::from("/test.d.cts"), "_2"),
       PathBuf::from("/test_2.d.cts")
     );
+  }
+
+  #[test]
+  fn test_to_percent_decoded_str() {
+    let str = to_percent_decoded_str("%F0%9F%A6%95");
+    assert_eq!(str, "🦕");
   }
 }

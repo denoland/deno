@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -50,6 +50,11 @@
 // internal module so there can be re-use within the "url" module etc.
 
 "use strict";
+
+import {
+  op_node_idna_domain_to_ascii,
+  op_node_idna_domain_to_unicode,
+} from "ext:core/ops";
 
 /**
  * Creates an array containing the numeric code points of each Unicode
@@ -105,3 +110,17 @@ export const ucs2 = {
   decode: ucs2decode,
   encode: ucs2encode,
 };
+
+/**
+ *  Converts a domain to ASCII as per the IDNA spec
+ */
+export function domainToASCII(domain: string) {
+  return op_node_idna_domain_to_ascii(domain);
+}
+
+/**
+ *  Converts a domain to Unicode as per the IDNA spec
+ */
+export function domainToUnicode(domain: string) {
+  return op_node_idna_domain_to_unicode(domain);
+}

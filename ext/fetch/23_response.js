@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -256,7 +256,7 @@ class Response {
    * @returns {Response}
    */
   static redirect(url, status = 302) {
-    const prefix = "Failed to call 'Response.redirect'";
+    const prefix = "Failed to execute 'Response.redirect'";
     url = webidl.converters["USVString"](url, prefix, "Argument 1");
     status = webidl.converters["unsigned short"](status, prefix, "Argument 2");
 
@@ -282,8 +282,8 @@ class Response {
    * @param {ResponseInit} init
    * @returns {Response}
    */
-  static json(data = undefined, init = {}) {
-    const prefix = "Failed to call 'Response.json'";
+  static json(data = undefined, init = { __proto__: null }) {
+    const prefix = "Failed to execute 'Response.json'";
     data = webidl.converters.any(data);
     init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
 

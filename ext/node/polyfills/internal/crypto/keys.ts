@@ -1,8 +1,22 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
+
+import { primordials } from "ext:core/mod.js";
+
+const {
+  ObjectDefineProperties,
+  SymbolToStringTag,
+} = primordials;
+
+import {
+  op_node_create_private_key,
+  op_node_create_public_key,
+  op_node_export_rsa_public_pem,
+  op_node_export_rsa_spki_der,
+} from "ext:core/ops";
 
 import {
   kHandle,
@@ -39,9 +53,6 @@ import {
   forgivingBase64UrlEncode as encodeToBase64Url,
 } from "ext:deno_web/00_infra.js";
 
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
-
 export const getArrayBufferOrView = hideStackFrames(
   (
     buffer,
@@ -64,7 +75,7 @@ export const getArrayBufferOrView = hideStackFrames(
     | Uint16Array
     | Uint32Array => {
     if (isAnyArrayBuffer(buffer)) {
-      return buffer;
+      return new Uint8Array(buffer);
     }
     if (typeof buffer === "string") {
       if (encoding === "buffer") {
@@ -205,6 +216,14 @@ export class KeyObject {
   }
 }
 
+ObjectDefineProperties(KeyObject.prototype, {
+  [SymbolToStringTag]: {
+    __proto__: null,
+    configurable: true,
+    value: "KeyObject",
+  },
+});
+
 export interface JsonWebKeyInput {
   key: JsonWebKey;
   format: "jwk";
@@ -213,6 +232,12 @@ export interface JsonWebKeyInput {
 export function prepareAsymmetricKey(key) {
   if (isStringOrBuffer(key)) {
     return { format: "pem", data: getArrayBufferOrView(key, "key") };
+  } else if (isKeyObject(key)) {
+    return {
+      // Assumes that assymetric keys are stored as PEM.
+      format: "pem",
+      data: getKeyMaterial(key),
+    };
   } else if (typeof key == "object") {
     const { key: data, encoding, format, type } = key;
     if (!isStringOrBuffer(data)) {
@@ -234,15 +259,18 @@ export function createPrivateKey(
   key: PrivateKeyInput | string | Buffer | JsonWebKeyInput,
 ): PrivateKeyObject {
   const { data, format, type } = prepareAsymmetricKey(key);
-  const details = ops.op_node_create_private_key(data, format, type);
+  const details = op_node_create_private_key(data, format, type);
   const handle = setOwnedKey(copyBuffer(data));
   return new PrivateKeyObject(handle, details);
 }
 
 export function createPublicKey(
-  _key: PublicKeyInput | string | Buffer | KeyObject | JsonWebKeyInput,
-): KeyObject {
-  notImplemented("crypto.createPublicKey");
+  key: PublicKeyInput | string | Buffer | JsonWebKeyInput,
+): PublicKeyObject {
+  const { data, format, type } = prepareAsymmetricKey(key);
+  const details = op_node_create_public_key(data, format, type);
+  const handle = setOwnedKey(copyBuffer(data));
+  return new PublicKeyObject(handle, details);
 }
 
 function getKeyTypes(allowKeyObject: boolean, bufferOnly = false) {
@@ -349,13 +377,45 @@ class AsymmetricKeyObject extends KeyObject {
   }
 }
 
-class PrivateKeyObject extends AsymmetricKeyObject {
+export class PrivateKeyObject extends AsymmetricKeyObject {
   constructor(handle: unknown, details: unknown) {
     super("private", handle, details);
   }
 
   export(_options: unknown) {
     notImplemented("crypto.PrivateKeyObject.prototype.export");
+  }
+}
+
+export class PublicKeyObject extends AsymmetricKeyObject {
+  constructor(handle: unknown, details: unknown) {
+    super("public", handle, details);
+  }
+
+  export(options: unknown) {
+    const key = KEY_STORE.get(this[kHandle]);
+    switch (this.asymmetricKeyType) {
+      case "rsa":
+      case "rsa-pss": {
+        switch (options.format) {
+          case "pem":
+            return op_node_export_rsa_public_pem(key);
+          case "der": {
+            if (options.type == "pkcs1") {
+              return key;
+            } else {
+              return op_node_export_rsa_spki_der(key);
+            }
+          }
+          default:
+            throw new TypeError(`exporting ${options.type} is not implemented`);
+        }
+      }
+      default:
+        throw new TypeError(
+          `exporting ${this.asymmetricKeyType} is not implemented`,
+        );
+    }
   }
 }
 
@@ -393,4 +453,6 @@ export default {
   prepareSecretKey,
   setOwnedKey,
   SecretKeyObject,
+  PrivateKeyObject,
+  PublicKeyObject,
 };

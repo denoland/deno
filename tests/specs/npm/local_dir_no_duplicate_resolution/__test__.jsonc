@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "run -A run_main_sorted_lines.ts",
+  "output": "main.out"
+}

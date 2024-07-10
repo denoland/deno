@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // @deno-types="./internal/buffer.d.ts"
 export {
   atob,
@@ -7,6 +7,8 @@ export {
   Buffer,
   constants,
   default,
+  isAscii,
+  isUtf8,
   kMaxLength,
   kStringMaxLength,
   SlowBuffer,

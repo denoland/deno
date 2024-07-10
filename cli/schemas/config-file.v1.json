@@ -76,6 +76,20 @@
           "default": "react",
           "markdownDescription": "Specify module specifier used to import the JSX factory functions when using jsx: `react-jsx*`.\n\nSee more: https://www.typescriptlang.org/tsconfig/#jsxImportSource"
         },
+        "jsxImportSourceTypes": {
+          "description": "Specify module specifier used to import the types for the JSX factory functions when using jsx: 'react-jsx*'. This is the logical equivalent of prefixing an import to the jsxImportSource with `// @deno-types=\"...\"`.",
+          "type": "string",
+          "default": "@types/react",
+          "markdownDescription": "Specify module specifier used to import the types for the JSX factory functions when using jsx: `react-jsx*`. This is the logical equivalent of prefixing an import to the jsxImportSource with `// @deno-types=\"...\"`."
+        },
+        "jsxPrecompileSkipElements": {
+          "description": "Specify list of elements that should be exempt from being precompiled when the jsx 'precompile' transform is used.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Specify list of elements that should be exempt from being precompiled when the jsx `precompile` transform is used."
+        },
         "keyofStringsOnly": {
           "description": "Make keyof only return strings instead of string, numbers or symbols. Legacy option.",
           "type": "boolean",
@@ -86,9 +100,7 @@
           "description": "Specify a set of bundled library declaration files that describe the target runtime environment.",
           "type": "array",
           "uniqueItems": true,
-          "default": [
-            "deno.window"
-          ],
+          "default": ["deno.window"],
           "items": {
             "type": "string"
           },
@@ -308,11 +320,7 @@
         },
         "report": {
           "default": "pretty",
-          "enum": [
-            "pretty",
-            "json",
-            "compact"
-          ],
+          "enum": ["pretty", "json", "compact"],
           "description": "The default report format to use when linting"
         }
       }
@@ -377,11 +385,7 @@
         "proseWrap": {
           "description": "Define how prose should be wrapped in Markdown files.",
           "default": "always",
-          "enum": [
-            "always",
-            "never",
-            "preserve"
-          ]
+          "enum": ["always", "never", "preserve"]
         },
         "semiColons": {
           "description": "Whether to prefer using semicolons.",
@@ -414,11 +418,7 @@
             "proseWrap": {
               "description": "Define how prose should be wrapped in Markdown files.",
               "default": "always",
-              "enum": [
-                "always",
-                "never",
-                "preserve"
-              ]
+              "enum": ["always", "never", "preserve"]
             },
             "semiColons": {
               "description": "Whether to prefer using semicolons.",
@@ -487,6 +487,26 @@
         }
       }
     },
+    "publish": {
+      "description": "Configuration for deno publish",
+      "type": "object",
+      "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be included in the published package.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be excluded from the published package.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "bench": {
       "description": "Configuration for deno bench",
       "type": "object",
@@ -535,8 +555,77 @@
       "type": "array",
       "description": "List of unstable features to enable.",
       "items": {
-        "type": "string"
+        "type": "string",
+        "examples": [
+          "broadcast-channel",
+          "bare-node-builtins",
+          "byonm",
+          "cron",
+          "ffi",
+          "fs",
+          "http",
+          "kv",
+          "net",
+          "sloppy-imports",
+          "temporal",
+          "unsafe-proto",
+          "webgpu",
+          "worker-options"
+        ]
       }
+    },
+    "name": {
+      "type": "string",
+      "description": "The name of this JSR package. Must be scoped",
+      "pattern": "^@[a-z0-9-]+/[a-z0-9-]+$"
+    },
+    "version": {
+      "type": "string",
+      "description": "The version of this JSR package."
+    },
+    "exports": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "The path to the main module of this JSR package.",
+          "examples": ["./mod.ts", "./index.js"],
+          "pattern": "^\\./.*$"
+        },
+        {
+          "type": "object",
+          "description": "A map of package exports to files in this JSR package.",
+          "patternProperties": {
+            "^\\.(/.*)?$": {
+              "type": "string",
+              "pattern": "^\\./.*$"
+            }
+          },
+          "examples": [{ ".": "./mod.ts" }]
+        }
+      ]
+    },
+    "workspace": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The members of this workspace."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "members": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The members of this workspace."
+            }
+          }
+        }
+      ]
     }
   }
 }

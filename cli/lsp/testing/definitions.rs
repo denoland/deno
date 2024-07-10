@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::lsp_custom;
 use super::lsp_custom::TestData;
@@ -28,16 +28,13 @@ pub struct TestDefinition {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestModule {
   pub specifier: ModuleSpecifier,
-  /// The version of the document that the discovered tests relate to.
-  pub script_version: String,
   pub defs: HashMap<String, TestDefinition>,
 }
 
 impl TestModule {
-  pub fn new(specifier: ModuleSpecifier, script_version: String) -> Self {
+  pub fn new(specifier: ModuleSpecifier) -> Self {
     Self {
       specifier,
-      script_version,
       defs: Default::default(),
     }
   }

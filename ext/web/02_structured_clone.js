@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -7,10 +7,11 @@
 /// <reference path="../web/lib.deno_web.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+const {
+  isArrayBuffer,
+} = core;
 const {
   ArrayBuffer,
-  ArrayBufferPrototype,
   ArrayBufferPrototypeGetByteLength,
   ArrayBufferPrototypeSlice,
   ArrayBufferIsView,
@@ -39,6 +40,8 @@ const {
   Float64Array,
 } = primordials;
 
+import { DOMException } from "./01_dom_exception.js";
+
 const objectCloneMemo = new SafeWeakMap();
 
 function cloneArrayBuffer(
@@ -55,13 +58,13 @@ function cloneArrayBuffer(
   );
 }
 
-// TODO(petamoriken): Resizable ArrayBuffer support in the future
+// TODO(petamoriken): add Resizable ArrayBuffer support
 /** Clone a value in a similar way to structured cloning. It is similar to a
  * StructureDeserialize(StructuredSerialize(...)). */
 function structuredClone(value) {
   // Performance optimization for buffers, otherwise
   // `serialize/deserialize` will allocate new buffer.
-  if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, value)) {
+  if (isArrayBuffer(value)) {
     const cloned = cloneArrayBuffer(
       value,
       0,
@@ -111,6 +114,10 @@ function structuredClone(value) {
         break;
       case "BigUint64Array":
         Constructor = BigUint64Array;
+        break;
+      case "Float16Array":
+        // TODO(petamoriken): add Float16Array to primordials
+        Constructor = Float16Array;
         break;
       case "Float32Array":
         Constructor = Float32Array;

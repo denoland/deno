@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -10,9 +10,14 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import { core } from "ext:core/mod.js";
-const ops = core.ops;
+import { core, primordials } from "ext:core/mod.js";
+
 import { SymbolDispose } from "ext:deno_web/00_infra.js";
+import { op_fetch_custom_client } from "ext:core/ops";
+import { loadTlsKeyPair } from "ext:deno_net/02_tls.js";
+
+const { internalRidSymbol } = core;
+const { ObjectDefineProperty } = primordials;
 
 /**
  * @param {Deno.CreateHttpClientOptions} options
@@ -20,27 +25,35 @@ import { SymbolDispose } from "ext:deno_web/00_infra.js";
  */
 function createHttpClient(options) {
   options.caCerts ??= [];
+  const keyPair = loadTlsKeyPair("Deno.createHttpClient", options);
   return new HttpClient(
-    ops.op_fetch_custom_client(
+    op_fetch_custom_client(
       options,
+      keyPair,
     ),
   );
 }
 
 class HttpClient {
+  #rid;
+
   /**
    * @param {number} rid
    */
   constructor(rid) {
-    this.rid = rid;
+    ObjectDefineProperty(this, internalRidSymbol, {
+      enumerable: false,
+      value: rid,
+    });
+    this.#rid = rid;
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   [SymbolDispose]() {
-    core.tryClose(this.rid);
+    core.tryClose(this.#rid);
   }
 }
 const HttpClientPrototype = HttpClient.prototype;

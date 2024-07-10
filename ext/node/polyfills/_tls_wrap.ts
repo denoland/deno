@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -68,7 +68,7 @@ export class TLSSocket extends net.Socket {
   secureConnecting: boolean;
   _SNICallback: any;
   servername: string | null;
-  alpnProtocol: any;
+  alpnProtocols: string[] | null;
   authorized: boolean;
   authorizationError: any;
   [kRes]: any;
@@ -96,6 +96,7 @@ export class TLSSocket extends net.Socket {
       caCerts = [new TextDecoder().decode(caCerts)];
     }
     tlsOptions.caCerts = caCerts;
+    tlsOptions.alpnProtocols = opts.ALPNProtocols;
 
     super({
       handle: _wrapHandle(tlsOptions, socket),
@@ -113,7 +114,7 @@ export class TLSSocket extends net.Socket {
     this.secureConnecting = true;
     this._SNICallback = null;
     this.servername = null;
-    this.alpnProtocol = null;
+    this.alpnProtocols = tlsOptions.ALPNProtocols;
     this.authorized = false;
     this.authorizationError = null;
     this[kRes] = null;

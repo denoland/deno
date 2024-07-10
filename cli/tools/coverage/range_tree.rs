@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 //
 // Forked from https://github.com/demurgos/v8-coverage/tree/d0ca18da8740198681e0bc68971b0a6cdb11db3e/rust
 // Copyright 2021 Charles Samborski. All rights reserved. MIT license.
@@ -150,7 +150,7 @@ impl<'rt> RangeTree<'rt> {
     Self::from_sorted_ranges_inner(
       rta,
       &mut ranges.iter().peekable(),
-      ::std::usize::MAX,
+      usize::MAX,
       0,
     )
   }

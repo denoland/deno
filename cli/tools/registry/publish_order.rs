@@ -1,16 +1,14 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 
 use deno_ast::ModuleSpecifier;
-use deno_config::WorkspaceConfig;
+use deno_config::workspace::JsrPackageConfig;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-
-use crate::graph_util::ModuleGraphBuilder;
+use deno_graph::ModuleGraph;
 
 pub struct PublishOrderGraph {
   packages: HashMap<String, HashSet<String>>,
@@ -19,14 +17,6 @@ pub struct PublishOrderGraph {
 }
 
 impl PublishOrderGraph {
-  pub fn new_single(package_name: String) -> Self {
-    Self {
-      packages: HashMap::from([(package_name.clone(), HashSet::new())]),
-      in_degree: HashMap::from([(package_name.clone(), 0)]),
-      reverse_map: HashMap::from([(package_name, Vec::new())]),
-    }
-  }
-
   pub fn next(&mut self) -> Vec<String> {
     let mut package_names_with_depth = self
       .in_degree
@@ -122,85 +112,35 @@ impl PublishOrderGraph {
   }
 }
 
-pub async fn build_publish_graph(
-  workspace_config: &WorkspaceConfig,
-  module_graph_builder: &ModuleGraphBuilder,
+pub fn build_publish_order_graph(
+  graph: &ModuleGraph,
+  roots: &[JsrPackageConfig],
 ) -> Result<PublishOrderGraph, AnyError> {
-  let roots = get_workspace_roots(workspace_config)?;
-  let graph = module_graph_builder
-    .create_graph(
-      deno_graph::GraphKind::All,
-      roots.iter().flat_map(|r| r.exports.clone()).collect(),
-    )
-    .await?;
-  graph.valid()?;
-
-  let packages = build_pkg_deps(graph, roots);
-  Ok(build_graph(packages))
-}
-
-#[derive(Debug)]
-struct MemberRoots {
-  name: String,
-  dir_url: ModuleSpecifier,
-  exports: Vec<ModuleSpecifier>,
-}
-
-fn get_workspace_roots(
-  config: &WorkspaceConfig,
-) -> Result<Vec<MemberRoots>, AnyError> {
-  let mut members = Vec::with_capacity(config.members.len());
-  let mut seen_names = HashSet::with_capacity(config.members.len());
-  for member in &config.members {
-    let exports_config = member
-      .config_file
-      .to_exports_config()
-      .with_context(|| {
-        format!(
-          "Failed to parse exports at {}",
-          member.config_file.specifier
-        )
-      })?
-      .into_map();
-    if !seen_names.insert(&member.package_name) {
-      bail!(
-        "Cannot have two workspace packages with the same name ('{}' at {})",
-        member.package_name,
-        member.path.display(),
-      );
-    }
-    let mut member_root = MemberRoots {
-      name: member.package_name.clone(),
-      dir_url: member.config_file.specifier.join("./").unwrap().clone(),
-      exports: Vec::with_capacity(exports_config.len()),
-    };
-    for (_, value) in exports_config {
-      let entry_point =
-        member.config_file.specifier.join(&value).with_context(|| {
-          format!(
-            "Failed to join {} with {}",
-            member.config_file.specifier, value
-          )
-        })?;
-      member_root.exports.push(entry_point);
-    }
-    members.push(member_root);
-  }
-  Ok(members)
+  let packages = build_pkg_deps(graph, roots)?;
+  Ok(build_publish_order_graph_from_pkgs_deps(packages))
 }
 
 fn build_pkg_deps(
-  graph: deno_graph::ModuleGraph,
-  roots: Vec<MemberRoots>,
-) -> HashMap<String, HashSet<String>> {
+  graph: &deno_graph::ModuleGraph,
+  roots: &[JsrPackageConfig],
+) -> Result<HashMap<String, HashSet<String>>, AnyError> {
   let mut members = HashMap::with_capacity(roots.len());
   let mut seen_modules = HashSet::with_capacity(graph.modules().count());
-  for root in &roots {
+  let roots = roots
+    .iter()
+    .map(|r| {
+      (
+        ModuleSpecifier::from_directory_path(r.config_file.dir_path()).unwrap(),
+        r,
+      )
+    })
+    .collect::<Vec<_>>();
+  for (root_dir_url, pkg_config) in &roots {
     let mut deps = HashSet::new();
     let mut pending = VecDeque::new();
-    pending.extend(root.exports.clone());
+    pending.extend(pkg_config.config_file.resolve_export_value_urls()?);
     while let Some(specifier) = pending.pop_front() {
-      let Some(module) = graph.get(&specifier).and_then(|m| m.esm()) else {
+      let Some(module) = graph.get(&specifier).and_then(|m| m.js()) else {
         continue;
       };
       let mut dep_specifiers =
@@ -224,26 +164,26 @@ fn build_pkg_deps(
         if specifier.scheme() != "file" {
           continue;
         }
-        if specifier.as_str().starts_with(root.dir_url.as_str()) {
+        if specifier.as_str().starts_with(root_dir_url.as_str()) {
           if seen_modules.insert(specifier.clone()) {
             pending.push_back(specifier.clone());
           }
         } else {
-          let found_root = roots
-            .iter()
-            .find(|root| specifier.as_str().starts_with(root.dir_url.as_str()));
+          let found_root = roots.iter().find(|(dir_url, _)| {
+            specifier.as_str().starts_with(dir_url.as_str())
+          });
           if let Some(root) = found_root {
-            deps.insert(root.name.clone());
+            deps.insert(root.1.name.clone());
           }
         }
       }
     }
-    members.insert(root.name.clone(), deps);
+    members.insert(pkg_config.name.clone(), deps);
   }
-  members
+  Ok(members)
 }
 
-fn build_graph(
+fn build_publish_order_graph_from_pkgs_deps(
   packages: HashMap<String, HashSet<String>>,
 ) -> PublishOrderGraph {
   let mut in_degree = HashMap::new();
@@ -273,7 +213,7 @@ mod test {
 
   #[test]
   fn test_graph_no_deps() {
-    let mut graph = build_graph(HashMap::from([
+    let mut graph = build_publish_order_graph_from_pkgs_deps(HashMap::from([
       ("a".to_string(), HashSet::new()),
       ("b".to_string(), HashSet::new()),
       ("c".to_string(), HashSet::new()),
@@ -293,7 +233,7 @@ mod test {
 
   #[test]
   fn test_graph_single_dep() {
-    let mut graph = build_graph(HashMap::from([
+    let mut graph = build_publish_order_graph_from_pkgs_deps(HashMap::from([
       ("a".to_string(), HashSet::from(["b".to_string()])),
       ("b".to_string(), HashSet::from(["c".to_string()])),
       ("c".to_string(), HashSet::new()),
@@ -310,7 +250,7 @@ mod test {
 
   #[test]
   fn test_graph_multiple_dep() {
-    let mut graph = build_graph(HashMap::from([
+    let mut graph = build_publish_order_graph_from_pkgs_deps(HashMap::from([
       (
         "a".to_string(),
         HashSet::from(["b".to_string(), "c".to_string()]),
@@ -342,7 +282,7 @@ mod test {
 
   #[test]
   fn test_graph_circular_dep() {
-    let mut graph = build_graph(HashMap::from([
+    let mut graph = build_publish_order_graph_from_pkgs_deps(HashMap::from([
       ("a".to_string(), HashSet::from(["b".to_string()])),
       ("b".to_string(), HashSet::from(["c".to_string()])),
       ("c".to_string(), HashSet::from(["a".to_string()])),

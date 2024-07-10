@@ -1,16 +1,17 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
 const {
   MapPrototypeGet,
   MapPrototypeDelete,
+  ObjectDefineProperty,
+  Promise,
+  SafeArrayIterator,
 } = primordials;
 
 import {
   activeTimers,
+  Immediate,
   setUnrefTimeout,
   Timeout,
 } from "ext:deno_node/internal/timers.mjs";
@@ -21,7 +22,6 @@ import * as timers from "ext:deno_web/02_timers.js";
 
 const clearTimeout_ = timers.clearTimeout;
 const clearInterval_ = timers.clearInterval;
-const setTimeoutUnclamped = timers.setTimeoutUnclamped;
 
 export function setTimeout(
   callback: (...args: unknown[]) => void,
@@ -32,9 +32,11 @@ export function setTimeout(
   return new Timeout(callback, timeout, args, false, true);
 }
 
-Object.defineProperty(setTimeout, promisify.custom, {
+ObjectDefineProperty(setTimeout, promisify.custom, {
   value: (timeout: number, ...args: unknown[]) => {
-    return new Promise((cb) => setTimeout(cb, timeout, ...args));
+    return new Promise((cb) =>
+      setTimeout(cb, timeout, ...new SafeArrayIterator(args))
+    );
   },
   enumerable: true,
 });
@@ -70,15 +72,21 @@ export function clearInterval(timeout?: Timeout | number | string) {
   }
   clearInterval_(id);
 }
-// TODO(bartlomieju): implement the 'NodeJS.Immediate' versions of the timers.
-// https://github.com/DefinitelyTyped/DefinitelyTyped/blob/1163ead296d84e7a3c80d71e7c81ecbd1a130e9a/types/node/v12/globals.d.ts#L1120-L1131
 export function setImmediate(
   cb: (...args: unknown[]) => void,
   ...args: unknown[]
 ): Timeout {
-  return setTimeoutUnclamped(cb, 0, ...args);
+  return new Immediate(cb, ...new SafeArrayIterator(args));
 }
-export const clearImmediate = clearTimeout;
+export function clearImmediate(immediate: Immediate) {
+  if (immediate == null) {
+    return;
+  }
+
+  // FIXME(nathanwhit): will probably change once
+  //  deno_core has proper support for immediates
+  clearTimeout_(immediate._immediateId);
+}
 
 export default {
   setTimeout,

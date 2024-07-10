@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -494,6 +494,8 @@ export const errorMap = new Map<number, [string, string]>(
     ? codeToErrorDarwin
     : osType === "linux"
     ? codeToErrorLinux
+    : osType === "android"
+    ? codeToErrorLinux
     : osType === "freebsd"
     ? codeToErrorFreebsd
     : osType === "openbsd"
@@ -507,6 +509,8 @@ export const codeMap = new Map<string, number>(
     : osType === "darwin"
     ? errorToCodeDarwin
     : osType === "linux"
+    ? errorToCodeLinux
+    : osType === "android"
     ? errorToCodeLinux
     : osType === "freebsd"
     ? errorToCodeFreebsd

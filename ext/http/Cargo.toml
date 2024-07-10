@@ -1,8 +1,8 @@
-# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_http"
-version = "0.126.0"
+version = "0.156.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,7 +24,7 @@ harness = false
 async-compression = { version = "0.4", features = ["tokio", "brotli", "gzip"] }
 async-trait.workspace = true
 base64.workspace = true
-brotli = "3.3.4"
+brotli.workspace = true
 bytes.workspace = true
 cache_control.workspace = true
 deno_core.workspace = true
@@ -42,7 +42,7 @@ memmem.workspace = true
 mime = "0.3.16"
 once_cell.workspace = true
 percent-encoding.workspace = true
-phf = { version = "0.11", features = ["macros"] }
+phf.workspace = true
 pin-project.workspace = true
 ring.workspace = true
 scopeguard.workspace = true

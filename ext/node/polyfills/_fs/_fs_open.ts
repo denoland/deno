@@ -1,8 +1,10 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
+const { internalRidSymbol } = core;
 import {
   O_APPEND,
   O_CREAT,
@@ -137,7 +139,7 @@ export function open(
       path as string,
       convertFlagAndModeToOptions(flags as openFlags, mode),
     ).then(
-      (file) => callback!(null, file.rid),
+      (file) => callback!(null, file[internalRidSymbol]),
       (err) => (callback as (err: Error) => void)(err),
     );
   }
@@ -186,8 +188,10 @@ export function openSync(
     throw new Error(`EEXIST: file already exists, open '${path}'`);
   }
 
-  return Deno.openSync(path as string, convertFlagAndModeToOptions(flags, mode))
-    .rid;
+  return Deno.openSync(
+    path as string,
+    convertFlagAndModeToOptions(flags, mode),
+  )[internalRidSymbol];
 }
 
 function existenceCheckRequired(flags: openFlags | number) {

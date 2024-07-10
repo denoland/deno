@@ -1,12 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
-use crate::colors::cyan;
-use crate::colors::italic_bold;
-use crate::colors::red;
-use crate::colors::yellow;
 use deno_core::error::format_file_name;
 use deno_core::error::JsError;
 use deno_core::error::JsStackFrame;
+use deno_terminal::colors::cyan;
+use deno_terminal::colors::italic_bold;
+use deno_terminal::colors::red;
+use deno_terminal::colors::yellow;
 use std::fmt::Write as _;
 
 #[derive(Debug, Clone)]

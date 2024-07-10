@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -9,8 +9,15 @@ import {
   PerformanceEntry,
 } from "ext:deno_web/15_performance.js";
 
-// FIXME(bartlomieju)
-const PerformanceObserver = undefined;
+class PerformanceObserver {
+  observe() {
+    notImplemented("PerformanceObserver.observe");
+  }
+  disconnect() {
+    notImplemented("PerformanceObserver.disconnect");
+  }
+}
+
 const constants = {};
 
 const performance:

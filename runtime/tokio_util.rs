@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use std::fmt::Debug;
 use std::str::FromStr;
 
@@ -81,8 +81,9 @@ where
       let handle = tokio::runtime::Handle::current();
       let runtime_monitor = RuntimeMonitor::new(&handle);
       tokio::spawn(async move {
+        #[allow(clippy::print_stderr)]
         for interval in runtime_monitor.intervals() {
-          println!("{:#?}", interval);
+          eprintln!("{:#?}", interval);
           // wait 500ms
           tokio::time::sleep(std::time::Duration::from_millis(
             metrics_interval,
@@ -99,7 +100,13 @@ where
   #[cfg(not(tokio_unstable))]
   let join_handle = rt.spawn(future);
 
-  rt.block_on(join_handle).unwrap().into_inner()
+  let r = rt.block_on(join_handle).unwrap().into_inner();
+  // Forcefully shutdown the runtime - we're done executing JS code at this
+  // point, but there might be outstanding blocking tasks that were created and
+  // latered "unrefed". They won't terminate on their own, so we're forcing
+  // termination of Tokio runtime at this point.
+  rt.shutdown_background();
+  r
 }
 
 #[inline(always)]

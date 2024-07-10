@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::ModuleSpecifier;
 
@@ -71,6 +71,7 @@ generate_builtin_node_module_lists! {
   "querystring",
   "repl",
   "readline",
+  "readline/promises",
   "stream",
   "stream/consumers",
   "stream/promises",

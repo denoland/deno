@@ -1,6 +1,5 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
@@ -13,6 +12,7 @@ use deno_core::ResourceId;
 
 use deno_core::op2;
 
+use deno_permissions::PermissionsContainer;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;

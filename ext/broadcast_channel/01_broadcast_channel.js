@@ -1,23 +1,14 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
-  defineEventHandler,
-  EventTarget,
-  setIsTrusted,
-  setTarget,
-} from "ext:deno_web/02_event.js";
-import { defer } from "ext:deno_web/02_timers.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
-const {
   op_broadcast_recv,
   op_broadcast_send,
-} = core.ensureFastOps();
+  op_broadcast_subscribe,
+  op_broadcast_unsubscribe,
+} from "ext:core/ops";
 const {
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
@@ -27,6 +18,17 @@ const {
   SymbolFor,
   Uint8Array,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import {
+  defineEventHandler,
+  EventTarget,
+  setIsTrusted,
+  setTarget,
+} from "ext:deno_web/02_event.js";
+import { defer } from "ext:deno_web/02_timers.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
 const _name = Symbol("[[name]]");
 const _closed = Symbol("[[closed]]");
@@ -95,7 +97,7 @@ class BroadcastChannel extends EventTarget {
     if (rid === null) {
       // Create the rid immediately, otherwise there is a time window (and a
       // race condition) where messages can get lost, because recv() is async.
-      rid = ops.op_broadcast_subscribe();
+      rid = op_broadcast_subscribe();
       recv();
     }
   }
@@ -136,7 +138,7 @@ class BroadcastChannel extends EventTarget {
 
     ArrayPrototypeSplice(channels, index, 1);
     if (channels.length === 0) {
-      ops.op_broadcast_unsubscribe(rid);
+      op_broadcast_unsubscribe(rid);
     }
   }
 

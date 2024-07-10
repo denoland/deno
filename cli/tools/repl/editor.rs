@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::cdp;
 use crate::colors;
@@ -490,7 +490,7 @@ impl ReplEditor {
         }
 
         self.errored_on_history_save.store(true, Relaxed);
-        eprintln!("Unable to save history file: {e}");
+        log::warn!("Unable to save history file: {}", e);
       }
     }
   }
@@ -524,7 +524,7 @@ impl ConditionalEventHandler for ReverseSearchHistoryEventHandler {
 /// A custom tab key event handler
 /// It uses a heuristic to determine if the user is requesting completion or if they want to insert an actual tab
 /// The heuristic goes like this:
-///   - If the last character before the cursor is whitespace, the the user wants to insert a tab
+///   - If the last character before the cursor is whitespace, the user wants to insert a tab
 ///   - Else the user is requesting completion
 struct TabEventHandler;
 impl ConditionalEventHandler for TabEventHandler {

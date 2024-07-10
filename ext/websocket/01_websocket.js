@@ -1,49 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-import { URL } from "ext:deno_url/00_url.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
-import {
-  CloseEvent,
-  defineEventHandler,
-  dispatch,
-  ErrorEvent,
-  Event,
-  EventTarget,
-  MessageEvent,
-  setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
 const {
-  ArrayBufferPrototype,
-  ArrayBufferIsView,
-  ArrayPrototypeJoin,
-  ArrayPrototypeMap,
-  ArrayPrototypeSome,
-  ErrorPrototypeToString,
-  ObjectDefineProperties,
-  ObjectPrototypeIsPrototypeOf,
-  PromisePrototypeThen,
-  RegExpPrototypeExec,
-  SafeSet,
-  SetPrototypeGetSize,
-  // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
-  String,
-  StringPrototypeEndsWith,
-  StringPrototypeToLowerCase,
-  Symbol,
-  SymbolIterator,
-  PromisePrototypeCatch,
-  SymbolFor,
-  TypedArrayPrototypeGetByteLength,
-} = primordials;
+  isAnyArrayBuffer,
+  isArrayBuffer,
+} = core;
 import {
   op_ws_check_permission_and_cancel_handle,
   op_ws_close,
@@ -57,7 +20,49 @@ import {
   op_ws_send_binary_ab,
   op_ws_send_ping,
   op_ws_send_text,
-} from "ext:deno_websocket/00_ops.js";
+} from "ext:core/ops";
+const {
+  ArrayBufferIsView,
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
+  ArrayPrototypePush,
+  ArrayPrototypeShift,
+  ArrayPrototypeSome,
+  ErrorPrototypeToString,
+  ObjectDefineProperties,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeCatch,
+  PromisePrototypeThen,
+  RegExpPrototypeExec,
+  SafeSet,
+  SetPrototypeGetSize,
+  String,
+  StringPrototypeEndsWith,
+  StringPrototypeToLowerCase,
+  Symbol,
+  SymbolFor,
+  SymbolIterator,
+  TypedArrayPrototypeGetByteLength,
+} = primordials;
+
+import { URL } from "ext:deno_url/00_url.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
+import {
+  CloseEvent,
+  defineEventHandler,
+  dispatch,
+  ErrorEvent,
+  Event,
+  EventTarget,
+  MessageEvent,
+  setIsTrusted,
+} from "ext:deno_web/02_event.js";
+import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
+import { getLocationHref } from "ext:deno_web/12_location.js";
 
 webidl.converters["sequence<DOMString> or DOMString"] = (
   V,
@@ -80,11 +85,7 @@ webidl.converters["WebSocketSend"] = (V, prefix, context, opts) => {
     return webidl.converters["Blob"](V, prefix, context, opts);
   }
   if (typeof V === "object") {
-    if (
-      ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V) ||
-      // deno-lint-ignore prefer-primordials
-      ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V)
-    ) {
+    if (isAnyArrayBuffer(V)) {
       return webidl.converters["ArrayBuffer"](V, prefix, context, opts);
     }
     if (ArrayBufferIsView(V)) {
@@ -112,11 +113,14 @@ const _extensions = Symbol("[[extensions]]");
 const _protocol = Symbol("[[protocol]]");
 const _binaryType = Symbol("[[binaryType]]");
 const _eventLoop = Symbol("[[eventLoop]]");
+const _sendQueue = Symbol("[[sendQueue]]");
+const _queueSend = Symbol("[[queueSend]]");
 
 const _server = Symbol("[[server]]");
 const _idleTimeoutDuration = Symbol("[[idleTimeout]]");
 const _idleTimeoutTimeout = Symbol("[[idleTimeoutTimeout]]");
 const _serverHandleIdleTimeout = Symbol("[[serverHandleIdleTimeout]]");
+
 class WebSocket extends EventTarget {
   constructor(url, protocols = []) {
     super();
@@ -130,6 +134,8 @@ class WebSocket extends EventTarget {
     this[_binaryType] = "blob";
     this[_idleTimeoutDuration] = 0;
     this[_idleTimeoutTimeout] = undefined;
+    this[_sendQueue] = [];
+
     const prefix = "Failed to construct 'WebSocket'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.USVString(url, prefix, "Argument 1");
@@ -327,23 +333,26 @@ class WebSocket extends EventTarget {
       throw new DOMException("readyState not OPEN", "InvalidStateError");
     }
 
-    if (ArrayBufferIsView(data)) {
-      op_ws_send_binary(this[_rid], data);
-    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-      // deno-lint-ignore prefer-primordials
-      op_ws_send_binary(this[_rid], new Uint8Array(data));
-    } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
-      PromisePrototypeThen(
-        // deno-lint-ignore prefer-primordials
-        data.slice().arrayBuffer(),
-        (ab) => op_ws_send_binary_ab(this[_rid], ab),
-      );
+    if (this[_sendQueue].length === 0) {
+      // Fast path if the send queue is empty, for example when only synchronous
+      // data is being sent.
+      if (ArrayBufferIsView(data)) {
+        op_ws_send_binary(this[_rid], data);
+      } else if (isArrayBuffer(data)) {
+        op_ws_send_binary_ab(this[_rid], data);
+      } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
+        this[_queueSend](data);
+      } else {
+        const string = String(data);
+        op_ws_send_text(
+          this[_rid],
+          string,
+        );
+      }
     } else {
-      const string = String(data);
-      op_ws_send_text(
-        this[_rid],
-        string,
-      );
+      // Slower path if the send queue is not empty, for example when sending
+      // asynchronous data like a Blob.
+      this[_queueSend](data);
     }
   }
 
@@ -415,13 +424,30 @@ class WebSocket extends EventTarget {
     const rid = this[_rid];
     while (this[_readyState] !== CLOSED) {
       const kind = await op_ws_next_event(rid);
+      /* close the connection if read was cancelled, and we didn't get a close frame */
+      if (
+        (this[_readyState] == CLOSING) &&
+        kind <= 3 && this[_role] !== CLIENT
+      ) {
+        this[_readyState] = CLOSED;
+
+        const event = new CloseEvent("close");
+        this.dispatchEvent(event);
+        core.tryClose(rid);
+        break;
+      }
 
       switch (kind) {
         case 0: {
           /* string */
+          const data = op_ws_get_buffer_as_string(rid);
+          if (data === undefined) {
+            break;
+          }
+
           this[_serverHandleIdleTimeout]();
           const event = new MessageEvent("message", {
-            data: op_ws_get_buffer_as_string(rid),
+            data,
             origin: this[_url],
           });
           setIsTrusted(event, true);
@@ -430,9 +456,14 @@ class WebSocket extends EventTarget {
         }
         case 1: {
           /* binary */
+          const d = op_ws_get_buffer(rid);
+          if (d == undefined) {
+            break;
+          }
+
           this[_serverHandleIdleTimeout]();
           // deno-lint-ignore prefer-primordials
-          const buffer = op_ws_get_buffer(rid).buffer;
+          const buffer = d.buffer;
           let data;
           if (this.binaryType === "blob") {
             data = new Blob([buffer]);
@@ -500,17 +531,52 @@ class WebSocket extends EventTarget {
     }
   }
 
+  async [_queueSend](data) {
+    const queue = this[_sendQueue];
+
+    ArrayPrototypePush(queue, data);
+
+    if (queue.length > 1) {
+      // There is already a send in progress, so we just push to the queue
+      // and let that task handle sending of this data.
+      return;
+    }
+
+    while (queue.length > 0) {
+      const data = queue[0];
+      if (ArrayBufferIsView(data)) {
+        op_ws_send_binary(this[_rid], data);
+      } else if (isArrayBuffer(data)) {
+        op_ws_send_binary_ab(this[_rid], data);
+      } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
+        // deno-lint-ignore prefer-primordials
+        const ab = await data.slice().arrayBuffer();
+        op_ws_send_binary_ab(this[_rid], ab);
+      } else {
+        const string = String(data);
+        op_ws_send_text(
+          this[_rid],
+          string,
+        );
+      }
+      ArrayPrototypeShift(queue);
+    }
+  }
+
   [_serverHandleIdleTimeout]() {
     if (this[_idleTimeoutDuration]) {
       clearTimeout(this[_idleTimeoutTimeout]);
       this[_idleTimeoutTimeout] = setTimeout(async () => {
         if (this[_readyState] === OPEN) {
-          await op_ws_send_ping(this[_rid]);
+          await PromisePrototypeCatch(op_ws_send_ping(this[_rid]), () => {});
           this[_idleTimeoutTimeout] = setTimeout(async () => {
             if (this[_readyState] === OPEN) {
               this[_readyState] = CLOSING;
               const reason = "No response from ping frame.";
-              await op_ws_close(this[_rid], 1001, reason);
+              await PromisePrototypeCatch(
+                op_ws_close(this[_rid], 1001, reason),
+                () => {},
+              );
               this[_readyState] = CLOSED;
 
               const errEvent = new ErrorEvent("error", {
@@ -590,9 +656,14 @@ function createWebSocketBranded() {
   socket[_extensions] = "";
   socket[_protocol] = "";
   socket[_url] = "";
-  socket[_binaryType] = "blob";
+  // We use ArrayBuffer for server websockets for backwards compatibility
+  // and performance reasons.
+  //
+  // https://github.com/denoland/deno/issues/15340#issuecomment-1872353134
+  socket[_binaryType] = "arraybuffer";
   socket[_idleTimeoutDuration] = 0;
   socket[_idleTimeoutTimeout] = undefined;
+  socket[_sendQueue] = [];
   return socket;
 }
 

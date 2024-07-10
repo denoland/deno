@@ -1,23 +1,23 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
-import { add, remove } from "ext:deno_web/03_abort_signal.js";
 import {
-  fillHeaders,
-  headerListFromHeaders,
-  headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
+  op_ws_check_permission_and_cancel_handle,
+  op_ws_close,
+  op_ws_create,
+  op_ws_get_buffer,
+  op_ws_get_buffer_as_string,
+  op_ws_get_error,
+  op_ws_next_event,
+  op_ws_send_binary_async,
+  op_ws_send_text_async,
+} from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   DateNow,
-  Error,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   PromisePrototypeThen,
@@ -29,19 +29,19 @@ const {
   SymbolFor,
   TypeError,
   TypedArrayPrototypeGetByteLength,
-  Uint8ArrayPrototype,
+  TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { add, remove } from "ext:deno_web/03_abort_signal.js";
 import {
-  op_ws_check_permission_and_cancel_handle,
-  op_ws_close,
-  op_ws_create,
-  op_ws_get_buffer,
-  op_ws_get_buffer_as_string,
-  op_ws_get_error,
-  op_ws_next_event,
-  op_ws_send_binary_async,
-  op_ws_send_text_async,
-} from "ext:deno_websocket/00_ops.js";
+  fillHeaders,
+  headerListFromHeaders,
+  headersFromHeaderList,
+} from "ext:deno_fetch/20_headers.js";
 
 webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
   "WebSocketStreamOptions",
@@ -67,8 +67,12 @@ webidl.converters.WebSocketCloseInfo = webidl.createDictionaryConverter(
   "WebSocketCloseInfo",
   [
     {
-      key: "code",
-      converter: webidl.converters["unsigned short"],
+      key: "closeCode",
+      converter: (V, prefix, context, opts) =>
+        webidl.converters["unsigned short"](V, prefix, context, {
+          ...opts,
+          enforceRange: true,
+        }),
     },
     {
       key: "reason",
@@ -188,20 +192,14 @@ class WebSocketStream {
                     }
                   })(),
                   () => {
-                    const err = new DOMException(
-                      "Closed while connecting",
-                      "NetworkError",
-                    );
+                    const err = new WebSocketError("Closed while connecting");
                     this[_opened].reject(err);
                     this[_closed].reject(err);
                   },
                 );
               },
               () => {
-                const err = new DOMException(
-                  "Closed while connecting",
-                  "NetworkError",
-                );
+                const err = new WebSocketError("Closed while connecting");
                 this[_opened].reject(err);
                 this[_closed].reject(err);
               },
@@ -214,7 +212,8 @@ class WebSocketStream {
                 if (typeof chunk === "string") {
                   await op_ws_send_text_async(this[_rid], chunk);
                 } else if (
-                  ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
+                  TypedArrayPrototypeGetSymbolToStringTag(chunk) ===
+                    "Uint8Array"
                 ) {
                   await op_ws_send_binary_async(this[_rid], chunk);
                 } else {
@@ -223,17 +222,26 @@ class WebSocketStream {
                   );
                 }
               },
-              close: async (reason) => {
-                try {
-                  this.close(reason?.code !== undefined ? reason : {});
-                } catch (_) {
-                  this.close();
-                }
+              close: async () => {
+                this.close();
                 await this.closed;
               },
               abort: async (reason) => {
+                let closeCode = null;
+                let reasonString = "";
+
+                if (
+                  ObjectPrototypeIsPrototypeOf(WebSocketErrorPrototype, reason)
+                ) {
+                  closeCode = reason.closeCode;
+                  reasonString = reason.reason;
+                }
+
                 try {
-                  this.close(reason?.code !== undefined ? reason : {});
+                  this.close({
+                    closeCode,
+                    reason: reasonString,
+                  });
                 } catch (_) {
                   this.close();
                 }
@@ -259,7 +267,7 @@ class WebSocketStream {
                 }
                 case 3: {
                   /* error */
-                  const err = new Error(op_ws_get_error(this[_rid]));
+                  const err = new WebSocketError(op_ws_get_error(this[_rid]));
                   this[_closed].reject(err);
                   controller.error(err);
                   core.tryClose(this[_rid]);
@@ -267,7 +275,7 @@ class WebSocketStream {
                 }
                 case 1005: {
                   /* closed */
-                  this[_closed].resolve({ code: 1005, reason: "" });
+                  this[_closed].resolve({ closeCode: 1005, reason: "" });
                   core.tryClose(this[_rid]);
                   break;
                 }
@@ -275,7 +283,7 @@ class WebSocketStream {
                   /* close */
                   const reason = op_ws_get_error(this[_rid]);
                   this[_closed].resolve({
-                    code: kind,
+                    closeCode: kind,
                     reason,
                   });
                   core.tryClose(this[_rid]);
@@ -295,7 +303,7 @@ class WebSocketStream {
                 }
 
                 const error = op_ws_get_error(this[_rid]);
-                this[_closed].reject(new Error(error));
+                this[_closed].reject(new WebSocketError(error));
                 core.tryClose(this[_rid]);
               }
             };
@@ -325,8 +333,21 @@ class WebSocketStream {
               },
               pull,
               cancel: async (reason) => {
+                let closeCode = null;
+                let reasonString = "";
+
+                if (
+                  ObjectPrototypeIsPrototypeOf(WebSocketErrorPrototype, reason)
+                ) {
+                  closeCode = reason.closeCode;
+                  reasonString = reason.reason;
+                }
+
                 try {
-                  this.close(reason?.code !== undefined ? reason : {});
+                  this.close({
+                    closeCode,
+                    reason: reasonString,
+                  });
                 } catch (_) {
                   this.close();
                 }
@@ -348,6 +369,7 @@ class WebSocketStream {
             err = options.signal.reason;
           } else {
             core.tryClose(cancelRid);
+            err = new WebSocketError(err.message);
           }
           this[_opened].reject(err);
           this[_closed].reject(err);
@@ -378,38 +400,17 @@ class WebSocketStream {
       "Argument 1",
     );
 
-    if (
-      closeInfo.code &&
-      !(closeInfo.code === 1000 ||
-        (3000 <= closeInfo.code && closeInfo.code < 5000))
-    ) {
-      throw new DOMException(
-        "The close code must be either 1000 or in the range of 3000 to 4999.",
-        "InvalidAccessError",
-      );
-    }
+    validateCloseCodeAndReason(closeInfo);
 
-    const encoder = new TextEncoder();
-    if (
-      closeInfo.reason &&
-      TypedArrayPrototypeGetByteLength(encoder.encode(closeInfo.reason)) > 123
-    ) {
-      throw new DOMException(
-        "The close reason may not be longer than 123 bytes.",
-        "SyntaxError",
-      );
-    }
-
-    let code = closeInfo.code;
-    if (closeInfo.reason && code === undefined) {
-      code = 1000;
+    if (closeInfo.reason && closeInfo.closeCode === null) {
+      closeInfo.closeCode = 1000;
     }
 
     if (this[_opened].state === "pending") {
       this[_earlyClose] = true;
     } else if (this[_closed].state === "pending") {
       PromisePrototypeThen(
-        op_ws_close(this[_rid], code, closeInfo.reason),
+        op_ws_close(this[_rid], closeInfo.closeCode, closeInfo.reason),
         () => {
           setTimeout(() => {
             this[_closeSent].resolve(DateNow());
@@ -417,6 +418,7 @@ class WebSocketStream {
         },
         (err) => {
           this[_rid] && core.tryClose(this[_rid]);
+          err = new WebSocketError(err.message);
           this[_closed].reject(err);
         },
       );
@@ -438,7 +440,87 @@ class WebSocketStream {
     );
   }
 }
-
 const WebSocketStreamPrototype = WebSocketStream.prototype;
 
-export { WebSocketStream };
+function validateCloseCodeAndReason(closeInfo) {
+  if (!closeInfo.closeCode) {
+    closeInfo.closeCode = null;
+  }
+
+  if (
+    closeInfo.closeCode &&
+    !(closeInfo.closeCode === 1000 ||
+      (3000 <= closeInfo.closeCode && closeInfo.closeCode < 5000))
+  ) {
+    throw new DOMException(
+      "The close code must be either 1000 or in the range of 3000 to 4999.",
+      "InvalidAccessError",
+    );
+  }
+
+  const encoder = new TextEncoder();
+  if (
+    closeInfo.reason &&
+    TypedArrayPrototypeGetByteLength(encoder.encode(closeInfo.reason)) > 123
+  ) {
+    throw new DOMException(
+      "The close reason may not be longer than 123 bytes.",
+      "SyntaxError",
+    );
+  }
+}
+
+class WebSocketError extends DOMException {
+  #closeCode;
+  #reason;
+
+  constructor(message = "", init = { __proto__: null }) {
+    super(message, "WebSocketError");
+    this[webidl.brand] = webidl.brand;
+
+    init = webidl.converters["WebSocketCloseInfo"](
+      init,
+      "Failed to construct 'WebSocketError'",
+      "Argument 2",
+    );
+
+    validateCloseCodeAndReason(init);
+
+    if (init.reason && init.closeCode === null) {
+      init.closeCode = 1000;
+    }
+
+    this.#closeCode = init.closeCode;
+    this.#reason = init.reason;
+  }
+
+  get closeCode() {
+    webidl.assertBranded(this, WebSocketErrorPrototype);
+    return this.#closeCode;
+  }
+
+  get reason() {
+    webidl.assertBranded(this, WebSocketErrorPrototype);
+    return this.#reason;
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(WebSocketErrorPrototype, this),
+        keys: [
+          "message",
+          "name",
+          "closeCode",
+          "reason",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
+}
+webidl.configureInterface(WebSocketError);
+const WebSocketErrorPrototype = WebSocketError.prototype;
+
+export { WebSocketError, WebSocketStream };

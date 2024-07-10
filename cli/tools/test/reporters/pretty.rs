@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::common;
 use super::fmt::to_relative_path_or_remote_url;
@@ -8,12 +8,14 @@ pub struct PrettyTestReporter {
   parallel: bool,
   echo_output: bool,
   in_new_line: bool,
+  phase: &'static str,
   filter: bool,
   repl: bool,
   scope_test_id: Option<usize>,
   cwd: Url,
   did_have_user_output: bool,
   started_tests: bool,
+  ended_tests: bool,
   child_results_buffer:
     HashMap<usize, IndexMap<usize, (TestStepDescription, TestStepResult, u64)>>,
   summary: TestSummary,
@@ -26,17 +28,20 @@ impl PrettyTestReporter {
     echo_output: bool,
     filter: bool,
     repl: bool,
+    cwd: Url,
   ) -> PrettyTestReporter {
     PrettyTestReporter {
       parallel,
       echo_output,
       in_new_line: true,
+      phase: "",
       filter,
       repl,
       scope_test_id: None,
-      cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
+      cwd,
       did_have_user_output: false,
       started_tests: false,
+      ended_tests: false,
       child_results_buffer: Default::default(),
       summary: TestSummary::new(),
       writer: Box::new(std::io::stdout()),
@@ -141,7 +146,7 @@ impl PrettyTestReporter {
       .child_results_buffer
       .entry(description.parent_id)
       .or_default()
-      .remove(&description.id);
+      .shift_remove(&description.id);
   }
 
   fn write_output_end(&mut self) {
@@ -149,7 +154,7 @@ impl PrettyTestReporter {
       writeln!(
         &mut self.writer,
         "{}",
-        colors::gray("----- output end -----")
+        colors::gray(format!("----- {}output end -----", self.phase))
       )
       .unwrap();
       self.in_new_line = true;
@@ -161,6 +166,7 @@ impl PrettyTestReporter {
 impl TestReporter for PrettyTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
   fn report_plan(&mut self, plan: &TestPlan) {
+    self.write_output_end();
     self.summary.total += plan.total;
     self.summary.filtered_out += plan.filtered_out;
     if self.repl {
@@ -191,20 +197,39 @@ impl TestReporter for PrettyTestReporter {
     self.started_tests = true;
   }
 
+  fn report_slow(&mut self, description: &TestDescription, elapsed: u64) {
+    writeln!(
+      &mut self.writer,
+      "{}",
+      colors::yellow_bold(format!(
+        "'{}' has been running for over {}",
+        description.name,
+        colors::gray(format!("({})", display::human_elapsed(elapsed.into()))),
+      ))
+    )
+    .unwrap();
+  }
   fn report_output(&mut self, output: &[u8]) {
     if !self.echo_output {
       return;
     }
 
-    if !self.did_have_user_output && self.started_tests {
+    if !self.did_have_user_output {
       self.did_have_user_output = true;
       if !self.in_new_line {
         writeln!(&mut self.writer).unwrap();
       }
+      self.phase = if !self.started_tests {
+        "pre-test "
+      } else if self.ended_tests {
+        "post-test "
+      } else {
+        ""
+      };
       writeln!(
         &mut self.writer,
         "{}",
-        colors::gray("------- output -------")
+        colors::gray(format!("------- {}output -------", self.phase))
       )
       .unwrap();
       self.in_new_line = true;
@@ -233,7 +258,7 @@ impl TestReporter for PrettyTestReporter {
         self
           .summary
           .failures
-          .push((description.clone(), failure.clone()));
+          .push((description.into(), failure.clone()));
       }
       TestResult::Cancelled => {
         self.summary.failed += 1;
@@ -318,11 +343,9 @@ impl TestReporter for PrettyTestReporter {
       TestStepResult::Failed(failure) => {
         self.summary.failed_steps += 1;
         self.summary.failures.push((
-          TestDescription {
+          TestFailureDescription {
             id: desc.id,
             name: common::format_test_step_ancestry(desc, tests, test_steps),
-            ignore: false,
-            only: false,
             origin: desc.origin.clone(),
             location: desc.location.clone(),
           },
@@ -371,6 +394,7 @@ impl TestReporter for PrettyTestReporter {
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
+    self.write_output_end();
     common::report_summary(&mut self.writer, &self.cwd, &self.summary, elapsed);
     if !self.repl {
       writeln!(&mut self.writer).unwrap();
@@ -392,6 +416,11 @@ impl TestReporter for PrettyTestReporter {
       test_steps,
     );
     self.in_new_line = true;
+  }
+
+  fn report_completed(&mut self) {
+    self.write_output_end();
+    self.ended_tests = true;
   }
 
   fn flush_report(

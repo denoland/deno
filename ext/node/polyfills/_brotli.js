@@ -1,22 +1,46 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+import { core, primordials } from "ext:core/mod.js";
+const {
+  Uint8Array,
+  PromisePrototypeThen,
+  PromisePrototypeCatch,
+  ObjectValues,
+  TypedArrayPrototypeSlice,
+  TypedArrayPrototypeSubarray,
+  TypedArrayPrototypeGetByteLength,
+  DataViewPrototypeGetBuffer,
+  TypedArrayPrototypeGetBuffer,
+} = primordials;
+const { isTypedArray, isDataView, close } = core;
+import {
+  op_brotli_compress,
+  op_brotli_compress_async,
+  op_brotli_compress_stream,
+  op_brotli_compress_stream_end,
+  op_brotli_decompress,
+  op_brotli_decompress_async,
+  op_brotli_decompress_stream,
+  op_brotli_decompress_stream_end,
+  op_create_brotli_compress,
+  op_create_brotli_decompress,
+} from "ext:core/ops";
 
 import { zlib as constants } from "ext:deno_node/internal_binding/constants.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Transform } from "node:stream";
 import { Buffer } from "node:buffer";
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
-const {
-  op_brotli_compress_async,
-} = core.ensureFastOps();
 
 const enc = new TextEncoder();
 const toU8 = (input) => {
   if (typeof input === "string") {
     return enc.encode(input);
+  }
+
+  if (isTypedArray(input)) {
+    return new Uint8Array(TypedArrayPrototypeGetBuffer(input));
+  } else if (isDataView(input)) {
+    return new Uint8Array(DataViewPrototypeGetBuffer(input));
   }
 
   return input;
@@ -39,18 +63,25 @@ export class BrotliDecompress extends Transform {
       // TODO(littledivy): use `encoding` argument
       transform(chunk, _encoding, callback) {
         const input = toU8(chunk);
-        const output = new Uint8Array(1024);
-        const avail = ops.op_brotli_decompress_stream(context, input, output);
-        this.push(output.slice(0, avail));
+        const output = new Uint8Array(TypedArrayPrototypeGetByteLength(chunk));
+        const avail = op_brotli_decompress_stream(context, input, output);
+        // deno-lint-ignore prefer-primordials
+        this.push(TypedArrayPrototypeSlice(output, 0, avail));
         callback();
       },
       flush(callback) {
-        core.close(context);
+        const output = new Uint8Array(1024);
+        let avail;
+        while ((avail = op_brotli_decompress_stream_end(context, output)) > 0) {
+          // deno-lint-ignore prefer-primordials
+          this.push(TypedArrayPrototypeSlice(output, 0, avail));
+        }
+        close(context);
         callback();
       },
     });
 
-    this.#context = ops.op_create_brotli_decompress();
+    this.#context = op_create_brotli_decompress();
     const context = this.#context;
   }
 }
@@ -64,20 +95,27 @@ export class BrotliCompress extends Transform {
       transform(chunk, _encoding, callback) {
         const input = toU8(chunk);
         const output = new Uint8Array(brotliMaxCompressedSize(input.length));
-        const avail = ops.op_brotli_compress_stream(context, input, output);
-        this.push(output.slice(0, avail));
+        const written = op_brotli_compress_stream(context, input, output);
+        if (written > 0) {
+          // deno-lint-ignore prefer-primordials
+          this.push(TypedArrayPrototypeSlice(output, 0, written));
+        }
         callback();
       },
       flush(callback) {
         const output = new Uint8Array(1024);
-        const avail = ops.op_brotli_compress_stream_end(context, output);
-        this.push(output.slice(0, avail));
+        let avail;
+        while ((avail = op_brotli_compress_stream_end(context, output)) > 0) {
+          // deno-lint-ignore prefer-primordials
+          this.push(TypedArrayPrototypeSlice(output, 0, avail));
+        }
+        close(context);
         callback();
       },
     });
 
-    const params = Object.values(options?.params ?? {});
-    this.#context = ops.op_create_brotli_compress(params);
+    const params = ObjectValues(options?.params ?? {});
+    this.#context = op_create_brotli_compress(params);
     const context = this.#context;
   }
 }
@@ -121,9 +159,13 @@ export function brotliCompress(
   }
 
   const { quality, lgwin, mode } = oneOffCompressOptions(options);
-  op_brotli_compress_async(buf, quality, lgwin, mode)
-    .then((result) => callback(null, result))
-    .catch((err) => callback(err));
+  PromisePrototypeCatch(
+    PromisePrototypeThen(
+      op_brotli_compress_async(buf, quality, lgwin, mode),
+      (result) => callback(null, Buffer.from(result)),
+    ),
+    (err) => callback(err),
+  );
 }
 
 export function brotliCompressSync(
@@ -134,17 +176,21 @@ export function brotliCompressSync(
   const output = new Uint8Array(brotliMaxCompressedSize(buf.length));
 
   const { quality, lgwin, mode } = oneOffCompressOptions(options);
-  const len = ops.op_brotli_compress(buf, output, quality, lgwin, mode);
-  return Buffer.from(output.subarray(0, len));
+  const len = op_brotli_compress(buf, output, quality, lgwin, mode);
+  return Buffer.from(TypedArrayPrototypeSubarray(output, 0, len));
 }
 
 export function brotliDecompress(input) {
   const buf = toU8(input);
-  return ops.op_brotli_decompress_async(buf)
-    .then((result) => callback(null, Buffer.from(result)))
-    .catch((err) => callback(err));
+  return PromisePrototypeCatch(
+    PromisePrototypeThen(
+      op_brotli_decompress_async(buf),
+      (result) => callback(null, Buffer.from(result)),
+    ),
+    (err) => callback(err),
+  );
 }
 
 export function brotliDecompressSync(input) {
-  return Buffer.from(ops.op_brotli_decompress(toU8(input)));
+  return Buffer.from(op_brotli_decompress(toU8(input)));
 }

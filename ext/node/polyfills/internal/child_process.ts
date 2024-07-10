@@ -1,10 +1,24 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
+
+import { core, internals } from "ext:core/mod.js";
+import { op_node_ipc_read, op_node_ipc_write } from "ext:core/ops";
+import {
+  ArrayIsArray,
+  ArrayPrototypeFilter,
+  ArrayPrototypeJoin,
+  ArrayPrototypePush,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSort,
+  ArrayPrototypeUnshift,
+  ObjectHasOwn,
+  StringPrototypeToUpperCase,
+} from "ext:deno_node/internal/primordials.mjs";
 
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { EventEmitter } from "node:events";
@@ -29,25 +43,9 @@ import {
   validateObject,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
-import {
-  ArrayIsArray,
-  ArrayPrototypeFilter,
-  ArrayPrototypeJoin,
-  ArrayPrototypePush,
-  ArrayPrototypeSlice,
-  ArrayPrototypeSort,
-  ArrayPrototypeUnshift,
-  ObjectHasOwn,
-  StringPrototypeToUpperCase,
-} from "ext:deno_node/internal/primordials.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
-const core = globalThis.__bootstrap.core;
-const {
-  op_node_ipc_read,
-  op_node_ipc_write,
-} = core.ensureFastOps();
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -258,8 +256,9 @@ export class ChildProcess extends EventEmitter {
         }
       }
 
-      if (typeof this.#process._pipeFd == "number") {
-        setupChannel(this, this.#process._pipeFd);
+      const pipeFd = internals.getPipeFd(this.#process);
+      if (typeof pipeFd == "number") {
+        setupChannel(this, pipeFd);
       }
 
       (async () => {
@@ -276,7 +275,11 @@ export class ChildProcess extends EventEmitter {
         });
       })();
     } catch (err) {
-      this.#_handleError(err);
+      let e = err;
+      if (e instanceof Deno.errors.NotFound) {
+        e = _createSpawnSyncError("ENOENT", command, args);
+      }
+      this.#_handleError(e);
     }
   }
 
@@ -301,7 +304,9 @@ export class ChildProcess extends EventEmitter {
     }
 
     /* Cancel any pending IPC I/O */
-    this.disconnect?.();
+    if (this.implementsDisconnect) {
+      this.disconnect?.();
+    }
 
     this.killed = true;
     this.signalCode = denoSignal;
@@ -357,17 +362,25 @@ export class ChildProcess extends EventEmitter {
   }
 }
 
-const supportedNodeStdioTypes: NodeStdio[] = ["pipe", "ignore", "inherit"];
+const supportedNodeStdioTypes: NodeStdio[] = [
+  "pipe",
+  "ignore",
+  "inherit",
+  "ipc",
+];
 function toDenoStdio(
   pipe: NodeStdio | number | Stream | null | undefined,
 ): DenoStdio {
   if (pipe instanceof Stream) {
     return "inherit";
   }
+  if (typeof pipe === "number") {
+    /* Assume it's a rid returned by fs APIs */
+    return pipe;
+  }
 
   if (
-    !supportedNodeStdioTypes.includes(pipe as NodeStdio) ||
-    typeof pipe === "number"
+    !supportedNodeStdioTypes.includes(pipe as NodeStdio)
   ) {
     notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
   }
@@ -380,6 +393,8 @@ function toDenoStdio(
       return "null";
     case "inherit":
       return "inherit";
+    case "ipc":
+      return "ipc_for_internal_use";
     default:
       notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
   }
@@ -498,9 +513,18 @@ function normalizeStdioOption(
   if (Array.isArray(stdio)) {
     // `[0, 1, 2]` is equivalent to `"inherit"`
     if (
-      stdio.length === 3 && stdio[0] === 0 && stdio[1] === 1 && stdio[2] === 2
+      stdio.length === 3 &&
+      (stdio[0] === 0 && stdio[1] === 1 && stdio[2] === 2)
     ) {
       return ["inherit", "inherit", "inherit"];
+    }
+
+    // `[null, null, null]` is equivalent to `"pipe"
+    if (
+      stdio.length === 3 &&
+        stdio[0] === null || stdio[1] === null || stdio[2] === null
+    ) {
+      return ["pipe", "pipe", "pipe"];
     }
 
     // At least 3 stdio must be created to match node
@@ -852,7 +876,7 @@ export function spawnSync(
     windowsVerbatimArguments = false,
   } = options;
   const [
-    _stdin_ = "pipe", // TODO(bartlomieju): use this?
+    stdin_ = "pipe",
     stdout_ = "pipe",
     stderr_ = "pipe",
     _channel, // TODO(kt3k): handle this correctly
@@ -867,6 +891,7 @@ export function spawnSync(
       env: mapValues(env, (value) => value.toString()),
       stdout: toDenoStdio(stdout_),
       stderr: toDenoStdio(stderr_),
+      stdin: stdin_ == "inherit" ? "inherit" : "null",
       uid,
       gid,
       windowsRawArguments: windowsVerbatimArguments,
@@ -1068,8 +1093,7 @@ function toDenoArgs(args: string[]): string[] {
 
   if (useRunArgs) {
     // -A is not ideal, but needed to propagate permissions.
-    // --unstable is needed for Node compat.
-    denoArgs.unshift("run", "-A", "--unstable");
+    denoArgs.unshift("run", "-A");
   }
 
   return denoArgs;
@@ -1149,6 +1173,7 @@ export function setupChannel(target, ipc) {
       target.emit("disconnect");
     });
   };
+  target.implementsDisconnect = true;
 
   // Start reading messages from the channel.
   readLoop();

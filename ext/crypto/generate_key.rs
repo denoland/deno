@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -84,11 +84,17 @@ fn generate_key_rsa(
   Ok(private_key.as_bytes().to_vec())
 }
 
+fn generate_key_ec_p521() -> Vec<u8> {
+  let mut rng = OsRng;
+  let key = p521::SecretKey::random(&mut rng);
+  key.to_nonzero_scalar().to_bytes().to_vec()
+}
+
 fn generate_key_ec(named_curve: EcNamedCurve) -> Result<Vec<u8>, AnyError> {
   let curve = match named_curve {
     EcNamedCurve::P256 => &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
     EcNamedCurve::P384 => &ring::signature::ECDSA_P384_SHA384_FIXED_SIGNING,
-    _ => return Err(not_supported_error("Unsupported named curve")),
+    EcNamedCurve::P521 => return Ok(generate_key_ec_p521()),
   };
 
   let rng = ring::rand::SystemRandom::new();

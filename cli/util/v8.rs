@@ -1,4 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+pub mod convert;
 
 #[inline(always)]
 pub fn get_v8_flags_from_env() -> Vec<String> {
@@ -43,6 +45,8 @@ pub fn init_v8_flags(
     .into_iter()
     .skip(1)
     .collect::<Vec<_>>();
+
+  #[allow(clippy::print_stderr)]
   if !unrecognized_v8_flags.is_empty() {
     for f in unrecognized_v8_flags {
       eprintln!("error: V8 did not recognize flag '{f}'");

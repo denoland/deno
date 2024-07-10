@@ -1,9 +1,11 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+#![deny(clippy::print_stderr)]
+#![deny(clippy::print_stdout)]
 
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
-use std::rc::Rc;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
@@ -30,10 +32,16 @@ mod path;
 mod polyfill;
 mod resolution;
 
+pub use deno_config::package_json::PackageJson;
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
-pub use ops::v8::VM_CONTEXT_INDEX;
-pub use package_json::PackageJson;
+use ops::vm;
+pub use ops::vm::create_v8_context;
+pub use ops::vm::init_global_template;
+pub use ops::vm::ContextInitMode;
+pub use ops::vm::VM_CONTEXT_INDEX;
+pub use package_json::load_pkg_json;
+pub use package_json::PackageJsonThreadLocalCache;
 pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
@@ -43,6 +51,7 @@ pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;
 pub use resolution::NodeResolver;
+use resolution::NodeResolverRc;
 
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
@@ -54,18 +63,23 @@ pub trait NodePermissions {
     api_name: &str,
   ) -> Result<(), AnyError>;
   #[inline(always)]
-  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
+  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
     self.check_read_with_api_name(path, None)
   }
   fn check_read_with_api_name(
-    &self,
+    &mut self,
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError>;
-  fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError>;
+  fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError>;
+  fn check_write_with_api_name(
+    &mut self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError>;
 }
 
-pub(crate) struct AllowAllNodePermissions;
+pub struct AllowAllNodePermissions;
 
 impl NodePermissions for AllowAllNodePermissions {
   fn check_net_url(
@@ -76,14 +90,62 @@ impl NodePermissions for AllowAllNodePermissions {
     Ok(())
   }
   fn check_read_with_api_name(
-    &self,
+    &mut self,
     _path: &Path,
     _api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     Ok(())
   }
-  fn check_sys(&self, _kind: &str, _api_name: &str) -> Result<(), AnyError> {
+  fn check_write_with_api_name(
+    &mut self,
+    _path: &Path,
+    _api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
     Ok(())
+  }
+  fn check_sys(
+    &mut self,
+    _kind: &str,
+    _api_name: &str,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
+}
+
+impl NodePermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+  }
+
+  #[inline(always)]
+  fn check_read_with_api_name(
+    &mut self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_read_with_api_name(
+      self, path, api_name,
+    )
+  }
+
+  #[inline(always)]
+  fn check_write_with_api_name(
+    &mut self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_write_with_api_name(
+      self, path, api_name,
+    )
+  }
+
+  fn check_sys(&mut self, kind: &str, api_name: &str) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_sys(self, kind, api_name)
   }
 }
 
@@ -106,8 +168,7 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<PathBuf, errors::PackageFolderResolveError>;
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
 
@@ -131,7 +192,7 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
 
   fn ensure_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError>;
 }
@@ -171,6 +232,17 @@ deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   parameters = [P: NodePermissions],
   ops = [
+    ops::blocklist::op_socket_address_parse,
+    ops::blocklist::op_socket_address_get_serialization,
+
+    ops::blocklist::op_blocklist_new,
+    ops::blocklist::op_blocklist_add_address,
+    ops::blocklist::op_blocklist_add_range,
+    ops::blocklist::op_blocklist_add_subnet,
+    ops::blocklist::op_blocklist_check,
+
+    ops::buffer::op_is_ascii,
+    ops::buffer::op_is_utf8,
     ops::crypto::op_node_create_decipheriv,
     ops::crypto::op_node_cipheriv_encrypt,
     ops::crypto::op_node_cipheriv_final,
@@ -225,6 +297,9 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_ecdh_generate_keys,
     ops::crypto::op_node_ecdh_compute_secret,
     ops::crypto::op_node_ecdh_compute_public_key,
+    ops::crypto::op_node_ecdh_encode_pubkey,
+    ops::crypto::op_node_export_rsa_public_pem,
+    ops::crypto::op_node_export_rsa_spki_der,
     ops::crypto::x509::op_node_x509_parse,
     ops::crypto::x509::op_node_x509_ca,
     ops::crypto::x509::op_node_x509_check_email,
@@ -238,19 +313,31 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_get_serial_number,
     ops::crypto::x509::op_node_x509_key_usage,
     ops::fs::op_node_fs_exists_sync<P>,
+    ops::fs::op_node_cp_sync<P>,
+    ops::fs::op_node_cp<P>,
+    ops::fs::op_node_lchown_sync<P>,
+    ops::fs::op_node_lchown<P>,
+    ops::fs::op_node_lutimes_sync<P>,
+    ops::fs::op_node_lutimes<P>,
+    ops::fs::op_node_statfs<P>,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
     ops::v8::op_v8_get_heap_statistics,
-    ops::v8::op_vm_run_in_new_context,
+    ops::vm::op_vm_create_script,
+    ops::vm::op_vm_create_context,
+    ops::vm::op_vm_script_run_in_context,
+    ops::vm::op_vm_script_run_in_this_context,
+    ops::vm::op_vm_is_context,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
+    ops::idna::op_node_idna_punycode_to_ascii,
+    ops::idna::op_node_idna_punycode_to_unicode,
     ops::idna::op_node_idna_punycode_decode,
     ops::idna::op_node_idna_punycode_encode,
     ops::zlib::op_zlib_new,
     ops::zlib::op_zlib_close,
     ops::zlib::op_zlib_close_if_pending,
     ops::zlib::op_zlib_write,
-    ops::zlib::op_zlib_write_async,
     ops::zlib::op_zlib_init,
     ops::zlib::op_zlib_reset,
     ops::zlib::brotli::op_brotli_compress,
@@ -270,7 +357,6 @@ deno_core::extension!(deno_node,
     ops::http2::op_http2_client_get_response,
     ops::http2::op_http2_client_get_response_body_chunk,
     ops::http2::op_http2_client_send_data,
-    ops::http2::op_http2_client_end_stream,
     ops::http2::op_http2_client_reset_stream,
     ops::http2::op_http2_client_send_trailers,
     ops::http2::op_http2_client_get_response_trailers,
@@ -281,7 +367,9 @@ deno_core::extension!(deno_node,
     ops::os::op_node_os_set_priority<P>,
     ops::os::op_node_os_username<P>,
     ops::os::op_geteuid<P>,
+    ops::os::op_getegid<P>,
     ops::os::op_cpus<P>,
+    ops::os::op_homedir<P>,
     op_node_build_os,
     op_node_is_promise_rejected,
     op_npm_process_state,
@@ -308,10 +396,14 @@ deno_core::extension!(deno_node,
     ops::require::op_require_package_imports_resolve<P>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
+    ops::worker_threads::op_worker_threads_filename<P>,
     ops::crypto::op_node_create_private_key,
+    ops::crypto::op_node_create_public_key,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
     ops::ipc::op_node_ipc_read,
+    ops::process::op_node_process_kill,
+    ops::process::op_process_abort,
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -328,6 +420,7 @@ deno_core::extension!(deno_node,
     "_fs/_fs_common.ts",
     "_fs/_fs_constants.ts",
     "_fs/_fs_copy.ts",
+    "_fs/_fs_cp.js",
     "_fs/_fs_dir.ts",
     "_fs/_fs_dirent.ts",
     "_fs/_fs_exists.ts",
@@ -336,8 +429,10 @@ deno_core::extension!(deno_node,
     "_fs/_fs_fsync.ts",
     "_fs/_fs_ftruncate.ts",
     "_fs/_fs_futimes.ts",
+    "_fs/_fs_lchown.ts",
     "_fs/_fs_link.ts",
     "_fs/_fs_lstat.ts",
+    "_fs/_fs_lutimes.ts",
     "_fs/_fs_mkdir.ts",
     "_fs/_fs_mkdtemp.ts",
     "_fs/_fs_open.ts",
@@ -346,11 +441,13 @@ deno_core::extension!(deno_node,
     "_fs/_fs_readdir.ts",
     "_fs/_fs_readFile.ts",
     "_fs/_fs_readlink.ts",
+    "_fs/_fs_readv.ts",
     "_fs/_fs_realpath.ts",
     "_fs/_fs_rename.ts",
     "_fs/_fs_rm.ts",
     "_fs/_fs_rmdir.ts",
     "_fs/_fs_stat.ts",
+    "_fs/_fs_statfs.js",
     "_fs/_fs_symlink.ts",
     "_fs/_fs_truncate.ts",
     "_fs/_fs_unlink.ts",
@@ -370,7 +467,7 @@ deno_core::extension!(deno_node,
     "_stream.mjs",
     "_tls_common.ts",
     "_tls_wrap.ts",
-    "_util/_util_callbackify.ts",
+    "_util/_util_callbackify.js",
     "_util/asserts.ts",
     "_util/async.ts",
     "_util/os.ts",
@@ -409,6 +506,7 @@ deno_core::extension!(deno_node,
     "internal_binding/uv.ts",
     "internal/assert.mjs",
     "internal/async_hooks.ts",
+    "internal/blocklist.mjs",
     "internal/buffer.mjs",
     "internal/child_process.ts",
     "internal/cli_table.ts",
@@ -493,76 +591,136 @@ deno_core::extension!(deno_node,
     "path/separator.ts",
     "readline/promises.ts",
     "wasi.ts",
-    "assert.ts" with_specifier "node:assert",
-    "assert/strict.ts" with_specifier "node:assert/strict",
-    "async_hooks.ts" with_specifier "node:async_hooks",
-    "buffer.ts" with_specifier "node:buffer",
-    "child_process.ts" with_specifier "node:child_process",
-    "cluster.ts" with_specifier "node:cluster",
-    "console.ts" with_specifier "node:console",
-    "constants.ts" with_specifier "node:constants",
-    "crypto.ts" with_specifier "node:crypto",
-    "dgram.ts" with_specifier "node:dgram",
-    "diagnostics_channel.ts" with_specifier "node:diagnostics_channel",
-    "dns.ts" with_specifier "node:dns",
-    "dns/promises.ts" with_specifier "node:dns/promises",
-    "domain.ts" with_specifier "node:domain",
-    "events.ts" with_specifier "node:events",
-    "fs.ts" with_specifier "node:fs",
-    "fs/promises.ts" with_specifier "node:fs/promises",
-    "http.ts" with_specifier "node:http",
-    "http2.ts" with_specifier "node:http2",
-    "https.ts" with_specifier "node:https",
-    "01_require.js" with_specifier "node:module",
-    "net.ts" with_specifier "node:net",
-    "os.ts" with_specifier "node:os",
-    "path.ts" with_specifier "node:path",
-    "path/posix.ts" with_specifier "node:path/posix",
-    "path/win32.ts" with_specifier "node:path/win32",
-    "perf_hooks.ts" with_specifier "node:perf_hooks",
-    "process.ts" with_specifier "node:process",
-    "punycode.ts" with_specifier "node:punycode",
-    "querystring.ts" with_specifier "node:querystring",
-    "readline.ts" with_specifier "node:readline",
-    "repl.ts" with_specifier "node:repl",
-    "stream.ts" with_specifier "node:stream",
-    "stream/consumers.mjs" with_specifier "node:stream/consumers",
-    "stream/promises.mjs" with_specifier "node:stream/promises",
-    "stream/web.ts" with_specifier "node:stream/web",
-    "string_decoder.ts" with_specifier "node:string_decoder",
-    "sys.ts" with_specifier "node:sys",
-    "testing.ts" with_specifier "node:test",
-    "timers.ts" with_specifier "node:timers",
-    "timers/promises.ts" with_specifier "node:timers/promises",
-    "tls.ts" with_specifier "node:tls",
-    "tty.js" with_specifier "node:tty",
-    "url.ts" with_specifier "node:url",
-    "util.ts" with_specifier "node:util",
-    "util/types.ts" with_specifier "node:util/types",
-    "v8.ts" with_specifier "node:v8",
-    "vm.ts" with_specifier "node:vm",
-    "worker_threads.ts" with_specifier "node:worker_threads",
-    "zlib.ts" with_specifier "node:zlib",
+    "node:assert" = "assert.ts",
+    "node:assert/strict" = "assert/strict.ts",
+    "node:async_hooks" = "async_hooks.ts",
+    "node:buffer" = "buffer.ts",
+    "node:child_process" = "child_process.ts",
+    "node:cluster" = "cluster.ts",
+    "node:console" = "console.ts",
+    "node:constants" = "constants.ts",
+    "node:crypto" = "crypto.ts",
+    "node:dgram" = "dgram.ts",
+    "node:diagnostics_channel" = "diagnostics_channel.js",
+    "node:dns" = "dns.ts",
+    "node:dns/promises" = "dns/promises.ts",
+    "node:domain" = "domain.ts",
+    "node:events" = "events.ts",
+    "node:fs" = "fs.ts",
+    "node:fs/promises" = "fs/promises.ts",
+    "node:http" = "http.ts",
+    "node:http2" = "http2.ts",
+    "node:https" = "https.ts",
+    "node:module" = "01_require.js",
+    "node:net" = "net.ts",
+    "node:os" = "os.ts",
+    "node:path" = "path.ts",
+    "node:path/posix" = "path/posix.ts",
+    "node:path/win32" = "path/win32.ts",
+    "node:perf_hooks" = "perf_hooks.ts",
+    "node:process" = "process.ts",
+    "node:punycode" = "punycode.ts",
+    "node:querystring" = "querystring.js",
+    "node:readline" = "readline.ts",
+    "node:repl" = "repl.ts",
+    "node:stream" = "stream.ts",
+    "node:stream/consumers" = "stream/consumers.mjs",
+    "node:stream/promises" = "stream/promises.mjs",
+    "node:stream/web" = "stream/web.ts",
+    "node:string_decoder" = "string_decoder.ts",
+    "node:sys" = "sys.ts",
+    "node:test" = "testing.ts",
+    "node:timers" = "timers.ts",
+    "node:timers/promises" = "timers/promises.ts",
+    "node:tls" = "tls.ts",
+    "node:tty" = "tty.js",
+    "node:url" = "url.ts",
+    "node:util" = "util.ts",
+    "node:util/types" = "util/types.ts",
+    "node:v8" = "v8.ts",
+    "node:vm" = "vm.ts",
+    "node:worker_threads" = "worker_threads.ts",
+    "node:zlib" = "zlib.ts",
   ],
   options = {
+    maybe_node_resolver: Option<NodeResolverRc>,
     maybe_npm_resolver: Option<NpmResolverRc>,
     fs: deno_fs::FileSystemRc,
   },
   state = |state, options| {
-    let fs = options.fs;
-    state.put(fs.clone());
-    if let Some(npm_resolver) = options.maybe_npm_resolver {
+    // you should provide both of these or neither
+    debug_assert_eq!(options.maybe_node_resolver.is_some(), options.maybe_npm_resolver.is_some());
+
+    state.put(options.fs.clone());
+
+    if let Some(node_resolver) = &options.maybe_node_resolver {
+      state.put(node_resolver.clone());
+    }
+    if let Some(npm_resolver) = &options.maybe_npm_resolver {
       state.put(npm_resolver.clone());
-      state.put(Rc::new(NodeResolver::new(
-        fs,
-        npm_resolver,
-      )))
     }
   },
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
-    let mut external_references = Vec::with_capacity(7);
+    let mut external_references = Vec::with_capacity(14);
+
+    vm::GETTER_MAP_FN.with(|getter| {
+      external_references.push(ExternalReference {
+        named_getter: *getter,
+      });
+    });
+    vm::SETTER_MAP_FN.with(|setter| {
+      external_references.push(ExternalReference {
+        named_setter: *setter,
+      });
+    });
+    vm::DELETER_MAP_FN.with(|deleter| {
+      external_references.push(ExternalReference {
+        named_getter: *deleter,
+      },);
+    });
+    vm::ENUMERATOR_MAP_FN.with(|enumerator| {
+      external_references.push(ExternalReference {
+        enumerator: *enumerator,
+      });
+    });
+    vm::DEFINER_MAP_FN.with(|definer| {
+      external_references.push(ExternalReference {
+        named_definer: *definer,
+      });
+    });
+    vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
+      external_references.push(ExternalReference {
+        named_getter: *descriptor,
+      });
+    });
+
+    vm::INDEXED_GETTER_MAP_FN.with(|getter| {
+      external_references.push(ExternalReference {
+        indexed_getter: *getter,
+      });
+    });
+    vm::INDEXED_SETTER_MAP_FN.with(|setter| {
+      external_references.push(ExternalReference {
+        indexed_setter: *setter,
+      });
+    });
+    vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
+      external_references.push(ExternalReference {
+        indexed_getter: *deleter,
+      });
+    });
+    vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
+      external_references.push(ExternalReference {
+        indexed_definer: *definer,
+      });
+    });
+    vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
+      external_references.push(ExternalReference {
+        indexed_getter: *descriptor,
+      });
+    });
 
     global::GETTER_MAP_FN.with(|getter| {
       external_references.push(ExternalReference {
@@ -620,8 +778,7 @@ pub fn load_cjs_module(
     main = main,
     module = escape_for_single_quote_string(module),
     inspect_brk = inspect_brk,
-  )
-  .into();
+  );
 
   js_runtime.execute_script(located_script_name!(), source_code)?;
   Ok(())

@@ -1,7 +1,7 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::CACHE_PERM;
-use crate::util::fs::atomic_write_file;
+use crate::util::fs::atomic_write_file_with_retries;
 
 use deno_cache_dir::url_to_filename;
 use deno_core::url::Host;
@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::path::Prefix;
 use std::str;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DiskCache {
   pub location: PathBuf,
 }
@@ -120,7 +120,7 @@ impl DiskCache {
 
   pub fn set(&self, filename: &Path, data: &[u8]) -> std::io::Result<()> {
     let path = self.location.join(filename);
-    atomic_write_file(&path, data, CACHE_PERM)
+    atomic_write_file_with_retries(&path, data, CACHE_PERM)
   }
 }
 

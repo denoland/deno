@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::sync::Arc;
 
@@ -48,6 +48,18 @@ impl Client {
   /// the LSP's lock to prevent deadlocking scenarios.
   pub fn when_outside_lsp_lock(&self) -> OutsideLockClient {
     OutsideLockClient(self.0.clone())
+  }
+
+  pub async fn publish_diagnostics(
+    &self,
+    uri: LspClientUrl,
+    diags: Vec<lsp::Diagnostic>,
+    version: Option<i32>,
+  ) {
+    self
+      .0
+      .publish_diagnostics(uri.into_url(), diags, version)
+      .await;
   }
 
   pub fn send_registry_state_notification(
@@ -140,18 +152,6 @@ impl OutsideLockClient {
     scopes: Vec<Option<lsp::Url>>,
   ) -> Result<Vec<WorkspaceSettings>, AnyError> {
     self.0.workspace_configuration(scopes).await
-  }
-
-  pub async fn publish_diagnostics(
-    &self,
-    uri: LspClientUrl,
-    diags: Vec<lsp::Diagnostic>,
-    version: Option<i32>,
-  ) {
-    self
-      .0
-      .publish_diagnostics(uri.into_url(), diags, version)
-      .await;
   }
 }
 

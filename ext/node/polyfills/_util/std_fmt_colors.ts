@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // This file is vendored from std/fmt/colors.ts
 
 import { primordials } from "ext:core/mod.js";
@@ -18,7 +18,6 @@ const noColor = false;
 interface Code {
   open: string;
   close: string;
-  // deno-lint-ignore prefer-primordials
   regexp: RegExp;
 }
 

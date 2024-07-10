@@ -1,47 +1,48 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file no-explicit-any prefer-primordials
+// deno-lint-ignore-file no-explicit-any
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
-
-const { core } = globalThis.__bootstrap;
-const ops = core.ops;
+import {
+  op_vm_create_context,
+  op_vm_create_script,
+  op_vm_is_context,
+  op_vm_script_run_in_context,
+  op_vm_script_run_in_this_context,
+} from "ext:core/ops";
 
 export class Script {
-  code: string;
+  #inner;
+
   constructor(code: string, _options = {}) {
-    this.code = `${code}`;
+    this.#inner = op_vm_create_script(code);
   }
 
   runInThisContext(_options: any) {
-    const [result, error] = core.evalContext(this.code, "data:");
-    if (error) {
-      throw error.thrown;
-    }
-    return result;
+    return op_vm_script_run_in_this_context(this.#inner);
   }
 
-  runInContext(_contextifiedObject: any, _options: any) {
-    notImplemented("Script.prototype.runInContext");
+  runInContext(contextifiedObject: any, _options: any) {
+    return op_vm_script_run_in_context(this.#inner, contextifiedObject);
   }
 
   runInNewContext(contextObject: any, options: any) {
-    if (options) {
-      console.warn(
-        "Script.runInNewContext options are currently not supported",
-      );
-    }
-    return ops.op_vm_run_in_new_context(this.code, contextObject);
+    const context = createContext(contextObject);
+    return this.runInContext(context, options);
   }
 
   createCachedData() {
-    notImplemented("Script.prototyp.createCachedData");
+    notImplemented("Script.prototype.createCachedData");
   }
 }
 
-export function createContext(_contextObject: any, _options: any) {
-  notImplemented("createContext");
+export function createContext(contextObject: any = {}, _options: any) {
+  if (isContext(contextObject)) {
+    return contextObject;
+  }
+
+  op_vm_create_context(contextObject);
+  return contextObject;
 }
 
 export function createScript(code: string, options: any) {
@@ -49,11 +50,11 @@ export function createScript(code: string, options: any) {
 }
 
 export function runInContext(
-  _code: string,
-  _contextifiedObject: any,
+  code: string,
+  contextifiedObject: any,
   _options: any,
 ) {
-  notImplemented("runInContext");
+  return createScript(code).runInContext(contextifiedObject);
 }
 
 export function runInNewContext(
@@ -64,7 +65,7 @@ export function runInNewContext(
   if (options) {
     console.warn("vm.runInNewContext options are currently not supported");
   }
-  return ops.op_vm_run_in_new_context(code, contextObject);
+  return createScript(code).runInNewContext(contextObject);
 }
 
 export function runInThisContext(
@@ -74,9 +75,8 @@ export function runInThisContext(
   return createScript(code, options).runInThisContext(options);
 }
 
-export function isContext(_maybeContext: any) {
-  // TODO(@littledivy): Currently we do not expose contexts so this is always false.
-  return false;
+export function isContext(maybeContext: any) {
+  return op_vm_is_context(maybeContext);
 }
 
 export function compileFunction(_code: string, _params: any, _options: any) {

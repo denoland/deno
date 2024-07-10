@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -23,16 +23,21 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-const core = globalThis.__bootstrap.core;
+import {
+  op_cpus,
+  op_homedir,
+  op_node_os_get_priority,
+  op_node_os_set_priority,
+  op_node_os_username,
+} from "ext:core/ops";
+
 import { validateIntegerRange } from "ext:deno_node/_utils.ts";
 import process from "node:process";
-import { isWindows, osType } from "ext:deno_node/_util/os.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
 import { ERR_OS_NO_HOMEDIR } from "ext:deno_node/internal/errors.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { osUptime } from "ext:runtime/30_os.js";
 import { Buffer } from "ext:deno_node/internal/buffer.mjs";
-
-const ops = core.ops;
 
 export const constants = os;
 
@@ -129,9 +134,11 @@ export function arch(): string {
 (type as any)[Symbol.toPrimitive] = (): string => type();
 // deno-lint-ignore no-explicit-any
 (uptime as any)[Symbol.toPrimitive] = (): number => uptime();
+// deno-lint-ignore no-explicit-any
+(machine as any)[Symbol.toPrimitive] = (): string => machine();
 
 export function cpus(): CPUCoreInfo[] {
-  return ops.op_cpus();
+  return op_cpus();
 }
 
 /**
@@ -149,7 +156,7 @@ export function endianness(): "BE" | "LE" {
 
 /** Return free memory amount */
 export function freemem(): number {
-  if (Deno.build.os === "linux") {
+  if (Deno.build.os === "linux" || Deno.build.os == "android") {
     // On linux, use 'available' memory
     // https://github.com/libuv/libuv/blob/a5c01d4de3695e9d9da34cfd643b5ff0ba582ea7/src/unix/linux.c#L2064
     return Deno.systemMemoryInfo().available;
@@ -162,25 +169,12 @@ export function freemem(): number {
 /** Not yet implemented */
 export function getPriority(pid = 0): number {
   validateIntegerRange(pid, "pid");
-  return core.ops.op_node_os_get_priority(pid);
+  return op_node_os_get_priority(pid);
 }
 
 /** Returns the string path of the current user's home directory. */
 export function homedir(): string | null {
-  // Note: Node/libuv calls getpwuid() / GetUserProfileDirectory() when the
-  // environment variable isn't set but that's the (very uncommon) fallback
-  // path. IMO, it's okay to punt on that for now.
-  switch (osType) {
-    case "windows":
-      return Deno.env.get("USERPROFILE") || null;
-    case "linux":
-    case "darwin":
-    case "freebsd":
-    case "openbsd":
-      return Deno.env.get("HOME") || null;
-    default:
-      throw Error("unreachable");
-  }
+  return op_homedir();
 }
 
 /** Returns the host name of the operating system as a string. */
@@ -247,6 +241,15 @@ export function version(): string {
   return Deno.osRelease();
 }
 
+/** Returns the machine type as a string */
+export function machine(): string {
+  if (Deno.build.arch == "aarch64") {
+    return "arm64";
+  }
+
+  return Deno.build.arch;
+}
+
 /** Not yet implemented */
 export function setPriority(pid: number, priority?: number) {
   /* The node API has the 'pid' as the first parameter and as optional.
@@ -258,7 +261,7 @@ export function setPriority(pid: number, priority?: number) {
   validateIntegerRange(pid, "pid");
   validateIntegerRange(priority, "priority", -20, 19);
 
-  core.ops.op_node_os_set_priority(pid, priority);
+  op_node_os_set_priority(pid, priority);
 }
 
 /** Returns the operating system's default directory for temporary files as a string. */
@@ -299,6 +302,7 @@ export function type(): string {
     case "windows":
       return "Windows_NT";
     case "linux":
+    case "android":
       return "Linux";
     case "darwin":
       return "Darwin";
@@ -337,7 +341,7 @@ export function userInfo(
     throw new ERR_OS_NO_HOMEDIR();
   }
   let shell = isWindows ? (Deno.env.get("SHELL") || null) : null;
-  let username = core.ops.op_node_os_username();
+  let username = op_node_os_username();
 
   if (options?.encoding === "buffer") {
     _homedir = _homedir ? Buffer.from(_homedir) : _homedir;
@@ -373,6 +377,7 @@ export default {
   hostname,
   loadavg,
   networkInterfaces,
+  machine,
   platform,
   release,
   setPriority,

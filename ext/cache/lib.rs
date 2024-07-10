@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -6,6 +6,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::serde::Deserialize;
@@ -29,7 +30,6 @@ deno_core::extension!(deno_cache,
     op_cache_storage_has<CA>,
     op_cache_storage_delete<CA>,
     op_cache_put<CA>,
-    op_cache_put_finish<CA>,
     op_cache_match<CA>,
     op_cache_delete<CA>,
   ],
@@ -55,9 +55,9 @@ pub struct CachePutRequest {
   pub request_url: String,
   pub request_headers: Vec<(ByteString, ByteString)>,
   pub response_headers: Vec<(ByteString, ByteString)>,
-  pub response_has_body: bool,
   pub response_status: u16,
   pub response_status_text: String,
+  pub response_rid: Option<ResourceId>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -90,27 +90,24 @@ pub struct CacheDeleteRequest {
 
 #[async_trait(?Send)]
 pub trait Cache: Clone + 'static {
-  type CachePutResourceType: Resource;
+  type CacheMatchResourceType: Resource;
 
   async fn storage_open(&self, cache_name: String) -> Result<i64, AnyError>;
   async fn storage_has(&self, cache_name: String) -> Result<bool, AnyError>;
   async fn storage_delete(&self, cache_name: String) -> Result<bool, AnyError>;
 
-  /// Create a put request.
-  async fn put_create(
+  /// Put a resource into the cache.
+  async fn put(
     &self,
     request_response: CachePutRequest,
-  ) -> Result<Option<Rc<Self::CachePutResourceType>>, AnyError>;
-  /// Complete a put request.
-  async fn put_finish(
-    &self,
-    resource: Rc<Self::CachePutResourceType>,
+    resource: Option<Rc<dyn Resource>>,
   ) -> Result<(), AnyError>;
+
   async fn r#match(
     &self,
     request: CacheMatchRequest,
   ) -> Result<
-    Option<(CacheMatchResponseMeta, Option<Rc<dyn Resource>>)>,
+    Option<(CacheMatchResponseMeta, Option<Self::CacheMatchResourceType>)>,
     AnyError,
   >;
   async fn delete(&self, request: CacheDeleteRequest)
@@ -155,38 +152,19 @@ where
 }
 
 #[op2(async)]
-#[smi]
 pub async fn op_cache_put<CA>(
   state: Rc<RefCell<OpState>>,
   #[serde] request_response: CachePutRequest,
-) -> Result<Option<ResourceId>, AnyError>
-where
-  CA: Cache,
-{
-  let cache = get_cache::<CA>(&state)?;
-  match cache.put_create(request_response).await? {
-    Some(resource) => {
-      let rid = state.borrow_mut().resource_table.add_rc_dyn(resource);
-      Ok(Some(rid))
-    }
-    None => Ok(None),
-  }
-}
-
-#[op2(async)]
-pub async fn op_cache_put_finish<CA>(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
 ) -> Result<(), AnyError>
 where
   CA: Cache,
 {
   let cache = get_cache::<CA>(&state)?;
-  let resource = state
-    .borrow_mut()
-    .resource_table
-    .get::<CA::CachePutResourceType>(rid)?;
-  cache.put_finish(resource).await
+  let resource = match request_response.response_rid {
+    Some(rid) => Some(state.borrow_mut().resource_table.take_any(rid)?),
+    None => None,
+  };
+  cache.put(request_response, resource).await
 }
 
 #[op2(async)]
@@ -202,7 +180,7 @@ where
   match cache.r#match(request).await? {
     Some((meta, None)) => Ok(Some(CacheMatchResponse(meta, None))),
     Some((meta, Some(resource))) => {
-      let rid = state.borrow_mut().resource_table.add_rc_dyn(resource);
+      let rid = state.borrow_mut().resource_table.add(resource);
       Ok(Some(CacheMatchResponse(meta, Some(rid))))
     }
     None => Ok(None),
@@ -228,11 +206,12 @@ where
   let mut state = state.borrow_mut();
   if let Some(cache) = state.try_borrow::<CA>() {
     Ok(cache.clone())
-  } else {
-    let create_cache = state.borrow::<CreateCache<CA>>().clone();
+  } else if let Some(create_cache) = state.try_borrow::<CreateCache<CA>>() {
     let cache = create_cache.0();
     state.put(cache);
     Ok(state.borrow::<CA>().clone())
+  } else {
+    Err(type_error("CacheStorage is not available in this context."))
   }
 }
 

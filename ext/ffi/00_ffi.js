@@ -1,28 +1,55 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+const {
+  isArrayBuffer,
+  isDataView,
+  isTypedArray,
+} = core;
+import {
+  op_ffi_buf_copy_into,
+  op_ffi_call_nonblocking,
+  op_ffi_call_ptr,
+  op_ffi_call_ptr_nonblocking,
+  op_ffi_cstr_read,
+  op_ffi_get_buf,
+  op_ffi_get_static,
+  op_ffi_load,
+  op_ffi_ptr_create,
+  op_ffi_ptr_equals,
+  op_ffi_ptr_of,
+  op_ffi_ptr_of_exact,
+  op_ffi_ptr_offset,
+  op_ffi_ptr_value,
+  op_ffi_read_bool,
+  op_ffi_read_f32,
+  op_ffi_read_f64,
+  op_ffi_read_i16,
+  op_ffi_read_i32,
+  op_ffi_read_i64,
+  op_ffi_read_i8,
+  op_ffi_read_ptr,
+  op_ffi_read_u16,
+  op_ffi_read_u32,
+  op_ffi_read_u64,
+  op_ffi_read_u8,
+  op_ffi_unsafe_callback_close,
+  op_ffi_unsafe_callback_create,
+  op_ffi_unsafe_callback_ref,
+} from "ext:core/ops";
 const {
   ArrayBufferIsView,
-  ArrayBufferPrototype,
   ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeMap,
   ArrayPrototypeJoin,
+  BigInt,
   DataViewPrototypeGetByteLength,
   ObjectDefineProperty,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
-  Number,
-  NumberIsSafeInteger,
-  TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
-  TypedArrayPrototypeGetSymbolToStringTag,
   TypeError,
   Uint8Array,
-  Int32Array,
-  Uint32Array,
-  BigInt64Array,
-  BigUint64Array,
   Function,
   ReflectHas,
   PromisePrototypeThen,
@@ -32,34 +59,21 @@ const {
   SafeArrayIterator,
   SafeWeakMap,
 } = primordials;
+
 import { pathFromURL } from "ext:deno_web/00_infra.js";
-const {
-  op_ffi_call_nonblocking,
-  op_ffi_unsafe_callback_ref,
-} = core.ensureFastOps();
-const {
-  op_ffi_call_ptr_nonblocking,
-} = core.ensureFastOps(true);
 
 /**
  * @param {BufferSource} source
  * @returns {number}
  */
 function getBufferSourceByteLength(source) {
-  if (ArrayBufferIsView(source)) {
-    if (TypedArrayPrototypeGetSymbolToStringTag(source) !== undefined) {
-      // TypedArray
-      return TypedArrayPrototypeGetByteLength(source);
-    } else {
-      // DataView
-      return DataViewPrototypeGetByteLength(source);
-    }
+  if (isTypedArray(source)) {
+    return TypedArrayPrototypeGetByteLength(source);
+  } else if (isDataView(source)) {
+    return DataViewPrototypeGetByteLength(source);
   }
   return ArrayBufferPrototypeGetByteLength(source);
 }
-const U32_BUFFER = new Uint32Array(2);
-const U64_BUFFER = new BigUint64Array(TypedArrayPrototypeGetBuffer(U32_BUFFER));
-const I64_BUFFER = new BigInt64Array(TypedArrayPrototypeGetBuffer(U32_BUFFER));
 class UnsafePointerView {
   pointer;
 
@@ -68,109 +82,109 @@ class UnsafePointerView {
   }
 
   getBool(offset = 0) {
-    return ops.op_ffi_read_bool(
+    return op_ffi_read_bool(
       this.pointer,
       offset,
     );
   }
 
   getUint8(offset = 0) {
-    return ops.op_ffi_read_u8(
+    return op_ffi_read_u8(
       this.pointer,
       offset,
     );
   }
 
   getInt8(offset = 0) {
-    return ops.op_ffi_read_i8(
+    return op_ffi_read_i8(
       this.pointer,
       offset,
     );
   }
 
   getUint16(offset = 0) {
-    return ops.op_ffi_read_u16(
+    return op_ffi_read_u16(
       this.pointer,
       offset,
     );
   }
 
   getInt16(offset = 0) {
-    return ops.op_ffi_read_i16(
+    return op_ffi_read_i16(
       this.pointer,
       offset,
     );
   }
 
   getUint32(offset = 0) {
-    return ops.op_ffi_read_u32(
+    return op_ffi_read_u32(
       this.pointer,
       offset,
     );
   }
 
   getInt32(offset = 0) {
-    return ops.op_ffi_read_i32(
+    return op_ffi_read_i32(
       this.pointer,
       offset,
     );
   }
 
   getBigUint64(offset = 0) {
-    ops.op_ffi_read_u64(
+    return op_ffi_read_u64(
       this.pointer,
-      offset,
-      U32_BUFFER,
+      // We return a BigInt, so the turbocall
+      // is forced to use BigInts everywhere.
+      BigInt(offset),
     );
-    return U64_BUFFER[0];
   }
 
   getBigInt64(offset = 0) {
-    ops.op_ffi_read_i64(
+    return op_ffi_read_i64(
       this.pointer,
-      offset,
-      U32_BUFFER,
+      // We return a BigInt, so the turbocall
+      // is forced to use BigInts everywhere.
+      BigInt(offset),
     );
-    return I64_BUFFER[0];
   }
 
   getFloat32(offset = 0) {
-    return ops.op_ffi_read_f32(
+    return op_ffi_read_f32(
       this.pointer,
       offset,
     );
   }
 
   getFloat64(offset = 0) {
-    return ops.op_ffi_read_f64(
+    return op_ffi_read_f64(
       this.pointer,
       offset,
     );
   }
 
   getPointer(offset = 0) {
-    return ops.op_ffi_read_ptr(
+    return op_ffi_read_ptr(
       this.pointer,
       offset,
     );
   }
 
   getCString(offset = 0) {
-    return ops.op_ffi_cstr_read(
+    return op_ffi_cstr_read(
       this.pointer,
       offset,
     );
   }
 
   static getCString(pointer, offset = 0) {
-    return ops.op_ffi_cstr_read(
+    return op_ffi_cstr_read(
       pointer,
       offset,
     );
   }
 
   getArrayBuffer(byteLength, offset = 0) {
-    return ops.op_ffi_get_buf(
+    return op_ffi_get_buf(
       this.pointer,
       offset,
       byteLength,
@@ -178,7 +192,7 @@ class UnsafePointerView {
   }
 
   static getArrayBuffer(pointer, byteLength, offset = 0) {
-    return ops.op_ffi_get_buf(
+    return op_ffi_get_buf(
       pointer,
       offset,
       byteLength,
@@ -186,7 +200,7 @@ class UnsafePointerView {
   }
 
   copyInto(destination, offset = 0) {
-    ops.op_ffi_buf_copy_into(
+    op_ffi_buf_copy_into(
       this.pointer,
       offset,
       destination,
@@ -195,7 +209,7 @@ class UnsafePointerView {
   }
 
   static copyInto(pointer, destination, offset = 0) {
-    ops.op_ffi_buf_copy_into(
+    op_ffi_buf_copy_into(
       pointer,
       offset,
       destination,
@@ -204,21 +218,17 @@ class UnsafePointerView {
   }
 }
 
-const OUT_BUFFER = new Uint32Array(2);
-const OUT_BUFFER_64 = new BigInt64Array(
-  TypedArrayPrototypeGetBuffer(OUT_BUFFER),
-);
 const POINTER_TO_BUFFER_WEAK_MAP = new SafeWeakMap();
 class UnsafePointer {
   static create(value) {
-    return ops.op_ffi_ptr_create(value);
+    return op_ffi_ptr_create(value);
   }
 
   static equals(a, b) {
     if (a === null || b === null) {
       return a === b;
     }
-    return ops.op_ffi_ptr_equals(a, b);
+    return op_ffi_ptr_equals(a, b);
   }
 
   static of(value) {
@@ -228,15 +238,15 @@ class UnsafePointer {
     let pointer;
     if (ArrayBufferIsView(value)) {
       if (value.length === 0) {
-        pointer = ops.op_ffi_ptr_of_exact(value);
+        pointer = op_ffi_ptr_of_exact(value);
       } else {
-        pointer = ops.op_ffi_ptr_of(value);
+        pointer = op_ffi_ptr_of(value);
       }
-    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, value)) {
+    } else if (isArrayBuffer(value)) {
       if (value.length === 0) {
-        pointer = ops.op_ffi_ptr_of_exact(new Uint8Array(value));
+        pointer = op_ffi_ptr_of_exact(new Uint8Array(value));
       } else {
-        pointer = ops.op_ffi_ptr_of(new Uint8Array(value));
+        pointer = op_ffi_ptr_of(new Uint8Array(value));
       }
     } else {
       throw new TypeError(
@@ -250,19 +260,14 @@ class UnsafePointer {
   }
 
   static offset(value, offset) {
-    return ops.op_ffi_ptr_offset(value, offset);
+    return op_ffi_ptr_offset(value, offset);
   }
 
   static value(value) {
     if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
       value = value.pointer;
     }
-    ops.op_ffi_ptr_value(value, OUT_BUFFER);
-    const result = OUT_BUFFER[0] + 2 ** 32 * OUT_BUFFER[1];
-    if (NumberIsSafeInteger(result)) {
-      return result;
-    }
-    return OUT_BUFFER_64[0];
+    return op_ffi_ptr_value(value);
   }
 }
 
@@ -301,14 +306,14 @@ class UnsafeFnPointer {
       }
     } else {
       if (this.#structSize === null) {
-        return ops.op_ffi_call_ptr(
+        return op_ffi_call_ptr(
           this.pointer,
           this.definition,
           parameters,
         );
       } else {
         const buffer = new Uint8Array(this.#structSize);
-        ops.op_ffi_call_ptr(
+        op_ffi_call_ptr(
           this.pointer,
           this.definition,
           parameters,
@@ -318,15 +323,6 @@ class UnsafeFnPointer {
       }
     }
   }
-}
-
-function isReturnedAsBigInt(type) {
-  return type === "u64" || type === "i64" ||
-    type === "usize" || type === "isize";
-}
-
-function isI64(type) {
-  return type === "i64" || type === "isize";
 }
 
 function isStruct(type) {
@@ -402,7 +398,7 @@ class UnsafeCallback {
         "Invalid UnsafeCallback, cannot be nonblocking",
       );
     }
-    const { 0: rid, 1: pointer } = ops.op_ffi_unsafe_callback_create(
+    const { 0: rid, 1: pointer } = op_ffi_unsafe_callback_create(
       definition,
       callback,
     );
@@ -444,7 +440,7 @@ class UnsafeCallback {
 
   close() {
     this.#refcount = 0;
-    ops.op_ffi_unsafe_callback_close(this.#rid);
+    op_ffi_unsafe_callback_close(this.#rid);
   }
 }
 
@@ -452,10 +448,10 @@ const UnsafeCallbackPrototype = UnsafeCallback.prototype;
 
 class DynamicLibrary {
   #rid;
-  symbols = {};
+  symbols = { __proto__: null };
 
   constructor(path, symbols) {
-    ({ 0: this.#rid, 1: this.symbols } = ops.op_ffi_load({ path, symbols }));
+    ({ 0: this.#rid, 1: this.symbols } = op_ffi_load({ path, symbols }));
     for (const symbol in symbols) {
       if (!ObjectHasOwn(symbols, symbol)) {
         continue;
@@ -476,7 +472,7 @@ class DynamicLibrary {
         }
 
         const name = symbols[symbol].name || symbol;
-        const value = ops.op_ffi_get_static(
+        const value = op_ffi_get_static(
           this.#rid,
           name,
           type,
@@ -499,7 +495,6 @@ class DynamicLibrary {
       const structSize = isStructResult
         ? getTypeSizeAndAlignment(resultType)[0]
         : 0;
-      const needsUnpacking = isReturnedAsBigInt(resultType);
 
       const isNonBlocking = symbols[symbol].nonblocking;
       if (isNonBlocking) {
@@ -535,37 +530,7 @@ class DynamicLibrary {
         );
       }
 
-      if (needsUnpacking && !isNonBlocking) {
-        const call = this.symbols[symbol];
-        const parameters = symbols[symbol].parameters;
-        const vi = new Int32Array(2);
-        const vui = new Uint32Array(TypedArrayPrototypeGetBuffer(vi));
-        const b = new BigInt64Array(TypedArrayPrototypeGetBuffer(vi));
-
-        const params = ArrayPrototypeJoin(
-          ArrayPrototypeMap(parameters, (_, index) => `p${index}`),
-          ", ",
-        );
-        // Make sure V8 has no excuse to not optimize this function.
-        this.symbols[symbol] = new Function(
-          "vi",
-          "vui",
-          "b",
-          "call",
-          "NumberIsSafeInteger",
-          "Number",
-          `return function (${params}) {
-            call(${params}${parameters.length > 0 ? ", " : ""}vi);
-            ${
-            isI64(resultType)
-              ? `const n1 = Number(b[0])`
-              : `const n1 = vui[0] + 2 ** 32 * vui[1]` // Faster path for u64
-          };
-            if (NumberIsSafeInteger(n1)) return n1;
-            return b[0];
-          }`,
-        )(vi, vui, b, call, NumberIsSafeInteger, Number);
-      } else if (isStructResult && !isNonBlocking) {
+      if (isStructResult && !isNonBlocking) {
         const call = this.symbols[symbol];
         const parameters = symbols[symbol].parameters;
         const params = ArrayPrototypeJoin(

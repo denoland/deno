@@ -43,11 +43,15 @@ export const DEFLATERAW = 5;
 export const INFLATERAW = 6;
 export const UNZIP = 7;
 
-const { core } = globalThis.__bootstrap;
-const { ops } = core;
-const {
-  op_zlib_write_async,
-} = core.ensureFastOps();
+import {
+  op_zlib_close,
+  op_zlib_close_if_pending,
+  op_zlib_init,
+  op_zlib_new,
+  op_zlib_reset,
+  op_zlib_write,
+} from "ext:core/ops";
+import process from "node:process";
 
 const writeResult = new Uint32Array(2);
 
@@ -55,11 +59,11 @@ class Zlib {
   #handle;
 
   constructor(mode) {
-    this.#handle = ops.op_zlib_new(mode);
+    this.#handle = op_zlib_new(mode);
   }
 
   close() {
-    ops.op_zlib_close(this.#handle);
+    op_zlib_close(this.#handle);
   }
 
   writeSync(
@@ -71,7 +75,7 @@ class Zlib {
     out_off,
     out_len,
   ) {
-    const err = ops.op_zlib_write(
+    const err = op_zlib_write(
       this.#handle,
       flush,
       input,
@@ -120,18 +124,20 @@ class Zlib {
     out_off,
     out_len,
   ) {
-    op_zlib_write_async(
-      this.#handle,
-      flush ?? Z_NO_FLUSH,
-      input,
-      in_off,
-      in_len,
-      out,
-      out_off,
-      out_len,
-    ).then(([err, availOut, availIn]) => {
-      if (this.#checkError(err)) {
-        this.callback(availIn, availOut);
+    process.nextTick(() => {
+      const res = this.writeSync(
+        flush ?? Z_NO_FLUSH,
+        input,
+        in_off,
+        in_len,
+        out,
+        out_off,
+        out_len,
+      );
+
+      if (res) {
+        const [availOut, availIn] = res;
+        this.callback(availOut, availIn);
       }
     });
 
@@ -145,7 +151,7 @@ class Zlib {
     strategy,
     dictionary,
   ) {
-    const err = ops.op_zlib_init(
+    const err = op_zlib_init(
       this.#handle,
       level,
       windowBits,
@@ -164,7 +170,7 @@ class Zlib {
   }
 
   reset() {
-    const err = ops.op_zlib_reset(this.#handle);
+    const err = op_zlib_reset(this.#handle);
     if (err != Z_OK) {
       this.#error("Failed to reset stream", err);
     }
@@ -172,7 +178,7 @@ class Zlib {
 
   #error(message, err) {
     this.onerror(message, err);
-    ops.op_zlib_close_if_pending(this.#handle);
+    op_zlib_close_if_pending(this.#handle);
   }
 }
 

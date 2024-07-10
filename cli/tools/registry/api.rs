@@ -1,9 +1,12 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_runtime::deno_fetch::reqwest;
+use lsp_types::Url;
 use serde::de::DeserializeOwned;
+
+use crate::http_util::HttpClient;
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +39,7 @@ pub struct OidcTokenResponse {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishingTaskError {
+  #[allow(dead_code)]
   pub code: String,
   pub message: String,
 }
@@ -53,6 +57,8 @@ pub struct PublishingTask {
 pub struct ApiError {
   pub code: String,
   pub message: String,
+  #[serde(flatten)]
+  pub data: serde_json::Value,
   #[serde(skip)]
   pub x_deno_ray: Option<String>,
 }
@@ -97,6 +103,7 @@ pub async fn parse_response<T: DeserializeOwned>(
           code: "unknown".to_string(),
           message: format!("{}: {}", status, text),
           x_deno_ray,
+          data: serde_json::json!({}),
         };
         return Err(err);
       }
@@ -107,12 +114,13 @@ pub async fn parse_response<T: DeserializeOwned>(
     code: "unknown".to_string(),
     message: format!("Failed to parse response: {}, response: '{}'", err, text),
     x_deno_ray,
+    data: serde_json::json!({}),
   })
 }
 
 pub async fn get_scope(
-  client: &reqwest::Client,
-  registry_api_url: &str,
+  client: &HttpClient,
+  registry_api_url: &Url,
   scope: &str,
 ) -> Result<reqwest::Response, AnyError> {
   let scope_url = format!("{}scopes/{}", registry_api_url, scope);
@@ -121,7 +129,7 @@ pub async fn get_scope(
 }
 
 pub fn get_package_api_url(
-  registry_api_url: &str,
+  registry_api_url: &Url,
   scope: &str,
   package: &str,
 ) -> String {
@@ -129,12 +137,25 @@ pub fn get_package_api_url(
 }
 
 pub async fn get_package(
-  client: &reqwest::Client,
-  registry_api_url: &str,
+  client: &HttpClient,
+  registry_api_url: &Url,
   scope: &str,
   package: &str,
 ) -> Result<reqwest::Response, AnyError> {
   let package_url = get_package_api_url(registry_api_url, scope, package);
   let response = client.get(&package_url).send().await?;
   Ok(response)
+}
+
+pub fn get_jsr_alternative(imported: &Url) -> Option<String> {
+  if !matches!(imported.host_str(), Some("esm.sh")) {
+    return None;
+  }
+
+  let mut segments = imported.path_segments().unwrap();
+  match segments.next() {
+    Some("gh") => None,
+    Some(module) => Some(format!("\"npm:{module}\"")),
+    None => None,
+  }
 }

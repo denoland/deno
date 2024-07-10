@@ -1,6 +1,13 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { core, primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+import { primordials } from "ext:core/mod.js";
+import {
+  op_cache_delete,
+  op_cache_match,
+  op_cache_put,
+  op_cache_storage_delete,
+  op_cache_storage_has,
+  op_cache_storage_open,
+} from "ext:core/ops";
 const {
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
@@ -10,6 +17,8 @@ const {
   SymbolFor,
   TypeError,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   Request,
   RequestPrototype,
@@ -18,16 +27,12 @@ import {
 import { toInnerResponse } from "ext:deno_fetch/23_response.js";
 import { URLPrototype } from "ext:deno_url/00_url.js";
 import { getHeader } from "ext:deno_fetch/20_headers.js";
-import { readableStreamForRid } from "ext:deno_web/06_streams.js";
-const {
-  op_cache_delete,
-  op_cache_match,
-  op_cache_put,
-  op_cache_put_finish,
-  op_cache_storage_delete,
-  op_cache_storage_has,
-  op_cache_storage_open,
-} = core.ensureFastOps();
+import {
+  getReadableStreamResourceBacking,
+  readableStreamForRid,
+  resourceForReadableStream,
+} from "ext:deno_web/06_streams.js";
+
 class CacheStorage {
   constructor() {
     webidl.illegalConstructor();
@@ -128,40 +133,37 @@ class Cache {
     if (innerResponse.body !== null && innerResponse.body.unusable()) {
       throw new TypeError("Response body is already used");
     }
-    // acquire lock before async op
-    const reader = innerResponse.body?.stream.getReader();
+
+    const stream = innerResponse.body?.stream;
+    let rid = null;
+    if (stream) {
+      const resourceBacking = getReadableStreamResourceBacking(
+        innerResponse.body?.stream,
+      );
+      if (resourceBacking) {
+        rid = resourceBacking.rid;
+      } else {
+        rid = resourceForReadableStream(stream, innerResponse.body?.length);
+      }
+    }
 
     // Remove fragment from request URL before put.
     reqUrl.hash = "";
 
     // Step 9-11.
-    const rid = await op_cache_put(
+    // Step 12-19: TODO(@satyarohith): do the insertion in background.
+    await op_cache_put(
       {
         cacheId: this[_id],
         // deno-lint-ignore prefer-primordials
         requestUrl: reqUrl.toString(),
         responseHeaders: innerResponse.headerList,
         requestHeaders: innerRequest.headerList,
-        responseHasBody: innerResponse.body !== null,
         responseStatus: innerResponse.status,
         responseStatusText: innerResponse.statusMessage,
+        responseRid: rid,
       },
     );
-    if (reader) {
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) {
-            await op_cache_put_finish(rid);
-            break;
-          }
-          await core.writeAll(rid, value);
-        }
-      } finally {
-        core.close(rid);
-      }
-    }
-    // Step 12-19: TODO(@satyarohith): do the insertion in background.
   }
 
   /** See https://w3c.github.io/ServiceWorker/#cache-match */

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::fmt::format_test_error;
 use super::fmt::to_relative_path_or_remote_url;
@@ -33,7 +33,10 @@ pub(super) fn format_test_step_ancestry(
   result
 }
 
-pub fn format_test_for_summary(cwd: &Url, desc: &TestDescription) -> String {
+pub fn format_test_for_summary(
+  cwd: &Url,
+  desc: &TestFailureDescription,
+) -> String {
   format!(
     "{} {}",
     &desc.name,
@@ -78,7 +81,7 @@ pub(super) fn report_sigint(
   let mut formatted_pending = BTreeSet::new();
   for id in tests_pending {
     if let Some(desc) = tests.get(id) {
-      formatted_pending.insert(format_test_for_summary(cwd, desc));
+      formatted_pending.insert(format_test_for_summary(cwd, &desc.into()));
     }
     if let Some(desc) = test_steps.get(id) {
       formatted_pending
@@ -107,7 +110,10 @@ pub(super) fn report_summary(
     #[allow(clippy::type_complexity)] // Type alias doesn't look better here
     let mut failures_by_origin: BTreeMap<
       String,
-      (Vec<(&TestDescription, &TestFailure)>, Option<&JsError>),
+      (
+        Vec<(&TestFailureDescription, &TestFailure)>,
+        Option<&JsError>,
+      ),
     > = BTreeMap::default();
     let mut failure_titles = vec![];
     for (description, failure) in &summary.failures {
@@ -130,13 +136,8 @@ pub(super) fn report_summary(
         if !failure.hide_in_summary() {
           let failure_title = format_test_for_summary(cwd, description);
           writeln!(writer, "{}", &failure_title).unwrap();
-          writeln!(
-            writer,
-            "{}: {}",
-            colors::red_bold("error"),
-            failure.to_string()
-          )
-          .unwrap();
+          writeln!(writer, "{}: {}", colors::red_bold("error"), failure)
+            .unwrap();
           writeln!(writer).unwrap();
           failure_titles.push(failure_title);
         }

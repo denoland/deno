@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -28,12 +28,11 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
-const ops = core.ops;
+import { op_node_guess_handle_type } from "ext:core/ops";
 
 const handleTypes = ["TCP", "TTY", "UDP", "FILE", "PIPE", "UNKNOWN"];
 export function guessHandleType(fd: number): string {
-  const type = ops.op_node_guess_handle_type(fd);
+  const type = op_node_guess_handle_type(fd);
   return handleTypes[type];
 }
 

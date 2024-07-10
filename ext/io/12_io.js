@@ -1,24 +1,24 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Interfaces 100% copied from Go.
 // Documentation liberally lifted from them too.
 // Thank you! We love Go! <3
 
-import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
+import { core, internals, primordials } from "ext:core/mod.js";
+import { op_set_raw } from "ext:core/ops";
+const {
+  Uint8Array,
+  ArrayPrototypePush,
+  Symbol,
+  TypedArrayPrototypeSubarray,
+  TypedArrayPrototypeSet,
+  TypedArrayPrototypeGetByteLength,
+} = primordials;
+
 import {
   readableStreamForRid,
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
-const {
-  Uint8Array,
-  ArrayPrototypePush,
-  MathMin,
-  TypedArrayPrototypeSubarray,
-  TypedArrayPrototypeSet,
-  TypedArrayPrototypeGetBuffer,
-  TypedArrayPrototypeGetByteLength,
-} = primordials;
 
 const DEFAULT_BUFFER_SIZE = 32 * 1024;
 // Seek whence values.
@@ -38,6 +38,11 @@ async function copy(
   dst,
   options,
 ) {
+  internals.warnOnDeprecatedApi(
+    "Deno.copy()",
+    new Error().stack,
+    "Use `copy()` from `https://jsr.io/@std/io/doc/copy/~` instead.",
+  );
   let n = 0;
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);
@@ -63,6 +68,11 @@ async function* iter(
   r,
   options,
 ) {
+  internals.warnOnDeprecatedApi(
+    "Deno.iter()",
+    new Error().stack,
+    "Use `ReadableStream` instead.",
+  );
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);
   while (true) {
@@ -79,6 +89,11 @@ function* iterSync(
   r,
   options,
 ) {
+  internals.warnOnDeprecatedApi(
+    "Deno.iterSync()",
+    new Error().stack,
+    "Use `ReadableStream` instead.",
+  );
   const bufSize = options?.bufSize ?? DEFAULT_BUFFER_SIZE;
   const b = new Uint8Array(bufSize);
   while (true) {
@@ -113,26 +128,18 @@ function write(rid, data) {
 
 const READ_PER_ITER = 64 * 1024; // 64kb
 
-function readAll(r) {
-  return readAllInner(r);
-}
-async function readAllInner(r, options) {
+async function readAll(r) {
   const buffers = [];
-  const signal = options?.signal ?? null;
+
   while (true) {
-    signal?.throwIfAborted();
     const buf = new Uint8Array(READ_PER_ITER);
     const read = await r.read(buf);
     if (typeof read == "number") {
-      ArrayPrototypePush(
-        buffers,
-        new Uint8Array(TypedArrayPrototypeGetBuffer(buf), 0, read),
-      );
+      ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buf, 0, read));
     } else {
       break;
     }
   }
-  signal?.throwIfAborted();
 
   return concatBuffers(buffers);
 }
@@ -171,148 +178,157 @@ function concatBuffers(buffers) {
   return contents;
 }
 
-function readAllSyncSized(r, size) {
-  const buf = new Uint8Array(size + 1); // 1B to detect extended files
-  let cursor = 0;
+const STDIN_RID = 0;
+const STDOUT_RID = 1;
+const STDERR_RID = 2;
 
-  while (cursor < size) {
-    const sliceEnd = MathMin(size + 1, cursor + READ_PER_ITER);
-    const slice = TypedArrayPrototypeSubarray(buf, cursor, sliceEnd);
-    const read = r.readSync(slice);
-    if (typeof read == "number") {
-      cursor += read;
-    } else {
-      break;
-    }
-  }
-
-  // Handle truncated or extended files during read
-  if (cursor > size) {
-    // Read remaining and concat
-    return concatBuffers([buf, readAllSync(r)]);
-  } else { // cursor == size
-    return TypedArrayPrototypeSubarray(buf, 0, cursor);
-  }
-}
-
-async function readAllInnerSized(r, size, options) {
-  const buf = new Uint8Array(size + 1); // 1B to detect extended files
-  let cursor = 0;
-  const signal = options?.signal ?? null;
-  while (cursor < size) {
-    signal?.throwIfAborted();
-    const sliceEnd = MathMin(size + 1, cursor + READ_PER_ITER);
-    const slice = TypedArrayPrototypeSubarray(buf, cursor, sliceEnd);
-    const read = await r.read(slice);
-    if (typeof read == "number") {
-      cursor += read;
-    } else {
-      break;
-    }
-  }
-  signal?.throwIfAborted();
-
-  // Handle truncated or extended files during read
-  if (cursor > size) {
-    // Read remaining and concat
-    return concatBuffers([buf, await readAllInner(r, options)]);
-  } else {
-    return TypedArrayPrototypeSubarray(buf, 0, cursor);
-  }
-}
+const REF = Symbol("REF");
+const UNREF = Symbol("UNREF");
 
 class Stdin {
+  #rid = STDIN_RID;
+  #ref = true;
   #readable;
+  #opPromise;
 
   constructor() {
   }
 
   get rid() {
-    return 0;
+    internals.warnOnDeprecatedApi(
+      "Deno.stdin.rid",
+      new Error().stack,
+      "Use `Deno.stdin` instance methods instead.",
+    );
+    return this.#rid;
   }
 
-  read(p) {
-    return read(this.rid, p);
+  async read(p) {
+    if (p.length === 0) return 0;
+    this.#opPromise = core.read(this.#rid, p);
+    if (!this.#ref) {
+      core.unrefOpPromise(this.#opPromise);
+    }
+    const nread = await this.#opPromise;
+    return nread === 0 ? null : nread;
   }
 
   readSync(p) {
-    return readSync(this.rid, p);
+    return readSync(this.#rid, p);
   }
 
   close() {
-    core.tryClose(this.rid);
+    core.tryClose(this.#rid);
   }
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRid(this.rid);
+      this.#readable = readableStreamForRid(this.#rid);
     }
     return this.#readable;
   }
 
-  setRaw(mode, options = {}) {
+  setRaw(mode, options = { __proto__: null }) {
     const cbreak = !!(options.cbreak ?? false);
-    ops.op_stdin_set_raw(mode, cbreak);
+    op_set_raw(this.#rid, mode, cbreak);
+  }
+
+  isTerminal() {
+    return core.isTerminal(this.#rid);
+  }
+
+  [REF]() {
+    this.#ref = true;
+    if (this.#opPromise) {
+      core.refOpPromise(this.#opPromise);
+    }
+  }
+
+  [UNREF]() {
+    this.#ref = false;
+    if (this.#opPromise) {
+      core.unrefOpPromise(this.#opPromise);
+    }
   }
 }
 
 class Stdout {
+  #rid = STDOUT_RID;
   #writable;
 
   constructor() {
   }
 
   get rid() {
-    return 1;
+    internals.warnOnDeprecatedApi(
+      "Deno.stdout.rid",
+      new Error().stack,
+      "Use `Deno.stdout` instance methods instead.",
+    );
+    return this.#rid;
   }
 
   write(p) {
-    return write(this.rid, p);
+    return write(this.#rid, p);
   }
 
   writeSync(p) {
-    return writeSync(this.rid, p);
+    return writeSync(this.#rid, p);
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.rid);
+      this.#writable = writableStreamForRid(this.#rid);
     }
     return this.#writable;
+  }
+
+  isTerminal() {
+    return core.isTerminal(this.#rid);
   }
 }
 
 class Stderr {
+  #rid = STDERR_RID;
   #writable;
 
   constructor() {
   }
 
   get rid() {
-    return 2;
+    internals.warnOnDeprecatedApi(
+      "Deno.stderr.rid",
+      new Error().stack,
+      "Use `Deno.stderr` instance methods instead.",
+    );
+    return this.#rid;
   }
 
   write(p) {
-    return write(this.rid, p);
+    return write(this.#rid, p);
   }
 
   writeSync(p) {
-    return writeSync(this.rid, p);
+    return writeSync(this.#rid, p);
   }
 
   close() {
-    core.close(this.rid);
+    core.close(this.#rid);
   }
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.rid);
+      this.#writable = writableStreamForRid(this.#rid);
     }
     return this.#writable;
+  }
+
+  isTerminal() {
+    return core.isTerminal(this.#rid);
   }
 }
 
@@ -326,15 +342,19 @@ export {
   iterSync,
   read,
   readAll,
-  readAllInner,
-  readAllInnerSized,
   readAllSync,
-  readAllSyncSized,
   readSync,
+  REF,
   SeekMode,
+  Stderr,
   stderr,
+  STDERR_RID,
   stdin,
+  STDIN_RID,
+  Stdout,
   stdout,
+  STDOUT_RID,
+  UNREF,
   write,
   writeSync,
 };

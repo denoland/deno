@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::lsp::analysis::source_range_to_lsp_range;
 
@@ -23,7 +23,7 @@ fn visit_arrow(
   test_module: &mut TestModule,
 ) {
   if let Some((maybe_test_context, maybe_step_var)) =
-    parse_test_context_param(arrow_expr.params.get(0))
+    parse_test_context_param(arrow_expr.params.first())
   {
     let mut collector = TestStepCollector::new(
       maybe_test_context,
@@ -44,7 +44,7 @@ fn visit_fn(
   test_module: &mut TestModule,
 ) {
   if let Some((maybe_test_context, maybe_step_var)) =
-    parse_test_context_param(function.params.get(0).map(|p| &p.pat))
+    parse_test_context_param(function.params.first().map(|p| &p.pat))
   {
     let mut collector = TestStepCollector::new(
       maybe_test_context,
@@ -136,7 +136,7 @@ fn visit_call_expr(
   text_info: &SourceTextInfo,
   test_module: &mut TestModule,
 ) {
-  if let Some(expr) = node.args.get(0).map(|es| es.expr.as_ref()) {
+  if let Some(expr) = node.args.first().map(|es| es.expr.as_ref()) {
     match expr {
       ast::Expr::Object(obj_lit) => {
         let mut maybe_name = None;
@@ -451,13 +451,9 @@ pub struct TestCollector {
 }
 
 impl TestCollector {
-  pub fn new(
-    specifier: ModuleSpecifier,
-    script_version: String,
-    text_info: SourceTextInfo,
-  ) -> Self {
+  pub fn new(specifier: ModuleSpecifier, text_info: SourceTextInfo) -> Self {
     Self {
-      test_module: TestModule::new(specifier, script_version),
+      test_module: TestModule::new(specifier),
       vars: HashSet::new(),
       fns: HashMap::new(),
       text_info,
@@ -644,17 +640,16 @@ pub mod tests {
     let specifier = resolve_url("file:///a/example.ts").unwrap();
 
     let parsed_module = deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: specifier.to_string(),
-      text_info: deno_ast::SourceTextInfo::new(source.into()),
+      specifier: specifier.clone(),
+      text: source.into(),
       media_type: deno_ast::MediaType::TypeScript,
       capture_tokens: true,
       scope_analysis: true,
       maybe_syntax: None,
     })
     .unwrap();
-    let text_info = parsed_module.text_info().clone();
-    let mut collector =
-      TestCollector::new(specifier, "1".to_string(), text_info);
+    let text_info = parsed_module.text_info_lazy().clone();
+    let mut collector = TestCollector::new(specifier, text_info);
     parsed_module.module().visit_with(&mut collector);
     collector.take()
   }
@@ -671,7 +666,6 @@ pub mod tests {
       &test_module,
       &TestModule {
         specifier: test_module.specifier.clone(),
-        script_version: test_module.script_version.clone(),
         defs: vec![(
           "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
             .to_string(),
@@ -704,7 +698,6 @@ pub mod tests {
       &test_module,
       &TestModule {
         specifier: test_module.specifier.clone(),
-        script_version: test_module.script_version.clone(),
         defs: vec![(
           "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
             .to_string(),
@@ -747,7 +740,6 @@ pub mod tests {
       &test_module,
       &TestModule {
         specifier: test_module.specifier.clone(),
-        script_version: test_module.script_version.clone(),
         defs: vec![
           (
             "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9".to_string(),
@@ -809,7 +801,6 @@ pub mod tests {
       &test_module,
       &TestModule {
         specifier: test_module.specifier.clone(),
-        script_version: test_module.script_version.clone(),
         defs: vec![
           (
             "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9".to_string(),
@@ -862,7 +853,6 @@ pub mod tests {
       &test_module,
       &TestModule {
         specifier: test_module.specifier.clone(),
-        script_version: test_module.script_version.clone(),
         defs: vec![(
           "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
             .to_string(),
@@ -897,7 +887,6 @@ pub mod tests {
       &test_module,
       &TestModule {
         specifier: test_module.specifier.clone(),
-        script_version: test_module.script_version.clone(),
         defs: vec![
           (
             "86b4c821900e38fc89f24bceb0e45193608ab3f9d2a6019c7b6a5aceff5d7df2".to_string(),
@@ -939,7 +928,6 @@ pub mod tests {
       &test_module,
       &TestModule {
         specifier: test_module.specifier.clone(),
-        script_version: test_module.script_version.clone(),
         defs: vec![(
           "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
             .to_string(),
@@ -973,7 +961,6 @@ pub mod tests {
       &test_module,
       &TestModule {
         specifier: test_module.specifier.clone(),
-        script_version: test_module.script_version.clone(),
         defs: vec![(
           "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
             .to_string(),
@@ -1008,7 +995,6 @@ pub mod tests {
       &test_module,
       &TestModule {
         specifier: test_module.specifier.clone(),
-        script_version: test_module.script_version.clone(),
         defs: vec![
           (
             "87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string(),
@@ -1022,7 +1008,7 @@ pub mod tests {
             },
           ),
           (
-            "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568".to_string(), 
+            "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568".to_string(),
             TestDefinition {
               id: "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568".to_string(),
               name: "someFunction".to_string(),
@@ -1063,7 +1049,6 @@ pub mod tests {
       &test_module,
       &TestModule {
         specifier: test_module.specifier.clone(),
-        script_version: test_module.script_version.clone(),
         defs: vec![(
           "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568"
             .to_string(),
@@ -1097,7 +1082,6 @@ pub mod tests {
       &test_module,
       &TestModule {
         specifier: test_module.specifier.clone(),
-        script_version: test_module.script_version.clone(),
         defs: vec![(
           "6d05d6dc35548b86a1e70acaf24a5bc2dd35db686b35b685ad5931d201b4a918"
             .to_string(),
@@ -1138,7 +1122,6 @@ pub mod tests {
       &test_module,
       &TestModule {
         specifier: test_module.specifier.clone(),
-        script_version: test_module.script_version.clone(),
         defs: vec![
           (
             "3799fc549a32532145ffc8532b0cd943e025bbc19a02e2cde9be94f87bceb829".to_string(),

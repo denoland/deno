@@ -1,5 +1,6 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CliOptions;
 use crate::args::CoverageFlags;
 use crate::args::FileFlags;
 use crate::args::Flags;
@@ -8,11 +9,14 @@ use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
 use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
-use crate::util::fs::FileCollector;
 use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_config::glob::FileCollector;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
+use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -21,7 +25,6 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
-use deno_core::ModuleCode;
 use regex::Regex;
 use std::fs;
 use std::fs::File;
@@ -41,6 +44,61 @@ use merge::ProcessCoverage;
 pub struct CoverageCollector {
   pub dir: PathBuf,
   session: LocalInspectorSession,
+}
+
+#[async_trait::async_trait(?Send)]
+impl crate::worker::CoverageCollector for CoverageCollector {
+  async fn start_collecting(&mut self) -> Result<(), AnyError> {
+    self.enable_debugger().await?;
+    self.enable_profiler().await?;
+    self
+      .start_precise_coverage(cdp::StartPreciseCoverageArgs {
+        call_count: true,
+        detailed: true,
+        allow_triggered_updates: false,
+      })
+      .await?;
+
+    Ok(())
+  }
+
+  async fn stop_collecting(&mut self) -> Result<(), AnyError> {
+    fs::create_dir_all(&self.dir)?;
+
+    let script_coverages = self.take_precise_coverage().await?.result;
+    for script_coverage in script_coverages {
+      // Filter out internal and http/https JS files and eval'd scripts
+      // from being included in coverage reports
+      if script_coverage.url.starts_with("ext:")
+        || script_coverage.url.starts_with("[ext:")
+        || script_coverage.url.starts_with("http:")
+        || script_coverage.url.starts_with("https:")
+        || script_coverage.url.starts_with("node:")
+        || script_coverage.url.is_empty()
+      {
+        continue;
+      }
+
+      let filename = format!("{}.json", Uuid::new_v4());
+      let filepath = self.dir.join(filename);
+
+      let mut out = BufWriter::new(File::create(&filepath)?);
+      let coverage = serde_json::to_string(&script_coverage)?;
+      let formatted_coverage =
+        format_json(&filepath, &coverage, &Default::default())
+          .ok()
+          .flatten()
+          .unwrap_or(coverage);
+
+      out.write_all(formatted_coverage.as_bytes())?;
+      out.flush()?;
+    }
+
+    self.disable_debugger().await?;
+    self.disable_profiler().await?;
+
+    Ok(())
+  }
 }
 
 impl CoverageCollector {
@@ -105,53 +163,6 @@ impl CoverageCollector {
     let return_object = serde_json::from_value(return_value)?;
 
     Ok(return_object)
-  }
-
-  pub async fn start_collecting(&mut self) -> Result<(), AnyError> {
-    self.enable_debugger().await?;
-    self.enable_profiler().await?;
-    self
-      .start_precise_coverage(cdp::StartPreciseCoverageArgs {
-        call_count: true,
-        detailed: true,
-        allow_triggered_updates: false,
-      })
-      .await?;
-
-    Ok(())
-  }
-
-  pub async fn stop_collecting(&mut self) -> Result<(), AnyError> {
-    fs::create_dir_all(&self.dir)?;
-
-    let script_coverages = self.take_precise_coverage().await?.result;
-    for script_coverage in script_coverages {
-      // Filter out internal JS files from being included in coverage reports
-      if script_coverage.url.starts_with("ext:")
-        || script_coverage.url.starts_with("[ext:")
-      {
-        continue;
-      }
-
-      let filename = format!("{}.json", Uuid::new_v4());
-      let filepath = self.dir.join(filename);
-
-      let mut out = BufWriter::new(File::create(&filepath)?);
-      let coverage = serde_json::to_string(&script_coverage)?;
-      let formatted_coverage =
-        format_json(&filepath, &coverage, &Default::default())
-          .ok()
-          .flatten()
-          .unwrap_or(coverage);
-
-      out.write_all(formatted_coverage.as_bytes())?;
-      out.flush()?;
-    }
-
-    self.disable_debugger().await?;
-    self.disable_profiler().await?;
-
-    Ok(())
   }
 }
 
@@ -220,20 +231,11 @@ fn generate_coverage_report(
       continue;
     }
 
-    let dest_line_index = text_lines.line_index(
-      text_lines
-        .byte_index_from_char_index(function.ranges[0].start_char_offset),
+    let line_index = range_to_src_line_index(
+      &function.ranges[0],
+      &text_lines,
+      &maybe_source_map,
     );
-    let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
-      source_map
-        .tokens()
-        .find(|token| token.get_dst_line() as usize == dest_line_index)
-        .map(|token| token.get_src_line() as usize)
-        .unwrap_or(0)
-    } else {
-      dest_line_index
-    };
-
     coverage_report.named_functions.push(FunctionCoverageItem {
       name: function.function_name.clone(),
       line_index,
@@ -244,18 +246,8 @@ fn generate_coverage_report(
   for (block_number, function) in script_coverage.functions.iter().enumerate() {
     let block_hits = function.ranges[0].count;
     for (branch_number, range) in function.ranges[1..].iter().enumerate() {
-      let source_line_index = text_lines.line_index(
-        text_lines.byte_index_from_char_index(range.start_char_offset),
-      );
-      let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
-        source_map
-          .tokens()
-          .find(|token| token.get_dst_line() as usize == source_line_index)
-          .map(|token| token.get_src_line() as usize)
-          .unwrap_or(0)
-      } else {
-        source_line_index
-      };
+      let line_index =
+        range_to_src_line_index(range, &text_lines, &maybe_source_map);
 
       // From https://manpages.debian.org/unstable/lcov/geninfo.1.en.html:
       //
@@ -364,37 +356,82 @@ fn generate_coverage_report(
       line_counts
         .into_iter()
         .enumerate()
-        .map(|(index, count)| (index, count))
         .collect::<Vec<(usize, i64)>>()
     };
 
   coverage_report
 }
 
+fn range_to_src_line_index(
+  range: &cdp::CoverageRange,
+  text_lines: &TextLines,
+  maybe_source_map: &Option<SourceMap>,
+) -> usize {
+  let source_lc = text_lines.line_and_column_index(
+    text_lines.byte_index_from_char_index(range.start_char_offset),
+  );
+  if let Some(source_map) = maybe_source_map.as_ref() {
+    source_map
+      .lookup_token(source_lc.line_index as u32, source_lc.column_index as u32)
+      .map(|token| token.get_src_line() as usize)
+      .unwrap_or(0)
+  } else {
+    source_lc.line_index
+  }
+}
+
 fn collect_coverages(
+  cli_options: &CliOptions,
   files: FileFlags,
+  initial_cwd: &Path,
 ) -> Result<Vec<cdp::ScriptCoverage>, AnyError> {
   let mut coverages: Vec<cdp::ScriptCoverage> = Vec::new();
-  let file_paths = FileCollector::new(|file_path| {
-    file_path
-      .extension()
-      .map(|ext| ext == "json")
-      .unwrap_or(false)
+  let file_patterns = FilePatterns {
+    base: initial_cwd.to_path_buf(),
+    include: Some({
+      if files.include.is_empty() {
+        PathOrPatternSet::new(vec![PathOrPattern::Path(
+          initial_cwd.to_path_buf(),
+        )])
+      } else {
+        PathOrPatternSet::from_include_relative_path_or_patterns(
+          initial_cwd,
+          &files.include,
+        )?
+      }
+    }),
+    exclude: PathOrPatternSet::new(vec![]),
+  };
+  let file_paths = FileCollector::new(|e| {
+    e.path.extension().map(|ext| ext == "json").unwrap_or(false)
   })
   .ignore_git_folder()
   .ignore_node_modules()
-  .ignore_vendor_folder()
-  .add_ignore_paths(&files.ignore)
-  .collect_files(if files.include.is_empty() {
-    None
-  } else {
-    Some(&files.include)
-  })?;
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, file_patterns)?;
+
+  let coverage_patterns = FilePatterns {
+    base: initial_cwd.to_path_buf(),
+    include: None,
+    exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
+      initial_cwd,
+      &files.ignore,
+    )
+    .context("Invalid ignore pattern.")?,
+  };
 
   for file_path in file_paths {
-    let json = fs::read_to_string(file_path.as_path())?;
-    let new_coverage: cdp::ScriptCoverage = serde_json::from_str(&json)?;
-    coverages.push(new_coverage);
+    let new_coverage = fs::read_to_string(file_path.as_path())
+      .map_err(AnyError::from)
+      .and_then(|json| {
+        serde_json::from_str::<cdp::ScriptCoverage>(&json)
+          .map_err(AnyError::from)
+      })
+      .with_context(|| format!("Failed reading '{}'", file_path.display()))?;
+    let url = Url::parse(&new_coverage.url)?;
+    if coverage_patterns.matches_specifier(&url) {
+      coverages.push(new_coverage);
+    }
   }
 
   coverages.sort_by_key(|k| k.url.clone());
@@ -443,7 +480,7 @@ pub async fn cover_files(
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  let factory = CliFactory::from_flags(flags).await?;
+  let factory = CliFactory::from_flags(flags)?;
   let npm_resolver = factory.npm_resolver().await?;
   let file_fetcher = factory.file_fetcher()?;
   let cli_options = factory.cli_options();
@@ -452,8 +489,14 @@ pub async fn cover_files(
   assert!(!coverage_flags.files.include.is_empty());
 
   // Use the first include path as the default output path.
-  let coverage_root = coverage_flags.files.include[0].clone();
-  let script_coverages = collect_coverages(coverage_flags.files)?;
+  let coverage_root = cli_options
+    .initial_cwd()
+    .join(&coverage_flags.files.include[0]);
+  let script_coverages = collect_coverages(
+    cli_options,
+    coverage_flags.files,
+    cli_options.initial_cwd(),
+  )?;
   if script_coverages.is_empty() {
     return Err(generic_error("No coverage files found"));
   }
@@ -463,6 +506,9 @@ pub async fn cover_files(
     coverage_flags.exclude,
     npm_resolver.as_ref(),
   );
+  if script_coverages.is_empty() {
+    return Err(generic_error("No covered files included in the report"));
+  }
 
   let proc_coverages: Vec<_> = script_coverages
     .into_iter()
@@ -508,24 +554,24 @@ pub async fn cover_files(
           Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
           module_specifier
         )
-    })?;
+    })?.into_text_decoded()?;
 
-    // Check if file was transpiled
     let original_source = file.source.clone();
-    let transpiled_code: ModuleCode = match file.media_type {
+    // Check if file was transpiled
+    let transpiled_code = match file.media_type {
       MediaType::JavaScript
       | MediaType::Unknown
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => file.source.clone().into(),
-      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Default::default(),
+      | MediaType::Json => None,
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(Vec::new()),
       MediaType::TypeScript
       | MediaType::Jsx
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        match emitter.maybe_cached_emit(&file.specifier, &file.source) {
-          Some(code) => code.into(),
+        Some(match emitter.maybe_cached_emit(&file.specifier, &file.source) {
+          Some(code) => code,
           None => {
             return Err(anyhow!(
               "Missing transpiled source code for: \"{}\".
@@ -533,17 +579,22 @@ pub async fn cover_files(
               file.specifier,
             ))
           }
-        }
+        })
       }
       MediaType::Wasm | MediaType::TsBuildInfo | MediaType::SourceMap => {
         unreachable!()
       }
     };
+    let runtime_code: String = match transpiled_code {
+      Some(code) => String::from_utf8(code)
+        .with_context(|| format!("Failed decoding {}", file.specifier))?,
+      None => original_source.to_string(),
+    };
 
-    let source_map = source_map_from_code(&transpiled_code);
+    let source_map = source_map_from_code(runtime_code.as_bytes());
     let coverage_report = generate_coverage_report(
       &script_coverage,
-      transpiled_code.as_str().to_owned(),
+      runtime_code.as_str().to_owned(),
       &source_map,
       &out_mode,
     );

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../../core/lib.deno_core.d.ts" />
@@ -11,10 +11,29 @@
 /// <reference lib="esnext" />
 
 import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
-const {
+import {
+  op_fetch,
   op_fetch_send,
-} = core.ensureFastOps();
+  op_wasm_streaming_feed,
+  op_wasm_streaming_set_url,
+} from "ext:core/ops";
+const {
+  ArrayPrototypePush,
+  ArrayPrototypeSplice,
+  ArrayPrototypeFilter,
+  ArrayPrototypeIncludes,
+  Error,
+  ObjectPrototypeIsPrototypeOf,
+  Promise,
+  PromisePrototypeThen,
+  PromisePrototypeCatch,
+  SafeArrayIterator,
+  String,
+  StringPrototypeStartsWith,
+  StringPrototypeToLowerCase,
+  TypeError,
+  TypedArrayPrototypeGetSymbolToStringTag,
+} = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { byteLowerCase } from "ext:deno_web/00_infra.js";
@@ -36,23 +55,6 @@ import {
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-const {
-  ArrayPrototypePush,
-  ArrayPrototypeSplice,
-  ArrayPrototypeFilter,
-  ArrayPrototypeIncludes,
-  Error,
-  ObjectPrototypeIsPrototypeOf,
-  Promise,
-  PromisePrototypeThen,
-  PromisePrototypeCatch,
-  SafeArrayIterator,
-  String,
-  StringPrototypeStartsWith,
-  StringPrototypeToLowerCase,
-  TypeError,
-  Uint8ArrayPrototype,
-} = primordials;
 
 const REQUEST_BODY_HEADER_NAMES = [
   "content-encoding",
@@ -131,7 +133,7 @@ async function mainFetch(req, recursive, terminator) {
     const stream = req.body.streamOrStatic;
     const body = stream.body;
 
-    if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, body)) {
+    if (TypedArrayPrototypeGetSymbolToStringTag(body) === "Uint8Array") {
       reqBody = body;
     } else if (typeof body === "string") {
       reqBody = core.encode(body);
@@ -147,7 +149,7 @@ async function mainFetch(req, recursive, terminator) {
     }
   }
 
-  const { requestRid, cancelHandleRid } = ops.op_fetch(
+  const { requestRid, cancelHandleRid } = op_fetch(
     req.method,
     req.currentUrl(),
     req.headerList,
@@ -167,7 +169,7 @@ async function mainFetch(req, recursive, terminator) {
   try {
     resp = await opFetchSend(requestRid);
   } catch (err) {
-    if (terminator.aborted) return;
+    if (terminator.aborted) return abortedNetworkError();
     throw err;
   } finally {
     if (cancelHandleRid !== null) {
@@ -303,7 +305,7 @@ function httpRedirectFetch(request, response, terminator) {
  * @param {RequestInfo} input
  * @param {RequestInit} init
  */
-function fetch(input, init = {}) {
+function fetch(input, init = { __proto__: null }) {
   // There is an async dispatch later that causes a stack trace disconnect.
   // We reconnect it by assigning the result of that dispatch to `opPromise`,
   // awaiting `opPromise` in an inner function also named `fetch()` and
@@ -311,7 +313,7 @@ function fetch(input, init = {}) {
   let opPromise = undefined;
   // 1.
   const result = new Promise((resolve, reject) => {
-    const prefix = "Failed to call 'fetch'";
+    const prefix = "Failed to execute 'fetch'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     // 2.
     const requestObject = new Request(input, init);
@@ -423,7 +425,7 @@ function handleWasmStreaming(source, rid) {
   try {
     const res = webidl.converters["Response"](
       source,
-      "Failed to call 'WebAssembly.compileStreaming'",
+      "Failed to execute 'WebAssembly.compileStreaming'",
       "Argument 1",
     );
 
@@ -448,7 +450,7 @@ function handleWasmStreaming(source, rid) {
     }
 
     // Pass the resolved URL to v8.
-    ops.op_wasm_streaming_set_url(rid, res.url);
+    op_wasm_streaming_set_url(rid, res.url);
 
     if (res.body !== null) {
       // 2.6.
@@ -460,7 +462,7 @@ function handleWasmStreaming(source, rid) {
           while (true) {
             const { value: chunk, done } = await reader.read();
             if (done) break;
-            ops.op_wasm_streaming_feed(rid, chunk);
+            op_wasm_streaming_feed(rid, chunk);
           }
         })(),
         // 2.7

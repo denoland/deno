@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::io::Error;
 
@@ -12,6 +12,13 @@ use rustyline::Editor;
 use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
+
+#[cfg(windows)]
+use deno_core::parking_lot::Mutex;
+#[cfg(windows)]
+use deno_io::WinTtyState;
+#[cfg(windows)]
+use std::sync::Arc;
 
 #[cfg(unix)]
 use deno_core::ResourceId;
@@ -50,12 +57,7 @@ use winapi::um::wincon;
 
 deno_core::extension!(
   deno_tty,
-  ops = [
-    op_stdin_set_raw,
-    op_isatty,
-    op_console_size,
-    op_read_line_prompt,
-  ],
+  ops = [op_set_raw, op_console_size, op_read_line_prompt],
   state = |state| {
     #[cfg(unix)]
     state.put(TtyModeStore::default());
@@ -83,12 +85,12 @@ fn mode_raw_input_off(original_mode: DWORD) -> DWORD {
 }
 
 #[op2(fast)]
-fn op_stdin_set_raw(
+fn op_set_raw(
   state: &mut OpState,
+  rid: u32,
   is_raw: bool,
   cbreak: bool,
 ) -> Result<(), AnyError> {
-  let rid = 0; // stdin is always rid=0
   let handle_or_fd = state.resource_table.get_fd(rid)?;
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
@@ -99,6 +101,7 @@ fn op_stdin_set_raw(
   #[cfg(windows)]
   {
     use winapi::shared::minwindef::FALSE;
+
     use winapi::um::consoleapi;
 
     let handle = handle_or_fd;
@@ -120,6 +123,79 @@ fn op_stdin_set_raw(
     } else {
       mode_raw_input_off(original_mode)
     };
+
+    let stdin_state = state.borrow::<Arc<Mutex<WinTtyState>>>();
+    let mut stdin_state = stdin_state.lock();
+
+    if stdin_state.reading {
+      let cvar = stdin_state.cvar.clone();
+
+      /* Trick to unblock an ongoing line-buffered read operation if not already pending.
+      See https://github.com/libuv/libuv/pull/866 for prior art */
+      if original_mode & COOKED_MODE != 0 && !stdin_state.cancelled {
+        // SAFETY: Write enter key event to force the console wait to return.
+        let record = unsafe {
+          let mut record: wincon::INPUT_RECORD = std::mem::zeroed();
+          record.EventType = wincon::KEY_EVENT;
+          record.Event.KeyEvent_mut().wVirtualKeyCode =
+            winapi::um::winuser::VK_RETURN as u16;
+          record.Event.KeyEvent_mut().bKeyDown = 1;
+          record.Event.KeyEvent_mut().wRepeatCount = 1;
+          *record.Event.KeyEvent_mut().uChar.UnicodeChar_mut() = '\r' as u16;
+          record.Event.KeyEvent_mut().dwControlKeyState = 0;
+          record.Event.KeyEvent_mut().wVirtualScanCode =
+            winapi::um::winuser::MapVirtualKeyW(
+              winapi::um::winuser::VK_RETURN as u32,
+              winapi::um::winuser::MAPVK_VK_TO_VSC,
+            ) as u16;
+          record
+        };
+        stdin_state.cancelled = true;
+
+        // SAFETY: winapi call to open conout$ and save screen state.
+        let active_screen_buffer = unsafe {
+          /* Save screen state before sending the VK_RETURN event */
+          let handle = winapi::um::fileapi::CreateFileW(
+            "conout$"
+              .encode_utf16()
+              .chain(Some(0))
+              .collect::<Vec<_>>()
+              .as_ptr(),
+            winapi::um::winnt::GENERIC_READ | winapi::um::winnt::GENERIC_WRITE,
+            winapi::um::winnt::FILE_SHARE_READ
+              | winapi::um::winnt::FILE_SHARE_WRITE,
+            std::ptr::null_mut(),
+            winapi::um::fileapi::OPEN_EXISTING,
+            0,
+            std::ptr::null_mut(),
+          );
+
+          let mut active_screen_buffer = std::mem::zeroed();
+          winapi::um::wincon::GetConsoleScreenBufferInfo(
+            handle,
+            &mut active_screen_buffer,
+          );
+          winapi::um::handleapi::CloseHandle(handle);
+          active_screen_buffer
+        };
+        stdin_state.screen_buffer_info = Some(active_screen_buffer);
+
+        // SAFETY: winapi call to write the VK_RETURN event.
+        if unsafe {
+          winapi::um::wincon::WriteConsoleInputW(handle, &record, 1, &mut 0)
+        } == FALSE
+        {
+          return Err(Error::last_os_error().into());
+        }
+
+        /* Wait for read thread to acknowledge the cancellation to ensure that nothing
+        interferes with the screen state.
+        NOTE: `wait_while` automatically unlocks stdin_state */
+        cvar.wait_while(&mut stdin_state, |state: &mut WinTtyState| {
+          state.cancelled
+        });
+      }
+    }
 
     // SAFETY: winapi call
     if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
@@ -207,12 +283,6 @@ fn op_stdin_set_raw(
 
     Ok(())
   }
-}
-
-#[op2(fast)]
-fn op_isatty(state: &mut OpState, rid: u32) -> Result<bool, AnyError> {
-  let handle = state.resource_table.get_handle(rid)?;
-  Ok(handle.is_terminal())
 }
 
 #[op2(fast)]
@@ -336,8 +406,8 @@ mod tests {
 #[op2]
 #[string]
 pub fn op_read_line_prompt(
-  #[string] prompt_text: String,
-  #[string] default_value: String,
+  #[string] prompt_text: &str,
+  #[string] default_value: &str,
 ) -> Result<Option<String>, AnyError> {
   let mut editor = Editor::<(), rustyline::history::DefaultHistory>::new()
     .expect("Failed to create editor.");
@@ -347,10 +417,17 @@ pub fn op_read_line_prompt(
     .bind_sequence(KeyEvent(KeyCode::Esc, Modifiers::empty()), Cmd::Interrupt);
 
   let read_result =
-    editor.readline_with_initial(&prompt_text, (&default_value, ""));
+    editor.readline_with_initial(prompt_text, (default_value, ""));
   match read_result {
     Ok(line) => Ok(Some(line)),
-    Err(ReadlineError::Interrupted | ReadlineError::Eof) => Ok(None),
+    Err(ReadlineError::Interrupted) => {
+      // SAFETY: Disable raw mode and raise SIGINT.
+      unsafe {
+        libc::raise(libc::SIGINT);
+      }
+      Ok(None)
+    }
+    Err(ReadlineError::Eof) => Ok(None),
     Err(err) => Err(err.into()),
   }
 }

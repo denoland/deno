@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::*;
 
@@ -19,6 +19,7 @@ pub trait TestReporter {
   fn report_register(&mut self, description: &TestDescription);
   fn report_plan(&mut self, plan: &TestPlan);
   fn report_wait(&mut self, description: &TestDescription);
+  fn report_slow(&mut self, description: &TestDescription, elapsed: u64);
   fn report_output(&mut self, output: &[u8]);
   fn report_result(
     &mut self,
@@ -49,6 +50,7 @@ pub trait TestReporter {
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   );
+  fn report_completed(&mut self);
   fn flush_report(
     &mut self,
     elapsed: &Duration,

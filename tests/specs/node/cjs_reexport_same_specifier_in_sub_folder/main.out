@@ -1,0 +1,7 @@
+Download http://localhost:4260/@denotest/cjs-reexport-same-specifier-in-sub-folder
+Download http://localhost:4260/@denotest/cjs-reexport-same-specifier-in-sub-folder/1.0.0.tgz
+[Module: null prototype] {
+  default: { main: [Getter], sub: [Getter] },
+  main: 1,
+  sub: 2
+}

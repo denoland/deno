@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "root": {
+      "args": "bench",
+      "output": "root.out"
+    },
+    "package": {
+      "args": "bench",
+      "cwd": "package-b",
+      "output": "package_b.out"
+    }
+  }
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::check_unstable;
 use crate::ir::out_buffer_as_ptr;
@@ -9,11 +9,9 @@ use crate::FfiPermissions;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
-use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::OpState;
 use deno_core::Resource;
-use deno_core::ResourceId;
 use dlopen2::raw::Library;
 use serde::Deserialize;
 use serde_value::ValueDeserializer;
@@ -54,17 +52,6 @@ impl DynamicLibraryResource {
   }
 }
 
-pub fn needs_unwrap(rv: &NativeType) -> bool {
-  matches!(
-    rv,
-    NativeType::I64 | NativeType::ISize | NativeType::U64 | NativeType::USize
-  )
-}
-
-fn is_i64(rv: &NativeType) -> bool {
-  matches!(rv, NativeType::I64 | NativeType::ISize)
-}
-
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ForeignFunction {
@@ -73,16 +60,9 @@ pub struct ForeignFunction {
   pub result: NativeType,
   #[serde(rename = "nonblocking")]
   non_blocking: Option<bool>,
-  #[serde(rename = "callback")]
-  #[serde(default = "default_callback")]
-  callback: bool,
   #[serde(rename = "optional")]
   #[serde(default = "default_optional")]
   optional: bool,
-}
-
-fn default_callback() -> bool {
-  false
 }
 
 fn default_optional() -> bool {
@@ -103,7 +83,7 @@ struct ForeignStatic {
 #[derive(Debug)]
 enum ForeignSymbol {
   ForeignFunction(ForeignFunction),
-  ForeignStatic(ForeignStatic),
+  ForeignStatic(#[allow(dead_code)] ForeignStatic),
 }
 
 impl<'de> Deserialize<'de> for ForeignSymbol {
@@ -132,12 +112,11 @@ pub struct FfiLoadArgs {
 }
 
 #[op2]
-#[serde]
 pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
   state: &mut OpState,
   #[serde] args: FfiLoadArgs,
-) -> Result<(ResourceId, serde_v8::Value<'scope>), AnyError>
+) -> Result<v8::Local<'scope, v8::Value>, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -205,7 +184,6 @@ where
           ptr,
           parameter_types: foreign_fn.parameters,
           result_type: foreign_fn.result,
-          can_callback: foreign_fn.callback,
         });
 
         resource.symbols.insert(symbol_key, sym.clone());
@@ -222,13 +200,12 @@ where
     }
   }
 
+  let out = v8::Array::new(scope, 2);
   let rid = state.resource_table.add(resource);
-  Ok((
-    rid,
-    serde_v8::Value {
-      v8_value: obj.into(),
-    },
-  ))
+  let rid_v8 = v8::Integer::new_from_unsigned(scope, rid);
+  out.set_index(scope, 0, rid_v8.into());
+  out.set_index(scope, 1, obj.into());
+  Ok(out.into())
 }
 
 // Create a JavaScript function for synchronous FFI call to
@@ -246,10 +223,6 @@ fn make_sync_fn<'s>(
       // SAFETY: The pointer will not be deallocated until the function is
       // garbage collected.
       let symbol = unsafe { &*(external.value() as *const Symbol) };
-      let needs_unwrap = match needs_unwrap(&symbol.result_type) {
-        true => Some(args.get(symbol.parameter_types.len() as i32)),
-        false => None,
-      };
       let out_buffer = match symbol.result_type {
         NativeType::Struct(_) => {
           let argc = args.length();
@@ -265,35 +238,10 @@ fn make_sync_fn<'s>(
       };
       match crate::call::ffi_call_sync(scope, args, symbol, out_buffer) {
         Ok(result) => {
-          match needs_unwrap {
-            Some(v) => {
-              let view: v8::Local<v8::ArrayBufferView> = v.try_into().unwrap();
-              let pointer =
-                view.buffer(scope).unwrap().data().unwrap().as_ptr() as *mut u8;
-
-              if is_i64(&symbol.result_type) {
-                // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
-                // it points to a fixed continuous slice of bytes on the heap.
-                let bs = unsafe { &mut *(pointer as *mut i64) };
-                // SAFETY: We already checked that type == I64
-                let value = unsafe { result.i64_value };
-                *bs = value;
-              } else {
-                // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
-                // it points to a fixed continuous slice of bytes on the heap.
-                let bs = unsafe { &mut *(pointer as *mut u64) };
-                // SAFETY: We checked that type == U64
-                let value = unsafe { result.u64_value };
-                *bs = value;
-              }
-            }
-            None => {
-              let result =
-                // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-                unsafe { result.to_v8(scope, symbol.result_type.clone()) };
-              rv.set(result.v8_value);
-            }
-          }
+          let result =
+            // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+            unsafe { result.to_v8(scope, symbol.result_type.clone()) };
+          rv.set(result);
         }
         Err(err) => {
           deno_core::_ops::throw_type_error(scope, err.to_string());

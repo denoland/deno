@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use aes_kw::KekAes128;
 use aes_kw::KekAes192;
@@ -198,104 +198,106 @@ pub async fn op_crypto_sign_key(
   #[serde] args: SignArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<ToJsBuffer, AnyError> {
-  let data = &*zero_copy;
-  let algorithm = args.algorithm;
+  deno_core::unsync::spawn_blocking(move || {
+    let data = &*zero_copy;
+    let algorithm = args.algorithm;
 
-  let signature = match algorithm {
-    Algorithm::RsassaPkcs1v15 => {
-      use rsa::pkcs1v15::SigningKey;
-      let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
-      match args
-        .hash
-        .ok_or_else(|| type_error("Missing argument hash".to_string()))?
-      {
-        CryptoHash::Sha1 => {
-          let signing_key = SigningKey::<Sha1>::new(private_key);
-          signing_key.sign(data)
+    let signature = match algorithm {
+      Algorithm::RsassaPkcs1v15 => {
+        use rsa::pkcs1v15::SigningKey;
+        let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
+        match args
+          .hash
+          .ok_or_else(|| type_error("Missing argument hash".to_string()))?
+        {
+          CryptoHash::Sha1 => {
+            let signing_key = SigningKey::<Sha1>::new(private_key);
+            signing_key.sign(data)
+          }
+          CryptoHash::Sha256 => {
+            let signing_key = SigningKey::<Sha256>::new(private_key);
+            signing_key.sign(data)
+          }
+          CryptoHash::Sha384 => {
+            let signing_key = SigningKey::<Sha384>::new(private_key);
+            signing_key.sign(data)
+          }
+          CryptoHash::Sha512 => {
+            let signing_key = SigningKey::<Sha512>::new(private_key);
+            signing_key.sign(data)
+          }
         }
-        CryptoHash::Sha256 => {
-          let signing_key = SigningKey::<Sha256>::new(private_key);
-          signing_key.sign(data)
-        }
-        CryptoHash::Sha384 => {
-          let signing_key = SigningKey::<Sha384>::new(private_key);
-          signing_key.sign(data)
-        }
-        CryptoHash::Sha512 => {
-          let signing_key = SigningKey::<Sha512>::new(private_key);
-          signing_key.sign(data)
-        }
+        .to_vec()
       }
-      .to_vec()
-    }
-    Algorithm::RsaPss => {
-      let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
+      Algorithm::RsaPss => {
+        let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
 
-      let salt_len = args
-        .salt_length
-        .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
-        as usize;
+        let salt_len = args.salt_length.ok_or_else(|| {
+          type_error("Missing argument saltLength".to_string())
+        })? as usize;
 
-      let mut rng = OsRng;
-      match args
-        .hash
-        .ok_or_else(|| type_error("Missing argument hash".to_string()))?
-      {
-        CryptoHash::Sha1 => {
-          let signing_key = Pss::new_with_salt::<Sha1>(salt_len);
-          let hashed = Sha1::digest(data);
-          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
+        let mut rng = OsRng;
+        match args
+          .hash
+          .ok_or_else(|| type_error("Missing argument hash".to_string()))?
+        {
+          CryptoHash::Sha1 => {
+            let signing_key = Pss::new_with_salt::<Sha1>(salt_len);
+            let hashed = Sha1::digest(data);
+            signing_key.sign(Some(&mut rng), &private_key, &hashed)?
+          }
+          CryptoHash::Sha256 => {
+            let signing_key = Pss::new_with_salt::<Sha256>(salt_len);
+            let hashed = Sha256::digest(data);
+            signing_key.sign(Some(&mut rng), &private_key, &hashed)?
+          }
+          CryptoHash::Sha384 => {
+            let signing_key = Pss::new_with_salt::<Sha384>(salt_len);
+            let hashed = Sha384::digest(data);
+            signing_key.sign(Some(&mut rng), &private_key, &hashed)?
+          }
+          CryptoHash::Sha512 => {
+            let signing_key = Pss::new_with_salt::<Sha512>(salt_len);
+            let hashed = Sha512::digest(data);
+            signing_key.sign(Some(&mut rng), &private_key, &hashed)?
+          }
         }
-        CryptoHash::Sha256 => {
-          let signing_key = Pss::new_with_salt::<Sha256>(salt_len);
-          let hashed = Sha256::digest(data);
-          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
-        }
-        CryptoHash::Sha384 => {
-          let signing_key = Pss::new_with_salt::<Sha384>(salt_len);
-          let hashed = Sha384::digest(data);
-          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
-        }
-        CryptoHash::Sha512 => {
-          let signing_key = Pss::new_with_salt::<Sha512>(salt_len);
-          let hashed = Sha512::digest(data);
-          signing_key.sign(Some(&mut rng), &private_key, &hashed)?
-        }
+        .to_vec()
       }
-      .to_vec()
-    }
-    Algorithm::Ecdsa => {
-      let curve: &EcdsaSigningAlgorithm =
-        args.named_curve.ok_or_else(not_supported)?.try_into()?;
+      Algorithm::Ecdsa => {
+        let curve: &EcdsaSigningAlgorithm =
+          args.named_curve.ok_or_else(not_supported)?.into();
 
-      let rng = RingRand::SystemRandom::new();
-      let key_pair = EcdsaKeyPair::from_pkcs8(curve, &args.key.data, &rng)?;
-      // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
-      // https://briansmith.org/rustdoc/ring/signature/index.html#statics
-      if let Some(hash) = args.hash {
-        match hash {
-          CryptoHash::Sha256 | CryptoHash::Sha384 => (),
-          _ => return Err(type_error("Unsupported algorithm")),
-        }
-      };
+        let rng = RingRand::SystemRandom::new();
+        let key_pair = EcdsaKeyPair::from_pkcs8(curve, &args.key.data, &rng)?;
+        // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
+        // https://briansmith.org/rustdoc/ring/signature/index.html#statics
+        if let Some(hash) = args.hash {
+          match hash {
+            CryptoHash::Sha256 | CryptoHash::Sha384 => (),
+            _ => return Err(type_error("Unsupported algorithm")),
+          }
+        };
 
-      let signature = key_pair.sign(&rng, data)?;
+        let signature = key_pair.sign(&rng, data)?;
 
-      // Signature data as buffer.
-      signature.as_ref().to_vec()
-    }
-    Algorithm::Hmac => {
-      let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
+        // Signature data as buffer.
+        signature.as_ref().to_vec()
+      }
+      Algorithm::Hmac => {
+        let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
 
-      let key = HmacKey::new(hash, &args.key.data);
+        let key = HmacKey::new(hash, &args.key.data);
 
-      let signature = ring::hmac::sign(&key, data);
-      signature.as_ref().to_vec()
-    }
-    _ => return Err(type_error("Unsupported algorithm".to_string())),
-  };
+        let signature = ring::hmac::sign(&key, data);
+        signature.as_ref().to_vec()
+      }
+      _ => return Err(type_error("Unsupported algorithm".to_string())),
+    };
 
-  Ok(signature.into())
+    Ok(signature.into())
+  })
+  .await?
 }
 
 #[derive(Deserialize)]
@@ -314,106 +316,108 @@ pub async fn op_crypto_verify_key(
   #[serde] args: VerifyArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<bool, AnyError> {
-  let data = &*zero_copy;
-  let algorithm = args.algorithm;
+  deno_core::unsync::spawn_blocking(move || {
+    let data = &*zero_copy;
+    let algorithm = args.algorithm;
 
-  let verification = match algorithm {
-    Algorithm::RsassaPkcs1v15 => {
-      use rsa::pkcs1v15::Signature;
-      use rsa::pkcs1v15::VerifyingKey;
-      let public_key = read_rsa_public_key(args.key)?;
-      let signature: Signature = args.signature.as_ref().try_into()?;
-      match args
-        .hash
-        .ok_or_else(|| type_error("Missing argument hash".to_string()))?
-      {
-        CryptoHash::Sha1 => {
-          let verifying_key = VerifyingKey::<Sha1>::new(public_key);
-          verifying_key.verify(data, &signature).is_ok()
-        }
-        CryptoHash::Sha256 => {
-          let verifying_key = VerifyingKey::<Sha256>::new(public_key);
-          verifying_key.verify(data, &signature).is_ok()
-        }
-        CryptoHash::Sha384 => {
-          let verifying_key = VerifyingKey::<Sha384>::new(public_key);
-          verifying_key.verify(data, &signature).is_ok()
-        }
-        CryptoHash::Sha512 => {
-          let verifying_key = VerifyingKey::<Sha512>::new(public_key);
-          verifying_key.verify(data, &signature).is_ok()
-        }
-      }
-    }
-    Algorithm::RsaPss => {
-      let public_key = read_rsa_public_key(args.key)?;
-      let signature = args.signature.as_ref();
-
-      let salt_len = args
-        .salt_length
-        .ok_or_else(|| type_error("Missing argument saltLength".to_string()))?
-        as usize;
-
-      match args
-        .hash
-        .ok_or_else(|| type_error("Missing argument hash".to_string()))?
-      {
-        CryptoHash::Sha1 => {
-          let pss = Pss::new_with_salt::<Sha1>(salt_len);
-          let hashed = Sha1::digest(data);
-          pss.verify(&public_key, &hashed, signature).is_ok()
-        }
-        CryptoHash::Sha256 => {
-          let pss = Pss::new_with_salt::<Sha256>(salt_len);
-          let hashed = Sha256::digest(data);
-          pss.verify(&public_key, &hashed, signature).is_ok()
-        }
-        CryptoHash::Sha384 => {
-          let pss = Pss::new_with_salt::<Sha384>(salt_len);
-          let hashed = Sha384::digest(data);
-          pss.verify(&public_key, &hashed, signature).is_ok()
-        }
-        CryptoHash::Sha512 => {
-          let pss = Pss::new_with_salt::<Sha512>(salt_len);
-          let hashed = Sha512::digest(data);
-          pss.verify(&public_key, &hashed, signature).is_ok()
+    let verification = match algorithm {
+      Algorithm::RsassaPkcs1v15 => {
+        use rsa::pkcs1v15::Signature;
+        use rsa::pkcs1v15::VerifyingKey;
+        let public_key = read_rsa_public_key(args.key)?;
+        let signature: Signature = args.signature.as_ref().try_into()?;
+        match args
+          .hash
+          .ok_or_else(|| type_error("Missing argument hash".to_string()))?
+        {
+          CryptoHash::Sha1 => {
+            let verifying_key = VerifyingKey::<Sha1>::new(public_key);
+            verifying_key.verify(data, &signature).is_ok()
+          }
+          CryptoHash::Sha256 => {
+            let verifying_key = VerifyingKey::<Sha256>::new(public_key);
+            verifying_key.verify(data, &signature).is_ok()
+          }
+          CryptoHash::Sha384 => {
+            let verifying_key = VerifyingKey::<Sha384>::new(public_key);
+            verifying_key.verify(data, &signature).is_ok()
+          }
+          CryptoHash::Sha512 => {
+            let verifying_key = VerifyingKey::<Sha512>::new(public_key);
+            verifying_key.verify(data, &signature).is_ok()
+          }
         }
       }
-    }
-    Algorithm::Hmac => {
-      let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
-      let key = HmacKey::new(hash, &args.key.data);
-      ring::hmac::verify(&key, data, &args.signature).is_ok()
-    }
-    Algorithm::Ecdsa => {
-      let signing_alg: &EcdsaSigningAlgorithm =
-        args.named_curve.ok_or_else(not_supported)?.try_into()?;
-      let verify_alg: &EcdsaVerificationAlgorithm =
-        args.named_curve.ok_or_else(not_supported)?.try_into()?;
+      Algorithm::RsaPss => {
+        let public_key = read_rsa_public_key(args.key)?;
+        let signature = args.signature.as_ref();
 
-      let private_key;
+        let salt_len = args.salt_length.ok_or_else(|| {
+          type_error("Missing argument saltLength".to_string())
+        })? as usize;
 
-      let public_key_bytes = match args.key.r#type {
-        KeyType::Private => {
-          let rng = RingRand::SystemRandom::new();
-          private_key =
-            EcdsaKeyPair::from_pkcs8(signing_alg, &args.key.data, &rng)?;
-
-          private_key.public_key().as_ref()
+        match args
+          .hash
+          .ok_or_else(|| type_error("Missing argument hash".to_string()))?
+        {
+          CryptoHash::Sha1 => {
+            let pss = Pss::new_with_salt::<Sha1>(salt_len);
+            let hashed = Sha1::digest(data);
+            pss.verify(&public_key, &hashed, signature).is_ok()
+          }
+          CryptoHash::Sha256 => {
+            let pss = Pss::new_with_salt::<Sha256>(salt_len);
+            let hashed = Sha256::digest(data);
+            pss.verify(&public_key, &hashed, signature).is_ok()
+          }
+          CryptoHash::Sha384 => {
+            let pss = Pss::new_with_salt::<Sha384>(salt_len);
+            let hashed = Sha384::digest(data);
+            pss.verify(&public_key, &hashed, signature).is_ok()
+          }
+          CryptoHash::Sha512 => {
+            let pss = Pss::new_with_salt::<Sha512>(salt_len);
+            let hashed = Sha512::digest(data);
+            pss.verify(&public_key, &hashed, signature).is_ok()
+          }
         }
-        KeyType::Public => &*args.key.data,
-        _ => return Err(type_error("Invalid Key format".to_string())),
-      };
+      }
+      Algorithm::Hmac => {
+        let hash: HmacAlgorithm = args.hash.ok_or_else(not_supported)?.into();
+        let key = HmacKey::new(hash, &args.key.data);
+        ring::hmac::verify(&key, data, &args.signature).is_ok()
+      }
+      Algorithm::Ecdsa => {
+        let signing_alg: &EcdsaSigningAlgorithm =
+          args.named_curve.ok_or_else(not_supported)?.into();
+        let verify_alg: &EcdsaVerificationAlgorithm =
+          args.named_curve.ok_or_else(not_supported)?.into();
 
-      let public_key =
-        ring::signature::UnparsedPublicKey::new(verify_alg, public_key_bytes);
+        let private_key;
 
-      public_key.verify(data, &args.signature).is_ok()
-    }
-    _ => return Err(type_error("Unsupported algorithm".to_string())),
-  };
+        let public_key_bytes = match args.key.r#type {
+          KeyType::Private => {
+            let rng = RingRand::SystemRandom::new();
+            private_key =
+              EcdsaKeyPair::from_pkcs8(signing_alg, &args.key.data, &rng)?;
 
-  Ok(verification)
+            private_key.public_key().as_ref()
+          }
+          KeyType::Public => &*args.key.data,
+          _ => return Err(type_error("Invalid Key format".to_string())),
+        };
+
+        let public_key =
+          ring::signature::UnparsedPublicKey::new(verify_alg, public_key_bytes);
+
+        public_key.verify(data, &args.signature).is_ok()
+      }
+      _ => return Err(type_error("Unsupported algorithm".to_string())),
+    };
+
+    Ok(verification)
+  })
+  .await?
 }
 
 #[derive(Deserialize)]
@@ -437,153 +441,160 @@ pub async fn op_crypto_derive_bits(
   #[serde] args: DeriveKeyArg,
   #[buffer] zero_copy: Option<JsBuffer>,
 ) -> Result<ToJsBuffer, AnyError> {
-  let algorithm = args.algorithm;
-  match algorithm {
-    Algorithm::Pbkdf2 => {
-      let zero_copy = zero_copy.ok_or_else(not_supported)?;
-      let salt = &*zero_copy;
-      // The caller must validate these cases.
-      assert!(args.length > 0);
-      assert!(args.length % 8 == 0);
+  deno_core::unsync::spawn_blocking(move || {
+    let algorithm = args.algorithm;
+    match algorithm {
+      Algorithm::Pbkdf2 => {
+        let zero_copy = zero_copy.ok_or_else(not_supported)?;
+        let salt = &*zero_copy;
+        // The caller must validate these cases.
+        assert!(args.length > 0);
+        assert!(args.length % 8 == 0);
 
-      let algorithm = match args.hash.ok_or_else(not_supported)? {
-        CryptoHash::Sha1 => pbkdf2::PBKDF2_HMAC_SHA1,
-        CryptoHash::Sha256 => pbkdf2::PBKDF2_HMAC_SHA256,
-        CryptoHash::Sha384 => pbkdf2::PBKDF2_HMAC_SHA384,
-        CryptoHash::Sha512 => pbkdf2::PBKDF2_HMAC_SHA512,
-      };
+        let algorithm = match args.hash.ok_or_else(not_supported)? {
+          CryptoHash::Sha1 => pbkdf2::PBKDF2_HMAC_SHA1,
+          CryptoHash::Sha256 => pbkdf2::PBKDF2_HMAC_SHA256,
+          CryptoHash::Sha384 => pbkdf2::PBKDF2_HMAC_SHA384,
+          CryptoHash::Sha512 => pbkdf2::PBKDF2_HMAC_SHA512,
+        };
 
-      // This will never panic. We have already checked length earlier.
-      let iterations =
-        NonZeroU32::new(args.iterations.ok_or_else(not_supported)?).unwrap();
-      let secret = args.key.data;
-      let mut out = vec![0; args.length / 8];
-      pbkdf2::derive(algorithm, iterations, salt, &secret, &mut out);
-      Ok(out.into())
-    }
-    Algorithm::Ecdh => {
-      let named_curve = args
-        .named_curve
-        .ok_or_else(|| type_error("Missing argument namedCurve".to_string()))?;
+        // This will never panic. We have already checked length earlier.
+        let iterations =
+          NonZeroU32::new(args.iterations.ok_or_else(not_supported)?).unwrap();
+        let secret = args.key.data;
+        let mut out = vec![0; args.length / 8];
+        pbkdf2::derive(algorithm, iterations, salt, &secret, &mut out);
+        Ok(out.into())
+      }
+      Algorithm::Ecdh => {
+        let named_curve = args.named_curve.ok_or_else(|| {
+          type_error("Missing argument namedCurve".to_string())
+        })?;
 
-      let public_key = args
-        .public_key
-        .ok_or_else(|| type_error("Missing argument publicKey"))?;
+        let public_key = args
+          .public_key
+          .ok_or_else(|| type_error("Missing argument publicKey"))?;
 
-      match named_curve {
-        CryptoNamedCurve::P256 => {
-          let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)
-            .map_err(|_| type_error("Unexpected error decoding private key"))?;
+        match named_curve {
+          CryptoNamedCurve::P256 => {
+            let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)
+              .map_err(|_| {
+                type_error("Unexpected error decoding private key")
+              })?;
 
-          let public_key = match public_key.r#type {
-            KeyType::Private => {
-              p256::SecretKey::from_pkcs8_der(&public_key.data)
-                .map_err(|_| {
-                  type_error("Unexpected error decoding private key")
-                })?
-                .public_key()
-            }
-            KeyType::Public => {
-              let point = p256::EncodedPoint::from_bytes(public_key.data)
-                .map_err(|_| {
-                  type_error("Unexpected error decoding private key")
-                })?;
-
-              let pk = p256::PublicKey::from_encoded_point(&point);
-              // pk is a constant time Option.
-              if pk.is_some().into() {
-                pk.unwrap()
-              } else {
-                return Err(type_error(
-                  "Unexpected error decoding private key",
-                ));
+            let public_key = match public_key.r#type {
+              KeyType::Private => {
+                p256::SecretKey::from_pkcs8_der(&public_key.data)
+                  .map_err(|_| {
+                    type_error("Unexpected error decoding private key")
+                  })?
+                  .public_key()
               }
-            }
-            _ => unreachable!(),
-          };
+              KeyType::Public => {
+                let point = p256::EncodedPoint::from_bytes(public_key.data)
+                  .map_err(|_| {
+                    type_error("Unexpected error decoding private key")
+                  })?;
 
-          let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
-            secret_key.to_nonzero_scalar(),
-            public_key.as_affine(),
-          );
-
-          // raw serialized x-coordinate of the computed point
-          Ok(shared_secret.raw_secret_bytes().to_vec().into())
-        }
-        CryptoNamedCurve::P384 => {
-          let secret_key = p384::SecretKey::from_pkcs8_der(&args.key.data)
-            .map_err(|_| type_error("Unexpected error decoding private key"))?;
-
-          let public_key = match public_key.r#type {
-            KeyType::Private => {
-              p384::SecretKey::from_pkcs8_der(&public_key.data)
-                .map_err(|_| {
-                  type_error("Unexpected error decoding private key")
-                })?
-                .public_key()
-            }
-            KeyType::Public => {
-              let point = p384::EncodedPoint::from_bytes(public_key.data)
-                .map_err(|_| {
-                  type_error("Unexpected error decoding private key")
-                })?;
-
-              let pk = p384::PublicKey::from_encoded_point(&point);
-              // pk is a constant time Option.
-              if pk.is_some().into() {
-                pk.unwrap()
-              } else {
-                return Err(type_error(
-                  "Unexpected error decoding private key",
-                ));
+                let pk = p256::PublicKey::from_encoded_point(&point);
+                // pk is a constant time Option.
+                if pk.is_some().into() {
+                  pk.unwrap()
+                } else {
+                  return Err(type_error(
+                    "Unexpected error decoding private key",
+                  ));
+                }
               }
-            }
-            _ => unreachable!(),
-          };
+              _ => unreachable!(),
+            };
 
-          let shared_secret = p384::elliptic_curve::ecdh::diffie_hellman(
-            secret_key.to_nonzero_scalar(),
-            public_key.as_affine(),
-          );
+            let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
+              secret_key.to_nonzero_scalar(),
+              public_key.as_affine(),
+            );
 
-          // raw serialized x-coordinate of the computed point
-          Ok(shared_secret.raw_secret_bytes().to_vec().into())
+            // raw serialized x-coordinate of the computed point
+            Ok(shared_secret.raw_secret_bytes().to_vec().into())
+          }
+          CryptoNamedCurve::P384 => {
+            let secret_key = p384::SecretKey::from_pkcs8_der(&args.key.data)
+              .map_err(|_| {
+                type_error("Unexpected error decoding private key")
+              })?;
+
+            let public_key = match public_key.r#type {
+              KeyType::Private => {
+                p384::SecretKey::from_pkcs8_der(&public_key.data)
+                  .map_err(|_| {
+                    type_error("Unexpected error decoding private key")
+                  })?
+                  .public_key()
+              }
+              KeyType::Public => {
+                let point = p384::EncodedPoint::from_bytes(public_key.data)
+                  .map_err(|_| {
+                    type_error("Unexpected error decoding private key")
+                  })?;
+
+                let pk = p384::PublicKey::from_encoded_point(&point);
+                // pk is a constant time Option.
+                if pk.is_some().into() {
+                  pk.unwrap()
+                } else {
+                  return Err(type_error(
+                    "Unexpected error decoding private key",
+                  ));
+                }
+              }
+              _ => unreachable!(),
+            };
+
+            let shared_secret = p384::elliptic_curve::ecdh::diffie_hellman(
+              secret_key.to_nonzero_scalar(),
+              public_key.as_affine(),
+            );
+
+            // raw serialized x-coordinate of the computed point
+            Ok(shared_secret.raw_secret_bytes().to_vec().into())
+          }
         }
       }
-    }
-    Algorithm::Hkdf => {
-      let zero_copy = zero_copy.ok_or_else(not_supported)?;
-      let salt = &*zero_copy;
-      let algorithm = match args.hash.ok_or_else(not_supported)? {
-        CryptoHash::Sha1 => hkdf::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
-        CryptoHash::Sha256 => hkdf::HKDF_SHA256,
-        CryptoHash::Sha384 => hkdf::HKDF_SHA384,
-        CryptoHash::Sha512 => hkdf::HKDF_SHA512,
-      };
+      Algorithm::Hkdf => {
+        let zero_copy = zero_copy.ok_or_else(not_supported)?;
+        let salt = &*zero_copy;
+        let algorithm = match args.hash.ok_or_else(not_supported)? {
+          CryptoHash::Sha1 => hkdf::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
+          CryptoHash::Sha256 => hkdf::HKDF_SHA256,
+          CryptoHash::Sha384 => hkdf::HKDF_SHA384,
+          CryptoHash::Sha512 => hkdf::HKDF_SHA512,
+        };
 
-      let info = args
-        .info
-        .ok_or_else(|| type_error("Missing argument info".to_string()))?;
-      // IKM
-      let secret = args.key.data;
-      // L
-      let length = args.length / 8;
+        let info = args
+          .info
+          .ok_or_else(|| type_error("Missing argument info".to_string()))?;
+        // IKM
+        let secret = args.key.data;
+        // L
+        let length = args.length / 8;
 
-      let salt = hkdf::Salt::new(algorithm, salt);
-      let prk = salt.extract(&secret);
-      let info = &[&*info];
-      let okm = prk.expand(info, HkdfOutput(length)).map_err(|_e| {
-        custom_error(
-          "DOMExceptionOperationError",
-          "The length provided for HKDF is too large",
-        )
-      })?;
-      let mut r = vec![0u8; length];
-      okm.fill(&mut r)?;
-      Ok(r.into())
+        let salt = hkdf::Salt::new(algorithm, salt);
+        let prk = salt.extract(&secret);
+        let info = &[&*info];
+        let okm = prk.expand(info, HkdfOutput(length)).map_err(|_e| {
+          custom_error(
+            "DOMExceptionOperationError",
+            "The length provided for HKDF is too large",
+          )
+        })?;
+        let mut r = vec![0u8; length];
+        okm.fill(&mut r)?;
+        Ok(r.into())
+      }
+      _ => Err(type_error("Unsupported algorithm".to_string())),
     }
-    _ => Err(type_error("Unsupported algorithm".to_string())),
-  }
+  })
+  .await?
 }
 
 fn read_rsa_public_key(key_data: KeyData) -> Result<RsaPublicKey, AnyError> {

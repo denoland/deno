@@ -1,32 +1,45 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeSet;
 use std::collections::HashSet;
-use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::anyhow;
 use deno_core::anyhow::Context;
+use deno_core::futures::future::LocalBoxFuture;
+use deno_core::futures::stream::FuturesUnordered;
+use deno_core::futures::FutureExt;
+use deno_core::futures::StreamExt;
 use deno_core::ModuleSpecifier;
 use once_cell::sync::Lazy;
 
 use deno_core::error::AnyError;
 
+use crate::package_json::load_pkg_json;
 use crate::path::to_file_specifier;
 use crate::resolution::NodeResolverRc;
 use crate::NodeModuleKind;
-use crate::NodePermissions;
 use crate::NodeResolutionMode;
 use crate::NpmResolverRc;
-use crate::PackageJson;
 use crate::PathClean;
 
 #[derive(Debug, Clone)]
-pub struct CjsAnalysis {
+pub enum CjsAnalysis {
+  /// File was found to be an ES module and the translator should
+  /// load the code as ESM.
+  Esm(String),
+  Cjs(CjsAnalysisExports),
+}
+
+#[derive(Debug, Clone)]
+pub struct CjsAnalysisExports {
   pub exports: Vec<String>,
   pub reexports: Vec<String>,
 }
 
 /// Code analyzer for CJS and ESM files.
+#[async_trait::async_trait(?Send)]
 pub trait CjsCodeAnalyzer {
   /// Analyzes CommonJs code for exports and reexports, which is
   /// then used to determine the wrapper ESM module exports.
@@ -35,10 +48,10 @@ pub trait CjsCodeAnalyzer {
   /// already has it. If the source is needed by the implementation,
   /// then it can use the provided source, or otherwise load it if
   /// necessary.
-  fn analyze_cjs(
+  async fn analyze_cjs(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_source: Option<&str>,
+    maybe_source: Option<String>,
   ) -> Result<CjsAnalysis, AnyError>;
 }
 
@@ -70,16 +83,22 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
   /// For all discovered reexports the analysis will be performed recursively.
   ///
   /// If successful a source code for equivalent ES module is returned.
-  pub fn translate_cjs_to_esm(
+  pub async fn translate_cjs_to_esm(
     &self,
-    specifier: &ModuleSpecifier,
-    source: Option<&str>,
-    permissions: &dyn NodePermissions,
+    entry_specifier: &ModuleSpecifier,
+    source: Option<String>,
   ) -> Result<String, AnyError> {
     let mut temp_var_count = 0;
-    let mut handled_reexports: HashSet<String> = HashSet::default();
 
-    let analysis = self.cjs_code_analyzer.analyze_cjs(specifier, source)?;
+    let analysis = self
+      .cjs_code_analyzer
+      .analyze_cjs(entry_specifier, source)
+      .await?;
+
+    let analysis = match analysis {
+      CjsAnalysis::Esm(source) => return Ok(source),
+      CjsAnalysis::Cjs(analysis) => analysis,
+    };
 
     let mut source = vec![
       r#"import {createRequire as __internalCreateRequire} from "node:module";
@@ -87,62 +106,30 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         .to_string(),
     ];
 
-    let mut all_exports = analysis
-      .exports
-      .iter()
-      .map(|s| s.to_string())
-      .collect::<HashSet<_>>();
+    // use a BTreeSet to make the output deterministic for v8's code cache
+    let mut all_exports = analysis.exports.into_iter().collect::<BTreeSet<_>>();
 
-    // (request, referrer)
-    let mut reexports_to_handle = VecDeque::new();
-    for reexport in analysis.reexports {
-      reexports_to_handle.push_back((reexport, specifier.clone()));
-    }
+    if !analysis.reexports.is_empty() {
+      let mut errors = Vec::new();
+      self
+        .analyze_reexports(
+          entry_specifier,
+          analysis.reexports,
+          &mut all_exports,
+          &mut errors,
+        )
+        .await;
 
-    while let Some((reexport, referrer)) = reexports_to_handle.pop_front() {
-      if handled_reexports.contains(&reexport) {
-        continue;
+      // surface errors afterwards in a deterministic way
+      if !errors.is_empty() {
+        errors.sort_by_cached_key(|e| e.to_string());
+        return Err(errors.remove(0));
       }
-
-      handled_reexports.insert(reexport.to_string());
-
-      // First, resolve the reexport specifier
-      let reexport_specifier = self.resolve(
-        &reexport,
-        &referrer,
-        // FIXME(bartlomieju): check if these conditions are okay, probably
-        // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
-        &["deno", "require", "default"],
-        NodeResolutionMode::Execution,
-        permissions,
-      )?;
-
-      // Second, resolve its exports and re-exports
-      let analysis = self
-        .cjs_code_analyzer
-        .analyze_cjs(&reexport_specifier, None)
-        .with_context(|| {
-          format!(
-            "Could not load '{}' ({}) referenced from {}",
-            reexport, reexport_specifier, referrer
-          )
-        })?;
-
-      for reexport in analysis.reexports {
-        reexports_to_handle.push_back((reexport, reexport_specifier.clone()));
-      }
-
-      all_exports.extend(
-        analysis
-          .exports
-          .into_iter()
-          .filter(|e| e.as_str() != "default"),
-      );
     }
 
     source.push(format!(
       "const mod = require(\"{}\");",
-      specifier
+      entry_specifier
         .to_file_path()
         .unwrap()
         .to_str()
@@ -169,13 +156,135 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     Ok(translated_source)
   }
 
+  async fn analyze_reexports<'a>(
+    &'a self,
+    entry_specifier: &url::Url,
+    reexports: Vec<String>,
+    all_exports: &mut BTreeSet<String>,
+    // this goes through the modules concurrently, so collect
+    // the errors in order to be deterministic
+    errors: &mut Vec<anyhow::Error>,
+  ) {
+    struct Analysis {
+      reexport_specifier: url::Url,
+      referrer: url::Url,
+      analysis: CjsAnalysis,
+    }
+
+    type AnalysisFuture<'a> = LocalBoxFuture<'a, Result<Analysis, AnyError>>;
+
+    let mut handled_reexports: HashSet<ModuleSpecifier> = HashSet::default();
+    handled_reexports.insert(entry_specifier.clone());
+    let mut analyze_futures: FuturesUnordered<AnalysisFuture<'a>> =
+      FuturesUnordered::new();
+    let cjs_code_analyzer = &self.cjs_code_analyzer;
+    let mut handle_reexports =
+      |referrer: url::Url,
+       reexports: Vec<String>,
+       analyze_futures: &mut FuturesUnordered<AnalysisFuture<'a>>,
+       errors: &mut Vec<anyhow::Error>| {
+        // 1. Resolve the re-exports and start a future to analyze each one
+        for reexport in reexports {
+          let result = self.resolve(
+            &reexport,
+            &referrer,
+            // FIXME(bartlomieju): check if these conditions are okay, probably
+            // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
+            &["deno", "require", "default"],
+            NodeResolutionMode::Execution,
+          );
+          let reexport_specifier = match result {
+            Ok(specifier) => specifier,
+            Err(err) => {
+              errors.push(err);
+              continue;
+            }
+          };
+
+          if !handled_reexports.insert(reexport_specifier.clone()) {
+            continue;
+          }
+
+          let referrer = referrer.clone();
+          let future = async move {
+            let analysis = cjs_code_analyzer
+              .analyze_cjs(&reexport_specifier, None)
+              .await
+              .with_context(|| {
+                format!(
+                  "Could not load '{}' ({}) referenced from {}",
+                  reexport, reexport_specifier, referrer
+                )
+              })?;
+
+            Ok(Analysis {
+              reexport_specifier,
+              referrer,
+              analysis,
+            })
+          }
+          .boxed_local();
+          analyze_futures.push(future);
+        }
+      };
+
+    handle_reexports(
+      entry_specifier.clone(),
+      reexports,
+      &mut analyze_futures,
+      errors,
+    );
+
+    while let Some(analysis_result) = analyze_futures.next().await {
+      // 2. Look at the analysis result and resolve its exports and re-exports
+      let Analysis {
+        reexport_specifier,
+        referrer,
+        analysis,
+      } = match analysis_result {
+        Ok(analysis) => analysis,
+        Err(err) => {
+          errors.push(err);
+          continue;
+        }
+      };
+      match analysis {
+        CjsAnalysis::Esm(_) => {
+          // todo(dsherret): support this once supporting requiring ES modules
+          errors.push(anyhow::anyhow!(
+            "Cannot require ES module '{}' from '{}'",
+            reexport_specifier,
+            referrer,
+          ));
+        }
+        CjsAnalysis::Cjs(analysis) => {
+          if !analysis.reexports.is_empty() {
+            handle_reexports(
+              reexport_specifier.clone(),
+              analysis.reexports,
+              &mut analyze_futures,
+              errors,
+            );
+          }
+
+          all_exports.extend(
+            analysis
+              .exports
+              .into_iter()
+              .filter(|e| e.as_str() != "default"),
+          );
+        }
+      }
+    }
+  }
+
+  // todo(dsherret): what is going on here? Isn't this a bunch of duplicate code?
   fn resolve(
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
     conditions: &[&str],
     mode: NodeResolutionMode,
-    permissions: &dyn NodePermissions,
   ) -> Result<ModuleSpecifier, AnyError> {
     if specifier.starts_with('/') {
       todo!();
@@ -200,28 +309,24 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     let module_dir = self.npm_resolver.resolve_package_folder_from_package(
       package_specifier.as_str(),
       referrer,
-      mode,
     )?;
 
     let package_json_path = module_dir.join("package.json");
-    let package_json = PackageJson::load(
-      &*self.fs,
-      &*self.npm_resolver,
-      permissions,
-      package_json_path.clone(),
-    )?;
-    if package_json.exists {
+    let maybe_package_json = load_pkg_json(&*self.fs, &package_json_path)?;
+    if let Some(package_json) = maybe_package_json {
       if let Some(exports) = &package_json.exports {
-        return self.node_resolver.package_exports_resolve(
-          &package_json_path,
-          &package_subpath,
-          exports,
-          referrer,
-          NodeModuleKind::Esm,
-          conditions,
-          mode,
-          permissions,
-        );
+        return self
+          .node_resolver
+          .package_exports_resolve(
+            &package_json_path,
+            &package_subpath,
+            exports,
+            Some(referrer),
+            NodeModuleKind::Esm,
+            conditions,
+            mode,
+          )
+          .map_err(AnyError::from);
       }
 
       // old school
@@ -230,13 +335,9 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         if self.fs.is_dir_sync(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
-          let package_json = PackageJson::load(
-            &*self.fs,
-            &*self.npm_resolver,
-            permissions,
-            package_json_path,
-          )?;
-          if package_json.exists {
+          let maybe_package_json =
+            load_pkg_json(&*self.fs, &package_json_path)?;
+          if let Some(package_json) = maybe_package_json {
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
               return Ok(to_file_specifier(&d.join(main).clean()));
             }
@@ -392,6 +493,16 @@ fn add_export(
 ) {
   fn is_valid_var_decl(name: &str) -> bool {
     // it's ok to be super strict here
+    if name.is_empty() {
+      return false;
+    }
+
+    if let Some(first) = name.chars().next() {
+      if !first.is_ascii_alphabetic() && first != '_' && first != '$' {
+        return false;
+      }
+    }
+
     name
       .chars()
       .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
@@ -479,7 +590,7 @@ mod tests {
     let mut temp_var_count = 0;
     let mut source = vec![];
 
-    let exports = vec!["static", "server", "app", "dashed-export"];
+    let exports = vec!["static", "server", "app", "dashed-export", "3d"];
     for export in exports {
       add_export(&mut source, export, "init", &mut temp_var_count);
     }
@@ -492,6 +603,8 @@ mod tests {
         "export const app = init;".to_string(),
         "const __deno_export_2__ = init;".to_string(),
         "export { __deno_export_2__ as \"dashed-export\" };".to_string(),
+        "const __deno_export_3__ = init;".to_string(),
+        "export { __deno_export_3__ as \"3d\" };".to_string(),
       ]
     )
   }

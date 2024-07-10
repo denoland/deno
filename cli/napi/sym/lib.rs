@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use proc_macro::TokenStream;
 use quote::quote;
@@ -20,17 +20,12 @@ pub fn napi_sym(_attr: TokenStream, item: TokenStream) -> TokenStream {
   let name = &func.sig.ident;
   assert!(
     exports.symbols.contains(&name.to_string()),
-    "tools/napi/sym/symbol_exports.json is out of sync!"
+    "cli/napi/sym/symbol_exports.json is out of sync!"
   );
 
-  let block = &func.block;
-  let inputs = &func.sig.inputs;
-  let generics = &func.sig.generics;
   TokenStream::from(quote! {
-      // SAFETY: it's an NAPI function.
-      #[no_mangle]
-      pub unsafe extern "C" fn #name #generics (#inputs) -> napi_status {
-        #block
-      }
+    crate::napi_wrap! {
+      #func
+    }
   })
 }

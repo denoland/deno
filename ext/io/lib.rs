@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -11,7 +11,6 @@ use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Op;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -49,7 +48,23 @@ use winapi::um::processenv::GetStdHandle;
 #[cfg(windows)]
 use winapi::um::winbase;
 
+#[cfg(windows)]
+use parking_lot::Condvar;
+#[cfg(windows)]
+use parking_lot::Mutex;
+#[cfg(windows)]
+use std::sync::Arc;
+
 pub mod fs;
+mod pipe;
+#[cfg(windows)]
+mod winpipe;
+
+pub use pipe::pipe;
+pub use pipe::AsyncPipeRead;
+pub use pipe::AsyncPipeWrite;
+pub use pipe::PipeRead;
+pub use pipe::PipeWrite;
 
 // Store the stdio fd/handles in global statics in order to keep them
 // alive for the duration of the application since the last handle/fd
@@ -93,44 +108,53 @@ deno_core::extension!(deno_io,
     stdio: Option<Stdio>,
   },
   middleware = |op| match op.name {
-    "op_print" => op_print::DECL,
+    "op_print" => op_print(),
     _ => op,
   },
   state = |state, options| {
     if let Some(stdio) = options.stdio {
+      #[cfg(windows)]
+      let stdin_state = {
+        let st = Arc::new(Mutex::new(WinTtyState::default()));
+        state.put(st.clone());
+        st
+      };
+      #[cfg(unix)]
+      let stdin_state = ();
+
       let t = &mut state.resource_table;
 
       let rid = t.add(fs::FileResource::new(
-        Rc::new(match stdio.stdin {
-          StdioPipe::Inherit => StdFileResourceInner::new(
-            StdFileResourceKind::Stdin,
+        Rc::new(match stdio.stdin.pipe {
+          StdioPipeInner::Inherit => StdFileResourceInner::new(
+            StdFileResourceKind::Stdin(stdin_state),
             STDIN_HANDLE.try_clone().unwrap(),
           ),
-          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
+          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
         }),
         "stdin".to_string(),
       ));
       assert_eq!(rid, 0, "stdin must have ResourceId 0");
 
       let rid = t.add(FileResource::new(
-        Rc::new(match stdio.stdout {
-          StdioPipe::Inherit => StdFileResourceInner::new(
+        Rc::new(match stdio.stdout.pipe {
+          StdioPipeInner::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stdout,
             STDOUT_HANDLE.try_clone().unwrap(),
           ),
-          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
+          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
         }),
         "stdout".to_string(),
       ));
       assert_eq!(rid, 1, "stdout must have ResourceId 1");
 
       let rid = t.add(FileResource::new(
-        Rc::new(match stdio.stderr {
-          StdioPipe::Inherit => StdFileResourceInner::new(
+        Rc::new(match stdio.stderr.pipe {
+          StdioPipeInner::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stderr,
             STDERR_HANDLE.try_clone().unwrap(),
           ),
-          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
+          StdioPipeInner::File(pipe) => StdFileResourceInner::file(pipe),
         }),
         "stderr".to_string(),
       ));
@@ -139,22 +163,41 @@ deno_core::extension!(deno_io,
   },
 );
 
-pub enum StdioPipe {
+#[derive(Default)]
+pub struct StdioPipe {
+  pipe: StdioPipeInner,
+}
+
+impl StdioPipe {
+  pub const fn inherit() -> Self {
+    StdioPipe {
+      pipe: StdioPipeInner::Inherit,
+    }
+  }
+
+  pub fn file(f: impl Into<StdFile>) -> Self {
+    StdioPipe {
+      pipe: StdioPipeInner::File(f.into()),
+    }
+  }
+}
+
+#[derive(Default)]
+enum StdioPipeInner {
+  #[default]
   Inherit,
   File(StdFile),
 }
 
-impl Default for StdioPipe {
-  fn default() -> Self {
-    Self::Inherit
-  }
-}
-
 impl Clone for StdioPipe {
   fn clone(&self) -> Self {
-    match self {
-      StdioPipe::Inherit => StdioPipe::Inherit,
-      StdioPipe::File(pipe) => StdioPipe::File(pipe.try_clone().unwrap()),
+    match &self.pipe {
+      StdioPipeInner::Inherit => Self {
+        pipe: StdioPipeInner::Inherit,
+      },
+      StdioPipeInner::File(pipe) => Self {
+        pipe: StdioPipeInner::File(pipe.try_clone().unwrap()),
+      },
     }
   }
 }
@@ -290,14 +333,27 @@ impl Resource for ChildStderrResource {
   }
 }
 
-#[derive(Clone, Copy)]
+#[cfg(windows)]
+#[derive(Default)]
+pub struct WinTtyState {
+  pub cancelled: bool,
+  pub reading: bool,
+  pub screen_buffer_info:
+    Option<winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO>,
+  pub cvar: Arc<Condvar>,
+}
+
+#[derive(Clone)]
 enum StdFileResourceKind {
   File,
   // For stdout and stderr, we sometimes instead use std::io::stdout() directly,
   // because we get some Windows specific functionality for free by using Rust
   // std's wrappers. So we take a bit of a complexity hit in order to not
   // have to duplicate the functionality in Rust's std/src/sys/windows/stdio.rs
-  Stdin,
+  #[cfg(windows)]
+  Stdin(Arc<Mutex<WinTtyState>>),
+  #[cfg(not(windows))]
+  Stdin(()),
   Stdout,
   Stderr,
 }
@@ -395,6 +451,84 @@ impl StdFileResourceInner {
       spawn_blocking(action).await.unwrap()
     }
   }
+
+  #[cfg(windows)]
+  async fn handle_stdin_read(
+    &self,
+    state: Arc<Mutex<WinTtyState>>,
+    mut buf: BufMutView,
+  ) -> FsResult<(usize, BufMutView)> {
+    loop {
+      let state = state.clone();
+
+      let fut = self.with_inner_blocking_task(move |file| {
+        /* Start reading, and set the reading flag to true */
+        state.lock().reading = true;
+        let nread = match file.read(&mut buf) {
+          Ok(nread) => nread,
+          Err(e) => return Err((e.into(), buf)),
+        };
+
+        let mut state = state.lock();
+        state.reading = false;
+
+        /* If we canceled the read by sending a VK_RETURN event, restore
+        the screen state to undo the visual effect of the VK_RETURN event */
+        if state.cancelled {
+          if let Some(screen_buffer_info) = state.screen_buffer_info {
+            // SAFETY: WinAPI calls to open conout$ and restore visual state.
+            unsafe {
+              let handle = winapi::um::fileapi::CreateFileW(
+                "conout$"
+                  .encode_utf16()
+                  .chain(Some(0))
+                  .collect::<Vec<_>>()
+                  .as_ptr(),
+                winapi::um::winnt::GENERIC_READ
+                  | winapi::um::winnt::GENERIC_WRITE,
+                winapi::um::winnt::FILE_SHARE_READ
+                  | winapi::um::winnt::FILE_SHARE_WRITE,
+                std::ptr::null_mut(),
+                winapi::um::fileapi::OPEN_EXISTING,
+                0,
+                std::ptr::null_mut(),
+              );
+
+              let mut pos = screen_buffer_info.dwCursorPosition;
+              /* If the cursor was at the bottom line of the screen buffer, the
+              VK_RETURN would have caused the buffer contents to scroll up by
+              one line. The right position to reset the cursor to is therefore one
+              line higher */
+              if pos.Y == screen_buffer_info.dwSize.Y - 1 {
+                pos.Y -= 1;
+              }
+
+              winapi::um::wincon::SetConsoleCursorPosition(handle, pos);
+              winapi::um::handleapi::CloseHandle(handle);
+            }
+          }
+
+          /* Reset the cancelled flag */
+          state.cancelled = false;
+
+          /* Unblock the main thread */
+          state.cvar.notify_one();
+
+          return Err((FsError::FileBusy, buf));
+        }
+
+        Ok((nread, buf))
+      });
+
+      match fut.await {
+        Err((FsError::FileBusy, b)) => {
+          buf = b;
+          continue;
+        }
+        other => return other.map_err(|(e, _)| e),
+      }
+    }
+  }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -408,7 +542,7 @@ impl crate::fs::File for StdFileResourceInner {
     // std/src/sys/windows/stdio.rs in Rust's source code).
     match self.kind {
       StdFileResourceKind::File => self.with_sync(|file| Ok(file.write(buf)?)),
-      StdFileResourceKind::Stdin => {
+      StdFileResourceKind::Stdin(_) => {
         Err(Into::<std::io::Error>::into(ErrorKind::Unsupported).into())
       }
       StdFileResourceKind::Stdout => {
@@ -430,7 +564,7 @@ impl crate::fs::File for StdFileResourceInner {
 
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
     match self.kind {
-      StdFileResourceKind::File | StdFileResourceKind::Stdin => {
+      StdFileResourceKind::File | StdFileResourceKind::Stdin(_) => {
         self.with_sync(|file| Ok(file.read(buf)?))
       }
       StdFileResourceKind::Stdout | StdFileResourceKind::Stderr => {
@@ -444,7 +578,7 @@ impl crate::fs::File for StdFileResourceInner {
       StdFileResourceKind::File => {
         self.with_sync(|file| Ok(file.write_all(buf)?))
       }
-      StdFileResourceKind::Stdin => {
+      StdFileResourceKind::Stdin(_) => {
         Err(Into::<std::io::Error>::into(ErrorKind::Unsupported).into())
       }
       StdFileResourceKind::Stdout => {
@@ -470,7 +604,7 @@ impl crate::fs::File for StdFileResourceInner {
           .with_inner_blocking_task(move |file| Ok(file.write_all(&buf)?))
           .await
       }
-      StdFileResourceKind::Stdin => {
+      StdFileResourceKind::Stdin(_) => {
         Err(Into::<std::io::Error>::into(ErrorKind::Unsupported).into())
       }
       StdFileResourceKind::Stdout => {
@@ -511,7 +645,7 @@ impl crate::fs::File for StdFileResourceInner {
           })
           .await
       }
-      StdFileResourceKind::Stdin => {
+      StdFileResourceKind::Stdin(_) => {
         Err(Into::<std::io::Error>::into(ErrorKind::Unsupported).into())
       }
       StdFileResourceKind::Stdout => {
@@ -541,7 +675,7 @@ impl crate::fs::File for StdFileResourceInner {
 
   fn read_all_sync(self: Rc<Self>) -> FsResult<Vec<u8>> {
     match self.kind {
-      StdFileResourceKind::File | StdFileResourceKind::Stdin => {
+      StdFileResourceKind::File | StdFileResourceKind::Stdin(_) => {
         let mut buf = Vec::new();
         self.with_sync(|file| Ok(file.read_to_end(&mut buf)?))?;
         Ok(buf)
@@ -553,7 +687,7 @@ impl crate::fs::File for StdFileResourceInner {
   }
   async fn read_all_async(self: Rc<Self>) -> FsResult<Vec<u8>> {
     match self.kind {
-      StdFileResourceKind::File | StdFileResourceKind::Stdin => {
+      StdFileResourceKind::File | StdFileResourceKind::Stdin(_) => {
         self
           .with_inner_blocking_task(|file| {
             let mut buf = Vec::new();
@@ -709,19 +843,28 @@ impl crate::fs::File for StdFileResourceInner {
     self: Rc<Self>,
     mut buf: BufMutView,
   ) -> FsResult<(usize, BufMutView)> {
-    self
-      .with_inner_blocking_task(|file| {
-        let nread = file.read(&mut buf)?;
-        Ok((nread, buf))
-      })
-      .await
+    match &self.kind {
+      /* On Windows, we need to handle special read cancellation logic for stdin */
+      #[cfg(windows)]
+      StdFileResourceKind::Stdin(state) => {
+        self.handle_stdin_read(state.clone(), buf).await
+      }
+      _ => {
+        self
+          .with_inner_blocking_task(|file| {
+            let nread = file.read(&mut buf)?;
+            Ok((nread, buf))
+          })
+          .await
+      }
+    }
   }
 
   fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn fs::File>> {
     let inner: &Option<_> = &self.cell.borrow();
     match inner {
       Some(inner) => Ok(Rc::new(StdFileResourceInner {
-        kind: self.kind,
+        kind: self.kind.clone(),
         cell: RefCell::new(Some(inner.try_clone()?)),
         cell_async_task_queue: Default::default(),
         handle: self.handle,

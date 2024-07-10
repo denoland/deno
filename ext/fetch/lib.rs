@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 mod fs_fetch_handler;
 
@@ -44,8 +44,11 @@ use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
 
 use data_url::DataUrl;
-use http_v02::header::CONTENT_LENGTH;
-use http_v02::Uri;
+use deno_tls::TlsKey;
+use deno_tls::TlsKeys;
+use deno_tls::TlsKeysHolder;
+use http::header::CONTENT_LENGTH;
+use http::Uri;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -78,7 +81,7 @@ pub struct Options {
   pub request_builder_hook:
     Option<fn(RequestBuilder) -> Result<RequestBuilder, AnyError>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub client_cert_chain_and_key: Option<(String, String)>,
+  pub client_cert_chain_and_key: TlsKeys,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
 }
 
@@ -99,7 +102,7 @@ impl Default for Options {
       proxy: None,
       request_builder_hook: None,
       unsafely_ignore_certificate_errors: None,
-      client_cert_chain_and_key: None,
+      client_cert_chain_and_key: TlsKeys::Null,
       file_fetch_handler: Rc::new(DefaultFileFetchHandler),
     }
   }
@@ -168,15 +171,6 @@ impl FetchHandler for DefaultFileFetchHandler {
   }
 }
 
-pub trait FetchPermissions {
-  fn check_net_url(
-    &mut self,
-    _url: &Url,
-    api_name: &str,
-  ) -> Result<(), AnyError>;
-  fn check_read(&mut self, _p: &Path, api_name: &str) -> Result<(), AnyError>;
-}
-
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
 }
@@ -194,25 +188,35 @@ pub fn get_or_create_client_from_state(
     Ok(client.clone())
   } else {
     let options = state.borrow::<Options>();
-    let client = create_http_client(
-      &options.user_agent,
-      CreateHttpClientOptions {
-        root_cert_store: options.root_cert_store()?,
-        ca_certs: vec![],
-        proxy: options.proxy.clone(),
-        unsafely_ignore_certificate_errors: options
-          .unsafely_ignore_certificate_errors
-          .clone(),
-        client_cert_chain_and_key: options.client_cert_chain_and_key.clone(),
-        pool_max_idle_per_host: None,
-        pool_idle_timeout: None,
-        http1: true,
-        http2: true,
-      },
-    )?;
+    let client = create_client_from_options(options)?;
     state.put::<reqwest::Client>(client.clone());
     Ok(client)
   }
+}
+
+pub fn create_client_from_options(
+  options: &Options,
+) -> Result<reqwest::Client, AnyError> {
+  create_http_client(
+    &options.user_agent,
+    CreateHttpClientOptions {
+      root_cert_store: options.root_cert_store()?,
+      ca_certs: vec![],
+      proxy: options.proxy.clone(),
+      unsafely_ignore_certificate_errors: options
+        .unsafely_ignore_certificate_errors
+        .clone(),
+      client_cert_chain_and_key: options
+        .client_cert_chain_and_key
+        .clone()
+        .try_into()
+        .unwrap_or_default(),
+      pool_max_idle_per_host: None,
+      pool_idle_timeout: None,
+      http1: true,
+      http2: true,
+    },
+  )
 }
 
 #[allow(clippy::type_complexity)]
@@ -265,6 +269,35 @@ impl Stream for ResourceToBodyAdapter {
 impl Drop for ResourceToBodyAdapter {
   fn drop(&mut self) {
     self.0.clone().close()
+  }
+}
+
+pub trait FetchPermissions {
+  fn check_net_url(
+    &mut self,
+    _url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
+  fn check_read(&mut self, _p: &Path, api_name: &str) -> Result<(), AnyError>;
+}
+
+impl FetchPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+  }
+
+  #[inline(always)]
+  fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_read(self, path, api_name)
   }
 }
 
@@ -416,12 +449,9 @@ where
         .decode_to_vec()
         .map_err(|e| type_error(format!("{e:?}")))?;
 
-      let response = http_v02::Response::builder()
-        .status(http_v02::StatusCode::OK)
-        .header(
-          http_v02::header::CONTENT_TYPE,
-          data_url.mime_type().to_string(),
-        )
+      let response = http::Response::builder()
+        .status(http::StatusCode::OK)
+        .header(http::header::CONTENT_TYPE, data_url.mime_type().to_string())
         .body(reqwest::Body::from(body))?;
 
       let fut = async move { Ok(Ok(Response::from(response))) };
@@ -789,22 +819,13 @@ impl HttpClientResource {
   }
 }
 
-#[derive(Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub enum PoolIdleTimeout {
-  State(bool),
-  Specify(u64),
-}
-
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateHttpClientArgs {
   ca_certs: Vec<String>,
   proxy: Option<Proxy>,
-  cert_chain: Option<String>,
-  private_key: Option<String>,
   pool_max_idle_per_host: Option<usize>,
-  pool_idle_timeout: Option<PoolIdleTimeout>,
+  pool_idle_timeout: Option<serde_json::Value>,
   #[serde(default = "default_true")]
   http1: bool,
   #[serde(default = "default_true")]
@@ -822,6 +843,7 @@ fn default_true() -> bool {
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   #[serde] args: CreateHttpClientArgs,
+  #[cppgc] tls_keys: &TlsKeysHolder,
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,
@@ -831,21 +853,6 @@ where
     let url = Url::parse(&proxy.url)?;
     permissions.check_net_url(&url, "Deno.createHttpClient()")?;
   }
-
-  let client_cert_chain_and_key = {
-    if args.cert_chain.is_some() || args.private_key.is_some() {
-      let cert_chain = args
-        .cert_chain
-        .ok_or_else(|| type_error("No certificate chain provided"))?;
-      let private_key = args
-        .private_key
-        .ok_or_else(|| type_error("No private key provided"))?;
-
-      Some((cert_chain, private_key))
-    } else {
-      None
-    }
-  };
 
   let options = state.borrow::<Options>();
   let ca_certs = args
@@ -863,13 +870,16 @@ where
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
-      client_cert_chain_and_key,
+      client_cert_chain_and_key: tls_keys.take().try_into().unwrap(),
       pool_max_idle_per_host: args.pool_max_idle_per_host,
       pool_idle_timeout: args.pool_idle_timeout.and_then(
         |timeout| match timeout {
-          PoolIdleTimeout::State(true) => None,
-          PoolIdleTimeout::State(false) => Some(None),
-          PoolIdleTimeout::Specify(specify) => Some(Some(specify)),
+          serde_json::Value::Bool(true) => None,
+          serde_json::Value::Bool(false) => Some(None),
+          serde_json::Value::Number(specify) => {
+            Some(Some(specify.as_u64().unwrap_or_default()))
+          }
+          _ => Some(None),
         },
       ),
       http1: args.http1,
@@ -889,7 +899,7 @@ pub struct CreateHttpClientOptions {
   pub ca_certs: Vec<Vec<u8>>,
   pub proxy: Option<Proxy>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub client_cert_chain_and_key: Option<(String, String)>,
+  pub client_cert_chain_and_key: Option<TlsKey>,
   pub pool_max_idle_per_host: Option<usize>,
   pub pool_idle_timeout: Option<Option<u64>>,
   pub http1: bool,
@@ -922,7 +932,7 @@ pub fn create_http_client(
     options.root_cert_store,
     options.ca_certs,
     options.unsafely_ignore_certificate_errors,
-    options.client_cert_chain_and_key,
+    options.client_cert_chain_and_key.into(),
     deno_tls::SocketUse::Http,
   )?;
 

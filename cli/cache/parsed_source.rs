@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -8,7 +8,43 @@ use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_core::parking_lot::Mutex;
 use deno_graph::CapturingModuleParser;
+use deno_graph::DefaultModuleParser;
 use deno_graph::ModuleParser;
+use deno_graph::ParseOptions;
+use deno_graph::ParsedSourceStore;
+
+/// Lazily parses JS/TS sources from a `deno_graph::ModuleGraph` given
+/// a `ParsedSourceCache`. Note that deno_graph doesn't necessarily cause
+/// files to end up in the `ParsedSourceCache` because it might have all
+/// the information it needs via caching in order to skip parsing.
+#[derive(Clone, Copy)]
+pub struct LazyGraphSourceParser<'a> {
+  cache: &'a ParsedSourceCache,
+  graph: &'a deno_graph::ModuleGraph,
+}
+
+impl<'a> LazyGraphSourceParser<'a> {
+  pub fn new(
+    cache: &'a ParsedSourceCache,
+    graph: &'a deno_graph::ModuleGraph,
+  ) -> Self {
+    Self { cache, graph }
+  }
+
+  pub fn get_or_parse_source(
+    &self,
+    module_specifier: &ModuleSpecifier,
+  ) -> Result<Option<deno_ast::ParsedSource>, deno_ast::ParseDiagnostic> {
+    let Some(deno_graph::Module::Js(module)) = self.graph.get(module_specifier)
+    else {
+      return Ok(None);
+    };
+    self
+      .cache
+      .get_parsed_source_from_js_module(module)
+      .map(Some)
+  }
+}
 
 #[derive(Default)]
 pub struct ParsedSourceCache {
@@ -16,28 +52,44 @@ pub struct ParsedSourceCache {
 }
 
 impl ParsedSourceCache {
-  pub fn get_parsed_source_from_esm_module(
+  pub fn get_parsed_source_from_js_module(
     &self,
-    module: &deno_graph::EsmModule,
-  ) -> Result<ParsedSource, deno_ast::Diagnostic> {
-    self.get_or_parse_module(
-      &module.specifier,
-      module.source.clone(),
-      module.media_type,
-    )
-  }
-
-  /// Gets the matching `ParsedSource` from the cache
-  /// or parses a new one and stores that in the cache.
-  pub fn get_or_parse_module(
-    &self,
-    specifier: &deno_graph::ModuleSpecifier,
-    source: Arc<str>,
-    media_type: MediaType,
-  ) -> deno_core::anyhow::Result<ParsedSource, deno_ast::Diagnostic> {
+    module: &deno_graph::JsModule,
+  ) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
     let parser = self.as_capturing_parser();
     // this will conditionally parse because it's using a CapturingModuleParser
-    parser.parse_module(specifier, source, media_type)
+    parser.parse_module(ParseOptions {
+      specifier: &module.specifier,
+      source: module.source.clone(),
+      media_type: module.media_type,
+      // don't bother enabling because this method is currently only used for vendoring
+      scope_analysis: false,
+    })
+  }
+
+  pub fn remove_or_parse_module(
+    &self,
+    specifier: &ModuleSpecifier,
+    source: Arc<str>,
+    media_type: MediaType,
+  ) -> Result<ParsedSource, deno_ast::ParseDiagnostic> {
+    if let Some(parsed_source) = self.remove_parsed_source(specifier) {
+      if parsed_source.media_type() == media_type
+        && parsed_source.text().as_ref() == source.as_ref()
+      {
+        // note: message used tests
+        log::debug!("Removed parsed source: {}", specifier);
+        return Ok(parsed_source);
+      }
+    }
+    let options = ParseOptions {
+      specifier,
+      source,
+      media_type,
+      // don't bother enabling because this method is currently only used for emitting
+      scope_analysis: false,
+    };
+    DefaultModuleParser.parse_module(options)
   }
 
   /// Frees the parsed source from memory.
@@ -50,10 +102,6 @@ impl ParsedSourceCache {
   pub fn as_capturing_parser(&self) -> CapturingModuleParser {
     CapturingModuleParser::new(None, self)
   }
-
-  pub fn as_store(self: &Arc<Self>) -> Arc<dyn deno_graph::ParsedSourceStore> {
-    self.clone()
-  }
 }
 
 /// It's ok that this is racy since in non-LSP situations
@@ -64,7 +112,7 @@ impl ParsedSourceCache {
 impl deno_graph::ParsedSourceStore for ParsedSourceCache {
   fn set_parsed_source(
     &self,
-    specifier: deno_graph::ModuleSpecifier,
+    specifier: ModuleSpecifier,
     parsed_source: ParsedSource,
   ) -> Option<ParsedSource> {
     self.sources.lock().insert(specifier, parsed_source)
@@ -72,8 +120,32 @@ impl deno_graph::ParsedSourceStore for ParsedSourceCache {
 
   fn get_parsed_source(
     &self,
-    specifier: &deno_graph::ModuleSpecifier,
+    specifier: &ModuleSpecifier,
   ) -> Option<ParsedSource> {
     self.sources.lock().get(specifier).cloned()
+  }
+
+  fn remove_parsed_source(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ParsedSource> {
+    self.sources.lock().remove(specifier)
+  }
+
+  fn get_scope_analysis_parsed_source(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ParsedSource> {
+    let mut sources = self.sources.lock();
+    let parsed_source = sources.get(specifier)?;
+    if parsed_source.has_scope_analysis() {
+      Some(parsed_source.clone())
+    } else {
+      // upgrade to have scope analysis
+      let parsed_source = sources.remove(specifier).unwrap();
+      let parsed_source = parsed_source.into_with_scope_analysis();
+      sources.insert(specifier.clone(), parsed_source.clone());
+      Some(parsed_source)
+    }
   }
 }

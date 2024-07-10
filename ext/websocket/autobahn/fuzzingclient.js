@@ -1,9 +1,10 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
 
 import { $ } from "https://deno.land/x/dax@0.31.0/mod.ts";
 
+$.setPrintCommand(true);
 const pwd = new URL(".", import.meta.url).pathname;
 
 const AUTOBAHN_TESTSUITE_DOCKER =

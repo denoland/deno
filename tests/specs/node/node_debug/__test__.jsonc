@@ -1,0 +1,6 @@
+{
+  "args": "run --allow-read main.mjs",
+  "envs": { "NODE_DEBUG": "*" },
+  "output": "main.out",
+  "exitCode": 0
+}

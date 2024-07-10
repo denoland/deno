@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -47,7 +47,7 @@ declare module "ext:deno_web/00_infra.js" {
 }
 
 declare module "ext:deno_web/01_dom_exception.js" {
-  export = DOMException;
+  const DOMException: DOMException;
 }
 
 declare module "ext:deno_web/01_mimesniff.js" {
@@ -110,8 +110,10 @@ declare module "ext:deno_web/13_message_port.js" {
     data: Uint8Array;
     transferables: Transferable[];
   }
-}
-
-declare module "ext:deno_web/16_image_data.js" {
-  const ImageData: typeof ImageData;
+  const MessageChannel: typeof MessageChannel;
+  const MessagePort: typeof MessagePort;
+  const MessagePortIdSymbol: typeof MessagePortIdSymbol;
+  function deserializeJsMessageData(
+    messageData: messagePort.MessageData,
+  ): [object, object[]];
 }

@@ -13,20 +13,17 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
+
 /// <reference no-default-lib="true"/>
 
-// NOTE(iuioiua): taken from https://github.com/microsoft/TypeScript/issues/47171#issuecomment-1697373352
-// while we wait for these types to officially ship
 interface ObjectConstructor {
-  groupBy<Item, Key extends PropertyKey>(
-    items: Iterable<Item>,
-    keySelector: (item: Item, index: number) => Key,
-  ): Partial<Record<Key, Item[]>>;
-}
-
-interface MapConstructor {
-  groupBy<Item, Key>(
-    items: Iterable<Item>,
-    keySelector: (item: Item, index: number) => Key,
-  ): Map<Key, Item[]>;
+    /**
+     * Groups members of an iterable according to the return value of the passed callback.
+     * @param items An iterable.
+     * @param keySelector A callback which will be invoked for each item in items.
+     */
+    groupBy<K extends PropertyKey, T>(
+        items: Iterable<T>,
+        keySelector: (item: T, index: number) => K,
+    ): Partial<Record<K, T[]>>;
 }

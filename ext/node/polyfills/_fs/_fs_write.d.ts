@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Forked from https://github.com/DefinitelyTyped/DefinitelyTyped/blob/d9df51e34526f48bef4e2546a006157b391ad96c/types/node/fs.d.ts
 
 import { BufferEncoding, ErrnoException } from "ext:deno_node/_global.d.ts";

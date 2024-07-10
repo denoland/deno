@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
+use deno_runtime::colors;
 use log::warn;
 
 use crate::args::CliOptions;
@@ -24,7 +25,7 @@ use crate::tools::fmt::format_json;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::resolve_from_cwd;
 use crate::util::path::relative_specifier;
-use crate::util::path::specifier_to_file_path;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 mod analyze;
 mod build;
@@ -38,9 +39,13 @@ pub async fn vendor(
   flags: Flags,
   vendor_flags: VendorFlags,
 ) -> Result<(), AnyError> {
+  log::info!(
+    "{}",
+    colors::yellow("⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.\nAdd `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead."),
+  );
   let mut cli_options = CliOptions::from_flags(flags)?;
   let raw_output_dir = match &vendor_flags.output_path {
-    Some(output_path) => output_path.to_owned(),
+    Some(output_path) => PathBuf::from(output_path).to_owned(),
     None => PathBuf::from("vendor/"),
   };
   let output_dir = resolve_from_cwd(&raw_output_dir)?;
@@ -48,15 +53,22 @@ pub async fn vendor(
   validate_options(&mut cli_options, &output_dir)?;
   let factory = CliFactory::from_cli_options(Arc::new(cli_options));
   let cli_options = factory.cli_options();
+  if cli_options.workspace.config_folders().len() > 1 {
+    bail!("deno vendor is not supported in a workspace. Set `\"vendor\": true` in the workspace deno.json file instead");
+  }
   let entry_points =
     resolve_entry_points(&vendor_flags, cli_options.initial_cwd())?;
-  let jsx_import_source = cli_options.to_maybe_jsx_import_source_config()?;
-  let module_graph_builder = factory.module_graph_builder().await?.clone();
+  let jsx_import_source =
+    cli_options.workspace.to_maybe_jsx_import_source_config()?;
+  let module_graph_creator = factory.module_graph_creator().await?.clone();
+  let workspace_resolver = factory.workspace_resolver().await?;
+  let root_folder = cli_options.workspace.root_folder().1;
+  let maybe_config_file = root_folder.deno_json.as_ref();
   let output = build::build(build::BuildInput {
     entry_points,
     build_graph: move |entry_points| {
       async move {
-        module_graph_builder
+        module_graph_creator
           .create_graph(GraphKind::All, entry_points)
           .await
       }
@@ -64,8 +76,7 @@ pub async fn vendor(
     },
     parsed_source_cache: factory.parsed_source_cache(),
     output_dir: &output_dir,
-    maybe_original_import_map: factory.maybe_import_map().await?.as_deref(),
-    maybe_lockfile: factory.maybe_lockfile().clone(),
+    maybe_original_import_map: workspace_resolver.maybe_import_map(),
     maybe_jsx_import_source: jsx_import_source.as_ref(),
     resolver: factory.resolver().await?.as_graph_resolver(),
     environment: &build::RealVendorEnvironment,
@@ -92,20 +103,22 @@ pub async fn vendor(
   let try_add_import_map = vendored_count > 0;
   let modified_result = maybe_update_config_file(
     &output_dir,
-    cli_options,
+    maybe_config_file,
     try_add_import_map,
     try_add_node_modules_dir,
   );
 
   // cache the node_modules folder when it's been added to the config file
   if modified_result.added_node_modules_dir {
-    let node_modules_path = cli_options.node_modules_dir_path().or_else(|| {
-      cli_options
-        .maybe_config_file_specifier()
-        .filter(|c| c.scheme() == "file")
-        .and_then(|c| c.to_file_path().ok())
-        .map(|config_path| config_path.parent().unwrap().join("node_modules"))
-    });
+    let node_modules_path =
+      cli_options.node_modules_dir_path().cloned().or_else(|| {
+        maybe_config_file
+          .as_ref()
+          .map(|d| &d.specifier)
+          .filter(|c| c.scheme() == "file")
+          .and_then(|c| c.to_file_path().ok())
+          .map(|config_path| config_path.parent().unwrap().join("node_modules"))
+      });
     if let Some(node_modules_path) = node_modules_path {
       let cli_options =
         cli_options.with_node_modules_dir_path(node_modules_path);
@@ -173,9 +186,24 @@ fn validate_options(
   options: &mut CliOptions,
   output_dir: &Path,
 ) -> Result<(), AnyError> {
+  let import_map_specifier = options
+    .resolve_specified_import_map_specifier()?
+    .or_else(|| {
+      let config_file = options.workspace.root_folder().1.deno_json.as_ref()?;
+      config_file
+        .to_import_map_specifier()
+        .ok()
+        .flatten()
+        .or_else(|| {
+          if config_file.is_an_import_map() {
+            Some(config_file.specifier.clone())
+          } else {
+            None
+          }
+        })
+    });
   // check the import map
-  if let Some(import_map_path) = options
-    .resolve_import_map_specifier()?
+  if let Some(import_map_path) = import_map_specifier
     .and_then(|p| specifier_to_file_path(&p).ok())
     .and_then(|p| canonicalize_path(&p).ok())
   {
@@ -214,12 +242,12 @@ fn validate_options(
 
 fn maybe_update_config_file(
   output_dir: &Path,
-  options: &CliOptions,
+  maybe_config_file: Option<&Arc<ConfigFile>>,
   try_add_import_map: bool,
   try_add_node_modules_dir: bool,
 ) -> ModifiedResult {
   assert!(output_dir.is_absolute());
-  let config_file = match options.maybe_config_file() {
+  let config_file = match maybe_config_file {
     Some(config_file) => config_file,
     None => return ModifiedResult::default(),
   };
@@ -227,14 +255,14 @@ fn maybe_update_config_file(
     return ModifiedResult::default();
   }
 
-  let fmt_config = config_file
+  let fmt_config_options = config_file
     .to_fmt_config()
     .ok()
-    .unwrap_or_default()
+    .map(|config| config.options)
     .unwrap_or_default();
   let result = update_config_file(
     config_file,
-    &fmt_config.options,
+    &fmt_config_options,
     if try_add_import_map {
       Some(
         ModuleSpecifier::from_file_path(output_dir.join("import_map.json"))
@@ -293,6 +321,7 @@ fn update_config_text(
 ) -> Result<ModifiedResult, AnyError> {
   use jsonc_parser::ast::ObjectProp;
   use jsonc_parser::ast::Value;
+  let text = if text.trim().is_empty() { "{}\n" } else { text };
   let ast =
     jsonc_parser::parse_to_ast(text, &Default::default(), &Default::default())?;
   let obj = match ast.value {

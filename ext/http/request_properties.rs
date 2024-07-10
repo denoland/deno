@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -119,7 +119,11 @@ impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
   async fn accept_connection_from_listener(
     listener: &NetworkStreamListener,
   ) -> Result<NetworkStream, AnyError> {
-    listener.accept().await.map_err(Into::into)
+    listener
+      .accept()
+      .await
+      .map_err(Into::into)
+      .map(|(stm, _)| stm)
   }
 
   fn listen_properties_from_listener(

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Adapted from https://github.com/jsdom/webidl-conversions.
 // Copyright Domenic Denicola. Licensed under BSD-2-Clause License.
@@ -8,7 +8,12 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
-  ArrayBufferPrototype,
+  isArrayBuffer,
+  isDataView,
+  isSharedArrayBuffer,
+  isTypedArray,
+} = core;
+const {
   ArrayBufferIsView,
   ArrayPrototypeForEach,
   ArrayPrototypePush,
@@ -24,7 +29,6 @@ const {
   Int16Array,
   Int32Array,
   Int8Array,
-  isNaN,
   MathFloor,
   MathFround,
   MathMax,
@@ -67,7 +71,7 @@ const {
   SetPrototypeDelete,
   SetPrototypeAdd,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
-  // SharedArrayBufferPrototype
+  // SharedArrayBufferPrototype,
   String,
   StringPrototypeCharCodeAt,
   StringPrototypeToWellFormed,
@@ -188,7 +192,12 @@ function createIntegerConversion(bitLength, typeOpts) {
   const twoToTheBitLength = MathPow(2, bitLength);
   const twoToOneLessThanTheBitLength = MathPow(2, bitLength - 1);
 
-  return (V, prefix = undefined, context = undefined, opts = {}) => {
+  return (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
@@ -247,7 +256,12 @@ function createLongLongConversion(bitLength, { unsigned }) {
   const lowerBound = unsigned ? 0 : NumberMIN_SAFE_INTEGER;
   const asBigIntN = unsigned ? BigIntAsUintN : BigIntAsIntN;
 
-  return (V, prefix = undefined, context = undefined, opts = {}) => {
+  return (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) => {
     let x = toNumber(V);
     x = censorNegativeZero(x);
 
@@ -350,7 +364,7 @@ converters.float = (V, prefix, context, _opts) => {
 converters["unrestricted float"] = (V, _prefix, _context, _opts) => {
   const x = toNumber(V);
 
-  if (isNaN(x)) {
+  if (NumberIsNaN(x)) {
     return x;
   }
 
@@ -382,7 +396,12 @@ converters["unrestricted double"] = (V, _prefix, _context, _opts) => {
   return x;
 };
 
-converters.DOMString = function (V, prefix, context, opts = {}) {
+converters.DOMString = function (
+  V,
+  prefix,
+  context,
+  opts = { __proto__: null },
+) {
   if (typeof V === "string") {
     return V;
   } else if (V === null && opts.treatNullAsEmptyString) {
@@ -456,27 +475,13 @@ function convertCallbackFunction(V, prefix, context, _opts) {
   return V;
 }
 
-function isDataView(V) {
-  return ArrayBufferIsView(V) &&
-    TypedArrayPrototypeGetSymbolToStringTag(V) === undefined;
-}
-
-function isNonSharedArrayBuffer(V) {
-  return ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V);
-}
-
-function isSharedArrayBuffer(V) {
-  // deno-lint-ignore prefer-primordials
-  return ObjectPrototypeIsPrototypeOf(SharedArrayBuffer.prototype, V);
-}
-
 converters.ArrayBuffer = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = {},
+  opts = { __proto__: null },
 ) => {
-  if (!isNonSharedArrayBuffer(V)) {
+  if (!isArrayBuffer(V)) {
     if (opts.allowShared && !isSharedArrayBuffer(V)) {
       throw makeException(
         TypeError,
@@ -500,7 +505,7 @@ converters.DataView = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = {},
+  opts = { __proto__: null },
 ) => {
   if (!isDataView(V)) {
     throw makeException(
@@ -511,7 +516,10 @@ converters.DataView = (
     );
   }
 
-  if (!opts.allowShared && isSharedArrayBuffer(DataViewPrototypeGetBuffer(V))) {
+  if (
+    !opts.allowShared &&
+    isSharedArrayBuffer(DataViewPrototypeGetBuffer(V))
+  ) {
     throw makeException(
       TypeError,
       "is backed by a SharedArrayBuffer, which is not allowed",
@@ -532,6 +540,8 @@ ArrayPrototypeForEach(
     Uint16Array,
     Uint32Array,
     Uint8ClampedArray,
+    // TODO(petamoriken): add Float16Array converter
+    // Float16Array,
     Float32Array,
     Float64Array,
   ],
@@ -544,7 +554,7 @@ ArrayPrototypeForEach(
       V,
       prefix = undefined,
       context = undefined,
-      opts = {},
+      opts = { __proto__: null },
     ) => {
       if (TypedArrayPrototypeGetSymbolToStringTag(V) !== name) {
         throw makeException(
@@ -577,7 +587,7 @@ converters.ArrayBufferView = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = {},
+  opts = { __proto__: null },
 ) => {
   if (!ArrayBufferIsView(V)) {
     throw makeException(
@@ -588,7 +598,7 @@ converters.ArrayBufferView = (
     );
   }
   let buffer;
-  if (TypedArrayPrototypeGetSymbolToStringTag(V) !== undefined) {
+  if (isTypedArray(V)) {
     buffer = TypedArrayPrototypeGetBuffer(V);
   } else {
     buffer = DataViewPrototypeGetBuffer(V);
@@ -609,11 +619,11 @@ converters.BufferSource = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = {},
+  opts = { __proto__: null },
 ) => {
   if (ArrayBufferIsView(V)) {
     let buffer;
-    if (TypedArrayPrototypeGetSymbolToStringTag(V) !== undefined) {
+    if (isTypedArray(V)) {
       buffer = TypedArrayPrototypeGetBuffer(V);
     } else {
       buffer = DataViewPrototypeGetBuffer(V);
@@ -630,7 +640,7 @@ converters.BufferSource = (
     return V;
   }
 
-  if (!opts.allowShared && !isNonSharedArrayBuffer(V)) {
+  if (!opts.allowShared && !isArrayBuffer(V)) {
     throw makeException(
       TypeError,
       "is not an ArrayBuffer or a view on one",
@@ -641,7 +651,7 @@ converters.BufferSource = (
   if (
     opts.allowShared &&
     !isSharedArrayBuffer(V) &&
-    !isNonSharedArrayBuffer(V)
+    !isArrayBuffer(V)
   ) {
     throw makeException(
       TypeError,
@@ -727,7 +737,7 @@ function createDictionaryConverter(name, ...dictionaries) {
     return a.key < b.key ? -1 : 1;
   });
 
-  const defaultValues = {};
+  const defaultValues = { __proto__: null };
   for (let i = 0; i < allMembers.length; ++i) {
     const member = allMembers[i];
     if (ReflectHas(member, "defaultValue")) {
@@ -752,7 +762,12 @@ function createDictionaryConverter(name, ...dictionaries) {
     }
   }
 
-  return function (V, prefix = undefined, context = undefined, opts = {}) {
+  return function (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) {
     const typeV = type(V);
     switch (typeV) {
       case "Undefined":
@@ -817,7 +832,12 @@ function createDictionaryConverter(name, ...dictionaries) {
 function createEnumConverter(name, values) {
   const E = new SafeSet(values);
 
-  return function (V, prefix = undefined, _context = undefined, _opts = {}) {
+  return function (
+    V,
+    prefix = undefined,
+    _context = undefined,
+    _opts = { __proto__: null },
+  ) {
     const S = String(V);
 
     if (!E.has(S)) {
@@ -833,7 +853,12 @@ function createEnumConverter(name, values) {
 }
 
 function createNullableConverter(converter) {
-  return (V, prefix = undefined, context = undefined, opts = {}) => {
+  return (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) => {
     // FIXME: If Type(V) is not Object, and the conversion to an IDL value is
     // being performed due to V being assigned to an attribute whose type is a
     // nullable callback function that is annotated with
@@ -847,7 +872,12 @@ function createNullableConverter(converter) {
 
 // https://heycam.github.io/webidl/#es-sequence
 function createSequenceConverter(converter) {
-  return function (V, prefix = undefined, context = undefined, opts = {}) {
+  return function (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) {
     if (type(V) !== "Object") {
       throw makeException(
         TypeError,
@@ -899,7 +929,7 @@ function createRecordConverter(keyConverter, valueConverter) {
         context,
       );
     }
-    const result = {};
+    const result = { __proto__: null };
     // Fast path for common case (not a Proxy)
     if (!core.isProxy(V)) {
       for (const key in V) {

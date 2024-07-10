@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -9,16 +9,6 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import {
-  byteLowerCase,
-  collectHttpQuotedString,
-  collectSequenceOfCodepoints,
-  HTTP_TAB_OR_SPACE_PREFIX_RE,
-  HTTP_TAB_OR_SPACE_SUFFIX_RE,
-  HTTP_TOKEN_CODE_POINT_RE,
-  httpTrim,
-} from "ext:deno_web/00_infra.js";
 import { primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
@@ -37,6 +27,17 @@ const {
   StringPrototypeCharCodeAt,
   TypeError,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import {
+  byteLowerCase,
+  collectHttpQuotedString,
+  collectSequenceOfCodepoints,
+  HTTP_TAB_OR_SPACE_PREFIX_RE,
+  HTTP_TAB_OR_SPACE_SUFFIX_RE,
+  HTTP_TOKEN_CODE_POINT_RE,
+  httpTrim,
+} from "ext:deno_web/00_infra.js";
 
 const _headerList = Symbol("header list");
 const _iterableHeaders = Symbol("iterable headers");
@@ -99,7 +100,7 @@ function checkForInvalidValueChars(value) {
   return true;
 }
 
-let HEADER_NAME_CACHE = {};
+let HEADER_NAME_CACHE = { __proto__: null };
 let HEADER_CACHE_SIZE = 0;
 const HEADER_NAME_CACHE_SIZE_BOUNDARY = 4096;
 function checkHeaderNameForHttpTokenCodePoint(name) {
@@ -111,7 +112,7 @@ function checkHeaderNameForHttpTokenCodePoint(name) {
   const valid = RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name);
 
   if (HEADER_CACHE_SIZE > HEADER_NAME_CACHE_SIZE_BOUNDARY) {
-    HEADER_NAME_CACHE = {};
+    HEADER_NAME_CACHE = { __proto__: null };
     HEADER_CACHE_SIZE = 0;
   }
   HEADER_CACHE_SIZE++;
@@ -240,7 +241,7 @@ class Headers {
 
     // The order of steps are not similar to the ones suggested by the
     // spec but produce the same result.
-    const seenHeaders = {};
+    const seenHeaders = { __proto__: null };
     const entries = [];
     for (let i = 0; i < list.length; ++i) {
       const entry = list[i];

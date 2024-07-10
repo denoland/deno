@@ -1,27 +1,29 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 #![allow(clippy::disallowed_methods)]
 
+use std::env::current_dir;
 use std::fs;
 use std::io;
+use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_core::normalize_path;
 use deno_core::unsync::spawn_blocking;
 use deno_io::fs::File;
+use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
 use deno_io::StdFileResourceInner;
 
+use crate::interface::AccessCheckCb;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
 use crate::FileSystem;
 use crate::OpenOptions;
-
-#[cfg(not(unix))]
-use deno_io::fs::FsError;
 
 #[derive(Debug, Clone)]
 pub struct RealFs;
@@ -62,7 +64,7 @@ impl FileSystem for RealFs {
       let _ = umask(prev);
       prev
     };
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     {
       Ok(r.bits())
     }
@@ -80,18 +82,18 @@ impl FileSystem for RealFs {
     &self,
     path: &Path,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb>,
   ) -> FsResult<Rc<dyn File>> {
-    let opts = open_options(options);
-    let std_file = opts.open(path)?;
+    let std_file = open_with_access_check(options, path, access_check)?;
     Ok(Rc::new(StdFileResourceInner::file(std_file)))
   }
-  async fn open_async(
-    &self,
+  async fn open_async<'a>(
+    &'a self,
     path: PathBuf,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb<'a>>,
   ) -> FsResult<Rc<dyn File>> {
-    let opts = open_options(options);
-    let std_file = spawn_blocking(move || opts.open(path)).await??;
+    let std_file = open_with_access_check(options, &path, access_check)?;
     Ok(Rc::new(StdFileResourceInner::file(std_file)))
   }
 
@@ -148,6 +150,13 @@ impl FileSystem for RealFs {
   }
   async fn copy_file_async(&self, from: PathBuf, to: PathBuf) -> FsResult<()> {
     spawn_blocking(move || copy_file(&from, &to)).await?
+  }
+
+  fn cp_sync(&self, fro: &Path, to: &Path) -> FsResult<()> {
+    cp(fro, to)
+  }
+  async fn cp_async(&self, fro: PathBuf, to: PathBuf) -> FsResult<()> {
+    spawn_blocking(move || cp(&fro, &to)).await?
   }
 
   fn stat_sync(&self, path: &Path) -> FsResult<FsStat> {
@@ -265,14 +274,61 @@ impl FileSystem for RealFs {
     .await?
   }
 
+  fn lutime_sync(
+    &self,
+    path: &Path,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
+    let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
+    filetime::set_symlink_file_times(path, atime, mtime).map_err(Into::into)
+  }
+
+  async fn lutime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
+    let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
+    spawn_blocking(move || {
+      filetime::set_symlink_file_times(path, atime, mtime).map_err(Into::into)
+    })
+    .await?
+  }
+
+  fn lchown_sync(
+    &self,
+    path: &Path,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    lchown(path, uid, gid)
+  }
+
+  async fn lchown_async(
+    &self,
+    path: PathBuf,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    spawn_blocking(move || lchown(&path, uid, gid)).await?
+  }
+
   fn write_file_sync(
     &self,
     path: &Path,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb>,
     data: &[u8],
   ) -> FsResult<()> {
-    let opts = open_options(options);
-    let mut file = opts.open(path)?;
+    let mut file = open_with_access_check(options, path, access_check)?;
     #[cfg(unix)]
     if let Some(mode) = options.mode {
       use std::os::unix::fs::PermissionsExt;
@@ -282,15 +338,15 @@ impl FileSystem for RealFs {
     Ok(())
   }
 
-  async fn write_file_async(
-    &self,
+  async fn write_file_async<'a>(
+    &'a self,
     path: PathBuf,
     options: OpenOptions,
+    access_check: Option<AccessCheckCb<'a>>,
     data: Vec<u8>,
   ) -> FsResult<()> {
+    let mut file = open_with_access_check(options, &path, access_check)?;
     spawn_blocking(move || {
-      let opts = open_options(options);
-      let mut file = opts.open(path)?;
       #[cfg(unix)]
       if let Some(mode) = options.mode {
         use std::os::unix::fs::PermissionsExt;
@@ -302,13 +358,43 @@ impl FileSystem for RealFs {
     .await?
   }
 
-  fn read_file_sync(&self, path: &Path) -> FsResult<Vec<u8>> {
-    fs::read(path).map_err(Into::into)
+  fn read_file_sync(
+    &self,
+    path: &Path,
+    access_check: Option<AccessCheckCb>,
+  ) -> FsResult<Vec<u8>> {
+    let mut file = open_with_access_check(
+      OpenOptions {
+        read: true,
+        ..Default::default()
+      },
+      path,
+      access_check,
+    )?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf)?;
+    Ok(buf)
   }
-  async fn read_file_async(&self, path: PathBuf) -> FsResult<Vec<u8>> {
-    spawn_blocking(move || fs::read(path))
-      .await?
-      .map_err(Into::into)
+  async fn read_file_async<'a>(
+    &'a self,
+    path: PathBuf,
+    access_check: Option<AccessCheckCb<'a>>,
+  ) -> FsResult<Vec<u8>> {
+    let mut file = open_with_access_check(
+      OpenOptions {
+        read: true,
+        ..Default::default()
+      },
+      &path,
+      access_check,
+    )?;
+    spawn_blocking(move || {
+      let mut buf = Vec::new();
+      file.read_to_end(&mut buf)?;
+      Ok::<_, FsError>(buf)
+    })
+    .await?
+    .map_err(Into::into)
   }
 }
 
@@ -363,6 +449,31 @@ fn chown(_path: &Path, _uid: Option<u32>, _gid: Option<u32>) -> FsResult<()> {
   Err(FsError::NotSupported)
 }
 
+#[cfg(unix)]
+fn lchown(path: &Path, uid: Option<u32>, gid: Option<u32>) -> FsResult<()> {
+  use std::os::unix::ffi::OsStrExt;
+  let c_path = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+  // -1 = leave unchanged
+  let uid = uid
+    .map(|uid| uid as libc::uid_t)
+    .unwrap_or(-1i32 as libc::uid_t);
+  let gid = gid
+    .map(|gid| gid as libc::gid_t)
+    .unwrap_or(-1i32 as libc::gid_t);
+  // SAFETY: `c_path` is a valid C string and lives throughout this function call.
+  let result = unsafe { libc::lchown(c_path.as_ptr(), uid, gid) };
+  if result != 0 {
+    return Err(io::Error::last_os_error().into());
+  }
+  Ok(())
+}
+
+// TODO: implement lchown for Windows
+#[cfg(not(unix))]
+fn lchown(_path: &Path, _uid: Option<u32>, _gid: Option<u32>) -> FsResult<()> {
+  Err(FsError::NotSupported)
+}
+
 fn remove(path: &Path, recursive: bool) -> FsResult<()> {
   // TODO: this is racy. This should open fds, and then `unlink` those.
   let metadata = fs::symlink_metadata(path)?;
@@ -403,13 +514,13 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
     use libc::stat;
     use libc::unlink;
     use std::ffi::CString;
-    use std::io::Read;
     use std::os::unix::fs::OpenOptionsExt;
     use std::os::unix::fs::PermissionsExt;
-    use std::os::unix::prelude::OsStrExt;
 
-    let from_str = CString::new(from.as_os_str().as_bytes()).unwrap();
-    let to_str = CString::new(to.as_os_str().as_bytes()).unwrap();
+    let from_str = CString::new(from.as_os_str().as_encoded_bytes())
+      .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+    let to_str = CString::new(to.as_os_str().as_encoded_bytes())
+      .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
 
     // SAFETY: `from` and `to` are valid C strings.
     // std::fs::copy does open() + fcopyfile() on macOS. We try to use
@@ -465,6 +576,165 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
   }
 
   fs::copy(from, to)?;
+
+  Ok(())
+}
+
+fn cp(from: &Path, to: &Path) -> FsResult<()> {
+  fn cp_(source_meta: fs::Metadata, from: &Path, to: &Path) -> FsResult<()> {
+    use rayon::prelude::IntoParallelIterator;
+    use rayon::prelude::ParallelIterator;
+
+    let ty = source_meta.file_type();
+    if ty.is_dir() {
+      #[allow(unused_mut)]
+      let mut builder = fs::DirBuilder::new();
+      #[cfg(unix)]
+      {
+        use std::os::unix::fs::DirBuilderExt;
+        use std::os::unix::fs::PermissionsExt;
+        builder.mode(fs::symlink_metadata(from)?.permissions().mode());
+      }
+      builder.create(to)?;
+
+      let mut entries: Vec<_> = fs::read_dir(from)?
+        .map(|res| res.map(|e| e.file_name()))
+        .collect::<Result<_, _>>()?;
+
+      entries.shrink_to_fit();
+      entries
+        .into_par_iter()
+        .map(|file_name| {
+          cp_(
+            fs::symlink_metadata(from.join(&file_name)).unwrap(),
+            &from.join(&file_name),
+            &to.join(&file_name),
+          )
+          .map_err(|err| {
+            io::Error::new(
+              err.kind(),
+              format!(
+                "failed to copy '{}' to '{}': {:?}",
+                from.join(&file_name).display(),
+                to.join(&file_name).display(),
+                err
+              ),
+            )
+          })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+      return Ok(());
+    } else if ty.is_symlink() {
+      let from = std::fs::read_link(from)?;
+
+      #[cfg(unix)]
+      std::os::unix::fs::symlink(from, to)?;
+      #[cfg(windows)]
+      std::os::windows::fs::symlink_file(from, to)?;
+
+      return Ok(());
+    }
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::FileTypeExt;
+      if ty.is_socket() {
+        return Err(
+          io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "sockets cannot be copied",
+          )
+          .into(),
+        );
+      }
+    }
+
+    // Ensure parent destination directory exists
+    if let Some(parent) = to.parent() {
+      fs::create_dir_all(parent)?;
+    }
+
+    copy_file(from, to)
+  }
+
+  #[cfg(target_os = "macos")]
+  {
+    // Just clonefile()
+    use libc::clonefile;
+    use libc::unlink;
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let from_str = CString::new(from.as_os_str().as_bytes())
+      .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+    let to_str = CString::new(to.as_os_str().as_bytes())
+      .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+
+    // SAFETY: `from` and `to` are valid C strings.
+    unsafe {
+      // Try unlink. If it fails, we are going to try clonefile() anyway.
+      let _ = unlink(to_str.as_ptr());
+
+      if clonefile(from_str.as_ptr(), to_str.as_ptr(), 0) == 0 {
+        return Ok(());
+      }
+    }
+  }
+
+  let source_meta = fs::symlink_metadata(from)?;
+
+  #[inline]
+  fn is_identical(
+    source_meta: &fs::Metadata,
+    dest_meta: &fs::Metadata,
+  ) -> bool {
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::MetadataExt;
+      source_meta.ino() == dest_meta.ino()
+    }
+    #[cfg(windows)]
+    {
+      use std::os::windows::fs::MetadataExt;
+      // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/ns-fileapi-by_handle_file_information
+      //
+      // The identifier (low and high parts) and the volume serial number uniquely identify a file on a single computer.
+      // To determine whether two open handles represent the same file, combine the identifier and the volume serial
+      // number for each file and compare them.
+      //
+      // Use this code once file_index() and volume_serial_number() is stabalized
+      // See: https://github.com/rust-lang/rust/issues/63010
+      //
+      // source_meta.file_index() == dest_meta.file_index()
+      //   && source_meta.volume_serial_number()
+      //     == dest_meta.volume_serial_number()
+      source_meta.last_write_time() == dest_meta.last_write_time()
+        && source_meta.creation_time() == dest_meta.creation_time()
+    }
+  }
+
+  match (fs::metadata(to), fs::symlink_metadata(to)) {
+    (Ok(m), _) if m.is_dir() => cp_(
+      source_meta,
+      from,
+      &to.join(from.file_name().ok_or_else(|| {
+        io::Error::new(
+          io::ErrorKind::InvalidInput,
+          "the source path is not a valid file",
+        )
+      })?),
+    )?,
+    (_, Ok(m)) if is_identical(&source_meta, &m) => {
+      return Err(
+        io::Error::new(
+          io::ErrorKind::InvalidInput,
+          "the source and destination are the same file",
+        )
+        .into(),
+      )
+    }
+    _ => cp_(source_meta, from, to)?,
+  }
 
   Ok(())
 }
@@ -649,6 +919,9 @@ fn symlink(
     FsFileType::Directory => {
       std::os::windows::fs::symlink_dir(oldpath, newpath)?;
     }
+    FsFileType::Junction => {
+      junction::create(oldpath, newpath)?;
+    }
   };
 
   Ok(())
@@ -680,4 +953,81 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
   open_options.append(options.append);
   open_options.create_new(options.create_new);
   open_options
+}
+
+#[inline(always)]
+fn open_with_access_check(
+  options: OpenOptions,
+  path: &Path,
+  access_check: Option<AccessCheckCb>,
+) -> FsResult<std::fs::File> {
+  if let Some(access_check) = access_check {
+    let path_bytes = path.as_os_str().as_encoded_bytes();
+    let is_windows_device_path = cfg!(windows)
+      && path_bytes.starts_with(br"\\.\")
+      && !path_bytes.contains(&b':');
+    let path = if is_windows_device_path {
+      // On Windows, normalize_path doesn't work with device-prefix-style
+      // paths. We pass these through.
+      path.to_owned()
+    } else if path.is_absolute() {
+      normalize_path(path)
+    } else {
+      let cwd = current_dir()?;
+      normalize_path(cwd.join(path))
+    };
+    (*access_check)(false, &path, &options)?;
+    // On Linux, /proc may contain magic links that we don't want to resolve
+    let needs_canonicalization = !is_windows_device_path
+      && (!cfg!(target_os = "linux") || path.starts_with("/proc"));
+    let path = if needs_canonicalization {
+      match path.canonicalize() {
+        Ok(path) => path,
+        Err(_) => {
+          if let (Some(parent), Some(filename)) =
+            (path.parent(), path.file_name())
+          {
+            parent.canonicalize()?.join(filename)
+          } else {
+            return Err(std::io::ErrorKind::NotFound.into());
+          }
+        }
+      }
+    } else {
+      path
+    };
+    (*access_check)(true, &path, &options)?;
+
+    let mut opts: fs::OpenOptions = open_options(options);
+    #[cfg(windows)]
+    {
+      // allow opening directories
+      use std::os::windows::fs::OpenOptionsExt;
+      opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
+    }
+
+    #[cfg(unix)]
+    {
+      // Don't follow symlinks on open -- we must always pass fully-resolved files
+      // with the exception of /proc/ which is too special, and /dev/std* which might point to
+      // proc.
+      use std::os::unix::fs::OpenOptionsExt;
+      if needs_canonicalization {
+        opts.custom_flags(libc::O_NOFOLLOW);
+      }
+    }
+
+    Ok(opts.open(&path)?)
+  } else {
+    // for unix
+    #[allow(unused_mut)]
+    let mut opts = open_options(options);
+    #[cfg(windows)]
+    {
+      // allow opening directories
+      use std::os::windows::fs::OpenOptionsExt;
+      opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
+    }
+    Ok(opts.open(path)?)
+  }
 }

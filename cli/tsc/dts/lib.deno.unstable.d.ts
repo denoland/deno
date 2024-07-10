@@ -1,11 +1,26 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.broadcast_channel" />
+/// <reference lib="deno.webgpu" />
+/// <reference lib="esnext" />
+/// <reference lib="es2022.intl" />
 
 declare namespace Deno {
   export {}; // stop default export type behavior
+
+  /** Information for a HTTP request.
+   *
+   * @category HTTP Server
+   * @experimental
+   */
+  export interface ServeHandlerInfo {
+    /** The remote address of the connection. */
+    remoteAddr: Deno.NetAddr;
+    /** The completion promise */
+    completed: Promise<void>;
+  }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -24,6 +39,7 @@ declare namespace Deno {
    * *Note*: This API is not implemented on Windows
    *
    * @category File System
+   * @experimental
    */
   export function umask(mask?: number): number;
 
@@ -32,8 +48,9 @@ declare namespace Deno {
    * All plain number types for interfacing with foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativeNumberType =
+  export type NativeNumberType =
     | "u8"
     | "i8"
     | "u16"
@@ -48,8 +65,9 @@ declare namespace Deno {
    * All BigInt number types for interfacing with foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativeBigIntType =
+  export type NativeBigIntType =
     | "u64"
     | "i64"
     | "usize"
@@ -60,68 +78,102 @@ declare namespace Deno {
    * The native boolean type for interfacing to foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativeBooleanType = "bool";
+  export type NativeBooleanType = "bool";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native pointer type for interfacing to foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativePointerType = "pointer";
+  export type NativePointerType = "pointer";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native buffer type for interfacing to foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativeBufferType = "buffer";
+  export type NativeBufferType = "buffer";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native function type for interfacing with foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativeFunctionType = "function";
+  export type NativeFunctionType = "function";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native void type for interfacing with foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativeVoidType = "void";
+  export type NativeVoidType = "void";
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native struct type for interfacing with foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type NativeStructType = { readonly struct: readonly NativeType[] };
+  export type NativeStructType = { readonly struct: readonly NativeType[] };
 
-  /** @category FFI */
-  const brand: unique symbol;
+  /**
+   * @category FFI
+   * @experimental
+   */
+  export const brand: unique symbol;
 
-  /** @category FFI */
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeU8Enum<T extends number> = "u8" & { [brand]: T };
-  /** @category FFI */
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeI8Enum<T extends number> = "i8" & { [brand]: T };
-  /** @category FFI */
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeU16Enum<T extends number> = "u16" & { [brand]: T };
-  /** @category FFI */
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeI16Enum<T extends number> = "i16" & { [brand]: T };
-  /** @category FFI */
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeU32Enum<T extends number> = "u32" & { [brand]: T };
-  /** @category FFI */
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeI32Enum<T extends number> = "i32" & { [brand]: T };
-  /** @category FFI */
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeTypedPointer<T extends PointerObject> = "pointer" & {
     [brand]: T;
   };
+  /**
+   * @category FFI
+   * @experimental
+   */
   export type NativeTypedFunction<T extends UnsafeCallbackDefinition> =
     & "function"
     & {
@@ -133,6 +185,7 @@ declare namespace Deno {
    * All supported types for interfacing with foreign functions.
    *
    * @category FFI
+   * @experimental
    */
   export type NativeType =
     | NativeNumberType
@@ -146,6 +199,7 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category FFI
+   * @experimental
    */
   export type NativeResultType = NativeType | NativeVoidType;
 
@@ -155,8 +209,9 @@ declare namespace Deno {
    * types.
    *
    * @category FFI
+   * @experimental
    */
-  type ToNativeType<T extends NativeType = NativeType> = T extends
+  export type ToNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? BufferSource
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
@@ -165,7 +220,7 @@ declare namespace Deno {
       : T extends NativeU32Enum<infer U> ? U
       : T extends NativeI32Enum<infer U> ? U
       : number
-    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
       ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
@@ -180,34 +235,37 @@ declare namespace Deno {
    * Type conversion for unsafe callback return types.
    *
    * @category FFI
+   * @experimental
    */
-  type ToNativeResultType<T extends NativeResultType = NativeResultType> =
-    T extends NativeStructType ? BufferSource
-      : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-        : T extends NativeI8Enum<infer U> ? U
-        : T extends NativeU16Enum<infer U> ? U
-        : T extends NativeI16Enum<infer U> ? U
-        : T extends NativeU32Enum<infer U> ? U
-        : T extends NativeI32Enum<infer U> ? U
-        : number
-      : T extends NativeBigIntType ? number | bigint
-      : T extends NativeBooleanType ? boolean
-      : T extends NativePointerType
-        ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-      : T extends NativeFunctionType
-        ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-        : PointerValue
-      : T extends NativeBufferType ? BufferSource | null
-      : T extends NativeVoidType ? void
-      : never;
+  export type ToNativeResultType<
+    T extends NativeResultType = NativeResultType,
+  > = T extends NativeStructType ? BufferSource
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : T extends NativeBufferType ? BufferSource | null
+    : T extends NativeVoidType ? void
+    : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * A utility type for conversion of parameter types of foreign functions.
    *
    * @category FFI
+   * @experimental
    */
-  type ToNativeParameterTypes<T extends readonly NativeType[]> =
+  export type ToNativeParameterTypes<T extends readonly NativeType[]> =
     //
     [(T[number])[]] extends [T] ? ToNativeType<T[number]>[]
       : [readonly (T[number])[]] extends [T]
@@ -223,8 +281,9 @@ declare namespace Deno {
    * parameters.
    *
    * @category FFI
+   * @experimental
    */
-  type FromNativeType<T extends NativeType = NativeType> = T extends
+  export type FromNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? Uint8Array
     : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
       : T extends NativeI8Enum<infer U> ? U
@@ -233,7 +292,7 @@ declare namespace Deno {
       : T extends NativeU32Enum<infer U> ? U
       : T extends NativeI32Enum<infer U> ? U
       : number
-    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
       ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
@@ -248,32 +307,35 @@ declare namespace Deno {
    * Type conversion for foreign symbol return types.
    *
    * @category FFI
+   * @experimental
    */
-  type FromNativeResultType<T extends NativeResultType = NativeResultType> =
-    T extends NativeStructType ? Uint8Array
-      : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-        : T extends NativeI8Enum<infer U> ? U
-        : T extends NativeU16Enum<infer U> ? U
-        : T extends NativeI16Enum<infer U> ? U
-        : T extends NativeU32Enum<infer U> ? U
-        : T extends NativeI32Enum<infer U> ? U
-        : number
-      : T extends NativeBigIntType ? number | bigint
-      : T extends NativeBooleanType ? boolean
-      : T extends NativePointerType
-        ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
-      : T extends NativeBufferType ? PointerValue
-      : T extends NativeFunctionType
-        ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-        : PointerValue
-      : T extends NativeVoidType ? void
-      : never;
+  export type FromNativeResultType<
+    T extends NativeResultType = NativeResultType,
+  > = T extends NativeStructType ? Uint8Array
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeBufferType ? PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : T extends NativeVoidType ? void
+    : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category FFI
+   * @experimental
    */
-  type FromNativeParameterTypes<
+  export type FromNativeParameterTypes<
     T extends readonly NativeType[],
   > =
     //
@@ -291,6 +353,7 @@ declare namespace Deno {
    * types.
    *
    * @category FFI
+   * @experimental
    */
   export interface ForeignFunction<
     Parameters extends readonly NativeType[] = readonly NativeType[],
@@ -308,11 +371,6 @@ declare namespace Deno {
     /** When `true`, function calls will run on a dedicated blocking thread and
      * will return a `Promise` resolving to the `result`. */
     nonblocking?: NonBlocking;
-    /** When `true`, function calls can safely callback into JavaScript or
-     * trigger a garbage collection event.
-     *
-     * @default {false} */
-    callback?: boolean;
     /** When `true`, dlopen will not fail if the symbol is not found.
      * Instead, the symbol will be set to `null`.
      *
@@ -323,6 +381,7 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category FFI
+   * @experimental
    */
   export interface ForeignStatic<Type extends NativeType = NativeType> {
     /** Name of the symbol, defaults to the key name in symbols object. */
@@ -341,6 +400,7 @@ declare namespace Deno {
    * A foreign library interface descriptor.
    *
    * @category FFI
+   * @experimental
    */
   export interface ForeignLibraryInterface {
     [name: string]: ForeignFunction | ForeignStatic;
@@ -351,8 +411,9 @@ declare namespace Deno {
    * A utility type that infers a foreign symbol.
    *
    * @category FFI
+   * @experimental
    */
-  type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
+  export type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
     T extends ForeignFunction ? FromForeignFunction<T>
       : T extends ForeignStatic ? FromNativeType<T["type"]>
       : never;
@@ -360,25 +421,28 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    *  @category FFI
+   *  @experimental
    */
-  type FromForeignFunction<T extends ForeignFunction> = T["parameters"] extends
-    readonly [] ? () => StaticForeignSymbolReturnType<T>
-    : (
-      ...args: ToNativeParameterTypes<T["parameters"]>
-    ) => StaticForeignSymbolReturnType<T>;
+  export type FromForeignFunction<T extends ForeignFunction> =
+    T["parameters"] extends readonly [] ? () => StaticForeignSymbolReturnType<T>
+      : (
+        ...args: ToNativeParameterTypes<T["parameters"]>
+      ) => StaticForeignSymbolReturnType<T>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category FFI
+   * @experimental
    */
-  type StaticForeignSymbolReturnType<T extends ForeignFunction> =
+  export type StaticForeignSymbolReturnType<T extends ForeignFunction> =
     ConditionalAsync<T["nonblocking"], FromNativeResultType<T["result"]>>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * @category FFI
+   * @experimental
    */
-  type ConditionalAsync<IsAsync extends boolean | undefined, T> =
+  export type ConditionalAsync<IsAsync extends boolean | undefined, T> =
     IsAsync extends true ? Promise<T> : T;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -386,12 +450,14 @@ declare namespace Deno {
    * A utility type that infers a foreign library interface.
    *
    * @category FFI
+   * @experimental
    */
-  type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> = {
-    [K in keyof T]: T[K]["optional"] extends true
-      ? StaticForeignSymbol<T[K]> | null
-      : StaticForeignSymbol<T[K]>;
-  };
+  export type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> =
+    {
+      [K in keyof T]: T[K]["optional"] extends true
+        ? StaticForeignSymbol<T[K]> | null
+        : StaticForeignSymbol<T[K]>;
+    };
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -407,6 +473,7 @@ declare namespace Deno {
    * {@linkcode UnsafePointer} class.
    *
    * @category FFI
+   * @experimental
    */
   export type PointerObject<T = unknown> = { [brand]: T };
 
@@ -416,6 +483,7 @@ declare namespace Deno {
    * object or a `null` if the pointer is null.
    *
    * @category FFI
+   * @experimental
    */
   export type PointerValue<T = unknown> = null | PointerObject<T>;
 
@@ -424,10 +492,11 @@ declare namespace Deno {
    * A collection of static functions for interacting with pointer objects.
    *
    * @category FFI
+   * @experimental
    */
   export class UnsafePointer {
     /** Create a pointer from a numeric value. This one is <i>really</i> dangerous! */
-    static create<T = unknown>(value: number | bigint): PointerValue<T>;
+    static create<T = unknown>(value: bigint): PointerValue<T>;
     /** Returns `true` if the two pointers point to the same address. */
     static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
@@ -440,7 +509,7 @@ declare namespace Deno {
       offset: number,
     ): PointerValue<T>;
     /** Get the numeric value of a pointer */
-    static value(value: PointerValue): number | bigint;
+    static value(value: PointerValue): bigint;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -451,6 +520,7 @@ declare namespace Deno {
    * location (numbers, strings and raw bytes).
    *
    * @category FFI
+   * @experimental
    */
   export class UnsafePointerView {
     constructor(pointer: PointerObject);
@@ -479,10 +549,10 @@ declare namespace Deno {
     getInt32(offset?: number): number;
     /** Gets an unsigned 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigUint64(offset?: number): number | bigint;
+    getBigUint64(offset?: number): bigint;
     /** Gets a signed 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigInt64(offset?: number): number | bigint;
+    getBigInt64(offset?: number): bigint;
     /** Gets a signed 32-bit float at the specified byte offset from the
      * pointer. */
     getFloat32(offset?: number): number;
@@ -534,16 +604,17 @@ declare namespace Deno {
    * as symbols.
    *
    * @category FFI
+   * @experimental
    */
-  export class UnsafeFnPointer<Fn extends ForeignFunction> {
+  export class UnsafeFnPointer<const Fn extends ForeignFunction> {
     /** The pointer to the function. */
     pointer: PointerObject<Fn>;
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: PointerObject<Fn>, definition: Const<Fn>);
+    constructor(pointer: PointerObject<NoInfer<Fn>>, definition: Fn);
     /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
-    constructor(pointer: PointerObject, definition: Const<Fn>);
+    constructor(pointer: PointerObject, definition: Fn);
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
@@ -554,6 +625,7 @@ declare namespace Deno {
    * Definition of a unsafe callback function.
    *
    * @category FFI
+   * @experimental
    */
   export interface UnsafeCallbackDefinition<
     Parameters extends readonly NativeType[] = readonly NativeType[],
@@ -570,8 +642,9 @@ declare namespace Deno {
    * An unsafe callback function.
    *
    * @category FFI
+   * @experimental
    */
-  type UnsafeCallbackFunction<
+  export type UnsafeCallbackFunction<
     Parameters extends readonly NativeType[] = readonly NativeType[],
     Result extends NativeResultType = NativeResultType,
   > = Parameters extends readonly [] ? () => ToNativeResultType<Result> : (
@@ -600,12 +673,14 @@ declare namespace Deno {
    * called from foreign threads.
    *
    * @category FFI
+   * @experimental
    */
   export class UnsafeCallback<
-    Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
+    const Definition extends UnsafeCallbackDefinition =
+      UnsafeCallbackDefinition,
   > {
     constructor(
-      definition: Const<Definition>,
+      definition: Definition,
       callback: UnsafeCallbackFunction<
         Definition["parameters"],
         Definition["result"]
@@ -632,7 +707,7 @@ declare namespace Deno {
     static threadSafe<
       Definition extends UnsafeCallbackDefinition = UnsafeCallbackDefinition,
     >(
-      definition: Const<Definition>,
+      definition: Definition,
       callback: UnsafeCallbackFunction<
         Definition["parameters"],
         Definition["result"]
@@ -682,6 +757,7 @@ declare namespace Deno {
    * library and return this interface.
    *
    * @category FFI
+   * @experimental
    */
   export interface DynamicLibrary<S extends ForeignLibraryInterface> {
     /** All of the registered library along with functions for calling them. */
@@ -696,20 +772,6 @@ declare namespace Deno {
      */
     close(): void;
   }
-
-  /**
-   *  This magic code used to implement better type hints for {@linkcode Deno.dlopen}
-   *
-   *  @category FFI
-   */
-  type Cast<A, B> = A extends B ? A : B;
-  /** @category FFI */
-  type Const<T> = Cast<
-    T,
-    | (T extends string | number | bigint | boolean ? T : never)
-    | { [K in keyof T]: Const<T[K]> }
-    | []
-  >;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -749,26 +811,55 @@ declare namespace Deno {
    * );
    *
    * // Call the symbol `add`
-   * const result = dylib.symbols.add(35, 34); // 69
+   * const result = dylib.symbols.add(35n, 34n); // 69n
    *
    * console.log(`Result from external addition of 35 and 34: ${result}`);
    * ```
    *
    * @tags allow-ffi
    * @category FFI
+   * @experimental
    */
-  export function dlopen<S extends ForeignLibraryInterface>(
+  export function dlopen<const S extends ForeignLibraryInterface>(
     filename: string | URL,
-    symbols: Const<S>,
+    symbols: S,
   ): DynamicLibrary<S>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   *  Creates a presentable WebGPU surface from given window and
+   *  display handles.
+   *
+   *  The parameters correspond to the table below:
+   *
+   *  | system            | winHandle     | displayHandle   |
+   *  | ----------------- | ------------- | --------------- |
+   *  | "cocoa" (macOS)   | `NSView*`     | -               |
+   *  | "win32" (Windows) | `HWND`        | `HINSTANCE`     |
+   *  | "x11" (Linux)     | Xlib `Window` | Xlib `Display*` |
+   *  | "wayland" (Linux) | `wl_surface*` | `wl_display*`   |
+   *
+   * @category GPU
+   * @experimental
+   */
+  export class UnsafeWindowSurface {
+    constructor(
+      system: "cocoa" | "win32" | "x11" | "wayland",
+      windowHandle: Deno.PointerValue<unknown>,
+      displayHandle: Deno.PointerValue<unknown>,
+    );
+    getContext(context: "webgpu"): GPUCanvasContext;
+    present(): void;
+  }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * These are unstable options which can be used with {@linkcode Deno.run}.
    *
    * @category Sub Process
+   * @experimental
    */
-  interface UnstableRunOptions extends RunOptions {
+  export interface UnstableRunOptions extends RunOptions {
     /** If `true`, clears the environment variables before executing the
      * sub-process.
      *
@@ -829,6 +920,7 @@ declare namespace Deno {
    *
    * @tags allow-run
    * @category Sub Process
+   * @experimental
    */
   export function run<T extends UnstableRunOptions = UnstableRunOptions>(
     opt: T,
@@ -845,11 +937,10 @@ declare namespace Deno {
    * const req = await fetch("https://myserver.com", { client });
    * ```
    *
-   * @category Fetch API
+   * @category Fetch
+   * @experimental
    */
   export interface HttpClient extends Disposable {
-    /** The resource ID associated with the client. */
-    rid: number;
     /** Close the HTTP client. */
     close(): void;
   }
@@ -858,7 +949,8 @@ declare namespace Deno {
    *
    * The options used when creating a {@linkcode Deno.HttpClient}.
    *
-   * @category Fetch API
+   * @category Fetch
+   * @experimental
    */
   export interface CreateHttpClientOptions {
     /** A list of root certificates that will be used in addition to the
@@ -868,10 +960,6 @@ declare namespace Deno {
     caCerts?: string[];
     /** A HTTP proxy to use for new connections. */
     proxy?: Proxy;
-    /** PEM formatted client certificate chain. */
-    certChain?: string;
-    /** PEM formatted (RSA or PKCS8) private key of client certificate. */
-    privateKey?: string;
     /** Sets the maximum numer of idle connections per host allowed in the pool. */
     poolMaxIdlePerHost?: number;
     /** Set an optional timeout for idle sockets being kept-alive.
@@ -900,7 +988,8 @@ declare namespace Deno {
    * The definition of a proxy when specifying
    * {@linkcode Deno.CreateHttpClientOptions}.
    *
-   * @category Fetch API
+   * @category Fetch
+   * @experimental
    */
   export interface Proxy {
     /** The string URL of the proxy server to use. */
@@ -914,7 +1003,8 @@ declare namespace Deno {
    * Basic authentication credentials to be used with a {@linkcode Deno.Proxy}
    * server when specifying {@linkcode Deno.CreateHttpClientOptions}.
    *
-   * @category Fetch API
+   * @category Fetch
+   * @experimental
    */
   export interface BasicAuth {
     /** The username to be used against the proxy server. */
@@ -942,7 +1032,8 @@ declare namespace Deno {
    * const response = await fetch("https://myserver.com", { client });
    * ```
    *
-   * @category Fetch API
+   * @category Fetch
+   * @experimental
    */
   export function createHttpClient(
     options: CreateHttpClientOptions,
@@ -950,11 +1041,34 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Create a custom HttpClient to use with {@linkcode fetch}. This is an
+   * extension of the web platform Fetch API which allows Deno to use custom
+   * TLS certificates and connect via a proxy while using `fetch()`.
+   *
+   * @example ```ts
+   * const caCert = await Deno.readTextFile("./ca.pem");
+   * // Load a client key and certificate that we'll use to connect
+   * const key = await Deno.readTextFile("./key.key");
+   * const cert = await Deno.readTextFile("./cert.crt");
+   * const client = Deno.createHttpClient({ caCerts: [ caCert ], key, cert });
+   * const response = await fetch("https://myserver.com", { client });
+   * ```
+   *
+   * @category Fetch
+   * @experimental
+   */
+  export function createHttpClient(
+    options: CreateHttpClientOptions & TlsCertifiedKeyOptions,
+  ): HttpClient;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Represents membership of a IPv4 multicast group.
    *
    * @category Network
+   * @experimental
    */
-  interface MulticastV4Membership {
+  export interface MulticastV4Membership {
     /** Leaves the multicast group. */
     leave: () => Promise<void>;
     /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
@@ -968,8 +1082,9 @@ declare namespace Deno {
    * Represents membership of a IPv6 multicast group.
    *
    * @category Network
+   * @experimental
    */
-  interface MulticastV6Membership {
+  export interface MulticastV6Membership {
     /** Leaves the multicast group. */
     leave: () => Promise<void>;
     /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
@@ -981,6 +1096,7 @@ declare namespace Deno {
    * A generic transport listener for message-oriented protocols.
    *
    * @category Network
+   * @experimental
    */
   export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
     /** Joins an IPv4 multicast group. */
@@ -1014,6 +1130,7 @@ declare namespace Deno {
 
   /**
    * @category Network
+   * @experimental
    */
   export interface TcpListenOptions extends ListenOptions {
     /** When `true` the SO_REUSEPORT flag will be set on the listener. This
@@ -1032,22 +1149,11 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Unstable options which can be set when opening a Unix listener via
-   * {@linkcode Deno.listen} or {@linkcode Deno.listenDatagram}.
-   *
-   * @category Network
-   */
-  export interface UnixListenOptions {
-    /** A path to the Unix Socket. */
-    path: string;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Unstable options which can be set when opening a datagram listener via
    * {@linkcode Deno.listenDatagram}.
    *
    * @category Network
+   * @experimental
    */
   export interface UdpListenOptions extends ListenOptions {
     /** When `true` the specified address will be reused, even if another
@@ -1062,23 +1168,6 @@ declare namespace Deno {
      * @default {false} */
     loopback?: boolean;
   }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Listen announces on the local transport address.
-   *
-   * ```ts
-   * const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unix" })
-   * ```
-   *
-   * Requires `allow-read` and `allow-write` permission.
-   *
-   * @tags allow-read, allow-write
-   * @category Network
-   */
-  export function listen(
-    options: UnixListenOptions & { transport: "unix" },
-  ): Listener;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1100,6 +1189,7 @@ declare namespace Deno {
    *
    * @tags allow-net
    * @category Network
+   * @experimental
    */
   export function listenDatagram(
     options: UdpListenOptions & { transport: "udp" },
@@ -1120,6 +1210,7 @@ declare namespace Deno {
    *
    * @tags allow-read, allow-write
    * @category Network
+   * @experimental
    */
   export function listenDatagram(
     options: UnixListenOptions & { transport: "unixpacket" },
@@ -1127,122 +1218,11 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * @category Network
-   */
-  export interface UnixConnectOptions {
-    transport: "unix";
-    path: string;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Connects to the hostname (default is "127.0.0.1") and port on the named
-   * transport (default is "tcp"), and resolves to the connection (`Conn`).
-   *
-   * ```ts
-   * const conn1 = await Deno.connect({ port: 80 });
-   * const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
-   * const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
-   * const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
-   * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
-   * ```
-   *
-   * Requires `allow-net` permission for "tcp" and `allow-read` for "unix".
-   *
-   * @tags allow-net, allow-read
-   * @category Network
-   */
-  export function connect(options: ConnectOptions): Promise<TcpConn>;
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Connects to the hostname (default is "127.0.0.1") and port on the named
-   * transport (default is "tcp"), and resolves to the connection (`Conn`).
-   *
-   * ```ts
-   * const conn1 = await Deno.connect({ port: 80 });
-   * const conn2 = await Deno.connect({ hostname: "192.0.2.1", port: 80 });
-   * const conn3 = await Deno.connect({ hostname: "[2001:db8::1]", port: 80 });
-   * const conn4 = await Deno.connect({ hostname: "golang.org", port: 80, transport: "tcp" });
-   * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
-   * ```
-   *
-   * Requires `allow-net` permission for "tcp" and `allow-read` for "unix".
-   *
-   * @tags allow-net, allow-read
-   * @category Network
-   */
-  export function connect(options: UnixConnectOptions): Promise<UnixConn>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category Network
-   */
-  export interface ConnectTlsOptions {
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * PEM formatted client certificate chain.
-     */
-    certChain?: string;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * PEM formatted (RSA or PKCS8) private key of client certificate.
-     */
-    privateKey?: string;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category Network
-   */
-  export interface TlsHandshakeInfo {
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Contains the ALPN protocol selected during negotiation with the server.
-     * If no ALPN protocol selected, returns `null`.
-     */
-    alpnProtocol: string | null;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category Network
-   */
-  export interface TlsConn extends Conn {
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Runs the client or server handshake protocol to completion if that has
-     * not happened yet. Calling this method is optional; the TLS handshake
-     * will be completed automatically as soon as data is sent or received.
-     */
-    handshake(): Promise<TlsHandshakeInfo>;
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Create a TLS connection with an attached client certificate.
-   *
-   * ```ts
-   * const conn = await Deno.connectTls({
-   *   hostname: "deno.land",
-   *   port: 443,
-   *   certChain: "---- BEGIN CERTIFICATE ----\n ...",
-   *   privateKey: "---- BEGIN PRIVATE KEY ----\n ...",
-   * });
-   * ```
-   *
-   * Requires `allow-net` permission.
-   *
-   * @tags allow-net
-   * @category Network
-   */
-  export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Acquire an advisory file-system lock for the provided file.
    *
    * @param [exclusive=false]
    * @category File System
+   * @experimental
    */
   export function flock(rid: number, exclusive?: boolean): Promise<void>;
 
@@ -1252,6 +1232,7 @@ declare namespace Deno {
    *
    * @param [exclusive=false]
    * @category File System
+   * @experimental
    */
   export function flockSync(rid: number, exclusive?: boolean): void;
 
@@ -1260,6 +1241,7 @@ declare namespace Deno {
    * Release an advisory file-system lock for the provided file.
    *
    * @category File System
+   * @experimental
    */
   export function funlock(rid: number): Promise<void>;
 
@@ -1268,36 +1250,9 @@ declare namespace Deno {
    * Release an advisory file-system lock for the provided file synchronously.
    *
    * @category File System
+   * @experimental
    */
   export function funlockSync(rid: number): void;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Allows "hijacking" the connection that the request is associated with. This
-   * can be used to implement protocols that build on top of HTTP (eg.
-   * {@linkcode WebSocket}).
-   *
-   * The returned promise returns underlying connection and first packet
-   * received. The promise shouldn't be awaited before responding to the
-   * `request`, otherwise event loop might deadlock.
-   *
-   * ```ts
-   * function handler(req: Request): Response {
-   *   Deno.upgradeHttp(req).then(([conn, firstPacket]) => {
-   *     // ...
-   *   });
-   *   return new Response(null, { status: 101 });
-   * }
-   * ```
-   *
-   * This method can only be called on requests originating the
-   * {@linkcode Deno.serveHttp} server.
-   *
-   * @category HTTP Server
-   */
-  export function upgradeHttp(
-    request: Request,
-  ): Promise<[Deno.Conn, Uint8Array]>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1313,7 +1268,8 @@ declare namespace Deno {
    * can be found in the Deno Manual.
    *
    * @tags allow-read, allow-write
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export function openKv(path?: string): Promise<Deno.Kv>;
 
@@ -1321,9 +1277,10 @@ declare namespace Deno {
    *
    * CronScheduleExpression is used as the type of `minute`, `hour`,
    * `dayOfMonth`, `month`, and `dayOfWeek` in {@linkcode CronSchedule}.
-   * @category Cron
+   * @category Cloud
+   * @experimental
    */
-  type CronScheduleExpression = number | { exact: number | number[] } | {
+  export type CronScheduleExpression = number | { exact: number | number[] } | {
     start?: number;
     end?: number;
     every?: number;
@@ -1333,7 +1290,8 @@ declare namespace Deno {
    *
    * CronSchedule is the interface used for JSON format
    * cron `schedule`.
-   * @category Cron
+   * @category Cloud
+   * @experimental
    */
   export interface CronSchedule {
     minute?: CronScheduleExpression;
@@ -1364,7 +1322,8 @@ declare namespace Deno {
    * as specified by interface {@linkcode CronSchedule}, where time is specified
    * using UTC time zone.
    *
-   * @category Cron
+   * @category Cloud
+   * @experimental
    */
   export function cron(
     name: string,
@@ -1395,44 +1354,14 @@ declare namespace Deno {
    * means that a failed execution will be retried at most 3 times, with 1
    * second, 5 seconds, and 10 seconds delay between each retry.
    *
-   * @category Cron
+   * @category Cloud
+   * @experimental
    */
   export function cron(
     name: string,
     schedule: string | CronSchedule,
     options: { backoffSchedule?: number[]; signal?: AbortSignal },
     handler: () => Promise<void> | void,
-  ): Promise<void>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Create a cron job that will periodically execute the provided handler
-   * callback based on the specified schedule.
-   *
-   * `schedule` can be a string in the Unix cron format or in JSON format
-   * as specified by interface {@linkcode CronSchedule}, where time is specified
-   * using UTC time zone.
-   *
-   * ```ts
-   * Deno.cron("sample cron", "20 * * * *", () => {
-   *   console.log("cron job executed");
-   * });
-   * ```
-   * `backoffSchedule` option can be used to specify the retry policy for failed
-   * executions. Each element in the array represents the number of milliseconds
-   * to wait before retrying the execution. For example, `[1000, 5000, 10000]`
-   * means that a failed execution will be retried at most 3 times, with 1
-   * second, 5 seconds, and 10 seconds delay between each retry.
-   *
-   * @category Cron
-   * @deprecated Use other {@linkcode cron} overloads instead. This overload
-   * will be removed in the future.
-   */
-  export function cron(
-    name: string,
-    schedule: string | CronSchedule,
-    handler: () => Promise<void> | void,
-    options: { backoffSchedule?: number[]; signal?: AbortSignal },
   ): Promise<void>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1450,7 +1379,8 @@ declare namespace Deno {
    * exceeds this limit, an error will be thrown on the operation that this key
    * was passed to.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export type KvKey = readonly KvKeyPart[];
 
@@ -1486,7 +1416,8 @@ declare namespace Deno {
    * `1.0` is a number and `0n` is a bigint, and type ordering has precedence
    * over the ordering of values within a type.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export type KvKeyPart =
     | Uint8Array
@@ -1503,7 +1434,8 @@ declare namespace Deno {
    * - `strong` - This operation must be strongly-consistent.
    * - `eventual` - Eventually-consistent behavior is allowed.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export type KvConsistencyLevel = "strong" | "eventual";
 
@@ -1517,7 +1449,8 @@ declare namespace Deno {
    * starting at a given key). A range selector selects all keys that are
    * lexicographically between the given start and end keys.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export type KvListSelector =
     | { prefix: KvKey }
@@ -1555,7 +1488,8 @@ declare namespace Deno {
    *   existing value must be of type `Deno.KvU64`. If the key does not exist,
    *   the value is set to the given value.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export type KvMutation =
     & { key: KvKey }
@@ -1574,7 +1508,8 @@ declare namespace Deno {
    * The cursor getter returns the cursor that can be used to resume the
    * iteration from the current position in the future.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export class KvListIterator<T> implements AsyncIterableIterator<KvEntry<T>> {
     /**
@@ -1596,7 +1531,8 @@ declare namespace Deno {
    * key-value pair. It can be used to perform atomic operations on the KV store
    * by passing it to the `check` method of a {@linkcode Deno.AtomicOperation}.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export type KvEntry<T> = { key: KvKey; value: T; versionstamp: string };
 
@@ -1608,7 +1544,8 @@ declare namespace Deno {
    * This is the same as a {@linkcode KvEntry}, but the `value` and `versionstamp`
    * fields may be `null` if no value exists for the given key in the KV store.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export type KvEntryMaybe<T> = KvEntry<T> | {
     key: KvKey;
@@ -1620,7 +1557,8 @@ declare namespace Deno {
    *
    * Options for listing key-value pairs in a {@linkcode Deno.Kv}.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export interface KvListOptions {
     /**
@@ -1673,14 +1611,20 @@ declare namespace Deno {
     batchSize?: number;
   }
 
-  /** @category KV */
+  /**
+   * @category Cloud
+   * @experimental
+   */
   export interface KvCommitResult {
     ok: true;
     /** The versionstamp of the value committed to KV. */
     versionstamp: string;
   }
 
-  /** @category KV */
+  /**
+   * @category Cloud
+   * @experimental
+   */
   export interface KvCommitError {
     ok: false;
   }
@@ -1692,7 +1636,8 @@ declare namespace Deno {
    * not match the given versionstamp. A check with a `null` versionstamp checks
    * that the key-value pair does not currently exist in the KV store.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export interface AtomicCheck {
     key: KvKey;
@@ -1732,9 +1677,9 @@ declare namespace Deno {
    * an exception will be thrown. If the operation succeeded, the return value
    * will be a {@linkcode Deno.KvCommitResult} object with a `ok: true` property
    * and the versionstamp of the value committed to KV.
-
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export class AtomicOperation {
     /**
@@ -1850,7 +1795,8 @@ declare namespace Deno {
    * of a JSON serialization of that same value. If theses limits are exceeded,
    * an exception will be thrown.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export class Kv implements Disposable {
     /**
@@ -2043,9 +1989,8 @@ declare namespace Deno {
      * });
      * ```
      */
-    listenQueue(
-      handler: (value: unknown) => Promise<void> | void,
-    ): Promise<void>;
+    // deno-lint-ignore no-explicit-any
+    listenQueue(handler: (value: any) => Promise<void> | void): Promise<void>;
 
     /**
      * Create a new {@linkcode Deno.AtomicOperation} object which can be used to
@@ -2121,7 +2066,8 @@ declare namespace Deno {
    * Wrapper type for 64-bit unsigned integers for use as values in a
    * {@linkcode Deno.Kv}.
    *
-   * @category KV
+   * @category Cloud
+   * @experimental
    */
   export class KvU64 {
     /** Create a new `KvU64` instance from the given bigint value. If the value
@@ -2136,16 +2082,25 @@ declare namespace Deno {
    *
    * When accessed outside of Jupyter notebook context an error will be thrown.
    *
-   * @category Jupyter */
+   * @category Jupyter
+   * @experimental
+   */
   export namespace jupyter {
-    /** @category Jupyter */
+    /**
+     * @category Jupyter
+     * @experimental
+     */
     export interface DisplayOptions {
       raw?: boolean;
       update?: boolean;
       display_id?: string;
     }
 
-    type VegaObject = {
+    /**
+     * @category Jupyter
+     * @experimental
+     */
+    export type VegaObject = {
       $schema: string;
       [key: string]: unknown;
     };
@@ -2154,6 +2109,7 @@ declare namespace Deno {
      * A collection of supported media types and data for Jupyter frontends.
      *
      * @category Jupyter
+     * @experimental
      */
     export type MediaBundle = {
       "text/plain"?: string;
@@ -2183,10 +2139,16 @@ declare namespace Deno {
       [key: string]: string | object | undefined;
     };
 
-    /** @category Jupyter */
+    /**
+     * @category Jupyter
+     * @experimental
+     */
     export const $display: unique symbol;
 
-    /** @category Jupyter */
+    /**
+     * @category Jupyter
+     * @experimental
+     */
     export type Displayable = {
       [$display]: () => MediaBundle | Promise<MediaBundle>;
     };
@@ -2199,6 +2161,7 @@ declare namespace Deno {
      * @param obj - The object to be displayed
      * @param options - Display options with a default { raw: true }
      * @category Jupyter
+     * @experimental
      */
     export function display(obj: unknown, options?: DisplayOptions): void;
 
@@ -2223,6 +2186,7 @@ declare namespace Deno {
      * ```
      *
      * @category Jupyter
+     * @experimental
      */
     export function md(
       strings: TemplateStringsArray,
@@ -2242,6 +2206,7 @@ declare namespace Deno {
      * ```
      *
      * @category Jupyter
+     * @experimental
      */
     export function html(
       strings: TemplateStringsArray,
@@ -2260,6 +2225,7 @@ declare namespace Deno {
      *    </svg>`
      *
      * @category Jupyter
+     * @experimental
      */
     export function svg(
       strings: TemplateStringsArray,
@@ -2273,6 +2239,7 @@ declare namespace Deno {
      * @returns MediaBundle
      *
      * @category Jupyter
+     * @experimental
      */
     export function format(obj: unknown): MediaBundle;
 
@@ -2295,7 +2262,9 @@ declare namespace Deno {
      * });
      * ```
      *
-     * @category Jupyter */
+     * @category Jupyter
+     * @experimental
+     */
     export function broadcast(
       msgType: string,
       content: Record<string, unknown>,
@@ -2314,7 +2283,8 @@ declare namespace Deno {
  * way to connect via proxies and use custom TLS certificates.
  *
  * @tags allow-net, allow-read
- * @category Fetch API
+ * @category Fetch
+ * @experimental
  */
 declare function fetch(
   input: Request | URL | string,
@@ -2323,7 +2293,8 @@ declare function fetch(
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @category Web Workers
+ * @category Workers
+ * @experimental
  */
 declare interface WorkerOptions {
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -2363,7 +2334,8 @@ declare interface WorkerOptions {
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @category Web Sockets
+ * @category WebSockets
+ * @experimental
  */
 declare interface WebSocketStreamOptions {
   protocols?: string[];
@@ -2373,7 +2345,8 @@ declare interface WebSocketStreamOptions {
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @category Web Sockets
+ * @category WebSockets
+ * @experimental
  */
 declare interface WebSocketConnection {
   readable: ReadableStream<string | Uint8Array>;
@@ -2384,7 +2357,8 @@ declare interface WebSocketConnection {
 
 /** **UNSTABLE**: New API, yet to be vetted.
  *
- * @category Web Sockets
+ * @category WebSockets
+ * @experimental
  */
 declare interface WebSocketCloseInfo {
   code?: number;
@@ -2394,7 +2368,8 @@ declare interface WebSocketCloseInfo {
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @tags allow-net
- * @category Web Sockets
+ * @category WebSockets
+ * @experimental
  */
 declare interface WebSocketStream {
   url: string;
@@ -2406,9 +2381,2798 @@ declare interface WebSocketStream {
 /** **UNSTABLE**: New API, yet to be vetted.
  *
  * @tags allow-net
- * @category Web Sockets
+ * @category WebSockets
+ * @experimental
  */
 declare var WebSocketStream: {
   readonly prototype: WebSocketStream;
   new (url: string, options?: WebSocketStreamOptions): WebSocketStream;
 };
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @tags allow-net
+ * @category WebSockets
+ * @experimental
+ */
+declare interface WebSocketError extends DOMException {
+  readonly closeCode: number;
+  readonly reason: string;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @tags allow-net
+ * @category WebSockets
+ * @experimental
+ */
+declare var WebSocketError: {
+  readonly prototype: WebSocketError;
+  new (message?: string, init?: WebSocketCloseInfo): WebSocketError;
+};
+
+// Adapted from `tc39/proposal-temporal`: https://github.com/tc39/proposal-temporal/blob/main/polyfill/index.d.ts
+
+/**
+ * [Specification](https://tc39.es/proposal-temporal/docs/index.html)
+ *
+ * @category Temporal
+ * @experimental
+ */
+declare namespace Temporal {
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type ComparisonResult = -1 | 0 | 1;
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type RoundingMode =
+    | "ceil"
+    | "floor"
+    | "expand"
+    | "trunc"
+    | "halfCeil"
+    | "halfFloor"
+    | "halfExpand"
+    | "halfTrunc"
+    | "halfEven";
+
+  /**
+   * Options for assigning fields using `with()` or entire objects with
+   * `from()`.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export type AssignmentOptions = {
+    /**
+     * How to deal with out-of-range values
+     *
+     * - In `'constrain'` mode, out-of-range values are clamped to the nearest
+     *   in-range value.
+     * - In `'reject'` mode, out-of-range values will cause the function to
+     *   throw a RangeError.
+     *
+     * The default is `'constrain'`.
+     */
+    overflow?: "constrain" | "reject";
+  };
+
+  /**
+   * Options for assigning fields using `Duration.prototype.with()` or entire
+   * objects with `Duration.from()`, and for arithmetic with
+   * `Duration.prototype.add()` and `Duration.prototype.subtract()`.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export type DurationOptions = {
+    /**
+     * How to deal with out-of-range values
+     *
+     * - In `'constrain'` mode, out-of-range values are clamped to the nearest
+     *   in-range value.
+     * - In `'balance'` mode, out-of-range values are resolved by balancing them
+     *   with the next highest unit.
+     *
+     * The default is `'constrain'`.
+     */
+    overflow?: "constrain" | "balance";
+  };
+
+  /**
+   * Options for conversions of `Temporal.PlainDateTime` to `Temporal.Instant`
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export type ToInstantOptions = {
+    /**
+     * Controls handling of invalid or ambiguous times caused by time zone
+     * offset changes like Daylight Saving time (DST) transitions.
+     *
+     * This option is only relevant if a `DateTime` value does not exist in the
+     * destination time zone (e.g. near "Spring Forward" DST transitions), or
+     * exists more than once (e.g. near "Fall Back" DST transitions).
+     *
+     * In case of ambiguous or nonexistent times, this option controls what
+     * exact time to return:
+     * - `'compatible'`: Equivalent to `'earlier'` for backward transitions like
+     *   the start of DST in the Spring, and `'later'` for forward transitions
+     *   like the end of DST in the Fall. This matches the behavior of legacy
+     *   `Date`, of libraries like moment.js, Luxon, or date-fns, and of
+     *   cross-platform standards like [RFC 5545
+     *   (iCalendar)](https://tools.ietf.org/html/rfc5545).
+     * - `'earlier'`: The earlier time of two possible times
+     * - `'later'`: The later of two possible times
+     * - `'reject'`: Throw a RangeError instead
+     *
+     * The default is `'compatible'`.
+     */
+    disambiguation?: "compatible" | "earlier" | "later" | "reject";
+  };
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type OffsetDisambiguationOptions = {
+    /**
+     * Time zone definitions can change. If an application stores data about
+     * events in the future, then stored data about future events may become
+     * ambiguous, for example if a country permanently abolishes DST. The
+     * `offset` option controls this unusual case.
+     *
+     * - `'use'` always uses the offset (if it's provided) to calculate the
+     *   instant. This ensures that the result will match the instant that was
+     *   originally stored, even if local clock time is different.
+     * - `'prefer'` uses the offset if it's valid for the date/time in this time
+     *   zone, but if it's not valid then the time zone will be used as a
+     *   fallback to calculate the instant.
+     * - `'ignore'` will disregard any provided offset. Instead, the time zone
+     *    and date/time value are used to calculate the instant. This will keep
+     *    local clock time unchanged but may result in a different real-world
+     *    instant.
+     * - `'reject'` acts like `'prefer'`, except it will throw a RangeError if
+     *   the offset is not valid for the given time zone identifier and
+     *   date/time value.
+     *
+     * If the ISO string ends in 'Z' then this option is ignored because there
+     * is no possibility of ambiguity.
+     *
+     * If a time zone offset is not present in the input, then this option is
+     * ignored because the time zone will always be used to calculate the
+     * offset.
+     *
+     * If the offset is not used, and if the date/time and time zone don't
+     * uniquely identify a single instant, then the `disambiguation` option will
+     * be used to choose the correct instant. However, if the offset is used
+     * then the `disambiguation` option will be ignored.
+     */
+    offset?: "use" | "prefer" | "ignore" | "reject";
+  };
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type ZonedDateTimeAssignmentOptions = Partial<
+    AssignmentOptions & ToInstantOptions & OffsetDisambiguationOptions
+  >;
+
+  /**
+   * Options for arithmetic operations like `add()` and `subtract()`
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export type ArithmeticOptions = {
+    /**
+     * Controls handling of out-of-range arithmetic results.
+     *
+     * If a result is out of range, then `'constrain'` will clamp the result to
+     * the allowed range, while `'reject'` will throw a RangeError.
+     *
+     * The default is `'constrain'`.
+     */
+    overflow?: "constrain" | "reject";
+  };
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type DateUnit = "year" | "month" | "week" | "day";
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type TimeUnit =
+    | "hour"
+    | "minute"
+    | "second"
+    | "millisecond"
+    | "microsecond"
+    | "nanosecond";
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type DateTimeUnit = DateUnit | TimeUnit;
+
+  /**
+   * When the name of a unit is provided to a Temporal API as a string, it is
+   * usually singular, e.g. 'day' or 'hour'. But plural unit names like 'days'
+   * or 'hours' are aso accepted too.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export type PluralUnit<T extends DateTimeUnit> = {
+    year: "years";
+    month: "months";
+    week: "weeks";
+    day: "days";
+    hour: "hours";
+    minute: "minutes";
+    second: "seconds";
+    millisecond: "milliseconds";
+    microsecond: "microseconds";
+    nanosecond: "nanoseconds";
+  }[T];
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type LargestUnit<T extends DateTimeUnit> = "auto" | T | PluralUnit<T>;
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type SmallestUnit<T extends DateTimeUnit> = T | PluralUnit<T>;
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type TotalUnit<T extends DateTimeUnit> = T | PluralUnit<T>;
+
+  /**
+   * Options for outputting precision in toString() on types with seconds
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export type ToStringPrecisionOptions = {
+    fractionalSecondDigits?: "auto" | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+    smallestUnit?: SmallestUnit<
+      "minute" | "second" | "millisecond" | "microsecond" | "nanosecond"
+    >;
+
+    /**
+     * Controls how rounding is performed:
+     * - `halfExpand`: Round to the nearest of the values allowed by
+     *   `roundingIncrement` and `smallestUnit`. When there is a tie, round up.
+     *   This mode is the default.
+     * - `ceil`: Always round up, towards the end of time.
+     * - `trunc`: Always round down, towards the beginning of time.
+     * - `floor`: Also round down, towards the beginning of time. This mode acts
+     *   the same as `trunc`, but it's included for consistency with
+     *   `Temporal.Duration.round()` where negative values are allowed and
+     *   `trunc` rounds towards zero, unlike `floor` which rounds towards
+     *   negative infinity which is usually unexpected. For this reason, `trunc`
+     *   is recommended for most use cases.
+     */
+    roundingMode?: RoundingMode;
+  };
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type ShowCalendarOption = {
+    calendarName?: "auto" | "always" | "never" | "critical";
+  };
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type CalendarTypeToStringOptions = Partial<
+    ToStringPrecisionOptions & ShowCalendarOption
+  >;
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type ZonedDateTimeToStringOptions = Partial<
+    CalendarTypeToStringOptions & {
+      timeZoneName?: "auto" | "never" | "critical";
+      offset?: "auto" | "never";
+    }
+  >;
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type InstantToStringOptions = Partial<
+    ToStringPrecisionOptions & {
+      timeZone: TimeZoneLike;
+    }
+  >;
+
+  /**
+   * Options to control the result of `until()` and `since()` methods in
+   * `Temporal` types.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export interface DifferenceOptions<T extends DateTimeUnit> {
+    /**
+     * The unit to round to. For example, to round to the nearest minute, use
+     * `smallestUnit: 'minute'`. This property is optional for `until()` and
+     * `since()`, because those methods default behavior is not to round.
+     * However, the same property is required for `round()`.
+     */
+    smallestUnit?: SmallestUnit<T>;
+
+    /**
+     * The largest unit to allow in the resulting `Temporal.Duration` object.
+     *
+     * Larger units will be "balanced" into smaller units. For example, if
+     * `largestUnit` is `'minute'` then a two-hour duration will be output as a
+     * 120-minute duration.
+     *
+     * Valid values may include `'year'`, `'month'`, `'week'`, `'day'`,
+     * `'hour'`, `'minute'`, `'second'`, `'millisecond'`, `'microsecond'`,
+     * `'nanosecond'` and `'auto'`, although some types may throw an exception
+     * if a value is used that would produce an invalid result. For example,
+     * `hours` is not accepted by `Temporal.PlainDate.prototype.since()`.
+     *
+     * The default is always `'auto'`, though the meaning of this depends on the
+     * type being used.
+     */
+    largestUnit?: LargestUnit<T>;
+
+    /**
+     * Allows rounding to an integer number of units. For example, to round to
+     * increments of a half hour, use `{ smallestUnit: 'minute',
+     * roundingIncrement: 30 }`.
+     */
+    roundingIncrement?: number;
+
+    /**
+     * Controls how rounding is performed:
+     * - `halfExpand`: Round to the nearest of the values allowed by
+     *   `roundingIncrement` and `smallestUnit`. When there is a tie, round away
+     *   from zero like `ceil` for positive durations and like `floor` for
+     *   negative durations.
+     * - `ceil`: Always round up, towards the end of time.
+     * - `trunc`: Always round down, towards the beginning of time. This mode is
+     *   the default.
+     * - `floor`: Also round down, towards the beginning of time. This mode acts
+     *   the same as `trunc`, but it's included for consistency with
+     *   `Temporal.Duration.round()` where negative values are allowed and
+     *   `trunc` rounds towards zero, unlike `floor` which rounds towards
+     *   negative infinity which is usually unexpected. For this reason, `trunc`
+     *   is recommended for most use cases.
+     */
+    roundingMode?: RoundingMode;
+  }
+
+  /**
+   * `round` methods take one required parameter. If a string is provided, the
+   * resulting `Temporal.Duration` object will be rounded to that unit. If an
+   * object is provided, its `smallestUnit` property is required while other
+   * properties are optional. A string is treated the same as an object whose
+   * `smallestUnit` property value is that string.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export type RoundTo<T extends DateTimeUnit> =
+    | SmallestUnit<T>
+    | {
+      /**
+       * The unit to round to. For example, to round to the nearest minute,
+       * use `smallestUnit: 'minute'`. This option is required. Note that the
+       * same-named property is optional when passed to `until` or `since`
+       * methods, because those methods do no rounding by default.
+       */
+      smallestUnit: SmallestUnit<T>;
+
+      /**
+       * Allows rounding to an integer number of units. For example, to round to
+       * increments of a half hour, use `{ smallestUnit: 'minute',
+       * roundingIncrement: 30 }`.
+       */
+      roundingIncrement?: number;
+
+      /**
+       * Controls how rounding is performed:
+       * - `halfExpand`: Round to the nearest of the values allowed by
+       *   `roundingIncrement` and `smallestUnit`. When there is a tie, round up.
+       *   This mode is the default.
+       * - `ceil`: Always round up, towards the end of time.
+       * - `trunc`: Always round down, towards the beginning of time.
+       * - `floor`: Also round down, towards the beginning of time. This mode acts
+       *   the same as `trunc`, but it's included for consistency with
+       *   `Temporal.Duration.round()` where negative values are allowed and
+       *   `trunc` rounds towards zero, unlike `floor` which rounds towards
+       *   negative infinity which is usually unexpected. For this reason, `trunc`
+       *   is recommended for most use cases.
+       */
+      roundingMode?: RoundingMode;
+    };
+
+  /**
+   * The `round` method of the `Temporal.Duration` accepts one required
+   * parameter. If a string is provided, the resulting `Temporal.Duration`
+   * object will be rounded to that unit. If an object is provided, the
+   * `smallestUnit` and/or `largestUnit` property is required, while other
+   * properties are optional. A string parameter is treated the same as an
+   * object whose `smallestUnit` property value is that string.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export type DurationRoundTo =
+    | SmallestUnit<DateTimeUnit>
+    | (
+      & (
+        | {
+          /**
+           * The unit to round to. For example, to round to the nearest
+           * minute, use `smallestUnit: 'minute'`. This property is normally
+           * required, but is optional if `largestUnit` is provided and not
+           * undefined.
+           */
+          smallestUnit: SmallestUnit<DateTimeUnit>;
+
+          /**
+           * The largest unit to allow in the resulting `Temporal.Duration`
+           * object.
+           *
+           * Larger units will be "balanced" into smaller units. For example,
+           * if `largestUnit` is `'minute'` then a two-hour duration will be
+           * output as a 120-minute duration.
+           *
+           * Valid values include `'year'`, `'month'`, `'week'`, `'day'`,
+           * `'hour'`, `'minute'`, `'second'`, `'millisecond'`,
+           * `'microsecond'`, `'nanosecond'` and `'auto'`.
+           *
+           * The default is `'auto'`, which means "the largest nonzero unit in
+           * the input duration". This default prevents expanding durations to
+           * larger units unless the caller opts into this behavior.
+           *
+           * If `smallestUnit` is larger, then `smallestUnit` will be used as
+           * `largestUnit`, superseding a caller-supplied or default value.
+           */
+          largestUnit?: LargestUnit<DateTimeUnit>;
+        }
+        | {
+          /**
+           * The unit to round to. For example, to round to the nearest
+           * minute, use `smallestUnit: 'minute'`. This property is normally
+           * required, but is optional if `largestUnit` is provided and not
+           * undefined.
+           */
+          smallestUnit?: SmallestUnit<DateTimeUnit>;
+
+          /**
+           * The largest unit to allow in the resulting `Temporal.Duration`
+           * object.
+           *
+           * Larger units will be "balanced" into smaller units. For example,
+           * if `largestUnit` is `'minute'` then a two-hour duration will be
+           * output as a 120-minute duration.
+           *
+           * Valid values include `'year'`, `'month'`, `'week'`, `'day'`,
+           * `'hour'`, `'minute'`, `'second'`, `'millisecond'`,
+           * `'microsecond'`, `'nanosecond'` and `'auto'`.
+           *
+           * The default is `'auto'`, which means "the largest nonzero unit in
+           * the input duration". This default prevents expanding durations to
+           * larger units unless the caller opts into this behavior.
+           *
+           * If `smallestUnit` is larger, then `smallestUnit` will be used as
+           * `largestUnit`, superseding a caller-supplied or default value.
+           */
+          largestUnit: LargestUnit<DateTimeUnit>;
+        }
+      )
+      & {
+        /**
+         * Allows rounding to an integer number of units. For example, to round
+         * to increments of a half hour, use `{ smallestUnit: 'minute',
+         * roundingIncrement: 30 }`.
+         */
+        roundingIncrement?: number;
+
+        /**
+         * Controls how rounding is performed:
+         * - `halfExpand`: Round to the nearest of the values allowed by
+         *   `roundingIncrement` and `smallestUnit`. When there is a tie, round
+         *   away from zero like `ceil` for positive durations and like `floor`
+         *   for negative durations. This mode is the default.
+         * - `ceil`: Always round towards positive infinity. For negative
+         *   durations this option will decrease the absolute value of the
+         *   duration which may be unexpected. To round away from zero, use
+         *   `ceil` for positive durations and `floor` for negative durations.
+         * - `trunc`: Always round down towards zero.
+         * - `floor`: Always round towards negative infinity. This mode acts the
+         *   same as `trunc` for positive durations but for negative durations
+         *   it will increase the absolute value of the result which may be
+         *   unexpected. For this reason, `trunc` is recommended for most "round
+         *   down" use cases.
+         */
+        roundingMode?: RoundingMode;
+
+        /**
+         * The starting point to use for rounding and conversions when
+         * variable-length units (years, months, weeks depending on the
+         * calendar) are involved. This option is required if any of the
+         * following are true:
+         * - `unit` is `'week'` or larger units
+         * - `this` has a nonzero value for `weeks` or larger units
+         *
+         * This value must be either a `Temporal.PlainDateTime`, a
+         * `Temporal.ZonedDateTime`, or a string or object value that can be
+         * passed to `from()` of those types. Examples:
+         * - `'2020-01'01T00:00-08:00[America/Los_Angeles]'`
+         * - `'2020-01'01'`
+         * - `Temporal.PlainDate.from('2020-01-01')`
+         *
+         * `Temporal.ZonedDateTime` will be tried first because it's more
+         * specific, with `Temporal.PlainDateTime` as a fallback.
+         *
+         * If the value resolves to a `Temporal.ZonedDateTime`, then operation
+         * will adjust for DST and other time zone transitions. Otherwise
+         * (including if this option is omitted), then the operation will ignore
+         * time zone transitions and all days will be assumed to be 24 hours
+         * long.
+         */
+        relativeTo?:
+          | Temporal.PlainDateTime
+          | Temporal.ZonedDateTime
+          | PlainDateTimeLike
+          | ZonedDateTimeLike
+          | string;
+      }
+    );
+
+  /**
+   * Options to control behavior of `Duration.prototype.total()`
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export type DurationTotalOf =
+    | TotalUnit<DateTimeUnit>
+    | {
+      /**
+       * The unit to convert the duration to. This option is required.
+       */
+      unit: TotalUnit<DateTimeUnit>;
+
+      /**
+       * The starting point to use when variable-length units (years, months,
+       * weeks depending on the calendar) are involved. This option is required if
+       * any of the following are true:
+       * - `unit` is `'week'` or larger units
+       * - `this` has a nonzero value for `weeks` or larger units
+       *
+       * This value must be either a `Temporal.PlainDateTime`, a
+       * `Temporal.ZonedDateTime`, or a string or object value that can be passed
+       * to `from()` of those types. Examples:
+       * - `'2020-01'01T00:00-08:00[America/Los_Angeles]'`
+       * - `'2020-01'01'`
+       * - `Temporal.PlainDate.from('2020-01-01')`
+       *
+       * `Temporal.ZonedDateTime` will be tried first because it's more
+       * specific, with `Temporal.PlainDateTime` as a fallback.
+       *
+       * If the value resolves to a `Temporal.ZonedDateTime`, then operation will
+       * adjust for DST and other time zone transitions. Otherwise (including if
+       * this option is omitted), then the operation will ignore time zone
+       * transitions and all days will be assumed to be 24 hours long.
+       */
+      relativeTo?:
+        | Temporal.ZonedDateTime
+        | Temporal.PlainDateTime
+        | ZonedDateTimeLike
+        | PlainDateTimeLike
+        | string;
+    };
+
+  /**
+   * Options to control behavior of `Duration.compare()`, `Duration.add()`, and
+   * `Duration.subtract()`
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export interface DurationArithmeticOptions {
+    /**
+     * The starting point to use when variable-length units (years, months,
+     * weeks depending on the calendar) are involved. This option is required if
+     * either of the durations has a nonzero value for `weeks` or larger units.
+     *
+     * This value must be either a `Temporal.PlainDateTime`, a
+     * `Temporal.ZonedDateTime`, or a string or object value that can be passed
+     * to `from()` of those types. Examples:
+     * - `'2020-01'01T00:00-08:00[America/Los_Angeles]'`
+     * - `'2020-01'01'`
+     * - `Temporal.PlainDate.from('2020-01-01')`
+     *
+     * `Temporal.ZonedDateTime` will be tried first because it's more
+     * specific, with `Temporal.PlainDateTime` as a fallback.
+     *
+     * If the value resolves to a `Temporal.ZonedDateTime`, then operation will
+     * adjust for DST and other time zone transitions. Otherwise (including if
+     * this option is omitted), then the operation will ignore time zone
+     * transitions and all days will be assumed to be 24 hours long.
+     */
+    relativeTo?:
+      | Temporal.ZonedDateTime
+      | Temporal.PlainDateTime
+      | ZonedDateTimeLike
+      | PlainDateTimeLike
+      | string;
+  }
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type DurationLike = {
+    years?: number;
+    months?: number;
+    weeks?: number;
+    days?: number;
+    hours?: number;
+    minutes?: number;
+    seconds?: number;
+    milliseconds?: number;
+    microseconds?: number;
+    nanoseconds?: number;
+  };
+
+  /**
+   * A `Temporal.Duration` represents an immutable duration of time which can be
+   * used in date/time arithmetic.
+   *
+   * See https://tc39.es/proposal-temporal/docs/duration.html for more details.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export class Duration {
+    static from(
+      item: Temporal.Duration | DurationLike | string,
+    ): Temporal.Duration;
+    static compare(
+      one: Temporal.Duration | DurationLike | string,
+      two: Temporal.Duration | DurationLike | string,
+      options?: DurationArithmeticOptions,
+    ): ComparisonResult;
+    constructor(
+      years?: number,
+      months?: number,
+      weeks?: number,
+      days?: number,
+      hours?: number,
+      minutes?: number,
+      seconds?: number,
+      milliseconds?: number,
+      microseconds?: number,
+      nanoseconds?: number,
+    );
+    readonly sign: -1 | 0 | 1;
+    readonly blank: boolean;
+    readonly years: number;
+    readonly months: number;
+    readonly weeks: number;
+    readonly days: number;
+    readonly hours: number;
+    readonly minutes: number;
+    readonly seconds: number;
+    readonly milliseconds: number;
+    readonly microseconds: number;
+    readonly nanoseconds: number;
+    negated(): Temporal.Duration;
+    abs(): Temporal.Duration;
+    with(durationLike: DurationLike): Temporal.Duration;
+    add(
+      other: Temporal.Duration | DurationLike | string,
+      options?: DurationArithmeticOptions,
+    ): Temporal.Duration;
+    subtract(
+      other: Temporal.Duration | DurationLike | string,
+      options?: DurationArithmeticOptions,
+    ): Temporal.Duration;
+    round(roundTo: DurationRoundTo): Temporal.Duration;
+    total(totalOf: DurationTotalOf): number;
+    toLocaleString(
+      locales?: string | string[],
+      options?: Intl.DateTimeFormatOptions,
+    ): string;
+    toJSON(): string;
+    toString(options?: ToStringPrecisionOptions): string;
+    valueOf(): never;
+    readonly [Symbol.toStringTag]: "Temporal.Duration";
+  }
+
+  /**
+   * A `Temporal.Instant` is an exact point in time, with a precision in
+   * nanoseconds. No time zone or calendar information is present. Therefore,
+   * `Temporal.Instant` has no concept of days, months, or even hours.
+   *
+   * For convenience of interoperability, it internally uses nanoseconds since
+   * the {@link https://en.wikipedia.org/wiki/Unix_time|Unix epoch} (midnight
+   * UTC on January 1, 1970). However, a `Temporal.Instant` can be created from
+   * any of several expressions that refer to a single point in time, including
+   * an {@link https://en.wikipedia.org/wiki/ISO_8601|ISO 8601 string} with a
+   * time zone offset such as '2020-01-23T17:04:36.491865121-08:00'.
+   *
+   * See https://tc39.es/proposal-temporal/docs/instant.html for more details.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export class Instant {
+    static fromEpochSeconds(epochSeconds: number): Temporal.Instant;
+    static fromEpochMilliseconds(epochMilliseconds: number): Temporal.Instant;
+    static fromEpochMicroseconds(epochMicroseconds: bigint): Temporal.Instant;
+    static fromEpochNanoseconds(epochNanoseconds: bigint): Temporal.Instant;
+    static from(item: Temporal.Instant | string): Temporal.Instant;
+    static compare(
+      one: Temporal.Instant | string,
+      two: Temporal.Instant | string,
+    ): ComparisonResult;
+    constructor(epochNanoseconds: bigint);
+    readonly epochSeconds: number;
+    readonly epochMilliseconds: number;
+    readonly epochMicroseconds: bigint;
+    readonly epochNanoseconds: bigint;
+    equals(other: Temporal.Instant | string): boolean;
+    add(
+      durationLike:
+        | Omit<
+          Temporal.Duration | DurationLike,
+          "years" | "months" | "weeks" | "days"
+        >
+        | string,
+    ): Temporal.Instant;
+    subtract(
+      durationLike:
+        | Omit<
+          Temporal.Duration | DurationLike,
+          "years" | "months" | "weeks" | "days"
+        >
+        | string,
+    ): Temporal.Instant;
+    until(
+      other: Temporal.Instant | string,
+      options?: DifferenceOptions<
+        | "hour"
+        | "minute"
+        | "second"
+        | "millisecond"
+        | "microsecond"
+        | "nanosecond"
+      >,
+    ): Temporal.Duration;
+    since(
+      other: Temporal.Instant | string,
+      options?: DifferenceOptions<
+        | "hour"
+        | "minute"
+        | "second"
+        | "millisecond"
+        | "microsecond"
+        | "nanosecond"
+      >,
+    ): Temporal.Duration;
+    round(
+      roundTo: RoundTo<
+        | "hour"
+        | "minute"
+        | "second"
+        | "millisecond"
+        | "microsecond"
+        | "nanosecond"
+      >,
+    ): Temporal.Instant;
+    toZonedDateTime(
+      calendarAndTimeZone: { timeZone: TimeZoneLike; calendar: CalendarLike },
+    ): Temporal.ZonedDateTime;
+    toZonedDateTimeISO(tzLike: TimeZoneLike): Temporal.ZonedDateTime;
+    toLocaleString(
+      locales?: string | string[],
+      options?: Intl.DateTimeFormatOptions,
+    ): string;
+    toJSON(): string;
+    toString(options?: InstantToStringOptions): string;
+    valueOf(): never;
+    readonly [Symbol.toStringTag]: "Temporal.Instant";
+  }
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type YearOrEraAndEraYear = { era: string; eraYear: number } | {
+    year: number;
+  };
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type MonthCodeOrMonthAndYear =
+    | (YearOrEraAndEraYear & { month: number })
+    | {
+      monthCode: string;
+    };
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type MonthOrMonthCode = { month: number } | { monthCode: string };
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export interface CalendarProtocol {
+    id: string;
+    year(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainYearMonth
+        | PlainDateLike
+        | string,
+    ): number;
+    month(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainYearMonth
+        | Temporal.PlainMonthDay
+        | PlainDateLike
+        | string,
+    ): number;
+    monthCode(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainYearMonth
+        | Temporal.PlainMonthDay
+        | PlainDateLike
+        | string,
+    ): string;
+    day(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainMonthDay
+        | PlainDateLike
+        | string,
+    ): number;
+    era(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | PlainDateLike
+        | string,
+    ): string | undefined;
+    eraYear(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | PlainDateLike
+        | string,
+    ): number | undefined;
+    dayOfWeek(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | PlainDateLike
+        | string,
+    ): number;
+    dayOfYear(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | PlainDateLike
+        | string,
+    ): number;
+    weekOfYear(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | PlainDateLike
+        | string,
+    ): number;
+    yearOfWeek(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | PlainDateLike
+        | string,
+    ): number;
+    daysInWeek(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | PlainDateLike
+        | string,
+    ): number;
+    daysInMonth(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainYearMonth
+        | PlainDateLike
+        | string,
+    ): number;
+    daysInYear(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainYearMonth
+        | PlainDateLike
+        | string,
+    ): number;
+    monthsInYear(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainYearMonth
+        | PlainDateLike
+        | string,
+    ): number;
+    inLeapYear(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainYearMonth
+        | PlainDateLike
+        | string,
+    ): boolean;
+    dateFromFields(
+      fields: YearOrEraAndEraYear & MonthOrMonthCode & { day: number },
+      options?: AssignmentOptions,
+    ): Temporal.PlainDate;
+    yearMonthFromFields(
+      fields: YearOrEraAndEraYear & MonthOrMonthCode,
+      options?: AssignmentOptions,
+    ): Temporal.PlainYearMonth;
+    monthDayFromFields(
+      fields: MonthCodeOrMonthAndYear & { day: number },
+      options?: AssignmentOptions,
+    ): Temporal.PlainMonthDay;
+    dateAdd(
+      date: Temporal.PlainDate | PlainDateLike | string,
+      duration: Temporal.Duration | DurationLike | string,
+      options?: ArithmeticOptions,
+    ): Temporal.PlainDate;
+    dateUntil(
+      one: Temporal.PlainDate | PlainDateLike | string,
+      two: Temporal.PlainDate | PlainDateLike | string,
+      options?: DifferenceOptions<"year" | "month" | "week" | "day">,
+    ): Temporal.Duration;
+    fields(fields: Iterable<string>): Iterable<string>;
+    mergeFields(
+      fields: Record<string, unknown>,
+      additionalFields: Record<string, unknown>,
+    ): Record<string, unknown>;
+    toString?(): string;
+    toJSON?(): string;
+  }
+
+  /**
+   * Any of these types can be passed to Temporal methods instead of a Temporal.Calendar.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export type CalendarLike =
+    | string
+    | CalendarProtocol
+    | ZonedDateTime
+    | PlainDateTime
+    | PlainDate
+    | PlainYearMonth
+    | PlainMonthDay;
+
+  /**
+   * A `Temporal.Calendar` is a representation of a calendar system. It includes
+   * information about how many days are in each year, how many months are in
+   * each year, how many days are in each month, and how to do arithmetic in
+   * that calendar system.
+   *
+   * See https://tc39.es/proposal-temporal/docs/calendar.html for more details.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export class Calendar implements CalendarProtocol {
+    static from(item: CalendarLike): Temporal.Calendar | CalendarProtocol;
+    constructor(calendarIdentifier: string);
+    readonly id: string;
+    year(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainYearMonth
+        | PlainDateLike
+        | string,
+    ): number;
+    month(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainYearMonth
+        | Temporal.PlainMonthDay
+        | PlainDateLike
+        | string,
+    ): number;
+    monthCode(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainYearMonth
+        | Temporal.PlainMonthDay
+        | PlainDateLike
+        | string,
+    ): string;
+    day(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainMonthDay
+        | PlainDateLike
+        | string,
+    ): number;
+    era(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | PlainDateLike
+        | string,
+    ): string | undefined;
+    eraYear(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | PlainDateLike
+        | string,
+    ): number | undefined;
+    dayOfWeek(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | PlainDateLike
+        | string,
+    ): number;
+    dayOfYear(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | PlainDateLike
+        | string,
+    ): number;
+    weekOfYear(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | PlainDateLike
+        | string,
+    ): number;
+    yearOfWeek(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | PlainDateLike
+        | string,
+    ): number;
+    daysInWeek(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | PlainDateLike
+        | string,
+    ): number;
+    daysInMonth(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainYearMonth
+        | PlainDateLike
+        | string,
+    ): number;
+    daysInYear(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainYearMonth
+        | PlainDateLike
+        | string,
+    ): number;
+    monthsInYear(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainYearMonth
+        | PlainDateLike
+        | string,
+    ): number;
+    inLeapYear(
+      date:
+        | Temporal.PlainDate
+        | Temporal.PlainDateTime
+        | Temporal.PlainYearMonth
+        | PlainDateLike
+        | string,
+    ): boolean;
+    dateFromFields(
+      fields: YearOrEraAndEraYear & MonthOrMonthCode & { day: number },
+      options?: AssignmentOptions,
+    ): Temporal.PlainDate;
+    yearMonthFromFields(
+      fields: YearOrEraAndEraYear & MonthOrMonthCode,
+      options?: AssignmentOptions,
+    ): Temporal.PlainYearMonth;
+    monthDayFromFields(
+      fields: MonthCodeOrMonthAndYear & { day: number },
+      options?: AssignmentOptions,
+    ): Temporal.PlainMonthDay;
+    dateAdd(
+      date: Temporal.PlainDate | PlainDateLike | string,
+      duration: Temporal.Duration | DurationLike | string,
+      options?: ArithmeticOptions,
+    ): Temporal.PlainDate;
+    dateUntil(
+      one: Temporal.PlainDate | PlainDateLike | string,
+      two: Temporal.PlainDate | PlainDateLike | string,
+      options?: DifferenceOptions<"year" | "month" | "week" | "day">,
+    ): Temporal.Duration;
+    fields(fields: Iterable<string>): string[];
+    mergeFields(
+      fields: Record<string, unknown>,
+      additionalFields: Record<string, unknown>,
+    ): Record<string, unknown>;
+    toString(): string;
+    toJSON(): string;
+    readonly [Symbol.toStringTag]: "Temporal.Calendar";
+  }
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type PlainDateLike = {
+    era?: string | undefined;
+    eraYear?: number | undefined;
+    year?: number;
+    month?: number;
+    monthCode?: string;
+    day?: number;
+    calendar?: CalendarLike;
+  };
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type PlainDateISOFields = {
+    isoYear: number;
+    isoMonth: number;
+    isoDay: number;
+    calendar: string | CalendarProtocol;
+  };
+
+  /**
+   * A `Temporal.PlainDate` represents a calendar date. "Calendar date" refers to the
+   * concept of a date as expressed in everyday usage, independent of any time
+   * zone. For example, it could be used to represent an event on a calendar
+   * which happens during the whole day no matter which time zone it's happening
+   * in.
+   *
+   * See https://tc39.es/proposal-temporal/docs/date.html for more details.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export class PlainDate {
+    static from(
+      item: Temporal.PlainDate | PlainDateLike | string,
+      options?: AssignmentOptions,
+    ): Temporal.PlainDate;
+    static compare(
+      one: Temporal.PlainDate | PlainDateLike | string,
+      two: Temporal.PlainDate | PlainDateLike | string,
+    ): ComparisonResult;
+    constructor(
+      isoYear: number,
+      isoMonth: number,
+      isoDay: number,
+      calendar?: CalendarLike,
+    );
+    readonly era: string | undefined;
+    readonly eraYear: number | undefined;
+    readonly year: number;
+    readonly month: number;
+    readonly monthCode: string;
+    readonly day: number;
+    readonly calendarId: string;
+    getCalendar(): CalendarProtocol;
+    readonly dayOfWeek: number;
+    readonly dayOfYear: number;
+    readonly weekOfYear: number;
+    readonly yearOfWeek: number;
+    readonly daysInWeek: number;
+    readonly daysInYear: number;
+    readonly daysInMonth: number;
+    readonly monthsInYear: number;
+    readonly inLeapYear: boolean;
+    equals(other: Temporal.PlainDate | PlainDateLike | string): boolean;
+    with(
+      dateLike: PlainDateLike,
+      options?: AssignmentOptions,
+    ): Temporal.PlainDate;
+    withCalendar(calendar: CalendarLike): Temporal.PlainDate;
+    add(
+      durationLike: Temporal.Duration | DurationLike | string,
+      options?: ArithmeticOptions,
+    ): Temporal.PlainDate;
+    subtract(
+      durationLike: Temporal.Duration | DurationLike | string,
+      options?: ArithmeticOptions,
+    ): Temporal.PlainDate;
+    until(
+      other: Temporal.PlainDate | PlainDateLike | string,
+      options?: DifferenceOptions<"year" | "month" | "week" | "day">,
+    ): Temporal.Duration;
+    since(
+      other: Temporal.PlainDate | PlainDateLike | string,
+      options?: DifferenceOptions<"year" | "month" | "week" | "day">,
+    ): Temporal.Duration;
+    toPlainDateTime(
+      temporalTime?: Temporal.PlainTime | PlainTimeLike | string,
+    ): Temporal.PlainDateTime;
+    toZonedDateTime(
+      timeZoneAndTime:
+        | TimeZoneProtocol
+        | string
+        | {
+          timeZone: TimeZoneLike;
+          plainTime?: Temporal.PlainTime | PlainTimeLike | string;
+        },
+    ): Temporal.ZonedDateTime;
+    toPlainYearMonth(): Temporal.PlainYearMonth;
+    toPlainMonthDay(): Temporal.PlainMonthDay;
+    getISOFields(): PlainDateISOFields;
+    toLocaleString(
+      locales?: string | string[],
+      options?: Intl.DateTimeFormatOptions,
+    ): string;
+    toJSON(): string;
+    toString(options?: ShowCalendarOption): string;
+    valueOf(): never;
+    readonly [Symbol.toStringTag]: "Temporal.PlainDate";
+  }
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type PlainDateTimeLike = {
+    era?: string | undefined;
+    eraYear?: number | undefined;
+    year?: number;
+    month?: number;
+    monthCode?: string;
+    day?: number;
+    hour?: number;
+    minute?: number;
+    second?: number;
+    millisecond?: number;
+    microsecond?: number;
+    nanosecond?: number;
+    calendar?: CalendarLike;
+  };
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type PlainDateTimeISOFields = {
+    isoYear: number;
+    isoMonth: number;
+    isoDay: number;
+    isoHour: number;
+    isoMinute: number;
+    isoSecond: number;
+    isoMillisecond: number;
+    isoMicrosecond: number;
+    isoNanosecond: number;
+    calendar: string | CalendarProtocol;
+  };
+
+  /**
+   * A `Temporal.PlainDateTime` represents a calendar date and wall-clock time, with
+   * a precision in nanoseconds, and without any time zone. Of the Temporal
+   * classes carrying human-readable time information, it is the most general
+   * and complete one. `Temporal.PlainDate`, `Temporal.PlainTime`, `Temporal.PlainYearMonth`,
+   * and `Temporal.PlainMonthDay` all carry less information and should be used when
+   * complete information is not required.
+   *
+   * See https://tc39.es/proposal-temporal/docs/datetime.html for more details.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export class PlainDateTime {
+    static from(
+      item: Temporal.PlainDateTime | PlainDateTimeLike | string,
+      options?: AssignmentOptions,
+    ): Temporal.PlainDateTime;
+    static compare(
+      one: Temporal.PlainDateTime | PlainDateTimeLike | string,
+      two: Temporal.PlainDateTime | PlainDateTimeLike | string,
+    ): ComparisonResult;
+    constructor(
+      isoYear: number,
+      isoMonth: number,
+      isoDay: number,
+      hour?: number,
+      minute?: number,
+      second?: number,
+      millisecond?: number,
+      microsecond?: number,
+      nanosecond?: number,
+      calendar?: CalendarLike,
+    );
+    readonly era: string | undefined;
+    readonly eraYear: number | undefined;
+    readonly year: number;
+    readonly month: number;
+    readonly monthCode: string;
+    readonly day: number;
+    readonly hour: number;
+    readonly minute: number;
+    readonly second: number;
+    readonly millisecond: number;
+    readonly microsecond: number;
+    readonly nanosecond: number;
+    readonly calendarId: string;
+    getCalendar(): CalendarProtocol;
+    readonly dayOfWeek: number;
+    readonly dayOfYear: number;
+    readonly weekOfYear: number;
+    readonly yearOfWeek: number;
+    readonly daysInWeek: number;
+    readonly daysInYear: number;
+    readonly daysInMonth: number;
+    readonly monthsInYear: number;
+    readonly inLeapYear: boolean;
+    equals(other: Temporal.PlainDateTime | PlainDateTimeLike | string): boolean;
+    with(
+      dateTimeLike: PlainDateTimeLike,
+      options?: AssignmentOptions,
+    ): Temporal.PlainDateTime;
+    withPlainTime(
+      timeLike?: Temporal.PlainTime | PlainTimeLike | string,
+    ): Temporal.PlainDateTime;
+    withPlainDate(
+      dateLike: Temporal.PlainDate | PlainDateLike | string,
+    ): Temporal.PlainDateTime;
+    withCalendar(calendar: CalendarLike): Temporal.PlainDateTime;
+    add(
+      durationLike: Temporal.Duration | DurationLike | string,
+      options?: ArithmeticOptions,
+    ): Temporal.PlainDateTime;
+    subtract(
+      durationLike: Temporal.Duration | DurationLike | string,
+      options?: ArithmeticOptions,
+    ): Temporal.PlainDateTime;
+    until(
+      other: Temporal.PlainDateTime | PlainDateTimeLike | string,
+      options?: DifferenceOptions<
+        | "year"
+        | "month"
+        | "week"
+        | "day"
+        | "hour"
+        | "minute"
+        | "second"
+        | "millisecond"
+        | "microsecond"
+        | "nanosecond"
+      >,
+    ): Temporal.Duration;
+    since(
+      other: Temporal.PlainDateTime | PlainDateTimeLike | string,
+      options?: DifferenceOptions<
+        | "year"
+        | "month"
+        | "week"
+        | "day"
+        | "hour"
+        | "minute"
+        | "second"
+        | "millisecond"
+        | "microsecond"
+        | "nanosecond"
+      >,
+    ): Temporal.Duration;
+    round(
+      roundTo: RoundTo<
+        | "day"
+        | "hour"
+        | "minute"
+        | "second"
+        | "millisecond"
+        | "microsecond"
+        | "nanosecond"
+      >,
+    ): Temporal.PlainDateTime;
+    toZonedDateTime(
+      tzLike: TimeZoneLike,
+      options?: ToInstantOptions,
+    ): Temporal.ZonedDateTime;
+    toPlainDate(): Temporal.PlainDate;
+    toPlainYearMonth(): Temporal.PlainYearMonth;
+    toPlainMonthDay(): Temporal.PlainMonthDay;
+    toPlainTime(): Temporal.PlainTime;
+    getISOFields(): PlainDateTimeISOFields;
+    toLocaleString(
+      locales?: string | string[],
+      options?: Intl.DateTimeFormatOptions,
+    ): string;
+    toJSON(): string;
+    toString(options?: CalendarTypeToStringOptions): string;
+    valueOf(): never;
+    readonly [Symbol.toStringTag]: "Temporal.PlainDateTime";
+  }
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type PlainMonthDayLike = {
+    era?: string | undefined;
+    eraYear?: number | undefined;
+    year?: number;
+    month?: number;
+    monthCode?: string;
+    day?: number;
+    calendar?: CalendarLike;
+  };
+
+  /**
+   * A `Temporal.PlainMonthDay` represents a particular day on the calendar, but
+   * without a year. For example, it could be used to represent a yearly
+   * recurring event, like "Bastille Day is on the 14th of July."
+   *
+   * See https://tc39.es/proposal-temporal/docs/monthday.html for more details.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export class PlainMonthDay {
+    static from(
+      item: Temporal.PlainMonthDay | PlainMonthDayLike | string,
+      options?: AssignmentOptions,
+    ): Temporal.PlainMonthDay;
+    constructor(
+      isoMonth: number,
+      isoDay: number,
+      calendar?: CalendarLike,
+      referenceISOYear?: number,
+    );
+    readonly monthCode: string;
+    readonly day: number;
+    readonly calendarId: string;
+    getCalendar(): CalendarProtocol;
+    equals(other: Temporal.PlainMonthDay | PlainMonthDayLike | string): boolean;
+    with(
+      monthDayLike: PlainMonthDayLike,
+      options?: AssignmentOptions,
+    ): Temporal.PlainMonthDay;
+    toPlainDate(year: { year: number }): Temporal.PlainDate;
+    getISOFields(): PlainDateISOFields;
+    toLocaleString(
+      locales?: string | string[],
+      options?: Intl.DateTimeFormatOptions,
+    ): string;
+    toJSON(): string;
+    toString(options?: ShowCalendarOption): string;
+    valueOf(): never;
+    readonly [Symbol.toStringTag]: "Temporal.PlainMonthDay";
+  }
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type PlainTimeLike = {
+    hour?: number;
+    minute?: number;
+    second?: number;
+    millisecond?: number;
+    microsecond?: number;
+    nanosecond?: number;
+  };
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type PlainTimeISOFields = {
+    isoHour: number;
+    isoMinute: number;
+    isoSecond: number;
+    isoMillisecond: number;
+    isoMicrosecond: number;
+    isoNanosecond: number;
+  };
+
+  /**
+   * A `Temporal.PlainTime` represents a wall-clock time, with a precision in
+   * nanoseconds, and without any time zone. "Wall-clock time" refers to the
+   * concept of a time as expressed in everyday usage — the time that you read
+   * off the clock on the wall. For example, it could be used to represent an
+   * event that happens daily at a certain time, no matter what time zone.
+   *
+   * `Temporal.PlainTime` refers to a time with no associated calendar date; if you
+   * need to refer to a specific time on a specific day, use
+   * `Temporal.PlainDateTime`. A `Temporal.PlainTime` can be converted into a
+   * `Temporal.PlainDateTime` by combining it with a `Temporal.PlainDate` using the
+   * `toPlainDateTime()` method.
+   *
+   * See https://tc39.es/proposal-temporal/docs/time.html for more details.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export class PlainTime {
+    static from(
+      item: Temporal.PlainTime | PlainTimeLike | string,
+      options?: AssignmentOptions,
+    ): Temporal.PlainTime;
+    static compare(
+      one: Temporal.PlainTime | PlainTimeLike | string,
+      two: Temporal.PlainTime | PlainTimeLike | string,
+    ): ComparisonResult;
+    constructor(
+      hour?: number,
+      minute?: number,
+      second?: number,
+      millisecond?: number,
+      microsecond?: number,
+      nanosecond?: number,
+    );
+    readonly hour: number;
+    readonly minute: number;
+    readonly second: number;
+    readonly millisecond: number;
+    readonly microsecond: number;
+    readonly nanosecond: number;
+    equals(other: Temporal.PlainTime | PlainTimeLike | string): boolean;
+    with(
+      timeLike: Temporal.PlainTime | PlainTimeLike,
+      options?: AssignmentOptions,
+    ): Temporal.PlainTime;
+    add(
+      durationLike: Temporal.Duration | DurationLike | string,
+      options?: ArithmeticOptions,
+    ): Temporal.PlainTime;
+    subtract(
+      durationLike: Temporal.Duration | DurationLike | string,
+      options?: ArithmeticOptions,
+    ): Temporal.PlainTime;
+    until(
+      other: Temporal.PlainTime | PlainTimeLike | string,
+      options?: DifferenceOptions<
+        | "hour"
+        | "minute"
+        | "second"
+        | "millisecond"
+        | "microsecond"
+        | "nanosecond"
+      >,
+    ): Temporal.Duration;
+    since(
+      other: Temporal.PlainTime | PlainTimeLike | string,
+      options?: DifferenceOptions<
+        | "hour"
+        | "minute"
+        | "second"
+        | "millisecond"
+        | "microsecond"
+        | "nanosecond"
+      >,
+    ): Temporal.Duration;
+    round(
+      roundTo: RoundTo<
+        | "hour"
+        | "minute"
+        | "second"
+        | "millisecond"
+        | "microsecond"
+        | "nanosecond"
+      >,
+    ): Temporal.PlainTime;
+    toPlainDateTime(
+      temporalDate: Temporal.PlainDate | PlainDateLike | string,
+    ): Temporal.PlainDateTime;
+    toZonedDateTime(timeZoneAndDate: {
+      timeZone: TimeZoneLike;
+      plainDate: Temporal.PlainDate | PlainDateLike | string;
+    }): Temporal.ZonedDateTime;
+    getISOFields(): PlainTimeISOFields;
+    toLocaleString(
+      locales?: string | string[],
+      options?: Intl.DateTimeFormatOptions,
+    ): string;
+    toJSON(): string;
+    toString(options?: ToStringPrecisionOptions): string;
+    valueOf(): never;
+    readonly [Symbol.toStringTag]: "Temporal.PlainTime";
+  }
+
+  /**
+   * A plain object implementing the protocol for a custom time zone.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export interface TimeZoneProtocol {
+    id: string;
+    getOffsetNanosecondsFor(instant: Temporal.Instant | string): number;
+    getOffsetStringFor?(instant: Temporal.Instant | string): string;
+    getPlainDateTimeFor?(
+      instant: Temporal.Instant | string,
+      calendar?: CalendarLike,
+    ): Temporal.PlainDateTime;
+    getInstantFor?(
+      dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
+      options?: ToInstantOptions,
+    ): Temporal.Instant;
+    getNextTransition?(
+      startingPoint: Temporal.Instant | string,
+    ): Temporal.Instant | null;
+    getPreviousTransition?(
+      startingPoint: Temporal.Instant | string,
+    ): Temporal.Instant | null;
+    getPossibleInstantsFor(
+      dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
+    ): Temporal.Instant[];
+    toString?(): string;
+    toJSON?(): string;
+  }
+
+  /**
+   * Any of these types can be passed to Temporal methods instead of a Temporal.TimeZone.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export type TimeZoneLike = string | TimeZoneProtocol | ZonedDateTime;
+
+  /**
+   * A `Temporal.TimeZone` is a representation of a time zone: either an
+   * {@link https://www.iana.org/time-zones|IANA time zone}, including
+   * information about the time zone such as the offset between the local time
+   * and UTC at a particular time, and daylight saving time (DST) changes; or
+   * simply a particular UTC offset with no DST.
+   *
+   * `Temporal.ZonedDateTime` is the only Temporal type to contain a time zone.
+   * Other types, like `Temporal.Instant` and `Temporal.PlainDateTime`, do not
+   * contain any time zone information, and a `Temporal.TimeZone` object is
+   * required to convert between them.
+   *
+   * See https://tc39.es/proposal-temporal/docs/timezone.html for more details.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export class TimeZone implements TimeZoneProtocol {
+    static from(timeZone: TimeZoneLike): Temporal.TimeZone | TimeZoneProtocol;
+    constructor(timeZoneIdentifier: string);
+    readonly id: string;
+    equals(timeZone: TimeZoneLike): boolean;
+    getOffsetNanosecondsFor(instant: Temporal.Instant | string): number;
+    getOffsetStringFor(instant: Temporal.Instant | string): string;
+    getPlainDateTimeFor(
+      instant: Temporal.Instant | string,
+      calendar?: CalendarLike,
+    ): Temporal.PlainDateTime;
+    getInstantFor(
+      dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
+      options?: ToInstantOptions,
+    ): Temporal.Instant;
+    getNextTransition(
+      startingPoint: Temporal.Instant | string,
+    ): Temporal.Instant | null;
+    getPreviousTransition(
+      startingPoint: Temporal.Instant | string,
+    ): Temporal.Instant | null;
+    getPossibleInstantsFor(
+      dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
+    ): Temporal.Instant[];
+    toString(): string;
+    toJSON(): string;
+    readonly [Symbol.toStringTag]: "Temporal.TimeZone";
+  }
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type PlainYearMonthLike = {
+    era?: string | undefined;
+    eraYear?: number | undefined;
+    year?: number;
+    month?: number;
+    monthCode?: string;
+    calendar?: CalendarLike;
+  };
+
+  /**
+   * A `Temporal.PlainYearMonth` represents a particular month on the calendar. For
+   * example, it could be used to represent a particular instance of a monthly
+   * recurring event, like "the June 2019 meeting".
+   *
+   * See https://tc39.es/proposal-temporal/docs/yearmonth.html for more details.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export class PlainYearMonth {
+    static from(
+      item: Temporal.PlainYearMonth | PlainYearMonthLike | string,
+      options?: AssignmentOptions,
+    ): Temporal.PlainYearMonth;
+    static compare(
+      one: Temporal.PlainYearMonth | PlainYearMonthLike | string,
+      two: Temporal.PlainYearMonth | PlainYearMonthLike | string,
+    ): ComparisonResult;
+    constructor(
+      isoYear: number,
+      isoMonth: number,
+      calendar?: CalendarLike,
+      referenceISODay?: number,
+    );
+    readonly era: string | undefined;
+    readonly eraYear: number | undefined;
+    readonly year: number;
+    readonly month: number;
+    readonly monthCode: string;
+    readonly calendarId: string;
+    getCalendar(): CalendarProtocol;
+    readonly daysInMonth: number;
+    readonly daysInYear: number;
+    readonly monthsInYear: number;
+    readonly inLeapYear: boolean;
+    equals(
+      other: Temporal.PlainYearMonth | PlainYearMonthLike | string,
+    ): boolean;
+    with(
+      yearMonthLike: PlainYearMonthLike,
+      options?: AssignmentOptions,
+    ): Temporal.PlainYearMonth;
+    add(
+      durationLike: Temporal.Duration | DurationLike | string,
+      options?: ArithmeticOptions,
+    ): Temporal.PlainYearMonth;
+    subtract(
+      durationLike: Temporal.Duration | DurationLike | string,
+      options?: ArithmeticOptions,
+    ): Temporal.PlainYearMonth;
+    until(
+      other: Temporal.PlainYearMonth | PlainYearMonthLike | string,
+      options?: DifferenceOptions<"year" | "month">,
+    ): Temporal.Duration;
+    since(
+      other: Temporal.PlainYearMonth | PlainYearMonthLike | string,
+      options?: DifferenceOptions<"year" | "month">,
+    ): Temporal.Duration;
+    toPlainDate(day: { day: number }): Temporal.PlainDate;
+    getISOFields(): PlainDateISOFields;
+    toLocaleString(
+      locales?: string | string[],
+      options?: Intl.DateTimeFormatOptions,
+    ): string;
+    toJSON(): string;
+    toString(options?: ShowCalendarOption): string;
+    valueOf(): never;
+    readonly [Symbol.toStringTag]: "Temporal.PlainYearMonth";
+  }
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type ZonedDateTimeLike = {
+    era?: string | undefined;
+    eraYear?: number | undefined;
+    year?: number;
+    month?: number;
+    monthCode?: string;
+    day?: number;
+    hour?: number;
+    minute?: number;
+    second?: number;
+    millisecond?: number;
+    microsecond?: number;
+    nanosecond?: number;
+    offset?: string;
+    timeZone?: TimeZoneLike;
+    calendar?: CalendarLike;
+  };
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export type ZonedDateTimeISOFields = {
+    isoYear: number;
+    isoMonth: number;
+    isoDay: number;
+    isoHour: number;
+    isoMinute: number;
+    isoSecond: number;
+    isoMillisecond: number;
+    isoMicrosecond: number;
+    isoNanosecond: number;
+    offset: string;
+    timeZone: string | TimeZoneProtocol;
+    calendar: string | CalendarProtocol;
+  };
+
+  /**
+   * @category Temporal
+   * @experimental
+   */
+  export class ZonedDateTime {
+    static from(
+      item: Temporal.ZonedDateTime | ZonedDateTimeLike | string,
+      options?: ZonedDateTimeAssignmentOptions,
+    ): ZonedDateTime;
+    static compare(
+      one: Temporal.ZonedDateTime | ZonedDateTimeLike | string,
+      two: Temporal.ZonedDateTime | ZonedDateTimeLike | string,
+    ): ComparisonResult;
+    constructor(
+      epochNanoseconds: bigint,
+      timeZone: TimeZoneLike,
+      calendar?: CalendarLike,
+    );
+    readonly era: string | undefined;
+    readonly eraYear: number | undefined;
+    readonly year: number;
+    readonly month: number;
+    readonly monthCode: string;
+    readonly day: number;
+    readonly hour: number;
+    readonly minute: number;
+    readonly second: number;
+    readonly millisecond: number;
+    readonly microsecond: number;
+    readonly nanosecond: number;
+    readonly timeZoneId: string;
+    getTimeZone(): TimeZoneProtocol;
+    readonly calendarId: string;
+    getCalendar(): CalendarProtocol;
+    readonly dayOfWeek: number;
+    readonly dayOfYear: number;
+    readonly weekOfYear: number;
+    readonly yearOfWeek: number;
+    readonly hoursInDay: number;
+    readonly daysInWeek: number;
+    readonly daysInMonth: number;
+    readonly daysInYear: number;
+    readonly monthsInYear: number;
+    readonly inLeapYear: boolean;
+    readonly offsetNanoseconds: number;
+    readonly offset: string;
+    readonly epochSeconds: number;
+    readonly epochMilliseconds: number;
+    readonly epochMicroseconds: bigint;
+    readonly epochNanoseconds: bigint;
+    equals(other: Temporal.ZonedDateTime | ZonedDateTimeLike | string): boolean;
+    with(
+      zonedDateTimeLike: ZonedDateTimeLike,
+      options?: ZonedDateTimeAssignmentOptions,
+    ): Temporal.ZonedDateTime;
+    withPlainTime(
+      timeLike?: Temporal.PlainTime | PlainTimeLike | string,
+    ): Temporal.ZonedDateTime;
+    withPlainDate(
+      dateLike: Temporal.PlainDate | PlainDateLike | string,
+    ): Temporal.ZonedDateTime;
+    withCalendar(calendar: CalendarLike): Temporal.ZonedDateTime;
+    withTimeZone(timeZone: TimeZoneLike): Temporal.ZonedDateTime;
+    add(
+      durationLike: Temporal.Duration | DurationLike | string,
+      options?: ArithmeticOptions,
+    ): Temporal.ZonedDateTime;
+    subtract(
+      durationLike: Temporal.Duration | DurationLike | string,
+      options?: ArithmeticOptions,
+    ): Temporal.ZonedDateTime;
+    until(
+      other: Temporal.ZonedDateTime | ZonedDateTimeLike | string,
+      options?: Temporal.DifferenceOptions<
+        | "year"
+        | "month"
+        | "week"
+        | "day"
+        | "hour"
+        | "minute"
+        | "second"
+        | "millisecond"
+        | "microsecond"
+        | "nanosecond"
+      >,
+    ): Temporal.Duration;
+    since(
+      other: Temporal.ZonedDateTime | ZonedDateTimeLike | string,
+      options?: Temporal.DifferenceOptions<
+        | "year"
+        | "month"
+        | "week"
+        | "day"
+        | "hour"
+        | "minute"
+        | "second"
+        | "millisecond"
+        | "microsecond"
+        | "nanosecond"
+      >,
+    ): Temporal.Duration;
+    round(
+      roundTo: RoundTo<
+        | "day"
+        | "hour"
+        | "minute"
+        | "second"
+        | "millisecond"
+        | "microsecond"
+        | "nanosecond"
+      >,
+    ): Temporal.ZonedDateTime;
+    startOfDay(): Temporal.ZonedDateTime;
+    toInstant(): Temporal.Instant;
+    toPlainDateTime(): Temporal.PlainDateTime;
+    toPlainDate(): Temporal.PlainDate;
+    toPlainYearMonth(): Temporal.PlainYearMonth;
+    toPlainMonthDay(): Temporal.PlainMonthDay;
+    toPlainTime(): Temporal.PlainTime;
+    getISOFields(): ZonedDateTimeISOFields;
+    toLocaleString(
+      locales?: string | string[],
+      options?: Intl.DateTimeFormatOptions,
+    ): string;
+    toJSON(): string;
+    toString(options?: ZonedDateTimeToStringOptions): string;
+    valueOf(): never;
+    readonly [Symbol.toStringTag]: "Temporal.ZonedDateTime";
+  }
+
+  /**
+   * The `Temporal.Now` object has several methods which give information about
+   * the current date, time, and time zone.
+   *
+   * See https://tc39.es/proposal-temporal/docs/now.html for more details.
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export const Now: {
+    /**
+     * Get the exact system date and time as a `Temporal.Instant`.
+     *
+     * This method gets the current exact system time, without regard to
+     * calendar or time zone. This is a good way to get a timestamp for an
+     * event, for example. It works like the old-style JavaScript `Date.now()`,
+     * but with nanosecond precision instead of milliseconds.
+     *
+     * Note that a `Temporal.Instant` doesn't know about time zones. For the
+     * exact time in a specific time zone, use `Temporal.Now.zonedDateTimeISO`
+     * or `Temporal.Now.zonedDateTime`.
+     */
+    instant: () => Temporal.Instant;
+
+    /**
+     * Get the current calendar date and clock time in a specific calendar and
+     * time zone.
+     *
+     * The `calendar` parameter is required. When using the ISO 8601 calendar or
+     * if you don't understand the need for or implications of a calendar, then
+     * a more ergonomic alternative to this method is
+     * `Temporal.Now.zonedDateTimeISO()`.
+     *
+     * @param {CalendarLike} [calendar] - calendar identifier, or
+     * a `Temporal.Calendar` instance, or an object implementing the calendar
+     * protocol.
+     * @param {TimeZoneLike} [tzLike] -
+     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
+     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
+     * object implementing the time zone protocol. If omitted, the environment's
+     * current time zone will be used.
+     */
+    zonedDateTime: (
+      calendar: CalendarLike,
+      tzLike?: TimeZoneLike,
+    ) => Temporal.ZonedDateTime;
+
+    /**
+     * Get the current calendar date and clock time in a specific time zone,
+     * using the ISO 8601 calendar.
+     *
+     * @param {TimeZoneLike} [tzLike] -
+     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
+     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
+     * object implementing the time zone protocol. If omitted, the environment's
+     * current time zone will be used.
+     */
+    zonedDateTimeISO: (tzLike?: TimeZoneLike) => Temporal.ZonedDateTime;
+
+    /**
+     * Get the current calendar date and clock time in a specific calendar and
+     * time zone.
+     *
+     * The calendar is required. When using the ISO 8601 calendar or if you
+     * don't understand the need for or implications of a calendar, then a more
+     * ergonomic alternative to this method is `Temporal.Now.plainDateTimeISO`.
+     *
+     * Note that the `Temporal.PlainDateTime` type does not persist the time zone,
+     * but retaining the time zone is required for most time-zone-related use
+     * cases. Therefore, it's usually recommended to use
+     * `Temporal.Now.zonedDateTimeISO` or `Temporal.Now.zonedDateTime` instead
+     * of this function.
+     *
+     * @param {CalendarLike} [calendar] - calendar identifier, or
+     * a `Temporal.Calendar` instance, or an object implementing the calendar
+     * protocol.
+     * @param {TimeZoneLike} [tzLike] -
+     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
+     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
+     * object implementing the time zone protocol. If omitted,
+     * the environment's current time zone will be used.
+     */
+    plainDateTime: (
+      calendar: CalendarLike,
+      tzLike?: TimeZoneLike,
+    ) => Temporal.PlainDateTime;
+
+    /**
+     * Get the current date and clock time in a specific time zone, using the
+     * ISO 8601 calendar.
+     *
+     * Note that the `Temporal.PlainDateTime` type does not persist the time zone,
+     * but retaining the time zone is required for most time-zone-related use
+     * cases. Therefore, it's usually recommended to use
+     * `Temporal.Now.zonedDateTimeISO` instead of this function.
+     *
+     * @param {TimeZoneLike} [tzLike] -
+     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
+     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
+     * object implementing the time zone protocol. If omitted, the environment's
+     * current time zone will be used.
+     */
+    plainDateTimeISO: (tzLike?: TimeZoneLike) => Temporal.PlainDateTime;
+
+    /**
+     * Get the current calendar date in a specific calendar and time zone.
+     *
+     * The calendar is required. When using the ISO 8601 calendar or if you
+     * don't understand the need for or implications of a calendar, then a more
+     * ergonomic alternative to this method is `Temporal.Now.plainDateISO`.
+     *
+     * @param {CalendarLike} [calendar] - calendar identifier, or
+     * a `Temporal.Calendar` instance, or an object implementing the calendar
+     * protocol.
+     * @param {TimeZoneLike} [tzLike] -
+     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
+     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
+     * object implementing the time zone protocol. If omitted,
+     * the environment's current time zone will be used.
+     */
+    plainDate: (
+      calendar: CalendarLike,
+      tzLike?: TimeZoneLike,
+    ) => Temporal.PlainDate;
+
+    /**
+     * Get the current date in a specific time zone, using the ISO 8601
+     * calendar.
+     *
+     * @param {TimeZoneLike} [tzLike] -
+     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
+     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
+     * object implementing the time zone protocol. If omitted, the environment's
+     * current time zone will be used.
+     */
+    plainDateISO: (tzLike?: TimeZoneLike) => Temporal.PlainDate;
+
+    /**
+     * Get the current clock time in a specific time zone, using the ISO 8601 calendar.
+     *
+     * @param {TimeZoneLike} [tzLike] -
+     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
+     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
+     * object implementing the time zone protocol. If omitted, the environment's
+     * current time zone will be used.
+     */
+    plainTimeISO: (tzLike?: TimeZoneLike) => Temporal.PlainTime;
+
+    /**
+     * Get the identifier of the environment's current time zone.
+     *
+     * This method gets the identifier of the current system time zone. This
+     * will usually be a named
+     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone}.
+     */
+    timeZoneId: () => string;
+
+    readonly [Symbol.toStringTag]: "Temporal.Now";
+  };
+}
+
+/**
+ * @category Temporal
+ * @experimental
+ */
+declare interface Date {
+  toTemporalInstant(): Temporal.Instant;
+}
+
+/**
+ * @category Intl
+ * @experimental
+ */
+declare namespace Intl {
+  /**
+   * @category Intl
+   * @experimental
+   */
+  export type Formattable =
+    | Date
+    | Temporal.Instant
+    | Temporal.ZonedDateTime
+    | Temporal.PlainDate
+    | Temporal.PlainTime
+    | Temporal.PlainDateTime
+    | Temporal.PlainYearMonth
+    | Temporal.PlainMonthDay;
+
+  /**
+   * @category Intl
+   * @experimental
+   */
+  export interface DateTimeFormatRangePart {
+    source: "shared" | "startRange" | "endRange";
+  }
+
+  /**
+   * @category Intl
+   * @experimental
+   */
+  export interface DateTimeFormat {
+    /**
+     * Format a date into a string according to the locale and formatting
+     * options of this `Intl.DateTimeFormat` object.
+     *
+     * @param date The date to format.
+     */
+    format(date?: Formattable | number): string;
+
+    /**
+     * Allow locale-aware formatting of strings produced by
+     * `Intl.DateTimeFormat` formatters.
+     *
+     * @param date The date to format.
+     */
+    formatToParts(
+      date?: Formattable | number,
+    ): globalThis.Intl.DateTimeFormatPart[];
+
+    /**
+     * Format a date range in the most concise way based on the locale and
+     * options provided when instantiating this `Intl.DateTimeFormat` object.
+     *
+     * @param startDate The start date of the range to format.
+     * @param endDate The start date of the range to format. Must be the same
+     * type as `startRange`.
+     */
+    formatRange<T extends Formattable>(startDate: T, endDate: T): string;
+    formatRange(startDate: Date | number, endDate: Date | number): string;
+
+    /**
+     * Allow locale-aware formatting of tokens representing each part of the
+     * formatted date range produced by `Intl.DateTimeFormat` formatters.
+     *
+     * @param startDate The start date of the range to format.
+     * @param endDate The start date of the range to format. Must be the same
+     * type as `startRange`.
+     */
+    formatRangeToParts<T extends Formattable>(
+      startDate: T,
+      endDate: T,
+    ): DateTimeFormatRangePart[];
+    formatRangeToParts(
+      startDate: Date | number,
+      endDate: Date | number,
+    ): DateTimeFormatRangePart[];
+  }
+
+  /**
+   * @category Intl
+   * @experimental
+   */
+  export interface DateTimeFormatOptions {
+    // TODO: remove the props below after TS lib declarations are updated
+    dayPeriod?: "narrow" | "short" | "long";
+    dateStyle?: "full" | "long" | "medium" | "short";
+    timeStyle?: "full" | "long" | "medium" | "short";
+  }
+}
+
+/**
+ * A typed array of 16-bit float values. The contents are initialized to 0. If the requested number
+ * of bytes could not be allocated an exception is raised.
+ *
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16Array {
+  /**
+   * The size in bytes of each element in the array.
+   */
+  readonly BYTES_PER_ELEMENT: number;
+
+  /**
+   * The ArrayBuffer instance referenced by the array.
+   */
+  readonly buffer: ArrayBufferLike;
+
+  /**
+   * The length in bytes of the array.
+   */
+  readonly byteLength: number;
+
+  /**
+   * The offset in bytes of the array.
+   */
+  readonly byteOffset: number;
+
+  /**
+   * Returns the this object after copying a section of the array identified by start and end
+   * to the same array starting at position target
+   * @param target If target is negative, it is treated as length+target where length is the
+   * length of the array.
+   * @param start If start is negative, it is treated as length+start. If end is negative, it
+   * is treated as length+end.
+   * @param end If not specified, length of the this object is used as its default value.
+   */
+  copyWithin(target: number, start: number, end?: number): this;
+
+  /**
+   * Determines whether all the members of an array satisfy the specified test.
+   * @param predicate A function that accepts up to three arguments. The every method calls
+   * the predicate function for each element in the array until the predicate returns a value
+   * which is coercible to the Boolean value false, or until the end of the array.
+   * @param thisArg An object to which the this keyword can refer in the predicate function.
+   * If thisArg is omitted, undefined is used as the this value.
+   */
+  every(
+    predicate: (value: number, index: number, array: Float16Array) => unknown,
+    thisArg?: any,
+  ): boolean;
+
+  /**
+   * Changes all array elements from `start` to `end` index to a static `value` and returns the modified array
+   * @param value value to fill array section with
+   * @param start index to start filling the array at. If start is negative, it is treated as
+   * length+start where length is the length of the array.
+   * @param end index to stop filling the array at. If end is negative, it is treated as
+   * length+end.
+   */
+  fill(value: number, start?: number, end?: number): this;
+
+  /**
+   * Returns the elements of an array that meet the condition specified in a callback function.
+   * @param predicate A function that accepts up to three arguments. The filter method calls
+   * the predicate function one time for each element in the array.
+   * @param thisArg An object to which the this keyword can refer in the predicate function.
+   * If thisArg is omitted, undefined is used as the this value.
+   */
+  filter(
+    predicate: (value: number, index: number, array: Float16Array) => any,
+    thisArg?: any,
+  ): Float16Array;
+
+  /**
+   * Returns the value of the first element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found, find
+   * immediately returns that element value. Otherwise, find returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  find(
+    predicate: (value: number, index: number, obj: Float16Array) => boolean,
+    thisArg?: any,
+  ): number | undefined;
+
+  /**
+   * Returns the index of the first element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate find calls predicate once for each element of the array, in ascending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findIndex immediately returns that element index. Otherwise, findIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findIndex(
+    predicate: (value: number, index: number, obj: Float16Array) => boolean,
+    thisArg?: any,
+  ): number;
+
+  /**
+   * Performs the specified action for each element in an array.
+   * @param callbackfn  A function that accepts up to three arguments. forEach calls the
+   * callbackfn function one time for each element in the array.
+   * @param thisArg  An object to which the this keyword can refer in the callbackfn function.
+   * If thisArg is omitted, undefined is used as the this value.
+   */
+  forEach(
+    callbackfn: (value: number, index: number, array: Float16Array) => void,
+    thisArg?: any,
+  ): void;
+
+  /**
+   * Returns the index of the first occurrence of a value in an array.
+   * @param searchElement The value to locate in the array.
+   * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
+   *  search starts at index 0.
+   */
+  indexOf(searchElement: number, fromIndex?: number): number;
+
+  /**
+   * Adds all the elements of an array separated by the specified separator string.
+   * @param separator A string used to separate one element of an array from the next in the
+   * resulting String. If omitted, the array elements are separated with a comma.
+   */
+  join(separator?: string): string;
+
+  /**
+   * Returns the index of the last occurrence of a value in an array.
+   * @param searchElement The value to locate in the array.
+   * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
+   * search starts at index 0.
+   */
+  lastIndexOf(searchElement: number, fromIndex?: number): number;
+
+  /**
+   * The length of the array.
+   */
+  readonly length: number;
+
+  /**
+   * Calls a defined callback function on each element of an array, and returns an array that
+   * contains the results.
+   * @param callbackfn A function that accepts up to three arguments. The map method calls the
+   * callbackfn function one time for each element in the array.
+   * @param thisArg An object to which the this keyword can refer in the callbackfn function.
+   * If thisArg is omitted, undefined is used as the this value.
+   */
+  map(
+    callbackfn: (value: number, index: number, array: Float16Array) => number,
+    thisArg?: any,
+  ): Float16Array;
+
+  /**
+   * Calls the specified callback function for all the elements in an array. The return value of
+   * the callback function is the accumulated result, and is provided as an argument in the next
+   * call to the callback function.
+   * @param callbackfn A function that accepts up to four arguments. The reduce method calls the
+   * callbackfn function one time for each element in the array.
+   * @param initialValue If initialValue is specified, it is used as the initial value to start
+   * the accumulation. The first call to the callbackfn function provides this value as an argument
+   * instead of an array value.
+   */
+  reduce(
+    callbackfn: (
+      previousValue: number,
+      currentValue: number,
+      currentIndex: number,
+      array: Float16Array,
+    ) => number,
+  ): number;
+  reduce(
+    callbackfn: (
+      previousValue: number,
+      currentValue: number,
+      currentIndex: number,
+      array: Float16Array,
+    ) => number,
+    initialValue: number,
+  ): number;
+
+  /**
+   * Calls the specified callback function for all the elements in an array. The return value of
+   * the callback function is the accumulated result, and is provided as an argument in the next
+   * call to the callback function.
+   * @param callbackfn A function that accepts up to four arguments. The reduce method calls the
+   * callbackfn function one time for each element in the array.
+   * @param initialValue If initialValue is specified, it is used as the initial value to start
+   * the accumulation. The first call to the callbackfn function provides this value as an argument
+   * instead of an array value.
+   */
+  reduce<U>(
+    callbackfn: (
+      previousValue: U,
+      currentValue: number,
+      currentIndex: number,
+      array: Float16Array,
+    ) => U,
+    initialValue: U,
+  ): U;
+
+  /**
+   * Calls the specified callback function for all the elements in an array, in descending order.
+   * The return value of the callback function is the accumulated result, and is provided as an
+   * argument in the next call to the callback function.
+   * @param callbackfn A function that accepts up to four arguments. The reduceRight method calls
+   * the callbackfn function one time for each element in the array.
+   * @param initialValue If initialValue is specified, it is used as the initial value to start
+   * the accumulation. The first call to the callbackfn function provides this value as an
+   * argument instead of an array value.
+   */
+  reduceRight(
+    callbackfn: (
+      previousValue: number,
+      currentValue: number,
+      currentIndex: number,
+      array: Float16Array,
+    ) => number,
+  ): number;
+  reduceRight(
+    callbackfn: (
+      previousValue: number,
+      currentValue: number,
+      currentIndex: number,
+      array: Float16Array,
+    ) => number,
+    initialValue: number,
+  ): number;
+
+  /**
+   * Calls the specified callback function for all the elements in an array, in descending order.
+   * The return value of the callback function is the accumulated result, and is provided as an
+   * argument in the next call to the callback function.
+   * @param callbackfn A function that accepts up to four arguments. The reduceRight method calls
+   * the callbackfn function one time for each element in the array.
+   * @param initialValue If initialValue is specified, it is used as the initial value to start
+   * the accumulation. The first call to the callbackfn function provides this value as an argument
+   * instead of an array value.
+   */
+  reduceRight<U>(
+    callbackfn: (
+      previousValue: U,
+      currentValue: number,
+      currentIndex: number,
+      array: Float16Array,
+    ) => U,
+    initialValue: U,
+  ): U;
+
+  /**
+   * Reverses the elements in an Array.
+   */
+  reverse(): Float16Array;
+
+  /**
+   * Sets a value or an array of values.
+   * @param array A typed or untyped array of values to set.
+   * @param offset The index in the current array at which the values are to be written.
+   */
+  set(array: ArrayLike<number>, offset?: number): void;
+
+  /**
+   * Returns a section of an array.
+   * @param start The beginning of the specified portion of the array.
+   * @param end The end of the specified portion of the array. This is exclusive of the element at the index 'end'.
+   */
+  slice(start?: number, end?: number): Float16Array;
+
+  /**
+   * Determines whether the specified callback function returns true for any element of an array.
+   * @param predicate A function that accepts up to three arguments. The some method calls
+   * the predicate function for each element in the array until the predicate returns a value
+   * which is coercible to the Boolean value true, or until the end of the array.
+   * @param thisArg An object to which the this keyword can refer in the predicate function.
+   * If thisArg is omitted, undefined is used as the this value.
+   */
+  some(
+    predicate: (value: number, index: number, array: Float16Array) => unknown,
+    thisArg?: any,
+  ): boolean;
+
+  /**
+   * Sorts an array.
+   * @param compareFn Function used to determine the order of the elements. It is expected to return
+   * a negative value if first argument is less than second argument, zero if they're equal and a positive
+   * value otherwise. If omitted, the elements are sorted in ascending order.
+   * ```ts
+   * [11,2,22,1].sort((a, b) => a - b)
+   * ```
+   */
+  sort(compareFn?: (a: number, b: number) => number): this;
+
+  /**
+   * Gets a new Float16Array view of the ArrayBuffer store for this array, referencing the elements
+   * at begin, inclusive, up to end, exclusive.
+   * @param begin The index of the beginning of the array.
+   * @param end The index of the end of the array.
+   */
+  subarray(begin?: number, end?: number): Float16Array;
+
+  /**
+   * Converts a number to a string by using the current locale.
+   */
+  toLocaleString(): string;
+
+  /**
+   * Returns a string representation of an array.
+   */
+  toString(): string;
+
+  /** Returns the primitive value of the specified object. */
+  valueOf(): Float16Array;
+
+  [index: number]: number;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16ArrayConstructor {
+  readonly prototype: Float16Array;
+  new (length: number): Float16Array;
+  new (array: ArrayLike<number> | ArrayBufferLike): Float16Array;
+  new (
+    buffer: ArrayBufferLike,
+    byteOffset?: number,
+    length?: number,
+  ): Float16Array;
+
+  /**
+   * The size in bytes of each element in the array.
+   */
+  readonly BYTES_PER_ELEMENT: number;
+
+  /**
+   * Returns a new array from a set of elements.
+   * @param items A set of elements to include in the new array object.
+   */
+  of(...items: number[]): Float16Array;
+
+  /**
+   * Creates an array from an array-like or iterable object.
+   * @param arrayLike An array-like or iterable object to convert to an array.
+   */
+  from(arrayLike: ArrayLike<number>): Float16Array;
+
+  /**
+   * Creates an array from an array-like or iterable object.
+   * @param arrayLike An array-like or iterable object to convert to an array.
+   * @param mapfn A mapping function to call on every element of the array.
+   * @param thisArg Value of 'this' used to invoke the mapfn.
+   */
+  from<T>(
+    arrayLike: ArrayLike<T>,
+    mapfn: (v: T, k: number) => number,
+    thisArg?: any,
+  ): Float16Array;
+}
+/**
+ * @category Platform
+ * @experimental
+ */
+declare var Float16Array: Float16ArrayConstructor;
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16 {
+  [Symbol.iterator](): IterableIterator<number>;
+  /**
+   * Returns an array of key, value pairs for every entry in the array
+   */
+  entries(): IterableIterator<[number, number]>;
+  /**
+   * Returns an list of keys in the array
+   */
+  keys(): IterableIterator<number>;
+  /**
+   * Returns an list of values in the array
+   */
+  values(): IterableIterator<number>;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16Constructor {
+  new (elements: Iterable<number>): Float16;
+
+  /**
+   * Creates an array from an array-like or iterable object.
+   * @param arrayLike An array-like or iterable object to convert to an array.
+   * @param mapfn A mapping function to call on every element of the array.
+   * @param thisArg Value of 'this' used to invoke the mapfn.
+   */
+  from(
+    arrayLike: Iterable<number>,
+    mapfn?: (v: number, k: number) => number,
+    thisArg?: any,
+  ): Float16;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16Array {
+  readonly [Symbol.toStringTag]: "Float16Array";
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16Array {
+  /**
+   * Determines whether an array includes a certain element, returning true or false as appropriate.
+   * @param searchElement The element to search for.
+   * @param fromIndex The position in this array at which to begin searching for searchElement.
+   */
+  includes(searchElement: number, fromIndex?: number): boolean;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16ArrayConstructor {
+  new (): Float16Array;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16Array {
+  /**
+   * Returns the item located at the specified index.
+   * @param index The zero-based index of the desired code unit. A negative index will count back from the last item.
+   */
+  at(index: number): number | undefined;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface Float16Array {
+  /**
+   * Returns the value of the last element in the array where predicate is true, and undefined
+   * otherwise.
+   * @param predicate findLast calls predicate once for each element of the array, in descending
+   * order, until it finds one where predicate returns true. If such an element is found, findLast
+   * immediately returns that element value. Otherwise, findLast returns undefined.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLast<S extends number>(
+    predicate: (
+      value: number,
+      index: number,
+      array: Float16Array,
+    ) => value is S,
+    thisArg?: any,
+  ): S | undefined;
+  findLast(
+    predicate: (
+      value: number,
+      index: number,
+      array: Float16Array,
+    ) => unknown,
+    thisArg?: any,
+  ): number | undefined;
+
+  /**
+   * Returns the index of the last element in the array where predicate is true, and -1
+   * otherwise.
+   * @param predicate findLastIndex calls predicate once for each element of the array, in descending
+   * order, until it finds one where predicate returns true. If such an element is found,
+   * findLastIndex immediately returns that element index. Otherwise, findLastIndex returns -1.
+   * @param thisArg If provided, it will be used as the this value for each invocation of
+   * predicate. If it is not provided, undefined is used instead.
+   */
+  findLastIndex(
+    predicate: (
+      value: number,
+      index: number,
+      array: Float16Array,
+    ) => unknown,
+    thisArg?: any,
+  ): number;
+
+  /**
+   * Copies the array and returns the copy with the elements in reverse order.
+   */
+  toReversed(): Float16Array;
+
+  /**
+   * Copies and sorts the array.
+   * @param compareFn Function used to determine the order of the elements. It is expected to return
+   * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
+   * value otherwise. If omitted, the elements are sorted in ascending order.
+   * ```ts
+   * const myNums = Float16Array.from([11.25, 2, -22.5, 1]);
+   * myNums.toSorted((a, b) => a - b) // Float16Array(4) [-22.5, 1, 2, 11.5]
+   * ```
+   */
+  toSorted(compareFn?: (a: number, b: number) => number): Float16Array;
+
+  /**
+   * Copies the array and inserts the given number at the provided index.
+   * @param index The index of the value to overwrite. If the index is
+   * negative, then it replaces from the end of the array.
+   * @param value The value to insert into the copied array.
+   * @returns A copy of the original array with the inserted value.
+   */
+  with(index: number, value: number): Float16Array;
+}
+
+/**
+ * @category Platform
+ * @experimental
+ */
+declare interface DataView {
+  /**
+   * Gets the Float16 value at the specified byte offset from the start of the view. There is
+   * no alignment constraint; multi-byte values may be fetched from any offset.
+   * @param byteOffset The place in the buffer at which the value should be retrieved.
+   * @param littleEndian If false or undefined, a big-endian value should be read.
+   */
+  getFloat16(byteOffset: number, littleEndian?: boolean): number;
+
+  /**
+   * Stores an Float16 value at the specified byte offset from the start of the view.
+   * @param byteOffset The place in the buffer at which the value should be set.
+   * @param value The value to set.
+   * @param littleEndian If false or undefined, a big-endian value should be written.
+   */
+  setFloat16(byteOffset: number, value: number, littleEndian?: boolean): void;
+}

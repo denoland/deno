@@ -1,0 +1,21 @@
+{
+  "tests": {
+    "ignore": {
+      "args": "bench --ignore=collect/ignore collect",
+      "output": "collect.out"
+    },
+    "config_sub_dir": {
+      "args": "bench --config collect/deno.jsonc collect",
+      "output": "collect.out"
+    },
+    "config_sub_dir_with_exclude": {
+      "args": "bench --config collect/deno2.jsonc collect",
+      "output": "collect2.out"
+    },
+    "config_malformed": {
+      "args": "bench --config collect/deno.malformed.jsonc",
+      "exitCode": 1,
+      "output": "collect_with_malformed_config.out"
+    }
+  }
+}

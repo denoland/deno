@@ -1,0 +1,5 @@
+// Regression test for https://github.com/denoland/deno/issues/23053
+{
+  "args": "bench main.ts --filter=G",
+  "output": "main.out"
+}

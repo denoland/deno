@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference no-default-lib="true" />
@@ -10,15 +10,8 @@
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, primordials } from "ext:core/mod.js";
-const ops = core.ops;
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { forgivingBase64Encode } from "ext:deno_web/00_infra.js";
-import { EventTarget, ProgressEvent } from "ext:deno_web/02_event.js";
-import { decode, TextDecoder } from "ext:deno_web/08_text_encoding.js";
-import { parseMimeType } from "ext:deno_web/01_mimesniff.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { primordials } from "ext:core/mod.js";
+import { op_encode_binary_string } from "ext:core/ops";
 const {
   ArrayPrototypePush,
   ArrayPrototypeReduce,
@@ -39,6 +32,14 @@ const {
   TypeError,
   Uint8Array,
 } = primordials;
+
+import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { forgivingBase64Encode } from "./00_infra.js";
+import { EventTarget, ProgressEvent } from "./02_event.js";
+import { decode, TextDecoder } from "./08_text_encoding.js";
+import { parseMimeType } from "./01_mimesniff.js";
+import { DOMException } from "./01_dom_exception.js";
 
 const state = Symbol("[[state]]");
 const result = Symbol("[[result]]");
@@ -171,7 +172,7 @@ class FileReader extends EventTarget {
                   break;
                 }
                 case "BinaryString":
-                  this[result] = ops.op_encode_binary_string(bytes);
+                  this[result] = op_encode_binary_string(bytes);
                   break;
                 case "Text": {
                   let decoder = undefined;

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -9,8 +9,22 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
+import { core, internals, primordials } from "ext:core/mod.js";
+const {
+  ArrayPrototypeMap,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
+  ObjectFreeze,
+  ObjectKeys,
+  ObjectPrototypeIsPrototypeOf,
+  RegExpPrototypeExec,
+  StringPrototypeStartsWith,
+  Symbol,
+  SymbolFor,
+  TypeError,
+} = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { assert } from "ext:deno_web/00_infra.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
   byteUpperCase,
@@ -29,26 +43,20 @@ import {
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
 import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import { primordials } from "ext:core/mod.js";
-const {
-  ArrayPrototypeMap,
-  ArrayPrototypeSlice,
-  ArrayPrototypeSplice,
-  ObjectKeys,
-  ObjectPrototypeIsPrototypeOf,
-  RegExpPrototypeExec,
-  StringPrototypeStartsWith,
-  Symbol,
-  SymbolFor,
-  TypeError,
-} = primordials;
+import {
+  createDependentAbortSignal,
+  newSignal,
+  signalAbort,
+} from "ext:deno_web/03_abort_signal.js";
+import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const { internalRidSymbol } = core;
 
 const _request = Symbol("request");
 const _headers = Symbol("headers");
 const _getHeaders = Symbol("get headers");
 const _headersCache = Symbol("headers cache");
 const _signal = Symbol("signal");
+const _signalCache = Symbol("signalCache");
 const _mimeType = Symbol("mime type");
 const _body = Symbol("body");
 const _url = Symbol("url");
@@ -259,7 +267,23 @@ class Request {
   }
 
   /** @type {AbortSignal} */
-  [_signal];
+  get [_signal]() {
+    const signal = this[_signalCache];
+    // This signal not been created yet, and the request is still in progress
+    if (signal === undefined) {
+      const signal = newSignal();
+      this[_signalCache] = signal;
+      return signal;
+    }
+    // This signal has not been created yet, but the request has already completed
+    if (signal === false) {
+      const signal = newSignal();
+      this[_signalCache] = signal;
+      signal[signalAbort](signalAbortError);
+      return signal;
+    }
+    return signal;
+  }
   get [_mimeType]() {
     const values = getDecodeSplitHeader(
       headerListFromHeaders(this[_headers]),
@@ -276,7 +300,7 @@ class Request {
    * @param {RequestInfo} input
    * @param {RequestInit} init
    */
-  constructor(input, init = {}) {
+  constructor(input, init = { __proto__: null }) {
     if (input === _brand) {
       this[_brand] = _brand;
       return;
@@ -354,17 +378,16 @@ class Request {
           "Argument 2",
         );
       }
-      request.clientRid = init.client?.rid ?? null;
+      request.clientRid = init.client?.[internalRidSymbol] ?? null;
     }
 
     // 28.
     this[_request] = request;
 
-    // 29.
-    const signals = signal !== null ? [signal] : [];
-
-    // 30.
-    this[_signal] = abortSignal.createDependentAbortSignal(signals, prefix);
+    // 29 & 30.
+    if (signal !== null) {
+      this[_signalCache] = createDependentAbortSignal([signal], prefix);
+    }
 
     // 31.
     this[_headers] = headersFromHeaderList(request.headerList, "request");
@@ -463,24 +486,28 @@ class Request {
   }
 
   clone() {
-    const prefix = "Failed to call 'Request.clone'";
+    const prefix = "Failed to execute 'Request.clone'";
     webidl.assertBranded(this, RequestPrototype);
     if (this[_body] && this[_body].unusable()) {
       throw new TypeError("Body is unusable.");
     }
     const clonedReq = cloneInnerRequest(this[_request]);
 
-    assert(this[_signal] !== null);
-    const clonedSignal = abortSignal.createDependentAbortSignal(
-      [this[_signal]],
+    const materializedSignal = this[_signal];
+    const clonedSignal = createDependentAbortSignal(
+      [materializedSignal],
       prefix,
     );
 
-    return fromInnerRequest(
-      clonedReq,
-      clonedSignal,
-      guardFromHeaders(this[_headers]),
-    );
+    const request = new Request(_brand);
+    request[_request] = clonedReq;
+    request[_signalCache] = clonedSignal;
+    request[_getHeaders] = () =>
+      headersFromHeaderList(
+        clonedReq.headerList,
+        guardFromHeaders(this[_headers]),
+      );
+    return request;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -559,19 +586,39 @@ function toInnerRequest(request) {
 
 /**
  * @param {InnerRequest} inner
- * @param {AbortSignal} signal
  * @param {"request" | "immutable" | "request-no-cors" | "response" | "none"} guard
  * @returns {Request}
  */
-function fromInnerRequest(inner, signal, guard) {
+function fromInnerRequest(inner, guard) {
   const request = new Request(_brand);
   request[_request] = inner;
-  request[_signal] = signal;
   request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
   return request;
 }
 
+const signalAbortError = new DOMException(
+  "The request has been cancelled.",
+  "AbortError",
+);
+ObjectFreeze(signalAbortError);
+
+function abortRequest(request) {
+  if (request[_signalCache] !== undefined) {
+    request[_signal][signalAbort](signalAbortError);
+  } else {
+    request[_signalCache] = false;
+  }
+}
+
+function getCachedAbortSignal(request) {
+  return request[_signalCache];
+}
+
+// For testing
+internals.getCachedAbortSignal = getCachedAbortSignal;
+
 export {
+  abortRequest,
   fromInnerRequest,
   newInnerRequest,
   processUrlList,

@@ -1,7 +1,9 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // Alias for the future `!` type.
 use core::convert::Infallible as Never;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
@@ -45,27 +47,38 @@ pub struct InspectorServer {
 }
 
 impl InspectorServer {
-  pub fn new(host: SocketAddr, name: &'static str) -> Self {
+  pub fn new(host: SocketAddr, name: &'static str) -> Result<Self, AnyError> {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
 
     let (shutdown_server_tx, shutdown_server_rx) = broadcast::channel(1);
+
+    let tcp_listener =
+      std::net::TcpListener::bind(host).with_context(|| {
+        format!("Failed to start inspector server at \"{}\"", host)
+      })?;
+    tcp_listener.set_nonblocking(true)?;
 
     let thread_handle = thread::spawn(move || {
       let rt = crate::tokio_util::create_basic_runtime();
       let local = tokio::task::LocalSet::new();
       local.block_on(
         &rt,
-        server(host, register_inspector_rx, shutdown_server_rx, name),
+        server(
+          tcp_listener,
+          register_inspector_rx,
+          shutdown_server_rx,
+          name,
+        ),
       )
     });
 
-    Self {
+    Ok(Self {
       host,
       register_inspector_tx,
       shutdown_server_tx: Some(shutdown_server_tx),
       thread_handle: Some(thread_handle),
-    }
+    })
   }
 
   pub fn register_inspector(
@@ -163,7 +176,7 @@ fn handle_ws_request(
     let websocket = match fut.await {
       Ok(w) => w,
       Err(err) => {
-        eprintln!(
+        log::error!(
           "Inspector server failed to upgrade to WS connection: {:?}",
           err
         );
@@ -181,7 +194,7 @@ fn handle_ws_request(
       rx: inbound_rx,
     };
 
-    eprintln!("Debugger session started.");
+    log::info!("Debugger session started.");
     let _ = new_session_tx.unbounded_send(inspector_session_proxy);
     pump_websocket_messages(websocket, inbound_tx, outbound_rx).await;
   });
@@ -220,7 +233,7 @@ fn handle_json_version_request(
 }
 
 async fn server(
-  host: SocketAddr,
+  listener: std::net::TcpListener,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
   shutdown_server_rx: broadcast::Receiver<()>,
   name: &str,
@@ -231,13 +244,13 @@ async fn server(
   let inspector_map = Rc::clone(&inspector_map_);
   let mut register_inspector_handler = pin!(register_inspector_rx
     .map(|info| {
-      eprintln!(
+      log::info!(
         "Debugger listening on {}",
         info.get_websocket_debugger_url(&info.host.to_string())
       );
-      eprintln!("Visit chrome://inspect to connect to the debugger.");
+      log::info!("Visit chrome://inspect to connect to the debugger.");
       if info.wait_for_session {
-        eprintln!("Deno is waiting for debugger to connect.");
+        log::info!("Deno is waiting for debugger to connect.");
       }
       if inspector_map.borrow_mut().insert(info.uuid, info).is_some() {
         panic!("Inspector UUID already in map");
@@ -261,10 +274,10 @@ async fn server(
   });
 
   // Create the server manually so it can use the Local Executor
-  let listener = match TcpListener::bind(&host).await {
+  let listener = match TcpListener::from_std(listener) {
     Ok(l) => l,
     Err(err) => {
-      eprintln!("Cannot start inspector server: {:?}", err);
+      log::error!("Cannot start inspector server: {:?}", err);
       return;
     }
   };
@@ -280,7 +293,7 @@ async fn server(
           match accept_result {
             Ok((s, _)) => s,
             Err(err) => {
-              eprintln!("Failed to accept inspector connection: {:?}", err);
+              log::error!("Failed to accept inspector connection: {:?}", err);
               continue;
             }
           }
@@ -343,7 +356,7 @@ async fn server(
         tokio::select! {
           result = conn.as_mut() => {
             if let Err(err) = result {
-              eprintln!("Failed to serve connection: {:?}", err);
+              log::error!("Failed to serve connection: {:?}", err);
             }
           },
           _ = &mut shutdown_rx => {
@@ -396,7 +409,7 @@ async fn pump_websocket_messages(
                 OpCode::Close => {
                     // Users don't care if there was an error coming from debugger,
                     // just about the fact that debugger did disconnect.
-                    eprintln!("Debugger session ended");
+                    log::info!("Debugger session ended");
                     break 'pump;
                 }
                 _ => {

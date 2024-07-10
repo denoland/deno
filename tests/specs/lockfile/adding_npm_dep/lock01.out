@@ -1,0 +1,21 @@
+{
+  "version": "3",
+  "packages": {
+    "specifiers": {
+      "npm:@denotest/add@1": "npm:@denotest/add@1.0.0"
+    },
+    "npm": {
+      "@denotest/add@1.0.0": {
+        "integrity": "[WILDLINE]",
+        "dependencies": {}
+      }
+    }
+  },
+  "remote": {},
+  "workspace": {
+    "dependencies": [
+      "npm:@denotest/add@1",
+      "npm:@denotest/subtract@1"
+    ]
+  }
+}

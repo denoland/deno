@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -88,10 +88,6 @@ export function read(
     if (
       !(opt.buffer instanceof Buffer) && !(opt.buffer instanceof Uint8Array)
     ) {
-      if (opt.buffer === null) {
-        // @ts-ignore: Intentionally create TypeError for passing test-fs-read.js#L87
-        length = opt.buffer.byteLength;
-      }
       throw new ERR_INVALID_ARG_TYPE("buffer", [
         "Buffer",
         "TypedArray",

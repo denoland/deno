@@ -1,15 +1,23 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
+
+/// <reference path="../../core/internal.d.ts" />
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
+import {
+  op_v8_cached_data_version_tag,
+  op_v8_get_heap_statistics,
+} from "ext:core/ops";
+
+import { Buffer } from "node:buffer";
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
-const { ops } = globalThis.__bootstrap.core;
-
 export function cachedDataVersionTag() {
-  return ops.op_v8_cached_data_version_tag();
+  return op_v8_cached_data_version_tag();
 }
 export function getHeapCodeStatistics() {
   notImplemented("v8.getHeapCodeStatistics");
@@ -24,7 +32,7 @@ export function getHeapSpaceStatistics() {
 const buffer = new Float64Array(14);
 
 export function getHeapStatistics() {
-  ops.op_v8_get_heap_statistics(buffer);
+  op_v8_get_heap_statistics(buffer);
 
   return {
     total_heap_size: buffer[0],
@@ -63,11 +71,11 @@ export function takeCoverage() {
 export function writeHeapSnapshot() {
   notImplemented("v8.writeHeapSnapshot");
 }
-export function serialize() {
-  notImplemented("v8.serialize");
+export function serialize(value) {
+  return Buffer.from(core.serialize(value));
 }
-export function deserialize() {
-  notImplemented("v8.deserialize");
+export function deserialize(data) {
+  return core.deserialize(data);
 }
 export class Serializer {
   constructor() {

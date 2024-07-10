@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
 const {
@@ -14,12 +14,13 @@ const {
   SymbolFor,
   TypeError,
 } = primordials;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { structuredClone } from "ext:deno_web/02_structured_clone.js";
+import { structuredClone } from "./02_structured_clone.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { EventTarget } from "ext:deno_web/02_event.js";
-import { opNow } from "ext:deno_web/02_timers.js";
-import DOMException from "ext:deno_web/01_dom_exception.js";
+import { EventTarget } from "./02_event.js";
+import { opNow } from "./02_timers.js";
+import { DOMException } from "./01_dom_exception.js";
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 let performanceEntries = [];
@@ -233,7 +234,7 @@ class PerformanceMark extends PerformanceEntry {
 
   constructor(
     name,
-    options = {},
+    options = { __proto__: null },
   ) {
     const prefix = "Failed to construct 'PerformanceMark'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -440,7 +441,7 @@ class Performance extends EventTarget {
 
   mark(
     markName,
-    markOptions = {},
+    markOptions = { __proto__: null },
   ) {
     webidl.assertBranded(this, PerformancePrototype);
     const prefix = "Failed to execute 'mark' on 'Performance'";
@@ -465,7 +466,7 @@ class Performance extends EventTarget {
 
   measure(
     measureName,
-    startOrMeasureOptions = {},
+    startOrMeasureOptions = { __proto__: null },
     endMark = undefined,
   ) {
     webidl.assertBranded(this, PerformancePrototype);

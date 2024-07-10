@@ -1,0 +1,65 @@
+Download http://localhost:4545/run/warn_on_deprecated_api/mod.ts
+warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2.
+
+See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations
+
+Stack trace:
+  at [WILDCARD]warn_on_deprecated_api/main.js:3:16
+
+hint: Use "Deno.Command()" API instead.
+
+hello world
+warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2.
+
+See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations
+
+Stack trace:
+  at runEcho ([WILDCARD]warn_on_deprecated_api/main.js:14:18)
+  at [WILDCARD]warn_on_deprecated_api/main.js:25:7
+
+hint: Use "Deno.Command()" API instead.
+
+hello world
+warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2.
+
+See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations
+
+Stack trace:
+  at runEcho ([WILDCARD]warn_on_deprecated_api/main.js:14:18)
+  at [WILDCARD]warn_on_deprecated_api/main.js:26:7
+
+hint: Use "Deno.Command()" API instead.
+
+hello world
+warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2.
+
+See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations
+
+Stack trace:
+  at runEcho ([WILDCARD]warn_on_deprecated_api/main.js:14:18)
+  at [WILDCARD]warn_on_deprecated_api/main.js:29:9
+
+hint: Use "Deno.Command()" API instead.
+
+hello world
+hello world
+hello world
+hello world
+hello world
+hello world
+hello world
+hello world
+hello world
+hello world
+warning: Use of deprecated "Deno.run()" API. This API will be removed in Deno 2.
+
+See the Deno 1 to 2 Migration Guide for more information at https://docs.deno.com/runtime/manual/advanced/migrate_deprecations
+
+Stack trace:
+  at runEcho (http://localhost:4545/run/warn_on_deprecated_api/mod.ts:2:18)
+  at [WILDCARD]warn_on_deprecated_api/main.js:32:7
+
+hint: Use "Deno.Command()" API instead.
+hint: It appears this API is used by a remote dependency. Try upgrading to the latest version of that dependency.
+
+hello world

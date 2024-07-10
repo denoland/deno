@@ -1,6 +1,0 @@
-{
-  "tasks": {
-    "setup": "deno run --allow-read --allow-write ./setup.ts",
-    "test": "deno test -A ../../cli/tests/node_compat/test.ts --"
-  }
-}

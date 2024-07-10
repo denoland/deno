@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::io::IsTerminal;
 
@@ -15,6 +15,14 @@ pub enum AuthMethod {
 pub struct OidcConfig {
   pub url: String,
   pub token: String,
+}
+
+pub(crate) fn is_gha() -> bool {
+  std::env::var("GITHUB_ACTIONS").unwrap_or_default() == "true"
+}
+
+pub(crate) fn gha_oidc_token() -> Option<String> {
+  std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN").ok()
 }
 
 fn get_gh_oidc_env_vars() -> Option<Result<(String, String), AnyError>> {
@@ -35,7 +43,13 @@ fn get_gh_oidc_env_vars() -> Option<Result<(String, String), AnyError>> {
 
 pub fn get_auth_method(
   maybe_token: Option<String>,
+  dry_run: bool,
 ) -> Result<AuthMethod, AnyError> {
+  if dry_run {
+    // We don't authenticate in dry-run mode.
+    return Ok(AuthMethod::Interactive);
+  }
+
   if let Some(token) = maybe_token {
     return Ok(AuthMethod::Token(token));
   }

@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DISABLE_JSR_PROVENANCE": "true",
+    "DENO_TESTING_DISABLE_GIT_CHECK": "1"
+  },
+  "steps": [{
+    "args": "publish --token 'sadfasdf' --dry-run --unstable-bare-node-builtins",
+    "output": "bare_node_builtins.out"
+  }, {
+    "envs": {
+      "DENO_DISABLE_PEDANTIC_NODE_WARNINGS": "1"
+    },
+    "args": "publish --token 'sadfasdf' --dry-run  --unstable-bare-node-builtins",
+    "output": "no_warnings.out"
+  }]
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockDecryptMut;
@@ -25,7 +25,8 @@ enum Cipher {
   Aes256Ecb(Box<ecb::Encryptor<aes::Aes256>>),
   Aes128Gcm(Box<Aes128Gcm>),
   Aes256Gcm(Box<Aes256Gcm>),
-  // TODO(kt3k): add more algorithms Aes192Cbc, Aes256Cbc, etc.
+  Aes256Cbc(Box<cbc::Encryptor<aes::Aes256>>),
+  // TODO(kt3k): add more algorithms Aes192Cbc, etc.
 }
 
 enum Decipher {
@@ -35,7 +36,8 @@ enum Decipher {
   Aes256Ecb(Box<ecb::Decryptor<aes::Aes256>>),
   Aes128Gcm(Box<Aes128Gcm>),
   Aes256Gcm(Box<Aes256Gcm>),
-  // TODO(kt3k): add more algorithms Aes192Cbc, Aes256Cbc, Aes128GCM, etc.
+  Aes256Cbc(Box<cbc::Decryptor<aes::Aes256>>),
+  // TODO(kt3k): add more algorithms Aes192Cbc, Aes128GCM, etc.
 }
 
 pub struct CipherContext {
@@ -141,6 +143,9 @@ impl Cipher {
 
         Aes256Gcm(Box::new(cipher))
       }
+      "aes256" | "aes-256-cbc" => {
+        Aes256Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
+      }
       _ => return Err(type_error(format!("Unknown cipher {algorithm_name}"))),
     })
   }
@@ -194,6 +199,12 @@ impl Cipher {
         output[..input.len()].copy_from_slice(input);
         cipher.encrypt(output);
       }
+      Aes256Cbc(encryptor) => {
+        assert!(input.len() % 16 == 0);
+        for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
+          encryptor.encrypt_block_b2b_mut(input.into(), output.into());
+        }
+      }
     }
   }
 
@@ -228,6 +239,12 @@ impl Cipher {
       }
       Aes128Gcm(cipher) => Ok(Some(cipher.finish().to_vec())),
       Aes256Gcm(cipher) => Ok(Some(cipher.finish().to_vec())),
+      Aes256Cbc(encryptor) => {
+        let _ = (*encryptor)
+          .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
+          .map_err(|_| type_error("Cannot pad the input data"))?;
+        Ok(None)
+      }
     }
   }
 }
@@ -259,6 +276,9 @@ impl Decipher {
         decipher.init(iv.try_into()?);
 
         Aes256Gcm(Box::new(decipher))
+      }
+      "aes256" | "aes-256-cbc" => {
+        Aes256Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
       _ => return Err(type_error(format!("Unknown cipher {algorithm_name}"))),
     })
@@ -312,6 +332,12 @@ impl Decipher {
       Aes256Gcm(decipher) => {
         output[..input.len()].copy_from_slice(input);
         decipher.decrypt(output);
+      }
+      Aes256Cbc(decryptor) => {
+        assert!(input.len() % 16 == 0);
+        for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
+          decryptor.decrypt_block_b2b_mut(input.into(), output.into());
+        }
       }
     }
   }
@@ -368,6 +394,13 @@ impl Decipher {
         } else {
           Err(type_error("Failed to authenticate data"))
         }
+      }
+      Aes256Cbc(decryptor) => {
+        assert!(input.len() == 16);
+        let _ = (*decryptor)
+          .decrypt_padded_b2b_mut::<Pkcs7>(input, output)
+          .map_err(|_| type_error("Cannot unpad the input data"))?;
+        Ok(())
       }
     }
   }
