@@ -1196,6 +1196,7 @@ dependencies = [
  "typed-arena",
  "uuid",
  "walkdir",
+ "which 4.4.2",
  "winapi",
  "winres",
  "zeromq",

@@ -478,6 +478,7 @@ pub async fn run(
               scopes: Default::default(),
               registry_configs: Default::default(),
             }),
+            lifecycle_scripts: Default::default(),
           },
         ))
         .await?;
@@ -522,6 +523,7 @@ pub async fn run(
             // Packages from different registries are already inlined in the ESZip,
             // so no need to create actual `.npmrc` configuration.
             npmrc: create_default_npmrc(),
+            lifecycle_scripts: Default::default(),
           },
         ))
         .await?;
