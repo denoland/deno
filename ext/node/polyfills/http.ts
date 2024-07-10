@@ -322,7 +322,7 @@ class ClientRequest extends OutgoingMessage {
   insecureHTTPParser: boolean;
   useChunkedEncodingByDefault: boolean;
   path: string;
-  _req: { requestRid: number; cancelHandleRid: number } | undefined;
+  _req: { requestRid: number; cancelHandleRid: number | null } | undefined;
 
   constructor(
     input: string | URL,
