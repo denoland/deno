@@ -347,7 +347,8 @@ fn resolve_flags_and_init(
       if err.kind() == clap::error::ErrorKind::DisplayHelp
         || err.kind() == clap::error::ErrorKind::DisplayVersion =>
     {
-      err.print().unwrap();
+      // Ignore results to avoid BrokenPipe errors.
+      let _ = err.print();
       std::process::exit(0);
     }
     Err(err) => exit_for_error(AnyError::from(err)),
