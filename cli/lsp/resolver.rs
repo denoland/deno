@@ -469,7 +469,7 @@ async fn create_npm_resolver(
         .and_then(|d| d.npmrc.clone())
         .unwrap_or_else(create_default_npmrc),
       npm_system_info: NpmSystemInfo::default(),
-      allowed_scripts: Default::default(),
+      lifecycle_scripts: Default::default(),
     })
   };
   Some(create_cli_npm_resolver_for_lsp(options).await)

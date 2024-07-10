@@ -506,6 +506,13 @@ pub enum CaData {
   Bytes(Vec<u8>),
 }
 
+// Info needed to run NPM lifecycle scripts
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct LifecycleScriptsConfig {
+  pub allowed: PackagesAllowedScripts,
+  pub initial_cwd: Option<PathBuf>,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
 /// The set of npm packages that are allowed to run lifecycle scripts.
 pub enum PackagesAllowedScripts {

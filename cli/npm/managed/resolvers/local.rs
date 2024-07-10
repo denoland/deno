@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::args::LifecycleScriptsConfig;
 use crate::args::PackagesAllowedScripts;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
@@ -69,7 +70,7 @@ pub struct LocalNpmPackageResolver {
   root_node_modules_url: Url,
   system_info: NpmSystemInfo,
   registry_read_permission_checker: RegistryReadPermissionChecker,
-  allow_scripts: PackagesAllowedScripts,
+  lifecycle_scripts: LifecycleScriptsConfig,
 }
 
 impl LocalNpmPackageResolver {
@@ -83,7 +84,7 @@ impl LocalNpmPackageResolver {
     tarball_cache: Arc<TarballCache>,
     node_modules_folder: PathBuf,
     system_info: NpmSystemInfo,
-    allow_scripts: PackagesAllowedScripts,
+    lifecycle_scripts: LifecycleScriptsConfig,
   ) -> Self {
     Self {
       cache,
@@ -100,7 +101,7 @@ impl LocalNpmPackageResolver {
         .unwrap(),
       root_node_modules_path: node_modules_folder,
       system_info,
-      allow_scripts,
+      lifecycle_scripts,
     }
   }
 
@@ -249,7 +250,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       &self.tarball_cache,
       &self.root_node_modules_path,
       &self.system_info,
-      &self.allow_scripts,
+      &self.lifecycle_scripts,
     )
     .await
   }
@@ -398,7 +399,7 @@ async fn sync_resolution_with_fs(
   tarball_cache: &Arc<TarballCache>,
   root_node_modules_dir_path: &Path,
   system_info: &NpmSystemInfo,
-  allow_scripts: &PackagesAllowedScripts,
+  lifecycle_scripts: &LifecycleScriptsConfig,
 ) -> Result<(), AnyError> {
   if snapshot.is_empty() && pkg_json_deps_provider.workspace_pkgs().is_empty() {
     return Ok(()); // don't create the directory
@@ -504,7 +505,7 @@ async fn sync_resolution_with_fs(
 
     if has_lifecycle_scripts(package) {
       let scripts_run = folder_path.join(".scripts-run");
-      if can_run_scripts(allow_scripts, &package.id.nv) {
+      if can_run_scripts(&lifecycle_scripts.allowed, &package.id.nv) {
         if !scripts_run.exists() {
           let sub_node_modules = folder_path.join("node_modules");
           let package_path =
@@ -668,6 +669,7 @@ async fn sync_resolution_with_fs(
       &package_partitions.packages,
       &deno_local_registry_dir,
     )?;
+    let init_cwd = lifecycle_scripts.initial_cwd.as_deref().unwrap();
 
     for (package, package_path, scripts_run_path) in packages_with_scripts {
       // add custom commands for binaries from the package's dependencies. this will take precedence over the
@@ -688,8 +690,7 @@ async fn sync_resolution_with_fs(
               cwd: &package_path,
               env_vars: crate::task_runner::real_env_vars(),
               custom_commands: custom_commands.clone(),
-              // todo: wrong
-              init_cwd: &package_path,
+              init_cwd,
               argv: &[],
               root_node_modules_dir: Some(root_node_modules_dir_path),
             })

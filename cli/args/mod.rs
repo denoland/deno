@@ -1731,8 +1731,18 @@ impl CliOptions {
     full_paths
   }
 
-  pub fn allowed_scripts(&self) -> &PackagesAllowedScripts {
-    &self.flags.allow_scripts
+  pub fn lifecycle_scripts_config(&self) -> LifecycleScriptsConfig {
+    LifecycleScriptsConfig {
+      allowed: self.flags.allow_scripts.clone(),
+      initial_cwd: if matches!(
+        self.flags.allow_scripts,
+        PackagesAllowedScripts::None
+      ) {
+        None
+      } else {
+        Some(self.initial_cwd.clone())
+      },
+    }
   }
 }
 
