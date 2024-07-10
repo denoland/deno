@@ -765,6 +765,9 @@ class ClientRequest extends OutgoingMessage {
 
   // deno-lint-ignore no-explicit-any
   end(chunk?: any, encoding?: any, cb?: any): this {
+    // Do nothing if request is already destroyed.
+    if (this.destroyed) return this;
+
     if (typeof chunk === "function") {
       cb = chunk;
       chunk = null;
@@ -797,6 +800,8 @@ class ClientRequest extends OutgoingMessage {
         //
       }
     })();
+
+    return this;
   }
 
   abort() {
