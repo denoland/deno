@@ -615,14 +615,15 @@ pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, AnyError> {
   let uuid = if let Some(seeded_rng) = maybe_seeded_rng {
     let mut bytes = [0u8; 16];
     seeded_rng.fill(&mut bytes);
-    uuid::Builder::from_bytes(bytes)
-      .with_version(uuid::Version::Random)
-      .into_uuid()
+    faster_uuid_v4(&mut bytes)
   } else {
-    uuid::Uuid::new_v4()
+    let mut rng = thread_rng();
+    let mut bytes = [0u8; 16];
+    rng.fill(&mut bytes);
+    faster_uuid_v4(&mut bytes)
   };
 
-  Ok(uuid.to_string())
+  Ok(uuid)
 }
 
 #[op2(async)]
@@ -712,4 +713,68 @@ pub fn op_crypto_unwrap_key(
 
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_crypto.d.ts")
+}
+
+const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
+
+fn faster_uuid_v4(bytes: &mut [u8; 16]) -> String {
+  // Set UUID version to 4 and variant to 1.
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  let buf = [
+    HEX_CHARS[(bytes[0] >> 4) as usize],
+    HEX_CHARS[(bytes[0] & 0x0f) as usize],
+    HEX_CHARS[(bytes[1] >> 4) as usize],
+    HEX_CHARS[(bytes[1] & 0x0f) as usize],
+    HEX_CHARS[(bytes[2] >> 4) as usize],
+    HEX_CHARS[(bytes[2] & 0x0f) as usize],
+    HEX_CHARS[(bytes[3] >> 4) as usize],
+    HEX_CHARS[(bytes[3] & 0x0f) as usize],
+    b'-',
+    HEX_CHARS[(bytes[4] >> 4) as usize],
+    HEX_CHARS[(bytes[4] & 0x0f) as usize],
+    HEX_CHARS[(bytes[5] >> 4) as usize],
+    HEX_CHARS[(bytes[5] & 0x0f) as usize],
+    b'-',
+    HEX_CHARS[(bytes[6] >> 4) as usize],
+    HEX_CHARS[(bytes[6] & 0x0f) as usize],
+    HEX_CHARS[(bytes[7] >> 4) as usize],
+    HEX_CHARS[(bytes[7] & 0x0f) as usize],
+    b'-',
+    HEX_CHARS[(bytes[8] >> 4) as usize],
+    HEX_CHARS[(bytes[8] & 0x0f) as usize],
+    HEX_CHARS[(bytes[9] >> 4) as usize],
+    HEX_CHARS[(bytes[9] & 0x0f) as usize],
+    b'-',
+    HEX_CHARS[(bytes[10] >> 4) as usize],
+    HEX_CHARS[(bytes[10] & 0x0f) as usize],
+    HEX_CHARS[(bytes[11] >> 4) as usize],
+    HEX_CHARS[(bytes[11] & 0x0f) as usize],
+    HEX_CHARS[(bytes[12] >> 4) as usize],
+    HEX_CHARS[(bytes[12] & 0x0f) as usize],
+    HEX_CHARS[(bytes[13] >> 4) as usize],
+    HEX_CHARS[(bytes[13] & 0x0f) as usize],
+    HEX_CHARS[(bytes[14] >> 4) as usize],
+    HEX_CHARS[(bytes[14] & 0x0f) as usize],
+    HEX_CHARS[(bytes[15] >> 4) as usize],
+    HEX_CHARS[(bytes[15] & 0x0f) as usize],
+  ];
+
+  // Safety: the buffer is all valid UTF-8.
+  unsafe { String::from_utf8_unchecked(buf.to_vec()) }
+}
+
+#[test]
+fn test_faster_uuid_v4_correctness() {
+  let mut rng = thread_rng();
+  let mut bytes = [0u8; 16];
+  rng.fill(&mut bytes);
+  let uuid = faster_uuid_v4(&mut bytes.clone());
+  let uuid_lib = uuid::Builder::from_bytes(bytes)
+    .set_variant(uuid::Variant::RFC4122)
+    .set_version(uuid::Version::Random)
+    .as_uuid()
+    .to_string();
+  assert_eq!(uuid, uuid_lib);
 }
