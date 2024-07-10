@@ -1459,7 +1459,13 @@ fn resolve_bin_entry_value<'a>(
   };
   let bin_entry = match bin {
     Value::String(_) => {
-      if bin_name.is_some() && bin_name != package_json.name.as_deref() {
+      if bin_name.is_some()
+        && bin_name
+          != package_json
+            .name
+            .as_deref()
+            .map(|name| name.rsplit_once('/').map_or(name, |(_, name)| name))
+      {
         None
       } else {
         Some(bin)

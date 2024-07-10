@@ -110,7 +110,12 @@ impl TestNpmRegistry {
   }
 
   pub fn package_url(&self, package_name: &str) -> String {
-    format!("http://{}/{}/", self.hostname, package_name)
+    let scheme = if self.hostname.starts_with("http://") {
+      ""
+    } else {
+      "http://"
+    };
+    format!("{}{}/{}/", scheme, self.hostname, package_name)
   }
 
   fn get_package_property<TResult>(

@@ -1721,6 +1721,20 @@ impl CliOptions {
     }
     full_paths
   }
+
+  pub fn lifecycle_scripts_config(&self) -> LifecycleScriptsConfig {
+    LifecycleScriptsConfig {
+      allowed: self.flags.allow_scripts.clone(),
+      initial_cwd: if matches!(
+        self.flags.allow_scripts,
+        PackagesAllowedScripts::None
+      ) {
+        None
+      } else {
+        Some(self.initial_cwd.clone())
+      },
+    }
+  }
 }
 
 /// Resolves the path to use for a local node_modules folder.

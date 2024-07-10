@@ -507,6 +507,30 @@ pub enum CaData {
   Bytes(Vec<u8>),
 }
 
+// Info needed to run NPM lifecycle scripts
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct LifecycleScriptsConfig {
+  pub allowed: PackagesAllowedScripts,
+  pub initial_cwd: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+/// The set of npm packages that are allowed to run lifecycle scripts.
+pub enum PackagesAllowedScripts {
+  All,
+  Some(Vec<String>),
+  #[default]
+  None,
+}
+
+fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
+  if !s.starts_with("npm:") {
+    bail!("Invalid package for --allow-scripts: '{}'. An 'npm:' specifier is required", s);
+  } else {
+    Ok(s.into())
+  }
+}
+
 #[derive(
   Clone, Default, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize,
 )]
@@ -562,6 +586,7 @@ pub struct Flags {
   pub v8_flags: Vec<String>,
   pub code_cache_enabled: bool,
   pub permissions: PermissionFlags,
+  pub allow_scripts: PackagesAllowedScripts,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -1502,6 +1527,7 @@ Future runs of this module will trigger no downloads or compilation unless
             .value_hint(ValueHint::FilePath),
         )
         .arg(frozen_lockfile_arg())
+        .arg(allow_scripts_arg())
     })
 }
 
@@ -2213,7 +2239,7 @@ The installation root is determined, in order of precedence:
 
 These must be added to the path manually if required.")
     .defer(|cmd| {
-      let cmd = runtime_args(cmd, true, true).arg(check_arg(true));
+      let cmd = runtime_args(cmd, true, true).arg(check_arg(true)).arg(allow_scripts_arg());
       install_args(cmd, true)
     })
 }
@@ -3728,6 +3754,28 @@ fn unsafely_ignore_certificate_errors_arg() -> Arg {
     .value_parser(flags_net::validator)
 }
 
+fn allow_scripts_arg() -> Arg {
+  Arg::new("allow-scripts")
+    .long("allow-scripts")
+    .num_args(0..)
+    .use_value_delimiter(true)
+    .require_equals(true)
+    .value_name("PACKAGE")
+    .value_parser(parse_packages_allowed_scripts)
+    .help("Allow running npm lifecycle scripts for the given packages. Note: Scripts will only be executed when using a node_modules directory (`--node-modules-dir`)")
+}
+
+fn allow_scripts_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let Some(parts) = matches.remove_many::<String>("allow-scripts") else {
+    return;
+  };
+  if parts.len() == 0 {
+    flags.allow_scripts = PackagesAllowedScripts::All;
+  } else {
+    flags.allow_scripts = PackagesAllowedScripts::Some(parts.collect());
+  }
+}
+
 fn add_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
 }
@@ -3810,6 +3858,7 @@ fn bundle_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn cache_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   compile_args_parse(flags, matches);
   frozen_lockfile_arg_parse(flags, matches);
+  allow_scripts_arg_parse(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
 }
@@ -4096,6 +4145,7 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     let local_flags = matches
       .remove_many("cmd")
       .map(|packages| add_parse_inner(matches, Some(packages)));
+    allow_scripts_arg_parse(flags, matches);
     flags.subcommand = DenoSubcommand::Install(InstallFlags {
       global,
       kind: InstallKind::Local(local_flags),
@@ -9967,6 +10017,52 @@ mod tests {
           ..Flags::default()
         }
       );
+    }
+  }
+
+  #[test]
+  fn allow_scripts() {
+    let cases = [
+      (Some("--allow-scripts"), Ok(PackagesAllowedScripts::All)),
+      (None, Ok(PackagesAllowedScripts::None)),
+      (
+        Some("--allow-scripts=npm:foo"),
+        Ok(PackagesAllowedScripts::Some(svec!["npm:foo"])),
+      ),
+      (
+        Some("--allow-scripts=npm:foo,npm:bar"),
+        Ok(PackagesAllowedScripts::Some(svec!["npm:foo", "npm:bar"])),
+      ),
+      (Some("--allow-scripts=foo"), Err("Invalid package")),
+    ];
+    for (flag, value) in cases {
+      let mut args = svec!["deno", "cache"];
+      if let Some(flag) = flag {
+        args.push(flag.into());
+      }
+      args.push("script.ts".into());
+      let r = flags_from_vec(args);
+      match value {
+        Ok(value) => {
+          assert_eq!(
+            r.unwrap(),
+            Flags {
+              subcommand: DenoSubcommand::Cache(CacheFlags {
+                files: svec!["script.ts"],
+              }),
+              allow_scripts: value,
+              ..Flags::default()
+            }
+          );
+        }
+        Err(e) => {
+          let err = r.unwrap_err();
+          assert!(
+            err.to_string().contains(e),
+            "expected to contain '{e}' got '{err}'"
+          );
+        }
+      }
     }
   }
 }
