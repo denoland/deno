@@ -721,7 +721,7 @@ async fn sync_resolution_with_fs(
     };
     let packages = packages_with_scripts_not_run
       .iter()
-      .map(|p| p.to_string())
+      .map(|p| format!("npm:{p}"))
       .collect::<Vec<_>>()
       .join(", ");
     log::warn!("{}: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
