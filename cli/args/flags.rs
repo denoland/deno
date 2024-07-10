@@ -205,6 +205,7 @@ impl FmtFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InitFlags {
   pub dir: Option<String>,
+  pub lib: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2052,11 +2053,18 @@ fn init_subcommand() -> Command {
   Command::new("init")
     .about("Initialize a new project")
     .defer(|cmd| {
-      cmd.arg(
-        Arg::new("dir")
-          .required(false)
-          .value_hint(ValueHint::DirPath),
-      )
+      cmd
+        .arg(
+          Arg::new("dir")
+            .required(false)
+            .value_hint(ValueHint::DirPath),
+        )
+        .arg(
+          Arg::new("lib")
+            .long("lib")
+            .required(false)
+            .action(ArgAction::SetTrue),
+        )
     })
 }
 
@@ -4033,6 +4041,7 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn init_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Init(InitFlags {
     dir: matches.remove_one::<String>("dir"),
+    lib: matches.get_flag("lib"),
   });
 }
 
@@ -9753,7 +9762,10 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Init(InitFlags { dir: None }),
+        subcommand: DenoSubcommand::Init(InitFlags {
+          dir: None,
+          lib: false
+        }),
         ..Flags::default()
       }
     );
@@ -9764,6 +9776,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
           dir: Some(String::from("foo")),
+          lib: false
         }),
         ..Flags::default()
       }
@@ -9773,8 +9786,35 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Init(InitFlags { dir: None }),
+        subcommand: DenoSubcommand::Init(InitFlags {
+          dir: None,
+          lib: false
+        }),
         log_level: Some(Level::Error),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "--lib"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          dir: None,
+          lib: true
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "foo", "--lib"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          dir: Some(String::from("foo")),
+          lib: true
+        }),
         ..Flags::default()
       }
     );
