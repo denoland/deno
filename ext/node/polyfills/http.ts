@@ -1787,7 +1787,6 @@ export class ServerImpl extends EventEmitter {
       } else {
         return new Promise<Response>((resolve): void => {
           const res = new ServerResponse(resolve, socket);
-          console.log("EMITTING", res, req);
           this.emit("request", req, res);
         });
       }
