@@ -6,6 +6,13 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.45.1 / 2024.07.11
+
+- fix(node): Ignore broken default install scripts (#24534)
+- fix(npm): only warn about lifecycle scripts not being run when setting up
+  directory (#24530)
+- fix(workspace): allow using --import-map flag with workspace (#24527)
+
 ### 1.45.0 / 2024.07.10
 
 - BREAKING(unstable/ffi): remove callback reentrant flag (#24367)
