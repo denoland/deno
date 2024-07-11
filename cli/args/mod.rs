@@ -1766,7 +1766,7 @@ fn resolve_node_modules_folder(
     .and_then(|c| c.specifier.to_file_path().ok())
   {
     config_path.parent().unwrap().join("node_modules")
-  } else if let Some(init_cwd) = std::env::var("INIT_CWD").ok() {
+  } else if let Ok(init_cwd) = std::env::var("INIT_CWD") {
     // TODO(nathanwhit): figure out a better solution
     PathBuf::from(init_cwd).join("node_modules")
   } else {
