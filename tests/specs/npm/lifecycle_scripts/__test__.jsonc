@@ -114,7 +114,7 @@
           "output": "fsevents.out"
         },
         {
-          "if": "unix",
+          "if": "mac",
           "args": "cache --allow-scripts fsevents.js",
           "output": ""
         }
