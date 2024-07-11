@@ -1309,8 +1309,7 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47d457bbaff2200897ab1f635863c477f10524412a1f568535ea26763b96d5c9"
+source = "git+https://github.com/denoland/deno_config?branch=import_map_in_workspaces#5298f370b6fd31a0cda21f31acf42783ad53c07c"
 dependencies = [
  "anyhow",
  "deno_semver",
