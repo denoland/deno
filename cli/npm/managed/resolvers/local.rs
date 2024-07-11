@@ -506,6 +506,7 @@ async fn sync_resolution_with_fs(
 
     if has_lifecycle_scripts(package) {
       let scripts_run = folder_path.join(".scripts-run");
+      let has_warned = folder_path.join(".scripts-warned");
       if can_run_scripts(&lifecycle_scripts.allowed, &package.id.nv) {
         if !scripts_run.exists() {
           let sub_node_modules = folder_path.join("node_modules");
@@ -517,8 +518,8 @@ async fn sync_resolution_with_fs(
             scripts_run,
           ));
         }
-      } else if !scripts_run.exists() {
-        packages_with_scripts_not_run.push(package.id.nv.clone());
+      } else if !scripts_run.exists() && !has_warned.exists() {
+        packages_with_scripts_not_run.push((has_warned, package.id.nv.clone()));
       }
     }
   }
@@ -721,12 +722,15 @@ async fn sync_resolution_with_fs(
     };
     let packages = packages_with_scripts_not_run
       .iter()
-      .map(|p| format!("npm:{p}"))
+      .map(|(_, p)| format!("npm:{p}"))
       .collect::<Vec<_>>()
       .join(", ");
     log::warn!("{}: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
     This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache`{maybe_install}
     (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>`{maybe_install_example}):\n      {packages}", crate::colors::yellow("warning"));
+    for (scripts_warned_path, _) in packages_with_scripts_not_run {
+      let _ignore_err = fs::write(scripts_warned_path, "");
+    }
   }
 
   setup_cache.save();
