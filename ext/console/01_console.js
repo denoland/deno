@@ -1489,7 +1489,7 @@ function inspectError(value, ctx) {
       causes,
       (cause) =>
         "\nCaused by " + (MapPrototypeGet(refMap, cause) ?? "") +
-        (cause?.stack ?? cause),
+        (cause?.stack ?? JSON.stringify(cause, null, 2)),
     ),
     "",
   );
