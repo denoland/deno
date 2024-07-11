@@ -47,12 +47,20 @@ export default class Dir {
         AsyncGeneratorPrototypeNext(this.#asyncIterator),
         (iteratorResult) => {
           resolve(
-            iteratorResult.done ? null : new Dirent(iteratorResult.value),
+            iteratorResult.done ? null : new Dirent(
+              iteratorResult.value.name,
+              this.path,
+              iteratorResult.value,
+            ),
           );
           if (callback) {
             callback(
               null,
-              iteratorResult.done ? null : new Dirent(iteratorResult.value),
+              iteratorResult.done ? null : new Dirent(
+                iteratorResult.value.name,
+                this.path,
+                iteratorResult.value,
+              ),
             );
           }
         },
@@ -75,7 +83,11 @@ export default class Dir {
     if (iteratorResult.done) {
       return null;
     } else {
-      return new Dirent(iteratorResult.value);
+      return new Dirent(
+        iteratorResult.value.name,
+        this.path,
+        iteratorResult.value,
+      );
     }
   }
 

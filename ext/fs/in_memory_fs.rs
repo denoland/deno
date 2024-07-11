@@ -294,6 +294,13 @@ impl FileSystem for InMemoryFs {
     self.read_dir_sync(&path)
   }
 
+  fn read_dir_names_sync(&self, _path: &Path) -> FsResult<Vec<String>> {
+    Err(FsError::NotSupported)
+  }
+  async fn read_dir_names_async(&self, path: PathBuf) -> FsResult<Vec<String>> {
+    self.read_dir_names_sync(&path)
+  }
+
   fn rename_sync(&self, _oldpath: &Path, _newpath: &Path) -> FsResult<()> {
     Err(FsError::NotSupported)
   }

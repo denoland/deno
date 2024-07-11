@@ -187,6 +187,13 @@ impl FileSystem for RealFs {
     spawn_blocking(move || read_dir(&path)).await?
   }
 
+  fn read_dir_names_sync(&self, path: &Path) -> FsResult<Vec<String>> {
+    read_dir_names(path)
+  }
+  async fn read_dir_names_async(&self, path: PathBuf) -> FsResult<Vec<String>> {
+    spawn_blocking(move || read_dir_names(&path)).await?
+  }
+
   fn rename_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
     fs::rename(oldpath, newpath).map_err(Into::into)
   }
@@ -862,6 +869,18 @@ fn read_dir(path: &Path) -> FsResult<Vec<FsDirEntry>> {
         is_directory: method_or_false!(is_dir),
         is_symlink: method_or_false!(is_symlink),
       })
+    })
+    .collect();
+
+  Ok(entries)
+}
+
+fn read_dir_names(path: &Path) -> FsResult<Vec<String>> {
+  let entries = fs::read_dir(path)?
+    .filter_map(|entry| {
+      let entry = entry.ok()?;
+      let name = entry.file_name().into_string().ok()?;
+      Some(name)
     })
     .collect();
 

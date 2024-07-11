@@ -326,6 +326,7 @@ pub const OP_DETAILS: phf::Map<&'static str, [&'static str; 2]> = phf_map! {
   "op_fs_mkdir_async" => ["create a directory", "awaiting the result of a `Deno.mkdir` call"],
   "op_fs_open_async" => ["open a file", "awaiting the result of a `Deno.open` call"],
   "op_fs_read_dir_async" => ["read a directory", "collecting all items in the async iterable returned from a `Deno.readDir` call"],
+  "op_fs_read_dir_names_async" => ["read a directory", "collecting all paths as a string array"],
   "op_fs_read_file_async" => ["read a file", "awaiting the result of a `Deno.readFile` call"],
   "op_fs_read_file_text_async" => ["read a text file", "awaiting the result of a `Deno.readTextFile` call"],
   "op_fs_read_link_async" => ["read a symlink", "awaiting the result of a `Deno.readLink` call"],
@@ -397,7 +398,7 @@ mod tests {
 
   // https://github.com/denoland/deno/issues/13729
   // https://github.com/denoland/deno/issues/13938
-  leak_format_test!(op_unknown, true, [RuntimeActivity::AsyncOp(0, None, "op_unknown")], 
+  leak_format_test!(op_unknown, true, [RuntimeActivity::AsyncOp(0, None, "op_unknown")],
     " - An async call to op_unknown was started in this test, but never completed.\n\
     To get more details where leaks occurred, run again with the --trace-leaks flag.\n");
 }

@@ -2,7 +2,14 @@
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
 export default class Dirent {
-  constructor(private entry: Deno.DirEntry & { parentPath: string }) {}
+  constructor(
+    // This is the most frequently accessed property. Using a non-getter
+    // is a very tiny bit faster here
+    public name: string,
+    public parentPath: string,
+    private entry: Deno.DirEntry,
+  ) {
+  }
 
   isBlockDevice(): boolean {
     notImplemented("Deno does not yet support identification of block devices");
@@ -37,15 +44,7 @@ export default class Dirent {
   }
 
   isSymbolicLink(): boolean {
-    return this.entry.isSymlink;
-  }
-
-  get name(): string | null {
-    return this.entry.name;
-  }
-
-  get parentPath(): string {
-    return this.entry.parentPath;
+    return this.entry.isSymLink;
   }
 
   /** @deprecated */

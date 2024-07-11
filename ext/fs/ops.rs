@@ -573,6 +573,29 @@ where
   Ok(entries)
 }
 
+#[op2]
+#[serde]
+pub fn op_fs_read_dir_names_sync<P>(
+  state: &mut OpState,
+  #[string] path: String,
+) -> Result<Vec<String>, AnyError>
+where
+  P: FsPermissions + 'static,
+{
+  let path = PathBuf::from(path);
+
+  state
+    .borrow_mut::<P>()
+    .check_read(&path, "Deno.readDirSync()")?;
+
+  let fs = state.borrow::<FileSystemRc>();
+  let entries = fs
+    .read_dir_names_sync(&path)
+    .context_path("readdir", &path)?;
+
+  Ok(entries)
+}
+
 #[op2(async)]
 #[serde]
 pub async fn op_fs_read_dir_async<P>(
@@ -594,6 +617,33 @@ where
 
   let entries = fs
     .read_dir_async(path.clone())
+    .await
+    .context_path("readdir", &path)?;
+
+  Ok(entries)
+}
+
+#[op2(async)]
+#[serde]
+pub async fn op_fs_read_dir_names_async<P>(
+  state: Rc<RefCell<OpState>>,
+  #[string] path: String,
+) -> Result<Vec<String>, AnyError>
+where
+  P: FsPermissions + 'static,
+{
+  let path = PathBuf::from(path);
+
+  let fs = {
+    let mut state = state.borrow_mut();
+    state
+      .borrow_mut::<P>()
+      .check_read(&path, "Deno.readDir()")?;
+    state.borrow::<FileSystemRc>().clone()
+  };
+
+  let entries = fs
+    .read_dir_names_async(path.clone())
     .await
     .context_path("readdir", &path)?;
 

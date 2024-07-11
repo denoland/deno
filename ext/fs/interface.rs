@@ -184,6 +184,9 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   fn read_dir_sync(&self, path: &Path) -> FsResult<Vec<FsDirEntry>>;
   async fn read_dir_async(&self, path: PathBuf) -> FsResult<Vec<FsDirEntry>>;
 
+  fn read_dir_names_sync(&self, path: &Path) -> FsResult<Vec<String>>;
+  async fn read_dir_names_async(&self, path: PathBuf) -> FsResult<Vec<String>>;
+
   fn rename_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()>;
   async fn rename_async(
     &self,

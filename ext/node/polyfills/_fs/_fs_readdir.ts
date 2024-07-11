@@ -3,17 +3,18 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { asyncIterableToCallback } from "ext:deno_node/_fs/_fs_watch.ts";
+import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
 import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import { Buffer } from "node:buffer";
 import { promisify } from "ext:deno_node/internal/util.mjs";
-
-function toDirent(val: Deno.DirEntry & { parentPath: string }): Dirent {
-  return new Dirent(val);
-}
+import {
+  op_fs_read_dir_async,
+  op_fs_read_dir_names_async,
+  op_fs_read_dir_names_sync,
+  op_fs_read_dir_sync,
+} from "ext:core/ops";
 
 type readDirOptions = {
   encoding?: string;
@@ -51,7 +52,6 @@ export function readdir(
   const options = typeof optionsOrCallback === "object"
     ? optionsOrCallback
     : null;
-  const result: Array<string | Dirent> = [];
   path = getValidatedPath(path);
 
   if (!callback) throw new Error("No callback function supplied");
@@ -66,32 +66,31 @@ export function readdir(
     }
   }
 
-  try {
-    path = path.toString();
-    asyncIterableToCallback(Deno.readDir(path), (val, done) => {
-      if (typeof path !== "string") return;
-      if (done) {
-        callback(null, result);
-        return;
-      }
-      if (options?.withFileTypes) {
-        val.parentPath = path;
-        result.push(toDirent(val));
-      } else result.push(decode(val.name));
-    }, (e) => {
-      callback(denoErrorToNodeError(e as Error, { syscall: "readdir" }));
-    });
-  } catch (e) {
-    callback(denoErrorToNodeError(e as Error, { syscall: "readdir" }));
-  }
-}
+  path = path.toString();
+  if (options?.withFileTypes) {
+    op_fs_read_dir_async(path)
+      .then(
+        (files) => {
+          const result: Dirent[] = [];
 
-function decode(str: string, encoding?: string): string {
-  if (!encoding) return str;
-  else {
-    const decoder = new TextDecoder(encoding);
-    const encoder = new TextEncoder();
-    return decoder.decode(encoder.encode(str));
+          try {
+            for (let i = 0; i < files.length; i++) {
+              const file = files[i];
+              result.push(new Dirent(file.name, path, file));
+            }
+            callback(null, result);
+          } catch (e) {
+            callback(denoErrorToNodeError(e as Error, { syscall: "readdir" }));
+          }
+        },
+        (e: Error) => callback(denoErrorToNodeError(e, { syscall: "readdir" })),
+      );
+  } else {
+    op_fs_read_dir_names_async(path)
+      .then(
+        (fileNames) => callback(null, fileNames),
+        (e: Error) => callback(denoErrorToNodeError(e, { syscall: "readdir" })),
+      );
   }
 }
 
@@ -118,7 +117,6 @@ export function readdirSync(
   path: string | Buffer | URL,
   options?: readDirOptions,
 ): Array<string | Dirent> {
-  const result = [];
   path = getValidatedPath(path);
 
   if (options?.encoding) {
@@ -133,14 +131,18 @@ export function readdirSync(
 
   try {
     path = path.toString();
-    for (const file of Deno.readDirSync(path)) {
-      if (options?.withFileTypes) {
-        file.parentPath = path;
-        result.push(toDirent(file));
-      } else result.push(decode(file.name));
+    if (options?.withFileTypes) {
+      const result = [];
+      const files = op_fs_read_dir_sync(path);
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        result.push(new Dirent(file.name, path, file));
+      }
+      return result;
+    } else {
+      return op_fs_read_dir_names_sync(path);
     }
   } catch (e) {
     throw denoErrorToNodeError(e as Error, { syscall: "readdir" });
   }
-  return result;
 }

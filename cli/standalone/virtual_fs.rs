@@ -796,6 +796,17 @@ impl FileBackedVfs {
     )
   }
 
+  pub fn read_dir_names(&self, path: &Path) -> std::io::Result<Vec<String>> {
+    let dir = self.dir_entry(path)?;
+    Ok(
+      dir
+        .entries
+        .iter()
+        .map(|entry| entry.name().to_string())
+        .collect(),
+    )
+  }
+
   pub fn read_link(&self, path: &Path) -> std::io::Result<PathBuf> {
     let (_, entry) = self.fs_root.find_entry_no_follow(path)?;
     match entry {

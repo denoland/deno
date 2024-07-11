@@ -270,6 +270,21 @@ impl FileSystem for DenoCompileFileSystem {
     }
   }
 
+  fn read_dir_names_sync(&self, path: &Path) -> FsResult<Vec<String>> {
+    if self.0.is_path_within(path) {
+      Ok(self.0.read_dir_names(path)?)
+    } else {
+      RealFs.read_dir_names_sync(path)
+    }
+  }
+  async fn read_dir_names_async(&self, path: PathBuf) -> FsResult<Vec<String>> {
+    if self.0.is_path_within(&path) {
+      Ok(self.0.read_dir_names(&path)?)
+    } else {
+      RealFs.read_dir_names_async(path).await
+    }
+  }
+
   fn rename_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
     self.error_if_in_vfs(oldpath)?;
     self.error_if_in_vfs(newpath)?;
