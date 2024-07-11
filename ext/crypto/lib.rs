@@ -615,12 +615,12 @@ pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, AnyError> {
   let uuid = if let Some(seeded_rng) = maybe_seeded_rng {
     let mut bytes = [0u8; 16];
     seeded_rng.fill(&mut bytes);
-    faster_uuid_v4(&mut bytes)
+    fast_uuid_v4(&mut bytes)
   } else {
     let mut rng = thread_rng();
     let mut bytes = [0u8; 16];
     rng.fill(&mut bytes);
-    faster_uuid_v4(&mut bytes)
+    fast_uuid_v4(&mut bytes)
   };
 
   Ok(uuid)
@@ -717,7 +717,7 @@ pub fn get_declaration() -> PathBuf {
 
 const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
 
-fn faster_uuid_v4(bytes: &mut [u8; 16]) -> String {
+fn fast_uuid_v4(bytes: &mut [u8; 16]) -> String {
   // Set UUID version to 4 and variant to 1.
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
@@ -766,11 +766,11 @@ fn faster_uuid_v4(bytes: &mut [u8; 16]) -> String {
 }
 
 #[test]
-fn test_faster_uuid_v4_correctness() {
+fn test_fast_uuid_v4_correctness() {
   let mut rng = thread_rng();
   let mut bytes = [0u8; 16];
   rng.fill(&mut bytes);
-  let uuid = faster_uuid_v4(&mut bytes.clone());
+  let uuid = fast_uuid_v4(&mut bytes.clone());
   let uuid_lib = uuid::Builder::from_bytes(bytes)
     .set_variant(uuid::Variant::RFC4122)
     .set_version(uuid::Version::Random)
