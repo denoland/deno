@@ -111,12 +111,12 @@
         {
           "if": "mac",
           "args": "cache fsevents.js",
-          "output": ""
+          "output": "fsevents.out"
         },
         {
-          "if": "mac",
-          "args": "run fsevents.js",
-          "output": "fsevents.out"
+          "if": "unix",
+          "args": "cache --allow-scripts fsevents.js",
+          "output": ""
         }
       ]
     }
