@@ -512,22 +512,25 @@ impl ManagedCliNpmResolver {
   }
 }
 
+fn npm_process_state(
+  snapshot: ValidSerializedNpmResolutionSnapshot,
+  node_modules_path: Option<&Path>,
+) -> String {
+  serde_json::to_string(&NpmProcessState {
+    kind: NpmProcessStateKind::Snapshot(snapshot.into_serialized()),
+    local_node_modules_path: node_modules_path
+      .map(|p| p.to_string_lossy().to_string()),
+  })
+  .unwrap()
+}
+
 impl NpmResolver for ManagedCliNpmResolver {
   /// Gets the state of npm for the process.
   fn get_npm_process_state(&self) -> String {
-    serde_json::to_string(&NpmProcessState {
-      kind: NpmProcessStateKind::Snapshot(
-        self
-          .resolution
-          .serialized_valid_snapshot()
-          .into_serialized(),
-      ),
-      local_node_modules_path: self
-        .fs_resolver
-        .node_modules_path()
-        .map(|p| p.to_string_lossy().to_string()),
-    })
-    .unwrap()
+    npm_process_state(
+      self.resolution.serialized_valid_snapshot(),
+      self.fs_resolver.node_modules_path().map(|p| p.as_path()),
+    )
   }
 
   fn resolve_package_folder_from_package(
