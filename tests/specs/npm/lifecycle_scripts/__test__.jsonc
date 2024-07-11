@@ -55,6 +55,23 @@
         }
       ]
     },
+    "only_warns_first": {
+      "tempDir": true,
+      "steps": [
+        {
+          // without running scripts (should warn)
+          "args": "run all_lifecycles.js",
+          "output": "only_warns_first1.out",
+          "exitCode": 1
+        },
+        {
+          // without running scripts (does not warn)
+          "args": "run all_lifecycles.js",
+          "output": "only_warns_first2.out",
+          "exitCode": 1
+        }
+      ]
+    },
     "future_install_lifecycle_scripts": {
       "tempDir": true,
       "envs": {
