@@ -282,8 +282,12 @@ fn resolve_baseline_custom_commands(
   custom_commands
     .insert("npm".to_string(), Rc::new(crate::task_runner::NpmCommand));
 
-  custom_commands
-    .insert("node".to_string(), Rc::new(crate::task_runner::NodeCommand));
+  custom_commands.insert(
+    "node".to_string(),
+    Rc::new(crate::task_runner::NodeCommand {
+      force_node_modules_dir: true,
+    }),
+  );
 
   custom_commands.insert(
     "node-gyp".to_string(),
