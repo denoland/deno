@@ -44,7 +44,7 @@ export default class Dirent {
   }
 
   isSymbolicLink(): boolean {
-    return this.entry.isSymLink;
+    return this.entry.isSymlink;
   }
 
   /** @deprecated */

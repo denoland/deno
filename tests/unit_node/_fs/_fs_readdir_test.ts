@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertNotEquals, fail } from "@std/assert/mod.ts";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { readdir, readdirSync } from "node:fs";
+import { Dirent, readdir, readdirSync } from "node:fs";
 import { join } from "@std/path/mod.ts";
 
 Deno.test({
@@ -89,4 +89,67 @@ Deno.test("[std/node/fs] readdir callback isn't called twice if error is thrown"
       await Deno.remove(tempDir);
     },
   });
+});
+
+Deno.test("[node/fs] readdir creates Dirent instances", async () => {
+  const tempDir = await Deno.makeTempDir();
+  await Deno.writeTextFile(join(tempDir, "file.txt"), "file content");
+  await Deno.symlink(join(tempDir, "file.txt"), join(tempDir, "link"));
+  await Deno.mkdir(join(tempDir, "dir"));
+
+  try {
+    const result = await new Promise<Dirent[]>((resolve, reject) => {
+      readdir(tempDir, { withFileTypes: true }, (err, files) => {
+        if (err) reject(err);
+        resolve(files);
+      });
+    });
+    result.sort((a, b) => a.name.localeCompare(b.name));
+
+    assertEquals(result[0].name, "dir");
+    assertEquals(result[0].isFile(), false);
+    assertEquals(result[0].isDirectory(), true);
+    assertEquals(result[0].isSymbolicLink(), false);
+
+    assertEquals(result[1].name, "file.txt");
+    assertEquals(result[1].isFile(), true);
+    assertEquals(result[1].isDirectory(), false);
+    assertEquals(result[1].isSymbolicLink(), false);
+
+    assertEquals(result[2].name, "link");
+    assertEquals(result[2].isFile(), false);
+    assertEquals(result[2].isDirectory(), false);
+    assertEquals(result[2].isSymbolicLink(), true);
+  } finally {
+    await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
+Deno.test("[node/fs] readdirSync creates Dirent instances", async () => {
+  const tempDir = await Deno.makeTempDir();
+  await Deno.writeTextFile(join(tempDir, "file.txt"), "file content");
+  await Deno.symlink(join(tempDir, "file.txt"), join(tempDir, "link"));
+  await Deno.mkdir(join(tempDir, "dir"));
+
+  try {
+    const result = readdirSync(tempDir, { withFileTypes: true });
+    result.sort((a, b) => a.name.localeCompare(b.name));
+
+    assertEquals(result[0].name, "dir");
+    assertEquals(result[0].isFile(), false);
+    assertEquals(result[0].isDirectory(), true);
+    assertEquals(result[0].isSymbolicLink(), false);
+
+    assertEquals(result[1].name, "file.txt");
+    assertEquals(result[1].isFile(), true);
+    assertEquals(result[1].isDirectory(), false);
+    assertEquals(result[1].isSymbolicLink(), false);
+
+    assertEquals(result[2].name, "link");
+    assertEquals(result[2].isFile(), false);
+    assertEquals(result[2].isDirectory(), false);
+    assertEquals(result[2].isSymbolicLink(), true);
+  } finally {
+    await Deno.remove(tempDir, { recursive: true });
+  }
 });
