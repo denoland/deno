@@ -878,15 +878,15 @@ impl NodeResolver {
             last_error = None;
             continue;
           }
-          Err(e) => match e.as_kind() {
-            PackageTargetResolveErrorKind::InvalidPackageTarget(_) => {
+          Err(e) => {
+            // todo(dsherret): add codes to each error and match on that instead
+            if e.to_string().starts_with("[ERR_INVALID_PACKAGE_TARGET]") {
               last_error = Some(e);
               continue;
-            }
-            _ => {
+            } else {
               return Err(e);
             }
-          },
+          }
         }
       }
       if last_error.is_none() {
