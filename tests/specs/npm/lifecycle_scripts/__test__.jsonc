@@ -104,6 +104,21 @@
           "output": "conflicting_bin.out"
         }
       ]
+    },
+    "fsevents_default_install_script": {
+      "tempDir": true,
+      "steps": [
+        {
+          "if": "mac",
+          "args": "cache fsevents.js",
+          "output": "fsevents.out"
+        },
+        {
+          "if": "mac",
+          "args": "cache --allow-scripts fsevents.js",
+          "output": ""
+        }
+      ]
     }
   }
 }
