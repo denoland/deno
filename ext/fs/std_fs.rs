@@ -812,21 +812,20 @@ fn stat_extra(
     Ok(info.dwVolumeSerialNumber as u64)
   }
 
-  use ntapi::ntioapi::FILE_ALL_INFORMATION;
+  use windows_sys::Wdk::Storage::FileSystem::FILE_ALL_INFORMATION;
 
   unsafe fn query_file_information(
     handle: winapi::shared::ntdef::HANDLE,
   ) -> std::io::Result<FILE_ALL_INFORMATION> {
-    use ntapi::ntioapi::FileAllInformation;
-    use ntapi::ntioapi::NtQueryInformationFile;
+    use windows_sys::Wdk::Storage::FileSystem::NtQueryInformationFile;
 
     let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
     let status = NtQueryInformationFile(
-      handle,
+      handle as _,
       std::ptr::null_mut(),
       info.as_mut_ptr() as *mut _,
       std::mem::size_of::<FILE_ALL_INFORMATION>() as _,
-      FileAllInformation,
+      18, /* FileAllInformation */
     );
 
     if status < 0 {
@@ -873,7 +872,7 @@ fn stat_extra(
       fsstat.size = 0;
     } else {
       fsstat.mode |= libc::S_IFREG as u32;
-      fsstat.size = *file_info.StandardInformation.EndOfFile.QuadPart() as _;
+      fsstat.size = file_info.StandardInformation.EndOfFile as u64;
     }
 
     if file_info.BasicInformation.FileAttributes

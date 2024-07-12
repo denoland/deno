@@ -34,5 +34,5 @@ nix.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winbase"] }
+windows-sys.workspace = true
 junction.workspace = true
-ntapi = "0.4.1"
