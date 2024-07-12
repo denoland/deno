@@ -478,6 +478,7 @@ pub async fn run(
               scopes: Default::default(),
               registry_configs: Default::default(),
             }),
+            lifecycle_scripts: Default::default(),
           },
         ))
         .await?;
@@ -489,7 +490,8 @@ pub async fn run(
       let vfs_root_dir_path = root_path.clone();
       let vfs = load_npm_vfs(vfs_root_dir_path.clone())
         .context("Failed to load vfs.")?;
-      let root_node_modules_dir = vfs.root().join(root_node_modules_dir);
+      let root_node_modules_dir =
+        root_node_modules_dir.map(|p| vfs.root().join(p));
       let fs = Arc::new(DenoCompileFileSystem::new(vfs))
         as Arc<dyn deno_fs::FileSystem>;
       let npm_resolver = create_cli_npm_resolver(
@@ -522,6 +524,7 @@ pub async fn run(
             // Packages from different registries are already inlined in the ESZip,
             // so no need to create actual `.npmrc` configuration.
             npmrc: create_default_npmrc(),
+            lifecycle_scripts: Default::default(),
           },
         ))
         .await?;
@@ -582,7 +585,7 @@ pub async fn run(
     )
   };
   let cli_node_resolver = Arc::new(CliNodeResolver::new(
-    Some(cjs_resolutions.clone()),
+    cjs_resolutions.clone(),
     fs.clone(),
     node_resolver.clone(),
     npm_resolver.clone(),

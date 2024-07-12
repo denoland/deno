@@ -29,6 +29,7 @@ use deno_semver::package::PackageReq;
 use resolution::AddPkgReqsResult;
 
 use crate::args::CliLockfile;
+use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::args::PackageJsonInstallDepsProvider;
@@ -70,6 +71,7 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub npm_system_info: NpmSystemInfo,
   pub package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
   pub npmrc: Arc<ResolvedNpmRc>,
+  pub lifecycle_scripts: LifecycleScriptsConfig,
 }
 
 pub async fn create_managed_npm_resolver_for_lsp(
@@ -98,6 +100,7 @@ pub async fn create_managed_npm_resolver_for_lsp(
       options.maybe_node_modules_path,
       options.npm_system_info,
       snapshot,
+      options.lifecycle_scripts,
     )
   })
   .await
@@ -122,6 +125,7 @@ pub async fn create_managed_npm_resolver(
     options.maybe_node_modules_path,
     options.npm_system_info,
     snapshot,
+    options.lifecycle_scripts,
   ))
 }
 
@@ -138,6 +142,7 @@ fn create_inner(
   node_modules_dir_path: Option<PathBuf>,
   npm_system_info: NpmSystemInfo,
   snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
+  lifecycle_scripts: LifecycleScriptsConfig,
 ) -> Arc<dyn CliNpmResolver> {
   let resolution = Arc::new(NpmResolution::from_serialized(
     npm_api.clone(),
@@ -160,6 +165,7 @@ fn create_inner(
     tarball_cache.clone(),
     node_modules_dir_path,
     npm_system_info.clone(),
+    lifecycle_scripts.clone(),
   );
   Arc::new(ManagedCliNpmResolver::new(
     fs,
@@ -172,6 +178,7 @@ fn create_inner(
     tarball_cache,
     text_only_progress_bar,
     npm_system_info,
+    lifecycle_scripts,
   ))
 }
 
@@ -258,6 +265,7 @@ pub struct ManagedCliNpmResolver {
   text_only_progress_bar: ProgressBar,
   npm_system_info: NpmSystemInfo,
   top_level_install_flag: AtomicFlag,
+  lifecycle_scripts: LifecycleScriptsConfig,
 }
 
 impl std::fmt::Debug for ManagedCliNpmResolver {
@@ -281,6 +289,7 @@ impl ManagedCliNpmResolver {
     tarball_cache: Arc<TarballCache>,
     text_only_progress_bar: ProgressBar,
     npm_system_info: NpmSystemInfo,
+    lifecycle_scripts: LifecycleScriptsConfig,
   ) -> Self {
     Self {
       fs,
@@ -294,6 +303,7 @@ impl ManagedCliNpmResolver {
       tarball_cache,
       npm_system_info,
       top_level_install_flag: Default::default(),
+      lifecycle_scripts,
     }
   }
 
@@ -578,6 +588,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
         self.tarball_cache.clone(),
         self.root_node_modules_path().map(ToOwned::to_owned),
         self.npm_system_info.clone(),
+        self.lifecycle_scripts.clone(),
       ),
       self.maybe_lockfile.clone(),
       self.npm_api.clone(),
@@ -587,6 +598,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       self.tarball_cache.clone(),
       self.text_only_progress_bar.clone(),
       self.npm_system_info.clone(),
+      self.lifecycle_scripts.clone(),
     ))
   }
 

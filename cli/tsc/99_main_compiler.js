@@ -731,6 +731,7 @@ delete Object.prototype.__proto__;
           /** @type {[string, ts.Extension] | undefined} */
           const resolved = ops.op_resolve(
             containingFilePath,
+            isCjsCache.has(containingFilePath),
             [fileReference.fileName],
           )?.[0];
           if (resolved) {
@@ -764,6 +765,7 @@ delete Object.prototype.__proto__;
       /** @type {Array<[string, ts.Extension] | undefined>} */
       const resolved = ops.op_resolve(
         base,
+        isCjsCache.has(base),
         specifiers,
       );
       if (resolved) {

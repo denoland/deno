@@ -143,9 +143,13 @@ pub async fn publish(
     .ok()
     .is_none()
     && !publish_flags.allow_dirty
-    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
   {
-    bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+    if let Some(dirty_text) =
+      check_if_git_repo_dirty(cli_options.initial_cwd()).await
+    {
+      log::error!("\nUncommitted changes:\n\n{}\n", dirty_text);
+      bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+    }
   }
 
   if publish_flags.dry_run {
@@ -306,7 +310,10 @@ impl PublishPreparer {
     } else if std::env::var("DENO_INTERNAL_FAST_CHECK_OVERWRITE").as_deref()
       == Ok("1")
     {
-      if check_if_git_repo_dirty(self.cli_options.initial_cwd()).await {
+      if check_if_git_repo_dirty(self.cli_options.initial_cwd())
+        .await
+        .is_some()
+      {
         bail!("When using DENO_INTERNAL_FAST_CHECK_OVERWRITE, the git repo must be in a clean state.");
       }
 
@@ -1147,10 +1154,10 @@ fn verify_version_manifest(
   Ok(())
 }
 
-async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
+async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
   let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
 
-  // Check if git exists
+  //  Check if git exists
   let git_exists = Command::new(bin_name)
     .arg("--version")
     .stderr(Stdio::null())
@@ -1160,7 +1167,7 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
     .map_or(false, |status| status.success());
 
   if !git_exists {
-    return false; // Git is not installed
+    return None; // Git is not installed
   }
 
   // Check if there are uncommitted changes
@@ -1172,7 +1179,12 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
     .expect("Failed to execute command");
 
   let output_str = String::from_utf8_lossy(&output.stdout);
-  !output_str.trim().is_empty()
+  let text = output_str.trim();
+  if text.is_empty() {
+    None
+  } else {
+    Some(text.to_string())
+  }
 }
 
 #[allow(clippy::print_stderr)]

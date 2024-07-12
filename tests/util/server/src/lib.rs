@@ -846,25 +846,45 @@ pub fn wildcard_match_detailed(
           );
           return WildcardMatchResult::Fail(output_lines.join("\n"));
         }
-        for (actual, expected) in actual_lines.iter().zip(expected_lines.iter())
+
+        if let Some(invalid_expected) =
+          expected_lines.iter().find(|e| e.contains("[WILDCARD]"))
         {
-          if actual != expected {
-            output_lines
-              .push("==== UNORDERED LINE DID NOT MATCH ====".to_string());
-            output_lines.push(format!(
-              "  ACTUAL: {}",
-              colors::red(annotate_whitespace(actual))
-            ));
-            output_lines.push(format!(
-              "EXPECTED: {}",
-              colors::green(annotate_whitespace(expected))
-            ));
-            return WildcardMatchResult::Fail(output_lines.join("\n"));
-          } else {
+          panic!(
+            concat!(
+              "Cannot use [WILDCARD] inside [UNORDERED_START]. Use [WILDLINE] instead.\n",
+              "  Invalid expected line: {}"
+            ),
+            invalid_expected
+          );
+        }
+
+        for actual_line in actual_lines {
+          let maybe_found_index =
+            expected_lines.iter().position(|expected_line| {
+              actual_line == *expected_line
+                || wildcard_match(expected_line, actual_line)
+            });
+          if let Some(found_index) = maybe_found_index {
+            let expected = expected_lines.remove(found_index);
             output_lines.push(format!(
               "<FOUND>{}</FOUND>",
               colors::gray(annotate_whitespace(expected))
             ));
+          } else {
+            output_lines
+              .push("==== UNORDERED LINE DID NOT MATCH ====".to_string());
+            output_lines.push(format!(
+              "  ACTUAL: {}",
+              colors::red(annotate_whitespace(actual_line))
+            ));
+            for expected in expected_lines {
+              output_lines.push(format!(
+                "  EXPECTED ANY: {}",
+                colors::green(annotate_whitespace(expected))
+              ));
+            }
+            return WildcardMatchResult::Fail(output_lines.join("\n"));
           }
         }
       }

@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::env::current_exe;
 use std::ffi::OsString;
@@ -68,7 +69,7 @@ pub enum NodeModules {
     node_modules_dir: Option<String>,
   },
   Byonm {
-    root_node_modules_dir: String,
+    root_node_modules_dir: Option<String>,
   },
 }
 
@@ -96,6 +97,7 @@ pub struct Metadata {
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<Vec<u8>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub env_vars_from_env_file: HashMap<String, String>,
   pub workspace_resolver: SerializedWorkspaceResolver,
   pub entrypoint_key: String,
   pub node_modules: Option<NodeModules>,
@@ -570,18 +572,27 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           Some(root_dir),
           files,
           Some(NodeModules::Byonm {
-            root_node_modules_dir: root_dir_url
-              .specifier_key(
-                &ModuleSpecifier::from_directory_path(
-                  // will always be set for byonm
-                  resolver.root_node_modules_path().unwrap(),
-                )
-                .unwrap(),
-              )
-              .into_owned(),
+            root_node_modules_dir: resolver.root_node_modules_path().map(
+              |node_modules_dir| {
+                root_dir_url
+                  .specifier_key(
+                    &ModuleSpecifier::from_directory_path(node_modules_dir)
+                      .unwrap(),
+                  )
+                  .into_owned()
+              },
+            ),
           }),
         )
       }
+    };
+
+    let env_vars_from_env_file = match cli_options.env_file_name() {
+      Some(env_filename) => {
+        log::info!("{} Environment variables from the file \"{}\" were embedded in the generated executable file", crate::colors::yellow("Warning"), env_filename);
+        get_file_env_vars(env_filename.to_string())?
+      }
+      None => Default::default(),
     };
 
     let metadata = Metadata {
@@ -596,6 +607,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       log_level: cli_options.log_level(),
       ca_stores: cli_options.ca_stores().clone(),
       ca_data,
+      env_vars_from_env_file,
       entrypoint_key: root_dir_url.specifier_key(entrypoint).into_owned(),
       workspace_resolver: SerializedWorkspaceResolver {
         import_map: self.workspace_resolver.maybe_import_map().map(|i| {
@@ -755,6 +767,21 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     }
   }
+}
+
+/// This function returns the environment variables specified
+/// in the passed environment file.
+fn get_file_env_vars(
+  filename: String,
+) -> Result<HashMap<String, String>, dotenvy::Error> {
+  let mut file_env_vars = HashMap::new();
+  for item in dotenvy::from_filename_iter(filename)? {
+    let Ok((key, val)) = item else {
+      continue; // this failure will be warned about on load
+    };
+    file_env_vars.insert(key, val);
+  }
+  Ok(file_env_vars)
 }
 
 /// This function sets the subsystem field in the PE header to 2 (GUI subsystem)

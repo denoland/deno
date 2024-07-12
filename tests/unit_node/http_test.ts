@@ -994,6 +994,33 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "[node/http] client destroy before sending request should not error",
+  () => {
+    const request = http.request("http://localhost:5929/");
+    // Calling this would throw
+    request.destroy();
+  },
+);
+
+Deno.test(
+  "[node/http] destroyed requests should not be sent",
+  async () => {
+    let receivedRequest = false;
+    const server = Deno.serve(() => {
+      receivedRequest = true;
+      return new Response(null);
+    });
+    const request = http.request(`http://localhost:${server.addr.port}/`);
+    request.destroy();
+    request.end("hello");
+
+    await new Promise((r) => setTimeout(r, 500));
+    assertEquals(receivedRequest, false);
+    await server.shutdown();
+  },
+);
+
 Deno.test("[node/http] node:http exports globalAgent", async () => {
   const http = await import("node:http");
   assert(

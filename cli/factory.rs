@@ -409,13 +409,13 @@ impl CliFactory {
         create_cli_npm_resolver(if self.options.use_byonm() && !matches!(self.options.sub_command(), DenoSubcommand::Install(_)) {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
             fs: fs.clone(),
-            root_node_modules_dir: match self.options.node_modules_dir_path() {
+            root_node_modules_dir: Some(match self.options.node_modules_dir_path() {
               Some(node_modules_path) => node_modules_path.to_path_buf(),
               // path needs to be canonicalized for node resolution
               // (node_modules_dir_path above is already canonicalized)
               None => canonicalize_path_maybe_not_exists(self.options.initial_cwd())?
                 .join("node_modules"),
-            },
+            }),
           })
         } else {
           CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
@@ -443,7 +443,8 @@ impl CliFactory {
               &self.options.workspace,
             )),
             npm_system_info: self.options.npm_system_info(),
-            npmrc: self.options.npmrc().clone()
+            npmrc: self.options.npmrc().clone(),
+            lifecycle_scripts: self.options.lifecycle_scripts_config(),
           })
         }).await
       }.boxed_local())
@@ -731,7 +732,7 @@ impl CliFactory {
       .cli_node_resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliNodeResolver::new(
-          Some(self.cjs_resolutions().clone()),
+          self.cjs_resolutions().clone(),
           self.fs().clone(),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone(),
