@@ -902,11 +902,7 @@ impl CliOptions {
       }),
     )?;
 
-    let maybe_lock_file = CliLockfile::discover(
-      &flags,
-      root_folder.deno_json.as_deref(),
-      root_folder.pkg_json.as_deref(),
-    )?;
+    let maybe_lock_file = CliLockfile::discover(&flags, &workspace)?;
 
     log::debug!("Finished config loading.");
 
