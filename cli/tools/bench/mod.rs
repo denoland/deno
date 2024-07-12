@@ -13,12 +13,12 @@ use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
-use crate::util::fs::WalkEntry;
 use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
 use crate::version::get_user_agent;
 use crate::worker::CliMainWorkerFactory;
 
+use deno_config::glob::WalkEntry;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;

@@ -23,8 +23,11 @@ use deno_graph::NpmResolvePkgReqsResult;
 use deno_npm::resolution::NpmResolutionError;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::errors::ClosestPkgJsonError;
+use deno_runtime::deno_node::errors::UrlToNodeResolutionError;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_runtime::deno_node::parse_npm_pkg_name;
+use deno_runtime::deno_node::NodeModuleKind;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
@@ -64,8 +67,7 @@ pub struct ModuleCodeStringSource {
 
 #[derive(Debug)]
 pub struct CliNodeResolver {
-  // not used in the LSP
-  cjs_resolutions: Option<Arc<CjsResolutionStore>>,
+  cjs_resolutions: Arc<CjsResolutionStore>,
   fs: Arc<dyn deno_fs::FileSystem>,
   node_resolver: Arc<NodeResolver>,
   // todo(dsherret): remove this pub(crate)
@@ -74,7 +76,7 @@ pub struct CliNodeResolver {
 
 impl CliNodeResolver {
   pub fn new(
-    cjs_resolutions: Option<Arc<CjsResolutionStore>>,
+    cjs_resolutions: Arc<CjsResolutionStore>,
     fs: Arc<dyn deno_fs::FileSystem>,
     node_resolver: Arc<NodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
@@ -94,7 +96,7 @@ impl CliNodeResolver {
   pub fn get_closest_package_json(
     &self,
     referrer: &ModuleSpecifier,
-  ) -> Result<Option<Arc<PackageJson>>, AnyError> {
+  ) -> Result<Option<Arc<PackageJson>>, ClosestPkgJsonError> {
     self.node_resolver.get_closest_package_json(referrer)
   }
 
@@ -118,8 +120,17 @@ impl CliNodeResolver {
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<Option<NodeResolution>, AnyError> {
+    let referrer_kind = if self.cjs_resolutions.contains(referrer) {
+      NodeModuleKind::Cjs
+    } else {
+      NodeModuleKind::Esm
+    };
+
     self.handle_node_resolve_result(
-      self.node_resolver.resolve(specifier, referrer, mode),
+      self
+        .node_resolver
+        .resolve(specifier, referrer, referrer_kind, mode)
+        .map_err(AnyError::from),
     )
   }
 
@@ -151,7 +162,7 @@ impl CliNodeResolver {
       .maybe_resolve_package_sub_path_from_deno_module(
         &package_folder,
         sub_path,
-        referrer,
+        Some(referrer),
         mode,
       )?;
     match maybe_resolution {
@@ -180,14 +191,14 @@ impl CliNodeResolver {
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-    referrer: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
     mode: NodeResolutionMode,
   ) -> Result<NodeResolution, AnyError> {
     self
       .maybe_resolve_package_sub_path_from_deno_module(
         package_folder,
         sub_path,
-        referrer,
+        maybe_referrer,
         mode,
       )?
       .ok_or_else(|| {
@@ -205,16 +216,19 @@ impl CliNodeResolver {
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-    referrer: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
     mode: NodeResolutionMode,
   ) -> Result<Option<NodeResolution>, AnyError> {
     self.handle_node_resolve_result(
-      self.node_resolver.resolve_package_subpath_from_deno_module(
-        package_folder,
-        sub_path,
-        referrer,
-        mode,
-      ),
+      self
+        .node_resolver
+        .resolve_package_subpath_from_deno_module(
+          package_folder,
+          sub_path,
+          maybe_referrer,
+          mode,
+        )
+        .map_err(AnyError::from),
     )
   }
 
@@ -233,16 +247,12 @@ impl CliNodeResolver {
       let specifier =
         crate::node::resolve_specifier_into_node_modules(&specifier);
       if self.in_npm_package(&specifier) {
-        if let Some(cjs_resolutions) = &self.cjs_resolutions {
-          let resolution =
-            self.node_resolver.url_to_node_resolution(specifier)?;
-          if let NodeResolution::CommonJs(specifier) = &resolution {
-            cjs_resolutions.insert(specifier.clone());
-          }
-          return Ok(resolution.into_url());
-        } else {
-          return Ok(specifier);
+        let resolution =
+          self.node_resolver.url_to_node_resolution(specifier)?;
+        if let NodeResolution::CommonJs(specifier) = &resolution {
+          self.cjs_resolutions.insert(specifier.clone());
         }
+        return Ok(resolution.into_url());
       }
     }
 
@@ -252,7 +262,7 @@ impl CliNodeResolver {
   pub fn url_to_node_resolution(
     &self,
     specifier: ModuleSpecifier,
-  ) -> Result<NodeResolution, AnyError> {
+  ) -> Result<NodeResolution, UrlToNodeResolutionError> {
     self.node_resolver.url_to_node_resolution(specifier)
   }
 
@@ -264,9 +274,7 @@ impl CliNodeResolver {
       Some(response) => {
         if let NodeResolution::CommonJs(specifier) = &response {
           // remember that this was a common js resolution
-          if let Some(cjs_resolutions) = &self.cjs_resolutions {
-            cjs_resolutions.insert(specifier.clone());
-          }
+          self.cjs_resolutions.insert(specifier.clone());
         }
         Ok(Some(response))
       }
@@ -574,7 +582,7 @@ impl Resolver for CliGraphResolver {
                       .resolve_package_sub_path_from_deno_module(
                         pkg_folder,
                         sub_path.as_deref(),
-                        referrer,
+                        Some(referrer),
                         to_node_mode(mode),
                       )?
                       .into_url(),
@@ -599,7 +607,7 @@ impl Resolver for CliGraphResolver {
                 .resolve_package_sub_path_from_deno_module(
                   pkg_folder,
                   req_ref.sub_path(),
-                  referrer,
+                  Some(referrer),
                   to_node_mode(mode),
                 )?
                 .into_url(),
@@ -682,7 +690,9 @@ impl Resolver for CliGraphResolver {
           }
         }
       }
-    } else if referrer.scheme() == "file" {
+    }
+
+    if referrer.scheme() == "file" {
       if let Some(node_resolver) = &self.node_resolver {
         let node_result = node_resolver.resolve_if_in_npm_package(
           specifier,

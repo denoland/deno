@@ -517,7 +517,7 @@ impl<TGraphContainer: ModuleGraphContainer>
           .resolve_package_sub_path_from_deno_module(
             &package_folder,
             module.nv_reference.sub_path(),
-            referrer,
+            Some(referrer),
             NodeResolutionMode::Execution,
           )
           .with_context(|| {

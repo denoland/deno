@@ -4969,7 +4969,12 @@ declare namespace Deno {
       | "osUptime"
       | "uid"
       | "gid"
-      | "cpus";
+      | "username"
+      | "cpus"
+      | "homedir"
+      | "statfs"
+      | "getPriority"
+      | "setPriority";
   }
 
   /** The permission descriptor for the `allow-ffi` and `deny-ffi` permissions, which controls
@@ -6257,6 +6262,8 @@ declare namespace Deno {
    */
   export interface ServeOptions {
     /** The port to listen on.
+     *
+     * Set to `0` to listen on any available port.
      *
      * @default {8000} */
     port?: number;

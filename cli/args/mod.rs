@@ -10,9 +10,11 @@ mod package_json;
 use deno_ast::SourceMapOption;
 use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
+use deno_config::workspace::WorkspaceEmptyOptions;
 use deno_config::workspace::WorkspaceMemberContext;
 use deno_config::workspace::WorkspaceResolver;
 use deno_config::WorkspaceLintConfig;
@@ -81,7 +83,6 @@ use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
 
-use deno_config::glob::PathOrPatternSet;
 use deno_config::FmtConfig;
 use deno_config::LintConfig;
 use deno_config::TestConfig;
@@ -197,6 +198,7 @@ pub fn ts_config_to_transpile_and_emit_options(
       jsx_import_source: options.jsx_import_source,
       precompile_jsx,
       precompile_jsx_skip_elements: options.jsx_precompile_skip_elements,
+      precompile_jsx_dynamic_props: None,
       transform_jsx,
       var_decl_imports: false,
     },
@@ -272,18 +274,11 @@ pub struct BenchOptions {
 }
 
 impl BenchOptions {
-  pub fn resolve(
-    bench_config: BenchConfig,
-    bench_flags: &BenchFlags,
-    maybe_flags_base: Option<&Path>,
-  ) -> Result<Self, AnyError> {
-    Ok(Self {
-      files: resolve_files(
-        bench_config.files,
-        &bench_flags.files,
-        maybe_flags_base,
-      )?,
-    })
+  pub fn resolve(bench_config: BenchConfig, _bench_flags: &BenchFlags) -> Self {
+    // this is the same, but keeping the same pattern as everywhere else for the future
+    Self {
+      files: bench_config.files,
+    }
   }
 }
 
@@ -307,19 +302,11 @@ impl FmtOptions {
     }
   }
 
-  pub fn resolve(
-    fmt_config: FmtConfig,
-    fmt_flags: &FmtFlags,
-    maybe_flags_base: Option<&Path>,
-  ) -> Result<Self, AnyError> {
-    Ok(Self {
+  pub fn resolve(fmt_config: FmtConfig, fmt_flags: &FmtFlags) -> Self {
+    Self {
       options: resolve_fmt_options(fmt_flags, fmt_config.options),
-      files: resolve_files(
-        fmt_config.files,
-        &fmt_flags.files,
-        maybe_flags_base,
-      )?,
-    })
+      files: fmt_config.files,
+    }
   }
 }
 
@@ -399,18 +386,11 @@ pub struct TestOptions {
 }
 
 impl TestOptions {
-  pub fn resolve(
-    test_config: TestConfig,
-    test_flags: TestFlags,
-    maybe_flags_base: Option<&Path>,
-  ) -> Result<Self, AnyError> {
-    Ok(Self {
-      files: resolve_files(
-        test_config.files,
-        &test_flags.files,
-        maybe_flags_base,
-      )?,
-    })
+  pub fn resolve(test_config: TestConfig, _test_flags: &TestFlags) -> Self {
+    // this is the same, but keeping the same pattern as everywhere else for the future
+    Self {
+      files: test_config.files,
+    }
   }
 }
 
@@ -480,25 +460,17 @@ impl LintOptions {
     }
   }
 
-  pub fn resolve(
-    lint_config: LintConfig,
-    lint_flags: LintFlags,
-    maybe_flags_base: Option<&Path>,
-  ) -> Result<Self, AnyError> {
-    Ok(Self {
-      files: resolve_files(
-        lint_config.files,
-        &lint_flags.files,
-        maybe_flags_base,
-      )?,
+  pub fn resolve(lint_config: LintConfig, lint_flags: &LintFlags) -> Self {
+    Self {
+      files: lint_config.files,
       rules: resolve_lint_rules_options(
-        lint_config.rules,
-        lint_flags.maybe_rules_tags,
-        lint_flags.maybe_rules_include,
-        lint_flags.maybe_rules_exclude,
+        lint_config.options.rules,
+        lint_flags.maybe_rules_tags.clone(),
+        lint_flags.maybe_rules_include.clone(),
+        lint_flags.maybe_rules_exclude.clone(),
       ),
       fix: lint_flags.fix,
-    })
+    }
   }
 }
 
@@ -778,7 +750,6 @@ pub struct CliOptions {
   flags: Flags,
   initial_cwd: PathBuf,
   maybe_node_modules_folder: Option<PathBuf>,
-  maybe_vendor_folder: Option<PathBuf>,
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   overrides: CliOptionOverrides,
@@ -822,29 +793,8 @@ impl CliOptions {
       root_folder.pkg_json.as_deref(),
     )
     .with_context(|| "Resolving node_modules folder.")?;
-    let maybe_vendor_folder = if force_global_cache {
-      None
-    } else {
-      resolve_vendor_folder(
-        &initial_cwd,
-        &flags,
-        root_folder.deno_json.as_deref(),
-      )
-    };
 
-    if let Some(env_file_name) = &flags.env_file {
-      match from_filename(env_file_name) {
-          Ok(_) => (),
-          Err(error) => {
-            match error {
-              dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
-              dotenvy::Error::Io(_)=> log::info!("{} The `--env` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
-              dotenvy::Error::EnvVar(_)=>log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
-              _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
-            }
-          }
-        }
-    }
+    load_env_variables_from_env_file(flags.env_file.as_ref());
 
     let disable_deprecated_api_warning = flags.log_level
       == Some(log::Level::Error)
@@ -859,7 +809,6 @@ impl CliOptions {
       maybe_lockfile,
       npmrc,
       maybe_node_modules_folder,
-      maybe_vendor_folder,
       overrides: Default::default(),
       workspace,
       disable_deprecated_api_warning,
@@ -871,6 +820,10 @@ impl CliOptions {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
     let config_fs_adapter = DenoConfigFsAdapter::new(&RealFs);
+    let maybe_vendor_override = flags.vendor.map(|v| match v {
+      true => VendorEnablement::Enable { cwd: &initial_cwd },
+      false => VendorEnablement::Disable,
+    });
     let resolve_workspace_discover_options = || {
       let additional_config_file_names: &'static [&'static str] =
         if matches!(flags.subcommand, DenoSubcommand::Publish(..)) {
@@ -899,20 +852,26 @@ impl CliOptions {
         config_parse_options,
         additional_config_file_names,
         discover_pkg_json,
+        maybe_vendor_override,
       }
+    };
+    let resolve_empty_options = || WorkspaceEmptyOptions {
+      root_dir: Arc::new(
+        ModuleSpecifier::from_directory_path(&initial_cwd).unwrap(),
+      ),
+      use_vendor_dir: maybe_vendor_override
+        .unwrap_or(VendorEnablement::Disable),
     };
 
     let workspace = match &flags.config_flag {
       deno_config::ConfigFlag::Discover => {
-        if let Some(start_dirs) = flags.config_path_args(&initial_cwd) {
+        if let Some(start_paths) = flags.config_path_args(&initial_cwd) {
           Workspace::discover(
-            WorkspaceDiscoverStart::Dirs(&start_dirs),
+            WorkspaceDiscoverStart::Paths(&start_paths),
             &resolve_workspace_discover_options(),
           )?
         } else {
-          Workspace::empty(Arc::new(
-            ModuleSpecifier::from_directory_path(&initial_cwd).unwrap(),
-          ))
+          Workspace::empty(resolve_empty_options())
         }
       }
       deno_config::ConfigFlag::Path(path) => {
@@ -922,9 +881,9 @@ impl CliOptions {
           &resolve_workspace_discover_options(),
         )?
       }
-      deno_config::ConfigFlag::Disabled => Workspace::empty(Arc::new(
-        ModuleSpecifier::from_directory_path(&initial_cwd).unwrap(),
-      )),
+      deno_config::ConfigFlag::Disabled => {
+        Workspace::empty(resolve_empty_options())
+      }
     };
 
     for diagnostic in workspace.diagnostics() {
@@ -1148,6 +1107,10 @@ impl CliOptions {
     }
   }
 
+  pub fn env_file_name(&self) -> Option<&String> {
+    self.flags.env_file.as_ref()
+  }
+
   pub fn enable_future_features(&self) -> bool {
     *DENO_FUTURE
   }
@@ -1258,7 +1221,6 @@ impl CliOptions {
       flags: self.flags.clone(),
       initial_cwd: self.initial_cwd.clone(),
       maybe_node_modules_folder: Some(path),
-      maybe_vendor_folder: self.maybe_vendor_folder.clone(),
       npmrc: self.npmrc.clone(),
       maybe_lockfile: self.maybe_lockfile.clone(),
       workspace: self.workspace.clone(),
@@ -1276,7 +1238,7 @@ impl CliOptions {
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
-    self.maybe_vendor_folder.as_ref()
+    self.workspace.vendor_dir_path()
   }
 
   pub fn resolve_root_cert_store_provider(
@@ -1332,20 +1294,21 @@ impl CliOptions {
     self.maybe_lockfile.clone()
   }
 
-  /// Return any imports that should be brought into the scope of the module
-  /// graph.
-  pub fn to_maybe_imports(
+  pub fn to_compiler_option_types(
     &self,
   ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
-    self.workspace.to_maybe_imports().map(|maybe_imports| {
-      maybe_imports
-        .into_iter()
-        .map(|(referrer, imports)| deno_graph::ReferrerImports {
-          referrer,
-          imports,
-        })
-        .collect()
-    })
+    self
+      .workspace
+      .to_compiler_option_types()
+      .map(|maybe_imports| {
+        maybe_imports
+          .into_iter()
+          .map(|(referrer, imports)| deno_graph::ReferrerImports {
+            referrer,
+            imports,
+          })
+          .collect()
+      })
   }
 
   pub fn npmrc(&self) -> &Arc<ResolvedNpmRc> {
@@ -1355,26 +1318,18 @@ impl CliOptions {
   pub fn resolve_fmt_options_for_members(
     &self,
     fmt_flags: &FmtFlags,
-  ) -> Result<Vec<FmtOptions>, AnyError> {
+  ) -> Result<Vec<(WorkspaceMemberContext, FmtOptions)>, AnyError> {
     let cli_arg_patterns =
       fmt_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_ctxs =
-      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
-    let mut result = Vec::with_capacity(member_ctxs.len());
-    for member_ctx in &member_ctxs {
-      let options = self.resolve_fmt_options(fmt_flags, member_ctx)?;
-      result.push(options);
+    let member_configs = self
+      .workspace
+      .resolve_fmt_config_for_members(&cli_arg_patterns)?;
+    let mut result = Vec::with_capacity(member_configs.len());
+    for (ctx, config) in member_configs {
+      let options = FmtOptions::resolve(config, fmt_flags);
+      result.push((ctx, options));
     }
     Ok(result)
-  }
-
-  pub fn resolve_fmt_options(
-    &self,
-    fmt_flags: &FmtFlags,
-    ctx: &WorkspaceMemberContext,
-  ) -> Result<FmtOptions, AnyError> {
-    let fmt_config = ctx.to_fmt_config()?;
-    FmtOptions::resolve(fmt_config, fmt_flags, Some(&self.initial_cwd))
   }
 
   pub fn resolve_workspace_lint_options(
@@ -1391,27 +1346,18 @@ impl CliOptions {
   ) -> Result<Vec<(WorkspaceMemberContext, LintOptions)>, AnyError> {
     let cli_arg_patterns =
       lint_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_ctxs =
-      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
-    let mut result = Vec::with_capacity(member_ctxs.len());
-    for member_ctx in member_ctxs {
-      let options =
-        self.resolve_lint_options(lint_flags.clone(), &member_ctx)?;
-      result.push((member_ctx, options));
+    let member_configs = self
+      .workspace
+      .resolve_lint_config_for_members(&cli_arg_patterns)?;
+    let mut result = Vec::with_capacity(member_configs.len());
+    for (ctx, config) in member_configs {
+      let options = LintOptions::resolve(config, lint_flags);
+      result.push((ctx, options));
     }
     Ok(result)
   }
 
-  pub fn resolve_lint_options(
-    &self,
-    lint_flags: LintFlags,
-    ctx: &WorkspaceMemberContext,
-  ) -> Result<LintOptions, AnyError> {
-    let lint_config = ctx.to_lint_config()?;
-    LintOptions::resolve(lint_config, lint_flags, Some(&self.initial_cwd))
-  }
-
-  pub fn resolve_lint_config(
+  pub fn resolve_deno_lint_config(
     &self,
   ) -> Result<deno_lint::linter::LintConfig, AnyError> {
     let ts_config_result =
@@ -1445,12 +1391,12 @@ impl CliOptions {
   ) -> Result<Vec<(WorkspaceMemberContext, TestOptions)>, AnyError> {
     let cli_arg_patterns =
       test_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_ctxs =
-      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
+    let member_ctxs = self
+      .workspace
+      .resolve_test_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_ctxs.len());
-    for member_ctx in member_ctxs {
-      let options =
-        self.resolve_test_options(test_flags.clone(), &member_ctx)?;
+    for (member_ctx, config) in member_ctxs {
+      let options = TestOptions::resolve(config, test_flags);
       result.push((member_ctx, options));
     }
     Ok(result)
@@ -1463,38 +1409,21 @@ impl CliOptions {
     WorkspaceBenchOptions::resolve(bench_flags)
   }
 
-  pub fn resolve_test_options(
-    &self,
-    test_flags: TestFlags,
-    ctx: &WorkspaceMemberContext,
-  ) -> Result<TestOptions, AnyError> {
-    let test_config = ctx.to_test_config()?;
-    TestOptions::resolve(test_config, test_flags, Some(&self.initial_cwd))
-  }
-
   pub fn resolve_bench_options_for_members(
     &self,
     bench_flags: &BenchFlags,
   ) -> Result<Vec<(WorkspaceMemberContext, BenchOptions)>, AnyError> {
     let cli_arg_patterns =
       bench_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_ctxs =
-      self.workspace.resolve_ctxs_from_patterns(&cli_arg_patterns);
+    let member_ctxs = self
+      .workspace
+      .resolve_bench_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_ctxs.len());
-    for member_ctx in member_ctxs {
-      let options = self.resolve_bench_options(bench_flags, &member_ctx)?;
+    for (member_ctx, config) in member_ctxs {
+      let options = BenchOptions::resolve(config, bench_flags);
       result.push((member_ctx, options));
     }
     Ok(result)
-  }
-
-  pub fn resolve_bench_options(
-    &self,
-    bench_flags: &BenchFlags,
-    ctx: &WorkspaceMemberContext,
-  ) -> Result<BenchOptions, AnyError> {
-    let bench_config = ctx.to_bench_config()?;
-    BenchOptions::resolve(bench_config, bench_flags, Some(&self.initial_cwd))
   }
 
   pub fn resolve_deno_graph_workspace_members(
@@ -1725,6 +1654,34 @@ impl CliOptions {
       });
     }
 
+    if !from_config_file.is_empty() {
+      // collect unstable granular flags
+      let mut all_valid_unstable_flags: Vec<&str> =
+        crate::UNSTABLE_GRANULAR_FLAGS
+          .iter()
+          .map(|granular_flag| granular_flag.0)
+          .collect();
+
+      let mut another_unstable_flags =
+        Vec::from(["sloppy-imports", "byonm", "bare-node-builtins"]);
+      // add more unstable flags to the same vector holding granular flags
+      all_valid_unstable_flags.append(&mut another_unstable_flags);
+
+      // check and warn if the unstable flag of config file isn't supported, by
+      // iterating through the vector holding the unstable flags
+      for unstable_value_from_config_file in &from_config_file {
+        if !all_valid_unstable_flags
+          .contains(&unstable_value_from_config_file.as_str())
+        {
+          log::warn!(
+            "{} '{}' isn't a valid unstable feature",
+            colors::yellow("Warning"),
+            unstable_value_from_config_file
+          );
+        }
+      }
+    }
+
     from_config_file
   }
 
@@ -1767,6 +1724,20 @@ impl CliOptions {
     }
     full_paths
   }
+
+  pub fn lifecycle_scripts_config(&self) -> LifecycleScriptsConfig {
+    LifecycleScriptsConfig {
+      allowed: self.flags.allow_scripts.clone(),
+      initial_cwd: if matches!(
+        self.flags.allow_scripts,
+        PackagesAllowedScripts::None
+      ) {
+        None
+      } else {
+        Some(self.initial_cwd.clone())
+      },
+    }
+  }
 }
 
 /// Resolves the path to use for a local node_modules folder.
@@ -1799,31 +1770,6 @@ fn resolve_node_modules_folder(
     cwd.join("node_modules")
   };
   Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
-}
-
-fn resolve_vendor_folder(
-  cwd: &Path,
-  flags: &Flags,
-  maybe_config_file: Option<&ConfigFile>,
-) -> Option<PathBuf> {
-  let use_vendor_dir = flags
-    .vendor
-    .or_else(|| maybe_config_file.and_then(|c| c.json.vendor))
-    .unwrap_or(false);
-  // Unlike the node_modules directory, there is no need to canonicalize
-  // this directory because it's just used as a cache and the resolved
-  // specifier is not based on the canonicalized path (unlike the modules
-  // in the node_modules folder).
-  if !use_vendor_dir {
-    None
-  } else if let Some(config_path) = maybe_config_file
-    .as_ref()
-    .and_then(|c| c.specifier.to_file_path().ok())
-  {
-    Some(config_path.parent().unwrap().join("vendor"))
-  } else {
-    Some(cwd.join("vendor"))
-  }
 }
 
 fn resolve_import_map_specifier(
@@ -1898,31 +1844,6 @@ impl StorageKeyResolver {
   }
 }
 
-/// Collect included and ignored files. CLI flags take precedence
-/// over config file, i.e. if there's `files.ignore` in config file
-/// and `--ignore` CLI flag, only the flag value is taken into account.
-fn resolve_files(
-  mut files_config: FilePatterns,
-  file_flags: &FileFlags,
-  maybe_flags_base: Option<&Path>,
-) -> Result<FilePatterns, AnyError> {
-  if !file_flags.include.is_empty() {
-    files_config.include =
-      Some(PathOrPatternSet::from_include_relative_path_or_patterns(
-        maybe_flags_base.unwrap_or(&files_config.base),
-        &file_flags.include,
-      )?);
-  }
-  if !file_flags.ignore.is_empty() {
-    files_config.exclude =
-      PathOrPatternSet::from_exclude_relative_path_or_patterns(
-        maybe_flags_base.unwrap_or(&files_config.base),
-        &file_flags.ignore,
-      )?;
-  }
-  Ok(files_config)
-}
-
 /// Resolves the no_prompt value based on the cli flags and environment.
 pub fn resolve_no_prompt(flags: &PermissionFlags) -> bool {
   flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
@@ -1960,12 +1881,28 @@ pub fn config_to_deno_graph_workspace_member(
   })
 }
 
+fn load_env_variables_from_env_file(filename: Option<&String>) {
+  let Some(env_file_name) = filename else {
+    return;
+  };
+  match from_filename(env_file_name) {
+    Ok(_) => (),
+    Err(error) => {
+      match error {
+          dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
+          dotenvy::Error::Io(_)=> log::info!("{} The `--env` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
+          dotenvy::Error::EnvVar(_)=> log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
+          _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+        }
+    }
+  }
+}
+
 #[cfg(test)]
 mod test {
-  use crate::util::fs::FileCollector;
+  use pretty_assertions::assert_eq;
 
   use super::*;
-  use pretty_assertions::assert_eq;
 
   #[test]
   fn resolve_import_map_flags_take_precedence() {
@@ -2042,95 +1979,6 @@ mod test {
     // test empty
     let resolver = StorageKeyResolver::empty();
     assert_eq!(resolver.resolve_storage_key(&specifier), None);
-  }
-
-  #[test]
-  fn resolve_files_test() {
-    use test_util::TempDir;
-    let temp_dir = TempDir::new();
-
-    temp_dir.create_dir_all("data");
-    temp_dir.create_dir_all("nested");
-    temp_dir.create_dir_all("nested/foo");
-    temp_dir.create_dir_all("nested/fizz");
-    temp_dir.create_dir_all("pages");
-
-    temp_dir.write("data/tes.ts", "");
-    temp_dir.write("data/test1.js", "");
-    temp_dir.write("data/test1.ts", "");
-    temp_dir.write("data/test12.ts", "");
-
-    temp_dir.write("nested/foo/foo.ts", "");
-    temp_dir.write("nested/foo/bar.ts", "");
-    temp_dir.write("nested/foo/fizz.ts", "");
-    temp_dir.write("nested/foo/bazz.ts", "");
-
-    temp_dir.write("nested/fizz/foo.ts", "");
-    temp_dir.write("nested/fizz/bar.ts", "");
-    temp_dir.write("nested/fizz/fizz.ts", "");
-    temp_dir.write("nested/fizz/bazz.ts", "");
-
-    temp_dir.write("pages/[id].ts", "");
-
-    let temp_dir_path = temp_dir.path().as_path();
-    let error = PathOrPatternSet::from_include_relative_path_or_patterns(
-      temp_dir_path,
-      &["data/**********.ts".to_string()],
-    )
-    .unwrap_err();
-    assert!(error.to_string().starts_with("Failed to expand glob"));
-
-    let resolved_files = resolve_files(
-      FilePatterns {
-        base: temp_dir_path.to_path_buf(),
-        include: Some(
-          PathOrPatternSet::from_include_relative_path_or_patterns(
-            temp_dir_path,
-            &[
-              "data/test1.?s".to_string(),
-              "nested/foo/*.ts".to_string(),
-              "nested/fizz/*.ts".to_string(),
-              "pages/[id].ts".to_string(),
-            ],
-          )
-          .unwrap(),
-        ),
-        exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
-          temp_dir_path,
-          &["nested/**/*bazz.ts".to_string()],
-        )
-        .unwrap(),
-      },
-      &Default::default(),
-      Some(temp_dir_path),
-    )
-    .unwrap();
-
-    let mut files = FileCollector::new(|_| true)
-      .ignore_git_folder()
-      .ignore_node_modules()
-      .collect_file_patterns(resolved_files)
-      .unwrap();
-
-    files.sort();
-
-    assert_eq!(
-      files,
-      vec![
-        "data/test1.js",
-        "data/test1.ts",
-        "nested/fizz/bar.ts",
-        "nested/fizz/fizz.ts",
-        "nested/fizz/foo.ts",
-        "nested/foo/bar.ts",
-        "nested/foo/fizz.ts",
-        "nested/foo/foo.ts",
-        "pages/[id].ts",
-      ]
-      .into_iter()
-      .map(|p| deno_core::normalize_path(temp_dir_path.join(p)))
-      .collect::<Vec<_>>()
-    );
   }
 
   #[test]

@@ -3,7 +3,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_fetch_response_upgrade,
   op_fetch_send,
@@ -68,6 +68,7 @@ import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
 
 const { internalRidSymbol } = core;
+const { ArrayIsArray } = primordials;
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -321,6 +322,7 @@ class ClientRequest extends OutgoingMessage {
   insecureHTTPParser: boolean;
   useChunkedEncodingByDefault: boolean;
   path: string;
+  _req: { requestRid: number; cancelHandleRid: number | null } | undefined;
 
   constructor(
     input: string | URL,
@@ -763,6 +765,9 @@ class ClientRequest extends OutgoingMessage {
 
   // deno-lint-ignore no-explicit-any
   end(chunk?: any, encoding?: any, cb?: any): this {
+    // Do nothing if request is already destroyed.
+    if (this.destroyed) return this;
+
     if (typeof chunk === "function") {
       cb = chunk;
       chunk = null;
@@ -795,6 +800,8 @@ class ClientRequest extends OutgoingMessage {
         //
       }
     })();
+
+    return this;
   }
 
   abort() {
@@ -818,7 +825,9 @@ class ClientRequest extends OutgoingMessage {
     if (rid) {
       core.tryClose(rid);
     }
-    if (this._req.cancelHandleRid !== null) {
+
+    // Request might be closed before we actually made it
+    if (this._req !== undefined && this._req.cancelHandleRid !== null) {
       core.tryClose(this._req.cancelHandleRid);
     }
     // If we're aborting, we don't care about any more response data.
@@ -1458,20 +1467,65 @@ export class ServerResponse extends NodeWritable {
   getHeaderNames() {
     return Object.keys(this.#headers);
   }
-  getHeaders() {
+  getHeaders(): Record<string, string | number | string[]> {
+    // @ts-ignore Ignore null __proto__
     return { __proto__: null, ...this.#headers };
   }
   hasHeader(name: string) {
     return Object.hasOwn(this.#headers, name);
   }
 
-  writeHead(status: number, headers: Record<string, string> = {}) {
+  writeHead(
+    status: number,
+    statusMessage?: string,
+    headers?:
+      | Record<string, string | number | string[]>
+      | Array<[string, string]>,
+  ): this;
+  writeHead(
+    status: number,
+    headers?:
+      | Record<string, string | number | string[]>
+      | Array<[string, string]>,
+  ): this;
+  writeHead(
+    status: number,
+    statusMessageOrHeaders?:
+      | string
+      | Record<string, string | number | string[]>
+      | Array<[string, string]>,
+    maybeHeaders?:
+      | Record<string, string | number | string[]>
+      | Array<[string, string]>,
+  ): this {
     this.statusCode = status;
-    for (const k in headers) {
-      if (Object.hasOwn(headers, k)) {
-        this.setHeader(k, headers[k]);
+
+    let headers = null;
+    if (typeof statusMessageOrHeaders === "string") {
+      this.statusMessage = statusMessageOrHeaders;
+      if (maybeHeaders !== undefined) {
+        headers = maybeHeaders;
+      }
+    } else if (statusMessageOrHeaders !== undefined) {
+      headers = statusMessageOrHeaders;
+    }
+
+    if (headers !== null) {
+      if (ArrayIsArray(headers)) {
+        headers = headers as Array<[string, string]>;
+        for (let i = 0; i < headers.length; i++) {
+          this.appendHeader(headers[i][0], headers[i][1]);
+        }
+      } else {
+        headers = headers as Record<string, string>;
+        for (const k in headers) {
+          if (Object.hasOwn(headers, k)) {
+            this.setHeader(k, headers[k]);
+          }
+        }
       }
     }
+
     return this;
   }
 
@@ -1650,9 +1704,6 @@ export function Server(opts, requestListener?: ServerHandler): ServerImpl {
 }
 
 export class ServerImpl extends EventEmitter {
-  #httpConnections: Set<Deno.HttpConn> = new Set();
-  #listener?: Deno.Listener;
-
   #addr: Deno.NetAddr | null = null;
   #hasClosed = false;
   #server: Deno.HttpServer;
