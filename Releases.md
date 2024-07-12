@@ -15,8 +15,6 @@ https://github.com/denoland/deno_install
 - fix(ext/webgpu): GPUDevice.createRenderPipelineAsync should return a Promise
   (#24349)
 - fix(node): revert invalid package target change (#24539)
-- fix(npm): use start directory deno.json as "root deno.json config" in npm
-  workspace (#24538)
 - fix(publish): show dirty files on dirty check failure (#24541)
 - fix: include already seen deps in lockfile dep tracking (#24556)
 - fix: unblock fsevents native module (#24542)
