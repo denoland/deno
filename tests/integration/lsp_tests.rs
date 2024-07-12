@@ -8388,6 +8388,87 @@ fn lsp_npm_specifier_unopened_file() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/24488.
+#[test]
+fn lsp_npm_open_from_global_cache_resolution() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "lock": false,
+    })
+    .to_string(),
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"npm:@vue/compiler-core@3.2.38\";",
+    }
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+    }),
+  );
+  client.read_diagnostics();
+  let registry_dir_name = context
+    .deno_dir()
+    .path()
+    .join("npm")
+    .read_dir()
+    .next()
+    .unwrap()
+    .unwrap()
+    .file_name();
+  let npm_dir_uri = context
+    .deno_dir()
+    .uri()
+    .join(&format!("npm/{}/", registry_dir_name.to_string_lossy()))
+    .unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": npm_dir_uri.join("@vue/compiler-core/3.2.38/dist/compiler-core.d.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": std::fs::read_to_string(npm_dir_uri.join("@vue/compiler-core/3.2.38/dist/compiler-core.d.ts").unwrap().to_file_path().unwrap()).unwrap(),
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": npm_dir_uri.join("@vue/compiler-core/3.2.38/dist/compiler-core.d.ts").unwrap(),
+      },
+      "position": { "line": 2, "character": 34 }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n\n**Types**: file&#8203;{}\n", npm_dir_uri.join("&#8203;@vue/shared/3.2.38/index.js").unwrap().as_str().trim_start_matches("file"), npm_dir_uri.join("&#8203;@vue/shared/3.2.38/dist/shared.d.ts").unwrap().as_str().trim_start_matches("file")),
+      },
+      "range": {
+        "start": { "line": 2, "character": 34 },
+        "end": { "line": 2, "character": 47 },
+      },
+    }),
+  );
+  client.shutdown();
+}
+
 #[test]
 fn lsp_completions_node_specifier() {
   let context = TestContextBuilder::new()

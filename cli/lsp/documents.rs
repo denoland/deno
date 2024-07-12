@@ -965,6 +965,12 @@ impl Documents {
     content: Arc<str>,
     file_referrer: Option<ModuleSpecifier>,
   ) -> Arc<Document> {
+    let old_doc = self.file_system_docs.remove_document(&specifier);
+    self.file_system_docs.set_dirty(true);
+    let file_referrer = old_doc
+      .and_then(|d| d.file_referrer().cloned())
+      .or(file_referrer);
+
     let document = Document::new(
       specifier.clone(),
       content,
@@ -979,9 +985,6 @@ impl Documents {
       &self.cache,
       file_referrer,
     );
-
-    self.file_system_docs.remove_document(&specifier);
-    self.file_system_docs.set_dirty(true);
 
     self.open_docs.insert(specifier, document.clone());
     self.dirty = true;

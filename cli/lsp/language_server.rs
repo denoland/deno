@@ -1529,7 +1529,7 @@ impl Inner {
           }
         }
       }
-      Resolution::Err(_) => "_[errored]_".to_string(),
+      Resolution::Err(err) => format!("_[errored]_ {err}"),
       Resolution::None => "_[missing]_".to_string(),
     }
   }
