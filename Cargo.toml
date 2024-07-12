@@ -44,7 +44,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.40.0", features = ["transpiling"] }
-deno_core = { version = "0.293.0" }
+deno_core = { version = "0.294.0" }
 
 deno_bench_util = { version = "0.155.0", path = "./bench_util" }
 deno_lockfile = "0.20.0"
@@ -118,7 +118,7 @@ http = "1.0"
 http-body-util = "0.1"
 http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
-hyper = { version = "=1.4.0", features = ["full"] }
+hyper = { version = "=1.4.1", features = ["full"] }
 hyper-util = { version = "=0.1.6", features = ["tokio", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
@@ -146,12 +146,12 @@ prost = "0.11"
 prost-build = "0.11"
 rand = "=0.8.5"
 regex = "^1.7.0"
-reqwest = { version = "=0.12.4", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
+reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 ring = "^0.17.0"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
-rustls = "0.22.4"
+rustls = { version = "0.23.11", default-features = false, features = ["logging", "std", "tls12", "ring"] }
 rustls-pemfile = "2"
-rustls-tokio-stream = "=0.2.23"
+rustls-tokio-stream = "=0.3.0"
 rustls-webpki = "0.102"
 rustyline = "=13.0.0"
 saffron = "=0.1.0"
