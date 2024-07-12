@@ -856,35 +856,37 @@ fn stat_extra(
     CloseHandle(file_handle);
     fsstat.dev = result?;
 
-    let file_info = query_file_information(file_handle)?;
-    if file_info.BasicInformation.FileAttributes
-      & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT
-      != 0
-    {
-      fsstat.is_symlink = true;
-    }
+    if let Ok(file_info) = query_file_information(file_handle) {
+      if file_info.BasicInformation.FileAttributes
+        & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT
+        != 0
+      {
+        fsstat.is_symlink = true;
+      }
 
-    if file_info.BasicInformation.FileAttributes
-      & winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY
-      != 0
-    {
-      fsstat.mode |= libc::S_IFDIR as u32;
-      fsstat.size = 0;
-    } else {
-      fsstat.mode |= libc::S_IFREG as u32;
-      fsstat.size = file_info.StandardInformation.EndOfFile as u64;
-    }
+      if file_info.BasicInformation.FileAttributes
+        & winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY
+        != 0
+      {
+        fsstat.mode |= libc::S_IFDIR as u32;
+        fsstat.size = 0;
+      } else {
+        fsstat.mode |= libc::S_IFREG as u32;
+        fsstat.size = file_info.StandardInformation.EndOfFile as u64;
+      }
 
-    if file_info.BasicInformation.FileAttributes
-      & winapi::um::winnt::FILE_ATTRIBUTE_READONLY
-      != 0
-    {
-      fsstat.mode |=
-        (libc::S_IREAD | (libc::S_IREAD >> 3) | (libc::S_IREAD >> 6)) as u32;
-    } else {
-      fsstat.mode |= ((libc::S_IREAD | libc::S_IWRITE)
-        | ((libc::S_IREAD | libc::S_IWRITE) >> 3)
-        | ((libc::S_IREAD | libc::S_IWRITE) >> 6)) as u32;
+      if file_info.BasicInformation.FileAttributes
+        & winapi::um::winnt::FILE_ATTRIBUTE_READONLY
+        != 0
+      {
+        fsstat.mode |=
+          (libc::S_IREAD | (libc::S_IREAD >> 3) | (libc::S_IREAD >> 6)) as u32;
+      } else {
+        fsstat.mode |= ((libc::S_IREAD | libc::S_IWRITE)
+          | ((libc::S_IREAD | libc::S_IWRITE) >> 3)
+          | ((libc::S_IREAD | libc::S_IWRITE) >> 6))
+          as u32;
+      }
     }
 
     Ok(())
