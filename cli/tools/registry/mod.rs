@@ -147,7 +147,7 @@ pub async fn publish(
     if let Some(dirty_text) =
       check_if_git_repo_dirty(cli_options.initial_cwd()).await
     {
-      log::error!("\n\nUncommitted changes:\n\n{}\n", dirty_text);
+      log::error!("\nUncommitted changes:\n\n{}\n", dirty_text);
       bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
     }
   }
