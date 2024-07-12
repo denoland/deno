@@ -31,28 +31,29 @@ Release checklist: <LINK TO THIS FORKED GIST GOES HERE>
 ## Patch release preparation
 
 **If you are cutting a patch release**: First you need to sync commits to the
-relevant minor branch in the `deno` repo, so if you are cutting a `v1.43.3`
-release you need to sync `v1.43` branch.
+relevant minor branch in the `deno` repo, so if you are cutting a `v$VERSION`
+release you need to sync `v$MINOR_VERSION` branch.
 
-To do that, you need to cherry-pick commits from the main branch to the `v1.43`
-branch. If the branch doesn't exist yet, create one from the latest minor tag:
+To do that, you need to cherry-pick commits from the main branch to the
+`v$MINOR_VERSION` branch. If the branch doesn't exist yet, create one from the
+latest minor tag:
 
 ```
 # checkout latest minor release
-$ git checkout v1.43.0
+$ git checkout v$VERSION
 
 # create a branch
-$ git checkout v1.43
+$ git checkout v$MINOR_VERSION
 
 # push the branch to the `denoland/deno` repository
-$ git push upstream v1.43
+$ git push upstream v$MINOR_VERSION
 ```
 
 For patch releases we want to cherry-pick all commits that do not add features
 to the CLI. This generally means to filter out `feat` commits.
 
-Check what was the last commit on `v1.43` branch before the previous release and
-start cherry-picking newer commits from the `main`.
+Check what was the last commit on `v$MINOR_VERSION` branch before the previous
+release and start cherry-picking newer commits from the `main`.
 
 <!--
       TODO: we should add sample deno program that does that for you,
@@ -62,9 +63,9 @@ start cherry-picking newer commits from the `main`.
 Once all relevant commits are cherry-picked, push the branch to the upstream and
 verify on GitHub that everything looks correct.
 
-- ⛔ DO NOT create a `vx.xx.x`-like branch! You are meant to cherry pick to a
-  `vx.xx` branch. If you have accidentally created a `vx.xx.x`-like branch then
-  delete it as tagging the CLI will fail otherwise.
+- ⛔ DO NOT create a `v$VERSION`-like branch! You are meant to cherry pick to
+  the `v$MINOR_VERSION` branch. If you have accidentally created then
+  `v$VERSION` branch then delete it as tagging the CLI will fail otherwise.
 
 ## Updating `deno`
 
@@ -73,8 +74,8 @@ verify on GitHub that everything looks correct.
 - [ ] Go to the "version_bump" workflow in the CLI repo's actions:
       https://github.com/denoland/deno/actions/workflows/version_bump.yml
   1. Click on the "Run workflow" button.
-  1. In the drop down, select the minor branch (ex. `vx.xx`) if doing a patch
-     release or the main branch if doing a minor release.
+  1. In the drop down, select the minor branch (ex. `v$MINOR_VERSION`) if doing
+     a patch release or the main branch if doing a minor release.
   1. For the kind of release, select either "patch", "minor", or "major".
   1. Run the workflow.
 
@@ -104,12 +105,13 @@ verify on GitHub that everything looks correct.
 
   1. The workflow was designed to be restartable. Try restarting it.
   2. If that doesn't work, then do the following:
-     1. Checkout the branch the release is occurring on.
+     1. Checkout the `v$MINOR_VERSION` branch.
      2. If `cargo publish` hasn't completed then run
         `./tools/release/03_publish_crates.ts`
         - Note that you will need access to crates.io so it might fail.
      3. If `cargo publish` succeeded and a release tag wasn't created, then
-        manually create and push one for the release branch with a leading `v`.
+        manually create and push the `v$VERSION` tag on the `v$MINOR_VERSION`
+        branch.
   </details>
 
 - [ ] This CI run create a tag which triggers a second CI run that publishes the
@@ -148,14 +150,14 @@ verify on GitHub that everything looks correct.
 - [ ] Run the version bump workflow:
       https://github.com/denoland/deno_docker/actions/workflows/version_bump.yml
 - [ ] This will open a PR. Review and merge it.
-- [ ] Create a tag with the version number (_without_ `v` prefix).
+- [ ] Create a `$VERSION` tag (_without_ `v` prefix).
 
 ## Updating `deno-lambda`
 
 - [ ] Run the version bump workflow:
       https://github.com/denoland/deno-lambda/actions/workflows/bump.yml
 - [ ] This will open a PR. Review and merge it.
-- [ ] Create a release with the version number (_without_ `v` prefix).
+- [ ] Create a `$VERSION` tag (_without_ `v` prefix).
 
 ## All done!
 

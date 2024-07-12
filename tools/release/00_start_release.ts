@@ -40,11 +40,16 @@ function getNextVersion(originalVersion: semver.SemVer) {
 }
 
 function buildDenoReleaseInstructionsDoc() {
+  function getMinorVersion(version: string) {
+    return version.split(".").slice(0, 2).join(".");
+  }
+
   const templateText = currentDirPath
     .join("release_doc_template.md")
     .readTextSync()
     .replaceAll("$BRANCH_NAME", `v${nextVersion.major}.${nextVersion.minor}`)
-    .replaceAll("$VERSION", nextVersion.toString());
+    .replaceAll("$VERSION", nextVersion.toString())
+    .replaceAll("$MINOR_VERSION", getMinorVersion(nextVersion.toString()));
   return `# Deno CLI ${nextVersion.toString()} Release Checklist\n\n${templateText}`;
 }
 
