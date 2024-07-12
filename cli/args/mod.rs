@@ -887,7 +887,7 @@ impl CliOptions {
     };
 
     for diagnostic in workspace.diagnostics() {
-      log::warn!("{}", colors::yellow(diagnostic));
+      log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
     let root_folder = workspace.root_folder().1;
@@ -1789,12 +1789,6 @@ fn resolve_import_map_specifier(
           format!("Bad URL (\"{import_map_path}\") for import map.")
         })?;
     Ok(Some(specifier))
-  } else if let Some(config_file) = &maybe_config_file {
-    // if the config file is an import map we prefer to use it, over `importMap` field
-    if config_file.is_an_import_map() && config_file.json.import_map.is_some() {
-      log::warn!("{} \"importMap\" setting is ignored when \"imports\" or \"scopes\" are specified in the config file.", colors::yellow("Warning"));
-    }
-    Ok(None)
   } else {
     Ok(None)
   }
