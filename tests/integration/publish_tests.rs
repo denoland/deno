@@ -421,7 +421,7 @@ Uncommitted changes:
 ?? deno.json
 ?? main.ts
 
-Aborting due to uncommitted changes. Check in source code or run with --allow-dirty
+error: Aborting due to uncommitted changes. Check in source code or run with --allow-dirty
 "#);
 
   let output = context
