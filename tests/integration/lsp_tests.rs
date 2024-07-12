@@ -8419,7 +8419,6 @@ fn lsp_npm_open_from_global_cache_resolution() {
       "text": "import \"npm:@vue/compiler-core@3.2.38\";",
     }
   }));
-  client.read_diagnostics();
   let registry_dir_name = context
     .deno_dir()
     .path()
