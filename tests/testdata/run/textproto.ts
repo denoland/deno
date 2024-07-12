@@ -14,10 +14,7 @@
  * @module
  */
 
-import type {
-  BufReader,
-  ReadLineResult,
-} from "@std/io/buf_reader.ts";
+import type { BufReader, ReadLineResult } from "@std/io/buf_reader.ts";
 import { concat } from "@std/bytes/concat.ts";
 
 // Constants created for DRY
