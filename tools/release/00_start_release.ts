@@ -8,24 +8,29 @@ $.logStep("Getting next version...");
 const nextVersion = getNextVersion(semver.parse(getCliVersion())!);
 
 $.logStep("Creating gist with instructions...");
-const octoKit = createOctoKit();
-const result = await octoKit.request("POST /gists", {
-  description: `Deno CLI v${nextVersion} release checklist`,
-  public: false,
-  files: {
-    [`release_${nextVersion}.md`]: {
-      content: buildDenoReleaseInstructionsDoc(),
+const releaseInstructions = buildDenoReleaseInstructionsDoc();
+if (Deno.args.some((a) => a === "--dry-run")) {
+  console.log(releaseInstructions);
+} else {
+  const octoKit = createOctoKit();
+  const result = await octoKit.request("POST /gists", {
+    description: `Deno CLI v${nextVersion} release checklist`,
+    public: false,
+    files: {
+      [`release_${nextVersion}.md`]: {
+        content: buildDenoReleaseInstructionsDoc(),
+      },
     },
-  },
-});
+  });
 
-$.log("==============================================");
-$.log("Created gist with instructions!");
-$.log("");
-$.log(`  ${result.data.html_url}`);
-$.log("");
-$.log("Please fork the gist and follow the checklist.");
-$.log("==============================================");
+  $.log("==============================================");
+  $.log("Created gist with instructions!");
+  $.log("");
+  $.log(`  ${result.data.html_url}`);
+  $.log("");
+  $.log("Please fork the gist and follow the checklist.");
+  $.log("==============================================");
+}
 
 function getNextVersion(originalVersion: semver.SemVer) {
   if (Deno.args.some((a) => a === "--patch")) {
