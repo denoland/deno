@@ -40,7 +40,7 @@ latest minor tag:
 
 ```
 # checkout latest minor release
-$ git checkout v$VERSION
+$ git checkout v$PAST_VERSION
 
 # create a branch
 $ git checkout v$MINOR_VERSION

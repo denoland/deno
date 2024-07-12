@@ -5,6 +5,7 @@ import { $, createOctoKit, semver } from "./deps.ts";
 const currentDirPath = $.path(import.meta).parentOrThrow();
 
 $.logStep("Getting next version...");
+const currentVersion = semver.parse(getCliVersion())!;
 const nextVersion = getNextVersion(semver.parse(getCliVersion())!);
 
 $.logStep("Creating gist with instructions...");
@@ -18,7 +19,7 @@ if (Deno.args.some((a) => a === "--dry-run")) {
     public: false,
     files: {
       [`release_${nextVersion}.md`]: {
-        content: buildDenoReleaseInstructionsDoc(),
+        content: releaseInstructions,
       },
     },
   });
@@ -54,7 +55,8 @@ function buildDenoReleaseInstructionsDoc() {
     .readTextSync()
     .replaceAll("$BRANCH_NAME", `v${nextVersion.major}.${nextVersion.minor}`)
     .replaceAll("$VERSION", nextVersion.toString())
-    .replaceAll("$MINOR_VERSION", getMinorVersion(nextVersion.toString()));
+    .replaceAll("$MINOR_VERSION", getMinorVersion(nextVersion.toString()))
+    .replaceAll("$PAST_VERSION", currentVersion.toString());
   return `# Deno CLI ${nextVersion.toString()} Release Checklist\n\n${templateText}`;
 }
 
