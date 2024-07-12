@@ -8404,6 +8404,11 @@ fn lsp_npm_open_from_global_cache_resolution() {
     })
     .to_string(),
   );
+  context
+    .new_command()
+    .args("cache npm:@vue/compiler-core@3.2.38")
+    .run()
+    .skip_output_check();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
@@ -8414,13 +8419,6 @@ fn lsp_npm_open_from_global_cache_resolution() {
       "text": "import \"npm:@vue/compiler-core@3.2.38\";",
     }
   }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
-    }),
-  );
   client.read_diagnostics();
   let registry_dir_name = context
     .deno_dir()
