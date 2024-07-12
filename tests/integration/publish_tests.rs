@@ -413,8 +413,16 @@ fn allow_dirty() {
     .arg("sadfasdf")
     .run();
   output.assert_exit_code(1);
-  let output = output.combined_output();
-  assert_contains!(output, "Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+  output.assert_matches_text(r#"Check [WILDLINE]
+Checking for slow types in the public API...
+
+Uncommitted changes:
+
+?? deno.json
+?? main.ts
+
+Aborting due to uncommitted changes. Check in source code or run with --allow-dirty
+"#);
 
   let output = context
     .new_command()
