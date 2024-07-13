@@ -19,6 +19,7 @@ import {
   asciiToBytes,
   base64ToBytes,
   base64UrlToBytes,
+  base64Write,
   bytesToAscii,
   bytesToUtf16le,
   hexToBytes,
@@ -117,7 +118,23 @@ export function Buffer(arg, encodingOrOffset, length) {
   return _from(arg, encodingOrOffset, length);
 }
 
-Buffer.poolSize = 8192;
+Buffer.poolSize = 8 * 1024;
+let poolSize, poolOffset, allocPool;
+
+function createPool() {
+  poolSize = Buffer.poolSize;
+  allocPool = new Uint8Array(poolSize).buffer;
+  poolOffset = 0;
+}
+createPool();
+
+function alignPool() {
+  // Ensure aligned slices
+  if (poolOffset & 0x7) {
+    poolOffset |= 0x7;
+    poolOffset++;
+  }
+}
 
 function _from(value, encodingOrOffset, length) {
   if (typeof value === "string") {
@@ -204,6 +221,30 @@ Buffer.allocUnsafeSlow = function allocUnsafeSlow(size) {
   return _allocUnsafe(size);
 };
 
+function fromStringFast(string, ops) {
+  const length = ops.byteLength(string);
+  if (length >= (Buffer.poolSize >>> 1)) {
+    const data = ops.create(string);
+    Object.setPrototypeOf(data, Buffer.prototype);
+    return data;
+  }
+
+  if (length > (poolSize - poolOffset)) {
+    createPool();
+  }
+  let b = new Uint8Array(allocPool, poolOffset, length);
+  Object.setPrototypeOf(b, Buffer.prototype);
+  const actual = ops.write(b, string, 0, length);
+  if (actual != length) {
+    // byteLength() may overestimate. That's a rare case, though.
+    b = new Uint8Array(allocPool, poolOffset, actual);
+    Object.setPrototypeOf(b, Buffer.prototype);
+  }
+  poolOffset += actual;
+  alignPool();
+  return b;
+}
+
 function fromString(string, encoding) {
   if (typeof encoding !== "string" || encoding === "") {
     encoding = "utf8";
@@ -211,13 +252,11 @@ function fromString(string, encoding) {
   if (!Buffer.isEncoding(encoding)) {
     throw new codes.ERR_UNKNOWN_ENCODING(encoding);
   }
-  const length = byteLength(string, encoding) | 0;
-  let buf = createBuffer(length);
-  const actual = buf.write(string, encoding);
-  if (actual !== length) {
-    buf = buf.slice(0, actual);
+  const ops = getEncodingOps(encoding);
+  if (ops === undefined) {
+    throw new codes.ERR_UNKNOWN_ENCODING(encoding);
   }
-  return buf;
+  return fromStringFast(string, ops);
 }
 
 function fromArrayLike(obj) {
@@ -664,12 +703,12 @@ Buffer.prototype.base64Slice = function base64Slice(
   }
 };
 
-Buffer.prototype.base64Write = function base64Write(
+Buffer.prototype.base64Write = function base64Write_(
   string,
   offset,
   length,
 ) {
-  return blitBuffer(base64ToBytes(string), this, offset, length);
+  return base64Write(string, this, offset, length);
 };
 
 Buffer.prototype.base64urlSlice = function base64urlSlice(
@@ -2105,6 +2144,7 @@ export const encodingOps = {
         dir,
       ),
     slice: (buf, start, end) => buf.asciiSlice(start, end),
+    create: (string) => asciiToBytes(string),
     write: (buf, string, offset, len) => buf.asciiWrite(string, offset, len),
   },
   base64: {
@@ -2119,6 +2159,7 @@ export const encodingOps = {
         encodingsMap.base64,
         dir,
       ),
+    create: (string) => base64ToBytes(string),
     slice: (buf, start, end) => buf.base64Slice(start, end),
     write: (buf, string, offset, len) => buf.base64Write(string, offset, len),
   },
@@ -2134,6 +2175,7 @@ export const encodingOps = {
         encodingsMap.base64url,
         dir,
       ),
+    create: (string) => base64UrlToBytes(string),
     slice: (buf, start, end) => buf.base64urlSlice(start, end),
     write: (buf, string, offset, len) =>
       buf.base64urlWrite(string, offset, len),
@@ -2150,6 +2192,7 @@ export const encodingOps = {
         encodingsMap.hex,
         dir,
       ),
+    create: (string) => hexToBytes(string),
     slice: (buf, start, end) => buf.hexSlice(start, end),
     write: (buf, string, offset, len) => buf.hexWrite(string, offset, len),
   },
@@ -2165,6 +2208,7 @@ export const encodingOps = {
         encodingsMap.latin1,
         dir,
       ),
+    create: (string) => asciiToBytes(string),
     slice: (buf, start, end) => buf.latin1Slice(start, end),
     write: (buf, string, offset, len) => buf.latin1Write(string, offset, len),
   },
@@ -2180,6 +2224,7 @@ export const encodingOps = {
         encodingsMap.utf16le,
         dir,
       ),
+    create: (string) => utf16leToBytes(string),
     slice: (buf, start, end) => buf.ucs2Slice(start, end),
     write: (buf, string, offset, len) => buf.ucs2Write(string, offset, len),
   },
@@ -2195,6 +2240,7 @@ export const encodingOps = {
         encodingsMap.utf8,
         dir,
       ),
+    create: (string) => utf8Encoder.encode(string),
     slice: (buf, start, end) => buf.utf8Slice(start, end),
     write: (buf, string, offset, len) => buf.utf8Write(string, offset, len),
   },
@@ -2210,6 +2256,7 @@ export const encodingOps = {
         encodingsMap.utf16le,
         dir,
       ),
+    create: (string) => utf16leToBytes(string),
     slice: (buf, start, end) => buf.ucs2Slice(start, end),
     write: (buf, string, offset, len) => buf.ucs2Write(string, offset, len),
   },

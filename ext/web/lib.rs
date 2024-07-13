@@ -16,7 +16,6 @@ use deno_core::ByteString;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ToJsBuffer;
 use deno_core::U16String;
 
 use encoding_rs::CoderResult;
@@ -62,6 +61,7 @@ deno_core::extension!(deno_web,
   parameters = [P: TimersPermission],
   ops = [
     op_base64_decode,
+    op_base64_write,
     op_base64_encode,
     op_base64_atob,
     op_base64_btoa,
@@ -130,12 +130,41 @@ deno_core::extension!(deno_web,
 );
 
 #[op2]
-#[serde]
-fn op_base64_decode(#[string] input: String) -> Result<ToJsBuffer, AnyError> {
+#[buffer]
+fn op_base64_decode(#[string] input: String) -> Result<Vec<u8>, AnyError> {
   let mut s = input.into_bytes();
   let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
-  Ok(s.into())
+  Ok(s)
+}
+
+#[op2(fast)]
+#[smi]
+fn op_base64_write(
+  #[string] input: String,
+  #[buffer] buffer: &mut [u8],
+  #[smi] start: u32,
+  #[smi] max_len: u32,
+) -> Result<u32, AnyError> {
+  let tsb_len = buffer.len() as u32;
+
+  if start > tsb_len {
+    return Err(type_error("Offset is out of bounds"));
+  }
+
+  let max_len = std::cmp::min(max_len, tsb_len - start) as usize;
+  let start = start as usize;
+
+  if max_len == 0 {
+    return Ok(0);
+  }
+
+  let mut s = input.into_bytes();
+  let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
+
+  buffer[start..start + max_len].copy_from_slice(&s[..max_len]);
+
+  Ok(decoded_len as u32)
 }
 
 #[op2]
