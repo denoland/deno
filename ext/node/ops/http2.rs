@@ -466,7 +466,9 @@ fn poll_data_or_trailers(
     }
     if let Poll::Ready(data) = body.poll_data(cx) {
       if let Some(data) = data {
-        return Poll::Ready(Ok(DataOrTrailers::Data(data?)));
+        let data = data?;
+        body.flow_control().release_capacity(data.len())?;
+        return Poll::Ready(Ok(DataOrTrailers::Data(data)));
       }
       // If data is None, loop one more time to check for trailers
       continue;
