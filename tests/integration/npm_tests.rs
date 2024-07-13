@@ -3,7 +3,7 @@
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-
+use deno_fetch::reqwest;
 use pretty_assertions::assert_eq;
 use test_util as util;
 use test_util::itest;
