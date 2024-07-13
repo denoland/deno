@@ -2,6 +2,7 @@
 
 use std::io::Read;
 
+use deno_fetch::reqwest;
 use pretty_assertions::assert_eq;
 use regex::Regex;
 use test_util as util;

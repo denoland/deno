@@ -2572,11 +2572,9 @@ for (const compression of [true, false]) {
       const result = await reader.read();
       assert(!result.done);
       assertEquals(result.value, new Uint8Array([65]));
-      await assertRejects(
-        () => reader.read(),
-        TypeError,
-        "body",
-      );
+      const err = await assertRejects(() => reader.read());
+      assert(err instanceof TypeError);
+      assert(err.message.includes("error decoding response body"));
 
       const httpConn = await server;
       httpConn.close();
@@ -2610,11 +2608,9 @@ for (const compression of [true, false]) {
       const result = await reader.read();
       assert(!result.done);
       assertEquals(result.value, new Uint8Array([65]));
-      await assertRejects(
-        () => reader.read(),
-        TypeError,
-        "body",
-      );
+      const err = await assertRejects(() => reader.read());
+      assert(err instanceof TypeError);
+      assert(err.message.includes("error decoding response body"));
 
       const httpConn = await server;
       httpConn.close();
