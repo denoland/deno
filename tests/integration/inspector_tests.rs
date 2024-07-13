@@ -6,7 +6,7 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url;
-
+use deno_fetch::reqwest;
 use fastwebsockets::FragmentCollector;
 use fastwebsockets::Frame;
 use fastwebsockets::WebSocket;

@@ -13,7 +13,6 @@ use deno_core::OpState;
 use deno_fetch::data_url::DataUrl;
 use deno_web::BlobStore;
 use deno_websocket::DomExceptionNetworkError;
-use http_body_util::BodyExt;
 use hyper::body::Bytes;
 use serde::Deserialize;
 use serde::Serialize;
@@ -79,23 +78,10 @@ pub fn op_worker_sync_fetch(
 
             let (body, mime_type, res_url) = match script_url.scheme() {
               "http" | "https" => {
-                let mut req = http::Request::new(
-                  http_body_util::Empty::new()
-                    .map_err(|never| match never {})
-                    .boxed(),
-                );
-                *req.uri_mut() = script_url.as_str().parse()?;
+                let resp =
+                  client.get(script_url).send().await?.error_for_status()?;
 
-                let resp = client.send(req).await?;
-
-                if resp.status().is_client_error()
-                  || resp.status().is_server_error()
-                {
-                  return Err(type_error(format!(
-                    "http status error: {}",
-                    resp.status()
-                  )));
-                }
+                let res_url = resp.url().to_string();
 
                 // TODO(andreubotella) Properly run fetch's "extract a MIME type".
                 let mime_type = resp
@@ -107,9 +93,9 @@ pub fn op_worker_sync_fetch(
                 // Always check the MIME type with HTTP(S).
                 loose_mime_checks = false;
 
-                let body = resp.collect().await?.to_bytes();
+                let body = resp.bytes().await?;
 
-                (body, mime_type, script)
+                (body, mime_type, res_url)
               }
               "data" => {
                 let data_url = DataUrl::process(&script)

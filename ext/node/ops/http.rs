@@ -15,12 +15,12 @@ use deno_fetch::FetchRequestResource;
 use deno_fetch::FetchReturn;
 use deno_fetch::HttpClientResource;
 use deno_fetch::ResourceToBodyAdapter;
-use http::header::HeaderMap;
-use http::header::HeaderName;
-use http::header::HeaderValue;
-use http::header::CONTENT_LENGTH;
-use http::Method;
-use http_body_util::BodyExt;
+use reqwest::header::HeaderMap;
+use reqwest::header::HeaderName;
+use reqwest::header::HeaderValue;
+use reqwest::header::CONTENT_LENGTH;
+use reqwest::Body;
+use reqwest::Method;
 
 #[op2]
 #[serde]
@@ -60,54 +60,34 @@ where
     header_map.append(name, v);
   }
 
-  let (body, con_len) = if let Some(body) = body {
-    (
-      ResourceToBodyAdapter::new(state.resource_table.take_any(body)?).boxed(),
-      None,
-    )
+  let mut request = client.request(method.clone(), url).headers(header_map);
+
+  if let Some(body) = body {
+    request = request.body(Body::wrap_stream(ResourceToBodyAdapter::new(
+      state.resource_table.take_any(body)?,
+    )));
   } else {
     // POST and PUT requests should always have a 0 length content-length,
     // if there is no body. https://fetch.spec.whatwg.org/#http-network-or-cache-fetch
-    let len = if matches!(method, Method::POST | Method::PUT) {
-      Some(0)
-    } else {
-      None
-    };
-    (
-      http_body_util::Empty::new()
-        .map_err(|never| match never {})
-        .boxed(),
-      len,
-    )
+    if matches!(method, Method::POST | Method::PUT) {
+      request = request.header(CONTENT_LENGTH, HeaderValue::from(0));
+    }
   };
-
-  let mut request = http::Request::new(body);
-  *request.method_mut() = method.clone();
-  *request.uri_mut() = url
-    .as_str()
-    .parse()
-    .map_err(|_| type_error("Invalid URL"))?;
-  *request.headers_mut() = header_map;
-
-  if let Some(len) = con_len {
-    request.headers_mut().insert(CONTENT_LENGTH, len.into());
-  }
 
   let cancel_handle = CancelHandle::new_rc();
   let cancel_handle_ = cancel_handle.clone();
 
   let fut = async move {
-    client
-      .send(request)
+    request
+      .send()
       .or_cancel(cancel_handle_)
       .await
       .map(|res| res.map_err(|err| type_error(err.to_string())))
   };
 
-  let request_rid = state.resource_table.add(FetchRequestResource {
-    future: Box::pin(fut),
-    url,
-  });
+  let request_rid = state
+    .resource_table
+    .add(FetchRequestResource(Box::pin(fut)));
 
   let cancel_handle_rid =
     state.resource_table.add(FetchCancelHandle(cancel_handle));

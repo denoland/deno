@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::http_util;
 use crate::http_util::HttpClient;
 
 use super::api::OidcTokenResponse;
@@ -13,8 +12,6 @@ use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_core::url::Url;
-use http_body_util::BodyExt;
 use once_cell::sync::Lazy;
 use p256::elliptic_curve;
 use p256::pkcs8::AssociatedOid;
@@ -507,12 +504,12 @@ impl<'a> FulcioSigner<'a> {
 
     let response = self
       .http_client
-      .post_json(url.parse()?, &request_body)?
+      .post(url)
+      .json(&request_body)
       .send()
       .await?;
 
-    let body: SigningCertificateResponse =
-      http_util::body_to_json(response).await?;
+    let body: SigningCertificateResponse = response.json().await?;
 
     let key = body
       .signed_certificate_embedded_sct
@@ -530,23 +527,15 @@ impl<'a> FulcioSigner<'a> {
       bail!("No OIDC token available");
     };
 
-    let mut url = req_url.parse::<Url>()?;
-    url.query_pairs_mut().append_pair("audience", aud);
-    let res_bytes = self
+    let res = self
       .http_client
-      .get(url)?
-      .header(
-        http::header::AUTHORIZATION,
-        format!("Bearer {}", token)
-          .parse()
-          .map_err(http::Error::from)?,
-      )
+      .get(&req_url)
+      .bearer_auth(token)
+      .query(&[("audience", aud)])
       .send()
       .await?
-      .collect()
-      .await?
-      .to_bytes();
-    let res: OidcTokenResponse = serde_json::from_slice(&res_bytes)?;
+      .json::<OidcTokenResponse>()
+      .await?;
     Ok(res.value)
   }
 }
@@ -696,10 +685,11 @@ async fn testify(
 
   let url = format!("{}/api/v1/log/entries", *DEFAULT_REKOR_URL);
   let res = http_client
-    .post_json(url.parse()?, &proposed_intoto_entry)?
+    .post(&url)
+    .json(&proposed_intoto_entry)
     .send()
     .await?;
-  let body: RekorEntry = http_util::body_to_json(res).await?;
+  let body: RekorEntry = res.json().await?;
 
   Ok(body)
 }

@@ -67,7 +67,7 @@ Deno.test(
         await fetch(`http://localhost:${port}`);
       },
       TypeError,
-      "client error (Connect)",
+      "error sending request for url",
     );
   },
 );
@@ -80,7 +80,7 @@ Deno.test(
         await fetch("http://nil/");
       },
       TypeError,
-      "client error (Connect)",
+      "error sending request for url",
     );
   },
 );
@@ -688,7 +688,7 @@ Deno.test(
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip,br\r\n",
+      "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n\r\n`,
     ].join("");
     assertEquals(actual, expected);
@@ -720,7 +720,7 @@ Deno.test(
       "accept: text/html\r\n",
       "accept-language: en-US\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip,br\r\n",
+      "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n\r\n`,
     ].join("");
     assertEquals(actual, expected);
@@ -750,16 +750,15 @@ Deno.test(
     const actual = new TextDecoder().decode((await bufPromise).bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
-      `content-length: ${body.length}\r\n`,
       "hello: World\r\n",
       "foo: Bar\r\n",
       "content-type: text/plain;charset=UTF-8\r\n",
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip,br\r\n",
+      "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
-      `\r\n`,
+      `content-length: ${body.length}\r\n\r\n`,
       body,
     ].join("");
     assertEquals(actual, expected);
@@ -790,15 +789,14 @@ Deno.test(
     const actual = new TextDecoder().decode((await bufPromise).bytes());
     const expected = [
       "POST /blah HTTP/1.1\r\n",
-      `content-length: ${body.byteLength}\r\n`,
       "hello: World\r\n",
       "foo: Bar\r\n",
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip,br\r\n",
+      "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
-      `\r\n`,
+      `content-length: ${body.byteLength}\r\n\r\n`,
       bodyStr,
     ].join("");
     assertEquals(actual, expected);
@@ -829,7 +827,7 @@ Deno.test(
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip,br\r\n",
+      "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n\r\n`,
     ].join("");
     assertEquals(actual, expected);
@@ -861,7 +859,7 @@ Deno.test(
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip,br\r\n\r\n",
+      "accept-encoding: gzip, br\r\n\r\n",
     ].join("");
     assertEquals(actual, expected);
   },
@@ -1228,7 +1226,7 @@ Deno.test(
       "accept: */*\r\n",
       "accept-language: *\r\n",
       `user-agent: Deno/${Deno.version.deno}\r\n`,
-      "accept-encoding: gzip,br\r\n",
+      "accept-encoding: gzip, br\r\n",
       `host: ${addr}\r\n`,
       `transfer-encoding: chunked\r\n\r\n`,
       "B\r\n",
@@ -1826,7 +1824,7 @@ Deno.test(
         await fetch(`http://${addr}/`);
       },
       TypeError,
-      "client error",
+      "error sending request",
     );
 
     listener.close();
@@ -1882,7 +1880,7 @@ Deno.test(
         await response.arrayBuffer();
       },
       Error,
-      "body",
+      "error decoding response body",
     );
 
     listener.close();

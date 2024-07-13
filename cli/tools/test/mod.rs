@@ -881,11 +881,12 @@ async fn run_tests_for_worker_inner(
     // failing. If we don't do this, a connection to a test server we just tore down might be re-used in
     // the next test.
     // TODO(mmastrac): this should be some sort of callback that we can implement for any subsystem
+    #[allow(clippy::disallowed_types)] // allow using reqwest::Client here
     worker
       .js_runtime
       .op_state()
       .borrow_mut()
-      .try_take::<deno_runtime::deno_fetch::Client>();
+      .try_take::<deno_runtime::deno_fetch::reqwest::Client>();
 
     if desc.ignore {
       send_test_event(
