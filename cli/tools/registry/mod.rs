@@ -11,9 +11,8 @@ use std::sync::Arc;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_ast::ModuleSpecifier;
-use deno_config::glob::FilePatterns;
-use deno_config::ConfigFile;
-use deno_config::WorkspaceMemberConfig;
+use deno_config::workspace::JsrPackageConfig;
+use deno_config::workspace::PackageJsonDepResolution;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -25,9 +24,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_runtime::deno_fetch::reqwest;
-use deno_runtime::deno_fs::FileSystem;
 use deno_terminal::colors;
-use import_map::ImportMap;
 use lsp_types::Url;
 use serde::Deserialize;
 use serde::Serialize;
@@ -44,7 +41,6 @@ use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
-use crate::resolver::MappedSpecifierResolver;
 use crate::resolver::SloppyImportsResolver;
 use crate::tools::check::CheckOptions;
 use crate::tools::lint::no_slow_types;
@@ -84,27 +80,40 @@ pub async fn publish(
   let auth_method =
     get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
-  let import_map = cli_factory
-    .maybe_import_map()
-    .await?
-    .clone()
-    .unwrap_or_else(|| {
-      Arc::new(ImportMap::new(Url::parse("file:///dev/null").unwrap()))
-    });
-
   let directory_path = cli_factory.cli_options().initial_cwd();
-
-  let mapped_resolver = Arc::new(MappedSpecifierResolver::new(
-    Some(import_map),
-    cli_factory.package_json_deps_provider().clone(),
-  ));
   let cli_options = cli_factory.cli_options();
-  let Some(config_file) = cli_options.maybe_config_file() else {
-    bail!(
-      "Couldn't find a deno.json, deno.jsonc, jsr.json or jsr.jsonc configuration file in {}.",
-      directory_path.display()
-    );
-  };
+  let publish_configs = cli_options.workspace.jsr_packages_for_publish();
+  if publish_configs.is_empty() {
+    match cli_options.workspace.resolve_start_ctx().maybe_deno_json() {
+      Some(deno_json) => {
+        debug_assert!(!deno_json.is_package());
+        bail!(
+          "Missing 'name', 'version' and 'exports' field in '{}'.",
+          deno_json.specifier
+        );
+      }
+      None => {
+        bail!(
+          "Couldn't find a deno.json, deno.jsonc, jsr.json or jsr.jsonc configuration file in {}.",
+          directory_path.display()
+        );
+      }
+    }
+  }
+  let specifier_unfurler = Arc::new(SpecifierUnfurler::new(
+    if cli_options.unstable_sloppy_imports() {
+      Some(SloppyImportsResolver::new(cli_factory.fs().clone()))
+    } else {
+      None
+    },
+    cli_options
+      .create_workspace_resolver(
+        cli_factory.file_fetcher()?,
+        PackageJsonDepResolution::Enabled,
+      )
+      .await?,
+    cli_options.unstable_bare_node_builtins(),
+  ));
 
   let diagnostics_collector = PublishDiagnosticsCollector::default();
   let publish_preparer = PublishPreparer::new(
@@ -112,16 +121,15 @@ pub async fn publish(
     cli_factory.module_graph_creator().await?.clone(),
     cli_factory.parsed_source_cache().clone(),
     cli_factory.type_checker().await?.clone(),
-    cli_factory.fs().clone(),
     cli_factory.cli_options().clone(),
-    mapped_resolver,
+    specifier_unfurler,
   );
 
   let prepared_data = publish_preparer
     .prepare_packages_for_publishing(
       publish_flags.allow_slow_types,
       &diagnostics_collector,
-      config_file.clone(),
+      publish_configs,
     )
     .await?;
 
@@ -135,9 +143,13 @@ pub async fn publish(
     .ok()
     .is_none()
     && !publish_flags.allow_dirty
-    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
   {
-    bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+    if let Some(dirty_text) =
+      check_if_git_repo_dirty(cli_options.initial_cwd()).await
+    {
+      log::error!("\nUncommitted changes:\n\n{}\n", dirty_text);
+      bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+    }
   }
 
   if publish_flags.dry_run {
@@ -193,8 +205,7 @@ struct PublishPreparer {
   source_cache: Arc<ParsedSourceCache>,
   type_checker: Arc<TypeChecker>,
   cli_options: Arc<CliOptions>,
-  mapped_resolver: Arc<MappedSpecifierResolver>,
-  sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
+  specifier_unfurler: Arc<SpecifierUnfurler>,
 }
 
 impl PublishPreparer {
@@ -203,23 +214,16 @@ impl PublishPreparer {
     module_graph_creator: Arc<ModuleGraphCreator>,
     source_cache: Arc<ParsedSourceCache>,
     type_checker: Arc<TypeChecker>,
-    fs: Arc<dyn FileSystem>,
     cli_options: Arc<CliOptions>,
-    mapped_resolver: Arc<MappedSpecifierResolver>,
+    specifier_unfurler: Arc<SpecifierUnfurler>,
   ) -> Self {
-    let sloppy_imports_resolver = if cli_options.unstable_sloppy_imports() {
-      Some(Arc::new(SloppyImportsResolver::new(fs.clone())))
-    } else {
-      None
-    };
     Self {
       graph_diagnostics_collector,
       module_graph_creator,
       source_cache,
       type_checker,
       cli_options,
-      mapped_resolver,
-      sloppy_imports_resolver,
+      specifier_unfurler,
     }
   }
 
@@ -227,11 +231,9 @@ impl PublishPreparer {
     &self,
     allow_slow_types: bool,
     diagnostics_collector: &PublishDiagnosticsCollector,
-    deno_json: ConfigFile,
+    publish_configs: Vec<JsrPackageConfig>,
   ) -> Result<PreparePackagesData, AnyError> {
-    let members = deno_json.to_workspace_members()?;
-
-    if members.len() > 1 {
+    if publish_configs.len() > 1 {
       log::info!("Publishing a workspace...");
     }
 
@@ -240,31 +242,24 @@ impl PublishPreparer {
       .build_and_check_graph_for_publish(
         allow_slow_types,
         diagnostics_collector,
-        &members,
+        &publish_configs,
       )
       .await?;
 
-    let mut package_by_name = HashMap::with_capacity(members.len());
+    let mut package_by_name = HashMap::with_capacity(publish_configs.len());
     let publish_order_graph =
-      publish_order::build_publish_order_graph(&graph, &members)?;
+      publish_order::build_publish_order_graph(&graph, &publish_configs)?;
 
-    let results = members
+    let results = publish_configs
       .into_iter()
       .map(|member| {
         let graph = graph.clone();
         async move {
           let package = self
-            .prepare_publish(
-              &member.package_name,
-              &member.config_file,
-              graph,
-              diagnostics_collector,
-            )
+            .prepare_publish(&member, graph, diagnostics_collector)
             .await
-            .with_context(|| {
-              format!("Failed preparing '{}'.", member.package_name)
-            })?;
-          Ok::<_, AnyError>((member.package_name, package))
+            .with_context(|| format!("Failed preparing '{}'.", member.name))?;
+          Ok::<_, AnyError>((member.name, package))
         }
         .boxed()
       })
@@ -284,12 +279,15 @@ impl PublishPreparer {
     &self,
     allow_slow_types: bool,
     diagnostics_collector: &PublishDiagnosticsCollector,
-    packages: &[WorkspaceMemberConfig],
+    package_configs: &[JsrPackageConfig],
   ) -> Result<Arc<deno_graph::ModuleGraph>, deno_core::anyhow::Error> {
     let build_fast_check_graph = !allow_slow_types;
     let graph = self
       .module_graph_creator
-      .create_and_validate_publish_graph(packages, build_fast_check_graph)
+      .create_and_validate_publish_graph(
+        package_configs,
+        build_fast_check_graph,
+      )
       .await?;
 
     // todo(dsherret): move to lint rule
@@ -312,7 +310,10 @@ impl PublishPreparer {
     } else if std::env::var("DENO_INTERNAL_FAST_CHECK_OVERWRITE").as_deref()
       == Ok("1")
     {
-      if check_if_git_repo_dirty(self.cli_options.initial_cwd()).await {
+      if check_if_git_repo_dirty(self.cli_options.initial_cwd())
+        .await
+        .is_some()
+      {
         bail!("When using DENO_INTERNAL_FAST_CHECK_OVERWRITE, the git repo must be in a clean state.");
       }
 
@@ -335,7 +336,7 @@ impl PublishPreparer {
     } else {
       log::info!("Checking for slow types in the public API...");
       let mut any_pkg_had_diagnostics = false;
-      for package in packages {
+      for package in package_configs {
         let export_urls = package.config_file.resolve_export_value_urls()?;
         let diagnostics =
           no_slow_types::collect_no_slow_type_diagnostics(&export_urls, &graph);
@@ -389,14 +390,14 @@ impl PublishPreparer {
   #[allow(clippy::too_many_arguments)]
   async fn prepare_publish(
     &self,
-    package_name: &str,
-    deno_json: &ConfigFile,
+    package: &JsrPackageConfig,
     graph: Arc<deno_graph::ModuleGraph>,
     diagnostics_collector: &PublishDiagnosticsCollector,
   ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
     static SUGGESTED_ENTRYPOINTS: [&str; 4] =
       ["mod.ts", "mod.js", "index.ts", "index.js"];
 
+    let deno_json = &package.config_file;
     let config_path = deno_json.specifier.to_file_path().unwrap();
     let root_dir = config_path.parent().unwrap().to_path_buf();
     let Some(version) = deno_json.json.version.clone() else {
@@ -418,43 +419,33 @@ impl PublishPreparer {
   "version": "{}",
   "exports": "{}"
 }}"#,
-        package_name,
+        package.name,
         version,
         suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
       );
 
       bail!(
       "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
-      package_name,
+      package.name,
       deno_json.specifier,
       exports_content
     );
     }
-    let Some(name_no_at) = package_name.strip_prefix('@') else {
+    let Some(name_no_at) = package.name.strip_prefix('@') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
     let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
-    let file_patterns = deno_json
-      .to_publish_config()?
-      .map(|c| c.files)
-      .unwrap_or_else(|| FilePatterns::new_with_base(root_dir.to_path_buf()));
+    let file_patterns = package.member_ctx.to_publish_config()?.files;
 
     let tarball = deno_core::unsync::spawn_blocking({
       let diagnostics_collector = diagnostics_collector.clone();
-      let mapped_resolver = self.mapped_resolver.clone();
-      let sloppy_imports_resolver = self.sloppy_imports_resolver.clone();
+      let unfurler = self.specifier_unfurler.clone();
       let cli_options = self.cli_options.clone();
       let source_cache = self.source_cache.clone();
       let config_path = config_path.clone();
       move || {
-        let bare_node_builtins = cli_options.unstable_bare_node_builtins();
-        let unfurler = SpecifierUnfurler::new(
-          &mapped_resolver,
-          sloppy_imports_resolver.as_deref(),
-          bare_node_builtins,
-        );
         let root_specifier =
           ModuleSpecifier::from_directory_path(&root_dir).unwrap();
         let publish_paths =
@@ -482,7 +473,7 @@ impl PublishPreparer {
     })
     .await??;
 
-    log::debug!("Tarball size ({}): {}", package_name, tarball.bytes.len());
+    log::debug!("Tarball size ({}): {}", package.name, tarball.bytes.len());
 
     Ok(Rc::new(PreparedPublishPackage {
       scope: scope.to_string(),
@@ -1146,10 +1137,10 @@ fn verify_version_manifest(
   Ok(())
 }
 
-async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
+async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
   let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
 
-  // Check if git exists
+  //  Check if git exists
   let git_exists = Command::new(bin_name)
     .arg("--version")
     .stderr(Stdio::null())
@@ -1159,7 +1150,7 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
     .map_or(false, |status| status.success());
 
   if !git_exists {
-    return false; // Git is not installed
+    return None; // Git is not installed
   }
 
   // Check if there are uncommitted changes
@@ -1171,7 +1162,12 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
     .expect("Failed to execute command");
 
   let output_str = String::from_utf8_lossy(&output.stdout);
-  !output_str.trim().is_empty()
+  let text = output_str.trim();
+  if text.is_empty() {
+    None
+  } else {
+    Some(text.to_string())
+  }
 }
 
 #[allow(clippy::print_stderr)]

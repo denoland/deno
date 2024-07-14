@@ -1,12 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { primordials } from "ext:core/mod.js";
 const {
   MapPrototypeGet,
   MapPrototypeDelete,
+  ObjectDefineProperty,
+  Promise,
+  SafeArrayIterator,
 } = primordials;
 
 import {
@@ -32,9 +32,11 @@ export function setTimeout(
   return new Timeout(callback, timeout, args, false, true);
 }
 
-Object.defineProperty(setTimeout, promisify.custom, {
+ObjectDefineProperty(setTimeout, promisify.custom, {
   value: (timeout: number, ...args: unknown[]) => {
-    return new Promise((cb) => setTimeout(cb, timeout, ...args));
+    return new Promise((cb) =>
+      setTimeout(cb, timeout, ...new SafeArrayIterator(args))
+    );
   },
   enumerable: true,
 });
@@ -74,7 +76,7 @@ export function setImmediate(
   cb: (...args: unknown[]) => void,
   ...args: unknown[]
 ): Timeout {
-  return new Immediate(cb, ...args);
+  return new Immediate(cb, ...new SafeArrayIterator(args));
 }
 export function clearImmediate(immediate: Immediate) {
   if (immediate == null) {

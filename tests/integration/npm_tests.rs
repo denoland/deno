@@ -950,9 +950,13 @@ fn ensure_registry_files_local() {
       let registry_json_path = registry_dir_path
         .join(entry.file_name())
         .join("registry.json");
+
       if registry_json_path.exists() {
         let file_text = std::fs::read_to_string(&registry_json_path).unwrap();
-        if file_text.contains("https://registry.npmjs.org/") {
+        if file_text.contains(&format!(
+          "https://registry.npmjs.org/{}/-/",
+          entry.file_name().to_string_lossy()
+        )) {
           panic!(
             "file {} contained a reference to the npm registry",
             registry_json_path
@@ -2255,7 +2259,7 @@ console.log(getKind());
     .args("run --allow-read chalk.ts")
     .run();
   output.assert_matches_text(
-    r#"error: Could not find a matching package for 'npm:chalk@5' in '[WILDCARD]package.json'. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.
+    r#"error: Could not find a matching package for 'npm:chalk@5' in a package.json file. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.
     at file:///[WILDCARD]chalk.ts:1:19
 "#);
   output.assert_exit_code(1);
@@ -2340,7 +2344,7 @@ console.log(getKind());
     .args("run --allow-read chalk.ts")
     .run();
   output.assert_matches_text(
-    r#"error: Could not find a matching package for 'npm:chalk@5' in '[WILDCARD]package.json'. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.
+    r#"error: Could not find a matching package for 'npm:chalk@5' in a package.json file. You must specify this as a package.json dependency when the node_modules folder is not managed by Deno.
     at file:///[WILDCARD]chalk.ts:1:19
 "#);
   output.assert_exit_code(1);
@@ -2545,7 +2549,7 @@ fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
   // no npm install has been run, so this should give an informative error
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text(
-    r#"error: Could not find '[WILDCARD]package.json'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
+    r#"error: Could not find "chalk" in a node_modules folder. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
     at file:///[WILDCARD]/main.ts:1:19
 "#,
   );
@@ -2561,8 +2565,8 @@ fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
 
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text(
-    r#"error: Failed resolving package subpath './test' for '[WILDCARD]package.json'
-    at file:///[WILDCARD]/main.ts:1:8
+    r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDLINE]package.json' imported from '[WILDLINE]main.ts'
+    at file:///[WILDLINE]/main.ts:1:8
 "#,
   );
   output.assert_exit_code(1);
@@ -2589,7 +2593,7 @@ fn future_byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
   // no npm install has been run, so this should give an informative error
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text(
-    r#"error: Could not find '[WILDCARD]package.json'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
+    r#"error: Could not find "chalk" in a node_modules folder. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
     at file:///[WILDCARD]/main.ts:1:19
 "#,
   );
@@ -2605,8 +2609,8 @@ fn future_byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
 
   let output = test_context.new_command().args("run main.ts").run();
   output.assert_matches_text(
-    r#"error: Failed resolving package subpath './test' for '[WILDCARD]package.json'
-    at file:///[WILDCARD]/main.ts:1:8
+    r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDLINE]package.json' imported from '[WILDLINE]main.ts'
+    at file:///[WILDLINE]/main.ts:1:8
 "#,
   );
   output.assert_exit_code(1);

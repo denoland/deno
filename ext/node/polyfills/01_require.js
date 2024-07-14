@@ -475,6 +475,7 @@ function Module(id = "", parent) {
   updateChildren(parent, this, false);
   this.filename = null;
   this.loaded = false;
+  this.parent = parent;
   this.children = [];
 }
 
@@ -1054,7 +1055,7 @@ Module._extensions[".js"] = function (module, filename) {
 
   if (StringPrototypeEndsWith(filename, ".js")) {
     const pkg = op_require_read_closest_package_json(filename);
-    if (pkg && pkg.exists && pkg.typ === "module") {
+    if (pkg && pkg.typ === "module") {
       throw createRequireEsmError(
         filename,
         moduleParentCache.get(module)?.filename,
@@ -1100,9 +1101,6 @@ Module._extensions[".json"] = function (module, filename) {
 
 // Native extension for .node
 Module._extensions[".node"] = function (module, filename) {
-  if (filename.endsWith("fsevents.node")) {
-    throw new Error("Using fsevents module is currently not supported");
-  }
   module.exports = op_napi_open(
     filename,
     globalThis,

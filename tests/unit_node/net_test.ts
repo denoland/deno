@@ -200,3 +200,9 @@ Deno.test("[node/net] multiple Sockets should get correct server data", async ()
     assertEquals(sockets[i].events, [`${i}`.repeat(3), `${i}`.repeat(3)]);
   }
 });
+
+Deno.test("[node/net] BlockList doesn't leak resources", () => {
+  const blockList = new net.BlockList();
+  blockList.addAddress("1.1.1.1");
+  assert(blockList.check("1.1.1.1"));
+});

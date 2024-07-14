@@ -8,7 +8,6 @@ pub mod display;
 pub mod draw_thread;
 pub mod file_watcher;
 pub mod fs;
-pub mod gitignore;
 pub mod logger;
 pub mod path;
 pub mod progress_bar;

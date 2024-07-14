@@ -243,6 +243,7 @@
     "ext:runtime/41_prompt.js": "../runtime/js/41_prompt.js",
     "ext:runtime/90_deno_ns.js": "../runtime/js/90_deno_ns.js",
     "ext:runtime/98_global_scope.js": "../runtime/js/98_global_scope.js",
-    "ext:deno_node/_util/std_fmt_colors.ts": "../ext/node/polyfills/_util/std_fmt_colors.ts"
+    "ext:deno_node/_util/std_fmt_colors.ts": "../ext/node/polyfills/_util/std_fmt_colors.ts",
+    "@std/": "../tests/util/std/"
   }
 }

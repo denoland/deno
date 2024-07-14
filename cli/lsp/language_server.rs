@@ -2,6 +2,8 @@
 
 use base64::Engine;
 use deno_ast::MediaType;
+use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
@@ -13,9 +15,11 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
+use deno_runtime::deno_fs::DenoConfigFsAdapter;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::jsr::JsrPackageReqReference;
+use indexmap::Equivalent;
 use indexmap::IndexSet;
 use log::error;
 use serde::Deserialize;
@@ -85,7 +89,6 @@ use super::tsc::TsServer;
 use super::urls;
 use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
-use crate::args::write_lockfile_if_has_changes;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
@@ -273,8 +276,7 @@ impl LanguageServer {
       // Update the lockfile on the file system with anything new
       // found after caching
       if let Some(lockfile) = cli_options.maybe_lockfile() {
-        let mut lockfile = lockfile.lock();
-        if let Err(err) = write_lockfile_if_has_changes(&mut lockfile) {
+        if let Err(err) = &lockfile.write_if_changed() {
           lsp_warn!("{:#}", err);
         }
       }
@@ -322,7 +324,7 @@ impl LanguageServer {
       inner.resolver.did_cache();
       inner.refresh_npm_specifiers().await;
       inner.diagnostics_server.invalidate_all();
-      inner.project_changed([], false);
+      inner.project_changed([], true);
       inner
         .ts_server
         .cleanup_semantic_cache(inner.snapshot())
@@ -570,7 +572,11 @@ impl Inner {
       } else {
         let navigation_tree: tsc::NavigationTree = self
           .ts_server
-          .get_navigation_tree(self.snapshot(), specifier.clone())
+          .get_navigation_tree(
+            self.snapshot(),
+            specifier.clone(),
+            asset_or_doc.scope().cloned(),
+          )
           .await?;
         let navigation_tree = Arc::new(navigation_tree);
         match asset_or_doc {
@@ -682,7 +688,7 @@ impl Inner {
   pub fn update_cache(&mut self) {
     let mark = self.performance.mark("lsp.update_cache");
     self.cache.update_config(&self.config);
-    self.url_map.set_cache(self.cache.root_vendor().cloned());
+    self.url_map.set_cache(&self.cache);
     self.performance.measure(mark);
   }
 
@@ -1053,8 +1059,10 @@ impl Inner {
         params.text_document.uri
       );
     }
-    let file_referrer = (params.text_document.uri.scheme() == "file")
-      .then(|| params.text_document.uri.clone());
+    let file_referrer = (self
+      .documents
+      .is_valid_file_referrer(&params.text_document.uri))
+    .then(|| params.text_document.uri.clone());
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -1065,8 +1073,8 @@ impl Inner {
       params.text_document.text.into(),
       file_referrer,
     );
-    self.project_changed([(document.specifier(), ChangeKind::Opened)], false);
     if document.is_diagnosable() {
+      self.project_changed([(document.specifier(), ChangeKind::Opened)], false);
       self.refresh_npm_specifiers().await;
       self.diagnostics_server.invalidate(&[specifier]);
       self.send_diagnostics_update();
@@ -1087,11 +1095,21 @@ impl Inner {
     ) {
       Ok(document) => {
         if document.is_diagnosable() {
+          let old_scopes_with_node_specifier =
+            self.documents.scopes_with_node_specifier().clone();
+          self.refresh_npm_specifiers().await;
+          let mut config_changed = false;
+          if !self
+            .documents
+            .scopes_with_node_specifier()
+            .equivalent(&old_scopes_with_node_specifier)
+          {
+            config_changed = true;
+          }
           self.project_changed(
             [(document.specifier(), ChangeKind::Modified)],
-            false,
+            config_changed,
           );
-          self.refresh_npm_specifiers().await;
           self.diagnostics_server.invalidate(&[specifier]);
           self.send_diagnostics_update();
           self.send_testing_update();
@@ -1134,11 +1152,9 @@ impl Inner {
     let package_reqs = self.documents.npm_reqs_by_scope();
     let resolver = self.resolver.clone();
     // spawn due to the lsp's `Send` requirement
-    let handle =
-      spawn(async move { resolver.set_npm_reqs(&package_reqs).await });
-    if let Err(err) = handle.await.unwrap() {
-      lsp_warn!("Could not set npm package requirements. {:#}", err);
-    }
+    spawn(async move { resolver.set_npm_reqs(&package_reqs).await })
+      .await
+      .ok();
   }
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
@@ -1295,8 +1311,10 @@ impl Inner {
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    let file_referrer = (params.text_document.uri.scheme() == "file")
-      .then(|| params.text_document.uri.clone());
+    let file_referrer = (self
+      .documents
+      .is_valid_file_referrer(&params.text_document.uri))
+    .then(|| params.text_document.uri.clone());
     let mut specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
@@ -1401,7 +1419,7 @@ impl Inner {
 
     let mark = self.performance.mark_with_args("lsp.hover", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
-    let file_referrer = asset_or_doc.document().and_then(|d| d.file_referrer());
+    let file_referrer = asset_or_doc.file_referrer();
     let hover = if let Some((_, dep, range)) = asset_or_doc
       .get_maybe_dependency(&params.text_document_position_params.position)
     {
@@ -1461,7 +1479,12 @@ impl Inner {
         line_index.offset_tsc(params.text_document_position_params.position)?;
       let maybe_quick_info = self
         .ts_server
-        .get_quick_info(self.snapshot(), specifier.clone(), position)
+        .get_quick_info(
+          self.snapshot(),
+          specifier.clone(),
+          position,
+          asset_or_doc.scope().cloned(),
+        )
         .await?;
       maybe_quick_info.map(|qi| qi.to_hover(line_index, self))
     };
@@ -1590,6 +1613,7 @@ impl Inner {
                   &self.config,
                   &specifier,
                 ),
+                asset_or_doc.scope().cloned(),
               )
               .await;
             for action in actions {
@@ -1684,6 +1708,7 @@ impl Inner {
         )),
         params.context.trigger_kind,
         only,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
     let mut refactor_actions = Vec::<CodeAction>::new();
@@ -1734,6 +1759,10 @@ impl Inner {
           error!("Unable to decode code action data: {:#}", err);
           LspError::invalid_params("The CodeAction's data is invalid.")
         })?;
+      let scope = self
+        .get_asset_or_document(&code_action_data.specifier)
+        .ok()
+        .and_then(|d| d.scope().cloned());
       let combined_code_actions = self
         .ts_server
         .get_combined_code_fix(
@@ -1749,6 +1778,7 @@ impl Inner {
             &self.config,
             &code_action_data.specifier,
           ),
+          scope,
         )
         .await?;
       if combined_code_actions.commands.is_some() {
@@ -1803,6 +1833,7 @@ impl Inner {
             &self.config,
             &action_data.specifier,
           )),
+          asset_or_doc.scope().cloned(),
         )
         .await?;
       code_action.edit = refactor_edit_info.to_workspace_edit(self)?;
@@ -1818,11 +1849,15 @@ impl Inner {
 
   pub fn get_ts_response_import_mapper(
     &self,
-    _referrer: &ModuleSpecifier,
+    file_referrer: &ModuleSpecifier,
   ) -> TsResponseImportMapper {
     TsResponseImportMapper::new(
       &self.documents,
-      self.config.tree.root_import_map().map(|i| i.as_ref()),
+      self
+        .config
+        .tree
+        .data_for_specifier(file_referrer)
+        .and_then(|d| d.import_map.as_ref().map(|i| i.as_ref())),
       self.resolver.as_ref(),
     )
   }
@@ -1942,6 +1977,7 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
         files_to_search,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -1982,7 +2018,11 @@ impl Inner {
         specifier.clone(),
         line_index.offset_tsc(params.text_document_position.position)?,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        lsp_warn!("Unable to find references: {err}");
+        LspError::internal_error()
+      })?;
 
     if let Some(symbols) = maybe_referenced_symbols {
       let mut results = Vec::new();
@@ -1999,11 +2039,7 @@ impl Inner {
             self.get_asset_or_document(&reference_specifier)?;
           asset_or_doc.line_index()
         };
-        results.push(
-          reference
-            .entry
-            .to_location(reference_line_index, &self.url_map),
-        );
+        results.push(reference.entry.to_location(reference_line_index, self));
       }
 
       self.performance.measure(mark);
@@ -2039,6 +2075,7 @@ impl Inner {
         self.snapshot(),
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -2077,6 +2114,7 @@ impl Inner {
         self.snapshot(),
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -2125,6 +2163,7 @@ impl Inner {
       .map(|s| s.suggest.include_completions_for_import_statements)
       .unwrap_or(true)
     {
+      let file_referrer = asset_or_doc.file_referrer().unwrap_or(&specifier);
       response = completions::get_import_completions(
         &specifier,
         &params.text_document_position.position,
@@ -2135,7 +2174,11 @@ impl Inner {
         &self.npm_search_api,
         &self.documents,
         self.resolver.as_ref(),
-        self.config.tree.root_import_map().map(|i| i.as_ref()),
+        self
+          .config
+          .tree
+          .data_for_specifier(file_referrer)
+          .and_then(|d| d.import_map.as_ref().map(|i| i.as_ref())),
       )
       .await;
     }
@@ -2152,6 +2195,7 @@ impl Inner {
         };
       let position =
         line_index.offset_tsc(params.text_document_position.position)?;
+      let scope = asset_or_doc.scope();
       let maybe_completion_info = self
         .ts_server
         .get_completions(
@@ -2172,6 +2216,7 @@ impl Inner {
             .fmt_options_for_specifier(&specifier)
             .options)
             .into(),
+          scope.cloned(),
         )
         .await;
 
@@ -2213,6 +2258,10 @@ impl Inner {
         })?;
       if let Some(data) = &data.tsc {
         let specifier = &data.specifier;
+        let scope = self
+          .get_asset_or_document(specifier)
+          .ok()
+          .and_then(|d| d.scope().cloned());
         let result = self
           .ts_server
           .get_completion_details(
@@ -2234,6 +2283,7 @@ impl Inner {
               ),
               ..data.into()
             },
+            scope,
           )
           .await;
         match result {
@@ -2303,7 +2353,11 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        lsp_warn!("{:#}", err);
+        LspError::internal_error()
+      })?;
 
     let result = if let Some(implementations) = maybe_implementations {
       let mut links = Vec::new();
@@ -2341,7 +2395,11 @@ impl Inner {
 
     let outlining_spans = self
       .ts_server
-      .get_outlining_spans(self.snapshot(), specifier)
+      .get_outlining_spans(
+        self.snapshot(),
+        specifier,
+        asset_or_doc.scope().cloned(),
+      )
       .await?;
 
     let response = if !outlining_spans.is_empty() {
@@ -2390,7 +2448,11 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.item.selection_range.start)?,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        lsp_warn!("{:#}", err);
+        LspError::internal_error()
+      })?;
 
     let maybe_root_path_owned = self
       .config
@@ -2434,6 +2496,7 @@ impl Inner {
         self.snapshot(),
         specifier,
         line_index.offset_tsc(params.item.selection_range.start)?,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -2481,6 +2544,7 @@ impl Inner {
         self.snapshot(),
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -2543,7 +2607,11 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.text_document_position.position)?,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        lsp_warn!("{:#}", err);
+        LspError::internal_error()
+      })?;
 
     if let Some(locations) = maybe_locations {
       let rename_locations = tsc::RenameLocations { locations };
@@ -2588,6 +2656,7 @@ impl Inner {
           self.snapshot(),
           specifier.clone(),
           line_index.offset_tsc(position)?,
+          asset_or_doc.scope().cloned(),
         )
         .await?;
 
@@ -2631,6 +2700,7 @@ impl Inner {
         self.snapshot(),
         specifier,
         0..line_index.text_content_length_utf16().into(),
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -2686,6 +2756,7 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.range.start)?
           ..line_index.offset_tsc(params.range.end)?,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -2738,6 +2809,7 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
         options,
+        asset_or_doc.scope().cloned(),
       )
       .await?;
 
@@ -2793,7 +2865,11 @@ impl Inner {
               ..Default::default()
             },
           )
-          .await?,
+          .await
+          .map_err(|err| {
+            lsp_warn!("{:#}", err);
+            LspError::internal_error()
+          })?,
       );
     }
     file_text_changes_to_workspace_edit(&changes, self)
@@ -2816,7 +2892,11 @@ impl Inner {
           file: None,
         },
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        error!("{:#}", err);
+        LspError::invalid_request()
+      })?;
 
     let maybe_symbol_information = if navigate_to_items.is_empty() {
       None
@@ -2843,7 +2923,15 @@ impl Inner {
     self.ts_server.project_changed(
       self.snapshot(),
       modified_scripts,
-      config_changed,
+      config_changed.then(|| {
+        self
+          .config
+          .tree
+          .data_by_scope()
+          .iter()
+          .map(|(s, d)| (s.clone(), d.ts_config.clone()))
+          .collect()
+      }),
     );
   }
 
@@ -3442,7 +3530,7 @@ impl Inner {
     let mark = self
       .performance
       .mark_with_args("lsp.cache", (&specifiers, &referrer));
-    let config_data = self.config.tree.root_data();
+    let config_data = self.config.tree.data_for_specifier(&referrer);
     let mut roots = if !specifiers.is_empty() {
       specifiers
     } else {
@@ -3451,18 +3539,42 @@ impl Inner {
 
     // always include the npm packages since resolution of one npm package
     // might affect the resolution of other npm packages
-    roots.extend(
-      self
-        .documents
-        .npm_reqs_by_scope()
-        .values()
-        .flatten()
-        .collect::<BTreeSet<_>>()
-        .iter()
-        .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
-    );
+    if let Some(npm_reqs) = self
+      .documents
+      .npm_reqs_by_scope()
+      .get(&config_data.map(|d| d.scope.clone()))
+    {
+      roots.extend(
+        npm_reqs
+          .iter()
+          .map(|req| ModuleSpecifier::parse(&format!("npm:{}", req)).unwrap()),
+      );
+    }
 
     let workspace_settings = self.config.workspace_settings();
+    let initial_cwd = config_data
+      .and_then(|d| d.scope.to_file_path().ok())
+      .unwrap_or_else(|| self.initial_cwd.clone());
+    // todo: we need a way to convert config data to a Workspace
+    let workspace = Arc::new(Workspace::discover(
+      deno_config::workspace::WorkspaceDiscoverStart::Paths(&[
+        initial_cwd.clone()
+      ]),
+      &WorkspaceDiscoverOptions {
+        fs: &DenoConfigFsAdapter::new(&deno_runtime::deno_fs::RealFs),
+        pkg_json_cache: None,
+        config_parse_options: deno_config::ConfigParseOptions {
+          include_task_comments: false,
+        },
+        additional_config_file_names: &[],
+        discover_pkg_json: true,
+        maybe_vendor_override: if force_global_cache {
+          Some(deno_config::workspace::VendorEnablement::Disable)
+        } else {
+          None
+        },
+      },
+    )?);
     let cli_options = CliOptions::new(
       Flags {
         cache_path: Some(self.cache.deno_dir().root.clone()),
@@ -3486,13 +3598,12 @@ impl Inner {
         type_check_mode: crate::args::TypeCheckMode::Local,
         ..Default::default()
       },
-      self.initial_cwd.clone(),
-      config_data.and_then(|d| d.config_file.as_deref().cloned()),
+      initial_cwd,
       config_data.and_then(|d| d.lockfile.clone()),
-      config_data.and_then(|d| d.package_json.as_deref().cloned()),
       config_data
         .and_then(|d| d.npmrc.clone())
         .unwrap_or_else(create_default_npmrc),
+      workspace,
       force_global_cache,
     )?;
 
@@ -3575,6 +3686,7 @@ impl Inner {
           &self.config,
           &specifier,
         ),
+        asset_or_doc.scope().cloned(),
       )
       .await?;
     let maybe_inlay_hints = maybe_inlay_hints.map(|hints| {
