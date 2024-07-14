@@ -647,8 +647,7 @@ const ci = {
         {
           name: "test_format.js",
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
-          run:
-            "./tools/format.js --check",
+          run: "./tools/format.js --check",
         },
         {
           name: "Lint PR title",
@@ -662,14 +661,12 @@ const ci = {
         {
           name: "lint.js",
           if: "matrix.job == 'lint'",
-          run:
-            "./tools/lint.js",
+          run: "./tools/lint.js",
         },
         {
           name: "jsdoc_checker.js",
           if: "matrix.job == 'lint'",
-          run:
-            "./tools/jsdoc_checker.js",
+          run: "./tools/jsdoc_checker.js",
         },
         {
           name: "node_compat/setup.ts --check",
