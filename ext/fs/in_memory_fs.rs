@@ -24,6 +24,7 @@ use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
 use crate::FileSystem;
 use crate::OpenOptions;
+use crate::RealFs;
 
 #[derive(Debug)]
 enum PathEntry {
@@ -280,8 +281,8 @@ impl FileSystem for InMemoryFs {
     self.lstat_sync(&path)
   }
 
-  fn realpath_sync(&self, _path: &Path) -> FsResult<PathBuf> {
-    Err(FsError::NotSupported)
+  fn realpath_sync(&self, path: &Path) -> FsResult<PathBuf> {
+    RealFs.realpath_sync(path)
   }
   async fn realpath_async(&self, path: PathBuf) -> FsResult<PathBuf> {
     self.realpath_sync(&path)
