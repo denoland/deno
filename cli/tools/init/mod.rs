@@ -39,7 +39,7 @@ pub fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
     create_file(
       &dir,
       "mod_test.ts",
-      r#"import { assertEquals } from "jsr:@std/assert";
+      r#"import { assertEquals } from "@std/assert";
 import { add } from "./mod.ts";
 
 Deno.test(function addTest() {
@@ -53,10 +53,13 @@ Deno.test(function addTest() {
       "deno.json",
       &json!({
         "name": project_name,
-        "version": "1.0.0",
+        "version": "0.1.0",
         "exports": "./mod.ts",
         "tasks": {
           "dev": "deno test --watch mod.ts"
+        },
+        "imports": {
+          "@std/assert": "jsr:@std/assert@1"
         }
       }),
     )?;
@@ -77,7 +80,7 @@ if (import.meta.main) {
     create_file(
       &dir,
       "main_test.ts",
-      r#"import { assertEquals } from "jsr:@std/assert";
+      r#"import { assertEquals } from "@std/assert";
 import { add } from "./main.ts";
 
 Deno.test(function addTest() {
@@ -92,6 +95,9 @@ Deno.test(function addTest() {
       &json!({
         "tasks": {
           "dev": "deno run --watch main.ts"
+        },
+        "imports": {
+          "@std/assert": "jsr:@std/assert@1"
         }
       }),
     )?;
