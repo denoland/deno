@@ -46,13 +46,13 @@ repository = "https://github.com/denoland/deno"
 deno_ast = { version = "=0.40.0", features = ["transpiling"] }
 deno_core = { version = "0.293.0" }
 
-deno_bench_util = { version = "0.153.0", path = "./bench_util" }
+deno_bench_util = { version = "0.155.0", path = "./bench_util" }
 deno_lockfile = "0.20.0"
 deno_media_type = { version = "0.1.4", features = ["module_specifier"] }
-deno_permissions = { version = "0.19.0", path = "./runtime/permissions" }
-deno_runtime = { version = "0.167.0", path = "./runtime" }
+deno_permissions = { version = "0.21.0", path = "./runtime/permissions" }
+deno_runtime = { version = "0.169.0", path = "./runtime" }
 deno_terminal = "0.1.1"
-napi_sym = { version = "0.89.0", path = "./cli/napi/sym" }
+napi_sym = { version = "0.91.0", path = "./cli/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
 denokv_proto = "0.8.1"
@@ -61,28 +61,28 @@ denokv_remote = "0.8.1"
 denokv_sqlite = { default-features = false, version = "0.8.1" }
 
 # exts
-deno_broadcast_channel = { version = "0.153.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.91.0", path = "./ext/cache" }
-deno_canvas = { version = "0.28.0", path = "./ext/canvas" }
-deno_console = { version = "0.159.0", path = "./ext/console" }
-deno_cron = { version = "0.39.0", path = "./ext/cron" }
-deno_crypto = { version = "0.173.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.183.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.146.0", path = "./ext/ffi" }
-deno_fs = { version = "0.69.0", path = "./ext/fs" }
-deno_http = { version = "0.157.0", path = "./ext/http" }
-deno_io = { version = "0.69.0", path = "./ext/io" }
-deno_kv = { version = "0.67.0", path = "./ext/kv" }
-deno_napi = { version = "0.89.0", path = "./ext/napi" }
-deno_net = { version = "0.151.0", path = "./ext/net" }
-deno_node = { version = "0.96.0", path = "./ext/node" }
-deno_tls = { version = "0.146.0", path = "./ext/tls" }
-deno_url = { version = "0.159.0", path = "./ext/url" }
-deno_web = { version = "0.190.0", path = "./ext/web" }
-deno_webgpu = { version = "0.126.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.159.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.164.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.154.0", path = "./ext/webstorage" }
+deno_broadcast_channel = { version = "0.155.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.93.0", path = "./ext/cache" }
+deno_canvas = { version = "0.30.0", path = "./ext/canvas" }
+deno_console = { version = "0.161.0", path = "./ext/console" }
+deno_cron = { version = "0.41.0", path = "./ext/cron" }
+deno_crypto = { version = "0.175.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.185.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.148.0", path = "./ext/ffi" }
+deno_fs = { version = "0.71.0", path = "./ext/fs" }
+deno_http = { version = "0.159.0", path = "./ext/http" }
+deno_io = { version = "0.71.0", path = "./ext/io" }
+deno_kv = { version = "0.69.0", path = "./ext/kv" }
+deno_napi = { version = "0.91.0", path = "./ext/napi" }
+deno_net = { version = "0.153.0", path = "./ext/net" }
+deno_node = { version = "0.98.0", path = "./ext/node" }
+deno_tls = { version = "0.148.0", path = "./ext/tls" }
+deno_url = { version = "0.161.0", path = "./ext/url" }
+deno_web = { version = "0.192.0", path = "./ext/web" }
+deno_webgpu = { version = "0.128.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.161.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.166.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.156.0", path = "./ext/webstorage" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
@@ -101,7 +101,7 @@ console_static_text = "=0.8.1"
 data-encoding = "2.3.3"
 data-url = "=0.3.0"
 deno_cache_dir = "=0.10.0"
-deno_config = { version = "=0.21.0", default-features = false }
+deno_config = { version = "=0.22.2", default-features = false }
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
