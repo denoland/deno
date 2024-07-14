@@ -648,7 +648,7 @@ const ci = {
           name: "test_format.js",
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
-            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
+            "./tools/format.js --check",
         },
         {
           name: "Lint PR title",
@@ -663,13 +663,13 @@ const ci = {
           name: "lint.js",
           if: "matrix.job == 'lint'",
           run:
-            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
+            "./tools/lint.js",
         },
         {
           name: "jsdoc_checker.js",
           if: "matrix.job == 'lint'",
           run:
-            "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
+            "./tools/jsdoc_checker.js",
         },
         {
           name: "node_compat/setup.ts --check",
