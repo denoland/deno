@@ -282,8 +282,12 @@ fn resolve_baseline_custom_commands(
   custom_commands
     .insert("npm".to_string(), Rc::new(crate::task_runner::NpmCommand));
 
-  custom_commands
-    .insert("node".to_string(), Rc::new(crate::task_runner::NodeCommand));
+  custom_commands.insert(
+    "node".to_string(),
+    Rc::new(crate::task_runner::NodeCommand {
+      force_node_modules_dir: true,
+    }),
+  );
 
   custom_commands.insert(
     "node-gyp".to_string(),
@@ -687,7 +691,16 @@ async fn sync_resolution_with_fs(
       &deno_local_registry_dir,
     )?;
     let init_cwd = lifecycle_scripts.initial_cwd.as_deref().unwrap();
+    let process_state = crate::npm::managed::npm_process_state(
+      snapshot.as_valid_serialized(),
+      Some(root_node_modules_dir_path),
+    );
 
+    let mut env_vars = crate::task_runner::real_env_vars();
+    env_vars.insert(
+      crate::args::NPM_RESOLUTION_STATE_ENV_VAR_NAME.to_string(),
+      process_state,
+    );
     for (package, package_path, scripts_run_path) in packages_with_scripts {
       // add custom commands for binaries from the package's dependencies. this will take precedence over the
       // baseline commands, so if the package relies on a bin that conflicts with one higher in the dependency tree, the
@@ -710,7 +723,7 @@ async fn sync_resolution_with_fs(
               task_name: script_name,
               script,
               cwd: &package_path,
-              env_vars: crate::task_runner::real_env_vars(),
+              env_vars: env_vars.clone(),
               custom_commands: custom_commands.clone(),
               init_cwd,
               argv: &[],

@@ -722,15 +722,15 @@ pub enum NpmProcessStateKind {
   Byonm,
 }
 
-const RESOLUTION_STATE_ENV_VAR_NAME: &str =
+pub(crate) const NPM_RESOLUTION_STATE_ENV_VAR_NAME: &str =
   "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
 
 static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
-  let state = std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
+  let state = std::env::var(NPM_RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
   let state: NpmProcessState = serde_json::from_str(&state).ok()?;
   // remove the environment variable so that sub processes
   // that are spawned do not also use this.
-  std::env::remove_var(RESOLUTION_STATE_ENV_VAR_NAME);
+  std::env::remove_var(NPM_RESOLUTION_STATE_ENV_VAR_NAME);
   Some(state)
 });
 
