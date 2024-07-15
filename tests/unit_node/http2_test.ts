@@ -203,3 +203,43 @@ Deno.test("[node/http2 client] write image buffer on request stream works", asyn
   await endPromise.promise;
   assertEquals(receivedData!, buffer);
 });
+
+Deno.test("[node/http2 client] write 512kb buffer on request stream works", async () => {
+  const url = "https://localhost:5545";
+  const client = http2.connect(url);
+  client.on("error", (err) => console.error(err));
+
+  const filePath = join(
+    import.meta.dirname!,
+    "testdata",
+    "lorem_ipsum_512kb.txt",
+  );
+  const buffer = await readFile(filePath);
+  const req = client.request({ ":method": "POST", ":path": "/echo_server" });
+  req.write(buffer, (err) => {
+    if (err) throw err;
+  });
+
+  let receivedData: Buffer;
+  req.on("data", (chunk) => {
+    if (!receivedData) {
+      receivedData = chunk;
+    } else {
+      receivedData = Buffer.concat([receivedData, chunk]);
+    }
+  });
+  req.end();
+
+  const endPromise = Promise.withResolvers<void>();
+  setTimeout(() => {
+    try {
+      client.close();
+    } catch (_) {
+      // pass
+    }
+    endPromise.resolve();
+  }, 2000);
+
+  await endPromise.promise;
+  assertEquals(receivedData!, buffer);
+});
