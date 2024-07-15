@@ -1485,7 +1485,7 @@ function inspectError(value, ctx) {
       finalMessage += `[${stack || ErrorPrototypeToString(value)}]`;
     }
   }
-  console.log("print 3: " + causes);
+  
   finalMessage += ArrayPrototypeJoin(
     ArrayPrototypeMap(
       causes,
