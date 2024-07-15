@@ -1485,12 +1485,13 @@ function inspectError(value, ctx) {
       finalMessage += `[${stack || ErrorPrototypeToString(value)}]`;
     }
   }
+  console.log("print 3: " + causes);
   finalMessage += ArrayPrototypeJoin(
     ArrayPrototypeMap(
       causes,
       (cause) =>
         "\nCaused by " + (MapPrototypeGet(refMap, cause) ?? "") +
-        (cause?.stack ?? JSONStringify(cause, null, 2)),
+        (cause?.stack ?? JSONStringify(cause, null, 2).replace(/"/g, '')),
     ),
     "",
   );
