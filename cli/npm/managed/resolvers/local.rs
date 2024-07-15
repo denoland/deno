@@ -672,7 +672,7 @@ async fn sync_resolution_with_fs(
     // but this is good enough for a first pass
     for workspace in pkg_json_deps_provider.workspace_pkgs() {
       symlink_package_dir(
-        &workspace.pkg_dir,
+        &workspace.target_dir,
         &root_node_modules_dir_path.join(&workspace.alias),
       )?;
     }

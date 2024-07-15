@@ -475,24 +475,30 @@ impl ManagedCliNpmResolver {
     if !self.top_level_install_flag.raise() {
       return Ok(false); // already did this
     }
-    let reqs = self.package_json_deps_provider.remote_pkg_reqs();
-    if reqs.is_empty() {
+    let pkg_json_remote_pkgs = self.package_json_deps_provider.remote_pkgs();
+    if pkg_json_remote_pkgs.is_empty() {
       return Ok(false);
     }
 
     // check if something needs resolving before bothering to load all
     // the package information (which is slow)
-    if reqs
-      .iter()
-      .all(|req| self.resolution.resolve_pkg_id_from_pkg_req(req).is_ok())
-    {
+    if pkg_json_remote_pkgs.iter().all(|pkg| {
+      self
+        .resolution
+        .resolve_pkg_id_from_pkg_req(&pkg.req)
+        .is_ok()
+    }) {
       log::debug!(
         "All package.json deps resolvable. Skipping top level install."
       );
       return Ok(false); // everything is already resolvable
     }
 
-    self.add_package_reqs(reqs).await.map(|_| true)
+    let pkg_reqs = pkg_json_remote_pkgs
+      .iter()
+      .map(|pkg| pkg.req.clone())
+      .collect::<Vec<_>>();
+    self.add_package_reqs(&pkg_reqs).await.map(|_| true)
   }
 
   pub async fn cache_package_info(
