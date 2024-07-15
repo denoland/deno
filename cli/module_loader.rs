@@ -828,11 +828,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     }
     std::future::ready(()).boxed_local()
   }
-}
 
-impl<TGraphContainer: ModuleGraphContainer> SourceMapGetter
-  for CliModuleLoader<TGraphContainer>
-{
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
     let specifier = resolve_url(file_name).ok()?;
     match specifier.scheme() {
