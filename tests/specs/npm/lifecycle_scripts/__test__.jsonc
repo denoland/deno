@@ -55,6 +55,23 @@
         }
       ]
     },
+    "only_warns_first": {
+      "tempDir": true,
+      "steps": [
+        {
+          // without running scripts (should warn)
+          "args": "run all_lifecycles.js",
+          "output": "only_warns_first1.out",
+          "exitCode": 1
+        },
+        {
+          // without running scripts (does not warn)
+          "args": "run all_lifecycles.js",
+          "output": "only_warns_first2.out",
+          "exitCode": 1
+        }
+      ]
+    },
     "future_install_lifecycle_scripts": {
       "tempDir": true,
       "envs": {
@@ -85,6 +102,34 @@
           // we run the install script, we should use the correct binary (relative to the package)
           "args": "cache --allow-scripts conflicting_bin.js",
           "output": "conflicting_bin.out"
+        }
+      ]
+    },
+    "fsevents_default_install_script": {
+      "tempDir": true,
+      "steps": [
+        {
+          "if": "mac",
+          "args": "cache fsevents.js",
+          "output": "fsevents.out"
+        },
+        {
+          "if": "mac",
+          "args": "cache --allow-scripts fsevents.js",
+          "output": ""
+        }
+      ]
+    },
+    "lifecycle_scripts_no_deno_json": {
+      "tempDir": true,
+      "steps": [
+        {
+          "args": ["eval", "Deno.removeSync('deno.json')"],
+          "output": ""
+        },
+        {
+          "args": "cache --allow-scripts --node-modules-dir=true no_deno_json.js",
+          "output": "no_deno_json.out"
         }
       ]
     }

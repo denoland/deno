@@ -6,6 +6,110 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.45.2 / 2024.07.12
+
+- fix(cli/init): broken link in deno init sample template (#24545)
+- fix(config): regression - should not discover npm workspace for nested
+  deno.json not in workspace (#24559)
+- fix(ext/node): handle prefix mapping for IPv4-mapped IPv6 addresses (#24546)
+- fix(ext/webgpu): GPUDevice.createRenderPipelineAsync should return a Promise
+  (#24349)
+- fix(node): revert invalid package target change (#24539)
+- fix(publish): show dirty files on dirty check failure (#24541)
+- fix: include already seen deps in lockfile dep tracking (#24556)
+- fix: unblock fsevents native module (#24542)
+- perf(ext/crypto): make randomUUID() 5x faster (#24510)
+
+### 1.45.1 / 2024.07.11
+
+- fix(node): Ignore broken default install scripts (#24534)
+- fix(npm): only warn about lifecycle scripts not being run when setting up
+  directory (#24530)
+- fix(workspace): allow using --import-map flag with workspace (#24527)
+
+### 1.45.0 / 2024.07.10
+
+- BREAKING(unstable/ffi): remove callback reentrant flag (#24367)
+- feat(cli): Add `--frozen` flag to error out if lockfile is out of date
+  (#24355)
+- feat(cli): `deno init --lib` (#22499)
+- feat(compile): support `--env` (#24166)
+- feat(ext/crypto): make `deriveBits` `length` parameter optional and nullable
+  (#24426)
+- feat(ext/web): add `Blob.prototype.bytes()` (#24148)
+- feat(jsr): support publishing jsr packages in npm workspaces (#24507)
+- feat(jupyter): support `confirm` and `prompt` in notebooks (#23592)
+- feat(lsp): ts language service scopes (#24345)
+- feat(node): Support executing npm package lifecycle scripts
+  (preinstall/install/postinstall) (#24487)
+- feat(workspace): support object config (#24483)
+- feat: Deprecate `--lock-write` flag (#24436)
+- feat: Upgrade to TypeScript 5.5.2 (#24326)
+- feat: add `__tests__` to test file detection defaults (#24443)
+- feat: deprecate `deno vendor` (#22183)
+- feat: npm workspace and better Deno workspace support (#24334)
+- feat: support wildcards in npm workspaces (#24471)
+- feat: upgrade deno_core (#24364)
+- feat: upgrade deno_core to 0.293.0 (#24482)
+- fix(check): CJS types importing dual ESM/CJS package should prefer CJS types
+  (#24492)
+- fix(compile): atomically write compile output (#24378)
+- fix(compile): prevent setting unstable feature twice (#24381)
+- fix(ext/node): Add `fs.lutimes` / `fs.lutimesSync` (#23172)
+- fix(ext/node): add `Module.parent` (#24333)
+- fix(ext/node): add ServerResponse#appendHeader (#24216)
+- fix(ext/node): add Symbol.toStringTag to KeyObject instances (#24377)
+- fix(ext/node): discover .npmrc in user's homedir (#24021)
+- fix(ext/node): don't panic on invalid utf-8 in pem (#24303)
+- fix(ext/node): don't wait for end() call to send http client request (#24390)
+- fix(ext/node): http chunked writes hangs (#24428)
+- fix(ext/node): ignore stream error during enqueue (#24243)
+- fix(ext/node): make next tick queue resilient to `Array.prototype` tampering
+  (#24361)
+- fix(ext/node): rewrite `crypto.Hash` (#24302)
+- fix(ext/node): rewrite digest handling (#24392)
+- fix(ext/node): use cppgc for node:zlib (#24267)
+- fix(ext/webgpu): fix `GPUUncapturedErrorEvent` parent type (#24369)
+- fix(ext/websocket): drop connection when close frame not ack (#24301)
+- fix(lsp): correct scope attribution for injected @types/node (#24404)
+- fix(lsp): do sloppy resolution for node-to-node imports in byonm (#24481)
+- fix(lsp): don't use global cache paths for scope allocation (#24353)
+- fix(lsp): inherit workspace-root-only fields in members (#24440)
+- fix(lsp): respect lockfile redirects entries for resolution (#24365)
+- fix(lsp): use CliLockfile (#24387)
+- fix(net): handle panic on Windows for Unix socket usage in Deno.serve()
+  (#24423)
+- fix(net): set correct max size for Datagram (#21611)
+- fix(node): Implement `fs.lchown` (and `process.getegid`) (#24418)
+- fix(node): add missing readline/promises module (#24336)
+- fix(node/assert): throws not checking error instance (#24466)
+- fix(node/http): don't error if request destroyed before send (#24497)
+- fix(node/http): don't send destroyed requests (#24498)
+- fix(node/http): don't throw on .address() before .listen() (#24432)
+- fix(node/http): support all `.writeHead()` signatures (#24469)
+- fix(node/perf_hooks): stub eventLoopUtilization (#24501)
+- fix(node/v8): stub serializer methods (#24502)
+- fix(permissions): handle ipv6 addresses correctly (#24397)
+- fix(publish): unfurling should always be done with the package json (#24435)
+- fix(task): do not propagate env changes outside subshells (#24279)
+- fix(windows): check USERPROFILE env var for finding home directory (#24384)
+- fix(workspace): better cli file argument handling (#24447)
+- fix: Add sys permission kinds for node compat (#24242)
+- fix: add warning for invalid unstable feature use in deno.json/jsonc (#24120)
+- fix: do not download compilerOptions -> types when not type checking (#24473)
+- fix: do not return undefined for missing global properties (#24474)
+- fix: make .setup-cache.bin in node_modules more reproducible (#24480)
+- fix: memory leak when transpiling (#24490)
+- fix: node-api get_value_string_utf8 should use utf8_length (#24193)
+- fix: panic when piping "deno help" or "deno --version" (#22917)
+- fix: test in presence of `.npmrc` (#24486)
+- fix: upgrade deno_core to 0.291.0 (#24297)
+- perf(ext/node): improve `Buffer.from(buffer)` (#24352)
+- perf(ext/websocket): avoid global interceptor overhead (#24284)
+- perf(ws): optimize fastwebsockets in release profile (#24277)
+- perf: optimize Buffer.from("base64") for forgiving-base64 conforming input
+  (#24346)
+
 ### 1.44.4 / 2024.06.19
 
 - Revert "chore: upgrade to reqwest 0.12.4 and rustls 0.22 (#24056)" (#24262)

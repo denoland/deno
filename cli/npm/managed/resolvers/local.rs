@@ -282,8 +282,12 @@ fn resolve_baseline_custom_commands(
   custom_commands
     .insert("npm".to_string(), Rc::new(crate::task_runner::NpmCommand));
 
-  custom_commands
-    .insert("node".to_string(), Rc::new(crate::task_runner::NodeCommand));
+  custom_commands.insert(
+    "node".to_string(),
+    Rc::new(crate::task_runner::NodeCommand {
+      force_node_modules_dir: true,
+    }),
+  );
 
   custom_commands.insert(
     "node-gyp".to_string(),
@@ -384,9 +388,24 @@ fn can_run_scripts(
   }
 }
 
-fn has_lifecycle_scripts(package: &NpmResolutionPackage) -> bool {
+// npm defaults to running `node-gyp rebuild` if there is a `binding.gyp` file
+// but it always fails if the package excludes the `binding.gyp` file when they publish.
+// (for example, `fsevents` hits this)
+fn is_broken_default_install_script(script: &str, package_path: &Path) -> bool {
+  script == "node-gyp rebuild" && !package_path.join("binding.gyp").exists()
+}
+
+fn has_lifecycle_scripts(
+  package: &NpmResolutionPackage,
+  package_path: &Path,
+) -> bool {
+  if let Some(install) = package.scripts.get("install") {
+    // default script
+    if !is_broken_default_install_script(install, package_path) {
+      return true;
+    }
+  }
   package.scripts.contains_key("preinstall")
-    || package.scripts.contains_key("install")
     || package.scripts.contains_key("postinstall")
 }
 
@@ -504,21 +523,22 @@ async fn sync_resolution_with_fs(
       });
     }
 
-    if has_lifecycle_scripts(package) {
+    let sub_node_modules = folder_path.join("node_modules");
+    let package_path =
+      join_package_name(&sub_node_modules, &package.id.nv.name);
+    if has_lifecycle_scripts(package, &package_path) {
       let scripts_run = folder_path.join(".scripts-run");
+      let has_warned = folder_path.join(".scripts-warned");
       if can_run_scripts(&lifecycle_scripts.allowed, &package.id.nv) {
         if !scripts_run.exists() {
-          let sub_node_modules = folder_path.join("node_modules");
-          let package_path =
-            join_package_name(&sub_node_modules, &package.id.nv.name);
           packages_with_scripts.push((
             package.clone(),
             package_path,
             scripts_run,
           ));
         }
-      } else if !scripts_run.exists() {
-        packages_with_scripts_not_run.push(package.id.nv.clone());
+      } else if !scripts_run.exists() && !has_warned.exists() {
+        packages_with_scripts_not_run.push((has_warned, package.id.nv.clone()));
       }
     }
   }
@@ -656,7 +676,7 @@ async fn sync_resolution_with_fs(
     // but this is good enough for a first pass
     for workspace in pkg_json_deps_provider.workspace_pkgs() {
       symlink_package_dir(
-        &workspace.pkg_dir,
+        &workspace.target_dir,
         &root_node_modules_dir_path.join(&workspace.alias),
       )?;
     }
@@ -671,7 +691,16 @@ async fn sync_resolution_with_fs(
       &deno_local_registry_dir,
     )?;
     let init_cwd = lifecycle_scripts.initial_cwd.as_deref().unwrap();
+    let process_state = crate::npm::managed::npm_process_state(
+      snapshot.as_valid_serialized(),
+      Some(root_node_modules_dir_path),
+    );
 
+    let mut env_vars = crate::task_runner::real_env_vars();
+    env_vars.insert(
+      crate::args::NPM_RESOLUTION_STATE_ENV_VAR_NAME.to_string(),
+      process_state,
+    );
     for (package, package_path, scripts_run_path) in packages_with_scripts {
       // add custom commands for binaries from the package's dependencies. this will take precedence over the
       // baseline commands, so if the package relies on a bin that conflicts with one higher in the dependency tree, the
@@ -684,12 +713,17 @@ async fn sync_resolution_with_fs(
       )?;
       for script_name in ["preinstall", "install", "postinstall"] {
         if let Some(script) = package.scripts.get(script_name) {
+          if script_name == "install"
+            && is_broken_default_install_script(script, &package_path)
+          {
+            continue;
+          }
           let exit_code =
             crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
               task_name: script_name,
               script,
               cwd: &package_path,
-              env_vars: crate::task_runner::real_env_vars(),
+              env_vars: env_vars.clone(),
               custom_commands: custom_commands.clone(),
               init_cwd,
               argv: &[],
@@ -721,12 +755,15 @@ async fn sync_resolution_with_fs(
     };
     let packages = packages_with_scripts_not_run
       .iter()
-      .map(|p| format!("npm:{p}"))
+      .map(|(_, p)| format!("npm:{p}"))
       .collect::<Vec<_>>()
       .join(", ");
     log::warn!("{}: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
     This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache`{maybe_install}
     (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>`{maybe_install_example}):\n      {packages}", crate::colors::yellow("warning"));
+    for (scripts_warned_path, _) in packages_with_scripts_not_run {
+      let _ignore_err = fs::write(scripts_warned_path, "");
+    }
   }
 
   setup_cache.save();

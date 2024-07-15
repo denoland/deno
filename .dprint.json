@@ -8,6 +8,9 @@
   "json": {
     "deno": true
   },
+  "yaml": {
+    "quotes": "preferSingle"
+  },
   "exec": {
     "commands": [{
       "command": "rustfmt --config imports_granularity=item",
@@ -64,6 +67,7 @@
     "https://plugins.dprint.dev/json-0.19.3.wasm",
     "https://plugins.dprint.dev/markdown-0.17.1.wasm",
     "https://plugins.dprint.dev/toml-0.6.2.wasm",
-    "https://plugins.dprint.dev/exec-0.4.4.json@c207bf9b9a4ee1f0ecb75c594f774924baf62e8e53a2ce9d873816a408cecbf7"
+    "https://plugins.dprint.dev/exec-0.4.4.json@c207bf9b9a4ee1f0ecb75c594f774924baf62e8e53a2ce9d873816a408cecbf7",
+    "https://plugins.dprint.dev/g-plane/pretty_yaml-v0.3.0.wasm"
   ]
 }
