@@ -55,7 +55,6 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
-use deno_core::SourceMapGetter;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
 use deno_graph::GraphKind;
@@ -293,8 +292,7 @@ impl CliModuleLoaderFactory {
       shared: self.shared.clone(),
     })));
     ModuleLoaderAndSourceMapGetter {
-      module_loader: loader.clone(),
-      source_map_getter: Some(loader),
+      module_loader: loader,
     }
   }
 }
@@ -838,10 +836,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       _ => return None,
     }
     let source = self.0.load_prepared_module_sync(&specifier, None).ok()?;
-    source_map_from_code(source.code.as_bytes())
+    let r = source_map_from_code(source.code.as_bytes());
+    eprintln!("get_source_map r {}", r.is_some());
+    r
   }
 
-  fn get_source_line(
+  fn get_source_mapped_source_line(
     &self,
     file_name: &str,
     line_number: usize,

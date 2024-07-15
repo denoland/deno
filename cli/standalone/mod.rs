@@ -369,7 +369,6 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
         root_permissions,
         dynamic_permissions,
       }),
-      source_map_getter: None,
     }
   }
 
@@ -384,7 +383,6 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
         root_permissions,
         dynamic_permissions,
       }),
-      source_map_getter: None,
     }
   }
 }
