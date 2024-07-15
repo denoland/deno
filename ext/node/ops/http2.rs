@@ -467,7 +467,7 @@ fn poll_data_or_trailers(
     let data = data?;
     body.flow_control().release_capacity(data.len())?;
     return Poll::Ready(Ok(DataOrTrailers::Data(data)));
-    // If data is None, we need to poll one more time to check for trailers
+    // If `poll_data` returns `Ready(None)`, poll one more time to check for trailers
   }
   // Return pending here as poll_data will keep the waker
   Poll::Pending
