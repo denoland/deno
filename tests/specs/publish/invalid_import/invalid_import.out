@@ -15,7 +15,7 @@ error[invalid-external-import]: invalid import to a non-JSR 'http' specifier
 
   info: the import was resolved to 'http://localhost:4545/welcome.ts'
   info: this specifier is not allowed to be imported on jsr
-  info: jsr only supports importing `jsr:`, `npm:`, and `data:` specifiers
+  info: jsr only supports importing `jsr:`, `npm:`, `data:`, `bun:`, and `node:` specifiers
   docs: https://jsr.io/go/invalid-external-import
 
 error[invalid-external-import]: invalid import to a non-JSR 'http' specifier
@@ -28,7 +28,7 @@ error[invalid-external-import]: invalid import to a non-JSR 'http' specifier
 
   info: the import was resolved to 'http://localhost:4545/echo.ts'
   info: this specifier is not allowed to be imported on jsr
-  info: jsr only supports importing `jsr:`, `npm:`, and `data:` specifiers
+  info: jsr only supports importing `jsr:`, `npm:`, `data:`, `bun:`, and `node:` specifiers
   docs: https://jsr.io/go/invalid-external-import
 
 error: Found 2 problems

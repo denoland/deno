@@ -12,7 +12,7 @@ error[invalid-external-import]: invalid import to a non-JSR 'https' specifier
 
   info: the import was resolved to 'https://deno.land/std/assert/assert.ts'
   info: this specifier is not allowed to be imported on jsr
-  info: jsr only supports importing `jsr:`, `npm:`, and `data:` specifiers
+  info: jsr only supports importing `jsr:`, `npm:`, `data:`, `bun:`, and `node:` specifiers
   docs: https://jsr.io/go/invalid-external-import
 
 error: Found 1 problem
