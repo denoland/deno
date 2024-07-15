@@ -264,7 +264,7 @@ impl FileSystem for InMemoryFs {
   }
 
   fn realpath_sync(&self, path: &Path) -> FsResult<PathBuf> {
-    RealFs.realpath_sync(path)
+    Ok(path.to_path_buf())
   }
   async fn realpath_async(&self, path: PathBuf) -> FsResult<PathBuf> {
     self.realpath_sync(&path)
