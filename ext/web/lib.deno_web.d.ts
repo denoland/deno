@@ -9,6 +9,7 @@
 declare interface DOMException extends Error {
   readonly name: string;
   readonly message: string;
+  /** @deprecated */
   readonly code: number;
   readonly INDEX_SIZE_ERR: 1;
   readonly DOMSTRING_SIZE_ERR: 2;
@@ -84,6 +85,7 @@ declare interface Event {
    * event goes through its target's ancestors in reverse tree order, and
    * false otherwise. */
   readonly bubbles: boolean;
+  /** @deprecated */
   cancelBubble: boolean;
   /** Returns true or false depending on how event was initialized. Its return
    * value does not always carry meaning, but true can indicate that part of the
@@ -106,6 +108,10 @@ declare interface Event {
   /** Returns true if event was dispatched by the user agent, and false
    * otherwise. */
   readonly isTrusted: boolean;
+  /** @deprecated */
+  returnValue: boolean;
+  /** @deprecated */
+  readonly srcElement: EventTarget | null;
   /** Returns the object to which event is dispatched (its target). */
   readonly target: EventTarget | null;
   /** Returns the event's timestamp as the number of milliseconds measured
@@ -118,6 +124,8 @@ declare interface Event {
    * the shadow root's mode is "closed" that are not reachable from event's
    * currentTarget. */
   composedPath(): EventTarget[];
+  /** @deprecated */
+  initEvent(type: string, bubbles?: boolean, cancelable?: boolean): void;
   /** If invoked when the cancelable attribute value is true, and while
    * executing a listener for the event with passive set to false, signals to
    * the operation that caused event to be dispatched that it needs to be
@@ -130,10 +138,10 @@ declare interface Event {
   /** When dispatched in a tree, invoking this method prevents event from
    * reaching any objects other than the current object. */
   stopPropagation(): void;
-  readonly AT_TARGET: number;
-  readonly BUBBLING_PHASE: number;
-  readonly CAPTURING_PHASE: number;
-  readonly NONE: number;
+  readonly NONE: 0;
+  readonly CAPTURING_PHASE: 1;
+  readonly AT_TARGET: 2;
+  readonly BUBBLING_PHASE: 3;
 }
 
 /** An event which takes place in the DOM.
@@ -143,10 +151,10 @@ declare interface Event {
 declare var Event: {
   readonly prototype: Event;
   new (type: string, eventInitDict?: EventInit): Event;
-  readonly AT_TARGET: number;
-  readonly BUBBLING_PHASE: number;
-  readonly CAPTURING_PHASE: number;
-  readonly NONE: number;
+  readonly NONE: 0;
+  readonly CAPTURING_PHASE: 1;
+  readonly AT_TARGET: 2;
+  readonly BUBBLING_PHASE: 3;
 };
 
 /**
@@ -1012,10 +1020,15 @@ declare interface TransformerCancelCallback {
 }
 
 /** @category Events */
+declare type MessageEventSource = Window | MessagePort | ServiceWorker;
+
+/** @category Events */
 declare interface MessageEventInit<T = any> extends EventInit {
   data?: T;
-  origin?: string;
   lastEventId?: string;
+  origin?: string;
+  ports?: MessagePort[];
+  source?: MessageEventSource | null;
 }
 
 /** @category Events */
@@ -1032,11 +1045,22 @@ declare interface MessageEvent<T = any> extends Event {
    * Returns the last event ID string, for server-sent events.
    */
   readonly lastEventId: string;
-  readonly source: null;
+  readonly source: MessageEventSource | null;
   /**
    * Returns transferred ports.
    */
   readonly ports: ReadonlyArray<MessagePort>;
+  /** @deprecated */
+  initMessageEvent(
+    type: string,
+    bubbles?: boolean,
+    cancelable?: boolean,
+    data?: any,
+    origin?: string,
+    lastEventId?: string,
+    source?: MessageEventSource | null,
+    ports?: MessagePort[],
+  ): void;
 }
 
 /** @category Events */
@@ -1046,7 +1070,7 @@ declare var MessageEvent: {
 };
 
 /** @category Events */
-declare type Transferable = ArrayBuffer | MessagePort;
+declare type Transferable = MessagePort | ArrayBuffer;
 
 /**
  * This type has been renamed to StructuredSerializeOptions. Use that type for
