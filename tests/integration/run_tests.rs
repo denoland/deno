@@ -4512,6 +4512,8 @@ async fn websocket_server_idletimeout() {
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
+    .arg("--config")
+    .arg("./config/deno.json")
     .arg(script)
     .stdout_piped()
     .spawn()
