@@ -645,7 +645,7 @@ impl std::fmt::Display for PackagePathNotExportedError {
 
 #[derive(Debug, Clone, Error)]
 #[error(
-  "[{}] Only file and data URLS are supported by the default ESM loader.{} Received protocol '{}'",
+  "[{}] Only file and data URLs are supported by the default ESM loader.{} Received protocol '{}'",
   self.code(),
   if cfg!(windows) && url_scheme.len() == 2 { " On Windows, absolute path must be valid file:// URLS."} else { "" },
   url_scheme

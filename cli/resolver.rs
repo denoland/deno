@@ -269,14 +269,11 @@ impl CliNodeResolver {
     &self,
     maybe_resolution: Option<NodeResolution>,
   ) -> Option<NodeResolution> {
-    let Some(response) = maybe_resolution else {
-      return None;
-    };
-    if let NodeResolution::CommonJs(specifier) = &response {
+    if let Some(NodeResolution::CommonJs(specifier)) = &maybe_resolution {
       // remember that this was a common js resolution
       self.cjs_resolutions.insert(specifier.clone());
     }
-    Some(response)
+    maybe_resolution
   }
 }
 
