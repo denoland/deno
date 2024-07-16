@@ -822,7 +822,7 @@ const ci = {
             "!startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
           run:
-            "target/release/deno run -A --unstable ext/websocket/autobahn/fuzzingclient.js",
+            "target/release/deno run -A --unstable --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js",
         },
         {
           name: "Test (full, debug)",
