@@ -614,9 +614,11 @@ async fn sync_resolution_with_fs(
   // 4. Create symlinks for package json dependencies
   {
     for remote in pkg_json_deps_provider.remote_pkgs() {
-      let remote_id = snapshot
+      let Some(remote_id) = snapshot
         .resolve_best_package_id(&remote.req.name, &remote.req.version_req)
-        .unwrap();
+      else {
+        continue; // skip, package not found
+      };
       let remote_pkg = snapshot.package_from_id(&remote_id).unwrap();
       let alias_clashes = remote.req.name != remote.alias
         && newest_packages_by_name.contains_key(&remote.alias);
