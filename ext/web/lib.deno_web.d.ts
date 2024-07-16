@@ -218,12 +218,12 @@ declare var EventTarget: {
 
 /** @category Events */
 declare interface EventListener {
-  (evt: Event): void | Promise<void>;
+  (evt: Event): void | PromiseLike<void>;
 }
 
 /** @category Events */
 declare interface EventListenerObject {
-  handleEvent(evt: Event): void | Promise<void>;
+  handleEvent(evt: Event): void | PromiseLike<void>;
 }
 
 /** @category Events */
