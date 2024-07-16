@@ -2206,6 +2206,22 @@ Deno.test(function inspectErrorCircular() {
   );
 });
 
+Deno.test(function inspectErrorWithCauseFormat() {
+  const error = new Error("This is an error", {
+    cause: {
+      code: 100500,
+    },
+  });
+  assertStringIncludes(
+    stripColor(Deno.inspect(error)),
+    "Error: This is an error",
+  );
+  assertStringIncludes(
+    stripColor(Deno.inspect(error)),
+    "Caused by {\n  code: 100500\n}",
+  );
+});
+
 Deno.test(function inspectColors() {
   assertEquals(Deno.inspect(1), "1");
   assertStringIncludes(Deno.inspect(1, { colors: true }), "\x1b[");
