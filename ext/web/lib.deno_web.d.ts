@@ -1028,7 +1028,7 @@ declare interface TransformerCancelCallback {
 }
 
 /** @category Events */
-declare type MessageEventSource = Window | MessagePort | ServiceWorker;
+declare type MessageEventSource = Window | MessagePort;
 
 /** @category Events */
 declare interface MessageEventInit<T = any> extends EventInit {
