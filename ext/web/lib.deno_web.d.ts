@@ -670,7 +670,9 @@ declare interface UnderlyingByteSource {
 
 interface UnderlyingDefaultSource<R = any> {
   cancel?: UnderlyingSourceCancelCallback;
-  pull?: (controller: ReadableStreamDefaultController<R>) => void | PromiseLike<void>;
+  pull?: (
+    controller: ReadableStreamDefaultController<R>,
+  ) => void | PromiseLike<void>;
   start?: (controller: ReadableStreamDefaultController<R>) => any;
   type?: undefined;
 }
