@@ -1,5 +1,7 @@
 {
   "imports": {
+    "@std/": "../../../util/std/",
+
     "bare": "https://example.com/",
     "https://example.com/rewrite": "https://example.com/rewritten",
 

@@ -5379,6 +5379,8 @@ async fn listen_tls_alpn_fail() {
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
+    .arg("--config")
+    .arg("../config/deno.json")
     .arg("./cert/listen_tls_alpn_fail.ts")
     .arg("4505")
     .stdout_piped()
