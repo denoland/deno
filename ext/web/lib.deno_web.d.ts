@@ -479,16 +479,20 @@ declare interface FileReader extends EventTarget {
     | ((this: FileReader, ev: ProgressEvent<FileReader>) => any)
     | null;
   onprogress: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null;
-  readonly readyState: number;
+  readonly readyState:
+    | typeof FileReader.EMPTY
+    | typeof FileReader.LOADING
+    | typeof FileReader.DONE;
   readonly result: string | ArrayBuffer | null;
   abort(): void;
   readAsArrayBuffer(blob: Blob): void;
+  /** @deprecated */
   readAsBinaryString(blob: Blob): void;
   readAsDataURL(blob: Blob): void;
   readAsText(blob: Blob, encoding?: string): void;
-  readonly DONE: number;
-  readonly EMPTY: number;
-  readonly LOADING: number;
+  readonly EMPTY: 0;
+  readonly LOADING: 1;
+  readonly DONE: 2;
   addEventListener<K extends keyof FileReaderEventMap>(
     type: K,
     listener: (this: FileReader, ev: FileReaderEventMap[K]) => any,
@@ -515,18 +519,21 @@ declare interface FileReader extends EventTarget {
 declare var FileReader: {
   readonly prototype: FileReader;
   new (): FileReader;
-  readonly DONE: number;
-  readonly EMPTY: number;
-  readonly LOADING: number;
+  readonly EMPTY: 0;
+  readonly LOADING: 1;
+  readonly DONE: 2;
 };
 
 /** @category File */
 declare type BlobPart = BufferSource | Blob | string;
 
 /** @category File */
+declare type EndingType = "transparent" | "native";
+
+/** @category File */
 declare interface BlobPropertyBag {
   type?: string;
-  endings?: "transparent" | "native";
+  endings?: EndingType;
 }
 
 /** A file-like object of immutable, raw data. Blobs represent data that isn't
@@ -571,6 +578,7 @@ declare interface FilePropertyBag extends BlobPropertyBag {
 declare interface File extends Blob {
   readonly lastModified: number;
   readonly name: string;
+  readonly webkitRelativePath: string;
 }
 
 /** Provides information about files and allows JavaScript in a web page to
