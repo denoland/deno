@@ -350,7 +350,6 @@ declare interface TextDecoderStream
   extends GenericTransformStream, TextDecoderCommon {
   readonly readable: ReadableStream<string>;
   readonly writable: WritableStream<BufferSource>;
-  readonly [Symbol.toStringTag]: string;
 }
 
 /** @category Encoding */
@@ -364,7 +363,6 @@ declare interface TextEncoderStream
   extends GenericTransformStream, TextEncoderCommon {
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<string>;
-  readonly [Symbol.toStringTag]: string;
 }
 
 /** @category Encoding */
