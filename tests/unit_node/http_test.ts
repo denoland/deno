@@ -1406,3 +1406,25 @@ Deno.test("[node/http] Server.address() can be null", () => {
   const server = http.createServer((_req, res) => res.end("it works"));
   assertEquals(server.address(), null);
 });
+
+Deno.test("[node/http] ClientRequest PUT subarray", async () => {
+  const buffer = Buffer.from("hello world");
+  const payload = buffer.subarray(6, 11);
+  let body = "";
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const req = http.request("http://localhost:4545/echo_server", {
+    method: "PUT",
+  }, (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      resolve();
+    });
+  });
+  req.once("error", (e) => reject(e));
+  req.end(payload);
+  await promise;
+  assertEquals(body, "world");
+});
