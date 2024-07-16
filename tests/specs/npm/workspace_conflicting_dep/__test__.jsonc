@@ -12,11 +12,11 @@
         },
         {
           "args": "run ./a/index.js",
-          "output": "1 + 2 = 3"
+          "output": "1 + 2 = 3\n"
         },
         {
           "args": "run ./b/index.js",
-          "output": "1 + 2 = 3"
+          "output": "1 + 2 = 3\n"
         }
       ]
     }
