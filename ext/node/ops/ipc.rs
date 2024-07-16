@@ -18,7 +18,6 @@ mod impl_ {
   use std::task::Context;
   use std::task::Poll;
 
-  use bytes::Buf;
   use deno_core::error::bad_resource_id;
   use deno_core::error::AnyError;
   use deno_core::op2;
@@ -32,6 +31,7 @@ mod impl_ {
   use deno_core::OpState;
   use deno_core::RcRef;
   use deno_core::ResourceId;
+  use memchr::memchr;
   use pin_project_lite::pin_project;
   use serde::Serialize;
   use tokio::io::AsyncBufRead;
@@ -304,17 +304,6 @@ mod impl_ {
     }
   }
 
-  #[inline]
-  fn memchr(needle: u8, haystack: &[u8]) -> Option<usize> {
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    // Safety: haystack of valid length. neon_memchr can handle unaligned
-    // data.
-    return unsafe { neon::neon_memchr(haystack, needle, haystack.len()) };
-
-    #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-    return haystack.iter().position(|&b| b == needle);
-  }
-
   // Initial capacity of the buffered reader and the JSON backing buffer.
   //
   // This is a tradeoff between memory usage and performance on large messages.
@@ -460,66 +449,6 @@ mod impl_ {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
       let me = self.project();
       read_msg_internal(Pin::new(*me.reader), cx, me.buf, me.json, me.read)
-    }
-  }
-
-  #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-  mod neon {
-    use std::arch::aarch64::*;
-
-    pub unsafe fn neon_memchr(
-      str: &[u8],
-      c: u8,
-      length: usize,
-    ) -> Option<usize> {
-      let end = str.as_ptr().wrapping_add(length);
-
-      // Alignment handling
-      let mut ptr = str.as_ptr();
-      while ptr < end && (ptr as usize) & 0xF != 0 {
-        if *ptr == c {
-          return Some(ptr as usize - str.as_ptr() as usize);
-        }
-        ptr = ptr.wrapping_add(1);
-      }
-
-      let search_char = vdupq_n_u8(c);
-
-      while ptr.wrapping_add(16) <= end {
-        let chunk = vld1q_u8(ptr);
-        let comparison = vceqq_u8(chunk, search_char);
-
-        // Check first 64 bits
-        let result0 = vgetq_lane_u64(vreinterpretq_u64_u8(comparison), 0);
-        if result0 != 0 {
-          return Some(
-            (ptr as usize - str.as_ptr() as usize)
-              + result0.trailing_zeros() as usize / 8,
-          );
-        }
-
-        // Check second 64 bits
-        let result1 = vgetq_lane_u64(vreinterpretq_u64_u8(comparison), 1);
-        if result1 != 0 {
-          return Some(
-            (ptr as usize - str.as_ptr() as usize)
-              + 8
-              + result1.trailing_zeros() as usize / 8,
-          );
-        }
-
-        ptr = ptr.wrapping_add(16);
-      }
-
-      // Handle remaining unaligned characters
-      while ptr < end {
-        if *ptr == c {
-          return Some(ptr as usize - str.as_ptr() as usize);
-        }
-        ptr = ptr.wrapping_add(1);
-      }
-
-      None
     }
   }
 
