@@ -299,14 +299,7 @@ declare interface TextDecodeOptions {
 }
 
 /** @category Encoding */
-declare interface TextDecoder {
-  /** Returns encoding's name, lowercased. */
-  readonly encoding: string;
-  /** Returns `true` if error mode is "fatal", and `false` otherwise. */
-  readonly fatal: boolean;
-  /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
-  readonly ignoreBOM: boolean;
-
+declare interface TextDecoder extends TextDecoderCommon {
   /** Returns the result of running encoding's decoder. */
   decode(input?: BufferSource, options?: TextDecodeOptions): string;
 }
@@ -318,15 +311,23 @@ declare var TextDecoder: {
 };
 
 /** @category Encoding */
+declare interface TextDecoderCommon {
+  /** Returns encoding's name, lowercased. */
+  readonly encoding: string;
+  /** Returns true if error mode is "fatal", otherwise false. */
+  readonly fatal: boolean;
+  /** Returns the value of ignore BOM. */
+  readonly ignoreBOM: boolean;
+}
+
+/** @category Encoding */
 declare interface TextEncoderEncodeIntoResult {
   read: number;
   written: number;
 }
 
 /** @category Encoding */
-declare interface TextEncoder {
-  /** Returns "utf-8". */
-  readonly encoding: "utf-8";
+declare interface TextEncoder extends TextEncoderCommon {
   /** Returns the result of running UTF-8's encoder. */
   encode(input?: string): Uint8Array;
   encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
@@ -339,13 +340,14 @@ declare var TextEncoder: {
 };
 
 /** @category Encoding */
-declare interface TextDecoderStream {
-  /** Returns encoding's name, lowercased. */
+declare interface TextEncoderCommon {
+  /** Returns "utf-8". */
   readonly encoding: string;
-  /** Returns `true` if error mode is "fatal", and `false` otherwise. */
-  readonly fatal: boolean;
-  /** Returns `true` if ignore BOM flag is set, and `false` otherwise. */
-  readonly ignoreBOM: boolean;
+}
+
+/** @category Encoding */
+declare interface TextDecoderStream
+  extends GenericTransformStream, TextDecoderCommon {
   readonly readable: ReadableStream<string>;
   readonly writable: WritableStream<BufferSource>;
   readonly [Symbol.toStringTag]: string;
@@ -358,9 +360,8 @@ declare var TextDecoderStream: {
 };
 
 /** @category Encoding */
-declare interface TextEncoderStream {
-  /** Returns "utf-8". */
-  readonly encoding: "utf-8";
+declare interface TextEncoderStream
+  extends GenericTransformStream, TextEncoderCommon {
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<string>;
   readonly [Symbol.toStringTag]: string;
