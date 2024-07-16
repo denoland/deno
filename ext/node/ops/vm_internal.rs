@@ -119,7 +119,7 @@ impl ContextifyContext {
     unsafe {
       v8_context.set_aligned_pointer_in_embedder_data(
         3,
-        ptr.borrow().unwrap() as *const ContextifyContext as _,
+        &*ptr.unwrap() as *const ContextifyContext as _,
       );
     }
 
@@ -142,11 +142,10 @@ impl ContextifyContext {
       .get_private(scope, private_symbol)
       .and_then(|wrapper| {
         deno_core::cppgc::try_unwrap_cppgc_object::<Self>(scope, wrapper)
-          .borrow()
           // SAFETY: the lifetime of the scope does not actually bind to
           // the lifetime of this reference at all, but the object we read
           // it from does, so it will be alive at least that long.
-          .map(|r| unsafe { &*(r as *const _) })
+          .map(|r| unsafe { &*(&*r as *const _) })
       })
   }
 
