@@ -1307,7 +1307,7 @@ declare interface ImageData {
 
 /** @category Platform */
 declare var ImageData: {
-  prototype: ImageData;
+  readonly prototype: ImageData;
   new (sw: number, sh: number, settings?: ImageDataSettings): ImageData;
   new (
     data: Uint8ClampedArray,
