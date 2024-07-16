@@ -554,7 +554,7 @@ impl std::fmt::Display for InvalidPackageTargetError {
       && !self.target.is_empty()
       && !self.target.starts_with("./");
     f.write_char('[')?;
-    f.write_str(&self.code().as_str())?;
+    f.write_str(self.code().as_str())?;
     f.write_char(']')?;
 
     if self.sub_path == "." {
@@ -612,7 +612,7 @@ impl std::error::Error for PackagePathNotExportedError {}
 impl std::fmt::Display for PackagePathNotExportedError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.write_char('[')?;
-    f.write_str(&self.code().as_str())?;
+    f.write_str(self.code().as_str())?;
     f.write_char(']')?;
 
     let types_msg = match self.mode {

@@ -559,7 +559,7 @@ impl NodeResolver {
     }
     // allow resolving .css files for types resolution
     if lowercase_path.ends_with(".css") {
-      return Ok(Some(to_file_specifier(&path)));
+      return Ok(Some(to_file_specifier(path)));
     }
     Ok(None)
   }
