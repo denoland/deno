@@ -472,7 +472,7 @@ impl NodeResolver {
   /// Checks if the resolved file has a corresponding declaration file.
   fn path_to_declaration_url(
     &self,
-    path: &PathBuf,
+    path: &Path,
     maybe_referrer: Option<&ModuleSpecifier>,
     referrer_kind: NodeModuleKind,
   ) -> Result<Option<ModuleSpecifier>, PathToDeclarationUrlError> {
