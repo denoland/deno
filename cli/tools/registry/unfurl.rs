@@ -79,20 +79,23 @@ impl SpecifierUnfurler {
           target_pkg_json: pkg_json,
           pkg_name,
           sub_path,
-        } => ModuleSpecifier::parse(&format!(
-          "npm:{}{}{}",
-          pkg_name,
-          pkg_json
-            .version
-            .as_ref()
-            .map(|v| format!("@^{}", v))
-            .unwrap_or_default(),
-          sub_path
-            .as_ref()
-            .map(|s| format!("/{}", s))
-            .unwrap_or_default()
-        ))
-        .ok(),
+        } => {
+          // todo(#24612): consider warning or error when this is also a jsr package?
+          ModuleSpecifier::parse(&format!(
+            "npm:{}{}{}",
+            pkg_name,
+            pkg_json
+              .version
+              .as_ref()
+              .map(|v| format!("@^{}", v))
+              .unwrap_or_default(),
+            sub_path
+              .as_ref()
+              .map(|s| format!("/{}", s))
+              .unwrap_or_default()
+          ))
+          .ok()
+        }
         MappedResolution::PackageJson {
           alias,
           sub_path,
@@ -101,6 +104,8 @@ impl SpecifierUnfurler {
         } => match dep_result {
           Ok(dep) => match dep {
             PackageJsonDepValue::Req(pkg_req) => {
+              // todo(#24612): consider warning or error when this is an npm workspace
+              // member that's also a jsr package?
               ModuleSpecifier::parse(&format!(
                 "npm:{}{}",
                 pkg_req,
@@ -112,6 +117,7 @@ impl SpecifierUnfurler {
               .ok()
             }
             PackageJsonDepValue::Workspace(version_req) => {
+              // todo(#24612): consider warning or error when this is also a jsr package?
               ModuleSpecifier::parse(&format!(
                 "npm:{}{}{}",
                 alias,
