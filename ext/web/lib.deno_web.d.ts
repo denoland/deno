@@ -668,6 +668,7 @@ declare interface UnderlyingByteSource {
   type: "bytes";
 }
 
+/** @category Streams */
 declare interface UnderlyingDefaultSource<R = any> {
   cancel?: UnderlyingSourceCancelCallback;
   pull?: (
@@ -1199,6 +1200,8 @@ declare interface CompressionStream extends GenericTransformStream {
   readonly writable: WritableStream<Uint8Array>;
 }
 
+declare type CompressionFormat = "deflate" | "deflate-raw" | "gzip";
+
 /**
  * An API for compressing a stream of data.
  *
@@ -1220,7 +1223,7 @@ declare var CompressionStream: {
    * Throws a `TypeError` if the format passed to the constructor is not
    * supported.
    */
-  new (format: string): CompressionStream;
+  new (format: CompressionFormat): CompressionStream;
 };
 
 /**
@@ -1267,7 +1270,7 @@ declare var DecompressionStream: {
    * Throws a `TypeError` if the format passed to the constructor is not
    * supported.
    */
-  new (format: string): DecompressionStream;
+  new (format: CompressionFormat): DecompressionStream;
 };
 
 /** Dispatch an uncaught exception. Similar to a synchronous version of:
