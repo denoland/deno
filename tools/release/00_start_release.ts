@@ -5,27 +5,33 @@ import { $, createOctoKit, semver } from "./deps.ts";
 const currentDirPath = $.path(import.meta).parentOrThrow();
 
 $.logStep("Getting next version...");
+const currentVersion = semver.parse(getCliVersion())!;
 const nextVersion = getNextVersion(semver.parse(getCliVersion())!);
 
 $.logStep("Creating gist with instructions...");
-const octoKit = createOctoKit();
-const result = await octoKit.request("POST /gists", {
-  description: `Deno CLI v${nextVersion} release checklist`,
-  public: false,
-  files: {
-    [`release_${nextVersion}.md`]: {
-      content: buildDenoReleaseInstructionsDoc(),
+const releaseInstructions = buildDenoReleaseInstructionsDoc();
+if (Deno.args.some((a) => a === "--dry-run")) {
+  console.log(releaseInstructions);
+} else {
+  const octoKit = createOctoKit();
+  const result = await octoKit.request("POST /gists", {
+    description: `Deno CLI v${nextVersion} release checklist`,
+    public: false,
+    files: {
+      [`release_${nextVersion}.md`]: {
+        content: releaseInstructions,
+      },
     },
-  },
-});
+  });
 
-$.log("==============================================");
-$.log("Created gist with instructions!");
-$.log("");
-$.log(`  ${result.data.html_url}`);
-$.log("");
-$.log("Please fork the gist and follow the checklist.");
-$.log("==============================================");
+  $.log("==============================================");
+  $.log("Created gist with instructions!");
+  $.log("");
+  $.log(`  ${result.data.html_url}`);
+  $.log("");
+  $.log("Please fork the gist and follow the checklist.");
+  $.log("==============================================");
+}
 
 function getNextVersion(originalVersion: semver.SemVer) {
   if (Deno.args.some((a) => a === "--patch")) {
@@ -40,11 +46,17 @@ function getNextVersion(originalVersion: semver.SemVer) {
 }
 
 function buildDenoReleaseInstructionsDoc() {
+  function getMinorVersion(version: string) {
+    return version.split(".").slice(0, 2).join(".");
+  }
+
   const templateText = currentDirPath
     .join("release_doc_template.md")
     .readTextSync()
     .replaceAll("$BRANCH_NAME", `v${nextVersion.major}.${nextVersion.minor}`)
-    .replaceAll("$VERSION", nextVersion.toString());
+    .replaceAll("$VERSION", nextVersion.toString())
+    .replaceAll("$MINOR_VERSION", getMinorVersion(nextVersion.toString()))
+    .replaceAll("$PAST_VERSION", currentVersion.toString());
   return `# Deno CLI ${nextVersion.toString()} Release Checklist\n\n${templateText}`;
 }
 

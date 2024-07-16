@@ -119,33 +119,44 @@ impl BlockList {
     }
   }
 
-  fn map_addr_add_network(&mut self, addr: IpAddr, prefix: Option<u8>) {
+  fn map_addr_add_network(
+    &mut self,
+    addr: IpAddr,
+    prefix: Option<u8>,
+  ) -> Result<(), AnyError> {
     match addr {
       IpAddr::V4(addr) => {
-        self.rules.insert(IpNetwork::V4(
-          Ipv4Network::new(addr, prefix.unwrap_or(32)).unwrap(),
-        ));
-        self.rules.insert(IpNetwork::V6(
-          Ipv6Network::new(addr.to_ipv6_mapped(), prefix.unwrap_or(128))
-            .unwrap(),
-        ));
+        let ipv4_prefix = prefix.unwrap_or(32);
+        self
+          .rules
+          .insert(IpNetwork::V4(Ipv4Network::new(addr, ipv4_prefix)?));
+
+        let ipv6_mapped = addr.to_ipv6_mapped();
+        let ipv6_prefix = 96 + ipv4_prefix; // IPv4-mapped IPv6 address prefix starts at 96
+        self
+          .rules
+          .insert(IpNetwork::V6(Ipv6Network::new(ipv6_mapped, ipv6_prefix)?));
       }
       IpAddr::V6(addr) => {
         if let Some(ipv4_mapped) = addr.to_ipv4_mapped() {
-          self.rules.insert(IpNetwork::V4(
-            Ipv4Network::new(ipv4_mapped, prefix.unwrap_or(32)).unwrap(),
-          ));
+          let ipv4_prefix = prefix.map(|v| v.clamp(96, 128) - 96).unwrap_or(32);
+          self
+            .rules
+            .insert(IpNetwork::V4(Ipv4Network::new(ipv4_mapped, ipv4_prefix)?));
         }
-        self.rules.insert(IpNetwork::V6(
-          Ipv6Network::new(addr, prefix.unwrap_or(128)).unwrap(),
-        ));
+
+        let ipv6_prefix = prefix.unwrap_or(128);
+        self
+          .rules
+          .insert(IpNetwork::V6(Ipv6Network::new(addr, ipv6_prefix)?));
       }
     };
+    Ok(())
   }
 
   pub fn add_address(&mut self, address: &str) -> Result<(), AnyError> {
     let ip: IpAddr = address.parse()?;
-    self.map_addr_add_network(ip, None);
+    self.map_addr_add_network(ip, None)?;
     Ok(())
   }
 
@@ -167,7 +178,7 @@ impl BlockList {
         }
         for ip in start_u32..=end_u32 {
           let addr: Ipv4Addr = ip.into();
-          self.map_addr_add_network(IpAddr::V4(addr), None);
+          self.map_addr_add_network(IpAddr::V4(addr), None)?;
         }
       }
       (IpAddr::V6(start), IpAddr::V6(end)) => {
@@ -179,7 +190,7 @@ impl BlockList {
         }
         for ip in start_u128..=end_u128 {
           let addr: Ipv6Addr = ip.into();
-          self.map_addr_add_network(IpAddr::V6(addr), None);
+          self.map_addr_add_network(IpAddr::V6(addr), None)?;
         }
       }
       _ => bail!("IP version mismatch between start and end addresses"),
@@ -189,7 +200,7 @@ impl BlockList {
 
   pub fn add_subnet(&mut self, addr: &str, prefix: u8) -> Result<(), AnyError> {
     let ip: IpAddr = addr.parse()?;
-    self.map_addr_add_network(ip, Some(prefix));
+    self.map_addr_add_network(ip, Some(prefix))?;
     Ok(())
   }
 
@@ -255,9 +266,16 @@ mod tests {
     // IPv6 subnet
     let mut block_list = BlockList::new();
     block_list.add_subnet("2001:db8::", 64).unwrap();
+    block_list.add_subnet("::ffff:127.0.0.1", 128).unwrap();
     assert!(block_list.check("2001:db8::1", "ipv6").unwrap());
     assert!(block_list.check("2001:db8::ffff", "ipv6").unwrap());
     assert!(!block_list.check("192.168.0.1", "ipv4").unwrap());
+
+    // Check host addresses of IPv4 mapped IPv6 address
+    let mut block_list = BlockList::new();
+    block_list.add_subnet("1.1.1.0", 30).unwrap();
+    assert!(block_list.check("::ffff:1.1.1.1", "ipv6").unwrap());
+    assert!(!block_list.check("::ffff:1.1.1.4", "ipv6").unwrap());
   }
 
   #[test]

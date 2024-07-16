@@ -6,6 +6,20 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.45.2 / 2024.07.12
+
+- fix(cli/init): broken link in deno init sample template (#24545)
+- fix(config): regression - should not discover npm workspace for nested
+  deno.json not in workspace (#24559)
+- fix(ext/node): handle prefix mapping for IPv4-mapped IPv6 addresses (#24546)
+- fix(ext/webgpu): GPUDevice.createRenderPipelineAsync should return a Promise
+  (#24349)
+- fix(node): revert invalid package target change (#24539)
+- fix(publish): show dirty files on dirty check failure (#24541)
+- fix: include already seen deps in lockfile dep tracking (#24556)
+- fix: unblock fsevents native module (#24542)
+- perf(ext/crypto): make randomUUID() 5x faster (#24510)
+
 ### 1.45.1 / 2024.07.11
 
 - fix(node): Ignore broken default install scripts (#24534)

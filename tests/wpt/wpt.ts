@@ -94,7 +94,7 @@ switch (command) {
     update
       Update the \`expectation.json\` to match the current reality.
 
-More details at https://deno.land/manual@main/contributing/web_platform_tests
+More details at https://docs.deno.com/runtime/manual/references/contributing/web_platform_tests
 
     `);
     break;

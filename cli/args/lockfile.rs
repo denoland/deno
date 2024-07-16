@@ -2,13 +2,12 @@
 
 use std::path::PathBuf;
 
+use deno_config::workspace::Workspace;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
-use deno_runtime::deno_node::PackageJson;
 
-use crate::args::ConfigFile;
 use crate::cache;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::Flags;
@@ -92,8 +91,7 @@ impl CliLockfile {
 
   pub fn discover(
     flags: &Flags,
-    maybe_config_file: Option<&ConfigFile>,
-    maybe_package_json: Option<&PackageJson>,
+    workspace: &Workspace,
   ) -> Result<Option<CliLockfile>, AnyError> {
     if flags.no_lock
       || matches!(
@@ -109,23 +107,9 @@ impl CliLockfile {
 
     let filename = match flags.lock {
       Some(ref lock) => PathBuf::from(lock),
-      None => match maybe_config_file {
-        Some(config_file) => {
-          if config_file.specifier.scheme() == "file" {
-            match config_file.resolve_lockfile_path()? {
-              Some(path) => path,
-              None => return Ok(None),
-            }
-          } else {
-            return Ok(None);
-          }
-        }
-        None => match maybe_package_json {
-          Some(package_json) => {
-            package_json.path.parent().unwrap().join("deno.lock")
-          }
-          None => return Ok(None),
-        },
+      None => match workspace.resolve_lockfile_path()? {
+        Some(path) => path,
+        None => return Ok(None),
       },
     };
 
