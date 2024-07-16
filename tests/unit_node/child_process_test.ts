@@ -855,3 +855,79 @@ Deno.test(
     assertEquals(output.stderr, null);
   },
 );
+
+Deno.test(
+  async function ipcSerialization() {
+    const timeout = withTimeout<void>();
+    const script = `
+      if (typeof process.send !== "function") {
+        console.error("process.send is not a function");
+        process.exit(1);
+      }
+
+      class BigIntWrapper {
+        constructor(value) {
+          this.value = value;
+        }
+        toJSON() {
+          return this.value.toString();
+        }
+      }
+
+      const inputs = [
+        "foo",
+        {
+          foo: "bar",
+        },
+        42,
+        true,
+        null,
+        new Uint8Array([1, 2, 3]),
+        {
+          foo: new Uint8Array([1, 2, 3]),
+          bar: new Uint8Array(new SharedArrayBuffer([4, 5, 6])),
+        },
+        [1, { foo: 2 }, [3, 4]],
+        new BigIntWrapper(42n),
+      ];
+      for (const input of inputs) {
+        process.send(input);
+      }
+    `;
+    const file = await Deno.makeTempFile();
+    await Deno.writeTextFile(file, script);
+    const child = CP.fork(file, [], {
+      // cwd: testdataDir,
+      stdio: ["inherit", "inherit", "inherit", "ipc"],
+    });
+    const expect = [
+      "foo",
+      {
+        foo: "bar",
+      },
+      42,
+      true,
+      null,
+      [1, 2, 3],
+      {
+        foo: [1, 2, 3],
+        bar: [4, 5, 6],
+      },
+      [1, { foo: 2 }, [3, 4]],
+      42,
+    ];
+    let i = 0;
+    const p = Promise.withResolvers<void>();
+
+    child.on("message", (message) => {
+      assertEquals(message, expect[i]);
+      i++;
+      if (i === expect.length) {
+        child.kill();
+      }
+    });
+    child.on("close", () => p.resolve());
+    await Promise.race([p.promise, timeout.promise]);
+    assertEquals(i, expect.length);
+  },
+);
