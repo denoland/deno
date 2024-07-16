@@ -530,18 +530,18 @@ jobs:
         env:
           DENO_BIN: ./target/debug/deno
         run: |-
-          deno run -A --unstable --lock=tools/deno.lock.json       \
+          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
                   ./tests/wpt/wpt.ts setup
-          deno run -A --unstable --lock=tools/deno.lock.json       \
+          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
                    ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"
       - name: Run web platform tests (release)
         if: '!(matrix.skip) && (matrix.wpt && matrix.profile == ''release'')'
         env:
           DENO_BIN: ./target/release/deno
         run: |-
-          deno run -A --unstable --lock=tools/deno.lock.json        \
+          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
                    ./tests/wpt/wpt.ts setup
-          deno run -A --unstable --lock=tools/deno.lock.json        \
+          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
                    ./tests/wpt/wpt.ts run --quiet --release         \
                                       --binary="$DENO_BIN"          \
                                       --json=wpt.json               \
@@ -573,7 +573,7 @@ jobs:
           WPT_FYI_PW: '${{ secrets.WPT_FYI_PW }}'
           GITHUB_TOKEN: '${{ secrets.DENOBOT_PAT }}'
         run: |-
-          ./target/release/deno run --allow-all --lock=tools/deno.lock.json \
+          ./target/release/deno run --allow-all --lock=tools/deno.lock.json --config tests/config/deno.json\
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
       - name: Run benchmarks
         if: '!(matrix.skip) && (matrix.job == ''bench'' && !startsWith(github.ref, ''refs/tags/''))'
@@ -589,7 +589,7 @@ jobs:
           git clone --depth 1 --branch gh-pages                             \
               https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \
               gh-pages
-          ./target/release/deno run --allow-all --unstable \
+          ./target/release/deno run --allow-all --unstable --config tests/config/deno.json\
               ./tools/build_benchmark_jsons.js --release
           cd gh-pages
           git config user.email "propelml@gmail.com"
