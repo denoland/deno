@@ -1232,6 +1232,7 @@ declare interface CompressionStream extends GenericTransformStream {
   readonly writable: WritableStream<Uint8Array>;
 }
 
+/** @category Streams */
 declare type CompressionFormat = "deflate" | "deflate-raw" | "gzip";
 
 /**
