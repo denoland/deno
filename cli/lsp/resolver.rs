@@ -529,6 +529,17 @@ fn create_graph_resolver(
     node_resolver: node_resolver.cloned(),
     npm_resolver: npm_resolver.cloned(),
     workspace_resolver: Arc::new(WorkspaceResolver::new_raw(
+      Arc::new(
+        // todo(dsherret): we need a better way of determining the workspace
+        // root for this config data, but this is fine for now because this
+        // value is only used for determining if a specifier is in the workspace
+        // in order to resolve bare specifiers to deno.json files.
+        npm_resolver
+          .and_then(|r| r.root_node_modules_path())
+          .and_then(|p| p.parent())
+          .and_then(|p| ModuleSpecifier::from_directory_path(p).ok())
+          .unwrap_or_else(|| ModuleSpecifier::parse("file:///").unwrap()),
+      ),
       config_data.and_then(|d| d.import_map.as_ref().map(|i| (**i).clone())),
       config_data
         .and_then(|d| d.package_json.clone())

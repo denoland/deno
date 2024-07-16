@@ -542,6 +542,22 @@ impl Resolver for CliGraphResolver {
       Ok(resolution) => match resolution {
         MappedResolution::Normal(specifier)
         | MappedResolution::ImportMap(specifier) => Ok(specifier),
+        MappedResolution::WorkspaceNpmPackage {
+          target_pkg_json: pkg_json,
+          sub_path,
+          ..
+        } => self
+          .node_resolver
+          .as_ref()
+          .unwrap()
+          .resolve_package_sub_path_from_deno_module(
+            pkg_json.dir_path(),
+            sub_path.as_deref(),
+            Some(referrer),
+            to_node_mode(mode),
+          )
+          .map_err(ResolveError::Other)
+          .map(|res| res.into_url()),
         // todo(dsherret): for byonm it should do resolution solely based on
         // the referrer and not the package.json
         MappedResolution::PackageJson {
