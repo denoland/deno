@@ -22,15 +22,18 @@ mod impl_ {
   use deno_core::error::bad_resource_id;
   use deno_core::error::AnyError;
   use deno_core::op2;
+  use deno_core::serde;
+  use deno_core::serde::Serializer;
   use deno_core::serde_json;
+  use deno_core::v8;
   use deno_core::AsyncRefCell;
   use deno_core::CancelFuture;
   use deno_core::CancelHandle;
-  use deno_core::JsBuffer;
   use deno_core::OpState;
   use deno_core::RcRef;
   use deno_core::ResourceId;
   use pin_project_lite::pin_project;
+  use serde::Serialize;
   use tokio::io::AsyncBufRead;
   use tokio::io::AsyncWriteExt;
   use tokio::io::BufReader;
@@ -44,6 +47,100 @@ mod impl_ {
 
   #[cfg(windows)]
   type NamedPipeClient = tokio::net::windows::named_pipe::NamedPipeClient;
+
+  struct SerializeWrapper<'a, 'b>(
+    RefCell<&'b mut v8::HandleScope<'a>>,
+    v8::Local<'a, v8::Value>,
+  );
+
+  impl<'a, 'b> Serialize for SerializeWrapper<'a, 'b> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+      S: Serializer,
+    {
+      serialize_v8_value(*self.0.borrow_mut(), self.1, serializer)
+    }
+  }
+
+  fn serialize_v8_value<'a, 'b, S: Serializer>(
+    scope: &'b mut v8::HandleScope<'a>,
+    value: v8::Local<'a, v8::Value>,
+    ser: S,
+  ) -> Result<S::Ok, S::Error> {
+    use serde::ser::Error;
+    if value.is_null_or_undefined() {
+      ser.serialize_unit()
+    } else if value.is_number() {
+      let num_value = value.number_value(scope).unwrap();
+      ser.serialize_f64(num_value)
+    } else if value.is_string() {
+      let str = deno_core::serde_v8::to_utf8(value.try_into().unwrap(), scope);
+      ser.serialize_str(&str)
+    } else if value.is_boolean() {
+      ser.serialize_bool(value.is_true())
+    } else if value.is_array() {
+      use serde::ser::SerializeSeq;
+      let array = v8::Local::<v8::Array>::try_from(value).unwrap();
+      let length = array.length();
+      let mut seq = ser.serialize_seq(Some(length as usize))?;
+      for i in 0..length {
+        let element = array.get_index(scope, i).unwrap();
+        seq
+          .serialize_element(&SerializeWrapper(RefCell::new(scope), element))?;
+      }
+      seq.end()
+    } else if value.is_object() {
+      use serde::ser::SerializeMap;
+      if value.is_array_buffer_view() {
+        let buffer = v8::Local::<v8::ArrayBufferView>::try_from(value).unwrap();
+        let mut buf = vec![0u8; buffer.byte_length() as usize];
+        let copied = buffer.copy_contents(&mut buf);
+        assert_eq!(copied, buf.len());
+        return ser.serialize_bytes(&buf);
+      }
+      let object = value.to_object(scope).unwrap();
+      let to_json_key = v8::String::new_from_utf8(
+        scope,
+        b"toJSON",
+        v8::NewStringType::Internalized,
+      )
+      .unwrap()
+      .into();
+      if let Some(to_json) = object.get(scope, to_json_key) {
+        if to_json.is_function() {
+          let to_json = v8::Local::<v8::Function>::try_from(to_json).unwrap();
+          let json_value = to_json.call(scope, object.into(), &[]).unwrap();
+          return serialize_v8_value(scope, json_value, ser);
+        }
+      }
+
+      let keys = object
+        .get_own_property_names(
+          scope,
+          v8::GetPropertyNamesArgs {
+            ..Default::default()
+          },
+        )
+        .unwrap();
+      let num_keys = keys.length();
+      let mut map = ser.serialize_map(Some(num_keys as usize))?;
+      for i in 0..num_keys {
+        let key = keys.get_index(scope, i).unwrap();
+        let key_str = key.to_rust_string_lossy(scope);
+        let value = object.get(scope, key).unwrap();
+        map.serialize_entry(
+          &key_str,
+          &SerializeWrapper(RefCell::new(scope), value),
+        )?;
+      }
+      map.end()
+    } else {
+      // TODO(nathanwhit): better error message
+      Err(S::Error::custom(deno_core::error::type_error(
+        "Unsupported type",
+      )))
+    }
+  }
 
   // Open IPC pipe from bootstrap options.
   #[op2]
@@ -62,18 +159,31 @@ mod impl_ {
   }
 
   #[op2(async)]
-  pub async fn op_node_ipc_write(
+  pub fn op_node_ipc_write<'a>(
+    scope: &mut v8::HandleScope<'a>,
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
-    #[buffer] value: JsBuffer,
-  ) -> Result<(), AnyError> {
-    let stream = state
-      .borrow()
-      .resource_table
-      .get::<IpcJsonStreamResource>(rid)
-      .map_err(|_| bad_resource_id())?;
-    stream.write_msg_bytes(value.as_ref()).await?;
-    Ok(())
+    value: v8::Local<'a, v8::Value>,
+  ) -> Result<impl Future<Output = Result<(), AnyError>>, AnyError> {
+    let mut serialized = Vec::new();
+    {
+      let mut ser = serde_json::Serializer::new(&mut serialized);
+      serialize_v8_value(scope, value, &mut ser).map_err(|e| {
+        deno_core::error::type_error(format!(
+          "failed to serialize json value: {e}"
+        ))
+      })?;
+    }
+    Ok(async move {
+      let stream = state
+        .borrow()
+        .resource_table
+        .get::<IpcJsonStreamResource>(rid)
+        .map_err(|_| bad_resource_id())?;
+      serialized.push(b'\n');
+      stream.write_msg_bytes(&serialized).await?;
+      Ok(())
+    })
   }
 
   #[op2(async)]
@@ -167,13 +277,29 @@ mod impl_ {
       }
     }
 
+    /// writes _newline terminated_ JSON message to the IPC pipe.
     async fn write_msg_bytes(
       self: Rc<Self>,
       msg: &[u8],
     ) -> Result<(), AnyError> {
       let mut write_half =
         RcRef::map(self, |r| &r.write_half).borrow_mut().await;
-      write_half.write_all_buf(&mut msg.chain(&b"\n"[..])).await?;
+      write_half.write_all(msg).await?;
+      Ok(())
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    async fn write_msg<T: serde::Serialize>(
+      self: Rc<Self>,
+      msg: &T,
+    ) -> Result<(), AnyError> {
+      let mut write_half =
+        RcRef::map(self, |r| &r.write_half).borrow_mut().await;
+      // Perf note: We do not benefit from writev here because
+      // we are always allocating a buffer for serialization anyways.
+      let mut buf = serde_json::to_vec(msg)?;
+      buf.push(b'\n');
+      write_half.write_all(&buf).await?;
       Ok(())
     }
   }
@@ -498,7 +624,7 @@ mod impl_ {
         Ok::<_, std::io::Error>(())
       });
 
-      ipc.clone().write_msg(json!("hello")).await?;
+      ipc.clone().write_msg(&json!("hello")).await?;
 
       let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
       let msgs = ipc.read_msg().await?;
@@ -524,8 +650,8 @@ mod impl_ {
         Ok::<_, std::io::Error>(())
       });
 
-      ipc.clone().write_msg(json!("hello")).await?;
-      ipc.clone().write_msg(json!("world")).await?;
+      ipc.clone().write_msg(&json!("hello")).await?;
+      ipc.clone().write_msg(&json!("world")).await?;
 
       let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
       let msgs = ipc.read_msg().await?;

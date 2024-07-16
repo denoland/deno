@@ -1150,7 +1150,7 @@ export function setupChannel(target, ipc) {
     if (handle !== undefined) {
       notImplemented("ChildProcess.send with handle");
     }
-    op_node_ipc_write(ipc, core.encode(JSON.stringify(message)))
+    op_node_ipc_write(ipc, message)
       .then(() => {
         if (callback) {
           process.nextTick(callback, null);
