@@ -206,7 +206,7 @@ itest!(_033_import_map_data_uri {
 });
 
 itest!(onload {
-  args: "run --quiet --reload run/onload/main.ts",
+  args: "run --quiet --reload --config ../config/deno.json run/onload/main.ts",
   output: "run/onload/main.out",
 });
 
@@ -3163,12 +3163,12 @@ mod permissions {
 }
 
 itest!(tls_starttls {
-  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem run/tls_starttls.js",
+  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem --config ../config/deno.json run/tls_starttls.js",
   output: "run/tls.out",
 });
 
 itest!(tls_connecttls {
-  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem run/tls_connecttls.js",
+  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem --config ../config/deno.json run/tls_connecttls.js",
   output: "run/tls.out",
 });
 
