@@ -197,6 +197,8 @@ fn standalone_follow_redirects() {
       "compile",
       "--output",
       &exe.to_string_lossy(),
+      "--config",
+      "../../tests/config/deno.json",
       "./compile/standalone_follow_redirects.ts",
     ])
     .run()
