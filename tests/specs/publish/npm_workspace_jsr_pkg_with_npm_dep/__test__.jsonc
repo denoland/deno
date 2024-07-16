@@ -1,0 +1,4 @@
+{
+  "args": "publish --dry-run --no-check --log-level=debug",
+  "output": "publish.out"
+}
