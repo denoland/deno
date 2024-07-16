@@ -577,52 +577,50 @@ declare var File: {
 };
 
 /** @category Streams */
-declare interface ReadableStreamDefaultReadDoneResult {
-  done: true;
-  value?: undefined;
+declare type ReadableStreamReader<T> =
+  | ReadableStreamDefaultReader<T>
+  | ReadableStreamBYOBReader;
+
+/** @category Streams */
+declare type ReadableStreamController<T> =
+  | ReadableStreamDefaultController<T>
+  | ReadableByteStreamController;
+
+/** @category Streams */
+declare interface ReadableStreamGenericReader {
+  readonly closed: Promise<undefined>;
+  cancel(reason?: any): Promise<void>;
 }
 
 /** @category Streams */
-declare interface ReadableStreamDefaultReadValueResult<T> {
+declare interface ReadableStreamReadDoneResult<T> {
+  done: true;
+  value?: T;
+}
+
+/** @category Streams */
+declare interface ReadableStreamReadValueResult<T> {
   done: false;
   value: T;
 }
 
 /** @category Streams */
-declare type ReadableStreamDefaultReadResult<T> =
-  | ReadableStreamDefaultReadValueResult<T>
-  | ReadableStreamDefaultReadDoneResult;
+declare type ReadableStreamReadResult<T> =
+  | ReadableStreamReadValueResult<T>
+  | ReadableStreamReadDoneResult<T>;
 
 /** @category Streams */
-declare interface ReadableStreamDefaultReader<R = any> {
-  readonly closed: Promise<void>;
-  cancel(reason?: any): Promise<void>;
-  read(): Promise<ReadableStreamDefaultReadResult<R>>;
+declare interface ReadableStreamDefaultReader<R = any>
+  extends ReadableStreamGenericReader {
+  read(): Promise<ReadableStreamReadResult<R>>;
   releaseLock(): void;
 }
 
 /** @category Streams */
 declare var ReadableStreamDefaultReader: {
   readonly prototype: ReadableStreamDefaultReader;
-  new <R>(stream: ReadableStream<R>): ReadableStreamDefaultReader<R>;
+  new <R = any>(stream: ReadableStream<R>): ReadableStreamDefaultReader<R>;
 };
-
-/** @category Streams */
-declare interface ReadableStreamBYOBReadDoneResult<V extends ArrayBufferView> {
-  done: true;
-  value?: V;
-}
-
-/** @category Streams */
-declare interface ReadableStreamBYOBReadValueResult<V extends ArrayBufferView> {
-  done: false;
-  value: V;
-}
-
-/** @category Streams */
-declare type ReadableStreamBYOBReadResult<V extends ArrayBufferView> =
-  | ReadableStreamBYOBReadDoneResult<V>
-  | ReadableStreamBYOBReadValueResult<V>;
 
 /** @category Streams */
 declare interface ReadableStreamBYOBReaderReadOptions {
@@ -630,20 +628,23 @@ declare interface ReadableStreamBYOBReaderReadOptions {
 }
 
 /** @category Streams */
-declare interface ReadableStreamBYOBReader {
-  readonly closed: Promise<void>;
-  cancel(reason?: any): Promise<void>;
-  read<V extends ArrayBufferView>(
-    view: V,
-    options?: ReadableStreamBYOBReaderReadOptions,
-  ): Promise<ReadableStreamBYOBReadResult<V>>;
+declare interface GenericTransformStream {
+  readonly readable: ReadableStream;
+  readonly writable: WritableStream;
+}
+
+/** @category Streams */
+declare interface ReadableStreamBYOBReader extends ReadableStreamGenericReader {
+  read<T extends ArrayBufferView>(
+    view: T,
+  ): Promise<ReadableStreamReadResult<T>>;
   releaseLock(): void;
 }
 
 /** @category Streams */
 declare var ReadableStreamBYOBReader: {
   readonly prototype: ReadableStreamBYOBReader;
-  new (stream: ReadableStream<Uint8Array>): ReadableStreamBYOBReader;
+  new (stream: ReadableStream): ReadableStreamBYOBReader;
 };
 
 /** @category Streams */
@@ -656,62 +657,73 @@ declare interface ReadableStreamBYOBRequest {
 /** @category Streams */
 declare var ReadableStreamBYOBRequest: {
   readonly prototype: ReadableStreamBYOBRequest;
-  new (): never;
+  new (): ReadableStreamBYOBRequest;
 };
-
-/** @category Streams */
-declare interface ReadableByteStreamControllerCallback {
-  (controller: ReadableByteStreamController): void | PromiseLike<void>;
-}
 
 /** @category Streams */
 declare interface UnderlyingByteSource {
   autoAllocateChunkSize?: number;
-  cancel?: ReadableStreamErrorCallback;
-  pull?: ReadableByteStreamControllerCallback;
-  start?: ReadableByteStreamControllerCallback;
+  cancel?: UnderlyingSourceCancelCallback;
+  pull?: (controller: ReadableByteStreamController) => void | PromiseLike<void>;
+  start?: (controller: ReadableByteStreamController) => any;
   type: "bytes";
+}
+
+interface UnderlyingDefaultSource<R = any> {
+  cancel?: UnderlyingSourceCancelCallback;
+  pull?: (controller: ReadableStreamDefaultController<R>) => void | PromiseLike<void>;
+  start?: (controller: ReadableStreamDefaultController<R>) => any;
+  type?: undefined;
 }
 
 /** @category Streams */
 declare interface UnderlyingSink<W = any> {
-  abort?: WritableStreamErrorCallback;
-  close?: WritableStreamDefaultControllerCloseCallback;
-  start?: WritableStreamDefaultControllerStartCallback;
+  abort?: UnderlyingSinkAbortCallback;
+  close?: UnderlyingSinkCloseCallback;
+  start?: UnderlyingSinkStartCallback;
   type?: undefined;
-  write?: WritableStreamDefaultControllerWriteCallback<W>;
+  write?: UnderlyingSinkWriteCallback<W>;
 }
+
+/** @category Streams */
+declare type ReadableStreamType = "bytes";
 
 /** @category Streams */
 declare interface UnderlyingSource<R = any> {
-  cancel?: ReadableStreamErrorCallback;
-  pull?: ReadableStreamDefaultControllerCallback<R>;
-  start?: ReadableStreamDefaultControllerCallback<R>;
-  type?: undefined;
+  autoAllocateChunkSize?: number;
+  cancel?: UnderlyingSourceCancelCallback;
+  pull?: UnderlyingSourcePullCallback<R>;
+  start?: UnderlyingSourceStartCallback<R>;
+  type?: ReadableStreamType;
 }
 
 /** @category Streams */
-declare interface ReadableStreamErrorCallback {
-  (reason: any): void | PromiseLike<void>;
+declare interface UnderlyingSourceCancelCallback {
+  (reason?: any): void | PromiseLike<void>;
 }
 
 /** @category Streams */
-declare interface ReadableStreamDefaultControllerCallback<R> {
-  (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
+declare interface UnderlyingSourcePullCallback<R> {
+  (controller: ReadableStreamController<R>): void | PromiseLike<void>;
+}
+
+/** @category Streams */
+declare interface UnderlyingSourceStartCallback<R> {
+  (controller: ReadableStreamController<R>): any;
 }
 
 /** @category Streams */
 declare interface ReadableStreamDefaultController<R = any> {
   readonly desiredSize: number | null;
   close(): void;
-  enqueue(chunk: R): void;
-  error(error?: any): void;
+  enqueue(chunk?: R): void;
+  error(e?: any): void;
 }
 
 /** @category Streams */
 declare var ReadableStreamDefaultController: {
   readonly prototype: ReadableStreamDefaultController;
-  new (): never;
+  new (): ReadableStreamDefaultController;
 };
 
 /** @category Streams */
@@ -720,17 +732,17 @@ declare interface ReadableByteStreamController {
   readonly desiredSize: number | null;
   close(): void;
   enqueue(chunk: ArrayBufferView): void;
-  error(error?: any): void;
+  error(e?: any): void;
 }
 
 /** @category Streams */
 declare var ReadableByteStreamController: {
   readonly prototype: ReadableByteStreamController;
-  new (): never;
+  new (): ReadableByteStreamController;
 };
 
 /** @category Streams */
-declare interface PipeOptions {
+declare interface StreamPipeOptions {
   preventAbort?: boolean;
   preventCancel?: boolean;
   preventClose?: boolean;
@@ -738,14 +750,14 @@ declare interface PipeOptions {
 }
 
 /** @category Streams */
-declare interface QueuingStrategySizeCallback<T = any> {
+declare interface QueuingStrategySize<T = any> {
   (chunk: T): number;
 }
 
 /** @category Streams */
 declare interface QueuingStrategy<T = any> {
   highWaterMark?: number;
-  size?: QueuingStrategySizeCallback<T>;
+  size?: QueuingStrategySize<T>;
 }
 
 /** This Streams API interface provides a built-in byte length queuing strategy
@@ -754,28 +766,33 @@ declare interface QueuingStrategy<T = any> {
  * @category Streams
  */
 declare interface CountQueuingStrategy extends QueuingStrategy {
-  highWaterMark: number;
-  size(chunk: any): 1;
+  readonly highWaterMark: number;
+  readonly size: QueuingStrategySize;
 }
 
 /** @category Streams */
 declare var CountQueuingStrategy: {
   readonly prototype: CountQueuingStrategy;
-  new (options: { highWaterMark: number }): CountQueuingStrategy;
+  new (init: QueuingStrategyInit): CountQueuingStrategy;
 };
 
 /** @category Streams */
 declare interface ByteLengthQueuingStrategy
   extends QueuingStrategy<ArrayBufferView> {
-  highWaterMark: number;
-  size(chunk: ArrayBufferView): number;
+  readonly highWaterMark: number;
+  readonly size: QueuingStrategySize<ArrayBufferView>;
 }
 
 /** @category Streams */
 declare var ByteLengthQueuingStrategy: {
   readonly prototype: ByteLengthQueuingStrategy;
-  new (options: { highWaterMark: number }): ByteLengthQueuingStrategy;
+  new (init: QueuingStrategyInit): ByteLengthQueuingStrategy;
 };
+
+/** @category Streams */
+declare interface QueuingStrategyInit {
+  highWaterMark: number;
+}
 
 /** This Streams API interface represents a readable stream of byte data. The
  * Fetch API offers a concrete instance of a ReadableStream through the body
@@ -787,19 +804,21 @@ declare interface ReadableStream<R = any> {
   readonly locked: boolean;
   cancel(reason?: any): Promise<void>;
   getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
-  getReader(options?: { mode?: undefined }): ReadableStreamDefaultReader<R>;
-  pipeThrough<T>(transform: {
-    writable: WritableStream<R>;
-    readable: ReadableStream<T>;
-  }, options?: PipeOptions): ReadableStream<T>;
-  pipeTo(dest: WritableStream<R>, options?: PipeOptions): Promise<void>;
+  getReader(): ReadableStreamDefaultReader<R>;
+  getReader(options?: ReadableStreamGetReaderOptions): ReadableStreamReader<R>;
+  pipeThrough<T>(
+    transform: ReadableWritablePair<T, R>,
+    options?: StreamPipeOptions,
+  ): ReadableStream<T>;
+  pipeTo(
+    destination: WritableStream<R>,
+    options?: StreamPipeOptions,
+  ): Promise<void>;
   tee(): [ReadableStream<R>, ReadableStream<R>];
-  values(options?: {
-    preventCancel?: boolean;
-  }): AsyncIterableIterator<R>;
-  [Symbol.asyncIterator](options?: {
-    preventCancel?: boolean;
-  }): AsyncIterableIterator<R>;
+  values(options?: ReadableStreamIteratorOptions): AsyncIterableIterator<R>;
+  [Symbol.asyncIterator](
+    options?: ReadableStreamIteratorOptions,
+  ): AsyncIterableIterator<R>;
 }
 
 /** @category Streams */
@@ -810,6 +829,10 @@ declare var ReadableStream: {
     strategy?: { highWaterMark?: number; size?: undefined },
   ): ReadableStream<Uint8Array>;
   new <R = any>(
+    underlyingSource: UnderlyingDefaultSource<R>,
+    strategy?: QueuingStrategy<R>,
+  ): ReadableStream<R>;
+  new <R = any>(
     underlyingSource?: UnderlyingSource<R>,
     strategy?: QueuingStrategy<R>,
   ): ReadableStream<R>;
@@ -819,27 +842,45 @@ declare var ReadableStream: {
 };
 
 /** @category Streams */
-declare interface WritableStreamDefaultControllerCloseCallback {
+declare interface ReadableStreamIteratorOptions {
+  preventCancel?: boolean;
+}
+
+/** @category Streams */
+declare type ReadableStreamReaderMode = "byob";
+
+/** @category Streams */
+declare interface ReadableStreamGetReaderOptions {
+  mode?: ReadableStreamReaderMode;
+}
+
+/** @category Streams */
+declare interface ReadableWritablePair<R = any, W = any> {
+  readable: ReadableStream<R>;
+  writable: WritableStream<W>;
+}
+
+/** @category Streams */
+declare interface UnderlyingSinkCloseCallback {
   (): void | PromiseLike<void>;
 }
 
 /** @category Streams */
-declare interface WritableStreamDefaultControllerStartCallback {
-  (controller: WritableStreamDefaultController): void | PromiseLike<void>;
+declare interface UnderlyingSinkStartCallback {
+  (controller: WritableStreamDefaultController): any;
 }
 
 /** @category Streams */
-declare interface WritableStreamDefaultControllerWriteCallback<W> {
-  (chunk: W, controller: WritableStreamDefaultController):
-    | void
-    | PromiseLike<
-      void
-    >;
+declare interface UnderlyingSinkWriteCallback<W> {
+  (
+    chunk: W,
+    controller: WritableStreamDefaultController,
+  ): void | PromiseLike<void>;
 }
 
 /** @category Streams */
-declare interface WritableStreamErrorCallback {
-  (reason: any): void | PromiseLike<void>;
+declare interface UnderlyingSinkAbortCallback {
+  (reason?: any): void | PromiseLike<void>;
 }
 
 /** This Streams API interface provides a standard abstraction for writing
@@ -872,14 +913,14 @@ declare var WritableStream: {
  * @category Streams
  */
 declare interface WritableStreamDefaultController {
-  signal: AbortSignal;
-  error(error?: any): void;
+  readonly signal: AbortSignal;
+  error(e?: any): void;
 }
 
 /** @category Streams */
 declare var WritableStreamDefaultController: {
   readonly prototype: WritableStreamDefaultController;
-  new (): never;
+  new (): WritableStreamDefaultController;
 };
 
 /** This Streams API interface is the object returned by
@@ -890,19 +931,19 @@ declare var WritableStreamDefaultController: {
  * @category Streams
  */
 declare interface WritableStreamDefaultWriter<W = any> {
-  readonly closed: Promise<void>;
+  readonly closed: Promise<undefined>;
   readonly desiredSize: number | null;
-  readonly ready: Promise<void>;
+  readonly ready: Promise<undefined>;
   abort(reason?: any): Promise<void>;
   close(): Promise<void>;
   releaseLock(): void;
-  write(chunk: W): Promise<void>;
+  write(chunk?: W): Promise<void>;
 }
 
 /** @category Streams */
 declare var WritableStreamDefaultWriter: {
   readonly prototype: WritableStreamDefaultWriter;
-  new <W>(stream: WritableStream<W>): WritableStreamDefaultWriter<W>;
+  new <W = any>(stream: WritableStream<W>): WritableStreamDefaultWriter<W>;
 };
 
 /** @category Streams */
@@ -924,7 +965,7 @@ declare var TransformStream: {
 /** @category Streams */
 declare interface TransformStreamDefaultController<O = any> {
   readonly desiredSize: number | null;
-  enqueue(chunk: O): void;
+  enqueue(chunk?: O): void;
   error(reason?: any): void;
   terminate(): void;
 }
@@ -932,30 +973,40 @@ declare interface TransformStreamDefaultController<O = any> {
 /** @category Streams */
 declare var TransformStreamDefaultController: {
   readonly prototype: TransformStreamDefaultController;
-  new (): never;
+  new (): TransformStreamDefaultController;
 };
 
 /** @category Streams */
 declare interface Transformer<I = any, O = any> {
-  flush?: TransformStreamDefaultControllerCallback<O>;
+  flush?: TransformerFlushCallback<O>;
   readableType?: undefined;
-  start?: TransformStreamDefaultControllerCallback<O>;
-  transform?: TransformStreamDefaultControllerTransformCallback<I, O>;
-  cancel?: (reason: any) => Promise<void>;
+  start?: TransformerStartCallback<O>;
+  transform?: TransformerTransformCallback<I, O>;
+  cancel?: TransformerCancelCallback;
   writableType?: undefined;
 }
 
 /** @category Streams */
-declare interface TransformStreamDefaultControllerCallback<O> {
+declare interface TransformerFlushCallback<O> {
   (controller: TransformStreamDefaultController<O>): void | PromiseLike<void>;
 }
 
 /** @category Streams */
-declare interface TransformStreamDefaultControllerTransformCallback<I, O> {
+declare interface TransformerStartCallback<O> {
+  (controller: TransformStreamDefaultController<O>): any;
+}
+
+/** @category Streams */
+declare interface TransformerTransformCallback<I, O> {
   (
     chunk: I,
     controller: TransformStreamDefaultController<O>,
   ): void | PromiseLike<void>;
+}
+
+/** @category Streams */
+declare interface TransformerCancelCallback {
+  (reason: any): void | PromiseLike<void>;
 }
 
 /** @category Events */
@@ -1142,7 +1193,7 @@ declare function structuredClone<T = any>(
  *
  * @category Streams
  */
-declare interface CompressionStream {
+declare interface CompressionStream extends GenericTransformStream {
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<Uint8Array>;
 }
@@ -1186,7 +1237,7 @@ declare var CompressionStream: {
  *
  * @category Streams
  */
-declare interface DecompressionStream {
+declare interface DecompressionStream extends GenericTransformStream {
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<Uint8Array>;
 }
