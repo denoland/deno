@@ -717,11 +717,16 @@ interface TextEncoderEncodeIntoResult {
     written: number;
 }
 
+interface TransformerCancelCallback {
+    (reason: any): void | PromiseLike<void>;
+}
+
 interface Transformer<I = any, O = any> {
     flush?: TransformerFlushCallback<O>;
     readableType?: undefined;
     start?: TransformerStartCallback<O>;
     transform?: TransformerTransformCallback<I, O>;
+    cancel?: TransformerCancelCallback;
     writableType?: undefined;
 }
 
@@ -1807,6 +1812,8 @@ declare var CloseEvent: {
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CompressionStream) */
 interface CompressionStream extends GenericTransformStream {
+    readonly readable: ReadableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array>;
 }
 
 declare var CompressionStream: {
@@ -2258,6 +2265,8 @@ declare var DOMStringList: {
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DecompressionStream) */
 interface DecompressionStream extends GenericTransformStream {
+    readonly readable: ReadableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array>;
 }
 
 declare var DecompressionStream: {
@@ -4875,15 +4884,20 @@ interface ReadableStream<R = any> {
 
 declare var ReadableStream: {
     prototype: ReadableStream;
-    new(underlyingSource: UnderlyingByteSource, strategy?: { highWaterMark?: number }): ReadableStream<Uint8Array>;
+    new(underlyingSource: UnderlyingByteSource, strategy?: { highWaterMark?: number; size?: undefined }): ReadableStream<Uint8Array>;
     new<R = any>(underlyingSource: UnderlyingDefaultSource<R>, strategy?: QueuingStrategy<R>): ReadableStream<R>;
     new<R = any>(underlyingSource?: UnderlyingSource<R>, strategy?: QueuingStrategy<R>): ReadableStream<R>;
+    from<R>(asyncIterable: AsyncIterable<R> | Iterable<R | PromiseLike<R>>): ReadableStream<R>;
 };
+
+interface ReadableStreamBYOBReaderReadOptions {
+    min?: number;
+}
 
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ReadableStreamBYOBReader) */
 interface ReadableStreamBYOBReader extends ReadableStreamGenericReader {
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ReadableStreamBYOBReader/read) */
-    read<T extends ArrayBufferView>(view: T): Promise<ReadableStreamReadResult<T>>;
+    read<T extends ArrayBufferView>(view: T, options?: ReadableStreamBYOBReaderReadOptions): Promise<ReadableStreamReadResult<T>>;
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/ReadableStreamBYOBReader/releaseLock) */
     releaseLock(): void;
 }
