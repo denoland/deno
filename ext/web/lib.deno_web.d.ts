@@ -668,7 +668,7 @@ declare interface UnderlyingByteSource {
   type: "bytes";
 }
 
-interface UnderlyingDefaultSource<R = any> {
+declare interface UnderlyingDefaultSource<R = any> {
   cancel?: UnderlyingSourceCancelCallback;
   pull?: (
     controller: ReadableStreamDefaultController<R>,
