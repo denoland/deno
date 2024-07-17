@@ -743,6 +743,7 @@ dependencies = [
  "os_pipe",
  "pretty_assertions",
  "regex",
+ "reqwest",
  "serde",
  "test_server",
  "tokio",
@@ -1148,6 +1149,10 @@ dependencies = [
  "fs3",
  "glibc_version",
  "glob",
+ "http 1.1.0",
+ "http-body 1.0.0",
+ "http-body-util",
+ "hyper-util",
  "import_map",
  "indexmap",
  "jsonc-parser",
@@ -1172,7 +1177,6 @@ dependencies = [
  "quick-junit",
  "rand",
  "regex",
- "reqwest",
  "ring",
  "runtimelib",
  "rustyline",
@@ -1462,6 +1466,7 @@ dependencies = [
 name = "deno_fetch"
 version = "0.185.0"
 dependencies = [
+ "base64 0.21.7",
  "bytes",
  "data-url",
  "deno_core",
@@ -1469,11 +1474,20 @@ dependencies = [
  "deno_tls",
  "dyn-clone",
  "http 1.1.0",
- "reqwest",
+ "http-body-util",
+ "hyper 1.4.1",
+ "hyper-rustls",
+ "hyper-util",
+ "ipnet",
  "serde",
  "serde_json",
  "tokio",
+ "tokio-rustls",
+ "tokio-socks",
  "tokio-util",
+ "tower",
+ "tower-http",
+ "tower-service",
 ]
 
 [[package]]
@@ -1617,6 +1631,7 @@ dependencies = [
  "denokv_sqlite",
  "faster-hex",
  "http 1.1.0",
+ "http-body-util",
  "log",
  "num-bigint",
  "prost",
@@ -1736,6 +1751,7 @@ dependencies = [
  "hkdf",
  "home",
  "http 1.1.0",
+ "http-body-util",
  "idna 0.3.0",
  "indexmap",
  "ipnetwork",
@@ -1758,7 +1774,6 @@ dependencies = [
  "pin-project-lite",
  "rand",
  "regex",
- "reqwest",
  "ring",
  "ripemd",
  "rsa",
@@ -3358,12 +3373,12 @@ dependencies = [
 
 [[package]]
 name = "http-body-util"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0475f8b2ac86659c21b64320d5d653f9efe42acd2a4e560073ec61a155a34f1d"
+checksum = "793429d76616a256bcb62c2a2ec2bed781c8307e797e2598c50010f2bee2544f"
 dependencies = [
  "bytes",
- "futures-core",
+ "futures-util",
  "http 1.1.0",
  "http-body 1.0.0",
  "pin-project-lite",
@@ -7100,6 +7115,26 @@ dependencies = [
  "pin-project",
  "pin-project-lite",
  "tokio",
+ "tower-layer",
+ "tower-service",
+]
+
+[[package]]
+name = "tower-http"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e9cd434a998747dd2c4276bc96ee2e0c7a2eadf3cae88e52be55a05fa9053f5"
+dependencies = [
+ "async-compression",
+ "bitflags 2.5.0",
+ "bytes",
+ "futures-core",
+ "http 1.1.0",
+ "http-body 1.0.0",
+ "http-body-util",
+ "pin-project-lite",
+ "tokio",
+ "tokio-util",
  "tower-layer",
  "tower-service",
 ]
