@@ -13315,9 +13315,9 @@ fn lsp_deno_json_workspace_fmt_config() {
     json!([{
       "range": {
         "start": { "line": 0, "character": 12 },
-        "end": { "line": 0, "character": 14 },
+        "end": { "line": 0, "character": 16 },
       },
-      "newText": "''",
+      "newText": "'')",
     }])
   );
   // `project2/file.ts` should use the fmt settings from `deno.json`, since it
