@@ -441,13 +441,15 @@ function extractBody(object) {
     // deno-lint-ignore prefer-primordials
     source = object.toString();
     contentType = "application/x-www-form-urlencoded;charset=UTF-8";
-  } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {
-    stream = object;
-    if (object.locked || isReadableStreamDisturbed(object)) {
-      throw new TypeError("ReadableStream is locked or disturbed");
-    }
   } else if (object[SymbolAsyncIterator] !== undefined) {
-    stream = ReadableStream.from(object);
+    if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {
+      stream = object;
+      if (object.locked || isReadableStreamDisturbed(object)) {
+        throw new TypeError("ReadableStream is locked or disturbed");
+      }
+    } else {
+      stream = ReadableStream.from(object);
+    }
   }
   if (typeof source === "string") {
     // WARNING: this deviates from spec (expects length to be set)
