@@ -181,6 +181,7 @@ mod impl_ {
         "failed to serialize json value: {e}"
       ))
     })?;
+    serialized.push(b'\n');
 
     let stream = state
       .borrow()
@@ -196,7 +197,6 @@ mod impl_ {
       queue_ok.set_index(scope, 0, v);
     }
     Ok(async move {
-      serialized.push(b'\n');
       stream.clone().write_msg_bytes(&serialized).await?;
       stream
         .queued_bytes
