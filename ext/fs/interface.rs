@@ -285,6 +285,9 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   fn exists_sync(&self, path: &Path) -> bool {
     self.stat_sync(path).is_ok()
   }
+  async fn exists_async(&self, path: PathBuf) -> FsResult<bool> {
+    Ok(self.stat_async(path).await.is_ok())
+  }
 
   fn read_text_file_lossy_sync(
     &self,
