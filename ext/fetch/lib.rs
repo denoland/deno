@@ -1061,6 +1061,10 @@ pub struct Client {
 
 type Connector = proxy::ProxyConnector<HttpsConnector<HttpConnector>>;
 
+// clippy is wrong here
+#[allow(clippy::declare_interior_mutable_const)]
+const STAR_STAR: HeaderValue = HeaderValue::from_static("*/*");
+
 impl Client {
   pub async fn send(
     self,
@@ -1071,7 +1075,6 @@ impl Client {
       .entry(USER_AGENT)
       .or_insert_with(|| self.user_agent.clone());
 
-    const STAR_STAR: HeaderValue = HeaderValue::from_static("*/*");
     req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
 
     if let Some(auth) = self.proxies.http_forward_auth(req.uri()) {
