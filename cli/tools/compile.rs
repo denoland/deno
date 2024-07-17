@@ -14,7 +14,10 @@ use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
 use deno_terminal::colors;
 use eszip::EszipRelativeFileBaseUrl;
+use eszip::EszipV2;
 use rand::Rng;
+use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -126,19 +129,21 @@ pub async fn compile(
   let mut file = std::fs::File::create(&temp_path).with_context(|| {
     format!("Opening temporary file '{}'", temp_path.display())
   })?;
-  let write_result = binary_writer
-    .write_bin(
-      &mut file,
-      eszip,
-      root_dir_url,
-      &module_specifier,
-      &compile_flags,
-      cli_options,
-    )
-    .await
-    .with_context(|| {
-      format!("Writing temporary file '{}'", temp_path.display())
-    });
+  let write_result = if compile_flags.eszip {
+    file.write_all(&eszip.into_bytes()).map_err(AnyError::from)
+  } else {
+    binary_writer
+      .write_bin(
+        &mut file,
+        eszip,
+        root_dir_url,
+        &module_specifier,
+        &compile_flags,
+        cli_options,
+      )
+      .await
+  }
+  .with_context(|| format!("Writing temporary file '{}'", temp_path.display()));
   drop(file);
 
   // set it as executable
@@ -191,7 +196,7 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
 
     // Make sure we don't overwrite any file not created by Deno compiler because
     // this filename is chosen automatically in some cases.
-    if !is_standalone_binary(output_path) {
+    if !is_standalone_binary(output_path) && !is_eszip(output_path) {
       bail!(
         concat!(
           "Could not compile to file '{}' because the file already exists ",
@@ -345,6 +350,17 @@ fn resolve_root_dir_from_specifiers<'a>(
   ModuleSpecifier::parse(found_dir).unwrap()
 }
 
+pub fn is_eszip(path: &Path) -> bool {
+  let Ok(mut file) = std::fs::File::open(path) else {
+    return false;
+  };
+  let mut magic = [0u8; 8];
+  if file.read_exact(&mut magic).is_err() {
+    return false;
+  }
+  EszipV2::has_magic(&magic)
+}
+
 #[cfg(test)]
 mod test {
   pub use super::*;
@@ -361,6 +377,7 @@ mod test {
         target: Some("x86_64-unknown-linux-gnu".to_string()),
         no_terminal: false,
         include: vec![],
+        eszip: false,
       },
       &std::env::current_dir().unwrap(),
     )
@@ -385,6 +402,7 @@ mod test {
         target: Some("x86_64-pc-windows-msvc".to_string()),
         include: vec![],
         no_terminal: false,
+        eszip: false,
       },
       &std::env::current_dir().unwrap(),
     )

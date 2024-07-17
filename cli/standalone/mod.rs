@@ -53,6 +53,7 @@ use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_runtime::deno_fs;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
@@ -65,9 +66,16 @@ use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use eszip::EszipRelativeFileBaseUrl;
 use import_map::parse_from_json;
+use sha2::Digest;
+use sha2::Sha256;
 use std::borrow::Cow;
+use std::future::Future;
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use virtual_fs::FileBackedVfs;
 
 pub mod binary;
 mod file_system;
@@ -79,7 +87,7 @@ pub use binary::DenoCompileBinaryWriter;
 
 use self::binary::load_npm_vfs;
 use self::binary::Metadata;
-use self::file_system::DenoCompileFileSystem;
+pub use self::file_system::DenoCompileFileSystem;
 
 struct WorkspaceEszipModule {
   specifier: ModuleSpecifier,
@@ -423,10 +431,16 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
 pub async fn run(
   mut eszip: eszip::EszipV2,
   metadata: Metadata,
+  image_path: &[u8],
+  image_name: &str,
 ) -> Result<i32, AnyError> {
-  let current_exe_path = std::env::current_exe().unwrap();
-  let current_exe_name =
-    current_exe_path.file_name().unwrap().to_string_lossy();
+  let image_path_hash = Sha256::digest(image_path);
+  let mut image_path_hash_buf = [0u8; 40];
+  let image_path_hash = &*faster_hex::hex_encode(
+    &image_path_hash[12..32],
+    &mut image_path_hash_buf,
+  )
+  .unwrap();
   let maybe_cwd = std::env::current_dir().ok();
   let deno_dir_provider = Arc::new(DenoDirProvider::new(None));
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
@@ -441,8 +455,8 @@ pub async fn run(
   ));
   // use a dummy npm registry url
   let npm_registry_url = ModuleSpecifier::parse("https://localhost/").unwrap();
-  let root_path =
-    std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name));
+  let root_path = std::env::temp_dir()
+    .join(format!("deno-compile-{}-{}", image_name, image_path_hash));
   let root_dir_url =
     Arc::new(ModuleSpecifier::from_directory_path(&root_path).unwrap());
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
