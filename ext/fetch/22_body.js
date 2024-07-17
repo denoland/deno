@@ -447,7 +447,7 @@ function extractBody(object) {
       throw new TypeError("ReadableStream is locked or disturbed");
     }
   } else if (object[SymbolAsyncIterator] !== undefined) {
-    stream = ReadableStream.from(object.value);
+    stream = ReadableStream.from(object);
   }
   if (typeof source === "string") {
     // WARNING: this deviates from spec (expects length to be set)
