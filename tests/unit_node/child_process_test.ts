@@ -935,9 +935,6 @@ Deno.test(
     child.on("message", (message) => {
       assertEquals(message, expect[i]);
       i++;
-      if (i === expect.length) {
-        child.kill();
-      }
     });
     child.on("close", () => p.resolve());
     await Promise.race([p.promise, timeout.promise]);
