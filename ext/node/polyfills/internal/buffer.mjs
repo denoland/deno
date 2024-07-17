@@ -93,15 +93,25 @@ Object.defineProperty(Buffer.prototype, "offset", {
   },
 });
 
+class FastBuffer extends Uint8Array {
+  // Using an explicit constructor here is necessary to avoid relying on
+  // `Array.prototype[Symbol.iterator]`, which can be mutated by users.
+  // eslint-disable-next-line no-useless-constructor
+  constructor(bufferOrLength, byteOffset, length) {
+    super(bufferOrLength, byteOffset, length);
+  }
+}
+
+FastBuffer.prototype.constructor = Buffer;
+Buffer.prototype = FastBuffer.prototype;
+
 function createBuffer(length) {
   if (length > kMaxLength) {
     throw new RangeError(
       'The value "' + length + '" is invalid for option "size"',
     );
   }
-  const buf = new Uint8Array(length);
-  Object.setPrototypeOf(buf, Buffer.prototype);
-  return buf;
+  return new FastBuffer(length);
 }
 
 export function Buffer(arg, encodingOrOffset, length) {
@@ -232,13 +242,11 @@ function fromStringFast(string, ops) {
   if (length > (poolSize - poolOffset)) {
     createPool();
   }
-  let b = new Uint8Array(allocPool, poolOffset, length);
-  Object.setPrototypeOf(b, Buffer.prototype);
+  let b = new FastBuffer(allocPool, poolOffset, length);
   const actual = ops.write(b, string, 0, length);
   if (actual != length) {
     // byteLength() may overestimate. That's a rare case, though.
-    b = new Uint8Array(allocPool, poolOffset, actual);
-    Object.setPrototypeOf(b, Buffer.prototype);
+    b = new FastBuffer(allocPool, poolOffset, actual);
   }
   poolOffset += actual;
   alignPool();
@@ -260,9 +268,7 @@ function fromString(string, encoding) {
 }
 
 function fromArrayLike(obj) {
-  const buf = new Uint8Array(obj);
-  Object.setPrototypeOf(buf, Buffer.prototype);
-  return buf;
+  return new FastBuffer(obj);
 }
 
 function fromObject(obj) {
@@ -870,9 +876,7 @@ function fromArrayBuffer(obj, byteOffset, length) {
     }
   }
 
-  const buffer = new Uint8Array(obj, byteOffset, length);
-  Object.setPrototypeOf(buffer, Buffer.prototype);
-  return buffer;
+  return new FastBuffer(obj, byteOffset, length);
 }
 
 function _base64Slice(buf, start, end) {
