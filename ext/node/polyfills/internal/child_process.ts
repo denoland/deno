@@ -1106,8 +1106,8 @@ export function setupChannel(target, ipc) {
         if (!target.connected || target.killed) {
           return;
         }
-        const msg = await op_node_ipc_read(ipc);
-        if (msg == null) {
+        const [msg, stillOpen] = await op_node_ipc_read(ipc);
+        if (stillOpen == false) {
           // Channel closed.
           target.disconnect();
           return;

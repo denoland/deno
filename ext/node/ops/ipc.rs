@@ -191,7 +191,7 @@ mod impl_ {
   pub async fn op_node_ipc_read(
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
-  ) -> Result<serde_json::Value, AnyError> {
+  ) -> Result<(serde_json::Value, bool), AnyError> {
     let stream = state
       .borrow()
       .resource_table
@@ -201,7 +201,11 @@ mod impl_ {
     let cancel = stream.cancel.clone();
     let mut stream = RcRef::map(stream, |r| &r.read_half).borrow_mut().await;
     let msgs = stream.read_msg().or_cancel(cancel).await??;
-    Ok(msgs)
+    if let Some(msg) = msgs {
+      Ok((msg, true))
+    } else {
+      Ok((serde_json::Value::Null, false))
+    }
   }
 
   pub struct IpcJsonStreamResource {
@@ -339,13 +343,15 @@ mod impl_ {
       }
     }
 
-    async fn read_msg(&mut self) -> Result<serde_json::Value, AnyError> {
+    async fn read_msg(
+      &mut self,
+    ) -> Result<Option<serde_json::Value>, AnyError> {
       let mut json = None;
       let nread =
         read_msg_inner(&mut self.pipe, &mut self.buffer, &mut json).await?;
       if nread == 0 {
         // EOF.
-        return Ok(serde_json::Value::Null);
+        return Ok(None);
       }
 
       let json = match json {
@@ -362,7 +368,7 @@ mod impl_ {
         self.buffer.set_len(0);
       }
 
-      Ok(json)
+      Ok(Some(json))
     }
   }
 
@@ -455,7 +461,6 @@ mod impl_ {
   #[cfg(test)]
   mod tests {
     use super::IpcJsonStreamResource;
-    use deno_core::serde_json;
     use deno_core::serde_json::json;
     use deno_core::RcRef;
     use std::rc::Rc;
@@ -519,10 +524,9 @@ mod impl_ {
 
       let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
       loop {
-        let msgs = ipc.read_msg().await?;
-        if msgs == serde_json::Value::Null {
+        let Some(msgs) = ipc.read_msg().await? else {
           break;
-        }
+        };
         bytes += msgs.as_str().unwrap().len();
         if start.elapsed().as_secs() > 5 {
           break;
@@ -556,7 +560,7 @@ mod impl_ {
       ipc.clone().write_msg(&json!("hello")).await?;
 
       let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
-      let msgs = ipc.read_msg().await?;
+      let msgs = ipc.read_msg().await?.unwrap();
       assert_eq!(msgs, json!("world"));
 
       child.await??;
@@ -583,7 +587,7 @@ mod impl_ {
       ipc.clone().write_msg(&json!("world")).await?;
 
       let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
-      let msgs = ipc.read_msg().await?;
+      let msgs = ipc.read_msg().await?.unwrap();
       assert_eq!(msgs, json!("foo"));
 
       child.await??;
