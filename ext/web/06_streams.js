@@ -5202,7 +5202,11 @@ class ReadableStream {
       1,
       prefix,
     );
-    asyncIterable = webidl.converters["async iterable<any>"](asyncIterable, prefix, "Argument 1");
+    asyncIterable = webidl.converters["async iterable<any>"](
+      asyncIterable,
+      prefix,
+      "Argument 1",
+    );
 
     const stream = createReadableStream(noop, async () => {
       // deno-lint-ignore prefer-primordials
@@ -6876,7 +6880,9 @@ webidl.converters.StreamPipeOptions = webidl
     { key: "signal", converter: webidl.converters.AbortSignal },
   ]);
 
-webidl.converters["async iterable<any>"] = webidl.createAsyncIterableConverter(webidl.converters.any);
+webidl.converters["async iterable<any>"] = webidl.createAsyncIterableConverter(
+  webidl.converters.any,
+);
 
 internals.resourceForReadableStream = resourceForReadableStream;
 

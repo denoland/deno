@@ -6,7 +6,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials, internals } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   isArrayBuffer,
   isDataView,
@@ -939,8 +939,8 @@ function CreateAsyncFromSyncIterator(iter) {
   return {
     async next() {
       return iter.next();
-    }
-  }
+    },
+  };
 }
 
 function createAsyncIterableConverter(converter) {
@@ -966,7 +966,9 @@ function createAsyncIterableConverter(converter) {
       async next() {
         if (!iterator) {
           if (V[SymbolIterator]) {
-            iterator = CreateAsyncFromSyncIterator(FunctionPrototypeCall(iter, V));
+            iterator = CreateAsyncFromSyncIterator(
+              FunctionPrototypeCall(iter, V),
+            );
           } else {
             iterator = FunctionPrototypeCall(iter, V);
           }
@@ -998,7 +1000,9 @@ function createAsyncIterableConverter(converter) {
       async return(reason) {
         if (!iterator) {
           if (V[SymbolIterator]) {
-            iterator = CreateAsyncFromSyncIterator(FunctionPrototypeCall(iter, V));
+            iterator = CreateAsyncFromSyncIterator(
+              FunctionPrototypeCall(iter, V),
+            );
           } else {
             iterator = FunctionPrototypeCall(iter, V);
           }
@@ -1399,6 +1403,7 @@ export {
   brand,
   configureInterface,
   converters,
+  createAsyncIterableConverter,
   createBranded,
   createDictionaryConverter,
   createEnumConverter,
@@ -1407,7 +1412,6 @@ export {
   createPromiseConverter,
   createRecordConverter,
   createSequenceConverter,
-  createAsyncIterableConverter,
   illegalConstructor,
   invokeCallbackFunction,
   makeException,

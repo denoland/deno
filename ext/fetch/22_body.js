@@ -59,7 +59,6 @@ import {
   readableStreamTee,
   readableStreamThrowIfErrored,
 } from "ext:deno_web/06_streams.js";
-import { converters, createAsyncIterableConverter } from "../webidl/00_webidl";
 
 /**
  * @param {Uint8Array | string} chunk
@@ -466,7 +465,8 @@ function extractBody(object) {
   return { body, contentType };
 }
 
-webidl.converters["async iterable<Uint8Array>"] = createAsyncIterableConverter(webidl.converters.Uint8Array);
+webidl.converters["async iterable<Uint8Array>"] = webidl
+  .createAsyncIterableConverter(webidl.converters.Uint8Array);
 
 webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
   // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
@@ -486,7 +486,12 @@ webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
     if (ArrayBufferIsView(V)) {
       return webidl.converters["ArrayBufferView"](V, prefix, context, opts);
     }
-    return webidl.converters["async iterable<Uint8Array>"](V, prefix, context, opts);
+    return webidl.converters["async iterable<Uint8Array>"](
+      V,
+      prefix,
+      context,
+      opts,
+    );
   }
   // BodyInit conversion is passed to extractBody(), which calls core.encode().
   // core.encode() will UTF-8 encode strings with replacement, being equivalent to the USV normalization.
