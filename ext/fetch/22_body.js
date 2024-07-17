@@ -442,9 +442,9 @@ function extractBody(object) {
     source = object.toString();
     contentType = "application/x-www-form-urlencoded;charset=UTF-8";
   } else if (object[SymbolAsyncIterator] !== undefined) {
-    if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {
-      stream = object;
-      if (object.locked || isReadableStreamDisturbed(object)) {
+    if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object.value)) {
+      stream = object.value;
+      if (object.value.locked || isReadableStreamDisturbed(object.value)) {
         throw new TypeError("ReadableStream is locked or disturbed");
       }
     } else {
