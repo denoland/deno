@@ -1128,7 +1128,6 @@ pub struct ConfigData {
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
   pub resolver: Arc<WorkspaceResolver>,
   pub package_config: Option<Arc<LspPackageConfig>>,
-  pub is_workspace_root: bool,
   pub import_map_from_settings: Option<ModuleSpecifier>,
   /// Workspace member directories. For a workspace root this will be a list of
   /// members. For a member this will be the same list, representing self and
@@ -1529,8 +1528,6 @@ impl ConfigData {
       })
     });
 
-    let is_workspace_root =
-      workspace.resolve_start_ctx().dir_url() == workspace.root_folder().0;
     // todo(dsherret): this should include all config folders and not just deno.json folders
     let workspace_members = Arc::new(
       workspace
@@ -1558,7 +1555,6 @@ impl ConfigData {
       npmrc,
       package_config: package_config.map(Arc::new),
       import_map_from_settings,
-      is_workspace_root,
       workspace_members,
       watched_files,
     }
@@ -1718,22 +1714,19 @@ impl ConfigTree {
       if scopes.contains_key(&scope) {
         continue;
       }
-      let data =
-        ConfigData::load(None, &scope, settings, Some(file_fetcher)).await;
-      if data.is_workspace_root {
-        for (member_scope, _) in data.workspace.config_folders() {
-          if *member_scope.as_ref() != scope
-            && scopes.contains_key(member_scope)
-          {
-            continue;
-          }
-          let member_data =
-            ConfigData::load(None, member_scope, settings, Some(file_fetcher))
-              .await;
-          scopes.insert(member_scope.as_ref().clone(), Arc::new(member_data));
+      let data = Arc::new(
+        ConfigData::load(None, &scope, settings, Some(file_fetcher)).await,
+      );
+      scopes.insert(scope, data.clone());
+      for (member_scope, _) in data.workspace.config_folders() {
+        if scopes.contains_key(member_scope) {
+          continue;
         }
+        let member_data =
+          ConfigData::load(None, member_scope, settings, Some(file_fetcher))
+            .await;
+        scopes.insert(member_scope.as_ref().clone(), Arc::new(member_data));
       }
-      scopes.insert(scope, Arc::new(data));
     }
 
     for folder_uri in settings.by_workspace_folder.keys() {
