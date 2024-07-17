@@ -472,9 +472,7 @@ webidl.converters["async iterable<Uint8Array>"] = webidl
 
 webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
   // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
-  if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, V)) {
-    return webidl.converters["ReadableStream"](V, prefix, context, opts);
-  } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
+  if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
     return webidl.converters["Blob"](V, prefix, context, opts);
   } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, V)) {
     return webidl.converters["FormData"](V, prefix, context, opts);
@@ -488,6 +486,7 @@ webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
     if (ArrayBufferIsView(V)) {
       return webidl.converters["ArrayBufferView"](V, prefix, context, opts);
     }
+
     return webidl.converters["async iterable<Uint8Array>"](
       V,
       prefix,

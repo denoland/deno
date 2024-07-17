@@ -966,6 +966,7 @@ function createAsyncIterableConverter(converter) {
     let iterator;
     return {
       async next() {
+        console.error("foo", this);
         if (!iterator) {
           if (V[SymbolIterator]) {
             iterator = CreateAsyncFromSyncIterator(
