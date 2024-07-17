@@ -1,10 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
+use std::fmt::Write;
 use std::path::PathBuf;
 
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use thiserror::Error;
 
@@ -38,10 +37,61 @@ macro_rules! kinded_err {
   };
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[allow(non_camel_case_types)]
+pub enum NodeJsErrorCode {
+  ERR_INVALID_MODULE_SPECIFIER,
+  ERR_INVALID_PACKAGE_CONFIG,
+  ERR_INVALID_PACKAGE_TARGET,
+  ERR_MODULE_NOT_FOUND,
+  ERR_PACKAGE_IMPORT_NOT_DEFINED,
+  ERR_PACKAGE_PATH_NOT_EXPORTED,
+  ERR_UNKNOWN_FILE_EXTENSION,
+  ERR_UNSUPPORTED_DIR_IMPORT,
+  ERR_UNSUPPORTED_ESM_URL_SCHEME,
+}
+
+impl std::fmt::Display for NodeJsErrorCode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.as_str())
+  }
+}
+
+impl NodeJsErrorCode {
+  pub fn as_str(&self) -> &'static str {
+    use NodeJsErrorCode::*;
+    match self {
+      ERR_INVALID_MODULE_SPECIFIER => "ERR_INVALID_MODULE_SPECIFIER",
+      ERR_INVALID_PACKAGE_CONFIG => "ERR_INVALID_PACKAGE_CONFIG",
+      ERR_INVALID_PACKAGE_TARGET => "ERR_INVALID_PACKAGE_TARGET",
+      ERR_MODULE_NOT_FOUND => "ERR_MODULE_NOT_FOUND",
+      ERR_PACKAGE_IMPORT_NOT_DEFINED => "ERR_PACKAGE_IMPORT_NOT_DEFINED",
+      ERR_PACKAGE_PATH_NOT_EXPORTED => "ERR_PACKAGE_PATH_NOT_EXPORTED",
+      ERR_UNKNOWN_FILE_EXTENSION => "ERR_UNKNOWN_FILE_EXTENSION",
+      ERR_UNSUPPORTED_DIR_IMPORT => "ERR_UNSUPPORTED_DIR_IMPORT",
+      ERR_UNSUPPORTED_ESM_URL_SCHEME => "ERR_UNSUPPORTED_ESM_URL_SCHEME",
+    }
+  }
+}
+
+pub trait NodeJsErrorCoded {
+  fn code(&self) -> NodeJsErrorCode;
+}
+
 kinded_err!(
   ResolvePkgSubpathFromDenoModuleError,
   ResolvePkgSubpathFromDenoModuleErrorKind
 );
+
+impl NodeJsErrorCoded for ResolvePkgSubpathFromDenoModuleError {
+  fn code(&self) -> NodeJsErrorCode {
+    use ResolvePkgSubpathFromDenoModuleErrorKind::*;
+    match self.as_kind() {
+      PackageSubpathResolve(e) => e.code(),
+      UrlToNodeResolution(e) => e.code(),
+    }
+  }
+}
 
 #[derive(Debug, Error)]
 pub enum ResolvePkgSubpathFromDenoModuleErrorKind {
@@ -54,7 +104,8 @@ pub enum ResolvePkgSubpathFromDenoModuleErrorKind {
 // todo(https://github.com/denoland/deno_core/issues/810): make this a TypeError
 #[derive(Debug, Clone, Error)]
 #[error(
-  "[ERR_INVALID_MODULE_SPECIFIER] Invalid module '{}' {}{}",
+  "[{}] Invalid module '{}' {}{}",
+  self.code(),
   request,
   reason,
   maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default()
@@ -65,13 +116,39 @@ pub struct InvalidModuleSpecifierError {
   pub maybe_referrer: Option<String>,
 }
 
+impl NodeJsErrorCoded for InvalidModuleSpecifierError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
+  }
+}
+
 #[derive(Debug, Error)]
 pub enum LegacyMainResolveError {
   #[error(transparent)]
   PathToDeclarationUrl(PathToDeclarationUrlError),
 }
 
+impl NodeJsErrorCoded for LegacyMainResolveError {
+  fn code(&self) -> NodeJsErrorCode {
+    match self {
+      Self::PathToDeclarationUrl(e) => e.code(),
+    }
+  }
+}
+
 kinded_err!(PackageFolderResolveError, PackageFolderResolveErrorKind);
+
+impl NodeJsErrorCoded for PackageFolderResolveError {
+  fn code(&self) -> NodeJsErrorCode {
+    match self.as_kind() {
+      PackageFolderResolveErrorKind::NotFoundPackage { .. }
+      | PackageFolderResolveErrorKind::NotFoundReferrer { .. }
+      | PackageFolderResolveErrorKind::Io { .. } => {
+        NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+      }
+    }
+  }
+}
 
 #[derive(Debug, Error)]
 pub enum PackageFolderResolveErrorKind {
@@ -108,14 +185,24 @@ pub enum PackageFolderResolveErrorKind {
 
 kinded_err!(PackageSubpathResolveError, PackageSubpathResolveErrorKind);
 
+impl NodeJsErrorCoded for PackageSubpathResolveError {
+  fn code(&self) -> NodeJsErrorCode {
+    match self.as_kind() {
+      PackageSubpathResolveErrorKind::PkgJsonLoad(e) => e.code(),
+      PackageSubpathResolveErrorKind::PackageFolderResolve(e) => e.code(),
+      PackageSubpathResolveErrorKind::Exports(e) => e.code(),
+      PackageSubpathResolveErrorKind::LegacyMain(e) => e.code(),
+      PackageSubpathResolveErrorKind::LegacyExact(e) => e.code(),
+    }
+  }
+}
+
 #[derive(Debug, Error)]
 pub enum PackageSubpathResolveErrorKind {
   #[error(transparent)]
-  PkgJsonLoad(#[from] deno_config::package_json::PackageJsonLoadError),
+  PkgJsonLoad(#[from] PackageJsonLoadError),
   #[error(transparent)]
   PackageFolderResolve(#[from] PackageFolderResolveError),
-  #[error(transparent)]
-  DirNotFound(AnyError),
   #[error(transparent)]
   Exports(PackageExportsResolveError),
   #[error(transparent)]
@@ -152,7 +239,25 @@ pub struct PackageTargetNotFoundError {
   pub mode: NodeResolutionMode,
 }
 
+impl NodeJsErrorCoded for PackageTargetNotFoundError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+  }
+}
+
 kinded_err!(PackageTargetResolveError, PackageTargetResolveErrorKind);
+
+impl NodeJsErrorCoded for PackageTargetResolveError {
+  fn code(&self) -> NodeJsErrorCode {
+    match self.as_kind() {
+      PackageTargetResolveErrorKind::NotFound(e) => e.code(),
+      PackageTargetResolveErrorKind::InvalidPackageTarget(e) => e.code(),
+      PackageTargetResolveErrorKind::InvalidModuleSpecifier(e) => e.code(),
+      PackageTargetResolveErrorKind::PackageResolve(e) => e.code(),
+      PackageTargetResolveErrorKind::PathToDeclarationUrl(e) => e.code(),
+    }
+  }
+}
 
 #[derive(Debug, Error)]
 pub enum PackageTargetResolveErrorKind {
@@ -170,6 +275,15 @@ pub enum PackageTargetResolveErrorKind {
 
 kinded_err!(PackageExportsResolveError, PackageExportsResolveErrorKind);
 
+impl NodeJsErrorCoded for PackageExportsResolveError {
+  fn code(&self) -> NodeJsErrorCode {
+    match self.as_kind() {
+      PackageExportsResolveErrorKind::PackagePathNotExported(e) => e.code(),
+      PackageExportsResolveErrorKind::PackageTargetResolve(e) => e.code(),
+    }
+  }
+}
+
 #[derive(Debug, Error)]
 pub enum PackageExportsResolveErrorKind {
   #[error(transparent)]
@@ -184,18 +298,63 @@ pub enum PathToDeclarationUrlError {
   SubPath(#[from] PackageSubpathResolveError),
 }
 
+impl NodeJsErrorCoded for PathToDeclarationUrlError {
+  fn code(&self) -> NodeJsErrorCode {
+    match self {
+      PathToDeclarationUrlError::SubPath(e) => e.code(),
+    }
+  }
+}
+
+#[derive(Debug, Error)]
+#[error(
+  "[{}] Invalid package config. {}",
+  self.code(),
+  self.0
+)]
+pub struct PackageJsonLoadError(
+  #[source]
+  #[from]
+  pub deno_config::package_json::PackageJsonLoadError,
+);
+
+impl NodeJsErrorCoded for PackageJsonLoadError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
+  }
+}
+
 kinded_err!(ClosestPkgJsonError, ClosestPkgJsonErrorKind);
+
+impl NodeJsErrorCoded for ClosestPkgJsonError {
+  fn code(&self) -> NodeJsErrorCode {
+    match self.as_kind() {
+      ClosestPkgJsonErrorKind::CanonicalizingDir(e) => e.code(),
+      ClosestPkgJsonErrorKind::Load(e) => e.code(),
+    }
+  }
+}
 
 #[derive(Debug, Error)]
 pub enum ClosestPkgJsonErrorKind {
-  #[error("Failed canonicalizing package.json directory '{dir_path}'.")]
-  CanonicalizingDir {
-    dir_path: PathBuf,
-    #[source]
-    source: std::io::Error,
-  },
   #[error(transparent)]
-  Load(#[from] deno_config::package_json::PackageJsonLoadError),
+  CanonicalizingDir(#[from] CanonicalizingPkgJsonDirError),
+  #[error(transparent)]
+  Load(#[from] PackageJsonLoadError),
+}
+
+#[derive(Debug, Error)]
+#[error("[{}] Failed canonicalizing package.json directory '{}'.", self.code(), dir_path.display())]
+pub struct CanonicalizingPkgJsonDirError {
+  pub dir_path: PathBuf,
+  #[source]
+  pub source: std::io::Error,
+}
+
+impl NodeJsErrorCoded for CanonicalizingPkgJsonDirError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+  }
 }
 
 #[derive(Debug, Error)]
@@ -204,7 +363,22 @@ pub struct TypeScriptNotSupportedInNpmError {
   pub specifier: ModuleSpecifier,
 }
 
+impl NodeJsErrorCoded for TypeScriptNotSupportedInNpmError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
+  }
+}
+
 kinded_err!(UrlToNodeResolutionError, UrlToNodeResolutionErrorKind);
+
+impl NodeJsErrorCoded for UrlToNodeResolutionError {
+  fn code(&self) -> NodeJsErrorCode {
+    match self.as_kind() {
+      UrlToNodeResolutionErrorKind::TypeScriptNotSupported(e) => e.code(),
+      UrlToNodeResolutionErrorKind::ClosestPkgJson(e) => e.code(),
+    }
+  }
+}
 
 #[derive(Debug, Error)]
 pub enum UrlToNodeResolutionErrorKind {
@@ -217,7 +391,8 @@ pub enum UrlToNodeResolutionErrorKind {
 // todo(https://github.com/denoland/deno_core/issues/810): make this a TypeError
 #[derive(Debug, Error)]
 #[error(
-  "[ERR_PACKAGE_IMPORT_NOT_DEFINED] Package import specifier \"{}\" is not defined{}{}",
+  "[{}] Package import specifier \"{}\" is not defined{}{}",
+  self.code(),
   name,
   package_json_path.as_ref().map(|p| format!(" in package {}", p.display())).unwrap_or_default(),
   maybe_referrer.as_ref().map(|r| format!(" imported from '{}'", r)).unwrap_or_default(),
@@ -226,6 +401,12 @@ pub struct PackageImportNotDefinedError {
   pub name: String,
   pub package_json_path: Option<PathBuf>,
   pub maybe_referrer: Option<ModuleSpecifier>,
+}
+
+impl NodeJsErrorCoded for PackageImportNotDefinedError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
+  }
 }
 
 kinded_err!(PackageImportsResolveError, PackageImportsResolveErrorKind);
@@ -242,7 +423,29 @@ pub enum PackageImportsResolveErrorKind {
   Target(#[from] PackageTargetResolveError),
 }
 
+impl NodeJsErrorCoded for PackageImportsResolveErrorKind {
+  fn code(&self) -> NodeJsErrorCode {
+    match self {
+      Self::ClosestPkgJson(e) => e.code(),
+      Self::InvalidModuleSpecifier(e) => e.code(),
+      Self::NotDefined(e) => e.code(),
+      Self::Target(e) => e.code(),
+    }
+  }
+}
+
 kinded_err!(PackageResolveError, PackageResolveErrorKind);
+
+impl NodeJsErrorCoded for PackageResolveError {
+  fn code(&self) -> NodeJsErrorCode {
+    match self.as_kind() {
+      PackageResolveErrorKind::ClosestPkgJson(e) => e.code(),
+      PackageResolveErrorKind::InvalidModuleSpecifier(e) => e.code(),
+      PackageResolveErrorKind::ExportsResolve(e) => e.code(),
+      PackageResolveErrorKind::SubpathResolve(e) => e.code(),
+    }
+  }
+}
 
 #[derive(Debug, Error)]
 pub enum PackageResolveErrorKind {
@@ -298,7 +501,8 @@ pub enum FinalizeResolutionErrorKind {
 
 #[derive(Debug, Error)]
 #[error(
-  "[ERR_MODULE_NOT_FOUND] Cannot find {} '{}'{}",
+  "[{}] Cannot find {} '{}'{}",
+  self.code(),
   typ,
   specifier,
   maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default()
@@ -309,15 +513,28 @@ pub struct ModuleNotFoundError {
   pub typ: &'static str,
 }
 
+impl ModuleNotFoundError {
+  pub fn code(&self) -> &'static str {
+    "ERR_MODULE_NOT_FOUND"
+  }
+}
+
 #[derive(Debug, Error)]
 #[error(
-  "[ERR_UNSUPPORTED_DIR_IMPORT] Directory import '{}' is not supported resolving ES modules{}",
+  "[{}] Directory import '{}' is not supported resolving ES modules{}",
+  self.code(),
   dir_url,
   maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
 )]
 pub struct UnsupportedDirImportError {
   pub dir_url: ModuleSpecifier,
   pub maybe_referrer: Option<ModuleSpecifier>,
+}
+
+impl NodeJsErrorCoded for UnsupportedDirImportError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+  }
 }
 
 #[derive(Debug)]
@@ -336,7 +553,9 @@ impl std::fmt::Display for InvalidPackageTargetError {
     let rel_error = !self.is_import
       && !self.target.is_empty()
       && !self.target.starts_with("./");
-    f.write_str("[ERR_INVALID_PACKAGE_TARGET]")?;
+    f.write_char('[')?;
+    f.write_str(self.code().as_str())?;
+    f.write_char(']')?;
 
     if self.sub_path == "." {
       assert!(!self.is_import);
@@ -368,6 +587,12 @@ impl std::fmt::Display for InvalidPackageTargetError {
   }
 }
 
+impl NodeJsErrorCoded for InvalidPackageTargetError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+  }
+}
+
 #[derive(Debug)]
 pub struct PackagePathNotExportedError {
   pub pkg_json_path: PathBuf,
@@ -376,11 +601,19 @@ pub struct PackagePathNotExportedError {
   pub mode: NodeResolutionMode,
 }
 
+impl NodeJsErrorCoded for PackagePathNotExportedError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
+  }
+}
+
 impl std::error::Error for PackagePathNotExportedError {}
 
 impl std::fmt::Display for PackagePathNotExportedError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.write_str("[ERR_PACKAGE_PATH_NOT_EXPORTED]")?;
+    f.write_char('[')?;
+    f.write_str(self.code().as_str())?;
+    f.write_char(']')?;
 
     let types_msg = match self.mode {
       NodeResolutionMode::Execution => String::new(),
@@ -412,7 +645,8 @@ impl std::fmt::Display for PackagePathNotExportedError {
 
 #[derive(Debug, Clone, Error)]
 #[error(
-  "[ERR_UNSUPPORTED_ESM_URL_SCHEME] Only file and data URLS are supported by the default ESM loader.{} Received protocol '{}'",
+  "[{}] Only file and data URLs are supported by the default ESM loader.{} Received protocol '{}'",
+  self.code(),
   if cfg!(windows) && url_scheme.len() == 2 { " On Windows, absolute path must be valid file:// URLS."} else { "" },
   url_scheme
 )]
@@ -420,10 +654,16 @@ pub struct UnsupportedEsmUrlSchemeError {
   pub url_scheme: String,
 }
 
+impl NodeJsErrorCoded for UnsupportedEsmUrlSchemeError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
+  }
+}
+
 #[derive(Debug, Error)]
 pub enum ResolvePkgJsonBinExportError {
   #[error(transparent)]
-  PkgJsonLoad(#[from] deno_config::package_json::PackageJsonLoadError),
+  PkgJsonLoad(#[from] PackageJsonLoadError),
   #[error("Failed resolving binary export. '{}' did not exist", pkg_json_path.display())]
   MissingPkgJson { pkg_json_path: PathBuf },
   #[error("Failed resolving binary export. {message}")]
@@ -435,29 +675,9 @@ pub enum ResolvePkgJsonBinExportError {
 #[derive(Debug, Error)]
 pub enum ResolveBinaryCommandsError {
   #[error(transparent)]
-  PkgJsonLoad(#[from] deno_config::package_json::PackageJsonLoadError),
+  PkgJsonLoad(#[from] PackageJsonLoadError),
   #[error("'{}' did not have a name", pkg_json_path.display())]
   MissingPkgJsonName { pkg_json_path: PathBuf },
-}
-
-#[allow(unused)]
-pub fn err_invalid_package_config(
-  path: &str,
-  maybe_base: Option<String>,
-  maybe_message: Option<String>,
-) -> AnyError {
-  let mut msg =
-    format!("[ERR_INVALID_PACKAGE_CONFIG] Invalid package config {path}");
-
-  if let Some(base) = maybe_base {
-    msg = format!("{msg} while importing {base}");
-  }
-
-  if let Some(message) = maybe_message {
-    msg = format!("{msg}. {message}");
-  }
-
-  generic_error(msg)
 }
 
 #[cfg(test)]

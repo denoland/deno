@@ -16,18 +16,21 @@ use deno_fs::FileSystemRc;
 use deno_media_type::MediaType;
 
 use crate::errors;
+use crate::errors::CanonicalizingPkgJsonDirError;
 use crate::errors::ClosestPkgJsonError;
-use crate::errors::ClosestPkgJsonErrorKind;
 use crate::errors::FinalizeResolutionError;
 use crate::errors::InvalidModuleSpecifierError;
 use crate::errors::InvalidPackageTargetError;
 use crate::errors::LegacyMainResolveError;
 use crate::errors::ModuleNotFoundError;
+use crate::errors::NodeJsErrorCode;
+use crate::errors::NodeJsErrorCoded;
 use crate::errors::NodeResolveError;
 use crate::errors::PackageExportsResolveError;
 use crate::errors::PackageImportNotDefinedError;
 use crate::errors::PackageImportsResolveError;
 use crate::errors::PackageImportsResolveErrorKind;
+use crate::errors::PackageJsonLoadError;
 use crate::errors::PackagePathNotExportedError;
 use crate::errors::PackageResolveError;
 use crate::errors::PackageSubpathResolveError;
@@ -283,7 +286,7 @@ impl NodeResolver {
 
     let maybe_url = if mode.is_types() {
       let file_path = to_file_path(&url);
-      self.path_to_declaration_url(file_path, Some(referrer), referrer_kind)?
+      self.path_to_declaration_url(&file_path, Some(referrer), referrer_kind)?
     } else {
       Some(url)
     };
@@ -469,7 +472,7 @@ impl NodeResolver {
   /// Checks if the resolved file has a corresponding declaration file.
   fn path_to_declaration_url(
     &self,
-    path: PathBuf,
+    path: &Path,
     maybe_referrer: Option<&ModuleSpecifier>,
     referrer_kind: NodeModuleKind,
   ) -> Result<Option<ModuleSpecifier>, PathToDeclarationUrlError> {
@@ -522,16 +525,16 @@ impl NodeResolver {
       || lowercase_path.ends_with(".d.cts")
       || lowercase_path.ends_with(".d.mts")
     {
-      return Ok(Some(to_file_specifier(&path)));
+      return Ok(Some(to_file_specifier(path)));
     }
     if let Some(path) =
-      probe_extensions(&*self.fs, &path, &lowercase_path, referrer_kind)
+      probe_extensions(&*self.fs, path, &lowercase_path, referrer_kind)
     {
       return Ok(Some(to_file_specifier(&path)));
     }
-    if self.fs.is_dir_sync(&path) {
+    if self.fs.is_dir_sync(path) {
       let maybe_resolution = self.resolve_package_dir_subpath(
-        &path,
+        path,
         /* sub path */ ".",
         maybe_referrer,
         referrer_kind,
@@ -556,7 +559,7 @@ impl NodeResolver {
     }
     // allow resolving .css files for types resolution
     if lowercase_path.ends_with(".css") {
-      return Ok(Some(to_file_specifier(&path)));
+      return Ok(Some(to_file_specifier(path)));
     }
     Ok(None)
   }
@@ -845,7 +848,7 @@ impl NodeResolver {
       if mode.is_types() && url.scheme() == "file" {
         let path = url.to_file_path().unwrap();
         return Ok(self.path_to_declaration_url(
-          path,
+          &path,
           maybe_referrer,
           referrer_kind,
         )?);
@@ -879,8 +882,7 @@ impl NodeResolver {
             continue;
           }
           Err(e) => {
-            // todo(dsherret): add codes to each error and match on that instead
-            if e.to_string().starts_with("[ERR_INVALID_PACKAGE_TARGET]") {
+            if e.code() == NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET {
               last_error = Some(e);
               continue;
             } else {
@@ -1274,7 +1276,7 @@ impl NodeResolver {
     assert_ne!(package_subpath, ".");
     let file_path = directory.join(package_subpath);
     if mode.is_types() {
-      Ok(self.path_to_declaration_url(file_path, referrer, referrer_kind)?)
+      Ok(self.path_to_declaration_url(&file_path, referrer, referrer_kind)?)
     } else {
       Ok(Some(to_file_specifier(&file_path)))
     }
@@ -1318,7 +1320,7 @@ impl NodeResolver {
     let parent_dir = file_path.parent().unwrap();
     let current_dir =
       deno_core::strip_unc_prefix(self.fs.realpath_sync(parent_dir).map_err(
-        |source| ClosestPkgJsonErrorKind::CanonicalizingDir {
+        |source| CanonicalizingPkgJsonDirError {
           dir_path: parent_dir.to_path_buf(),
           source: source.into_io_error(),
         },
@@ -1336,10 +1338,7 @@ impl NodeResolver {
   pub(super) fn load_package_json(
     &self,
     package_json_path: &Path,
-  ) -> Result<
-    Option<PackageJsonRc>,
-    deno_config::package_json::PackageJsonLoadError,
-  > {
+  ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
     crate::package_json::load_pkg_json(&*self.fs, package_json_path)
   }
 
@@ -1359,7 +1358,7 @@ impl NodeResolver {
           if let Some(main) = package_json.main(referrer_kind) {
             let main = package_json.path.parent().unwrap().join(main).clean();
             let maybe_decl_url = self
-              .path_to_declaration_url(main, maybe_referrer, referrer_kind)
+              .path_to_declaration_url(&main, maybe_referrer, referrer_kind)
               .map_err(LegacyMainResolveError::PathToDeclarationUrl)?;
             if let Some(path) = maybe_decl_url {
               return Ok(Some(path));
