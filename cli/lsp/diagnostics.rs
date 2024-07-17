@@ -15,7 +15,6 @@ use super::tsc::TsServer;
 use super::urls::LspClientUrl;
 use super::urls::LspUrlMap;
 
-use crate::args::LintOptions;
 use crate::graph_util;
 use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
@@ -24,6 +23,7 @@ use crate::resolver::SloppyImportsResolver;
 use crate::util::path::to_percent_decoded_str;
 
 use deno_ast::MediaType;
+use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
@@ -39,7 +39,6 @@ use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
-use deno_lint::linter::LintConfig;
 use deno_lint::rules::LintRule;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
@@ -51,6 +50,7 @@ use import_map::ImportMap;
 use log::error;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
@@ -814,21 +814,24 @@ fn generate_lint_diagnostics(
       continue;
     }
     let version = document.maybe_lsp_version();
-    let (lint_options, lint_config, lint_rules) = config
+    let (lint_config, deno_lint_config, lint_rules) = config
       .tree
       .scope_for_specifier(specifier)
       .and_then(|s| config_data_by_scope.get(s))
       .map(|d| {
         (
-          d.lint_options.clone(),
           d.lint_config.clone(),
+          d.deno_lint_config.clone(),
           d.lint_rules.clone(),
         )
       })
       .unwrap_or_else(|| {
         (
-          Arc::default(),
-          LintConfig {
+          Arc::new(deno_config::LintConfig {
+            options: Default::default(),
+            files: FilePatterns::new_with_base(PathBuf::from("/")),
+          }),
+          deno_lint::linter::LintConfig {
             default_jsx_factory: None,
             default_jsx_fragment_factory: None,
           },
@@ -841,8 +844,8 @@ fn generate_lint_diagnostics(
         version,
         diagnostics: generate_document_lint_diagnostics(
           &document,
-          &lint_options,
-          lint_config,
+          &lint_config,
+          deno_lint_config,
           lint_rules.rules.clone(),
         ),
       },
@@ -853,18 +856,20 @@ fn generate_lint_diagnostics(
 
 fn generate_document_lint_diagnostics(
   document: &Document,
-  lint_options: &LintOptions,
-  lint_config: LintConfig,
+  lint_config: &deno_config::LintConfig,
+  deno_lint_config: deno_lint::linter::LintConfig,
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Vec<lsp::Diagnostic> {
-  if !lint_options.files.matches_specifier(document.specifier()) {
+  if !lint_config.files.matches_specifier(document.specifier()) {
     return Vec::new();
   }
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
-      if let Ok(references) =
-        analysis::get_lint_references(parsed_source, lint_rules, lint_config)
-      {
+      if let Ok(references) = analysis::get_lint_references(
+        parsed_source,
+        lint_rules,
+        deno_lint_config,
+      ) {
         references
           .into_iter()
           .map(|r| r.to_diagnostic())
@@ -1479,7 +1484,7 @@ fn diagnose_dependency(
     .config
     .tree
     .data_for_specifier(referrer_doc.file_referrer().unwrap_or(referrer))
-    .and_then(|d| d.import_map.as_ref());
+    .and_then(|d| d.resolver.maybe_import_map());
   if let Some(import_map) = import_map {
     if let Resolution::Ok(resolved) = &dependency.maybe_code {
       if let Some(to) = import_map.lookup(&resolved.specifier, referrer) {
@@ -1530,7 +1535,7 @@ fn diagnose_dependency(
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
       referrer_doc,
-      import_map.map(|i| i.as_ref()),
+      import_map,
     )
     .iter()
     .flat_map(|diag| {
@@ -1554,7 +1559,7 @@ fn diagnose_dependency(
         dependency.is_dynamic,
         dependency.maybe_attribute_type.as_deref(),
         referrer_doc,
-        import_map.map(|i| i.as_ref()),
+        import_map,
       )
       .iter()
       .map(|diag| diag.to_lsp_diagnostic(&range)),
