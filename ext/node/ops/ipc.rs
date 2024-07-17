@@ -15,6 +15,7 @@ mod impl_ {
   use std::os::fd::RawFd;
   use std::pin::Pin;
   use std::rc::Rc;
+  use std::task::ready;
   use std::task::Context;
   use std::task::Poll;
 
@@ -34,9 +35,9 @@ mod impl_ {
   use memchr::memchr;
   use pin_project_lite::pin_project;
   use serde::Serialize;
-  use tokio::io::AsyncBufRead;
+  use tokio::io::AsyncRead;
   use tokio::io::AsyncWriteExt;
-  use tokio::io::BufReader;
+  use tokio::io::ReadBuf;
 
   #[cfg(unix)]
   use tokio::net::unix::OwnedReadHalf;
@@ -315,30 +316,66 @@ mod impl_ {
   // 64kb has been chosen after benchmarking 64 to 66536 << 6 - 1 bytes per message.
   const INITIAL_CAPACITY: usize = 1024 * 64;
 
+  // A buffer for reading from the IPC pipe.
+  // Similar to the internal buffer of `tokio::io::BufReader`.
+  struct ReadBuffer {
+    buffer: Box<[u8]>,
+    pos: usize,
+    cap: usize,
+  }
+
+  impl ReadBuffer {
+    fn new() -> Self {
+      Self {
+        buffer: vec![0; INITIAL_CAPACITY].into_boxed_slice(),
+        pos: 0,
+        cap: 0,
+      }
+    }
+
+    fn get_mut(&mut self) -> &mut [u8] {
+      &mut self.buffer
+    }
+
+    fn available_mut(&mut self) -> &mut [u8] {
+      &mut self.buffer[self.pos..self.cap]
+    }
+
+    fn consume(&mut self, n: usize) {
+      self.pos = std::cmp::min(self.pos + n, self.cap);
+    }
+
+    fn needs_fill(&self) -> bool {
+      self.pos >= self.cap
+    }
+  }
+
   // JSON serialization stream over IPC pipe.
   //
   // `\n` is used as a delimiter between messages.
   struct IpcJsonStream {
     #[cfg(unix)]
-    pipe: BufReader<OwnedReadHalf>,
+    pipe: OwnedReadHalf,
     #[cfg(windows)]
-    pipe: BufReader<tokio::io::ReadHalf<NamedPipeClient>>,
+    pipe: tokio::io::ReadHalf<NamedPipeClient>,
     buffer: Vec<u8>,
+    read_buffer: ReadBuffer,
   }
 
   impl IpcJsonStream {
     #[cfg(unix)]
     fn new(pipe: OwnedReadHalf) -> Self {
       Self {
-        pipe: BufReader::with_capacity(INITIAL_CAPACITY, pipe),
+        pipe,
         buffer: Vec::with_capacity(INITIAL_CAPACITY),
+        read_buffer: ReadBuffer::new(),
       }
     }
 
     #[cfg(windows)]
     fn new(pipe: tokio::io::ReadHalf<NamedPipeClient>) -> Self {
       Self {
-        pipe: BufReader::with_capacity(INITIAL_CAPACITY, pipe),
+        pipe,
         buffer: Vec::with_capacity(INITIAL_CAPACITY),
       }
     }
@@ -347,8 +384,13 @@ mod impl_ {
       &mut self,
     ) -> Result<Option<serde_json::Value>, AnyError> {
       let mut json = None;
-      let nread =
-        read_msg_inner(&mut self.pipe, &mut self.buffer, &mut json).await?;
+      let nread = read_msg_inner(
+        &mut self.pipe,
+        &mut self.buffer,
+        &mut json,
+        &mut self.read_buffer,
+      )
+      .await?;
       if nread == 0 {
         // EOF.
         return Ok(None);
@@ -381,6 +423,7 @@ mod impl_ {
           // The number of bytes appended to buf. This can be less than buf.len() if
           // the buffer was not empty when the operation was started.
           read: usize,
+          read_buffer: &'a mut ReadBuffer,
       }
   }
 
@@ -388,43 +431,41 @@ mod impl_ {
     reader: &'a mut R,
     buf: &'a mut Vec<u8>,
     json: &'a mut Option<serde_json::Value>,
+    read_buffer: &'a mut ReadBuffer,
   ) -> ReadMsgInner<'a, R>
   where
-    R: AsyncBufRead + ?Sized + Unpin,
+    R: AsyncRead + ?Sized + Unpin,
   {
     ReadMsgInner {
       reader,
       buf,
       json,
       read: 0,
+      read_buffer,
     }
   }
 
-  fn read_msg_internal<R: AsyncBufRead + ?Sized>(
+  fn read_msg_internal<R: AsyncRead + ?Sized>(
     mut reader: Pin<&mut R>,
     cx: &mut Context<'_>,
     buf: &mut Vec<u8>,
+    read_buffer: &mut ReadBuffer,
     json: &mut Option<serde_json::Value>,
     read: &mut usize,
   ) -> Poll<io::Result<usize>> {
     loop {
       let (done, used) = {
-        let available = match reader.as_mut().poll_fill_buf(cx) {
-          std::task::Poll::Ready(t) => t?,
-          std::task::Poll::Pending => return std::task::Poll::Pending,
-        };
+        // effectively a tiny `poll_fill_buf`, but allows us to get a mutable reference to the buffer.
+        if read_buffer.needs_fill() {
+          let mut read_buf = ReadBuf::new(read_buffer.get_mut());
+          ready!(reader.as_mut().poll_read(cx, &mut read_buf))?;
+          read_buffer.cap = read_buf.filled().len();
+          read_buffer.pos = 0;
+        }
+        let available = read_buffer.available_mut();
         if let Some(i) = memchr(b'\n', available) {
           if *read == 0 {
             // Fast path: parse and put into the json slot directly.
-            //
-            // Safety: It is ok to overwrite the  contents because
-            // we don't need to copy it into the buffer and the length will be reset.
-            let available = unsafe {
-              std::slice::from_raw_parts_mut(
-                available.as_ptr() as *mut u8,
-                available.len(),
-              )
-            };
             json.replace(
               simd_json::from_slice(&mut available[..i + 1])
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
@@ -441,7 +482,7 @@ mod impl_ {
         }
       };
 
-      reader.as_mut().consume(used);
+      read_buffer.consume(used);
       *read += used;
       if done || used == 0 {
         return Poll::Ready(Ok(mem::replace(read, 0)));
@@ -449,12 +490,19 @@ mod impl_ {
     }
   }
 
-  impl<R: AsyncBufRead + ?Sized + Unpin> Future for ReadMsgInner<'_, R> {
+  impl<R: AsyncRead + ?Sized + Unpin> Future for ReadMsgInner<'_, R> {
     type Output = io::Result<usize>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
       let me = self.project();
-      read_msg_internal(Pin::new(*me.reader), cx, me.buf, me.json, me.read)
+      read_msg_internal(
+        Pin::new(*me.reader),
+        cx,
+        me.buf,
+        me.read_buffer,
+        me.json,
+        me.read,
+      )
     }
   }
 
