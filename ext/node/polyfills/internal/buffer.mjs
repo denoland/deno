@@ -43,6 +43,15 @@ import { Blob } from "ext:deno_web/09_file.js";
 
 export { atob, Blob, btoa };
 
+class FastBuffer extends Uint8Array {
+  // Using an explicit constructor here is necessary to avoid relying on
+  // `Array.prototype[Symbol.iterator]`, which can be mutated by users.
+  // eslint-disable-next-line no-useless-constructor
+  constructor(bufferOrLength, byteOffset, length) {
+    super(bufferOrLength, byteOffset, length);
+  }
+}
+
 const utf8Encoder = new TextEncoder();
 
 // Temporary buffers to convert numbers.
@@ -73,6 +82,9 @@ export const constants = {
   MAX_STRING_LENGTH: kStringMaxLength,
 };
 
+FastBuffer.prototype.constructor = Buffer;
+Buffer.prototype = FastBuffer.prototype;
+
 Object.defineProperty(Buffer.prototype, "parent", {
   enumerable: true,
   get: function () {
@@ -92,18 +104,6 @@ Object.defineProperty(Buffer.prototype, "offset", {
     return this.byteOffset;
   },
 });
-
-class FastBuffer extends Uint8Array {
-  // Using an explicit constructor here is necessary to avoid relying on
-  // `Array.prototype[Symbol.iterator]`, which can be mutated by users.
-  // eslint-disable-next-line no-useless-constructor
-  constructor(bufferOrLength, byteOffset, length) {
-    super(bufferOrLength, byteOffset, length);
-  }
-}
-
-FastBuffer.prototype.constructor = Buffer;
-Buffer.prototype = FastBuffer.prototype;
 
 function createBuffer(length) {
   if (length > kMaxLength) {
@@ -127,6 +127,15 @@ export function Buffer(arg, encodingOrOffset, length) {
   }
   return _from(arg, encodingOrOffset, length);
 }
+
+Object.defineProperty(Buffer, Symbol.species, {
+  __proto__: null,
+  enumerable: false,
+  configurable: true,
+  get() {
+    return FastBuffer;
+  },
+});
 
 Buffer.poolSize = 8 * 1024;
 let poolSize, poolOffset, allocPool;
@@ -305,7 +314,7 @@ Object.setPrototypeOf(SlowBuffer.prototype, Uint8Array.prototype);
 Object.setPrototypeOf(SlowBuffer, Uint8Array);
 
 Buffer.isBuffer = function isBuffer(b) {
-  return b != null && b._isBuffer === true && b !== Buffer.prototype;
+  return b instanceof Buffer;
 };
 
 Buffer.compare = function compare(a, b) {
