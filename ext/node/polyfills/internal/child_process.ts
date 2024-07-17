@@ -1153,6 +1153,9 @@ export function setupChannel(target, ipc) {
       notImplemented("ChildProcess.send with handle");
     }
 
+    // signals whether the queue is within the limit.
+    // if false, the sender should slow down.
+    // this acts as a backpressure mechanism.
     const queueOk = [true];
     op_node_ipc_write(ipc, message, queueOk)
       .then(() => {
