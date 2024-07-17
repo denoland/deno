@@ -910,7 +910,6 @@ Deno.test(
     const file = await Deno.makeTempFile();
     await Deno.writeTextFile(file, script);
     const child = CP.fork(file, [], {
-      // cwd: testdataDir,
       stdio: ["inherit", "inherit", "inherit", "ipc"],
     });
     const expect = [
@@ -942,3 +941,49 @@ Deno.test(
     timeout.clear();
   },
 );
+
+Deno.test(async function childProcessExitsGracefully() {
+  const testdataDir = path.join(
+    path.dirname(path.fromFileUrl(import.meta.url)),
+    "testdata",
+  );
+  const script = path.join(
+    testdataDir,
+    "node_modules",
+    "foo",
+    "index.js",
+  );
+  const p = Promise.withResolvers<void>();
+  const cp = CP.fork(script, [], {
+    cwd: testdataDir,
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+  });
+  cp.on("close", () => p.resolve());
+
+  await p.promise;
+});
+
+Deno.test(async function killMultipleTimesNoError() {
+  const loop = `
+    while (true) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  `;
+
+  const file = await Deno.makeTempFile();
+  await Deno.writeTextFile(file, loop);
+  const child = CP.fork(file, [], {
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+  });
+  child.kill();
+  child.kill();
+
+  // explicitly calling disconnect after kill should throw
+  let threw = false;
+  try {
+    child.disconnect();
+  } catch (_) {
+    threw = true;
+  }
+  assert(threw);
+});

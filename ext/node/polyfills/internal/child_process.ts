@@ -304,7 +304,7 @@ export class ChildProcess extends EventEmitter {
     }
 
     /* Cancel any pending IPC I/O */
-    if (this.implementsDisconnect) {
+    if (this.canDisconnect) {
       this.disconnect?.();
     }
 
@@ -1169,12 +1169,13 @@ export function setupChannel(target, ipc) {
     }
 
     this.connected = false;
+    target.canDisconnect = false;
     process.nextTick(() => {
       core.close(ipc);
       target.emit("disconnect");
     });
   };
-  target.implementsDisconnect = true;
+  target.canDisconnect = true;
 
   // Start reading messages from the channel.
   readLoop();
