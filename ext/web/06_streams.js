@@ -70,7 +70,6 @@ const {
   String,
   Symbol,
   SymbolAsyncIterator,
-  SymbolIterator,
   SymbolFor,
   TypeError,
   TypedArrayPrototypeGetBuffer,
@@ -5083,34 +5082,6 @@ function initializeCountSizeFunction(globalObject) {
   WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
 }
 
-// Ref: https://tc39.es/ecma262/#sec-getiterator
-function getAsyncOrSyncIterator(obj) {
-  let iterator;
-  if (obj[SymbolAsyncIterator] != null) {
-    iterator = obj[SymbolAsyncIterator]();
-    if (!isObject(iterator)) {
-      throw new TypeError(
-        "[Symbol.asyncIterator] returned a non-object value",
-      );
-    }
-  } else if (obj[SymbolIterator] != null) {
-    iterator = obj[SymbolIterator]();
-    if (!isObject(iterator)) {
-      throw new TypeError("[Symbol.iterator] returned a non-object value");
-    }
-  } else {
-    throw new TypeError("No iterator found");
-  }
-  if (typeof iterator.next !== "function") {
-    throw new TypeError("iterator.next is not a function");
-  }
-  return iterator;
-}
-
-function isObject(x) {
-  return (typeof x === "object" && x != null) || typeof x === "function";
-}
-
 const _resourceBacking = Symbol("[[resourceBacking]]");
 // This distinction exists to prevent unrefable streams being used in
 // regular fast streams that are unaware of refability
@@ -5220,6 +5191,7 @@ class ReadableStream {
         );
       }
     }, async (reason) => {
+      // deno-lint-ignore prefer-primordials
       await asyncIterable.return(reason);
     }, 0);
     return stream;

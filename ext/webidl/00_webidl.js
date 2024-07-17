@@ -6,7 +6,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, internals, primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   isArrayBuffer,
   isDataView,
@@ -937,7 +937,9 @@ function getIteratorAsync(obj) {
 
 function CreateAsyncFromSyncIterator(iter) {
   return {
+    // deno-lint-ignore require-await
     async next() {
+      // deno-lint-ignore prefer-primordials
       return iter.next();
     },
   };
@@ -974,6 +976,7 @@ function createAsyncIterableConverter(converter) {
           }
         }
 
+        // deno-lint-ignore prefer-primordials
         const iterResult = await iterator.next();
         if (type(iterResult) !== "Object") {
           throw makeException(
@@ -1012,6 +1015,7 @@ function createAsyncIterableConverter(converter) {
           return undefined;
         }
 
+        // deno-lint-ignore prefer-primordials
         const returnPromiseResult = await iterator.return(reason);
         if (type(returnPromiseResult) !== "Object") {
           throw makeException(
