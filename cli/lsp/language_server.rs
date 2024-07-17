@@ -3584,10 +3584,9 @@ impl Inner {
           .unsafely_ignore_certificate_errors
           .clone(),
         import_map_path: config_data.and_then(|d| {
-          if d.import_map_from_settings {
-            return Some(d.import_map.as_ref()?.base_url().to_string());
-          }
-          None
+          d.import_map_from_settings
+            .as_ref()
+            .map(|url| url.to_string())
         }),
         node_modules_dir: Some(
           config_data

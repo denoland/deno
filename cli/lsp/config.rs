@@ -18,6 +18,7 @@ use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::SpecifiedImportMap;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDiscoverOptions;
@@ -1128,7 +1129,7 @@ pub struct ConfigData {
   pub resolver: Arc<WorkspaceResolver>,
   pub package_config: Option<Arc<LspPackageConfig>>,
   pub is_workspace_root: bool,
-  pub workspace_root_dir: Arc<ModuleSpecifier>,
+  pub import_map_from_settings: Option<ModuleSpecifier>,
   /// Workspace member directories. For a workspace root this will be a list of
   /// members. For a member this will be the same list, representing self and
   /// siblings. For a solitary package this will be `vec![self.scope]`. These
@@ -1374,9 +1375,10 @@ impl ConfigData {
     if let Some(import_map_specifier) =
       workspace.to_import_map_specifier().ok().flatten()
     {
-      watched_files
-        .entry(import_map_specifier)
-        .or_insert(ConfigWatchedFileType::ImportMap);
+      add_watched_file(
+        import_map_specifier.clone(),
+        ConfigWatchedFileType::ImportMap,
+      );
     }
     // attempt to create a resolver for the workspace
     let pkg_json_dep_resolution = if byonm {
@@ -1385,10 +1387,80 @@ impl ConfigData {
       // todo(dsherret): this should be false for nodeModulesDir: true
       PackageJsonDepResolution::Enabled
     };
+    let mut import_map_from_settings = {
+      let is_config_import_map = member_ctx
+        .maybe_deno_json()
+        .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
+        .or_else(|| {
+          workspace
+            .root_deno_json()
+            .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
+        })
+        .unwrap_or(false);
+      if is_config_import_map {
+        None
+      } else {
+        settings.import_map.as_ref().and_then(|import_map_str| {
+          Url::parse(import_map_str)
+            .ok()
+            .or_else(|| workspace_folder?.join(import_map_str).ok())
+        })
+      }
+    };
 
     // todo(THIS PR): need to take into account settings.importMap
     // spawn due to the lsp's `Send` requirement
     let resolver = if let Some(file_fetcher) = file_fetcher {
+      let is_config_import_map = member_ctx
+        .maybe_deno_json()
+        .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
+        .or_else(|| {
+          workspace
+            .root_deno_json()
+            .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
+        })
+        .unwrap_or(false);
+      if is_config_import_map {
+        import_map_from_settings = None;
+      }
+      let specified_import_map =
+        if let Some(import_map_url) = &import_map_from_settings {
+          add_watched_file(
+            import_map_url.clone(),
+            ConfigWatchedFileType::ImportMap,
+          );
+          let fetch_result = deno_core::unsync::spawn({
+            let file_fetcher = file_fetcher.clone();
+            let import_map_url = import_map_url.clone();
+            async move {
+              file_fetcher
+                .fetch(&import_map_url, &PermissionsContainer::allow_all())
+                .await
+            }
+          })
+          .await
+          .unwrap();
+          let value_result = fetch_result.and_then(|f| {
+            serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())
+          });
+          match value_result {
+            Ok(value) => Some(SpecifiedImportMap {
+              base_url: import_map_url.clone(),
+              value,
+            }),
+            Err(err) => {
+              lsp_warn!(
+                "  Couldn't read import map \"{}\": {}",
+                import_map_url.as_str(),
+                err
+              );
+              import_map_from_settings = None;
+              None
+            }
+          }
+        } else {
+          None
+        };
       deno_core::unsync::spawn({
         let workspace = workspace.clone();
         let file_fetcher = file_fetcher.clone();
@@ -1397,7 +1469,7 @@ impl ConfigData {
             .create_resolver(
               CreateResolverOptions {
                 pkg_json_dep_resolution,
-                specified_import_map: None,
+                specified_import_map,
               },
               move |specifier| {
                 let specifier = specifier.clone();
@@ -1467,7 +1539,6 @@ impl ConfigData {
         .map(|c| ModuleSpecifier::from_directory_path(&c.dir_path()).unwrap())
         .collect::<Vec<_>>(),
     );
-    let workspace_root_dir = workspace.root_folder().0.clone();
     ConfigData {
       scope,
       workspace,
@@ -1486,8 +1557,8 @@ impl ConfigData {
       lockfile,
       npmrc,
       package_config: package_config.map(Arc::new),
+      import_map_from_settings,
       is_workspace_root,
-      workspace_root_dir,
       workspace_members,
       watched_files,
     }
