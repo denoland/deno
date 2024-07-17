@@ -2218,7 +2218,7 @@ Deno.test(function inspectErrorWithCauseFormat() {
   );
   assertStringIncludes(
     stripColor(Deno.inspect(error)),
-    "Caused by {\n  code: 100500\n}",
+    "Caused by { code: 100500 }",
   );
 });
 

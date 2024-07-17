@@ -66,7 +66,6 @@ const {
   FunctionPrototypeBind,
   FunctionPrototypeCall,
   FunctionPrototypeToString,
-  JSONStringify,
   MapPrototypeDelete,
   MapPrototypeEntries,
   MapPrototypeForEach,
@@ -1493,7 +1492,7 @@ function inspectError(value, ctx) {
         "\nCaused by " + (MapPrototypeGet(refMap, cause) ?? "") +
         (cause?.stack ??
           StringPrototypeReplace(
-            JSONStringify(cause, null, 2),
+            inspect(cause),
             doubleQuoteRegExp,
             "",
           )),
