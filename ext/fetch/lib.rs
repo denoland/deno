@@ -51,6 +51,7 @@ use bytes::Bytes;
 use data_url::DataUrl;
 use http::header::HeaderName;
 use http::header::HeaderValue;
+use http::header::ACCEPT;
 use http::header::ACCEPT_ENCODING;
 use http::header::CONTENT_LENGTH;
 use http::header::HOST;
@@ -1069,6 +1070,9 @@ impl Client {
       .headers_mut()
       .entry(USER_AGENT)
       .or_insert_with(|| self.user_agent.clone());
+
+    const STAR_STAR: HeaderValue = HeaderValue::from_static("*/*");
+    req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
 
     if let Some(auth) = self.proxies.http_forward_auth(req.uri()) {
       req.headers_mut().insert(PROXY_AUTHORIZATION, auth.clone());
