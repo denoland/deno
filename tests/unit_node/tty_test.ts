@@ -3,6 +3,7 @@
 
 import { assert } from "@std/assert/mod.ts";
 import { isatty } from "node:tty";
+import tty from "node:tty";
 import process from "node:process";
 
 Deno.test("[node/tty isatty] returns true when fd is a tty, false otherwise", () => {
@@ -33,4 +34,8 @@ Deno.test("[node/tty isatty] returns false for irrelevant values", () => {
 Deno.test("[node/tty WriteStream.isTTY] returns true when fd is a tty", () => {
   assert(Deno.stdin.isTerminal() === process.stdin.isTTY);
   assert(Deno.stdout.isTerminal() === process.stdout.isTTY);
+});
+
+Deno.test("[node/tty WriteStream.hasColors] returns true when colors are supported", () => {
+  assert(tty.WriteStream.prototype.hasColors() === !Deno.noColor);
 });
