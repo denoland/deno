@@ -41,6 +41,7 @@
     "tests/registry/",
     "tests/specs/fmt",
     "tests/specs/lint/bom",
+    "tests/specs/publish/no_check_surfaces_syntax_error",
     "tests/testdata/byte_order_mark.ts",
     "tests/testdata/encoding",
     "tests/testdata/file_extensions/ts_with_js_extension.js",
