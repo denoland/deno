@@ -15,6 +15,7 @@ mod impl_ {
   use std::os::fd::RawFd;
   use std::pin::Pin;
   use std::rc::Rc;
+  use std::sync::atomic::AtomicUsize;
   use std::task::ready;
   use std::task::Context;
   use std::task::Poll;
@@ -32,6 +33,7 @@ mod impl_ {
   use deno_core::OpState;
   use deno_core::RcRef;
   use deno_core::ResourceId;
+  use deno_core::ToV8;
   use memchr::memchr;
   use pin_project_lite::pin_project;
   use serde::Serialize;
@@ -165,24 +167,40 @@ mod impl_ {
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
     value: v8::Local<'a, v8::Value>,
+    // using an array as an "out parameter".
+    // index 0 is a boolean indicating whether the queue is under the limit.
+    //
+    // ideally we would just return `Result<(impl Future, bool), ..>`, but that's not
+    // supported by `op2` currently.
+    queue_ok: v8::Local<'a, v8::Array>,
   ) -> Result<impl Future<Output = Result<(), AnyError>>, AnyError> {
     let mut serialized = Vec::new();
-    {
-      let mut ser = serde_json::Serializer::new(&mut serialized);
-      serialize_v8_value(scope, value, &mut ser).map_err(|e| {
-        deno_core::error::type_error(format!(
-          "failed to serialize json value: {e}"
-        ))
-      })?;
+    let mut ser = serde_json::Serializer::new(&mut serialized);
+    serialize_v8_value(scope, value, &mut ser).map_err(|e| {
+      deno_core::error::type_error(format!(
+        "failed to serialize json value: {e}"
+      ))
+    })?;
+
+    let stream = state
+      .borrow()
+      .resource_table
+      .get::<IpcJsonStreamResource>(rid)
+      .map_err(|_| bad_resource_id())?;
+    let old = stream
+      .queued_bytes
+      .fetch_add(serialized.len(), std::sync::atomic::Ordering::Relaxed);
+    if old + serialized.len() > 2 * INITIAL_CAPACITY {
+      // sending messages too fast
+      let v = false.to_v8(scope)?;
+      queue_ok.set_index(scope, 0, v);
     }
     Ok(async move {
-      let stream = state
-        .borrow()
-        .resource_table
-        .get::<IpcJsonStreamResource>(rid)
-        .map_err(|_| bad_resource_id())?;
       serialized.push(b'\n');
-      stream.write_msg_bytes(&serialized).await?;
+      stream.clone().write_msg_bytes(&serialized).await?;
+      stream
+        .queued_bytes
+        .fetch_sub(serialized.len(), std::sync::atomic::Ordering::Relaxed);
       Ok(())
     })
   }
@@ -216,6 +234,7 @@ mod impl_ {
     #[cfg(windows)]
     write_half: AsyncRefCell<tokio::io::WriteHalf<NamedPipeClient>>,
     cancel: Rc<CancelHandle>,
+    queued_bytes: AtomicUsize,
   }
 
   impl deno_core::Resource for IpcJsonStreamResource {
@@ -257,6 +276,7 @@ mod impl_ {
         read_half: AsyncRefCell::new(IpcJsonStream::new(read_half)),
         write_half: AsyncRefCell::new(write_half),
         cancel: Default::default(),
+        queued_bytes: Default::default(),
       })
     }
 
@@ -268,6 +288,7 @@ mod impl_ {
         read_half: AsyncRefCell::new(IpcJsonStream::new(read_half)),
         write_half: AsyncRefCell::new(write_half),
         cancel: Default::default(),
+        queued_bytes: Default::default(),
       }
     }
 
@@ -279,6 +300,7 @@ mod impl_ {
         read_half: AsyncRefCell::new(IpcJsonStream::new(read_half)),
         write_half: AsyncRefCell::new(write_half),
         cancel: Default::default(),
+        queued_bytes: Default::default(),
       }
     }
 

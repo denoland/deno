@@ -1152,12 +1152,15 @@ export function setupChannel(target, ipc) {
     if (handle !== undefined) {
       notImplemented("ChildProcess.send with handle");
     }
-    op_node_ipc_write(ipc, message)
+
+    const queueOk = [true];
+    op_node_ipc_write(ipc, message, queueOk)
       .then(() => {
         if (callback) {
           process.nextTick(callback, null);
         }
       });
+    return queueOk[0];
   };
 
   target.connected = true;
