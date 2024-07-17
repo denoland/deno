@@ -648,7 +648,8 @@ const ci = {
         {
           name: "test_format.js",
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
-          run: "./tools/format.js --check",
+          run:
+            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
         },
         {
           name: "Lint PR title",
@@ -662,12 +663,14 @@ const ci = {
         {
           name: "lint.js",
           if: "matrix.job == 'lint'",
-          run: "./tools/lint.js",
+          run:
+            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
         },
         {
           name: "jsdoc_checker.js",
           if: "matrix.job == 'lint'",
-          run: "./tools/jsdoc_checker.js",
+          run:
+            "deno run --allow-read --allow-env --allow-sys ./tools/jsdoc_checker.js",
         },
         {
           name: "node_compat/setup.ts --check",
@@ -876,9 +879,9 @@ const ci = {
             DENO_BIN: "./target/debug/deno",
           },
           run: [
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --unstable --lock=tools/deno.lock.json       \\",
             "        ./tests/wpt/wpt.ts setup",
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --unstable --lock=tools/deno.lock.json       \\",
             '         ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
           ].join("\n"),
         },
@@ -889,9 +892,9 @@ const ci = {
             DENO_BIN: "./target/release/deno",
           },
           run: [
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --unstable --lock=tools/deno.lock.json        \\",
             "         ./tests/wpt/wpt.ts setup",
-            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "deno run -A --unstable --lock=tools/deno.lock.json        \\",
             "         ./tests/wpt/wpt.ts run --quiet --release         \\",
             '                            --binary="$DENO_BIN"          \\',
             "                            --json=wpt.json               \\",
@@ -932,7 +935,7 @@ const ci = {
             GITHUB_TOKEN: "${{ secrets.DENOBOT_PAT }}",
           },
           run: [
-            "./target/release/deno run --allow-all --lock=tools/deno.lock.json --config tests/config/deno.json\\",
+            "./target/release/deno run --allow-all --lock=tools/deno.lock.json \\",
             "    ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus",
           ].join("\n"),
         },
@@ -955,7 +958,7 @@ const ci = {
             "git clone --depth 1 --branch gh-pages                             \\",
             "    https://${DENOBOT_PAT}@github.com/denoland/benchmark_data.git \\",
             "    gh-pages",
-            "./target/release/deno run --allow-all --unstable --config tests/config/deno.json\\",
+            "./target/release/deno run --allow-all --unstable \\",
             "    ./tools/build_benchmark_jsons.js --release",
             "cd gh-pages",
             'git config user.email "propelml@gmail.com"',
