@@ -119,7 +119,7 @@ impl SpecifierUnfurler {
             PackageJsonDepValue::Workspace(version_req) => {
               // todo(#24612): consider warning or error when this is also a jsr package?
               ModuleSpecifier::parse(&format!(
-                "npm:{}{}{}",
+                "npm:{}@{}{}",
                 alias,
                 version_req,
                 sub_path

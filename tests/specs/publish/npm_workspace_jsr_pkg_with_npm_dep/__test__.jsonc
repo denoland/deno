@@ -1,4 +1,14 @@
 {
-  "args": "publish --dry-run --no-check --log-level=debug",
-  "output": "publish.out"
+  "tests": {
+    "dep_and_workspace_dep": {
+      "args": "publish --dry-run --no-check --log-level=debug",
+      "cwd": "subtract",
+      "output": "publish-subtract.out"
+    },
+    "bare_specifier": {
+      "args": "publish --dry-run --no-check --log-level=debug",
+      "cwd": "subtract-2",
+      "output": "publish-subtract2.out"
+    }
+  }
 }
