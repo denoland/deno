@@ -782,8 +782,8 @@ Buffer.prototype.ucs2Write = function ucs2Write(string, offset, length) {
   );
 };
 
-Buffer.prototype.utf8Slice = function utf8Slice(string, offset, length) {
-  return _utf8Slice(this, string, offset, length);
+Buffer.prototype.utf8Slice = function utf8Slice(offset, length) {
+  return _utf8Slice(this, offset, length);
 };
 
 Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {

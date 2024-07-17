@@ -38,9 +38,17 @@ const toU8 = (input) => {
   }
 
   if (isTypedArray(input)) {
-    return new Uint8Array(TypedArrayPrototypeGetBuffer(input));
+    return new Uint8Array(
+      TypedArrayPrototypeGetBuffer(input),
+      input.byteOffset,
+      input.byteLength,
+    );
   } else if (isDataView(input)) {
-    return new Uint8Array(DataViewPrototypeGetBuffer(input));
+    return new Uint8Array(
+      DataViewPrototypeGetBuffer(input),
+      input.byteOffset,
+      input.byteLength,
+    );
   }
 
   return input;
