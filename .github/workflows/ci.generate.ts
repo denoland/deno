@@ -879,9 +879,9 @@ const ci = {
             DENO_BIN: "./target/debug/deno",
           },
           run: [
-            "deno run -A --unstable --lock=tools/deno.lock.json       \\",
+            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             "        ./tests/wpt/wpt.ts setup",
-            "deno run -A --unstable --lock=tools/deno.lock.json       \\",
+            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             '         ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
           ].join("\n"),
         },
@@ -892,9 +892,9 @@ const ci = {
             DENO_BIN: "./target/release/deno",
           },
           run: [
-            "deno run -A --unstable --lock=tools/deno.lock.json        \\",
+            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             "         ./tests/wpt/wpt.ts setup",
-            "deno run -A --unstable --lock=tools/deno.lock.json        \\",
+            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             "         ./tests/wpt/wpt.ts run --quiet --release         \\",
             '                            --binary="$DENO_BIN"          \\',
             "                            --json=wpt.json               \\",
