@@ -20,6 +20,8 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::errors::PackageFolderResolveError;
+use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NpmResolver;
 use deno_semver::package::PackageNv;
@@ -27,6 +29,7 @@ use deno_semver::package::PackageReq;
 use resolution::AddPkgReqsResult;
 
 use crate::args::CliLockfile;
+use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::args::PackageJsonInstallDepsProvider;
@@ -68,6 +71,7 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub npm_system_info: NpmSystemInfo,
   pub package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
   pub npmrc: Arc<ResolvedNpmRc>,
+  pub lifecycle_scripts: LifecycleScriptsConfig,
 }
 
 pub async fn create_managed_npm_resolver_for_lsp(
@@ -96,6 +100,7 @@ pub async fn create_managed_npm_resolver_for_lsp(
       options.maybe_node_modules_path,
       options.npm_system_info,
       snapshot,
+      options.lifecycle_scripts,
     )
   })
   .await
@@ -120,6 +125,7 @@ pub async fn create_managed_npm_resolver(
     options.maybe_node_modules_path,
     options.npm_system_info,
     snapshot,
+    options.lifecycle_scripts,
   ))
 }
 
@@ -136,6 +142,7 @@ fn create_inner(
   node_modules_dir_path: Option<PathBuf>,
   npm_system_info: NpmSystemInfo,
   snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
+  lifecycle_scripts: LifecycleScriptsConfig,
 ) -> Arc<dyn CliNpmResolver> {
   let resolution = Arc::new(NpmResolution::from_serialized(
     npm_api.clone(),
@@ -158,6 +165,7 @@ fn create_inner(
     tarball_cache.clone(),
     node_modules_dir_path,
     npm_system_info.clone(),
+    lifecycle_scripts.clone(),
   );
   Arc::new(ManagedCliNpmResolver::new(
     fs,
@@ -170,6 +178,7 @@ fn create_inner(
     tarball_cache,
     text_only_progress_bar,
     npm_system_info,
+    lifecycle_scripts,
   ))
 }
 
@@ -256,6 +265,7 @@ pub struct ManagedCliNpmResolver {
   text_only_progress_bar: ProgressBar,
   npm_system_info: NpmSystemInfo,
   top_level_install_flag: AtomicFlag,
+  lifecycle_scripts: LifecycleScriptsConfig,
 }
 
 impl std::fmt::Debug for ManagedCliNpmResolver {
@@ -279,6 +289,7 @@ impl ManagedCliNpmResolver {
     tarball_cache: Arc<TarballCache>,
     text_only_progress_bar: ProgressBar,
     npm_system_info: NpmSystemInfo,
+    lifecycle_scripts: LifecycleScriptsConfig,
   ) -> Self {
     Self {
       fs,
@@ -292,6 +303,7 @@ impl ManagedCliNpmResolver {
       tarball_cache,
       npm_system_info,
       top_level_install_flag: Default::default(),
+      lifecycle_scripts,
     }
   }
 
@@ -463,24 +475,30 @@ impl ManagedCliNpmResolver {
     if !self.top_level_install_flag.raise() {
       return Ok(false); // already did this
     }
-    let reqs = self.package_json_deps_provider.remote_pkg_reqs();
-    if reqs.is_empty() {
+    let pkg_json_remote_pkgs = self.package_json_deps_provider.remote_pkgs();
+    if pkg_json_remote_pkgs.is_empty() {
       return Ok(false);
     }
 
     // check if something needs resolving before bothering to load all
     // the package information (which is slow)
-    if reqs
-      .iter()
-      .all(|req| self.resolution.resolve_pkg_id_from_pkg_req(req).is_ok())
-    {
+    if pkg_json_remote_pkgs.iter().all(|pkg| {
+      self
+        .resolution
+        .resolve_pkg_id_from_pkg_req(&pkg.req)
+        .is_ok()
+    }) {
       log::debug!(
         "All package.json deps resolvable. Skipping top level install."
       );
       return Ok(false); // everything is already resolvable
     }
 
-    self.add_package_reqs(reqs).await.map(|_| true)
+    let pkg_reqs = pkg_json_remote_pkgs
+      .iter()
+      .map(|pkg| pkg.req.clone())
+      .collect::<Vec<_>>();
+    self.add_package_reqs(&pkg_reqs).await.map(|_| true)
   }
 
   pub async fn cache_package_info(
@@ -500,34 +518,42 @@ impl ManagedCliNpmResolver {
   }
 }
 
+fn npm_process_state(
+  snapshot: ValidSerializedNpmResolutionSnapshot,
+  node_modules_path: Option<&Path>,
+) -> String {
+  serde_json::to_string(&NpmProcessState {
+    kind: NpmProcessStateKind::Snapshot(snapshot.into_serialized()),
+    local_node_modules_path: node_modules_path
+      .map(|p| p.to_string_lossy().to_string()),
+  })
+  .unwrap()
+}
+
 impl NpmResolver for ManagedCliNpmResolver {
   /// Gets the state of npm for the process.
   fn get_npm_process_state(&self) -> String {
-    serde_json::to_string(&NpmProcessState {
-      kind: NpmProcessStateKind::Snapshot(
-        self
-          .resolution
-          .serialized_valid_snapshot()
-          .into_serialized(),
-      ),
-      local_node_modules_path: self
-        .fs_resolver
-        .node_modules_path()
-        .map(|p| p.to_string_lossy().to_string()),
-    })
-    .unwrap()
+    npm_process_state(
+      self.resolution.serialized_valid_snapshot(),
+      self.fs_resolver.node_modules_path().map(|p| p.as_path()),
+    )
   }
 
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, PackageFolderResolveError> {
     let path = self
       .fs_resolver
       .resolve_package_folder_from_package(name, referrer)?;
     let path =
-      canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())?;
+      canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())
+        .map_err(|err| PackageFolderResolveErrorKind::Io {
+          package_name: name.to_string(),
+          referrer: referrer.clone(),
+          source: err,
+        })?;
     log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
     Ok(path)
   }
@@ -571,6 +597,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
         self.tarball_cache.clone(),
         self.root_node_modules_path().map(ToOwned::to_owned),
         self.npm_system_info.clone(),
+        self.lifecycle_scripts.clone(),
       ),
       self.maybe_lockfile.clone(),
       self.npm_api.clone(),
@@ -580,6 +607,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       self.tarball_cache.clone(),
       self.text_only_progress_bar.clone(),
       self.npm_system_info.clone(),
+      self.lifecycle_scripts.clone(),
     ))
   }
 

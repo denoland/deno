@@ -43,16 +43,16 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.39.2", features = ["transpiling"] }
-deno_core = { version = "0.292.0" }
+deno_ast = { version = "=0.40.0", features = ["transpiling"] }
+deno_core = { version = "0.294.0" }
 
-deno_bench_util = { version = "0.152.0", path = "./bench_util" }
+deno_bench_util = { version = "0.155.0", path = "./bench_util" }
 deno_lockfile = "0.20.0"
 deno_media_type = { version = "0.1.4", features = ["module_specifier"] }
-deno_permissions = { version = "0.18.0", path = "./runtime/permissions" }
-deno_runtime = { version = "0.166.0", path = "./runtime" }
+deno_permissions = { version = "0.21.0", path = "./runtime/permissions" }
+deno_runtime = { version = "0.169.0", path = "./runtime" }
 deno_terminal = "0.1.1"
-napi_sym = { version = "0.88.0", path = "./cli/napi/sym" }
+napi_sym = { version = "0.91.0", path = "./cli/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
 denokv_proto = "0.8.1"
@@ -61,28 +61,28 @@ denokv_remote = "0.8.1"
 denokv_sqlite = { default-features = false, version = "0.8.1" }
 
 # exts
-deno_broadcast_channel = { version = "0.152.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.90.0", path = "./ext/cache" }
-deno_canvas = { version = "0.27.0", path = "./ext/canvas" }
-deno_console = { version = "0.158.0", path = "./ext/console" }
-deno_cron = { version = "0.38.0", path = "./ext/cron" }
-deno_crypto = { version = "0.172.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.182.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.145.0", path = "./ext/ffi" }
-deno_fs = { version = "0.68.0", path = "./ext/fs" }
-deno_http = { version = "0.156.0", path = "./ext/http" }
-deno_io = { version = "0.68.0", path = "./ext/io" }
-deno_kv = { version = "0.66.0", path = "./ext/kv" }
-deno_napi = { version = "0.88.0", path = "./ext/napi" }
-deno_net = { version = "0.150.0", path = "./ext/net" }
-deno_node = { version = "0.95.0", path = "./ext/node" }
-deno_tls = { version = "0.145.0", path = "./ext/tls" }
-deno_url = { version = "0.158.0", path = "./ext/url" }
-deno_web = { version = "0.189.0", path = "./ext/web" }
-deno_webgpu = { version = "0.125.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.158.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.163.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.153.0", path = "./ext/webstorage" }
+deno_broadcast_channel = { version = "0.155.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.93.0", path = "./ext/cache" }
+deno_canvas = { version = "0.30.0", path = "./ext/canvas" }
+deno_console = { version = "0.161.0", path = "./ext/console" }
+deno_cron = { version = "0.41.0", path = "./ext/cron" }
+deno_crypto = { version = "0.175.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.185.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.148.0", path = "./ext/ffi" }
+deno_fs = { version = "0.71.0", path = "./ext/fs" }
+deno_http = { version = "0.159.0", path = "./ext/http" }
+deno_io = { version = "0.71.0", path = "./ext/io" }
+deno_kv = { version = "0.69.0", path = "./ext/kv" }
+deno_napi = { version = "0.91.0", path = "./ext/napi" }
+deno_net = { version = "0.153.0", path = "./ext/net" }
+deno_node = { version = "0.98.0", path = "./ext/node" }
+deno_tls = { version = "0.148.0", path = "./ext/tls" }
+deno_url = { version = "0.161.0", path = "./ext/url" }
+deno_web = { version = "0.192.0", path = "./ext/web" }
+deno_webgpu = { version = "0.128.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.161.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.166.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.156.0", path = "./ext/webstorage" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
@@ -101,7 +101,7 @@ console_static_text = "=0.8.1"
 data-encoding = "2.3.3"
 data-url = "=0.3.0"
 deno_cache_dir = "=0.10.0"
-deno_config = { version = "=0.20.1", default-features = false }
+deno_config = { version = "=0.22.2", default-features = false }
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
@@ -118,7 +118,7 @@ http = "1.0"
 http-body-util = "0.1"
 http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
-hyper = { version = "=1.4.0", features = ["full"] }
+hyper = { version = "=1.4.1", features = ["full"] }
 hyper-util = { version = "=0.1.6", features = ["tokio", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
@@ -146,12 +146,12 @@ prost = "0.11"
 prost-build = "0.11"
 rand = "=0.8.5"
 regex = "^1.7.0"
-reqwest = { version = "=0.12.4", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
+reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 ring = "^0.17.0"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
-rustls = "0.22.4"
+rustls = { version = "0.23.11", default-features = false, features = ["logging", "std", "tls12", "ring"] }
 rustls-pemfile = "2"
-rustls-tokio-stream = "=0.2.23"
+rustls-tokio-stream = "=0.3.0"
 rustls-webpki = "0.102"
 rustyline = "=13.0.0"
 saffron = "=0.1.0"
@@ -180,6 +180,7 @@ twox-hash = "=1.6.3"
 url = { version = "< 2.5.0", features = ["serde", "expose_internals"] }
 uuid = { version = "1.3.0", features = ["v4"] }
 webpki-roots = "0.26"
+which = "4.2.5"
 zeromq = { version = "=0.3.4", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zstd = "=0.12.4"
 
@@ -189,7 +190,7 @@ rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "
 
 # webgpu
 raw-window-handle = "0.6.0"
-wgpu-core = "0.20"
+wgpu-core = "0.21.1"
 wgpu-types = "0.20"
 
 # macros

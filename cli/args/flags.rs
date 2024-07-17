@@ -205,6 +205,7 @@ impl FmtFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InitFlags {
   pub dir: Option<String>,
+  pub lib: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -506,6 +507,30 @@ pub enum CaData {
   Bytes(Vec<u8>),
 }
 
+// Info needed to run NPM lifecycle scripts
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct LifecycleScriptsConfig {
+  pub allowed: PackagesAllowedScripts,
+  pub initial_cwd: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+/// The set of npm packages that are allowed to run lifecycle scripts.
+pub enum PackagesAllowedScripts {
+  All,
+  Some(Vec<String>),
+  #[default]
+  None,
+}
+
+fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
+  if !s.starts_with("npm:") {
+    bail!("Invalid package for --allow-scripts: '{}'. An 'npm:' specifier is required", s);
+  } else {
+    Ok(s.into())
+  }
+}
+
 #[derive(
   Clone, Default, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize,
 )]
@@ -561,6 +586,7 @@ pub struct Flags {
   pub v8_flags: Vec<String>,
   pub code_cache_enabled: bool,
   pub permissions: PermissionFlags,
+  pub allow_scripts: PackagesAllowedScripts,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -1501,6 +1527,7 @@ Future runs of this module will trigger no downloads or compilation unless
             .value_hint(ValueHint::FilePath),
         )
         .arg(frozen_lockfile_arg())
+        .arg(allow_scripts_arg())
     })
 }
 
@@ -2052,11 +2079,18 @@ fn init_subcommand() -> Command {
   Command::new("init")
     .about("Initialize a new project")
     .defer(|cmd| {
-      cmd.arg(
-        Arg::new("dir")
-          .required(false)
-          .value_hint(ValueHint::DirPath),
-      )
+      cmd
+        .arg(
+          Arg::new("dir")
+            .required(false)
+            .value_hint(ValueHint::DirPath),
+        )
+        .arg(
+          Arg::new("lib")
+            .long("lib")
+            .required(false)
+            .action(ArgAction::SetTrue),
+        )
     })
 }
 
@@ -2205,7 +2239,7 @@ The installation root is determined, in order of precedence:
 
 These must be added to the path manually if required.")
     .defer(|cmd| {
-      let cmd = runtime_args(cmd, true, true).arg(check_arg(true));
+      let cmd = runtime_args(cmd, true, true).arg(check_arg(true)).arg(allow_scripts_arg());
       install_args(cmd, true)
     })
 }
@@ -2796,11 +2830,16 @@ update to a different location, use the --output flag
     })
 }
 
+// TODO(bartlomieju): this subcommand is now deprecated, remove it in Deno 2.
 fn vendor_subcommand() -> Command {
   Command::new("vendor")
+      .hide(true)
       .about("Vendor remote modules into a local directory")
       .long_about(
-        "Vendor remote modules into a local directory.
+        "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.
+Add `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.
+        
+Vendor remote modules into a local directory.
 
 Analyzes the provided modules along with their dependencies, downloads
 remote modules to the output directory, and produces an import map that
@@ -3715,6 +3754,28 @@ fn unsafely_ignore_certificate_errors_arg() -> Arg {
     .value_parser(flags_net::validator)
 }
 
+fn allow_scripts_arg() -> Arg {
+  Arg::new("allow-scripts")
+    .long("allow-scripts")
+    .num_args(0..)
+    .use_value_delimiter(true)
+    .require_equals(true)
+    .value_name("PACKAGE")
+    .value_parser(parse_packages_allowed_scripts)
+    .help("Allow running npm lifecycle scripts for the given packages. Note: Scripts will only be executed when using a node_modules directory (`--node-modules-dir`)")
+}
+
+fn allow_scripts_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let Some(parts) = matches.remove_many::<String>("allow-scripts") else {
+    return;
+  };
+  if parts.len() == 0 {
+    flags.allow_scripts = PackagesAllowedScripts::All;
+  } else {
+    flags.allow_scripts = PackagesAllowedScripts::Some(parts.collect());
+  }
+}
+
 fn add_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
 }
@@ -3797,6 +3858,7 @@ fn bundle_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn cache_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   compile_args_parse(flags, matches);
   frozen_lockfile_arg_parse(flags, matches);
+  allow_scripts_arg_parse(flags, matches);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
 }
@@ -4033,6 +4095,7 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn init_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Init(InitFlags {
     dir: matches.remove_one::<String>("dir"),
+    lib: matches.get_flag("lib"),
   });
 }
 
@@ -4082,6 +4145,7 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     let local_flags = matches
       .remove_many("cmd")
       .map(|packages| add_parse_inner(matches, Some(packages)));
+    allow_scripts_arg_parse(flags, matches);
     flags.subcommand = DenoSubcommand::Install(InstallFlags {
       global,
       kind: InstallKind::Local(local_flags),
@@ -4182,6 +4246,53 @@ fn run_parse(
   matches: &mut ArgMatches,
   app: Command,
 ) -> clap::error::Result<()> {
+  // todo(dsherret): remove this in Deno 2.0
+  // This is a hack to make https://github.com/netlify/build/pull/5767 work
+  // for old versions of @netlify/edge-bundler with new versions of Deno
+  // where Deno has gotten smarter at resolving config files.
+  //
+  // It's an unfortuante scenario, but Netlify has the version at least
+  // pinned to 1.x in old versions so we can remove this in Deno 2.0 in
+  // a few months.
+  fn temp_netlify_deno_1_hack(flags: &mut Flags, script_arg: &str) {
+    fn is_netlify_edge_bundler_entrypoint(
+      flags: &Flags,
+      script_arg: &str,
+    ) -> bool {
+      // based on diff here: https://github.com/netlify/edge-bundler/blame/f1d33b74ca7aeec19a7c2149316d4547a94e43fb/node/config.ts#L85
+      if flags.permissions.allow_read.is_none()
+        || flags.permissions.allow_write.is_none()
+        || flags.config_flag != ConfigFlag::Discover
+      {
+        return false;
+      }
+      if !script_arg.contains("@netlify") {
+        return false;
+      }
+      let path = PathBuf::from(script_arg);
+      if !path.ends_with("deno/config.ts") {
+        return false;
+      }
+      let mut found_node_modules = false;
+      for component in path.components().filter_map(|c| c.as_os_str().to_str())
+      {
+        if !found_node_modules {
+          found_node_modules = component == "node_modules";
+        } else {
+          // make this work with pnpm and other package managers
+          if component.contains("@netlify") {
+            return true;
+          }
+        }
+      }
+      false
+    }
+
+    if is_netlify_edge_bundler_entrypoint(flags, script_arg) {
+      flags.config_flag = ConfigFlag::Disabled;
+    }
+  }
+
   runtime_args_parse(flags, matches, true, true);
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
@@ -4200,6 +4311,7 @@ fn run_parse(
   flags.argv.extend(script_arg);
 
   ext_arg_parse(flags, matches);
+  temp_netlify_deno_1_hack(flags, &script);
 
   flags.subcommand = DenoSubcommand::Run(RunFlags {
     script,
@@ -9753,7 +9865,10 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Init(InitFlags { dir: None }),
+        subcommand: DenoSubcommand::Init(InitFlags {
+          dir: None,
+          lib: false
+        }),
         ..Flags::default()
       }
     );
@@ -9764,6 +9879,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
           dir: Some(String::from("foo")),
+          lib: false
         }),
         ..Flags::default()
       }
@@ -9773,8 +9889,35 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Init(InitFlags { dir: None }),
+        subcommand: DenoSubcommand::Init(InitFlags {
+          dir: None,
+          lib: false
+        }),
         log_level: Some(Level::Error),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "--lib"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          dir: None,
+          lib: true
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "foo", "--lib"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          dir: Some(String::from("foo")),
+          lib: true
+        }),
         ..Flags::default()
       }
     );
@@ -9922,6 +10065,52 @@ mod tests {
           ..Flags::default()
         }
       );
+    }
+  }
+
+  #[test]
+  fn allow_scripts() {
+    let cases = [
+      (Some("--allow-scripts"), Ok(PackagesAllowedScripts::All)),
+      (None, Ok(PackagesAllowedScripts::None)),
+      (
+        Some("--allow-scripts=npm:foo"),
+        Ok(PackagesAllowedScripts::Some(svec!["npm:foo"])),
+      ),
+      (
+        Some("--allow-scripts=npm:foo,npm:bar"),
+        Ok(PackagesAllowedScripts::Some(svec!["npm:foo", "npm:bar"])),
+      ),
+      (Some("--allow-scripts=foo"), Err("Invalid package")),
+    ];
+    for (flag, value) in cases {
+      let mut args = svec!["deno", "cache"];
+      if let Some(flag) = flag {
+        args.push(flag.into());
+      }
+      args.push("script.ts".into());
+      let r = flags_from_vec(args);
+      match value {
+        Ok(value) => {
+          assert_eq!(
+            r.unwrap(),
+            Flags {
+              subcommand: DenoSubcommand::Cache(CacheFlags {
+                files: svec!["script.ts"],
+              }),
+              allow_scripts: value,
+              ..Flags::default()
+            }
+          );
+        }
+        Err(e) => {
+          let err = r.unwrap_err();
+          assert!(
+            err.to_string().contains(e),
+            "expected to contain '{e}' got '{err}'"
+          );
+        }
+      }
     }
   }
 }

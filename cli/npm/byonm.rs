@@ -11,6 +11,8 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::errors::PackageFolderResolveError;
+use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
 use deno_runtime::deno_node::load_pkg_json;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NpmResolver;
@@ -27,7 +29,8 @@ use super::InnerCliNpmResolverRef;
 
 pub struct CliNpmResolverByonmCreateOptions {
   pub fs: Arc<dyn FileSystem>,
-  pub root_node_modules_dir: PathBuf,
+  // todo(dsherret): investigate removing this
+  pub root_node_modules_dir: Option<PathBuf>,
 }
 
 pub fn create_byonm_npm_resolver(
@@ -42,7 +45,7 @@ pub fn create_byonm_npm_resolver(
 #[derive(Debug)]
 pub struct ByonmCliNpmResolver {
   fs: Arc<dyn FileSystem>,
-  root_node_modules_dir: PathBuf,
+  root_node_modules_dir: Option<PathBuf>,
 }
 
 impl ByonmCliNpmResolver {
@@ -129,16 +132,16 @@ impl ByonmCliNpmResolver {
     }
 
     // otherwise, fall fallback to the project's package.json
-    let root_pkg_json_path = self
-      .root_node_modules_dir
-      .parent()
-      .unwrap()
-      .join("package.json");
-    if let Some(pkg_json) =
-      load_pkg_json(self.fs.as_ref(), &root_pkg_json_path)?
-    {
-      if let Some(alias) = resolve_alias_from_pkg_json(req, pkg_json.as_ref()) {
-        return Ok((pkg_json, alias));
+    if let Some(root_node_modules_dir) = &self.root_node_modules_dir {
+      let root_pkg_json_path =
+        root_node_modules_dir.parent().unwrap().join("package.json");
+      if let Some(pkg_json) =
+        load_pkg_json(self.fs.as_ref(), &root_pkg_json_path)?
+      {
+        if let Some(alias) = resolve_alias_from_pkg_json(req, pkg_json.as_ref())
+        {
+          return Ok((pkg_json, alias));
+        }
       }
     }
 
@@ -157,9 +160,10 @@ impl NpmResolver for ByonmCliNpmResolver {
   fn get_npm_process_state(&self) -> String {
     serde_json::to_string(&NpmProcessState {
       kind: NpmProcessStateKind::Byonm,
-      local_node_modules_path: Some(
-        self.root_node_modules_dir.to_string_lossy().to_string(),
-      ),
+      local_node_modules_path: self
+        .root_node_modules_dir
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string()),
     })
     .unwrap()
   }
@@ -168,42 +172,50 @@ impl NpmResolver for ByonmCliNpmResolver {
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, PackageFolderResolveError> {
     fn inner(
       fs: &dyn FileSystem,
       name: &str,
       referrer: &ModuleSpecifier,
-    ) -> Result<PathBuf, AnyError> {
-      let referrer_file = specifier_to_file_path(referrer)?;
-      let mut current_folder = referrer_file.parent().unwrap();
-      loop {
-        let node_modules_folder = if current_folder.ends_with("node_modules") {
-          Cow::Borrowed(current_folder)
-        } else {
-          Cow::Owned(current_folder.join("node_modules"))
-        };
+    ) -> Result<PathBuf, PackageFolderResolveError> {
+      let maybe_referrer_file = specifier_to_file_path(referrer).ok();
+      let maybe_start_folder =
+        maybe_referrer_file.as_ref().and_then(|f| f.parent());
+      if let Some(start_folder) = maybe_start_folder {
+        for current_folder in start_folder.ancestors() {
+          let node_modules_folder = if current_folder.ends_with("node_modules")
+          {
+            Cow::Borrowed(current_folder)
+          } else {
+            Cow::Owned(current_folder.join("node_modules"))
+          };
 
-        let sub_dir = join_package_name(&node_modules_folder, name);
-        if fs.is_dir_sync(&sub_dir) {
-          return Ok(sub_dir);
-        }
-
-        if let Some(parent) = current_folder.parent() {
-          current_folder = parent;
-        } else {
-          break;
+          let sub_dir = join_package_name(&node_modules_folder, name);
+          if fs.is_dir_sync(&sub_dir) {
+            return Ok(sub_dir);
+          }
         }
       }
 
-      bail!(
-        "could not find package '{}' from referrer '{}'.",
-        name,
-        referrer
-      );
+      Err(
+        PackageFolderResolveErrorKind::NotFoundPackage {
+          package_name: name.to_string(),
+          referrer: referrer.clone(),
+          referrer_extra: None,
+        }
+        .into(),
+      )
     }
 
     let path = inner(&*self.fs, name, referrer)?;
-    Ok(self.fs.realpath_sync(&path)?)
+    self.fs.realpath_sync(&path).map_err(|err| {
+      PackageFolderResolveErrorKind::Io {
+        package_name: name.to_string(),
+        referrer: referrer.clone(),
+        source: err.into_io_error(),
+      }
+      .into()
+    })
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
@@ -246,7 +258,7 @@ impl CliNpmResolver for ByonmCliNpmResolver {
   }
 
   fn root_node_modules_path(&self) -> Option<&PathBuf> {
-    Some(&self.root_node_modules_dir)
+    self.root_node_modules_dir.as_ref()
   }
 
   fn resolve_pkg_folder_from_deno_module_req(

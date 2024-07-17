@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_permissions"
-version = "0.18.0"
+version = "0.21.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,7 +21,7 @@ libc.workspace = true
 log.workspace = true
 once_cell.workspace = true
 serde.workspace = true
-which = "4.2.5"
+which.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2", "processenv", "wincon", "wincontypes"] }
