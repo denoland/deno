@@ -6,7 +6,7 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, primordials, internals } from "ext:core/mod.js";
 const {
   isArrayBuffer,
   isDataView,
@@ -26,6 +26,7 @@ const {
   Float32Array,
   Float64Array,
   FunctionPrototypeBind,
+  FunctionPrototypeCall,
   Int16Array,
   Int32Array,
   Int8Array,
@@ -77,6 +78,7 @@ const {
   StringPrototypeToWellFormed,
   Symbol,
   SymbolIterator,
+  SymbolAsyncIterator,
   SymbolToStringTag,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -919,6 +921,113 @@ function createSequenceConverter(converter) {
   };
 }
 
+// Ref: https://tc39.es/ecma262/#sec-getiterator, modified to not call the iterator
+function getIteratorAsync(obj) {
+  const method = obj[SymbolAsyncIterator];
+  if (method === undefined) {
+    const syncMethod = obj[SymbolIterator];
+    if (syncMethod === undefined) {
+      throw new TypeError("No iterator found");
+    }
+    return syncMethod;
+  } else {
+    return method;
+  }
+}
+
+function CreateAsyncFromSyncIterator(iter) {
+  return {
+    async next() {
+      return iter.next();
+    }
+  }
+}
+
+function createAsyncIterableConverter(converter) {
+  return function (
+    V,
+    prefix = undefined,
+    context = undefined,
+    opts = { __proto__: null },
+  ) {
+    if (type(V) !== "Object") {
+      throw makeException(
+        TypeError,
+        "can not be converted to async iterable.",
+        prefix,
+        context,
+      );
+    }
+
+    const iter = getIteratorAsync(V);
+
+    let iterator;
+    return {
+      async next() {
+        if (!iterator) {
+          if (V[SymbolIterator]) {
+            iterator = CreateAsyncFromSyncIterator(FunctionPrototypeCall(iter, V));
+          } else {
+            iterator = FunctionPrototypeCall(iter, V);
+          }
+        }
+
+        const iterResult = await iterator.next();
+        if (type(iterResult) !== "Object") {
+          throw makeException(
+            TypeError,
+            "can not be converted to async iterable.",
+            prefix,
+            context,
+          );
+        }
+
+        if (iterResult.done) {
+          return { done: true };
+        }
+
+        const iterValue = converter(
+          iterResult.value,
+          prefix,
+          context,
+          opts,
+        );
+
+        return { done: false, value: iterValue };
+      },
+      async return(reason) {
+        if (!iterator) {
+          if (V[SymbolIterator]) {
+            iterator = CreateAsyncFromSyncIterator(FunctionPrototypeCall(iter, V));
+          } else {
+            iterator = FunctionPrototypeCall(iter, V);
+          }
+        }
+
+        if (iterator.return === undefined) {
+          return undefined;
+        }
+
+        const returnPromiseResult = await iterator.return(reason);
+        if (type(returnPromiseResult) !== "Object") {
+          throw makeException(
+            TypeError,
+            "can not be converted to async iterable.",
+            prefix,
+            context,
+          );
+        }
+
+        return undefined;
+      },
+      [SymbolAsyncIterator]() {
+        return this;
+      },
+      value: V,
+    };
+  };
+}
+
 function createRecordConverter(keyConverter, valueConverter) {
   return (V, prefix, context, opts) => {
     if (type(V) !== "Object") {
@@ -1298,6 +1407,7 @@ export {
   createPromiseConverter,
   createRecordConverter,
   createSequenceConverter,
+  createAsyncIterableConverter,
   illegalConstructor,
   invokeCallbackFunction,
   makeException,

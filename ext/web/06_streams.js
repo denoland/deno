@@ -5196,21 +5196,17 @@ class ReadableStream {
   }
 
   static from(asyncIterable) {
+    const prefix = "Failed to execute 'ReadableStream.from'";
     webidl.requiredArguments(
       arguments.length,
       1,
-      "Failed to execute 'ReadableStream.from'",
+      prefix,
     );
-    asyncIterable = webidl.converters.any(asyncIterable);
-
-    const iterator = getAsyncOrSyncIterator(asyncIterable);
+    asyncIterable = webidl.converters["async iterable<any>"](asyncIterable, prefix, "Argument 1");
 
     const stream = createReadableStream(noop, async () => {
       // deno-lint-ignore prefer-primordials
-      const res = await iterator.next();
-      if (!isObject(res)) {
-        throw new TypeError("iterator.next value is not an object");
-      }
+      const res = await asyncIterable.next();
       if (res.done) {
         readableStreamDefaultControllerClose(stream[_controller]);
       } else {
@@ -5220,17 +5216,7 @@ class ReadableStream {
         );
       }
     }, async (reason) => {
-      if (iterator.return == null) {
-        return undefined;
-      } else {
-        // deno-lint-ignore prefer-primordials
-        const res = await iterator.return(reason);
-        if (!isObject(res)) {
-          throw new TypeError("iterator.return value is not an object");
-        } else {
-          return undefined;
-        }
-      }
+      await asyncIterable.return(reason);
     }, 0);
     return stream;
   }
@@ -6889,6 +6875,8 @@ webidl.converters.StreamPipeOptions = webidl
     },
     { key: "signal", converter: webidl.converters.AbortSignal },
   ]);
+
+webidl.converters["async iterable<any>"] = webidl.createAsyncIterableConverter(webidl.converters.any);
 
 internals.resourceForReadableStream = resourceForReadableStream;
 
