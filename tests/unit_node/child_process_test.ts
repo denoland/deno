@@ -16,7 +16,7 @@ const { spawn, spawnSync, execFile, execFileSync, ChildProcess } = CP;
 
 function withTimeout<T>(
   timeoutInMS = 10_000,
-): ReturnType<typeof Promise.withResolvers<T>> {
+): ReturnType<typeof Promise.withResolvers<T>> & { clear: () => void } {
   const deferred = Promise.withResolvers<T>();
   const timer = setTimeout(() => {
     deferred.reject("Timeout");
@@ -24,7 +24,10 @@ function withTimeout<T>(
   deferred.promise.then(() => {
     clearTimeout(timer);
   });
-  return deferred;
+  return {
+    clear: () => clearTimeout(timer),
+    ...deferred,
+  };
 }
 
 // TODO(uki00a): Once Node.js's `parallel/test-child-process-spawn-error.js` works, this test case should be removed.
@@ -874,6 +877,16 @@ Deno.test(
         }
       }
 
+      const makeSab = (arr) => {
+        const sab = new SharedArrayBuffer(arr.length);
+        const buf = new Uint8Array(sab);
+        for (let i = 0; i < arr.length; i++) {
+          buf[i] = arr[i];
+        }
+        return buf;
+      };
+
+
       const inputs = [
         "foo",
         {
@@ -885,7 +898,7 @@ Deno.test(
         new Uint8Array([1, 2, 3]),
         {
           foo: new Uint8Array([1, 2, 3]),
-          bar: new Uint8Array(new SharedArrayBuffer([4, 5, 6])),
+          bar: makeSab([4, 5, 6]),
         },
         [1, { foo: 2 }, [3, 4]],
         new BigIntWrapper(42n),
@@ -914,7 +927,7 @@ Deno.test(
         bar: [4, 5, 6],
       },
       [1, { foo: 2 }, [3, 4]],
-      42,
+      "42",
     ];
     let i = 0;
     const p = Promise.withResolvers<void>();
@@ -929,5 +942,6 @@ Deno.test(
     child.on("close", () => p.resolve());
     await Promise.race([p.promise, timeout.promise]);
     assertEquals(i, expect.length);
+    timeout.clear();
   },
 );
