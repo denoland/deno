@@ -722,15 +722,15 @@ pub enum NpmProcessStateKind {
   Byonm,
 }
 
-const RESOLUTION_STATE_ENV_VAR_NAME: &str =
+pub(crate) const NPM_RESOLUTION_STATE_ENV_VAR_NAME: &str =
   "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE";
 
 static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
-  let state = std::env::var(RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
+  let state = std::env::var(NPM_RESOLUTION_STATE_ENV_VAR_NAME).ok()?;
   let state: NpmProcessState = serde_json::from_str(&state).ok()?;
   // remove the environment variable so that sub processes
   // that are spawned do not also use this.
-  std::env::remove_var(RESOLUTION_STATE_ENV_VAR_NAME);
+  std::env::remove_var(NPM_RESOLUTION_STATE_ENV_VAR_NAME);
   Some(state)
 });
 
@@ -887,7 +887,7 @@ impl CliOptions {
     };
 
     for diagnostic in workspace.diagnostics() {
-      log::warn!("{}", colors::yellow(diagnostic));
+      log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
     let root_folder = workspace.root_folder().1;
@@ -902,11 +902,7 @@ impl CliOptions {
       }),
     )?;
 
-    let maybe_lock_file = CliLockfile::discover(
-      &flags,
-      root_folder.deno_json.as_deref(),
-      root_folder.pkg_json.as_deref(),
-    )?;
+    let maybe_lock_file = CliLockfile::discover(&flags, &workspace)?;
 
     log::debug!("Finished config loading.");
 
@@ -1789,12 +1785,6 @@ fn resolve_import_map_specifier(
           format!("Bad URL (\"{import_map_path}\") for import map.")
         })?;
     Ok(Some(specifier))
-  } else if let Some(config_file) = &maybe_config_file {
-    // if the config file is an import map we prefer to use it, over `importMap` field
-    if config_file.is_an_import_map() && config_file.json.import_map.is_some() {
-      log::warn!("{} \"importMap\" setting is ignored when \"imports\" or \"scopes\" are specified in the config file.", colors::yellow("Warning"));
-    }
-    Ok(None)
   } else {
     Ok(None)
   }

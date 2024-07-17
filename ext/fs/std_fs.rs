@@ -173,6 +173,15 @@ impl FileSystem for RealFs {
     spawn_blocking(move || lstat(&path)).await?.map(Into::into)
   }
 
+  fn exists_sync(&self, path: &Path) -> bool {
+    exists(path)
+  }
+  async fn exists_async(&self, path: PathBuf) -> FsResult<bool> {
+    spawn_blocking(move || exists(&path))
+      .await
+      .map_err(Into::into)
+  }
+
   fn realpath_sync(&self, path: &Path) -> FsResult<PathBuf> {
     realpath(path)
   }
@@ -890,6 +899,32 @@ fn stat_extra(
     }
 
     Ok(())
+  }
+}
+
+fn exists(path: &Path) -> bool {
+  #[cfg(unix)]
+  {
+    use nix::unistd::access;
+    use nix::unistd::AccessFlags;
+    access(path, AccessFlags::F_OK).is_ok()
+  }
+
+  #[cfg(windows)]
+  {
+    use std::os::windows::ffi::OsStrExt;
+    use winapi::um::fileapi::GetFileAttributesW;
+    use winapi::um::fileapi::INVALID_FILE_ATTRIBUTES;
+
+    let path = path
+      .as_os_str()
+      .encode_wide()
+      .chain(std::iter::once(0))
+      .collect::<Vec<_>>();
+    // Safety: `path` is a null-terminated string
+    let attrs = unsafe { GetFileAttributesW(path.as_ptr()) };
+
+    attrs != INVALID_FILE_ATTRIBUTES
   }
 }
 
