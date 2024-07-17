@@ -1,0 +1,3 @@
+[WILDCARD]Unfurled specifier: add-dep from file:///[WILDLINE]/subtract/index.ts -> npm:add@1.0.0
+[WILDCARD]Unfurled specifier: add from file:///[WILDLINE]/subtract/index.ts -> npm:add@^1.0.0
+[WILDCARD]

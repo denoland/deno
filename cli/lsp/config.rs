@@ -1117,6 +1117,7 @@ pub struct ConfigData {
   pub import_map_from_settings: bool,
   pub package_config: Option<Arc<LspPackageConfig>>,
   pub is_workspace_root: bool,
+  pub workspace_root_dir: ModuleSpecifier,
   /// Workspace member directories. For a workspace root this will be a list of
   /// members. For a member this will be the same list, representing self and
   /// siblings. For a solitary package this will be `vec![self.scope]`. These
@@ -1532,28 +1533,37 @@ impl ConfigData {
       })
     });
 
-    let workspace = config_file
+    let workspace_config = config_file
       .as_ref()
       .and_then(|c| c.to_workspace_config().ok().flatten().map(|w| (c, w)));
-    let is_workspace_root = workspace.is_some();
-    let workspace_members = if let Some((config, workspace)) = workspace {
-      Arc::new(
-        workspace
-          .members
-          .iter()
-          .flat_map(|p| {
-            let dir_specifier = config.specifier.join(p).ok()?;
-            let dir_path = specifier_to_file_path(&dir_specifier).ok()?;
-            Url::from_directory_path(normalize_path(dir_path)).ok()
-          })
-          .collect(),
-      )
-    } else if let Some(workspace_data) = workspace_root {
-      workspace_data.workspace_members.clone()
-    } else if config_file.as_ref().is_some_and(|c| c.json.name.is_some()) {
-      Arc::new(vec![scope.clone()])
+    let is_workspace_root = workspace_config.is_some();
+    let workspace_members =
+      if let Some((config, workspace_config)) = workspace_config {
+        Arc::new(
+          workspace_config
+            .members
+            .iter()
+            .flat_map(|p| {
+              let dir_specifier = config.specifier.join(p).ok()?;
+              let dir_path = specifier_to_file_path(&dir_specifier).ok()?;
+              Url::from_directory_path(normalize_path(dir_path)).ok()
+            })
+            .collect(),
+        )
+      } else if let Some(workspace_data) = workspace_root {
+        workspace_data.workspace_members.clone()
+      } else if config_file.as_ref().is_some_and(|c| c.json.name.is_some()) {
+        Arc::new(vec![scope.clone()])
+      } else {
+        Arc::new(vec![])
+      };
+    let workspace_root_dir = if is_workspace_root {
+      scope.clone()
     } else {
-      Arc::new(vec![])
+      workspace_root
+        .as_ref()
+        .map(|r| r.scope.clone())
+        .unwrap_or_else(|| scope.clone())
     };
 
     ConfigData {
@@ -1574,6 +1584,7 @@ impl ConfigData {
       import_map_from_settings,
       package_config: package_config.map(Arc::new),
       is_workspace_root,
+      workspace_root_dir,
       workspace_members,
       watched_files,
     }
