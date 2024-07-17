@@ -1634,10 +1634,10 @@ impl ConfigTree {
       }
     }
 
-    // todo(THIS PR): Instead of config specifiers, this should pass folders with config files
     for specifier in workspace_files {
       if !(specifier.path().ends_with("/deno.json")
-        || specifier.path().ends_with("/deno.jsonc"))
+        || specifier.path().ends_with("/deno.jsonc")
+        || specifier.path().ends_with("/package.json"))
       {
         continue;
       }
