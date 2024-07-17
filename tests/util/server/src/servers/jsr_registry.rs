@@ -142,8 +142,7 @@ async fn registry_server_handler(
   let accept_header = req
     .headers()
     .get("accept")
-    .map(|s| s.to_str().ok())
-    .flatten()
+    .and_then(|s| s.to_str().ok())
     .unwrap_or_default();
   if accept_header != "*/*" {
     let res = Response::builder()
