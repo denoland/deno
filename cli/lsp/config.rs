@@ -1,21 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use super::logging::lsp_log;
-use crate::args::discover_npmrc_from_workspace;
-use crate::args::has_flag_env_var;
-use crate::args::CliLockfile;
-use crate::args::ConfigFile;
-use crate::args::DENO_FUTURE;
-use crate::cache::FastInsecureHasher;
-use crate::file_fetcher::FileFetcher;
-use crate::lsp::logging::lsp_warn;
-use crate::tools::lint::get_configured_rules;
-use crate::tools::lint::ConfiguredRules;
-use crate::util::fs::canonicalize_path_maybe_not_exists;
 use deno_ast::MediaType;
 use deno_config::fs::RealDenoConfigFs;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
+use deno_config::package_json::PackageJsonCache;
 use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::SpecifiedImportMap;
@@ -25,11 +14,13 @@ use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceEmptyOptions;
 use deno_config::workspace::WorkspaceMemberContext;
 use deno_config::workspace::WorkspaceResolver;
+use deno_config::DenoJsonCache;
 use deno_config::FmtConfig;
 use deno_config::FmtOptionsConfig;
 use deno_config::TsConfig;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -50,6 +41,19 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
+
+use super::logging::lsp_log;
+use crate::args::discover_npmrc_from_workspace;
+use crate::args::has_flag_env_var;
+use crate::args::CliLockfile;
+use crate::args::ConfigFile;
+use crate::args::DENO_FUTURE;
+use crate::cache::FastInsecureHasher;
+use crate::file_fetcher::FileFetcher;
+use crate::lsp::logging::lsp_warn;
+use crate::tools::lint::get_configured_rules;
+use crate::tools::lint::ConfiguredRules;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 pub const SETTINGS_SECTION: &str = "deno";
 
@@ -1126,7 +1130,10 @@ impl ConfigData {
     specified_config: Option<&Path>,
     scope: &ModuleSpecifier,
     settings: &Settings,
-    file_fetcher: Option<&Arc<FileFetcher>>,
+    file_fetcher: &Arc<FileFetcher>,
+    // sync requirement is because the lsp requires sync
+    deno_json_cache: &(dyn DenoJsonCache + Sync),
+    pkg_json_cache: &(dyn PackageJsonCache + Sync),
   ) -> Self {
     let scope = Arc::new(scope.clone());
     let discover_result = match scope.to_file_path() {
@@ -1146,8 +1153,8 @@ impl ConfigData {
           &WorkspaceDiscoverOptions {
             fs: &RealDenoConfigFs,
             additional_config_file_names: &[],
-            // todo(THIS PR): use a pkg json and deno json cache to prevent loading so many config files
-            pkg_json_cache: None,
+            deno_json_cache: Some(deno_json_cache),
+            pkg_json_cache: Some(pkg_json_cache),
             discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
             config_parse_options: Default::default(),
             // todo: provide this value
@@ -1161,7 +1168,7 @@ impl ConfigData {
     };
     match discover_result {
       Ok(workspace) => {
-        Self::load_inner(workspace, scope, settings, file_fetcher).await
+        Self::load_inner(workspace, scope, settings, Some(file_fetcher)).await
       }
       Err(err) => {
         lsp_warn!("  Couldn't open workspace \"{}\": {}", scope.as_str(), err);
@@ -1169,9 +1176,13 @@ impl ConfigData {
           root_dir: scope.clone(),
           use_vendor_dir: VendorEnablement::Disable,
         }));
-        let mut data =
-          Self::load_inner(workspace, scope.clone(), settings, file_fetcher)
-            .await;
+        let mut data = Self::load_inner(
+          workspace,
+          scope.clone(),
+          settings,
+          Some(file_fetcher),
+        )
+        .await;
         // check if any of these need to be added to the workspace
         let files = [
           (
@@ -1646,7 +1657,36 @@ impl ConfigTree {
     workspace_files: &IndexSet<ModuleSpecifier>,
     file_fetcher: &Arc<FileFetcher>,
   ) {
+    // todo(dsherret): switch to RefCell once the lsp no longer requires Sync
+    #[derive(Default)]
+    struct DenoJsonMemCache(Mutex<HashMap<PathBuf, Arc<ConfigFile>>>);
+
+    impl deno_config::DenoJsonCache for DenoJsonMemCache {
+      fn get(&self, path: &Path) -> Option<Arc<ConfigFile>> {
+        self.0.lock().get(path).cloned()
+      }
+
+      fn set(&self, path: PathBuf, data: Arc<ConfigFile>) {
+        self.0.lock().insert(path, data);
+      }
+    }
+
+    #[derive(Default)]
+    struct PackageJsonMemCache(Mutex<HashMap<PathBuf, Arc<PackageJson>>>);
+
+    impl deno_config::package_json::PackageJsonCache for PackageJsonMemCache {
+      fn get(&self, path: &Path) -> Option<Arc<PackageJson>> {
+        self.0.lock().get(path).cloned()
+      }
+
+      fn set(&self, path: PathBuf, data: Arc<PackageJson>) {
+        self.0.lock().insert(path, data);
+      }
+    }
+
     lsp_log!("Refreshing configuration tree...");
+    let deno_json_cache = DenoJsonMemCache::default();
+    let pkg_json_cache = PackageJsonMemCache::default();
     let mut scopes = BTreeMap::new();
     for (folder_uri, ws_settings) in &settings.by_workspace_folder {
       let mut ws_settings = ws_settings.as_ref();
@@ -1664,7 +1704,9 @@ impl ConfigTree {
                     Some(&config_file_path),
                     folder_uri,
                     settings,
-                    Some(file_fetcher),
+                    file_fetcher,
+                    &deno_json_cache,
+                    &pkg_json_cache,
                   )
                   .await,
                 ),
@@ -1689,16 +1731,30 @@ impl ConfigTree {
         continue;
       }
       let data = Arc::new(
-        ConfigData::load(None, &scope, settings, Some(file_fetcher)).await,
+        ConfigData::load(
+          None,
+          &scope,
+          settings,
+          file_fetcher,
+          &deno_json_cache,
+          &pkg_json_cache,
+        )
+        .await,
       );
       scopes.insert(scope, data.clone());
       for (member_scope, _) in data.workspace.config_folders() {
         if scopes.contains_key(member_scope) {
           continue;
         }
-        let member_data =
-          ConfigData::load(None, member_scope, settings, Some(file_fetcher))
-            .await;
+        let member_data = ConfigData::load(
+          None,
+          member_scope,
+          settings,
+          file_fetcher,
+          &deno_json_cache,
+          &pkg_json_cache,
+        )
+        .await;
         scopes.insert(member_scope.as_ref().clone(), Arc::new(member_data));
       }
     }
@@ -1711,8 +1767,15 @@ impl ConfigTree {
         scopes.insert(
           folder_uri.clone(),
           Arc::new(
-            ConfigData::load(None, folder_uri, settings, Some(file_fetcher))
-              .await,
+            ConfigData::load(
+              None,
+              folder_uri,
+              settings,
+              file_fetcher,
+              &deno_json_cache,
+              &pkg_json_cache,
+            )
+            .await,
           ),
         );
       }

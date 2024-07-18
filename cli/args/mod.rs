@@ -862,6 +862,7 @@ impl CliOptions {
       }
       WorkspaceDiscoverOptions {
         fs: &config_fs_adapter,
+        deno_json_cache: None,
         pkg_json_cache: Some(
           &deno_runtime::deno_node::PackageJsonThreadLocalCache,
         ),

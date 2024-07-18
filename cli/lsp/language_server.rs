@@ -3563,6 +3563,7 @@ impl Inner {
       ]),
       &WorkspaceDiscoverOptions {
         fs: &DenoConfigFsAdapter::new(&deno_runtime::deno_fs::RealFs),
+        deno_json_cache: None,
         pkg_json_cache: None,
         config_parse_options: deno_config::ConfigParseOptions {
           include_task_comments: false,
