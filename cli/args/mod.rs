@@ -500,6 +500,22 @@ fn resolve_lint_rules_options(
   }
 }
 
+pub fn discover_npmrc_from_workspace(
+  workspace: &Workspace,
+) -> Result<(Arc<ResolvedNpmRc>, Option<PathBuf>), AnyError> {
+  let root_folder = workspace.root_folder().1;
+  discover_npmrc(
+    root_folder.pkg_json.as_ref().map(|p| p.path.clone()),
+    root_folder.deno_json.as_ref().and_then(|cf| {
+      if cf.specifier.scheme() == "file" {
+        Some(cf.specifier.to_file_path().unwrap())
+      } else {
+        None
+      }
+    }),
+  )
+}
+
 /// Discover `.npmrc` file - currently we only support it next to `package.json`
 /// or next to `deno.json`.
 ///
@@ -846,6 +862,7 @@ impl CliOptions {
       }
       WorkspaceDiscoverOptions {
         fs: &config_fs_adapter,
+        deno_json_cache: None,
         pkg_json_cache: Some(
           &deno_runtime::deno_node::PackageJsonThreadLocalCache,
         ),
@@ -890,17 +907,7 @@ impl CliOptions {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
-    let root_folder = workspace.root_folder().1;
-    let (npmrc, _) = discover_npmrc(
-      root_folder.pkg_json.as_ref().map(|p| p.path.clone()),
-      root_folder.deno_json.as_ref().and_then(|cf| {
-        if cf.specifier.scheme() == "file" {
-          Some(cf.specifier.to_file_path().unwrap())
-        } else {
-          None
-        }
-      }),
-    )?;
+    let (npmrc, _) = discover_npmrc_from_workspace(&workspace)?;
 
     let maybe_lock_file = CliLockfile::discover(&flags, &workspace)?;
 
