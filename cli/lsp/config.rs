@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_ast::MediaType;
+use deno_config::fs::DenoConfigFs;
 use deno_config::fs::RealDenoConfigFs;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
@@ -1132,6 +1133,7 @@ impl ConfigData {
     settings: &Settings,
     file_fetcher: &Arc<FileFetcher>,
     // sync requirement is because the lsp requires sync
+    cached_deno_config_fs: &(dyn DenoConfigFs + Sync),
     deno_json_cache: &(dyn DenoJsonCache + Sync),
     pkg_json_cache: &(dyn PackageJsonCache + Sync),
   ) -> Self {
@@ -1151,7 +1153,7 @@ impl ConfigData {
             }
           },
           &WorkspaceDiscoverOptions {
-            fs: &RealDenoConfigFs,
+            fs: cached_deno_config_fs,
             additional_config_file_names: &[],
             deno_json_cache: Some(deno_json_cache),
             pkg_json_cache: Some(pkg_json_cache),
@@ -1657,34 +1659,8 @@ impl ConfigTree {
     workspace_files: &IndexSet<ModuleSpecifier>,
     file_fetcher: &Arc<FileFetcher>,
   ) {
-    // todo(dsherret): switch to RefCell once the lsp no longer requires Sync
-    #[derive(Default)]
-    struct DenoJsonMemCache(Mutex<HashMap<PathBuf, Arc<ConfigFile>>>);
-
-    impl deno_config::DenoJsonCache for DenoJsonMemCache {
-      fn get(&self, path: &Path) -> Option<Arc<ConfigFile>> {
-        self.0.lock().get(path).cloned()
-      }
-
-      fn set(&self, path: PathBuf, data: Arc<ConfigFile>) {
-        self.0.lock().insert(path, data);
-      }
-    }
-
-    #[derive(Default)]
-    struct PackageJsonMemCache(Mutex<HashMap<PathBuf, Arc<PackageJson>>>);
-
-    impl deno_config::package_json::PackageJsonCache for PackageJsonMemCache {
-      fn get(&self, path: &Path) -> Option<Arc<PackageJson>> {
-        self.0.lock().get(path).cloned()
-      }
-
-      fn set(&self, path: PathBuf, data: Arc<PackageJson>) {
-        self.0.lock().insert(path, data);
-      }
-    }
-
     lsp_log!("Refreshing configuration tree...");
+    let cached_fs = CachedDenoConfigFs::default();
     let deno_json_cache = DenoJsonMemCache::default();
     let pkg_json_cache = PackageJsonMemCache::default();
     let mut scopes = BTreeMap::new();
@@ -1705,6 +1681,7 @@ impl ConfigTree {
                     folder_uri,
                     settings,
                     file_fetcher,
+                    &cached_fs,
                     &deno_json_cache,
                     &pkg_json_cache,
                   )
@@ -1736,6 +1713,7 @@ impl ConfigTree {
           &scope,
           settings,
           file_fetcher,
+          &cached_fs,
           &deno_json_cache,
           &pkg_json_cache,
         )
@@ -1751,6 +1729,7 @@ impl ConfigTree {
           member_scope,
           settings,
           file_fetcher,
+          &cached_fs,
           &deno_json_cache,
           &pkg_json_cache,
         )
@@ -1772,6 +1751,7 @@ impl ConfigTree {
               folder_uri,
               settings,
               file_fetcher,
+              &cached_fs,
               &deno_json_cache,
               &pkg_json_cache,
             )
@@ -1875,6 +1855,103 @@ fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<CliLockfile> {
       lsp_warn!("Error loading lockfile: {:#}", err);
       None
     }
+  }
+}
+
+// todo(dsherret): switch to RefCell once the lsp no longer requires Sync
+#[derive(Default)]
+struct DenoJsonMemCache(Mutex<HashMap<PathBuf, Arc<ConfigFile>>>);
+
+impl deno_config::DenoJsonCache for DenoJsonMemCache {
+  fn get(&self, path: &Path) -> Option<Arc<ConfigFile>> {
+    self.0.lock().get(path).cloned()
+  }
+
+  fn set(&self, path: PathBuf, data: Arc<ConfigFile>) {
+    self.0.lock().insert(path, data);
+  }
+}
+
+#[derive(Default)]
+struct PackageJsonMemCache(Mutex<HashMap<PathBuf, Arc<PackageJson>>>);
+
+impl deno_config::package_json::PackageJsonCache for PackageJsonMemCache {
+  fn get(&self, path: &Path) -> Option<Arc<PackageJson>> {
+    self.0.lock().get(path).cloned()
+  }
+
+  fn set(&self, path: PathBuf, data: Arc<PackageJson>) {
+    self.0.lock().insert(path, data);
+  }
+}
+
+#[derive(Default)]
+struct CachedFsItems<T: Clone> {
+  items: HashMap<PathBuf, Result<T, std::io::Error>>,
+}
+
+impl<T: Clone> CachedFsItems<T> {
+  pub fn get(
+    &mut self,
+    path: &Path,
+    action: impl FnOnce(&Path) -> Result<T, std::io::Error>,
+  ) -> Result<T, std::io::Error> {
+    let value = if let Some(value) = self.items.get(path) {
+      value
+    } else {
+      let value = action(path);
+      self.items.insert(path.to_owned(), value);
+      self.items.get(path).unwrap()
+    };
+    value
+      .as_ref()
+      .map(|v| v.clone())
+      .map_err(|e| std::io::Error::new(e.kind(), e.to_string()))
+  }
+}
+
+#[derive(Default)]
+struct InnerData {
+  stat_calls: CachedFsItems<deno_config::fs::FsMetadata>,
+  read_to_string_calls: CachedFsItems<String>,
+  read_dir_calls: CachedFsItems<Vec<deno_config::fs::FsDirEntry>>,
+}
+
+#[derive(Default)]
+struct CachedDenoConfigFs(Mutex<InnerData>);
+
+impl DenoConfigFs for CachedDenoConfigFs {
+  fn stat_sync(
+    &self,
+    path: &Path,
+  ) -> Result<deno_config::fs::FsMetadata, std::io::Error> {
+    self
+      .0
+      .lock()
+      .stat_calls
+      .get(path, |path| RealDenoConfigFs.stat_sync(path))
+  }
+
+  fn read_to_string_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<String, std::io::Error> {
+    self
+      .0
+      .lock()
+      .read_to_string_calls
+      .get(path, |path| RealDenoConfigFs.read_to_string_lossy(path))
+  }
+
+  fn read_dir(
+    &self,
+    path: &Path,
+  ) -> Result<Vec<deno_config::fs::FsDirEntry>, std::io::Error> {
+    self
+      .0
+      .lock()
+      .read_dir_calls
+      .get(path, |path| RealDenoConfigFs.read_dir(path))
   }
 }
 

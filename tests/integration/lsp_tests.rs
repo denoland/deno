@@ -13880,6 +13880,101 @@ fn lsp_deno_json_workspace_jsr_resolution() {
 }
 
 #[test]
+fn lsp_npm_workspace() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "package.json",
+    json!({
+      "workspaces": ["packages/*"]
+    })
+    .to_string(),
+  );
+  {
+    temp_dir.create_dir_all("packages/add");
+    temp_dir.write(
+      "packages/add/package.json",
+      json!({
+        "name": "add",
+        "version": "1.0.0",
+        "exports": "./index.ts"
+      })
+      .to_string(),
+    );
+    temp_dir.write(
+      "packages/add/index.ts",
+      "export function add(a: number, b: number): number { return a + b; }",
+    );
+  }
+  {
+    temp_dir.create_dir_all("packages/subtract");
+    temp_dir.write(
+      "packages/subtract/package.json",
+      json!({
+        "name": "add",
+        "version": "1.0.0",
+        "exports": "./index.ts",
+        "dependencies": {
+          "add": "^1.0.0"
+        }
+      })
+      .to_string(),
+    );
+  }
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("packages/subtract/index.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { add } from 'add';\nexport function subtract(a: number, b: number): number { return add(a, -b); }",
+    },
+  }));
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  let res = client.write_request(
+    "textDocument/definition",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("packages/subtract/index.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 9 },
+    }),
+  );
+  // The temp dir is symlinked on the CI
+  assert_eq!(
+    res,
+    json!([{
+      "targetUri": temp_dir.uri().join("packages/add/index.ts").unwrap(),
+      "targetRange": {
+        "start": {
+          "line": 0,
+          "character": 0,
+        },
+        "end": {
+          "line": 0,
+          "character": 67,
+        },
+      },
+      "targetSelectionRange": {
+        "start": {
+          "line": 0,
+          "character": 16,
+        },
+        "end": {
+          "line": 0,
+          "character": 19,
+        },
+      },
+    }]),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
