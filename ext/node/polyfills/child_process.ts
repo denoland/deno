@@ -834,7 +834,17 @@ export function execFileSync(
 function setupChildProcessIpcChannel() {
   const fd = op_node_child_ipc_pipe();
   if (typeof fd != "number" || fd < 0) return;
-  setupChannel(process, fd);
+  const control = setupChannel(process, fd);
+  process.on("newListener", (name: string) => {
+    if (name === "message" || name === "disconnect") {
+      control.refCounted();
+    }
+  });
+  process.on("removeListener", (name: string) => {
+    if (name === "message" || name === "disconnect") {
+      control.unrefCounted();
+    }
+  });
 }
 
 internals.__setupChildProcessIpcChannel = setupChildProcessIpcChannel;

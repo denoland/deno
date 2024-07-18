@@ -345,11 +345,12 @@ fn create_command(
       });
 
       /* One end returned to parent process (this) */
-      let pipe_rid = Some(
-        state
-          .resource_table
-          .add(deno_node::IpcJsonStreamResource::new(fd1 as _)?),
-      );
+      let pipe_rid = Some(state.resource_table.add(
+        deno_node::IpcJsonStreamResource::new(
+          fd1 as _,
+          deno_node::IpcRefTracker::new(state.external_ops_tracker.clone()),
+        )?,
+      ));
 
       /* The other end passed to child process via DENO_CHANNEL_FD */
       command.env("DENO_CHANNEL_FD", format!("{}", ipc));

@@ -15,6 +15,7 @@ mod impl_ {
   use std::os::fd::RawFd;
   use std::pin::Pin;
   use std::rc::Rc;
+  use std::sync::atomic::AtomicBool;
   use std::sync::atomic::AtomicUsize;
   use std::task::ready;
   use std::task::Context;
@@ -30,6 +31,7 @@ mod impl_ {
   use deno_core::AsyncRefCell;
   use deno_core::CancelFuture;
   use deno_core::CancelHandle;
+  use deno_core::ExternalOpsTracker;
   use deno_core::OpState;
   use deno_core::RcRef;
   use deno_core::ResourceId;
@@ -51,6 +53,7 @@ mod impl_ {
   #[cfg(windows)]
   type NamedPipeClient = tokio::net::windows::named_pipe::NamedPipeClient;
 
+  /// Wrapper around v8 value that implements Serialize.
   struct SerializeWrapper<'a, 'b>(
     RefCell<&'b mut v8::HandleScope<'a>>,
     v8::Local<'a, v8::Value>,
@@ -65,6 +68,9 @@ mod impl_ {
     }
   }
 
+  /// Serialize a v8 value directly into a serde serializer.
+  /// This allows us to go from v8 values to JSON without having to
+  /// deserialize into a `serde_json::Value` and then reserialize to JSON
   fn serialize_v8_value<'a, 'b, S: Serializer>(
     scope: &'b mut v8::HandleScope<'a>,
     value: v8::Local<'a, v8::Value>,
@@ -102,6 +108,8 @@ mod impl_ {
         return ser.serialize_bytes(&buf);
       }
       let object = value.to_object(scope).unwrap();
+      // node uses `JSON.stringify`, so to match its behavior (and allow serializing custom objects)
+      // we need to respect the `toJSON` method if it exists.
       let to_json_key = v8::String::new_from_utf8(
         scope,
         b"toJSON",
@@ -155,9 +163,11 @@ mod impl_ {
       Some(child_pipe_fd) => child_pipe_fd.0,
       None => return Ok(None),
     };
-
+    let ref_tracker = IpcRefTracker::new(state.external_ops_tracker.clone());
     Ok(Some(
-      state.resource_table.add(IpcJsonStreamResource::new(fd)?),
+      state
+        .resource_table
+        .add(IpcJsonStreamResource::new(fd, ref_tracker)?),
     ))
   }
 
@@ -227,6 +237,87 @@ mod impl_ {
     }
   }
 
+  #[op2(fast)]
+  pub fn op_node_ipc_ref(state: &mut OpState, #[smi] rid: ResourceId) {
+    let stream = state
+      .resource_table
+      .get::<IpcJsonStreamResource>(rid)
+      .expect("Invalid resource ID");
+    stream.ref_tracker.ref_();
+  }
+
+  #[op2(fast)]
+  pub fn op_node_ipc_unref(state: &mut OpState, #[smi] rid: ResourceId) {
+    let stream = state
+      .resource_table
+      .get::<IpcJsonStreamResource>(rid)
+      .expect("Invalid resource ID");
+    stream.ref_tracker.unref();
+  }
+
+  /// Tracks whether the IPC resources is currently
+  /// refed, and allows refing/unrefing it.
+  pub struct IpcRefTracker {
+    refed: AtomicBool,
+    tracker: OpsTracker,
+  }
+
+  /// A little wrapper so we don't have to get an
+  /// `ExternalOpsTracker` for tests. When we aren't
+  /// cfg(test), this will get optimized out.
+  enum OpsTracker {
+    External(ExternalOpsTracker),
+    #[cfg(test)]
+    Test,
+  }
+
+  impl OpsTracker {
+    fn ref_(&self) {
+      match self {
+        Self::External(tracker) => tracker.ref_op(),
+        #[cfg(test)]
+        Self::Test => {}
+      }
+    }
+
+    fn unref(&self) {
+      match self {
+        Self::External(tracker) => tracker.unref_op(),
+        #[cfg(test)]
+        Self::Test => {}
+      }
+    }
+  }
+
+  impl IpcRefTracker {
+    pub fn new(tracker: ExternalOpsTracker) -> Self {
+      Self {
+        refed: AtomicBool::new(false),
+        tracker: OpsTracker::External(tracker),
+      }
+    }
+
+    #[cfg(test)]
+    fn new_test() -> Self {
+      Self {
+        refed: AtomicBool::new(false),
+        tracker: OpsTracker::Test,
+      }
+    }
+
+    fn ref_(&self) {
+      if !self.refed.swap(true, std::sync::atomic::Ordering::AcqRel) {
+        self.tracker.ref_();
+      }
+    }
+
+    fn unref(&self) {
+      if self.refed.swap(false, std::sync::atomic::Ordering::AcqRel) {
+        self.tracker.unref();
+      }
+    }
+  }
+
   pub struct IpcJsonStreamResource {
     read_half: AsyncRefCell<IpcJsonStream>,
     #[cfg(unix)]
@@ -235,6 +326,7 @@ mod impl_ {
     write_half: AsyncRefCell<tokio::io::WriteHalf<NamedPipeClient>>,
     cancel: Rc<CancelHandle>,
     queued_bytes: AtomicUsize,
+    ref_tracker: IpcRefTracker,
   }
 
   impl deno_core::Resource for IpcJsonStreamResource {
@@ -270,37 +362,45 @@ mod impl_ {
   }
 
   impl IpcJsonStreamResource {
-    pub fn new(stream: i64) -> Result<Self, std::io::Error> {
+    pub fn new(
+      stream: i64,
+      ref_tracker: IpcRefTracker,
+    ) -> Result<Self, std::io::Error> {
       let (read_half, write_half) = pipe(stream as _)?;
       Ok(Self {
         read_half: AsyncRefCell::new(IpcJsonStream::new(read_half)),
         write_half: AsyncRefCell::new(write_half),
         cancel: Default::default(),
         queued_bytes: Default::default(),
+        ref_tracker,
       })
     }
 
-    #[cfg(unix)]
-    #[cfg(test)]
-    fn from_stream(stream: UnixStream) -> Self {
+    #[cfg(all(unix, test))]
+    fn from_stream(stream: UnixStream, ref_tracker: IpcRefTracker) -> Self {
       let (read_half, write_half) = stream.into_split();
       Self {
         read_half: AsyncRefCell::new(IpcJsonStream::new(read_half)),
         write_half: AsyncRefCell::new(write_half),
         cancel: Default::default(),
         queued_bytes: Default::default(),
+        ref_tracker,
       }
     }
 
-    #[cfg(windows)]
-    #[cfg(test)]
-    fn from_stream(pipe: NamedPipeClient) -> Self {
+    #[cfg(all(windows, test))]
+    fn from_stream(
+      pipe: NamedPipeClient,
+      ref_tracker: ExternalOpsTracker,
+    ) -> Self {
       let (read_half, write_half) = tokio::io::split(pipe);
       Self {
         read_half: AsyncRefCell::new(IpcJsonStream::new(read_half)),
         write_half: AsyncRefCell::new(write_half),
         cancel: Default::default(),
         queued_bytes: Default::default(),
+        refed: AtomicBool::new(false),
+        ref_tracker,
       }
     }
 
@@ -541,7 +641,10 @@ mod impl_ {
       let (a, b) = tokio::net::UnixStream::pair().unwrap();
 
       /* Similar to how ops would use the resource */
-      let a = Rc::new(IpcJsonStreamResource::from_stream(a));
+      let a = Rc::new(IpcJsonStreamResource::from_stream(
+        a,
+        super::IpcRefTracker::new_test(),
+      ));
       (a, b)
     }
 

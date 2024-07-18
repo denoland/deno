@@ -7,7 +7,12 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals } from "ext:core/mod.js";
-import { op_node_ipc_read, op_node_ipc_write } from "ext:core/ops";
+import {
+  op_node_ipc_read,
+  op_node_ipc_ref,
+  op_node_ipc_unref,
+  op_node_ipc_write,
+} from "ext:core/ops";
 import {
   ArrayIsArray,
   ArrayPrototypeFilter,
@@ -1099,7 +1104,52 @@ function toDenoArgs(args: string[]): string[] {
   return denoArgs;
 }
 
+// controls refcounting for the IPC channel
+class Control extends EventEmitter {
+  #channel: number;
+  #refs: number = 0;
+  #refExplicitlySet = false;
+  constructor(channel: number) {
+    super();
+    this.#channel = channel;
+  }
+
+  #ref() {
+    op_node_ipc_ref(this.#channel);
+  }
+
+  #unref() {
+    op_node_ipc_unref(this.#channel);
+  }
+
+  refCounted() {
+    if (++this.#refs === 1 && !this.#refExplicitlySet) {
+      this.#ref();
+    }
+  }
+
+  unrefCounted() {
+    if (--this.#refs === 0 && !this.#refExplicitlySet) {
+      this.#unref();
+      this.emit("unref");
+    }
+  }
+
+  ref() {
+    this.#refExplicitlySet = true;
+    this.#ref();
+  }
+
+  unref() {
+    this.#refExplicitlySet = false;
+    this.#unref();
+  }
+}
+
 export function setupChannel(target, ipc) {
+  const control = new Control(ipc);
+  target.channel = control;
+
   async function readLoop() {
     try {
       while (true) {
@@ -1107,6 +1157,8 @@ export function setupChannel(target, ipc) {
           return;
         }
         const prom = op_node_ipc_read(ipc);
+        // there will always be a pending read promise,
+        // but it shouldn't keep the event loop from exiting
         core.unrefOpPromise(prom);
         const [msg, stillOpen] = await prom;
         if (stillOpen == false) {
@@ -1157,8 +1209,10 @@ export function setupChannel(target, ipc) {
     // if false, the sender should slow down.
     // this acts as a backpressure mechanism.
     const queueOk = [true];
+    control.refCounted();
     op_node_ipc_write(ipc, message, queueOk)
       .then(() => {
+        control.unrefCounted();
         if (callback) {
           process.nextTick(callback, null);
         }
@@ -1185,6 +1239,8 @@ export function setupChannel(target, ipc) {
 
   // Start reading messages from the channel.
   readLoop();
+
+  return control;
 }
 
 export default {
