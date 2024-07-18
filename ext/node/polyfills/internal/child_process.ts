@@ -1104,22 +1104,34 @@ function toDenoArgs(args: string[]): string[] {
   return denoArgs;
 }
 
+const kControlDisconnect = Symbol("kControlDisconnect");
+
 // controls refcounting for the IPC channel
 class Control extends EventEmitter {
   #channel: number;
   #refs: number = 0;
   #refExplicitlySet = false;
+  #connected = true;
   constructor(channel: number) {
     super();
     this.#channel = channel;
   }
 
   #ref() {
-    op_node_ipc_ref(this.#channel);
+    if (this.#connected) {
+      op_node_ipc_ref(this.#channel);
+    }
   }
 
   #unref() {
-    op_node_ipc_unref(this.#channel);
+    if (this.#connected) {
+      op_node_ipc_unref(this.#channel);
+    }
+  }
+
+  [kControlDisconnect]() {
+    this.#unref();
+    this.#connected = false;
   }
 
   refCounted() {
@@ -1230,6 +1242,7 @@ export function setupChannel(target, ipc) {
 
     this.connected = false;
     target.canDisconnect = false;
+    control[kControlDisconnect]();
     process.nextTick(() => {
       core.close(ipc);
       target.emit("disconnect");
