@@ -81,7 +81,8 @@ fn init_subcommand_with_dir_arg() {
   let output = context
     .new_command()
     .env("NO_COLOR", "1")
-    .args("test my_dir/main_test.ts")
+    .current_dir("my_dir")
+    .args("test main_test.ts")
     .split_output()
     .run();
 

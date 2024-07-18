@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_npm::npm_rc::RegistryConfig;
-use reqwest::header;
+use http::header;
 
 // TODO(bartlomieju): support more auth methods besides token and basic auth
 pub fn maybe_auth_header_for_npm_registry(

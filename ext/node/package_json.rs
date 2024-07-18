@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_config::package_json::PackageJson;
-use deno_config::package_json::PackageJsonLoadError;
 use deno_config::package_json::PackageJsonRc;
 use deno_fs::DenoConfigFsAdapter;
 use std::cell::RefCell;
@@ -9,6 +8,8 @@ use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
+
+use crate::errors::PackageJsonLoadError;
 
 // use a thread local cache so that workers have their own distinct cache
 thread_local! {
@@ -48,11 +49,9 @@ pub fn load_pkg_json(
   );
   match result {
     Ok(pkg_json) => Ok(Some(pkg_json)),
-    Err(PackageJsonLoadError::Io { source, .. })
-      if source.kind() == ErrorKind::NotFound =>
-    {
-      Ok(None)
-    }
-    Err(err) => Err(err),
+    Err(deno_config::package_json::PackageJsonLoadError::Io {
+      source, ..
+    }) if source.kind() == ErrorKind::NotFound => Ok(None),
+    Err(err) => Err(PackageJsonLoadError(err)),
   }
 }

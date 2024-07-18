@@ -23,8 +23,8 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_runtime::deno_fetch::reqwest;
 use deno_terminal::colors;
+use http_body_util::BodyExt;
 use lsp_types::Url;
 use serde::Deserialize;
 use serde::Serialize;
@@ -143,9 +143,13 @@ pub async fn publish(
     .ok()
     .is_none()
     && !publish_flags.allow_dirty
-    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
   {
-    bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+    if let Some(dirty_text) =
+      check_if_git_repo_dirty(cli_options.initial_cwd()).await
+    {
+      log::error!("\nUncommitted changes:\n\n{}\n", dirty_text);
+      bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+    }
   }
 
   if publish_flags.dry_run {
@@ -306,7 +310,10 @@ impl PublishPreparer {
     } else if std::env::var("DENO_INTERNAL_FAST_CHECK_OVERWRITE").as_deref()
       == Ok("1")
     {
-      if check_if_git_repo_dirty(self.cli_options.initial_cwd()).await {
+      if check_if_git_repo_dirty(self.cli_options.initial_cwd())
+        .await
+        .is_some()
+      {
         bail!("When using DENO_INTERNAL_FAST_CHECK_OVERWRITE, the git repo must be in a clean state.");
       }
 
@@ -532,11 +539,13 @@ async fn get_auth_headers(
       let challenge = BASE64_STANDARD.encode(sha2::Sha256::digest(&verifier));
 
       let response = client
-        .post(format!("{}authorizations", registry_url))
-        .json(&serde_json::json!({
-          "challenge": challenge,
-          "permissions": permissions,
-        }))
+        .post_json(
+          format!("{}authorizations", registry_url).parse()?,
+          &serde_json::json!({
+            "challenge": challenge,
+            "permissions": permissions,
+          }),
+        )?
         .send()
         .await
         .context("Failed to create interactive authorization")?;
@@ -566,11 +575,13 @@ async fn get_auth_headers(
       loop {
         tokio::time::sleep(interval).await;
         let response = client
-          .post(format!("{}authorizations/exchange", registry_url))
-          .json(&serde_json::json!({
-            "exchangeToken": auth.exchange_token,
-            "verifier": verifier,
-          }))
+          .post_json(
+            format!("{}authorizations/exchange", registry_url).parse()?,
+            &serde_json::json!({
+              "exchangeToken": auth.exchange_token,
+              "verifier": verifier,
+            }),
+          )?
           .send()
           .await
           .context("Failed to exchange authorization")?;
@@ -627,15 +638,20 @@ async fn get_auth_headers(
         );
 
         let response = client
-          .get(url)
-          .bearer_auth(&oidc_config.token)
+          .get(url.parse()?)?
+          .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {}", oidc_config.token).parse()?,
+          )
           .send()
           .await
           .context("Failed to get OIDC token")?;
         let status = response.status();
-        let text = response.text().await.with_context(|| {
-          format!("Failed to get OIDC token: status {}", status)
-        })?;
+        let text = crate::http_util::body_to_string(response)
+          .await
+          .with_context(|| {
+            format!("Failed to get OIDC token: status {}", status)
+          })?;
         if !status.is_success() {
           bail!(
             "Failed to get OIDC token: status {}, response: '{}'",
@@ -763,7 +779,7 @@ async fn ensure_scopes_and_packages_exist(
 
     loop {
       tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-      let response = client.get(&package_api_url).send().await?;
+      let response = client.get(package_api_url.parse()?)?.send().await?;
       if response.status() == 200 {
         let name = format!("@{}/{}", package.scope, package.package);
         log::info!("Package {} created", colors::green(name));
@@ -887,11 +903,19 @@ async fn publish_package(
     package.config
   );
 
+  let body = http_body_util::Full::new(package.tarball.bytes.clone())
+    .map_err(|never| match never {})
+    .boxed();
   let response = http_client
-    .post(url)
-    .header(reqwest::header::AUTHORIZATION, authorization)
-    .header(reqwest::header::CONTENT_ENCODING, "gzip")
-    .body(package.tarball.bytes.clone())
+    .post(url.parse()?, body)?
+    .header(
+      http::header::AUTHORIZATION,
+      authorization.parse().map_err(http::Error::from)?,
+    )
+    .header(
+      http::header::CONTENT_ENCODING,
+      "gzip".parse().map_err(http::Error::from)?,
+    )
     .send()
     .await?;
 
@@ -936,7 +960,7 @@ async fn publish_package(
   while task.status != "success" && task.status != "failure" {
     tokio::time::sleep(interval).await;
     let resp = http_client
-      .get(format!("{}publish_status/{}", registry_api_url, task.id))
+      .get(format!("{}publish_status/{}", registry_api_url, task.id).parse()?)?
       .send()
       .await
       .with_context(|| {
@@ -985,7 +1009,8 @@ async fn publish_package(
       package.scope, package.package, package.version
     ))?;
 
-    let meta_bytes = http_client.get(meta_url).send().await?.bytes().await?;
+    let resp = http_client.get(meta_url)?.send().await?;
+    let meta_bytes = resp.collect().await?.to_bytes();
 
     if std::env::var("DISABLE_JSR_MANIFEST_VERIFICATION_FOR_TESTING").is_err() {
       verify_version_manifest(&meta_bytes, &package)?;
@@ -1016,9 +1041,8 @@ async fn publish_package(
       registry_api_url, package.scope, package.package, package.version
     );
     http_client
-      .post(provenance_url)
-      .header(reqwest::header::AUTHORIZATION, authorization)
-      .json(&json!({ "bundle": bundle }))
+      .post_json(provenance_url.parse()?, &json!({ "bundle": bundle }))?
+      .header(http::header::AUTHORIZATION, authorization.parse()?)
       .send()
       .await?;
   }
@@ -1130,10 +1154,10 @@ fn verify_version_manifest(
   Ok(())
 }
 
-async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
+async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
   let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
 
-  // Check if git exists
+  //  Check if git exists
   let git_exists = Command::new(bin_name)
     .arg("--version")
     .stderr(Stdio::null())
@@ -1143,7 +1167,7 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
     .map_or(false, |status| status.success());
 
   if !git_exists {
-    return false; // Git is not installed
+    return None; // Git is not installed
   }
 
   // Check if there are uncommitted changes
@@ -1155,7 +1179,12 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
     .expect("Failed to execute command");
 
   let output_str = String::from_utf8_lossy(&output.stdout);
-  !output_str.trim().is_empty()
+  let text = output_str.trim();
+  if text.is_empty() {
+    None
+  } else {
+    Some(text.to_string())
+  }
 }
 
 #[allow(clippy::print_stderr)]
