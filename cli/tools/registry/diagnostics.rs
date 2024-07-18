@@ -14,6 +14,7 @@ use deno_ast::diagnostics::DiagnosticSnippetHighlightStyle;
 use deno_ast::diagnostics::DiagnosticSourcePos;
 use deno_ast::diagnostics::DiagnosticSourceRange;
 use deno_ast::swc::common::util::take::Take;
+use deno_ast::ParseDiagnostic;
 use deno_ast::SourcePos;
 use deno_ast::SourceRange;
 use deno_ast::SourceRanged;
@@ -117,6 +118,7 @@ pub enum PublishDiagnostic {
     text_info: SourceTextInfo,
     range: SourceRange,
   },
+  SyntaxError(ParseDiagnostic),
 }
 
 impl PublishDiagnostic {
@@ -165,6 +167,7 @@ impl Diagnostic for PublishDiagnostic {
       ExcludedModule { .. } => DiagnosticLevel::Error,
       MissingConstraint { .. } => DiagnosticLevel::Error,
       BannedTripleSlashDirectives { .. } => DiagnosticLevel::Error,
+      SyntaxError { .. } => DiagnosticLevel::Error,
     }
   }
 
@@ -183,6 +186,7 @@ impl Diagnostic for PublishDiagnostic {
       BannedTripleSlashDirectives { .. } => {
         Cow::Borrowed("banned-triple-slash-directives")
       }
+      SyntaxError { .. } => Cow::Borrowed("syntax-error"),
     }
   }
 
@@ -203,6 +207,7 @@ impl Diagnostic for PublishDiagnostic {
       ExcludedModule { .. } => Cow::Borrowed("module in package's module graph was excluded from publishing"),
       MissingConstraint { specifier, .. } => Cow::Owned(format!("specifier '{}' is missing a version constraint", specifier)),
       BannedTripleSlashDirectives { .. } => Cow::Borrowed("triple slash directives that modify globals are not allowed"),
+      SyntaxError(diagnostic) => diagnostic.message(),
     }
   }
 
@@ -269,6 +274,7 @@ impl Diagnostic for PublishDiagnostic {
         source_pos: DiagnosticSourcePos::SourcePos(range.start),
         text_info: Cow::Borrowed(text_info),
       },
+      SyntaxError(diagnostic) => diagnostic.location(),
     }
   }
 
@@ -348,6 +354,7 @@ impl Diagnostic for PublishDiagnostic {
           description: Some("the triple slash directive".into()),
         }],
       }),
+      SyntaxError(diagnostic) => diagnostic.snippet(),
     }
   }
 
@@ -380,6 +387,7 @@ impl Diagnostic for PublishDiagnostic {
       BannedTripleSlashDirectives { .. } => Some(
         Cow::Borrowed("remove the triple slash directive"),
       ),
+      SyntaxError(diagnostic) => diagnostic.hint(),
     }
   }
 
@@ -407,7 +415,16 @@ impl Diagnostic for PublishDiagnostic {
           None => None,
         }
       }
-      _ => None,
+      SyntaxError(diagnostic) => diagnostic.snippet_fixed(),
+      FastCheck(_)
+      | SpecifierUnfurl(_)
+      | InvalidPath { .. }
+      | DuplicatePath { .. }
+      | UnsupportedFileType { .. }
+      | UnsupportedJsxTsx { .. }
+      | ExcludedModule { .. }
+      | MissingConstraint { .. }
+      | BannedTripleSlashDirectives { .. } => None,
     }
   }
 
@@ -456,6 +473,7 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Borrowed("instead instruct the user of your package to specify these directives"),
         Cow::Borrowed("or set their 'lib' compiler option appropriately"),
       ]),
+      SyntaxError(diagnostic) => diagnostic.info(),
     }
   }
 
@@ -488,6 +506,7 @@ impl Diagnostic for PublishDiagnostic {
       BannedTripleSlashDirectives { .. } => Some(Cow::Borrowed(
         "https://jsr.io/go/banned-triple-slash-directives",
       )),
+      SyntaxError(diagnostic) => diagnostic.docs_url(),
     }
   }
 }
