@@ -30,7 +30,9 @@ const filters = Deno.args;
 const hasFilters = filters.length > 0;
 const toolsPath = dirname(fromFileUrl(import.meta.url));
 const testPaths = partitionParallelTestPaths(
-  getPathsFromTestSuites({ ...config.tests, ...config.ignore }),
+  getPathsFromTestSuites(config.tests).concat(
+    getPathsFromTestSuites(config.ignore),
+  ),
 );
 const cwd = new URL(".", import.meta.url);
 const windowsIgnorePaths = new Set(
