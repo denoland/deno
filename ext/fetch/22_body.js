@@ -441,15 +441,13 @@ function extractBody(object) {
     // deno-lint-ignore prefer-primordials
     source = object.toString();
     contentType = "application/x-www-form-urlencoded;charset=UTF-8";
-  } else if (object[SymbolAsyncIterator] !== undefined) {
-    if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object.value)) {
-      stream = object.value;
-      if (object.value.locked || isReadableStreamDisturbed(object.value)) {
-        throw new TypeError("ReadableStream is locked or disturbed");
-      }
-    } else {
-      stream = ReadableStream.from(object);
+  } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {
+    stream = object;
+    if (object.locked || isReadableStreamDisturbed(object)) {
+      throw new TypeError("ReadableStream is locked or disturbed");
     }
+  } else if (object[SymbolAsyncIterator] !== undefined) {
+    stream = ReadableStream.from(object);
   }
   if (typeof source === "string") {
     // WARNING: this deviates from spec (expects length to be set)
@@ -472,7 +470,9 @@ webidl.converters["async iterable<Uint8Array>"] = webidl
 
 webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
   // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
-  if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
+  if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, V)) {
+    return webidl.converters["ReadableStream"](V, prefix, context, opts);
+  } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
     return webidl.converters["Blob"](V, prefix, context, opts);
   } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, V)) {
     return webidl.converters["FormData"](V, prefix, context, opts);

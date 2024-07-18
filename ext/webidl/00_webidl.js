@@ -921,17 +921,40 @@ function createSequenceConverter(converter) {
   };
 }
 
-// Ref: https://tc39.es/ecma262/#sec-getiterator, modified to not call the iterator
-function getIteratorAsync(obj) {
+// Ref: https://tc39.es/ecma262/#sec-getiterator
+function getIteratorAsync(obj, prefix, context) {
   const method = obj[SymbolAsyncIterator];
   if (method === undefined) {
     const syncMethod = obj[SymbolIterator];
+
     if (syncMethod === undefined) {
       throw new TypeError("No iterator found");
     }
-    return syncMethod;
+
+    const iter = FunctionPrototypeCall(syncMethod, obj);
+
+    if (type(iter) !== "Object") {
+      throw makeException(
+        TypeError,
+        "can not be converted to async iterable.",
+        prefix,
+        context,
+      );
+    }
+
+    return CreateAsyncFromSyncIterator(iter);
   } else {
-    return method;
+    const iter = FunctionPrototypeCall(method, obj);
+    if (type(iter) !== "Object") {
+      throw makeException(
+        TypeError,
+        "can not be converted to async iterable.",
+        prefix,
+        context,
+      );
+    }
+
+    return iter;
   }
 }
 
@@ -961,22 +984,10 @@ function createAsyncIterableConverter(converter) {
       );
     }
 
-    const iter = getIteratorAsync(V);
+    const iterator = getIteratorAsync(V, prefix, context);
 
-    let iterator;
     return {
       async next() {
-        console.error("foo", this);
-        if (!iterator) {
-          if (V[SymbolIterator]) {
-            iterator = CreateAsyncFromSyncIterator(
-              FunctionPrototypeCall(iter, V),
-            );
-          } else {
-            iterator = FunctionPrototypeCall(iter, V);
-          }
-        }
-
         // deno-lint-ignore prefer-primordials
         const iterResult = await iterator.next();
         if (type(iterResult) !== "Object") {
@@ -1002,16 +1013,6 @@ function createAsyncIterableConverter(converter) {
         return { done: false, value: iterValue };
       },
       async return(reason) {
-        if (!iterator) {
-          if (V[SymbolIterator]) {
-            iterator = CreateAsyncFromSyncIterator(
-              FunctionPrototypeCall(iter, V),
-            );
-          } else {
-            iterator = FunctionPrototypeCall(iter, V);
-          }
-        }
-
         if (iterator.return === undefined) {
           return undefined;
         }
