@@ -1660,6 +1660,9 @@ impl ConfigTree {
     file_fetcher: &Arc<FileFetcher>,
   ) {
     lsp_log!("Refreshing configuration tree...");
+    // since we're resolving a workspace multiple times in different
+    // folders, we want to cache all the lookups and config files across
+    // ConfigData::load calls
     let cached_fs = CachedDenoConfigFs::default();
     let deno_json_cache = DenoJsonMemCache::default();
     let pkg_json_cache = PackageJsonMemCache::default();
@@ -1905,7 +1908,7 @@ impl<T: Clone> CachedFsItems<T> {
     };
     value
       .as_ref()
-      .map(|v| v.clone())
+      .map(|v| (*v).clone())
       .map_err(|e| std::io::Error::new(e.kind(), e.to_string()))
   }
 }
