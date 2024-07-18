@@ -959,7 +959,6 @@ function getIteratorAsync(obj, prefix, context) {
         return iter.next();
       },
     };
-    ;
   } else {
     const iter = FunctionPrototypeCall(method, obj);
     if (type(iter) !== "Object") {
