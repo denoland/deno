@@ -41,8 +41,6 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fs_util::specifier_to_file_path;
-use deno_semver::package::PackageNv;
-use deno_semver::Version;
 use indexmap::IndexSet;
 use lsp::Url;
 use lsp_types::ClientCapabilities;
@@ -1091,13 +1089,6 @@ impl LspTsConfig {
   }
 }
 
-#[derive(Debug, Clone)]
-pub struct LspPackageConfig {
-  // todo(dsherret): should support packages without versions
-  pub nv: PackageNv,
-  pub exports: Value,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfigWatchedFileType {
   DenoJson,
@@ -1126,14 +1117,7 @@ pub struct ConfigData {
   pub lockfile: Option<Arc<CliLockfile>>,
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
   pub resolver: Arc<WorkspaceResolver>,
-  pub package_config: Option<Arc<LspPackageConfig>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
-  /// Workspace member directories. For a workspace root this will be a list of
-  /// members. For a member this will be the same list, representing self and
-  /// siblings. For a solitary package this will be `vec![self.scope]`. These
-  /// are the list of packages to override with local resolutions for this
-  /// config scope.
-  pub workspace_members: Arc<Vec<ModuleSpecifier>>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
 }
 
@@ -1269,8 +1253,7 @@ impl ConfigData {
       );
     }
 
-    // todo: move to workspace.npmrc() or cache this so we don't load this
-    // so many times
+    // todo(dsherret): cache this so we don't load this so many times
     let npmrc = discover_npmrc_from_workspace(&workspace)
       .inspect(|(_, path)| {
         if let Some(path) = path {
@@ -1529,24 +1512,6 @@ impl ConfigData {
       );
     }
 
-    let package_config = member_ctx.maybe_deno_json().and_then(|c| {
-      Some(LspPackageConfig {
-        nv: PackageNv {
-          name: c.json.name.clone()?,
-          version: Version::parse_standard(c.json.version.as_ref()?).ok()?,
-        },
-        exports: c.json.exports.clone()?,
-      })
-    });
-
-    // todo(dsherret): this should include all config folders and not just deno.json folders
-    let workspace_members = Arc::new(
-      workspace
-        .deno_jsons()
-        .filter(|c| c.json.name.is_some())
-        .map(|c| ModuleSpecifier::from_directory_path(c.dir_path()).unwrap())
-        .collect::<Vec<_>>(),
-    );
     ConfigData {
       scope,
       workspace,
@@ -1564,9 +1529,7 @@ impl ConfigData {
       vendor_dir,
       lockfile,
       npmrc,
-      package_config: package_config.map(Arc::new),
       import_map_from_settings,
-      workspace_members,
       watched_files,
     }
   }

@@ -86,7 +86,6 @@ impl Default for LspScopeResolver {
 impl LspScopeResolver {
   async fn from_config_data(
     config_data: Option<&Arc<ConfigData>>,
-    config: &Config,
     cache: &LspCache,
     http_client_provider: Option<&Arc<HttpClientProvider>>,
   ) -> Self {
@@ -109,7 +108,6 @@ impl LspScopeResolver {
     let jsr_resolver = Some(Arc::new(JsrCacheResolver::new(
       cache.for_specifier(config_data.map(|d| d.scope.as_ref())),
       config_data.map(|d| d.as_ref()),
-      config,
     )));
     let redirect_resolver = Some(Arc::new(RedirectResolver::new(
       cache.for_specifier(config_data.map(|d| d.scope.as_ref())),
@@ -187,7 +185,6 @@ impl LspResolver {
         Arc::new(
           LspScopeResolver::from_config_data(
             Some(config_data),
-            config,
             cache,
             http_client_provider,
           )
@@ -197,13 +194,8 @@ impl LspResolver {
     }
     Self {
       unscoped: Arc::new(
-        LspScopeResolver::from_config_data(
-          None,
-          config,
-          cache,
-          http_client_provider,
-        )
-        .await,
+        LspScopeResolver::from_config_data(None, cache, http_client_provider)
+          .await,
       ),
       by_scope,
     }
