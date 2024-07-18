@@ -1159,7 +1159,6 @@ impl ConfigData {
             pkg_json_cache: Some(pkg_json_cache),
             discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
             config_parse_options: Default::default(),
-            // todo: provide this value
             maybe_vendor_override: None,
           },
         )
