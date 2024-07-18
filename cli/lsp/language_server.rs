@@ -89,6 +89,7 @@ use super::tsc::TsServer;
 use super::urls;
 use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
+use crate::args::has_flag_env_var;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
@@ -3567,7 +3568,7 @@ impl Inner {
           include_task_comments: false,
         },
         additional_config_file_names: &[],
-        discover_pkg_json: true,
+        discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
         maybe_vendor_override: if force_global_cache {
           Some(deno_config::workspace::VendorEnablement::Disable)
         } else {

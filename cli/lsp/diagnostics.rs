@@ -1651,12 +1651,13 @@ mod tests {
   async fn setup(
     sources: &[(&str, &str, i32, LanguageId)],
     maybe_import_map: Option<(&str, &str)>,
-  ) -> StateSnapshot {
+  ) -> (TempDir, StateSnapshot) {
     let temp_dir = TempDir::new();
-    let cache = LspCache::new(Some(temp_dir.uri()));
-    let mut config = Config::new_with_roots([resolve_url("file:///").unwrap()]);
-    if let Some((base_url, json_string)) = maybe_import_map {
-      let base_url = resolve_url(base_url).unwrap();
+    let root_uri = temp_dir.uri();
+    let cache = LspCache::new(Some(root_uri.join(".deno_dir").unwrap()));
+    let mut config = Config::new_with_roots([root_uri.clone()]);
+    if let Some((relative_path, json_string)) = maybe_import_map {
+      let base_url = root_uri.join(relative_path).unwrap();
       let config_file = ConfigFile::new(
         json_string,
         base_url,
@@ -1669,9 +1670,8 @@ mod tests {
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let mut documents = Documents::default();
     documents.update_config(&config, &resolver, &cache, &Default::default());
-    for (specifier, source, version, language_id) in sources {
-      let specifier =
-        resolve_url(specifier).expect("failed to create specifier");
+    for (relative_path, source, version, language_id) in sources {
+      let specifier = root_uri.join(relative_path).unwrap();
       documents.open(
         specifier.clone(),
         *version,
@@ -1680,20 +1680,23 @@ mod tests {
         None,
       );
     }
-    StateSnapshot {
-      project_version: 0,
-      documents: Arc::new(documents),
-      assets: Default::default(),
-      config: Arc::new(config),
-      resolver,
-    }
+    (
+      temp_dir,
+      StateSnapshot {
+        project_version: 0,
+        documents: Arc::new(documents),
+        assets: Default::default(),
+        config: Arc::new(config),
+        resolver,
+      },
+    )
   }
 
   #[tokio::test]
   async fn test_enabled_then_disabled_specifier() {
-    let snapshot = setup(
+    let (_, snapshot) = setup(
       &[(
-        "file:///a.ts",
+        "a.ts",
         r#"import * as b from "./b.ts";
 let a: any = "a";
 let c: number = "a";
@@ -1786,23 +1789,23 @@ let c: number = "a";
 
   #[tokio::test]
   async fn test_deno_diagnostics_with_import_map() {
-    let snapshot = setup(
+    let (temp_dir, snapshot) = setup(
       &[
         (
-          "file:///std/assert/mod.ts",
+          "std/assert/mod.ts",
           "export function assert() {}",
           1,
           LanguageId::TypeScript,
         ),
         (
-          "file:///a/file.ts",
+          "a/file.ts",
           "import { assert } from \"../std/assert/mod.ts\";\n\nassert();\n",
           1,
           LanguageId::TypeScript,
         ),
       ],
       Some((
-        "file:///a/import-map.json",
+        "a/deno.json",
         r#"{
         "imports": {
           "/~/std/": "../std/"
@@ -1816,11 +1819,13 @@ let c: number = "a";
     let actual = generate_deno_diagnostics(&snapshot, &config, token);
     assert_eq!(actual.len(), 2);
     for record in actual {
-      match record.specifier.as_str() {
-        "file:///std/assert/mod.ts" => {
+      let relative_specifier =
+        temp_dir.uri().make_relative(&record.specifier).unwrap();
+      match relative_specifier.as_str() {
+        "std/assert/mod.ts" => {
           assert_eq!(json!(record.versioned.diagnostics), json!([]))
         }
-        "file:///a/file.ts" => assert_eq!(
+        "a/file.ts" => assert_eq!(
           json!(record.versioned.diagnostics),
           json!([
             {
@@ -1922,9 +1927,9 @@ let c: number = "a";
 
   #[tokio::test]
   async fn duplicate_diagnostics_for_duplicate_imports() {
-    let snapshot = setup(
+    let (_, snapshot) = setup(
       &[(
-        "file:///a.ts",
+        "a.ts",
         r#"
         // @deno-types="bad.d.ts"
         import "bad.js";
@@ -1998,9 +2003,9 @@ let c: number = "a";
 
   #[tokio::test]
   async fn unable_to_load_a_local_module() {
-    let snapshot = setup(
+    let (temp_dir, snapshot) = setup(
       &[(
-        "file:///a.ts",
+        "a.ts",
         r#"
         import { 東京 } from "./🦕.ts";
         "#,
@@ -2032,7 +2037,10 @@ let c: number = "a";
           "severity": 1,
           "code": "no-local",
           "source": "deno",
-          "message": "Unable to load a local module: file:///🦕.ts\nPlease check the file path.",
+          "message": format!(
+            "Unable to load a local module: {}🦕.ts\nPlease check the file path.",
+            temp_dir.uri(),
+          ),
         }
       ])
     );

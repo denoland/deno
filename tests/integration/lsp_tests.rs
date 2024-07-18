@@ -11917,6 +11917,11 @@ fn lsp_node_modules_dir() {
 
   assert!(!temp_dir.path().join("node_modules").exists());
 
+  // a lockfile will be created here because someone did an explicit cache
+  let lockfile_path = temp_dir.path().join("deno.lock");
+  assert!(lockfile_path.exists());
+  lockfile_path.remove_file();
+
   temp_dir.write(
     temp_dir.path().join("deno.json"),
     "{ \"nodeModulesDir\": true, \"lock\": false }\n",
@@ -11950,7 +11955,7 @@ fn lsp_node_modules_dir() {
 
   assert!(temp_dir.path().join("node_modules/chalk").exists());
   assert!(temp_dir.path().join("node_modules/@types/node").exists());
-  assert!(!temp_dir.path().join("deno.lock").exists());
+  assert!(!lockfile_path.exists()); // was disabled
 
   // now add a lockfile and cache
   temp_dir.write(
@@ -11963,7 +11968,7 @@ fn lsp_node_modules_dir() {
   let diagnostics = client.read_diagnostics();
   assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics);
 
-  assert!(temp_dir.path().join("deno.lock").exists());
+  assert!(lockfile_path.exists());
 
   // the declaration should be found in the node_modules directory
   let res = client.write_request(
@@ -13449,6 +13454,15 @@ fn lsp_deno_json_workspace_lint_config() {
         "code": "ban-untagged-todo",
         "source": "deno-lint",
         "message": "TODO should be tagged with (@username) or (#issue)\nAdd a user tag or issue reference to the TODO comment, e.g. TODO(@djones), TODO(djones), TODO(#123)",
+      }, {
+        "range": {
+          "start": { "line": 2, "character": 14 },
+          "end": { "line": 2, "character": 28 },
+        },
+        "severity": 2,
+        "code": "camelcase",
+        "source": "deno-lint",
+        "message": "Identifier 'snake_case_var' is not in camel case.\nConsider renaming `snake_case_var` to `snakeCaseVar`",
       }],
       "version": 1,
     })
@@ -13513,8 +13527,8 @@ fn lsp_deno_json_workspace_import_map() {
   temp_dir.write("project1/foo1.ts", "");
   temp_dir.write(
     "project1/project2/deno.json",
-    // Should ignore and inherit import map from `project1/deno.json`.
     json!({
+      // should overwrite the "foo" entry in the parent for this scope
       "imports": {
         "foo": "./foo2.ts",
       },
@@ -13524,36 +13538,74 @@ fn lsp_deno_json_workspace_import_map() {
   temp_dir.write("project1/project2/foo2.ts", "");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.did_open(json!({
-    "textDocument": {
-      "uri": temp_dir.uri().join("project1/project2/file.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": "import \"foo\";\n",
-    },
-  }));
-  let res = client.write_request(
-    "textDocument/hover",
-    json!({
+
+  // project1 resolution
+  {
+    client.did_open(json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import \"foo\";\n",
+      },
+    }));
+    let res = client.write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": temp_dir.uri().join("project1/file.ts").unwrap(),
+        },
+        "position": { "line": 0, "character": 7 },
+      }),
+    );
+    assert_eq!(
+      res,
+      json!({
+        "contents": {
+          "kind": "markdown",
+          "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.uri().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
+        },
+        "range": {
+          "start": { "line": 0, "character": 7 },
+          "end": { "line": 0, "character": 12 },
+        },
+      })
+    );
+  }
+
+  // project1/project2 resolution
+  {
+    client.did_open(json!({
       "textDocument": {
         "uri": temp_dir.uri().join("project1/project2/file.ts").unwrap(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import \"foo\";\n",
       },
-      "position": { "line": 0, "character": 7 },
-    }),
-  );
-  assert_eq!(
-    res,
-    json!({
-      "contents": {
-        "kind": "markdown",
-        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.uri().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
-      },
-      "range": {
-        "start": { "line": 0, "character": 7 },
-        "end": { "line": 0, "character": 12 },
-      },
-    })
-  );
+    }));
+    let res = client.write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": temp_dir.uri().join("project1/project2/file.ts").unwrap(),
+        },
+        "position": { "line": 0, "character": 7 },
+      }),
+    );
+    assert_eq!(
+      res,
+      json!({
+        "contents": {
+          "kind": "markdown",
+          "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.uri().join("project1/project2/foo2.ts").unwrap().as_str().trim_start_matches("file")),
+        },
+        "range": {
+          "start": { "line": 0, "character": 7 },
+          "end": { "line": 0, "character": 12 },
+        },
+      })
+    );
+  }
   client.shutdown();
 }
 
