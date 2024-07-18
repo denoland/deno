@@ -921,6 +921,16 @@ function createSequenceConverter(converter) {
   };
 }
 
+function isIterator(obj) {
+  if (obj[SymbolAsyncIterator] === undefined) {
+    if (obj[SymbolIterator] === undefined) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 // Ref: https://tc39.es/ecma262/#sec-getiterator
 function getIteratorAsync(obj, prefix, context) {
   const method = obj[SymbolAsyncIterator];
@@ -928,7 +938,7 @@ function getIteratorAsync(obj, prefix, context) {
     const syncMethod = obj[SymbolIterator];
 
     if (syncMethod === undefined) {
-      throw new TypeError("No iterator found");
+      throw new TypeError("No iterator found.");
     }
 
     const iter = FunctionPrototypeCall(syncMethod, obj);
@@ -942,7 +952,14 @@ function getIteratorAsync(obj, prefix, context) {
       );
     }
 
-    return CreateAsyncFromSyncIterator(iter);
+    return {
+      // deno-lint-ignore require-await
+      async next() {
+        // deno-lint-ignore prefer-primordials
+        return iter.next();
+      },
+    };
+    ;
   } else {
     const iter = FunctionPrototypeCall(method, obj);
     if (type(iter) !== "Object") {
@@ -956,16 +973,6 @@ function getIteratorAsync(obj, prefix, context) {
 
     return iter;
   }
-}
-
-function CreateAsyncFromSyncIterator(iter) {
-  return {
-    // deno-lint-ignore require-await
-    async next() {
-      // deno-lint-ignore prefer-primordials
-      return iter.next();
-    },
-  };
 }
 
 function createAsyncIterableConverter(converter) {
@@ -1420,6 +1427,7 @@ export {
   createSequenceConverter,
   illegalConstructor,
   invokeCallbackFunction,
+  isIterator,
   makeException,
   mixinPairIterable,
   requiredArguments,

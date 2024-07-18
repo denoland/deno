@@ -486,13 +486,14 @@ webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
     if (ArrayBufferIsView(V)) {
       return webidl.converters["ArrayBufferView"](V, prefix, context, opts);
     }
-
-    return webidl.converters["async iterable<Uint8Array>"](
-      V,
-      prefix,
-      context,
-      opts,
-    );
+    if (webidl.isIterator(V)) {
+      return webidl.converters["async iterable<Uint8Array>"](
+        V,
+        prefix,
+        context,
+        opts,
+      );
+    }
   }
   // BodyInit conversion is passed to extractBody(), which calls core.encode().
   // core.encode() will UTF-8 encode strings with replacement, being equivalent to the USV normalization.
