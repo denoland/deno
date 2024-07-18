@@ -1903,6 +1903,10 @@ impl<T: Clone> CachedFsItems<T> {
       value
     } else {
       let value = action(path);
+      // just in case this gets really large for some reason
+      if self.items.len() == 16_384 {
+        return value;
+      }
       self.items.insert(path.to_owned(), value);
       self.items.get(path).unwrap()
     };
