@@ -1,5 +1,2 @@
-Warning Ignoring dependency '@denotest/cjs-default-export' in package.json because its version requirement failed to parse: Invalid npm version requirement. Unexpected character.
-  invalid stuff that won't parse
-  ~
 Task test echo 1
 1

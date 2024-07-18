@@ -50,7 +50,7 @@ where
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions.check_sys("userInfo", "node:os.userInfo()")?;
+    permissions.check_sys("username", "node:os.userInfo()")?;
   }
 
   Ok(deno_whoami::username())
@@ -63,7 +63,7 @@ where
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions.check_sys("geteuid", "node:os.geteuid()")?;
+    permissions.check_sys("uid", "node:os.geteuid()")?;
   }
 
   #[cfg(windows)]
@@ -73,6 +73,25 @@ where
   let euid = unsafe { libc::geteuid() };
 
   Ok(euid)
+}
+
+#[op2(fast)]
+pub fn op_getegid<P>(state: &mut OpState) -> Result<u32, AnyError>
+where
+  P: NodePermissions + 'static,
+{
+  {
+    let permissions = state.borrow_mut::<P>();
+    permissions.check_sys("getegid", "node:os.getegid()")?;
+  }
+
+  #[cfg(windows)]
+  let egid = 0;
+  #[cfg(unix)]
+  // SAFETY: Call to libc getegid.
+  let egid = unsafe { libc::getegid() };
+
+  Ok(egid)
 }
 
 #[op2]

@@ -2,6 +2,8 @@
 
 use base64::Engine;
 use deno_ast::MediaType;
+use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
@@ -13,6 +15,7 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
+use deno_runtime::deno_fs::DenoConfigFsAdapter;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -321,7 +324,7 @@ impl LanguageServer {
       inner.resolver.did_cache();
       inner.refresh_npm_specifiers().await;
       inner.diagnostics_server.invalidate_all();
-      inner.project_changed([], false);
+      inner.project_changed([], true);
       inner
         .ts_server
         .cleanup_semantic_cache(inner.snapshot())
@@ -3549,6 +3552,29 @@ impl Inner {
     }
 
     let workspace_settings = self.config.workspace_settings();
+    let initial_cwd = config_data
+      .and_then(|d| d.scope.to_file_path().ok())
+      .unwrap_or_else(|| self.initial_cwd.clone());
+    // todo: we need a way to convert config data to a Workspace
+    let workspace = Arc::new(Workspace::discover(
+      deno_config::workspace::WorkspaceDiscoverStart::Paths(&[
+        initial_cwd.clone()
+      ]),
+      &WorkspaceDiscoverOptions {
+        fs: &DenoConfigFsAdapter::new(&deno_runtime::deno_fs::RealFs),
+        pkg_json_cache: None,
+        config_parse_options: deno_config::ConfigParseOptions {
+          include_task_comments: false,
+        },
+        additional_config_file_names: &[],
+        discover_pkg_json: true,
+        maybe_vendor_override: if force_global_cache {
+          Some(deno_config::workspace::VendorEnablement::Disable)
+        } else {
+          None
+        },
+      },
+    )?);
     let cli_options = CliOptions::new(
       Flags {
         cache_path: Some(self.cache.deno_dir().root.clone()),
@@ -3572,13 +3598,12 @@ impl Inner {
         type_check_mode: crate::args::TypeCheckMode::Local,
         ..Default::default()
       },
-      self.initial_cwd.clone(),
-      config_data.and_then(|d| d.config_file.as_deref().cloned()),
+      initial_cwd,
       config_data.and_then(|d| d.lockfile.clone()),
-      config_data.and_then(|d| d.package_json.clone()),
       config_data
         .and_then(|d| d.npmrc.clone())
         .unwrap_or_else(create_default_npmrc),
+      workspace,
       force_global_cache,
     )?;
 

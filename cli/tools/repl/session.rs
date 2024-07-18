@@ -632,6 +632,7 @@ impl ReplSession {
           transform_jsx: true,
           precompile_jsx: false,
           precompile_jsx_skip_elements: None,
+          precompile_jsx_dynamic_props: None,
           jsx_automatic: self.jsx.import_source.is_some(),
           jsx_development: false,
           jsx_factory: self.jsx.factory.clone(),

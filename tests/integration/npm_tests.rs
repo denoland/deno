@@ -3,7 +3,7 @@
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_fetch::reqwest;
+
 use pretty_assertions::assert_eq;
 use test_util as util;
 use test_util::itest;
@@ -950,9 +950,13 @@ fn ensure_registry_files_local() {
       let registry_json_path = registry_dir_path
         .join(entry.file_name())
         .join("registry.json");
+
       if registry_json_path.exists() {
         let file_text = std::fs::read_to_string(&registry_json_path).unwrap();
-        if file_text.contains("https://registry.npmjs.org/") {
+        if file_text.contains(&format!(
+          "https://registry.npmjs.org/{}/-/",
+          entry.file_name().to_string_lossy()
+        )) {
           panic!(
             "file {} contained a reference to the npm registry",
             registry_json_path

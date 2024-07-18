@@ -1,0 +1,7 @@
+Check file:///[WILDLINE]/mod.ts
+Checking for slow types in the public API...
+Check file:///[WILDLINE]/mod.ts
+error: Failed preparing 'project'.
+
+Caused by:
+    Invalid package name, use '@<scope_name>/<package_name> format

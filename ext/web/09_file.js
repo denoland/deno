@@ -387,14 +387,9 @@ class Blob {
   }
 
   /**
-   * @returns {Promise<string>}
+   * @param {number} size
+   * @returns {Promise<Uint8Array>}
    */
-  async text() {
-    webidl.assertBranded(this, BlobPrototype);
-    const buffer = await this.#u8Array(this.size);
-    return core.decode(buffer);
-  }
-
   async #u8Array(size) {
     const bytes = new Uint8Array(size);
     const partIterator = toIterator(this[_parts]);
@@ -414,12 +409,29 @@ class Blob {
   }
 
   /**
+   * @returns {Promise<string>}
+   */
+  async text() {
+    webidl.assertBranded(this, BlobPrototype);
+    const buffer = await this.#u8Array(this.size);
+    return core.decode(buffer);
+  }
+
+  /**
    * @returns {Promise<ArrayBuffer>}
    */
   async arrayBuffer() {
     webidl.assertBranded(this, BlobPrototype);
     const buf = await this.#u8Array(this.size);
     return TypedArrayPrototypeGetBuffer(buf);
+  }
+
+  /**
+   * @returns {Promise<Uint8Array>}
+   */
+  async bytes() {
+    webidl.assertBranded(this, BlobPrototype);
+    return await this.#u8Array(this.size);
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {

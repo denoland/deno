@@ -16,7 +16,6 @@ use crate::util::fs::canonicalize_path_maybe_not_exists;
 use deno_ast::MediaType;
 use deno_config::FmtOptionsConfig;
 use deno_config::TsConfig;
-use deno_core::anyhow::anyhow;
 use deno_core::normalize_path;
 use deno_core::serde::de::DeserializeOwned;
 use deno_core::serde::Deserialize;
@@ -27,6 +26,8 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_lint::linter::LintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_runtime::deno_fs::DenoConfigFsAdapter;
+use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fs_util::specifier_to_file_path;
@@ -935,7 +936,7 @@ impl Config {
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
     let config_file = self.tree.config_file_for_specifier(specifier);
     if let Some(cf) = config_file {
-      if let Ok(files) = cf.to_files_config() {
+      if let Ok(files) = cf.to_exclude_files_config() {
         if !files.matches_specifier(specifier) {
           return false;
         }
@@ -952,7 +953,7 @@ impl Config {
     specifier: &ModuleSpecifier,
   ) -> bool {
     if let Some(cf) = self.tree.config_file_for_specifier(specifier) {
-      if let Some(options) = cf.to_test_config().ok().flatten() {
+      if let Ok(options) = cf.to_test_config() {
         if !options.files.matches_specifier(specifier) {
           return false;
         }
@@ -1116,6 +1117,7 @@ pub struct ConfigData {
   pub import_map_from_settings: bool,
   pub package_config: Option<Arc<LspPackageConfig>>,
   pub is_workspace_root: bool,
+  pub workspace_root_dir: ModuleSpecifier,
   /// Workspace member directories. For a workspace root this will be a list of
   /// members. For a member this will be the same list, representing self and
   /// siblings. For a solitary package this will be `vec![self.scope]`. These
@@ -1135,8 +1137,9 @@ impl ConfigData {
   ) -> Self {
     if let Some(specifier) = config_file_specifier {
       match ConfigFile::from_specifier(
+        &DenoConfigFsAdapter::new(&RealFs),
         specifier.clone(),
-        &deno_config::ParseOptions::default(),
+        &deno_config::ConfigParseOptions::default(),
       ) {
         Ok(config_file) => {
           lsp_log!(
@@ -1230,13 +1233,7 @@ impl ConfigData {
         .and_then(|config_file| {
           config_file
             .to_fmt_config()
-            .and_then(|o| {
-              let base_path = config_file
-                .specifier
-                .to_file_path()
-                .map_err(|_| anyhow!("Invalid base path."))?;
-              FmtOptions::resolve(o, None, &base_path)
-            })
+            .map(|o| FmtOptions::resolve(o, &Default::default()))
             .inspect_err(|err| {
               lsp_warn!("  Couldn't read formatter configuration: {}", err)
             })
@@ -1264,13 +1261,7 @@ impl ConfigData {
         .and_then(|config_file| {
           config_file
             .to_lint_config()
-            .and_then(|o| {
-              let base_path = config_file
-                .specifier
-                .to_file_path()
-                .map_err(|_| anyhow!("Invalid base path."))?;
-              LintOptions::resolve(o, None, &base_path)
-            })
+            .map(|o| LintOptions::resolve(o, &Default::default()))
             .inspect_err(|err| {
               lsp_warn!("  Couldn't read lint configuration: {}", err)
             })
@@ -1309,10 +1300,27 @@ impl ConfigData {
       }
     };
 
-    let vendor_dir = config_file.as_ref().and_then(|c| c.vendor_dir_path());
+    let vendor_dir = if let Some(workspace_root) = workspace_root {
+      workspace_root.vendor_dir.clone()
+    } else {
+      config_file.as_ref().and_then(|c| {
+        if c.vendor() == Some(true) {
+          Some(c.specifier.to_file_path().ok()?.parent()?.join("vendor"))
+        } else {
+          None
+        }
+      })
+    };
 
     // Load lockfile
-    let lockfile = config_file.as_ref().and_then(resolve_lockfile_from_config);
+    let lockfile = if let Some(workspace_root) = workspace_root {
+      workspace_root.lockfile.clone()
+    } else {
+      config_file
+        .as_ref()
+        .and_then(resolve_lockfile_from_config)
+        .map(Arc::new)
+    };
     if let Some(lockfile) = &lockfile {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile.filename)
       {
@@ -1380,23 +1388,31 @@ impl ConfigData {
       })
       .map(|(r, _)| r)
       .ok();
-    let byonm = std::env::var("DENO_UNSTABLE_BYONM").is_ok()
-      || config_file
-        .as_ref()
-        .map(|c| c.has_unstable("byonm"))
-        .unwrap_or(false)
-      || (*DENO_FUTURE
-        && package_json.is_some()
-        && config_file
+    let byonm = if let Some(workspace_root) = workspace_root {
+      workspace_root.byonm
+    } else {
+      std::env::var("DENO_UNSTABLE_BYONM").is_ok()
+        || config_file
           .as_ref()
-          .map(|c| c.json.node_modules_dir.is_none())
-          .unwrap_or(true));
+          .map(|c| c.has_unstable("byonm"))
+          .unwrap_or(false)
+        || (*DENO_FUTURE
+          && package_json.is_some()
+          && config_file
+            .as_ref()
+            .map(|c| c.json.node_modules_dir.is_none())
+            .unwrap_or(true))
+    };
     if byonm {
       lsp_log!("  Enabled 'bring your own node_modules'.");
     }
-    let node_modules_dir = config_file
-      .as_ref()
-      .and_then(|c| resolve_node_modules_dir(c, byonm));
+    let node_modules_dir = if let Some(workspace_root) = workspace_root {
+      workspace_root.node_modules_dir.clone()
+    } else {
+      config_file
+        .as_ref()
+        .and_then(|c| resolve_node_modules_dir(c, byonm))
+    };
 
     // Load import map
     let mut import_map = None;
@@ -1517,27 +1533,37 @@ impl ConfigData {
       })
     });
 
-    let workspace = config_file
+    let workspace_config = config_file
       .as_ref()
-      .and_then(|c| c.json.workspace.as_ref().map(|w| (c, w)));
-    let is_workspace_root = workspace.is_some();
-    let workspace_members = if let Some((config, workspace)) = workspace {
-      Arc::new(
-        workspace
-          .iter()
-          .flat_map(|p| {
-            let dir_specifier = config.specifier.join(p).ok()?;
-            let dir_path = specifier_to_file_path(&dir_specifier).ok()?;
-            Url::from_directory_path(normalize_path(dir_path)).ok()
-          })
-          .collect(),
-      )
-    } else if let Some(workspace_data) = workspace_root {
-      workspace_data.workspace_members.clone()
-    } else if config_file.as_ref().is_some_and(|c| c.json.name.is_some()) {
-      Arc::new(vec![scope.clone()])
+      .and_then(|c| c.to_workspace_config().ok().flatten().map(|w| (c, w)));
+    let is_workspace_root = workspace_config.is_some();
+    let workspace_members =
+      if let Some((config, workspace_config)) = workspace_config {
+        Arc::new(
+          workspace_config
+            .members
+            .iter()
+            .flat_map(|p| {
+              let dir_specifier = config.specifier.join(p).ok()?;
+              let dir_path = specifier_to_file_path(&dir_specifier).ok()?;
+              Url::from_directory_path(normalize_path(dir_path)).ok()
+            })
+            .collect(),
+        )
+      } else if let Some(workspace_data) = workspace_root {
+        workspace_data.workspace_members.clone()
+      } else if config_file.as_ref().is_some_and(|c| c.json.name.is_some()) {
+        Arc::new(vec![scope.clone()])
+      } else {
+        Arc::new(vec![])
+      };
+    let workspace_root_dir = if is_workspace_root {
+      scope.clone()
     } else {
-      Arc::new(vec![])
+      workspace_root
+        .as_ref()
+        .map(|r| r.scope.clone())
+        .unwrap_or_else(|| scope.clone())
     };
 
     ConfigData {
@@ -1551,13 +1577,14 @@ impl ConfigData {
       byonm,
       node_modules_dir,
       vendor_dir,
-      lockfile: lockfile.map(Arc::new),
+      lockfile,
       package_json: package_json.map(Arc::new),
       npmrc,
       import_map,
       import_map_from_settings,
       package_config: package_config.map(Arc::new),
       is_workspace_root,
+      workspace_root_dir,
       workspace_members,
       watched_files,
     }
@@ -1825,7 +1852,7 @@ fn resolve_node_modules_dir(
 }
 
 fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<CliLockfile> {
-  match CliLockfile::read_from_path(lockfile_path) {
+  match CliLockfile::read_from_path(lockfile_path, false) {
     Ok(value) => {
       if value.filename.exists() {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)
@@ -2115,7 +2142,7 @@ mod tests {
         ConfigFile::new(
           "{}",
           root_uri.join("deno.json").unwrap(),
-          &deno_config::ParseOptions::default(),
+          &deno_config::ConfigParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2173,7 +2200,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &deno_config::ParseOptions::default(),
+          &deno_config::ConfigParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2199,7 +2226,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &deno_config::ParseOptions::default(),
+          &deno_config::ConfigParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2217,7 +2244,7 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &deno_config::ParseOptions::default(),
+          &deno_config::ConfigParseOptions::default(),
         )
         .unwrap(),
       )

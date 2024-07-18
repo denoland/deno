@@ -1246,9 +1246,13 @@ impl Documents {
     &self,
     specifiers: &[String],
     referrer: &ModuleSpecifier,
+    file_referrer: Option<&ModuleSpecifier>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
     let document = self.get(referrer);
-    let file_referrer = document.as_ref().and_then(|d| d.file_referrer());
+    let file_referrer = document
+      .as_ref()
+      .and_then(|d| d.file_referrer())
+      .or(file_referrer);
     let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
     for specifier in specifiers {
@@ -1747,7 +1751,7 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &deno_config::ParseOptions::default(),
+            &deno_config::ConfigParseOptions::default(),
           )
           .unwrap(),
         )
@@ -1791,7 +1795,7 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &deno_config::ParseOptions::default(),
+            &deno_config::ConfigParseOptions::default(),
           )
           .unwrap(),
         )

@@ -139,6 +139,17 @@ async fn registry_server_handler(
     return Ok(res);
   }
 
+  let accept_header = req
+    .headers()
+    .get("accept")
+    .and_then(|s| s.to_str().ok())
+    .unwrap_or_default();
+  if accept_header != "*/*" {
+    let res = Response::builder()
+      .status(StatusCode::BAD_REQUEST)
+      .body(UnsyncBoxBody::new(Empty::new()))?;
+    return Ok(res);
+  }
   // serve the registry package files
   let mut file_path = tests_path().join("registry").join("jsr").to_path_buf();
   file_path.push(
