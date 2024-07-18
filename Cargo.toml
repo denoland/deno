@@ -385,3 +385,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
+
+[patch.crates-io]
+deno_core = { git = "https://github.com/denoland/deno_core", branch = "backport_fastfn_drop" }
