@@ -12,7 +12,7 @@ Deno.test("fetch node stream", async () => {
   });
 
   assertEquals(
-    response.text(),
+    await response.text(),
     await Deno.readTextFile("tests/testdata/assets/fixture.json"),
   );
 });
