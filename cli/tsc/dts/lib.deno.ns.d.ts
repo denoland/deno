@@ -6694,7 +6694,7 @@ declare namespace Deno {
   /**
    * Interface for the
    * {@link https://docs.deno.com/runtime/manual/getting_started/configuration_file | Deno configuration file}.
-   * 
+   *
    * Note: It is recommended to only use this interface when dynamically
    * importing a JSON file that is not analyzable, as analyzable imports of JSON
    * files provide file-based type-hinting and autocompletion anyway.
