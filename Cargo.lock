@@ -1525,6 +1525,7 @@ dependencies = [
  "rayon",
  "serde",
  "winapi",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1791,7 +1792,7 @@ dependencies = [
  "tokio",
  "url",
  "winapi",
- "windows-sys 0.48.0",
+ "windows-sys 0.52.0",
  "x25519-dalek",
  "x509-parser",
 ]
@@ -1904,7 +1905,7 @@ dependencies = [
  "uuid",
  "which 4.4.2",
  "winapi",
- "windows-sys 0.48.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
