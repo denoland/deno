@@ -292,12 +292,7 @@ impl LanguageServer {
         Ok(maybe_cache_result) => maybe_cache_result,
         Err(err) => {
           lsp_warn!("Error preparing caching: {:#}", err);
-          self
-            .inner
-            .read()
-            .await
-            .client
-            .show_message(MessageType::WARNING, err);
+          inner.client.show_message(MessageType::WARNING, err);
           return Err(LspError::internal_error());
         }
       }
@@ -310,18 +305,13 @@ impl LanguageServer {
       let handle = spawn(async move {
         create_graph_for_caching(cli_options, roots, open_docs).await
       });
-      if let Err(err) = handle.await.unwrap() {
-        lsp_warn!("Error caching: {:#}", err);
-        self
-          .inner
-          .read()
-          .await
-          .client
-          .show_message(MessageType::WARNING, err);
-      }
 
       // now get the lock back to update with the new information
       let mut inner = self.inner.write().await;
+      if let Err(err) = handle.await.unwrap() {
+        lsp_warn!("Error caching: {:#}", err);
+        inner.client.show_message(MessageType::WARNING, err);
+      }
       inner.resolver.did_cache();
       inner.refresh_npm_specifiers().await;
       inner.diagnostics_server.invalidate_all();
