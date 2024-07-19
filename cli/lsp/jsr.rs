@@ -49,7 +49,7 @@ impl JsrCacheResolver {
     let info_by_name = DashMap::new();
     let mut workspace_scope_by_name = HashMap::new();
     if let Some(config_data) = config_data {
-      for jsr_pkg_config in config_data.workspace_ctx.workspace.jsr_packages() {
+      for jsr_pkg_config in config_data.workspace_dir.workspace.jsr_packages() {
         let Some(exports) = &jsr_pkg_config.config_file.json.exports else {
           continue;
         };

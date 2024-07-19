@@ -122,9 +122,9 @@ impl DenoOrPackageJson {
   fn from_flags(flags: Flags) -> Result<(Self, CliFactory), AnyError> {
     let factory = CliFactory::from_flags(flags.clone())?;
     let options = factory.cli_options();
-    let start_ctx = &options.workspace_ctx.start_ctx;
+    let start_dir = &options.start_dir;
 
-    match (start_ctx.maybe_deno_json(), start_ctx.maybe_pkg_json()) {
+    match (start_dir.maybe_deno_json(), start_dir.maybe_pkg_json()) {
       // when both are present, for now,
       // default to deno.json
       (Some(deno), Some(_) | None) => Ok((
@@ -140,13 +140,14 @@ impl DenoOrPackageJson {
       (None, Some(_) | None) => {
         std::fs::write(options.initial_cwd().join("deno.json"), "{}\n")
           .context("Failed to create deno.json file")?;
+        drop(factory); // drop to prevent use
         log::info!("Created deno.json configuration file.");
         let factory = CliFactory::from_flags(flags.clone())?;
         let options = factory.cli_options().clone();
-        let start_ctx = &options.workspace_ctx.start_ctx;
+        let start_dir = &options.start_dir;
         Ok((
           DenoOrPackageJson::Deno(
-            start_ctx.maybe_deno_json().cloned().ok_or_else(|| {
+            start_dir.maybe_deno_json().cloned().ok_or_else(|| {
               anyhow!("config not found, but it was just created")
             })?,
             DenoConfigFormat::Json,

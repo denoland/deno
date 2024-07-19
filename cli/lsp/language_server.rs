@@ -2,8 +2,7 @@
 
 use base64::Engine;
 use deno_ast::MediaType;
-use deno_config::workspace::Workspace;
-use deno_config::workspace::WorkspaceContext;
+use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -3558,8 +3557,8 @@ impl Inner {
       .and_then(|d| d.scope.to_file_path().ok())
       .unwrap_or_else(|| self.initial_cwd.clone());
     let workspace = match config_data {
-      Some(d) => d.workspace_ctx.clone(),
-      None => Arc::new(WorkspaceContext::discover(
+      Some(d) => d.workspace_dir.clone(),
+      None => Arc::new(WorkspaceDirectory::discover(
         deno_config::workspace::WorkspaceDiscoverStart::Paths(&[
           initial_cwd.clone()
         ]),

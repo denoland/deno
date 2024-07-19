@@ -24,7 +24,6 @@ use crate::util::path::to_percent_decoded_str;
 
 use deno_ast::MediaType;
 use deno_config::deno_json::LintConfig;
-use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;

@@ -100,7 +100,7 @@ impl MainModuleGraphContainer {
   ) -> Result<Vec<ModuleSpecifier>, AnyError> {
     let excludes = self
       .cli_options
-      .workspace_ctx
+      .start_dir
       .workspace
       .resolve_config_excludes()?;
     Ok(

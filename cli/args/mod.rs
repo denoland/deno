@@ -12,12 +12,11 @@ use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
-use deno_config::workspace::WorkspaceContext;
+use deno_config::workspace::WorkspaceDirectory;
+use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
-use deno_config::workspace::WorkspaceEmptyOptions;
 use deno_config::workspace::WorkspaceLintConfig;
-use deno_config::workspace::WorkspaceMemberContext;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
@@ -502,9 +501,9 @@ fn resolve_lint_rules_options(
 }
 
 pub fn discover_npmrc_from_workspace(
-  workspace_ctx: &WorkspaceContext,
+  workspace: &Workspace,
 ) -> Result<(Arc<ResolvedNpmRc>, Option<PathBuf>), AnyError> {
-  let root_folder = workspace_ctx.workspace.root_folder_configs();
+  let root_folder = workspace.root_folder_configs();
   discover_npmrc(
     root_folder.pkg_json.as_ref().map(|p| p.path.clone()),
     root_folder.deno_json.as_ref().and_then(|cf| {
@@ -770,7 +769,7 @@ pub struct CliOptions {
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   overrides: CliOptionOverrides,
-  pub workspace_ctx: Arc<WorkspaceContext>,
+  pub start_dir: Arc<WorkspaceDirectory>,
   pub disable_deprecated_api_warning: bool,
   pub verbose_deprecated_api_warning: bool,
 }
@@ -781,7 +780,7 @@ impl CliOptions {
     initial_cwd: PathBuf,
     maybe_lockfile: Option<Arc<CliLockfile>>,
     npmrc: Arc<ResolvedNpmRc>,
-    workspace_ctx: Arc<WorkspaceContext>,
+    start_dir: Arc<WorkspaceDirectory>,
     force_global_cache: bool,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
@@ -802,7 +801,7 @@ impl CliOptions {
     }
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
-    let root_folder = workspace_ctx.workspace.root_folder_configs();
+    let root_folder = start_dir.workspace.root_folder_configs();
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
@@ -827,7 +826,7 @@ impl CliOptions {
       npmrc,
       maybe_node_modules_folder,
       overrides: Default::default(),
-      workspace_ctx,
+      start_dir,
       disable_deprecated_api_warning,
       verbose_deprecated_api_warning,
     })
@@ -873,7 +872,7 @@ impl CliOptions {
         maybe_vendor_override,
       }
     };
-    let resolve_empty_options = || WorkspaceEmptyOptions {
+    let resolve_empty_options = || WorkspaceDirectoryEmptyOptions {
       root_dir: Arc::new(
         ModuleSpecifier::from_directory_path(&initial_cwd).unwrap(),
       ),
@@ -881,34 +880,36 @@ impl CliOptions {
         .unwrap_or(VendorEnablement::Disable),
     };
 
-    let workspace_ctx = match &flags.config_flag {
+    let start_dir = match &flags.config_flag {
       ConfigFlag::Discover => {
         if let Some(start_paths) = flags.config_path_args(&initial_cwd) {
-          WorkspaceContext::discover(
+          WorkspaceDirectory::discover(
             WorkspaceDiscoverStart::Paths(&start_paths),
             &resolve_workspace_discover_options(),
           )?
         } else {
-          WorkspaceContext::empty(resolve_empty_options())
+          WorkspaceDirectory::empty(resolve_empty_options())
         }
       }
       ConfigFlag::Path(path) => {
         let config_path = normalize_path(initial_cwd.join(path));
-        WorkspaceContext::discover(
+        WorkspaceDirectory::discover(
           WorkspaceDiscoverStart::ConfigFile(&config_path),
           &resolve_workspace_discover_options(),
         )?
       }
-      ConfigFlag::Disabled => WorkspaceContext::empty(resolve_empty_options()),
+      ConfigFlag::Disabled => {
+        WorkspaceDirectory::empty(resolve_empty_options())
+      }
     };
 
-    for diagnostic in workspace_ctx.workspace.diagnostics() {
+    for diagnostic in start_dir.workspace.diagnostics() {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
-    let (npmrc, _) = discover_npmrc_from_workspace(&workspace_ctx)?;
+    let (npmrc, _) = discover_npmrc_from_workspace(&start_dir.workspace)?;
 
-    let maybe_lock_file = CliLockfile::discover(&flags, &workspace_ctx)?;
+    let maybe_lock_file = CliLockfile::discover(&flags, &start_dir.workspace)?;
 
     log::debug!("Finished config loading.");
 
@@ -917,7 +918,7 @@ impl CliOptions {
       initial_cwd,
       maybe_lock_file.map(Arc::new),
       npmrc,
-      Arc::new(workspace_ctx),
+      Arc::new(start_dir),
       false,
     )
   }
@@ -1013,7 +1014,7 @@ impl CliOptions {
       None => resolve_import_map_specifier(
         self.flags.import_map_path.as_deref(),
         self
-          .workspace_ctx
+          .start_dir
           .workspace
           .root_deno_json()
           .map(|c| c.as_ref()),
@@ -1037,7 +1038,7 @@ impl CliOptions {
       // use a fake empty import map
       Some(deno_config::workspace::SpecifiedImportMap {
         base_url: self
-          .workspace_ctx
+          .start_dir
           .workspace
           .root_dir()
           .join("import_map.json")
@@ -1065,7 +1066,7 @@ impl CliOptions {
     };
     Ok(
       self
-        .workspace_ctx
+        .start_dir
         .create_resolver(
           CreateResolverOptions {
             pkg_json_dep_resolution,
@@ -1229,7 +1230,7 @@ impl CliOptions {
       maybe_node_modules_folder: Some(path),
       npmrc: self.npmrc.clone(),
       maybe_lockfile: self.maybe_lockfile.clone(),
-      workspace_ctx: self.workspace_ctx.clone(),
+      start_dir: self.start_dir.clone(),
       overrides: self.overrides.clone(),
       disable_deprecated_api_warning: self.disable_deprecated_api_warning,
       verbose_deprecated_api_warning: self.verbose_deprecated_api_warning,
@@ -1240,11 +1241,11 @@ impl CliOptions {
     self
       .flags
       .node_modules_dir
-      .or_else(|| self.workspace_ctx.workspace.node_modules_dir())
+      .or_else(|| self.start_dir.workspace.node_modules_dir())
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
-    self.workspace_ctx.workspace.vendor_dir_path()
+    self.start_dir.workspace.vendor_dir_path()
   }
 
   pub fn resolve_root_cert_store_provider(
@@ -1262,7 +1263,7 @@ impl CliOptions {
     config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, AnyError> {
     let result = self
-      .workspace_ctx
+      .start_dir
       .workspace
       .resolve_ts_config_for_emit(config_type);
 
@@ -1306,8 +1307,11 @@ impl CliOptions {
   pub fn to_compiler_option_types(
     &self,
   ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
-    self.workspace_ctx.workspace.to_compiler_option_types().map(
-      |maybe_imports| {
+    self
+      .start_dir
+      .workspace
+      .to_compiler_option_types()
+      .map(|maybe_imports| {
         maybe_imports
           .into_iter()
           .map(|(referrer, imports)| deno_graph::ReferrerImports {
@@ -1315,8 +1319,7 @@ impl CliOptions {
             imports,
           })
           .collect()
-      },
-    )
+      })
   }
 
   pub fn npmrc(&self) -> &Arc<ResolvedNpmRc> {
@@ -1326,11 +1329,11 @@ impl CliOptions {
   pub fn resolve_fmt_options_for_members(
     &self,
     fmt_flags: &FmtFlags,
-  ) -> Result<Vec<(WorkspaceMemberContext, FmtOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectory, FmtOptions)>, AnyError> {
     let cli_arg_patterns =
       fmt_flags.files.as_file_patterns(self.initial_cwd())?;
     let member_configs = self
-      .workspace_ctx
+      .start_dir
       .workspace
       .resolve_fmt_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_configs.len());
@@ -1345,18 +1348,18 @@ impl CliOptions {
     &self,
     lint_flags: &LintFlags,
   ) -> Result<WorkspaceLintOptions, AnyError> {
-    let lint_config = self.workspace_ctx.workspace.to_lint_config()?;
+    let lint_config = self.start_dir.workspace.to_lint_config()?;
     WorkspaceLintOptions::resolve(&lint_config, lint_flags)
   }
 
   pub fn resolve_lint_options_for_members(
     &self,
     lint_flags: &LintFlags,
-  ) -> Result<Vec<(WorkspaceMemberContext, LintOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectory, LintOptions)>, AnyError> {
     let cli_arg_patterns =
       lint_flags.files.as_file_patterns(self.initial_cwd())?;
     let member_configs = self
-      .workspace_ctx
+      .start_dir
       .workspace
       .resolve_lint_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_configs.len());
@@ -1398,17 +1401,17 @@ impl CliOptions {
   pub fn resolve_test_options_for_members(
     &self,
     test_flags: &TestFlags,
-  ) -> Result<Vec<(WorkspaceMemberContext, TestOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectory, TestOptions)>, AnyError> {
     let cli_arg_patterns =
       test_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_ctxs = self
-      .workspace_ctx
+    let workspace_dir_configs = self
+      .start_dir
       .workspace
       .resolve_test_config_for_members(&cli_arg_patterns)?;
-    let mut result = Vec::with_capacity(member_ctxs.len());
-    for (member_ctx, config) in member_ctxs {
+    let mut result = Vec::with_capacity(workspace_dir_configs.len());
+    for (member_dir, config) in workspace_dir_configs {
       let options = TestOptions::resolve(config, test_flags);
-      result.push((member_ctx, options));
+      result.push((member_dir, options));
     }
     Ok(result)
   }
@@ -1423,17 +1426,17 @@ impl CliOptions {
   pub fn resolve_bench_options_for_members(
     &self,
     bench_flags: &BenchFlags,
-  ) -> Result<Vec<(WorkspaceMemberContext, BenchOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectory, BenchOptions)>, AnyError> {
     let cli_arg_patterns =
       bench_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_ctxs = self
-      .workspace_ctx
+    let workspace_dir_configs = self
+      .start_dir
       .workspace
       .resolve_bench_config_for_members(&cli_arg_patterns)?;
-    let mut result = Vec::with_capacity(member_ctxs.len());
-    for (member_ctx, config) in member_ctxs {
+    let mut result = Vec::with_capacity(workspace_dir_configs.len());
+    for (member_dir, config) in workspace_dir_configs {
       let options = BenchOptions::resolve(config, bench_flags);
-      result.push((member_ctx, options));
+      result.push((member_dir, options));
     }
     Ok(result)
   }
@@ -1442,7 +1445,7 @@ impl CliOptions {
     &self,
   ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
     self
-      .workspace_ctx
+      .start_dir
       .workspace
       .jsr_packages()
       .into_iter()
@@ -1464,7 +1467,7 @@ impl CliOptions {
   }
 
   pub fn check_js(&self) -> bool {
-    self.workspace_ctx.workspace.check_js()
+    self.start_dir.workspace.check_js()
   }
 
   pub fn coverage_dir(&self) -> Option<String> {
@@ -1611,17 +1614,14 @@ impl CliOptions {
 
   pub fn unstable_bare_node_builtins(&self) -> bool {
     self.flags.unstable_config.bare_node_builtins
-      || self
-        .workspace_ctx
-        .workspace
-        .has_unstable("bare-node-builtins")
+      || self.start_dir.workspace.has_unstable("bare-node-builtins")
   }
 
   pub fn use_byonm(&self) -> bool {
     if self.enable_future_features()
       && self.node_modules_dir_enablement().is_none()
       && self
-        .workspace_ctx
+        .start_dir
         .workspace
         .config_folders()
         .values()
@@ -1636,17 +1636,17 @@ impl CliOptions {
         .as_ref()
         .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
         .unwrap_or(false)
-      || self.workspace_ctx.workspace.has_unstable("byonm")
+      || self.start_dir.workspace.has_unstable("byonm")
   }
 
   pub fn unstable_sloppy_imports(&self) -> bool {
     self.flags.unstable_config.sloppy_imports
-      || self.workspace_ctx.workspace.has_unstable("sloppy-imports")
+      || self.start_dir.workspace.has_unstable("sloppy-imports")
   }
 
   pub fn unstable_features(&self) -> Vec<String> {
     let mut from_config_file =
-      self.workspace_ctx.workspace.unstable_features().to_vec();
+      self.start_dir.workspace.unstable_features().to_vec();
 
     self
       .flags
@@ -1728,7 +1728,7 @@ impl CliOptions {
       full_paths.push(import_map_path);
     }
 
-    for (_, folder) in self.workspace_ctx.workspace.config_folders() {
+    for (_, folder) in self.start_dir.workspace.config_folders() {
       if let Some(deno_json) = &folder.deno_json {
         if deno_json.specifier.scheme() == "file" {
           if let Ok(path) = deno_json.specifier.to_file_path() {
@@ -1830,8 +1830,7 @@ impl StorageKeyResolver {
       // otherwise we will use the path to the config file or None to
       // fall back to using the main module's path
       options
-        .workspace_ctx
-        .start_ctx
+        .start_dir
         .maybe_deno_json()
         .map(|config_file| Some(config_file.specifier.to_string()))
     })

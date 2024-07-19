@@ -82,9 +82,9 @@ pub async fn publish(
 
   let directory_path = cli_factory.cli_options().initial_cwd();
   let cli_options = cli_factory.cli_options();
-  let publish_configs = cli_options.workspace_ctx.jsr_packages_for_publish();
+  let publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
-    match cli_options.workspace_ctx.start_ctx.maybe_deno_json() {
+    match cli_options.start_dir.maybe_deno_json() {
       Some(deno_json) => {
         debug_assert!(!deno_json.is_package());
         bail!(
@@ -437,7 +437,7 @@ impl PublishPreparer {
     let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
-    let file_patterns = package.member_ctx.to_publish_config()?.files;
+    let file_patterns = package.member_dir.to_publish_config()?.files;
 
     let tarball = deno_core::unsync::spawn_blocking({
       let diagnostics_collector = diagnostics_collector.clone();

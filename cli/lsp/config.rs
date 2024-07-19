@@ -18,10 +18,9 @@ use deno_config::workspace::SpecifiedImportMap;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceCache;
-use deno_config::workspace::WorkspaceContext;
+use deno_config::workspace::WorkspaceDirectory;
+use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDiscoverOptions;
-use deno_config::workspace::WorkspaceEmptyOptions;
-use deno_config::workspace::WorkspaceMemberContext;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -1112,7 +1111,7 @@ pub enum ConfigWatchedFileType {
 #[derive(Debug, Clone)]
 pub struct ConfigData {
   pub scope: Arc<ModuleSpecifier>,
-  pub workspace_ctx: Arc<WorkspaceContext>,
+  pub workspace_dir: Arc<WorkspaceDirectory>,
   pub fmt_config: Arc<FmtConfig>,
   pub lint_config: Arc<LintConfig>,
   pub test_config: Arc<TestConfig>,
@@ -1146,7 +1145,7 @@ impl ConfigData {
     let discover_result = match scope.to_file_path() {
       Ok(scope_dir_path) => {
         let paths = [scope_dir_path];
-        WorkspaceContext::discover(
+        WorkspaceDirectory::discover(
           match specified_config {
             Some(config_path) => {
               deno_config::workspace::WorkspaceDiscoverStart::ConfigFile(
@@ -1174,19 +1173,19 @@ impl ConfigData {
       Err(()) => Err(anyhow!("Scope '{}' was not a directory path.", scope)),
     };
     match discover_result {
-      Ok(workspace_ctx) => {
-        Self::load_inner(workspace_ctx, scope, settings, Some(file_fetcher))
+      Ok(workspace_dir) => {
+        Self::load_inner(workspace_dir, scope, settings, Some(file_fetcher))
           .await
       }
       Err(err) => {
         lsp_warn!("  Couldn't open workspace \"{}\": {}", scope.as_str(), err);
-        let workspace_ctx =
-          Arc::new(WorkspaceContext::empty(WorkspaceEmptyOptions {
+        let workspace_dir =
+          Arc::new(WorkspaceDirectory::empty(WorkspaceDirectoryEmptyOptions {
             root_dir: scope.clone(),
             use_vendor_dir: VendorEnablement::Disable,
           }));
         let mut data = Self::load_inner(
-          workspace_ctx,
+          workspace_dir,
           scope.clone(),
           settings,
           Some(file_fetcher),
@@ -1228,7 +1227,7 @@ impl ConfigData {
   }
 
   async fn load_inner(
-    workspace_ctx: Arc<WorkspaceContext>,
+    workspace_dir: Arc<WorkspaceDirectory>,
     scope: Arc<ModuleSpecifier>,
     settings: &Settings,
     file_fetcher: Option<&Arc<FileFetcher>>,
@@ -1250,9 +1249,7 @@ impl ConfigData {
         watched_files.entry(specifier).or_insert(file_type);
       };
 
-    let member_ctx = &workspace_ctx.start_ctx;
-
-    if let Some(deno_json) = member_ctx.maybe_deno_json() {
+    if let Some(deno_json) = workspace_dir.maybe_deno_json() {
       lsp_log!(
         "  Resolved Deno configuration file: \"{}\"",
         deno_json.specifier
@@ -1264,7 +1261,7 @@ impl ConfigData {
       );
     }
 
-    if let Some(pkg_json) = member_ctx.maybe_pkg_json() {
+    if let Some(pkg_json) = workspace_dir.maybe_pkg_json() {
       lsp_log!("  Resolved package.json: \"{}\"", pkg_json.specifier());
 
       add_watched_file(
@@ -1274,7 +1271,7 @@ impl ConfigData {
     }
 
     // todo(dsherret): cache this so we don't load this so many times
-    let npmrc = discover_npmrc_from_workspace(&workspace_ctx)
+    let npmrc = discover_npmrc_from_workspace(&workspace_dir.workspace)
       .inspect(|(_, path)| {
         if let Some(path) = path {
           lsp_log!("  Resolved .npmrc: \"{}\"", path.display());
@@ -1292,8 +1289,8 @@ impl ConfigData {
     let default_file_pattern_base =
       scope.to_file_path().unwrap_or_else(|_| PathBuf::from("/"));
     let fmt_config = Arc::new(
-      member_ctx
-        .to_fmt_config(FilePatterns::new_with_base(member_ctx.dir_path()))
+      workspace_dir
+        .to_fmt_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
         .inspect_err(|err| {
           lsp_warn!("  Couldn't read formatter configuration: {}", err)
         })
@@ -1303,8 +1300,8 @@ impl ConfigData {
         }),
     );
     let lint_config = Arc::new(
-      member_ctx
-        .to_lint_config(FilePatterns::new_with_base(member_ctx.dir_path()))
+      workspace_dir
+        .to_lint_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
         .inspect_err(|err| {
           lsp_warn!("  Couldn't read lint configuration: {}", err)
         })
@@ -1315,11 +1312,11 @@ impl ConfigData {
     );
     let lint_rules = Arc::new(get_configured_rules(
       lint_config.options.rules.clone(),
-      member_ctx.maybe_deno_json().map(|c| c.as_ref()),
+      workspace_dir.maybe_deno_json().map(|c| c.as_ref()),
     ));
     let test_config = Arc::new(
-      member_ctx
-        .to_test_config(FilePatterns::new_with_base(member_ctx.dir_path()))
+      workspace_dir
+        .to_test_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
         .inspect_err(|err| {
           lsp_warn!("  Couldn't read test configuration: {}", err)
         })
@@ -1329,7 +1326,7 @@ impl ConfigData {
         }),
     );
     let exclude_files = Arc::new(
-      workspace_ctx
+      workspace_dir
         .workspace
         .resolve_config_excludes()
         .inspect_err(|err| {
@@ -1340,7 +1337,7 @@ impl ConfigData {
     );
 
     let ts_config = LspTsConfig::new(
-      workspace_ctx.workspace.root_deno_json().map(|c| c.as_ref()),
+      workspace_dir.workspace.root_deno_json().map(|c| c.as_ref()),
     );
 
     let deno_lint_config =
@@ -1365,10 +1362,10 @@ impl ConfigData {
         }
       };
 
-    let vendor_dir = workspace_ctx.workspace.vendor_dir_path().cloned();
+    let vendor_dir = workspace_dir.workspace.vendor_dir_path().cloned();
     // todo(dsherret): add caching so we don't load this so many times
     let lockfile =
-      resolve_lockfile_from_workspace(&workspace_ctx).map(Arc::new);
+      resolve_lockfile_from_workspace(&workspace_dir).map(Arc::new);
     if let Some(lockfile) = &lockfile {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile.filename)
       {
@@ -1377,17 +1374,18 @@ impl ConfigData {
     }
 
     let byonm = std::env::var("DENO_UNSTABLE_BYONM").is_ok()
-      || workspace_ctx.workspace.has_unstable("byonm")
+      || workspace_dir.workspace.has_unstable("byonm")
       || (*DENO_FUTURE
-        && workspace_ctx.workspace.package_jsons().next().is_some()
-        && workspace_ctx.workspace.node_modules_dir().is_none());
+        && workspace_dir.workspace.package_jsons().next().is_some()
+        && workspace_dir.workspace.node_modules_dir().is_none());
     if byonm {
       lsp_log!("  Enabled 'bring your own node_modules'.");
     }
-    let node_modules_dir = resolve_node_modules_dir(&workspace_ctx, byonm);
+    let node_modules_dir =
+      resolve_node_modules_dir(&workspace_dir.workspace, byonm);
 
     // Mark the import map as a watched file
-    if let Some(import_map_specifier) = workspace_ctx
+    if let Some(import_map_specifier) = workspace_dir
       .workspace
       .to_import_map_specifier()
       .ok()
@@ -1406,11 +1404,11 @@ impl ConfigData {
       PackageJsonDepResolution::Enabled
     };
     let mut import_map_from_settings = {
-      let is_config_import_map = member_ctx
+      let is_config_import_map = workspace_dir
         .maybe_deno_json()
         .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
         .or_else(|| {
-          workspace_ctx
+          workspace_dir
             .workspace
             .root_deno_json()
             .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
@@ -1428,11 +1426,11 @@ impl ConfigData {
     };
 
     let specified_import_map = {
-      let is_config_import_map = member_ctx
+      let is_config_import_map = workspace_dir
         .maybe_deno_json()
         .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
         .or_else(|| {
-          workspace_ctx
+          workspace_dir
             .workspace
             .root_deno_json()
             .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
@@ -1482,7 +1480,7 @@ impl ConfigData {
       }
     };
     let resolver = deno_core::unsync::spawn({
-      let workspace = workspace_ctx.clone();
+      let workspace = workspace_dir.clone();
       let file_fetcher = file_fetcher.cloned();
       async move {
         workspace
@@ -1520,7 +1518,7 @@ impl ConfigData {
       WorkspaceResolver::new_raw(
         scope.clone(),
         None,
-        workspace_ctx.workspace.package_jsons().cloned().collect(),
+        workspace_dir.workspace.package_jsons().cloned().collect(),
         pkg_json_dep_resolution,
       )
     });
@@ -1538,7 +1536,7 @@ impl ConfigData {
 
     ConfigData {
       scope,
-      workspace_ctx,
+      workspace_dir,
       resolver: Arc::new(resolver),
       fmt_config,
       lint_config,
@@ -1560,13 +1558,13 @@ impl ConfigData {
   pub fn maybe_deno_json(
     &self,
   ) -> Option<&Arc<deno_config::deno_json::ConfigFile>> {
-    self.workspace_ctx.start_ctx.maybe_deno_json()
+    self.workspace_dir.maybe_deno_json()
   }
 
   pub fn maybe_pkg_json(
     &self,
   ) -> Option<&Arc<deno_config::package_json::PackageJson>> {
-    self.workspace_ctx.start_ctx.maybe_pkg_json()
+    self.workspace_dir.maybe_pkg_json()
   }
 }
 
@@ -1601,13 +1599,13 @@ impl ConfigTree {
     &self.scopes
   }
 
-  pub fn workspace_member_ctx_for_specifier(
+  pub fn workspace_dir_for_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Option<&WorkspaceMemberContext> {
+  ) -> Option<&WorkspaceDirectory> {
     self
       .data_for_specifier(specifier)
-      .map(|d| &d.workspace_ctx.start_ctx)
+      .map(|d| d.workspace_dir.as_ref())
   }
 
   pub fn config_files(&self) -> Vec<&Arc<ConfigFile>> {
@@ -1735,7 +1733,7 @@ impl ConfigTree {
         .await,
       );
       scopes.insert(scope, data.clone());
-      for (member_scope, _) in data.workspace_ctx.workspace.config_folders() {
+      for (member_scope, _) in data.workspace_dir.workspace.config_folders() {
         if scopes.contains_key(member_scope) {
           continue;
         }
@@ -1790,8 +1788,8 @@ impl ConfigTree {
       config_path.to_string_lossy().to_string(),
       json_text,
     )]);
-    let workspace_ctx = Arc::new(
-      WorkspaceContext::discover(
+    let workspace_dir = Arc::new(
+      WorkspaceDirectory::discover(
         deno_config::workspace::WorkspaceDiscoverStart::ConfigFile(
           &config_path,
         ),
@@ -1804,7 +1802,7 @@ impl ConfigTree {
     );
     let data = Arc::new(
       ConfigData::load_inner(
-        workspace_ctx,
+        workspace_dir,
         Arc::new(scope.clone()),
         &Default::default(),
         None,
@@ -1817,7 +1815,7 @@ impl ConfigTree {
 }
 
 fn resolve_lockfile_from_workspace(
-  workspace: &WorkspaceContext,
+  workspace: &WorkspaceDirectory,
 ) -> Option<CliLockfile> {
   let lockfile_path = match workspace.workspace.resolve_lockfile_path() {
     Ok(Some(value)) => value,
@@ -1831,26 +1829,24 @@ fn resolve_lockfile_from_workspace(
 }
 
 fn resolve_node_modules_dir(
-  workspace_ctx: &WorkspaceContext,
+  workspace: &Workspace,
   byonm: bool,
 ) -> Option<PathBuf> {
   // For the language server, require an explicit opt-in via the
   // `nodeModulesDir: true` setting in the deno.json file. This is to
   // reduce the chance of modifying someone's node_modules directory
   // without them having asked us to do so.
-  let explicitly_disabled =
-    workspace_ctx.workspace.node_modules_dir() == Some(false);
+  let explicitly_disabled = workspace.node_modules_dir() == Some(false);
   if explicitly_disabled {
     return None;
   }
   let enabled = byonm
-    || workspace_ctx.workspace.node_modules_dir() == Some(true)
-    || workspace_ctx.workspace.vendor_dir_path().is_some();
+    || workspace.node_modules_dir() == Some(true)
+    || workspace.vendor_dir_path().is_some();
   if !enabled {
     return None;
   }
-  let node_modules_dir = workspace_ctx
-    .workspace
+  let node_modules_dir = workspace
     .root_dir()
     .to_file_path()
     .ok()?
@@ -1982,7 +1978,8 @@ impl DenoConfigFs for CachedDenoConfigFs {
     path: &Path,
   ) -> Result<Vec<deno_config::fs::FsDirEntry>, std::io::Error> {
     // no need to cache these because the workspace cache will ensure
-    // we only do read_dir calls once
+    // we only do read_dir calls once (read_dirs are only used for
+    // npm workspace resolution)
     RealDenoConfigFs.read_dir(path)
   }
 }

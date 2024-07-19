@@ -10,7 +10,7 @@ use crate::task_runner;
 use crate::util::fs::canonicalize_path;
 use deno_config::deno_json::Task;
 use deno_config::workspace::TaskOrScript;
-use deno_config::workspace::WorkspaceContext;
+use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceTasksConfig;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -31,8 +31,8 @@ pub async fn execute_script(
 ) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags)?;
   let cli_options = factory.cli_options();
-  let start_ctx = &cli_options.workspace_ctx.start_ctx;
-  if !start_ctx.has_deno_or_pkg_json() {
+  let start_dir = &cli_options.start_dir;
+  if !start_dir.has_deno_or_pkg_json() {
     bail!("deno task couldn't find deno.json(c). See https://deno.land/manual@v{}/getting_started/configuration_file", env!("CARGO_PKG_VERSION"))
   }
   let force_use_pkg_json =
@@ -45,7 +45,7 @@ pub async fn execute_script(
         v == "1"
       })
       .unwrap_or(false);
-  let tasks_config = start_ctx.to_tasks_config()?;
+  let tasks_config = start_dir.to_tasks_config()?;
   let tasks_config = if force_use_pkg_json {
     tasks_config.with_only_pkg_json()
   } else {
@@ -57,7 +57,7 @@ pub async fn execute_script(
     None => {
       print_available_tasks(
         &mut std::io::stdout(),
-        &cli_options.workspace_ctx,
+        &cli_options.start_dir,
         &tasks_config,
       )?;
       return Ok(1);
@@ -144,7 +144,7 @@ pub async fn execute_script(
       if log::log_enabled!(log::Level::Error) {
         print_available_tasks(
           &mut std::io::stderr(),
-          &cli_options.workspace_ctx,
+          &cli_options.start_dir,
           &tasks_config,
         )?;
       }
@@ -205,7 +205,7 @@ fn output_task(task_name: &str, script: &str) {
 
 fn print_available_tasks(
   writer: &mut dyn std::io::Write,
-  workspace_ctx: &Arc<WorkspaceContext>,
+  workspace_dir: &Arc<WorkspaceDirectory>,
   tasks_config: &WorkspaceTasksConfig,
 ) -> Result<(), std::io::Error> {
   writeln!(writer, "{}", colors::green("Available tasks:"))?;
@@ -230,7 +230,7 @@ fn print_available_tasks(
         .map(|config| {
           let is_root = !is_cwd_root_dir
             && config.folder_url
-              == *workspace_ctx.workspace.root_dir().as_ref();
+              == *workspace_dir.workspace.root_dir().as_ref();
           config
             .tasks
             .iter()
@@ -245,7 +245,7 @@ fn print_available_tasks(
             .map(|config| {
               let is_root = !is_cwd_root_dir
                 && config.folder_url
-                  == *workspace_ctx.workspace.root_dir().as_ref();
+                  == *workspace_dir.workspace.root_dir().as_ref();
               config.tasks.iter().map(move |(k, v)| {
                 (is_root, false, (k, Cow::Owned(Task::Definition(v.clone()))))
               })

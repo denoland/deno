@@ -85,7 +85,7 @@ pub async fn compile(
     )?;
   let parser = parsed_source_cache.as_capturing_parser();
   let root_dir_url = resolve_root_dir_from_specifiers(
-    cli_options.workspace_ctx.workspace.root_dir(),
+    cli_options.start_dir.workspace.root_dir(),
     graph.specifiers().map(|(s, _)| s).chain(
       cli_options
         .node_modules_dir_path()
