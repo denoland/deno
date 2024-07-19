@@ -729,7 +729,7 @@ dependencies = [
  "deno_core",
  "deno_fetch",
  "deno_lockfile",
- "deno_terminal",
+ "deno_terminal 0.2.0",
  "deno_tls",
  "fastwebsockets",
  "file_test_runner",
@@ -1134,7 +1134,7 @@ dependencies = [
  "deno_runtime",
  "deno_semver",
  "deno_task_shell",
- "deno_terminal",
+ "deno_terminal 0.2.0",
  "dissimilar",
  "dotenvy",
  "dprint-plugin-json",
@@ -1216,7 +1216,7 @@ dependencies = [
  "anyhow",
  "base64 0.21.7",
  "deno_media_type",
- "deno_terminal",
+ "deno_terminal 0.1.1",
  "dprint-swc-ext",
  "once_cell",
  "percent-encoding",
@@ -1834,7 +1834,7 @@ name = "deno_permissions"
 version = "0.21.0"
 dependencies = [
  "deno_core",
- "deno_terminal",
+ "deno_terminal 0.2.0",
  "fqdn",
  "libc",
  "log",
@@ -1866,7 +1866,7 @@ dependencies = [
  "deno_net",
  "deno_node",
  "deno_permissions",
- "deno_terminal",
+ "deno_terminal 0.2.0",
  "deno_tls",
  "deno_url",
  "deno_web",
@@ -1941,6 +1941,16 @@ name = "deno_terminal"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e6337d4e7f375f8b986409a76fbeecfa4bd8a1343e63355729ae4befa058eaf"
+dependencies = [
+ "once_cell",
+ "termcolor",
+]
+
+[[package]]
+name = "deno_terminal"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daef12499e89ee99e51ad6000a91f600d3937fb028ad4918af76810c5bc9e0d5"
 dependencies = [
  "once_cell",
  "termcolor",
@@ -2732,7 +2742,7 @@ checksum = "05b23dcc1b671771c6f59fdace6da685735c925f859733e8fd07fba6cae6462a"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
- "deno_terminal",
+ "deno_terminal 0.1.1",
  "parking_lot 0.12.3",
  "regex",
  "thiserror",
