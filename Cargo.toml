@@ -51,7 +51,7 @@ deno_lockfile = "0.20.0"
 deno_media_type = { version = "0.1.4", features = ["module_specifier"] }
 deno_permissions = { version = "0.21.0", path = "./runtime/permissions" }
 deno_runtime = { version = "0.169.0", path = "./runtime" }
-deno_terminal = "0.1.1"
+deno_terminal = "0.2.0"
 napi_sym = { version = "0.91.0", path = "./cli/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
