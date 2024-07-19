@@ -1,5 +1,4 @@
 import Module from "node:module";
-import path from "node:path";
 
 const mod = new Module("");
 

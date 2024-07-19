@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::serde_json;
-use std::process::Command;
 use test_util as util;
 use util::assert_contains;
 use util::assert_not_contains;
@@ -1295,15 +1294,21 @@ fn standalone_require_node_addons() {
     let dir = context.temp_dir();
     let libout = dir.path().join("module.node");
 
-    let mut cc = Command::new("cc");
+    let cc = context
+      .new_command()
+      .name("cc")
+      .current_dir(util::testdata_path());
 
     #[cfg(not(target_os = "macos"))]
-    let c_module = cc.arg("module.c").arg("-shared").arg("-o").arg(out);
+    let c_module = cc
+      .arg("./compile/napi/module.c")
+      .arg("-shared")
+      .arg("-o")
+      .arg(&libout);
 
     #[cfg(target_os = "macos")]
     let c_module = {
-      cc.current_dir(util::testdata_path())
-        .arg("./compile/napi/module.c")
+      cc.arg("./compile/napi/module.c")
         .arg("-undefined")
         .arg("dynamic_lookup")
         .arg("-shared")
