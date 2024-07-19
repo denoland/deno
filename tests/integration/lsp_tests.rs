@@ -13263,7 +13263,7 @@ fn lsp_deno_json_workspace_fmt_config() {
   );
   temp_dir.create_dir_all("project2");
   temp_dir.write("project2/deno.json", json!({}).to_string());
-  let mut client = context.new_lsp_command().print_stderr().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
@@ -13924,7 +13924,7 @@ fn lsp_npm_workspace() {
       .to_string(),
     );
   }
-  let mut client = context.new_lsp_command().print_stderr().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
