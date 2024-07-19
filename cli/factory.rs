@@ -441,7 +441,7 @@ impl CliFactory {
             text_only_progress_bar: self.text_only_progress_bar().clone(),
             maybe_node_modules_path: self.options.node_modules_dir_path().cloned(),
             package_json_deps_provider: Arc::new(PackageJsonInstallDepsProvider::from_workspace(
-              &self.options.workspace(),
+              self.options.workspace(),
             )),
             npm_system_info: self.options.npm_system_info(),
             npmrc: self.options.npmrc().clone(),
