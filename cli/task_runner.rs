@@ -164,9 +164,7 @@ impl ShellCommand for NpmCommand {
   }
 }
 
-pub struct NodeCommand {
-  pub force_node_modules_dir: bool,
-}
+pub struct NodeCommand;
 
 impl ShellCommand for NodeCommand {
   fn execute(
@@ -193,9 +191,6 @@ impl ShellCommand for NodeCommand {
       .execute(context);
     }
     args.extend(["run", "-A"].into_iter().map(|s| s.to_string()));
-    if self.force_node_modules_dir {
-      args.push("--node-modules-dir=true".to_string());
-    }
     args.extend(context.args.iter().cloned());
 
     let mut state = context.state;
@@ -308,7 +303,6 @@ impl ShellCommand for NodeModulesFileRunCommand {
     let mut args = vec![
       "run".to_string(),
       "--ext=js".to_string(),
-      "--node-modules-dir=true".to_string(),
       "-A".to_string(),
       self.path.to_string_lossy().to_string(),
     ];
