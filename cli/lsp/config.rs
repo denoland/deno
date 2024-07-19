@@ -1130,6 +1130,7 @@ pub struct ConfigData {
 }
 
 impl ConfigData {
+  #[allow(clippy::too_many_arguments)]
   async fn load(
     specified_config: Option<&Path>,
     scope: &ModuleSpecifier,
