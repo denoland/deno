@@ -118,12 +118,19 @@ export class WriteStream extends Socket {
       count = 16;
     }
 
+    const depth = this.getColorDepth(env);
+    return count <= 2 ** depth;
+  }
+
+  /**
+   * @param {Record<string, string} [env]
+   * @returns {1 | 4 | 8 | 24}
+   */
+  getColorDepth(_env) {
     // TODO(@marvinhagemeister): Ignore env parameter.
     // Haven't seen it used anywhere, seems more done
-    // to make testing easier in Node.
-
-    const depth = op_bootstrap_color_depth();
-    return count <= 2 ** depth;
+    // to make testing easier in Node
+    return op_bootstrap_color_depth();
   }
 }
 

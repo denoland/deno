@@ -39,3 +39,7 @@ Deno.test("[node/tty WriteStream.isTTY] returns true when fd is a tty", () => {
 Deno.test("[node/tty WriteStream.hasColors] returns true when colors are supported", () => {
   assert(tty.WriteStream.prototype.hasColors() === !Deno.noColor);
 });
+
+Deno.test("[node/tty WriteStream.getColorDepth] returns current terminal color depth", () => {
+  assert([1, 4, 8, 24].includes(tty.WriteStream.prototype.getColorDepth()));
+});

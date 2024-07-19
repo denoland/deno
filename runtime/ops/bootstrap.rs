@@ -133,9 +133,9 @@ pub fn op_bootstrap_color_depth(state: &mut OpState) -> i32 {
   let options = state.borrow::<BootstrapOptions>();
   match options.color_level {
     ColorLevel::None => 1,
-    ColorLevel::Ansi => 2,
+    ColorLevel::Ansi => 4,
     ColorLevel::Ansi256 => 8,
-    ColorLevel::TrueColor => 16,
+    ColorLevel::TrueColor => 24,
   }
 }
 
