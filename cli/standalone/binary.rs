@@ -733,18 +733,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       InnerCliNpmResolverRef::Byonm(_) => {
         maybe_warn_different_system(&self.npm_system_info);
         let mut builder = VfsBuilder::new(root_path.to_path_buf())?;
-        for pkg_json in cli_options.start_dir.workspace.package_jsons() {
+        for pkg_json in cli_options.workspace().package_jsons() {
           builder.add_file_at_path(&pkg_json.path)?;
         }
         // traverse and add all the node_modules directories in the workspace
         let mut pending_dirs = VecDeque::new();
         pending_dirs.push_back(
-          cli_options
-            .start_dir
-            .workspace
-            .root_dir()
-            .to_file_path()
-            .unwrap(),
+          cli_options.workspace().root_dir().to_file_path().unwrap(),
         );
         while let Some(pending_dir) = pending_dirs.pop_front() {
           let entries = fs::read_dir(&pending_dir).with_context(|| {

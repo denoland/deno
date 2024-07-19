@@ -928,6 +928,11 @@ impl CliOptions {
     &self.initial_cwd
   }
 
+  #[inline(always)]
+  pub fn workspace(&self) -> &Arc<Workspace> {
+    &self.start_dir.workspace
+  }
+
   pub fn graph_kind(&self) -> GraphKind {
     match self.sub_command() {
       DenoSubcommand::Cache(_) => GraphKind::All,
@@ -1013,11 +1018,7 @@ impl CliOptions {
       Some(maybe_url) => Ok(maybe_url),
       None => resolve_import_map_specifier(
         self.flags.import_map_path.as_deref(),
-        self
-          .start_dir
-          .workspace
-          .root_deno_json()
-          .map(|c| c.as_ref()),
+        self.workspace().root_deno_json().map(|c| c.as_ref()),
         &self.initial_cwd,
       ),
     }
@@ -1037,12 +1038,7 @@ impl CliOptions {
     let cli_arg_specified_import_map = if overrode_no_import_map {
       // use a fake empty import map
       Some(deno_config::workspace::SpecifiedImportMap {
-        base_url: self
-          .start_dir
-          .workspace
-          .root_dir()
-          .join("import_map.json")
-          .unwrap(),
+        base_url: self.workspace().root_dir().join("import_map.json").unwrap(),
         value: serde_json::Value::Object(Default::default()),
       })
     } else {
@@ -1241,11 +1237,11 @@ impl CliOptions {
     self
       .flags
       .node_modules_dir
-      .or_else(|| self.start_dir.workspace.node_modules_dir())
+      .or_else(|| self.workspace().node_modules_dir())
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
-    self.start_dir.workspace.vendor_dir_path()
+    self.workspace().vendor_dir_path()
   }
 
   pub fn resolve_root_cert_store_provider(
@@ -1262,10 +1258,7 @@ impl CliOptions {
     &self,
     config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, AnyError> {
-    let result = self
-      .start_dir
-      .workspace
-      .resolve_ts_config_for_emit(config_type);
+    let result = self.workspace().resolve_ts_config_for_emit(config_type);
 
     match result {
       Ok(mut ts_config_for_emit) => {
@@ -1308,8 +1301,7 @@ impl CliOptions {
     &self,
   ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
     self
-      .start_dir
-      .workspace
+      .workspace()
       .to_compiler_option_types()
       .map(|maybe_imports| {
         maybe_imports
@@ -1333,8 +1325,7 @@ impl CliOptions {
     let cli_arg_patterns =
       fmt_flags.files.as_file_patterns(self.initial_cwd())?;
     let member_configs = self
-      .start_dir
-      .workspace
+      .workspace()
       .resolve_fmt_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
@@ -1348,7 +1339,7 @@ impl CliOptions {
     &self,
     lint_flags: &LintFlags,
   ) -> Result<WorkspaceLintOptions, AnyError> {
-    let lint_config = self.start_dir.workspace.to_lint_config()?;
+    let lint_config = self.workspace().to_lint_config()?;
     WorkspaceLintOptions::resolve(&lint_config, lint_flags)
   }
 
@@ -1359,8 +1350,7 @@ impl CliOptions {
     let cli_arg_patterns =
       lint_flags.files.as_file_patterns(self.initial_cwd())?;
     let member_configs = self
-      .start_dir
-      .workspace
+      .workspace()
       .resolve_lint_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
@@ -1405,8 +1395,7 @@ impl CliOptions {
     let cli_arg_patterns =
       test_flags.files.as_file_patterns(self.initial_cwd())?;
     let workspace_dir_configs = self
-      .start_dir
-      .workspace
+      .workspace()
       .resolve_test_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(workspace_dir_configs.len());
     for (member_dir, config) in workspace_dir_configs {
@@ -1430,8 +1419,7 @@ impl CliOptions {
     let cli_arg_patterns =
       bench_flags.files.as_file_patterns(self.initial_cwd())?;
     let workspace_dir_configs = self
-      .start_dir
-      .workspace
+      .workspace()
       .resolve_bench_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(workspace_dir_configs.len());
     for (member_dir, config) in workspace_dir_configs {
@@ -1445,8 +1433,7 @@ impl CliOptions {
     &self,
   ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
     self
-      .start_dir
-      .workspace
+      .workspace()
       .jsr_packages()
       .into_iter()
       .map(|pkg| config_to_deno_graph_workspace_member(&pkg.config_file))
@@ -1467,7 +1454,7 @@ impl CliOptions {
   }
 
   pub fn check_js(&self) -> bool {
-    self.start_dir.workspace.check_js()
+    self.workspace().check_js()
   }
 
   pub fn coverage_dir(&self) -> Option<String> {
@@ -1614,15 +1601,14 @@ impl CliOptions {
 
   pub fn unstable_bare_node_builtins(&self) -> bool {
     self.flags.unstable_config.bare_node_builtins
-      || self.start_dir.workspace.has_unstable("bare-node-builtins")
+      || self.workspace().has_unstable("bare-node-builtins")
   }
 
   pub fn use_byonm(&self) -> bool {
     if self.enable_future_features()
       && self.node_modules_dir_enablement().is_none()
       && self
-        .start_dir
-        .workspace
+        .workspace()
         .config_folders()
         .values()
         .any(|f| f.pkg_json.is_some())
@@ -1636,17 +1622,16 @@ impl CliOptions {
         .as_ref()
         .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
         .unwrap_or(false)
-      || self.start_dir.workspace.has_unstable("byonm")
+      || self.workspace().has_unstable("byonm")
   }
 
   pub fn unstable_sloppy_imports(&self) -> bool {
     self.flags.unstable_config.sloppy_imports
-      || self.start_dir.workspace.has_unstable("sloppy-imports")
+      || self.workspace().has_unstable("sloppy-imports")
   }
 
   pub fn unstable_features(&self) -> Vec<String> {
-    let mut from_config_file =
-      self.start_dir.workspace.unstable_features().to_vec();
+    let mut from_config_file = self.workspace().unstable_features().to_vec();
 
     self
       .flags
@@ -1728,7 +1713,7 @@ impl CliOptions {
       full_paths.push(import_map_path);
     }
 
-    for (_, folder) in self.start_dir.workspace.config_folders() {
+    for (_, folder) in self.workspace().config_folders() {
       if let Some(deno_json) = &folder.deno_json {
         if deno_json.specifier.scheme() == "file" {
           if let Ok(path) = deno_json.specifier.to_file_path() {

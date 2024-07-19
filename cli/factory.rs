@@ -341,9 +341,8 @@ impl CliFactory {
 
       // initialize the lockfile with the workspace's configuration
       if let Some(lockfile) = &maybe_lockfile {
-        let root_url = self.options.start_dir.workspace.root_dir();
-        let root_folder =
-          self.options.start_dir.workspace.root_folder_configs();
+        let root_url = self.options.workspace().root_dir();
+        let root_folder = self.options.workspace().root_folder_configs();
         let config = deno_lockfile::WorkspaceConfig {
           root: WorkspaceMemberConfig {
             package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
@@ -351,8 +350,7 @@ impl CliFactory {
           },
           members: self
             .options
-            .start_dir
-            .workspace
+            .workspace()
             .config_folders()
             .iter()
             .filter(|(folder_url, _)| *folder_url != root_url)
@@ -443,7 +441,7 @@ impl CliFactory {
             text_only_progress_bar: self.text_only_progress_bar().clone(),
             maybe_node_modules_path: self.options.node_modules_dir_path().cloned(),
             package_json_deps_provider: Arc::new(PackageJsonInstallDepsProvider::from_workspace(
-              &self.options.start_dir.workspace,
+              &self.options.workspace(),
             )),
             npm_system_info: self.options.npm_system_info(),
             npmrc: self.options.npmrc().clone(),
@@ -513,8 +511,7 @@ impl CliFactory {
               .unstable_bare_node_builtins(),
             maybe_jsx_import_source_config: self
               .options
-              .start_dir
-              .workspace
+              .workspace()
               .to_maybe_jsx_import_source_config()?,
             maybe_vendor_dir: self.options.vendor_dir_path(),
           })))
