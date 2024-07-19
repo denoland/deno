@@ -2388,14 +2388,15 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.91.3"
+version = "0.91.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fecac09050c0bc7d19a0e47d3ce3cfc2e21780fb30b5081a5042fd49c1b020a2"
+checksum = "23c6adeee0b91badb654e52efe670fa1f0c6dcacbabdd519e48c8c749e8ce5cd"
 dependencies = [
  "anyhow",
  "deno_ast",
  "dprint-core",
  "dprint-core-macros",
+ "dprint-swc-ext",
  "percent-encoding",
  "rustc-hash",
  "serde",
@@ -2403,9 +2404,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-swc-ext"
-version = "0.17.0"
+version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a0d5b63e52434314e3d767c463b1f68c467c31e61d279bc019227016c44e535"
+checksum = "2b909f9f9b22a6265839887544dce97b0b8e2b2635abf622f45613deb3de63e0"
 dependencies = [
  "allocator-api2",
  "bumpalo",
