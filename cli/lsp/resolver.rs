@@ -115,7 +115,7 @@ impl LspScopeResolver {
     )));
     let npm_graph_resolver = graph_resolver.create_graph_npm_resolver();
     let graph_imports = config_data
-      .and_then(|d| d.workspace_dir.workspace.to_compiler_option_types().ok())
+      .and_then(|d| d.member_dir.workspace.to_compiler_option_types().ok())
       .map(|imports| {
         Arc::new(
           imports
@@ -513,7 +513,7 @@ fn create_graph_resolver(
   npm_resolver: Option<&Arc<dyn CliNpmResolver>>,
   node_resolver: Option<&Arc<CliNodeResolver>>,
 ) -> Arc<CliGraphResolver> {
-  let workspace = config_data.map(|d| &d.workspace_dir.workspace);
+  let workspace = config_data.map(|d| &d.member_dir.workspace);
   let unstable_sloppy_imports =
     workspace.is_some_and(|dir| dir.has_unstable("sloppy-imports"));
   Arc::new(CliGraphResolver::new(CliGraphResolverOptions {

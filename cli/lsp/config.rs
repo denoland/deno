@@ -1111,7 +1111,7 @@ pub enum ConfigWatchedFileType {
 #[derive(Debug, Clone)]
 pub struct ConfigData {
   pub scope: Arc<ModuleSpecifier>,
-  pub workspace_dir: Arc<WorkspaceDirectory>,
+  pub member_dir: Arc<WorkspaceDirectory>,
   pub fmt_config: Arc<FmtConfig>,
   pub lint_config: Arc<LintConfig>,
   pub test_config: Arc<TestConfig>,
@@ -1173,19 +1173,18 @@ impl ConfigData {
       Err(()) => Err(anyhow!("Scope '{}' was not a directory path.", scope)),
     };
     match discover_result {
-      Ok(workspace_dir) => {
-        Self::load_inner(workspace_dir, scope, settings, Some(file_fetcher))
-          .await
+      Ok(member_dir) => {
+        Self::load_inner(member_dir, scope, settings, Some(file_fetcher)).await
       }
       Err(err) => {
         lsp_warn!("  Couldn't open workspace \"{}\": {}", scope.as_str(), err);
-        let workspace_dir =
+        let member_dir =
           Arc::new(WorkspaceDirectory::empty(WorkspaceDirectoryEmptyOptions {
             root_dir: scope.clone(),
             use_vendor_dir: VendorEnablement::Disable,
           }));
         let mut data = Self::load_inner(
-          workspace_dir,
+          member_dir,
           scope.clone(),
           settings,
           Some(file_fetcher),
@@ -1227,7 +1226,7 @@ impl ConfigData {
   }
 
   async fn load_inner(
-    workspace_dir: Arc<WorkspaceDirectory>,
+    member_dir: Arc<WorkspaceDirectory>,
     scope: Arc<ModuleSpecifier>,
     settings: &Settings,
     file_fetcher: Option<&Arc<FileFetcher>>,
@@ -1249,7 +1248,7 @@ impl ConfigData {
         watched_files.entry(specifier).or_insert(file_type);
       };
 
-    if let Some(deno_json) = workspace_dir.maybe_deno_json() {
+    if let Some(deno_json) = member_dir.maybe_deno_json() {
       lsp_log!(
         "  Resolved Deno configuration file: \"{}\"",
         deno_json.specifier
@@ -1261,7 +1260,7 @@ impl ConfigData {
       );
     }
 
-    if let Some(pkg_json) = workspace_dir.maybe_pkg_json() {
+    if let Some(pkg_json) = member_dir.maybe_pkg_json() {
       lsp_log!("  Resolved package.json: \"{}\"", pkg_json.specifier());
 
       add_watched_file(
@@ -1271,7 +1270,7 @@ impl ConfigData {
     }
 
     // todo(dsherret): cache this so we don't load this so many times
-    let npmrc = discover_npmrc_from_workspace(&workspace_dir.workspace)
+    let npmrc = discover_npmrc_from_workspace(&member_dir.workspace)
       .inspect(|(_, path)| {
         if let Some(path) = path {
           lsp_log!("  Resolved .npmrc: \"{}\"", path.display());
@@ -1289,8 +1288,8 @@ impl ConfigData {
     let default_file_pattern_base =
       scope.to_file_path().unwrap_or_else(|_| PathBuf::from("/"));
     let fmt_config = Arc::new(
-      workspace_dir
-        .to_fmt_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
+      member_dir
+        .to_fmt_config(FilePatterns::new_with_base(member_dir.dir_path()))
         .inspect_err(|err| {
           lsp_warn!("  Couldn't read formatter configuration: {}", err)
         })
@@ -1300,8 +1299,8 @@ impl ConfigData {
         }),
     );
     let lint_config = Arc::new(
-      workspace_dir
-        .to_lint_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
+      member_dir
+        .to_lint_config(FilePatterns::new_with_base(member_dir.dir_path()))
         .inspect_err(|err| {
           lsp_warn!("  Couldn't read lint configuration: {}", err)
         })
@@ -1312,11 +1311,11 @@ impl ConfigData {
     );
     let lint_rules = Arc::new(get_configured_rules(
       lint_config.options.rules.clone(),
-      workspace_dir.maybe_deno_json().map(|c| c.as_ref()),
+      member_dir.maybe_deno_json().map(|c| c.as_ref()),
     ));
     let test_config = Arc::new(
-      workspace_dir
-        .to_test_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
+      member_dir
+        .to_test_config(FilePatterns::new_with_base(member_dir.dir_path()))
         .inspect_err(|err| {
           lsp_warn!("  Couldn't read test configuration: {}", err)
         })
@@ -1326,7 +1325,7 @@ impl ConfigData {
         }),
     );
     let exclude_files = Arc::new(
-      workspace_dir
+      member_dir
         .workspace
         .resolve_config_excludes()
         .inspect_err(|err| {
@@ -1337,7 +1336,7 @@ impl ConfigData {
     );
 
     let ts_config = LspTsConfig::new(
-      workspace_dir.workspace.root_deno_json().map(|c| c.as_ref()),
+      member_dir.workspace.root_deno_json().map(|c| c.as_ref()),
     );
 
     let deno_lint_config =
@@ -1362,10 +1361,9 @@ impl ConfigData {
         }
       };
 
-    let vendor_dir = workspace_dir.workspace.vendor_dir_path().cloned();
+    let vendor_dir = member_dir.workspace.vendor_dir_path().cloned();
     // todo(dsherret): add caching so we don't load this so many times
-    let lockfile =
-      resolve_lockfile_from_workspace(&workspace_dir).map(Arc::new);
+    let lockfile = resolve_lockfile_from_workspace(&member_dir).map(Arc::new);
     if let Some(lockfile) = &lockfile {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile.filename)
       {
@@ -1374,18 +1372,18 @@ impl ConfigData {
     }
 
     let byonm = std::env::var("DENO_UNSTABLE_BYONM").is_ok()
-      || workspace_dir.workspace.has_unstable("byonm")
+      || member_dir.workspace.has_unstable("byonm")
       || (*DENO_FUTURE
-        && workspace_dir.workspace.package_jsons().next().is_some()
-        && workspace_dir.workspace.node_modules_dir().is_none());
+        && member_dir.workspace.package_jsons().next().is_some()
+        && member_dir.workspace.node_modules_dir().is_none());
     if byonm {
       lsp_log!("  Enabled 'bring your own node_modules'.");
     }
     let node_modules_dir =
-      resolve_node_modules_dir(&workspace_dir.workspace, byonm);
+      resolve_node_modules_dir(&member_dir.workspace, byonm);
 
     // Mark the import map as a watched file
-    if let Some(import_map_specifier) = workspace_dir
+    if let Some(import_map_specifier) = member_dir
       .workspace
       .to_import_map_specifier()
       .ok()
@@ -1404,11 +1402,11 @@ impl ConfigData {
       PackageJsonDepResolution::Enabled
     };
     let mut import_map_from_settings = {
-      let is_config_import_map = workspace_dir
+      let is_config_import_map = member_dir
         .maybe_deno_json()
         .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
         .or_else(|| {
-          workspace_dir
+          member_dir
             .workspace
             .root_deno_json()
             .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
@@ -1426,11 +1424,11 @@ impl ConfigData {
     };
 
     let specified_import_map = {
-      let is_config_import_map = workspace_dir
+      let is_config_import_map = member_dir
         .maybe_deno_json()
         .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
         .or_else(|| {
-          workspace_dir
+          member_dir
             .workspace
             .root_deno_json()
             .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
@@ -1480,7 +1478,7 @@ impl ConfigData {
       }
     };
     let resolver = deno_core::unsync::spawn({
-      let workspace = workspace_dir.clone();
+      let workspace = member_dir.clone();
       let file_fetcher = file_fetcher.cloned();
       async move {
         workspace
@@ -1518,7 +1516,7 @@ impl ConfigData {
       WorkspaceResolver::new_raw(
         scope.clone(),
         None,
-        workspace_dir.workspace.package_jsons().cloned().collect(),
+        member_dir.workspace.package_jsons().cloned().collect(),
         pkg_json_dep_resolution,
       )
     });
@@ -1536,7 +1534,7 @@ impl ConfigData {
 
     ConfigData {
       scope,
-      workspace_dir,
+      member_dir,
       resolver: Arc::new(resolver),
       fmt_config,
       lint_config,
@@ -1558,13 +1556,13 @@ impl ConfigData {
   pub fn maybe_deno_json(
     &self,
   ) -> Option<&Arc<deno_config::deno_json::ConfigFile>> {
-    self.workspace_dir.maybe_deno_json()
+    self.member_dir.maybe_deno_json()
   }
 
   pub fn maybe_pkg_json(
     &self,
   ) -> Option<&Arc<deno_config::package_json::PackageJson>> {
-    self.workspace_dir.maybe_pkg_json()
+    self.member_dir.maybe_pkg_json()
   }
 }
 
@@ -1605,7 +1603,7 @@ impl ConfigTree {
   ) -> Option<&WorkspaceDirectory> {
     self
       .data_for_specifier(specifier)
-      .map(|d| d.workspace_dir.as_ref())
+      .map(|d| d.member_dir.as_ref())
   }
 
   pub fn config_files(&self) -> Vec<&Arc<ConfigFile>> {
@@ -1733,7 +1731,7 @@ impl ConfigTree {
         .await,
       );
       scopes.insert(scope, data.clone());
-      for (member_scope, _) in data.workspace_dir.workspace.config_folders() {
+      for (member_scope, _) in data.member_dir.workspace.config_folders() {
         if scopes.contains_key(member_scope) {
           continue;
         }
