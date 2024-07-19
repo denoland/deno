@@ -115,7 +115,7 @@ impl LspScopeResolver {
     )));
     let npm_graph_resolver = graph_resolver.create_graph_npm_resolver();
     let graph_imports = config_data
-      .and_then(|d| d.workspace.to_compiler_option_types().ok())
+      .and_then(|d| d.workspace_ctx.workspace.to_compiler_option_types().ok())
       .map(|imports| {
         Arc::new(
           imports
@@ -513,9 +513,9 @@ fn create_graph_resolver(
   npm_resolver: Option<&Arc<dyn CliNpmResolver>>,
   node_resolver: Option<&Arc<CliNodeResolver>>,
 ) -> Arc<CliGraphResolver> {
-  let workspace = config_data.map(|d| &d.workspace);
-  let unstable_sloppy_imports =
-    workspace.is_some_and(|w| w.has_unstable("sloppy-imports"));
+  let workspace_ctx = config_data.map(|d| &d.workspace_ctx);
+  let unstable_sloppy_imports = workspace_ctx
+    .is_some_and(|dir| dir.workspace.has_unstable("sloppy-imports"));
   Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
     node_resolver: node_resolver.cloned(),
     npm_resolver: npm_resolver.cloned(),
@@ -530,11 +530,16 @@ fn create_graph_resolver(
         ))
       },
     ),
-    maybe_jsx_import_source_config: workspace
-      .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten()),
+    maybe_jsx_import_source_config: workspace_ctx.and_then(|dir| {
+      dir
+        .workspace
+        .to_maybe_jsx_import_source_config()
+        .ok()
+        .flatten()
+    }),
     maybe_vendor_dir: config_data.and_then(|d| d.vendor_dir.as_ref()),
-    bare_node_builtins_enabled: workspace
-      .is_some_and(|cf| cf.has_unstable("bare-node-builtins")),
+    bare_node_builtins_enabled: workspace_ctx
+      .is_some_and(|dir| dir.workspace.has_unstable("bare-node-builtins")),
     sloppy_imports_resolver: unstable_sloppy_imports.then(|| {
       SloppyImportsResolver::new_without_stat_cache(Arc::new(deno_fs::RealFs))
     }),

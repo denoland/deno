@@ -52,7 +52,7 @@ use crate::cache::IncrementalCache;
 pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
   if fmt_flags.is_stdin() {
     let cli_options = CliOptions::from_flags(flags)?;
-    let start_ctx = cli_options.workspace.resolve_start_ctx();
+    let start_ctx = &cli_options.workspace_ctx.start_ctx;
     let fmt_config = start_ctx
       .to_fmt_config(FilePatterns::new_with_base(start_ctx.dir_path()))?;
     let fmt_options = FmtOptions::resolve(fmt_config, &fmt_flags);

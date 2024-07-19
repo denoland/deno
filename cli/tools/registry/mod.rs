@@ -82,9 +82,9 @@ pub async fn publish(
 
   let directory_path = cli_factory.cli_options().initial_cwd();
   let cli_options = cli_factory.cli_options();
-  let publish_configs = cli_options.workspace.jsr_packages_for_publish();
+  let publish_configs = cli_options.workspace_ctx.jsr_packages_for_publish();
   if publish_configs.is_empty() {
-    match cli_options.workspace.resolve_start_ctx().maybe_deno_json() {
+    match cli_options.workspace_ctx.start_ctx.maybe_deno_json() {
       Some(deno_json) => {
         debug_assert!(!deno_json.is_package());
         bail!(

@@ -54,10 +54,10 @@ use crate::worker::CliMainWorkerOptions;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
+use deno_config::deno_json::ConfigFile;
 use deno_config::package_json::PackageJsonDepValue;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceResolver;
-use deno_config::ConfigFile;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::FeatureChecker;
@@ -341,7 +341,9 @@ impl CliFactory {
 
       // initialize the lockfile with the workspace's configuration
       if let Some(lockfile) = &maybe_lockfile {
-        let (root_url, root_folder) = self.options.workspace.root_folder();
+        let root_url = self.options.workspace_ctx.workspace.root_dir();
+        let root_folder =
+          self.options.workspace_ctx.workspace.root_folder_configs();
         let config = deno_lockfile::WorkspaceConfig {
           root: WorkspaceMemberConfig {
             package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
@@ -349,6 +351,7 @@ impl CliFactory {
           },
           members: self
             .options
+            .workspace_ctx
             .workspace
             .config_folders()
             .iter()
@@ -440,7 +443,7 @@ impl CliFactory {
             text_only_progress_bar: self.text_only_progress_bar().clone(),
             maybe_node_modules_path: self.options.node_modules_dir_path().cloned(),
             package_json_deps_provider: Arc::new(PackageJsonInstallDepsProvider::from_workspace(
-              &self.options.workspace,
+              &self.options.workspace_ctx.workspace,
             )),
             npm_system_info: self.options.npm_system_info(),
             npmrc: self.options.npmrc().clone(),
@@ -510,6 +513,7 @@ impl CliFactory {
               .unstable_bare_node_builtins(),
             maybe_jsx_import_source_config: self
               .options
+              .workspace_ctx
               .workspace
               .to_maybe_jsx_import_source_config()?,
             maybe_vendor_dir: self.options.vendor_dir_path(),

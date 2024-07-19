@@ -12,12 +12,13 @@ use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceContext;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
 use deno_config::workspace::WorkspaceEmptyOptions;
+use deno_config::workspace::WorkspaceLintConfig;
 use deno_config::workspace::WorkspaceMemberContext;
 use deno_config::workspace::WorkspaceResolver;
-use deno_config::WorkspaceLintConfig;
 use deno_core::normalize_path;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
@@ -32,17 +33,17 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::resolve_import_map_value_from_specifier;
 
+pub use deno_config::deno_json::BenchConfig;
+pub use deno_config::deno_json::ConfigFile;
+pub use deno_config::deno_json::FmtOptionsConfig;
+pub use deno_config::deno_json::JsxImportSourceConfig;
+pub use deno_config::deno_json::LintRulesConfig;
+pub use deno_config::deno_json::ProseWrap;
+pub use deno_config::deno_json::TsConfig;
+pub use deno_config::deno_json::TsConfigForEmit;
+pub use deno_config::deno_json::TsConfigType;
+pub use deno_config::deno_json::TsTypeLib;
 pub use deno_config::glob::FilePatterns;
-pub use deno_config::BenchConfig;
-pub use deno_config::ConfigFile;
-pub use deno_config::FmtOptionsConfig;
-pub use deno_config::JsxImportSourceConfig;
-pub use deno_config::LintRulesConfig;
-pub use deno_config::ProseWrap;
-pub use deno_config::TsConfig;
-pub use deno_config::TsConfigForEmit;
-pub use deno_config::TsConfigType;
-pub use deno_config::TsTypeLib;
 pub use flags::*;
 pub use lockfile::CliLockfile;
 pub use package_json::PackageJsonInstallDepsProvider;
@@ -83,9 +84,9 @@ use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
 
-use deno_config::FmtConfig;
-use deno_config::LintConfig;
-use deno_config::TestConfig;
+use deno_config::deno_json::FmtConfig;
+use deno_config::deno_json::LintConfig;
+use deno_config::deno_json::TestConfig;
 
 pub fn npm_registry_url() -> &'static Url {
   static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
@@ -159,9 +160,9 @@ pub fn jsr_api_url() -> &'static Url {
 }
 
 pub fn ts_config_to_transpile_and_emit_options(
-  config: deno_config::TsConfig,
+  config: deno_config::deno_json::TsConfig,
 ) -> Result<(deno_ast::TranspileOptions, deno_ast::EmitOptions), AnyError> {
-  let options: deno_config::EmitConfigOptions =
+  let options: deno_config::deno_json::EmitConfigOptions =
     serde_json::from_value(config.0)
       .context("Failed to parse compilerOptions")?;
   let imports_not_used_as_values =
@@ -501,9 +502,9 @@ fn resolve_lint_rules_options(
 }
 
 pub fn discover_npmrc_from_workspace(
-  workspace: &Workspace,
+  workspace_ctx: &WorkspaceContext,
 ) -> Result<(Arc<ResolvedNpmRc>, Option<PathBuf>), AnyError> {
-  let root_folder = workspace.root_folder().1;
+  let root_folder = workspace_ctx.workspace.root_folder_configs();
   discover_npmrc(
     root_folder.pkg_json.as_ref().map(|p| p.path.clone()),
     root_folder.deno_json.as_ref().and_then(|cf| {
@@ -769,7 +770,7 @@ pub struct CliOptions {
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   overrides: CliOptionOverrides,
-  pub workspace: Arc<Workspace>,
+  pub workspace_ctx: Arc<WorkspaceContext>,
   pub disable_deprecated_api_warning: bool,
   pub verbose_deprecated_api_warning: bool,
 }
@@ -780,7 +781,7 @@ impl CliOptions {
     initial_cwd: PathBuf,
     maybe_lockfile: Option<Arc<CliLockfile>>,
     npmrc: Arc<ResolvedNpmRc>,
-    workspace: Arc<Workspace>,
+    workspace_ctx: Arc<WorkspaceContext>,
     force_global_cache: bool,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
@@ -801,7 +802,7 @@ impl CliOptions {
     }
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
-    let root_folder = workspace.root_folder().1;
+    let root_folder = workspace_ctx.workspace.root_folder_configs();
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
@@ -826,7 +827,7 @@ impl CliOptions {
       npmrc,
       maybe_node_modules_folder,
       overrides: Default::default(),
-      workspace,
+      workspace_ctx,
       disable_deprecated_api_warning,
       verbose_deprecated_api_warning,
     })
@@ -847,14 +848,13 @@ impl CliOptions {
         } else {
           &[]
         };
-      let config_parse_options = deno_config::ConfigParseOptions {
+      let config_parse_options = deno_config::deno_json::ConfigParseOptions {
         include_task_comments: matches!(
           flags.subcommand,
           DenoSubcommand::Task(..)
         ),
       };
-      let discover_pkg_json = flags.config_flag
-        != deno_config::ConfigFlag::Disabled
+      let discover_pkg_json = flags.config_flag != ConfigFlag::Disabled
         && !flags.no_npm
         && !has_flag_env_var("DENO_NO_PACKAGE_JSON");
       if !discover_pkg_json {
@@ -866,6 +866,7 @@ impl CliOptions {
         pkg_json_cache: Some(
           &deno_runtime::deno_node::PackageJsonThreadLocalCache,
         ),
+        workspace_cache: None,
         config_parse_options,
         additional_config_file_names,
         discover_pkg_json,
@@ -880,36 +881,34 @@ impl CliOptions {
         .unwrap_or(VendorEnablement::Disable),
     };
 
-    let workspace = match &flags.config_flag {
-      deno_config::ConfigFlag::Discover => {
+    let workspace_ctx = match &flags.config_flag {
+      ConfigFlag::Discover => {
         if let Some(start_paths) = flags.config_path_args(&initial_cwd) {
-          Workspace::discover(
+          WorkspaceContext::discover(
             WorkspaceDiscoverStart::Paths(&start_paths),
             &resolve_workspace_discover_options(),
           )?
         } else {
-          Workspace::empty(resolve_empty_options())
+          WorkspaceContext::empty(resolve_empty_options())
         }
       }
-      deno_config::ConfigFlag::Path(path) => {
+      ConfigFlag::Path(path) => {
         let config_path = normalize_path(initial_cwd.join(path));
-        Workspace::discover(
+        WorkspaceContext::discover(
           WorkspaceDiscoverStart::ConfigFile(&config_path),
           &resolve_workspace_discover_options(),
         )?
       }
-      deno_config::ConfigFlag::Disabled => {
-        Workspace::empty(resolve_empty_options())
-      }
+      ConfigFlag::Disabled => WorkspaceContext::empty(resolve_empty_options()),
     };
 
-    for diagnostic in workspace.diagnostics() {
+    for diagnostic in workspace_ctx.workspace.diagnostics() {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
-    let (npmrc, _) = discover_npmrc_from_workspace(&workspace)?;
+    let (npmrc, _) = discover_npmrc_from_workspace(&workspace_ctx)?;
 
-    let maybe_lock_file = CliLockfile::discover(&flags, &workspace)?;
+    let maybe_lock_file = CliLockfile::discover(&flags, &workspace_ctx)?;
 
     log::debug!("Finished config loading.");
 
@@ -918,7 +917,7 @@ impl CliOptions {
       initial_cwd,
       maybe_lock_file.map(Arc::new),
       npmrc,
-      Arc::new(workspace),
+      Arc::new(workspace_ctx),
       false,
     )
   }
@@ -1013,7 +1012,11 @@ impl CliOptions {
       Some(maybe_url) => Ok(maybe_url),
       None => resolve_import_map_specifier(
         self.flags.import_map_path.as_deref(),
-        self.workspace.root_folder().1.deno_json.as_deref(),
+        self
+          .workspace_ctx
+          .workspace
+          .root_deno_json()
+          .map(|c| c.as_ref()),
         &self.initial_cwd,
       ),
     }
@@ -1034,9 +1037,9 @@ impl CliOptions {
       // use a fake empty import map
       Some(deno_config::workspace::SpecifiedImportMap {
         base_url: self
+          .workspace_ctx
           .workspace
-          .root_folder()
-          .0
+          .root_dir()
           .join("import_map.json")
           .unwrap(),
         value: serde_json::Value::Object(Default::default()),
@@ -1062,7 +1065,7 @@ impl CliOptions {
     };
     Ok(
       self
-        .workspace
+        .workspace_ctx
         .create_resolver(
           CreateResolverOptions {
             pkg_json_dep_resolution,
@@ -1226,7 +1229,7 @@ impl CliOptions {
       maybe_node_modules_folder: Some(path),
       npmrc: self.npmrc.clone(),
       maybe_lockfile: self.maybe_lockfile.clone(),
-      workspace: self.workspace.clone(),
+      workspace_ctx: self.workspace_ctx.clone(),
       overrides: self.overrides.clone(),
       disable_deprecated_api_warning: self.disable_deprecated_api_warning,
       verbose_deprecated_api_warning: self.verbose_deprecated_api_warning,
@@ -1237,11 +1240,11 @@ impl CliOptions {
     self
       .flags
       .node_modules_dir
-      .or_else(|| self.workspace.node_modules_dir())
+      .or_else(|| self.workspace_ctx.workspace.node_modules_dir())
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
-    self.workspace.vendor_dir_path()
+    self.workspace_ctx.workspace.vendor_dir_path()
   }
 
   pub fn resolve_root_cert_store_provider(
@@ -1258,7 +1261,10 @@ impl CliOptions {
     &self,
     config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, AnyError> {
-    let result = self.workspace.resolve_ts_config_for_emit(config_type);
+    let result = self
+      .workspace_ctx
+      .workspace
+      .resolve_ts_config_for_emit(config_type);
 
     match result {
       Ok(mut ts_config_for_emit) => {
@@ -1300,10 +1306,8 @@ impl CliOptions {
   pub fn to_compiler_option_types(
     &self,
   ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
-    self
-      .workspace
-      .to_compiler_option_types()
-      .map(|maybe_imports| {
+    self.workspace_ctx.workspace.to_compiler_option_types().map(
+      |maybe_imports| {
         maybe_imports
           .into_iter()
           .map(|(referrer, imports)| deno_graph::ReferrerImports {
@@ -1311,7 +1315,8 @@ impl CliOptions {
             imports,
           })
           .collect()
-      })
+      },
+    )
   }
 
   pub fn npmrc(&self) -> &Arc<ResolvedNpmRc> {
@@ -1325,6 +1330,7 @@ impl CliOptions {
     let cli_arg_patterns =
       fmt_flags.files.as_file_patterns(self.initial_cwd())?;
     let member_configs = self
+      .workspace_ctx
       .workspace
       .resolve_fmt_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_configs.len());
@@ -1339,7 +1345,7 @@ impl CliOptions {
     &self,
     lint_flags: &LintFlags,
   ) -> Result<WorkspaceLintOptions, AnyError> {
-    let lint_config = self.workspace.to_lint_config()?;
+    let lint_config = self.workspace_ctx.workspace.to_lint_config()?;
     WorkspaceLintOptions::resolve(&lint_config, lint_flags)
   }
 
@@ -1350,6 +1356,7 @@ impl CliOptions {
     let cli_arg_patterns =
       lint_flags.files.as_file_patterns(self.initial_cwd())?;
     let member_configs = self
+      .workspace_ctx
       .workspace
       .resolve_lint_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_configs.len());
@@ -1395,6 +1402,7 @@ impl CliOptions {
     let cli_arg_patterns =
       test_flags.files.as_file_patterns(self.initial_cwd())?;
     let member_ctxs = self
+      .workspace_ctx
       .workspace
       .resolve_test_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_ctxs.len());
@@ -1419,6 +1427,7 @@ impl CliOptions {
     let cli_arg_patterns =
       bench_flags.files.as_file_patterns(self.initial_cwd())?;
     let member_ctxs = self
+      .workspace_ctx
       .workspace
       .resolve_bench_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_ctxs.len());
@@ -1433,6 +1442,7 @@ impl CliOptions {
     &self,
   ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
     self
+      .workspace_ctx
       .workspace
       .jsr_packages()
       .into_iter()
@@ -1454,7 +1464,7 @@ impl CliOptions {
   }
 
   pub fn check_js(&self) -> bool {
-    self.workspace.check_js()
+    self.workspace_ctx.workspace.check_js()
   }
 
   pub fn coverage_dir(&self) -> Option<String> {
@@ -1541,7 +1551,7 @@ impl CliOptions {
   }
 
   pub fn no_config(&self) -> bool {
-    self.flags.config_flag == deno_config::ConfigFlag::Disabled
+    self.flags.config_flag == ConfigFlag::Disabled
   }
 
   pub fn permission_flags(&self) -> &PermissionFlags {
@@ -1601,13 +1611,17 @@ impl CliOptions {
 
   pub fn unstable_bare_node_builtins(&self) -> bool {
     self.flags.unstable_config.bare_node_builtins
-      || self.workspace.has_unstable("bare-node-builtins")
+      || self
+        .workspace_ctx
+        .workspace
+        .has_unstable("bare-node-builtins")
   }
 
   pub fn use_byonm(&self) -> bool {
     if self.enable_future_features()
       && self.node_modules_dir_enablement().is_none()
       && self
+        .workspace_ctx
         .workspace
         .config_folders()
         .values()
@@ -1622,16 +1636,17 @@ impl CliOptions {
         .as_ref()
         .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
         .unwrap_or(false)
-      || self.workspace.has_unstable("byonm")
+      || self.workspace_ctx.workspace.has_unstable("byonm")
   }
 
   pub fn unstable_sloppy_imports(&self) -> bool {
     self.flags.unstable_config.sloppy_imports
-      || self.workspace.has_unstable("sloppy-imports")
+      || self.workspace_ctx.workspace.has_unstable("sloppy-imports")
   }
 
   pub fn unstable_features(&self) -> Vec<String> {
-    let mut from_config_file = self.workspace.unstable_features().to_vec();
+    let mut from_config_file =
+      self.workspace_ctx.workspace.unstable_features().to_vec();
 
     self
       .flags
@@ -1713,7 +1728,7 @@ impl CliOptions {
       full_paths.push(import_map_path);
     }
 
-    for (_, folder) in self.workspace.config_folders() {
+    for (_, folder) in self.workspace_ctx.workspace.config_folders() {
       if let Some(deno_json) = &folder.deno_json {
         if deno_json.specifier.scheme() == "file" {
           if let Ok(path) = deno_json.specifier.to_file_path() {
@@ -1815,8 +1830,8 @@ impl StorageKeyResolver {
       // otherwise we will use the path to the config file or None to
       // fall back to using the main module's path
       options
-        .workspace
-        .resolve_start_ctx()
+        .workspace_ctx
+        .start_ctx
         .maybe_deno_json()
         .map(|config_file| Some(config_file.specifier.to_string()))
     })
@@ -1912,7 +1927,7 @@ mod test {
     let config_file = ConfigFile::new(
       config_text,
       config_specifier,
-      &deno_config::ConfigParseOptions::default(),
+      &deno_config::deno_json::ConfigParseOptions::default(),
     )
     .unwrap();
     let actual = resolve_import_map_specifier(
@@ -1936,7 +1951,7 @@ mod test {
     let config_file = ConfigFile::new(
       config_text,
       config_specifier,
-      &deno_config::ConfigParseOptions::default(),
+      &deno_config::deno_json::ConfigParseOptions::default(),
     )
     .unwrap();
     let actual = resolve_import_map_specifier(

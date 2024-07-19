@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceContext;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -91,7 +92,7 @@ impl CliLockfile {
 
   pub fn discover(
     flags: &Flags,
-    workspace: &Workspace,
+    workspace_ctx: &WorkspaceContext,
   ) -> Result<Option<CliLockfile>, AnyError> {
     if flags.no_lock
       || matches!(
@@ -107,7 +108,7 @@ impl CliLockfile {
 
     let filename = match flags.lock {
       Some(ref lock) => PathBuf::from(lock),
-      None => match workspace.resolve_lockfile_path()? {
+      None => match workspace_ctx.workspace.resolve_lockfile_path()? {
         Some(path) => path,
         None => return Ok(None),
       },

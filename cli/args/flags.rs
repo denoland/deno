@@ -11,7 +11,6 @@ use clap::Command;
 use clap::ValueHint;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
-use deno_config::ConfigFlag;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -41,6 +40,14 @@ use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
 use super::DENO_FUTURE;
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum ConfigFlag {
+  #[default]
+  Discover,
+  Path(String),
+  Disabled,
+}
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FileFlags {

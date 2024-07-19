@@ -23,6 +23,7 @@ use crate::resolver::SloppyImportsResolver;
 use crate::util::path::to_percent_decoded_str;
 
 use deno_ast::MediaType;
+use deno_config::deno_json::LintConfig;
 use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -39,6 +40,7 @@ use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_lint::rules::LintRule;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
@@ -827,11 +829,8 @@ fn generate_lint_diagnostics(
       })
       .unwrap_or_else(|| {
         (
-          Arc::new(deno_config::LintConfig {
-            options: Default::default(),
-            files: FilePatterns::new_with_base(PathBuf::from("/")),
-          }),
-          deno_lint::linter::LintConfig {
+          Arc::new(LintConfig::new_with_base(PathBuf::from("/"))),
+          DenoLintConfig {
             default_jsx_factory: None,
             default_jsx_fragment_factory: None,
           },
@@ -856,8 +855,8 @@ fn generate_lint_diagnostics(
 
 fn generate_document_lint_diagnostics(
   document: &Document,
-  lint_config: &deno_config::LintConfig,
-  deno_lint_config: deno_lint::linter::LintConfig,
+  lint_config: &LintConfig,
+  deno_lint_config: DenoLintConfig,
   lint_rules: Vec<&'static dyn LintRule>,
 ) -> Vec<lsp::Diagnostic> {
   if !lint_config.files.matches_specifier(document.specifier()) {
@@ -1611,7 +1610,6 @@ fn generate_deno_diagnostics(
 
 #[cfg(test)]
 mod tests {
-
   use super::*;
   use crate::lsp::cache::LspCache;
   use crate::lsp::config::Config;
@@ -1621,7 +1619,8 @@ mod tests {
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
   use crate::lsp::resolver::LspResolver;
-  use deno_config::ConfigFile;
+
+  use deno_config::deno_json::ConfigFile;
   use pretty_assertions::assert_eq;
   use std::sync::Arc;
   use test_util::TempDir;
@@ -1661,7 +1660,7 @@ mod tests {
       let config_file = ConfigFile::new(
         json_string,
         base_url,
-        &deno_config::ConfigParseOptions::default(),
+        &deno_config::deno_json::ConfigParseOptions::default(),
       )
       .unwrap();
       config.tree.inject_config_file(config_file).await;

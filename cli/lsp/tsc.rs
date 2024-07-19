@@ -5407,13 +5407,13 @@ mod tests {
     config
       .tree
       .inject_config_file(
-        deno_config::ConfigFile::new(
+        deno_config::deno_json::ConfigFile::new(
           &json!({
             "compilerOptions": ts_config,
           })
           .to_string(),
           temp_dir.uri().join("deno.json").unwrap(),
-          &deno_config::ConfigParseOptions::default(),
+          &Default::default(),
         )
         .unwrap(),
       )
