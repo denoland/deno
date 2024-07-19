@@ -2,7 +2,7 @@
 
 use base64::Engine;
 use deno_ast::MediaType;
-use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -3556,27 +3556,30 @@ impl Inner {
     let initial_cwd = config_data
       .and_then(|d| d.scope.to_file_path().ok())
       .unwrap_or_else(|| self.initial_cwd.clone());
-    // todo: we need a way to convert config data to a Workspace
-    let workspace = Arc::new(Workspace::discover(
-      deno_config::workspace::WorkspaceDiscoverStart::Paths(&[
-        initial_cwd.clone()
-      ]),
-      &WorkspaceDiscoverOptions {
-        fs: &DenoConfigFsAdapter::new(&deno_runtime::deno_fs::RealFs),
-        deno_json_cache: None,
-        pkg_json_cache: None,
-        config_parse_options: deno_config::ConfigParseOptions {
-          include_task_comments: false,
+    let workspace = match config_data {
+      Some(d) => d.member_dir.clone(),
+      None => Arc::new(WorkspaceDirectory::discover(
+        deno_config::workspace::WorkspaceDiscoverStart::Paths(&[
+          initial_cwd.clone()
+        ]),
+        &WorkspaceDiscoverOptions {
+          fs: &DenoConfigFsAdapter::new(&deno_runtime::deno_fs::RealFs),
+          deno_json_cache: None,
+          pkg_json_cache: None,
+          workspace_cache: None,
+          config_parse_options: deno_config::deno_json::ConfigParseOptions {
+            include_task_comments: false,
+          },
+          additional_config_file_names: &[],
+          discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
+          maybe_vendor_override: if force_global_cache {
+            Some(deno_config::workspace::VendorEnablement::Disable)
+          } else {
+            None
+          },
         },
-        additional_config_file_names: &[],
-        discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
-        maybe_vendor_override: if force_global_cache {
-          Some(deno_config::workspace::VendorEnablement::Disable)
-        } else {
-          None
-        },
-      },
-    )?);
+      )?),
+    };
     let cli_options = CliOptions::new(
       Flags {
         cache_path: Some(self.cache.deno_dir().root.clone()),
