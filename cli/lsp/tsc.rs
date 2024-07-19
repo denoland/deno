@@ -5012,7 +5012,7 @@ impl UserPreferences {
       // Only use workspace settings for quote style if there's no `deno.json`.
       quote_preference: if config
         .tree
-        .workspace_member_ctx_for_specifier(specifier)
+        .workspace_dir_for_specifier(specifier)
         .is_some_and(|ctx| ctx.maybe_deno_json().is_some())
       {
         base_preferences.quote_preference
@@ -5407,13 +5407,13 @@ mod tests {
     config
       .tree
       .inject_config_file(
-        deno_config::ConfigFile::new(
+        deno_config::deno_json::ConfigFile::new(
           &json!({
             "compilerOptions": ts_config,
           })
           .to_string(),
           temp_dir.uri().join("deno.json").unwrap(),
-          &deno_config::ConfigParseOptions::default(),
+          &Default::default(),
         )
         .unwrap(),
       )
