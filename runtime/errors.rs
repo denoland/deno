@@ -13,7 +13,6 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url;
 use deno_core::ModuleResolutionError;
-use deno_fetch::reqwest;
 use std::env;
 use std::error::Error;
 use std::io;
@@ -101,27 +100,6 @@ fn get_regex_error_class(error: &regex::Error) -> &'static str {
   }
 }
 
-fn get_request_error_class(error: &reqwest::Error) -> &'static str {
-  error
-    .source()
-    .and_then(|inner_err| {
-      (inner_err
-        .downcast_ref::<io::Error>()
-        .map(get_io_error_class))
-      .or_else(|| {
-        inner_err
-          .downcast_ref::<serde_json::error::Error>()
-          .map(get_serde_json_error_class)
-      })
-      .or_else(|| {
-        inner_err
-          .downcast_ref::<url::ParseError>()
-          .map(get_url_parse_error_class)
-      })
-    })
-    .unwrap_or("Http")
-}
-
 fn get_serde_json_error_class(
   error: &serde_json::error::Error,
 ) -> &'static str {
@@ -142,7 +120,17 @@ fn get_url_parse_error_class(_error: &url::ParseError) -> &'static str {
   "URIError"
 }
 
-fn get_hyper_error_class(_error: &hyper_v014::Error) -> &'static str {
+fn get_hyper_error_class(_error: &hyper::Error) -> &'static str {
+  "Http"
+}
+
+fn get_hyper_util_error_class(
+  _error: &hyper_util::client::legacy::Error,
+) -> &'static str {
+  "Http"
+}
+
+fn get_hyper_v014_error_class(_error: &hyper_v014::Error) -> &'static str {
   "Http"
 }
 
@@ -175,13 +163,18 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
       e.downcast_ref::<dlopen2::Error>()
         .map(get_dlopen_error_class)
     })
+    .or_else(|| e.downcast_ref::<hyper::Error>().map(get_hyper_error_class))
+    .or_else(|| {
+      e.downcast_ref::<hyper_util::client::legacy::Error>()
+        .map(get_hyper_util_error_class)
+    })
     .or_else(|| {
       e.downcast_ref::<hyper_v014::Error>()
-        .map(get_hyper_error_class)
+        .map(get_hyper_v014_error_class)
     })
     .or_else(|| {
       e.downcast_ref::<Arc<hyper_v014::Error>>()
-        .map(|e| get_hyper_error_class(e))
+        .map(|e| get_hyper_v014_error_class(e))
     })
     .or_else(|| {
       e.downcast_ref::<deno_core::Canceled>().map(|e| {
@@ -201,10 +194,6 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| {
       e.downcast_ref::<notify::Error>()
         .map(get_notify_error_class)
-    })
-    .or_else(|| {
-      e.downcast_ref::<reqwest::Error>()
-        .map(get_request_error_class)
     })
     .or_else(|| e.downcast_ref::<regex::Error>().map(get_regex_error_class))
     .or_else(|| {

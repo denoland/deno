@@ -8,10 +8,10 @@ use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
+use deno_config::deno_json::ConfigFile;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
-use deno_config::workspace::Workspace;
-use deno_config::workspace::WorkspaceMemberContext;
+use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -118,7 +118,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
           let mut linter = WorkspaceLinter::new(
             factory.caches()?.clone(),
             factory.module_graph_creator().await?.clone(),
-            cli_options.workspace.clone(),
+            cli_options.start_dir.clone(),
             &cli_options.resolve_workspace_lint_options(&lint_flags)?,
           );
           for paths_with_options in paths_with_options_batches {
@@ -126,7 +126,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
               .lint_files(
                 paths_with_options.options,
                 lint_config.clone(),
-                paths_with_options.ctx,
+                paths_with_options.dir,
                 paths_with_options.paths,
               )
               .await?;
@@ -147,16 +147,16 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     let workspace_lint_options =
       cli_options.resolve_workspace_lint_options(&lint_flags)?;
     let success = if is_stdin {
-      let start_ctx = cli_options.workspace.resolve_start_ctx();
+      let start_dir = &cli_options.start_dir;
       let reporter_lock = Arc::new(Mutex::new(create_reporter(
         workspace_lint_options.reporter_kind,
       )));
-      let lint_config = start_ctx
-        .to_lint_config(FilePatterns::new_with_base(start_ctx.dir_path()))?;
+      let lint_config = start_dir
+        .to_lint_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
       let lint_options = LintOptions::resolve(lint_config, &lint_flags);
       let lint_rules = get_config_rules_err_empty(
         lint_options.rules,
-        start_ctx.maybe_deno_json().map(|c| c.as_ref()),
+        start_dir.maybe_deno_json().map(|c| c.as_ref()),
       )?;
       let file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
       let r = lint_stdin(&file_path, lint_rules.rules, deno_lint_config);
@@ -171,7 +171,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       let mut linter = WorkspaceLinter::new(
         factory.caches()?.clone(),
         factory.module_graph_creator().await?.clone(),
-        cli_options.workspace.clone(),
+        cli_options.start_dir.clone(),
         &workspace_lint_options,
       );
       let paths_with_options_batches =
@@ -181,7 +181,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
           .lint_files(
             paths_with_options.options,
             deno_lint_config.clone(),
-            paths_with_options.ctx,
+            paths_with_options.dir,
             paths_with_options.paths,
           )
           .await?;
@@ -197,7 +197,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
 }
 
 struct PathsWithOptions {
-  ctx: WorkspaceMemberContext,
+  dir: WorkspaceDirectory,
   paths: Vec<PathBuf>,
   options: LintOptions,
 }
@@ -210,11 +210,11 @@ fn resolve_paths_with_options_batches(
     cli_options.resolve_lint_options_for_members(lint_flags)?;
   let mut paths_with_options_batches =
     Vec::with_capacity(members_lint_options.len());
-  for (ctx, lint_options) in members_lint_options {
+  for (dir, lint_options) in members_lint_options {
     let files = collect_lint_files(cli_options, lint_options.files.clone())?;
     if !files.is_empty() {
       paths_with_options_batches.push(PathsWithOptions {
-        ctx,
+        dir,
         paths: files,
         options: lint_options,
       });
@@ -232,7 +232,7 @@ type WorkspaceModuleGraphFuture =
 struct WorkspaceLinter {
   caches: Arc<Caches>,
   module_graph_creator: Arc<ModuleGraphCreator>,
-  workspace: Arc<Workspace>,
+  workspace_dir: Arc<WorkspaceDirectory>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
   workspace_module_graph: Option<WorkspaceModuleGraphFuture>,
   has_error: Arc<AtomicFlag>,
@@ -243,7 +243,7 @@ impl WorkspaceLinter {
   pub fn new(
     caches: Arc<Caches>,
     module_graph_creator: Arc<ModuleGraphCreator>,
-    workspace: Arc<Workspace>,
+    workspace_dir: Arc<WorkspaceDirectory>,
     workspace_options: &WorkspaceLintOptions,
   ) -> Self {
     let reporter_lock =
@@ -251,7 +251,7 @@ impl WorkspaceLinter {
     Self {
       caches,
       module_graph_creator,
-      workspace,
+      workspace_dir,
       reporter_lock,
       workspace_module_graph: None,
       has_error: Default::default(),
@@ -263,14 +263,14 @@ impl WorkspaceLinter {
     &mut self,
     lint_options: LintOptions,
     lint_config: LintConfig,
-    member_ctx: WorkspaceMemberContext,
+    member_dir: WorkspaceDirectory,
     paths: Vec<PathBuf>,
   ) -> Result<(), AnyError> {
     self.file_count += paths.len();
 
     let lint_rules = get_config_rules_err_empty(
       lint_options.rules,
-      member_ctx.maybe_deno_json().map(|c| c.as_ref()),
+      member_dir.maybe_deno_json().map(|c| c.as_ref()),
     )?;
     let incremental_cache = Arc::new(IncrementalCache::new(
       self.caches.lint_incremental_cache_db(),
@@ -282,7 +282,7 @@ impl WorkspaceLinter {
     if lint_rules.no_slow_types {
       if self.workspace_module_graph.is_none() {
         let module_graph_creator = self.module_graph_creator.clone();
-        let packages = self.workspace.jsr_packages_for_publish();
+        let packages = self.workspace_dir.jsr_packages_for_publish();
         self.workspace_module_graph = Some(
           async move {
             module_graph_creator
@@ -297,7 +297,7 @@ impl WorkspaceLinter {
       }
       let workspace_module_graph_future =
         self.workspace_module_graph.as_ref().unwrap().clone();
-      let publish_config = member_ctx.maybe_package_config();
+      let publish_config = member_dir.maybe_package_config();
       if let Some(publish_config) = publish_config {
         let has_error = self.has_error.clone();
         let reporter_lock = self.reporter_lock.clone();
@@ -989,7 +989,7 @@ fn sort_diagnostics(diagnostics: &mut [JsonLintDiagnostic]) {
 
 fn get_config_rules_err_empty(
   rules: LintRulesConfig,
-  maybe_config_file: Option<&deno_config::ConfigFile>,
+  maybe_config_file: Option<&ConfigFile>,
 ) -> Result<ConfiguredRules, AnyError> {
   let lint_rules = get_configured_rules(rules, maybe_config_file);
   if lint_rules.rules.is_empty() {
@@ -1026,7 +1026,7 @@ impl ConfiguredRules {
 
 pub fn get_configured_rules(
   rules: LintRulesConfig,
-  maybe_config_file: Option<&deno_config::ConfigFile>,
+  maybe_config_file: Option<&ConfigFile>,
 ) -> ConfiguredRules {
   const NO_SLOW_TYPES_NAME: &str = "no-slow-types";
   let implicit_no_slow_types =
@@ -1060,9 +1060,7 @@ pub fn get_configured_rules(
   }
 }
 
-fn get_default_tags(
-  maybe_config_file: Option<&deno_config::ConfigFile>,
-) -> Vec<String> {
+fn get_default_tags(maybe_config_file: Option<&ConfigFile>) -> Vec<String> {
   let mut tags = Vec::with_capacity(2);
   tags.push("recommended".to_string());
   if maybe_config_file.map(|c| c.is_package()).unwrap_or(false) {

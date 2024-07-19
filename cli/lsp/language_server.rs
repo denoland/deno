@@ -2,7 +2,7 @@
 
 use base64::Engine;
 use deno_ast::MediaType;
-use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -89,6 +89,7 @@ use super::tsc::TsServer;
 use super::urls;
 use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
+use crate::args::has_flag_env_var;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
@@ -1322,7 +1323,7 @@ impl Inner {
     if !self
       .config
       .tree
-      .fmt_options_for_specifier(&specifier)
+      .fmt_config_for_specifier(&specifier)
       .files
       .matches_specifier(&specifier)
     {
@@ -1352,7 +1353,7 @@ impl Inner {
       let mut fmt_options = self
         .config
         .tree
-        .fmt_options_for_specifier(&specifier)
+        .fmt_config_for_specifier(&specifier)
         .options
         .clone();
       fmt_options.use_tabs = Some(!params.options.insert_spaces);
@@ -1606,7 +1607,7 @@ impl Inner {
                 (&self
                   .config
                   .tree
-                  .fmt_options_for_specifier(&specifier)
+                  .fmt_config_for_specifier(&specifier)
                   .options)
                   .into(),
                 tsc::UserPreferences::from_config_for_specifier(
@@ -1771,7 +1772,7 @@ impl Inner {
           (&self
             .config
             .tree
-            .fmt_options_for_specifier(&code_action_data.specifier)
+            .fmt_config_for_specifier(&code_action_data.specifier)
             .options)
             .into(),
           tsc::UserPreferences::from_config_for_specifier(
@@ -1822,7 +1823,7 @@ impl Inner {
           (&self
             .config
             .tree
-            .fmt_options_for_specifier(&action_data.specifier)
+            .fmt_config_for_specifier(&action_data.specifier)
             .options)
             .into(),
           line_index.offset_tsc(action_data.range.start)?
@@ -1857,7 +1858,9 @@ impl Inner {
         .config
         .tree
         .data_for_specifier(file_referrer)
-        .and_then(|d| d.import_map.as_ref().map(|i| i.as_ref())),
+        // todo(dsherret): this should probably just take the resolver itself
+        // as the import map is an implementation detail
+        .and_then(|d| d.resolver.maybe_import_map()),
       self.resolver.as_ref(),
     )
   }
@@ -2178,7 +2181,9 @@ impl Inner {
           .config
           .tree
           .data_for_specifier(file_referrer)
-          .and_then(|d| d.import_map.as_ref().map(|i| i.as_ref())),
+          // todo(dsherret): this should probably just take the resolver itself
+          // as the import map is an implementation detail
+          .and_then(|d| d.resolver.maybe_import_map()),
       )
       .await;
     }
@@ -2213,7 +2218,7 @@ impl Inner {
           (&self
             .config
             .tree
-            .fmt_options_for_specifier(&specifier)
+            .fmt_config_for_specifier(&specifier)
             .options)
             .into(),
           scope.cloned(),
@@ -2268,11 +2273,7 @@ impl Inner {
             self.snapshot(),
             GetCompletionDetailsArgs {
               format_code_settings: Some(
-                (&self
-                  .config
-                  .tree
-                  .fmt_options_for_specifier(specifier)
-                  .options)
+                (&self.config.tree.fmt_config_for_specifier(specifier).options)
                   .into(),
               ),
               preferences: Some(
@@ -2846,7 +2847,7 @@ impl Inner {
       let format_code_settings = (&self
         .config
         .tree
-        .fmt_options_for_specifier(&old_specifier)
+        .fmt_config_for_specifier(&old_specifier)
         .options)
         .into();
       changes.extend(
@@ -3056,7 +3057,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
       let mut config_events = vec![];
       for (scope_uri, config_data) in inner.config.tree.data_by_scope().iter() {
-        if let Some(config_file) = &config_data.config_file {
+        if let Some(config_file) = config_data.maybe_deno_json() {
           config_events.push(lsp_custom::DenoConfigurationChangeEvent {
             scope_uri: scope_uri.clone(),
             file_uri: config_file.specifier.clone(),
@@ -3064,7 +3065,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
             configuration_type: lsp_custom::DenoConfigurationType::DenoJson,
           });
         }
-        if let Some(package_json) = &config_data.package_json {
+        if let Some(package_json) = config_data.maybe_pkg_json() {
           config_events.push(lsp_custom::DenoConfigurationChangeEvent {
             scope_uri: scope_uri.clone(),
             file_uri: package_json.specifier(),
@@ -3542,7 +3543,7 @@ impl Inner {
     if let Some(npm_reqs) = self
       .documents
       .npm_reqs_by_scope()
-      .get(&config_data.map(|d| d.scope.clone()))
+      .get(&config_data.map(|d| d.scope.as_ref().clone()))
     {
       roots.extend(
         npm_reqs
@@ -3555,26 +3556,30 @@ impl Inner {
     let initial_cwd = config_data
       .and_then(|d| d.scope.to_file_path().ok())
       .unwrap_or_else(|| self.initial_cwd.clone());
-    // todo: we need a way to convert config data to a Workspace
-    let workspace = Arc::new(Workspace::discover(
-      deno_config::workspace::WorkspaceDiscoverStart::Paths(&[
-        initial_cwd.clone()
-      ]),
-      &WorkspaceDiscoverOptions {
-        fs: &DenoConfigFsAdapter::new(&deno_runtime::deno_fs::RealFs),
-        pkg_json_cache: None,
-        config_parse_options: deno_config::ConfigParseOptions {
-          include_task_comments: false,
+    let workspace = match config_data {
+      Some(d) => d.member_dir.clone(),
+      None => Arc::new(WorkspaceDirectory::discover(
+        deno_config::workspace::WorkspaceDiscoverStart::Paths(&[
+          initial_cwd.clone()
+        ]),
+        &WorkspaceDiscoverOptions {
+          fs: &DenoConfigFsAdapter::new(&deno_runtime::deno_fs::RealFs),
+          deno_json_cache: None,
+          pkg_json_cache: None,
+          workspace_cache: None,
+          config_parse_options: deno_config::deno_json::ConfigParseOptions {
+            include_task_comments: false,
+          },
+          additional_config_file_names: &[],
+          discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
+          maybe_vendor_override: if force_global_cache {
+            Some(deno_config::workspace::VendorEnablement::Disable)
+          } else {
+            None
+          },
         },
-        additional_config_file_names: &[],
-        discover_pkg_json: true,
-        maybe_vendor_override: if force_global_cache {
-          Some(deno_config::workspace::VendorEnablement::Disable)
-        } else {
-          None
-        },
-      },
-    )?);
+      )?),
+    };
     let cli_options = CliOptions::new(
       Flags {
         cache_path: Some(self.cache.deno_dir().root.clone()),
@@ -3584,10 +3589,9 @@ impl Inner {
           .unsafely_ignore_certificate_errors
           .clone(),
         import_map_path: config_data.and_then(|d| {
-          if d.import_map_from_settings {
-            return Some(d.import_map.as_ref()?.base_url().to_string());
-          }
-          None
+          d.import_map_from_settings
+            .as_ref()
+            .map(|url| url.to_string())
         }),
         node_modules_dir: Some(
           config_data

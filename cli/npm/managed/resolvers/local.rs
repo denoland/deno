@@ -7,9 +7,9 @@ mod bin_entries;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::Ordering;
+use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -605,16 +605,81 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  // 4. Create all the top level packages in the node_modules folder, which are symlinks.
-  //
-  // Symlink node_modules/<package_name> to
-  // node_modules/.deno/<package_id>/node_modules/<package_name>
-  let mut found_names = HashSet::new();
-  let mut ids = snapshot.top_level_packages().collect::<Vec<_>>();
+  let mut found_names: HashMap<&String, &PackageNv> = HashMap::new();
+
+  // 4. Create symlinks for package json dependencies
+  {
+    for remote in pkg_json_deps_provider.remote_pkgs() {
+      let Some(remote_id) = snapshot
+        .resolve_best_package_id(&remote.req.name, &remote.req.version_req)
+      else {
+        continue; // skip, package not found
+      };
+      let remote_pkg = snapshot.package_from_id(&remote_id).unwrap();
+      let alias_clashes = remote.req.name != remote.alias
+        && newest_packages_by_name.contains_key(&remote.alias);
+      let install_in_child = {
+        // we'll install in the child if the alias is taken by another package, or
+        // if there's already a package with the same name but different version
+        // linked into the root
+        match found_names.entry(&remote.alias) {
+          Entry::Occupied(nv) => {
+            alias_clashes
+              || remote.req.name != nv.get().name // alias to a different package (in case of duplicate aliases)
+              || !remote.req.version_req.matches(&nv.get().version) // incompatible version
+          }
+          Entry::Vacant(entry) => {
+            entry.insert(&remote_pkg.id.nv);
+            alias_clashes
+          }
+        }
+      };
+      let target_folder_name = get_package_folder_id_folder_name(
+        &remote_pkg.get_package_cache_folder_id(),
+      );
+      let local_registry_package_path = join_package_name(
+        &deno_local_registry_dir
+          .join(&target_folder_name)
+          .join("node_modules"),
+        &remote_pkg.id.nv.name,
+      );
+      if install_in_child {
+        // symlink the dep into the package's child node_modules folder
+        let dest_path =
+          remote.base_dir.join("node_modules").join(&remote.alias);
+
+        symlink_package_dir(&local_registry_package_path, &dest_path)?;
+      } else {
+        // symlink the package into `node_modules/<alias>`
+        if setup_cache
+          .insert_root_symlink(&remote_pkg.id.nv.name, &target_folder_name)
+        {
+          symlink_package_dir(
+            &local_registry_package_path,
+            &join_package_name(root_node_modules_dir_path, &remote.alias),
+          )?;
+        }
+      }
+    }
+  }
+
+  // 5. Create symlinks for the remaining top level packages in the node_modules folder.
+  // (These may be present if they are not in the package.json dependencies, such as )
+  // Symlink node_modules/.deno/<package_id>/node_modules/<package_name> to
+  // node_modules/<package_name>
+  let mut ids = snapshot
+    .top_level_packages()
+    .filter(|f| !found_names.contains_key(&f.nv.name))
+    .collect::<Vec<_>>();
   ids.sort_by(|a, b| b.cmp(a)); // create determinism and only include the latest version
   for id in ids {
-    if !found_names.insert(&id.nv.name) {
-      continue; // skip, already handled
+    match found_names.entry(&id.nv.name) {
+      Entry::Occupied(_) => {
+        continue; // skip, already handled
+      }
+      Entry::Vacant(entry) => {
+        entry.insert(&id.nv);
+      }
     }
     let package = snapshot.package_from_id(id).unwrap();
     let target_folder_name =
@@ -634,11 +699,16 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  // 5. Create a node_modules/.deno/node_modules/<package-name> directory with
+  // 6. Create a node_modules/.deno/node_modules/<package-name> directory with
   // the remaining packages
   for package in newest_packages_by_name.values() {
-    if !found_names.insert(&package.id.nv.name) {
-      continue; // skip, already handled
+    match found_names.entry(&package.id.nv.name) {
+      Entry::Occupied(_) => {
+        continue; // skip, already handled
+      }
+      Entry::Vacant(entry) => {
+        entry.insert(&package.id.nv);
+      }
     }
 
     let target_folder_name =
@@ -659,20 +729,20 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  // 6. Set up `node_modules/.bin` entries for packages that need it.
+  // 7. Set up `node_modules/.bin` entries for packages that need it.
   {
     let bin_entries = std::mem::take(&mut *bin_entries.borrow_mut());
     bin_entries.finish(snapshot, &bin_node_modules_dir_path)?;
   }
 
-  // 7. Create symlinks for the workspace packages
+  // 8. Create symlinks for the workspace packages
   {
     // todo(#24419): this is not exactly correct because it should
     // install correctly for a workspace (potentially in sub directories),
     // but this is good enough for a first pass
     for workspace in pkg_json_deps_provider.workspace_pkgs() {
       symlink_package_dir(
-        &workspace.pkg_dir,
+        &workspace.target_dir,
         &root_node_modules_dir_path.join(&workspace.alias),
       )?;
     }
@@ -687,7 +757,16 @@ async fn sync_resolution_with_fs(
       &deno_local_registry_dir,
     )?;
     let init_cwd = lifecycle_scripts.initial_cwd.as_deref().unwrap();
+    let process_state = crate::npm::managed::npm_process_state(
+      snapshot.as_valid_serialized(),
+      Some(root_node_modules_dir_path),
+    );
 
+    let mut env_vars = crate::task_runner::real_env_vars();
+    env_vars.insert(
+      crate::args::NPM_RESOLUTION_STATE_ENV_VAR_NAME.to_string(),
+      process_state,
+    );
     for (package, package_path, scripts_run_path) in packages_with_scripts {
       // add custom commands for binaries from the package's dependencies. this will take precedence over the
       // baseline commands, so if the package relies on a bin that conflicts with one higher in the dependency tree, the
@@ -710,7 +789,7 @@ async fn sync_resolution_with_fs(
               task_name: script_name,
               script,
               cwd: &package_path,
-              env_vars: crate::task_runner::real_env_vars(),
+              env_vars: env_vars.clone(),
               custom_commands: custom_commands.clone(),
               init_cwd,
               argv: &[],
