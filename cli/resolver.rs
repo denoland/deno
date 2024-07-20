@@ -24,10 +24,12 @@ use deno_npm::resolution::NpmResolutionError;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::errors::ClosestPkgJsonError;
-use deno_runtime::deno_node::errors::FlatNodeResolutionError;
 use deno_runtime::deno_node::errors::NodeResolveError;
+use deno_runtime::deno_node::errors::NodeResolveErrorKind;
+use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
 use deno_runtime::deno_node::errors::PackageFolderResolveIoError;
 use deno_runtime::deno_node::errors::PackageNotFoundError;
+use deno_runtime::deno_node::errors::PackageResolveErrorKind;
 use deno_runtime::deno_node::errors::UrlToNodeResolutionError;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_runtime::deno_node::NodeModuleKind;
@@ -111,49 +113,64 @@ impl CliNodeResolver {
     match resolution_result {
       Ok(res) => Ok(Some(res)),
       Err(err) => {
-        let err = FlatNodeResolutionError::from(err);
-        match &err {
-          FlatNodeResolutionError::NodeResolveRelativeJoin(_)
-          | FlatNodeResolutionError::DataUrlReferrer(_)
-          | FlatNodeResolutionError::InvalidModuleSpecifier(_)
-          | FlatNodeResolutionError::PackageTargetNotFoundError(_)
-          | FlatNodeResolutionError::TypesNotFound(_)
-          | FlatNodeResolutionError::PackageJsonLoad(_)
-          | FlatNodeResolutionError::CanonicalizingPkgJsonDir(_)
-          | FlatNodeResolutionError::TypeScriptNotSupportedInNpm(_)
-          | FlatNodeResolutionError::PackageImportNotDefined(_)
-          | FlatNodeResolutionError::ModuleNotFound(_)
-          | FlatNodeResolutionError::UnsupportedDirImport(_)
-          | FlatNodeResolutionError::InvalidPackageTarget(_)
-          | FlatNodeResolutionError::PackagePathNotExported(_)
-          | FlatNodeResolutionError::UnsupportedEsmUrlScheme(_)
-          | FlatNodeResolutionError::ReferrerNotFound(_) => Err(err.into()),
-          FlatNodeResolutionError::PackageNotFound(PackageNotFoundError {
-            package_name,
-            ..
-          })
-          | FlatNodeResolutionError::PackageFolderResolveIo(
-            PackageFolderResolveIoError { package_name, .. },
-          ) => {
-            if self.in_npm_package(referrer) {
-              return Err(err.into());
-            }
-            if let Some(byonm_npm_resolver) = self.npm_resolver.as_byonm() {
-              if byonm_npm_resolver
-                .find_ancestor_package_json_with_dep(package_name, referrer)
-                .is_some()
-              {
-                return Err(anyhow!(
-                  concat!(
-                  "Could not resolve \"{}\", but found it in a package.json. ",
-                  "Deno expects the node_modules/ directory to be up to date. ",
-                  "Did you forget to run `npm install`?"
-                ),
-                  specifier
-                ));
+        let err = err.into_kind();
+        match err {
+          NodeResolveErrorKind::RelativeJoin(_)
+          | NodeResolveErrorKind::PackageImportsResolve(_)
+          | NodeResolveErrorKind::UnsupportedEsmUrlScheme(_)
+          | NodeResolveErrorKind::DataUrlReferrer(_)
+          | NodeResolveErrorKind::TypesNotFound(_)
+          | NodeResolveErrorKind::FinalizeResolution(_)
+          | NodeResolveErrorKind::UrlToNodeResolution(_) => Err(err.into()),
+          NodeResolveErrorKind::PackageResolve(err) => {
+            let err = err.into_kind();
+            match err {
+              PackageResolveErrorKind::ClosestPkgJson(_)
+              | PackageResolveErrorKind::InvalidModuleSpecifier(_)
+              | PackageResolveErrorKind::ExportsResolve(_)
+              | PackageResolveErrorKind::SubpathResolve(_) => Err(err.into()),
+              PackageResolveErrorKind::PackageFolderResolve(err) => {
+                match err.as_kind() {
+                  PackageFolderResolveErrorKind::Io(
+                    PackageFolderResolveIoError { package_name, .. },
+                  )
+                  | PackageFolderResolveErrorKind::PackageNotFound(
+                    PackageNotFoundError { package_name, .. },
+                  ) => {
+                    if self.in_npm_package(referrer) {
+                      return Err(err.into());
+                    }
+                    if let Some(byonm_npm_resolver) =
+                      self.npm_resolver.as_byonm()
+                    {
+                      if byonm_npm_resolver
+                        .find_ancestor_package_json_with_dep(
+                          package_name,
+                          referrer,
+                        )
+                        .is_some()
+                      {
+                        return Err(anyhow!(
+                        concat!(
+                        "Could not resolve \"{}\", but found it in a package.json. ",
+                        "Deno expects the node_modules/ directory to be up to date. ",
+                        "Did you forget to run `npm install`?"
+                      ),
+                        specifier
+                      ));
+                      }
+                    }
+                    Ok(None)
+                  }
+                  PackageFolderResolveErrorKind::ReferrerNotFound(_) => {
+                    if self.in_npm_package(referrer) {
+                      return Err(err.into());
+                    }
+                    Ok(None)
+                  }
+                }
               }
             }
-            Ok(None)
           }
         }
       }

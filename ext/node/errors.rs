@@ -77,44 +77,6 @@ impl NodeJsErrorCode {
   }
 }
 
-#[derive(Debug, Error)]
-pub enum FlatNodeResolutionError {
-  #[error(transparent)]
-  NodeResolveRelativeJoin(#[from] NodeResolveRelativeJoinError),
-  #[error(transparent)]
-  DataUrlReferrer(#[from] DataUrlReferrerError),
-  #[error(transparent)]
-  InvalidModuleSpecifier(#[from] InvalidModuleSpecifierError),
-  #[error(transparent)]
-  PackageTargetNotFoundError(#[from] PackageTargetNotFoundError),
-  #[error(transparent)]
-  TypesNotFound(#[from] TypesNotFoundError),
-  #[error(transparent)]
-  PackageJsonLoad(#[from] PackageJsonLoadError),
-  #[error(transparent)]
-  CanonicalizingPkgJsonDir(#[from] CanonicalizingPkgJsonDirError),
-  #[error(transparent)]
-  TypeScriptNotSupportedInNpm(#[from] TypeScriptNotSupportedInNpmError),
-  #[error(transparent)]
-  PackageImportNotDefined(#[from] PackageImportNotDefinedError),
-  #[error(transparent)]
-  ModuleNotFound(#[from] ModuleNotFoundError),
-  #[error(transparent)]
-  UnsupportedDirImport(#[from] UnsupportedDirImportError),
-  #[error(transparent)]
-  InvalidPackageTarget(#[from] InvalidPackageTargetError),
-  #[error(transparent)]
-  PackagePathNotExported(#[from] PackagePathNotExportedError),
-  #[error(transparent)]
-  UnsupportedEsmUrlScheme(#[from] UnsupportedEsmUrlSchemeError),
-  #[error(transparent)]
-  PackageNotFound(#[from] PackageNotFoundError),
-  #[error(transparent)]
-  ReferrerNotFound(#[from] ReferrerNotFoundError),
-  #[error(transparent)]
-  PackageFolderResolveIo(#[from] PackageFolderResolveIoError),
-}
-
 pub trait NodeJsErrorCoded {
   fn code(&self) -> NodeJsErrorCode;
 }
@@ -178,15 +140,6 @@ impl NodeJsErrorCoded for LegacyResolveError {
     match self.as_kind() {
       LegacyResolveErrorKind::TypesNotFound(e) => e.code(),
       LegacyResolveErrorKind::ModuleNotFound(e) => e.code(),
-    }
-  }
-}
-
-impl From<LegacyResolveError> for FlatNodeResolutionError {
-  fn from(err: LegacyResolveError) -> Self {
-    match err.into_kind() {
-      LegacyResolveErrorKind::TypesNotFound(e) => e.into(),
-      LegacyResolveErrorKind::ModuleNotFound(e) => e.into(),
     }
   }
 }
@@ -256,16 +209,6 @@ impl NodeJsErrorCoded for PackageFolderResolveError {
   }
 }
 
-impl From<PackageFolderResolveError> for FlatNodeResolutionError {
-  fn from(err: PackageFolderResolveError) -> Self {
-    match err.into_kind() {
-      PackageFolderResolveErrorKind::PackageNotFound(e) => e.into(),
-      PackageFolderResolveErrorKind::ReferrerNotFound(e) => e.into(),
-      PackageFolderResolveErrorKind::Io(e) => e.into(),
-    }
-  }
-}
-
 #[derive(Debug, Error)]
 pub enum PackageFolderResolveErrorKind {
   #[error(transparent)]
@@ -282,20 +225,8 @@ impl NodeJsErrorCoded for PackageSubpathResolveError {
   fn code(&self) -> NodeJsErrorCode {
     match self.as_kind() {
       PackageSubpathResolveErrorKind::PkgJsonLoad(e) => e.code(),
-      PackageSubpathResolveErrorKind::PackageFolderResolve(e) => e.code(),
       PackageSubpathResolveErrorKind::Exports(e) => e.code(),
       PackageSubpathResolveErrorKind::LegacyResolve(e) => e.code(),
-    }
-  }
-}
-
-impl From<PackageSubpathResolveError> for FlatNodeResolutionError {
-  fn from(err: PackageSubpathResolveError) -> Self {
-    match err.into_kind() {
-      PackageSubpathResolveErrorKind::PkgJsonLoad(e) => e.into(),
-      PackageSubpathResolveErrorKind::PackageFolderResolve(e) => e.into(),
-      PackageSubpathResolveErrorKind::Exports(e) => e.into(),
-      PackageSubpathResolveErrorKind::LegacyResolve(e) => e.into(),
     }
   }
 }
@@ -304,8 +235,6 @@ impl From<PackageSubpathResolveError> for FlatNodeResolutionError {
 pub enum PackageSubpathResolveErrorKind {
   #[error(transparent)]
   PkgJsonLoad(#[from] PackageJsonLoadError),
-  #[error(transparent)]
-  PackageFolderResolve(#[from] PackageFolderResolveError),
   #[error(transparent)]
   Exports(PackageExportsResolveError),
   #[error(transparent)]
@@ -360,18 +289,6 @@ impl NodeJsErrorCoded for PackageTargetResolveError {
   }
 }
 
-impl From<PackageTargetResolveError> for FlatNodeResolutionError {
-  fn from(err: PackageTargetResolveError) -> Self {
-    match err.into_kind() {
-      PackageTargetResolveErrorKind::NotFound(e) => e.into(),
-      PackageTargetResolveErrorKind::InvalidPackageTarget(e) => e.into(),
-      PackageTargetResolveErrorKind::InvalidModuleSpecifier(e) => e.into(),
-      PackageTargetResolveErrorKind::PackageResolve(e) => e.into(),
-      PackageTargetResolveErrorKind::TypesNotFound(e) => e.into(),
-    }
-  }
-}
-
 #[derive(Debug, Error)]
 pub enum PackageTargetResolveErrorKind {
   #[error(transparent)]
@@ -393,15 +310,6 @@ impl NodeJsErrorCoded for PackageExportsResolveError {
     match self.as_kind() {
       PackageExportsResolveErrorKind::PackagePathNotExported(e) => e.code(),
       PackageExportsResolveErrorKind::PackageTargetResolve(e) => e.code(),
-    }
-  }
-}
-
-impl From<PackageExportsResolveError> for FlatNodeResolutionError {
-  fn from(err: PackageExportsResolveError) -> Self {
-    match err.into_kind() {
-      PackageExportsResolveErrorKind::PackagePathNotExported(e) => e.into(),
-      PackageExportsResolveErrorKind::PackageTargetResolve(e) => e.into(),
     }
   }
 }
@@ -464,15 +372,6 @@ impl NodeJsErrorCoded for ClosestPkgJsonError {
   }
 }
 
-impl From<ClosestPkgJsonError> for FlatNodeResolutionError {
-  fn from(err: ClosestPkgJsonError) -> Self {
-    match err.into_kind() {
-      ClosestPkgJsonErrorKind::CanonicalizingDir(e) => e.into(),
-      ClosestPkgJsonErrorKind::Load(e) => e.into(),
-    }
-  }
-}
-
 #[derive(Debug, Error)]
 pub enum ClosestPkgJsonErrorKind {
   #[error(transparent)]
@@ -514,15 +413,6 @@ impl NodeJsErrorCoded for UrlToNodeResolutionError {
     match self.as_kind() {
       UrlToNodeResolutionErrorKind::TypeScriptNotSupported(e) => e.code(),
       UrlToNodeResolutionErrorKind::ClosestPkgJson(e) => e.code(),
-    }
-  }
-}
-
-impl From<UrlToNodeResolutionError> for FlatNodeResolutionError {
-  fn from(err: UrlToNodeResolutionError) -> Self {
-    match err.into_kind() {
-      UrlToNodeResolutionErrorKind::TypeScriptNotSupported(e) => e.into(),
-      UrlToNodeResolutionErrorKind::ClosestPkgJson(e) => e.into(),
     }
   }
 }
@@ -570,17 +460,6 @@ pub enum PackageImportsResolveErrorKind {
   Target(#[from] PackageTargetResolveError),
 }
 
-impl From<PackageImportsResolveError> for FlatNodeResolutionError {
-  fn from(err: PackageImportsResolveError) -> Self {
-    match err.into_kind() {
-      PackageImportsResolveErrorKind::ClosestPkgJson(e) => e.into(),
-      PackageImportsResolveErrorKind::InvalidModuleSpecifier(e) => e.into(),
-      PackageImportsResolveErrorKind::NotDefined(e) => e.into(),
-      PackageImportsResolveErrorKind::Target(e) => e.into(),
-    }
-  }
-}
-
 impl NodeJsErrorCoded for PackageImportsResolveErrorKind {
   fn code(&self) -> NodeJsErrorCode {
     match self {
@@ -599,19 +478,9 @@ impl NodeJsErrorCoded for PackageResolveError {
     match self.as_kind() {
       PackageResolveErrorKind::ClosestPkgJson(e) => e.code(),
       PackageResolveErrorKind::InvalidModuleSpecifier(e) => e.code(),
+      PackageResolveErrorKind::PackageFolderResolve(e) => e.code(),
       PackageResolveErrorKind::ExportsResolve(e) => e.code(),
       PackageResolveErrorKind::SubpathResolve(e) => e.code(),
-    }
-  }
-}
-
-impl From<PackageResolveError> for FlatNodeResolutionError {
-  fn from(err: PackageResolveError) -> Self {
-    match err.into_kind() {
-      PackageResolveErrorKind::ClosestPkgJson(e) => e.into(),
-      PackageResolveErrorKind::InvalidModuleSpecifier(e) => e.into(),
-      PackageResolveErrorKind::ExportsResolve(e) => e.into(),
-      PackageResolveErrorKind::SubpathResolve(e) => e.into(),
     }
   }
 }
@@ -622,6 +491,8 @@ pub enum PackageResolveErrorKind {
   ClosestPkgJson(#[from] ClosestPkgJsonError),
   #[error(transparent)]
   InvalidModuleSpecifier(#[from] InvalidModuleSpecifierError),
+  #[error(transparent)]
+  PackageFolderResolve(#[from] PackageFolderResolveError),
   #[error(transparent)]
   ExportsResolve(#[from] PackageExportsResolveError),
   #[error(transparent)]
@@ -666,21 +537,6 @@ pub enum NodeResolveErrorKind {
   UrlToNodeResolution(#[from] UrlToNodeResolutionError),
 }
 
-impl From<NodeResolveError> for FlatNodeResolutionError {
-  fn from(err: NodeResolveError) -> Self {
-    match err.into_kind() {
-      NodeResolveErrorKind::RelativeJoin(e) => e.into(),
-      NodeResolveErrorKind::PackageImportsResolve(e) => e.into(),
-      NodeResolveErrorKind::UnsupportedEsmUrlScheme(e) => e.into(),
-      NodeResolveErrorKind::DataUrlReferrer(e) => e.into(),
-      NodeResolveErrorKind::PackageResolve(e) => e.into(),
-      NodeResolveErrorKind::TypesNotFound(e) => e.into(),
-      NodeResolveErrorKind::FinalizeResolution(e) => e.into(),
-      NodeResolveErrorKind::UrlToNodeResolution(e) => e.into(),
-    }
-  }
-}
-
 kinded_err!(FinalizeResolutionError, FinalizeResolutionErrorKind);
 
 #[derive(Debug, Error)]
@@ -699,16 +555,6 @@ impl NodeJsErrorCoded for FinalizeResolutionError {
       FinalizeResolutionErrorKind::InvalidModuleSpecifierError(e) => e.code(),
       FinalizeResolutionErrorKind::ModuleNotFound(e) => e.code(),
       FinalizeResolutionErrorKind::UnsupportedDirImport(e) => e.code(),
-    }
-  }
-}
-
-impl From<FinalizeResolutionError> for FlatNodeResolutionError {
-  fn from(err: FinalizeResolutionError) -> Self {
-    match err.into_kind() {
-      FinalizeResolutionErrorKind::InvalidModuleSpecifierError(e) => e.into(),
-      FinalizeResolutionErrorKind::ModuleNotFound(e) => e.into(),
-      FinalizeResolutionErrorKind::UnsupportedDirImport(e) => e.into(),
     }
   }
 }
