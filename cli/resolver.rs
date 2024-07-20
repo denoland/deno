@@ -504,6 +504,7 @@ impl Resolver for CliGraphResolver {
 
     let referrer = &referrer_range.specifier;
 
+    // Use node resolution if we're in an npm package
     if let Some(node_resolver) = self.node_resolver.as_ref() {
       if referrer.scheme() == "file" && node_resolver.in_npm_package(referrer) {
         return node_resolver
@@ -513,6 +514,7 @@ impl Resolver for CliGraphResolver {
       }
     }
 
+    // Attempt to resolve with the workspace resolver
     let result: Result<_, ResolveError> = self
       .workspace_resolver
       .resolve(specifier, referrer)
@@ -524,8 +526,20 @@ impl Resolver for CliGraphResolver {
       });
     let result = match result {
       Ok(resolution) => match resolution {
-        MappedResolution::Normal(specifier)
-        | MappedResolution::ImportMap(specifier) => Ok(specifier),
+        MappedResolution::Normal(specifier) => {
+          // do sloppy imports resolution if enabled
+          if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
+            Ok(sloppy_imports_resolve(
+              sloppy_imports_resolver,
+              specifier,
+              referrer_range,
+              mode,
+            ))
+          } else {
+            Ok(specifier)
+          }
+        }
+        MappedResolution::ImportMap(specifier) => Ok(specifier),
         MappedResolution::WorkspaceNpmPackage {
           target_pkg_json: pkg_json,
           sub_path,
@@ -592,21 +606,6 @@ impl Resolver for CliGraphResolver {
       Err(err) => Err(err),
     };
 
-    // do sloppy imports resolution if enabled
-    let result =
-      if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
-        result.map(|specifier| {
-          sloppy_imports_resolve(
-            sloppy_imports_resolver,
-            specifier,
-            referrer_range,
-            mode,
-          )
-        })
-      } else {
-        result
-      };
-
     // When the user is vendoring, don't allow them to import directly from the vendor/ directory
     // as it might cause them confusion or duplicate dependencies. Additionally, this folder has
     // special treatment in the language server so it will definitely cause issues/confusion there
@@ -619,66 +618,62 @@ impl Resolver for CliGraphResolver {
       }
     }
 
-    if let Some(node_resolver) = &self.node_resolver {
-      let is_byonm = self
-        .npm_resolver
-        .as_ref()
-        .is_some_and(|r| r.as_byonm().is_some());
-      match &result {
-        Ok(specifier) => {
-          if let Ok(npm_req_ref) =
-            NpmPackageReqReference::from_specifier(specifier)
+    let Some(node_resolver) = &self.node_resolver else {
+      return result;
+    };
+
+    let is_byonm = self
+      .npm_resolver
+      .as_ref()
+      .is_some_and(|r| r.as_byonm().is_some());
+    match result {
+      Ok(specifier) => {
+        if let Ok(npm_req_ref) =
+          NpmPackageReqReference::from_specifier(&specifier)
+        {
+          // check if the npm specifier resolves to a workspace member
+          if let Some(pkg_folder) = self
+            .workspace_resolver
+            .resolve_workspace_pkg_json_folder_for_npm_specifier(
+              npm_req_ref.req(),
+            )
           {
-            // check if the npm specifier resolves to a workspace member
-            if let Some(pkg_folder) = self
-              .workspace_resolver
-              .resolve_workspace_pkg_json_folder_for_npm_specifier(
-                npm_req_ref.req(),
-              )
-            {
-              return Ok(
-                node_resolver
-                  .resolve_package_sub_path_from_deno_module(
-                    pkg_folder,
-                    npm_req_ref.sub_path(),
-                    Some(referrer),
-                    to_node_mode(mode),
-                  )?
-                  .into_url(),
-              );
-            }
-
-            if is_byonm {
-              return node_resolver
-                .resolve_req_reference(
-                  &npm_req_ref,
-                  referrer,
+            return Ok(
+              node_resolver
+                .resolve_package_sub_path_from_deno_module(
+                  pkg_folder,
+                  npm_req_ref.sub_path(),
+                  Some(referrer),
                   to_node_mode(mode),
-                )
-                .map(|res| res.into_url())
-                .map_err(|err| err.into());
-            }
+                )?
+                .into_url(),
+            );
           }
-        }
-        Err(_) => {
-          if is_byonm && referrer.scheme() == "file" {
-            let maybe_resolution = node_resolver
-              .resolve_if_for_npm_pkg(specifier, referrer, to_node_mode(mode))
-              .map_err(ResolveError::Other)?;
-            if let Some(res) = maybe_resolution {
-              return Ok(res.into_url());
-            }
-          }
-        }
-      }
-    }
 
-    let specifier = result?;
-    match &self.node_resolver {
-      Some(node_resolver) => node_resolver
-        .handle_if_in_node_modules(specifier)
-        .map_err(|e| e.into()),
-      None => Ok(specifier),
+          // do npm resolution for byonm
+          if is_byonm {
+            return node_resolver
+              .resolve_req_reference(&npm_req_ref, referrer, to_node_mode(mode))
+              .map(|res| res.into_url())
+              .map_err(|err| err.into());
+          }
+        }
+
+        Ok(node_resolver.handle_if_in_node_modules(specifier)?)
+      }
+      Err(err) => {
+        // If byonm, check if the bare specifier resolves to an npm package
+        if is_byonm && referrer.scheme() == "file" {
+          let maybe_resolution = node_resolver
+            .resolve_if_for_npm_pkg(specifier, referrer, to_node_mode(mode))
+            .map_err(ResolveError::Other)?;
+          if let Some(res) = maybe_resolution {
+            return Ok(res.into_url());
+          }
+        }
+
+        Err(err)
+      }
     }
   }
 }
