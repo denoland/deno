@@ -109,9 +109,7 @@ impl CliNodeResolver {
   ) -> Result<Option<NodeResolution>, AnyError> {
     let resolution_result = self.resolve(specifier, referrer, mode);
     match resolution_result {
-      Ok(res) => {
-        return Ok(Some(res));
-      }
+      Ok(res) => Ok(Some(res)),
       Err(err) => {
         let err = FlatNodeResolutionError::from(err);
         match &err {
@@ -129,9 +127,7 @@ impl CliNodeResolver {
           | FlatNodeResolutionError::InvalidPackageTarget(_)
           | FlatNodeResolutionError::PackagePathNotExported(_)
           | FlatNodeResolutionError::UnsupportedEsmUrlScheme(_)
-          | FlatNodeResolutionError::ReferrerNotFound(_) => {
-            return Err(err.into())
-          }
+          | FlatNodeResolutionError::ReferrerNotFound(_) => Err(err.into()),
           FlatNodeResolutionError::PackageNotFound(PackageNotFoundError {
             package_name,
             ..
@@ -509,13 +505,11 @@ impl Resolver for CliGraphResolver {
     let referrer = &referrer_range.specifier;
 
     if let Some(node_resolver) = self.node_resolver.as_ref() {
-      if referrer.scheme() == "file" {
-        if node_resolver.in_npm_package(&referrer) {
-          return node_resolver
-            .resolve(specifier, referrer, to_node_mode(mode))
-            .map(|res| res.into_url())
-            .map_err(|e| ResolveError::Other(e.into()));
-        }
+      if referrer.scheme() == "file" && node_resolver.in_npm_package(referrer) {
+        return node_resolver
+          .resolve(specifier, referrer, to_node_mode(mode))
+          .map(|res| res.into_url())
+          .map_err(|e| ResolveError::Other(e.into()));
       }
     }
 
