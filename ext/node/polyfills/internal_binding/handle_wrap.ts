@@ -25,17 +25,11 @@
 // - https://github.com/nodejs/node/blob/master/src/handle_wrap.h
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import {
   AsyncWrap,
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
-
-import { primordials } from "ext:core/mod.js";
-
-const { setTimeout } = primordials;
 
 export class HandleWrap extends AsyncWrap {
   constructor(provider: providerType) {
