@@ -448,12 +448,13 @@ impl<TGraphContainer: ModuleGraphContainer>
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
     if self.shared.node_resolver.in_npm_package(referrer) {
-      let res = self.shared.node_resolver.resolve(
-        specifier,
-        referrer,
-        NodeResolutionMode::Execution,
-      )?;
-      return Ok(res.into_url());
+      return Ok(
+        self
+          .shared
+          .node_resolver
+          .resolve(specifier, referrer, NodeResolutionMode::Execution)?
+          .into_url(),
+      );
     }
 
     let graph = self.graph_container.graph();

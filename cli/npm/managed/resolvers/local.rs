@@ -33,7 +33,6 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::errors::PackageFolderResolveError;
-use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
 use deno_runtime::deno_node::errors::PackageFolderResolveIoError;
 use deno_runtime::deno_node::errors::PackageNotFoundError;
 use deno_runtime::deno_node::errors::ReferrerNotFoundError;
@@ -186,22 +185,19 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     name: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, PackageFolderResolveError> {
-    let maybe_local_path =
-      self.resolve_folder_for_specifier(referrer).map_err(|err| {
-        PackageFolderResolveErrorKind::Io(PackageFolderResolveIoError {
-          package_name: name.to_string(),
-          referrer: referrer.clone(),
-          source: err,
-        })
+    let maybe_local_path = self
+      .resolve_folder_for_specifier(referrer)
+      .map_err(|err| PackageFolderResolveIoError {
+        package_name: name.to_string(),
+        referrer: referrer.clone(),
+        source: err,
       })?;
     let Some(local_path) = maybe_local_path else {
       return Err(
-        PackageFolderResolveErrorKind::ReferrerNotFound(
-          ReferrerNotFoundError {
-            referrer: referrer.clone(),
-            referrer_extra: None,
-          },
-        )
+        ReferrerNotFoundError {
+          referrer: referrer.clone(),
+          referrer_extra: None,
+        }
         .into(),
       );
     };
@@ -226,11 +222,11 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     }
 
     Err(
-      PackageFolderResolveErrorKind::PackageNotFound(PackageNotFoundError {
+      PackageNotFoundError {
         package_name: name.to_string(),
         referrer: referrer.clone(),
         referrer_extra: None,
-      })
+      }
       .into(),
     )
   }

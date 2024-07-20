@@ -15,7 +15,6 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::errors::PackageFolderResolveError;
-use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
 use deno_runtime::deno_node::errors::PackageNotFoundError;
 use deno_runtime::deno_node::errors::ReferrerNotFoundError;
 use deno_runtime::deno_node::NodePermissions;
@@ -86,12 +85,10 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
       .resolve_package_folder_id_from_specifier(referrer)
     else {
       return Err(
-        PackageFolderResolveErrorKind::ReferrerNotFound(
-          ReferrerNotFoundError {
-            referrer: referrer.clone(),
-            referrer_extra: None,
-          },
-        )
+        ReferrerNotFoundError {
+          referrer: referrer.clone(),
+          referrer_extra: None,
+        }
         .into(),
       );
     };
@@ -102,41 +99,35 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
       Ok(pkg) => match self.maybe_package_folder(&pkg.id) {
         Some(folder) => Ok(folder),
         None => Err(
-          PackageFolderResolveErrorKind::PackageNotFound(
-            PackageNotFoundError {
-              package_name: name.to_string(),
-              referrer: referrer.clone(),
-              referrer_extra: Some(format!(
-                "{} -> {}",
-                referrer_cache_folder_id,
-                pkg.id.as_serialized()
-              )),
-            },
-          )
+          PackageNotFoundError {
+            package_name: name.to_string(),
+            referrer: referrer.clone(),
+            referrer_extra: Some(format!(
+              "{} -> {}",
+              referrer_cache_folder_id,
+              pkg.id.as_serialized()
+            )),
+          }
           .into(),
         ),
       },
       Err(err) => match *err {
         PackageNotFoundFromReferrerError::Referrer(cache_folder_id) => Err(
-          PackageFolderResolveErrorKind::ReferrerNotFound(
-            ReferrerNotFoundError {
-              referrer: referrer.clone(),
-              referrer_extra: Some(cache_folder_id.to_string()),
-            },
-          )
+          ReferrerNotFoundError {
+            referrer: referrer.clone(),
+            referrer_extra: Some(cache_folder_id.to_string()),
+          }
           .into(),
         ),
         PackageNotFoundFromReferrerError::Package {
           name,
           referrer: cache_folder_id_referrer,
         } => Err(
-          PackageFolderResolveErrorKind::PackageNotFound(
-            PackageNotFoundError {
-              package_name: name,
-              referrer: referrer.clone(),
-              referrer_extra: Some(cache_folder_id_referrer.to_string()),
-            },
-          )
+          PackageNotFoundError {
+            package_name: name,
+            referrer: referrer.clone(),
+            referrer_extra: Some(cache_folder_id_referrer.to_string()),
+          }
           .into(),
         ),
       },
