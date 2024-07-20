@@ -24,16 +24,16 @@ use deno_npm::resolution::NpmResolutionError;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::errors::ClosestPkgJsonError;
+use deno_runtime::deno_node::errors::FlatNodeResolutionError;
 use deno_runtime::deno_node::errors::NodeResolveError;
-use deno_runtime::deno_node::errors::ResolvePkgSubpathFromDenoModuleError;
+use deno_runtime::deno_node::errors::PackageFolderResolveIoError;
+use deno_runtime::deno_node::errors::PackageNotFoundError;
 use deno_runtime::deno_node::errors::UrlToNodeResolutionError;
 use deno_runtime::deno_node::is_builtin_node_module;
-use deno_runtime::deno_node::parse_npm_pkg_name;
 use deno_runtime::deno_node::NodeModuleKind;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_node::NpmResolver as DenoNodeNpmResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::npm::NpmPackageReqReference;
@@ -47,7 +47,6 @@ use crate::args::JsxImportSourceConfig;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::colors;
 use crate::node::CliNodeCodeTranslator;
-use crate::npm::ByonmCliNpmResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::util::sync::AtomicFlag;
@@ -102,17 +101,66 @@ impl CliNodeResolver {
     self.node_resolver.get_closest_package_json(referrer)
   }
 
-  pub fn resolve_if_in_npm_package(
+  pub fn resolve_if_for_npm_pkg(
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-  ) -> Option<Result<Option<NodeResolution>, NodeResolveError>> {
-    if self.in_npm_package(referrer) {
-      // we're in an npm package, so use node resolution
-      Some(self.resolve(specifier, referrer, mode))
-    } else {
-      None
+  ) -> Result<Option<NodeResolution>, AnyError> {
+    let resolution_result = self.resolve(specifier, referrer, mode);
+    match resolution_result {
+      Ok(res) => {
+        return Ok(Some(res));
+      }
+      Err(err) => {
+        let err = FlatNodeResolutionError::from(err);
+        match &err {
+          FlatNodeResolutionError::NodeResolveRelativeJoin(_)
+          | FlatNodeResolutionError::DataUrlReferrer(_)
+          | FlatNodeResolutionError::InvalidModuleSpecifier(_)
+          | FlatNodeResolutionError::PackageTargetNotFoundError(_)
+          | FlatNodeResolutionError::TypesNotFound(_)
+          | FlatNodeResolutionError::PackageJsonLoad(_)
+          | FlatNodeResolutionError::CanonicalizingPkgJsonDir(_)
+          | FlatNodeResolutionError::TypeScriptNotSupportedInNpm(_)
+          | FlatNodeResolutionError::PackageImportNotDefined(_)
+          | FlatNodeResolutionError::ModuleNotFound(_)
+          | FlatNodeResolutionError::UnsupportedDirImport(_)
+          | FlatNodeResolutionError::InvalidPackageTarget(_)
+          | FlatNodeResolutionError::PackagePathNotExported(_)
+          | FlatNodeResolutionError::UnsupportedEsmUrlScheme(_)
+          | FlatNodeResolutionError::ReferrerNotFound(_) => {
+            return Err(err.into())
+          }
+          FlatNodeResolutionError::PackageNotFound(PackageNotFoundError {
+            package_name,
+            ..
+          })
+          | FlatNodeResolutionError::PackageFolderResolveIo(
+            PackageFolderResolveIoError { package_name, .. },
+          ) => {
+            if self.in_npm_package(referrer) {
+              return Err(err.into());
+            }
+            if let Some(byonm_npm_resolver) = self.npm_resolver.as_byonm() {
+              if byonm_npm_resolver
+                .find_ancestor_package_json_with_dep(package_name, referrer)
+                .is_some()
+              {
+                return Err(anyhow!(
+                  concat!(
+                  "Could not resolve \"{}\", but found it in a package.json. ",
+                  "Deno expects the node_modules/ directory to be up to date. ",
+                  "Did you forget to run `npm install`?"
+                ),
+                  specifier
+                ));
+              }
+            }
+            Ok(None)
+          }
+        }
+      }
     }
   }
 
@@ -121,18 +169,18 @@ impl CliNodeResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-  ) -> Result<Option<NodeResolution>, NodeResolveError> {
+  ) -> Result<NodeResolution, NodeResolveError> {
     let referrer_kind = if self.cjs_resolutions.contains(referrer) {
       NodeModuleKind::Cjs
     } else {
       NodeModuleKind::Esm
     };
 
-    let maybe_res =
+    let res =
       self
         .node_resolver
         .resolve(specifier, referrer, referrer_kind, mode)?;
-    Ok(self.handle_node_resolution(maybe_res))
+    Ok(self.handle_node_resolution(res))
   }
 
   pub fn resolve_req_reference(
@@ -159,16 +207,15 @@ impl CliNodeResolver {
     let package_folder = self
       .npm_resolver
       .resolve_pkg_folder_from_deno_module_req(req, referrer)?;
-    let maybe_resolution = self
-      .maybe_resolve_package_sub_path_from_deno_module(
-        &package_folder,
-        sub_path,
-        Some(referrer),
-        mode,
-      )?;
-    match maybe_resolution {
-      Some(resolution) => Ok(resolution),
-      None => {
+    let resolution_result = self.resolve_package_sub_path_from_deno_module(
+      &package_folder,
+      sub_path,
+      Some(referrer),
+      mode,
+    );
+    match resolution_result {
+      Ok(resolution) => Ok(resolution),
+      Err(err) => {
         if self.npm_resolver.as_byonm().is_some() {
           let package_json_path = package_folder.join("package.json");
           if !self.fs.exists_sync(&package_json_path) {
@@ -178,12 +225,7 @@ impl CliNodeResolver {
             ));
           }
         }
-        Err(anyhow!(
-          "Failed resolving '{}{}' in '{}'.",
-          req,
-          sub_path.map(|s| format!("/{}", s)).unwrap_or_default(),
-          package_folder.display()
-        ))
+        Err(err)
       }
     }
   }
@@ -195,32 +237,7 @@ impl CliNodeResolver {
     maybe_referrer: Option<&ModuleSpecifier>,
     mode: NodeResolutionMode,
   ) -> Result<NodeResolution, AnyError> {
-    self
-      .maybe_resolve_package_sub_path_from_deno_module(
-        package_folder,
-        sub_path,
-        maybe_referrer,
-        mode,
-      )?
-      .ok_or_else(|| {
-        anyhow!(
-          "Failed resolving '{}' in '{}'.",
-          sub_path
-            .map(|s| format!("/{}", s))
-            .unwrap_or_else(|| ".".to_string()),
-          package_folder.display(),
-        )
-      })
-  }
-
-  pub fn maybe_resolve_package_sub_path_from_deno_module(
-    &self,
-    package_folder: &Path,
-    sub_path: Option<&str>,
-    maybe_referrer: Option<&ModuleSpecifier>,
-    mode: NodeResolutionMode,
-  ) -> Result<Option<NodeResolution>, ResolvePkgSubpathFromDenoModuleError> {
-    let maybe_res = self
+    let res = self
       .node_resolver
       .resolve_package_subpath_from_deno_module(
         package_folder,
@@ -228,7 +245,7 @@ impl CliNodeResolver {
         maybe_referrer,
         mode,
       )?;
-    Ok(self.handle_node_resolution(maybe_res))
+    Ok(self.handle_node_resolution(res))
   }
 
   pub fn handle_if_in_node_modules(
@@ -267,13 +284,13 @@ impl CliNodeResolver {
 
   fn handle_node_resolution(
     &self,
-    maybe_resolution: Option<NodeResolution>,
-  ) -> Option<NodeResolution> {
-    if let Some(NodeResolution::CommonJs(specifier)) = &maybe_resolution {
+    resolution: NodeResolution,
+  ) -> NodeResolution {
+    if let NodeResolution::CommonJs(specifier) = &resolution {
       // remember that this was a common js resolution
       self.cjs_resolutions.insert(specifier.clone());
     }
-    maybe_resolution
+    resolution
   }
 }
 
@@ -458,39 +475,6 @@ impl CliGraphResolver {
       bare_node_builtins_enabled: self.bare_node_builtins_enabled,
     }
   }
-
-  // todo(dsherret): update this and the surrounding code to handle the structured errors from NodeResolver
-  fn check_surface_byonm_node_error(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-    original_err: AnyError,
-    resolver: &ByonmCliNpmResolver,
-  ) -> Result<(), AnyError> {
-    if let Ok((pkg_name, _, _)) = parse_npm_pkg_name(specifier, referrer) {
-      match resolver.resolve_package_folder_from_package(&pkg_name, referrer) {
-        Ok(_) => {
-          return Err(original_err);
-        }
-        Err(_) => {
-          if resolver
-            .find_ancestor_package_json_with_dep(&pkg_name, referrer)
-            .is_some()
-          {
-            return Err(anyhow!(
-              concat!(
-                "Could not resolve \"{}\", but found it in a package.json. ",
-                "Deno expects the node_modules/ directory to be up to date. ",
-                "Did you forget to run `npm install`?"
-              ),
-              specifier
-            ));
-          }
-        }
-      }
-    }
-    Ok(())
-  }
 }
 
 impl Resolver for CliGraphResolver {
@@ -523,6 +507,18 @@ impl Resolver for CliGraphResolver {
     }
 
     let referrer = &referrer_range.specifier;
+
+    if let Some(node_resolver) = self.node_resolver.as_ref() {
+      if referrer.scheme() == "file" {
+        if node_resolver.in_npm_package(&referrer) {
+          return node_resolver
+            .resolve(specifier, referrer, to_node_mode(mode))
+            .map(|res| res.into_url())
+            .map_err(|e| ResolveError::Other(e.into()));
+        }
+      }
+    }
+
     let result: Result<_, ResolveError> = self
       .workspace_resolver
       .resolve(specifier, referrer)
@@ -552,8 +548,6 @@ impl Resolver for CliGraphResolver {
           )
           .map_err(ResolveError::Other)
           .map(|res| res.into_url()),
-        // todo(dsherret): for byonm it should do resolution solely based on
-        // the referrer and not the package.json
         MappedResolution::PackageJson {
           dep_result,
           alias,
@@ -604,29 +598,6 @@ impl Resolver for CliGraphResolver {
       Err(err) => Err(err),
     };
 
-    // check if it's an npm specifier that resolves to a workspace member
-    if let Some(node_resolver) = &self.node_resolver {
-      if let Ok(specifier) = &result {
-        if let Ok(req_ref) = NpmPackageReqReference::from_specifier(specifier) {
-          if let Some(pkg_folder) = self
-            .workspace_resolver
-            .resolve_workspace_pkg_json_folder_for_npm_specifier(req_ref.req())
-          {
-            return Ok(
-              node_resolver
-                .resolve_package_sub_path_from_deno_module(
-                  pkg_folder,
-                  req_ref.sub_path(),
-                  Some(referrer),
-                  to_node_mode(mode),
-                )?
-                .into_url(),
-            );
-          }
-        }
-      }
-    }
-
     // do sloppy imports resolution if enabled
     let result =
       if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
@@ -654,66 +625,56 @@ impl Resolver for CliGraphResolver {
       }
     }
 
-    if let Some(resolver) =
-      self.npm_resolver.as_ref().and_then(|r| r.as_byonm())
-    {
+    if let Some(node_resolver) = &self.node_resolver {
+      let is_byonm = self
+        .npm_resolver
+        .as_ref()
+        .is_some_and(|r| r.as_byonm().is_some());
       match &result {
         Ok(specifier) => {
           if let Ok(npm_req_ref) =
             NpmPackageReqReference::from_specifier(specifier)
           {
-            let node_resolver = self.node_resolver.as_ref().unwrap();
-            return node_resolver
-              .resolve_req_reference(&npm_req_ref, referrer, to_node_mode(mode))
-              .map(|res| res.into_url())
-              .map_err(|err| err.into());
-          }
-        }
-        Err(_) => {
-          if referrer.scheme() == "file" {
-            if let Some(node_resolver) = &self.node_resolver {
-              let node_result =
-                node_resolver.resolve(specifier, referrer, to_node_mode(mode));
-              match node_result {
-                Ok(Some(res)) => {
-                  return Ok(res.into_url());
-                }
-                Ok(None) => {
-                  self
-                    .check_surface_byonm_node_error(
-                      specifier,
-                      referrer,
-                      anyhow!("Cannot find \"{}\"", specifier),
-                      resolver,
-                    )
-                    .map_err(ResolveError::Other)?;
-                }
-                Err(err) => {
-                  self
-                    .check_surface_byonm_node_error(
-                      specifier,
-                      referrer,
-                      err.into(),
-                      resolver,
-                    )
-                    .map_err(ResolveError::Other)?;
-                }
-              }
+            // check if the npm specifier resolves to a workspace member
+            if let Some(pkg_folder) = self
+              .workspace_resolver
+              .resolve_workspace_pkg_json_folder_for_npm_specifier(
+                npm_req_ref.req(),
+              )
+            {
+              return Ok(
+                node_resolver
+                  .resolve_package_sub_path_from_deno_module(
+                    pkg_folder,
+                    npm_req_ref.sub_path(),
+                    Some(referrer),
+                    to_node_mode(mode),
+                  )?
+                  .into_url(),
+              );
+            }
+
+            if is_byonm {
+              return node_resolver
+                .resolve_req_reference(
+                  &npm_req_ref,
+                  referrer,
+                  to_node_mode(mode),
+                )
+                .map(|res| res.into_url())
+                .map_err(|err| err.into());
             }
           }
         }
-      }
-    }
-
-    if referrer.scheme() == "file" {
-      if let Some(node_resolver) = &self.node_resolver {
-        let node_result = node_resolver.resolve_if_in_npm_package(
-          specifier,
-          referrer,
-          to_node_mode(mode),
-        );
-        if let Some(Ok(Some(res))) = node_result {
-          return Ok(res.into_url());
+        Err(_) => {
+          if is_byonm && referrer.scheme() == "file" {
+            let maybe_resolution = node_resolver
+              .resolve_if_for_npm_pkg(specifier, referrer, to_node_mode(mode))
+              .map_err(ResolveError::Other)?;
+            if let Some(res) = maybe_resolution {
+              return Ok(res.into_url());
+            }
+          }
         }
       }
     }

@@ -1,3 +1,10 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest/esm-import-cjs-default
+Download http://localhost:4260/@denotest/cjs-default-export
+Download http://localhost:4260/@denotest/cjs-default-export/1.0.0.tgz
+Download http://localhost:4260/@denotest/esm-import-cjs-default/1.0.0.tgz
+[UNORDERED_END]
+Check file:///[WILDLINE]/main.ts
 Node esm importing node cjs
 ===========================
 {

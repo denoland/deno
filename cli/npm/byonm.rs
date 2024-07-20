@@ -13,6 +13,8 @@ use deno_core::serde_json;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::errors::PackageFolderResolveError;
 use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
+use deno_runtime::deno_node::errors::PackageFolderResolveIoError;
+use deno_runtime::deno_node::errors::PackageNotFoundError;
 use deno_runtime::deno_node::load_pkg_json;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NpmResolver;
@@ -198,22 +200,22 @@ impl NpmResolver for ByonmCliNpmResolver {
       }
 
       Err(
-        PackageFolderResolveErrorKind::NotFoundPackage {
+        PackageFolderResolveErrorKind::PackageNotFound(PackageNotFoundError {
           package_name: name.to_string(),
           referrer: referrer.clone(),
           referrer_extra: None,
-        }
+        })
         .into(),
       )
     }
 
     let path = inner(&*self.fs, name, referrer)?;
     self.fs.realpath_sync(&path).map_err(|err| {
-      PackageFolderResolveErrorKind::Io {
+      PackageFolderResolveErrorKind::Io(PackageFolderResolveIoError {
         package_name: name.to_string(),
         referrer: referrer.clone(),
         source: err.into_io_error(),
-      }
+      })
       .into()
     })
   }

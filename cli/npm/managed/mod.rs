@@ -22,6 +22,7 @@ use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::errors::PackageFolderResolveError;
 use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
+use deno_runtime::deno_node::errors::PackageFolderResolveIoError;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NpmResolver;
 use deno_semver::package::PackageNv;
@@ -549,10 +550,12 @@ impl NpmResolver for ManagedCliNpmResolver {
       .resolve_package_folder_from_package(name, referrer)?;
     let path =
       canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())
-        .map_err(|err| PackageFolderResolveErrorKind::Io {
-          package_name: name.to_string(),
-          referrer: referrer.clone(),
-          source: err,
+        .map_err(|err| {
+          PackageFolderResolveErrorKind::Io(PackageFolderResolveIoError {
+            package_name: name.to_string(),
+            referrer: referrer.clone(),
+            source: err,
+          })
         })?;
     log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
     Ok(path)

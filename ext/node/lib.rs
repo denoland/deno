@@ -46,7 +46,6 @@ pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
-pub use resolution::parse_npm_pkg_name;
 pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;
