@@ -526,7 +526,8 @@ impl Resolver for CliGraphResolver {
       });
     let result = match result {
       Ok(resolution) => match resolution {
-        MappedResolution::Normal(specifier) => {
+        MappedResolution::Normal(specifier)
+        | MappedResolution::ImportMap(specifier) => {
           // do sloppy imports resolution if enabled
           if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
             Ok(sloppy_imports_resolve(
@@ -539,7 +540,6 @@ impl Resolver for CliGraphResolver {
             Ok(specifier)
           }
         }
-        MappedResolution::ImportMap(specifier) => Ok(specifier),
         MappedResolution::WorkspaceNpmPackage {
           target_pkg_json: pkg_json,
           sub_path,
