@@ -33,6 +33,10 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 
+import { primordials } from "ext:core/mod.js";
+
+const { setTimeout } = primordials;
+
 export class HandleWrap extends AsyncWrap {
   constructor(provider: providerType) {
     super(provider);
