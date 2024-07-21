@@ -1,4 +1,4 @@
 {
-  "args": "run --check dom_extras_dts.ts",
-  "output": "dom_extras_dts.out"
+  "args": "run --check main.ts",
+  "output": "main.out"
 }
