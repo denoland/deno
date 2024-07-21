@@ -1813,7 +1813,7 @@ declare var CloseEvent: {
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CompressionStream) */
 interface CompressionStream extends GenericTransformStream {
     readonly readable: ReadableStream<Uint8Array>;
-    readonly writable: WritableStream<Uint8Array>;
+    readonly writable: WritableStream<BufferSource>;
 }
 
 declare var CompressionStream: {
@@ -2266,7 +2266,7 @@ declare var DOMStringList: {
 /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/DecompressionStream) */
 interface DecompressionStream extends GenericTransformStream {
     readonly readable: ReadableStream<Uint8Array>;
-    readonly writable: WritableStream<Uint8Array>;
+    readonly writable: WritableStream<BufferSource>;
 }
 
 declare var DecompressionStream: {
@@ -3091,9 +3091,7 @@ declare var FormData: {
 };
 
 interface GenericTransformStream {
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CompressionStream/readable) */
     readonly readable: ReadableStream;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CompressionStream/writable) */
     readonly writable: WritableStream;
 }
 

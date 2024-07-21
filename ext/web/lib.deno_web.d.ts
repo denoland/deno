@@ -1229,7 +1229,7 @@ declare function structuredClone<T = any>(
  */
 declare interface CompressionStream extends GenericTransformStream {
   readonly readable: ReadableStream<Uint8Array>;
-  readonly writable: WritableStream<Uint8Array>;
+  readonly writable: WritableStream<BufferSource>;
 }
 
 /** @category Streams */
@@ -1276,7 +1276,7 @@ declare var CompressionStream: {
  */
 declare interface DecompressionStream extends GenericTransformStream {
   readonly readable: ReadableStream<Uint8Array>;
-  readonly writable: WritableStream<Uint8Array>;
+  readonly writable: WritableStream<BufferSource>;
 }
 
 /**
