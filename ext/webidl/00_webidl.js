@@ -931,8 +931,7 @@ function isIterator(obj) {
   return true;
 }
 
-// Ref: https://tc39.es/ecma262/#sec-getiterator
-function getIteratorAsync(obj, prefix, context) {
+function getIteratorAsync(obj) {
   const method = obj[SymbolAsyncIterator];
   if (method === undefined) {
     const syncMethod = obj[SymbolIterator];
@@ -941,38 +940,13 @@ function getIteratorAsync(obj, prefix, context) {
       throw new TypeError("No iterator found.");
     }
 
-    const iter = FunctionPrototypeCall(syncMethod, obj);
-
-    if (type(iter) !== "Object") {
-      throw makeException(
-        TypeError,
-        "can not be converted to async iterable.",
-        prefix,
-        context,
-      );
-    }
-
-    return {
-      // deno-lint-ignore require-await
-      async next() {
-        // deno-lint-ignore prefer-primordials
-        return iter.next();
-      },
-    };
+    return [syncMethod, false];
   } else {
-    const iter = FunctionPrototypeCall(method, obj);
-    if (type(iter) !== "Object") {
-      throw makeException(
-        TypeError,
-        "can not be converted to async iterable.",
-        prefix,
-        context,
-      );
-    }
-
-    return iter;
+    return [method, true];
   }
 }
+
+const AsyncIterable = Symbol("[[asyncIterable]]");
 
 function createAsyncIterableConverter(converter) {
   return function (
@@ -990,56 +964,83 @@ function createAsyncIterableConverter(converter) {
       );
     }
 
-    const iterator = getIteratorAsync(V, prefix, context);
+    const [iterator, isAsync] = getIteratorAsync(V);
 
     return {
-      async next() {
-        // deno-lint-ignore prefer-primordials
-        const iterResult = await iterator.next();
-        if (type(iterResult) !== "Object") {
-          throw makeException(
-            TypeError,
-            "can not be converted to async iterable.",
-            prefix,
-            context,
-          );
-        }
-
-        if (iterResult.done) {
-          return { done: true };
-        }
-
-        const iterValue = converter(
-          iterResult.value,
-          prefix,
-          context,
-          opts,
-        );
-
-        return { done: false, value: iterValue };
-      },
-      async return(reason) {
-        if (iterator.return === undefined) {
-          return undefined;
-        }
-
-        // deno-lint-ignore prefer-primordials
-        const returnPromiseResult = await iterator.return(reason);
-        if (type(returnPromiseResult) !== "Object") {
-          throw makeException(
-            TypeError,
-            "can not be converted to async iterable.",
-            prefix,
-            context,
-          );
-        }
-
-        return undefined;
-      },
-      [SymbolAsyncIterator]() {
-        return this;
-      },
       value: V,
+      [AsyncIterable]: AsyncIterable,
+      open() {
+        const iter = FunctionPrototypeCall(iterator, V);
+        if (type(iter) !== "Object") {
+          throw makeException(
+            TypeError,
+            "invalid iterator.",
+            prefix,
+            context,
+          );
+        }
+
+        let asyncIterator = iter;
+
+        if (!isAsync) {
+          asyncIterator = {
+            // deno-lint-ignore require-await
+            async next() {
+              // deno-lint-ignore prefer-primordials
+              return iter.next();
+            },
+          };
+        }
+
+        return {
+          async next() {
+            // deno-lint-ignore prefer-primordials
+            const iterResult = await asyncIterator.next();
+            if (type(iterResult) !== "Object") {
+              throw makeException(
+                TypeError,
+                "can not be converted to async iterable.",
+                prefix,
+                context,
+              );
+            }
+
+            if (iterResult.done) {
+              return { done: true };
+            }
+
+            const iterValue = converter(
+              iterResult.value,
+              prefix,
+              context,
+              opts,
+            );
+
+            return { done: false, value: iterValue };
+          },
+          async return(reason) {
+            if (asyncIterator.return === undefined) {
+              return undefined;
+            }
+
+            // deno-lint-ignore prefer-primordials
+            const returnPromiseResult = await iterator.return(reason);
+            if (type(returnPromiseResult) !== "Object") {
+              throw makeException(
+                TypeError,
+                "can not be converted to async iterable.",
+                prefix,
+                context,
+              );
+            }
+
+            return undefined;
+          },
+          [SymbolAsyncIterator]() {
+            return this;
+          },
+        };
+      },
     };
   };
 }
@@ -1412,6 +1413,7 @@ function setlike(obj, objPrototype, readonly) {
 
 export {
   assertBranded,
+  AsyncIterable,
   brand,
   configureInterface,
   converters,

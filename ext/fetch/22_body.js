@@ -446,8 +446,8 @@ function extractBody(object) {
     if (object.locked || isReadableStreamDisturbed(object)) {
       throw new TypeError("ReadableStream is locked or disturbed");
     }
-  } else if (object[SymbolAsyncIterator] !== undefined) {
-    stream = ReadableStream.from(object);
+  } else if (object[webidl.AsyncIterable] === webidl.AsyncIterable) {
+    stream = ReadableStream.from(object.open());
   }
   if (typeof source === "string") {
     // WARNING: this deviates from spec (expects length to be set)

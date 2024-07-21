@@ -5178,10 +5178,11 @@ class ReadableStream {
       prefix,
       "Argument 1",
     );
+    const iter = asyncIterable.open();
 
     const stream = createReadableStream(noop, async () => {
       // deno-lint-ignore prefer-primordials
-      const res = await asyncIterable.next();
+      const res = await iter.next();
       if (res.done) {
         readableStreamDefaultControllerClose(stream[_controller]);
       } else {
@@ -5192,7 +5193,7 @@ class ReadableStream {
       }
     }, async (reason) => {
       // deno-lint-ignore prefer-primordials
-      await asyncIterable.return(reason);
+      await iter.return(reason);
     }, 0);
     return stream;
   }
