@@ -77,6 +77,7 @@ pub struct BootstrapOptions {
   pub no_color: bool,
   pub is_stdout_tty: bool,
   pub is_stderr_tty: bool,
+  pub color_level: deno_terminal::colors::ColorLevel,
   // --unstable flag, deprecated
   pub unstable: bool,
   // --unstable-* flags
@@ -111,6 +112,7 @@ impl Default for BootstrapOptions {
       no_color: !colors::use_color(),
       is_stdout_tty: deno_terminal::is_stdout_tty(),
       is_stderr_tty: deno_terminal::is_stderr_tty(),
+      color_level: colors::get_color_level(),
       enable_op_summary_metrics: Default::default(),
       enable_testing_features: Default::default(),
       log_level: Default::default(),

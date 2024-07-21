@@ -804,7 +804,7 @@ mod tests {
     fs_sources: &[(&str, &str)],
   ) -> Documents {
     let temp_dir = TempDir::new();
-    let cache = LspCache::new(Some(temp_dir.uri()));
+    let cache = LspCache::new(Some(temp_dir.uri().join(".deno_dir").unwrap()));
     let mut documents = Documents::default();
     documents.update_config(
       &Default::default(),

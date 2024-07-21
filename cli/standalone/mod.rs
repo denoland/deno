@@ -88,7 +88,7 @@ struct WorkspaceEszipModule {
 
 struct WorkspaceEszip {
   eszip: eszip::EszipV2,
-  root_dir_url: ModuleSpecifier,
+  root_dir_url: Arc<ModuleSpecifier>,
 }
 
 impl WorkspaceEszip {
@@ -166,6 +166,22 @@ impl ModuleLoader for EmbeddedModuleLoader {
       self.shared.workspace_resolver.resolve(specifier, &referrer);
 
     match mapped_resolution {
+      Ok(MappedResolution::WorkspaceNpmPackage {
+        target_pkg_json: pkg_json,
+        sub_path,
+        ..
+      }) => Ok(
+        self
+          .shared
+          .node_resolver
+          .resolve_package_sub_path_from_deno_module(
+            pkg_json.dir_path(),
+            sub_path.as_deref(),
+            Some(&referrer),
+            NodeResolutionMode::Execution,
+          )?
+          .into_url(),
+      ),
       Ok(MappedResolution::PackageJson {
         dep_result,
         sub_path,
@@ -369,7 +385,6 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
         root_permissions,
         dynamic_permissions,
       }),
-      source_map_getter: None,
     }
   }
 
@@ -384,7 +399,6 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
         root_permissions,
         dynamic_permissions,
       }),
-      source_map_getter: None,
     }
   }
 }
@@ -427,7 +441,8 @@ pub async fn run(
   let npm_registry_url = ModuleSpecifier::parse("https://localhost/").unwrap();
   let root_path =
     std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name));
-  let root_dir_url = ModuleSpecifier::from_directory_path(&root_path).unwrap();
+  let root_dir_url =
+    Arc::new(ModuleSpecifier::from_directory_path(&root_path).unwrap());
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
   let root_node_modules_path = root_path.join("node_modules");
   let npm_cache_dir = NpmCacheDir::new(
@@ -579,6 +594,7 @@ pub async fn run(
       })
       .collect();
     WorkspaceResolver::new_raw(
+      root_dir_url.clone(),
       import_map,
       pkg_jsons,
       metadata.workspace_resolver.pkg_json_resolution,

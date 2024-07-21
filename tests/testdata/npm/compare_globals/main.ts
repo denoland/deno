@@ -37,12 +37,17 @@ console.log(
 );
 globals.checkProcessGlobal();
 
-// In Deno, the window global is defined, but in Node it is not.
+// In Deno, the window and self globals are defined, but in Node they are not.
 console.log("window" in globalThis);
+console.log("self" in globalThis);
 console.log(
   Object.getOwnPropertyDescriptor(globalThis, "window") !== undefined,
 );
+console.log(
+  Object.getOwnPropertyDescriptor(globalThis, "self") !== undefined,
+);
 globals.checkWindowGlobal();
+globals.checkSelfGlobal();
 
 // "Non-managed" globals are shared between Node and Deno.
 (globalThis as any).foo = "bar";
