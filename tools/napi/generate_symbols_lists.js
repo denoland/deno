@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import exports from "../../cli/napi/sym/symbol_exports.json" with {
+import exports from "../../ext/napi/sym/symbol_exports.json" with {
   type: "json",
 };
 
@@ -17,7 +17,7 @@ const symbolExportLists = {
 
 for await (const [os, def] of Object.entries(symbolExportLists)) {
   const defUrl = new URL(
-    `../../cli/napi/generated_symbol_exports_list_${os}.def`,
+    `../../ext/napi/generated_symbol_exports_list_${os}.def`,
     import.meta.url,
   );
   await Deno.writeTextFile(defUrl.pathname, def, { create: true });
