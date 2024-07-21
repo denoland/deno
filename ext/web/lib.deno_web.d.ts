@@ -643,16 +643,11 @@ declare interface ReadableStreamBYOBReaderReadOptions {
 }
 
 /** @category Streams */
-declare interface GenericTransformStream {
-  readonly readable: ReadableStream;
-  readonly writable: WritableStream;
-}
-
-/** @category Streams */
 declare interface ReadableStreamBYOBReader extends ReadableStreamGenericReader {
   read<T extends ArrayBufferView>(
     view: T,
-  ): Promise<ReadableStreamReadResult<T>>;
+    options?: ReadableStreamBYOBReaderReadOptions,
+  ): Promise<ReadableStreamBYOBReadResult<T>>;
   releaseLock(): void;
 }
 
@@ -1025,6 +1020,12 @@ declare interface TransformerTransformCallback<I, O> {
 /** @category Streams */
 declare interface TransformerCancelCallback {
   (reason: any): void | PromiseLike<void>;
+}
+
+/** @category Streams */
+declare interface GenericTransformStream {
+  readonly readable: ReadableStream;
+  readonly writable: WritableStream;
 }
 
 /** @category Events */
