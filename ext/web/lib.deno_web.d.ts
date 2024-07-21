@@ -672,7 +672,7 @@ declare interface ReadableStreamBYOBRequest {
 /** @category Streams */
 declare var ReadableStreamBYOBRequest: {
   readonly prototype: ReadableStreamBYOBRequest;
-  new (): ReadableStreamBYOBRequest;
+  new (): never;
 };
 
 /** @category Streams */
@@ -741,7 +741,7 @@ declare interface ReadableStreamDefaultController<R = any> {
 /** @category Streams */
 declare var ReadableStreamDefaultController: {
   readonly prototype: ReadableStreamDefaultController;
-  new (): ReadableStreamDefaultController;
+  new (): never;
 };
 
 /** @category Streams */
@@ -756,7 +756,7 @@ declare interface ReadableByteStreamController {
 /** @category Streams */
 declare var ReadableByteStreamController: {
   readonly prototype: ReadableByteStreamController;
-  new (): ReadableByteStreamController;
+  new (): never;
 };
 
 /** @category Streams */
@@ -938,7 +938,7 @@ declare interface WritableStreamDefaultController {
 /** @category Streams */
 declare var WritableStreamDefaultController: {
   readonly prototype: WritableStreamDefaultController;
-  new (): WritableStreamDefaultController;
+  new (): never;
 };
 
 /** This Streams API interface is the object returned by
@@ -991,7 +991,7 @@ declare interface TransformStreamDefaultController<O = any> {
 /** @category Streams */
 declare var TransformStreamDefaultController: {
   readonly prototype: TransformStreamDefaultController;
-  new (): TransformStreamDefaultController;
+  new (): never;
 };
 
 /** @category Streams */
