@@ -931,21 +931,6 @@ function isIterator(obj) {
   return true;
 }
 
-function getIteratorAsync(obj) {
-  const method = obj[SymbolAsyncIterator];
-  if (method === undefined) {
-    const syncMethod = obj[SymbolIterator];
-
-    if (syncMethod === undefined) {
-      throw new TypeError("No iterator found.");
-    }
-
-    return [syncMethod, false];
-  } else {
-    return [method, true];
-  }
-}
-
 const AsyncIterable = Symbol("[[asyncIterable]]");
 
 function createAsyncIterableConverter(converter) {
@@ -964,13 +949,23 @@ function createAsyncIterableConverter(converter) {
       );
     }
 
-    const [iterator, isAsync] = getIteratorAsync(V);
+    let isAsync = true;
+    let method = V[SymbolAsyncIterator];
+    if (method === undefined) {
+      method = V[SymbolIterator];
+
+      if (method === undefined) {
+        throw new TypeError("No iterator found.");
+      }
+
+      isAsync = true;
+    }
 
     return {
       value: V,
       [AsyncIterable]: AsyncIterable,
       open() {
-        const iter = FunctionPrototypeCall(iterator, V);
+        const iter = FunctionPrototypeCall(method, V);
         if (type(iter) !== "Object") {
           throw makeException(
             TypeError,
@@ -1024,7 +1019,7 @@ function createAsyncIterableConverter(converter) {
             }
 
             // deno-lint-ignore prefer-primordials
-            const returnPromiseResult = await iterator.return(reason);
+            const returnPromiseResult = await asyncIterator.return(reason);
             if (type(returnPromiseResult) !== "Object") {
               throw makeException(
                 TypeError,

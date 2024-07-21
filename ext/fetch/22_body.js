@@ -32,7 +32,6 @@ const {
   TypedArrayPrototypeSlice,
   TypeError,
   Uint8Array,
-  SymbolAsyncIterator,
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
