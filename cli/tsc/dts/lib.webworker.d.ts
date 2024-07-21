@@ -2574,11 +2574,11 @@ declare var Event: {
 };
 
 interface EventListener {
-    (evt: Event): void | PromiseLike<void>;
+    (evt: Event): void;
 }
 
 interface EventListenerObject {
-    handleEvent(object: Event): void | PromiseLike<void>;
+    handleEvent(object: Event): void;
 }
 
 interface EventSourceEventMap {
