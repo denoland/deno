@@ -647,7 +647,7 @@ declare interface ReadableStreamBYOBReader extends ReadableStreamGenericReader {
   read<T extends ArrayBufferView>(
     view: T,
     options?: ReadableStreamBYOBReaderReadOptions,
-  ): Promise<ReadableStreamBYOBReadResult<T>>;
+  ): Promise<ReadableStreamReadResult<T>>;
   releaseLock(): void;
 }
 
