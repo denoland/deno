@@ -153,7 +153,7 @@ impl AssetOrDocument {
 
   pub fn scope(&self) -> Option<&ModuleSpecifier> {
     match self {
-      AssetOrDocument::Asset(_) => None,
+      AssetOrDocument::Asset(asset_doc) => Some(asset_doc.specifier()),
       AssetOrDocument::Document(doc) => doc.scope(),
     }
   }
