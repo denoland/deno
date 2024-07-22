@@ -15,6 +15,7 @@ mod errors;
 mod file_fetcher;
 mod http_util;
 mod js;
+mod napi;
 mod node;
 mod npm;
 mod resolver;

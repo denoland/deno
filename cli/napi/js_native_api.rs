@@ -5,7 +5,7 @@
 
 const NAPI_VERSION: u32 = 9;
 
-use crate::*;
+use deno_runtime::deno_napi::*;
 use libc::INT_MAX;
 
 use super::util::check_new_from_utf8;
@@ -17,9 +17,9 @@ use super::util::napi_set_last_error;
 use super::util::v8_name_from_property_descriptor;
 use crate::check_arg;
 use crate::check_env;
-use crate::function::create_function;
-use crate::function::create_function_template;
-use crate::function::CallbackInfo;
+use deno_runtime::deno_napi::function::create_function;
+use deno_runtime::deno_napi::function::create_function_template;
+use deno_runtime::deno_napi::function::CallbackInfo;
 use napi_sym::napi_sym;
 use std::ptr::NonNull;
 
@@ -1644,7 +1644,7 @@ fn napi_get_cb_info(
     check_arg!(env, argc);
     let argc = unsafe { *argc as usize };
     for i in 0..argc {
-      let arg = args.get(i as _);
+      let mut arg = args.get(i as _);
       unsafe {
         *argv.add(i) = arg.into();
       }

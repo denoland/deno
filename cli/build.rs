@@ -396,7 +396,7 @@ fn main() {
     }
     os => format!("generated_symbol_exports_list_{}.def", os),
   };
-  let symbols_path = std::path::Path::new("../ext/napi")
+  let symbols_path = std::path::Path::new("napi")
     .join(symbols_file_name)
     .canonicalize()
     .expect(
