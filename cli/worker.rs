@@ -18,6 +18,7 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_core::SourceMapGetter;
 use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
@@ -54,6 +55,7 @@ use crate::version;
 
 pub struct ModuleLoaderAndSourceMapGetter {
   pub module_loader: Rc<dyn ModuleLoader>,
+  pub source_map_getter: Option<Rc<dyn SourceMapGetter>>,
 }
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -514,7 +516,10 @@ impl CliMainWorkerFactory {
       (main_module, false)
     };
 
-    let ModuleLoaderAndSourceMapGetter { module_loader } = shared
+    let ModuleLoaderAndSourceMapGetter {
+      module_loader,
+      source_map_getter,
+    } = shared
       .module_loader_factory
       .create_for_main(PermissionsContainer::allow_all(), permissions.clone());
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
@@ -591,6 +596,7 @@ impl CliMainWorkerFactory {
         .clone(),
       root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       seed: shared.options.seed,
+      source_map_getter,
       format_js_error_fn: Some(Arc::new(format_js_error)),
       create_web_worker_cb,
       maybe_inspector_server,
@@ -724,11 +730,13 @@ fn create_web_worker_callback(
   Arc::new(move |args| {
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
-    let ModuleLoaderAndSourceMapGetter { module_loader } =
-      shared.module_loader_factory.create_for_worker(
-        args.parent_permissions.clone(),
-        args.permissions.clone(),
-      );
+    let ModuleLoaderAndSourceMapGetter {
+      module_loader,
+      source_map_getter,
+    } = shared.module_loader_factory.create_for_worker(
+      args.parent_permissions.clone(),
+      args.permissions.clone(),
+    );
     let create_web_worker_cb =
       create_web_worker_callback(mode, shared.clone(), stdio.clone());
 
@@ -794,6 +802,7 @@ fn create_web_worker_callback(
       seed: shared.options.seed,
       create_web_worker_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
+      source_map_getter,
       module_loader,
       fs: shared.fs.clone(),
       node_resolver: Some(shared.node_resolver.clone()),
