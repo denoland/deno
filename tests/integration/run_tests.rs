@@ -4900,8 +4900,7 @@ console.log(g.G);
     .args("run main.ts")
     .run()
     .assert_matches_text(
-      "Warning Sloppy imports are not recommended and have a negative impact on performance.
-Warning Sloppy module resolution (hint: update .js extension to .ts)
+      "Warning Sloppy module resolution (hint: update .js extension to .ts)
     at file:///[WILDCARD]/main.ts:1:20
 Warning Sloppy module resolution (hint: add .js extension)
     at file:///[WILDCARD]/main.ts:2:20

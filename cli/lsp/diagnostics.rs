@@ -1235,16 +1235,14 @@ impl DenoDiagnostic {
   pub fn to_lsp_diagnostic(&self, range: &lsp::Range) -> lsp::Diagnostic {
     fn no_local_message(
       specifier: &ModuleSpecifier,
-      sloppy_resolution: SloppyImportsResolution,
+      maybe_sloppy_resolution: Option<&SloppyImportsResolution>,
     ) -> String {
       let mut message = format!(
         "Unable to load a local module: {}\n",
         to_percent_decoded_str(specifier.as_ref())
       );
-      if let Some(additional_message) =
-        sloppy_resolution.as_suggestion_message()
-      {
-        message.push_str(&additional_message);
+      if let Some(res) = maybe_sloppy_resolution {
+        message.push_str(&res.as_suggestion_message());
         message.push('.');
       } else {
         message.push_str("Please check the file path.");
@@ -1261,15 +1259,15 @@ impl DenoDiagnostic {
       Self::NoCacheJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing jsr package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
-        let sloppy_resolution = SloppyImportsResolver::new(Arc::new(deno_fs::RealFs)).resolve(specifier, ResolutionMode::Execution);
-        let data = sloppy_resolution.as_lsp_quick_fix_message().map(|message| {
+        let maybe_sloppy_resolution = SloppyImportsResolver::new(Arc::new(deno_fs::RealFs)).resolve(specifier, ResolutionMode::Execution);
+        let data = maybe_sloppy_resolution.map(|res| {
           json!({
             "specifier": specifier,
-            "to": sloppy_resolution.as_specifier(),
-            "message": message,
+            "to": res.as_specifier(),
+            "message": res.as_lsp_quick_fix_message(),
           })
         });
-        (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier, sloppy_resolution), data)
+        (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier, maybe_sloppy_resolution.as_ref()), data)
       },
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => (

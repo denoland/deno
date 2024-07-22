@@ -45,13 +45,6 @@ To grant permissions, set them before the script argument. For example:
   let http_client = factory.http_client_provider();
   let cli_options = factory.cli_options();
 
-  if cli_options.unstable_sloppy_imports() {
-    log::warn!(
-      "{} Sloppy imports are not recommended and have a negative impact on performance.",
-      crate::colors::yellow("Warning"),
-    );
-  }
-
   // Run a background task that checks for available upgrades or output
   // if an earlier run of this background task found a new version of Deno.
   #[cfg(feature = "upgrade")]

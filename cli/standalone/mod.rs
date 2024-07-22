@@ -241,10 +241,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
           }
         }
 
-        self
-          .shared
-          .node_resolver
-          .handle_if_in_node_modules(specifier)
+        Ok(
+          self
+            .shared
+            .node_resolver
+            .handle_if_in_node_modules(&specifier)?
+            .unwrap_or(specifier),
+        )
       }
       Err(err)
         if err.is_unmapped_bare_specifier() && referrer.scheme() == "file" =>
