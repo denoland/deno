@@ -1683,7 +1683,7 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
-version = "0.92.0"
+version = "0.93.0"
 dependencies = [
  "deno_core",
  "deno_permissions",
@@ -1850,7 +1850,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.170.0"
+version = "0.171.0"
 dependencies = [
  "deno_ast",
  "deno_broadcast_channel",
