@@ -48,6 +48,7 @@ for (
     conn.close();
     outgoing.destroy();
     listener.close();
+    await new Promise((resolve) => outgoing.on("close", resolve));
   });
 }
 
