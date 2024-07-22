@@ -1484,12 +1484,18 @@ function inspectError(value, ctx) {
       finalMessage += `[${stack || ErrorPrototypeToString(value)}]`;
     }
   }
+  const doubleQuoteRegExp = new SafeRegExp('"', "g");
   finalMessage += ArrayPrototypeJoin(
     ArrayPrototypeMap(
       causes,
       (cause) =>
         "\nCaused by " + (MapPrototypeGet(refMap, cause) ?? "") +
-        (cause?.stack ?? cause),
+        (cause?.stack ??
+          StringPrototypeReplace(
+            inspect(cause),
+            doubleQuoteRegExp,
+            "",
+          )),
     ),
     "",
   );
