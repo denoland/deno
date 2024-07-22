@@ -1409,11 +1409,13 @@ fn lsp_hover() {
 #[test]
 fn lsp_hover_asset() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/file.ts",
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "console.log(Date.now());\n"
@@ -1423,7 +1425,7 @@ fn lsp_hover_asset() {
     "textDocument/definition",
     json!({
       "textDocument": {
-        "uri": "file:///a/file.ts"
+        "uri": temp_dir.uri().join("file.ts").unwrap()
       },
       "position": { "line": 0, "character": 14 }
     }),

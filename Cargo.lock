@@ -1339,9 +1339,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.296.0"
+version = "0.294.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30c980bc491eac03722a67eb8c1345152216b3b5f781ee4bbc053863f91ca81b"
+checksum = "8e3e1883573cace82d1e826096c8c06bd5e4310ca3a4dba0eb1bf67468719c01"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1820,9 +1820,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.172.0"
+version = "0.170.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66b5e85887cd447ee47643c27c1b1991c3d8e3562ced9777388ff1febd7945c7"
+checksum = "c2534bce0346a6dbd6f892066b941a48297687d8755de135cef5dc15bed83214"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -1912,9 +1912,9 @@ dependencies = [
 
 [[package]]
 name = "deno_semver"
-version = "0.5.6"
+version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "389b5a8c2dd48cc1aad25396c92d7461ddb0fcfae1faf8e00205837c53e34d3e"
+checksum = "e23ce551a58eeefc05a48042a9c76d3409c96a1a6a522a82c4ced26930ece201"
 dependencies = [
  "monch",
  "once_cell",
@@ -5923,9 +5923,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.205.0"
+version = "0.203.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80e5b49b3c13594f38a8b880bcaf8fbec2b6b05e5621931e71b701e6e6daeca2"
+checksum = "5edf75e70aeb4c6f14c606cfe2fc8b3bd43d4f79c781365c3f336f1fe4be508a"
 dependencies = [
  "num-bigint",
  "serde",
@@ -7543,9 +7543,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.98.1"
+version = "0.98.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d03f42deef61349d31ae100e7bcdcc5d9293c1126cb8aff8fd56ba3cba18340b"
+checksum = "feb252d5be11c32cb4755d66d58db30ff30af5f1f17183e83ff54383a402c5f6"
 dependencies = [
  "bindgen",
  "bitflags 2.5.0",
