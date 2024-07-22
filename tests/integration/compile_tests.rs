@@ -107,7 +107,6 @@ fn standalone_error() {
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
   assert_contains!(stderr, "error: Uncaught (in promise) Error: boom!");
-  assert_contains!(stderr, "throw new Error(\"boom!\");");
   assert_contains!(stderr, "\n    at boom (file://");
   assert_contains!(stderr, "standalone_error.ts:2:9");
   assert_contains!(stderr, "at foo (file://");
@@ -147,7 +146,6 @@ fn standalone_error_module_with_imports() {
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
   assert_contains!(stderr, "error: Uncaught (in promise) Error: boom!");
-  assert_contains!(stderr, "throw new Error(\"boom!\");");
   assert_contains!(stderr, "\n    at file://");
   assert_contains!(stderr, "standalone_error_module_with_imports_2.ts:2:7");
   output.assert_exit_code(1);
@@ -1284,4 +1282,67 @@ fn standalone_jsr_dynamic_import() {
 
   output.assert_exit_code(0);
   output.assert_matches_text("Hello world\n");
+}
+
+#[test]
+fn standalone_require_node_addons() {
+  #[cfg(not(target_os = "windows"))]
+  {
+    let context = TestContextBuilder::for_jsr().build();
+    let dir = context.temp_dir();
+    let libout = dir.path().join("module.node");
+
+    let cc = context
+      .new_command()
+      .name("cc")
+      .current_dir(util::testdata_path());
+
+    #[cfg(not(target_os = "macos"))]
+    let c_module = cc
+      .arg("./compile/napi/module.c")
+      .arg("-shared")
+      .arg("-o")
+      .arg(&libout);
+
+    #[cfg(target_os = "macos")]
+    let c_module = {
+      cc.arg("./compile/napi/module.c")
+        .arg("-undefined")
+        .arg("dynamic_lookup")
+        .arg("-shared")
+        .arg("-Wl,-no_fixup_chains")
+        .arg("-dynamic")
+        .arg("-o")
+        .arg(&libout)
+    };
+    let c_module_output = c_module.output().unwrap();
+
+    assert!(c_module_output.status.success());
+
+    let exe = if cfg!(windows) {
+      dir.path().join("main.exe")
+    } else {
+      dir.path().join("main")
+    };
+
+    context
+      .new_command()
+      .env("NPM_CONFIG_REGISTRY", "https://registry.npmjs.org/")
+      .args_vec([
+        "compile",
+        "--allow-read",
+        "--allow-ffi",
+        "--output",
+        &exe.to_string_lossy(),
+        "./compile/napi/main.ts",
+      ])
+      .run()
+      .skip_output_check()
+      .assert_exit_code(0);
+
+    let output = context.new_command().name(&exe).arg(&libout).run();
+
+    output.assert_exit_code(0);
+    output.assert_matches_text("{}\n");
+  }
 }

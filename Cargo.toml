@@ -44,14 +44,14 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.40.0", features = ["transpiling"] }
-deno_core = { version = "0.294.0" }
+deno_core = { version = "0.296.0" }
 
 deno_bench_util = { version = "0.155.0", path = "./bench_util" }
 deno_lockfile = "0.20.0"
 deno_media_type = { version = "0.1.4", features = ["module_specifier"] }
 deno_permissions = { version = "0.21.0", path = "./runtime/permissions" }
 deno_runtime = { version = "0.169.0", path = "./runtime" }
-deno_terminal = "0.1.1"
+deno_terminal = "0.2.0"
 napi_sym = { version = "0.91.0", path = "./cli/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
@@ -100,8 +100,8 @@ chrono = { version = "0.4", default-features = false, features = ["std", "serde"
 console_static_text = "=0.8.1"
 data-encoding = "2.3.3"
 data-url = "=0.3.0"
-deno_cache_dir = "=0.10.0"
-deno_config = { version = "=0.23.0", default-features = false }
+deno_cache_dir = "=0.10.2"
+deno_config = { version = "=0.25.0", default-features = false }
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
@@ -211,7 +211,7 @@ nix = "=0.26.2"
 # windows deps
 junction = "=0.2.0"
 winapi = "=0.3.9"
-windows-sys = { version = "0.48.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.52.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_WindowsProgramming", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Win32_System_Pipes", "Wdk_Storage_FileSystem", "Win32_System_Registry"] }
 winres = "=0.1.12"
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
