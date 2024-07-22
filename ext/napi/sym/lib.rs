@@ -20,7 +20,7 @@ pub fn napi_sym(_attr: TokenStream, item: TokenStream) -> TokenStream {
   let name = &func.sig.ident;
   assert!(
     exports.symbols.contains(&name.to_string()),
-    "cli/napi/sym/symbol_exports.json is out of sync!"
+    "ext/napi/sym/symbol_exports.json is out of sync!"
   );
 
   TokenStream::from(quote! {
