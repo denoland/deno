@@ -16,7 +16,4 @@ path = "lib.rs"
 [dependencies]
 deno_core.workspace = true
 deno_permissions.workspace = true
-libc.workspace = true
 libloading = { version = "0.7" }
-log.workspace = true
-napi_sym.workspace = true

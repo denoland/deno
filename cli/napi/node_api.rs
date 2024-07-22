@@ -9,10 +9,10 @@ use super::util::napi_set_last_error;
 use super::util::SendPtr;
 use crate::check_arg;
 use crate::check_env;
-use crate::*;
 use deno_core::parking_lot::Condvar;
 use deno_core::parking_lot::Mutex;
 use deno_core::V8CrossThreadTaskSpawner;
+use deno_runtime::deno_napi::*;
 use napi_sym::napi_sym;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU8;
@@ -892,7 +892,7 @@ fn napi_create_threadsafe_function(
   };
   let resource_name = resource_name.to_rust_string_lossy(&mut env.scope());
 
-  let tsfn = Box::new(TsFn {
+  let mut tsfn = Box::new(TsFn {
     env,
     func,
     max_queue_size,
