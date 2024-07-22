@@ -10,9 +10,6 @@ https://github.com/denoland/deno_install
 
 - Reland "refactor(fetch): reimplement fetch with hyper instead of reqwest"
   (#24593)
-- Revert "fix: CFunctionInfo and CTypeInfo leaks (#24634)" (#24665)
-- Revert "refactor(fetch): reimplement fetch with hyper instead of reqwest
-  (#24237)" (#24574)
 - fix(cli): Create child node_modules for conflicting dependency versions,
   respect aliases in package.json (#24609)
 - fix(cli): Respect implied BYONM from DENO_FUTURE in `deno task` (#24652)
@@ -41,7 +38,6 @@ https://github.com/denoland/deno_install
   (#24591)
 - fix(workspace): support resolving bare specifiers to npm pkgs within a
   workspace (#24611)
-- fix: CFunctionInfo and CTypeInfo leaks (#24634)
 - fix: make vendor cache manifest more deterministic (#24658)
 - fix: missing `emitWarning` import (#24587)
 - perf(ext/node): optimize fs.exists[Sync] (#24613)
