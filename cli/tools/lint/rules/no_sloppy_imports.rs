@@ -16,7 +16,6 @@ use deno_lint::diagnostic::LintFixChange;
 use deno_lint::rules::LintRule;
 use text_lines::LineAndColumnIndex;
 
-use crate::cache::FastInsecureHasher;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
@@ -40,7 +39,7 @@ impl NoSloppyImportsRule {
   }
 }
 
-const CODE: &str = "no-sloppy-imports";
+pub const CODE: &str = "no-sloppy-imports";
 
 impl LintRule for NoSloppyImportsRule {
   fn lint_program_with_ast_view<'view>(
@@ -136,22 +135,6 @@ impl LintRule for NoSloppyImportsRule {
 
   fn tags(&self) -> &'static [&'static str] {
     &["recommended"]
-  }
-
-  fn state_hash(&self) -> u64 {
-    let mut hasher = FastInsecureHasher::new_without_deno_version();
-    if self.sloppy_imports_resolver.is_some() {
-      hasher.write_u8(1);
-
-      // only bother with the import map and not the pkg.json files
-      if let Some(workspace_resolver) = &self.workspace_resolver {
-        if let Some(import_map) = workspace_resolver.maybe_import_map() {
-          // todo(https://github.com/denoland/import_map/issues/83): implement Hash on import map
-          hasher.write_str(&import_map.to_json());
-        }
-      }
-    }
-    hasher.finish()
   }
 }
 

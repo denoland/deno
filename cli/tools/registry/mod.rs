@@ -339,7 +339,7 @@ impl PublishPreparer {
       for package in package_configs {
         let export_urls = package.config_file.resolve_export_value_urls()?;
         let diagnostics =
-          collect_no_slow_type_diagnostics(&export_urls, &graph);
+          collect_no_slow_type_diagnostics(&graph, &export_urls);
         if !diagnostics.is_empty() {
           any_pkg_had_diagnostics = true;
           for diagnostic in diagnostics {

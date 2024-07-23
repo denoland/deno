@@ -4,12 +4,42 @@ use deno_ast::diagnostics::Diagnostic;
 use deno_ast::ModuleSpecifier;
 use deno_graph::FastCheckDiagnostic;
 use deno_graph::ModuleGraph;
+use deno_lint::diagnostic::LintDiagnostic;
+
+use super::CliGraphPackageLintRule;
+
+pub const CODE: &str = "no-slow-types";
+
+#[derive(Debug)]
+pub struct NoSlowTypesRule;
+
+impl CliGraphPackageLintRule for NoSlowTypesRule {
+  fn code(&self) -> &'static str {
+    CODE
+  }
+
+  fn tags(&self) -> &'static [&'static str] {
+    &["jsr"]
+  }
+
+  fn docs(&self) -> &'static str {
+    include_str!("no_slow_types.md")
+  }
+
+  fn lint(
+    &self,
+    graph: &ModuleGraph,
+    entrypoints: &[ModuleSpecifier],
+  ) -> Vec<FastCheckDiagnostic> {
+    collect_no_slow_type_diagnostics(graph, entrypoints)
+  }
+}
 
 /// Collects diagnostics from the module graph for the
 /// given package's export URLs.
 pub fn collect_no_slow_type_diagnostics(
-  package_export_urls: &[ModuleSpecifier],
   graph: &ModuleGraph,
+  package_export_urls: &[ModuleSpecifier],
 ) -> Vec<FastCheckDiagnostic> {
   let mut js_exports = package_export_urls
     .iter()

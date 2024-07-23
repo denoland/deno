@@ -280,11 +280,14 @@ impl WorkspaceLinter {
       lint_options.rules,
       member_dir.maybe_deno_json().map(|c| c.as_ref()),
     )?;
-    let incremental_cache = Arc::new(IncrementalCache::new(
-      self.caches.lint_incremental_cache_db(),
-      &lint_rules.incremental_cache_state(),
-      &paths,
-    ));
+    let maybe_incremental_cache =
+      lint_rules.incremental_cache_state().map(|state| {
+        Arc::new(IncrementalCache::new(
+          self.caches.lint_incremental_cache_db(),
+          &state,
+          &paths,
+        ))
+      });
 
     let mut futures = Vec::with_capacity(2);
     if lint_rules.no_slow_types {
@@ -324,7 +327,7 @@ impl WorkspaceLinter {
               return Ok(()); // entrypoint is not specified, so skip
             }
             let diagnostics =
-              collect_no_slow_type_diagnostics(&export_urls, &graph);
+              collect_no_slow_type_diagnostics(&graph, &export_urls);
             if !diagnostics.is_empty() {
               has_error.raise();
               let mut reporter = reporter_lock.lock();
@@ -344,7 +347,7 @@ impl WorkspaceLinter {
       let has_error = self.has_error.clone();
       let linter = create_linter(lint_rules);
       let reporter_lock = self.reporter_lock.clone();
-      let incremental_cache = incremental_cache.clone();
+      let maybe_incremental_cache = maybe_incremental_cache.clone();
       let lint_config = lint_config.clone();
       let fix = lint_options.fix;
       async move {
@@ -354,19 +357,23 @@ impl WorkspaceLinter {
               deno_ast::strip_bom(fs::read_to_string(&file_path)?);
 
             // don't bother rechecking this file if it didn't have any diagnostics before
-            if incremental_cache.is_file_same(&file_path, &file_text) {
-              return Ok(());
+            if let Some(incremental_cache) = &maybe_incremental_cache {
+              if incremental_cache.is_file_same(&file_path, &file_text) {
+                return Ok(());
+              }
             }
 
             let r = lint_file(&linter, &file_path, file_text, lint_config, fix);
             if let Ok((file_source, file_diagnostics)) = &r {
-              if file_diagnostics.is_empty() {
-                // update the incremental cache if there were no diagnostics
-                incremental_cache.update_file(
-                  &file_path,
-                  // ensure the returned text is used here as it may have been modified via --fix
-                  file_source.text(),
-                )
+              if let Some(incremental_cache) = &maybe_incremental_cache {
+                if file_diagnostics.is_empty() {
+                  // update the incremental cache if there were no diagnostics
+                  incremental_cache.update_file(
+                    &file_path,
+                    // ensure the returned text is used here as it may have been modified via --fix
+                    file_source.text(),
+                  )
+                }
               }
             }
 
@@ -389,7 +396,10 @@ impl WorkspaceLinter {
 
     deno_core::futures::future::try_join_all(futures).await?;
 
-    incremental_cache.wait_completion().await;
+    if let Some(incremental_cache) = &maybe_incremental_cache {
+      incremental_cache.wait_completion().await;
+    }
+
     Ok(())
   }
 
