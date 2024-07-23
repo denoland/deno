@@ -12,12 +12,10 @@
     "quotes": "preferSingle"
   },
   "exec": {
-    "commands": [
-      {
-        "command": "rustfmt --config imports_granularity=item",
-        "exts": ["rs"]
-      }
-    ]
+    "commands": [{
+      "command": "rustfmt --config imports_granularity=item",
+      "exts": ["rs"]
+    }]
   },
   "excludes": [
     ".cargo_home",
