@@ -371,15 +371,20 @@ async fn fetch_and_store_latest_version<
 }
 
 pub async fn upgrade(
-  flags: Flags,
+  flags: Arc<Flags>,
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
+  let factory = CliFactory::from_flags(flags);
   let client = factory.http_client_provider().get_or_create()?;
   let current_exe_path = std::env::current_exe()?;
-  let full_path_output_flag = upgrade_flags
-    .output
-    .map(|output| factory.cli_options().initial_cwd().join(output));
+  let full_path_output_flag = match &upgrade_flags.output {
+    Some(output) => Some(
+      std::env::current_dir()
+        .context("failed getting cwd")?
+        .join(output),
+    ),
+    None => None,
+  };
   let output_exe_path =
     full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
 

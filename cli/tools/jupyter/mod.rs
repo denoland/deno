@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::sync::Arc;
+
 use crate::args::Flags;
 use crate::args::JupyterFlags;
 use crate::cdp;
@@ -36,7 +38,7 @@ mod install;
 pub mod server;
 
 pub async fn kernel(
-  flags: Flags,
+  flags: Arc<Flags>,
   jupyter_flags: JupyterFlags,
 ) -> Result<(), AnyError> {
   log::info!(
@@ -56,8 +58,8 @@ pub async fn kernel(
 
   let connection_filepath = jupyter_flags.conn_file.unwrap();
 
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let main_module =
     resolve_url_or_path("./$deno$jupyter.ts", cli_options.initial_cwd())
       .unwrap();
