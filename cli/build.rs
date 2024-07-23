@@ -396,7 +396,7 @@ fn main() {
     }
     os => format!("generated_symbol_exports_list_{}.def", os),
   };
-  let symbols_path = std::path::Path::new("../ext/napi")
+  let symbols_path = std::path::Path::new("napi")
     .join(symbols_file_name)
     .canonicalize()
     .expect(
@@ -404,28 +404,16 @@ fn main() {
     );
 
   #[cfg(target_os = "windows")]
-  {
-    println!(
-      "cargo:rustc-link-arg-bin=deno=/DEF:{}",
-      symbols_path.display()
-    );
-    println!(
-      "cargo:rustc-link-arg-bin=denort=/DEF:{}",
-      symbols_path.display()
-    );
-  }
+  println!(
+    "cargo:rustc-link-arg-bin=deno=/DEF:{}",
+    symbols_path.display()
+  );
 
   #[cfg(target_os = "macos")]
-  {
-    println!(
-      "cargo:rustc-link-arg-bin=deno=-Wl,-exported_symbols_list,{}",
-      symbols_path.display()
-    );
-    println!(
-      "cargo:rustc-link-arg-bin=denort=-Wl,-exported_symbols_list,{}",
-      symbols_path.display()
-    );
-  }
+  println!(
+    "cargo:rustc-link-arg-bin=deno=-Wl,-exported_symbols_list,{}",
+    symbols_path.display()
+  );
 
   #[cfg(target_os = "linux")]
   {
@@ -438,30 +426,19 @@ fn main() {
     {
       println!("cargo:warning=Compiling with all symbols exported, this will result in a larger binary. Please use glibc 2.35 or later for an optimised build.");
       println!("cargo:rustc-link-arg-bin=deno=-rdynamic");
-      println!("cargo:rustc-link-arg-bin=denort=-rdynamic");
     } else {
       println!(
         "cargo:rustc-link-arg-bin=deno=-Wl,--export-dynamic-symbol-list={}",
-        symbols_path.display()
-      );
-      println!(
-        "cargo:rustc-link-arg-bin=denort=-Wl,--export-dynamic-symbol-list={}",
         symbols_path.display()
       );
     }
   }
 
   #[cfg(target_os = "android")]
-  {
-    println!(
-      "cargo:rustc-link-arg-bin=deno=-Wl,--export-dynamic-symbol-list={}",
-      symbols_path.display()
-    );
-    println!(
-      "cargo:rustc-link-arg-bin=denort=-Wl,--export-dynamic-symbol-list={}",
-      symbols_path.display()
-    );
-  }
+  println!(
+    "cargo:rustc-link-arg-bin=deno=-Wl,--export-dynamic-symbol-list={}",
+    symbols_path.display()
+  );
 
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
