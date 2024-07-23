@@ -1409,11 +1409,13 @@ fn lsp_hover() {
 #[test]
 fn lsp_hover_asset() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": "file:///a/file.ts",
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "console.log(Date.now());\n"
@@ -1423,7 +1425,7 @@ fn lsp_hover_asset() {
     "textDocument/definition",
     json!({
       "textDocument": {
-        "uri": "file:///a/file.ts"
+        "uri": temp_dir.uri().join("file.ts").unwrap()
       },
       "position": { "line": 0, "character": 14 }
     }),
@@ -7367,6 +7369,104 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
         }]
       }
     }])
+  );
+  client.shutdown();
+}
+
+#[test]
+fn lsp_infer_return_type() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let types_file = source_file(
+    temp_dir.path().join("types.d.ts"),
+    r#"
+      export interface SomeInterface {
+        someField: number;
+      }
+      declare global {
+        export function someFunction(): SomeInterface;
+      }
+    "#,
+  );
+  let file = source_file(
+    temp_dir.path().join("file.ts"),
+    r#"
+      function foo() {
+        return someFunction();
+      }
+      foo();
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "range": {
+        "start": { "line": 1, "character": 15 },
+        "end": { "line": 1, "character": 18 },
+      },
+      "context": {
+        "diagnostics": [],
+        "only": ["refactor.rewrite.function.returnType"],
+      }
+    }),
+  );
+  assert_eq!(
+    &res,
+    &json!([
+      {
+        "title": "Infer function return type",
+        "kind": "refactor.rewrite.function.returnType",
+        "isPreferred": false,
+        "data": {
+          "specifier": file.uri(),
+          "range": {
+            "start": { "line": 1, "character": 15 },
+            "end": { "line": 1, "character": 18 },
+          },
+          "refactorName": "Infer function return type",
+          "actionName": "Infer function return type",
+        },
+      }
+    ]),
+  );
+  let code_action = res.as_array().unwrap().first().unwrap();
+  let res = client.write_request("codeAction/resolve", code_action);
+  assert_eq!(
+    &res,
+    &json!({
+      "title": "Infer function return type",
+      "kind": "refactor.rewrite.function.returnType",
+      "isPreferred": false,
+      "data": {
+        "specifier": file.uri(),
+        "range": {
+          "start": { "line": 1, "character": 15 },
+          "end": { "line": 1, "character": 18 },
+        },
+        "refactorName": "Infer function return type",
+        "actionName": "Infer function return type",
+      },
+      "edit": {
+        "documentChanges": [
+          {
+            "textDocument": { "uri": file.uri(), "version": null },
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 1, "character": 20 },
+                  "end": { "line": 1, "character": 20 },
+                },
+                "newText": format!(": import(\"{}\").SomeInterface", types_file.uri()),
+              },
+            ],
+          },
+        ],
+      },
+    }),
   );
   client.shutdown();
 }

@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_config::package_json::PackageJsonRc;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json::Map;
@@ -14,6 +13,7 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_fs::FileSystemRc;
 use deno_media_type::MediaType;
+use deno_package_json::PackageJsonRc;
 
 use crate::errors;
 use crate::errors::CanonicalizingPkgJsonDirError;
@@ -56,7 +56,7 @@ use crate::PathClean;
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
 
-pub type NodeModuleKind = deno_config::package_json::NodeModuleKind;
+pub type NodeModuleKind = deno_package_json::NodeModuleKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeResolutionMode {

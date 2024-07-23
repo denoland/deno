@@ -156,9 +156,12 @@ async fn read_eval_file(
 }
 
 #[allow(clippy::print_stdout)]
-pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+pub async fn run(
+  flags: Arc<Flags>,
+  repl_flags: ReplFlags,
+) -> Result<i32, AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &cli_options.permissions_options()?,

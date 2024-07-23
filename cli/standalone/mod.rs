@@ -34,7 +34,6 @@ use crate::worker::CliMainWorkerOptions;
 use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
 use deno_ast::MediaType;
-use deno_config::package_json::PackageJsonDepValue;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::WorkspaceResolver;
@@ -52,6 +51,7 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -589,7 +589,7 @@ pub async fn run(
           .to_file_path()
           .unwrap();
         let pkg_json =
-          deno_config::package_json::PackageJson::load_from_value(path, json);
+          deno_package_json::PackageJson::load_from_value(path, json);
         Arc::new(pkg_json)
       })
       .collect();

@@ -72,16 +72,16 @@ use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
 
 pub async fn publish(
-  flags: Flags,
+  flags: Arc<Flags>,
   publish_flags: PublishFlags,
 ) -> Result<(), AnyError> {
-  let cli_factory = CliFactory::from_flags(flags)?;
+  let cli_factory = CliFactory::from_flags(flags);
 
   let auth_method =
     get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
-  let directory_path = cli_factory.cli_options().initial_cwd();
-  let cli_options = cli_factory.cli_options();
+  let cli_options = cli_factory.cli_options()?;
+  let directory_path = cli_options.initial_cwd();
   let publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
     match cli_options.start_dir.maybe_deno_json() {
@@ -121,7 +121,7 @@ pub async fn publish(
     cli_factory.module_graph_creator().await?.clone(),
     cli_factory.parsed_source_cache().clone(),
     cli_factory.type_checker().await?.clone(),
-    cli_factory.cli_options().clone(),
+    cli_options.clone(),
     specifier_unfurler,
   );
 
@@ -462,6 +462,13 @@ impl PublishPreparer {
           &publish_paths,
           &diagnostics_collector,
         );
+
+        if !has_license_file(publish_paths.iter().map(|p| &p.specifier)) {
+          diagnostics_collector.push(PublishDiagnostic::MissingLicense {
+            expected_path: root_dir.join("LICENSE"),
+          });
+        }
+
         tar::create_gzipped_tarball(
           &publish_paths,
           LazyGraphSourceParser::new(&source_cache, &graph),
@@ -1187,6 +1194,36 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
   }
 }
 
+fn has_license_file<'a>(
+  mut specifiers: impl Iterator<Item = &'a ModuleSpecifier>,
+) -> bool {
+  let allowed_license_files = {
+    let files = HashSet::from([
+      "license",
+      "license.md",
+      "license.txt",
+      "licence",
+      "licence.md",
+      "licence.txt",
+    ]);
+    if cfg!(debug_assertions) {
+      for file in &files {
+        assert_eq!(*file, file.to_lowercase());
+      }
+    }
+    files
+  };
+  specifiers.any(|specifier| {
+    specifier
+      .path()
+      .rsplit_once('/')
+      .map(|(_, file)| {
+        allowed_license_files.contains(file.to_lowercase().as_str())
+      })
+      .unwrap_or(false)
+  })
+}
+
 #[allow(clippy::print_stderr)]
 fn ring_bell() {
   // ASCII code for the bell character.
@@ -1195,6 +1232,10 @@ fn ring_bell() {
 
 #[cfg(test)]
 mod tests {
+  use deno_ast::ModuleSpecifier;
+
+  use crate::tools::registry::has_license_file;
+
   use super::tar::PublishableTarball;
   use super::tar::PublishableTarballFile;
   use super::verify_version_manifest;
@@ -1295,5 +1336,32 @@ mod tests {
     };
 
     assert!(verify_version_manifest(meta_bytes, &package).is_err());
+  }
+
+  #[test]
+  fn test_has_license_files() {
+    fn has_license_file_str(expected: &[&str]) -> bool {
+      let specifiers = expected
+        .iter()
+        .map(|s| ModuleSpecifier::parse(s).unwrap())
+        .collect::<Vec<_>>();
+      has_license_file(specifiers.iter())
+    }
+
+    assert!(has_license_file_str(&["file:///LICENSE"]));
+    assert!(has_license_file_str(&["file:///license"]));
+    assert!(has_license_file_str(&["file:///LICENSE.txt"]));
+    assert!(has_license_file_str(&["file:///LICENSE.md"]));
+    assert!(has_license_file_str(&["file:///LICENCE"]));
+    assert!(has_license_file_str(&["file:///LICENCE.txt"]));
+    assert!(has_license_file_str(&["file:///LICENCE.md"]));
+    assert!(has_license_file_str(&[
+      "file:///other",
+      "file:///test/LICENCE.md"
+    ]),);
+    assert!(!has_license_file_str(&[
+      "file:///other",
+      "file:///test/tLICENSE"
+    ]),);
   }
 }

@@ -70,9 +70,10 @@ use deno_semver::npm::NpmPackageReqReference;
 
 pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
   let npm_resolver = factory.npm_resolver().await?;
+  let cli_options = factory.cli_options()?;
   if let Some(npm_resolver) = npm_resolver.as_managed() {
     if !npm_resolver.ensure_top_level_package_json_install().await? {
-      if let Some(lockfile) = factory.maybe_lockfile() {
+      if let Some(lockfile) = cli_options.maybe_lockfile() {
         lockfile.error_if_changed()?;
       }
 
@@ -106,7 +107,7 @@ pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
         graph,
         &roots,
         false,
-        factory.cli_options().ts_type_lib_window(),
+        factory.cli_options()?.ts_type_lib_window(),
         deno_runtime::deno_permissions::PermissionsContainer::allow_all(),
       )
       .await?;
