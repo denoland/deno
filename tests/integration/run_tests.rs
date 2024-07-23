@@ -11,7 +11,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use deno_core::serde_json::json;
 use deno_core::url;
-use deno_fetch::reqwest;
+
 use deno_tls::rustls;
 use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls_pemfile;
@@ -1113,7 +1113,9 @@ fn lock_deno_json_package_json_deps_workspace() {
 
   // deno.json
   let deno_json = temp_dir.join("deno.json");
-  deno_json.write_json(&json!({}));
+  deno_json.write_json(&json!({
+    "nodeModulesDir": true
+  }));
 
   // package.json
   let package_json = temp_dir.join("package.json");
@@ -1147,16 +1149,23 @@ fn lock_deno_json_package_json_deps_workspace() {
   let lockfile = temp_dir.join("deno.lock");
   let esm_basic_integrity =
     get_lockfile_npm_package_integrity(&lockfile, "@denotest/esm-basic@1.0.0");
+  let cjs_default_export_integrity = get_lockfile_npm_package_integrity(
+    &lockfile,
+    "@denotest/cjs-default-export@1.0.0",
+  );
 
-  // no "workspace" because deno isn't smart enough to figure this out yet
-  // since it discovered the package.json in a folder different from the lockfile
   lockfile.assert_matches_json(json!({
     "version": "3",
     "packages": {
       "specifiers": {
+        "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
         "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
       },
       "npm": {
+        "@denotest/cjs-default-export@1.0.0": {
+          "integrity": cjs_default_export_integrity,
+          "dependencies": {}
+        },
         "@denotest/esm-basic@1.0.0": {
           "integrity": esm_basic_integrity,
           "dependencies": {}
@@ -1164,6 +1173,22 @@ fn lock_deno_json_package_json_deps_workspace() {
       }
     },
     "remote": {},
+    "workspace": {
+      "packageJson": {
+        "dependencies": [
+          "npm:@denotest/cjs-default-export@1"
+        ]
+      },
+      "members": {
+        "package-a": {
+          "packageJson": {
+            "dependencies": [
+              "npm:@denotest/esm-basic@1"
+            ]
+          }
+        }
+      }
+    }
   }));
 
   // run a command that causes discovery of the root package.json beside the lockfile
@@ -1201,6 +1226,15 @@ fn lock_deno_json_package_json_deps_workspace() {
         "dependencies": [
           "npm:@denotest/cjs-default-export@1"
         ]
+      },
+      "members": {
+        "package-a": {
+          "packageJson": {
+            "dependencies": [
+              "npm:@denotest/esm-basic@1"
+            ]
+          }
+        }
       }
     }
   });
@@ -5303,17 +5337,19 @@ async fn listen_tls_alpn() {
   let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
     "../testdata/tls/RootCA.crt"
   )));
-  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let certs = rustls_pemfile::certs(&mut reader)
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap();
   let mut root_store = rustls::RootCertStore::empty();
-  root_store.add_parsable_certificates(&certs);
+  root_store.add_parsable_certificates(certs);
   let mut cfg = rustls::ClientConfig::builder()
-    .with_safe_defaults()
     .with_root_certificates(root_store)
     .with_no_client_auth();
   cfg.alpn_protocols.push(b"foobar".to_vec());
   let cfg = Arc::new(cfg);
 
-  let hostname = rustls::ServerName::try_from("localhost").unwrap();
+  let hostname =
+    rustls::pki_types::ServerName::try_from("localhost".to_string()).unwrap();
 
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
     .await
@@ -5355,17 +5391,18 @@ async fn listen_tls_alpn_fail() {
   let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
     "../testdata/tls/RootCA.crt"
   )));
-  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let certs = rustls_pemfile::certs(&mut reader)
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap();
   let mut root_store = rustls::RootCertStore::empty();
-  root_store.add_parsable_certificates(&certs);
+  root_store.add_parsable_certificates(certs);
   let mut cfg = rustls::ClientConfig::builder()
-    .with_safe_defaults()
     .with_root_certificates(root_store)
     .with_no_client_auth();
   cfg.alpn_protocols.push(b"boofar".to_vec());
   let cfg = Arc::new(cfg);
 
-  let hostname = rustls::ServerName::try_from("localhost").unwrap();
+  let hostname = rustls::pki_types::ServerName::try_from("localhost").unwrap();
 
   let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
     .await

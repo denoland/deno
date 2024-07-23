@@ -3,6 +3,7 @@
 use crate::args::resolve_no_prompt;
 use crate::args::AddFlags;
 use crate::args::CaData;
+use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::InstallFlagsGlobal;
@@ -14,7 +15,6 @@ use crate::factory::CliFactory;
 use crate::http_util::HttpClientProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
-use deno_config::ConfigFlag;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -466,6 +466,10 @@ async fn resolve_shim_data(
     executable_args.push("--cached-only".to_string());
   }
 
+  if flags.frozen_lockfile {
+    executable_args.push("--frozen".to_string());
+  }
+
   if resolve_no_prompt(&flags.permissions) {
     executable_args.push("--no-prompt".to_string());
   }
@@ -567,11 +571,11 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
+  use crate::args::ConfigFlag;
   use crate::args::PermissionFlags;
   use crate::args::UninstallFlagsGlobal;
   use crate::args::UnstableConfig;
   use crate::util::fs::canonicalize_path;
-  use deno_config::ConfigFlag;
   use std::process::Command;
   use test_util::testdata_path;
   use test_util::TempDir;

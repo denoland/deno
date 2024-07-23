@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
+use deno_runtime::colors;
 use log::warn;
 
 use crate::args::CliOptions;
@@ -38,6 +39,10 @@ pub async fn vendor(
   flags: Flags,
   vendor_flags: VendorFlags,
 ) -> Result<(), AnyError> {
+  log::info!(
+    "{}",
+    colors::yellow("⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.\nAdd `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead."),
+  );
   let mut cli_options = CliOptions::from_flags(flags)?;
   let raw_output_dir = match &vendor_flags.output_path {
     Some(output_path) => PathBuf::from(output_path).to_owned(),
@@ -48,10 +53,18 @@ pub async fn vendor(
   validate_options(&mut cli_options, &output_dir)?;
   let factory = CliFactory::from_cli_options(Arc::new(cli_options));
   let cli_options = factory.cli_options();
+  if cli_options.workspace().config_folders().len() > 1 {
+    bail!("deno vendor is not supported in a workspace. Set `\"vendor\": true` in the workspace deno.json file instead");
+  }
   let entry_points =
     resolve_entry_points(&vendor_flags, cli_options.initial_cwd())?;
-  let jsx_import_source = cli_options.to_maybe_jsx_import_source_config()?;
+  let jsx_import_source = cli_options
+    .workspace()
+    .to_maybe_jsx_import_source_config()?;
   let module_graph_creator = factory.module_graph_creator().await?.clone();
+  let workspace_resolver = factory.workspace_resolver().await?;
+  let root_folder = cli_options.workspace().root_folder_configs();
+  let maybe_config_file = root_folder.deno_json.as_ref();
   let output = build::build(build::BuildInput {
     entry_points,
     build_graph: move |entry_points| {
@@ -64,7 +77,7 @@ pub async fn vendor(
     },
     parsed_source_cache: factory.parsed_source_cache(),
     output_dir: &output_dir,
-    maybe_original_import_map: factory.maybe_import_map().await?.as_deref(),
+    maybe_original_import_map: workspace_resolver.maybe_import_map(),
     maybe_jsx_import_source: jsx_import_source.as_ref(),
     resolver: factory.resolver().await?.as_graph_resolver(),
     environment: &build::RealVendorEnvironment,
@@ -91,7 +104,7 @@ pub async fn vendor(
   let try_add_import_map = vendored_count > 0;
   let modified_result = maybe_update_config_file(
     &output_dir,
-    cli_options,
+    maybe_config_file,
     try_add_import_map,
     try_add_node_modules_dir,
   );
@@ -100,8 +113,9 @@ pub async fn vendor(
   if modified_result.added_node_modules_dir {
     let node_modules_path =
       cli_options.node_modules_dir_path().cloned().or_else(|| {
-        cli_options
-          .maybe_config_file_specifier()
+        maybe_config_file
+          .as_ref()
+          .map(|d| &d.specifier)
           .filter(|c| c.scheme() == "file")
           .and_then(|c| c.to_file_path().ok())
           .map(|config_path| config_path.parent().unwrap().join("node_modules"))
@@ -176,7 +190,7 @@ fn validate_options(
   let import_map_specifier = options
     .resolve_specified_import_map_specifier()?
     .or_else(|| {
-      let config_file = options.maybe_config_file().as_ref()?;
+      let config_file = options.workspace().root_deno_json()?;
       config_file
         .to_import_map_specifier()
         .ok()
@@ -229,12 +243,12 @@ fn validate_options(
 
 fn maybe_update_config_file(
   output_dir: &Path,
-  options: &CliOptions,
+  maybe_config_file: Option<&Arc<ConfigFile>>,
   try_add_import_map: bool,
   try_add_node_modules_dir: bool,
 ) -> ModifiedResult {
   assert!(output_dir.is_absolute());
-  let config_file = match options.maybe_config_file() {
+  let config_file = match maybe_config_file {
     Some(config_file) => config_file,
     None => return ModifiedResult::default(),
   };
@@ -245,7 +259,6 @@ fn maybe_update_config_file(
   let fmt_config_options = config_file
     .to_fmt_config()
     .ok()
-    .flatten()
     .map(|config| config.options)
     .unwrap_or_default();
   let result = update_config_file(

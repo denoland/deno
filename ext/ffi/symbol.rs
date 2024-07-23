@@ -70,7 +70,6 @@ pub struct Symbol {
   pub ptr: libffi::middle::CodePtr,
   pub parameter_types: Vec<NativeType>,
   pub result_type: NativeType,
-  pub can_callback: bool,
 }
 
 #[allow(clippy::non_send_fields_in_send_ty)]

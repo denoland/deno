@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::TextChange;
-use deno_config::FmtOptionsConfig;
+use deno_config::deno_json::FmtOptionsConfig;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -49,7 +49,7 @@ impl DenoConfigFormat {
 }
 
 enum DenoOrPackageJson {
-  Deno(deno_config::ConfigFile, DenoConfigFormat),
+  Deno(Arc<deno_config::deno_json::ConfigFile>, DenoConfigFormat),
   Npm(Arc<deno_node::PackageJson>, Option<FmtOptionsConfig>),
 }
 
@@ -87,7 +87,6 @@ impl DenoOrPackageJson {
       DenoOrPackageJson::Deno(deno, ..) => deno
         .to_fmt_config()
         .ok()
-        .flatten()
         .map(|f| f.options)
         .unwrap_or_default(),
       DenoOrPackageJson::Npm(_, config) => config.clone().unwrap_or_default(),
@@ -122,9 +121,10 @@ impl DenoOrPackageJson {
   /// the new config
   fn from_flags(flags: Flags) -> Result<(Self, CliFactory), AnyError> {
     let factory = CliFactory::from_flags(flags.clone())?;
-    let options = factory.cli_options().clone();
+    let options = factory.cli_options();
+    let start_dir = &options.start_dir;
 
-    match (options.maybe_config_file(), options.maybe_package_json()) {
+    match (start_dir.maybe_deno_json(), start_dir.maybe_pkg_json()) {
       // when both are present, for now,
       // default to deno.json
       (Some(deno), Some(_) | None) => Ok((
@@ -140,21 +140,19 @@ impl DenoOrPackageJson {
       (None, Some(_) | None) => {
         std::fs::write(options.initial_cwd().join("deno.json"), "{}\n")
           .context("Failed to create deno.json file")?;
+        drop(factory); // drop to prevent use
         log::info!("Created deno.json configuration file.");
-        let new_factory = CliFactory::from_flags(flags.clone())?;
-        let new_options = new_factory.cli_options().clone();
+        let factory = CliFactory::from_flags(flags.clone())?;
+        let options = factory.cli_options().clone();
+        let start_dir = &options.start_dir;
         Ok((
           DenoOrPackageJson::Deno(
-            new_options
-              .maybe_config_file()
-              .as_ref()
-              .ok_or_else(|| {
-                anyhow!("config not found, but it was just created")
-              })?
-              .clone(),
+            start_dir.maybe_deno_json().cloned().ok_or_else(|| {
+              anyhow!("config not found, but it was just created")
+            })?,
             DenoConfigFormat::Json,
           ),
-          new_factory,
+          factory,
         ))
       }
     }

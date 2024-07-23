@@ -188,7 +188,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
     };
 
     let rewrite_map =
-      if let Some(config_file) = cli_options.maybe_config_file().clone() {
+      if let Some(config_file) = cli_options.start_dir.maybe_deno_json() {
         let config = config_file.to_exports_config()?;
 
         let rewrite_map = config

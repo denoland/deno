@@ -18,8 +18,7 @@ pub(crate) fn is_compatible(sym: &Symbol) -> bool {
     all(target_arch = "x86_64", target_family = "unix"),
     all(target_arch = "x86_64", target_family = "windows"),
     all(target_arch = "aarch64", target_vendor = "apple")
-  )) && !sym.can_callback
-    && !matches!(sym.result_type, NativeType::Struct(_))
+  )) && !matches!(sym.result_type, NativeType::Struct(_))
     && !sym
       .parameter_types
       .iter()
@@ -1437,7 +1436,6 @@ mod tests {
       ptr: libffi::middle::CodePtr(null_mut()),
       parameter_types: parameters,
       result_type: ret,
-      can_callback: false,
     }
   }
 

@@ -178,6 +178,24 @@ impl FileSystem for InMemoryFs {
     self.chown_sync(&path, uid, gid)
   }
 
+  fn lchown_sync(
+    &self,
+    _path: &Path,
+    _uid: Option<u32>,
+    _gid: Option<u32>,
+  ) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  async fn lchown_async(
+    &self,
+    path: PathBuf,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    self.lchown_sync(&path, uid, gid)
+  }
+
   fn remove_sync(&self, _path: &Path, _recursive: bool) -> FsResult<()> {
     Err(FsError::NotSupported)
   }
@@ -348,6 +366,27 @@ impl FileSystem for InMemoryFs {
     mtime_nanos: u32,
   ) -> FsResult<()> {
     self.utime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+  }
+
+  fn lutime_sync(
+    &self,
+    _path: &Path,
+    _atime_secs: i64,
+    _atime_nanos: u32,
+    _mtime_secs: i64,
+    _mtime_nanos: u32,
+  ) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn lutime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    self.lutime_sync(&path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
   }
 
   fn write_file_sync(

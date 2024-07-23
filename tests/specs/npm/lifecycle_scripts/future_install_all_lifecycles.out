@@ -1,0 +1,16 @@
+⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.
+preinstall
+deno preinstall.js
+node preinstall.js
+install
+hello from install script
+postinstall
+[WILDCARD]
+ _____________
+< postinstall >
+ -------------
+        \   ^__^
+         \  (oo)\_______
+            (__)\       )\/\
+                ||----w |
+                ||     ||

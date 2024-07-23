@@ -1,1 +1,1 @@
-export function getKind(): string;
+export function getKind(): "esm";

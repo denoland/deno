@@ -5,6 +5,7 @@ use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClientProvider;
 use crate::standalone::is_standalone_binary;
+use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -12,6 +13,8 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
 use deno_terminal::colors;
+use eszip::EszipRelativeFileBaseUrl;
+use rand::Rng;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -74,19 +77,31 @@ pub async fn compile(
     graph
   };
 
-  let ts_config_for_emit =
-    cli_options.resolve_ts_config_for_emit(deno_config::TsConfigType::Emit)?;
+  let ts_config_for_emit = cli_options
+    .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
   let (transpile_options, emit_options) =
     crate::args::ts_config_to_transpile_and_emit_options(
       ts_config_for_emit.ts_config,
     )?;
   let parser = parsed_source_cache.as_capturing_parser();
+  let root_dir_url = resolve_root_dir_from_specifiers(
+    cli_options.workspace().root_dir(),
+    graph.specifiers().map(|(s, _)| s).chain(
+      cli_options
+        .node_modules_dir_path()
+        .and_then(|p| ModuleSpecifier::from_directory_path(p).ok())
+        .iter(),
+    ),
+  );
+  log::debug!("Binary root dir: {}", root_dir_url);
+  let root_dir_url = EszipRelativeFileBaseUrl::new(&root_dir_url);
   let eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
     graph,
     parser,
     transpile_options,
     emit_options,
-    relative_file_base: None,
+    // make all the modules relative to the root folder
+    relative_file_base: Some(root_dir_url),
   })?;
 
   log::info!(
@@ -97,31 +112,62 @@ pub async fn compile(
   );
   validate_output_path(&output_path)?;
 
-  let mut file = std::fs::File::create(&output_path)
-    .with_context(|| format!("Opening file '{}'", output_path.display()))?;
+  let mut temp_filename = output_path.file_name().unwrap().to_owned();
+  temp_filename.push(format!(
+    ".tmp-{}",
+    faster_hex::hex_encode(
+      &rand::thread_rng().gen::<[u8; 8]>(),
+      &mut [0u8; 16]
+    )
+    .unwrap()
+  ));
+  let temp_path = output_path.with_file_name(temp_filename);
+
+  let mut file = std::fs::File::create(&temp_path).with_context(|| {
+    format!("Opening temporary file '{}'", temp_path.display())
+  })?;
   let write_result = binary_writer
     .write_bin(
       &mut file,
       eszip,
+      root_dir_url,
       &module_specifier,
       &compile_flags,
       cli_options,
     )
     .await
-    .with_context(|| format!("Writing {}", output_path.display()));
+    .with_context(|| {
+      format!("Writing temporary file '{}'", temp_path.display())
+    });
   drop(file);
-  if let Err(err) = write_result {
-    // errored, so attempt to remove the output path
-    let _ = std::fs::remove_file(output_path);
-    return Err(err);
-  }
 
   // set it as executable
   #[cfg(unix)]
-  {
+  let write_result = write_result.and_then(|_| {
     use std::os::unix::fs::PermissionsExt;
-    let perms = std::fs::Permissions::from_mode(0o777);
-    std::fs::set_permissions(output_path, perms)?;
+    let perms = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(&temp_path, perms).with_context(|| {
+      format!(
+        "Setting permissions on temporary file '{}'",
+        temp_path.display()
+      )
+    })
+  });
+
+  let write_result = write_result.and_then(|_| {
+    std::fs::rename(&temp_path, &output_path).with_context(|| {
+      format!(
+        "Renaming temporary file '{}' to '{}'",
+        temp_path.display(),
+        output_path.display()
+      )
+    })
+  });
+
+  if let Err(err) = write_result {
+    // errored, so attempt to remove the temporary file
+    let _ = std::fs::remove_file(temp_path);
+    return Err(err);
   }
 
   Ok(())
@@ -237,6 +283,68 @@ fn get_os_specific_filepath(
   }
 }
 
+fn resolve_root_dir_from_specifiers<'a>(
+  starting_dir: &ModuleSpecifier,
+  specifiers: impl Iterator<Item = &'a ModuleSpecifier>,
+) -> ModuleSpecifier {
+  fn select_common_root<'a>(a: &'a str, b: &'a str) -> &'a str {
+    let min_length = a.len().min(b.len());
+
+    let mut last_slash = 0;
+    for i in 0..min_length {
+      if a.as_bytes()[i] == b.as_bytes()[i] && a.as_bytes()[i] == b'/' {
+        last_slash = i;
+      } else if a.as_bytes()[i] != b.as_bytes()[i] {
+        break;
+      }
+    }
+
+    // Return the common root path up to the last common slash.
+    // This returns a slice of the original string 'a', up to and including the last matching '/'.
+    let common = &a[..=last_slash];
+    if cfg!(windows) && common == "file:///" {
+      a
+    } else {
+      common
+    }
+  }
+
+  fn is_file_system_root(url: &str) -> bool {
+    let Some(path) = url.strip_prefix("file:///") else {
+      return false;
+    };
+    if cfg!(windows) {
+      let Some((_drive, path)) = path.split_once('/') else {
+        return true;
+      };
+      path.is_empty()
+    } else {
+      path.is_empty()
+    }
+  }
+
+  let mut found_dir = starting_dir.as_str();
+  if !is_file_system_root(found_dir) {
+    for specifier in specifiers {
+      if specifier.scheme() == "file" {
+        found_dir = select_common_root(found_dir, specifier.as_str());
+      }
+    }
+  }
+  let found_dir = if is_file_system_root(found_dir) {
+    found_dir
+  } else {
+    // include the parent dir name because it helps create some context
+    found_dir
+      .strip_suffix('/')
+      .unwrap_or(found_dir)
+      .rfind('/')
+      .map(|i| &found_dir[..i + 1])
+      .unwrap_or(found_dir)
+  };
+  ModuleSpecifier::parse(found_dir).unwrap()
+}
+
 #[cfg(test)]
 mod test {
   pub use super::*;
@@ -310,5 +418,39 @@ mod test {
     run_test("C:\\my-exe.exe", Some("windows"), "C:\\my-exe.exe");
     run_test("C:\\my-exe.0.1.2", Some("windows"), "C:\\my-exe.0.1.2.exe");
     run_test("my-exe-0.1.2", Some("linux"), "my-exe-0.1.2");
+  }
+
+  #[test]
+  fn test_resolve_root_dir_from_specifiers() {
+    fn resolve(start: &str, specifiers: &[&str]) -> String {
+      let specifiers = specifiers
+        .iter()
+        .map(|s| ModuleSpecifier::parse(s).unwrap())
+        .collect::<Vec<_>>();
+      resolve_root_dir_from_specifiers(
+        &ModuleSpecifier::parse(start).unwrap(),
+        specifiers.iter(),
+      )
+      .to_string()
+    }
+
+    assert_eq!(resolve("file:///a/b/c", &["file:///a/b/c/d"]), "file:///a/");
+    assert_eq!(
+      resolve("file:///a/b/c/", &["file:///a/b/c/d"]),
+      "file:///a/b/"
+    );
+    assert_eq!(
+      resolve("file:///a/b/c/", &["file:///a/b/c/d", "file:///a/b/c/e"]),
+      "file:///a/b/"
+    );
+    assert_eq!(resolve("file:///", &["file:///a/b/c/d"]), "file:///");
+    if cfg!(windows) {
+      assert_eq!(resolve("file:///c:/", &["file:///c:/test"]), "file:///c:/");
+      // this will ignore the other one because it's on a separate drive
+      assert_eq!(
+        resolve("file:///c:/a/b/c/", &["file:///v:/a/b/c/d"]),
+        "file:///c:/a/b/"
+      );
+    }
   }
 }

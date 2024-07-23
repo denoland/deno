@@ -69,10 +69,10 @@ pub enum FsFileType {
   Junction,
 }
 
+/// WARNING: This is part of the public JS Deno API.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsDirEntry {
-  pub parent_path: String,
   pub name: String,
   pub is_file: bool,
   pub is_directory: bool,
@@ -140,6 +140,19 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     gid: Option<u32>,
   ) -> FsResult<()>;
   async fn chown_async(
+    &self,
+    path: PathBuf,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()>;
+
+  fn lchown_sync(
+    &self,
+    path: &Path,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()>;
+  async fn lchown_async(
     &self,
     path: PathBuf,
     uid: Option<u32>,
@@ -221,6 +234,23 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     mtime_nanos: u32,
   ) -> FsResult<()>;
 
+  fn lutime_sync(
+    &self,
+    path: &Path,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()>;
+  async fn lutime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()>;
+
   fn write_file_sync(
     &self,
     path: &Path,
@@ -285,6 +315,9 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   fn exists_sync(&self, path: &Path) -> bool {
     self.stat_sync(path).is_ok()
   }
+  async fn exists_async(&self, path: PathBuf) -> FsResult<bool> {
+    Ok(self.stat_async(path).await.is_ok())
+  }
 
   fn read_text_file_lossy_sync(
     &self,
@@ -313,22 +346,51 @@ impl<'a> DenoConfigFsAdapter<'a> {
 }
 
 impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
-  fn read_to_string(&self, path: &Path) -> Result<String, std::io::Error> {
-    use deno_io::fs::FsError;
-    use std::io::ErrorKind;
+  fn read_to_string_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<String, std::io::Error> {
     self
       .0
       .read_text_file_lossy_sync(path, None)
-      .map_err(|err| match err {
-        FsError::Io(io) => io,
-        FsError::FileBusy => std::io::Error::new(ErrorKind::Other, "file busy"),
-        FsError::NotSupported => {
-          std::io::Error::new(ErrorKind::Other, "not supported")
-        }
-        FsError::PermissionDenied(name) => std::io::Error::new(
-          ErrorKind::PermissionDenied,
-          format!("requires {}", name),
-        ),
+      .map_err(|err| err.into_io_error())
+  }
+
+  fn stat_sync(
+    &self,
+    path: &Path,
+  ) -> Result<deno_config::fs::FsMetadata, std::io::Error> {
+    self
+      .0
+      .stat_sync(path)
+      .map(|stat| deno_config::fs::FsMetadata {
+        is_file: stat.is_file,
+        is_directory: stat.is_directory,
+        is_symlink: stat.is_symlink,
+      })
+      .map_err(|err| err.into_io_error())
+  }
+
+  fn read_dir(
+    &self,
+    path: &Path,
+  ) -> Result<Vec<deno_config::fs::FsDirEntry>, std::io::Error> {
+    self
+      .0
+      .read_dir_sync(path)
+      .map_err(|err| err.into_io_error())
+      .map(|entries| {
+        entries
+          .into_iter()
+          .map(|e| deno_config::fs::FsDirEntry {
+            path: path.join(e.name),
+            metadata: deno_config::fs::FsMetadata {
+              is_file: e.is_file,
+              is_directory: e.is_directory,
+              is_symlink: e.is_symlink,
+            },
+          })
+          .collect()
       })
   }
 }
