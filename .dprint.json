@@ -12,10 +12,12 @@
     "quotes": "preferSingle"
   },
   "exec": {
-    "commands": [{
-      "command": "rustfmt --config imports_granularity=item",
-      "exts": ["rs"]
-    }]
+    "commands": [
+      {
+        "command": "rustfmt --config imports_granularity=item",
+        "exts": ["rs"]
+      }
+    ]
   },
   "excludes": [
     ".cargo_home",
@@ -41,6 +43,7 @@
     "tests/registry/",
     "tests/specs/fmt",
     "tests/specs/lint/bom",
+    "tests/specs/lint/syntax_error_reporting",
     "tests/specs/publish/no_check_surfaces_syntax_error",
     "tests/testdata/byte_order_mark.ts",
     "tests/testdata/encoding",
