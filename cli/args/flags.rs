@@ -42,11 +42,30 @@ use crate::util::fs::canonicalize_path;
 use super::flags_net;
 use super::DENO_FUTURE;
 
-pub static DENO_PERMISSION_HELP: Lazy<bool> =
-  Lazy::new(|| std::env::var("DENO_PERMISSION_HELP").ok().is_some());
+pub static IS_HELP_SUBCOMMAND: Lazy<bool> = Lazy::new(|| {
+  let mut is_help_subcommand = false;
+  let mut args = std::env::args();
+  args.next(); // skip program name
+  for arg in args {
+    if arg.starts_with('-') {
+      continue;
+    } else if arg == "help" {
+      is_help_subcommand = true;
+      break;
+    } else {
+      break;
+    }
+  }
+  is_help_subcommand
+});
 
-pub static DENO_UNSTABLE_HELP: Lazy<bool> =
-  Lazy::new(|| std::env::var("DENO_UNSTABLE_HELP").ok().is_some());
+pub static FULL_PERMISSIONS_HELP: Lazy<bool> = Lazy::new(|| {
+  *IS_HELP_SUBCOMMAND || std::env::var("DENO_PERMISSION_HELP").ok().is_some()
+});
+
+pub static FULL_UNSTABLE_HELP: Lazy<bool> = Lazy::new(|| {
+  *IS_HELP_SUBCOMMAND || std::env::var("DENO_UNSTABLE_HELP").ok().is_some()
+});
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum ConfigFlag {
@@ -1299,10 +1318,10 @@ fn clap_root() -> Command {
       Arg::new("unstable")
         .long("unstable")
         .help("Enable unstable features and APIs")
-        .long_help(if !*DENO_UNSTABLE_HELP {
-          "Enable all unstable features and APIs.\n\nInstead of using this flag, consider enabling individual unstable features. To view the list of individual unstable feature flags, run this command again with DENO_UNSTABLE_HELP=1."
+        .long_help(if !*FULL_UNSTABLE_HELP {
+          "Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features.\n\nTo view the list of individual unstable feature flags, run this command again with DENO_UNSTABLE_HELP=1."
         } else {
-          "Enable all unstable features and APIs.\n\nInstead of using this flag, consider enabling individual unstable features."
+          "Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features."
         })
         .action(ArgAction::SetTrue)
         .global(true),
@@ -1315,7 +1334,7 @@ fn clap_root() -> Command {
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true)
-        .hide(!*DENO_UNSTABLE_HELP),
+        .hide(!*FULL_UNSTABLE_HELP),
     )
     .arg(
       Arg::new("unstable-byonm")
@@ -1325,7 +1344,7 @@ fn clap_root() -> Command {
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true)
-        .hide(!*DENO_UNSTABLE_HELP),
+        .hide(!*FULL_UNSTABLE_HELP),
     )
     .arg(
       Arg::new("unstable-sloppy-imports")
@@ -1337,7 +1356,7 @@ fn clap_root() -> Command {
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true)
-        .hide(!*DENO_UNSTABLE_HELP),
+        .hide(!*FULL_UNSTABLE_HELP),
     );
 
   for (flag_name, help, _) in crate::UNSTABLE_GRANULAR_FLAGS {
@@ -1347,7 +1366,7 @@ fn clap_root() -> Command {
         .help(help)
         .action(ArgAction::SetTrue)
         .global(true)
-        .hide(!*DENO_UNSTABLE_HELP),
+        .hide(!*FULL_UNSTABLE_HELP),
     );
   }
 
@@ -3142,7 +3161,7 @@ fn permission_args(app: Command) -> Command {
         .help(ALLOW_READ_HELP)
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(
       Arg::new("deny-read")
@@ -3154,7 +3173,7 @@ fn permission_args(app: Command) -> Command {
         .help(DENY_READ_HELP)
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(
       Arg::new("allow-write")
@@ -3166,7 +3185,7 @@ fn permission_args(app: Command) -> Command {
         .help(ALLOW_WRITE_HELP)
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(
       Arg::new("deny-write")
@@ -3178,7 +3197,7 @@ fn permission_args(app: Command) -> Command {
         .help(DENY_WRITE_HELP)
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(
       Arg::new("allow-net")
@@ -3189,7 +3208,7 @@ fn permission_args(app: Command) -> Command {
         .value_name("IP_OR_HOSTNAME")
         .help(ALLOW_NET_HELP)
         .value_parser(flags_net::validator)
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(
       Arg::new("deny-net")
@@ -3200,7 +3219,7 @@ fn permission_args(app: Command) -> Command {
         .value_name("IP_OR_HOSTNAME")
         .help(DENY_NET_HELP)
         .value_parser(flags_net::validator)
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(
@@ -3222,7 +3241,7 @@ fn permission_args(app: Command) -> Command {
             key.to_string()
           })
         })
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(
       Arg::new("deny-env")
@@ -3243,7 +3262,7 @@ fn permission_args(app: Command) -> Command {
             key.to_string()
           })
         })
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(
       Arg::new("allow-sys")
@@ -3254,7 +3273,7 @@ fn permission_args(app: Command) -> Command {
         .value_name("API_NAME")
         .help(ALLOW_SYS_HELP)
         .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(
       Arg::new("deny-sys")
@@ -3265,7 +3284,7 @@ fn permission_args(app: Command) -> Command {
         .value_name("API_NAME")
         .help(DENY_SYS_HELP)
         .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(
       Arg::new("allow-run")
@@ -3275,7 +3294,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PROGRAM_NAME")
         .help(ALLOW_RUN_HELP)
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(
       Arg::new("deny-run")
@@ -3285,7 +3304,7 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PROGRAM_NAME")
         .help(DENY_RUN_HELP)
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(
       Arg::new("allow-ffi")
@@ -3297,7 +3316,7 @@ fn permission_args(app: Command) -> Command {
         .help(ALLOW_FFI_HELP)
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(
       Arg::new("deny-ffi")
@@ -3309,21 +3328,21 @@ fn permission_args(app: Command) -> Command {
         .help(DENY_FFI_HELP)
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(
       Arg::new("allow-hrtime")
         .long("allow-hrtime")
         .action(ArgAction::SetTrue)
         .help(ALLOW_HRTIME_HELP)
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(
       Arg::new("deny-hrtime")
         .long("deny-hrtime")
         .action(ArgAction::SetTrue)
         .help(DENY_HRTIME_HELP)
-        .hide(!*DENO_PERMISSION_HELP),
+        .hide(!*FULL_PERMISSIONS_HELP),
     )
     .arg(
       Arg::new("allow-all")
@@ -3331,7 +3350,7 @@ fn permission_args(app: Command) -> Command {
         .long("allow-all")
         .action(ArgAction::SetTrue)
         .help(ALLOW_ALL_HELP)
-        .long_help(if !*DENO_PERMISSION_HELP {
+        .long_help(if !*FULL_PERMISSIONS_HELP {
           Some(&*Box::leak(format!("{ALLOW_ALL_HELP}\nTo show the full list of individual permissions and their flags, run again with `DENO_PERMISSION_HELP=1`.").into_boxed_str()))
         } else {
           None
