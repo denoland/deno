@@ -2944,7 +2944,7 @@ pub fn file_text_changes_to_workspace_edit(
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RefactorEditInfo {
-  edits: Vec<FileTextChanges>,
+  pub edits: Vec<FileTextChanges>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub rename_location: Option<u32>,
 }
@@ -4930,7 +4930,10 @@ impl UserPreferences {
         language_settings
           .preferences
           .auto_import_file_exclude_patterns
-          .clone(),
+          .clone()
+          .into_iter()
+          .chain(std::iter::once("*/preact/10.20.1/src/jsx".to_string()))
+          .collect(),
       ),
       include_automatic_optional_chain_completions: Some(
         language_settings.suggest.enabled

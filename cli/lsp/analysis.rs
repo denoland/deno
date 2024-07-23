@@ -73,8 +73,9 @@ static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
     .collect()
   });
 
-static IMPORT_SPECIFIER_RE: Lazy<Regex> =
-  lazy_regex::lazy_regex!(r#"\sfrom\s+["']([^"']*)["']"#);
+static IMPORT_SPECIFIER_RE: Lazy<Regex> = lazy_regex::lazy_regex!(
+  r#"\sfrom\s+["']([^"']*)["']|import\s*\(\s*["']([^"']*)["']\s*\)"#
+);
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[
   ".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts", ".cjs", ".cts", ".d.ts",
@@ -528,7 +529,8 @@ pub fn fix_ts_import_changes(
         .map(|line| {
           // This assumes that there's only one import per line.
           if let Some(captures) = IMPORT_SPECIFIER_RE.captures(line) {
-            let specifier = captures.get(1).unwrap().as_str();
+            let specifier =
+              captures.iter().skip(1).find_map(|s| s).unwrap().as_str();
             if let Some(new_specifier) =
               import_mapper.check_unresolved_specifier(specifier, referrer)
             {
