@@ -1131,6 +1131,7 @@ dependencies = [
  "deno_lint",
  "deno_lockfile",
  "deno_npm",
+ "deno_package_json",
  "deno_runtime",
  "deno_semver",
  "deno_task_shell",
@@ -1312,11 +1313,12 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64e7a65603a3aa52216021a0abd401770ac6ed284e5b885dadf40ce35b2a0d9e"
+checksum = "00a0747f24936a0fe6c6be99464b7c6b78cd8ed84df88ca4af254666cbf8dffd"
 dependencies = [
  "anyhow",
+ "deno_package_json",
  "deno_semver",
  "glob",
  "ignore",
@@ -1516,6 +1518,7 @@ dependencies = [
  "deno_config",
  "deno_core",
  "deno_io",
+ "deno_package_json",
  "deno_permissions",
  "filetime",
  "junction",
@@ -1733,13 +1736,13 @@ dependencies = [
  "cbc",
  "const-oid",
  "data-encoding",
- "deno_config",
  "deno_core",
  "deno_fetch",
  "deno_fs",
  "deno_io",
  "deno_media_type",
  "deno_net",
+ "deno_package_json",
  "deno_permissions",
  "deno_whoami",
  "digest",
@@ -1829,6 +1832,20 @@ dependencies = [
  "strum_macros",
  "syn 2.0.58",
  "thiserror",
+]
+
+[[package]]
+name = "deno_package_json"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a28ee7c1cda095ea1cd77fd9c4e3591ab6d00cf1c3ade11288628664fb017490"
+dependencies = [
+ "deno_semver",
+ "indexmap",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "url",
 ]
 
 [[package]]

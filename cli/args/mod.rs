@@ -835,7 +835,7 @@ impl CliOptions {
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
-    let config_fs_adapter = DenoConfigFsAdapter::new(&RealFs);
+    let config_fs_adapter = DenoConfigFsAdapter(&RealFs);
     let maybe_vendor_override = flags.vendor.map(|v| match v {
       true => VendorEnablement::Enable { cwd: &initial_cwd },
       false => VendorEnablement::Disable,

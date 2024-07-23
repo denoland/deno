@@ -11,7 +11,6 @@ use deno_config::fs::DenoConfigFs;
 use deno_config::fs::RealDenoConfigFs;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
-use deno_config::package_json::PackageJsonCache;
 use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::SpecifiedImportMap;
@@ -34,6 +33,7 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_package_json::PackageJsonCache;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fs_util::specifier_to_file_path;
@@ -1560,9 +1560,7 @@ impl ConfigData {
     self.member_dir.maybe_deno_json()
   }
 
-  pub fn maybe_pkg_json(
-    &self,
-  ) -> Option<&Arc<deno_config::package_json::PackageJson>> {
+  pub fn maybe_pkg_json(&self) -> Option<&Arc<deno_package_json::PackageJson>> {
     self.member_dir.maybe_pkg_json()
   }
 }
@@ -1793,7 +1791,7 @@ impl ConfigTree {
           &config_path,
         ),
         &deno_config::workspace::WorkspaceDiscoverOptions {
-          fs: &deno_runtime::deno_fs::DenoConfigFsAdapter::new(&test_fs),
+          fs: &deno_runtime::deno_fs::DenoConfigFsAdapter(&test_fs),
           ..Default::default()
         },
       )
@@ -1888,7 +1886,7 @@ impl deno_config::deno_json::DenoJsonCache for DenoJsonMemCache {
 #[derive(Default)]
 struct PackageJsonMemCache(Mutex<HashMap<PathBuf, Arc<PackageJson>>>);
 
-impl deno_config::package_json::PackageJsonCache for PackageJsonMemCache {
+impl deno_package_json::PackageJsonCache for PackageJsonMemCache {
   fn get(&self, path: &Path) -> Option<Arc<PackageJson>> {
     self.0.lock().get(path).cloned()
   }

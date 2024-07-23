@@ -10,6 +10,7 @@ pub use crate::in_memory_fs::InMemoryFs;
 pub use crate::interface::AccessCheckCb;
 pub use crate::interface::AccessCheckFn;
 pub use crate::interface::DenoConfigFsAdapter;
+pub use crate::interface::DenoPkgJsonFsAdapter;
 pub use crate::interface::FileSystem;
 pub use crate::interface::FileSystemRc;
 pub use crate::interface::FsDirEntry;

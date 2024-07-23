@@ -337,13 +337,21 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   }
 }
 
-pub struct DenoConfigFsAdapter<'a>(&'a dyn FileSystem);
+pub struct DenoPkgJsonFsAdapter<'a>(pub &'a dyn FileSystem);
 
-impl<'a> DenoConfigFsAdapter<'a> {
-  pub fn new(fs: &'a dyn FileSystem) -> Self {
-    Self(fs)
+impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
+  fn read_to_string_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<String, std::io::Error> {
+    self
+      .0
+      .read_text_file_lossy_sync(path, None)
+      .map_err(|err| err.into_io_error())
   }
 }
+
+pub struct DenoConfigFsAdapter<'a>(pub &'a dyn FileSystem);
 
 impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
   fn read_to_string_lossy(

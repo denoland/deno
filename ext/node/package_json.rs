@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_config::package_json::PackageJson;
-use deno_config::package_json::PackageJsonRc;
-use deno_fs::DenoConfigFsAdapter;
+use deno_fs::DenoPkgJsonFsAdapter;
+use deno_package_json::PackageJson;
+use deno_package_json::PackageJsonRc;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::ErrorKind;
@@ -24,9 +24,7 @@ impl PackageJsonThreadLocalCache {
   }
 }
 
-impl deno_config::package_json::PackageJsonCache
-  for PackageJsonThreadLocalCache
-{
+impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
   fn get(&self, path: &Path) -> Option<PackageJsonRc> {
     CACHE.with(|cache| cache.borrow().get(path).cloned())
   }
@@ -44,14 +42,16 @@ pub fn load_pkg_json(
 ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
   let result = PackageJson::load_from_path(
     path,
-    &DenoConfigFsAdapter::new(fs),
+    &DenoPkgJsonFsAdapter(fs),
     Some(&PackageJsonThreadLocalCache),
   );
   match result {
     Ok(pkg_json) => Ok(Some(pkg_json)),
-    Err(deno_config::package_json::PackageJsonLoadError::Io {
-      source, ..
-    }) if source.kind() == ErrorKind::NotFound => Ok(None),
+    Err(deno_package_json::PackageJsonLoadError::Io { source, .. })
+      if source.kind() == ErrorKind::NotFound =>
+    {
+      Ok(None)
+    }
     Err(err) => Err(PackageJsonLoadError(err)),
   }
 }
