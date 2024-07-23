@@ -649,7 +649,7 @@ fn handle_lint_result(
     Ok((source, mut file_diagnostics)) => {
       if !source.diagnostics().is_empty() {
         for parse_diagnostic in source.diagnostics() {
-          log::info!("{}: {}", colors::yellow("warn"), parse_diagnostic);
+          log::warn!("{}: {}", colors::yellow("warn"), parse_diagnostic);
         }
       }
       file_diagnostics.sort_by(|a, b| match a.specifier.cmp(&b.specifier) {
