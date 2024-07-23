@@ -1810,7 +1810,10 @@ impl Inner {
         LspError::internal_error()
       })?;
       code_action
-    } else if kind.as_str().starts_with(CodeActionKind::REFACTOR.as_str()) {
+    } else if let Some(kind_suffix) = kind
+      .as_str()
+      .strip_prefix(CodeActionKind::REFACTOR.as_str())
+    {
       let mut code_action = params;
       let action_data: refactor::RefactorCodeActionData = from_value(data)
         .map_err(|err| {
@@ -1819,7 +1822,7 @@ impl Inner {
         })?;
       let asset_or_doc = self.get_asset_or_document(&action_data.specifier)?;
       let line_index = asset_or_doc.line_index();
-      let refactor_edit_info = self
+      let mut refactor_edit_info = self
         .ts_server
         .get_edits_for_refactor(
           self.snapshot(),
@@ -1841,6 +1844,17 @@ impl Inner {
           asset_or_doc.scope().cloned(),
         )
         .await?;
+      if kind_suffix == ".rewrite.function.returnType" {
+        refactor_edit_info.edits = fix_ts_import_changes(
+          &action_data.specifier,
+          &refactor_edit_info.edits,
+          &self.get_ts_response_import_mapper(&action_data.specifier),
+        )
+        .map_err(|err| {
+          error!("Unable to remap changes: {:#}", err);
+          LspError::internal_error()
+        })?
+      }
       code_action.edit = refactor_edit_info.to_workspace_edit(self)?;
       code_action
     } else {
