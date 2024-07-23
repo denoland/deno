@@ -387,7 +387,6 @@ function formatException(error) {
 }
 
 core.registerErrorClass("NotFound", errors.NotFound);
-core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
 core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
 core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
 core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
