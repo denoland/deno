@@ -1,0 +1,6 @@
+{
+  "name": "add",
+  "type": "module",
+  "version": "1.0.0",
+  "exports": "./index.js"
+}

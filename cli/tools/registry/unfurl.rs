@@ -75,26 +75,59 @@ impl SpecifierUnfurler {
       match resolved {
         MappedResolution::Normal(specifier)
         | MappedResolution::ImportMap(specifier) => Some(specifier),
+        MappedResolution::WorkspaceNpmPackage {
+          target_pkg_json: pkg_json,
+          pkg_name,
+          sub_path,
+        } => {
+          // todo(#24612): consider warning or error when this is also a jsr package?
+          ModuleSpecifier::parse(&format!(
+            "npm:{}{}{}",
+            pkg_name,
+            pkg_json
+              .version
+              .as_ref()
+              .map(|v| format!("@^{}", v))
+              .unwrap_or_default(),
+            sub_path
+              .as_ref()
+              .map(|s| format!("/{}", s))
+              .unwrap_or_default()
+          ))
+          .ok()
+        }
         MappedResolution::PackageJson {
+          alias,
           sub_path,
           dep_result,
           ..
         } => match dep_result {
           Ok(dep) => match dep {
-            PackageJsonDepValue::Req(req) => ModuleSpecifier::parse(&format!(
-              "npm:{}{}",
-              req,
-              sub_path
-                .as_ref()
-                .map(|s| format!("/{}", s))
-                .unwrap_or_default()
-            ))
-            .ok(),
-            PackageJsonDepValue::Workspace(_) => {
-              log::warn!(
-                "package.json workspace entries are not implemented yet for publishing."
-              );
-              None
+            PackageJsonDepValue::Req(pkg_req) => {
+              // todo(#24612): consider warning or error when this is an npm workspace
+              // member that's also a jsr package?
+              ModuleSpecifier::parse(&format!(
+                "npm:{}{}",
+                pkg_req,
+                sub_path
+                  .as_ref()
+                  .map(|s| format!("/{}", s))
+                  .unwrap_or_default()
+              ))
+              .ok()
+            }
+            PackageJsonDepValue::Workspace(version_req) => {
+              // todo(#24612): consider warning or error when this is also a jsr package?
+              ModuleSpecifier::parse(&format!(
+                "npm:{}@{}{}",
+                alias,
+                version_req,
+                sub_path
+                  .as_ref()
+                  .map(|s| format!("/{}", s))
+                  .unwrap_or_default()
+              ))
+              .ok()
             }
           },
           Err(err) => {
@@ -401,6 +434,7 @@ mod tests {
       }),
     );
     let workspace_resolver = WorkspaceResolver::new_raw(
+      Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
       Some(import_map),
       vec![Arc::new(package_json)],
       deno_config::workspace::PackageJsonDepResolution::Enabled,

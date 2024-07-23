@@ -23,8 +23,8 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_runtime::deno_fetch::reqwest;
 use deno_terminal::colors;
+use http_body_util::BodyExt;
 use lsp_types::Url;
 use serde::Deserialize;
 use serde::Serialize;
@@ -82,9 +82,9 @@ pub async fn publish(
 
   let directory_path = cli_factory.cli_options().initial_cwd();
   let cli_options = cli_factory.cli_options();
-  let publish_configs = cli_options.workspace.jsr_packages_for_publish();
+  let publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
-    match cli_options.workspace.resolve_start_ctx().maybe_deno_json() {
+    match cli_options.start_dir.maybe_deno_json() {
       Some(deno_json) => {
         debug_assert!(!deno_json.is_package());
         bail!(
@@ -437,7 +437,7 @@ impl PublishPreparer {
     let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
-    let file_patterns = package.member_ctx.to_publish_config()?.files;
+    let file_patterns = package.member_dir.to_publish_config()?.files;
 
     let tarball = deno_core::unsync::spawn_blocking({
       let diagnostics_collector = diagnostics_collector.clone();
@@ -462,6 +462,13 @@ impl PublishPreparer {
           &publish_paths,
           &diagnostics_collector,
         );
+
+        if !has_license_file(publish_paths.iter().map(|p| &p.specifier)) {
+          diagnostics_collector.push(PublishDiagnostic::MissingLicense {
+            expected_path: root_dir.join("LICENSE"),
+          });
+        }
+
         tar::create_gzipped_tarball(
           &publish_paths,
           LazyGraphSourceParser::new(&source_cache, &graph),
@@ -539,11 +546,13 @@ async fn get_auth_headers(
       let challenge = BASE64_STANDARD.encode(sha2::Sha256::digest(&verifier));
 
       let response = client
-        .post(format!("{}authorizations", registry_url))
-        .json(&serde_json::json!({
-          "challenge": challenge,
-          "permissions": permissions,
-        }))
+        .post_json(
+          format!("{}authorizations", registry_url).parse()?,
+          &serde_json::json!({
+            "challenge": challenge,
+            "permissions": permissions,
+          }),
+        )?
         .send()
         .await
         .context("Failed to create interactive authorization")?;
@@ -573,11 +582,13 @@ async fn get_auth_headers(
       loop {
         tokio::time::sleep(interval).await;
         let response = client
-          .post(format!("{}authorizations/exchange", registry_url))
-          .json(&serde_json::json!({
-            "exchangeToken": auth.exchange_token,
-            "verifier": verifier,
-          }))
+          .post_json(
+            format!("{}authorizations/exchange", registry_url).parse()?,
+            &serde_json::json!({
+              "exchangeToken": auth.exchange_token,
+              "verifier": verifier,
+            }),
+          )?
           .send()
           .await
           .context("Failed to exchange authorization")?;
@@ -634,15 +645,20 @@ async fn get_auth_headers(
         );
 
         let response = client
-          .get(url)
-          .bearer_auth(&oidc_config.token)
+          .get(url.parse()?)?
+          .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {}", oidc_config.token).parse()?,
+          )
           .send()
           .await
           .context("Failed to get OIDC token")?;
         let status = response.status();
-        let text = response.text().await.with_context(|| {
-          format!("Failed to get OIDC token: status {}", status)
-        })?;
+        let text = crate::http_util::body_to_string(response)
+          .await
+          .with_context(|| {
+            format!("Failed to get OIDC token: status {}", status)
+          })?;
         if !status.is_success() {
           bail!(
             "Failed to get OIDC token: status {}, response: '{}'",
@@ -770,7 +786,7 @@ async fn ensure_scopes_and_packages_exist(
 
     loop {
       tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-      let response = client.get(&package_api_url).send().await?;
+      let response = client.get(package_api_url.parse()?)?.send().await?;
       if response.status() == 200 {
         let name = format!("@{}/{}", package.scope, package.package);
         log::info!("Package {} created", colors::green(name));
@@ -894,11 +910,19 @@ async fn publish_package(
     package.config
   );
 
+  let body = http_body_util::Full::new(package.tarball.bytes.clone())
+    .map_err(|never| match never {})
+    .boxed();
   let response = http_client
-    .post(url)
-    .header(reqwest::header::AUTHORIZATION, authorization)
-    .header(reqwest::header::CONTENT_ENCODING, "gzip")
-    .body(package.tarball.bytes.clone())
+    .post(url.parse()?, body)?
+    .header(
+      http::header::AUTHORIZATION,
+      authorization.parse().map_err(http::Error::from)?,
+    )
+    .header(
+      http::header::CONTENT_ENCODING,
+      "gzip".parse().map_err(http::Error::from)?,
+    )
     .send()
     .await?;
 
@@ -943,7 +967,7 @@ async fn publish_package(
   while task.status != "success" && task.status != "failure" {
     tokio::time::sleep(interval).await;
     let resp = http_client
-      .get(format!("{}publish_status/{}", registry_api_url, task.id))
+      .get(format!("{}publish_status/{}", registry_api_url, task.id).parse()?)?
       .send()
       .await
       .with_context(|| {
@@ -992,7 +1016,8 @@ async fn publish_package(
       package.scope, package.package, package.version
     ))?;
 
-    let meta_bytes = http_client.get(meta_url).send().await?.bytes().await?;
+    let resp = http_client.get(meta_url)?.send().await?;
+    let meta_bytes = resp.collect().await?.to_bytes();
 
     if std::env::var("DISABLE_JSR_MANIFEST_VERIFICATION_FOR_TESTING").is_err() {
       verify_version_manifest(&meta_bytes, &package)?;
@@ -1023,9 +1048,8 @@ async fn publish_package(
       registry_api_url, package.scope, package.package, package.version
     );
     http_client
-      .post(provenance_url)
-      .header(reqwest::header::AUTHORIZATION, authorization)
-      .json(&json!({ "bundle": bundle }))
+      .post_json(provenance_url.parse()?, &json!({ "bundle": bundle }))?
+      .header(http::header::AUTHORIZATION, authorization.parse()?)
       .send()
       .await?;
   }
@@ -1170,6 +1194,36 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
   }
 }
 
+fn has_license_file<'a>(
+  mut specifiers: impl Iterator<Item = &'a ModuleSpecifier>,
+) -> bool {
+  let allowed_license_files = {
+    let files = HashSet::from([
+      "license",
+      "license.md",
+      "license.txt",
+      "licence",
+      "licence.md",
+      "licence.txt",
+    ]);
+    if cfg!(debug_assertions) {
+      for file in &files {
+        assert_eq!(*file, file.to_lowercase());
+      }
+    }
+    files
+  };
+  specifiers.any(|specifier| {
+    specifier
+      .path()
+      .rsplit_once('/')
+      .map(|(_, file)| {
+        allowed_license_files.contains(file.to_lowercase().as_str())
+      })
+      .unwrap_or(false)
+  })
+}
+
 #[allow(clippy::print_stderr)]
 fn ring_bell() {
   // ASCII code for the bell character.
@@ -1178,6 +1232,10 @@ fn ring_bell() {
 
 #[cfg(test)]
 mod tests {
+  use deno_ast::ModuleSpecifier;
+
+  use crate::tools::registry::has_license_file;
+
   use super::tar::PublishableTarball;
   use super::tar::PublishableTarballFile;
   use super::verify_version_manifest;
@@ -1278,5 +1336,32 @@ mod tests {
     };
 
     assert!(verify_version_manifest(meta_bytes, &package).is_err());
+  }
+
+  #[test]
+  fn test_has_license_files() {
+    fn has_license_file_str(expected: &[&str]) -> bool {
+      let specifiers = expected
+        .iter()
+        .map(|s| ModuleSpecifier::parse(s).unwrap())
+        .collect::<Vec<_>>();
+      has_license_file(specifiers.iter())
+    }
+
+    assert!(has_license_file_str(&["file:///LICENSE"]));
+    assert!(has_license_file_str(&["file:///license"]));
+    assert!(has_license_file_str(&["file:///LICENSE.txt"]));
+    assert!(has_license_file_str(&["file:///LICENSE.md"]));
+    assert!(has_license_file_str(&["file:///LICENCE"]));
+    assert!(has_license_file_str(&["file:///LICENCE.txt"]));
+    assert!(has_license_file_str(&["file:///LICENCE.md"]));
+    assert!(has_license_file_str(&[
+      "file:///other",
+      "file:///test/LICENCE.md"
+    ]),);
+    assert!(!has_license_file_str(&[
+      "file:///other",
+      "file:///test/tLICENSE"
+    ]),);
   }
 }
