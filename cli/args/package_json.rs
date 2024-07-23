@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_config::package_json::PackageJsonDepValue;
 use deno_config::workspace::Workspace;
+use deno_package_json::PackageJsonDepValue;
 use deno_semver::package::PackageReq;
 
 #[derive(Debug)]

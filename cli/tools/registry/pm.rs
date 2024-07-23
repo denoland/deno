@@ -119,9 +119,9 @@ impl DenoOrPackageJson {
   /// creates a `deno.json` file - in this case
   /// we also return a new `CliFactory` that knows about
   /// the new config
-  fn from_flags(flags: Flags) -> Result<(Self, CliFactory), AnyError> {
-    let factory = CliFactory::from_flags(flags.clone())?;
-    let options = factory.cli_options();
+  fn from_flags(flags: Arc<Flags>) -> Result<(Self, CliFactory), AnyError> {
+    let factory = CliFactory::from_flags(flags.clone());
+    let options = factory.cli_options()?;
     let start_dir = &options.start_dir;
 
     match (start_dir.maybe_deno_json(), start_dir.maybe_pkg_json()) {
@@ -142,8 +142,8 @@ impl DenoOrPackageJson {
           .context("Failed to create deno.json file")?;
         drop(factory); // drop to prevent use
         log::info!("Created deno.json configuration file.");
-        let factory = CliFactory::from_flags(flags.clone())?;
-        let options = factory.cli_options().clone();
+        let factory = CliFactory::from_flags(flags.clone());
+        let options = factory.cli_options()?.clone();
         let start_dir = &options.start_dir;
         Ok((
           DenoOrPackageJson::Deno(
@@ -175,7 +175,10 @@ fn package_json_dependency_entry(
   }
 }
 
-pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
+pub async fn add(
+  flags: Arc<Flags>,
+  add_flags: AddFlags,
+) -> Result<(), AnyError> {
   let (config_file, cli_factory) =
     DenoOrPackageJson::from_flags(flags.clone())?;
 
@@ -307,9 +310,9 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   // clear the previously cached package.json from memory before reloading it
   deno_node::PackageJsonThreadLocalCache::clear();
   // make a new CliFactory to pick up the updated config file
-  let cli_factory = CliFactory::from_flags(flags)?;
+  let cli_factory = CliFactory::from_flags(flags);
   // cache deps
-  if cli_factory.cli_options().enable_future_features() {
+  if cli_factory.cli_options()?.enable_future_features() {
     crate::module_loader::load_top_level_deps(&cli_factory).await?;
   }
 

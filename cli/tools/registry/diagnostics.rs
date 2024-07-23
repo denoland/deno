@@ -119,6 +119,10 @@ pub enum PublishDiagnostic {
     range: SourceRange,
   },
   SyntaxError(ParseDiagnostic),
+  MissingLicense {
+    /// This only exists because diagnostics require a location.
+    expected_path: PathBuf,
+  },
 }
 
 impl PublishDiagnostic {
@@ -168,6 +172,8 @@ impl Diagnostic for PublishDiagnostic {
       MissingConstraint { .. } => DiagnosticLevel::Error,
       BannedTripleSlashDirectives { .. } => DiagnosticLevel::Error,
       SyntaxError { .. } => DiagnosticLevel::Error,
+      // todo(#24676): make this an error in Deno 1.46
+      MissingLicense { .. } => DiagnosticLevel::Warning,
     }
   }
 
@@ -187,6 +193,7 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Borrowed("banned-triple-slash-directives")
       }
       SyntaxError { .. } => Cow::Borrowed("syntax-error"),
+      MissingLicense { .. } => Cow::Borrowed("missing-license"),
     }
   }
 
@@ -208,6 +215,7 @@ impl Diagnostic for PublishDiagnostic {
       MissingConstraint { specifier, .. } => Cow::Owned(format!("specifier '{}' is missing a version constraint", specifier)),
       BannedTripleSlashDirectives { .. } => Cow::Borrowed("triple slash directives that modify globals are not allowed"),
       SyntaxError(diagnostic) => diagnostic.message(),
+      MissingLicense { .. } => Cow::Borrowed("missing license file"),
     }
   }
 
@@ -275,6 +283,9 @@ impl Diagnostic for PublishDiagnostic {
         text_info: Cow::Borrowed(text_info),
       },
       SyntaxError(diagnostic) => diagnostic.location(),
+      MissingLicense { expected_path } => DiagnosticLocation::Path {
+        path: expected_path.clone(),
+      },
     }
   }
 
@@ -355,6 +366,7 @@ impl Diagnostic for PublishDiagnostic {
         }],
       }),
       SyntaxError(diagnostic) => diagnostic.snippet(),
+      MissingLicense { .. } => None,
     }
   }
 
@@ -388,6 +400,9 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Borrowed("remove the triple slash directive"),
       ),
       SyntaxError(diagnostic) => diagnostic.hint(),
+      MissingLicense { .. } => Some(
+        Cow::Borrowed("add a LICENSE file to the package and ensure it is not ignored from being published"),
+      ),
     }
   }
 
@@ -424,7 +439,8 @@ impl Diagnostic for PublishDiagnostic {
       | UnsupportedJsxTsx { .. }
       | ExcludedModule { .. }
       | MissingConstraint { .. }
-      | BannedTripleSlashDirectives { .. } => None,
+      | BannedTripleSlashDirectives { .. }
+      | MissingLicense { .. } => None,
     }
   }
 
@@ -474,6 +490,7 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Borrowed("or set their 'lib' compiler option appropriately"),
       ]),
       SyntaxError(diagnostic) => diagnostic.info(),
+      MissingLicense { .. } => Cow::Borrowed(&[]),
     }
   }
 
@@ -507,6 +524,9 @@ impl Diagnostic for PublishDiagnostic {
         "https://jsr.io/go/banned-triple-slash-directives",
       )),
       SyntaxError(diagnostic) => diagnostic.docs_url(),
+      MissingLicense { .. } => {
+        Some(Cow::Borrowed("https://jsr.io/go/missing-license"))
+      }
     }
   }
 }

@@ -352,7 +352,7 @@ impl NodeJsErrorCoded for TypesNotFoundError {
 pub struct PackageJsonLoadError(
   #[source]
   #[from]
-  pub deno_config::package_json::PackageJsonLoadError,
+  pub deno_package_json::PackageJsonLoadError,
 );
 
 impl NodeJsErrorCoded for PackageJsonLoadError {

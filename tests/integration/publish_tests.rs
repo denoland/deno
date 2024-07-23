@@ -398,6 +398,7 @@ fn allow_dirty() {
   }));
 
   temp_dir.join("main.ts").write("");
+  temp_dir.join("LICENSE").write("");
 
   let cmd = Command::new("git")
     .arg("init")
@@ -418,6 +419,7 @@ Checking for slow types in the public API...
 
 Uncommitted changes:
 
+?? LICENSE
 ?? deno.json
 ?? main.ts
 
