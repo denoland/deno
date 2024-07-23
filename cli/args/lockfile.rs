@@ -4,13 +4,13 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use deno_config::deno_json::ConfigFile;
-use deno_config::package_json::PackageJsonDepValue;
 use deno_config::workspace::Workspace;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
 use deno_lockfile::WorkspaceMemberConfig;
+use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_node::PackageJson;
 
 use crate::cache;
