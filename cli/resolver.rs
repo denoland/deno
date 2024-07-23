@@ -425,34 +425,13 @@ impl CjsResolutionStore {
   }
 }
 
-pub enum ResolutionDetail {
-  Sloppy(SloppyImportsResolution),
-  Normal(ModuleSpecifier),
-}
-
-impl ResolutionDetail {
-  pub fn as_specifier(&self) -> &ModuleSpecifier {
-    match self {
-      ResolutionDetail::Sloppy(specifier) => specifier.as_specifier(),
-      ResolutionDetail::Normal(specifier) => specifier,
-    }
-  }
-
-  pub fn into_specifier(self) -> ModuleSpecifier {
-    match self {
-      ResolutionDetail::Sloppy(specifier) => specifier.into_specifier(),
-      ResolutionDetail::Normal(specifier) => specifier,
-    }
-  }
-}
-
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug)]
 pub struct CliGraphResolver {
   node_resolver: Option<Arc<CliNodeResolver>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-  sloppy_imports_resolver: Option<SloppyImportsResolver>,
+  sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
   workspace_resolver: Arc<WorkspaceResolver>,
   maybe_default_jsx_import_source: Option<String>,
   maybe_default_jsx_import_source_types: Option<String>,
@@ -465,7 +444,7 @@ pub struct CliGraphResolver {
 pub struct CliGraphResolverOptions<'a> {
   pub node_resolver: Option<Arc<CliNodeResolver>>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-  pub sloppy_imports_resolver: Option<SloppyImportsResolver>,
+  pub sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
   pub workspace_resolver: Arc<WorkspaceResolver>,
   pub bare_node_builtins_enabled: bool,
   pub maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
@@ -509,203 +488,6 @@ impl CliGraphResolver {
       bare_node_builtins_enabled: self.bare_node_builtins_enabled,
     }
   }
-
-  pub fn resolve_detail(
-    &self,
-    specifier: &str,
-    referrer_range: &deno_graph::Range,
-    mode: ResolutionMode,
-  ) -> Result<ResolutionDetail, ResolveError> {
-    fn to_node_mode(mode: ResolutionMode) -> NodeResolutionMode {
-      match mode {
-        ResolutionMode::Execution => NodeResolutionMode::Execution,
-        ResolutionMode::Types => NodeResolutionMode::Types,
-      }
-    }
-
-    let referrer = &referrer_range.specifier;
-
-    // Use node resolution if we're in an npm package
-    if let Some(node_resolver) = self.node_resolver.as_ref() {
-      if referrer.scheme() == "file" && node_resolver.in_npm_package(referrer) {
-        return node_resolver
-          .resolve(specifier, referrer, to_node_mode(mode))
-          .map(|res| ResolutionDetail::Normal(res.into_url()))
-          .map_err(|e| ResolveError::Other(e.into()));
-      }
-    }
-
-    // Attempt to resolve with the workspace resolver
-    let result: Result<_, ResolveError> = self
-      .workspace_resolver
-      .resolve(specifier, referrer)
-      .map_err(|err| match err {
-        MappedResolutionError::Specifier(err) => ResolveError::Specifier(err),
-        MappedResolutionError::ImportMap(err) => {
-          ResolveError::Other(err.into())
-        }
-      });
-    let result = match result {
-      Ok(resolution) => match resolution {
-        MappedResolution::Normal(specifier)
-        | MappedResolution::ImportMap(specifier) => {
-          // do sloppy imports resolution if enabled
-          if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
-            Ok(
-              sloppy_imports_resolver
-                .resolve(&specifier, mode)
-                .map(ResolutionDetail::Sloppy)
-                .unwrap_or(ResolutionDetail::Normal(specifier)),
-            )
-          } else {
-            Ok(ResolutionDetail::Normal(specifier))
-          }
-        }
-        MappedResolution::WorkspaceNpmPackage {
-          target_pkg_json: pkg_json,
-          sub_path,
-          ..
-        } => self
-          .node_resolver
-          .as_ref()
-          .unwrap()
-          .resolve_package_sub_path_from_deno_module(
-            pkg_json.dir_path(),
-            sub_path.as_deref(),
-            Some(referrer),
-            to_node_mode(mode),
-          )
-          .map_err(ResolveError::Other)
-          .map(|res| ResolutionDetail::Normal(res.into_url())),
-        MappedResolution::PackageJson {
-          dep_result,
-          alias,
-          sub_path,
-          ..
-        } => {
-          // found a specifier in the package.json, so mark that
-          // we need to do an "npm install" later
-          self.found_package_json_dep_flag.raise();
-
-          dep_result
-            .as_ref()
-            .map_err(|e| ResolveError::Other(e.clone().into()))
-            .and_then(|dep| match dep {
-              PackageJsonDepValue::Req(req) => {
-                ModuleSpecifier::parse(&format!(
-                  "npm:{}{}",
-                  req,
-                  sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
-                ))
-                .map(ResolutionDetail::Normal)
-                .map_err(|e| ResolveError::Other(e.into()))
-              }
-              PackageJsonDepValue::Workspace(version_req) => self
-                .workspace_resolver
-                .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
-                  alias,
-                  version_req,
-                )
-                .map_err(|e| ResolveError::Other(e.into()))
-                .and_then(|pkg_folder| {
-                  Ok(ResolutionDetail::Normal(
-                    self
-                      .node_resolver
-                      .as_ref()
-                      .unwrap()
-                      .resolve_package_sub_path_from_deno_module(
-                        pkg_folder,
-                        sub_path.as_deref(),
-                        Some(referrer),
-                        to_node_mode(mode),
-                      )?
-                      .into_url(),
-                  ))
-                }),
-            })
-        }
-      },
-      Err(err) => Err(err),
-    };
-
-    // When the user is vendoring, don't allow them to import directly from the vendor/ directory
-    // as it might cause them confusion or duplicate dependencies. Additionally, this folder has
-    // special treatment in the language server so it will definitely cause issues/confusion there
-    // if they do this.
-    if let Some(vendor_specifier) = &self.maybe_vendor_specifier {
-      if let Ok(specifier) = &result {
-        let specifier_str = specifier.as_specifier().as_str();
-        if specifier_str.starts_with(vendor_specifier.as_str()) {
-          return Err(ResolveError::Other(anyhow!("Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.")));
-        }
-      }
-    }
-
-    let Some(node_resolver) = &self.node_resolver else {
-      return result;
-    };
-
-    let is_byonm = self
-      .npm_resolver
-      .as_ref()
-      .is_some_and(|r| r.as_byonm().is_some());
-    match result {
-      Ok(resolution) => {
-        if let Ok(npm_req_ref) =
-          NpmPackageReqReference::from_specifier(resolution.as_specifier())
-        {
-          // check if the npm specifier resolves to a workspace member
-          if let Some(pkg_folder) = self
-            .workspace_resolver
-            .resolve_workspace_pkg_json_folder_for_npm_specifier(
-              npm_req_ref.req(),
-            )
-          {
-            return Ok(ResolutionDetail::Normal(
-              node_resolver
-                .resolve_package_sub_path_from_deno_module(
-                  pkg_folder,
-                  npm_req_ref.sub_path(),
-                  Some(referrer),
-                  to_node_mode(mode),
-                )?
-                .into_url(),
-            ));
-          }
-
-          // do npm resolution for byonm
-          if is_byonm {
-            return node_resolver
-              .resolve_req_reference(&npm_req_ref, referrer, to_node_mode(mode))
-              .map(|res| ResolutionDetail::Normal(res.into_url()))
-              .map_err(|err| err.into());
-          }
-        }
-
-        Ok(
-          match node_resolver
-            .handle_if_in_node_modules(resolution.as_specifier())?
-          {
-            Some(specifier) => ResolutionDetail::Normal(specifier),
-            None => resolution,
-          },
-        )
-      }
-      Err(err) => {
-        // If byonm, check if the bare specifier resolves to an npm package
-        if is_byonm && referrer.scheme() == "file" {
-          let maybe_resolution = node_resolver
-            .resolve_if_for_npm_pkg(specifier, referrer, to_node_mode(mode))
-            .map_err(ResolveError::Other)?;
-          if let Some(res) = maybe_resolution {
-            return Ok(ResolutionDetail::Normal(res.into_url()));
-          }
-        }
-
-        Err(err)
-      }
-    }
-  }
 }
 
 impl Resolver for CliGraphResolver {
@@ -730,9 +512,189 @@ impl Resolver for CliGraphResolver {
     referrer_range: &deno_graph::Range,
     mode: ResolutionMode,
   ) -> Result<ModuleSpecifier, ResolveError> {
-    self
-      .resolve_detail(specifier, referrer_range, mode)
-      .map(|res| res.into_specifier())
+    fn to_node_mode(mode: ResolutionMode) -> NodeResolutionMode {
+      match mode {
+        ResolutionMode::Execution => NodeResolutionMode::Execution,
+        ResolutionMode::Types => NodeResolutionMode::Types,
+      }
+    }
+
+    let referrer = &referrer_range.specifier;
+
+    // Use node resolution if we're in an npm package
+    if let Some(node_resolver) = self.node_resolver.as_ref() {
+      if referrer.scheme() == "file" && node_resolver.in_npm_package(referrer) {
+        return node_resolver
+          .resolve(specifier, referrer, to_node_mode(mode))
+          .map(|res| res.into_url())
+          .map_err(|e| ResolveError::Other(e.into()));
+      }
+    }
+
+    // Attempt to resolve with the workspace resolver
+    let result: Result<_, ResolveError> = self
+      .workspace_resolver
+      .resolve(specifier, referrer)
+      .map_err(|err| match err {
+        MappedResolutionError::Specifier(err) => ResolveError::Specifier(err),
+        MappedResolutionError::ImportMap(err) => {
+          ResolveError::Other(err.into())
+        }
+      });
+    let result = match result {
+      Ok(resolution) => match resolution {
+        MappedResolution::Normal(specifier)
+        | MappedResolution::ImportMap(specifier) => {
+          // do sloppy imports resolution if enabled
+          if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
+            Ok(
+              sloppy_imports_resolver
+                .resolve(&specifier, mode)
+                .map(|s| s.into_specifier())
+                .unwrap_or(specifier),
+            )
+          } else {
+            Ok(specifier)
+          }
+        }
+        MappedResolution::WorkspaceNpmPackage {
+          target_pkg_json: pkg_json,
+          sub_path,
+          ..
+        } => self
+          .node_resolver
+          .as_ref()
+          .unwrap()
+          .resolve_package_sub_path_from_deno_module(
+            pkg_json.dir_path(),
+            sub_path.as_deref(),
+            Some(referrer),
+            to_node_mode(mode),
+          )
+          .map_err(ResolveError::Other)
+          .map(|res| res.into_url()),
+        MappedResolution::PackageJson {
+          dep_result,
+          alias,
+          sub_path,
+          ..
+        } => {
+          // found a specifier in the package.json, so mark that
+          // we need to do an "npm install" later
+          self.found_package_json_dep_flag.raise();
+
+          dep_result
+            .as_ref()
+            .map_err(|e| ResolveError::Other(e.clone().into()))
+            .and_then(|dep| match dep {
+              PackageJsonDepValue::Req(req) => {
+                ModuleSpecifier::parse(&format!(
+                  "npm:{}{}",
+                  req,
+                  sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+                ))
+                .map_err(|e| ResolveError::Other(e.into()))
+              }
+              PackageJsonDepValue::Workspace(version_req) => self
+                .workspace_resolver
+                .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
+                  alias,
+                  version_req,
+                )
+                .map_err(|e| ResolveError::Other(e.into()))
+                .and_then(|pkg_folder| {
+                  Ok(
+                    self
+                      .node_resolver
+                      .as_ref()
+                      .unwrap()
+                      .resolve_package_sub_path_from_deno_module(
+                        pkg_folder,
+                        sub_path.as_deref(),
+                        Some(referrer),
+                        to_node_mode(mode),
+                      )?
+                      .into_url(),
+                  )
+                }),
+            })
+        }
+      },
+      Err(err) => Err(err),
+    };
+
+    // When the user is vendoring, don't allow them to import directly from the vendor/ directory
+    // as it might cause them confusion or duplicate dependencies. Additionally, this folder has
+    // special treatment in the language server so it will definitely cause issues/confusion there
+    // if they do this.
+    if let Some(vendor_specifier) = &self.maybe_vendor_specifier {
+      if let Ok(specifier) = &result {
+        if specifier.as_str().starts_with(vendor_specifier.as_str()) {
+          return Err(ResolveError::Other(anyhow!("Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.")));
+        }
+      }
+    }
+
+    let Some(node_resolver) = &self.node_resolver else {
+      return result;
+    };
+
+    let is_byonm = self
+      .npm_resolver
+      .as_ref()
+      .is_some_and(|r| r.as_byonm().is_some());
+    match result {
+      Ok(specifier) => {
+        if let Ok(npm_req_ref) =
+          NpmPackageReqReference::from_specifier(&specifier)
+        {
+          // check if the npm specifier resolves to a workspace member
+          if let Some(pkg_folder) = self
+            .workspace_resolver
+            .resolve_workspace_pkg_json_folder_for_npm_specifier(
+              npm_req_ref.req(),
+            )
+          {
+            return Ok(
+              node_resolver
+                .resolve_package_sub_path_from_deno_module(
+                  pkg_folder,
+                  npm_req_ref.sub_path(),
+                  Some(referrer),
+                  to_node_mode(mode),
+                )?
+                .into_url(),
+            );
+          }
+
+          // do npm resolution for byonm
+          if is_byonm {
+            return node_resolver
+              .resolve_req_reference(&npm_req_ref, referrer, to_node_mode(mode))
+              .map(|res| res.into_url())
+              .map_err(|err| err.into());
+          }
+        }
+
+        Ok(match node_resolver.handle_if_in_node_modules(&specifier)? {
+          Some(specifier) => specifier,
+          None => specifier,
+        })
+      }
+      Err(err) => {
+        // If byonm, check if the bare specifier resolves to an npm package
+        if is_byonm && referrer.scheme() == "file" {
+          let maybe_resolution = node_resolver
+            .resolve_if_for_npm_pkg(specifier, referrer, to_node_mode(mode))
+            .map_err(ResolveError::Other)?;
+          if let Some(res) = maybe_resolution {
+            return Ok(res.into_url());
+          }
+        }
+
+        Err(err)
+      }
+    }
   }
 }
 
@@ -879,7 +841,7 @@ impl SloppyImportsFsEntry {
   }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SloppyImportsResolution {
   /// Ex. `./file.js` to `./file.ts`
   JsToTs(ModuleSpecifier),
@@ -910,7 +872,7 @@ impl SloppyImportsResolution {
     format!("Maybe {}", self.as_base_message())
   }
 
-  pub fn as_lsp_quick_fix_message(&self) -> String {
+  pub fn as_quick_fix_message(&self) -> String {
     let message = self.as_base_message();
     let mut chars = message.chars();
     format!(

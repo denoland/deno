@@ -20,6 +20,8 @@ use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
+use crate::tools::lint::create_linter;
+use crate::tools::lint::ConfiguredRules;
 use crate::util::path::to_percent_decoded_str;
 
 use deno_ast::MediaType;
@@ -40,6 +42,7 @@ use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_lint::linter::LintConfig as DenoLintConfig;
+use deno_lint::linter::Linter;
 use deno_lint::rules::LintRule;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
@@ -815,7 +818,7 @@ fn generate_lint_diagnostics(
       continue;
     }
     let version = document.maybe_lsp_version();
-    let (lint_config, deno_lint_config, lint_rules) = config
+    let (lint_config, deno_lint_config, linter) = config
       .tree
       .scope_for_specifier(specifier)
       .and_then(|s| config_data_by_scope.get(s))
@@ -823,7 +826,7 @@ fn generate_lint_diagnostics(
         (
           d.lint_config.clone(),
           d.deno_lint_config.clone(),
-          d.lint_rules.clone(),
+          d.linter.clone(),
         )
       })
       .unwrap_or_else(|| {
@@ -833,7 +836,7 @@ fn generate_lint_diagnostics(
             default_jsx_factory: None,
             default_jsx_fragment_factory: None,
           },
-          Arc::default(),
+          create_linter(ConfiguredRules::new_no_config()),
         )
       });
     diagnostics_vec.push(DiagnosticRecord {
@@ -844,7 +847,7 @@ fn generate_lint_diagnostics(
           &document,
           &lint_config,
           deno_lint_config,
-          lint_rules.rules.clone(),
+          linter,
         ),
       },
     });
@@ -856,18 +859,16 @@ fn generate_document_lint_diagnostics(
   document: &Document,
   lint_config: &LintConfig,
   deno_lint_config: DenoLintConfig,
-  lint_rules: Vec<&'static dyn LintRule>,
+  linter: Linter,
 ) -> Vec<lsp::Diagnostic> {
   if !lint_config.files.matches_specifier(document.specifier()) {
     return Vec::new();
   }
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
-      if let Ok(references) = analysis::get_lint_references(
-        parsed_source,
-        lint_rules,
-        deno_lint_config,
-      ) {
+      if let Ok(references) =
+        analysis::get_lint_references(parsed_source, linter, deno_lint_config)
+      {
         references
           .into_iter()
           .map(|r| r.to_diagnostic())
@@ -1260,11 +1261,11 @@ impl DenoDiagnostic {
       Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
         let maybe_sloppy_resolution = SloppyImportsResolver::new(Arc::new(deno_fs::RealFs)).resolve(specifier, ResolutionMode::Execution);
-        let data = maybe_sloppy_resolution.map(|res| {
+        let data = maybe_sloppy_resolution.as_ref().map(|res| {
           json!({
             "specifier": specifier,
             "to": res.as_specifier(),
-            "message": res.as_lsp_quick_fix_message(),
+            "message": res.as_quick_fix_message(),
           })
         });
         (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier, maybe_sloppy_resolution.as_ref()), data)

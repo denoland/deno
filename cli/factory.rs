@@ -44,6 +44,7 @@ use crate::resolver::SloppyImportsResolver;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::tools::coverage::CoverageCollector;
+use crate::tools::lint::LintRulesResolver;
 use crate::tools::run::hmr::HmrRunner;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -173,6 +174,7 @@ struct CliFactoryServices {
   node_code_translator: Deferred<Arc<CliNodeCodeTranslator>>,
   node_resolver: Deferred<Arc<NodeResolver>>,
   npm_resolver: Deferred<Arc<dyn CliNpmResolver>>,
+  sloppy_imports_resolver: Deferred<Arc<SloppyImportsResolver>>,
   text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
   cjs_resolutions: Deferred<Arc<CjsResolutionStore>>,
@@ -452,6 +454,16 @@ impl CliFactory {
       .await
   }
 
+  pub fn sloppy_imports_resolver(&self) -> Option<&Arc<SloppyImportsResolver>> {
+    if self.options.unstable_sloppy_imports() {
+      Some(self.services.sloppy_imports_resolver.get_or_init(|| {
+        Arc::new(SloppyImportsResolver::new(self.fs().clone()))
+      }))
+    } else {
+      None
+    }
+  }
+
   pub async fn workspace_resolver(
     &self,
   ) -> Result<&Arc<WorkspaceResolver>, AnyError> {
@@ -494,11 +506,7 @@ impl CliFactory {
       .get_or_try_init_async(
         async {
           Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
-            sloppy_imports_resolver: if self.options.unstable_sloppy_imports() {
-              Some(SloppyImportsResolver::new(self.fs().clone()))
-            } else {
-              None
-            },
+            sloppy_imports_resolver: self.sloppy_imports_resolver().cloned(),
             node_resolver: Some(self.cli_node_resolver().await?.clone()),
             npm_resolver: if self.options.no_npm() {
               None
@@ -578,6 +586,15 @@ impl CliFactory {
         emit_options,
       )))
     })
+  }
+
+  pub async fn lint_rules_resolver(
+    &self,
+  ) -> Result<LintRulesResolver, AnyError> {
+    Ok(LintRulesResolver::new(
+      self.sloppy_imports_resolver().cloned(),
+      self.workspace_resolver().await?.clone(),
+    ))
   }
 
   pub async fn node_resolver(&self) -> Result<&Arc<NodeResolver>, AnyError> {

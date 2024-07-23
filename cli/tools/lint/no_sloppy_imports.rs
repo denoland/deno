@@ -1,39 +1,73 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use deno_ast::SourceRange;
+use deno_config::workspace::WorkspaceResolver;
+use deno_core::anyhow::anyhow;
 use deno_graph::source::ResolutionMode;
+use deno_graph::source::ResolveError;
 use deno_graph::Range;
+use deno_lint::diagnostic::LintFix;
+use deno_lint::diagnostic::LintFixChange;
 use deno_lint::rules::LintRule;
 use text_lines::LineAndColumnIndex;
 
+use crate::cache::FastInsecureHasher;
 use crate::graph_util::CliJsrUrlProvider;
-use crate::resolver::CliGraphResolver;
-use crate::resolver::ResolutionDetail;
 use crate::resolver::SloppyImportsResolution;
+use crate::resolver::SloppyImportsResolver;
 
 #[derive(Debug)]
-pub struct NoSloppyImports {
-  resolver: Arc<CliGraphResolver>,
+pub struct NoSloppyImportsRule {
+  sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
+  // None for making printing out the lint rules easy
+  workspace_resolver: Option<Arc<WorkspaceResolver>>,
+}
+
+impl NoSloppyImportsRule {
+  pub fn new(
+    sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
+    workspace_resolver: Arc<WorkspaceResolver>,
+  ) -> Self {
+    NoSloppyImportsRule {
+      sloppy_imports_resolver,
+      workspace_resolver: Some(workspace_resolver),
+    }
+  }
+
+  pub fn new_noop() -> Self {
+    NoSloppyImportsRule {
+      sloppy_imports_resolver: None,
+      workspace_resolver: None,
+    }
+  }
 }
 
 const CODE: &str = "no-sloppy-imports";
 
-impl LintRule for NoSloppyImports {
+impl LintRule for NoSloppyImportsRule {
   fn lint_program_with_ast_view<'view>(
     &self,
     context: &mut deno_lint::context::Context<'view>,
-    program: deno_lint::Program<'view>,
+    _program: deno_lint::Program<'view>,
   ) {
+    let Some(workspace_resolver) = &self.workspace_resolver else {
+      return;
+    };
+    let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver else {
+      return;
+    };
     if context.specifier().scheme() != "file" {
       return;
     }
 
     let resolver = SloppyImportCaptureResolver {
-      graph_resolver: &self.resolver,
+      workspace_resolver,
+      sloppy_imports_resolver,
       captures: Default::default(),
     };
 
@@ -61,13 +95,40 @@ impl LintRule for NoSloppyImports {
           line_index: range.end.line,
           column_index: range.end.character,
         });
+      let source_range = SourceRange::new(start_range, end_range);
       context.add_diagnostic_with_fixes(
-        SourceRange::new(start_range, end_range),
+        source_range,
         CODE,
         "Sloppy imports are not allowed.",
         Some(sloppy_import.as_suggestion_message()),
-        // todo: fixes
-        vec![],
+        context
+          .specifier()
+          .make_relative(sloppy_import.as_specifier())
+          .map(|relative| {
+            vec![LintFix {
+              description: Cow::Owned(sloppy_import.as_quick_fix_message()),
+              changes: vec![LintFixChange {
+                new_text: Cow::Owned({
+                  let relative = if relative.starts_with("../") {
+                    relative
+                  } else {
+                    format!("./{}", relative)
+                  };
+                  let current_text =
+                    context.text_info().range_text(&source_range);
+                  if current_text.starts_with("\"") {
+                    format!("\"{}\"", relative)
+                  } else if current_text.starts_with("'") {
+                    format!("'{}'", relative)
+                  } else {
+                    relative
+                  }
+                }),
+                range: source_range,
+              }],
+            }]
+          })
+          .unwrap_or_default(),
       );
     }
   }
@@ -79,11 +140,32 @@ impl LintRule for NoSloppyImports {
   fn docs(&self) -> &'static str {
     include_str!("no_sloppy_imports.md")
   }
+
+  fn tags(&self) -> &'static [&'static str] {
+    &["recommended"]
+  }
+
+  fn state_hash(&self) -> u64 {
+    let mut hasher = FastInsecureHasher::new_without_deno_version();
+    if self.sloppy_imports_resolver.is_some() {
+      hasher.write_u8(1);
+
+      // only bother with the import map and not the pkg.json files
+      if let Some(workspace_resolver) = &self.workspace_resolver {
+        if let Some(import_map) = workspace_resolver.maybe_import_map() {
+          // todo(https://github.com/denoland/import_map/issues/83): implement Hash on import map
+          hasher.write_str(&import_map.to_json());
+        }
+      }
+    }
+    hasher.finish()
+  }
 }
 
 #[derive(Debug)]
 struct SloppyImportCaptureResolver<'a> {
-  graph_resolver: &'a CliGraphResolver,
+  workspace_resolver: &'a WorkspaceResolver,
+  sloppy_imports_resolver: &'a SloppyImportsResolver,
   captures: RefCell<HashMap<Range, SloppyImportsResolution>>,
 }
 
@@ -94,42 +176,32 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
     referrer_range: &Range,
     mode: ResolutionMode,
   ) -> Result<deno_ast::ModuleSpecifier, deno_graph::source::ResolveError> {
-    let resolution = self.graph_resolver.resolve_detail(
-      specifier_text,
-      referrer_range,
-      mode,
-    )?;
-    match &resolution {
-      ResolutionDetail::Sloppy(res) => {
-        self
-          .captures
-          .borrow_mut()
-          .insert(referrer_range.clone(), res.clone());
+    let resolution = self
+      .workspace_resolver
+      .resolve(specifier_text, &referrer_range.specifier)
+      .map_err(|err| ResolveError::Other(err.into()))?;
+
+    match resolution {
+      deno_config::workspace::MappedResolution::Normal(specifier)
+      | deno_config::workspace::MappedResolution::ImportMap(specifier) => {
+        match self.sloppy_imports_resolver.resolve(&specifier, mode) {
+          Some(res) => {
+            self
+              .captures
+              .borrow_mut()
+              .entry(referrer_range.clone())
+              .or_insert_with(|| res.clone());
+            Ok(res.into_specifier())
+          }
+          None => Ok(specifier),
+        }
       }
-      ResolutionDetail::Normal(_) => {}
+      deno_config::workspace::MappedResolution::WorkspaceNpmPackage {
+        ..
+      }
+      | deno_config::workspace::MappedResolution::PackageJson { .. } => {
+        Err(ResolveError::Other(anyhow!("")))
+      }
     }
-    Ok(resolution)
-  }
-
-  fn default_jsx_import_source(&self) -> Option<String> {
-    self.graph_resolver.default_jsx_import_source()
-  }
-
-  fn default_jsx_import_source_types(&self) -> Option<String> {
-    self.graph_resolver.default_jsx_import_source_types()
-  }
-
-  fn jsx_import_source_module(&self) -> &str {
-    self.graph_resolver.jsx_import_source_module()
-  }
-
-  fn resolve_types(
-    &self,
-    specifier: &deno_ast::ModuleSpecifier,
-  ) -> Result<
-    Option<(deno_ast::ModuleSpecifier, Option<deno_graph::Range>)>,
-    deno_graph::source::ResolveError,
-  > {
-    self.graph_resolver.resolve_types(specifier)
   }
 }

@@ -8,8 +8,8 @@ use super::resolver::LspResolver;
 use super::tsc;
 
 use crate::args::jsr_url;
-use crate::tools::lint::create_linter;
 use deno_lint::linter::LintConfig;
+use deno_lint::linter::Linter;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::SourceRange;
@@ -24,7 +24,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_lint::diagnostic::LintDiagnostic;
-use deno_lint::rules::LintRule;
 use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
 use deno_semver::jsr::JsrPackageNvReference;
@@ -172,10 +171,9 @@ fn as_lsp_range(
 
 pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
-  lint_rules: Vec<&'static dyn LintRule>,
+  linter: Linter,
   lint_config: LintConfig,
 ) -> Result<Vec<Reference>, AnyError> {
-  let linter = create_linter(lint_rules);
   let lint_diagnostics = linter.lint_with_ast(parsed_source, lint_config);
 
   Ok(

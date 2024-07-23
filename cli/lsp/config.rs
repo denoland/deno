@@ -33,6 +33,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_lint::linter::LintConfig as DenoLintConfig;
+use deno_lint::linter::Linter;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -52,12 +53,15 @@ use crate::args::discover_npmrc_from_workspace;
 use crate::args::has_flag_env_var;
 use crate::args::CliLockfile;
 use crate::args::ConfigFile;
+use crate::args::LintFlags;
+use crate::args::LintOptions;
 use crate::args::DENO_FUTURE;
 use crate::cache::FastInsecureHasher;
 use crate::file_fetcher::FileFetcher;
 use crate::lsp::logging::lsp_warn;
-use crate::tools::lint::get_configured_rules;
-use crate::tools::lint::ConfiguredRules;
+use crate::resolver::SloppyImportsResolver;
+use crate::tools::lint::create_linter;
+use crate::tools::lint::LintRulesResolver;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 pub const SETTINGS_SECTION: &str = "deno";
@@ -1117,7 +1121,7 @@ pub struct ConfigData {
   pub test_config: Arc<TestConfig>,
   pub exclude_files: Arc<PathOrPatternSet>,
   pub deno_lint_config: DenoLintConfig,
-  pub lint_rules: Arc<ConfiguredRules>,
+  pub linter: Linter,
   pub ts_config: Arc<LspTsConfig>,
   pub byonm: bool,
   pub node_modules_dir: Option<PathBuf>,
@@ -1125,6 +1129,7 @@ pub struct ConfigData {
   pub lockfile: Option<Arc<CliLockfile>>,
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
   pub resolver: Arc<WorkspaceResolver>,
+  pub sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
 }
@@ -1310,10 +1315,7 @@ impl ConfigData {
           LintConfig::new_with_base(default_file_pattern_base.clone())
         }),
     );
-    let lint_rules = Arc::new(get_configured_rules(
-      lint_config.options.rules.clone(),
-      member_dir.maybe_deno_json().map(|c| c.as_ref()),
-    ));
+
     let test_config = Arc::new(
       member_dir
         .to_test_config(FilePatterns::new_with_base(member_dir.dir_path()))
@@ -1532,16 +1534,32 @@ impl ConfigData {
           .join("\n")
       );
     }
+    let unstable_sloppy_imports = std::env::var("DENO_UNSTABLE_SLOPPY_IMPORTS")
+      .is_ok()
+      || member_dir.workspace.has_unstable("sloppy-imports");
+    let sloppy_imports_resolver = unstable_sloppy_imports.then(|| {
+      Arc::new(SloppyImportsResolver::new_without_stat_cache(Arc::new(
+        deno_runtime::deno_fs::RealFs,
+      )))
+    });
+    let resolver = Arc::new(resolver);
+    let lint_rule_resolver =
+      LintRulesResolver::new(sloppy_imports_resolver.clone(), resolver.clone());
+    let linter = create_linter(lint_rule_resolver.resolve_lint_rules(
+      LintOptions::resolve((*lint_config).clone(), &LintFlags::default()).rules,
+      member_dir.maybe_deno_json().map(|c| c.as_ref()),
+    ));
 
     ConfigData {
       scope,
       member_dir,
-      resolver: Arc::new(resolver),
+      resolver,
+      sloppy_imports_resolver,
       fmt_config,
       lint_config,
       test_config,
       deno_lint_config,
-      lint_rules,
+      linter,
       exclude_files,
       ts_config: Arc::new(ts_config),
       byonm,
