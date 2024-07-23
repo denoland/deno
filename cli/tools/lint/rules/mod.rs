@@ -11,7 +11,11 @@ use deno_lint::rules::LintRule;
 
 use crate::resolver::SloppyImportsResolver;
 
-use super::no_sloppy_imports::NoSloppyImportsRule;
+mod no_sloppy_imports;
+mod no_slow_types;
+
+// used for publishing
+pub use no_slow_types::collect_no_slow_type_diagnostics;
 
 #[derive(Debug)]
 pub struct ConfiguredRules {
@@ -44,12 +48,12 @@ impl ConfiguredRules {
   }
 }
 
-pub struct LintRulesProvider {
+pub struct LintRuleProvider {
   sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
   workspace_resolver: Option<Arc<WorkspaceResolver>>,
 }
 
-impl LintRulesProvider {
+impl LintRuleProvider {
   pub fn new(
     sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
     workspace_resolver: Option<Arc<WorkspaceResolver>>,
@@ -79,7 +83,7 @@ impl LintRulesProvider {
   ) -> ConfiguredRules {
     const NO_SLOW_TYPES_NAME: &str = "no-slow-types";
     let mut all_rules = deno_lint::rules::get_all_rules();
-    all_rules.push(Box::new(NoSloppyImportsRule::new(
+    all_rules.push(Box::new(no_sloppy_imports::NoSloppyImportsRule::new(
       self.sloppy_imports_resolver.clone(),
       self.workspace_resolver.clone(),
     )));
@@ -141,7 +145,7 @@ mod test {
       include: None,
       tags: None,
     };
-    let rules_provider = LintRulesProvider::new(None, None);
+    let rules_provider = LintRuleProvider::new(None, None);
     let rules = rules_provider.resolve_lint_rules(rules_config, None);
     let mut rule_names = rules
       .rules

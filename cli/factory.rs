@@ -44,7 +44,7 @@ use crate::resolver::SloppyImportsResolver;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::tools::coverage::CoverageCollector;
-use crate::tools::lint::LintRulesProvider;
+use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -588,10 +588,8 @@ impl CliFactory {
     })
   }
 
-  pub async fn lint_rules_resolver(
-    &self,
-  ) -> Result<LintRulesProvider, AnyError> {
-    Ok(LintRulesProvider::new(
+  pub async fn lint_rule_provider(&self) -> Result<LintRuleProvider, AnyError> {
+    Ok(LintRuleProvider::new(
       self.sloppy_imports_resolver().cloned(),
       Some(self.workspace_resolver().await?.clone()),
     ))

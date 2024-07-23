@@ -47,7 +47,6 @@ use std::sync::Arc;
 
 use crate::args::JsxImportSourceConfig;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
-use crate::colors;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
@@ -265,7 +264,7 @@ impl CliNodeResolver {
       // If so, check if we need to store this specifier as being a CJS
       // resolution.
       let specifier =
-        crate::node::resolve_specifier_into_node_modules(&specifier);
+        crate::node::resolve_specifier_into_node_modules(specifier);
       if self.in_npm_package(&specifier) {
         let resolution =
           self.node_resolver.url_to_node_resolution(specifier)?;
@@ -982,9 +981,7 @@ impl SloppyImportsResolver {
               }
               _ => return None,
             };
-            let Some(path_no_ext) = path_without_ext(&path, media_type) else {
-              return None;
-            };
+            let path_no_ext = path_without_ext(&path, media_type)?;
             media_types_to_paths(
               &path_no_ext,
               probe_media_type_types,

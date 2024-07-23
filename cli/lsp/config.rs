@@ -61,7 +61,7 @@ use crate::file_fetcher::FileFetcher;
 use crate::lsp::logging::lsp_warn;
 use crate::resolver::SloppyImportsResolver;
 use crate::tools::lint::create_linter;
-use crate::tools::lint::LintRulesProvider;
+use crate::tools::lint::LintRuleProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 pub const SETTINGS_SECTION: &str = "deno";
@@ -1543,11 +1543,11 @@ impl ConfigData {
       )))
     });
     let resolver = Arc::new(resolver);
-    let lint_rules_resolver = LintRulesProvider::new(
+    let lint_rule_provider = LintRuleProvider::new(
       sloppy_imports_resolver.clone(),
       Some(resolver.clone()),
     );
-    let linter = create_linter(lint_rules_resolver.resolve_lint_rules(
+    let linter = create_linter(lint_rule_provider.resolve_lint_rules(
       LintOptions::resolve((*lint_config).clone(), &LintFlags::default()).rules,
       member_dir.maybe_deno_json().map(|c| c.as_ref()),
     ));

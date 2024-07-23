@@ -21,7 +21,7 @@ use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
 use crate::tools::lint::create_linter;
-use crate::tools::lint::LintRulesProvider;
+use crate::tools::lint::LintRuleProvider;
 use crate::util::path::to_percent_decoded_str;
 
 use deno_ast::MediaType;
@@ -836,7 +836,7 @@ fn generate_lint_diagnostics(
             default_jsx_fragment_factory: None,
           },
           create_linter({
-            let lint_rule_provider = LintRulesProvider::new(None, None);
+            let lint_rule_provider = LintRuleProvider::new(None, None);
             lint_rule_provider.resolve_lint_rules(Default::default(), None)
           }),
         )

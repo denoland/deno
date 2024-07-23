@@ -60,12 +60,11 @@ use crate::util::fs::specifier_from_file_path;
 use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 
-mod no_sloppy_imports;
-pub mod no_slow_types;
 mod rules;
 
+pub use rules::collect_no_slow_type_diagnostics;
 pub use rules::ConfiguredRules;
-pub use rules::LintRulesProvider;
+pub use rules::LintRuleProvider;
 
 static STDIN_FILE_NAME: &str = "$deno$stdin.ts";
 
@@ -118,7 +117,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
 
           let mut linter = WorkspaceLinter::new(
             factory.caches()?.clone(),
-            factory.lint_rules_resolver().await?,
+            factory.lint_rule_provider().await?,
             factory.module_graph_creator().await?.clone(),
             cli_options.start_dir.clone(),
             &cli_options.resolve_workspace_lint_options(&lint_flags)?,
@@ -157,7 +156,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
         .to_lint_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
       let lint_options = LintOptions::resolve(lint_config, &lint_flags);
       let lint_rules = factory
-        .lint_rules_resolver()
+        .lint_rule_provider()
         .await?
         .resolve_lint_rules_err_empty(
           lint_options.rules,
@@ -175,7 +174,7 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     } else {
       let mut linter = WorkspaceLinter::new(
         factory.caches()?.clone(),
-        factory.lint_rules_resolver().await?,
+        factory.lint_rule_provider().await?,
         factory.module_graph_creator().await?.clone(),
         cli_options.start_dir.clone(),
         &workspace_lint_options,
@@ -237,7 +236,7 @@ type WorkspaceModuleGraphFuture =
 
 struct WorkspaceLinter {
   caches: Arc<Caches>,
-  lint_rules_resolver: LintRulesProvider,
+  lint_rule_provider: LintRuleProvider,
   module_graph_creator: Arc<ModuleGraphCreator>,
   workspace_dir: Arc<WorkspaceDirectory>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
@@ -249,7 +248,7 @@ struct WorkspaceLinter {
 impl WorkspaceLinter {
   pub fn new(
     caches: Arc<Caches>,
-    lint_rules_resolver: LintRulesProvider,
+    lint_rule_provider: LintRuleProvider,
     module_graph_creator: Arc<ModuleGraphCreator>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_options: &WorkspaceLintOptions,
@@ -258,7 +257,7 @@ impl WorkspaceLinter {
       Arc::new(Mutex::new(create_reporter(workspace_options.reporter_kind)));
     Self {
       caches,
-      lint_rules_resolver,
+      lint_rule_provider,
       module_graph_creator,
       workspace_dir,
       reporter_lock,
@@ -277,7 +276,7 @@ impl WorkspaceLinter {
   ) -> Result<(), AnyError> {
     self.file_count += paths.len();
 
-    let lint_rules = self.lint_rules_resolver.resolve_lint_rules_err_empty(
+    let lint_rules = self.lint_rule_provider.resolve_lint_rules_err_empty(
       lint_options.rules,
       member_dir.maybe_deno_json().map(|c| c.as_ref()),
     )?;
@@ -324,10 +323,8 @@ impl WorkspaceLinter {
             if !export_urls.iter().any(|url| path_urls.contains(url)) {
               return Ok(()); // entrypoint is not specified, so skip
             }
-            let diagnostics = no_slow_types::collect_no_slow_type_diagnostics(
-              &export_urls,
-              &graph,
-            );
+            let diagnostics =
+              collect_no_slow_type_diagnostics(&export_urls, &graph);
             if !diagnostics.is_empty() {
               has_error.raise();
               let mut reporter = reporter_lock.lock();
@@ -416,7 +413,7 @@ fn collect_lint_files(
 
 #[allow(clippy::print_stdout)]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
-  let rule_provider = LintRulesProvider::new(None, None);
+  let rule_provider = LintRuleProvider::new(None, None);
   let lint_rules = rule_provider
     .resolve_lint_rules(
       LintRulesConfig {
