@@ -53,6 +53,7 @@ use factory::CliFactory;
 use std::env;
 use std::future::Future;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Ensures that all subcommands return an i32 exit code and an [`AnyError`] error type.
 trait SubcommandOutput {
@@ -90,7 +91,7 @@ fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
   )
 }
 
-async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
+async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
   let handle = match flags.subcommand.clone() {
     DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
       tools::registry::add(flags, add_flags).await
@@ -112,7 +113,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       tools::run::eval_command(flags, eval_flags).await
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
-      let factory = CliFactory::from_flags(flags)?;
+      let factory = CliFactory::from_flags(flags);
       let emitter = factory.emitter()?;
       let main_graph_container =
         factory.main_module_graph_container().await?;
@@ -122,7 +123,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       emitter.cache_module_emits(&main_graph_container.graph()).await
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
-      let factory = CliFactory::from_flags(flags)?;
+      let factory = CliFactory::from_flags(flags);
       let main_graph_container =
         factory.main_module_graph_container().await?;
       main_graph_container
@@ -231,7 +232,6 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Vendor(vendor_flags) => spawn_subcommand(async {
       tools::vendor::vendor(flags, vendor_flags).await
     }),
-    // TODO:
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
       tools::registry::publish(flags, publish_flags).await
     }),
@@ -330,7 +330,7 @@ pub fn main() {
     // initialize the V8 platform on a parent thread of all threads that will spawn
     // V8 isolates.
     let flags = resolve_flags_and_init(args)?;
-    run_subcommand(flags).await
+    run_subcommand(Arc::new(flags)).await
   };
 
   match create_and_run_current_thread_with_maybe_metrics(future) {

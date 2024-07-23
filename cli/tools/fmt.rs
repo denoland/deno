@@ -49,7 +49,10 @@ use std::sync::Arc;
 use crate::cache::IncrementalCache;
 
 /// Format JavaScript/TypeScript files.
-pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
+pub async fn format(
+  flags: Arc<Flags>,
+  fmt_flags: FmtFlags,
+) -> Result<(), AnyError> {
   if fmt_flags.is_stdin() {
     let cli_options = CliOptions::from_flags(flags)?;
     let start_dir = &cli_options.start_dir;
@@ -74,8 +77,8 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
       move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
         Ok(async move {
-          let factory = CliFactory::from_flags(flags)?;
-          let cli_options = factory.cli_options();
+          let factory = CliFactory::from_flags(flags);
+          let cli_options = factory.cli_options()?;
           let caches = factory.caches()?;
           let mut paths_with_options_batches =
             resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
@@ -119,9 +122,9 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
     )
     .await?;
   } else {
-    let factory = CliFactory::from_flags(flags)?;
+    let factory = CliFactory::from_flags(flags);
+    let cli_options = factory.cli_options()?;
     let caches = factory.caches()?;
-    let cli_options = factory.cli_options();
     let paths_with_options_batches =
       resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
     format_files(caches, &fmt_flags, paths_with_options_batches).await?;

@@ -26,11 +26,11 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 pub async fn execute_script(
-  flags: Flags,
+  flags: Arc<Flags>,
   task_flags: TaskFlags,
 ) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let start_dir = &cli_options.start_dir;
   if !start_dir.has_deno_or_pkg_json() {
     bail!("deno task couldn't find deno.json(c). See https://deno.land/manual@v{}/getting_started/configuration_file", env!("CARGO_PKG_VERSION"))
