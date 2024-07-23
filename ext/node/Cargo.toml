@@ -13,6 +13,9 @@ description = "Node compatibility for Deno"
 [lib]
 path = "lib.rs"
 
+[features]
+sync_fs = ["deno_package_json/sync"]
+
 [dependencies]
 aead-gcm-stream = "0.1"
 aes.workspace = true
@@ -23,13 +26,13 @@ bytes.workspace = true
 cbc.workspace = true
 const-oid = "0.9.5"
 data-encoding.workspace = true
-deno_config = { workspace = true, default-features = false, features = ["package_json"] }
 deno_core.workspace = true
 deno_fetch.workspace = true
 deno_fs.workspace = true
 deno_io.workspace = true
 deno_media_type.workspace = true
 deno_net.workspace = true
+deno_package_json.workspace = true
 deno_permissions.workspace = true
 deno_whoami = "0.1.0"
 digest = { version = "0.10.5", features = ["core-api", "std"] }

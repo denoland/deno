@@ -6,10 +6,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_config::package_json::PackageJsonDepValue;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::errors::PackageFolderResolveError;
 use deno_runtime::deno_node::errors::PackageFolderResolveIoError;
