@@ -1791,7 +1791,7 @@ impl ConfigTree {
           &config_path,
         ),
         &deno_config::workspace::WorkspaceDiscoverOptions {
-          fs: &deno_runtime::deno_fs::DenoConfigFsAdapter(&test_fs),
+          fs: &crate::args::deno_json::DenoConfigFsAdapter(&test_fs),
           ..Default::default()
         },
       )

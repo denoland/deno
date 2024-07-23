@@ -1515,10 +1515,8 @@ version = "0.72.0"
 dependencies = [
  "async-trait",
  "base32",
- "deno_config",
  "deno_core",
  "deno_io",
- "deno_package_json",
  "deno_permissions",
  "filetime",
  "junction",

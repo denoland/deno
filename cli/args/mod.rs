@@ -25,8 +25,6 @@ use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
-use deno_runtime::deno_fs::DenoConfigFsAdapter;
-use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
@@ -835,7 +833,6 @@ impl CliOptions {
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
-    let config_fs_adapter = DenoConfigFsAdapter(&RealFs);
     let maybe_vendor_override = flags.vendor.map(|v| match v {
       true => VendorEnablement::Enable { cwd: &initial_cwd },
       false => VendorEnablement::Disable,
@@ -860,7 +857,7 @@ impl CliOptions {
         log::debug!("package.json auto-discovery is disabled");
       }
       WorkspaceDiscoverOptions {
-        fs: &config_fs_adapter,
+        fs: Default::default(), // use real fs
         deno_json_cache: None,
         pkg_json_cache: Some(
           &deno_runtime::deno_node::PackageJsonThreadLocalCache,

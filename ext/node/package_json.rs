@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_fs::DenoPkgJsonFsAdapter;
 use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonRc;
 use std::cell::RefCell;
@@ -31,6 +30,20 @@ impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
 
   fn set(&self, path: PathBuf, package_json: PackageJsonRc) {
     CACHE.with(|cache| cache.borrow_mut().insert(path, package_json));
+  }
+}
+
+pub struct DenoPkgJsonFsAdapter<'a>(pub &'a dyn deno_fs::FileSystem);
+
+impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
+  fn read_to_string_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<String, std::io::Error> {
+    self
+      .0
+      .read_text_file_lossy_sync(path, None)
+      .map_err(|err| err.into_io_error())
   }
 }
 

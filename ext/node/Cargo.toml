@@ -13,6 +13,9 @@ description = "Node compatibility for Deno"
 [lib]
 path = "lib.rs"
 
+[features]
+sync_fs = ["deno_package_json/sync"]
+
 [dependencies]
 aead-gcm-stream = "0.1"
 aes.workspace = true
