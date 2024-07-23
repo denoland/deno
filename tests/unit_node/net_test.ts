@@ -5,8 +5,27 @@ import { assert, assertEquals } from "@std/assert/mod.ts";
 import * as path from "@std/path/mod.ts";
 import * as http from "node:http";
 
-Deno.test("[node/net] close event emits after error event", async () => {
+Deno.test("[node/net] close event emits after error event - when host is not found", async () => {
   const socket = net.createConnection(27009, "doesnotexist");
+  const events: ("error" | "close")[] = [];
+  const errorEmitted = Promise.withResolvers<void>();
+  const closeEmitted = Promise.withResolvers<void>();
+  socket.once("error", () => {
+    events.push("error");
+    errorEmitted.resolve();
+  });
+  socket.once("close", () => {
+    events.push("close");
+    closeEmitted.resolve();
+  });
+  await Promise.all([errorEmitted.promise, closeEmitted.promise]);
+
+  // `error` happens before `close`
+  assertEquals(events, ["error", "close"]);
+});
+
+Deno.test("[node/net] close event emits after error event - when connection is refused", async () => {
+  const socket = net.createConnection(27009, "127.0.0.1");
   const events: ("error" | "close")[] = [];
   const errorEmitted = Promise.withResolvers<void>();
   const closeEmitted = Promise.withResolvers<void>();
