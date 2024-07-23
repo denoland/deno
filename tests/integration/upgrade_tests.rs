@@ -152,6 +152,7 @@ fn upgrade_invalid_stable_version() {
   let exe_path = temp_dir.path().join("deno");
   util::deno_exe_path().copy(&exe_path);
   assert!(exe_path.exists());
+  exe_path.mark_executable();
   let output = Command::new(&exe_path)
     .arg("upgrade")
     .arg("--version")
@@ -175,6 +176,7 @@ fn upgrade_invalid_canary_version() {
   let exe_path = temp_dir.path().join("deno");
   util::deno_exe_path().copy(&exe_path);
   assert!(exe_path.exists());
+  exe_path.mark_executable();
   let output = Command::new(&exe_path)
     .arg("upgrade")
     .arg("--canary")
@@ -206,6 +208,7 @@ fn upgrade_invalid_lockfile() {
   let exe_path = temp_dir.path().join("deno");
   util::deno_exe_path().copy(&exe_path);
   assert!(exe_path.exists());
+  exe_path.mark_executable();
   let output = Command::new(&exe_path)
     .arg("upgrade")
     .arg("--version")

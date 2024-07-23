@@ -256,6 +256,13 @@ impl PathRef {
   }
 
   #[track_caller]
+  pub fn mark_executable(&self) {
+    if cfg!(unix) {
+      Command::new("chmod").arg("+x").arg(self).output().unwrap();
+    }
+  }
+
+  #[track_caller]
   pub fn make_dir_readonly(&self) {
     self.create_dir_all();
     if cfg!(windows) {
