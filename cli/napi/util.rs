@@ -1,13 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use crate::*;
+use deno_runtime::deno_napi::*;
 use libc::INT_MAX;
 
 #[repr(transparent)]
-pub(crate) struct SendPtr<T>(pub(crate) *const T);
+pub struct SendPtr<T>(pub *const T);
 
 impl<T> SendPtr<T> {
   // silly function to get around `clippy::redundant_locals`
-  pub(crate) fn take(self) -> *const T {
+  pub fn take(self) -> *const T {
     self.0
   }
 }
@@ -15,9 +15,7 @@ impl<T> SendPtr<T> {
 unsafe impl<T> Send for SendPtr<T> {}
 unsafe impl<T> Sync for SendPtr<T> {}
 
-pub(crate) fn get_array_buffer_ptr(
-  ab: v8::Local<v8::ArrayBuffer>,
-) -> *mut c_void {
+pub fn get_array_buffer_ptr(ab: v8::Local<v8::ArrayBuffer>) -> *mut c_void {
   match ab.data() {
     Some(p) => p.as_ptr(),
     None => std::ptr::null_mut(),
@@ -39,7 +37,7 @@ impl Drop for BufferFinalizer {
   }
 }
 
-pub(crate) extern "C" fn backing_store_deleter_callback(
+pub extern "C" fn backing_store_deleter_callback(
   data: *mut c_void,
   _byte_length: usize,
   deleter_data: *mut c_void,
@@ -52,7 +50,7 @@ pub(crate) extern "C" fn backing_store_deleter_callback(
   drop(finalizer);
 }
 
-pub(crate) fn make_external_backing_store(
+pub fn make_external_backing_store(
   env: *mut Env,
   data: *mut c_void,
   byte_length: usize,
@@ -92,7 +90,9 @@ macro_rules! check_env {
 macro_rules! return_error_status_if_false {
   ($env: expr, $condition: expr, $status: ident) => {
     if !$condition {
-      return Err($crate::util::napi_set_last_error($env, $status).into());
+      return Err(
+        $crate::napi::util::napi_set_last_error($env, $status).into(),
+      );
     }
   };
 }
@@ -101,7 +101,7 @@ macro_rules! return_error_status_if_false {
 macro_rules! return_status_if_false {
   ($env: expr, $condition: expr, $status: ident) => {
     if !$condition {
-      return $crate::util::napi_set_last_error($env, $status);
+      return $crate::napi::util::napi_set_last_error($env, $status);
     }
   };
 }
@@ -222,7 +222,7 @@ macro_rules! check_arg {
   ($env: expr, $ptr: expr) => {
     $crate::return_status_if_false!(
       $env,
-      !$crate::util::Nullable::is_null(&$ptr),
+      !$crate::napi::util::Nullable::is_null(&$ptr),
       napi_invalid_arg
     );
   };
@@ -233,7 +233,6 @@ macro_rules! napi_wrap {
   ( $( # $attr:tt )* fn $name:ident $( < $( $x:lifetime ),* > )? ( $env:ident : & $( $lt:lifetime )? mut Env $( , $ident:ident : $ty:ty )* $(,)? ) -> napi_status $body:block ) => {
     $( # $attr )*
     #[no_mangle]
-    #[allow(clippy::missing_safety_doc)]
     pub unsafe extern "C" fn $name $( < $( $x ),* > )? ( env_ptr : *mut Env , $( $ident : $ty ),* ) -> napi_status {
       let env: & $( $lt )? mut Env = $crate::check_env!(env_ptr);
 
@@ -241,7 +240,7 @@ macro_rules! napi_wrap {
         return napi_pending_exception;
       }
 
-      $crate::util::napi_clear_last_error(env);
+      $crate::napi::util::napi_clear_last_error(env);
 
       let scope_env = unsafe { &mut *env_ptr };
       let scope = &mut scope_env.scope();
@@ -260,11 +259,11 @@ macro_rules! napi_wrap {
         let env = unsafe { &mut *env_ptr };
         let global = v8::Global::new(env.isolate(), exception);
         env.last_exception = Some(global);
-        return $crate::util::napi_set_last_error(env_ptr, napi_pending_exception);
+        return $crate::napi::util::napi_set_last_error(env_ptr, napi_pending_exception);
       }
 
       if result != napi_ok {
-        return $crate::util::napi_set_last_error(env_ptr, result);
+        return $crate::napi::util::napi_set_last_error(env_ptr, result);
       }
 
       return result;
@@ -274,7 +273,6 @@ macro_rules! napi_wrap {
   ( $( # $attr:tt )* fn $name:ident $( < $( $x:lifetime ),* > )? ( $( $ident:ident : $ty:ty ),* $(,)? ) -> napi_status $body:block ) => {
     $( # $attr )*
     #[no_mangle]
-    #[allow(clippy::missing_safety_doc)]
     pub unsafe extern "C" fn $name $( < $( $x ),* > )? ( $( $ident : $ty ),* ) -> napi_status {
       #[inline(always)]
       fn inner $( < $( $x ),* > )? ( $( $ident : $ty ),* ) -> napi_status $body

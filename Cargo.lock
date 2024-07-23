@@ -1164,6 +1164,7 @@ dependencies = [
  "lsp-types",
  "memmem",
  "monch",
+ "napi_sym",
  "nix 0.26.2",
  "notify",
  "once_cell",
@@ -1687,10 +1688,7 @@ version = "0.91.0"
 dependencies = [
  "deno_core",
  "deno_permissions",
- "libc",
  "libloading 0.7.4",
- "log",
- "napi_sym",
 ]
 
 [[package]]
