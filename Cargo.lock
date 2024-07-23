@@ -1313,9 +1313,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.26.0"
+version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00a0747f24936a0fe6c6be99464b7c6b78cd8ed84df88ca4af254666cbf8dffd"
+checksum = "8188c39699541affc0c0f89bbba07d31212385fa0c4e1a5a9e530b0f3cbc776f"
 dependencies = [
  "anyhow",
  "deno_package_json",
@@ -1836,9 +1836,9 @@ dependencies = [
 
 [[package]]
 name = "deno_package_json"
-version = "0.0.1"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a28ee7c1cda095ea1cd77fd9c4e3591ab6d00cf1c3ade11288628664fb017490"
+checksum = "38cf6ea5cc98ea7ad58b0e84593773bea03fc0431071a296017bed4151e3dc1d"
 dependencies = [
  "deno_semver",
  "indexmap",
