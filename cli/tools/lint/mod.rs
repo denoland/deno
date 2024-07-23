@@ -8,6 +8,7 @@ use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
+use deno_config::deno_json::LintRulesConfig;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirectory;
@@ -64,7 +65,7 @@ pub mod no_slow_types;
 mod rules;
 
 pub use rules::ConfiguredRules;
-pub use rules::LintRulesResolver;
+pub use rules::LintRulesProvider;
 
 static STDIN_FILE_NAME: &str = "$deno$stdin.ts";
 
@@ -236,7 +237,7 @@ type WorkspaceModuleGraphFuture =
 
 struct WorkspaceLinter {
   caches: Arc<Caches>,
-  lint_rules_resolver: LintRulesResolver,
+  lint_rules_resolver: LintRulesProvider,
   module_graph_creator: Arc<ModuleGraphCreator>,
   workspace_dir: Arc<WorkspaceDirectory>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
@@ -248,7 +249,7 @@ struct WorkspaceLinter {
 impl WorkspaceLinter {
   pub fn new(
     caches: Arc<Caches>,
-    lint_rules_resolver: LintRulesResolver,
+    lint_rules_resolver: LintRulesProvider,
     module_graph_creator: Arc<ModuleGraphCreator>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_options: &WorkspaceLintOptions,
@@ -415,22 +416,17 @@ fn collect_lint_files(
 
 #[allow(clippy::print_stdout)]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
-  let mut all_lint_rules = deno_lint::rules::get_all_rules();
-  // add the cli-only lint rules here
-  all_lint_rules
-    .push(Box::new(no_sloppy_imports::NoSloppyImportsRule::new_noop()));
-  all_lint_rules.sort_by_key(|l| l.code());
-
-  let lint_rules = if maybe_rules_tags.is_none() {
-    all_lint_rules
-  } else {
-    deno_lint::rules::filtered_rules(
-      all_lint_rules,
-      maybe_rules_tags,
-      None,
+  let rule_provider = LintRulesProvider::new(None, None);
+  let lint_rules = rule_provider
+    .resolve_lint_rules(
+      LintRulesConfig {
+        tags: maybe_rules_tags.clone(),
+        include: None,
+        exclude: None,
+      },
       None,
     )
-  };
+    .rules;
 
   if json {
     let json_rules: Vec<serde_json::Value> = lint_rules

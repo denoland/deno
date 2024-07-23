@@ -21,7 +21,7 @@ use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
 use crate::tools::lint::create_linter;
-use crate::tools::lint::ConfiguredRules;
+use crate::tools::lint::LintRulesProvider;
 use crate::util::path::to_percent_decoded_str;
 
 use deno_ast::MediaType;
@@ -43,7 +43,6 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_lint::linter::Linter;
-use deno_lint::rules::LintRule;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -836,7 +835,10 @@ fn generate_lint_diagnostics(
             default_jsx_factory: None,
             default_jsx_fragment_factory: None,
           },
-          create_linter(ConfiguredRules::new_no_config()),
+          create_linter({
+            let lint_rule_provider = LintRulesProvider::new(None, None);
+            lint_rule_provider.resolve_lint_rules(Default::default(), None)
+          }),
         )
       });
     diagnostics_vec.push(DiagnosticRecord {

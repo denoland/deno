@@ -31,18 +31,11 @@ pub struct NoSloppyImportsRule {
 impl NoSloppyImportsRule {
   pub fn new(
     sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
-    workspace_resolver: Arc<WorkspaceResolver>,
+    workspace_resolver: Option<Arc<WorkspaceResolver>>,
   ) -> Self {
     NoSloppyImportsRule {
       sloppy_imports_resolver,
-      workspace_resolver: Some(workspace_resolver),
-    }
-  }
-
-  pub fn new_noop() -> Self {
-    NoSloppyImportsRule {
-      sloppy_imports_resolver: None,
-      workspace_resolver: None,
+      workspace_resolver,
     }
   }
 }

@@ -53,15 +53,6 @@ use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::util::sync::AtomicFlag;
 
-pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
-  format!(
-    "{}:{}:{}",
-    colors::cyan(range.specifier.as_str()),
-    colors::yellow(&(range.start.line + 1).to_string()),
-    colors::yellow(&(range.start.character + 1).to_string())
-  )
-}
-
 pub struct ModuleCodeStringSource {
   pub code: ModuleSourceCode,
   pub found_url: ModuleSpecifier,

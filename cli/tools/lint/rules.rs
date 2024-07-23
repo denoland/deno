@@ -22,18 +22,6 @@ pub struct ConfiguredRules {
 }
 
 impl ConfiguredRules {
-  pub fn new_no_config() -> Self {
-    let mut rules = deno_lint::rules::get_all_rules();
-    rules.push(Box::new(NoSloppyImportsRule::new_noop()));
-    rules.sort_by_key(|a| a.code());
-    let all_rule_names = rules.iter().map(|r| r.code()).collect::<HashSet<_>>();
-    Self {
-      rules,
-      all_rule_names,
-      no_slow_types: false,
-    }
-  }
-
   pub fn incremental_cache_state(&self) -> impl std::hash::Hash {
     #[derive(Hash)]
     struct State {
@@ -56,15 +44,15 @@ impl ConfiguredRules {
   }
 }
 
-pub struct LintRulesResolver {
+pub struct LintRulesProvider {
   sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
-  workspace_resolver: Arc<WorkspaceResolver>,
+  workspace_resolver: Option<Arc<WorkspaceResolver>>,
 }
 
-impl LintRulesResolver {
+impl LintRulesProvider {
   pub fn new(
     sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
-    workspace_resolver: Arc<WorkspaceResolver>,
+    workspace_resolver: Option<Arc<WorkspaceResolver>>,
   ) -> Self {
     Self {
       sloppy_imports_resolver,
@@ -153,15 +141,19 @@ mod test {
       include: None,
       tags: None,
     };
-    let rules = get_configured_rules(rules_config, None);
+    let rules_provider = LintRulesProvider::new(None, None);
+    let rules = rules_provider.resolve_lint_rules(rules_config, None);
     let mut rule_names = rules
       .rules
       .into_iter()
       .map(|r| r.code().to_string())
       .collect::<Vec<_>>();
     rule_names.sort();
-    let mut recommended_rule_names = get_recommended_rules()
+    let mut recommended_rule_names = rules_provider
+      .resolve_lint_rules(Default::default(), None)
+      .rules
       .into_iter()
+      .filter(|r| r.tags().iter().any(|t| *t == "recommended"))
       .map(|r| r.code().to_string())
       .filter(|n| n != "no-debugger")
       .collect::<Vec<_>>();
