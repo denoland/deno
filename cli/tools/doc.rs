@@ -29,6 +29,7 @@ use doc::DocDiagnostic;
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 async fn generate_doc_nodes_for_builtin_types(
   doc_flags: DocFlags,
@@ -83,9 +84,12 @@ async fn generate_doc_nodes_for_builtin_types(
   Ok(IndexMap::from([(source_file_specifier, nodes)]))
 }
 
-pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+pub async fn doc(
+  flags: Arc<Flags>,
+  doc_flags: DocFlags,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let module_info_cache = factory.module_info_cache()?;
   let parsed_source_cache = factory.parsed_source_cache();
   let capturing_parser = parsed_source_cache.as_capturing_parser();
@@ -102,7 +106,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
     }
     DocSourceFileFlag::Paths(ref source_files) => {
       let module_graph_creator = factory.module_graph_creator().await?;
-      let maybe_lockfile = factory.maybe_lockfile();
+      let maybe_lockfile = cli_options.maybe_lockfile();
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
