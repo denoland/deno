@@ -15,7 +15,6 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
-use deno_runtime::deno_fs::DenoConfigFsAdapter;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -3539,7 +3538,7 @@ impl Inner {
           initial_cwd.clone()
         ]),
         &WorkspaceDiscoverOptions {
-          fs: &DenoConfigFsAdapter::new(&deno_runtime::deno_fs::RealFs),
+          fs: Default::default(), // use real fs,
           deno_json_cache: None,
           pkg_json_cache: None,
           workspace_cache: None,

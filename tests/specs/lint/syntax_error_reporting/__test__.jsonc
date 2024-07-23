@@ -1,0 +1,5 @@
+{
+  "args": "lint script.ts",
+  "output": "lint.out",
+  "exitCode": 1
+}
