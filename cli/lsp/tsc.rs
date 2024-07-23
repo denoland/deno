@@ -4930,10 +4930,7 @@ impl UserPreferences {
         language_settings
           .preferences
           .auto_import_file_exclude_patterns
-          .clone()
-          .into_iter()
-          .chain(std::iter::once("*/preact/10.20.1/src/jsx".to_string()))
-          .collect(),
+          .clone(),
       ),
       include_automatic_optional_chain_completions: Some(
         language_settings.suggest.enabled
