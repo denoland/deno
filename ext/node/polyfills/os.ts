@@ -276,9 +276,8 @@ export function tmpdir(): string | null {
   */
   if (isWindows) {
     let temp = Deno.env.get("TEMP") || Deno.env.get("TMP") ||
-      (Deno.env.get("WinDir"));
+      (Deno.env.get("SystemRoot") || Deno.env.get("windir")) + "\\temp";
     if (
-      temp &&
       temp.length > 1 && StringPrototypeEndsWith(temp, "\\") &&
       !StringPrototypeEndsWith(temp, ":\\")
     ) {
@@ -289,7 +288,7 @@ export function tmpdir(): string | null {
   } else { // !isWindows
     let temp = Deno.env.get("TMPDIR") || Deno.env.get("TMP") ||
       Deno.env.get("TEMP") || "/tmp";
-    if (temp && temp.length > 1 && StringPrototypeEndsWith(temp, "/")) {
+    if (temp.length > 1 && StringPrototypeEndsWith(temp, "/")) {
       temp = StringPrototypeSlice(temp, 0, -1);
     }
     return temp;
