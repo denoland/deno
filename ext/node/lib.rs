@@ -32,7 +32,7 @@ mod path;
 mod polyfill;
 mod resolution;
 
-pub use deno_config::package_json::PackageJson;
+pub use deno_package_json::PackageJson;
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
 use ops::vm;
@@ -46,7 +46,6 @@ pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
-pub use resolution::parse_npm_pkg_name;
 pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;

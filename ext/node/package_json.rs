@@ -1,8 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_config::package_json::PackageJson;
-use deno_config::package_json::PackageJsonRc;
-use deno_fs::DenoConfigFsAdapter;
+use deno_package_json::PackageJson;
+use deno_package_json::PackageJsonRc;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::ErrorKind;
@@ -24,15 +23,27 @@ impl PackageJsonThreadLocalCache {
   }
 }
 
-impl deno_config::package_json::PackageJsonCache
-  for PackageJsonThreadLocalCache
-{
+impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
   fn get(&self, path: &Path) -> Option<PackageJsonRc> {
     CACHE.with(|cache| cache.borrow().get(path).cloned())
   }
 
   fn set(&self, path: PathBuf, package_json: PackageJsonRc) {
     CACHE.with(|cache| cache.borrow_mut().insert(path, package_json));
+  }
+}
+
+pub struct DenoPkgJsonFsAdapter<'a>(pub &'a dyn deno_fs::FileSystem);
+
+impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
+  fn read_to_string_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<String, std::io::Error> {
+    self
+      .0
+      .read_text_file_lossy_sync(path, None)
+      .map_err(|err| err.into_io_error())
   }
 }
 
@@ -44,14 +55,16 @@ pub fn load_pkg_json(
 ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
   let result = PackageJson::load_from_path(
     path,
-    &DenoConfigFsAdapter::new(fs),
+    &DenoPkgJsonFsAdapter(fs),
     Some(&PackageJsonThreadLocalCache),
   );
   match result {
     Ok(pkg_json) => Ok(Some(pkg_json)),
-    Err(deno_config::package_json::PackageJsonLoadError::Io {
-      source, ..
-    }) if source.kind() == ErrorKind::NotFound => Ok(None),
+    Err(deno_package_json::PackageJsonLoadError::Io { source, .. })
+      if source.kind() == ErrorKind::NotFound =>
+    {
+      Ok(None)
+    }
     Err(err) => Err(PackageJsonLoadError(err)),
   }
 }

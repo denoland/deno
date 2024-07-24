@@ -36,7 +36,7 @@ mod specifiers;
 mod test;
 
 pub async fn vendor(
-  flags: Flags,
+  flags: Arc<Flags>,
   vendor_flags: VendorFlags,
 ) -> Result<(), AnyError> {
   log::info!(
@@ -52,7 +52,7 @@ pub async fn vendor(
   validate_output_dir(&output_dir, &vendor_flags)?;
   validate_options(&mut cli_options, &output_dir)?;
   let factory = CliFactory::from_cli_options(Arc::new(cli_options));
-  let cli_options = factory.cli_options();
+  let cli_options = factory.cli_options()?;
   if cli_options.workspace().config_folders().len() > 1 {
     bail!("deno vendor is not supported in a workspace. Set `\"vendor\": true` in the workspace deno.json file instead");
   }

@@ -49,6 +49,8 @@ pub enum NodeJsErrorCode {
   ERR_UNKNOWN_FILE_EXTENSION,
   ERR_UNSUPPORTED_DIR_IMPORT,
   ERR_UNSUPPORTED_ESM_URL_SCHEME,
+  /// Deno specific since Node doesn't support TypeScript.
+  ERR_TYPES_NOT_FOUND,
 }
 
 impl std::fmt::Display for NodeJsErrorCode {
@@ -70,6 +72,7 @@ impl NodeJsErrorCode {
       ERR_UNKNOWN_FILE_EXTENSION => "ERR_UNKNOWN_FILE_EXTENSION",
       ERR_UNSUPPORTED_DIR_IMPORT => "ERR_UNSUPPORTED_DIR_IMPORT",
       ERR_UNSUPPORTED_ESM_URL_SCHEME => "ERR_UNSUPPORTED_ESM_URL_SCHEME",
+      ERR_TYPES_NOT_FOUND => "ERR_TYPES_NOT_FOUND",
     }
   }
 }
@@ -122,65 +125,98 @@ impl NodeJsErrorCoded for InvalidModuleSpecifierError {
   }
 }
 
+kinded_err!(LegacyResolveError, LegacyResolveErrorKind);
+
 #[derive(Debug, Error)]
-pub enum LegacyMainResolveError {
+pub enum LegacyResolveErrorKind {
   #[error(transparent)]
-  PathToDeclarationUrl(PathToDeclarationUrlError),
+  TypesNotFound(#[from] TypesNotFoundError),
+  #[error(transparent)]
+  ModuleNotFound(#[from] ModuleNotFoundError),
 }
 
-impl NodeJsErrorCoded for LegacyMainResolveError {
+impl NodeJsErrorCoded for LegacyResolveError {
   fn code(&self) -> NodeJsErrorCode {
-    match self {
-      Self::PathToDeclarationUrl(e) => e.code(),
+    match self.as_kind() {
+      LegacyResolveErrorKind::TypesNotFound(e) => e.code(),
+      LegacyResolveErrorKind::ModuleNotFound(e) => e.code(),
     }
   }
 }
 
 kinded_err!(PackageFolderResolveError, PackageFolderResolveErrorKind);
 
+#[derive(Debug, Error)]
+#[error(
+  "Could not find package '{}' from referrer '{}'{}.",
+  package_name,
+  referrer,
+  referrer_extra.as_ref().map(|r| format!(" ({})", r)).unwrap_or_default()
+)]
+pub struct PackageNotFoundError {
+  pub package_name: String,
+  pub referrer: ModuleSpecifier,
+  /// Extra information about the referrer.
+  pub referrer_extra: Option<String>,
+}
+
+impl NodeJsErrorCoded for PackageNotFoundError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+  }
+}
+
+#[derive(Debug, Error)]
+#[error(
+  "Could not find referrer npm package '{}'{}.",
+  referrer,
+  referrer_extra.as_ref().map(|r| format!(" ({})", r)).unwrap_or_default()
+)]
+pub struct ReferrerNotFoundError {
+  pub referrer: ModuleSpecifier,
+  /// Extra information about the referrer.
+  pub referrer_extra: Option<String>,
+}
+
+impl NodeJsErrorCoded for ReferrerNotFoundError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+  }
+}
+
+#[derive(Debug, Error)]
+#[error("Failed resolving '{package_name}' from referrer '{referrer}'.")]
+pub struct PackageFolderResolveIoError {
+  pub package_name: String,
+  pub referrer: ModuleSpecifier,
+  #[source]
+  pub source: std::io::Error,
+}
+
+impl NodeJsErrorCoded for PackageFolderResolveIoError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+  }
+}
+
 impl NodeJsErrorCoded for PackageFolderResolveError {
   fn code(&self) -> NodeJsErrorCode {
     match self.as_kind() {
-      PackageFolderResolveErrorKind::NotFoundPackage { .. }
-      | PackageFolderResolveErrorKind::NotFoundReferrer { .. }
-      | PackageFolderResolveErrorKind::Io { .. } => {
-        NodeJsErrorCode::ERR_MODULE_NOT_FOUND
-      }
+      PackageFolderResolveErrorKind::PackageNotFound(e) => e.code(),
+      PackageFolderResolveErrorKind::ReferrerNotFound(e) => e.code(),
+      PackageFolderResolveErrorKind::Io(e) => e.code(),
     }
   }
 }
 
 #[derive(Debug, Error)]
 pub enum PackageFolderResolveErrorKind {
-  #[error(
-    "Could not find package '{}' from referrer '{}'{}.",
-    package_name,
-    referrer,
-    referrer_extra.as_ref().map(|r| format!(" ({})", r)).unwrap_or_default()
-  )]
-  NotFoundPackage {
-    package_name: String,
-    referrer: ModuleSpecifier,
-    /// Extra information about the referrer.
-    referrer_extra: Option<String>,
-  },
-  #[error(
-    "Could not find referrer npm package '{}'{}.",
-    referrer,
-    referrer_extra.as_ref().map(|r| format!(" ({})", r)).unwrap_or_default()
-  )]
-  NotFoundReferrer {
-    referrer: ModuleSpecifier,
-    /// Extra information about the referrer.
-    referrer_extra: Option<String>,
-  },
-  #[error("Failed resolving '{package_name}' from referrer '{referrer}'.")]
-  Io {
-    package_name: String,
-    referrer: ModuleSpecifier,
-    #[source]
-    source: std::io::Error,
-  },
+  #[error(transparent)]
+  PackageNotFound(#[from] PackageNotFoundError),
+  #[error(transparent)]
+  ReferrerNotFound(#[from] ReferrerNotFoundError),
+  #[error(transparent)]
+  Io(#[from] PackageFolderResolveIoError),
 }
 
 kinded_err!(PackageSubpathResolveError, PackageSubpathResolveErrorKind);
@@ -189,10 +225,8 @@ impl NodeJsErrorCoded for PackageSubpathResolveError {
   fn code(&self) -> NodeJsErrorCode {
     match self.as_kind() {
       PackageSubpathResolveErrorKind::PkgJsonLoad(e) => e.code(),
-      PackageSubpathResolveErrorKind::PackageFolderResolve(e) => e.code(),
       PackageSubpathResolveErrorKind::Exports(e) => e.code(),
-      PackageSubpathResolveErrorKind::LegacyMain(e) => e.code(),
-      PackageSubpathResolveErrorKind::LegacyExact(e) => e.code(),
+      PackageSubpathResolveErrorKind::LegacyResolve(e) => e.code(),
     }
   }
 }
@@ -202,13 +236,9 @@ pub enum PackageSubpathResolveErrorKind {
   #[error(transparent)]
   PkgJsonLoad(#[from] PackageJsonLoadError),
   #[error(transparent)]
-  PackageFolderResolve(#[from] PackageFolderResolveError),
-  #[error(transparent)]
   Exports(PackageExportsResolveError),
   #[error(transparent)]
-  LegacyMain(LegacyMainResolveError),
-  #[error(transparent)]
-  LegacyExact(PathToDeclarationUrlError),
+  LegacyResolve(LegacyResolveError),
 }
 
 #[derive(Debug, Error)]
@@ -254,7 +284,7 @@ impl NodeJsErrorCoded for PackageTargetResolveError {
       PackageTargetResolveErrorKind::InvalidPackageTarget(e) => e.code(),
       PackageTargetResolveErrorKind::InvalidModuleSpecifier(e) => e.code(),
       PackageTargetResolveErrorKind::PackageResolve(e) => e.code(),
-      PackageTargetResolveErrorKind::PathToDeclarationUrl(e) => e.code(),
+      PackageTargetResolveErrorKind::TypesNotFound(e) => e.code(),
     }
   }
 }
@@ -270,7 +300,7 @@ pub enum PackageTargetResolveErrorKind {
   #[error(transparent)]
   PackageResolve(#[from] PackageResolveError),
   #[error(transparent)]
-  PathToDeclarationUrl(#[from] PathToDeclarationUrlError),
+  TypesNotFound(#[from] TypesNotFoundError),
 }
 
 kinded_err!(PackageExportsResolveError, PackageExportsResolveErrorKind);
@@ -293,16 +323,23 @@ pub enum PackageExportsResolveErrorKind {
 }
 
 #[derive(Debug, Error)]
-pub enum PathToDeclarationUrlError {
-  #[error(transparent)]
-  SubPath(#[from] PackageSubpathResolveError),
+#[error(
+    "[{}] Could not find types for '{}'{}",
+    self.code(),
+    self.0.code_specifier,
+    self.0.maybe_referrer.as_ref().map(|r| format!(" imported from '{}'", r)).unwrap_or_default(),
+  )]
+pub struct TypesNotFoundError(pub Box<TypesNotFoundErrorData>);
+
+#[derive(Debug)]
+pub struct TypesNotFoundErrorData {
+  pub code_specifier: ModuleSpecifier,
+  pub maybe_referrer: Option<ModuleSpecifier>,
 }
 
-impl NodeJsErrorCoded for PathToDeclarationUrlError {
+impl NodeJsErrorCoded for TypesNotFoundError {
   fn code(&self) -> NodeJsErrorCode {
-    match self {
-      PathToDeclarationUrlError::SubPath(e) => e.code(),
-    }
+    NodeJsErrorCode::ERR_TYPES_NOT_FOUND
   }
 }
 
@@ -315,7 +352,7 @@ impl NodeJsErrorCoded for PathToDeclarationUrlError {
 pub struct PackageJsonLoadError(
   #[source]
   #[from]
-  pub deno_config::package_json::PackageJsonLoadError,
+  pub deno_package_json::PackageJsonLoadError,
 );
 
 impl NodeJsErrorCoded for PackageJsonLoadError {
@@ -441,6 +478,7 @@ impl NodeJsErrorCoded for PackageResolveError {
     match self.as_kind() {
       PackageResolveErrorKind::ClosestPkgJson(e) => e.code(),
       PackageResolveErrorKind::InvalidModuleSpecifier(e) => e.code(),
+      PackageResolveErrorKind::PackageFolderResolve(e) => e.code(),
       PackageResolveErrorKind::ExportsResolve(e) => e.code(),
       PackageResolveErrorKind::SubpathResolve(e) => e.code(),
     }
@@ -454,37 +492,49 @@ pub enum PackageResolveErrorKind {
   #[error(transparent)]
   InvalidModuleSpecifier(#[from] InvalidModuleSpecifierError),
   #[error(transparent)]
+  PackageFolderResolve(#[from] PackageFolderResolveError),
+  #[error(transparent)]
   ExportsResolve(#[from] PackageExportsResolveError),
   #[error(transparent)]
   SubpathResolve(#[from] PackageSubpathResolveError),
 }
 
 #[derive(Debug, Error)]
-pub enum NodeResolveError {
-  #[error("Failed joining '{path}' from '{base}'.")]
-  RelativeJoinError {
-    path: String,
-    base: ModuleSpecifier,
-    #[source]
-    source: url::ParseError,
-  },
+#[error("Failed joining '{path}' from '{base}'.")]
+pub struct NodeResolveRelativeJoinError {
+  pub path: String,
+  pub base: ModuleSpecifier,
+  #[source]
+  pub source: url::ParseError,
+}
+
+#[derive(Debug, Error)]
+#[error("Failed resolving specifier from data url referrer.")]
+pub struct DataUrlReferrerError {
+  #[source]
+  pub source: url::ParseError,
+}
+
+kinded_err!(NodeResolveError, NodeResolveErrorKind);
+
+#[derive(Debug, Error)]
+pub enum NodeResolveErrorKind {
+  #[error(transparent)]
+  RelativeJoin(#[from] NodeResolveRelativeJoinError),
   #[error(transparent)]
   PackageImportsResolve(#[from] PackageImportsResolveError),
   #[error(transparent)]
   UnsupportedEsmUrlScheme(#[from] UnsupportedEsmUrlSchemeError),
-  #[error("Failed resolving specifier from data url referrer.")]
-  DataUrlReferrerFailed {
-    #[source]
-    source: url::ParseError,
-  },
+  #[error(transparent)]
+  DataUrlReferrer(#[from] DataUrlReferrerError),
   #[error(transparent)]
   PackageResolve(#[from] PackageResolveError),
   #[error(transparent)]
-  PathToDeclarationUrl(#[from] PathToDeclarationUrlError),
-  #[error(transparent)]
-  UrlToNodeResolution(#[from] UrlToNodeResolutionError),
+  TypesNotFound(#[from] TypesNotFoundError),
   #[error(transparent)]
   FinalizeResolution(#[from] FinalizeResolutionError),
+  #[error(transparent)]
+  UrlToNodeResolution(#[from] UrlToNodeResolutionError),
 }
 
 kinded_err!(FinalizeResolutionError, FinalizeResolutionErrorKind);
@@ -497,6 +547,16 @@ pub enum FinalizeResolutionErrorKind {
   ModuleNotFound(#[from] ModuleNotFoundError),
   #[error(transparent)]
   UnsupportedDirImport(#[from] UnsupportedDirImportError),
+}
+
+impl NodeJsErrorCoded for FinalizeResolutionError {
+  fn code(&self) -> NodeJsErrorCode {
+    match self.as_kind() {
+      FinalizeResolutionErrorKind::InvalidModuleSpecifierError(e) => e.code(),
+      FinalizeResolutionErrorKind::ModuleNotFound(e) => e.code(),
+      FinalizeResolutionErrorKind::UnsupportedDirImport(e) => e.code(),
+    }
+  }
 }
 
 #[derive(Debug, Error)]
@@ -513,9 +573,9 @@ pub struct ModuleNotFoundError {
   pub typ: &'static str,
 }
 
-impl ModuleNotFoundError {
-  pub fn code(&self) -> &'static str {
-    "ERR_MODULE_NOT_FOUND"
+impl NodeJsErrorCoded for ModuleNotFoundError {
+  fn code(&self) -> NodeJsErrorCode {
+    NodeJsErrorCode::ERR_MODULE_NOT_FOUND
   }
 }
 

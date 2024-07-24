@@ -15,7 +15,8 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::errors::PackageFolderResolveError;
-use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
+use deno_runtime::deno_node::errors::PackageNotFoundError;
+use deno_runtime::deno_node::errors::ReferrerNotFoundError;
 use deno_runtime::deno_node::NodePermissions;
 
 use super::super::cache::NpmCache;
@@ -84,7 +85,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
       .resolve_package_folder_id_from_specifier(referrer)
     else {
       return Err(
-        PackageFolderResolveErrorKind::NotFoundReferrer {
+        ReferrerNotFoundError {
           referrer: referrer.clone(),
           referrer_extra: None,
         }
@@ -98,7 +99,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
       Ok(pkg) => match self.maybe_package_folder(&pkg.id) {
         Some(folder) => Ok(folder),
         None => Err(
-          PackageFolderResolveErrorKind::NotFoundPackage {
+          PackageNotFoundError {
             package_name: name.to_string(),
             referrer: referrer.clone(),
             referrer_extra: Some(format!(
@@ -112,7 +113,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
       },
       Err(err) => match *err {
         PackageNotFoundFromReferrerError::Referrer(cache_folder_id) => Err(
-          PackageFolderResolveErrorKind::NotFoundReferrer {
+          ReferrerNotFoundError {
             referrer: referrer.clone(),
             referrer_extra: Some(cache_folder_id.to_string()),
           }
@@ -122,7 +123,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
           name,
           referrer: cache_folder_id_referrer,
         } => Err(
-          PackageFolderResolveErrorKind::NotFoundPackage {
+          PackageNotFoundError {
             package_name: name,
             referrer: referrer.clone(),
             referrer_extra: Some(cache_folder_id_referrer.to_string()),

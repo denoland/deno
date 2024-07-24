@@ -76,7 +76,10 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   }
 }
 
-pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
+pub async fn lint(
+  flags: Arc<Flags>,
+  lint_flags: LintFlags,
+) -> Result<(), AnyError> {
   if let Some(watch_flags) = &lint_flags.watch {
     if lint_flags.is_stdin() {
       return Err(generic_error(
@@ -89,8 +92,8 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
       move |flags, watcher_communicator, changed_paths| {
         let lint_flags = lint_flags.clone();
         Ok(async move {
-          let factory = CliFactory::from_flags(flags)?;
-          let cli_options = factory.cli_options();
+          let factory = CliFactory::from_flags(flags);
+          let cli_options = factory.cli_options()?;
           let lint_config = cli_options.resolve_deno_lint_config()?;
           let mut paths_with_options_batches =
             resolve_paths_with_options_batches(cli_options, &lint_flags)?;
@@ -140,8 +143,8 @@ pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
     )
     .await?;
   } else {
-    let factory = CliFactory::from_flags(flags)?;
-    let cli_options = factory.cli_options();
+    let factory = CliFactory::from_flags(flags);
+    let cli_options = factory.cli_options()?;
     let is_stdin = lint_flags.is_stdin();
     let deno_lint_config = cli_options.resolve_deno_lint_config()?;
     let workspace_lint_options =
@@ -646,7 +649,12 @@ fn handle_lint_result(
   let mut reporter = reporter_lock.lock();
 
   match result {
-    Ok((_source, mut file_diagnostics)) => {
+    Ok((source, mut file_diagnostics)) => {
+      if !source.diagnostics().is_empty() {
+        for parse_diagnostic in source.diagnostics() {
+          log::warn!("{}: {}", colors::yellow("warn"), parse_diagnostic);
+        }
+      }
       file_diagnostics.sort_by(|a, b| match a.specifier.cmp(&b.specifier) {
         std::cmp::Ordering::Equal => a.range.start.cmp(&b.range.start),
         file_order => file_order,

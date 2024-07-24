@@ -34,7 +34,6 @@ use crate::worker::CliMainWorkerOptions;
 use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
 use deno_ast::MediaType;
-use deno_config::package_json::PackageJsonDepValue;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::WorkspaceResolver;
@@ -52,6 +51,7 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -151,15 +151,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
       })?
     };
 
-    if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
-      specifier,
-      &referrer,
-      NodeResolutionMode::Execution,
-    ) {
-      return match result? {
-        Some(res) => Ok(res.into_url()),
-        None => Err(generic_error("not found")),
-      };
+    if self.shared.node_resolver.in_npm_package(&referrer) {
+      return Ok(
+        self
+          .shared
+          .node_resolver
+          .resolve(specifier, &referrer, NodeResolutionMode::Execution)?
+          .into_url(),
+      );
     }
 
     let mapped_resolution =
@@ -250,14 +249,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
       Err(err)
         if err.is_unmapped_bare_specifier() && referrer.scheme() == "file" =>
       {
-        // todo(dsherret): return a better error from node resolution so that
-        // we can more easily tell whether to surface it or not
-        let node_result = self.shared.node_resolver.resolve(
+        let maybe_res = self.shared.node_resolver.resolve_if_for_npm_pkg(
           specifier,
           &referrer,
           NodeResolutionMode::Execution,
-        );
-        if let Ok(Some(res)) = node_result {
+        )?;
+        if let Some(res) = maybe_res {
           return Ok(res.into_url());
         }
         Err(err.into())
@@ -385,7 +382,6 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
         root_permissions,
         dynamic_permissions,
       }),
-      source_map_getter: None,
     }
   }
 
@@ -400,7 +396,6 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
         root_permissions,
         dynamic_permissions,
       }),
-      source_map_getter: None,
     }
   }
 }
@@ -591,7 +586,7 @@ pub async fn run(
           .to_file_path()
           .unwrap();
         let pkg_json =
-          deno_config::package_json::PackageJson::load_from_value(path, json);
+          deno_package_json::PackageJson::load_from_value(path, json);
         Arc::new(pkg_json)
       })
       .collect();
