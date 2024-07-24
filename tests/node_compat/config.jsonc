@@ -35,7 +35,6 @@
       // TODO(bartlomieju): this test was flaky on macOS CI
       // "test-child-process-exec-timeout-kill.js",
       "test-child-process-exec-timeout-not-expired.js",
-      "test-child-process-execFile-promisified-abortController.js",
       "test-child-process-execfile.js",
       "test-child-process-execsync-maxbuf.js",
       "test-child-process-exit-code.js",
