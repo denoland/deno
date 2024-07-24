@@ -432,11 +432,10 @@ where
       *request.uri_mut() = uri;
 
       if let Some((username, password)) = maybe_authority {
-        let value =
-          proxy::basic_auth(&username, password.as_ref().map(|x| x.as_str()));
-        let mut header_value = HeaderValue::try_from(value)?;
-        header_value.set_sensitive(true);
-        request.headers_mut().insert(AUTHORIZATION, header_value);
+        request.headers_mut().insert(
+          AUTHORIZATION,
+          proxy::basic_auth(&username, password.as_deref()),
+        );
       }
       if let Some(len) = con_len {
         request.headers_mut().insert(CONTENT_LENGTH, len.into());
