@@ -1281,7 +1281,8 @@ impl DenoDiagnostic {
           if let ResolveError::Other(resolve_error, ..) = (*error).as_ref() {
             if let Some(ImportMapError::UnmappedBareSpecifier(specifier, _)) = resolve_error.downcast_ref::<ImportMapError>() {
               if specifier.chars().next().unwrap_or('\0') == '@'{
-                message = format!("Use [deno add {}] to add the dependency.", specifier);
+                let hint = format!("\nHint: Use [deno add {}] to add the dependency.", specifier);
+                message.push_str(hint.as_str());
               }
             }
           }

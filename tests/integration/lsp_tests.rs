@@ -218,9 +218,10 @@ fn unadded_dependency_message_with_import_map() {
       "text": temp_dir.read_to_string("file.ts"),
     }
   }));
+  // expected lsp_messages don't include the file path
   let mut expected_lsp_messages = Vec::from(["`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
   "'x' is declared but its value is never read.",
-  "Use [deno add @std/fs] to add the dependency."]);
+  "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency."]);
   expected_lsp_messages.sort();
   let all_diagnostics = diagnostics.all();
   let mut correct_lsp_messages = all_diagnostics
@@ -228,6 +229,10 @@ fn unadded_dependency_message_with_import_map() {
     .map(|d| d.message.as_str())
     .collect::<Vec<&str>>();
   correct_lsp_messages.sort();
+  let part1 = correct_lsp_messages[1].split("file").collect::<Vec<_>>()[0];
+  let part2 = correct_lsp_messages[1].split("\n").collect::<Vec<_>>()[1];
+  let file_path_removed_from_message = format!("{} {}", part1, part2);
+  correct_lsp_messages[1] = file_path_removed_from_message.as_str();
   assert_eq!(correct_lsp_messages, expected_lsp_messages);
   client.shutdown();
 }
@@ -272,9 +277,10 @@ fn unadded_dependency_message() {
       "text": temp_dir.read_to_string("file.ts"),
     }
   }));
+  // expected lsp_messages don't include the file path
   let mut expected_lsp_messages = Vec::from(["`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
   "'x' is declared but its value is never read.",
-  "Use [deno add @std/fs] to add the dependency."]);
+  "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency."]);
   expected_lsp_messages.sort();
   let all_diagnostics = diagnostics.all();
   let mut correct_lsp_messages = all_diagnostics
@@ -282,6 +288,10 @@ fn unadded_dependency_message() {
     .map(|d| d.message.as_str())
     .collect::<Vec<&str>>();
   correct_lsp_messages.sort();
+  let part1 = correct_lsp_messages[1].split("file").collect::<Vec<_>>()[0];
+  let part2 = correct_lsp_messages[1].split("\n").collect::<Vec<_>>()[1];
+  let file_path_removed_from_message = format!("{} {}", part1, part2);
+  correct_lsp_messages[1] = file_path_removed_from_message.as_str();
   assert_eq!(correct_lsp_messages, expected_lsp_messages);
   client.shutdown();
 }
