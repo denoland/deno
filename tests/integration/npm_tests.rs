@@ -15,13 +15,6 @@ use util::TestContextBuilder;
 
 // NOTE: See how to make test npm packages at ./testdata/npm/README.md
 
-itest!(esm_import_cjs_default {
-  args: "run --allow-read --allow-env --quiet --check=all npm/esm_import_cjs_default/main.ts",
-  output: "npm/esm_import_cjs_default/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
 itest!(cjs_with_deps {
   args: "run --allow-read --allow-env npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
@@ -324,14 +317,6 @@ itest!(check_local {
   exit_code: 1,
 });
 
-itest!(types_general {
-  args: "check --quiet npm/types/main.ts",
-  output: "npm/types/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
 itest!(types_ambient_module {
   args: "check --quiet npm/types_ambient_module/main.ts",
   output: "npm/types_ambient_module/main.out",
@@ -341,27 +326,11 @@ itest!(types_ambient_module {
 });
 
 itest!(types_ambient_module_import_map {
-    args: "check --quiet --import-map=npm/types_ambient_module/import_map.json npm/types_ambient_module/main_import_map.ts",
-    output: "npm/types_ambient_module/main_import_map.out",
-    envs: env_vars_for_npm_tests(),
-    http_server: true,
-    exit_code: 1,
-  });
-
-itest!(no_types_cjs {
-  args: "check --quiet npm/no_types_cjs/main.ts",
-  output_str: Some(""),
-  exit_code: 0,
+  args: "check --quiet --import-map=npm/types_ambient_module/import_map.json npm/types_ambient_module/main_import_map.ts",
+  output: "npm/types_ambient_module/main_import_map.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
-});
-
-itest!(no_types_in_conditional_exports {
-  args: "run --check npm/no_types_in_conditional_exports/main.ts",
-  output: "npm/no_types_in_conditional_exports/main.out",
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
+  exit_code: 1,
 });
 
 itest!(types_entry_value_not_exists {
