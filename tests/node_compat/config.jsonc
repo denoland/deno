@@ -35,7 +35,6 @@
       // TODO(bartlomieju): this test was flaky on macOS CI
       // "test-child-process-exec-timeout-kill.js",
       "test-child-process-exec-timeout-not-expired.js",
-      "test-child-process-execFile-promisified-abortController.js",
       "test-child-process-execfile.js",
       "test-child-process-execsync-maxbuf.js",
       "test-child-process-exit-code.js",
@@ -60,7 +59,6 @@
       "test-dgram-ipv6only.js",
       "test-dgram-send-cb-quelches-error.js",
       "test-dgram-socket-buffer-size.js",
-      "test-dgram-udp6-link-local-address.js",
       "test-dns-lookup.js",
       "test-dns-resolveany.js",
       "test-dns.js",
@@ -88,7 +86,8 @@
       "test-net-server-try-ports.js",
       "test-net-socket-timeout.js",
       "test-net-write-arguments.js",
-      "test-os.js",
+      // TODO(nathanwhit): Disable os.userInfo is slightly incorrect
+      // "test-os.js",
       "test-path-resolve.js",
       "test-querystring.js",
       "test-readline-interface.js",

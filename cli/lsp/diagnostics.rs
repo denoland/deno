@@ -39,6 +39,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::JoinHandle;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::ResolutionMode;
+use deno_graph::source::ResolveError;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
@@ -49,6 +50,7 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
+use import_map::ImportMapError;
 use log::error;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -1267,12 +1269,25 @@ impl DenoDiagnostic {
         (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier, maybe_sloppy_resolution.as_ref()), data)
       },
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
-      Self::ResolutionError(err) => (
+      Self::ResolutionError(err) => {
+        let mut message;
+        message = enhanced_resolution_error_message(err);
+        if let deno_graph::ResolutionError::ResolverError {error, ..} = err{
+          if let ResolveError::Other(resolve_error, ..) = (*error).as_ref() {
+            if let Some(ImportMapError::UnmappedBareSpecifier(specifier, _)) = resolve_error.downcast_ref::<ImportMapError>() {
+              if specifier.chars().next().unwrap_or('\0') == '@'{
+                let hint = format!("\nHint: Use [deno add {}] to add the dependency.", specifier);
+                message.push_str(hint.as_str());
+              }
+            }
+          }
+        }
+        (
         lsp::DiagnosticSeverity::ERROR,
-        enhanced_resolution_error_message(err),
+        message,
         graph_util::get_resolution_error_bare_node_specifier(err)
           .map(|specifier| json!({ "specifier": specifier }))
-      ),
+      )},
       Self::InvalidNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unknown Node built-in module: {}", specifier.path()), None),
       Self::BareNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::WARNING, format!("\"{}\" is resolved to \"node:{}\". If you want to use a built-in Node module, add a \"node:\" prefix.", specifier, specifier), Some(json!({ "specifier": specifier }))),
     };
