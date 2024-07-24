@@ -93,7 +93,9 @@ fn get_user_info(uid: u32) -> Result<UserInfo, AnyError> {
   let pw = unsafe { pw.assume_init() };
   // SAFETY: initialized above, pw alive until end of function, nul terminated
   let username = unsafe { CStr::from_ptr(pw.pw_name) };
+  // SAFETY: initialized above, pw alive until end of function, nul terminated
   let homedir = unsafe { CStr::from_ptr(pw.pw_dir) };
+  // SAFETY: initialized above, pw alive until end of function, nul terminated
   let shell = unsafe { CStr::from_ptr(pw.pw_shell) };
   Ok(UserInfo {
     username: username.to_string_lossy().into_owned(),
