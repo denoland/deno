@@ -174,10 +174,10 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
           .into_iter()
           .map(|node| deno_doc::html::DocNodeWithContext {
             origin: short_path.clone(),
-            ns_qualifiers: Rc::new(vec![]),
+            ns_qualifiers: Rc::new([]),
             kind_with_drilldown:
-              deno_doc::html::DocNodeKindWithDrilldown::Other(node.kind),
-            inner: std::sync::Arc::new(node),
+              deno_doc::html::DocNodeKindWithDrilldown::Other(node.kind()),
+            inner: Rc::new(node),
             drilldown_parent_kind: None,
             parent: None,
           })
@@ -296,7 +296,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
   }
 
   fn resolve_source(&self, location: &deno_doc::Location) -> Option<String> {
-    Some(location.filename.clone())
+    Some(location.filename.to_string())
   }
 }
 
@@ -488,9 +488,9 @@ fn print_docs_to_stdout(
   doc_flags: DocFlags,
   mut doc_nodes: Vec<deno_doc::DocNode>,
 ) -> Result<(), AnyError> {
-  doc_nodes.retain(|doc_node| doc_node.kind != doc::DocNodeKind::Import);
+  doc_nodes.retain(|doc_node| doc_node.kind() != doc::DocNodeKind::Import);
   let details = if let Some(filter) = doc_flags.filter {
-    let nodes = doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
+    let nodes = doc::find_nodes_by_name_recursively(doc_nodes, &filter);
     if nodes.is_empty() {
       bail!("Node {} was not found!", filter);
     }

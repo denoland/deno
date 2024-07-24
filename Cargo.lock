@@ -1422,9 +1422,7 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.142.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16293d4ab42fdb4b499bf0bdc30def02048525c59cf268f65a66c4ab1d4520dc"
+version = "0.143.0"
 dependencies = [
  "ammonia",
  "anyhow",
@@ -1437,6 +1435,7 @@ dependencies = [
  "html-escape",
  "import_map",
  "indexmap",
+ "itoa",
  "lazy_static",
  "regex",
  "serde",
