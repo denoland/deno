@@ -62,14 +62,6 @@ pub fn format_range_with_colors(range: &deno_graph::Range) -> String {
   )
 }
 
-fn suggested_install_cmd() -> &'static str {
-  if *crate::args::DENO_FUTURE {
-    "deno install"
-  } else {
-    "npm install"
-  }
-}
-
 pub struct ModuleCodeStringSource {
   pub code: ModuleSourceCode,
   pub found_url: ModuleSpecifier,
@@ -243,7 +235,11 @@ impl CliNodeResolver {
             return Err(anyhow!(
               "Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `{}`?",
               package_json_path.display(),
-              suggested_install_cmd(),
+              if *crate::args::DENO_FUTURE {
+                "deno install"
+              } else {
+                "npm install"
+              },
             ));
           }
         }
