@@ -34,7 +34,6 @@ import {
 import { validateIntegerRange } from "ext:deno_node/_utils.ts";
 import process from "node:process";
 import { isWindows } from "ext:deno_node/_util/os.ts";
-import { ERR_OS_NO_HOMEDIR } from "ext:deno_node/internal/errors.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { osUptime } from "ext:runtime/30_os.js";
 import { Buffer } from "ext:deno_node/internal/buffer.mjs";
