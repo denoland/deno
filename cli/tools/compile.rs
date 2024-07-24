@@ -123,12 +123,13 @@ pub async fn compile(
   ));
   let temp_path = output_path.with_file_name(temp_filename);
 
-  let mut file = std::fs::File::create(&temp_path).with_context(|| {
+  let file = std::fs::File::create(&temp_path).with_context(|| {
     format!("Opening temporary file '{}'", temp_path.display())
   })?;
+
   let write_result = binary_writer
     .write_bin(
-      &mut file,
+      file,
       eszip,
       root_dir_url,
       &module_specifier,
@@ -139,7 +140,6 @@ pub async fn compile(
     .with_context(|| {
       format!("Writing temporary file '{}'", temp_path.display())
     });
-  drop(file);
 
   // set it as executable
   #[cfg(unix)]

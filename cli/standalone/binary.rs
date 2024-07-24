@@ -7,6 +7,7 @@ use std::collections::VecDeque;
 use std::env::current_exe;
 use std::ffi::OsString;
 use std::fs;
+use std::fs::File;
 use std::future::Future;
 use std::io::Read;
 use std::io::Seek;
@@ -106,16 +107,19 @@ pub struct Metadata {
 }
 
 pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
-  let file_path = current_exe().unwrap();
-  let mut file = std::fs::File::open(file_path)?;
-  file.seek(SeekFrom::End(-(TRAILER_SIZE as i64)))?;
-  let mut trailer = [0; TRAILER_SIZE];
-  file.read_exact(&mut trailer)?;
-  let trailer = Trailer::parse(&trailer)?.unwrap();
-  file.seek(SeekFrom::Start(trailer.npm_vfs_pos))?;
-  let mut vfs_data = vec![0; trailer.npm_vfs_len() as usize];
-  file.read_exact(&mut vfs_data)?;
-  let mut dir: VirtualDirectory = serde_json::from_slice(&vfs_data)?;
+  let data = libsui::find_section("d3n0l4nd").unwrap();
+
+  // We do the first part sync so it can complete quickly
+  let trailer: [u8; TRAILER_SIZE] = data[0..TRAILER_SIZE].try_into().unwrap();
+  let trailer = match Trailer::parse(&trailer)? {
+    None => panic!("Could not find trailer"),
+    Some(trailer) => trailer,
+  };
+  let data = &data[TRAILER_SIZE..];
+
+  let vfs_data =
+    &data[trailer.npm_vfs_pos as usize..trailer.npm_files_pos as usize];
+  let mut dir: VirtualDirectory = serde_json::from_slice(vfs_data)?;
 
   // align the name of the directory with the root dir
   dir.name = root_dir_path
@@ -129,38 +133,32 @@ pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
     root_path: root_dir_path,
     start_file_offset: trailer.npm_files_pos,
   };
-  Ok(FileBackedVfs::new(file, fs_root))
+  Ok(FileBackedVfs::new(data.to_vec(), fs_root))
 }
 
 fn write_binary_bytes(
-  writer: &mut impl Write,
+  mut file_writer: File,
   original_bin: Vec<u8>,
   metadata: &Metadata,
   eszip: eszip::EszipV2,
   npm_vfs: Option<&VirtualDirectory>,
   npm_files: &Vec<Vec<u8>>,
+  compile_flags: &CompileFlags,
 ) -> Result<(), AnyError> {
   let metadata = serde_json::to_string(metadata)?.as_bytes().to_vec();
   let npm_vfs = serde_json::to_string(&npm_vfs)?.as_bytes().to_vec();
   let eszip_archive = eszip.into_bytes();
 
-  writer.write_all(&original_bin)?;
-  writer.write_all(&eszip_archive)?;
-  writer.write_all(&metadata)?;
-  writer.write_all(&npm_vfs)?;
-  for file in npm_files {
-    writer.write_all(file)?;
-  }
+  let mut writer = Vec::new();
 
   // write the trailer, which includes the positions
   // of the data blocks in the file
   writer.write_all(&{
-    let eszip_pos = original_bin.len() as u64;
-    let metadata_pos = eszip_pos + (eszip_archive.len() as u64);
+    let metadata_pos = eszip_archive.len() as u64;
     let npm_vfs_pos = metadata_pos + (metadata.len() as u64);
     let npm_files_pos = npm_vfs_pos + (npm_vfs.len() as u64);
     Trailer {
-      eszip_pos,
+      eszip_pos: 0,
       metadata_pos,
       npm_vfs_pos,
       npm_files_pos,
@@ -168,27 +166,36 @@ fn write_binary_bytes(
     .as_bytes()
   })?;
 
+  writer.write_all(&eszip_archive)?;
+  writer.write_all(&metadata)?;
+  writer.write_all(&npm_vfs)?;
+  for file in npm_files {
+    writer.write_all(file)?;
+  }
+
+  let target = compile_flags.resolve_target();
+  if target.contains("linux") {
+    libsui::Elf::new(&original_bin).append(&writer, &mut file_writer)?;
+  } else if target.contains("windows") {
+    libsui::PortableExecutable::from(&original_bin)?
+      .write_resource("d3n0l4nd", writer)?
+      .build(&mut file_writer)?;
+  } else if target.contains("darwin") {
+    libsui::Macho::from(original_bin)?
+      .write_section("d3n0l4nd", writer)?
+      .build(&mut file_writer)?;
+  }
   Ok(())
 }
 
 pub fn is_standalone_binary(exe_path: &Path) -> bool {
-  let Ok(mut output_file) = std::fs::File::open(exe_path) else {
+  let Ok(data) = std::fs::read(exe_path) else {
     return false;
   };
-  if output_file
-    .seek(SeekFrom::End(-(TRAILER_SIZE as i64)))
-    .is_err()
-  {
-    // This seek may fail because the file is too small to possibly be
-    // `deno compile` output.
-    return false;
-  }
-  let mut trailer = [0; TRAILER_SIZE];
-  if output_file.read_exact(&mut trailer).is_err() {
-    return false;
-  };
-  let (magic_trailer, _) = trailer.split_at(8);
-  magic_trailer == MAGIC_TRAILER
+
+  libsui::utils::is_elf(&data)
+    | libsui::utils::is_pe(&data)
+    | libsui::utils::is_macho(&data)
 }
 
 /// This function will try to run this binary as a standalone binary
@@ -197,40 +204,33 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 /// then checking for the magic trailer string `d3n0l4nd`. If found,
 /// the bundle is executed. If not, this function exits with `Ok(None)`.
 pub fn extract_standalone(
-  exe_path: &Path,
   cli_args: Cow<Vec<OsString>>,
 ) -> Result<
   Option<impl Future<Output = Result<(Metadata, eszip::EszipV2), AnyError>>>,
   AnyError,
 > {
+  let Some(data) = libsui::find_section("d3n0l4nd") else {
+    return Ok(None);
+  };
+
   // We do the first part sync so it can complete quickly
-  let mut file = std::fs::File::open(exe_path)?;
-  file.seek(SeekFrom::End(-(TRAILER_SIZE as i64)))?;
-  let mut trailer = [0; TRAILER_SIZE];
-  file.read_exact(&mut trailer)?;
+  let trailer: [u8; TRAILER_SIZE] = data[0..TRAILER_SIZE].try_into().unwrap();
   let trailer = match Trailer::parse(&trailer)? {
     None => return Ok(None),
     Some(trailer) => trailer,
   };
 
-  file.seek(SeekFrom::Start(trailer.eszip_pos))?;
-
   let cli_args = cli_args.into_owned();
   // If we have an eszip, read it out
   Ok(Some(async move {
     let bufreader =
-      deno_core::futures::io::BufReader::new(AllowStdIo::new(file));
+      deno_core::futures::io::BufReader::new(&data[TRAILER_SIZE..]);
 
     let (eszip, loader) = eszip::EszipV2::parse(bufreader)
       .await
       .context("Failed to parse eszip header")?;
 
-    let mut bufreader =
-      loader.await.context("Failed to parse eszip archive")?;
-
-    bufreader
-      .seek(SeekFrom::Start(trailer.metadata_pos))
-      .await?;
+    let bufreader = loader.await.context("Failed to parse eszip archive")?;
 
     let mut metadata = String::new();
 
@@ -405,7 +405,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   pub async fn write_bin(
     &self,
-    writer: &mut impl Write,
+    writer: File,
     eszip: eszip::EszipV2,
     root_dir_url: EszipRelativeFileBaseUrl<'_>,
     entrypoint: &ModuleSpecifier,
@@ -518,7 +518,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   #[allow(clippy::too_many_arguments)]
   fn write_standalone_binary(
     &self,
-    writer: &mut impl Write,
+    writer: File,
     original_bin: Vec<u8>,
     mut eszip: eszip::EszipV2,
     root_dir_url: EszipRelativeFileBaseUrl<'_>,
@@ -654,6 +654,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       eszip,
       npm_vfs.as_ref(),
       &npm_files,
+      compile_flags,
     )
   }
 

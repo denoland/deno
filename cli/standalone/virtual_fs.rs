@@ -748,12 +748,12 @@ impl deno_io::fs::File for FileBackedVfsFile {
 
 #[derive(Debug)]
 pub struct FileBackedVfs {
-  file: Mutex<File>,
+  file: Mutex<Vec<u8>>,
   fs_root: VfsRoot,
 }
 
 impl FileBackedVfs {
-  pub fn new(file: File, fs_root: VfsRoot) -> Self {
+  pub fn new(file: Vec<u8>, fs_root: VfsRoot) -> Self {
     Self {
       file: Mutex::new(file),
       fs_root,
@@ -836,11 +836,18 @@ impl FileBackedVfs {
     pos: u64,
     buf: &mut [u8],
   ) -> std::io::Result<usize> {
-    let mut fs_file = self.file.lock();
-    fs_file.seek(SeekFrom::Start(
-      self.fs_root.start_file_offset + file.offset + pos,
-    ))?;
-    fs_file.read(buf)
+    let data = self.file.lock();
+    let start = self.fs_root.start_file_offset + file.offset + pos;
+    let end = start + buf.len() as u64;
+    if end > data.len() as u64 {
+      return Err(std::io::Error::new(
+        std::io::ErrorKind::UnexpectedEof,
+        "unexpected EOF",
+      ));
+    }
+
+    buf.copy_from_slice(&data[start as usize..end as usize]);
+    Ok(buf.len())
   }
 
   pub fn dir_entry(&self, path: &Path) -> std::io::Result<&VirtualDirectory> {
@@ -1016,12 +1023,12 @@ mod test {
         file.write_all(file_data).unwrap();
       }
     }
-    let file = std::fs::File::open(&virtual_fs_file).unwrap();
     let dest_path = temp_dir.path().join("dest");
+    let data = std::fs::read(&virtual_fs_file).unwrap();
     (
       dest_path.to_path_buf(),
       FileBackedVfs::new(
-        file,
+        data,
         VfsRoot {
           dir: root_dir,
           root_path: dest_path.to_path_buf(),
