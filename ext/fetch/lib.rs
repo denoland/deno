@@ -55,6 +55,7 @@ use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::header::ACCEPT;
 use http::header::ACCEPT_ENCODING;
+use http::header::AUTHORIZATION;
 use http::header::CONTENT_LENGTH;
 use http::header::HOST;
 use http::header::PROXY_AUTHORIZATION;
@@ -77,6 +78,7 @@ use tower_http::decompression::Decompression;
 
 // Re-export data_url
 pub use data_url;
+pub use proxy::basic_auth;
 
 pub use fs_fetch_handler::FsFetchHandler;
 
@@ -349,7 +351,7 @@ where
   };
 
   let method = Method::from_bytes(&method)?;
-  let url = Url::parse(&url)?;
+  let mut url = Url::parse(&url)?;
 
   // Check scheme before asking for net permission
   let scheme = url.scheme();
@@ -385,6 +387,7 @@ where
       let permissions = state.borrow_mut::<FP>();
       permissions.check_net_url(&url, "fetch()")?;
 
+      let maybe_authority = extract_authority(&mut url);
       let uri = url
         .as_str()
         .parse::<Uri>()
@@ -428,6 +431,12 @@ where
       *request.method_mut() = method.clone();
       *request.uri_mut() = uri;
 
+      if let Some((username, password)) = maybe_authority {
+        request.headers_mut().insert(
+          AUTHORIZATION,
+          proxy::basic_auth(&username, password.as_deref()),
+        );
+      }
       if let Some(len) = con_len {
         request.headers_mut().insert(CONTENT_LENGTH, len.into());
       }
@@ -1096,3 +1105,34 @@ impl Client {
 
 pub type ReqBody = http_body_util::combinators::BoxBody<Bytes, Error>;
 pub type ResBody = http_body_util::combinators::BoxBody<Bytes, Error>;
+
+/// Copied from https://github.com/seanmonstar/reqwest/blob/b9d62a0323d96f11672a61a17bf8849baec00275/src/async_impl/request.rs#L572
+/// Check the request URL for a "username:password" type authority, and if
+/// found, remove it from the URL and return it.
+pub fn extract_authority(url: &mut Url) -> Option<(String, Option<String>)> {
+  use percent_encoding::percent_decode;
+
+  if url.has_authority() {
+    let username: String = percent_decode(url.username().as_bytes())
+      .decode_utf8()
+      .ok()?
+      .into();
+    let password = url.password().and_then(|pass| {
+      percent_decode(pass.as_bytes())
+        .decode_utf8()
+        .ok()
+        .map(String::from)
+    });
+    if !username.is_empty() || password.is_some() {
+      url
+        .set_username("")
+        .expect("has_authority means set_username shouldn't fail");
+      url
+        .set_password(None)
+        .expect("has_authority means set_password shouldn't fail");
+      return Some((username, password));
+    }
+  }
+
+  None
+}

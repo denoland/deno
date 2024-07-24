@@ -2042,3 +2042,21 @@ Deno.test("Response with subarray TypedArray body", async () => {
   const expected = new Uint8Array([2, 3, 4, 5]);
   assertEquals(actual, expected);
 });
+
+// Regression test for https://github.com/denoland/deno/issues/24697
+Deno.test("URL authority is used as 'Authorization' header", async () => {
+  const deferred = Promise.withResolvers<string | null | undefined>();
+  const ac = new AbortController();
+
+  const server = Deno.serve({ port: 4502, signal: ac.signal }, (req) => {
+    deferred.resolve(req.headers.get("authorization"));
+    return new Response("Hello world");
+  });
+
+  const res = await fetch("http://deno:land@localhost:4502");
+  await res.text();
+  const authHeader = await deferred.promise;
+  ac.abort();
+  await server.finished;
+  assertEquals(authHeader, "Basic ZGVubzpsYW5k");
+});
