@@ -27,7 +27,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 // TODO(PolarETech): The process.argv[3] to be assigned to gen should be argv[2], 
-// and the arguments array passed to spawn() should not need to include "require.ts".
+// and the arguments array passed to spawn() should not need to include "runner.ts".
 
 'use strict';
 require('../common');
@@ -49,7 +49,7 @@ if (gen === maxGen) {
   return;
 }
 
-const child = ch.spawn(process.execPath, ['require.ts', __filename, gen + 1], {
+const child = ch.spawn(process.execPath, ['runner.ts', __filename, gen + 1], {
   stdio: [ 'ignore', 'pipe', 'ignore' ]
 });
 assert.ok(!child.stdin);
