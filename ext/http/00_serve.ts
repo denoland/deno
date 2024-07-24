@@ -658,7 +658,7 @@ function serve(arg1, arg2) {
   // because browsers in Windows don't resolve "0.0.0.0".
   // See the discussion in https://github.com/denoland/deno_std/issues/1165
   const hostname = (addr.hostname == "0.0.0.0" || addr.hostname == "::") &&
-      (Deno.build.os !== "windows")
+      (Deno.build.os === "windows")
     ? "localhost"
     : addr.hostname;
   addr.hostname = hostname;
