@@ -2,6 +2,8 @@
 
 mod fs_fetch_handler;
 mod proxy;
+#[cfg(test)]
+mod tests;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -62,7 +64,6 @@ use http::Method;
 use http::Uri;
 use http_body_util::BodyExt;
 use hyper::body::Frame;
-use hyper_rustls::HttpsConnector;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
@@ -975,6 +976,10 @@ pub fn create_http_client(
     deno_tls::SocketUse::Http,
   )?;
 
+  // Proxy TLS should not send ALPN
+  tls_config.alpn_protocols.clear();
+  let proxy_tls_config = Arc::from(tls_config.clone());
+
   let mut alpn_protocols = vec![];
   if options.http2 {
     alpn_protocols.push("h2".into());
@@ -987,7 +992,6 @@ pub fn create_http_client(
 
   let mut http_connector = HttpConnector::new();
   http_connector.enforce_http(false);
-  let connector = HttpsConnector::from((http_connector, tls_config.clone()));
 
   let user_agent = user_agent
     .parse::<HeaderValue>()
@@ -1008,9 +1012,13 @@ pub fn create_http_client(
     proxies.prepend(intercept);
   }
   let proxies = Arc::new(proxies);
-  let mut connector =
-    proxy::ProxyConnector::new(proxies.clone(), connector, tls_config);
-  connector.user_agent(user_agent.clone());
+  let connector = proxy::ProxyConnector {
+    http: http_connector,
+    proxies: proxies.clone(),
+    tls: tls_config,
+    tls_proxy: proxy_tls_config,
+    user_agent: Some(user_agent.clone()),
+  };
 
   if let Some(pool_max_idle_per_host) = options.pool_max_idle_per_host {
     builder.pool_max_idle_per_host(pool_max_idle_per_host);
@@ -1059,7 +1067,7 @@ pub struct Client {
   user_agent: HeaderValue,
 }
 
-type Connector = proxy::ProxyConnector<HttpsConnector<HttpConnector>>;
+type Connector = proxy::ProxyConnector<HttpConnector>;
 
 // clippy is wrong here
 #[allow(clippy::declare_interior_mutable_const)]
