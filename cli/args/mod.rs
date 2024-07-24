@@ -1050,10 +1050,10 @@ impl CliOptions {
   }
 
   pub fn node_ipc_fd(&self) -> Option<i64> {
-    let maybe_node_channel_fd = std::env::var("DENO_CHANNEL_FD").ok();
+    let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
     if let Some(node_channel_fd) = maybe_node_channel_fd {
       // Remove so that child processes don't inherit this environment variable.
-      std::env::remove_var("DENO_CHANNEL_FD");
+      std::env::remove_var("NODE_CHANNEL_FD");
       node_channel_fd.parse::<i64>().ok()
     } else {
       None

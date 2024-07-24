@@ -352,8 +352,8 @@ fn create_command(
         )?,
       ));
 
-      /* The other end passed to child process via DENO_CHANNEL_FD */
-      command.env("DENO_CHANNEL_FD", format!("{}", ipc));
+      /* The other end passed to child process via NODE_CHANNEL_FD */
+      command.env("NODE_CHANNEL_FD", format!("{}", ipc));
 
       return Ok((command, pipe_rid));
     }
@@ -477,8 +477,8 @@ fn create_command(
           .add(deno_node::IpcJsonStreamResource::new(hd1 as i64)?),
       );
 
-      /* The other end passed to child process via DENO_CHANNEL_FD */
-      command.env("DENO_CHANNEL_FD", format!("{}", hd2 as i64));
+      /* The other end passed to child process via NODE_CHANNEL_FD */
+      command.env("NODE_CHANNEL_FD", format!("{}", hd2 as i64));
 
       return Ok((command, pipe_fd));
     }
