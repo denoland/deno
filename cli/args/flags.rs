@@ -36,7 +36,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use crate::args::resolve_no_prompt;
 use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
@@ -721,7 +720,7 @@ impl PermissionFlags {
         &self.deny_write,
         initial_cwd,
       )?,
-      prompt: !resolve_no_prompt(self),
+      prompt: !self.no_prompt,
     })
   }
 }
@@ -1114,9 +1113,6 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
 
     <g>DENO_DIR</>             Set the cache directory
 
-    <g>DENO_INSTALL_ROOT</>    Set deno install's output directory
-                         (defaults to $HOME/.deno/bin)
-
     <g>DENO_JOBS</>            Number of parallel workers used for the --parallel
                          flag with the test subcommand. Defaults to number
                          of available CPUs.
@@ -1126,9 +1122,6 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
                          (defaults to $DENO_DIR/deno_history.txt)
 
     <g>DENO_NO_PACKAGE_JSON</> Disables auto-resolution of package.json
-
-    <g>DENO_NO_PROMPT</>       Set to disable permission prompts on access
-                         (alternative to passing --no-prompt on invocation)
 
     <g>DENO_NO_UPDATE_CHECK</> Set to disable checking if a newer Deno version is
                          available
@@ -1290,21 +1283,19 @@ fn clap_root() -> Command {
     crate::version::TYPESCRIPT
   );
 
-  let mut cmd = Command::new("deno")
+  Command::new("deno")
     .bin_name("deno")
     .styles(
       clap::builder::Styles::styled()
         .header(AnsiColor::Yellow.on_default())
         .usage(AnsiColor::White.on_default())
         .literal(AnsiColor::Green.on_default())
-        .placeholder(AnsiColor::Green.on_default())
+        .placeholder(AnsiColor::Green.on_default()),
     )
     .color(ColorChoice::Auto)
     .max_term_width(80)
     .version(crate::version::deno())
     .long_version(long_version)
-    // cause --unstable flags to display at the bottom of the help text
-    .next_display_order(1000)
     .disable_version_flag(true)
     .arg(
       Arg::new("version")
@@ -1312,67 +1303,8 @@ fn clap_root() -> Command {
         .short_alias('v')
         .long("version")
         .action(ArgAction::Version)
-        .help("Print version")
+        .help("Print version"),
     )
-    .arg(
-      Arg::new("unstable")
-        .long("unstable")
-        .help("Enable unstable features and APIs")
-        .long_help(if !*FULL_UNSTABLE_HELP {
-          "Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features.\n\nTo view the list of individual unstable feature flags, run this command again with DENO_UNSTABLE_HELP=1."
-        } else {
-          "Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features."
-        })
-        .action(ArgAction::SetTrue)
-        .global(true),
-    )
-    .arg(
-      Arg::new("unstable-bare-node-builtins")
-        .long("unstable-bare-node-builtins")
-        .help("Enable unstable bare node builtins feature")
-        .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .global(true)
-        .hide(!*FULL_UNSTABLE_HELP),
-    )
-    .arg(
-      Arg::new("unstable-byonm")
-        .long("unstable-byonm")
-        .help("Enable unstable 'bring your own node_modules' feature")
-        .env("DENO_UNSTABLE_BYONM")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .global(true)
-        .hide(!*FULL_UNSTABLE_HELP),
-    )
-    .arg(
-      Arg::new("unstable-sloppy-imports")
-        .long("unstable-sloppy-imports")
-        .help(
-          "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing.",
-        )
-        .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .global(true)
-        .hide(!*FULL_UNSTABLE_HELP),
-    );
-
-  for (flag_name, help, _) in crate::UNSTABLE_GRANULAR_FLAGS {
-    cmd = cmd.arg(
-      Arg::new(format!("unstable-{}", flag_name))
-        .long(format!("unstable-{}", flag_name))
-        .help(help)
-        .action(ArgAction::SetTrue)
-        .global(true)
-        .hide(!*FULL_UNSTABLE_HELP),
-    );
-  }
-
-  cmd
-    // reset the display order after the unstable flags
-    .next_display_order(0)
     .arg(
       Arg::new("log-level")
         .short('L')
@@ -1470,6 +1402,7 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
     )
     .defer(|cmd| {
       runtime_args(cmd, true, false)
+        .args(unstable_args(UnstableArgsConfig::ResolutionAndRuntime))
         .arg(check_arg(true))
         .arg(
           Arg::new("json")
@@ -1531,6 +1464,7 @@ If no output file is given, the output is written to standard output:
     .defer(|cmd| {
       compile_args(cmd)
         .hide(true)
+        .args(unstable_args(UnstableArgsConfig::Resolution))
         .arg(check_arg(true))
         .arg(
           Arg::new("source_file")
@@ -1561,6 +1495,7 @@ Future runs of this module will trigger no downloads or compilation unless
     )
     .defer(|cmd| {
       compile_args(cmd)
+        .args(unstable_args(UnstableArgsConfig::Resolution))
         .arg(check_arg(false))
         .arg(
           Arg::new("file")
@@ -1583,28 +1518,32 @@ fn check_subcommand() -> Command {
 
 Unless --reload is specified, this command will not re-download already cached dependencies.",
       )
-    .defer(|cmd| compile_args_without_check_args(cmd).arg(
-      Arg::new("all")
-        .long("all")
-        .help("Type-check all code, including remote modules and npm packages")
-        .action(ArgAction::SetTrue)
-        .conflicts_with("no-remote")
-    )
-      .arg(
-        // past alias for --all
-        Arg::new("remote")
-          .long("remote")
-          .help("Type-check all modules, including remote")
-          .action(ArgAction::SetTrue)
-          .conflicts_with("no-remote")
-          .hide(true)
-      )
-      .arg(
-        Arg::new("file")
-          .num_args(1..)
-          .required(true)
-          .value_hint(ValueHint::FilePath),
-      )
+    .defer(|cmd| {
+      compile_args_without_check_args(cmd)
+        .args(unstable_args(UnstableArgsConfig::Resolution))
+        .arg(
+          Arg::new("all")
+            .long("all")
+            .help("Type-check all code, including remote modules and npm packages")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("no-remote")
+        )
+        .arg(
+          // past alias for --all
+          Arg::new("remote")
+            .long("remote")
+            .help("Type-check all modules, including remote")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("no-remote")
+            .hide(true)
+        )
+        .arg(
+          Arg::new("file")
+            .num_args(1..)
+            .required(true)
+            .value_hint(ValueHint::FilePath),
+        )
+      }
     )
 }
 
@@ -1635,6 +1574,7 @@ supported in canary.
     )
     .defer(|cmd| {
       runtime_args(cmd, true, false)
+      .args(unstable_args(UnstableArgsConfig::ResolutionAndRuntime))
       .arg(check_arg(true))
       .arg(
         Arg::new("include")
@@ -1849,6 +1789,7 @@ Show documentation for runtime built-ins:
     )
     .defer(|cmd| {
       cmd
+        .args(unstable_args(UnstableArgsConfig::Resolution))
         .arg(import_map_arg())
         .arg(reload_arg())
         .arg(lock_arg())
@@ -1967,6 +1908,7 @@ This command has implicit access to all permissions (--allow-all).",
     )
     .defer(|cmd| {
       runtime_args(cmd, false, true)
+        .args(unstable_args(UnstableArgsConfig::ResolutionAndRuntime))
         .arg(check_arg(false))
         .arg(
           // TODO(@satyarohith): remove this argument in 2.0.
@@ -2161,6 +2103,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
       )
     .defer(|cmd| cmd
       .arg(Arg::new("file").required(false).value_hint(ValueHint::FilePath))
+      .args(unstable_args(UnstableArgsConfig::Resolution))
       .arg(reload_arg().requires("file"))
       .arg(ca_file_arg())
       .arg(
@@ -2366,12 +2309,14 @@ The installation root is determined, in order of precedence:
   - --root option
   - DENO_INSTALL_ROOT environment variable
   - $HOME/.deno")
-    .defer(|cmd| cmd.arg(Arg::new("name").required(true))
+    .defer(|cmd| cmd
+      .arg(Arg::new("name").required(true))
       .arg(
         Arg::new("root")
           .long("root")
           .help("Installation root")
           .value_hint(ValueHint::DirPath)
+          .env("DENO_INSTALL_ROOT")
       )
       .arg(
         Arg::new("global")
@@ -2518,6 +2463,7 @@ fn repl_subcommand() -> Command {
   Command::new("repl")
     .about("Read Eval Print Loop")
     .defer(|cmd| runtime_args(cmd, true, true)
+      .args(unstable_args(UnstableArgsConfig::ResolutionAndRuntime))
       .arg(check_arg(false))
       .arg(
         Arg::new("eval-file")
@@ -2539,6 +2485,7 @@ fn repl_subcommand() -> Command {
 
 fn run_subcommand() -> Command {
   runtime_args(Command::new("run"), true, true)
+    .args(unstable_args(UnstableArgsConfig::ResolutionAndRuntime))
     .arg(check_arg(false))
     .arg(watch_arg(true))
     .arg(watch_exclude_arg())
@@ -2589,6 +2536,7 @@ fn serve_host_validator(host: &str) -> Result<String, String> {
 
 fn serve_subcommand() -> Command {
   runtime_args(Command::new("serve"), true, true)
+    .args(unstable_args(UnstableArgsConfig::ResolutionAndRuntime))
     .arg(
       Arg::new("port")
         .long("port")
@@ -2672,6 +2620,7 @@ Directory arguments are expanded to all contained files matching the glob
   deno test src/",
     )
   .defer(|cmd| runtime_args(cmd, true, true)
+    .args(unstable_args(UnstableArgsConfig::ResolutionAndRuntime))
     .arg(check_arg(true))
     .arg(
       Arg::new("ignore")
@@ -2917,6 +2866,7 @@ Remote modules and multiple modules may also be specified:
           )
           .action(ArgAction::SetTrue),
       )
+      .args(unstable_args(UnstableArgsConfig::Resolution))
       .arg(no_config_arg())
       .arg(config_arg())
       .arg(import_map_arg())
@@ -2930,10 +2880,11 @@ Remote modules and multiple modules may also be specified:
 fn publish_subcommand() -> Command {
   Command::new("publish")
     .hide(true)
-    .about("Unstable preview feature: Publish the current working directory's package or workspace")
-    // TODO: .long_about()
+    .about("Publish the current working directory's package or workspace")
     .defer(|cmd| {
-      cmd.arg(
+      cmd
+      .args(unstable_args(UnstableArgsConfig::Resolution))
+      .arg(
         Arg::new("token")
           .long("token")
           .help("The API token to use when publishing. If unset, interactive authentication is be used")
@@ -3360,7 +3311,8 @@ fn permission_args(app: Command) -> Command {
       Arg::new("no-prompt")
         .long("no-prompt")
         .action(ArgAction::SetTrue)
-        .help("Always throw if required permission wasn't passed"),
+        .help("Always throw if required permission wasn't passed")
+        .env("DENO_NO_PROMPT"),
     )
 }
 
@@ -3826,6 +3778,83 @@ fn allow_scripts_arg() -> Arg {
     .value_name("PACKAGE")
     .value_parser(parse_packages_allowed_scripts)
     .help("Allow running npm lifecycle scripts for the given packages. Note: Scripts will only be executed when using a node_modules directory (`--node-modules-dir`)")
+}
+
+enum UnstableArgsConfig {
+  Resolution,
+  ResolutionAndRuntime,
+}
+
+struct UnstableArgsIter {
+  idx: usize,
+  cfg: UnstableArgsConfig,
+}
+
+impl Iterator for UnstableArgsIter {
+  type Item = Arg;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    let arg = if self.idx == 0 {
+      Arg::new("unstable")
+          .long("unstable")
+          .help("Enable unstable features and APIs")
+          .long_help(if !*FULL_UNSTABLE_HELP {
+            "Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features.\n\nTo view the list of individual unstable feature flags, run this command again with DENO_UNSTABLE_HELP=1."
+          } else {
+            "Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features."
+          })
+          .action(ArgAction::SetTrue)
+          .global(true)
+    } else if self.idx == 1 {
+      Arg::new("unstable-bare-node-builtins")
+        .long("unstable-bare-node-builtins")
+        .help("Enable unstable bare node builtins feature")
+        .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .global(true)
+        .hide(!*FULL_UNSTABLE_HELP)
+    } else if self.idx == 2 {
+      Arg::new("unstable-byonm")
+        .long("unstable-byonm")
+        .help("Enable unstable 'bring your own node_modules' feature")
+        .env("DENO_UNSTABLE_BYONM")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .global(true)
+        .hide(!*FULL_UNSTABLE_HELP)
+    } else if self.idx == 3 {
+      Arg::new("unstable-sloppy-imports")
+      .long("unstable-sloppy-imports")
+      .help(
+        "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing.",
+      )
+      .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
+      .value_parser(FalseyValueParser::new())
+      .action(ArgAction::SetTrue)
+      .global(true)
+      .hide(!*FULL_UNSTABLE_HELP)
+    } else if self.idx > 3
+      && matches!(self.cfg, UnstableArgsConfig::ResolutionAndRuntime)
+    {
+      let (flag_name, help, _) =
+        crate::UNSTABLE_GRANULAR_FLAGS.get(self.idx)?;
+      Arg::new(format!("unstable-{}", flag_name))
+        .long(format!("unstable-{}", flag_name))
+        .help(help)
+        .action(ArgAction::SetTrue)
+        .global(true)
+        .hide(!*FULL_UNSTABLE_HELP)
+    } else {
+      return None;
+    };
+    self.idx += 1;
+    Some(arg)
+  }
+}
+
+fn unstable_args(cfg: UnstableArgsConfig) -> impl IntoIterator<Item = Arg> {
+  UnstableArgsIter { idx: 0, cfg }
 }
 
 fn allow_scripts_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
