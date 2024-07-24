@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::mem::MaybeUninit;
+
 use crate::NodePermissions;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -45,14 +47,13 @@ where
 #[derive(serde::Serialize)]
 pub struct UserInfo {
   username: String,
-  homedir: Option<String>,
+  homedir: String,
   shell: Option<String>,
 }
 
 #[cfg(unix)]
 fn get_user_info(uid: u32) -> Result<UserInfo, AnyError> {
   use std::ffi::CStr;
-  use std::mem::MaybeUninit;
   let mut pw: MaybeUninit<libc::passwd> = MaybeUninit::uninit();
   let mut result: *mut libc::passwd = std::ptr::null_mut();
   // SAFETY: libc call, no invariants
@@ -96,21 +97,76 @@ fn get_user_info(uid: u32) -> Result<UserInfo, AnyError> {
   let shell = unsafe { CStr::from_ptr(pw.pw_shell) };
   Ok(UserInfo {
     username: username.to_string_lossy().into_owned(),
-    homedir: Some(homedir.to_string_lossy().into_owned()),
+    homedir: homedir.to_string_lossy().into_owned(),
     shell: Some(shell.to_string_lossy().into_owned()),
   })
 }
 
 #[cfg(windows)]
-fn get_user_info(_uid: u32) {
-  // use windows_sys::Win32::Foundation::HANDLE;
-  // use windows_sys::Win32::System::Threading::OpenProcessToken;
-  // let mut token: HANDLE = 0;
-  // let mut username = [0u16; 256 + 1];
+fn get_user_info(_uid: u32) -> Result<UserInfo, AnyError> {
+  use std::ffi::OsString;
+  use std::os::windows::ffi::OsStringExt;
+
+  use windows_sys::Win32::Foundation::CloseHandle;
+  use windows_sys::Win32::Foundation::GetLastError;
+  use windows_sys::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
+  use windows_sys::Win32::Foundation::HANDLE;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+  use windows_sys::Win32::System::Threading::OpenProcessToken;
+  use windows_sys::Win32::UI::Shell::GetUserProfileDirectoryW;
+  struct Handle(HANDLE);
+  impl Drop for Handle {
+    fn drop(&mut self) {
+      // SAFETY: win32 call
+      unsafe {
+        CloseHandle(self.0);
+      }
+    }
+  }
+  let mut token: MaybeUninit<HANDLE> = MaybeUninit::uninit();
+
+  // Get a handle to the current process
+  // SAFETY: win32 call
+  unsafe {
+    if OpenProcessToken(
+      GetCurrentProcess(),
+      windows_sys::Win32::Security::TOKEN_READ,
+      token.as_mut_ptr(),
+    ) == 0
+    {
+      return Err(std::io::Error::last_os_error().into());
+    }
+  }
+
+  // SAFETY: initialized by call above
+  let token = Handle(unsafe { token.assume_init() });
+
+  let mut bufsize = 0;
+  // get the size for the homedir buf (it'll end up in `bufsize`)
+  // SAFETY: win32 call
+  unsafe {
+    GetUserProfileDirectoryW(token.0, std::ptr::null_mut(), &mut bufsize);
+    let err = GetLastError();
+    if err != ERROR_INSUFFICIENT_BUFFER {
+      return Err(std::io::Error::from_raw_os_error(err as i32).into());
+    }
+  }
+  let mut path = vec![0; bufsize as usize];
+  // Actually get the homedir
+  // SAFETY: path is `bufsize` elements
+  unsafe {
+    if GetUserProfileDirectoryW(token.0, path.as_mut_ptr(), &mut bufsize) == 0 {
+      return Err(std::io::Error::last_os_error().into());
+    }
+  }
+  // remove trailing nul
+  path.pop();
+  let homedir_wide = OsString::from_wide(&path);
+  let homedir = homedir_wide.to_string_lossy().into_owned();
 
   Ok(UserInfo {
     username: deno_whoami::username(),
-    homedir: home::home_dir().map(|path| path.to_string_lossy().to_string()),
+    homedir,
     shell: None,
   })
 }
