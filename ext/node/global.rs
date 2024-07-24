@@ -466,6 +466,9 @@ pub fn definer<'s>(
   };
 
   let mode = current_mode(scope);
+  if matches!(mode, Mode::Deno) {
+    return v8::Intercepted::No;
+  }
 
   let context = scope.get_current_context();
   let inner = {

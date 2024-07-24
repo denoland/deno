@@ -236,3 +236,11 @@ Deno.test(function nodeGlobalsRaise() {
     Buffer;
   }, ReferenceError);
 });
+
+Deno.test(function checkSelfDescriptor() {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "self")!;
+  assertEquals(typeof descriptor.get, "function");
+  assertEquals(typeof descriptor.set, "function");
+  assertEquals(descriptor.enumerable, true);
+  assertEquals(descriptor.configurable, true);
+});
