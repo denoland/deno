@@ -106,7 +106,7 @@ pub(crate) fn from_env() -> Proxies {
   Proxies { intercepts, no }
 }
 
-pub(crate) fn basic_auth(user: &str, pass: &str) -> HeaderValue {
+pub fn basic_auth(user: &str, pass: Option<&str>) -> HeaderValue {
   use base64::prelude::BASE64_STANDARD;
   use base64::write::EncoderWriter;
   use std::io::Write;
@@ -114,7 +114,10 @@ pub(crate) fn basic_auth(user: &str, pass: &str) -> HeaderValue {
   let mut buf = b"Basic ".to_vec();
   {
     let mut encoder = EncoderWriter::new(&mut buf, &BASE64_STANDARD);
-    let _ = write!(encoder, "{user}:{pass}");
+    let _ = write!(encoder, "{user}:");
+    if let Some(password) = pass {
+      let _ = write!(encoder, "{password}");
+    }
   }
   let mut header =
     HeaderValue::from_bytes(&buf).expect("base64 is always valid HeaderValue");
@@ -140,10 +143,10 @@ impl Intercept {
   pub(crate) fn set_auth(&mut self, user: &str, pass: &str) {
     match self.target {
       Target::Http { ref mut auth, .. } => {
-        *auth = Some(basic_auth(user, pass));
+        *auth = Some(basic_auth(user, Some(pass)));
       }
       Target::Https { ref mut auth, .. } => {
-        *auth = Some(basic_auth(user, pass));
+        *auth = Some(basic_auth(user, Some(pass)));
       }
       Target::Socks { ref mut auth, .. } => {
         *auth = Some((user.into(), pass.into()));
@@ -192,7 +195,7 @@ impl Target {
       if is_socks {
         socks_auth = Some((user.into(), pass.into()));
       } else {
-        http_auth = Some(basic_auth(user, pass));
+        http_auth = Some(basic_auth(user, Some(pass)));
       }
       builder = builder.authority(host_port);
     } else {
