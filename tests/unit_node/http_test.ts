@@ -846,7 +846,10 @@ Deno.test(
   "[node/http] client upgrade",
   { permissions: { net: true } },
   async () => {
-    const { promise, resolve } = Promise.withResolvers<void>();
+    const { promise: serverClosed, resolve: resolveServer } = Promise
+      .withResolvers<void>();
+    const { promise: socketClosed, resolve: resolveSocket } = Promise
+      .withResolvers<void>();
     const server = http.createServer((req, res) => {
       // @ts-ignore: It exists on TLSSocket
       assert(!req.socket.encrypted);
@@ -887,12 +890,16 @@ Deno.test(
         // @ts-ignore it's a socket for real
         serverSocket!.end();
         server.close(() => {
-          resolve();
+          resolveServer();
+        });
+        socket.on("close", () => {
+          resolveSocket();
         });
       });
     });
 
-    await promise;
+    await serverClosed;
+    await socketClosed;
   },
 );
 

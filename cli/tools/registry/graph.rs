@@ -147,6 +147,13 @@ impl GraphDiagnosticsCollector {
       let parsed_source = self
         .parsed_source_cache
         .get_parsed_source_from_js_module(module)?;
+
+      // surface syntax errors
+      for diagnostic in parsed_source.diagnostics() {
+        diagnostics_collector
+          .push(PublishDiagnostic::SyntaxError(diagnostic.clone()));
+      }
+
       check_for_banned_triple_slash_directives(
         &parsed_source,
         diagnostics_collector,

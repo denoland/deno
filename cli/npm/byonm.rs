@@ -6,13 +6,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_config::package_json::PackageJsonDepValue;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::errors::PackageFolderResolveError;
-use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
+use deno_runtime::deno_node::errors::PackageFolderResolveIoError;
+use deno_runtime::deno_node::errors::PackageNotFoundError;
 use deno_runtime::deno_node::load_pkg_json;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NpmResolver;
@@ -198,7 +199,7 @@ impl NpmResolver for ByonmCliNpmResolver {
       }
 
       Err(
-        PackageFolderResolveErrorKind::NotFoundPackage {
+        PackageNotFoundError {
           package_name: name.to_string(),
           referrer: referrer.clone(),
           referrer_extra: None,
@@ -209,7 +210,7 @@ impl NpmResolver for ByonmCliNpmResolver {
 
     let path = inner(&*self.fs, name, referrer)?;
     self.fs.realpath_sync(&path).map_err(|err| {
-      PackageFolderResolveErrorKind::Io {
+      PackageFolderResolveIoError {
         package_name: name.to_string(),
         referrer: referrer.clone(),
         source: err.into_io_error(),
@@ -285,9 +286,14 @@ impl CliNpmResolver for ByonmCliNpmResolver {
       concat!(
         "Could not find \"{}\" in a node_modules folder. ",
         "Deno expects the node_modules/ directory to be up to date. ",
-        "Did you forget to run `npm install`?"
+        "Did you forget to run `{}`?"
       ),
       alias,
+      if *crate::args::DENO_FUTURE {
+        "deno install"
+      } else {
+        "npm install"
+      }
     );
   }
 

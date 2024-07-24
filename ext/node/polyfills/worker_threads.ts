@@ -356,7 +356,7 @@ internals.__initWorkerThreads = (
       (ev: any) => any
     >();
 
-    parentPort = self as ParentPort;
+    parentPort = globalThis as ParentPort;
     threadId = workerId;
     if (maybeWorkerMetadata) {
       const { 0: metadata, 1: _ } = maybeWorkerMetadata;

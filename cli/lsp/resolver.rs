@@ -86,7 +86,6 @@ impl Default for LspScopeResolver {
 impl LspScopeResolver {
   async fn from_config_data(
     config_data: Option<&Arc<ConfigData>>,
-    config: &Config,
     cache: &LspCache,
     http_client_provider: Option<&Arc<HttpClientProvider>>,
   ) -> Self {
@@ -107,18 +106,16 @@ impl LspScopeResolver {
       node_resolver.as_ref(),
     );
     let jsr_resolver = Some(Arc::new(JsrCacheResolver::new(
-      cache.for_specifier(config_data.map(|d| &d.scope)),
+      cache.for_specifier(config_data.map(|d| d.scope.as_ref())),
       config_data.map(|d| d.as_ref()),
-      config,
     )));
     let redirect_resolver = Some(Arc::new(RedirectResolver::new(
-      cache.for_specifier(config_data.map(|d| &d.scope)),
+      cache.for_specifier(config_data.map(|d| d.scope.as_ref())),
       config_data.and_then(|d| d.lockfile.clone()),
     )));
     let npm_graph_resolver = graph_resolver.create_graph_npm_resolver();
     let graph_imports = config_data
-      .and_then(|d| d.config_file.as_ref())
-      .and_then(|cf| cf.to_compiler_option_types().ok())
+      .and_then(|d| d.member_dir.workspace.to_compiler_option_types().ok())
       .map(|imports| {
         Arc::new(
           imports
@@ -188,7 +185,6 @@ impl LspResolver {
         Arc::new(
           LspScopeResolver::from_config_data(
             Some(config_data),
-            config,
             cache,
             http_client_provider,
           )
@@ -198,13 +194,8 @@ impl LspResolver {
     }
     Self {
       unscoped: Arc::new(
-        LspScopeResolver::from_config_data(
-          None,
-          config,
-          cache,
-          http_client_provider,
-        )
-        .await,
+        LspScopeResolver::from_config_data(None, cache, http_client_provider)
+          .await,
       ),
       by_scope,
     }
@@ -522,32 +513,29 @@ fn create_graph_resolver(
   npm_resolver: Option<&Arc<dyn CliNpmResolver>>,
   node_resolver: Option<&Arc<CliNodeResolver>>,
 ) -> Arc<CliGraphResolver> {
-  let config_file = config_data.and_then(|d| d.config_file.as_deref());
+  let workspace = config_data.map(|d| &d.member_dir.workspace);
   let unstable_sloppy_imports =
-    config_file.is_some_and(|cf| cf.has_unstable("sloppy-imports"));
+    workspace.is_some_and(|dir| dir.has_unstable("sloppy-imports"));
   Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
     node_resolver: node_resolver.cloned(),
     npm_resolver: npm_resolver.cloned(),
-    workspace_resolver: Arc::new(WorkspaceResolver::new_raw(
-      config_data.and_then(|d| d.import_map.as_ref().map(|i| (**i).clone())),
-      config_data
-        .and_then(|d| d.package_json.clone())
-        .into_iter()
-        .collect(),
-      if config_data.map(|d| d.byonm).unwrap_or(false) {
-        PackageJsonDepResolution::Disabled
-      } else {
-        // todo(dsherret): this should also be disabled for when using
-        // auto-install with a node_modules directory
-        PackageJsonDepResolution::Enabled
+    workspace_resolver: config_data.map(|d| d.resolver.clone()).unwrap_or_else(
+      || {
+        Arc::new(WorkspaceResolver::new_raw(
+          // this is fine because this is only used before initialization
+          Arc::new(ModuleSpecifier::parse("file:///").unwrap()),
+          None,
+          Vec::new(),
+          PackageJsonDepResolution::Disabled,
+        ))
       },
-    )),
-    maybe_jsx_import_source_config: config_file
-      .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten()),
+    ),
+    maybe_jsx_import_source_config: workspace.and_then(|workspace| {
+      workspace.to_maybe_jsx_import_source_config().ok().flatten()
+    }),
     maybe_vendor_dir: config_data.and_then(|d| d.vendor_dir.as_ref()),
-    bare_node_builtins_enabled: config_file
-      .map(|cf| cf.has_unstable("bare-node-builtins"))
-      .unwrap_or(false),
+    bare_node_builtins_enabled: workspace
+      .is_some_and(|workspace| workspace.has_unstable("bare-node-builtins")),
     sloppy_imports_resolver: unstable_sloppy_imports.then(|| {
       SloppyImportsResolver::new_without_stat_cache(Arc::new(deno_fs::RealFs))
     }),
