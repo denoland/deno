@@ -28,7 +28,7 @@ import {
   op_homedir,
   op_node_os_get_priority,
   op_node_os_set_priority,
-  op_node_os_username,
+  op_node_os_user_info,
 } from "ext:core/ops";
 
 import { validateIntegerRange } from "ext:deno_node/_utils.ts";
@@ -336,15 +336,14 @@ export function userInfo(
   //  The value of homedir returned by os.userInfo() is provided by the operating system.
   //  This differs from the result of os.homedir(), which queries environment
   //  variables for the home directory before falling back to the operating system response.
-  let _homedir = homedir();
-  if (!_homedir) {
-    throw new ERR_OS_NO_HOMEDIR();
-  }
-  let shell = isWindows ? null : (Deno.env.get("SHELL") || null);
-  let username = op_node_os_username();
+  // let _homedir = homedir();
+  // if (!_homedir) {
+  //   throw new ERR_OS_NO_HOMEDIR();
+  // }
+  let { username, homedir, shell } = op_node_os_user_info(uid);
 
   if (options?.encoding === "buffer") {
-    _homedir = _homedir ? Buffer.from(_homedir) : _homedir;
+    homedir = homedir ? Buffer.from(homedir) : homedir;
     shell = shell ? Buffer.from(shell) : shell;
     username = Buffer.from(username);
   }
@@ -352,7 +351,7 @@ export function userInfo(
   return {
     uid,
     gid,
-    homedir: _homedir,
+    homedir,
     shell,
     username,
   };
