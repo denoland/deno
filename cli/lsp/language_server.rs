@@ -3556,7 +3556,7 @@ impl Inner {
       )?),
     };
     let cli_options = CliOptions::new(
-      Flags {
+      Arc::new(Flags {
         cache_path: Some(self.cache.deno_dir().root.clone()),
         ca_stores: workspace_settings.certificate_stores.clone(),
         ca_data: workspace_settings.tls_certificate.clone().map(CaData::File),
@@ -3576,7 +3576,7 @@ impl Inner {
         // bit of a hack to force the lsp to cache the @types/node package
         type_check_mode: crate::args::TypeCheckMode::Local,
         ..Default::default()
-      },
+      }),
       initial_cwd,
       config_data.and_then(|d| d.lockfile.clone()),
       config_data

@@ -72,16 +72,16 @@ use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
 
 pub async fn publish(
-  flags: Flags,
+  flags: Arc<Flags>,
   publish_flags: PublishFlags,
 ) -> Result<(), AnyError> {
-  let cli_factory = CliFactory::from_flags(flags)?;
+  let cli_factory = CliFactory::from_flags(flags);
 
   let auth_method =
     get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
-  let directory_path = cli_factory.cli_options().initial_cwd();
-  let cli_options = cli_factory.cli_options();
+  let cli_options = cli_factory.cli_options()?;
+  let directory_path = cli_options.initial_cwd();
   let publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
     match cli_options.start_dir.maybe_deno_json() {
@@ -121,7 +121,7 @@ pub async fn publish(
     cli_factory.module_graph_creator().await?.clone(),
     cli_factory.parsed_source_cache().clone(),
     cli_factory.type_checker().await?.clone(),
-    cli_factory.cli_options().clone(),
+    cli_options.clone(),
     specifier_unfurler,
   );
 

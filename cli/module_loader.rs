@@ -55,7 +55,6 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
-use deno_core::SourceMapGetter;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
 use deno_graph::GraphKind;
@@ -71,9 +70,10 @@ use deno_semver::npm::NpmPackageReqReference;
 
 pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
   let npm_resolver = factory.npm_resolver().await?;
+  let cli_options = factory.cli_options()?;
   if let Some(npm_resolver) = npm_resolver.as_managed() {
     if !npm_resolver.ensure_top_level_package_json_install().await? {
-      if let Some(lockfile) = factory.maybe_lockfile() {
+      if let Some(lockfile) = cli_options.maybe_lockfile() {
         lockfile.error_if_changed()?;
       }
 
@@ -107,7 +107,7 @@ pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
         graph,
         &roots,
         false,
-        factory.cli_options().ts_type_lib_window(),
+        factory.cli_options()?.ts_type_lib_window(),
         deno_runtime::deno_permissions::PermissionsContainer::allow_all(),
       )
       .await?;
@@ -293,8 +293,7 @@ impl CliModuleLoaderFactory {
       shared: self.shared.clone(),
     })));
     ModuleLoaderAndSourceMapGetter {
-      module_loader: loader.clone(),
-      source_map_getter: Some(loader),
+      module_loader: loader,
     }
   }
 }
@@ -827,11 +826,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     }
     std::future::ready(()).boxed_local()
   }
-}
 
-impl<TGraphContainer: ModuleGraphContainer> SourceMapGetter
-  for CliModuleLoader<TGraphContainer>
-{
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
     let specifier = resolve_url(file_name).ok()?;
     match specifier.scheme() {
@@ -844,7 +839,7 @@ impl<TGraphContainer: ModuleGraphContainer> SourceMapGetter
     source_map_from_code(source.code.as_bytes())
   }
 
-  fn get_source_line(
+  fn get_source_mapped_source_line(
     &self,
     file_name: &str,
     line_number: usize,

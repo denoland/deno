@@ -26,7 +26,6 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::resolve_import_map_value_from_specifier;
 
@@ -62,7 +61,6 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_terminal::colors;
 use dotenvy::from_filename;
 use once_cell::sync::Lazy;
-use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -599,43 +597,6 @@ pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
   })
 }
 
-struct CliRootCertStoreProvider {
-  cell: OnceCell<RootCertStore>,
-  maybe_root_path: Option<PathBuf>,
-  maybe_ca_stores: Option<Vec<String>>,
-  maybe_ca_data: Option<CaData>,
-}
-
-impl CliRootCertStoreProvider {
-  pub fn new(
-    maybe_root_path: Option<PathBuf>,
-    maybe_ca_stores: Option<Vec<String>>,
-    maybe_ca_data: Option<CaData>,
-  ) -> Self {
-    Self {
-      cell: Default::default(),
-      maybe_root_path,
-      maybe_ca_stores,
-      maybe_ca_data,
-    }
-  }
-}
-
-impl RootCertStoreProvider for CliRootCertStoreProvider {
-  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
-    self
-      .cell
-      .get_or_try_init(|| {
-        get_root_cert_store(
-          self.maybe_root_path.clone(),
-          self.maybe_ca_stores.clone(),
-          self.maybe_ca_data.clone(),
-        )
-      })
-      .map_err(|e| e.into())
-  }
-}
-
 #[derive(Error, Debug, Clone)]
 pub enum RootCertStoreLoadError {
   #[error(
@@ -761,7 +722,7 @@ struct CliOptionOverrides {
 pub struct CliOptions {
   // the source of the options is a detail the rest of the
   // application need not concern itself with, so keep these private
-  flags: Flags,
+  flags: Arc<Flags>,
   initial_cwd: PathBuf,
   maybe_node_modules_folder: Option<PathBuf>,
   npmrc: Arc<ResolvedNpmRc>,
@@ -774,7 +735,7 @@ pub struct CliOptions {
 
 impl CliOptions {
   pub fn new(
-    flags: Flags,
+    flags: Arc<Flags>,
     initial_cwd: PathBuf,
     maybe_lockfile: Option<Arc<CliLockfile>>,
     npmrc: Arc<ResolvedNpmRc>,
@@ -830,7 +791,7 @@ impl CliOptions {
     })
   }
 
-  pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
+  pub fn from_flags(flags: Arc<Flags>) -> Result<Self, AnyError> {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
     let maybe_vendor_override = flags.vendor.map(|v| match v {
@@ -918,6 +879,16 @@ impl CliOptions {
       Arc::new(start_dir),
       false,
     )
+  }
+
+  /// This method is purposefully verbose to disourage its use. Do not use it
+  /// except in the factory structs. Instead, prefer specific methods on `CliOptions`
+  /// that can take all sources of information into account (ex. config files or env vars).
+  pub fn into_self_and_flags(
+    self: Arc<CliOptions>,
+  ) -> (Arc<CliOptions>, Arc<Flags>) {
+    let flags = self.flags.clone();
+    (self, flags)
   }
 
   #[inline(always)]
@@ -1241,16 +1212,6 @@ impl CliOptions {
     self.workspace().vendor_dir_path()
   }
 
-  pub fn resolve_root_cert_store_provider(
-    &self,
-  ) -> Arc<dyn RootCertStoreProvider> {
-    Arc::new(CliRootCertStoreProvider::new(
-      None,
-      self.flags.ca_stores.clone(),
-      self.flags.ca_data.clone(),
-    ))
-  }
-
   pub fn resolve_ts_config_for_emit(
     &self,
     config_type: TsConfigType,
@@ -1290,8 +1251,8 @@ impl CliOptions {
     Ok(Some(InspectorServer::new(host, version::get_user_agent())?))
   }
 
-  pub fn maybe_lockfile(&self) -> Option<Arc<CliLockfile>> {
-    self.maybe_lockfile.clone()
+  pub fn maybe_lockfile(&self) -> Option<&Arc<CliLockfile>> {
+    self.maybe_lockfile.as_ref()
   }
 
   pub fn to_compiler_option_types(
@@ -1535,10 +1496,6 @@ impl CliOptions {
 
   pub fn no_npm(&self) -> bool {
     self.flags.no_npm
-  }
-
-  pub fn no_config(&self) -> bool {
-    self.flags.config_flag == ConfigFlag::Disabled
   }
 
   pub fn permission_flags(&self) -> &PermissionFlags {
