@@ -172,6 +172,124 @@ fn lsp_triple_slash_types() {
 }
 
 #[test]
+fn unadded_dependency_message_with_import_map() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "import_map.json",
+    json!({
+      "imports": {
+
+      }
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "importMap": "import_map.json".to_string(),
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "file.ts",
+    r#"
+        import * as x from "@std/fs";
+      "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+    }),
+  );
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("file.ts"),
+    }
+  }));
+  let mut expected_lsp_messages = Vec::from(["`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
+  "'x' is declared but its value is never read.",
+  "Use [deno add @std/fs] to add the dependency."]);
+  expected_lsp_messages.sort();
+  let all_diagnostics = diagnostics
+    .all();
+    let mut correct_lsp_messages = all_diagnostics.iter()
+    .map(|d| d.message.as_str())
+    .collect::<Vec<&str>>();
+  correct_lsp_messages.sort();
+  assert_eq!(correct_lsp_messages, expected_lsp_messages);
+  client.shutdown();
+}
+
+#[test]
+fn unadded_dependency_message() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+        "imports": {
+
+    }
+      })
+    .to_string(),
+  );
+  temp_dir.write(
+    "file.ts",
+    r#"
+        import * as x from "@std/fs";
+      "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+    }),
+  );
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("file.ts"),
+    }
+  }));
+  let mut expected_lsp_messages = Vec::from(["`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
+  "'x' is declared but its value is never read.",
+  "Use [deno add @std/fs] to add the dependency."]);
+  expected_lsp_messages.sort();
+  let all_diagnostics = diagnostics
+    .all();
+    let mut correct_lsp_messages = all_diagnostics.iter()
+    .map(|d| d.message.as_str())
+    .collect::<Vec<&str>>();
+  correct_lsp_messages.sort();
+  assert_eq!(
+    correct_lsp_messages,
+    expected_lsp_messages
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_import_map() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
