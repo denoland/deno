@@ -676,7 +676,7 @@ fn kernel_info() -> messaging::KernelInfoReply {
     banner: "Welcome to Deno kernel".to_string(),
     help_links: vec![messaging::HelpLink {
       text: "Visit Deno manual".to_string(),
-      url: "https://deno.land/manual".to_string(),
+      url: "https://docs.deno.com".to_string(),
     }],
     debugger: false,
     error: None,
