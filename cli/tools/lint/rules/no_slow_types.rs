@@ -7,6 +7,8 @@ use deno_ast::ModuleSpecifier;
 use deno_graph::FastCheckDiagnostic;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_lint::diagnostic::LintDiagnosticDetails;
+use deno_lint::diagnostic::LintDiagnosticRange;
 
 use super::PackageLintRule;
 
@@ -40,19 +42,25 @@ impl PackageLintRule for NoSlowTypesRule {
     collect_no_slow_type_diagnostics(graph, entrypoints)
       .into_iter()
       .filter_map(|d| {
-        // it's fine not to surface diagnostics without a range
-        // because it's only emit and export not found errors, which
-        // is fine to just surface when publishing
-        let range = d.range()?;
         Some(LintDiagnostic {
           specifier: d.specifier().clone(),
-          range: range.range,
-          text_info: range.text_info.clone(),
-          message: d.message().to_string(),
-          code: CODE.to_string(),
-          hint: None,
-          fixes: vec![],
-          custom_docs_url: d.docs_url().map(|u| u.into_owned()),
+          range: d.range().map(|range| LintDiagnosticRange {
+            text_info: range.text_info.clone(),
+            range: range.range,
+            description: d.range_description().map(|r| r.to_string()),
+          }),
+          details: LintDiagnosticDetails {
+            message: d.message().to_string(),
+            code: CODE.to_string(),
+            hint: d.hint().map(|h| h.to_string()),
+            info: d
+              .info()
+              .iter()
+              .map(|info| Cow::Owned(info.to_string()))
+              .collect(),
+            fixes: vec![],
+            custom_docs_url: d.docs_url().map(|u| u.into_owned()),
+          },
         })
       })
       .collect()

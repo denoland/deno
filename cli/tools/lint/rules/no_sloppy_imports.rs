@@ -11,6 +11,8 @@ use deno_core::anyhow::anyhow;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::ResolveError;
 use deno_graph::Range;
+use deno_lint::diagnostic::LintDiagnosticDetails;
+use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_lint::diagnostic::LintFix;
 use deno_lint::diagnostic::LintFixChange;
 use deno_lint::rules::LintRule;
@@ -42,6 +44,7 @@ impl NoSloppyImportsRule {
 }
 
 const CODE: &str = "no-sloppy-imports";
+const DOCS_URL: &str = "https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports";
 
 impl ExtendedLintRule for NoSloppyImportsRule {
   fn supports_incremental_cache(&self) -> bool {
@@ -53,7 +56,7 @@ impl ExtendedLintRule for NoSloppyImportsRule {
   }
 
   fn help_docs_url(&self) -> Cow<'static, str> {
-    Cow::Borrowed("https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports")
+    Cow::Borrowed(DOCS_URL)
   }
 
   fn into_base(self: Box<Self>) -> Box<dyn LintRule> {
@@ -108,39 +111,47 @@ impl LintRule for NoSloppyImportsRule {
           column_index: range.end.character,
         });
       let source_range = SourceRange::new(start_range, end_range);
-      context.add_diagnostic_with_fixes(
-        source_range,
-        CODE,
-        "Sloppy imports are not allowed.",
-        Some(sloppy_import.as_suggestion_message()),
-        context
-          .specifier()
-          .make_relative(sloppy_import.as_specifier())
-          .map(|relative| {
-            vec![LintFix {
-              description: Cow::Owned(sloppy_import.as_quick_fix_message()),
-              changes: vec![LintFixChange {
-                new_text: Cow::Owned({
-                  let relative = if relative.starts_with("../") {
-                    relative
-                  } else {
-                    format!("./{}", relative)
-                  };
-                  let current_text =
-                    context.text_info().range_text(&source_range);
-                  if current_text.starts_with('"') {
-                    format!("\"{}\"", relative)
-                  } else if current_text.starts_with('\'') {
-                    format!("'{}'", relative)
-                  } else {
-                    relative
-                  }
-                }),
-                range: source_range,
-              }],
-            }]
-          })
-          .unwrap_or_default(),
+      context.add_diagnostic_details(
+        Some(LintDiagnosticRange {
+          range: source_range,
+          description: None,
+          text_info: context.text_info().clone(),
+        }),
+        LintDiagnosticDetails {
+          message: "Sloppy imports are not allowed.".to_string(),
+          code: CODE.to_string(),
+          custom_docs_url: Some(DOCS_URL.to_string()),
+          fixes: context
+            .specifier()
+            .make_relative(sloppy_import.as_specifier())
+            .map(|relative| {
+              vec![LintFix {
+                description: Cow::Owned(sloppy_import.as_quick_fix_message()),
+                changes: vec![LintFixChange {
+                  new_text: Cow::Owned({
+                    let relative = if relative.starts_with("../") {
+                      relative
+                    } else {
+                      format!("./{}", relative)
+                    };
+                    let current_text =
+                      context.text_info().range_text(&source_range);
+                    if current_text.starts_with('"') {
+                      format!("\"{}\"", relative)
+                    } else if current_text.starts_with('\'') {
+                      format!("'{}'", relative)
+                    } else {
+                      relative
+                    }
+                  }),
+                  range: source_range,
+                }],
+              }]
+            })
+            .unwrap_or_default(),
+          hint: None,
+          info: vec![],
+        },
       );
     }
   }

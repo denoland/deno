@@ -215,7 +215,7 @@ fn apply_lint_fixes(
   let mut quick_fixes = diagnostics
     .iter()
     // use the first quick fix
-    .filter_map(|d| d.fixes.first())
+    .filter_map(|d| d.details.fixes.first())
     .flat_map(|fix| fix.changes.iter())
     .map(|change| deno_ast::TextChange {
       range: change.range.as_byte_range(file_start),

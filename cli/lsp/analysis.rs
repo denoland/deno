@@ -9,6 +9,7 @@ use super::tsc;
 
 use crate::args::jsr_url;
 use crate::tools::lint::CliLinter;
+use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::SourceRange;
@@ -22,7 +23,6 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use deno_lint::diagnostic::LintDiagnostic;
 use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
 use deno_semver::jsr::JsrPackageNvReference;
@@ -147,8 +147,10 @@ impl Reference {
   }
 }
 
-fn as_lsp_range_from_diagnostic(diagnostic: &LintDiagnostic) -> Range {
-  as_lsp_range(diagnostic.range, &diagnostic.text_info)
+fn as_lsp_range_from_lint_diagnostic(
+  diagnostic_range: &LintDiagnosticRange,
+) -> Range {
+  as_lsp_range(diagnostic_range.range, &diagnostic_range.text_info)
 }
 
 fn as_lsp_range(
@@ -178,28 +180,32 @@ pub fn get_lint_references(
   Ok(
     lint_diagnostics
       .into_iter()
-      .map(|d| Reference {
-        range: as_lsp_range_from_diagnostic(&d),
-        category: Category::Lint {
-          message: d.message,
-          code: d.code.to_string(),
-          hint: d.hint,
-          quick_fixes: d
-            .fixes
-            .into_iter()
-            .map(|f| DataQuickFix {
-              description: f.description.to_string(),
-              changes: f
-                .changes
-                .into_iter()
-                .map(|change| DataQuickFixChange {
-                  range: as_lsp_range(change.range, &d.text_info),
-                  new_text: change.new_text.to_string(),
-                })
-                .collect(),
-            })
-            .collect(),
-        },
+      .filter_map(|d| {
+        let range = d.range.as_ref()?;
+        Some(Reference {
+          range: as_lsp_range_from_lint_diagnostic(range),
+          category: Category::Lint {
+            message: d.details.message,
+            code: d.details.code.to_string(),
+            hint: d.details.hint,
+            quick_fixes: d
+              .details
+              .fixes
+              .into_iter()
+              .map(|f| DataQuickFix {
+                description: f.description.to_string(),
+                changes: f
+                  .changes
+                  .into_iter()
+                  .map(|change| DataQuickFixChange {
+                    range: as_lsp_range(change.range, &range.text_info),
+                    new_text: change.new_text.to_string(),
+                  })
+                  .collect(),
+              })
+              .collect(),
+          },
+        })
       })
       .collect(),
   )

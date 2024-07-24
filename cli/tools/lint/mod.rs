@@ -513,7 +513,14 @@ fn handle_lint_result(
         }
       }
       file_diagnostics.sort_by(|a, b| match a.specifier.cmp(&b.specifier) {
-        std::cmp::Ordering::Equal => a.range.start.cmp(&b.range.start),
+        std::cmp::Ordering::Equal => {
+          let a_start = a.range.as_ref().map(|r| r.range.start);
+          let b_start = b.range.as_ref().map(|r| r.range.start);
+          match a_start.cmp(&b_start) {
+            std::cmp::Ordering::Equal => a.details.code.cmp(&b.details.code),
+            other => other,
+          }
+        }
         file_order => file_order,
       });
       for d in &file_diagnostics {
@@ -557,7 +564,7 @@ impl PrettyLintReporter {
 impl LintReporter for PrettyLintReporter {
   fn visit_diagnostic(&mut self, d: &LintDiagnostic) {
     self.lint_count += 1;
-    if !d.fixes.is_empty() {
+    if !d.details.fixes.is_empty() {
       self.fixable_diagnostics += 1;
     }
 
@@ -605,15 +612,24 @@ impl LintReporter for CompactLintReporter {
   fn visit_diagnostic(&mut self, d: &LintDiagnostic) {
     self.lint_count += 1;
 
-    let line_and_column = d.text_info.line_and_column_display(d.range.start);
-    log::error!(
-      "{}: line {}, col {} - {} ({})",
-      d.specifier,
-      line_and_column.line_number,
-      line_and_column.column_number,
-      d.message(),
-      d.code(),
-    )
+    match &d.range {
+      Some(range) => {
+        let text_info = &range.text_info;
+        let range = &range.range;
+        let line_and_column = text_info.line_and_column_display(range.start);
+        log::error!(
+          "{}: line {}, col {} - {} ({})",
+          d.specifier,
+          line_and_column.line_number,
+          line_and_column.column_number,
+          d.message(),
+          d.code(),
+        )
+      }
+      None => {
+        log::error!("{}: {} ({})", d.specifier, d.message(), d.code())
+      }
+    }
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
@@ -692,15 +708,19 @@ impl LintReporter for JsonLintReporter {
   fn visit_diagnostic(&mut self, d: &LintDiagnostic) {
     self.diagnostics.push(JsonLintDiagnostic {
       filename: d.specifier.to_string(),
-      range: Some(JsonLintDiagnosticRange {
-        start: JsonDiagnosticLintPosition::new(
-          d.range.start.as_byte_index(d.text_info.range().start),
-          d.text_info.line_and_column_index(d.range.start),
-        ),
-        end: JsonDiagnosticLintPosition::new(
-          d.range.end.as_byte_index(d.text_info.range().start),
-          d.text_info.line_and_column_index(d.range.end),
-        ),
+      range: d.range.as_ref().map(|range| {
+        let text_info = &range.text_info;
+        let range = range.range;
+        JsonLintDiagnosticRange {
+          start: JsonDiagnosticLintPosition::new(
+            range.start.as_byte_index(text_info.range().start),
+            text_info.line_and_column_index(range.start),
+          ),
+          end: JsonDiagnosticLintPosition::new(
+            range.end.as_byte_index(text_info.range().start),
+            text_info.line_and_column_index(range.end),
+          ),
+        }
       }),
       message: d.message().to_string(),
       code: d.code().to_string(),

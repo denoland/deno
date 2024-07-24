@@ -1646,7 +1646,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.60.1"
+version = "0.61.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d127c05c87cb0fa2a59ad9bc70084f06731a5117c14888253269b6e921cfaef1"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -7781,7 +7783,7 @@ dependencies = [
  "log",
  "naga",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.3",
  "profiling",
  "raw-window-handle",
  "ron",
@@ -7823,7 +7825,7 @@ dependencies = [
  "ndk-sys",
  "objc",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.3",
  "profiling",
  "range-alloc",
  "raw-window-handle",
