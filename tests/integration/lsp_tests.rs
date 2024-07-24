@@ -230,7 +230,7 @@ fn unadded_dependency_message_with_import_map() {
     .collect::<Vec<&str>>();
   correct_lsp_messages.sort();
   let part1 = correct_lsp_messages[1].split("file").collect::<Vec<_>>()[0];
-  let part2 = correct_lsp_messages[1].split("\n").collect::<Vec<_>>()[1];
+  let part2 = correct_lsp_messages[1].split('\n').collect::<Vec<_>>()[1];
   let file_path_removed_from_message = format!("{} {}", part1, part2);
   correct_lsp_messages[1] = file_path_removed_from_message.as_str();
   assert_eq!(correct_lsp_messages, expected_lsp_messages);
@@ -289,7 +289,7 @@ fn unadded_dependency_message() {
     .collect::<Vec<&str>>();
   correct_lsp_messages.sort();
   let part1 = correct_lsp_messages[1].split("file").collect::<Vec<_>>()[0];
-  let part2 = correct_lsp_messages[1].split("\n").collect::<Vec<_>>()[1];
+  let part2 = correct_lsp_messages[1].split('\n').collect::<Vec<_>>()[1];
   let file_path_removed_from_message = format!("{} {}", part1, part2);
   correct_lsp_messages[1] = file_path_removed_from_message.as_str();
   assert_eq!(correct_lsp_messages, expected_lsp_messages);
