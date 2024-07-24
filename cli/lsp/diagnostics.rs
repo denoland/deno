@@ -20,7 +20,8 @@ use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
-use crate::tools::lint::create_linter;
+use crate::tools::lint::CliLinter;
+use crate::tools::lint::CliLinterOptions;
 use crate::tools::lint::LintRuleProvider;
 use crate::util::path::to_percent_decoded_str;
 
@@ -41,8 +42,6 @@ use deno_graph::source::ResolutionMode;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
-use deno_lint::linter::LintConfig as DenoLintConfig;
-use deno_lint::linter::Linter;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -817,28 +816,25 @@ fn generate_lint_diagnostics(
       continue;
     }
     let version = document.maybe_lsp_version();
-    let (lint_config, deno_lint_config, linter) = config
+    let (lint_config, linter) = config
       .tree
       .scope_for_specifier(specifier)
       .and_then(|s| config_data_by_scope.get(s))
-      .map(|d| {
-        (
-          d.lint_config.clone(),
-          d.deno_lint_config.clone(),
-          d.linter.clone(),
-        )
-      })
+      .map(|d| (d.lint_config.clone(), d.linter.clone()))
       .unwrap_or_else(|| {
         (
           Arc::new(LintConfig::new_with_base(PathBuf::from("/"))),
-          DenoLintConfig {
-            default_jsx_factory: None,
-            default_jsx_fragment_factory: None,
-          },
-          create_linter({
-            let lint_rule_provider = LintRuleProvider::new(None, None);
-            lint_rule_provider.resolve_lint_rules(Default::default(), None)
-          }),
+          Arc::new(CliLinter::new(CliLinterOptions {
+            configured_rules: {
+              let lint_rule_provider = LintRuleProvider::new(None, None);
+              lint_rule_provider.resolve_lint_rules(Default::default(), None)
+            },
+            fix: false,
+            deno_lint_config: deno_lint::linter::LintConfig {
+              default_jsx_factory: None,
+              default_jsx_fragment_factory: None,
+            },
+          })),
         )
       });
     diagnostics_vec.push(DiagnosticRecord {
@@ -848,8 +844,7 @@ fn generate_lint_diagnostics(
         diagnostics: generate_document_lint_diagnostics(
           &document,
           &lint_config,
-          deno_lint_config,
-          linter,
+          &linter,
         ),
       },
     });
@@ -860,8 +855,7 @@ fn generate_lint_diagnostics(
 fn generate_document_lint_diagnostics(
   document: &Document,
   lint_config: &LintConfig,
-  deno_lint_config: DenoLintConfig,
-  linter: Linter,
+  linter: &CliLinter,
 ) -> Vec<lsp::Diagnostic> {
   if !lint_config.files.matches_specifier(document.specifier()) {
     return Vec::new();
@@ -869,7 +863,7 @@ fn generate_document_lint_diagnostics(
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
       if let Ok(references) =
-        analysis::get_lint_references(parsed_source, linter, deno_lint_config)
+        analysis::get_lint_references(parsed_source, linter)
       {
         references
           .into_iter()

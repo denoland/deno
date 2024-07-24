@@ -1,18 +1,21 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
+
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::ModuleSpecifier;
 use deno_graph::FastCheckDiagnostic;
 use deno_graph::ModuleGraph;
+use deno_lint::diagnostic::LintDiagnostic;
 
-use super::CliGraphPackageLintRule;
+use super::PackageLintRule;
 
 const CODE: &str = "no-slow-types";
 
 #[derive(Debug)]
 pub struct NoSlowTypesRule;
 
-impl CliGraphPackageLintRule for NoSlowTypesRule {
+impl PackageLintRule for NoSlowTypesRule {
   fn code(&self) -> &'static str {
     CODE
   }
@@ -25,12 +28,34 @@ impl CliGraphPackageLintRule for NoSlowTypesRule {
     include_str!("no_slow_types.md")
   }
 
-  fn lint(
+  fn help_docs_url(&self) -> Cow<'static, str> {
+    Cow::Borrowed("https://jsr.io/docs/about-slow-types")
+  }
+
+  fn lint_package(
     &self,
     graph: &ModuleGraph,
     entrypoints: &[ModuleSpecifier],
-  ) -> Vec<FastCheckDiagnostic> {
+  ) -> Vec<LintDiagnostic> {
     collect_no_slow_type_diagnostics(graph, entrypoints)
+      .into_iter()
+      .filter_map(|d| {
+        // it's fine not to surface diagnostics without a range
+        // because it's only emit and export not found errors, which
+        // is fine to just surface when publishing
+        let range = d.range()?;
+        Some(LintDiagnostic {
+          specifier: d.specifier().clone(),
+          range: range.range,
+          text_info: range.text_info.clone(),
+          message: d.message().to_string(),
+          code: CODE.to_string(),
+          hint: None,
+          fixes: vec![],
+          custom_docs_url: d.docs_url().map(|u| u.into_owned()),
+        })
+      })
+      .collect()
   }
 }
 

@@ -1,3 +1,6 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -7,8 +10,8 @@ use deno_config::deno_json::LintRulesConfig;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_graph::FastCheckDiagnostic;
 use deno_graph::ModuleGraph;
+use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::rules::LintRule;
 
 use crate::resolver::SloppyImportsResolver;
@@ -19,7 +22,7 @@ mod no_slow_types;
 // used for publishing
 pub use no_slow_types::collect_no_slow_type_diagnostics;
 
-pub(super) trait CliGraphPackageLintRule: std::fmt::Debug {
+pub trait PackageLintRule: std::fmt::Debug + Send + Sync {
   fn code(&self) -> &'static str;
 
   fn tags(&self) -> &'static [&'static str] {
@@ -28,26 +31,34 @@ pub(super) trait CliGraphPackageLintRule: std::fmt::Debug {
 
   fn docs(&self) -> &'static str;
 
-  // todo(dsherret): this should not return FastCheckDiagnostics
-  fn lint(
+  fn help_docs_url(&self) -> Cow<'static, str>;
+
+  fn lint_package(
     &self,
     graph: &ModuleGraph,
     entrypoints: &[ModuleSpecifier],
-  ) -> Vec<FastCheckDiagnostic>;
+  ) -> Vec<LintDiagnostic>;
 }
 
 pub(super) trait ExtendedLintRule: LintRule {
   /// A hash of the rule's state. This is used for the incremental cache.
   fn supports_incremental_cache(&self) -> bool;
 
+  fn help_docs_url(&self) -> Cow<'static, str>;
+
   fn into_base(self: Box<Self>) -> Box<dyn LintRule>;
+}
+
+pub enum FileOrPackageLintRule {
+  File(Box<dyn LintRule>),
+  Package(Box<dyn PackageLintRule>),
 }
 
 #[derive(Debug)]
 enum CliLintRuleKind {
   DenoLint(Box<dyn LintRule>),
   Extended(Box<dyn ExtendedLintRule>),
-  Graph(Box<dyn CliGraphPackageLintRule>),
+  Package(Box<dyn PackageLintRule>),
 }
 
 #[derive(Debug)]
@@ -59,7 +70,7 @@ impl CliLintRule {
     match &self.0 {
       DenoLint(rule) => rule.code(),
       Extended(rule) => rule.code(),
-      Graph(rule) => rule.code(),
+      Package(rule) => rule.code(),
     }
   }
 
@@ -68,7 +79,7 @@ impl CliLintRule {
     match &self.0 {
       DenoLint(rule) => rule.tags(),
       Extended(rule) => rule.tags(),
-      Graph(rule) => rule.tags(),
+      Package(rule) => rule.tags(),
     }
   }
 
@@ -77,7 +88,18 @@ impl CliLintRule {
     match &self.0 {
       DenoLint(rule) => rule.docs(),
       Extended(rule) => rule.docs(),
-      Graph(rule) => rule.docs(),
+      Package(rule) => rule.docs(),
+    }
+  }
+
+  pub fn help_docs_url(&self) -> Cow<'static, str> {
+    use CliLintRuleKind::*;
+    match &self.0 {
+      DenoLint(rule) => {
+        Cow::Owned(format!("https://lint.deno.land/rules/{}", rule.code()))
+      }
+      Extended(rule) => rule.help_docs_url(),
+      Package(rule) => rule.help_docs_url(),
     }
   }
 
@@ -87,14 +109,23 @@ impl CliLintRule {
       DenoLint(_) => true,
       Extended(rule) => rule.supports_incremental_cache(),
       // graph rules don't go through the incremental cache, so allow it
-      Graph(_) => true,
+      Package(_) => true,
+    }
+  }
+
+  pub fn into_file_or_pkg_rule(self) -> FileOrPackageLintRule {
+    use CliLintRuleKind::*;
+    match self.0 {
+      DenoLint(rule) => FileOrPackageLintRule::File(rule),
+      Extended(rule) => FileOrPackageLintRule::File(rule.into_base()),
+      Package(rule) => FileOrPackageLintRule::Package(rule),
     }
   }
 }
 
 #[derive(Debug)]
 pub struct ConfiguredRules {
-  pub all_rule_names: HashSet<&'static str>,
+  pub all_rule_codes: HashSet<&'static str>,
   pub rules: Vec<CliLintRule>,
 }
 
@@ -146,22 +177,23 @@ impl LintRuleProvider {
     maybe_config_file: Option<&ConfigFile>,
   ) -> ConfiguredRules {
     let deno_lint_rules = deno_lint::rules::get_all_rules();
-    let cli_lint_rules = vec![CliLintRule::Basic(Box::new(
-      no_sloppy_imports::NoSloppyImportsRule::new(
+    let cli_lint_rules = vec![CliLintRule(CliLintRuleKind::Extended(
+      Box::new(no_sloppy_imports::NoSloppyImportsRule::new(
         self.sloppy_imports_resolver.clone(),
         self.workspace_resolver.clone(),
-      ),
+      )),
     ))];
-    let cli_graph_rules =
-      vec![CliLintRule::Graph(Box::new(no_slow_types::NoSlowTypesRule))];
+    let cli_graph_rules = vec![CliLintRule(CliLintRuleKind::Package(
+      Box::new(no_slow_types::NoSlowTypesRule),
+    ))];
     let mut all_rule_names = HashSet::with_capacity(
       deno_lint_rules.len() + cli_lint_rules.len() + cli_graph_rules.len(),
     );
     let all_rules = deno_lint_rules
       .into_iter()
-      .map(|rule| CliLintRule::Basic(rule))
-      .chain(cli_lint_rules.into_iter())
-      .chain(cli_graph_rules.into_iter())
+      .map(|rule| CliLintRule(CliLintRuleKind::DenoLint(rule)))
+      .chain(cli_lint_rules)
+      .chain(cli_graph_rules)
       .inspect(|rule| {
         all_rule_names.insert(rule.code());
       });
@@ -175,7 +207,7 @@ impl LintRuleProvider {
     );
     ConfiguredRules {
       rules,
-      all_rule_names,
+      all_rule_codes: all_rule_names,
     }
   }
 }

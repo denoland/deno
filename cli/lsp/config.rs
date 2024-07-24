@@ -32,7 +32,6 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_lint::linter::LintConfig as DenoLintConfig;
-use deno_lint::linter::Linter;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_runtime::deno_node::PackageJson;
@@ -60,7 +59,8 @@ use crate::cache::FastInsecureHasher;
 use crate::file_fetcher::FileFetcher;
 use crate::lsp::logging::lsp_warn;
 use crate::resolver::SloppyImportsResolver;
-use crate::tools::lint::create_linter;
+use crate::tools::lint::CliLinter;
+use crate::tools::lint::CliLinterOptions;
 use crate::tools::lint::LintRuleProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
@@ -1120,8 +1120,7 @@ pub struct ConfigData {
   pub lint_config: Arc<LintConfig>,
   pub test_config: Arc<TestConfig>,
   pub exclude_files: Arc<PathOrPatternSet>,
-  pub deno_lint_config: DenoLintConfig,
-  pub linter: Linter,
+  pub linter: Arc<CliLinter>,
   pub ts_config: Arc<LspTsConfig>,
   pub byonm: bool,
   pub node_modules_dir: Option<PathBuf>,
@@ -1547,10 +1546,15 @@ impl ConfigData {
       sloppy_imports_resolver.clone(),
       Some(resolver.clone()),
     );
-    let linter = create_linter(lint_rule_provider.resolve_lint_rules(
-      LintOptions::resolve((*lint_config).clone(), &LintFlags::default()).rules,
-      member_dir.maybe_deno_json().map(|c| c.as_ref()),
-    ));
+    let linter = Arc::new(CliLinter::new(CliLinterOptions {
+      configured_rules: lint_rule_provider.resolve_lint_rules(
+        LintOptions::resolve((*lint_config).clone(), &LintFlags::default())
+          .rules,
+        member_dir.maybe_deno_json().map(|c| c.as_ref()),
+      ),
+      fix: false,
+      deno_lint_config,
+    }));
 
     ConfigData {
       scope,
@@ -1560,7 +1564,6 @@ impl ConfigData {
       fmt_config,
       lint_config,
       test_config,
-      deno_lint_config,
       linter,
       exclude_files,
       ts_config: Arc::new(ts_config),

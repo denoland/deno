@@ -52,6 +52,10 @@ impl ExtendedLintRule for NoSloppyImportsRule {
     self.sloppy_imports_resolver.is_none() || self.workspace_resolver.is_none()
   }
 
+  fn help_docs_url(&self) -> Cow<'static, str> {
+    Cow::Borrowed("https://docs.deno.com/runtime/manual/tools/unstable_flags/#--unstable-sloppy-imports")
+  }
+
   fn into_base(self: Box<Self>) -> Box<dyn LintRule> {
     self
   }

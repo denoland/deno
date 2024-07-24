@@ -180,7 +180,7 @@ struct CliFactoryServices {
   node_code_translator: Deferred<Arc<CliNodeCodeTranslator>>,
   node_resolver: Deferred<Arc<NodeResolver>>,
   npm_resolver: Deferred<Arc<dyn CliNpmResolver>>,
-  sloppy_imports_resolver: Deferred<Arc<SloppyImportsResolver>>,
+  sloppy_imports_resolver: Deferred<Option<Arc<SloppyImportsResolver>>>,
   text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
   cjs_resolutions: Deferred<Arc<CjsResolutionStore>>,
@@ -399,14 +399,21 @@ impl CliFactory {
       .await
   }
 
-  pub fn sloppy_imports_resolver(&self) -> Option<&Arc<SloppyImportsResolver>> {
-    if self.options.unstable_sloppy_imports() {
-      Some(self.services.sloppy_imports_resolver.get_or_init(|| {
-        Arc::new(SloppyImportsResolver::new(self.fs().clone()))
-      }))
-    } else {
-      None
-    }
+  pub fn sloppy_imports_resolver(
+    &self,
+  ) -> Result<Option<&Arc<SloppyImportsResolver>>, AnyError> {
+    self
+      .services
+      .sloppy_imports_resolver
+      .get_or_try_init(|| {
+        Ok(
+          self
+            .cli_options()?
+            .unstable_sloppy_imports()
+            .then(|| Arc::new(SloppyImportsResolver::new(self.fs().clone()))),
+        )
+      })
+      .map(|maybe| maybe.as_ref())
   }
 
   pub async fn workspace_resolver(
@@ -452,7 +459,7 @@ impl CliFactory {
         async {
           let cli_options = self.cli_options()?;
           Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
-            sloppy_imports_resolver: self.sloppy_imports_resolver().cloned(),
+            sloppy_imports_resolver: self.sloppy_imports_resolver()?.cloned(),
             node_resolver: Some(self.cli_node_resolver().await?.clone()),
             npm_resolver: if cli_options.no_npm() {
               None
@@ -534,7 +541,7 @@ impl CliFactory {
 
   pub async fn lint_rule_provider(&self) -> Result<LintRuleProvider, AnyError> {
     Ok(LintRuleProvider::new(
-      self.sloppy_imports_resolver().cloned(),
+      self.sloppy_imports_resolver()?.cloned(),
       Some(self.workspace_resolver().await?.clone()),
     ))
   }
