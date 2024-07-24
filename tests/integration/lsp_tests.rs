@@ -222,9 +222,9 @@ fn unadded_dependency_message_with_import_map() {
   "'x' is declared but its value is never read.",
   "Use [deno add @std/fs] to add the dependency."]);
   expected_lsp_messages.sort();
-  let all_diagnostics = diagnostics
-    .all();
-    let mut correct_lsp_messages = all_diagnostics.iter()
+  let all_diagnostics = diagnostics.all();
+  let mut correct_lsp_messages = all_diagnostics
+    .iter()
     .map(|d| d.message.as_str())
     .collect::<Vec<&str>>();
   correct_lsp_messages.sort();
@@ -276,16 +276,13 @@ fn unadded_dependency_message() {
   "'x' is declared but its value is never read.",
   "Use [deno add @std/fs] to add the dependency."]);
   expected_lsp_messages.sort();
-  let all_diagnostics = diagnostics
-    .all();
-    let mut correct_lsp_messages = all_diagnostics.iter()
+  let all_diagnostics = diagnostics.all();
+  let mut correct_lsp_messages = all_diagnostics
+    .iter()
     .map(|d| d.message.as_str())
     .collect::<Vec<&str>>();
   correct_lsp_messages.sort();
-  assert_eq!(
-    correct_lsp_messages,
-    expected_lsp_messages
-  );
+  assert_eq!(correct_lsp_messages, expected_lsp_messages);
   client.shutdown();
 }
 
