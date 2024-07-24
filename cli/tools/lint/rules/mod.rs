@@ -19,7 +19,7 @@ mod no_slow_types;
 // used for publishing
 pub use no_slow_types::collect_no_slow_type_diagnostics;
 
-pub trait CliGraphPackageLintRule: std::fmt::Debug {
+pub(super) trait CliGraphPackageLintRule: std::fmt::Debug {
   fn code(&self) -> &'static str;
 
   fn tags(&self) -> &'static [&'static str] {
@@ -36,31 +36,58 @@ pub trait CliGraphPackageLintRule: std::fmt::Debug {
   ) -> Vec<FastCheckDiagnostic>;
 }
 
+pub(super) trait ExtendedLintRule: LintRule {
+  /// A hash of the rule's state. This is used for the incremental cache.
+  fn supports_incremental_cache(&self) -> bool;
+
+  fn into_base(self: Box<Self>) -> Box<dyn LintRule>;
+}
+
 #[derive(Debug)]
-pub enum CliLintRule {
-  Basic(Box<dyn LintRule>),
+enum CliLintRuleKind {
+  DenoLint(Box<dyn LintRule>),
+  Extended(Box<dyn ExtendedLintRule>),
   Graph(Box<dyn CliGraphPackageLintRule>),
 }
 
+#[derive(Debug)]
+pub struct CliLintRule(CliLintRuleKind);
+
 impl CliLintRule {
   pub fn code(&self) -> &'static str {
-    match self {
-      Self::Basic(rule) => rule.code(),
-      Self::Graph(rule) => rule.code(),
+    use CliLintRuleKind::*;
+    match &self.0 {
+      DenoLint(rule) => rule.code(),
+      Extended(rule) => rule.code(),
+      Graph(rule) => rule.code(),
     }
   }
 
   pub fn tags(&self) -> &'static [&'static str] {
-    match self {
-      Self::Basic(rule) => rule.tags(),
-      Self::Graph(rule) => rule.tags(),
+    use CliLintRuleKind::*;
+    match &self.0 {
+      DenoLint(rule) => rule.tags(),
+      Extended(rule) => rule.tags(),
+      Graph(rule) => rule.tags(),
     }
   }
 
   pub fn docs(&self) -> &'static str {
-    match self {
-      Self::Basic(rule) => rule.docs(),
-      Self::Graph(rule) => rule.docs(),
+    use CliLintRuleKind::*;
+    match &self.0 {
+      DenoLint(rule) => rule.docs(),
+      Extended(rule) => rule.docs(),
+      Graph(rule) => rule.docs(),
+    }
+  }
+
+  pub fn supports_incremental_cache(&self) -> bool {
+    use CliLintRuleKind::*;
+    match &self.0 {
+      DenoLint(_) => true,
+      Extended(rule) => rule.supports_incremental_cache(),
+      // graph rules don't go through the incremental cache, so allow it
+      Graph(_) => true,
     }
   }
 }
@@ -73,12 +100,7 @@ pub struct ConfiguredRules {
 
 impl ConfiguredRules {
   pub fn incremental_cache_state(&self) -> Option<impl std::hash::Hash> {
-    if self
-      .rules
-      .iter()
-      .any(|r| r.code() == no_sloppy_imports::CODE)
-    {
-      // incremental cache cannot be determined easily, so don't use the cache
+    if self.rules.iter().any(|r| !r.supports_incremental_cache()) {
       return None;
     }
 

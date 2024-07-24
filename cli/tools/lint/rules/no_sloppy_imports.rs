@@ -20,6 +20,8 @@ use crate::graph_util::CliJsrUrlProvider;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
 
+use super::ExtendedLintRule;
+
 #[derive(Debug)]
 pub struct NoSloppyImportsRule {
   sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
@@ -39,7 +41,21 @@ impl NoSloppyImportsRule {
   }
 }
 
-pub const CODE: &str = "no-sloppy-imports";
+const CODE: &str = "no-sloppy-imports";
+
+impl ExtendedLintRule for NoSloppyImportsRule {
+  fn supports_incremental_cache(&self) -> bool {
+    // only allow the incremental cache when we don't
+    // do sloppy import resolution because sloppy import
+    // resolution requires knowing about the surrounding files
+    // in addition to the current one
+    self.sloppy_imports_resolver.is_none() || self.workspace_resolver.is_none()
+  }
+
+  fn into_base(self: Box<Self>) -> Box<dyn LintRule> {
+    self
+  }
+}
 
 impl LintRule for NoSloppyImportsRule {
   fn lint_program_with_ast_view<'view>(

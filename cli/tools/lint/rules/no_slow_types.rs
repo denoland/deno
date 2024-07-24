@@ -4,11 +4,10 @@ use deno_ast::diagnostics::Diagnostic;
 use deno_ast::ModuleSpecifier;
 use deno_graph::FastCheckDiagnostic;
 use deno_graph::ModuleGraph;
-use deno_lint::diagnostic::LintDiagnostic;
 
 use super::CliGraphPackageLintRule;
 
-pub const CODE: &str = "no-slow-types";
+const CODE: &str = "no-slow-types";
 
 #[derive(Debug)]
 pub struct NoSlowTypesRule;
