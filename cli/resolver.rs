@@ -932,11 +932,13 @@ impl SloppyImportsResolver {
 
     fn media_types_to_paths(
       path_no_ext: &str,
+      original_media_type: MediaType,
       probe_media_type_types: Vec<MediaType>,
       reason: SloppyImportsResolutionReason,
     ) -> Vec<(PathBuf, SloppyImportsResolutionReason)> {
       probe_media_type_types
         .into_iter()
+        .filter(|media_type| *media_type != original_media_type)
         .map(|media_type| {
           (
             PathBuf::from(format!(
@@ -984,6 +986,7 @@ impl SloppyImportsResolver {
             let path_no_ext = path_without_ext(&path, media_type)?;
             media_types_to_paths(
               &path_no_ext,
+              media_type,
               probe_media_type_types,
               SloppyImportsResolutionReason::JsToTs,
             )
@@ -1063,6 +1066,7 @@ impl SloppyImportsResolver {
           let mut probe_paths = match path_without_ext(&path, media_type) {
             Some(path_no_ext) => media_types_to_paths(
               &path_no_ext,
+              media_type,
               probe_media_type_types.0,
               probe_media_type_types.1,
             ),
@@ -1188,8 +1192,21 @@ mod test {
   #[test]
   fn test_unstable_sloppy_imports() {
     fn resolve(specifier: &ModuleSpecifier) -> Option<SloppyImportsResolution> {
+      resolve_with_mode(specifier, ResolutionMode::Execution)
+    }
+
+    fn resolve_types(
+      specifier: &ModuleSpecifier,
+    ) -> Option<SloppyImportsResolution> {
+      resolve_with_mode(specifier, ResolutionMode::Types)
+    }
+
+    fn resolve_with_mode(
+      specifier: &ModuleSpecifier,
+      mode: ResolutionMode,
+    ) -> Option<SloppyImportsResolution> {
       SloppyImportsResolver::new(Arc::new(deno_fs::RealFs))
-        .resolve(specifier, ResolutionMode::Execution)
+        .resolve(specifier, mode)
     }
 
     let context = TestContext::default();
@@ -1235,6 +1252,14 @@ mod test {
       let js_file = temp_dir.join("file.js");
       js_file.write("");
       assert_eq!(resolve(&js_file.uri_file()), None);
+    }
+
+    // only js exists, .js specified
+    {
+      let js_only_file = temp_dir.join("js_only.js");
+      js_only_file.write("");
+      assert_eq!(resolve(&js_only_file.uri_file()), None);
+      assert_eq!(resolve_types(&js_only_file.uri_file()), None);
     }
 
     // resolving a directory to an index file

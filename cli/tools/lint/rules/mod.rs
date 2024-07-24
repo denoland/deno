@@ -41,7 +41,7 @@ pub trait PackageLintRule: std::fmt::Debug + Send + Sync {
 }
 
 pub(super) trait ExtendedLintRule: LintRule {
-  /// A hash of the rule's state. This is used for the incremental cache.
+  /// If the rule supports the incremental cache.
   fn supports_incremental_cache(&self) -> bool;
 
   fn help_docs_url(&self) -> Cow<'static, str>;
