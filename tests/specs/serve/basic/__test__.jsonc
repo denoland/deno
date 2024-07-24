@@ -1,5 +1,12 @@
 {
-  "args": "serve --port 12345 main.ts",
-  "output": "main.out",
-  "tempDir": true
+  "tempDir": true,
+  "basic": {
+    "args": "serve --port 12345 main.ts",
+    "output": "main.out"
+  },
+  "adjust_hostname_display_for_Windows_when_using_0.0.0.0": {
+    "if": "windows",
+    "args": "serve --port 12345 main.ts",
+    "output": "main_win.out"
+  }
 }
