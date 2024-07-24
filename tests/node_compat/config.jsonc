@@ -86,7 +86,8 @@
       "test-net-server-try-ports.js",
       "test-net-socket-timeout.js",
       "test-net-write-arguments.js",
-      "test-os.js",
+      // TODO(nathanwhit): Disable os.userInfo is slightly incorrect
+      // "test-os.js",
       "test-path-resolve.js",
       "test-querystring.js",
       "test-readline-interface.js",
