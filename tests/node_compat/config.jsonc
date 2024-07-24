@@ -443,6 +443,7 @@
       "test-nodeeventtarget.js",
       "test-outgoing-message-destroy.js",
       "test-outgoing-message-pipe.js",
+      "test-os.js",
       "test-parse-args.mjs",
       "test-path-basename.js",
       "test-path-dirname.js",
