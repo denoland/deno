@@ -9630,7 +9630,7 @@ mod tests {
   fn task_with_global_flags() {
     // can fail if the custom parser in task_parse() starts at the wrong index
     let r =
-      flags_from_vec(svec!["deno", "--quiet", "--unstable", "task", "build"]);
+      flags_from_vec(svec!["deno", "--quiet", "task", "build"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -9638,10 +9638,6 @@ mod tests {
           cwd: None,
           task: Some("build".to_string()),
         }),
-        unstable_config: UnstableConfig {
-          legacy_flag_enabled: true,
-          ..Default::default()
-        },
         log_level: Some(log::Level::Error),
         ..Flags::default()
       }
