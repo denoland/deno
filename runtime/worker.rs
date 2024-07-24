@@ -33,7 +33,6 @@ use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
-use deno_core::SourceMapGetter;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
@@ -162,8 +161,6 @@ pub struct WorkerOptions {
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
-  /// Source map reference for errors.
-  pub source_map_getter: Option<Rc<dyn SourceMapGetter>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   // If true, the worker will wait for inspector session and break on first
   // statement of user code. Takes higher precedence than
@@ -226,7 +223,6 @@ impl Default for WorkerOptions {
       origin_storage_dir: Default::default(),
       cache_storage_dir: Default::default(),
       broadcast_channel: Default::default(),
-      source_map_getter: Default::default(),
       root_cert_store_provider: Default::default(),
       node_resolver: Default::default(),
       npm_resolver: Default::default(),
@@ -486,7 +482,6 @@ impl MainWorker {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: options.startup_snapshot,
       create_params: options.create_params,
-      source_map_getter: options.source_map_getter,
       skip_op_registration: options.skip_op_registration,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
