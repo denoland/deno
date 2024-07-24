@@ -9629,8 +9629,7 @@ mod tests {
   #[test]
   fn task_with_global_flags() {
     // can fail if the custom parser in task_parse() starts at the wrong index
-    let r =
-      flags_from_vec(svec!["deno", "--quiet", "task", "build"]);
+    let r = flags_from_vec(svec!["deno", "--quiet", "task", "build"]);
     assert_eq!(
       r.unwrap(),
       Flags {
