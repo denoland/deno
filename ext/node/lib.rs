@@ -655,8 +655,8 @@ deno_core::extension!(deno_node,
     });
     vm::DELETER_MAP_FN.with(|deleter| {
       external_references.push(ExternalReference {
-        named_getter: *deleter,
-      },);
+        named_deleter: *deleter,
+      });
     });
     vm::ENUMERATOR_MAP_FN.with(|enumerator| {
       external_references.push(ExternalReference {
@@ -686,7 +686,7 @@ deno_core::extension!(deno_node,
     });
     vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
       external_references.push(ExternalReference {
-        indexed_getter: *deleter,
+        indexed_deleter: *deleter,
       });
     });
     vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
@@ -712,13 +712,13 @@ deno_core::extension!(deno_node,
     });
     global::QUERY_MAP_FN.with(|query| {
       external_references.push(ExternalReference {
-        named_getter: *query,
+        named_query: *query,
       });
     });
     global::DELETER_MAP_FN.with(|deleter| {
       external_references.push(ExternalReference {
-        named_getter: *deleter,
-      },);
+        named_deleter: *deleter,
+      });
     });
     global::ENUMERATOR_MAP_FN.with(|enumerator| {
       external_references.push(ExternalReference {
