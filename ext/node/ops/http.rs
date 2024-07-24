@@ -18,6 +18,7 @@ use deno_fetch::ResourceToBodyAdapter;
 use http::header::HeaderMap;
 use http::header::HeaderName;
 use http::header::HeaderValue;
+use http::header::AUTHORIZATION;
 use http::header::CONTENT_LENGTH;
 use http::Method;
 use http_body_util::BodyExt;
@@ -43,7 +44,8 @@ where
   };
 
   let method = Method::from_bytes(&method)?;
-  let url = Url::parse(&url)?;
+  let mut url = Url::parse(&url)?;
+  let maybe_authority = deno_fetch::extract_authority(&mut url);
 
   {
     let permissions = state.borrow_mut::<P>();
@@ -89,6 +91,13 @@ where
     .map_err(|_| type_error("Invalid URL"))?;
   *request.headers_mut() = header_map;
 
+  if let Some((username, password)) = maybe_authority {
+    let value =
+      deno_fetch::basic_auth(&username, password.as_ref().map(|x| x.as_str()));
+    let mut header_value = HeaderValue::try_from(value)?;
+    header_value.set_sensitive(true);
+    request.headers_mut().insert(AUTHORIZATION, header_value);
+  }
   if let Some(len) = con_len {
     request.headers_mut().insert(CONTENT_LENGTH, len.into());
   }

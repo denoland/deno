@@ -106,7 +106,7 @@ pub(crate) fn from_env() -> Proxies {
   Proxies { intercepts, no }
 }
 
-pub(crate) fn basic_auth(user: &str, pass: Option<&str>) -> HeaderValue {
+pub fn basic_auth(user: &str, pass: Option<&str>) -> HeaderValue {
   use base64::prelude::BASE64_STANDARD;
   use base64::write::EncoderWriter;
   use std::io::Write;

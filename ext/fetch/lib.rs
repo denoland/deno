@@ -78,6 +78,7 @@ use tower_http::decompression::Decompression;
 
 // Re-export data_url
 pub use data_url;
+pub use proxy::basic_auth;
 
 pub use fs_fetch_handler::FsFetchHandler;
 
@@ -391,8 +392,7 @@ where
         .as_str()
         .parse::<Uri>()
         .map_err(|_| type_error("Invalid URL"))?;
-      eprintln!("url {}", url.as_str());
-      eprintln!("uri {}", uri.to_string());
+
       let mut con_len = None;
       let body = if has_body {
         match (data, resource) {
