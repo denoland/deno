@@ -41,27 +41,25 @@ impl PackageLintRule for NoSlowTypesRule {
   ) -> Vec<LintDiagnostic> {
     collect_no_slow_type_diagnostics(graph, entrypoints)
       .into_iter()
-      .filter_map(|d| {
-        Some(LintDiagnostic {
-          specifier: d.specifier().clone(),
-          range: d.range().map(|range| LintDiagnosticRange {
-            text_info: range.text_info.clone(),
-            range: range.range,
-            description: d.range_description().map(|r| r.to_string()),
-          }),
-          details: LintDiagnosticDetails {
-            message: d.message().to_string(),
-            code: CODE.to_string(),
-            hint: d.hint().map(|h| h.to_string()),
-            info: d
-              .info()
-              .iter()
-              .map(|info| Cow::Owned(info.to_string()))
-              .collect(),
-            fixes: vec![],
-            custom_docs_url: d.docs_url().map(|u| u.into_owned()),
-          },
-        })
+      .map(|d| LintDiagnostic {
+        specifier: d.specifier().clone(),
+        range: d.range().map(|range| LintDiagnosticRange {
+          text_info: range.text_info.clone(),
+          range: range.range,
+          description: d.range_description().map(|r| r.to_string()),
+        }),
+        details: LintDiagnosticDetails {
+          message: d.message().to_string(),
+          code: CODE.to_string(),
+          hint: d.hint().map(|h| h.to_string()),
+          info: d
+            .info()
+            .iter()
+            .map(|info| Cow::Owned(info.to_string()))
+            .collect(),
+          fixes: vec![],
+          custom_docs_url: d.docs_url().map(|u| u.into_owned()),
+        },
       })
       .collect()
   }

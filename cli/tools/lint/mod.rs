@@ -394,7 +394,9 @@ impl WorkspaceLinter {
     });
 
     if lint_options.fix {
-      // run things sequentially when using `--fix`
+      // run sequentially when using `--fix` to lower the chances of weird
+      // bugs where a file level fix affects a package level diagnostic though
+      // it probably will happen anyway
       for future in futures {
         future.await?;
       }
