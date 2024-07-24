@@ -30,6 +30,7 @@ import {
   AsyncWrap,
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
+import { nextTick } from "ext:deno_node/_process/process.ts";
 
 export class HandleWrap extends AsyncWrap {
   constructor(provider: providerType) {
@@ -38,7 +39,7 @@ export class HandleWrap extends AsyncWrap {
 
   close(cb: () => void = () => {}) {
     this._onClose();
-    setTimeout(cb, 0);
+    nextTick(nextTick, cb);
   }
 
   ref() {
