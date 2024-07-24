@@ -151,15 +151,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
       })?
     };
 
-    if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
-      specifier,
-      &referrer,
-      NodeResolutionMode::Execution,
-    ) {
-      return match result? {
-        Some(res) => Ok(res.into_url()),
-        None => Err(generic_error("not found")),
-      };
+    if self.shared.node_resolver.in_npm_package(&referrer) {
+      return Ok(
+        self
+          .shared
+          .node_resolver
+          .resolve(specifier, &referrer, NodeResolutionMode::Execution)?
+          .into_url(),
+      );
     }
 
     let mapped_resolution =
@@ -250,14 +249,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
       Err(err)
         if err.is_unmapped_bare_specifier() && referrer.scheme() == "file" =>
       {
-        // todo(dsherret): return a better error from node resolution so that
-        // we can more easily tell whether to surface it or not
-        let node_result = self.shared.node_resolver.resolve(
+        let maybe_res = self.shared.node_resolver.resolve_if_for_npm_pkg(
           specifier,
           &referrer,
           NodeResolutionMode::Execution,
-        );
-        if let Ok(Some(res)) = node_result {
+        )?;
+        if let Some(res) = maybe_res {
           return Ok(res.into_url());
         }
         Err(err.into())

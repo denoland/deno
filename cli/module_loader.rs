@@ -446,15 +446,14 @@ impl<TGraphContainer: ModuleGraphContainer>
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
-      specifier,
-      referrer,
-      NodeResolutionMode::Execution,
-    ) {
-      return match result? {
-        Some(res) => Ok(res.into_url()),
-        None => Err(generic_error("not found")),
-      };
+    if self.shared.node_resolver.in_npm_package(referrer) {
+      return Ok(
+        self
+          .shared
+          .node_resolver
+          .resolve(specifier, referrer, NodeResolutionMode::Execution)?
+          .into_url(),
+      );
     }
 
     let graph = self.graph_container.graph();

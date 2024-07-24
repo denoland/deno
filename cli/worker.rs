@@ -687,7 +687,7 @@ impl CliMainWorkerFactory {
       return Ok(None);
     }
 
-    let Some(resolution) = self
+    let resolution = self
       .shared
       .node_resolver
       .resolve_package_subpath_from_deno_module(
@@ -695,10 +695,7 @@ impl CliMainWorkerFactory {
         sub_path,
         /* referrer */ None,
         NodeResolutionMode::Execution,
-      )?
-    else {
-      return Ok(None);
-    };
+      )?;
     match &resolution {
       NodeResolution::BuiltIn(_) => Ok(None),
       NodeResolution::CommonJs(specifier) | NodeResolution::Esm(specifier) => {
