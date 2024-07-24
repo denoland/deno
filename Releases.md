@@ -6,6 +6,63 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.45.3 / 2024.07.22
+
+- Reland "refactor(fetch): reimplement fetch with hyper instead of reqwest"
+  (#24593)
+- fix(cli): Create child node_modules for conflicting dependency versions,
+  respect aliases in package.json (#24609)
+- fix(cli): Respect implied BYONM from DENO_FUTURE in `deno task` (#24652)
+- fix(cli): add NAPI support in standalone mode (#24642)
+- fix(cron): improve error message for invalid cron names (#24644)
+- fix(docs): fix some deno.land/manual broken urls (#24557)
+- fix(ext/console): Error Cause Not Inspect-Formatted when printed (#24526)
+- fix(ext/node): do not expose `self` global in node (#24637)
+- fix(ext/node): http request uploads of subarray of buffer should work (#24603)
+- fix(ext/node): stat.mode on windows (#24434)
+- fix(fmt): was sometimes putting comments in front of commas in parameter lists
+  (#24650)
+- fix(init): use bare specifier for `jsr:@std/assert` (#24581)
+- fix(lsp): hang when caching failed (#24651)
+- fix(lsp): scope attribution for asset documents (#24663)
+- fix(lsp): support npm workspaces and fix some resolution issues (#24627)
+- fix(node): Fix `--allow-scripts` with no `deno.json` (#24533)
+- fix(node): support `tty.hasColors()` and `tty.getColorDepth()` (#24619)
+- fix(npm): handle packages with only pre-released 0.0.0 versions (#24563)
+- fix(publish): surface syntax errors when using --no-check (#24620)
+- fix(publish): warn about missing license file (#24677)
+- fix(std/http2): release window capacity back to remote stream (#24576)
+- fix(types): Conform lib.deno_web.d.ts to lib.dom.d.ts and lib.webworker.d.ts
+  (#24599)
+- fix(workspace): do not resolve to self for npm pkg depending on matching req
+  (#24591)
+- fix(workspace): support resolving bare specifiers to npm pkgs within a
+  workspace (#24611)
+- fix: make vendor cache manifest more deterministic (#24658)
+- fix: missing `emitWarning` import (#24587)
+- perf(ext/node): optimize fs.exists[Sync] (#24613)
+
+### 1.45.2 / 2024.07.12
+
+- fix(cli/init): broken link in deno init sample template (#24545)
+- fix(config): regression - should not discover npm workspace for nested
+  deno.json not in workspace (#24559)
+- fix(ext/node): handle prefix mapping for IPv4-mapped IPv6 addresses (#24546)
+- fix(ext/webgpu): GPUDevice.createRenderPipelineAsync should return a Promise
+  (#24349)
+- fix(node): revert invalid package target change (#24539)
+- fix(publish): show dirty files on dirty check failure (#24541)
+- fix: include already seen deps in lockfile dep tracking (#24556)
+- fix: unblock fsevents native module (#24542)
+- perf(ext/crypto): make randomUUID() 5x faster (#24510)
+
+### 1.45.1 / 2024.07.11
+
+- fix(node): Ignore broken default install scripts (#24534)
+- fix(npm): only warn about lifecycle scripts not being run when setting up
+  directory (#24530)
+- fix(workspace): allow using --import-map flag with workspace (#24527)
+
 ### 1.45.0 / 2024.07.10
 
 - BREAKING(unstable/ffi): remove callback reentrant flag (#24367)

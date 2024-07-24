@@ -122,8 +122,8 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
 
 #[cfg(target_os = "windows")]
 pub fn cpu_info() -> Option<Vec<CpuInfo>> {
-  use windows_sys::Win32::System::WindowsProgramming::NtQuerySystemInformation;
-  use windows_sys::Win32::System::WindowsProgramming::SystemProcessorPerformanceInformation;
+  use windows_sys::Wdk::System::SystemInformation::NtQuerySystemInformation;
+  use windows_sys::Wdk::System::SystemInformation::SystemProcessorPerformanceInformation;
   use windows_sys::Win32::System::WindowsProgramming::SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION;
 
   use std::os::windows::ffi::OsStrExt;

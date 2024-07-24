@@ -24,6 +24,8 @@ use deno_npm::resolution::NpmResolutionError;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::errors::ClosestPkgJsonError;
+use deno_runtime::deno_node::errors::NodeResolveError;
+use deno_runtime::deno_node::errors::ResolvePkgSubpathFromDenoModuleError;
 use deno_runtime::deno_node::errors::UrlToNodeResolutionError;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_runtime::deno_node::parse_npm_pkg_name;
@@ -105,7 +107,7 @@ impl CliNodeResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-  ) -> Option<Result<Option<NodeResolution>, AnyError>> {
+  ) -> Option<Result<Option<NodeResolution>, NodeResolveError>> {
     if self.in_npm_package(referrer) {
       // we're in an npm package, so use node resolution
       Some(self.resolve(specifier, referrer, mode))
@@ -119,19 +121,18 @@ impl CliNodeResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
-  ) -> Result<Option<NodeResolution>, AnyError> {
+  ) -> Result<Option<NodeResolution>, NodeResolveError> {
     let referrer_kind = if self.cjs_resolutions.contains(referrer) {
       NodeModuleKind::Cjs
     } else {
       NodeModuleKind::Esm
     };
 
-    self.handle_node_resolve_result(
+    let maybe_res =
       self
         .node_resolver
-        .resolve(specifier, referrer, referrer_kind, mode)
-        .map_err(AnyError::from),
-    )
+        .resolve(specifier, referrer, referrer_kind, mode)?;
+    Ok(self.handle_node_resolution(maybe_res))
   }
 
   pub fn resolve_req_reference(
@@ -218,18 +219,16 @@ impl CliNodeResolver {
     sub_path: Option<&str>,
     maybe_referrer: Option<&ModuleSpecifier>,
     mode: NodeResolutionMode,
-  ) -> Result<Option<NodeResolution>, AnyError> {
-    self.handle_node_resolve_result(
-      self
-        .node_resolver
-        .resolve_package_subpath_from_deno_module(
-          package_folder,
-          sub_path,
-          maybe_referrer,
-          mode,
-        )
-        .map_err(AnyError::from),
-    )
+  ) -> Result<Option<NodeResolution>, ResolvePkgSubpathFromDenoModuleError> {
+    let maybe_res = self
+      .node_resolver
+      .resolve_package_subpath_from_deno_module(
+        package_folder,
+        sub_path,
+        maybe_referrer,
+        mode,
+      )?;
+    Ok(self.handle_node_resolution(maybe_res))
   }
 
   pub fn handle_if_in_node_modules(
@@ -266,20 +265,15 @@ impl CliNodeResolver {
     self.node_resolver.url_to_node_resolution(specifier)
   }
 
-  fn handle_node_resolve_result(
+  fn handle_node_resolution(
     &self,
-    result: Result<Option<NodeResolution>, AnyError>,
-  ) -> Result<Option<NodeResolution>, AnyError> {
-    match result? {
-      Some(response) => {
-        if let NodeResolution::CommonJs(specifier) = &response {
-          // remember that this was a common js resolution
-          self.cjs_resolutions.insert(specifier.clone());
-        }
-        Ok(Some(response))
-      }
-      None => Ok(None),
+    maybe_resolution: Option<NodeResolution>,
+  ) -> Option<NodeResolution> {
+    if let Some(NodeResolution::CommonJs(specifier)) = &maybe_resolution {
+      // remember that this was a common js resolution
+      self.cjs_resolutions.insert(specifier.clone());
     }
+    maybe_resolution
   }
 }
 
@@ -465,7 +459,7 @@ impl CliGraphResolver {
     }
   }
 
-  // todo(dsherret): if we returned structured errors from the NodeResolver we wouldn't need this
+  // todo(dsherret): update this and the surrounding code to handle the structured errors from NodeResolver
   fn check_surface_byonm_node_error(
     &self,
     specifier: &str,
@@ -542,6 +536,22 @@ impl Resolver for CliGraphResolver {
       Ok(resolution) => match resolution {
         MappedResolution::Normal(specifier)
         | MappedResolution::ImportMap(specifier) => Ok(specifier),
+        MappedResolution::WorkspaceNpmPackage {
+          target_pkg_json: pkg_json,
+          sub_path,
+          ..
+        } => self
+          .node_resolver
+          .as_ref()
+          .unwrap()
+          .resolve_package_sub_path_from_deno_module(
+            pkg_json.dir_path(),
+            sub_path.as_deref(),
+            Some(referrer),
+            to_node_mode(mode),
+          )
+          .map_err(ResolveError::Other)
+          .map(|res| res.into_url()),
         // todo(dsherret): for byonm it should do resolution solely based on
         // the referrer and not the package.json
         MappedResolution::PackageJson {
@@ -681,7 +691,10 @@ impl Resolver for CliGraphResolver {
                 Err(err) => {
                   self
                     .check_surface_byonm_node_error(
-                      specifier, referrer, err, resolver,
+                      specifier,
+                      referrer,
+                      err.into(),
+                      resolver,
                     )
                     .map_err(ResolveError::Other)?;
                 }

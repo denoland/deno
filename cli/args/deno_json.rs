@@ -8,7 +8,7 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 
 pub fn deno_json_deps(
-  config: &deno_config::ConfigFile,
+  config: &deno_config::deno_json::ConfigFile,
 ) -> HashSet<JsrDepPackageReq> {
   let values = imports_values(config.json.imports.as_ref())
     .into_iter()

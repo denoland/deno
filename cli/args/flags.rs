@@ -11,7 +11,6 @@ use clap::Command;
 use clap::ValueHint;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
-use deno_config::ConfigFlag;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -41,6 +40,14 @@ use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
 use super::DENO_FUTURE;
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum ConfigFlag {
+  #[default]
+  Discover,
+  Path(String),
+  Disabled,
+}
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FileFlags {
@@ -4246,6 +4253,53 @@ fn run_parse(
   matches: &mut ArgMatches,
   app: Command,
 ) -> clap::error::Result<()> {
+  // todo(dsherret): remove this in Deno 2.0
+  // This is a hack to make https://github.com/netlify/build/pull/5767 work
+  // for old versions of @netlify/edge-bundler with new versions of Deno
+  // where Deno has gotten smarter at resolving config files.
+  //
+  // It's an unfortuante scenario, but Netlify has the version at least
+  // pinned to 1.x in old versions so we can remove this in Deno 2.0 in
+  // a few months.
+  fn temp_netlify_deno_1_hack(flags: &mut Flags, script_arg: &str) {
+    fn is_netlify_edge_bundler_entrypoint(
+      flags: &Flags,
+      script_arg: &str,
+    ) -> bool {
+      // based on diff here: https://github.com/netlify/edge-bundler/blame/f1d33b74ca7aeec19a7c2149316d4547a94e43fb/node/config.ts#L85
+      if flags.permissions.allow_read.is_none()
+        || flags.permissions.allow_write.is_none()
+        || flags.config_flag != ConfigFlag::Discover
+      {
+        return false;
+      }
+      if !script_arg.contains("@netlify") {
+        return false;
+      }
+      let path = PathBuf::from(script_arg);
+      if !path.ends_with("deno/config.ts") {
+        return false;
+      }
+      let mut found_node_modules = false;
+      for component in path.components().filter_map(|c| c.as_os_str().to_str())
+      {
+        if !found_node_modules {
+          found_node_modules = component == "node_modules";
+        } else {
+          // make this work with pnpm and other package managers
+          if component.contains("@netlify") {
+            return true;
+          }
+        }
+      }
+      false
+    }
+
+    if is_netlify_edge_bundler_entrypoint(flags, script_arg) {
+      flags.config_flag = ConfigFlag::Disabled;
+    }
+  }
+
   runtime_args_parse(flags, matches, true, true);
 
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
@@ -4264,6 +4318,7 @@ fn run_parse(
   flags.argv.extend(script_arg);
 
   ext_arg_parse(flags, matches);
+  temp_netlify_deno_1_hack(flags, &script);
 
   flags.subcommand = DenoSubcommand::Run(RunFlags {
     script,
