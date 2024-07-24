@@ -37,6 +37,8 @@ import { isWindows } from "ext:deno_node/_util/os.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { osUptime } from "ext:runtime/30_os.js";
 import { Buffer } from "ext:deno_node/internal/buffer.mjs";
+import { primordials } from "ext:core/mod.js";
+const { StringPrototypeEndsWith, StringPrototypeSlice } = primordials;
 
 export const constants = os;
 
@@ -269,26 +271,28 @@ export function setPriority(pid: number, priority?: number) {
 export function tmpdir(): string | null {
   /* This follows the node js implementation, but has a few
      differences:
-     * On windows, if none of the environment variables are defined,
-       we return null.
-     * On unix we use a plain Deno.env.get, instead of safeGetenv,
+     * We use a plain Deno.env.get, instead of safeGetenv,
        which special cases setuid binaries.
-     * Node removes a single trailing / or \, we remove all.
   */
   if (isWindows) {
-    const temp = Deno.env.get("TEMP") || Deno.env.get("TMP");
-    if (temp) {
-      return temp.replace(/(?<!:)[/\\]*$/, "");
+    let temp = Deno.env.get("TEMP") || Deno.env.get("TMP") ||
+      (Deno.env.get("WinDir"));
+    if (
+      temp &&
+      temp.length > 1 && StringPrototypeEndsWith(temp, "\\") &&
+      !StringPrototypeEndsWith(temp, ":\\")
+    ) {
+      temp = StringPrototypeSlice(temp, 0, -1);
     }
-    const base = Deno.env.get("SYSTEMROOT") || Deno.env.get("WINDIR");
-    if (base) {
-      return base + "\\temp";
-    }
-    return null;
+
+    return temp;
   } else { // !isWindows
-    const temp = Deno.env.get("TMPDIR") || Deno.env.get("TMP") ||
+    let temp = Deno.env.get("TMPDIR") || Deno.env.get("TMP") ||
       Deno.env.get("TEMP") || "/tmp";
-    return temp.replace(/(?<!^)\/*$/, "");
+    if (temp && temp.length > 1 && StringPrototypeEndsWith(temp, "/")) {
+      temp = StringPrototypeSlice(temp, 0, -1);
+    }
+    return temp;
   }
 }
 
