@@ -60,7 +60,6 @@
       "test-dgram-ipv6only.js",
       "test-dgram-send-cb-quelches-error.js",
       "test-dgram-socket-buffer-size.js",
-      "test-dgram-udp6-link-local-address.js",
       "test-dns-lookup.js",
       "test-dns-resolveany.js",
       "test-dns.js",
