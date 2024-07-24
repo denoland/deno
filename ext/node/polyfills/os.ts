@@ -320,7 +320,6 @@ export function uptime(): number {
   return osUptime();
 }
 
-/** Not yet implemented */
 export function userInfo(
   options: UserInfoOptions = { encoding: "utf-8" },
 ): UserInfo {
@@ -331,15 +330,6 @@ export function userInfo(
     uid = -1;
     gid = -1;
   }
-
-  // TODO(@crowlKats): figure out how to do this correctly:
-  //  The value of homedir returned by os.userInfo() is provided by the operating system.
-  //  This differs from the result of os.homedir(), which queries environment
-  //  variables for the home directory before falling back to the operating system response.
-  // let _homedir = homedir();
-  // if (!_homedir) {
-  //   throw new ERR_OS_NO_HOMEDIR();
-  // }
   let { username, homedir, shell } = op_node_os_user_info(uid);
 
   if (options?.encoding === "buffer") {
