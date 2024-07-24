@@ -135,6 +135,8 @@ export function arch(): string {
 (uptime as any)[Symbol.toPrimitive] = (): number => uptime();
 // deno-lint-ignore no-explicit-any
 (machine as any)[Symbol.toPrimitive] = (): string => machine();
+// deno-lint-ignore no-explicit-any
+(tmpdir as any)[Symbol.toPrimitive] = (): string | null => tmpdir();
 
 export function cpus(): CPUCoreInfo[] {
   return op_cpus();
