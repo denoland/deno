@@ -7,9 +7,9 @@ import https from "node:https";
 import net from "node:net";
 import fs from "node:fs";
 
-import { assert, assertEquals, fail } from "@std/assert/mod.ts";
-import { assertSpyCalls, spy } from "@std/testing/mock.ts";
-import { fromFileUrl, relative } from "@std/path/mod.ts";
+import { assert, assertEquals, fail } from "@std/assert";
+import { assertSpyCalls, spy } from "@std/testing/mock";
+import { fromFileUrl, relative } from "@std/path";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";

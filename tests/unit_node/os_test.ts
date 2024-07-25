@@ -7,7 +7,7 @@ import {
   assertEquals,
   assertNotEquals,
   assertThrows,
-} from "@std/assert/mod.ts";
+} from "@std/assert";
 
 Deno.test({
   name: "build architecture is a string",

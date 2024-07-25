@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { fstat, fstatSync } from "node:fs";
-import { fail } from "@std/assert/mod.ts";
+import { fail } from "@std/assert";
 import { assertStats, assertStatsBigInt } from "./_fs_stat_test.ts";
 import type { BigIntStats, Stats } from "node:fs";
 

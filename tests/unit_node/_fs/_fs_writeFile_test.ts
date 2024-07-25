@@ -5,9 +5,9 @@ import {
   assertNotEquals,
   assertRejects,
   assertThrows,
-} from "@std/assert/mod.ts";
+} from "@std/assert";
 import { writeFile, writeFileSync } from "node:fs";
-import * as path from "@std/path/mod.ts";
+import * as path from "@std/path";
 
 type TextEncodings =
   | "ascii"

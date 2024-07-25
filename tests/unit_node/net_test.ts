@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import * as net from "node:net";
-import { assert, assertEquals } from "@std/assert/mod.ts";
-import * as path from "@std/path/mod.ts";
+import { assert, assertEquals } from "@std/assert";
+import * as path from "@std/path";
 import * as http from "node:http";
 
 Deno.test("[node/net] close event emits after error event - when host is not found", async () => {

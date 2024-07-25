@@ -1,10 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import {
-  assert,
-  assertEquals,
-  assertRejects,
-  assertThrows,
-} from "@std/assert/mod.ts";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { pseudoRandomBytes, randomBytes } from "node:crypto";
 
