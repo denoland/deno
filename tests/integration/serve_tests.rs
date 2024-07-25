@@ -2,7 +2,6 @@
 
 use std::io::Read;
 
-use pretty_assertions::assert_eq;
 use regex::Regex;
 use test_util as util;
 
