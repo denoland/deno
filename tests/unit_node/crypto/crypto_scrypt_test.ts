@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { scrypt, scryptSync } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { assertEquals } from "@std/assert/mod.ts";
+import { assertEquals } from "@std/assert";
 
 Deno.test("scrypt works correctly", async () => {
   const { promise, resolve } = Promise.withResolvers<boolean>();

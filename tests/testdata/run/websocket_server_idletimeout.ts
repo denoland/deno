@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert/mod.ts";
+import { assertEquals } from "@std/assert";
 
 const errorDeferred = Promise.withResolvers<void>();
 const closeDeferred = Promise.withResolvers<void>();

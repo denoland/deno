@@ -3,12 +3,12 @@
 
 /** This copies the test files according to the config file `tests/node_compat/config.jsonc` */
 
-import { walk } from "@std/fs/walk.ts";
-import { SEPARATOR } from "@std/path/constants.ts";
-import { ensureFile } from "@std/fs/ensure_file.ts";
-import { writeAll } from "@std/io/write_all.ts";
-import { withoutAll } from "@std/collections/without_all.ts";
-import { relative } from "@std/path/posix/relative.ts";
+import { walk } from "@std/fs/walk.";
+import { SEPARATOR } from "@std/path/constants";
+import { ensureFile } from "@std/fs/ensure-file";
+import { writeAll } from "@std/io/write-all";
+import { withoutAll } from "@std/collections/without-all";
+import { relative } from "@std/path/posix/relative";
 
 import { config, ignoreList } from "../common.ts";
 

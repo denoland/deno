@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file no-explicit-any
 
-import { assert } from "@std/assert/mod.ts";
+import { assert } from "@std/assert";
 import { isatty } from "node:tty";
 import tty from "node:tty";
 import process from "node:process";

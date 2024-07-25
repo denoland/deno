@@ -1,6 +1,7 @@
 {
   "imports": {
-    "@std/": "../../../util/std/",
+    "@std/assert/throws": "../../../util/std/assert/throws.ts",
+    "@std/internal/styles": "../../../util/std/internal/styles.ts",
 
     "bare": "https://example.com/",
     "https://example.com/rewrite": "https://example.com/rewritten",

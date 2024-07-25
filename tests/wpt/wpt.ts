@@ -32,9 +32,9 @@ import {
   updateManifest,
   wptreport,
 } from "./runner/utils.ts";
-import { pooledMap } from "@std/async/pool.ts";
-import { blue, bold, green, red, yellow } from "@std/fmt/colors.ts";
-import { writeAll, writeAllSync } from "@std/io/write_all.ts";
+import { pooledMap } from "@std/async/pool";
+import { blue, bold, green, red, yellow } from "@std/fmt/colors";
+import { writeAll, writeAllSync } from "@std/io/write-all";
 import { saveExpectation } from "./runner/utils.ts";
 
 class TestFilter {
