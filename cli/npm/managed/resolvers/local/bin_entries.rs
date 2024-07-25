@@ -12,7 +12,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 #[derive(Default)]
-pub(super) struct BinEntries {
+pub(in crate::npm) struct BinEntries {
   /// Packages that have colliding bin names
   collisions: HashSet<NpmPackageId>,
   seen_names: HashMap<String, NpmPackageId>,
@@ -32,12 +32,12 @@ fn default_bin_name(package: &NpmResolutionPackage) -> &str {
 }
 
 impl BinEntries {
-  pub(super) fn new() -> Self {
+  pub(in crate::npm) fn new() -> Self {
     Self::default()
   }
 
   /// Add a new bin entry (package with a bin field)
-  pub(super) fn add(
+  pub(in crate::npm) fn add(
     &mut self,
     package: NpmResolutionPackage,
     package_path: PathBuf,
@@ -117,7 +117,7 @@ impl BinEntries {
   }
 
   /// Collect the bin entries into a vec of (name, script path)
-  pub(super) fn into_bin_files(
+  pub(in crate::npm) fn into_bin_files(
     mut self,
     snapshot: &NpmResolutionSnapshot,
   ) -> Vec<(String, PathBuf)> {
@@ -133,7 +133,7 @@ impl BinEntries {
 
   /// Finish setting up the bin entries, writing the necessary files
   /// to disk.
-  pub(super) fn finish(
+  pub(in crate::npm) fn finish(
     mut self,
     snapshot: &NpmResolutionSnapshot,
     bin_node_modules_dir_path: &Path,
@@ -217,7 +217,7 @@ fn sort_by_depth(
   });
 }
 
-pub(super) fn set_up_bin_entry(
+pub(in crate::npm) fn set_up_bin_entry(
   package: &NpmResolutionPackage,
   bin_name: &str,
   #[allow(unused_variables)] bin_script: &str,
