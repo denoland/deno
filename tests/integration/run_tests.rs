@@ -206,7 +206,7 @@ itest!(_033_import_map_data_uri {
 });
 
 itest!(onload {
-  args: "run --quiet --reload run/onload/main.ts",
+  args: "run --quiet --reload --config ../config/deno.json run/onload/main.ts",
   output: "run/onload/main.out",
 });
 
@@ -3163,12 +3163,12 @@ mod permissions {
 }
 
 itest!(tls_starttls {
-  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem run/tls_starttls.js",
+  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem --config ../config/deno.json run/tls_starttls.js",
   output: "run/tls.out",
 });
 
 itest!(tls_connecttls {
-  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem run/tls_connecttls.js",
+  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem --config ../config/deno.json run/tls_connecttls.js",
   output: "run/tls.out",
 });
 
@@ -4512,6 +4512,8 @@ async fn websocket_server_idletimeout() {
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
+    .arg("--config")
+    .arg("./config/deno.json")
     .arg(script)
     .stdout_piped()
     .spawn()
@@ -5377,6 +5379,8 @@ async fn listen_tls_alpn_fail() {
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
+    .arg("--config")
+    .arg("../config/deno.json")
     .arg("./cert/listen_tls_alpn_fail.ts")
     .arg("4505")
     .stdout_piped()

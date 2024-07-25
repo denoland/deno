@@ -5,12 +5,12 @@ import {
   join,
   resolve,
   toFileUrl,
-} from "../tests/util/std/path/mod.ts";
+} from "@std/path/mod.ts";
 import { wait } from "https://deno.land/x/wait@0.1.13/mod.ts";
 export { dirname, fromFileUrl, join, resolve, toFileUrl };
-export { existsSync, walk } from "../tests/util/std/fs/mod.ts";
-export { TextLineStream } from "../tests/util/std/streams/text_line_stream.ts";
-export { delay } from "../tests/util/std/async/delay.ts";
+export { existsSync, walk } from "@std/fs/mod.ts";
+export { TextLineStream } from "@std/streams/text_line_stream.ts";
+export { delay } from "@std/async/delay.ts";
 
 // [toolName] --version output
 const versions = {

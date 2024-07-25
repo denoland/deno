@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { Server } from "../../../util/std/http/server.ts";
+import { Server } from "@std/http/server.ts";
 
 const addr = Deno.args[1] || "localhost:4555";
 
