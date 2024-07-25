@@ -536,6 +536,13 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   port.ref = () => {
     port[refMessagePort](true);
   };
+  port.once = (name: string | symbol, listener) => {
+    const fn = (event) => {
+      port.off(name, fn);
+      return listener(event);
+    };
+    port.on(name, fn);
+  };
   return port;
 }
 
