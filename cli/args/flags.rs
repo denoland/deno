@@ -2002,7 +2002,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             // prefer using ts for formatting instead of js because ts works in more scenarios
             .default_value("ts")
             .value_parser([
-              "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "ipynb",
+              "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "yml", "yaml",
+              "ipynb",
             ]),
         )
         .arg(
@@ -2845,7 +2846,7 @@ fn vendor_subcommand() -> Command {
       .long_about(
         "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.
 Add `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.
-        
+
 Vendor remote modules into a local directory.
 
 Analyzes the provided modules along with their dependencies, downloads
