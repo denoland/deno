@@ -320,6 +320,8 @@ fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
         deno_exe.to_str().unwrap(),
         "bundle",
         "--unstable",
+        "--config",
+        "tests/config/deno.json",
         url,
         &path,
       ],
