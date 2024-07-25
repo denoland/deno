@@ -24,7 +24,6 @@ extern crate libz_sys as zlib;
 
 mod global;
 mod ops;
-mod path;
 mod polyfill;
 
 pub use deno_package_json::PackageJson;

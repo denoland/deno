@@ -1377,7 +1377,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       strip_unc_prefix(self.env.realpath_sync(parent_dir).map_err(
         |source| CanonicalizingPkgJsonDirError {
           dir_path: parent_dir.to_path_buf(),
-          source: source,
+          source,
         },
       )?);
     for current_dir in current_dir.ancestors() {
