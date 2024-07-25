@@ -21,10 +21,10 @@ import {
   assertStrictEquals,
   assertThrows,
   fail,
-} from "@std/assert/mod.ts";
-import { stripColor } from "@std/fmt/colors.ts";
-import * as path from "@std/path/mod.ts";
-import { delay } from "@std/async/delay.ts";
+} from "@std/assert";
+import { stripAnsiCode } from "@std/fmt/colors";
+import * as path from "@std/path";
+import { delay } from "@std/async/delay";
 
 const testDir = new URL(".", import.meta.url);
 
@@ -178,7 +178,7 @@ Deno.test({
     const { stdout } = await command.output();
 
     const decoder = new TextDecoder();
-    assertEquals(stripColor(decoder.decode(stdout).trim()), "1\n2");
+    assertEquals(stripAnsiCode(decoder.decode(stdout).trim()), "1\n2");
   },
 });
 
@@ -897,7 +897,7 @@ Deno.test({
     const { stdout } = await command.output();
 
     const decoder = new TextDecoder();
-    assertEquals(stripColor(decoder.decode(stdout).trim()), "exit");
+    assertEquals(stripAnsiCode(decoder.decode(stdout).trim()), "exit");
   },
 });
 
@@ -916,7 +916,7 @@ Deno.test({
     const { stdout } = await command.output();
 
     const decoder = new TextDecoder();
-    assertEquals(stripColor(decoder.decode(stdout).trim()), "really exited");
+    assertEquals(stripAnsiCode(decoder.decode(stdout).trim()), "really exited");
   },
 });
 

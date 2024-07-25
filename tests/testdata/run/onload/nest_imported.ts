@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-window-prefix
-import { assert } from "@std/assert/mod.ts";
+import { assert } from "@std/assert";
 
 const handler = (e: Event) => {
   assert(e.type === "beforeunload" ? e.cancelable : !e.cancelable);

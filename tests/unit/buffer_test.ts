@@ -11,7 +11,7 @@ import {
   assertRejects,
   assertThrows,
 } from "./test_util.ts";
-import { writeAllSync } from "@std/io/write_all.ts";
+import { writeAllSync } from "@std/io/write-all";
 
 const MAX_SIZE = 2 ** 32 - 2;
 // N controls how many iterations of certain checks are performed.

@@ -14,8 +14,8 @@
  * @module
  */
 
-import type { BufReader, ReadLineResult } from "@std/io/buf_reader.ts";
-import { concat } from "@std/bytes/concat.ts";
+import type { BufReader, ReadLineResult } from "@std/io/buf-reader";
+import { concat } from "@std/bytes/concat";
 
 // Constants created for DRY
 const CHAR_SPACE: number = " ".charCodeAt(0);

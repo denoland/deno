@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "./test_util.ts";
-import { Buffer } from "@std/io/buffer.ts";
+import { Buffer } from "@std/io/buffer";
 
 const DEFAULT_BUF_SIZE = 32 * 1024;
 
