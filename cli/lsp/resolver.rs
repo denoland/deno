@@ -35,11 +35,7 @@ use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node::errors::ClosestPkgJsonError;
-use deno_runtime::deno_node::NodeResolution;
-use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::fs_util::specifier_to_file_path;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -47,6 +43,10 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
+use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::NodeResolution;
+use node_resolver::NodeResolutionMode;
+use node_resolver::NpmResolver;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -496,7 +496,7 @@ fn create_node_resolver(
   let npm_resolver = npm_resolver?;
   let fs = Arc::new(deno_fs::RealFs);
   let node_resolver_inner = Arc::new(NodeResolver::new(
-    fs.clone(),
+    deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
     npm_resolver.clone().into_npm_resolver(),
   ));
   Some(Arc::new(CliNodeResolver::new(

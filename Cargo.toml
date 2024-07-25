@@ -21,6 +21,7 @@ members = [
   "ext/napi",
   "ext/net",
   "ext/node",
+  "ext/node_resolver",
   "ext/url",
   "ext/web",
   "ext/webgpu",
@@ -83,6 +84,7 @@ deno_webgpu = { version = "0.129.0", path = "./ext/webgpu" }
 deno_webidl = { version = "0.162.0", path = "./ext/webidl" }
 deno_websocket = { version = "0.167.0", path = "./ext/websocket" }
 deno_webstorage = { version = "0.157.0", path = "./ext/webstorage" }
+node_resolver = { version = "0.1.0", path = "./ext/node_resolver" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"

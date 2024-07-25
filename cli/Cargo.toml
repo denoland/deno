@@ -80,6 +80,7 @@ deno_task_shell = "=0.17.0"
 deno_terminal.workspace = true
 eszip = "=0.72.2"
 napi_sym.workspace = true
+node_resolver.workspace = true
 
 async-trait.workspace = true
 base32.workspace = true

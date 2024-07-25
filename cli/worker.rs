@@ -22,8 +22,7 @@ use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
-use deno_runtime::deno_node::NodeResolution;
-use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::NodeExtInitServices;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -40,6 +39,8 @@ use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
+use node_resolver::NodeResolution;
+use node_resolver::NodeResolutionMode;
 use tokio::select;
 
 use crate::args::CliLockfile;
@@ -144,7 +145,17 @@ struct SharedWorkerState {
 }
 
 impl SharedWorkerState {
-  // Currently empty
+  pub fn create_node_init_services(&self) -> NodeExtInitServices {
+    NodeExtInitServices {
+      node_require_resolver: self.npm_resolver.clone().into_require_resolver(),
+      node_resolver: self.node_resolver.clone(),
+      npm_process_state_provider: self
+        .npm_resolver
+        .clone()
+        .into_process_state_provider(),
+      npm_resolver: self.npm_resolver.clone().into_npm_resolver(),
+    }
+  }
 }
 
 pub struct CliMainWorker {
@@ -599,8 +610,7 @@ impl CliMainWorkerFactory {
       strace_ops: shared.options.strace_ops.clone(),
       module_loader,
       fs: shared.fs.clone(),
-      node_resolver: Some(shared.node_resolver.clone()),
-      npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
+      node_services: Some(shared.create_node_init_services()),
       get_error_class_fn: Some(&errors::get_error_class_name),
       cache_storage_dir,
       origin_storage_dir,
@@ -793,8 +803,7 @@ fn create_web_worker_callback(
       format_js_error_fn: Some(Arc::new(format_js_error)),
       module_loader,
       fs: shared.fs.clone(),
-      node_resolver: Some(shared.node_resolver.clone()),
-      npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
+      node_services: Some(shared.create_node_init_services()),
       worker_type: args.worker_type,
       maybe_inspector_server,
       get_error_class_fn: Some(&errors::get_error_class_name),

@@ -4,8 +4,8 @@ use std::borrow::Cow;
 use std::fmt::Write;
 use std::path::PathBuf;
 
-use deno_core::ModuleSpecifier;
 use thiserror::Error;
+use url::Url;
 
 use crate::NodeModuleKind;
 use crate::NodeResolutionMode;
@@ -155,7 +155,7 @@ kinded_err!(PackageFolderResolveError, PackageFolderResolveErrorKind);
 )]
 pub struct PackageNotFoundError {
   pub package_name: String,
-  pub referrer: ModuleSpecifier,
+  pub referrer: Url,
   /// Extra information about the referrer.
   pub referrer_extra: Option<String>,
 }
@@ -173,7 +173,7 @@ impl NodeJsErrorCoded for PackageNotFoundError {
   referrer_extra.as_ref().map(|r| format!(" ({})", r)).unwrap_or_default()
 )]
 pub struct ReferrerNotFoundError {
-  pub referrer: ModuleSpecifier,
+  pub referrer: Url,
   /// Extra information about the referrer.
   pub referrer_extra: Option<String>,
 }
@@ -188,7 +188,7 @@ impl NodeJsErrorCoded for ReferrerNotFoundError {
 #[error("Failed resolving '{package_name}' from referrer '{referrer}'.")]
 pub struct PackageFolderResolveIoError {
   pub package_name: String,
-  pub referrer: ModuleSpecifier,
+  pub referrer: Url,
   #[source]
   pub source: std::io::Error,
 }
@@ -264,7 +264,7 @@ pub enum PackageSubpathResolveErrorKind {
 pub struct PackageTargetNotFoundError {
   pub pkg_json_path: PathBuf,
   pub target: String,
-  pub maybe_referrer: Option<ModuleSpecifier>,
+  pub maybe_referrer: Option<Url>,
   pub referrer_kind: NodeModuleKind,
   pub mode: NodeResolutionMode,
 }
@@ -333,8 +333,8 @@ pub struct TypesNotFoundError(pub Box<TypesNotFoundErrorData>);
 
 #[derive(Debug)]
 pub struct TypesNotFoundErrorData {
-  pub code_specifier: ModuleSpecifier,
-  pub maybe_referrer: Option<ModuleSpecifier>,
+  pub code_specifier: Url,
+  pub maybe_referrer: Option<Url>,
 }
 
 impl NodeJsErrorCoded for TypesNotFoundError {
@@ -397,7 +397,7 @@ impl NodeJsErrorCoded for CanonicalizingPkgJsonDirError {
 #[derive(Debug, Error)]
 #[error("TypeScript files are not supported in npm packages: {specifier}")]
 pub struct TypeScriptNotSupportedInNpmError {
-  pub specifier: ModuleSpecifier,
+  pub specifier: Url,
 }
 
 impl NodeJsErrorCoded for TypeScriptNotSupportedInNpmError {
@@ -437,7 +437,7 @@ pub enum UrlToNodeResolutionErrorKind {
 pub struct PackageImportNotDefinedError {
   pub name: String,
   pub package_json_path: Option<PathBuf>,
-  pub maybe_referrer: Option<ModuleSpecifier>,
+  pub maybe_referrer: Option<Url>,
 }
 
 impl NodeJsErrorCoded for PackageImportNotDefinedError {
@@ -503,7 +503,7 @@ pub enum PackageResolveErrorKind {
 #[error("Failed joining '{path}' from '{base}'.")]
 pub struct NodeResolveRelativeJoinError {
   pub path: String,
-  pub base: ModuleSpecifier,
+  pub base: Url,
   #[source]
   pub source: url::ParseError,
 }
@@ -568,8 +568,8 @@ impl NodeJsErrorCoded for FinalizeResolutionError {
   maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default()
 )]
 pub struct ModuleNotFoundError {
-  pub specifier: ModuleSpecifier,
-  pub maybe_referrer: Option<ModuleSpecifier>,
+  pub specifier: Url,
+  pub maybe_referrer: Option<Url>,
   pub typ: &'static str,
 }
 
@@ -587,8 +587,8 @@ impl NodeJsErrorCoded for ModuleNotFoundError {
   maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
 )]
 pub struct UnsupportedDirImportError {
-  pub dir_url: ModuleSpecifier,
-  pub maybe_referrer: Option<ModuleSpecifier>,
+  pub dir_url: Url,
+  pub maybe_referrer: Option<Url>,
 }
 
 impl NodeJsErrorCoded for UnsupportedDirImportError {
@@ -603,7 +603,7 @@ pub struct InvalidPackageTargetError {
   pub sub_path: String,
   pub target: String,
   pub is_import: bool,
-  pub maybe_referrer: Option<ModuleSpecifier>,
+  pub maybe_referrer: Option<Url>,
 }
 
 impl std::error::Error for InvalidPackageTargetError {}
@@ -657,7 +657,7 @@ impl NodeJsErrorCoded for InvalidPackageTargetError {
 pub struct PackagePathNotExportedError {
   pub pkg_json_path: PathBuf,
   pub subpath: String,
-  pub maybe_referrer: Option<ModuleSpecifier>,
+  pub maybe_referrer: Option<Url>,
   pub mode: NodeResolutionMode,
 }
 
