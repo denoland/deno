@@ -709,23 +709,29 @@ fn get_resolved_yaml_config(
 ) -> pretty_yaml::config::FormatOptions {
   use pretty_yaml::config::*;
 
-  let mut layout_options = LayoutOptions::default();
-  if let Some(use_tabs) = options.use_tabs {
-    layout_options.use_tabs = use_tabs;
-  }
-  if let Some(line_width) = options.line_width {
-    layout_options.print_width = line_width as usize;
-  }
-  if let Some(indent_width) = options.indent_width {
-    layout_options.indent_width = indent_width as usize;
-  }
+  let layout_options = LayoutOptions {
+    print_width: options.line_width.unwrap_or(80) as usize,
+    use_tabs: options.use_tabs.unwrap_or_default(),
+    indent_width: options.indent_width.unwrap_or(2) as usize,
+    line_break: LineBreak::Lf,
+  };
 
-  let mut language_options = LanguageOptions::default();
-  match options.single_quote {
-    Some(true) => language_options.quotes = Quotes::PreferSingle,
-    Some(false) => language_options.quotes = Quotes::PreferDouble,
-    None => {}
-  }
+  let language_options = LanguageOptions {
+    quotes: if let Some(true) = options.single_quote {
+      Quotes::PreferSingle
+    } else {
+      Quotes::PreferDouble
+    },
+    trailing_comma: true,
+    format_comments: false,
+    indent_block_sequence_in_map: true,
+    brace_spacing: true,
+    bracket_spacing: false,
+    dash_spacing: DashSpacing::OneSpace,
+    trim_trailing_whitespaces: true,
+    trim_trailing_zero: false,
+    ignore_comment_directive: "deno-fmt-ignore".into(),
+  };
 
   FormatOptions {
     layout: layout_options,
