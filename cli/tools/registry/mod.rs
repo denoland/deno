@@ -45,7 +45,7 @@ use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
 use crate::resolver::SloppyImportsResolver;
 use crate::tools::check::CheckOptions;
-use crate::tools::lint::no_slow_types;
+use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::tools::registry::diagnostics::PublishDiagnostic;
 use crate::tools::registry::diagnostics::PublishDiagnosticsCollector;
 use crate::util::display::human_size;
@@ -341,7 +341,7 @@ impl PublishPreparer {
       for package in package_configs {
         let export_urls = package.config_file.resolve_export_value_urls()?;
         let diagnostics =
-          no_slow_types::collect_no_slow_type_diagnostics(&export_urls, &graph);
+          collect_no_slow_type_diagnostics(&graph, &export_urls);
         if !diagnostics.is_empty() {
           any_pkg_had_diagnostics = true;
           for diagnostic in diagnostics {

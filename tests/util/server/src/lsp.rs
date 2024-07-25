@@ -1230,6 +1230,16 @@ impl CollectedDiagnostics {
       .collect()
   }
 
+  pub fn for_file(&self, specifier: &Url) -> Vec<lsp::Diagnostic> {
+    self
+      .all_messages()
+      .iter()
+      .filter(|p| p.uri == *specifier)
+      .flat_map(|p| p.diagnostics.iter())
+      .cloned()
+      .collect()
+  }
+
   /// Gets the messages that the editor will see after all the publishes.
   pub fn all_messages(&self) -> Vec<lsp::PublishDiagnosticsParams> {
     self.0.clone()
@@ -1245,7 +1255,7 @@ impl CollectedDiagnostics {
       .find(|p| {
         p.diagnostics
           .iter()
-          .any(|d| d.source == Some(source.to_string()))
+          .any(|d| d.source.as_deref() == Some(source))
       })
       .map(ToOwned::to_owned)
       .unwrap()
