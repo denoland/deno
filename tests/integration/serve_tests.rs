@@ -6,6 +6,7 @@ use pretty_assertions::assert_eq;
 use regex::Regex;
 use test_util as util;
 
+#[cfg(windows)]
 #[tokio::test]
 async fn deno_serve_port_0() {
   let mut child = util::deno_cmd()
@@ -49,6 +50,7 @@ async fn deno_serve_port_0() {
   child.wait().unwrap();
 }
 
+#[cfg(windows)]
 #[tokio::test]
 async fn deno_serve_no_args() {
   let mut child = util::deno_cmd()
