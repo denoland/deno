@@ -5,16 +5,15 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
-use deno_core::serde_json::Map;
-use deno_core::serde_json::Value;
-use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
-use deno_fs::FileSystemRc;
+use anyhow::bail;
+use anyhow::Error as AnyError;
 use deno_media_type::MediaType;
 use deno_package_json::PackageJsonRc;
+use serde_json::Map;
+use serde_json::Value;
+use url::Url;
 
+use crate::env::NodeResolverEnv;
 use crate::errors;
 use crate::errors::CanonicalizingPkgJsonDirError;
 use crate::errors::ClosestPkgJsonError;
@@ -49,12 +48,11 @@ use crate::errors::TypesNotFoundErrorData;
 use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
 use crate::errors::UrlToNodeResolutionError;
-use crate::is_builtin_node_module;
+use crate::path::strip_unc_prefix;
 use crate::path::to_file_specifier;
-use crate::polyfill::get_module_name_from_builtin_node_module_specifier;
 use crate::NpmResolverRc;
-use crate::PackageJson;
 use crate::PathClean;
+use deno_package_json::PackageJson;
 
 pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
@@ -76,21 +74,21 @@ impl NodeResolutionMode {
 
 #[derive(Debug)]
 pub enum NodeResolution {
-  Esm(ModuleSpecifier),
-  CommonJs(ModuleSpecifier),
+  Esm(Url),
+  CommonJs(Url),
   BuiltIn(String),
 }
 
 impl NodeResolution {
-  pub fn into_url(self) -> ModuleSpecifier {
+  pub fn into_url(self) -> Url {
     match self {
       Self::Esm(u) => u,
       Self::CommonJs(u) => u,
       Self::BuiltIn(specifier) => {
         if specifier.starts_with("node:") {
-          ModuleSpecifier::parse(&specifier).unwrap()
+          Url::parse(&specifier).unwrap()
         } else {
-          ModuleSpecifier::parse(&format!("node:{specifier}")).unwrap()
+          Url::parse(&format!("node:{specifier}")).unwrap()
         }
       }
     }
@@ -98,7 +96,7 @@ impl NodeResolution {
 
   pub fn into_specifier_and_media_type(
     resolution: Option<Self>,
-  ) -> (ModuleSpecifier, MediaType) {
+  ) -> (Url, MediaType) {
     match resolution {
       Some(NodeResolution::CommonJs(specifier)) => {
         let media_type = MediaType::from_specifier(&specifier);
@@ -126,7 +124,7 @@ impl NodeResolution {
       }
       Some(resolution) => (resolution.into_url(), MediaType::Dts),
       None => (
-        ModuleSpecifier::parse("internal:///missing_dependency.d.ts").unwrap(),
+        Url::parse("internal:///missing_dependency.d.ts").unwrap(),
         MediaType::Dts,
       ),
     }
@@ -134,25 +132,25 @@ impl NodeResolution {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type NodeResolverRc = deno_fs::sync::MaybeArc<NodeResolver>;
+pub type NodeResolverRc<TEnv> = crate::sync::MaybeArc<NodeResolver<TEnv>>;
 
 #[derive(Debug)]
-pub struct NodeResolver {
-  fs: FileSystemRc,
+pub struct NodeResolver<TEnv: NodeResolverEnv> {
+  env: TEnv,
   npm_resolver: NpmResolverRc,
-  in_npm_package_cache: deno_fs::sync::MaybeArcMutex<HashMap<String, bool>>,
+  in_npm_package_cache: crate::sync::MaybeArcMutex<HashMap<String, bool>>,
 }
 
-impl NodeResolver {
-  pub fn new(fs: FileSystemRc, npm_resolver: NpmResolverRc) -> Self {
+impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
+  pub fn new(env: TEnv, npm_resolver: NpmResolverRc) -> Self {
     Self {
-      fs,
+      env,
       npm_resolver,
-      in_npm_package_cache: deno_fs::sync::MaybeArcMutex::new(HashMap::new()),
+      in_npm_package_cache: crate::sync::MaybeArcMutex::new(HashMap::new()),
     }
   }
 
-  pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
+  pub fn in_npm_package(&self, specifier: &Url) -> bool {
     self.npm_resolver.in_npm_package(specifier)
   }
 
@@ -163,12 +161,11 @@ impl NodeResolver {
       return *result;
     }
 
-    let result =
-      if let Ok(specifier) = deno_core::ModuleSpecifier::parse(&specifier) {
-        self.npm_resolver.in_npm_package(&specifier)
-      } else {
-        false
-      };
+    let result = if let Ok(specifier) = Url::parse(&specifier) {
+      self.npm_resolver.in_npm_package(&specifier)
+    } else {
+      false
+    };
     cache.insert(specifier.into_owned(), result);
     result
   }
@@ -178,14 +175,14 @@ impl NodeResolver {
   pub fn resolve(
     &self,
     specifier: &str,
-    referrer: &ModuleSpecifier,
+    referrer: &Url,
     referrer_kind: NodeModuleKind,
     mode: NodeResolutionMode,
   ) -> Result<NodeResolution, NodeResolveError> {
     // Note: if we are here, then the referrer is an esm module
     // TODO(bartlomieju): skipped "policy" part as we don't plan to support it
 
-    if crate::is_builtin_node_module(specifier) {
+    if self.env.is_builtin_node_module(specifier) {
       return Ok(NodeResolution::BuiltIn(specifier.to_string()));
     }
 
@@ -248,11 +245,11 @@ impl NodeResolver {
   fn module_resolve(
     &self,
     specifier: &str,
-    referrer: &ModuleSpecifier,
+    referrer: &Url,
     referrer_kind: NodeModuleKind,
     conditions: &[&str],
     mode: NodeResolutionMode,
-  ) -> Result<ModuleSpecifier, NodeResolveError> {
+  ) -> Result<Url, NodeResolveError> {
     if should_be_treated_as_relative_or_absolute_path(specifier) {
       Ok(referrer.join(specifier).map_err(|err| {
         NodeResolveRelativeJoinError {
@@ -289,9 +286,9 @@ impl NodeResolver {
 
   fn finalize_resolution(
     &self,
-    resolved: ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-  ) -> Result<ModuleSpecifier, FinalizeResolutionError> {
+    resolved: Url,
+    maybe_referrer: Option<&Url>,
+  ) -> Result<Url, FinalizeResolutionError> {
     let encoded_sep_re = lazy_regex::regex!(r"%2F|%2C");
 
     if encoded_sep_re.is_match(resolved.path()) {
@@ -325,9 +322,9 @@ impl NodeResolver {
       p_str.to_string()
     };
 
-    let (is_dir, is_file) = if let Ok(stats) = self.fs.stat_sync(Path::new(&p))
+    let (is_dir, is_file) = if let Ok(stats) = self.env.stat_sync(Path::new(&p))
     {
-      (stats.is_directory, stats.is_file)
+      (stats.is_dir, stats.is_file)
     } else {
       (false, false)
     };
@@ -357,7 +354,7 @@ impl NodeResolver {
     &self,
     package_dir: &Path,
     package_subpath: Option<&str>,
-    maybe_referrer: Option<&ModuleSpecifier>,
+    maybe_referrer: Option<&Url>,
     mode: NodeResolutionMode,
   ) -> Result<NodeResolution, ResolvePkgSubpathFromDenoModuleError> {
     let node_module_kind = NodeModuleKind::Esm;
@@ -430,7 +427,7 @@ impl NodeResolver {
 
   pub fn url_to_node_resolution(
     &self,
-    url: ModuleSpecifier,
+    url: Url,
   ) -> Result<NodeResolution, UrlToNodeResolutionError> {
     let url_str = url.as_str().to_lowercase();
     if url_str.starts_with("http") || url_str.ends_with(".json") {
@@ -459,11 +456,11 @@ impl NodeResolver {
   fn path_to_declaration_url(
     &self,
     path: &Path,
-    maybe_referrer: Option<&ModuleSpecifier>,
+    maybe_referrer: Option<&Url>,
     referrer_kind: NodeModuleKind,
-  ) -> Result<ModuleSpecifier, TypesNotFoundError> {
-    fn probe_extensions(
-      fs: &dyn deno_fs::FileSystem,
+  ) -> Result<Url, TypesNotFoundError> {
+    fn probe_extensions<TEnv: NodeResolverEnv>(
+      fs: &TEnv,
       path: &Path,
       lowercase_path: &str,
       referrer_kind: NodeModuleKind,
@@ -514,11 +511,11 @@ impl NodeResolver {
       return Ok(to_file_specifier(path));
     }
     if let Some(path) =
-      probe_extensions(&*self.fs, path, &lowercase_path, referrer_kind)
+      probe_extensions(&self.env, path, &lowercase_path, referrer_kind)
     {
       return Ok(to_file_specifier(&path));
     }
-    if self.fs.is_dir_sync(path) {
+    if self.env.is_dir_sync(path) {
       let resolution_result = self.resolve_package_dir_subpath(
         path,
         /* sub path */ ".",
@@ -535,7 +532,7 @@ impl NodeResolver {
       }
       let index_path = path.join("index.js");
       if let Some(path) = probe_extensions(
-        &*self.fs,
+        &self.env,
         &index_path,
         &index_path.to_string_lossy().to_lowercase(),
         referrer_kind,
@@ -554,15 +551,15 @@ impl NodeResolver {
   }
 
   #[allow(clippy::too_many_arguments)]
-  pub(super) fn package_imports_resolve(
+  pub fn package_imports_resolve(
     &self,
     name: &str,
-    maybe_referrer: Option<&ModuleSpecifier>,
+    maybe_referrer: Option<&Url>,
     referrer_kind: NodeModuleKind,
     referrer_pkg_json: Option<&PackageJson>,
     conditions: &[&str],
     mode: NodeResolutionMode,
-  ) -> Result<ModuleSpecifier, PackageImportsResolveError> {
+  ) -> Result<Url, PackageImportsResolveError> {
     if name == "#" || name.starts_with("#/") || name.ends_with('/') {
       let reason = "is not a valid internal imports specifier name";
       return Err(
@@ -659,13 +656,13 @@ impl NodeResolver {
     subpath: &str,
     match_: &str,
     package_json_path: &Path,
-    maybe_referrer: Option<&ModuleSpecifier>,
+    maybe_referrer: Option<&Url>,
     referrer_kind: NodeModuleKind,
     pattern: bool,
     internal: bool,
     conditions: &[&str],
     mode: NodeResolutionMode,
-  ) -> Result<ModuleSpecifier, PackageTargetResolveError> {
+  ) -> Result<Url, PackageTargetResolveError> {
     if !subpath.is_empty() && !pattern && !target.ends_with('/') {
       return Err(
         InvalidPackageTargetError {
@@ -739,11 +736,8 @@ impl NodeResolver {
             return match result {
               Ok(url) => Ok(url),
               Err(err) => {
-                if is_builtin_node_module(target) {
-                  Ok(
-                    ModuleSpecifier::parse(&format!("node:{}", target))
-                      .unwrap(),
-                  )
+                if self.env.is_builtin_node_module(target) {
+                  Ok(Url::parse(&format!("node:{}", target)).unwrap())
                 } else {
                   Err(err)
                 }
@@ -824,13 +818,13 @@ impl NodeResolver {
     target: &Value,
     subpath: &str,
     package_subpath: &str,
-    maybe_referrer: Option<&ModuleSpecifier>,
+    maybe_referrer: Option<&Url>,
     referrer_kind: NodeModuleKind,
     pattern: bool,
     internal: bool,
     conditions: &[&str],
     mode: NodeResolutionMode,
-  ) -> Result<Option<ModuleSpecifier>, PackageTargetResolveError> {
+  ) -> Result<Option<Url>, PackageTargetResolveError> {
     let result = self.resolve_package_target_inner(
       package_json_path,
       target,
@@ -880,13 +874,13 @@ impl NodeResolver {
     target: &Value,
     subpath: &str,
     package_subpath: &str,
-    maybe_referrer: Option<&ModuleSpecifier>,
+    maybe_referrer: Option<&Url>,
     referrer_kind: NodeModuleKind,
     pattern: bool,
     internal: bool,
     conditions: &[&str],
     mode: NodeResolutionMode,
-  ) -> Result<Option<ModuleSpecifier>, PackageTargetResolveError> {
+  ) -> Result<Option<Url>, PackageTargetResolveError> {
     if let Some(target) = target.as_str() {
       let url = self.resolve_package_target_string(
         target,
@@ -1007,11 +1001,11 @@ impl NodeResolver {
     package_json_path: &Path,
     package_subpath: &str,
     package_exports: &Map<String, Value>,
-    maybe_referrer: Option<&ModuleSpecifier>,
+    maybe_referrer: Option<&Url>,
     referrer_kind: NodeModuleKind,
     conditions: &[&str],
     mode: NodeResolutionMode,
-  ) -> Result<ModuleSpecifier, PackageExportsResolveError> {
+  ) -> Result<Url, PackageExportsResolveError> {
     if package_exports.contains_key(package_subpath)
       && package_subpath.find('*').is_none()
       && !package_subpath.ends_with('/')
@@ -1120,11 +1114,11 @@ impl NodeResolver {
   pub(super) fn package_resolve(
     &self,
     specifier: &str,
-    referrer: &ModuleSpecifier,
+    referrer: &Url,
     referrer_kind: NodeModuleKind,
     conditions: &[&str],
     mode: NodeResolutionMode,
-  ) -> Result<ModuleSpecifier, PackageResolveError> {
+  ) -> Result<Url, PackageResolveError> {
     let (package_name, package_subpath, _is_scoped) =
       parse_npm_pkg_name(specifier, referrer)?;
 
@@ -1162,11 +1156,11 @@ impl NodeResolver {
     &self,
     package_name: &str,
     package_subpath: &str,
-    referrer: &ModuleSpecifier,
+    referrer: &Url,
     referrer_kind: NodeModuleKind,
     conditions: &[&str],
     mode: NodeResolutionMode,
-  ) -> Result<ModuleSpecifier, PackageResolveError> {
+  ) -> Result<Url, PackageResolveError> {
     let result = self.resolve_package_subpath_for_package_inner(
       package_name,
       package_subpath,
@@ -1175,7 +1169,7 @@ impl NodeResolver {
       conditions,
       mode,
     );
-    if mode.is_types() && !matches!(result, Ok(ModuleSpecifier { .. })) {
+    if mode.is_types() && !matches!(result, Ok(Url { .. })) {
       // try to resolve with the @types package
       let package_name = types_package_name(package_name);
       if let Ok(result) = self.resolve_package_subpath_for_package_inner(
@@ -1197,11 +1191,11 @@ impl NodeResolver {
     &self,
     package_name: &str,
     package_subpath: &str,
-    referrer: &ModuleSpecifier,
+    referrer: &Url,
     referrer_kind: NodeModuleKind,
     conditions: &[&str],
     mode: NodeResolutionMode,
-  ) -> Result<ModuleSpecifier, PackageResolveError> {
+  ) -> Result<Url, PackageResolveError> {
     let package_dir_path = self
       .npm_resolver
       .resolve_package_folder_from_package(package_name, referrer)?;
@@ -1237,11 +1231,11 @@ impl NodeResolver {
     &self,
     package_dir_path: &Path,
     package_subpath: &str,
-    maybe_referrer: Option<&ModuleSpecifier>,
+    maybe_referrer: Option<&Url>,
     referrer_kind: NodeModuleKind,
     conditions: &[&str],
     mode: NodeResolutionMode,
-  ) -> Result<ModuleSpecifier, PackageSubpathResolveError> {
+  ) -> Result<Url, PackageSubpathResolveError> {
     let package_json_path = package_dir_path.join("package.json");
     match self.load_package_json(&package_json_path)? {
       Some(pkg_json) => self.resolve_package_subpath(
@@ -1271,11 +1265,11 @@ impl NodeResolver {
     &self,
     package_json: &PackageJson,
     package_subpath: &str,
-    referrer: Option<&ModuleSpecifier>,
+    referrer: Option<&Url>,
     referrer_kind: NodeModuleKind,
     conditions: &[&str],
     mode: NodeResolutionMode,
-  ) -> Result<ModuleSpecifier, PackageSubpathResolveError> {
+  ) -> Result<Url, PackageSubpathResolveError> {
     if let Some(exports) = &package_json.exports {
       let result = self.package_exports_resolve(
         &package_json.path,
@@ -1328,10 +1322,10 @@ impl NodeResolver {
     &self,
     directory: &Path,
     package_subpath: &str,
-    referrer: Option<&ModuleSpecifier>,
+    referrer: Option<&Url>,
     referrer_kind: NodeModuleKind,
     mode: NodeResolutionMode,
-  ) -> Result<ModuleSpecifier, TypesNotFoundError> {
+  ) -> Result<Url, TypesNotFoundError> {
     assert_ne!(package_subpath, ".");
     let file_path = directory.join(package_subpath);
     if mode.is_types() {
@@ -1345,10 +1339,10 @@ impl NodeResolver {
     &self,
     directory: &Path,
     package_subpath: &str,
-    maybe_referrer: Option<&ModuleSpecifier>,
+    maybe_referrer: Option<&Url>,
     referrer_kind: NodeModuleKind,
     mode: NodeResolutionMode,
-  ) -> Result<ModuleSpecifier, LegacyResolveError> {
+  ) -> Result<Url, LegacyResolveError> {
     if package_subpath == "." {
       self.legacy_index_resolve(directory, maybe_referrer, referrer_kind, mode)
     } else {
@@ -1366,7 +1360,7 @@ impl NodeResolver {
 
   pub fn get_closest_package_json(
     &self,
-    url: &ModuleSpecifier,
+    url: &Url,
   ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
     let Ok(file_path) = url.to_file_path() else {
       return Ok(None);
@@ -1380,10 +1374,10 @@ impl NodeResolver {
   ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
     let parent_dir = file_path.parent().unwrap();
     let current_dir =
-      deno_core::strip_unc_prefix(self.fs.realpath_sync(parent_dir).map_err(
+      strip_unc_prefix(self.env.realpath_sync(parent_dir).map_err(
         |source| CanonicalizingPkgJsonDirError {
           dir_path: parent_dir.to_path_buf(),
-          source: source.into_io_error(),
+          source: source,
         },
       )?);
     for current_dir in current_dir.ancestors() {
@@ -1396,20 +1390,23 @@ impl NodeResolver {
     Ok(None)
   }
 
-  pub(super) fn load_package_json(
+  pub fn load_package_json(
     &self,
     package_json_path: &Path,
   ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
-    crate::package_json::load_pkg_json(&*self.fs, package_json_path)
+    crate::package_json::load_pkg_json(
+      self.env.pkg_json_fs(),
+      package_json_path,
+    )
   }
 
   pub(super) fn legacy_main_resolve(
     &self,
     package_json: &PackageJson,
-    maybe_referrer: Option<&ModuleSpecifier>,
+    maybe_referrer: Option<&Url>,
     referrer_kind: NodeModuleKind,
     mode: NodeResolutionMode,
-  ) -> Result<ModuleSpecifier, LegacyResolveError> {
+  ) -> Result<Url, LegacyResolveError> {
     let maybe_main = if mode.is_types() {
       match package_json.types.as_ref() {
         Some(types) => Some(types.as_str()),
@@ -1437,7 +1434,7 @@ impl NodeResolver {
 
     if let Some(main) = maybe_main {
       let guess = package_json.path.parent().unwrap().join(main).clean();
-      if self.fs.is_file_sync(&guess) {
+      if self.env.is_file_sync(&guess) {
         return Ok(to_file_specifier(&guess));
       }
 
@@ -1466,7 +1463,7 @@ impl NodeResolver {
           .unwrap()
           .join(format!("{main}{ending}"))
           .clean();
-        if self.fs.is_file_sync(&guess) {
+        if self.env.is_file_sync(&guess) {
           // TODO(bartlomieju): emitLegacyIndexDeprecation()
           return Ok(to_file_specifier(&guess));
         }
@@ -1484,10 +1481,10 @@ impl NodeResolver {
   fn legacy_index_resolve(
     &self,
     directory: &Path,
-    maybe_referrer: Option<&ModuleSpecifier>,
+    maybe_referrer: Option<&Url>,
     referrer_kind: NodeModuleKind,
     mode: NodeResolutionMode,
-  ) -> Result<ModuleSpecifier, LegacyResolveError> {
+  ) -> Result<Url, LegacyResolveError> {
     let index_file_names = if mode.is_types() {
       // todo(dsherret): investigate exactly how typescript does this
       match referrer_kind {
@@ -1499,7 +1496,7 @@ impl NodeResolver {
     };
     for index_file_name in index_file_names {
       let guess = directory.join(index_file_name).clean();
-      if self.fs.is_file_sync(&guess) {
+      if self.env.is_file_sync(&guess) {
         // TODO(bartlomieju): emitLegacyIndexDeprecation()
         return Ok(to_file_specifier(&guess));
       }
@@ -1615,13 +1612,13 @@ fn resolve_bin_entry_value<'a>(
   }
 }
 
-fn to_file_path(url: &ModuleSpecifier) -> PathBuf {
+fn to_file_path(url: &Url) -> PathBuf {
   url
     .to_file_path()
     .unwrap_or_else(|_| panic!("Provided URL was not file:// URL: {url}"))
 }
 
-fn to_file_path_string(url: &ModuleSpecifier) -> String {
+fn to_file_path_string(url: &Url) -> String {
   to_file_path(url).display().to_string()
 }
 
@@ -1696,7 +1693,7 @@ fn with_known_extension(path: &Path, ext: &str) -> PathBuf {
   path.with_file_name(format!("{file_name}.{ext}"))
 }
 
-fn to_specifier_display_string(url: &ModuleSpecifier) -> String {
+fn to_specifier_display_string(url: &Url) -> String {
   if let Ok(path) = url.to_file_path() {
     path.display().to_string()
   } else {
@@ -1708,7 +1705,7 @@ fn throw_invalid_subpath(
   subpath: String,
   package_json_path: &Path,
   internal: bool,
-  maybe_referrer: Option<&ModuleSpecifier>,
+  maybe_referrer: Option<&Url>,
 ) -> InvalidModuleSpecifierError {
   let ie = if internal { "imports" } else { "exports" };
   let reason = format!(
@@ -1725,7 +1722,7 @@ fn throw_invalid_subpath(
 
 pub fn parse_npm_pkg_name(
   specifier: &str,
-  referrer: &ModuleSpecifier,
+  referrer: &Url,
 ) -> Result<(String, String, bool), InvalidModuleSpecifierError> {
   let mut separator_index = specifier.find('/');
   let mut valid_package_name = true;
@@ -1824,9 +1821,21 @@ fn types_package_name(package_name: &str) -> String {
   format!("@types/{}", package_name.replace('/', "__"))
 }
 
+/// Ex. returns `fs` for `node:fs`
+fn get_module_name_from_builtin_node_module_specifier(
+  specifier: &Url,
+) -> Option<&str> {
+  if specifier.scheme() != "node" {
+    return None;
+  }
+
+  let (_, specifier) = specifier.as_str().split_once(':')?;
+  Some(specifier)
+}
+
 #[cfg(test)]
 mod tests {
-  use deno_core::serde_json::json;
+  use serde_json::json;
 
   use super::*;
 

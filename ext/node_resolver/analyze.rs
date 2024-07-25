@@ -5,17 +5,17 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::anyhow;
-use deno_core::anyhow::Context;
-use deno_core::futures::future::LocalBoxFuture;
-use deno_core::futures::stream::FuturesUnordered;
-use deno_core::futures::FutureExt;
-use deno_core::futures::StreamExt;
-use deno_core::ModuleSpecifier;
+use futures::future::LocalBoxFuture;
+use futures::stream::FuturesUnordered;
+use futures::FutureExt;
+use futures::StreamExt;
 use once_cell::sync::Lazy;
 
-use deno_core::error::AnyError;
+use anyhow::Context;
+use anyhow::Error as AnyError;
+use url::Url;
 
+use crate::env::NodeResolverEnv;
 use crate::package_json::load_pkg_json;
 use crate::path::to_file_specifier;
 use crate::resolution::NodeResolverRc;
@@ -50,28 +50,33 @@ pub trait CjsCodeAnalyzer {
   /// necessary.
   async fn analyze_cjs(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
     maybe_source: Option<String>,
   ) -> Result<CjsAnalysis, AnyError>;
 }
 
-pub struct NodeCodeTranslator<TCjsCodeAnalyzer: CjsCodeAnalyzer> {
+pub struct NodeCodeTranslator<
+  TCjsCodeAnalyzer: CjsCodeAnalyzer,
+  TNodeResolverEnv: NodeResolverEnv,
+> {
   cjs_code_analyzer: TCjsCodeAnalyzer,
-  fs: deno_fs::FileSystemRc,
-  node_resolver: NodeResolverRc,
+  env: TNodeResolverEnv,
+  node_resolver: NodeResolverRc<TNodeResolverEnv>,
   npm_resolver: NpmResolverRc,
 }
 
-impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
+impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
+  NodeCodeTranslator<TCjsCodeAnalyzer, TNodeResolverEnv>
+{
   pub fn new(
     cjs_code_analyzer: TCjsCodeAnalyzer,
-    fs: deno_fs::FileSystemRc,
-    node_resolver: NodeResolverRc,
+    env: TNodeResolverEnv,
+    node_resolver: NodeResolverRc<TNodeResolverEnv>,
     npm_resolver: NpmResolverRc,
   ) -> Self {
     Self {
       cjs_code_analyzer,
-      fs,
+      env,
       node_resolver,
       npm_resolver,
     }
@@ -85,7 +90,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
   /// If successful a source code for equivalent ES module is returned.
   pub async fn translate_cjs_to_esm(
     &self,
-    entry_specifier: &ModuleSpecifier,
+    entry_specifier: &Url,
     source: Option<String>,
   ) -> Result<String, AnyError> {
     let mut temp_var_count = 0;
@@ -173,7 +178,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
 
     type AnalysisFuture<'a> = LocalBoxFuture<'a, Result<Analysis, AnyError>>;
 
-    let mut handled_reexports: HashSet<ModuleSpecifier> = HashSet::default();
+    let mut handled_reexports: HashSet<Url> = HashSet::default();
     handled_reexports.insert(entry_specifier.clone());
     let mut analyze_futures: FuturesUnordered<AnalysisFuture<'a>> =
       FuturesUnordered::new();
@@ -282,10 +287,10 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
   fn resolve(
     &self,
     specifier: &str,
-    referrer: &ModuleSpecifier,
+    referrer: &Url,
     conditions: &[&str],
     mode: NodeResolutionMode,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> Result<Url, AnyError> {
     if specifier.starts_with('/') {
       todo!();
     }
@@ -305,14 +310,14 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     let (package_specifier, package_subpath) =
       parse_specifier(specifier).unwrap();
 
-    // todo(dsherret): use not_found error on not found here
     let module_dir = self.npm_resolver.resolve_package_folder_from_package(
       package_specifier.as_str(),
       referrer,
     )?;
 
     let package_json_path = module_dir.join("package.json");
-    let maybe_package_json = load_pkg_json(&*self.fs, &package_json_path)?;
+    let maybe_package_json =
+      load_pkg_json(self.env.pkg_json_fs(), &package_json_path)?;
     if let Some(package_json) = maybe_package_json {
       if let Some(exports) = &package_json.exports {
         return self
@@ -332,11 +337,11 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
       // old school
       if package_subpath != "." {
         let d = module_dir.join(package_subpath);
-        if self.fs.is_dir_sync(&d) {
+        if self.env.is_dir_sync(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
           let maybe_package_json =
-            load_pkg_json(&*self.fs, &package_json_path)?;
+            load_pkg_json(self.env.pkg_json_fs(), &package_json_path)?;
           if let Some(package_json) = maybe_package_json {
             if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
               return Ok(to_file_specifier(&d.join(main).clean()));
@@ -381,13 +386,13 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     referrer: &Path,
   ) -> Result<PathBuf, AnyError> {
     let p = p.clean();
-    if self.fs.exists_sync(&p) {
+    if self.env.exists_sync(&p) {
       let file_name = p.file_name().unwrap();
       let p_js =
         p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-      if self.fs.is_file_sync(&p_js) {
+      if self.env.is_file_sync(&p_js) {
         return Ok(p_js);
-      } else if self.fs.is_dir_sync(&p) {
+      } else if self.env.is_dir_sync(&p) {
         return Ok(p.join("index.js"));
       } else {
         return Ok(p);
@@ -396,14 +401,14 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
       {
         let p_js =
           p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-        if self.fs.is_file_sync(&p_js) {
+        if self.env.is_file_sync(&p_js) {
           return Ok(p_js);
         }
       }
       {
         let p_json =
           p.with_file_name(format!("{}.json", file_name.to_str().unwrap()));
-        if self.fs.is_file_sync(&p_json) {
+        if self.env.is_file_sync(&p_json) {
           return Ok(p_json);
         }
       }

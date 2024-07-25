@@ -62,13 +62,14 @@ use deno_core::futures::FutureExt;
 use deno_core::FeatureChecker;
 
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node::analyze::NodeCodeTranslator;
+use deno_runtime::deno_node::DenoFsNodeResolverEnv;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use log::warn;
+use node_resolver::analyze::NodeCodeTranslator;
 use once_cell::sync::OnceCell;
 use std::future::Future;
 use std::sync::Arc;
@@ -553,7 +554,7 @@ impl CliFactory {
       .get_or_try_init_async(
         async {
           Ok(Arc::new(NodeResolver::new(
-            self.fs().clone(),
+            DenoFsNodeResolverEnv::new(self.fs().clone()),
             self.npm_resolver().await?.clone().into_npm_resolver(),
           )))
         }
@@ -577,7 +578,7 @@ impl CliFactory {
 
         Ok(Arc::new(NodeCodeTranslator::new(
           cjs_esm_analyzer,
-          self.fs().clone(),
+          DenoFsNodeResolverEnv::new(self.fs().clone()),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone().into_npm_resolver(),
         )))

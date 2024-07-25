@@ -18,8 +18,8 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_node::errors::PackageFolderResolveError;
 use deno_runtime::deno_node::NodePermissions;
+use node_resolver::errors::PackageFolderResolveError;
 
 use crate::npm::managed::cache::TarballCache;
 

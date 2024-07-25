@@ -820,9 +820,7 @@ impl CliOptions {
       WorkspaceDiscoverOptions {
         fs: Default::default(), // use real fs
         deno_json_cache: None,
-        pkg_json_cache: Some(
-          &deno_runtime::deno_node::PackageJsonThreadLocalCache,
-        ),
+        pkg_json_cache: Some(&node_resolver::PackageJsonThreadLocalCache),
         workspace_cache: None,
         config_parse_options,
         additional_config_file_names,

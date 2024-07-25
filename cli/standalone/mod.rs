@@ -5,6 +5,42 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
+use deno_ast::MediaType;
+use deno_config::workspace::MappedResolution;
+use deno_config::workspace::MappedResolutionError;
+use deno_config::workspace::WorkspaceResolver;
+use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
+use deno_core::v8_set_flags;
+use deno_core::FeatureChecker;
+use deno_core::ModuleLoader;
+use deno_core::ModuleSourceCode;
+use deno_core::ModuleSpecifier;
+use deno_core::ModuleType;
+use deno_core::RequestedModuleType;
+use deno_core::ResolutionKind;
+use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_package_json::PackageJsonDepValue;
+use deno_runtime::deno_fs;
+use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::WorkerExecutionMode;
+use deno_runtime::WorkerLogLevel;
+use deno_semver::npm::NpmPackageReqReference;
+use eszip::EszipRelativeFileBaseUrl;
+use import_map::parse_from_json;
+use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::NodeResolutionMode;
+use std::borrow::Cow;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
 use crate::args::npm_pkg_req_ref_to_binary_command;
@@ -33,41 +69,6 @@ use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
 use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
-use deno_ast::MediaType;
-use deno_config::workspace::MappedResolution;
-use deno_config::workspace::MappedResolutionError;
-use deno_config::workspace::WorkspaceResolver;
-use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
-use deno_core::futures::FutureExt;
-use deno_core::v8_set_flags;
-use deno_core::FeatureChecker;
-use deno_core::ModuleLoader;
-use deno_core::ModuleSourceCode;
-use deno_core::ModuleSpecifier;
-use deno_core::ModuleType;
-use deno_core::RequestedModuleType;
-use deno_core::ResolutionKind;
-use deno_npm::npm_rc::ResolvedNpmRc;
-use deno_package_json::PackageJsonDepValue;
-use deno_runtime::deno_fs;
-use deno_runtime::deno_node::analyze::NodeCodeTranslator;
-use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::WorkerExecutionMode;
-use deno_runtime::WorkerLogLevel;
-use deno_semver::npm::NpmPackageReqReference;
-use eszip::EszipRelativeFileBaseUrl;
-use import_map::parse_from_json;
-use std::borrow::Cow;
-use std::rc::Rc;
-use std::sync::Arc;
 
 pub mod binary;
 mod file_system;
@@ -549,7 +550,7 @@ pub async fn run(
 
   let has_node_modules_dir = npm_resolver.root_node_modules_path().is_some();
   let node_resolver = Arc::new(NodeResolver::new(
-    fs.clone(),
+    deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
     npm_resolver.clone().into_npm_resolver(),
   ));
   let cjs_resolutions = Arc::new(CjsResolutionStore::default());
@@ -559,7 +560,7 @@ pub async fn run(
     CliCjsCodeAnalyzer::new(node_analysis_cache, fs.clone());
   let node_code_translator = Arc::new(NodeCodeTranslator::new(
     cjs_esm_code_analyzer,
-    fs.clone(),
+    deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
     node_resolver.clone(),
     npm_resolver.clone().into_npm_resolver(),
   ));
