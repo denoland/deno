@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals } from "@std/assert/mod.ts";
-import { fromFileUrl, relative } from "@std/path/mod.ts";
+import { assert, assertEquals } from "@std/assert";
+import { fromFileUrl, relative } from "@std/path";
 import {
   brotliCompress,
   brotliCompressSync,

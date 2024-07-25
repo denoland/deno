@@ -4,7 +4,7 @@ import path from "node:path";
 import posix from "node:path/posix";
 import win32 from "node:path/win32";
 
-import { assertStrictEquals } from "@std/assert/mod.ts";
+import { assertStrictEquals } from "@std/assert";
 
 Deno.test("[node/path] posix and win32 objects", () => {
   assertStrictEquals(path.posix, posix);

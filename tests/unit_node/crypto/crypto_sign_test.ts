@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals } from "@std/testing/asserts.ts";
+import { assert, assertEquals } from "@std/assert";
 import { createSign, createVerify, sign, verify } from "node:crypto";
 import { Buffer } from "node:buffer";
 import fixtures from "../testdata/crypto_digest_fixtures.json" with {
