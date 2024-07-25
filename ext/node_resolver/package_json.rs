@@ -33,31 +33,14 @@ impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
   }
 }
 
-pub struct DenoPkgJsonFsAdapter<'a>(pub &'a dyn deno_fs::FileSystem);
-
-impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
-  fn read_to_string_lossy(
-    &self,
-    path: &Path,
-  ) -> Result<String, std::io::Error> {
-    self
-      .0
-      .read_text_file_lossy_sync(path, None)
-      .map_err(|err| err.into_io_error())
-  }
-}
-
 /// Helper to load a package.json file using the thread local cache
-/// in deno_node.
+/// in node_resolver.
 pub fn load_pkg_json(
-  fs: &dyn deno_fs::FileSystem,
+  fs: &dyn deno_package_json::fs::DenoPkgJsonFs,
   path: &Path,
 ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
-  let result = PackageJson::load_from_path(
-    path,
-    &DenoPkgJsonFsAdapter(fs),
-    Some(&PackageJsonThreadLocalCache),
-  );
+  let result =
+    PackageJson::load_from_path(path, fs, Some(&PackageJsonThreadLocalCache));
   match result {
     Ok(pkg_json) => Ok(Some(pkg_json)),
     Err(deno_package_json::PackageJsonLoadError::Io { source, .. })
