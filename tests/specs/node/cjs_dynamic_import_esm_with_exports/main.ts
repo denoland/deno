@@ -1,3 +1,4 @@
-import { sayHi } from "cjs-package";
+import { addAsync } from "cjs-add";
 
-sayHi();
+const value: number = await addAsync(1, 2);
+console.log(value);
