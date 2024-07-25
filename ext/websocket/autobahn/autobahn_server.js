@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { parse } from "../../../tests/util/std/flags/mod.ts";
+import { parse } from "@std/flags/mod.ts";
 
 const { port } = parse(Deno.args, {
   number: ["port"],

@@ -1,3 +1,3 @@
-export { assertStrictEquals } from "../../../../tests/util/std/assert/mod.ts";
+export { assertStrictEquals } from "@std/assert/mod.ts";
 
 export * from "./interface.ts";
