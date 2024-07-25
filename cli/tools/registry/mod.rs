@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::IsTerminal;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -13,6 +14,7 @@ use base64::Engine;
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::Workspace;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -448,7 +450,7 @@ impl PublishPreparer {
       move || {
         let root_specifier =
           ModuleSpecifier::from_directory_path(&root_dir).unwrap();
-        let publish_paths =
+        let mut publish_paths =
           paths::collect_publish_paths(paths::CollectPublishPathsOptions {
             root_dir: &root_dir,
             cli_options: &cli_options,
@@ -464,13 +466,28 @@ impl PublishPreparer {
         );
 
         if !has_license_file(publish_paths.iter().map(|p| &p.specifier)) {
-          diagnostics_collector.push(PublishDiagnostic::MissingLicense {
-            expected_path: root_dir.join("LICENSE"),
-          });
+          if let Some(license_path) =
+            resolve_license_file(&root_dir, cli_options.workspace())
+          {
+            // force including the license file from the package or workspace root
+            publish_paths.push(CollectedPublishPath {
+              specifier: ModuleSpecifier::from_file_path(&license_path)
+                .unwrap(),
+              relative_path: "LICENSE".to_string(),
+              maybe_content: Some(std::fs::read(&license_path).with_context(
+                || format!("failed reading '{}'.", license_path.display()),
+              )?),
+              path: license_path,
+            });
+          } else {
+            diagnostics_collector.push(PublishDiagnostic::MissingLicense {
+              expected_path: root_dir.join("LICENSE"),
+            });
+          }
         }
 
         tar::create_gzipped_tarball(
-          &publish_paths,
+          publish_paths,
           LazyGraphSourceParser::new(&source_cache, &graph),
           &diagnostics_collector,
           &unfurler,
@@ -1194,31 +1211,49 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
   }
 }
 
+static SUPPORTED_LICENSE_FILE_NAMES: [&str; 6] = [
+  "LICENSE",
+  "LICENSE.md",
+  "LICENSE.txt",
+  "LICENSE",
+  "LICENSE.md",
+  "LICENSE.txt",
+];
+
+fn resolve_license_file(
+  pkg_root_dir: &Path,
+  workspace: &Workspace,
+) -> Option<PathBuf> {
+  let workspace_root_dir = workspace.root_dir_path();
+  let mut dirs = Vec::with_capacity(2);
+  dirs.push(pkg_root_dir);
+  if workspace_root_dir != pkg_root_dir {
+    dirs.push(&workspace_root_dir);
+  }
+  for dir in dirs {
+    for file_name in &SUPPORTED_LICENSE_FILE_NAMES {
+      let file_path = dir.join(file_name);
+      if file_path.exists() {
+        return Some(file_path);
+      }
+    }
+  }
+  None
+}
+
 fn has_license_file<'a>(
   mut specifiers: impl Iterator<Item = &'a ModuleSpecifier>,
 ) -> bool {
-  let allowed_license_files = {
-    let files = HashSet::from([
-      "license",
-      "license.md",
-      "license.txt",
-      "licence",
-      "licence.md",
-      "licence.txt",
-    ]);
-    if cfg!(debug_assertions) {
-      for file in &files {
-        assert_eq!(*file, file.to_lowercase());
-      }
-    }
-    files
-  };
+  let supported_license_files = SUPPORTED_LICENSE_FILE_NAMES
+    .iter()
+    .map(|s| s.to_lowercase())
+    .collect::<HashSet<_>>();
   specifiers.any(|specifier| {
     specifier
       .path()
       .rsplit_once('/')
       .map(|(_, file)| {
-        allowed_license_files.contains(file.to_lowercase().as_str())
+        supported_license_files.contains(file.to_lowercase().as_str())
       })
       .unwrap_or(false)
   })

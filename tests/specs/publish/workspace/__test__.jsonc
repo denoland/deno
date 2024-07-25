@@ -4,6 +4,10 @@
       "args": "publish --token 'sadfasdf'",
       "output": "workspace.out"
     },
+    "workspace_dry_run": {
+      "args": "publish --token 'sadfasdf' --dry-run",
+      "output": "workspace_dry_run.out"
+    },
     "individual": {
       "cwd": "./bar",
       "args": "publish --token 'sadfasdf'",
