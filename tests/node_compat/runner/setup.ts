@@ -3,7 +3,7 @@
 
 /** This copies the test files according to the config file `tests/node_compat/config.jsonc` */
 
-import { walk } from "@std/fs/walk.";
+import { walk } from "@std/fs/walk";
 import { SEPARATOR } from "@std/path/constants";
 import { ensureFile } from "@std/fs/ensure-file";
 import { writeAll } from "@std/io/write-all";
