@@ -8,6 +8,11 @@
       "args": "publish --token 'sadfasdf' --dry-run",
       "output": "workspace_dry_run.out"
     },
+    "individual_dry_run": {
+      "cwd": "./foo",
+      "args": "publish --token 'sadfasdf' --dry-run",
+      "output": "foo_dry_run.out"
+    },
     "individual": {
       "cwd": "./bar",
       "args": "publish --token 'sadfasdf'",

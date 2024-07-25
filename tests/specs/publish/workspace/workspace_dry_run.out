@@ -4,8 +4,8 @@ Check file:///[WILDLINE]/workspace/foo/mod.ts
 Checking for slow types in the public API...
 Check file:///[WILDLINE]/workspace/bar/mod.ts
 Check file:///[WILDLINE]/workspace/foo/mod.ts
+[UNORDERED_START]
 Simulating publish of @foo/foo@1.0.0 with files:
-[# notice how this line is including the LICENSE from the root directory]
    file:///[WILDLINE]/workspace/LICENSE (0B)
    file:///[WILDLINE]/workspace/foo/deno.json (135B)
    file:///[WILDLINE]/workspace/foo/mod.ts (118B)
@@ -13,4 +13,5 @@ Simulating publish of @foo/bar@1.0.0 with files:
    file:///[WILDLINE]/workspace/bar/LICENSE (0B)
    file:///[WILDLINE]/workspace/bar/deno.json (87B)
    file:///[WILDLINE]/workspace/bar/mod.ts (70B)
+[UNORDERED_END]
 Warning Aborting due to --dry-run
