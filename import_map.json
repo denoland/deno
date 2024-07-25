@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@std/": "./tests/util/std/"
+  }
+}

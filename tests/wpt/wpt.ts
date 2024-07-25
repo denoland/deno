@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-write --allow-read --allow-net --allow-env --allow-run
+#!/usr/bin/env -S deno run --allow-write --allow-read --allow-net --allow-env --allow-run --config=tests/config/deno.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This script is used to run WPT tests for Deno.
@@ -32,9 +32,9 @@ import {
   updateManifest,
   wptreport,
 } from "./runner/utils.ts";
-import { pooledMap } from "../util/std/async/pool.ts";
-import { blue, bold, green, red, yellow } from "../util/std/fmt/colors.ts";
-import { writeAll, writeAllSync } from "../util/std/io/write_all.ts";
+import { pooledMap } from "@std/async/pool.ts";
+import { blue, bold, green, red, yellow } from "@std/fmt/colors.ts";
+import { writeAll, writeAllSync } from "@std/io/write_all.ts";
 import { saveExpectation } from "./runner/utils.ts";
 
 class TestFilter {

@@ -1,4 +1,4 @@
-import { unreachable } from "../../../tests/util/std/assert/mod.ts";
+import { unreachable } from "@std/assert/mod.ts";
 
 const permissions: Deno.PermissionName[] = [
   "read",
