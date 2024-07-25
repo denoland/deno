@@ -20,6 +20,9 @@ use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
 use crate::resolver::SloppyImportsResolution;
 use crate::resolver::SloppyImportsResolver;
+use crate::tools::lint::CliLinter;
+use crate::tools::lint::CliLinterOptions;
+use crate::tools::lint::LintRuleProvider;
 use crate::util::path::to_percent_decoded_str;
 
 use deno_ast::MediaType;
@@ -40,8 +43,6 @@ use deno_graph::source::ResolveError;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
-use deno_lint::linter::LintConfig as DenoLintConfig;
-use deno_lint::rules::LintRule;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
@@ -817,25 +818,25 @@ fn generate_lint_diagnostics(
       continue;
     }
     let version = document.maybe_lsp_version();
-    let (lint_config, deno_lint_config, lint_rules) = config
+    let (lint_config, linter) = config
       .tree
       .scope_for_specifier(specifier)
       .and_then(|s| config_data_by_scope.get(s))
-      .map(|d| {
-        (
-          d.lint_config.clone(),
-          d.deno_lint_config.clone(),
-          d.lint_rules.clone(),
-        )
-      })
+      .map(|d| (d.lint_config.clone(), d.linter.clone()))
       .unwrap_or_else(|| {
         (
           Arc::new(LintConfig::new_with_base(PathBuf::from("/"))),
-          DenoLintConfig {
-            default_jsx_factory: None,
-            default_jsx_fragment_factory: None,
-          },
-          Arc::default(),
+          Arc::new(CliLinter::new(CliLinterOptions {
+            configured_rules: {
+              let lint_rule_provider = LintRuleProvider::new(None, None);
+              lint_rule_provider.resolve_lint_rules(Default::default(), None)
+            },
+            fix: false,
+            deno_lint_config: deno_lint::linter::LintConfig {
+              default_jsx_factory: None,
+              default_jsx_fragment_factory: None,
+            },
+          })),
         )
       });
     diagnostics_vec.push(DiagnosticRecord {
@@ -845,8 +846,7 @@ fn generate_lint_diagnostics(
         diagnostics: generate_document_lint_diagnostics(
           &document,
           &lint_config,
-          deno_lint_config,
-          lint_rules.rules.clone(),
+          &linter,
         ),
       },
     });
@@ -857,19 +857,16 @@ fn generate_lint_diagnostics(
 fn generate_document_lint_diagnostics(
   document: &Document,
   lint_config: &LintConfig,
-  deno_lint_config: DenoLintConfig,
-  lint_rules: Vec<&'static dyn LintRule>,
+  linter: &CliLinter,
 ) -> Vec<lsp::Diagnostic> {
   if !lint_config.files.matches_specifier(document.specifier()) {
     return Vec::new();
   }
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
-      if let Ok(references) = analysis::get_lint_references(
-        parsed_source,
-        lint_rules,
-        deno_lint_config,
-      ) {
+      if let Ok(references) =
+        analysis::get_lint_references(parsed_source, linter)
+      {
         references
           .into_iter()
           .map(|r| r.to_diagnostic())
@@ -1237,16 +1234,14 @@ impl DenoDiagnostic {
   pub fn to_lsp_diagnostic(&self, range: &lsp::Range) -> lsp::Diagnostic {
     fn no_local_message(
       specifier: &ModuleSpecifier,
-      sloppy_resolution: SloppyImportsResolution,
+      maybe_sloppy_resolution: Option<&SloppyImportsResolution>,
     ) -> String {
       let mut message = format!(
         "Unable to load a local module: {}\n",
         to_percent_decoded_str(specifier.as_ref())
       );
-      if let Some(additional_message) =
-        sloppy_resolution.as_suggestion_message()
-      {
-        message.push_str(&additional_message);
+      if let Some(res) = maybe_sloppy_resolution {
+        message.push_str(&res.as_suggestion_message());
         message.push('.');
       } else {
         message.push_str("Please check the file path.");
@@ -1263,15 +1258,15 @@ impl DenoDiagnostic {
       Self::NoCacheJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing jsr package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
-        let sloppy_resolution = SloppyImportsResolver::new(Arc::new(deno_fs::RealFs)).resolve(specifier, ResolutionMode::Execution);
-        let data = sloppy_resolution.as_lsp_quick_fix_message().map(|message| {
+        let maybe_sloppy_resolution = SloppyImportsResolver::new(Arc::new(deno_fs::RealFs)).resolve(specifier, ResolutionMode::Execution);
+        let data = maybe_sloppy_resolution.as_ref().map(|res| {
           json!({
             "specifier": specifier,
-            "to": sloppy_resolution.as_specifier(),
-            "message": message,
+            "to": res.as_specifier(),
+            "message": res.as_quick_fix_message(),
           })
         });
-        (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier, sloppy_resolution), data)
+        (lsp::DiagnosticSeverity::ERROR, no_local_message(specifier, maybe_sloppy_resolution.as_ref()), data)
       },
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => {

@@ -21,7 +21,6 @@ use crate::resolver::CjsResolutionStore;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::resolver::CliNodeResolver;
-use crate::resolver::SloppyImportsResolver;
 use crate::resolver::WorkerCliNpmGraphResolver;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -514,8 +513,6 @@ fn create_graph_resolver(
   node_resolver: Option<&Arc<CliNodeResolver>>,
 ) -> Arc<CliGraphResolver> {
   let workspace = config_data.map(|d| &d.member_dir.workspace);
-  let unstable_sloppy_imports =
-    workspace.is_some_and(|dir| dir.has_unstable("sloppy-imports"));
   Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
     node_resolver: node_resolver.cloned(),
     npm_resolver: npm_resolver.cloned(),
@@ -536,9 +533,8 @@ fn create_graph_resolver(
     maybe_vendor_dir: config_data.and_then(|d| d.vendor_dir.as_ref()),
     bare_node_builtins_enabled: workspace
       .is_some_and(|workspace| workspace.has_unstable("bare-node-builtins")),
-    sloppy_imports_resolver: unstable_sloppy_imports.then(|| {
-      SloppyImportsResolver::new_without_stat_cache(Arc::new(deno_fs::RealFs))
-    }),
+    sloppy_imports_resolver: config_data
+      .and_then(|d| d.sloppy_imports_resolver.clone()),
   }))
 }
 
