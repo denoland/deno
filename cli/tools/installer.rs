@@ -283,12 +283,12 @@ pub async fn install_command(
   flags: Arc<Flags>,
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
-  if !install_flags.global {
-    log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
-  }
-
   match install_flags.kind {
     InstallKind::Global(global_flags) => {
+      if !install_flags.global {
+        log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
+      }
+
       install_global(flags, global_flags).await
     }
     InstallKind::Local(maybe_add_flags) => {

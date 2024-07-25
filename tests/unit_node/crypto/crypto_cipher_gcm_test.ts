@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
 import testVectors128 from "./gcmEncryptExtIV128.json" with { type: "json" };
 import testVectors256 from "./gcmEncryptExtIV256.json" with { type: "json" };
-import { assertEquals } from "@std/assert/mod.ts";
+import { assertEquals } from "@std/assert";
 
 const aesGcm = (bits: string, key: Uint8Array) => {
   const ALGO = bits == "128" ? `aes-128-gcm` : `aes-256-gcm`;

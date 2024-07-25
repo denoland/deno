@@ -2,7 +2,7 @@
 
 // deno-lint-ignore-file no-deprecated-deno-api
 
-import { Buffer, BufReader, BufWriter } from "@std/io/mod.ts";
+import { Buffer, BufReader, BufWriter } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -13,7 +13,7 @@ import {
   delay,
   fail,
 } from "./test_util.ts";
-import { join } from "@std/path/mod.ts";
+import { join } from "@std/path";
 
 const listenPort = 4507;
 const listenPort2 = 4508;

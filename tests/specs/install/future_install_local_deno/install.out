@@ -1,4 +1,3 @@
-⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.
 [UNORDERED_START]
 Download http://localhost:4545/v1/extensionless
 Download http://localhost:4545/subdir/mod1.ts

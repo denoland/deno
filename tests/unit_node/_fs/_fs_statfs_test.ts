@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import * as fs from "node:fs";
-import { assertEquals, assertRejects } from "@std/assert/mod.ts";
-import * as path from "@std/path/mod.ts";
+import { assertEquals, assertRejects } from "@std/assert";
+import * as path from "@std/path";
 
 function assertStatFs(
   statFs: fs.StatsFsBase<unknown>,
