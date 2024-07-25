@@ -1215,9 +1215,9 @@ static SUPPORTED_LICENSE_FILE_NAMES: [&str; 6] = [
   "LICENSE",
   "LICENSE.md",
   "LICENSE.txt",
-  "LICENSE",
-  "LICENSE.md",
-  "LICENSE.txt",
+  "LICENCE",
+  "LICENCE.md",
+  "LICENCE.txt",
 ];
 
 fn resolve_license_file(
