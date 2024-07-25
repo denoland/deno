@@ -741,7 +741,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerPort0() {
 });
 
 Deno.test(
-  { permissions: { net: true } },
+  { permissions: { net: true }, ignore: Deno.build.os !== "windows" },
   async function httpServerDefaultOnListenCallback() {
     const ac = new AbortController();
 
