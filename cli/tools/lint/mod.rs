@@ -3,18 +3,13 @@
 //! This module provides file linting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
 use deno_ast::diagnostics::Diagnostic;
-use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
-use deno_ast::SourceRange;
-use deno_ast::SourceTextInfo;
-use deno_config::deno_json::ConfigFile;
+use deno_config::deno_json::LintRulesConfig;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
@@ -23,19 +18,12 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::unsync::future::LocalFutureExt;
 use deno_core::unsync::future::SharedLocal;
-use deno_graph::FastCheckDiagnostic;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::linter::LintConfig;
-use deno_lint::linter::LintFileOptions;
-use deno_lint::linter::Linter;
-use deno_lint::linter::LinterBuilder;
-use deno_lint::rules;
-use deno_lint::rules::LintRule;
 use log::debug;
 use log::info;
 use serde::Serialize;
-use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fs;
 use std::io::stdin;
@@ -50,7 +38,6 @@ use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
 use crate::args::LintReporterKind;
-use crate::args::LintRulesConfig;
 use crate::args::WorkspaceLintOptions;
 use crate::cache::Caches;
 use crate::cache::IncrementalCache;
@@ -60,11 +47,17 @@ use crate::graph_util::ModuleGraphCreator;
 use crate::tools::fmt::run_parallelized;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
-use crate::util::fs::specifier_from_file_path;
 use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 
-pub mod no_slow_types;
+mod linter;
+mod rules;
+
+pub use linter::CliLinter;
+pub use linter::CliLinterOptions;
+pub use rules::collect_no_slow_type_diagnostics;
+pub use rules::ConfiguredRules;
+pub use rules::LintRuleProvider;
 
 static STDIN_FILE_NAME: &str = "$deno$stdin.ts";
 
@@ -120,6 +113,7 @@ pub async fn lint(
 
           let mut linter = WorkspaceLinter::new(
             factory.caches()?.clone(),
+            factory.lint_rule_provider().await?,
             factory.module_graph_creator().await?.clone(),
             cli_options.start_dir.clone(),
             &cli_options.resolve_workspace_lint_options(&lint_flags)?,
@@ -157,12 +151,15 @@ pub async fn lint(
       let lint_config = start_dir
         .to_lint_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
       let lint_options = LintOptions::resolve(lint_config, &lint_flags);
-      let lint_rules = get_config_rules_err_empty(
-        lint_options.rules,
-        start_dir.maybe_deno_json().map(|c| c.as_ref()),
-      )?;
+      let lint_rules = factory
+        .lint_rule_provider()
+        .await?
+        .resolve_lint_rules_err_empty(
+          lint_options.rules,
+          start_dir.maybe_deno_json().map(|c| c.as_ref()),
+        )?;
       let file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
-      let r = lint_stdin(&file_path, lint_rules.rules, deno_lint_config);
+      let r = lint_stdin(&file_path, lint_rules, deno_lint_config);
       let success = handle_lint_result(
         &file_path.to_string_lossy(),
         r,
@@ -173,6 +170,7 @@ pub async fn lint(
     } else {
       let mut linter = WorkspaceLinter::new(
         factory.caches()?.clone(),
+        factory.lint_rule_provider().await?,
         factory.module_graph_creator().await?.clone(),
         cli_options.start_dir.clone(),
         &workspace_lint_options,
@@ -234,6 +232,7 @@ type WorkspaceModuleGraphFuture =
 
 struct WorkspaceLinter {
   caches: Arc<Caches>,
+  lint_rule_provider: LintRuleProvider,
   module_graph_creator: Arc<ModuleGraphCreator>,
   workspace_dir: Arc<WorkspaceDirectory>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
@@ -245,6 +244,7 @@ struct WorkspaceLinter {
 impl WorkspaceLinter {
   pub fn new(
     caches: Arc<Caches>,
+    lint_rule_provider: LintRuleProvider,
     module_graph_creator: Arc<ModuleGraphCreator>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_options: &WorkspaceLintOptions,
@@ -253,6 +253,7 @@ impl WorkspaceLinter {
       Arc::new(Mutex::new(create_reporter(workspace_options.reporter_kind)));
     Self {
       caches,
+      lint_rule_provider,
       module_graph_creator,
       workspace_dir,
       reporter_lock,
@@ -271,18 +272,27 @@ impl WorkspaceLinter {
   ) -> Result<(), AnyError> {
     self.file_count += paths.len();
 
-    let lint_rules = get_config_rules_err_empty(
+    let lint_rules = self.lint_rule_provider.resolve_lint_rules_err_empty(
       lint_options.rules,
       member_dir.maybe_deno_json().map(|c| c.as_ref()),
     )?;
-    let incremental_cache = Arc::new(IncrementalCache::new(
-      self.caches.lint_incremental_cache_db(),
-      &lint_rules.incremental_cache_state(),
-      &paths,
-    ));
+    let maybe_incremental_cache =
+      lint_rules.incremental_cache_state().map(|state| {
+        Arc::new(IncrementalCache::new(
+          self.caches.lint_incremental_cache_db(),
+          &state,
+          &paths,
+        ))
+      });
+
+    let linter = Arc::new(CliLinter::new(CliLinterOptions {
+      configured_rules: lint_rules,
+      fix: lint_options.fix,
+      deno_lint_config: lint_config,
+    }));
 
     let mut futures = Vec::with_capacity(2);
-    if lint_rules.no_slow_types {
+    if linter.has_package_rules() {
       if self.workspace_module_graph.is_none() {
         let module_graph_creator = self.module_graph_creator.clone();
         let packages = self.workspace_dir.jsr_packages_for_publish();
@@ -304,6 +314,7 @@ impl WorkspaceLinter {
       if let Some(publish_config) = publish_config {
         let has_error = self.has_error.clone();
         let reporter_lock = self.reporter_lock.clone();
+        let linter = linter.clone();
         let path_urls = paths
           .iter()
           .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
@@ -318,16 +329,12 @@ impl WorkspaceLinter {
             if !export_urls.iter().any(|url| path_urls.contains(url)) {
               return Ok(()); // entrypoint is not specified, so skip
             }
-            let diagnostics = no_slow_types::collect_no_slow_type_diagnostics(
-              &export_urls,
-              &graph,
-            );
+            let diagnostics = linter.lint_package(&graph, &export_urls);
             if !diagnostics.is_empty() {
               has_error.raise();
               let mut reporter = reporter_lock.lock();
               for diagnostic in &diagnostics {
-                reporter
-                  .visit_diagnostic(LintOrCliDiagnostic::FastCheck(diagnostic));
+                reporter.visit_diagnostic(diagnostic);
               }
             }
             Ok(())
@@ -339,11 +346,9 @@ impl WorkspaceLinter {
 
     futures.push({
       let has_error = self.has_error.clone();
-      let linter = create_linter(lint_rules.rules);
       let reporter_lock = self.reporter_lock.clone();
-      let incremental_cache = incremental_cache.clone();
-      let lint_config = lint_config.clone();
-      let fix = lint_options.fix;
+      let maybe_incremental_cache = maybe_incremental_cache.clone();
+      let linter = linter.clone();
       async move {
         run_parallelized(paths, {
           move |file_path| {
@@ -351,19 +356,23 @@ impl WorkspaceLinter {
               deno_ast::strip_bom(fs::read_to_string(&file_path)?);
 
             // don't bother rechecking this file if it didn't have any diagnostics before
-            if incremental_cache.is_file_same(&file_path, &file_text) {
-              return Ok(());
+            if let Some(incremental_cache) = &maybe_incremental_cache {
+              if incremental_cache.is_file_same(&file_path, &file_text) {
+                return Ok(());
+              }
             }
 
-            let r = lint_file(&linter, &file_path, file_text, lint_config, fix);
+            let r = linter.lint_file(&file_path, file_text);
             if let Ok((file_source, file_diagnostics)) = &r {
-              if file_diagnostics.is_empty() {
-                // update the incremental cache if there were no diagnostics
-                incremental_cache.update_file(
-                  &file_path,
-                  // ensure the returned text is used here as it may have been modified via --fix
-                  file_source.text(),
-                )
+              if let Some(incremental_cache) = &maybe_incremental_cache {
+                if file_diagnostics.is_empty() {
+                  // update the incremental cache if there were no diagnostics
+                  incremental_cache.update_file(
+                    &file_path,
+                    // ensure the returned text is used here as it may have been modified via --fix
+                    file_source.text(),
+                  )
+                }
               }
             }
 
@@ -384,9 +393,21 @@ impl WorkspaceLinter {
       .boxed_local()
     });
 
-    deno_core::futures::future::try_join_all(futures).await?;
+    if lint_options.fix {
+      // run sequentially when using `--fix` to lower the chances of weird
+      // bugs where a file level fix affects a package level diagnostic though
+      // it probably will happen anyway
+      for future in futures {
+        future.await?;
+      }
+    } else {
+      deno_core::futures::future::try_join_all(futures).await?;
+    }
 
-    incremental_cache.wait_completion().await;
+    if let Some(incremental_cache) = &maybe_incremental_cache {
+      incremental_cache.wait_completion().await;
+    }
+
     Ok(())
   }
 
@@ -410,11 +431,17 @@ fn collect_lint_files(
 
 #[allow(clippy::print_stdout)]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
-  let lint_rules = if maybe_rules_tags.is_none() {
-    rules::get_all_rules()
-  } else {
-    rules::get_filtered_rules(maybe_rules_tags, None, None)
-  };
+  let rule_provider = LintRuleProvider::new(None, None);
+  let lint_rules = rule_provider
+    .resolve_lint_rules(
+      LintRulesConfig {
+        tags: maybe_rules_tags.clone(),
+        include: None,
+        exclude: None,
+      },
+      None,
+    )
+    .rules;
 
   if json {
     let json_rules: Vec<serde_json::Value> = lint_rules
@@ -442,178 +469,11 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
       }
       println!(
         "{}",
-        colors::gray(format!(
-          "   help: https://lint.deno.land/#{}",
-          rule.code()
-        ))
+        colors::gray(format!("   help: {}", rule.help_docs_url()))
       );
       println!();
     }
   }
-}
-
-pub fn create_linter(rules: Vec<&'static dyn LintRule>) -> Linter {
-  LinterBuilder::default()
-    .ignore_file_directive("deno-lint-ignore-file")
-    .ignore_diagnostic_directive("deno-lint-ignore")
-    .rules(rules)
-    .build()
-}
-
-fn lint_file(
-  linter: &Linter,
-  file_path: &Path,
-  source_code: String,
-  config: LintConfig,
-  fix: bool,
-) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
-  let specifier = specifier_from_file_path(file_path)?;
-  let media_type = MediaType::from_specifier(&specifier);
-
-  if fix {
-    lint_file_and_fix(
-      linter,
-      &specifier,
-      media_type,
-      source_code,
-      file_path,
-      config,
-    )
-  } else {
-    linter
-      .lint_file(LintFileOptions {
-        specifier,
-        media_type,
-        source_code,
-        config,
-      })
-      .map_err(AnyError::from)
-  }
-}
-
-fn lint_file_and_fix(
-  linter: &Linter,
-  specifier: &ModuleSpecifier,
-  media_type: MediaType,
-  source_code: String,
-  file_path: &Path,
-  config: LintConfig,
-) -> Result<(ParsedSource, Vec<LintDiagnostic>), deno_core::anyhow::Error> {
-  // initial lint
-  let (source, diagnostics) = linter.lint_file(LintFileOptions {
-    specifier: specifier.clone(),
-    media_type,
-    source_code,
-    config: config.clone(),
-  })?;
-
-  // Try applying fixes repeatedly until the file has none left or
-  // a maximum number of iterations is reached. This is necessary
-  // because lint fixes may overlap and so we can't always apply
-  // them in one pass.
-  let mut source = source;
-  let mut diagnostics = diagnostics;
-  let mut fix_iterations = 0;
-  loop {
-    let change = apply_lint_fixes_and_relint(
-      specifier,
-      media_type,
-      linter,
-      config.clone(),
-      source.text_info_lazy(),
-      &diagnostics,
-    )?;
-    match change {
-      Some(change) => {
-        source = change.0;
-        diagnostics = change.1;
-      }
-      None => {
-        break;
-      }
-    }
-    fix_iterations += 1;
-    if fix_iterations > 5 {
-      log::warn!(
-        concat!(
-          "Reached maximum number of fix iterations for '{}'. There's ",
-          "probably a bug in Deno. Please fix this file manually.",
-        ),
-        specifier,
-      );
-      break;
-    }
-  }
-
-  if fix_iterations > 0 {
-    // everything looks good and the file still parses, so write it out
-    fs::write(file_path, source.text().as_ref())
-      .context("Failed writing fix to file.")?;
-  }
-
-  Ok((source, diagnostics))
-}
-
-fn apply_lint_fixes_and_relint(
-  specifier: &ModuleSpecifier,
-  media_type: MediaType,
-  linter: &Linter,
-  config: LintConfig,
-  text_info: &SourceTextInfo,
-  diagnostics: &[LintDiagnostic],
-) -> Result<Option<(ParsedSource, Vec<LintDiagnostic>)>, AnyError> {
-  let Some(new_text) = apply_lint_fixes(text_info, diagnostics) else {
-    return Ok(None);
-  };
-  linter
-    .lint_file(LintFileOptions {
-      specifier: specifier.clone(),
-      source_code: new_text,
-      media_type,
-      config,
-    })
-    .map(Some)
-    .context(
-      "An applied lint fix caused a syntax error. Please report this bug.",
-    )
-}
-
-fn apply_lint_fixes(
-  text_info: &SourceTextInfo,
-  diagnostics: &[LintDiagnostic],
-) -> Option<String> {
-  if diagnostics.is_empty() {
-    return None;
-  }
-
-  let file_start = text_info.range().start;
-  let mut quick_fixes = diagnostics
-    .iter()
-    // use the first quick fix
-    .filter_map(|d| d.fixes.first())
-    .flat_map(|fix| fix.changes.iter())
-    .map(|change| deno_ast::TextChange {
-      range: change.range.as_byte_range(file_start),
-      new_text: change.new_text.to_string(),
-    })
-    .collect::<Vec<_>>();
-  if quick_fixes.is_empty() {
-    return None;
-  }
-  // remove any overlapping text changes, we'll circle
-  // back for another pass to fix the remaining
-  quick_fixes.sort_by_key(|change| change.range.start);
-  for i in (1..quick_fixes.len()).rev() {
-    let cur = &quick_fixes[i];
-    let previous = &quick_fixes[i - 1];
-    let is_overlapping = cur.range.start < previous.range.end;
-    if is_overlapping {
-      quick_fixes.remove(i);
-    }
-  }
-  let new_text =
-    deno_ast::apply_text_changes(text_info.text_str(), quick_fixes);
-  Some(new_text)
 }
 
 /// Lint stdin and write result to stdout.
@@ -621,7 +481,7 @@ fn apply_lint_fixes(
 /// Compatible with `--json` flag.
 fn lint_stdin(
   file_path: &Path,
-  lint_rules: Vec<&'static dyn LintRule>,
+  configured_rules: ConfiguredRules,
   deno_lint_config: LintConfig,
 ) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
   let mut source_code = String::new();
@@ -629,15 +489,14 @@ fn lint_stdin(
     return Err(generic_error("Failed to read from stdin"));
   }
 
-  let linter = create_linter(lint_rules);
+  let linter = CliLinter::new(CliLinterOptions {
+    fix: false,
+    configured_rules,
+    deno_lint_config,
+  });
 
   linter
-    .lint_file(LintFileOptions {
-      specifier: specifier_from_file_path(file_path)?,
-      source_code: deno_ast::strip_bom(source_code),
-      media_type: MediaType::TypeScript,
-      config: deno_lint_config,
-    })
+    .lint_file(file_path, deno_ast::strip_bom(source_code))
     .map_err(AnyError::from)
 }
 
@@ -656,11 +515,18 @@ fn handle_lint_result(
         }
       }
       file_diagnostics.sort_by(|a, b| match a.specifier.cmp(&b.specifier) {
-        std::cmp::Ordering::Equal => a.range.start.cmp(&b.range.start),
+        std::cmp::Ordering::Equal => {
+          let a_start = a.range.as_ref().map(|r| r.range.start);
+          let b_start = b.range.as_ref().map(|r| r.range.start);
+          match a_start.cmp(&b_start) {
+            std::cmp::Ordering::Equal => a.details.code.cmp(&b.details.code),
+            other => other,
+          }
+        }
         file_order => file_order,
       });
       for d in &file_diagnostics {
-        reporter.visit_diagnostic(LintOrCliDiagnostic::Lint(d));
+        reporter.visit_diagnostic(d);
       }
       file_diagnostics.is_empty()
     }
@@ -671,99 +537,8 @@ fn handle_lint_result(
   }
 }
 
-#[derive(Clone, Copy)]
-pub enum LintOrCliDiagnostic<'a> {
-  Lint(&'a LintDiagnostic),
-  FastCheck(&'a FastCheckDiagnostic),
-}
-
-impl<'a> LintOrCliDiagnostic<'a> {
-  pub fn specifier(&self) -> &ModuleSpecifier {
-    match self {
-      LintOrCliDiagnostic::Lint(d) => &d.specifier,
-      LintOrCliDiagnostic::FastCheck(d) => d.specifier(),
-    }
-  }
-
-  pub fn range(&self) -> Option<(&SourceTextInfo, SourceRange)> {
-    match self {
-      LintOrCliDiagnostic::Lint(d) => Some((&d.text_info, d.range)),
-      LintOrCliDiagnostic::FastCheck(d) => {
-        d.range().map(|r| (&r.text_info, r.range))
-      }
-    }
-  }
-}
-
-impl<'a> deno_ast::diagnostics::Diagnostic for LintOrCliDiagnostic<'a> {
-  fn level(&self) -> deno_ast::diagnostics::DiagnosticLevel {
-    match self {
-      LintOrCliDiagnostic::Lint(d) => d.level(),
-      LintOrCliDiagnostic::FastCheck(d) => d.level(),
-    }
-  }
-
-  fn code(&self) -> Cow<'_, str> {
-    match self {
-      LintOrCliDiagnostic::Lint(d) => d.code(),
-      LintOrCliDiagnostic::FastCheck(_) => Cow::Borrowed("no-slow-types"),
-    }
-  }
-
-  fn message(&self) -> Cow<'_, str> {
-    match self {
-      LintOrCliDiagnostic::Lint(d) => d.message(),
-      LintOrCliDiagnostic::FastCheck(d) => d.message(),
-    }
-  }
-
-  fn location(&self) -> deno_ast::diagnostics::DiagnosticLocation {
-    match self {
-      LintOrCliDiagnostic::Lint(d) => d.location(),
-      LintOrCliDiagnostic::FastCheck(d) => d.location(),
-    }
-  }
-
-  fn snippet(&self) -> Option<deno_ast::diagnostics::DiagnosticSnippet<'_>> {
-    match self {
-      LintOrCliDiagnostic::Lint(d) => d.snippet(),
-      LintOrCliDiagnostic::FastCheck(d) => d.snippet(),
-    }
-  }
-
-  fn hint(&self) -> Option<Cow<'_, str>> {
-    match self {
-      LintOrCliDiagnostic::Lint(d) => d.hint(),
-      LintOrCliDiagnostic::FastCheck(d) => d.hint(),
-    }
-  }
-
-  fn snippet_fixed(
-    &self,
-  ) -> Option<deno_ast::diagnostics::DiagnosticSnippet<'_>> {
-    match self {
-      LintOrCliDiagnostic::Lint(d) => d.snippet_fixed(),
-      LintOrCliDiagnostic::FastCheck(d) => d.snippet_fixed(),
-    }
-  }
-
-  fn info(&self) -> Cow<'_, [Cow<'_, str>]> {
-    match self {
-      LintOrCliDiagnostic::Lint(d) => d.info(),
-      LintOrCliDiagnostic::FastCheck(d) => d.info(),
-    }
-  }
-
-  fn docs_url(&self) -> Option<Cow<'_, str>> {
-    match self {
-      LintOrCliDiagnostic::Lint(d) => d.docs_url(),
-      LintOrCliDiagnostic::FastCheck(d) => d.docs_url(),
-    }
-  }
-}
-
 trait LintReporter {
-  fn visit_diagnostic(&mut self, d: LintOrCliDiagnostic);
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic);
   fn visit_error(&mut self, file_path: &str, err: &AnyError);
   fn close(&mut self, check_count: usize);
 }
@@ -789,12 +564,10 @@ impl PrettyLintReporter {
 }
 
 impl LintReporter for PrettyLintReporter {
-  fn visit_diagnostic(&mut self, d: LintOrCliDiagnostic) {
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic) {
     self.lint_count += 1;
-    if let LintOrCliDiagnostic::Lint(d) = d {
-      if !d.fixes.is_empty() {
-        self.fixable_diagnostics += 1;
-      }
+    if !d.details.fixes.is_empty() {
+      self.fixable_diagnostics += 1;
     }
 
     log::error!("{}\n", d.display());
@@ -838,15 +611,17 @@ impl CompactLintReporter {
 }
 
 impl LintReporter for CompactLintReporter {
-  fn visit_diagnostic(&mut self, d: LintOrCliDiagnostic) {
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic) {
     self.lint_count += 1;
 
-    match d.range() {
-      Some((text_info, range)) => {
+    match &d.range {
+      Some(range) => {
+        let text_info = &range.text_info;
+        let range = &range.range;
         let line_and_column = text_info.line_and_column_display(range.start);
         log::error!(
           "{}: line {}, col {} - {} ({})",
-          d.specifier(),
+          d.specifier,
           line_and_column.line_number,
           line_and_column.column_number,
           d.message(),
@@ -854,7 +629,7 @@ impl LintReporter for CompactLintReporter {
         )
       }
       None => {
-        log::error!("{}: {} ({})", d.specifier(), d.message(), d.code())
+        log::error!("{}: {} ({})", d.specifier, d.message(), d.code())
       }
     }
   }
@@ -932,18 +707,22 @@ impl JsonLintReporter {
 }
 
 impl LintReporter for JsonLintReporter {
-  fn visit_diagnostic(&mut self, d: LintOrCliDiagnostic) {
+  fn visit_diagnostic(&mut self, d: &LintDiagnostic) {
     self.diagnostics.push(JsonLintDiagnostic {
-      filename: d.specifier().to_string(),
-      range: d.range().map(|(text_info, range)| JsonLintDiagnosticRange {
-        start: JsonDiagnosticLintPosition::new(
-          range.start.as_byte_index(text_info.range().start),
-          text_info.line_and_column_index(range.start),
-        ),
-        end: JsonDiagnosticLintPosition::new(
-          range.end.as_byte_index(text_info.range().start),
-          text_info.line_and_column_index(range.end),
-        ),
+      filename: d.specifier.to_string(),
+      range: d.range.as_ref().map(|range| {
+        let text_info = &range.text_info;
+        let range = range.range;
+        JsonLintDiagnosticRange {
+          start: JsonDiagnosticLintPosition::new(
+            range.start.as_byte_index(text_info.range().start),
+            text_info.line_and_column_index(range.start),
+          ),
+          end: JsonDiagnosticLintPosition::new(
+            range.end.as_byte_index(text_info.range().start),
+            text_info.line_and_column_index(range.end),
+          ),
+        }
       }),
       message: d.message().to_string(),
       code: d.code().to_string(),
@@ -993,117 +772,4 @@ fn sort_diagnostics(diagnostics: &mut [JsonLintDiagnostic]) {
       _ => file_order,
     }
   });
-}
-
-fn get_config_rules_err_empty(
-  rules: LintRulesConfig,
-  maybe_config_file: Option<&ConfigFile>,
-) -> Result<ConfiguredRules, AnyError> {
-  let lint_rules = get_configured_rules(rules, maybe_config_file);
-  if lint_rules.rules.is_empty() {
-    bail!("No rules have been configured")
-  }
-  Ok(lint_rules)
-}
-
-#[derive(Debug, Clone)]
-pub struct ConfiguredRules {
-  pub rules: Vec<&'static dyn LintRule>,
-  // cli specific rules
-  pub no_slow_types: bool,
-}
-
-impl Default for ConfiguredRules {
-  fn default() -> Self {
-    get_configured_rules(Default::default(), None)
-  }
-}
-
-impl ConfiguredRules {
-  fn incremental_cache_state(&self) -> Vec<&str> {
-    // use a hash of the rule names in order to bust the cache
-    let mut names = self.rules.iter().map(|r| r.code()).collect::<Vec<_>>();
-    // ensure this is stable by sorting it
-    names.sort_unstable();
-    if self.no_slow_types {
-      names.push("no-slow-types");
-    }
-    names
-  }
-}
-
-pub fn get_configured_rules(
-  rules: LintRulesConfig,
-  maybe_config_file: Option<&ConfigFile>,
-) -> ConfiguredRules {
-  const NO_SLOW_TYPES_NAME: &str = "no-slow-types";
-  let implicit_no_slow_types =
-    maybe_config_file.map(|c| c.is_package()).unwrap_or(false);
-  let no_slow_types = implicit_no_slow_types
-    && !rules
-      .exclude
-      .as_ref()
-      .map(|exclude| exclude.iter().any(|i| i == NO_SLOW_TYPES_NAME))
-      .unwrap_or(false);
-  let rules = rules::get_filtered_rules(
-    rules
-      .tags
-      .or_else(|| Some(get_default_tags(maybe_config_file))),
-    rules.exclude.map(|exclude| {
-      exclude
-        .into_iter()
-        .filter(|c| c != NO_SLOW_TYPES_NAME)
-        .collect()
-    }),
-    rules.include.map(|include| {
-      include
-        .into_iter()
-        .filter(|c| c != NO_SLOW_TYPES_NAME)
-        .collect()
-    }),
-  );
-  ConfiguredRules {
-    rules,
-    no_slow_types,
-  }
-}
-
-fn get_default_tags(maybe_config_file: Option<&ConfigFile>) -> Vec<String> {
-  let mut tags = Vec::with_capacity(2);
-  tags.push("recommended".to_string());
-  if maybe_config_file.map(|c| c.is_package()).unwrap_or(false) {
-    tags.push("jsr".to_string());
-  }
-  tags
-}
-
-#[cfg(test)]
-mod test {
-  use deno_lint::rules::get_recommended_rules;
-
-  use super::*;
-  use crate::args::LintRulesConfig;
-
-  #[test]
-  fn recommended_rules_when_no_tags_in_config() {
-    let rules_config = LintRulesConfig {
-      exclude: Some(vec!["no-debugger".to_string()]),
-      include: None,
-      tags: None,
-    };
-    let rules = get_configured_rules(rules_config, None);
-    let mut rule_names = rules
-      .rules
-      .into_iter()
-      .map(|r| r.code().to_string())
-      .collect::<Vec<_>>();
-    rule_names.sort();
-    let mut recommended_rule_names = get_recommended_rules()
-      .into_iter()
-      .map(|r| r.code().to_string())
-      .filter(|n| n != "no-debugger")
-      .collect::<Vec<_>>();
-    recommended_rule_names.sort();
-    assert_eq!(rule_names, recommended_rule_names);
-  }
 }

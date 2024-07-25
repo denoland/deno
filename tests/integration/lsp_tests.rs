@@ -14459,7 +14459,67 @@ fn lsp_sloppy_imports() {
     },
   }));
 
-  assert_eq!(json!(diagnostics.all()), json!([]));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([{
+    "range": {
+          "start": { "line": 0, "character": 19 },
+          "end": { "line": 0, "character": 24 }
+        },
+        "severity": 2,
+        "code": "no-sloppy-imports",
+        "source": "deno-lint",
+        "message": "Sloppy imports are not allowed.",
+        "data": [{
+          "description": "Add a '.ts' extension.",
+          "changes": [{
+            "range": {
+              "start": { "line": 0, "character": 19 },
+              "end": { "line": 0, "character": 24 },
+            },
+           "new_text": "'./a.ts'"
+          }]
+        }]
+    }, {
+    "range": {
+        "start": { "line": 1, "character": 19 },
+        "end": { "line": 1, "character": 27 }
+      },
+      "severity": 2,
+      "code": "no-sloppy-imports",
+      "source": "deno-lint",
+      "message": "Sloppy imports are not allowed.",
+      "data": [{
+        "description": "Change the extension to '.ts'.",
+        "changes": [{
+          "range": {
+            "start": { "line": 1, "character": 19 },
+            "end": { "line": 1, "character": 27 },
+          },
+         "new_text": "'./b.ts'"
+        }]
+      }]
+    }, {
+    "range": {
+        "start": { "line": 2, "character": 19 },
+        "end": { "line": 2, "character": 27 }
+      },
+      "severity": 2,
+      "code": "no-sloppy-imports",
+      "source": "deno-lint",
+      "message": "Sloppy imports are not allowed.",
+      "data": [{
+        "description": "Change the extension to '.d.ts'.",
+        "changes": [{
+          "range": {
+            "start": { "line": 2, "character": 19 },
+            "end": { "line": 2, "character": 27 },
+          },
+         "new_text": "'./c.d.ts'"
+        }]
+      }]
+    }])
+  );
 
   client.shutdown();
 }
@@ -14488,11 +14548,33 @@ fn lsp_sloppy_imports_prefers_dts() {
     "import { foo } from './a.js';\nconsole.log(foo);",
   );
   let diagnostics = client.did_open_file(&file);
-  // no warnings because "a.js" exists
-  assert_eq!(diagnostics.all().len(), 0);
+  // no other warnings because "a.js" exists
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([{
+      "range": {
+        "start": { "line": 0, "character": 20 },
+        "end": { "line": 0, "character": 28 }
+      },
+      "severity": 2,
+      "code": "no-sloppy-imports",
+      "source": "deno-lint",
+      "message": "Sloppy imports are not allowed.",
+      "data": [{
+        "description": "Change the extension to '.d.ts'.",
+        "changes": [{
+          "range": {
+            "start": { "line": 0, "character": 20 },
+            "end": { "line": 0, "character": 28 },
+          },
+         "new_text": "'./a.d.ts'"
+        }]
+      }]
+    }])
+  );
 
   let diagnostics = client.did_open_file(&a_dts);
-  assert_eq!(diagnostics.all().len(), 0, "Got {:#?}", diagnostics.all());
+  assert_eq!(json!(diagnostics.for_file(&a_dts.uri())), json!([]));
 
   let response = client.write_request(
     "textDocument/references",

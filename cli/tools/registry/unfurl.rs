@@ -177,8 +177,8 @@ impl SpecifierUnfurler {
       if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
         sloppy_imports_resolver
           .resolve(&resolved, deno_graph::source::ResolutionMode::Execution)
-          .as_specifier()
-          .clone()
+          .map(|res| res.into_specifier())
+          .unwrap_or(resolved)
       } else {
         resolved
       };

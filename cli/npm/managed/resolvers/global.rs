@@ -14,10 +14,10 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_node::errors::PackageFolderResolveError;
-use deno_runtime::deno_node::errors::PackageNotFoundError;
-use deno_runtime::deno_node::errors::ReferrerNotFoundError;
 use deno_runtime::deno_node::NodePermissions;
+use node_resolver::errors::PackageFolderResolveError;
+use node_resolver::errors::PackageNotFoundError;
+use node_resolver::errors::ReferrerNotFoundError;
 
 use super::super::cache::NpmCache;
 use super::super::cache::TarballCache;
