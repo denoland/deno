@@ -1,4 +1,4 @@
 {
   "lock": false,
-  "importMap": "../import_map.json"
+  "importMap": "../tools/core_import_map.json"
 }
