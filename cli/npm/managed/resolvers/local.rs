@@ -2,8 +2,6 @@
 
 //! Code for local node_modules resolution.
 
-pub(super) mod bin_entries;
-
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -327,7 +325,8 @@ async fn sync_resolution_with_fs(
   let mut cache_futures = FuturesUnordered::new();
   let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
-  let bin_entries = Rc::new(RefCell::new(bin_entries::BinEntries::new()));
+  let bin_entries =
+    Rc::new(RefCell::new(super::common::bin_entries::BinEntries::new()));
   let mut lifecycle_scripts =
     super::common::LifecycleScripts::new(Cow::Borrowed(lifecycle_scripts));
   for package in &package_partitions.packages {

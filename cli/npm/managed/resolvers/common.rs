@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+pub(super) mod bin_entries;
+
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::ErrorKind;
@@ -27,8 +29,7 @@ use node_resolver::errors::PackageFolderResolveError;
 
 use crate::args::LifecycleScriptsConfig;
 use crate::npm::managed::cache::TarballCache;
-
-use super::local::bin_entries::BinEntries;
+use bin_entries::BinEntries;
 
 /// Part of the resolution that interacts with the file system.
 #[async_trait(?Send)]
