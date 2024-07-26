@@ -221,10 +221,8 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       specifier,
       referrer,
       referrer_kind,
-      match referrer_kind {
-        NodeModuleKind::Esm => DEFAULT_CONDITIONS,
-        NodeModuleKind::Cjs => REQUIRE_CONDITIONS,
-      },
+      // even though the referrer may be CJS, if we're here that means we're doing ESM resolution
+      DEFAULT_CONDITIONS,
       mode,
     )?;
 
