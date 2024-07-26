@@ -2,6 +2,7 @@
 
 //! Code for global npm cache resolution.
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -19,6 +20,8 @@ use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
 
+use crate::args::LifecycleScriptsConfig;
+
 use super::super::cache::NpmCache;
 use super::super::cache::TarballCache;
 use super::super::resolution::NpmResolution;
@@ -34,6 +37,7 @@ pub struct GlobalNpmPackageResolver {
   resolution: Arc<NpmResolution>,
   system_info: NpmSystemInfo,
   registry_read_permission_checker: RegistryReadPermissionChecker,
+  lifecycle_scripts: LifecycleScriptsConfig,
 }
 
 impl GlobalNpmPackageResolver {
@@ -43,6 +47,7 @@ impl GlobalNpmPackageResolver {
     tarball_cache: Arc<TarballCache>,
     resolution: Arc<NpmResolution>,
     system_info: NpmSystemInfo,
+    lifecycle_scripts: LifecycleScriptsConfig,
   ) -> Self {
     Self {
       registry_read_permission_checker: RegistryReadPermissionChecker::new(
@@ -53,6 +58,7 @@ impl GlobalNpmPackageResolver {
       tarball_cache,
       resolution,
       system_info,
+      lifecycle_scripts,
     }
   }
 }
@@ -149,8 +155,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     let package_partitions = self
       .resolution
       .all_system_packages_partitioned(&self.system_info);
-
-    cache_packages(package_partitions.packages, &self.tarball_cache).await?;
+    cache_packages(&package_partitions.packages, &self.tarball_cache).await?;
 
     // create the copy package folders
     for copy in package_partitions.copy_packages {
@@ -159,6 +164,24 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
         .ensure_copy_package(&copy.get_package_cache_folder_id())?;
     }
 
+    let mut lifecycle_scripts = super::common::LifecycleScripts::new(
+      Cow::Borrowed(&self.lifecycle_scripts),
+    );
+    for package in &package_partitions.packages {
+      let package_folder = self.cache.package_folder_for_nv(&package.id.nv);
+      lifecycle_scripts.add(package, &package_folder, &package_folder);
+    }
+
+    if lifecycle_scripts.will_run_scripts() {
+      let snapshot = self.resolution.snapshot();
+      lifecycle_scripts
+        .finish(&snapshot, &package_partitions.packages, None, |package| {
+          self.cache.package_folder_for_nv(&package.id.nv)
+        })
+        .await?;
+    } else {
+      lifecycle_scripts.warn_not_run_scripts();
+    }
     Ok(())
   }
 

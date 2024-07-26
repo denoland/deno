@@ -140,11 +140,11 @@ impl RegistryReadPermissionChecker {
 
 /// Caches all the packages in parallel.
 pub async fn cache_packages(
-  packages: Vec<NpmResolutionPackage>,
+  packages: &[NpmResolutionPackage],
   tarball_cache: &Arc<TarballCache>,
 ) -> Result<(), AnyError> {
   let mut futures_unordered = futures::stream::FuturesUnordered::new();
-  for package in &packages {
+  for package in packages {
     futures_unordered.push(async move {
       tarball_cache
         .ensure_package(&package.id.nv, &package.dist)
@@ -233,13 +233,11 @@ impl<'a> LifecycleScripts<'a> {
     }
   }
 
-  pub async fn finish(
-    self,
-    snapshot: &NpmResolutionSnapshot,
-    packages: &[NpmResolutionPackage],
-    root_node_modules_dir_path: Option<&Path>,
-    get_package_path: impl Fn(&NpmResolutionPackage) -> PathBuf + Copy,
-  ) -> Result<(), AnyError> {
+  pub fn will_run_scripts(&self) -> bool {
+    !self.packages_with_scripts.is_empty()
+  }
+
+  pub fn warn_not_run_scripts(&self) {
     if !self.packages_with_scripts_not_run.is_empty() {
       let (maybe_install, maybe_install_example) = if *crate::args::DENO_FUTURE
       {
@@ -259,10 +257,20 @@ impl<'a> LifecycleScripts<'a> {
       log::warn!("{}: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
     This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache`{maybe_install}
     (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>`{maybe_install_example}):\n      {packages}", crate::colors::yellow("warning"));
-      for (scripts_warned_path, _) in self.packages_with_scripts_not_run {
+      for (scripts_warned_path, _) in &self.packages_with_scripts_not_run {
         let _ignore_err = std::fs::write(scripts_warned_path, "");
       }
     }
+  }
+
+  pub async fn finish(
+    self,
+    snapshot: &NpmResolutionSnapshot,
+    packages: &[NpmResolutionPackage],
+    root_node_modules_dir_path: Option<&Path>,
+    get_package_path: impl Fn(&NpmResolutionPackage) -> PathBuf + Copy,
+  ) -> Result<(), AnyError> {
+    self.warn_not_run_scripts();
     let mut failed_packages = Vec::new();
     if !self.packages_with_scripts.is_empty() {
       // get custom commands for each bin available in the node_modules dir (essentially
