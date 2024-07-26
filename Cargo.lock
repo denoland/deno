@@ -1342,9 +1342,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.298.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54fb4db0174c7130b3a8a90ed6aefb3b42a8acd6b75ea9a5a0c7c4d02993cd61"
+version = "0.299.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1354,7 +1352,7 @@ dependencies = [
  "cooked-waker",
  "deno_core_icudata",
  "deno_ops",
- "deno_unsync",
+ "deno_unsync 0.4.0",
  "futures",
  "libc",
  "memoffset 0.9.1",
@@ -1544,7 +1542,7 @@ dependencies = [
  "data-url",
  "deno_ast",
  "deno_semver",
- "deno_unsync",
+ "deno_unsync 0.3.10",
  "encoding_rs",
  "futures",
  "import_map",
@@ -1823,9 +1821,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.174.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdacbea7e6c459f0bcb48cdb0c7ce8ca6ece53645385fe98cf38e7242b2c5809"
+version = "0.175.0"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -1997,6 +1993,16 @@ name = "deno_unsync"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3c8b95582c2023dbb66fccc37421b374026f5915fa507d437cb566904db9a3a"
+dependencies = [
+ "parking_lot 0.12.3",
+ "tokio",
+]
+
+[[package]]
+name = "deno_unsync"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03ee1607db298c8f12124b345a52d5f2f504a7504c9d535f1d8f07127b237010"
 dependencies = [
  "parking_lot 0.12.3",
  "tokio",
@@ -5940,9 +5946,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.207.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a442f2e04f8367eb99982beb6733fb88df666da9379f937552d67ca060de6e80"
+version = "0.208.0"
 dependencies = [
  "num-bigint",
  "serde",
@@ -6867,7 +6871,7 @@ dependencies = [
  "base64 0.21.7",
  "bytes",
  "console_static_text",
- "deno_unsync",
+ "deno_unsync 0.3.10",
  "denokv_proto",
  "fastwebsockets",
  "flate2",
@@ -7560,9 +7564,7 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.99.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa3fc0608a78f0c7d4ec88025759cb78c90a29984b48540060355a626ae329c1"
+version = "0.100.0"
 dependencies = [
  "bindgen",
  "bitflags 2.5.0",

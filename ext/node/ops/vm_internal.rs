@@ -19,7 +19,24 @@ impl ContextifyScript {
     scope: &mut v8::HandleScope,
     source_str: v8::Local<v8::String>,
   ) -> Result<Self, AnyError> {
-    let source = v8::script_compiler::Source::new(source_str, None);
+    let resource_name = v8::undefined(scope);
+    let host_defined_options = v8::PrimitiveArray::new(scope, 1);
+    let value = v8::Boolean::new(scope, true);
+    host_defined_options.set(scope, 0, value.into());
+    let origin = v8::ScriptOrigin::new(
+      scope,
+      resource_name.into(),
+      0,
+      0,
+      false,
+      0,
+      None,
+      false,
+      false,
+      false,
+      Some(host_defined_options.into()),
+    );
+    let source = v8::script_compiler::Source::new(source_str, Some(&origin));
 
     let unbound_script = v8::script_compiler::compile_unbound_script(
       scope,

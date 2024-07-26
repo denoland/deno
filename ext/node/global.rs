@@ -1,12 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::mem::MaybeUninit;
-
 use deno_core::v8;
 use deno_core::v8::GetPropertyNamesArgs;
 use deno_core::v8::MapFnTo;
-
-use crate::resolution::NodeResolverRc;
 
 // NOTE(bartlomieju): somehow calling `.map_fn_to()` multiple times on a function
 // returns two different pointers. That shouldn't be the case as `.map_fn_to()`
@@ -264,19 +260,18 @@ fn is_managed_key(
 }
 
 fn current_mode(scope: &mut v8::HandleScope) -> Mode {
-  let Some(v8_string) =
-    v8::StackTrace::current_script_name_or_source_url(scope)
+  let Some(host_defined_options) = scope.get_current_host_defined_options()
   else {
     return Mode::Deno;
   };
-  let op_state = deno_core::JsRuntime::op_state_from(scope);
-  let op_state = op_state.borrow();
-  let Some(node_resolver) = op_state.try_borrow::<NodeResolverRc>() else {
-    return Mode::Deno;
+  let host_defined_options = unsafe {
+    v8::Local::<v8::PrimitiveArray>::cast_unchecked(host_defined_options)
   };
-  let mut buffer = [MaybeUninit::uninit(); 2048];
-  let str = v8_string.to_rust_cow_lossy(scope, &mut buffer);
-  if str.starts_with("node:") || node_resolver.in_npm_package_with_cache(str) {
+  if host_defined_options.length() < 1 {
+    return Mode::Deno;
+  }
+  let is_node = host_defined_options.get(scope, 0).is_true();
+  if is_node {
     Mode::Node
   } else {
     Mode::Deno

@@ -11,4 +11,4 @@ pub use task_queue::TaskQueue;
 pub use task_queue::TaskQueuePermit;
 pub use value_creator::MultiRuntimeAsyncValueCreator;
 // todo(dsherret): this being in the unsync module is slightly confusing, but it's Sync
-pub use deno_core::unsync::AtomicFlag;
+pub use deno_core::unsync::sync::AtomicFlag;
