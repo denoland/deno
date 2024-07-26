@@ -395,7 +395,7 @@ async fn sync_resolution_with_fs(
     let sub_node_modules = folder_path.join("node_modules");
     let package_path =
       join_package_name(&sub_node_modules, &package.id.nv.name);
-    lifecycle_scripts.add(package, &package_path, &folder_path);
+    lifecycle_scripts.add(package, package_path.into(), &folder_path);
   }
 
   while let Some(result) = cache_futures.next().await {

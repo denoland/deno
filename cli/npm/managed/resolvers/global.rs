@@ -169,7 +169,11 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     );
     for package in &package_partitions.packages {
       let package_folder = self.cache.package_folder_for_nv(&package.id.nv);
-      lifecycle_scripts.add(package, &package_folder, &package_folder);
+      lifecycle_scripts.add(
+        package,
+        Cow::Borrowed(&package_folder),
+        &package_folder,
+      );
     }
 
     if lifecycle_scripts.will_run_scripts() {

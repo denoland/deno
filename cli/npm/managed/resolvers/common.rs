@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-pub(super) mod bin_entries;
+pub mod bin_entries;
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -209,20 +209,25 @@ impl<'a> LifecycleScripts<'a> {
       PackagesAllowedScripts::None => false,
     }
   }
+  /// Register a package for running lifecycle scripts, if applicable.
+  ///
+  /// `package_path` is the path containing the package's code (its root dir).
+  /// `package_meta_path` is the path to serve as the base directory for lifecycle
+  /// script-related metadata (e.g. to store whether the scripts have been run already)
   pub fn add(
     &mut self,
     package: &NpmResolutionPackage,
-    package_path: &Path,
+    package_path: Cow<Path>,
     package_meta_path: &Path,
   ) {
-    if has_lifecycle_scripts(package, package_path) {
+    if has_lifecycle_scripts(package, &package_path) {
       let scripts_run = package_meta_path.join(".scripts-run");
       let has_warned = package_meta_path.join(".scripts-warned");
       if self.can_run_scripts(&package.id.nv) {
         if !scripts_run.exists() {
           self.packages_with_scripts.push((
             package.clone(),
-            package_path.to_path_buf(),
+            package_path.into_owned(),
             scripts_run,
           ));
         }
@@ -276,11 +281,8 @@ impl<'a> LifecycleScripts<'a> {
     if !self.packages_with_scripts.is_empty() {
       // get custom commands for each bin available in the node_modules dir (essentially
       // the scripts that are in `node_modules/.bin`)
-      let base = resolve_baseline_custom_commands(
-        snapshot,
-        &packages,
-        get_package_path,
-      )?;
+      let base =
+        resolve_baseline_custom_commands(snapshot, packages, get_package_path)?;
       let init_cwd = self.config.initial_cwd.as_deref().unwrap();
       let process_state = crate::npm::managed::npm_process_state(
         snapshot.as_valid_serialized(),
