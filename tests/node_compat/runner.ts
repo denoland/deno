@@ -2,8 +2,6 @@
 import "./polyfill_globals.js";
 import { createRequire } from "node:module";
 import { toFileUrl } from "@std/path/to-file-url";
-import process from "node:process";
-
 const file = Deno.args[0];
 if (!file) {
   throw new Error("No file provided");
