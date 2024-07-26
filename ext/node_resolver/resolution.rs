@@ -1370,14 +1370,36 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     &self,
     file_path: &Path,
   ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
+    // we use this for deno compile using byonm because the script paths
+    // won't be in virtual file system, but
+    fn canonicalize_first_ancestor_exists(
+      dir_path: &Path,
+      env: &dyn NodeResolverEnv,
+    ) -> Result<Option<PathBuf>, std::io::Error> {
+      for ancestor in dir_path.ancestors() {
+        match env.realpath_sync(ancestor) {
+          Ok(dir_path) => return Ok(Some(dir_path)),
+          Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            // keep searching
+          }
+          Err(err) => return Err(err),
+        }
+      }
+      Ok(None)
+    }
+
     let parent_dir = file_path.parent().unwrap();
-    let current_dir =
-      strip_unc_prefix(self.env.realpath_sync(parent_dir).map_err(
-        |source| CanonicalizingPkgJsonDirError {
-          dir_path: parent_dir.to_path_buf(),
-          source,
-        },
-      )?);
+    let Some(current_dir) = canonicalize_first_ancestor_exists(
+      parent_dir, &self.env,
+    )
+    .map_err(|source| CanonicalizingPkgJsonDirError {
+      dir_path: parent_dir.to_path_buf(),
+      source,
+    })?
+    else {
+      return Ok(None);
+    };
+    let current_dir = strip_unc_prefix(current_dir);
     for current_dir in current_dir.ancestors() {
       let package_json_path = current_dir.join("package.json");
       if let Some(pkg_json) = self.load_package_json(&package_json_path)? {
