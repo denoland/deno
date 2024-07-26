@@ -246,6 +246,7 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
   let reader = std::io::BufReader::new(fp);
 
   let mut count = 0;
+  // Skip the first line which tracks total CPU time across all cores
   for (i, line) in reader.lines().skip(1).enumerate() {
     let line = line.ok()?;
     if !line.starts_with("cpu") {
