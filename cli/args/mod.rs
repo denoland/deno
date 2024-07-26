@@ -544,7 +544,7 @@ fn discover_npmrc(
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
       Err(err) => {
         return Err(NpmRcLoadError {
-          path: path,
+          path,
           source: err,
         })
       }
