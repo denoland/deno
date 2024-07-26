@@ -213,6 +213,7 @@ fn upgrade_invalid_lockfile() {
     .arg("upgrade")
     .arg("--version")
     .arg("foobar")
+    .arg("--dry-run")
     .stderr(Stdio::piped())
     .spawn()
     .unwrap()
