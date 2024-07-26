@@ -126,7 +126,7 @@ pub async fn kernel(
       self
         .0
         .send(StreamContent::stdout(
-          String::from_utf8_lossy(buf).into_owned(),
+          &String::from_utf8_lossy(buf),
         ))
         .ok();
       Ok(buf.len())

@@ -24,8 +24,8 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
 use jupyter_runtime::messaging;
-use jupyter_runtime::AsChildOf;
 use jupyter_runtime::ConnectionInfo;
+use jupyter_runtime::ExecutionCount;
 use jupyter_runtime::JupyterMessage;
 use jupyter_runtime::JupyterMessageContent;
 use jupyter_runtime::KernelControlConnection;
@@ -475,7 +475,7 @@ impl JupyterServer {
     self
       .send_iopub(
         messaging::ExecuteInput {
-          execution_count: self.execution_count,
+          execution_count: ExecutionCount(self.execution_count),
           code: execute_request.code.clone(),
         }
         .as_child_of(parent_message),
@@ -503,7 +503,7 @@ impl JupyterServer {
         connection
           .send(
             messaging::ExecuteReply {
-              execution_count: self.execution_count,
+              execution_count: ExecutionCount(self.execution_count),
               status: ReplyStatus::Error,
               payload: Default::default(),
               user_expressions: None,
@@ -532,7 +532,7 @@ impl JupyterServer {
       connection
         .send(
           messaging::ExecuteReply {
-            execution_count: self.execution_count,
+            execution_count: ExecutionCount(self.execution_count),
             status: ReplyStatus::Ok,
             user_expressions: None,
             payload: Default::default(),
@@ -632,13 +632,13 @@ impl JupyterServer {
       connection
         .send(
           messaging::ExecuteReply {
-            execution_count: self.execution_count,
+            execution_count: ExecutionCount(self.execution_count),
             status: ReplyStatus::Error,
-            error: Some(ReplyError {
+            error: Some(Box::new(ReplyError {
               ename,
               evalue,
               traceback,
-            }),
+            })),
             user_expressions: None,
             payload: Default::default(),
           }

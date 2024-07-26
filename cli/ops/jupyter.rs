@@ -69,8 +69,7 @@ pub fn op_jupyter_input(
       InputRequest {
         prompt,
         password: is_password,
-      }
-      .into(),
+      },
       Some(&last_request),
     );
 
