@@ -8,6 +8,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use bytes::Bytes;
+
+use jupyter_runtime::CommId;
+use jupyter_runtime::CommInfo;
+use jupyter_runtime::CommMsg;
 use jupyter_runtime::InputRequest;
 use jupyter_runtime::JupyterMessage;
 use jupyter_runtime::JupyterMessageContent;
@@ -16,9 +21,13 @@ use jupyter_runtime::StreamContent;
 
 use deno_core::error::AnyError;
 use deno_core::op2;
+use deno_core::parking_lot::Mutex as PlMutex;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::OpState;
+use deno_core::ToJsBuffer;
+use std::collections::HashMap;
+use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 
 use crate::tools::jupyter::server::StdinConnectionProxy;
@@ -26,6 +35,8 @@ use crate::tools::jupyter::server::StdinConnectionProxy;
 deno_core::extension!(deno_jupyter,
   ops = [
     op_jupyter_broadcast,
+    op_jupyter_comm_recv,
+    op_jupyter_comm_open,
     op_jupyter_input,
   ],
   options = {
@@ -39,6 +50,97 @@ deno_core::extension!(deno_jupyter,
     state.put(options.sender);
   },
 );
+
+pub struct CommChannel {
+  pub target_name: String,
+  pub sender: broadcast::Sender<(CommMsg, Vec<Bytes>)>,
+  pub receiver: broadcast::Receiver<(CommMsg, Vec<Bytes>)>,
+}
+
+#[derive(Clone, Default)]
+pub struct CommContainer(pub Arc<PlMutex<HashMap<String, CommChannel>>>);
+
+impl CommContainer {
+  pub fn create(
+    &mut self,
+    comm_id: &str,
+    target_name: &str,
+    // For pulling off the metadata and buffers
+    _msg: Option<&JupyterMessage>,
+  ) {
+    let mut container = self.0.lock();
+
+    // We will not replace existing comms
+    if container.contains_key(comm_id) {
+      return;
+    }
+
+    let (tx, rx) = broadcast::channel(16);
+    let comm_channel = CommChannel {
+      target_name: target_name.to_string(),
+      sender: tx,
+      receiver: rx,
+    };
+
+    container.insert(comm_id.to_string(), comm_channel);
+  }
+
+  pub fn comms(&self) -> HashMap<CommId, CommInfo> {
+    let container = self.0.lock();
+
+    container
+      .iter()
+      .map(|(comm_id, comm)| {
+        (
+          CommId(comm_id.to_string()),
+          CommInfo {
+            target_name: comm.target_name.clone(),
+          },
+        )
+      })
+      .collect()
+  }
+}
+
+#[op2(fast)]
+pub fn op_jupyter_comm_open(
+  state: &mut OpState,
+  #[string] comm_id: String,
+  #[string] target_name: String,
+) {
+  let container = state.borrow_mut::<CommContainer>();
+  container.create(&comm_id, &target_name, None);
+  // eprintln!("created comm {} {}", comm_id, target_name);
+}
+
+#[op2(async)]
+#[serde]
+pub async fn op_jupyter_comm_recv(
+  state: Rc<RefCell<OpState>>,
+  #[string] comm_id: String,
+) -> (serde_json::Value, Vec<ToJsBuffer>) {
+  let mut receiver = {
+    let state = state.borrow();
+    let container = state.borrow::<CommContainer>();
+    let container = container.0.lock();
+    let maybe_comm = container.get(&comm_id);
+    let Some(comm) = maybe_comm else {
+      return (serde_json::Value::Null, vec![]);
+    };
+    comm.receiver.resubscribe()
+  };
+
+  // eprintln!("starting receive");
+  let (msg, buffers) = receiver.recv().await.unwrap();
+  // eprintln!("received");
+  (
+    serde_json::to_value(msg).unwrap(),
+    buffers
+      .into_iter()
+      .map(|b| ToJsBuffer::from(b.to_vec()))
+      .collect(),
+  )
+}
 
 #[op2]
 #[string]
@@ -66,11 +168,10 @@ pub fn op_jupyter_input(
     }
 
     let msg = JupyterMessage::new(
-      InputRequest {
+      JupyterMessageContent::InputRequest(InputRequest {
         prompt,
         password: is_password,
-      }
-      .into(),
+      }),
       Some(&last_request),
     );
 
@@ -149,13 +250,13 @@ pub fn op_print(
   let sender = state.borrow_mut::<mpsc::UnboundedSender<StreamContent>>();
 
   if is_err {
-    if let Err(err) = sender.send(StreamContent::stderr(msg.into())) {
+    if let Err(err) = sender.send(StreamContent::stderr(msg)) {
       log::error!("Failed to send stderr message: {}", err);
     }
     return Ok(());
   }
 
-  if let Err(err) = sender.send(StreamContent::stdout(msg.into())) {
+  if let Err(err) = sender.send(StreamContent::stdout(msg)) {
     log::error!("Failed to send stdout message: {}", err);
   }
   Ok(())

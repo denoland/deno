@@ -125,9 +125,7 @@ pub async fn kernel(
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
       self
         .0
-        .send(StreamContent::stdout(
-          String::from_utf8_lossy(buf).into_owned(),
-        ))
+        .send(StreamContent::stdout(&String::from_utf8_lossy(buf)))
         .ok();
       Ok(buf.len())
     }
@@ -181,6 +179,7 @@ pub async fn kernel(
     let mut op_state = op_state_rc.borrow_mut();
     op_state.put(startup_data.iopub_connection.clone());
     op_state.put(startup_data.last_execution_request.clone());
+    op_state.put(startup_data.comm_container.clone());
     op_state.put(startup_data.stdin_connection_proxy.clone());
   }
 
