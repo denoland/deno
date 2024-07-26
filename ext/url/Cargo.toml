@@ -15,7 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
-urlpattern = "0.2.0"
+urlpattern = { path = "../../../rust-urlpattern" }
 
 [dev-dependencies]
 deno_bench_util.workspace = true

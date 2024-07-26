@@ -137,9 +137,12 @@ class SampledLRUCache {
 
 const matchInputCache = new SampledLRUCache(4096);
 
+const _hasRegExpGroups = Symbol("[[hasRegExpGroups]]");
+
 class URLPattern {
   /** @type {Components} */
   [_components];
+  [_hasRegExpGroups]
 
   #reusedResult;
 
@@ -210,6 +213,11 @@ class URLPattern {
   get hash() {
     webidl.assertBranded(this, URLPatternPrototype);
     return this[_components].hash.patternString;
+  }
+
+  get hasRegExpGroups() {
+    webidl.assertBranded(this, URLPatternPrototype);
+    return this[_hasRegExpGroups];
   }
 
   /**
@@ -312,7 +320,7 @@ class URLPattern {
           const groups = res.groups;
           for (let i = 0; i < groupList.length; ++i) {
             // TODO(lucacasonato): this is vulnerable to override mistake
-            groups[groupList[i]] = match[i + 1] ?? "";
+            groups[groupList[i]] = match[i + 1];
           }
           break;
         }
