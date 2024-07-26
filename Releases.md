@@ -9,8 +9,6 @@ https://github.com/denoland/deno_install
 ### 1.45.4 / 2024.07.26
 
 - Reland "fix: CFunctionInfo and CTypeInfo leaks (#24634)" (#24692)
-- Revert "chore: move all node-api impl to ext (#24662)"
-- Revert "fix(cli): add NAPI support in standalone mode (#24642)"
 - fix(ext/fetch): respect authority from URL (#24705)
 - fix(ext/fetch): use correct ALPN to proxies (#24696)
 - fix(ext/node): read correct CPU usage stats on Linux (#24732)
@@ -19,8 +17,6 @@ https://github.com/denoland/deno_install
 - fix(future): Emit `deno install` warning less often, suggest `deno install` in
   error message (#24706)
 - fix(lsp): rewrite import for 'infer return type' action (#24685)
-- fix(node): Run node compat tests listed in the `ignore` field (and fix the
-  ones that fail) (#24631)
 - fix(node): better detection for when to surface node resolution errors
   (#24653)
 - fix(node): cjs pkg dynamically importing esm-only pkg fails (#24730)
@@ -35,7 +31,7 @@ https://github.com/denoland/deno_install
 - fix: support `npm:bindings` and `npm:callsites` packages (#24727)
 - fix: update lsp error message of 'relative import path' to 'use deno add' for
   npm/jsr packages (#24524)
-- fix: upgrade deno_core to 0.298.0 (#24709)
+- fix: decode percent-encoding source string in `Error.stack` (#24709)
 - perf: update deno_doc (#24700)
 
 ### 1.45.3 / 2024.07.22
