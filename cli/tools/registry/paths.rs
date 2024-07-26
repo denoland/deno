@@ -214,7 +214,7 @@ pub enum PackagePathValidationError {
 pub struct CollectedPublishPath {
   pub specifier: ModuleSpecifier,
   pub path: PathBuf,
-  /// Relative path to use in the tarball.
+  /// Relative path to use in the tarball. This should be prefixed with a `/`.
   pub relative_path: String,
   /// Specify the contents for any injected paths.
   pub maybe_content: Option<Vec<u8>>,

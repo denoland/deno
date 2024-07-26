@@ -64,6 +64,7 @@ pub fn create_gzipped_tarball(
       hash: format!("sha256-{:x}", sha2::Sha256::digest(&content)),
       size: content.len(),
     });
+    assert!(path_str.starts_with("/"));
     tar
       .add_file(format!(".{}", path_str), &content)
       .with_context(|| {
