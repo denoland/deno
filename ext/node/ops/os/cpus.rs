@@ -246,15 +246,12 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
   let reader = std::io::BufReader::new(fp);
 
   let mut count = 0;
-  for line in reader.lines() {
+  for (i, line) in reader.lines().skip(1).enumerate() {
     let line = line.ok()?;
     if !line.starts_with("cpu") {
       break;
     }
-    if line.starts_with("cpu ") {
-      continue;
-    }
-
+    count = i + 1;
     let mut fields = line.split_whitespace();
     fields.next()?;
     let user = fields.next()?.parse::<u64>().ok()?;
@@ -263,12 +260,11 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
     let idle = fields.next()?.parse::<u64>().ok()?;
     let irq = fields.next()?.parse::<u64>().ok()?;
 
-    cpus[count].times.user = user;
-    cpus[count].times.nice = nice;
-    cpus[count].times.sys = sys;
-    cpus[count].times.idle = idle;
-    cpus[count].times.irq = irq;
-    count += 1;
+    cpus[i].times.user = user;
+    cpus[i].times.nice = nice;
+    cpus[i].times.sys = sys;
+    cpus[i].times.idle = idle;
+    cpus[i].times.irq = irq;
   }
 
   let fp = std::fs::File::open("/proc/cpuinfo").ok()?;
