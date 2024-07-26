@@ -109,7 +109,7 @@ ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
 encoding_rs = "=0.8.33"
 faster-hex = "0.9"
-fastwebsockets = { version = "0.6", features = ["upgrade", "unstable-split"] }
+fastwebsockets = { version = "0.8", features = ["upgrade", "unstable-split"] }
 filetime = "0.2.16"
 flate2 = { version = "1.0.26", default-features = false }
 fs3 = "0.5.0"
