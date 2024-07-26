@@ -542,12 +542,7 @@ fn discover_npmrc(
     let maybe_source = match std::fs::read_to_string(&path) {
       Ok(source) => Some(source),
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
-      Err(err) => {
-        return Err(NpmRcLoadError {
-          path,
-          source: err,
-        })
-      }
+      Err(err) => return Err(NpmRcLoadError { path, source: err }),
     };
 
     Ok(maybe_source.map(|source| (source, path)))
