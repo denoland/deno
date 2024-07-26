@@ -1,7 +1,7 @@
 {
+  "tempDir": true,
   "tests": {
     "node_gyp": {
-      "tempDir": true,
       "steps": [
         {
           "args": "cache --allow-scripts=npm:@denotest/node-addon main.js",
@@ -14,7 +14,6 @@
       ]
     },
     "run_without_scripts": {
-      "tempDir": true,
       "steps": [
         {
           "args": "run -A main.js",
@@ -24,11 +23,9 @@
       ]
     },
     "implicit_node_gyp": {
-      "tempDir": true,
       "steps": [
         {
           "envs": {
-            // I don't think this will work on windows
             "PATH": ""
           },
           "args": "cache --allow-scripts implicit_node_gyp.js",
@@ -38,7 +35,6 @@
       ]
     },
     "lifecycle_scripts": {
-      "tempDir": true,
       "steps": [
         {
           // without running scripts (should warn)
@@ -55,8 +51,28 @@
         }
       ]
     },
+    "global_lifecycle_scripts": {
+      "steps": [
+        {
+          "args": ["eval", "Deno.removeSync('deno.json')"],
+          "output": ""
+        },
+        {
+          // without running scripts (should warn)
+          "args": "cache all_lifecycles.js",
+          "output": "all_lifecycles_not_run_global.out"
+        },
+        {
+          // now run scripts
+          "args": "cache --allow-scripts all_lifecycles.js",
+          // this test package covers running preinstall, install, and postinstall scripts
+          // it also exercises running bin packages (esbuild in this case), using `node` in a script
+          // (with and without node-only CLI flags), and using `npx` in a script
+          "output": "all_lifecycles.out"
+        }
+      ]
+    },
     "only_warns_first": {
-      "tempDir": true,
       "steps": [
         {
           // without running scripts (should warn)
@@ -73,7 +89,6 @@
       ]
     },
     "future_install_lifecycle_scripts": {
-      "tempDir": true,
       "envs": {
         "DENO_FUTURE": "1"
       },
@@ -92,7 +107,6 @@
       ]
     },
     "lifecycle_scripts_conflicting_bin": {
-      "tempDir": true,
       "steps": [
         {
           // we import @denotest/says-hello-on-install, which executes `say-hello` from `@denotest/say-hello` in its
@@ -105,8 +119,20 @@
         }
       ]
     },
+    "global_lifecycle_scripts_conflicting_bin": {
+      "steps": [
+        {
+          "args": ["eval", "Deno.removeSync('deno.json')"],
+          "output": ""
+        },
+        {
+          // see above for explanation
+          "args": "cache --allow-scripts conflicting_bin.js",
+          "output": "conflicting_bin_global.out"
+        }
+      ]
+    },
     "fsevents_default_install_script": {
-      "tempDir": true,
       "steps": [
         {
           "if": "mac",
@@ -121,7 +147,6 @@
       ]
     },
     "lifecycle_scripts_no_deno_json": {
-      "tempDir": true,
       "steps": [
         {
           "args": ["eval", "Deno.removeSync('deno.json')"],
@@ -134,7 +159,6 @@
       ]
     },
     "lifecycle_scripts_no_deno_json_conflicting_bin": {
-      "tempDir": true,
       "steps": [
         {
           "args": ["eval", "Deno.removeSync('deno.json')"],
