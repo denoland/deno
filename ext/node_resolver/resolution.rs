@@ -1371,7 +1371,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     file_path: &Path,
   ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
     // we use this for deno compile using byonm because the script paths
-    // won't be in virtual file system, but
+    // won't be in virtual file system, but the package.json paths will be
     fn canonicalize_first_ancestor_exists(
       dir_path: &Path,
       env: &dyn NodeResolverEnv,
@@ -1389,7 +1389,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     }
 
     let parent_dir = file_path.parent().unwrap();
-    let Some(current_dir) = canonicalize_first_ancestor_exists(
+    let Some(start_dir) = canonicalize_first_ancestor_exists(
       parent_dir, &self.env,
     )
     .map_err(|source| CanonicalizingPkgJsonDirError {
@@ -1399,8 +1399,8 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     else {
       return Ok(None);
     };
-    let current_dir = strip_unc_prefix(current_dir);
-    for current_dir in current_dir.ancestors() {
+    let start_dir = strip_unc_prefix(start_dir);
+    for current_dir in start_dir.ancestors() {
       let package_json_path = current_dir.join("package.json");
       if let Some(pkg_json) = self.load_package_json(&package_json_path)? {
         return Ok(Some(pkg_json));
