@@ -142,7 +142,7 @@ const _hasRegExpGroups = Symbol("[[hasRegExpGroups]]");
 class URLPattern {
   /** @type {Components} */
   [_components];
-  [_hasRegExpGroups]
+  [_hasRegExpGroups];
 
   #reusedResult;
 
@@ -160,6 +160,8 @@ class URLPattern {
     }
 
     const components = op_urlpattern_parse(input, baseURL);
+    this[_hasRegExpGroups] = components.has_regexp_groups;
+    delete components.has_regexp_groups;
 
     for (let i = 0; i < COMPONENTS_KEYS.length; ++i) {
       const key = COMPONENTS_KEYS[i];
