@@ -125,9 +125,7 @@ pub async fn kernel(
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
       self
         .0
-        .send(StreamContent::stdout(
-          &String::from_utf8_lossy(buf),
-        ))
+        .send(StreamContent::stdout(&String::from_utf8_lossy(buf)))
         .ok();
       Ok(buf.len())
     }
