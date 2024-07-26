@@ -3843,7 +3843,7 @@ fn allow_scripts_arg() -> Arg {
     .require_equals(true)
     .value_name("PACKAGE")
     .value_parser(parse_packages_allowed_scripts)
-    .help("Allow running npm lifecycle scripts for the given packages. Note: Scripts will only be executed when using a node_modules directory (`--node-modules-dir`)")
+    .help("Allow running npm lifecycle scripts for the given packages")
 }
 
 fn allow_scripts_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
