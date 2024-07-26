@@ -4999,7 +4999,7 @@ mod tests {
   #[test]
   fn global_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "--unstable", "--log-level", "debug", "--quiet", "run", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "--log-level", "debug", "--quiet", "run", "script.ts"]);
 
     let flags = r.unwrap();
     assert_eq!(
@@ -5008,17 +5008,13 @@ mod tests {
         subcommand: DenoSubcommand::Run(RunFlags::new_default(
           "script.ts".to_string()
         )),
-        unstable_config: UnstableConfig {
-          legacy_flag_enabled: true,
-          ..Default::default()
-        },
         log_level: Some(Level::Error),
         code_cache_enabled: true,
         ..Flags::default()
       }
     );
     #[rustfmt::skip]
-    let r2 = flags_from_vec(svec!["deno", "run", "--unstable", "--log-level", "debug", "--quiet", "script.ts"]);
+    let r2 = flags_from_vec(svec!["deno", "run", "--log-level", "debug", "--quiet", "script.ts"]);
     let flags2 = r2.unwrap();
     assert_eq!(flags2, flags);
   }
