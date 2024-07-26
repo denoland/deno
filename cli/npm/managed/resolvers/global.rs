@@ -164,9 +164,8 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
         .ensure_copy_package(&copy.get_package_cache_folder_id())?;
     }
 
-    let mut lifecycle_scripts = super::common::LifecycleScripts::new(
-      Cow::Borrowed(&self.lifecycle_scripts),
-    );
+    let mut lifecycle_scripts =
+      super::common::LifecycleScripts::new(&self.lifecycle_scripts);
     for package in &package_partitions.packages {
       let package_folder = self.cache.package_folder_for_nv(&package.id.nv);
       lifecycle_scripts.add(

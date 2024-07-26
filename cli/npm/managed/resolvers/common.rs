@@ -160,13 +160,13 @@ pub async fn cache_packages(
 }
 
 pub struct LifecycleScripts<'a> {
-  packages_with_scripts: Vec<(NpmResolutionPackage, PathBuf, PathBuf)>,
-  packages_with_scripts_not_run: Vec<(PathBuf, PackageNv)>,
-  config: Cow<'a, LifecycleScriptsConfig>,
+  packages_with_scripts: Vec<(&'a NpmResolutionPackage, PathBuf, PathBuf)>,
+  packages_with_scripts_not_run: Vec<(PathBuf, &'a PackageNv)>,
+  config: &'a LifecycleScriptsConfig,
 }
 
 impl<'a> LifecycleScripts<'a> {
-  pub fn new(config: Cow<'a, LifecycleScriptsConfig>) -> Self {
+  pub fn new(config: &'a LifecycleScriptsConfig) -> Self {
     Self {
       config,
       packages_with_scripts: Vec::new(),
@@ -216,7 +216,7 @@ impl<'a> LifecycleScripts<'a> {
   /// script-related metadata (e.g. to store whether the scripts have been run already)
   pub fn add(
     &mut self,
-    package: &NpmResolutionPackage,
+    package: &'a NpmResolutionPackage,
     package_path: Cow<Path>,
     package_meta_path: &Path,
   ) {
@@ -226,7 +226,7 @@ impl<'a> LifecycleScripts<'a> {
       if self.can_run_scripts(&package.id.nv) {
         if !scripts_run.exists() {
           self.packages_with_scripts.push((
-            package.clone(),
+            package,
             package_path.into_owned(),
             scripts_run,
           ));
@@ -234,7 +234,7 @@ impl<'a> LifecycleScripts<'a> {
       } else if !scripts_run.exists() && !has_warned.exists() {
         self
           .packages_with_scripts_not_run
-          .push((has_warned, package.id.nv.clone()));
+          .push((has_warned, &package.id.nv));
       }
     }
   }
@@ -302,7 +302,7 @@ impl<'a> LifecycleScripts<'a> {
         // correct bin will be used.
         let custom_commands = resolve_custom_commands_from_deps(
           base.clone(),
-          &package,
+          package,
           snapshot,
           get_package_path,
         )?;
@@ -333,7 +333,7 @@ impl<'a> LifecycleScripts<'a> {
                 package.id.nv,
                 exit_code,
               );
-              failed_packages.push(package.id.nv.clone());
+              failed_packages.push(&package.id.nv);
               // assume if earlier script fails, later ones will fail too
               break;
             }
@@ -409,7 +409,7 @@ fn resolve_custom_commands_from_packages<
     let package_path = get_package_path(package);
 
     if package.bin.is_some() {
-      bin_entries.add(package.clone(), package_path);
+      bin_entries.add(package, package_path);
     }
   }
   let bins = bin_entries.into_bin_files(snapshot);

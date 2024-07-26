@@ -328,7 +328,7 @@ async fn sync_resolution_with_fs(
   let bin_entries =
     Rc::new(RefCell::new(super::common::bin_entries::BinEntries::new()));
   let mut lifecycle_scripts =
-    super::common::LifecycleScripts::new(Cow::Borrowed(lifecycle_scripts));
+    super::common::LifecycleScripts::new(lifecycle_scripts);
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
       newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -381,9 +381,7 @@ async fn sync_resolution_with_fs(
         .await??;
 
         if package.bin.is_some() {
-          bin_entries_to_setup
-            .borrow_mut()
-            .add(package.clone(), package_path);
+          bin_entries_to_setup.borrow_mut().add(package, package_path);
         }
 
         // finally stop showing the progress bar

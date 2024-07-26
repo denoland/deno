@@ -12,12 +12,12 @@ use std::path::Path;
 use std::path::PathBuf;
 
 #[derive(Default)]
-pub struct BinEntries {
+pub struct BinEntries<'a> {
   /// Packages that have colliding bin names
-  collisions: HashSet<NpmPackageId>,
-  seen_names: HashMap<String, NpmPackageId>,
+  collisions: HashSet<&'a NpmPackageId>,
+  seen_names: HashMap<&'a str, &'a NpmPackageId>,
   /// The bin entries
-  entries: Vec<(NpmResolutionPackage, PathBuf)>,
+  entries: Vec<(&'a NpmResolutionPackage, PathBuf)>,
 }
 
 /// Returns the name of the default binary for the given package.
@@ -31,33 +31,32 @@ fn default_bin_name(package: &NpmResolutionPackage) -> &str {
     .map_or(package.id.nv.name.as_str(), |(_, name)| name)
 }
 
-impl BinEntries {
+impl<'a> BinEntries<'a> {
   pub fn new() -> Self {
     Self::default()
   }
 
   /// Add a new bin entry (package with a bin field)
-  pub fn add(&mut self, package: NpmResolutionPackage, package_path: PathBuf) {
+  pub fn add(
+    &mut self,
+    package: &'a NpmResolutionPackage,
+    package_path: PathBuf,
+  ) {
     // check for a new collision, if we haven't already
     // found one
     match package.bin.as_ref().unwrap() {
       deno_npm::registry::NpmPackageVersionBinEntry::String(_) => {
-        let bin_name = default_bin_name(&package);
+        let bin_name = default_bin_name(package);
 
-        if let Some(other) = self
-          .seen_names
-          .insert(bin_name.to_string(), package.id.clone())
-        {
-          self.collisions.insert(package.id.clone());
+        if let Some(other) = self.seen_names.insert(bin_name, &package.id) {
+          self.collisions.insert(&package.id);
           self.collisions.insert(other);
         }
       }
       deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
         for name in entries.keys() {
-          if let Some(other) =
-            self.seen_names.insert(name.to_string(), package.id.clone())
-          {
-            self.collisions.insert(package.id.clone());
+          if let Some(other) = self.seen_names.insert(name, &package.id) {
+            self.collisions.insert(&package.id);
             self.collisions.insert(other);
           }
         }
@@ -158,8 +157,8 @@ impl BinEntries {
 // that has a bin entry, then sort them by depth
 fn sort_by_depth(
   snapshot: &NpmResolutionSnapshot,
-  bin_entries: &mut [(NpmResolutionPackage, PathBuf)],
-  collisions: &mut HashSet<NpmPackageId>,
+  bin_entries: &mut [(&NpmResolutionPackage, PathBuf)],
+  collisions: &mut HashSet<&NpmPackageId>,
 ) {
   enum Entry<'a> {
     Pkg(&'a NpmPackageId),
