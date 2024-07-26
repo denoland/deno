@@ -95,7 +95,7 @@ struct WorkspaceEszipModule {
 }
 
 struct WorkspaceEszip {
-  eszip: eszip::EszipV2,
+  eszips: Vec<eszip::EszipV2>,
   root_dir_url: Arc<ModuleSpecifier>,
 }
 
@@ -104,17 +104,28 @@ impl WorkspaceEszip {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<WorkspaceEszipModule> {
+    let lookup = |key: &str| {
+      for (i, x) in self.eszips.iter().enumerate().rev() {
+        println!("specifiers[{}]: {:?}", i, x.specifiers());
+        if let Some(x) = x.get_module(key) {
+          return Some(x);
+        }
+      }
+      None
+    };
+
     if specifier.scheme() == "file" {
       let specifier_key = EszipRelativeFileBaseUrl::new(&self.root_dir_url)
         .specifier_key(specifier);
-      let module = self.eszip.get_module(&specifier_key)?;
+      println!("Trying file specifier key: {}", specifier_key);
+      let module = lookup(&specifier_key)?;
       let specifier = self.root_dir_url.join(&module.specifier).unwrap();
       Some(WorkspaceEszipModule {
         specifier,
         inner: module,
       })
     } else {
-      let module = self.eszip.get_module(specifier.as_str())?;
+      let module = lookup(specifier.as_str())?;
       Some(WorkspaceEszipModule {
         specifier: ModuleSpecifier::parse(&module.specifier).unwrap(),
         inner: module,
@@ -329,7 +340,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
     let Some(module) = self.shared.eszip.get_module(original_specifier) else {
       return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
-        "Module not found: {}",
+        "Module specifier not found: {}",
         original_specifier
       ))));
     };
@@ -338,7 +349,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
     deno_core::ModuleLoadResponse::Async(
       async move {
         let code = module.inner.source().await.ok_or_else(|| {
-          type_error(format!("Module not found: {}", original_specifier))
+          type_error(format!(
+            "Module source is not available: {}",
+            original_specifier
+          ))
         })?;
         let code = arc_u8_to_arc_str(code)
           .map_err(|_| type_error("Module source is not utf-8"))?;
@@ -349,9 +363,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             eszip::ModuleKind::Jsonc => {
               return Err(type_error("jsonc modules not supported"))
             }
-            eszip::ModuleKind::OpaqueData => {
-              unreachable!();
-            }
+            eszip::ModuleKind::OpaqueData => ModuleType::JavaScript,
           },
           ModuleSourceCode::String(code.into()),
           &original_specifier,
@@ -429,11 +441,13 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
 }
 
 pub async fn run(
-  mut eszip: eszip::EszipV2,
+  mut eszips: Vec<eszip::EszipV2>,
   metadata: Metadata,
   image_path: &[u8],
   image_name: &str,
 ) -> Result<i32, AnyError> {
+  assert!(!eszips.is_empty());
+
   let image_path_hash = Sha256::digest(image_path);
   let mut image_path_hash_buf = [0u8; 40];
   let image_path_hash = &*faster_hex::hex_encode(
@@ -470,7 +484,8 @@ pub async fn run(
   let (fs, npm_resolver, maybe_vfs_root) = match metadata.node_modules {
     Some(binary::NodeModules::Managed { node_modules_dir }) => {
       // this will always have a snapshot
-      let snapshot = eszip.take_npm_snapshot().unwrap();
+      // TODO: support npm modules in eszips other than the last one
+      let snapshot = eszips.last_mut().unwrap().take_npm_snapshot().unwrap();
       let vfs_root_dir_path = if node_modules_dir.is_some() {
         root_path.clone()
       } else {
@@ -625,7 +640,7 @@ pub async fn run(
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
       eszip: WorkspaceEszip {
-        eszip,
+        eszips,
         root_dir_url,
       },
       workspace_resolver,

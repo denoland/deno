@@ -96,7 +96,7 @@ fn main() {
         let image_name =
           current_exe_path.file_name().unwrap().to_string_lossy();
         let exit_code = standalone::run(
-          eszip,
+          vec![eszip],
           metadata,
           current_exe_path.as_os_str().as_encoded_bytes(),
           &image_name,

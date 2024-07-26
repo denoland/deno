@@ -3,20 +3,22 @@
 use std::io::Read;
 
 use deno_config::workspace::PackageJsonDepResolution;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::io::BufReader;
-use deno_core::futures::io::Cursor;
+use deno_core::futures::stream::FuturesOrdered;
+use deno_core::futures::StreamExt;
 use deno_core::unsync::spawn;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 use eszip::EszipV2;
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
 use crate::args::CaData;
 use crate::args::EvalFlags;
 use crate::args::Flags;
+use crate::args::RunFlags;
 use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
@@ -212,27 +214,50 @@ async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
   Ok(())
 }
 
-pub async fn run_eszip(flags: Flags) -> Result<i32, AnyError> {
+pub async fn run_eszip(
+  flags: Flags,
+  run_flags: RunFlags,
+) -> Result<i32, AnyError> {
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line
   let factory = CliFactory::from_flags(flags.clone())?;
   let cli_options = factory.cli_options();
-  let file_fetcher = factory.file_fetcher()?;
-  let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options()?,
-  )?);
-  let main_module = cli_options.resolve_main_module()?;
 
-  // TODO: streaming load
-  let eszip = file_fetcher.fetch(&main_module, &permissions).await?;
-  let eszip = BufReader::new(Cursor::new(eszip.source));
-  let (eszip, loader) = EszipV2::parse(eszip).await?;
-  spawn(async move {
-    if let Err(e) = loader.await {
-      log::error!("Error loading ESZip: {}", e);
-      std::process::exit(1);
-    }
-  });
+  // entrypoint#path1,path2,...
+  let (entrypoint, files) = run_flags
+    .script
+    .split_once("#")
+    .with_context(|| "eszip: invalid script string")?;
+
+  println!("running eszip: entrypoint={} files={}", entrypoint, files);
+
+  // TODO: handle paths that contain ','
+  let files = files.split(",").collect::<Vec<_>>();
+  let mut headers = FuturesOrdered::new();
+  for path in files {
+    let file = tokio::fs::File::open(path).await?;
+    let eszip = BufReader::new(file.compat());
+    let path = path.to_string();
+
+    headers.push_back(async move {
+      let (eszip, loader) = match EszipV2::parse(eszip).await {
+        Ok(x) => x,
+        Err(e) => {
+          log::error!("Error parsing eszip header at {}: {}", path, e);
+          std::process::exit(1);
+        }
+      };
+      spawn(async move {
+        if let Err(e) = loader.await {
+          log::error!("Error loading eszip at {}: {}", path, e);
+          std::process::exit(1);
+        }
+      });
+      eszip
+    });
+  }
+  let headers = headers.collect::<Vec<_>>().await;
+
   let ca_data = match cli_options.ca_data() {
     Some(CaData::File(ca_file)) => Some(
       std::fs::read(ca_file).with_context(|| format!("Reading: {ca_file}"))?,
@@ -240,12 +265,9 @@ pub async fn run_eszip(flags: Flags) -> Result<i32, AnyError> {
     Some(CaData::Bytes(bytes)) => Some(bytes.clone()),
     None => None,
   };
-  let Some(entrypoint_key) = eszip.specifiers().into_iter().next() else {
-    bail!("No modules found in eszip");
-  };
 
   crate::standalone::run(
-    eszip,
+    headers,
     Metadata {
       argv: flags.argv,
       seed: flags.seed,
@@ -257,7 +279,7 @@ pub async fn run_eszip(flags: Flags) -> Result<i32, AnyError> {
       ca_data,
       unsafely_ignore_certificate_errors: flags
         .unsafely_ignore_certificate_errors,
-      entrypoint_key,
+      entrypoint_key: entrypoint.to_string(),
       node_modules: None,
       disable_deprecated_api_warning: false,
       unstable_config: flags.unstable_config,
@@ -268,7 +290,7 @@ pub async fn run_eszip(flags: Flags) -> Result<i32, AnyError> {
         pkg_json_resolution: PackageJsonDepResolution::Disabled,
       },
     },
-    main_module.to_string().as_bytes(),
+    run_flags.script.as_bytes(),
     "run-eszip",
   )
   .await
