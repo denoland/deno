@@ -4395,20 +4395,21 @@ dependencies = [
 
 [[package]]
 name = "notify"
-version = "5.0.0"
+version = "6.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed2c66da08abae1c024c01d635253e402341b4060a12e99b31c7594063bf490a"
+checksum = "6205bd8bb1e454ad2e27422015fb5e4f2bcc7e08fa8f27058670d208324a4d2d"
 dependencies = [
- "bitflags 1.3.2",
+ "bitflags 2.5.0",
  "crossbeam-channel",
  "filetime",
  "fsevent-sys",
  "inotify",
  "kqueue",
  "libc",
+ "log",
  "mio",
  "walkdir",
- "winapi",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -6899,7 +6900,7 @@ dependencies = [
  "base64 0.21.7",
  "bytes",
  "console_static_text",
- "deno_unsync 0.3.10",
+ "deno_unsync 0.4.0",
  "denokv_proto",
  "fastwebsockets",
  "flate2",

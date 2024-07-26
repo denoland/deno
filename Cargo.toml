@@ -135,7 +135,7 @@ log = "0.4.20"
 lsp-types = "=0.94.1" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
 monch = "=0.5.0"
-notify = "=5.0.0"
+notify = "=6.1.1"
 num-bigint = { version = "0.4", features = ["rand"] }
 once_cell = "1.17.1"
 os_pipe = { version = "=1.1.5", features = ["io_safety"] }
