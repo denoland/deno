@@ -748,7 +748,9 @@ Deno.test(
     const consoleLog = console.log;
     console.log = (msg) => {
       try {
-        const match = msg.match(/Listening on http:\/\/(localhost|0\.0\.0\.0):(\d+)\//);
+        const match = msg.match(
+          /Listening on http:\/\/(localhost|0\.0\.0\.0):(\d+)\//,
+        );
         assert(!!match, `Didn't match ${msg}`);
         const port = +match[2];
         assert(port > 0 && port < 65536);
