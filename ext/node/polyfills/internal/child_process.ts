@@ -1172,8 +1172,8 @@ export function setupChannel(target, ipc) {
         // there will always be a pending read promise,
         // but it shouldn't keep the event loop from exiting
         core.unrefOpPromise(prom);
-        const [msg, stillOpen] = await prom;
-        if (stillOpen == false) {
+        const msg = await prom;
+        if (msg && typeof msg === "object" && msg["cmd"] === "NODE_CLOSE") {
           // Channel closed.
           target.disconnect();
           return;

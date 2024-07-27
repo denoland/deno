@@ -184,7 +184,7 @@ mod impl_ {
     // supported by `op2` currently.
     queue_ok: v8::Local<'a, v8::Array>,
   ) -> Result<impl Future<Output = Result<(), AnyError>>, AnyError> {
-    let mut serialized = Vec::new();
+    let mut serialized = Vec::with_capacity(64);
     let mut ser = serde_json::Serializer::new(&mut serialized);
     serialize_v8_value(scope, value, &mut ser).map_err(|e| {
       deno_core::error::type_error(format!(
@@ -215,12 +215,22 @@ mod impl_ {
     })
   }
 
+  /// Value signaling that the other end ipc channel has closed.
+  ///
+  /// Node reserves objects of this form (`{ "cmd": "NODE_<something>"`)
+  /// for internal use, so we use it here as well to avoid breaking anyone.
+  fn stop_sentinel() -> serde_json::Value {
+    serde_json::json!({
+      "cmd": "NODE_CLOSE"
+    })
+  }
+
   #[op2(async)]
   #[serde]
   pub async fn op_node_ipc_read(
     state: Rc<RefCell<OpState>>,
     #[smi] rid: ResourceId,
-  ) -> Result<(serde_json::Value, bool), AnyError> {
+  ) -> Result<serde_json::Value, AnyError> {
     let stream = state
       .borrow()
       .resource_table
@@ -231,9 +241,9 @@ mod impl_ {
     let mut stream = RcRef::map(stream, |r| &r.read_half).borrow_mut().await;
     let msgs = stream.read_msg().or_cancel(cancel).await??;
     if let Some(msg) = msgs {
-      Ok((msg, true))
+      Ok(msg)
     } else {
-      Ok((serde_json::Value::Null, false))
+      Ok(stop_sentinel())
     }
   }
 
