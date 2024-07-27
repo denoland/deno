@@ -842,3 +842,12 @@ impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
       .map_err(|err| err.into_io_error())
   }
 }
+
+pub fn get_host_defined_options<'s>(
+  scope: &mut v8::HandleScope<'s>,
+) -> v8::Local<'s, v8::Data> {
+  let host_defined_options = v8::PrimitiveArray::new(scope, 1);
+  let value = v8::Boolean::new(scope, true);
+  host_defined_options.set(scope, 0, value.into());
+  host_defined_options.into()
+}

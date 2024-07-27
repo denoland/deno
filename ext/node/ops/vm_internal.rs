@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::get_host_defined_options;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::v8;
@@ -19,7 +20,22 @@ impl ContextifyScript {
     scope: &mut v8::HandleScope,
     source_str: v8::Local<v8::String>,
   ) -> Result<Self, AnyError> {
-    let source = v8::script_compiler::Source::new(source_str, None);
+    let resource_name = v8::undefined(scope);
+    let host_defined_options = get_host_defined_options(scope);
+    let origin = v8::ScriptOrigin::new(
+      scope,
+      resource_name.into(),
+      0,
+      0,
+      false,
+      0,
+      None,
+      false,
+      false,
+      false,
+      Some(host_defined_options),
+    );
+    let source = v8::script_compiler::Source::new(source_str, Some(&origin));
 
     let unbound_script = v8::script_compiler::compile_unbound_script(
       scope,
