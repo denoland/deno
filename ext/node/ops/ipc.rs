@@ -509,6 +509,7 @@ mod impl_ {
       Self {
         pipe,
         buffer: Vec::with_capacity(INITIAL_CAPACITY),
+        read_buffer: ReadBuffer::new(),
       }
     }
 
