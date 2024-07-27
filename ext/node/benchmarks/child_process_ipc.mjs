@@ -10,7 +10,7 @@ if (process.env.CHILD) {
     while (process.send(msg, undefined, undefined, (_e) => {
       if (waiting) {
         waiting = false;
-        send();
+        setImmediate(send);
       }
     }));
     // Wait: backlog of unsent messages exceeds threshold
