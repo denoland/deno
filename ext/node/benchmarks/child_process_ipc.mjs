@@ -7,12 +7,14 @@ if (process.env.CHILD) {
   const msg = ".".repeat(len);
   let waiting = false;
   const send = () => {
-    while (process.send(msg, undefined, undefined, (_e) => {
-      if (waiting) {
-        waiting = false;
-        setImmediate(send);
-      }
-    }));
+    while (
+      process.send(msg, undefined, undefined, (_e) => {
+        if (waiting) {
+          waiting = false;
+          setImmediate(send);
+        }
+      })
+    );
     // Wait: backlog of unsent messages exceeds threshold
     // once the message is sent, the callback will be called
     // and we'll resume
