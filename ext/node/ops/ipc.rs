@@ -71,8 +71,8 @@ mod impl_ {
   /// Serialize a v8 value directly into a serde serializer.
   /// This allows us to go from v8 values to JSON without having to
   /// deserialize into a `serde_json::Value` and then reserialize to JSON
-  fn serialize_v8_value<'a, 'b, S: Serializer>(
-    scope: &'b mut v8::HandleScope<'a>,
+  fn serialize_v8_value<'a, S: Serializer>(
+    scope: &mut v8::HandleScope<'a>,
     value: v8::Local<'a, v8::Value>,
     ser: S,
   ) -> Result<S::Ok, S::Error> {
@@ -102,7 +102,7 @@ mod impl_ {
       use serde::ser::SerializeMap;
       if value.is_array_buffer_view() {
         let buffer = v8::Local::<v8::ArrayBufferView>::try_from(value).unwrap();
-        let mut buf = vec![0u8; buffer.byte_length() as usize];
+        let mut buf = vec![0u8; buffer.byte_length()];
         let copied = buffer.copy_contents(&mut buf);
         assert_eq!(copied, buf.len());
         return ser.serialize_bytes(&buf);
