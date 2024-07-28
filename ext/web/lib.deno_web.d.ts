@@ -743,12 +743,12 @@ declare interface UnderlyingSourceStartCallback<R> {
 
 // TODO(petamoriken): Will be removed in v2.0.
 /**
- * @deprecated use `(controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>` instead.
+ * @deprecated use `(controller: ReadableStreamDefaultController<R>) => void | PromiseLike<void>` type instead.
  * @category Streams
  */
-declare interface ReadableStreamDefaultControllerCallback<R> {
-  (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
-}
+declare type ReadableStreamDefaultControllerCallback<R> = (
+  controller: ReadableStreamDefaultController<R>,
+) => void | PromiseLike<void>;
 
 /** @category Streams */
 declare interface ReadableStreamDefaultController<R = any> {
