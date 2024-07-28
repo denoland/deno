@@ -1,5 +1,15 @@
 {
-  "args": "serve --port 12345 main.ts",
-  "output": "main.out",
-  "tempDir": true
+  "tempDir": true,
+  "tests": {
+    "basic_win": {
+      "if": "windows",
+      "args": "serve --host 0.0.0.0 --port 12345 main.ts",
+      "output": "main.out"
+    },
+    "basic_not_win": {
+      "if": "unix",
+      "args": "serve --host 0.0.0.0 --port 12345 main.ts",
+      "output": "main_not_win.out"
+    }
+  }
 }
