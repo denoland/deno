@@ -878,7 +878,7 @@ declare var ReadableStream: {
   readonly prototype: ReadableStream;
   new (
     underlyingSource: UnderlyingByteSource,
-    strategy?: { highWaterMark?: number; size?: undefined },
+    strategy?: { highWaterMark?: number },
   ): ReadableStream<Uint8Array>;
   new <R = any>(
     underlyingSource: UnderlyingDefaultSource<R>,
