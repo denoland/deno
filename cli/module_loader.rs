@@ -612,7 +612,8 @@ impl<TGraphContainer: ModuleGraphContainer>
     maybe_referrer: Option<&ModuleSpecifier>,
   ) -> Result<CodeOrDeferredEmit<'graph>, AnyError> {
     if specifier.scheme() == "node" {
-      unreachable!(); // Node built-in modules should be handled internally.
+      // Node built-in modules should be handled internally.
+      unreachable!("Deno bug. {} was misconfigured internally.", specifier);
     }
 
     match graph.get(specifier) {
