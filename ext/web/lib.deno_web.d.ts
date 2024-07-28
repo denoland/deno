@@ -731,14 +731,6 @@ declare interface UnderlyingSourceCancelCallback {
   (reason?: any): void | PromiseLike<void>;
 }
 
-// TODO(petamoriken): Will be removed in v2.0.
-/**
- * @deprecated use `UnderlyingSourcePullCallback` instead.
- * @category Streams
- */
-declare type ReadableStreamDefaultControllerCallback<R> =
-  UnderlyingSourcePullCallback<R>;
-
 /** @category Streams */
 declare interface UnderlyingSourcePullCallback<R> {
   (controller: ReadableStreamController<R>): void | PromiseLike<void>;
@@ -747,6 +739,15 @@ declare interface UnderlyingSourcePullCallback<R> {
 /** @category Streams */
 declare interface UnderlyingSourceStartCallback<R> {
   (controller: ReadableStreamController<R>): any;
+}
+
+// TODO(petamoriken): Will be removed in v2.0.
+/**
+ * @deprecated use `(controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>` instead.
+ * @category Streams
+ */
+declare interface ReadableStreamDefaultControllerCallback<R> {
+  (controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
 }
 
 /** @category Streams */
