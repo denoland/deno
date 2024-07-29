@@ -5,7 +5,7 @@
   },
   "steps": [
     {
-      "args": "install --global --root ./bins --name deno-test-bin ./main.js",
+      "args": "install --global --root ./bins --name deno-test-bin ./pkg/main.js",
       "output": "install.out"
     },
     {

@@ -69,6 +69,7 @@ pub enum FsFileType {
   Junction,
 }
 
+/// WARNING: This is part of the public JS Deno API.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsDirEntry {
@@ -139,6 +140,19 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     gid: Option<u32>,
   ) -> FsResult<()>;
   async fn chown_async(
+    &self,
+    path: PathBuf,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()>;
+
+  fn lchown_sync(
+    &self,
+    path: &Path,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()>;
+  async fn lchown_async(
     &self,
     path: PathBuf,
     uid: Option<u32>,
@@ -220,6 +234,23 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     mtime_nanos: u32,
   ) -> FsResult<()>;
 
+  fn lutime_sync(
+    &self,
+    path: &Path,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()>;
+  async fn lutime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()>;
+
   fn write_file_sync(
     &self,
     path: &Path,
@@ -283,6 +314,9 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
 
   fn exists_sync(&self, path: &Path) -> bool {
     self.stat_sync(path).is_ok()
+  }
+  async fn exists_async(&self, path: PathBuf) -> FsResult<bool> {
+    Ok(self.stat_async(path).await.is_ok())
   }
 
   fn read_text_file_lossy_sync(

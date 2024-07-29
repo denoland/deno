@@ -21,6 +21,7 @@ members = [
   "ext/napi",
   "ext/net",
   "ext/node",
+  "ext/node_resolver",
   "ext/url",
   "ext/web",
   "ext/webgpu",
@@ -43,46 +44,47 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.39.1", features = ["transpiling"] }
-deno_core = { version = "0.288.0" }
+deno_ast = { version = "=0.40.0", features = ["transpiling"] }
+deno_core = { version = "0.299.0" }
 
-deno_bench_util = { version = "0.150.0", path = "./bench_util" }
+deno_bench_util = { version = "0.157.0", path = "./bench_util" }
 deno_lockfile = "0.20.0"
 deno_media_type = { version = "0.1.4", features = ["module_specifier"] }
-deno_permissions = { version = "0.16.0", path = "./runtime/permissions" }
-deno_runtime = { version = "0.164.0", path = "./runtime" }
-deno_terminal = "0.1.1"
-napi_sym = { version = "0.86.0", path = "./cli/napi/sym" }
+deno_permissions = { version = "0.23.0", path = "./runtime/permissions" }
+deno_runtime = { version = "0.172.0", path = "./runtime" }
+deno_terminal = "0.2.0"
+napi_sym = { version = "0.93.0", path = "./cli/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
-denokv_proto = "0.7.0"
-denokv_remote = "0.7.0"
+denokv_proto = "0.8.1"
+denokv_remote = "0.8.1"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
-denokv_sqlite = { default-features = false, version = "0.7.0" }
+denokv_sqlite = { default-features = false, version = "0.8.1" }
 
 # exts
-deno_broadcast_channel = { version = "0.150.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.88.0", path = "./ext/cache" }
-deno_canvas = { version = "0.25.0", path = "./ext/canvas" }
-deno_console = { version = "0.156.0", path = "./ext/console" }
-deno_cron = { version = "0.36.0", path = "./ext/cron" }
-deno_crypto = { version = "0.170.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.180.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.143.0", path = "./ext/ffi" }
-deno_fs = { version = "0.66.0", path = "./ext/fs" }
-deno_http = { version = "0.154.0", path = "./ext/http" }
-deno_io = { version = "0.66.0", path = "./ext/io" }
-deno_kv = { version = "0.64.0", path = "./ext/kv" }
-deno_napi = { version = "0.86.0", path = "./ext/napi" }
-deno_net = { version = "0.148.0", path = "./ext/net" }
-deno_node = { version = "0.93.0", path = "./ext/node" }
-deno_tls = { version = "0.143.0", path = "./ext/tls" }
-deno_url = { version = "0.156.0", path = "./ext/url" }
-deno_web = { version = "0.187.0", path = "./ext/web" }
-deno_webgpu = { version = "0.123.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.156.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.161.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.151.0", path = "./ext/webstorage" }
+deno_broadcast_channel = { version = "0.157.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.95.0", path = "./ext/cache" }
+deno_canvas = { version = "0.32.0", path = "./ext/canvas" }
+deno_console = { version = "0.163.0", path = "./ext/console" }
+deno_cron = { version = "0.43.0", path = "./ext/cron" }
+deno_crypto = { version = "0.177.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.187.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.150.0", path = "./ext/ffi" }
+deno_fs = { version = "0.73.0", path = "./ext/fs" }
+deno_http = { version = "0.161.0", path = "./ext/http" }
+deno_io = { version = "0.73.0", path = "./ext/io" }
+deno_kv = { version = "0.71.0", path = "./ext/kv" }
+deno_napi = { version = "0.94.0", path = "./ext/napi" }
+deno_net = { version = "0.155.0", path = "./ext/net" }
+deno_node = { version = "0.100.0", path = "./ext/node" }
+deno_tls = { version = "0.150.0", path = "./ext/tls" }
+deno_url = { version = "0.163.0", path = "./ext/url" }
+deno_web = { version = "0.194.0", path = "./ext/web" }
+deno_webgpu = { version = "0.130.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.163.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.168.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.158.0", path = "./ext/webstorage" }
+node_resolver = { version = "0.2.0", path = "./ext/node_resolver" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
@@ -90,7 +92,7 @@ async-trait = "0.1.73"
 base32 = "=0.4.0"
 base64 = "0.21.4"
 bencher = "0.1"
-brotli = "3.3.4"
+brotli = "6.0.0"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
@@ -100,7 +102,8 @@ chrono = { version = "0.4", default-features = false, features = ["std", "serde"
 console_static_text = "=0.8.1"
 data-encoding = "2.3.3"
 data-url = "=0.3.0"
-deno_cache_dir = "=0.10.0"
+deno_cache_dir = "=0.10.2"
+deno_package_json = { version = "=0.1.1", default-features = false }
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
@@ -114,13 +117,16 @@ futures = "0.3.21"
 glob = "0.3.1"
 h2 = "0.4.4"
 http = "1.0"
-http-body-util = "0.1"
+http-body = "1.0"
+http-body-util = "0.1.2"
 http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
-hyper = { version = "=1.1.0", features = ["full"] }
-hyper-util = { version = "=0.1.2", features = ["tokio", "server", "server-auto"] }
+hyper = { version = "1.4.1", features = ["full"] }
+hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "tls12", "ring"] }
+hyper-util = { version = "=0.1.6", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
+ipnet = "2.3"
 jsonc-parser = { version = "=0.23.0", features = ["serde"] }
 lazy-regex = "3"
 libc = "0.2.126"
@@ -145,14 +151,13 @@ prost = "0.11"
 prost-build = "0.11"
 rand = "=0.8.5"
 regex = "^1.7.0"
-reqwest = { version = "=0.11.20", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
+reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 ring = "^0.17.0"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
-# pinned because it was causing issues on cargo publish
-rustls = "=0.21.11"
-rustls-pemfile = "1.0.0"
-rustls-tokio-stream = "=0.2.24"
-rustls-webpki = "0.101.4"
+rustls = { version = "0.23.11", default-features = false, features = ["logging", "std", "tls12", "ring"] }
+rustls-pemfile = "2"
+rustls-tokio-stream = "=0.3.0"
+rustls-webpki = "0.102"
 rustyline = "=13.0.0"
 saffron = "=0.1.0"
 scopeguard = "1.2.0"
@@ -160,6 +165,7 @@ serde = { version = "1.0.149", features = ["derive"] }
 serde_bytes = "0.11"
 serde_json = "1.0.85"
 serde_repr = "=0.1.16"
+sha1 = { version = "0.10.6", features = ["oid"] }
 sha2 = { version = "0.10.8", features = ["oid"] }
 signature = "2.1"
 slab = "0.4"
@@ -169,17 +175,23 @@ spki = "0.7.2"
 tar = "=0.4.40"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
-thiserror = "1.0.40"
+thiserror = "1.0.61"
 tokio = { version = "1.36.0", features = ["full"] }
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
+tokio-rustls = { version = "0.26.0", default-features = false, features = ["ring", "tls12"] }
+tokio-socks = "0.5.1"
 tokio-util = "0.7.4"
+tower = { version = "0.4.13", default-features = false, features = ["util"] }
+tower-http = { version = "0.5.2", features = ["decompression-br", "decompression-gzip"] }
 tower-lsp = { version = "=0.20.0", features = ["proposed"] }
+tower-service = "0.3.2"
 twox-hash = "=1.6.3"
 # Upgrading past 2.4.1 may cause WPT failures
 url = { version = "< 2.5.0", features = ["serde", "expose_internals"] }
 uuid = { version = "1.3.0", features = ["v4"] }
-webpki-roots = "0.25.2"
-zeromq = { version = "=0.3.4", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
+webpki-roots = "0.26"
+which = "4.2.5"
+zeromq = { version = "=0.4.0", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zstd = "=0.12.4"
 
 # crypto
@@ -188,7 +200,7 @@ rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "
 
 # webgpu
 raw-window-handle = "0.6.0"
-wgpu-core = "0.20"
+wgpu-core = "0.21.1"
 wgpu-types = "0.20"
 
 # macros
@@ -201,7 +213,7 @@ nix = "=0.26.2"
 # windows deps
 junction = "=0.2.0"
 winapi = "=0.3.9"
-windows-sys = { version = "0.48.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.52.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_WindowsProgramming", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Win32_System_Pipes", "Wdk_Storage_FileSystem", "Win32_System_Registry"] }
 winres = "=0.1.12"
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
@@ -233,139 +245,145 @@ opt-level = 1
 
 # Optimize these packages for performance.
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
-[profile.bench.package.rand]
+[profile.bench.package.async-compression]
 opt-level = 3
-[profile.bench.package.flate2]
+[profile.bench.package.base64-simd]
 opt-level = 3
 [profile.bench.package.brotli]
 opt-level = 3
-[profile.bench.package.miniz_oxide]
-opt-level = 3
-[profile.bench.package.async-compression]
-opt-level = 3
 [profile.bench.package.brotli-decompressor]
+opt-level = 3
+[profile.bench.package.bytes]
 opt-level = 3
 [profile.bench.package.deno_bench_util]
 opt-level = 3
+[profile.bench.package.deno_broadcast_channel]
+opt-level = 3
 [profile.bench.package.deno_core]
 opt-level = 3
-[profile.bench.package.deno_runtime]
-opt-level = 3
-[profile.bench.package.deno_http]
-opt-level = 3
-[profile.bench.package.deno_web]
-opt-level = 3
-[profile.bench.package.deno_broadcast_channel]
+[profile.bench.package.deno_crypto]
 opt-level = 3
 [profile.bench.package.deno_fetch]
 opt-level = 3
 [profile.bench.package.deno_ffi]
 opt-level = 3
-[profile.bench.package.deno_tls]
+[profile.bench.package.deno_http]
 opt-level = 3
-[profile.bench.package.deno_websocket]
+[profile.bench.package.deno_napi]
 opt-level = 3
 [profile.bench.package.deno_net]
 opt-level = 3
-[profile.bench.package.deno_crypto]
-opt-level = 3
 [profile.bench.package.deno_node]
 opt-level = 3
-[profile.bench.package.num-bigint-dig]
+[profile.bench.package.deno_runtime]
 opt-level = 3
-[profile.bench.package.v8]
-opt-level = 3
-[profile.bench.package.serde_v8]
-opt-level = 3
-[profile.bench.package.serde]
+[profile.bench.package.deno_tls]
 opt-level = 3
 [profile.bench.package.deno_url]
 opt-level = 3
-[profile.bench.package.url]
+[profile.bench.package.deno_web]
 opt-level = 3
-[profile.bench.package.bytes]
-opt-level = 3
-[profile.bench.package.futures-util]
+[profile.bench.package.deno_websocket]
 opt-level = 3
 [profile.bench.package.fastwebsockets]
 opt-level = 3
+[profile.bench.package.flate2]
+opt-level = 3
+[profile.bench.package.futures-util]
+opt-level = 3
 [profile.bench.package.hyper]
 opt-level = 3
+[profile.bench.package.miniz_oxide]
+opt-level = 3
+[profile.bench.package.num-bigint-dig]
+opt-level = 3
+[profile.bench.package.rand]
+opt-level = 3
+[profile.bench.package.serde]
+opt-level = 3
+[profile.bench.package.serde_v8]
+opt-level = 3
+[profile.bench.package.test_napi]
+opt-level = 3
 [profile.bench.package.tokio]
+opt-level = 3
+[profile.bench.package.url]
+opt-level = 3
+[profile.bench.package.v8]
 opt-level = 3
 [profile.bench.package.zstd]
 opt-level = 3
 [profile.bench.package.zstd-sys]
 opt-level = 3
-[profile.bench.package.base64-simd]
-opt-level = 3
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
-[profile.release.package.rand]
+[profile.release.package.async-compression]
 opt-level = 3
-[profile.release.package.flate2]
+[profile.release.package.base64-simd]
 opt-level = 3
 [profile.release.package.brotli]
 opt-level = 3
-[profile.release.package.miniz_oxide]
-opt-level = 3
-[profile.release.package.async-compression]
-opt-level = 3
 [profile.release.package.brotli-decompressor]
+opt-level = 3
+[profile.release.package.bytes]
 opt-level = 3
 [profile.release.package.deno_bench_util]
 opt-level = 3
+[profile.release.package.deno_broadcast_channel]
+opt-level = 3
 [profile.release.package.deno_core]
 opt-level = 3
-[profile.release.package.deno_runtime]
-opt-level = 3
-[profile.release.package.deno_http]
-opt-level = 3
-[profile.release.package.deno_net]
-opt-level = 3
-[profile.release.package.deno_web]
-opt-level = 3
 [profile.release.package.deno_crypto]
-opt-level = 3
-[profile.release.package.deno_node]
-opt-level = 3
-[profile.release.package.deno_broadcast_channel]
 opt-level = 3
 [profile.release.package.deno_fetch]
 opt-level = 3
 [profile.release.package.deno_ffi]
 opt-level = 3
-[profile.release.package.deno_tls]
-opt-level = 3
-[profile.release.package.deno_websocket]
+[profile.release.package.deno_http]
 opt-level = 3
 [profile.release.package.deno_napi]
 opt-level = 3
-[profile.release.package.test_napi]
+[profile.release.package.deno_net]
 opt-level = 3
-[profile.release.package.num-bigint-dig]
+[profile.release.package.deno_node]
 opt-level = 3
-[profile.release.package.v8]
+[profile.release.package.deno_runtime]
 opt-level = 3
-[profile.release.package.serde_v8]
-opt-level = 3
-[profile.release.package.serde]
+[profile.release.package.deno_tls]
 opt-level = 3
 [profile.release.package.deno_url]
 opt-level = 3
-[profile.release.package.url]
+[profile.release.package.deno_web]
 opt-level = 3
-[profile.release.package.bytes]
+[profile.release.package.deno_websocket]
+opt-level = 3
+[profile.release.package.fastwebsockets]
+opt-level = 3
+[profile.release.package.flate2]
 opt-level = 3
 [profile.release.package.futures-util]
 opt-level = 3
 [profile.release.package.hyper]
 opt-level = 3
+[profile.release.package.miniz_oxide]
+opt-level = 3
+[profile.release.package.num-bigint-dig]
+opt-level = 3
+[profile.release.package.rand]
+opt-level = 3
+[profile.release.package.serde]
+opt-level = 3
+[profile.release.package.serde_v8]
+opt-level = 3
+[profile.release.package.test_napi]
+opt-level = 3
 [profile.release.package.tokio]
+opt-level = 3
+[profile.release.package.url]
+opt-level = 3
+[profile.release.package.v8]
 opt-level = 3
 [profile.release.package.zstd]
 opt-level = 3
 [profile.release.package.zstd-sys]
-opt-level = 3
-[profile.release.package.base64-simd]
 opt-level = 3

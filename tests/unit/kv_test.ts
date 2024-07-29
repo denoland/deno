@@ -7,7 +7,7 @@ import {
   assertRejects,
   assertThrows,
 } from "./test_util.ts";
-import { assertType, IsExact } from "@std/testing/types.ts";
+import { assertType, IsExact } from "@std/testing/types";
 
 const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 

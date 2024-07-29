@@ -99,6 +99,9 @@ Object.defineProperty(globalThis, "{0}", {{
     lastThrownError: undefined,
     inspectArgs: Deno[Deno.internal].inspectArgs,
     noColor: Deno.noColor,
+    get closed() {{
+      return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
+    }}
   }},
 }});
 Object.defineProperty(globalThis, "_", {{
@@ -251,7 +254,7 @@ impl ReplSession {
         ))
       })?;
     let ts_config_for_emit = cli_options
-      .resolve_ts_config_for_emit(deno_config::TsConfigType::Emit)?;
+      .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
     let (transpile_options, _) =
       crate::args::ts_config_to_transpile_and_emit_options(
         ts_config_for_emit.ts_config,
@@ -299,8 +302,9 @@ impl ReplSession {
   }
 
   pub async fn closing(&mut self) -> Result<bool, AnyError> {
+    let expression = format!(r#"{}.closed"#, *REPL_INTERNALS_NAME);
     let closed = self
-      .evaluate_expression("(this.closed)")
+      .evaluate_expression(&expression)
       .await?
       .result
       .value
@@ -628,6 +632,7 @@ impl ReplSession {
           transform_jsx: true,
           precompile_jsx: false,
           precompile_jsx_skip_elements: None,
+          precompile_jsx_dynamic_props: None,
           jsx_automatic: self.jsx.import_source.is_some(),
           jsx_development: false,
           jsx_factory: self.jsx.factory.clone(),

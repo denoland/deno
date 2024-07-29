@@ -26,13 +26,13 @@ use deno_net::raw::NetworkStream;
 use h2;
 use h2::Reason;
 use h2::RecvStream;
-use http_v02;
-use http_v02::request::Parts;
-use http_v02::HeaderMap;
-use http_v02::Response;
-use http_v02::StatusCode;
-use reqwest::header::HeaderName;
-use reqwest::header::HeaderValue;
+use http;
+use http::header::HeaderName;
+use http::header::HeaderValue;
+use http::request::Parts;
+use http::HeaderMap;
+use http::Response;
+use http::StatusCode;
 use url::Url;
 
 pub struct Http2Client {
@@ -247,7 +247,7 @@ pub async fn op_http2_send_response(
   }
   for (name, value) in headers {
     response.headers_mut().append(
-      HeaderName::from_lowercase(&name).unwrap(),
+      HeaderName::from_bytes(&name).unwrap(),
       HeaderValue::from_bytes(&value).unwrap(),
     );
   }
@@ -311,13 +311,13 @@ pub async fn op_http2_client_request(
 
   let url = url.join(&pseudo_path)?;
 
-  let mut req = http_v02::Request::builder()
+  let mut req = http::Request::builder()
     .uri(url.as_str())
     .method(pseudo_method.as_str());
 
   for (name, value) in headers {
     req.headers_mut().unwrap().append(
-      HeaderName::from_lowercase(&name).unwrap(),
+      HeaderName::from_bytes(&name).unwrap(),
       HeaderValue::from_bytes(&value).unwrap(),
     );
   }
@@ -383,7 +383,7 @@ pub async fn op_http2_client_send_trailers(
     .get::<Http2ClientStream>(stream_rid)?;
   let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
 
-  let mut trailers_map = http_v02::HeaderMap::new();
+  let mut trailers_map = http::HeaderMap::new();
   for (name, value) in trailers {
     trailers_map.insert(
       HeaderName::from_bytes(&name).unwrap(),
@@ -456,24 +456,21 @@ fn poll_data_or_trailers(
   cx: &mut std::task::Context,
   body: &mut RecvStream,
 ) -> Poll<Result<DataOrTrailers, h2::Error>> {
-  loop {
-    if let Poll::Ready(trailers) = body.poll_trailers(cx) {
-      if let Some(trailers) = trailers? {
-        return Poll::Ready(Ok(DataOrTrailers::Trailers(trailers)));
-      } else {
-        return Poll::Ready(Ok(DataOrTrailers::Eof));
-      }
+  if let Poll::Ready(trailers) = body.poll_trailers(cx) {
+    if let Some(trailers) = trailers? {
+      return Poll::Ready(Ok(DataOrTrailers::Trailers(trailers)));
+    } else {
+      return Poll::Ready(Ok(DataOrTrailers::Eof));
     }
-    if let Poll::Ready(data) = body.poll_data(cx) {
-      if let Some(data) = data {
-        return Poll::Ready(Ok(DataOrTrailers::Data(data?)));
-      }
-      // If data is None, loop one more time to check for trailers
-      continue;
-    }
-    // Return pending here as poll_data will keep the waker
-    return Poll::Pending;
   }
+  if let Poll::Ready(Some(data)) = body.poll_data(cx) {
+    let data = data?;
+    body.flow_control().release_capacity(data.len())?;
+    return Poll::Ready(Ok(DataOrTrailers::Data(data)));
+    // If `poll_data` returns `Ready(None)`, poll one more time to check for trailers
+  }
+  // Return pending here as poll_data will keep the waker
+  Poll::Pending
 }
 
 #[op2(async)]

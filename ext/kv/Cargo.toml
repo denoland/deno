@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_kv"
-version = "0.64.0"
+version = "0.71.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,6 +17,7 @@ path = "lib.rs"
 anyhow.workspace = true
 async-trait.workspace = true
 base64.workspace = true
+bytes.workspace = true
 chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
 deno_fetch.workspace = true
@@ -27,6 +28,8 @@ denokv_proto.workspace = true
 denokv_remote.workspace = true
 denokv_sqlite.workspace = true
 faster-hex.workspace = true
+http.workspace = true
+http-body-util.workspace = true
 log.workspace = true
 num-bigint.workspace = true
 prost.workspace = true

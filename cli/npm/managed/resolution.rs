@@ -5,7 +5,6 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::registry::NpmRegistryApi;
@@ -27,7 +26,7 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
 
-use crate::args::Lockfile;
+use crate::args::CliLockfile;
 use crate::util::sync::SyncReadAsyncWriteLock;
 
 use super::CliNpmRegistryApi;
@@ -50,7 +49,7 @@ pub struct AddPkgReqsResult {
 pub struct NpmResolution {
   api: Arc<CliNpmRegistryApi>,
   snapshot: SyncReadAsyncWriteLock<NpmResolutionSnapshot>,
-  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  maybe_lockfile: Option<Arc<CliLockfile>>,
 }
 
 impl std::fmt::Debug for NpmResolution {
@@ -66,7 +65,7 @@ impl NpmResolution {
   pub fn from_serialized(
     api: Arc<CliNpmRegistryApi>,
     initial_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
-    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+    maybe_lockfile: Option<Arc<CliLockfile>>,
   ) -> Self {
     let snapshot =
       NpmResolutionSnapshot::new(initial_snapshot.unwrap_or_default());
@@ -76,7 +75,7 @@ impl NpmResolution {
   pub fn new(
     api: Arc<CliNpmRegistryApi>,
     initial_snapshot: NpmResolutionSnapshot,
-    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+    maybe_lockfile: Option<Arc<CliLockfile>>,
   ) -> Self {
     Self {
       api,
@@ -262,7 +261,7 @@ impl NpmResolution {
 async fn add_package_reqs_to_snapshot(
   api: &CliNpmRegistryApi,
   package_reqs: &[PackageReq],
-  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  maybe_lockfile: Option<Arc<CliLockfile>>,
   get_new_snapshot: impl Fn() -> NpmResolutionSnapshot,
 ) -> deno_npm::resolution::AddPkgReqsResult {
   let snapshot = get_new_snapshot();
@@ -301,9 +300,8 @@ async fn add_package_reqs_to_snapshot(
   };
 
   if let Ok(snapshot) = &result.dep_graph_result {
-    if let Some(lockfile_mutex) = maybe_lockfile {
-      let mut lockfile = lockfile_mutex.lock();
-      populate_lockfile_from_snapshot(&mut lockfile, snapshot);
+    if let Some(lockfile) = maybe_lockfile {
+      populate_lockfile_from_snapshot(&lockfile, snapshot);
     }
   }
 
@@ -326,9 +324,10 @@ fn get_npm_pending_resolver(
 }
 
 fn populate_lockfile_from_snapshot(
-  lockfile: &mut Lockfile,
+  lockfile: &CliLockfile,
   snapshot: &NpmResolutionSnapshot,
 ) {
+  let mut lockfile = lockfile.lock();
   for (package_req, nv) in snapshot.package_reqs() {
     lockfile.insert_package_specifier(
       format!("npm:{}", package_req),

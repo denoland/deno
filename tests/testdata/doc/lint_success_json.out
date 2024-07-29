@@ -1,7 +1,7 @@
 [
   {
-    "kind": "class",
     "name": "Test",
+    "isDefault": false,
     "location": {
       "filename": "file:///[WILDCARD]/lint_success.ts",
       "line": 2,
@@ -12,6 +12,7 @@
     "jsDoc": {
       "doc": "My test class."
     },
+    "kind": "class",
     "classDef": {
       "isAbstract": false,
       "constructors": [],

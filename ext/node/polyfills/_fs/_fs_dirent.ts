@@ -2,7 +2,7 @@
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
 export default class Dirent {
-  constructor(private entry: Deno.DirEntry) {}
+  constructor(private entry: Deno.DirEntry & { parentPath: string }) {}
 
   isBlockDevice(): boolean {
     notImplemented("Deno does not yet support identification of block devices");
@@ -42,5 +42,14 @@ export default class Dirent {
 
   get name(): string | null {
     return this.entry.name;
+  }
+
+  get parentPath(): string {
+    return this.entry.parentPath;
+  }
+
+  /** @deprecated */
+  get path(): string {
+    return this.parentPath;
   }
 }

@@ -761,3 +761,47 @@ Deno.test("Close without frame", async () => {
   };
   await promise;
 });
+
+Deno.test("Close connection", async () => {
+  const ac = new AbortController();
+  const listeningDeferred = Promise.withResolvers<void>();
+
+  const server = Deno.serve({
+    handler: (req) => {
+      const { socket, response } = Deno.upgradeWebSocket(req);
+      socket.onmessage = function (e) {
+        socket.close(1008);
+        assertEquals(e.data, "Hello");
+      };
+      socket.onclose = () => {
+        ac.abort();
+      };
+      socket.onerror = () => fail();
+      return response;
+    },
+    signal: ac.signal,
+    onListen: () => listeningDeferred.resolve(),
+    hostname: "localhost",
+    port: servePort,
+  });
+
+  await listeningDeferred.promise;
+
+  const conn = await Deno.connect({ port: servePort, hostname: "localhost" });
+  await conn.write(
+    new TextEncoder().encode(
+      "GET / HTTP/1.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+    ),
+  );
+
+  // Write a 2 text frame saying "Hello"
+  await conn.write(new Uint8Array([0x81, 0x05]));
+  await conn.write(new TextEncoder().encode("Hello"));
+
+  // We are a bad client so we won't acknowledge the close frame
+  await conn.write(new Uint8Array([0x81, 0x05]));
+  await conn.write(new TextEncoder().encode("Hello"));
+
+  await server.finished;
+  conn.close();
+});

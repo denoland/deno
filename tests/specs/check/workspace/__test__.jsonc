@@ -1,0 +1,22 @@
+{
+  "tests": {
+    "root": {
+      // todo(dsherret): should be possible to not provide args here
+      "args": "check package-a/mod.ts package-b/mod.ts",
+      "output": "root.out",
+      "exitCode": 1
+    },
+    "package_a": {
+      "args": "check mod.ts",
+      "cwd": "package-a",
+      "output": "package_a.out",
+      "exitCode": 0
+    },
+    "package_b": {
+      "args": "check mod.ts",
+      "cwd": "package-b",
+      "output": "package_b.out",
+      "exitCode": 1
+    }
+  }
+}

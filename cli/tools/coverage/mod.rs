@@ -9,11 +9,11 @@ use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
 use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
-use crate::util::fs::FileCollector;
 use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
@@ -32,6 +32,7 @@ use std::io::BufWriter;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use text_lines::TextLines;
 use uuid::Uuid;
 
@@ -408,7 +409,7 @@ fn collect_coverages(
   .ignore_git_folder()
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(file_patterns)?;
+  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, file_patterns)?;
 
   let coverage_patterns = FilePatterns {
     base: initial_cwd.to_path_buf(),
@@ -473,17 +474,17 @@ fn filter_coverages(
 }
 
 pub async fn cover_files(
-  flags: Flags,
+  flags: Arc<Flags>,
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
   if coverage_flags.files.include.is_empty() {
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  let factory = CliFactory::from_flags(flags)?;
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let npm_resolver = factory.npm_resolver().await?;
   let file_fetcher = factory.file_fetcher()?;
-  let cli_options = factory.cli_options();
   let emitter = factory.emitter()?;
 
   assert!(!coverage_flags.files.include.is_empty());

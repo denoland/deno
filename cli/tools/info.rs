@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Write;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
@@ -25,7 +26,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_terminal::colors;
 
-use crate::args::write_lockfile_if_has_changes;
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
@@ -35,27 +35,31 @@ use crate::npm::CliNpmResolver;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;
 
-pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+pub async fn info(
+  flags: Arc<Flags>,
+  info_flags: InfoFlags,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   if let Some(specifier) = info_flags.file {
     let module_graph_builder = factory.module_graph_builder().await?;
     let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
-    let maybe_lockfile = factory.maybe_lockfile();
-    let maybe_imports_map = factory.maybe_import_map().await?;
+    let maybe_lockfile = cli_options.maybe_lockfile();
+    let resolver = factory.workspace_resolver().await?;
 
-    let maybe_import_specifier = if let Some(imports_map) = maybe_imports_map {
-      if let Ok(imports_specifier) =
-        imports_map.resolve(&specifier, imports_map.base_url())
-      {
-        Some(imports_specifier)
+    let maybe_import_specifier =
+      if let Some(import_map) = resolver.maybe_import_map() {
+        if let Ok(imports_specifier) =
+          import_map.resolve(&specifier, import_map.base_url())
+        {
+          Some(imports_specifier)
+        } else {
+          None
+        }
       } else {
         None
-      }
-    } else {
-      None
-    };
+      };
 
     let specifier = match maybe_import_specifier {
       Some(specifier) => specifier,
@@ -71,7 +75,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     // write out the lockfile if there is one
     if let Some(lockfile) = &maybe_lockfile {
       graph_exit_lock_errors(&graph);
-      write_lockfile_if_has_changes(&mut lockfile.lock())?;
+      lockfile.write_if_changed()?;
     }
 
     if info_flags.json {

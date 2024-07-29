@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::IsTerminal;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -11,9 +12,9 @@ use std::sync::Arc;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_ast::ModuleSpecifier;
-use deno_config::glob::FilePatterns;
-use deno_config::ConfigFile;
-use deno_config::WorkspaceMemberConfig;
+use deno_config::workspace::JsrPackageConfig;
+use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::Workspace;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -24,10 +25,8 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_runtime::deno_fetch::reqwest;
-use deno_runtime::deno_fs::FileSystem;
 use deno_terminal::colors;
-use import_map::ImportMap;
+use http_body_util::BodyExt;
 use lsp_types::Url;
 use serde::Deserialize;
 use serde::Serialize;
@@ -44,10 +43,9 @@ use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
-use crate::resolver::MappedSpecifierResolver;
 use crate::resolver::SloppyImportsResolver;
 use crate::tools::check::CheckOptions;
-use crate::tools::lint::no_slow_types;
+use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::tools::registry::diagnostics::PublishDiagnostic;
 use crate::tools::registry::diagnostics::PublishDiagnosticsCollector;
 use crate::util::display::human_size;
@@ -76,35 +74,48 @@ use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
 
 pub async fn publish(
-  flags: Flags,
+  flags: Arc<Flags>,
   publish_flags: PublishFlags,
 ) -> Result<(), AnyError> {
-  let cli_factory = CliFactory::from_flags(flags)?;
+  let cli_factory = CliFactory::from_flags(flags);
 
   let auth_method =
     get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
-  let import_map = cli_factory
-    .maybe_import_map()
-    .await?
-    .clone()
-    .unwrap_or_else(|| {
-      Arc::new(ImportMap::new(Url::parse("file:///dev/null").unwrap()))
-    });
-
-  let directory_path = cli_factory.cli_options().initial_cwd();
-
-  let mapped_resolver = Arc::new(MappedSpecifierResolver::new(
-    Some(import_map),
-    cli_factory.package_json_deps_provider().clone(),
+  let cli_options = cli_factory.cli_options()?;
+  let directory_path = cli_options.initial_cwd();
+  let publish_configs = cli_options.start_dir.jsr_packages_for_publish();
+  if publish_configs.is_empty() {
+    match cli_options.start_dir.maybe_deno_json() {
+      Some(deno_json) => {
+        debug_assert!(!deno_json.is_package());
+        bail!(
+          "Missing 'name', 'version' and 'exports' field in '{}'.",
+          deno_json.specifier
+        );
+      }
+      None => {
+        bail!(
+          "Couldn't find a deno.json, deno.jsonc, jsr.json or jsr.jsonc configuration file in {}.",
+          directory_path.display()
+        );
+      }
+    }
+  }
+  let specifier_unfurler = Arc::new(SpecifierUnfurler::new(
+    if cli_options.unstable_sloppy_imports() {
+      Some(SloppyImportsResolver::new(cli_factory.fs().clone()))
+    } else {
+      None
+    },
+    cli_options
+      .create_workspace_resolver(
+        cli_factory.file_fetcher()?,
+        PackageJsonDepResolution::Enabled,
+      )
+      .await?,
+    cli_options.unstable_bare_node_builtins(),
   ));
-  let cli_options = cli_factory.cli_options();
-  let Some(config_file) = cli_options.maybe_config_file() else {
-    bail!(
-      "Couldn't find a deno.json, deno.jsonc, jsr.json or jsr.jsonc configuration file in {}.",
-      directory_path.display()
-    );
-  };
 
   let diagnostics_collector = PublishDiagnosticsCollector::default();
   let publish_preparer = PublishPreparer::new(
@@ -112,16 +123,15 @@ pub async fn publish(
     cli_factory.module_graph_creator().await?.clone(),
     cli_factory.parsed_source_cache().clone(),
     cli_factory.type_checker().await?.clone(),
-    cli_factory.fs().clone(),
-    cli_factory.cli_options().clone(),
-    mapped_resolver,
+    cli_options.clone(),
+    specifier_unfurler,
   );
 
   let prepared_data = publish_preparer
     .prepare_packages_for_publishing(
       publish_flags.allow_slow_types,
       &diagnostics_collector,
-      config_file.clone(),
+      publish_configs,
     )
     .await?;
 
@@ -135,9 +145,13 @@ pub async fn publish(
     .ok()
     .is_none()
     && !publish_flags.allow_dirty
-    && check_if_git_repo_dirty(cli_options.initial_cwd()).await
   {
-    bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+    if let Some(dirty_text) =
+      check_if_git_repo_dirty(cli_options.initial_cwd()).await
+    {
+      log::error!("\nUncommitted changes:\n\n{}\n", dirty_text);
+      bail!("Aborting due to uncommitted changes. Check in source code or run with --allow-dirty");
+    }
   }
 
   if publish_flags.dry_run {
@@ -193,8 +207,7 @@ struct PublishPreparer {
   source_cache: Arc<ParsedSourceCache>,
   type_checker: Arc<TypeChecker>,
   cli_options: Arc<CliOptions>,
-  mapped_resolver: Arc<MappedSpecifierResolver>,
-  sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
+  specifier_unfurler: Arc<SpecifierUnfurler>,
 }
 
 impl PublishPreparer {
@@ -203,23 +216,16 @@ impl PublishPreparer {
     module_graph_creator: Arc<ModuleGraphCreator>,
     source_cache: Arc<ParsedSourceCache>,
     type_checker: Arc<TypeChecker>,
-    fs: Arc<dyn FileSystem>,
     cli_options: Arc<CliOptions>,
-    mapped_resolver: Arc<MappedSpecifierResolver>,
+    specifier_unfurler: Arc<SpecifierUnfurler>,
   ) -> Self {
-    let sloppy_imports_resolver = if cli_options.unstable_sloppy_imports() {
-      Some(Arc::new(SloppyImportsResolver::new(fs.clone())))
-    } else {
-      None
-    };
     Self {
       graph_diagnostics_collector,
       module_graph_creator,
       source_cache,
       type_checker,
       cli_options,
-      mapped_resolver,
-      sloppy_imports_resolver,
+      specifier_unfurler,
     }
   }
 
@@ -227,11 +233,9 @@ impl PublishPreparer {
     &self,
     allow_slow_types: bool,
     diagnostics_collector: &PublishDiagnosticsCollector,
-    deno_json: ConfigFile,
+    publish_configs: Vec<JsrPackageConfig>,
   ) -> Result<PreparePackagesData, AnyError> {
-    let members = deno_json.to_workspace_members()?;
-
-    if members.len() > 1 {
+    if publish_configs.len() > 1 {
       log::info!("Publishing a workspace...");
     }
 
@@ -240,31 +244,24 @@ impl PublishPreparer {
       .build_and_check_graph_for_publish(
         allow_slow_types,
         diagnostics_collector,
-        &members,
+        &publish_configs,
       )
       .await?;
 
-    let mut package_by_name = HashMap::with_capacity(members.len());
+    let mut package_by_name = HashMap::with_capacity(publish_configs.len());
     let publish_order_graph =
-      publish_order::build_publish_order_graph(&graph, &members)?;
+      publish_order::build_publish_order_graph(&graph, &publish_configs)?;
 
-    let results = members
+    let results = publish_configs
       .into_iter()
       .map(|member| {
         let graph = graph.clone();
         async move {
           let package = self
-            .prepare_publish(
-              &member.package_name,
-              &member.config_file,
-              graph,
-              diagnostics_collector,
-            )
+            .prepare_publish(&member, graph, diagnostics_collector)
             .await
-            .with_context(|| {
-              format!("Failed preparing '{}'.", member.package_name)
-            })?;
-          Ok::<_, AnyError>((member.package_name, package))
+            .with_context(|| format!("Failed preparing '{}'.", member.name))?;
+          Ok::<_, AnyError>((member.name, package))
         }
         .boxed()
       })
@@ -284,12 +281,15 @@ impl PublishPreparer {
     &self,
     allow_slow_types: bool,
     diagnostics_collector: &PublishDiagnosticsCollector,
-    packages: &[WorkspaceMemberConfig],
+    package_configs: &[JsrPackageConfig],
   ) -> Result<Arc<deno_graph::ModuleGraph>, deno_core::anyhow::Error> {
     let build_fast_check_graph = !allow_slow_types;
     let graph = self
       .module_graph_creator
-      .create_and_validate_publish_graph(packages, build_fast_check_graph)
+      .create_and_validate_publish_graph(
+        package_configs,
+        build_fast_check_graph,
+      )
       .await?;
 
     // todo(dsherret): move to lint rule
@@ -312,7 +312,10 @@ impl PublishPreparer {
     } else if std::env::var("DENO_INTERNAL_FAST_CHECK_OVERWRITE").as_deref()
       == Ok("1")
     {
-      if check_if_git_repo_dirty(self.cli_options.initial_cwd()).await {
+      if check_if_git_repo_dirty(self.cli_options.initial_cwd())
+        .await
+        .is_some()
+      {
         bail!("When using DENO_INTERNAL_FAST_CHECK_OVERWRITE, the git repo must be in a clean state.");
       }
 
@@ -335,10 +338,10 @@ impl PublishPreparer {
     } else {
       log::info!("Checking for slow types in the public API...");
       let mut any_pkg_had_diagnostics = false;
-      for package in packages {
+      for package in package_configs {
         let export_urls = package.config_file.resolve_export_value_urls()?;
         let diagnostics =
-          no_slow_types::collect_no_slow_type_diagnostics(&export_urls, &graph);
+          collect_no_slow_type_diagnostics(&graph, &export_urls);
         if !diagnostics.is_empty() {
           any_pkg_had_diagnostics = true;
           for diagnostic in diagnostics {
@@ -389,14 +392,14 @@ impl PublishPreparer {
   #[allow(clippy::too_many_arguments)]
   async fn prepare_publish(
     &self,
-    package_name: &str,
-    deno_json: &ConfigFile,
+    package: &JsrPackageConfig,
     graph: Arc<deno_graph::ModuleGraph>,
     diagnostics_collector: &PublishDiagnosticsCollector,
   ) -> Result<Rc<PreparedPublishPackage>, AnyError> {
     static SUGGESTED_ENTRYPOINTS: [&str; 4] =
       ["mod.ts", "mod.js", "index.ts", "index.js"];
 
+    let deno_json = &package.config_file;
     let config_path = deno_json.specifier.to_file_path().unwrap();
     let root_dir = config_path.parent().unwrap().to_path_buf();
     let Some(version) = deno_json.json.version.clone() else {
@@ -418,46 +421,36 @@ impl PublishPreparer {
   "version": "{}",
   "exports": "{}"
 }}"#,
-        package_name,
+        package.name,
         version,
         suggested_entrypoint.unwrap_or("<path_to_entrypoint>")
       );
 
       bail!(
       "You did not specify an entrypoint to \"{}\" package in {}. Add `exports` mapping in the configuration file, eg:\n{}",
-      package_name,
+      package.name,
       deno_json.specifier,
       exports_content
     );
     }
-    let Some(name_no_at) = package_name.strip_prefix('@') else {
+    let Some(name_no_at) = package.name.strip_prefix('@') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
     let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
-    let file_patterns = deno_json
-      .to_publish_config()?
-      .map(|c| c.files)
-      .unwrap_or_else(|| FilePatterns::new_with_base(root_dir.to_path_buf()));
+    let file_patterns = package.member_dir.to_publish_config()?.files;
 
     let tarball = deno_core::unsync::spawn_blocking({
       let diagnostics_collector = diagnostics_collector.clone();
-      let mapped_resolver = self.mapped_resolver.clone();
-      let sloppy_imports_resolver = self.sloppy_imports_resolver.clone();
+      let unfurler = self.specifier_unfurler.clone();
       let cli_options = self.cli_options.clone();
       let source_cache = self.source_cache.clone();
       let config_path = config_path.clone();
       move || {
-        let bare_node_builtins = cli_options.unstable_bare_node_builtins();
-        let unfurler = SpecifierUnfurler::new(
-          &mapped_resolver,
-          sloppy_imports_resolver.as_deref(),
-          bare_node_builtins,
-        );
         let root_specifier =
           ModuleSpecifier::from_directory_path(&root_dir).unwrap();
-        let publish_paths =
+        let mut publish_paths =
           paths::collect_publish_paths(paths::CollectPublishPathsOptions {
             root_dir: &root_dir,
             cli_options: &cli_options,
@@ -471,8 +464,30 @@ impl PublishPreparer {
           &publish_paths,
           &diagnostics_collector,
         );
+
+        if !has_license_file(publish_paths.iter().map(|p| &p.specifier)) {
+          if let Some(license_path) =
+            resolve_license_file(&root_dir, cli_options.workspace())
+          {
+            // force including the license file from the package or workspace root
+            publish_paths.push(CollectedPublishPath {
+              specifier: ModuleSpecifier::from_file_path(&license_path)
+                .unwrap(),
+              relative_path: "/LICENSE".to_string(),
+              maybe_content: Some(std::fs::read(&license_path).with_context(
+                || format!("failed reading '{}'.", license_path.display()),
+              )?),
+              path: license_path,
+            });
+          } else {
+            diagnostics_collector.push(PublishDiagnostic::MissingLicense {
+              expected_path: root_dir.join("LICENSE"),
+            });
+          }
+        }
+
         tar::create_gzipped_tarball(
-          &publish_paths,
+          publish_paths,
           LazyGraphSourceParser::new(&source_cache, &graph),
           &diagnostics_collector,
           &unfurler,
@@ -482,7 +497,7 @@ impl PublishPreparer {
     })
     .await??;
 
-    log::debug!("Tarball size ({}): {}", package_name, tarball.bytes.len());
+    log::debug!("Tarball size ({}): {}", package.name, tarball.bytes.len());
 
     Ok(Rc::new(PreparedPublishPackage {
       scope: scope.to_string(),
@@ -548,11 +563,13 @@ async fn get_auth_headers(
       let challenge = BASE64_STANDARD.encode(sha2::Sha256::digest(&verifier));
 
       let response = client
-        .post(format!("{}authorizations", registry_url))
-        .json(&serde_json::json!({
-          "challenge": challenge,
-          "permissions": permissions,
-        }))
+        .post_json(
+          format!("{}authorizations", registry_url).parse()?,
+          &serde_json::json!({
+            "challenge": challenge,
+            "permissions": permissions,
+          }),
+        )?
         .send()
         .await
         .context("Failed to create interactive authorization")?;
@@ -582,11 +599,13 @@ async fn get_auth_headers(
       loop {
         tokio::time::sleep(interval).await;
         let response = client
-          .post(format!("{}authorizations/exchange", registry_url))
-          .json(&serde_json::json!({
-            "exchangeToken": auth.exchange_token,
-            "verifier": verifier,
-          }))
+          .post_json(
+            format!("{}authorizations/exchange", registry_url).parse()?,
+            &serde_json::json!({
+              "exchangeToken": auth.exchange_token,
+              "verifier": verifier,
+            }),
+          )?
           .send()
           .await
           .context("Failed to exchange authorization")?;
@@ -643,15 +662,20 @@ async fn get_auth_headers(
         );
 
         let response = client
-          .get(url)
-          .bearer_auth(&oidc_config.token)
+          .get(url.parse()?)?
+          .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {}", oidc_config.token).parse()?,
+          )
           .send()
           .await
           .context("Failed to get OIDC token")?;
         let status = response.status();
-        let text = response.text().await.with_context(|| {
-          format!("Failed to get OIDC token: status {}", status)
-        })?;
+        let text = crate::http_util::body_to_string(response)
+          .await
+          .with_context(|| {
+            format!("Failed to get OIDC token: status {}", status)
+          })?;
         if !status.is_success() {
           bail!(
             "Failed to get OIDC token: status {}, response: '{}'",
@@ -779,7 +803,7 @@ async fn ensure_scopes_and_packages_exist(
 
     loop {
       tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-      let response = client.get(&package_api_url).send().await?;
+      let response = client.get(package_api_url.parse()?)?.send().await?;
       if response.status() == 200 {
         let name = format!("@{}/{}", package.scope, package.package);
         log::info!("Package {} created", colors::green(name));
@@ -903,11 +927,19 @@ async fn publish_package(
     package.config
   );
 
+  let body = http_body_util::Full::new(package.tarball.bytes.clone())
+    .map_err(|never| match never {})
+    .boxed();
   let response = http_client
-    .post(url)
-    .header(reqwest::header::AUTHORIZATION, authorization)
-    .header(reqwest::header::CONTENT_ENCODING, "gzip")
-    .body(package.tarball.bytes.clone())
+    .post(url.parse()?, body)?
+    .header(
+      http::header::AUTHORIZATION,
+      authorization.parse().map_err(http::Error::from)?,
+    )
+    .header(
+      http::header::CONTENT_ENCODING,
+      "gzip".parse().map_err(http::Error::from)?,
+    )
     .send()
     .await?;
 
@@ -952,7 +984,7 @@ async fn publish_package(
   while task.status != "success" && task.status != "failure" {
     tokio::time::sleep(interval).await;
     let resp = http_client
-      .get(format!("{}publish_status/{}", registry_api_url, task.id))
+      .get(format!("{}publish_status/{}", registry_api_url, task.id).parse()?)?
       .send()
       .await
       .with_context(|| {
@@ -982,14 +1014,6 @@ async fn publish_package(
     );
   }
 
-  log::info!(
-    "{} @{}/{}@{}",
-    colors::green("Successfully published"),
-    package.scope,
-    package.package,
-    package.version
-  );
-
   let enable_provenance = std::env::var("DISABLE_JSR_PROVENANCE").is_err()
     && (auth::is_gha() && auth::gha_oidc_token().is_some() && provenance);
 
@@ -1001,7 +1025,8 @@ async fn publish_package(
       package.scope, package.package, package.version
     ))?;
 
-    let meta_bytes = http_client.get(meta_url).send().await?.bytes().await?;
+    let resp = http_client.get(meta_url)?.send().await?;
+    let meta_bytes = resp.collect().await?.to_bytes();
 
     if std::env::var("DISABLE_JSR_MANIFEST_VERIFICATION_FOR_TESTING").is_err() {
       verify_version_manifest(&meta_bytes, &package)?;
@@ -1032,12 +1057,19 @@ async fn publish_package(
       registry_api_url, package.scope, package.package, package.version
     );
     http_client
-      .post(provenance_url)
-      .header(reqwest::header::AUTHORIZATION, authorization)
-      .json(&json!({ "bundle": bundle }))
+      .post_json(provenance_url.parse()?, &json!({ "bundle": bundle }))?
+      .header(http::header::AUTHORIZATION, authorization.parse()?)
       .send()
       .await?;
   }
+
+  log::info!(
+    "{} @{}/{}@{}",
+    colors::green("Successfully published"),
+    package.scope,
+    package.package,
+    package.version
+  );
 
   log::info!(
     "{}",
@@ -1146,10 +1178,10 @@ fn verify_version_manifest(
   Ok(())
 }
 
-async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
+async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
   let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
 
-  // Check if git exists
+  //  Check if git exists
   let git_exists = Command::new(bin_name)
     .arg("--version")
     .stderr(Stdio::null())
@@ -1159,7 +1191,7 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
     .map_or(false, |status| status.success());
 
   if !git_exists {
-    return false; // Git is not installed
+    return None; // Git is not installed
   }
 
   // Check if there are uncommitted changes
@@ -1171,7 +1203,60 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> bool {
     .expect("Failed to execute command");
 
   let output_str = String::from_utf8_lossy(&output.stdout);
-  !output_str.trim().is_empty()
+  let text = output_str.trim();
+  if text.is_empty() {
+    None
+  } else {
+    Some(text.to_string())
+  }
+}
+
+static SUPPORTED_LICENSE_FILE_NAMES: [&str; 6] = [
+  "LICENSE",
+  "LICENSE.md",
+  "LICENSE.txt",
+  "LICENCE",
+  "LICENCE.md",
+  "LICENCE.txt",
+];
+
+fn resolve_license_file(
+  pkg_root_dir: &Path,
+  workspace: &Workspace,
+) -> Option<PathBuf> {
+  let workspace_root_dir = workspace.root_dir_path();
+  let mut dirs = Vec::with_capacity(2);
+  dirs.push(pkg_root_dir);
+  if workspace_root_dir != pkg_root_dir {
+    dirs.push(&workspace_root_dir);
+  }
+  for dir in dirs {
+    for file_name in &SUPPORTED_LICENSE_FILE_NAMES {
+      let file_path = dir.join(file_name);
+      if file_path.exists() {
+        return Some(file_path);
+      }
+    }
+  }
+  None
+}
+
+fn has_license_file<'a>(
+  mut specifiers: impl Iterator<Item = &'a ModuleSpecifier>,
+) -> bool {
+  let supported_license_files = SUPPORTED_LICENSE_FILE_NAMES
+    .iter()
+    .map(|s| s.to_lowercase())
+    .collect::<HashSet<_>>();
+  specifiers.any(|specifier| {
+    specifier
+      .path()
+      .rsplit_once('/')
+      .map(|(_, file)| {
+        supported_license_files.contains(file.to_lowercase().as_str())
+      })
+      .unwrap_or(false)
+  })
 }
 
 #[allow(clippy::print_stderr)]
@@ -1182,6 +1267,10 @@ fn ring_bell() {
 
 #[cfg(test)]
 mod tests {
+  use deno_ast::ModuleSpecifier;
+
+  use crate::tools::registry::has_license_file;
+
   use super::tar::PublishableTarball;
   use super::tar::PublishableTarballFile;
   use super::verify_version_manifest;
@@ -1282,5 +1371,32 @@ mod tests {
     };
 
     assert!(verify_version_manifest(meta_bytes, &package).is_err());
+  }
+
+  #[test]
+  fn test_has_license_files() {
+    fn has_license_file_str(expected: &[&str]) -> bool {
+      let specifiers = expected
+        .iter()
+        .map(|s| ModuleSpecifier::parse(s).unwrap())
+        .collect::<Vec<_>>();
+      has_license_file(specifiers.iter())
+    }
+
+    assert!(has_license_file_str(&["file:///LICENSE"]));
+    assert!(has_license_file_str(&["file:///license"]));
+    assert!(has_license_file_str(&["file:///LICENSE.txt"]));
+    assert!(has_license_file_str(&["file:///LICENSE.md"]));
+    assert!(has_license_file_str(&["file:///LICENCE"]));
+    assert!(has_license_file_str(&["file:///LICENCE.txt"]));
+    assert!(has_license_file_str(&["file:///LICENCE.md"]));
+    assert!(has_license_file_str(&[
+      "file:///other",
+      "file:///test/LICENCE.md"
+    ]),);
+    assert!(!has_license_file_str(&[
+      "file:///other",
+      "file:///test/tLICENSE"
+    ]),);
   }
 }
