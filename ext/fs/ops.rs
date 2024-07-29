@@ -1750,6 +1750,8 @@ create_struct_writer! {
     atime: u64,
     birthtime_set: bool,
     birthtime: u64,
+    ctime_set: bool,
+    ctime: u64,
     // Following are only valid under Unix.
     dev: u64,
     ino: u64,
@@ -1781,6 +1783,8 @@ impl From<FsStat> for SerializableStat {
       atime: stat.atime.unwrap_or(0),
       birthtime_set: stat.birthtime.is_some(),
       birthtime: stat.birthtime.unwrap_or(0),
+      ctime_set: stat.ctime.is_some(),
+      ctime: stat.ctime.unwrap_or(0),
 
       dev: stat.dev,
       ino: stat.ino,

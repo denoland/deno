@@ -381,6 +381,7 @@ function parseFileInfo(response) {
     birthtime: response.birthtimeSet === true
       ? new Date(response.birthtime)
       : null,
+    ctime: response.ctimeSet === true ? new Date(response.ctime) : null,
     dev: response.dev,
     ino: unix ? response.ino : null,
     mode: unix ? response.mode : null,

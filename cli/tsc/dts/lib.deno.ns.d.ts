@@ -3583,6 +3583,10 @@ declare namespace Deno {
      * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may
      * not be available on all platforms. */
     birthtime: Date | null;
+    /** The last change time of the file. This corresponds to the `ctime`
+     * field from `stat` on Mac/BSD and `ChangeTime` on Windows. This may
+     * not be available on all platforms. */
+    ctime: Date | null;
     /** ID of the device containing the file. */
     dev: number;
     /** Inode number.
