@@ -28,6 +28,9 @@ hmr = ["include_js_files_for_snapshotting"]
 # assertion that a snapshot is provided.
 only_snapshotted_js_sources = ["include_js_files_for_snapshotting"]
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
+
 [lib]
 name = "deno_runtime"
 path = "lib.rs"
