@@ -148,20 +148,31 @@ class URLPattern {
 
   /**
    * @param {URLPatternInput} input
-   * @param {string} [baseURL]
+   * @param {string} [baseURLOrOptions]
+   * @param {string} [maybeOptions]
    */
-  constructor(input, baseURL = undefined) {
+  constructor(input, baseURLOrOptions = {}, maybeOptions = {}) {
     this[webidl.brand] = webidl.brand;
     const prefix = "Failed to construct 'URLPattern'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
-    input = webidl.converters.URLPatternInput(input, prefix, "Argument 1");
-    if (baseURL !== undefined) {
-      baseURL = webidl.converters.USVString(baseURL, prefix, "Argument 2");
+
+    let baseURL;
+    let options;
+    if (webidl.type(baseURLOrOptions) === "String") {
+      webidl.requiredArguments(arguments.length, 1, prefix);
+      input = webidl.converters.URLPatternInput(input, prefix, "Argument 1");
+      baseURL = webidl.converters.USVString(baseURLOrOptions, prefix, "Argument 2");
+      options = webidl.converters.URLPatternOptions(maybeOptions, prefix, "Argument 3");
+    } else {
+      if (input !== undefined) {
+        input = webidl.converters.URLPatternInput(input, prefix, "Argument 1");
+      } else {
+        input = {};
+      }
+      options = webidl.converters.URLPatternOptions(maybeOptions, prefix, "Argument 2");
     }
 
-    const components = op_urlpattern_parse(input, baseURL);
-    this[_hasRegExpGroups] = components.has_regexp_groups;
-    delete components.has_regexp_groups;
+    const components = op_urlpattern_parse(input, baseURL, options);
+    this[_hasRegExpGroups] = components.hasRegexpGroups;
 
     for (let i = 0; i < COMPONENTS_KEYS.length; ++i) {
       const key = COMPONENTS_KEYS[i];
@@ -354,6 +365,7 @@ class URLPattern {
           "pathname",
           "search",
           "hash",
+          "hasRegExpGroups",
         ],
       }),
       inspectOptions,
@@ -384,5 +396,10 @@ webidl.converters["URLPatternInput"] = (V, prefix, context, opts) => {
   }
   return webidl.converters.USVString(V, prefix, context, opts);
 };
+
+webidl.converters.URLPatternOptions = webidl
+  .createDictionaryConverter("URLPatternOptions", [
+    { key: "ignoreCase", converter: webidl.converters.boolean, defaultValue: false },
+  ]);
 
 export { URLPattern };
