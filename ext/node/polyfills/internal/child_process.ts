@@ -102,6 +102,19 @@ export function stdioStringToArray(
   return options;
 }
 
+const kClosesNeeded = Symbol("_closesNeeded");
+const kClosesReceived = Symbol("_closesReceived");
+
+// We only want to emit a close event for the child process when all of
+// the writable streams have closed. The value of `child[kClosesNeeded]` should be 1 +
+// the number of opened writable streams (note this excludes `stdin`).
+function maybeClose(child: ChildProcess) {
+  child[kClosesReceived]++;
+  if (child[kClosesNeeded] === child[kClosesReceived]) {
+    child.emit("close", child.exitCode, child.signalCode);
+  }
+}
+
 export class ChildProcess extends EventEmitter {
   /**
    * The exit code of the child process. This property will be `null` until the child process exits.
@@ -159,6 +172,8 @@ export class ChildProcess extends EventEmitter {
 
   #process!: Deno.ChildProcess;
   #spawned = Promise.withResolvers<void>();
+  [kClosesNeeded] = 1;
+  [kClosesReceived] = 0;
 
   constructor(
     command: string,
@@ -223,13 +238,23 @@ export class ChildProcess extends EventEmitter {
 
       if (stdout === "pipe") {
         assert(this.#process.stdout);
+        this[kClosesNeeded]++;
         this.stdout = Readable.fromWeb(this.#process.stdout);
+        this.stdout.on("close", () => {
+          maybeClose(this);
+        });
       }
 
       if (stderr === "pipe") {
         assert(this.#process.stderr);
+        this[kClosesNeeded]++;
         this.stderr = Readable.fromWeb(this.#process.stderr);
+        this.stderr.on("close", () => {
+          maybeClose(this);
+        });
       }
+      // TODO: once we impl > 3 stdio pipes make sure we also listen for their
+      // close events (like above)
 
       this.stdio[0] = this.stdin;
       this.stdio[1] = this.stdout;
@@ -264,6 +289,10 @@ export class ChildProcess extends EventEmitter {
       const pipeFd = internals.getPipeFd(this.#process);
       if (typeof pipeFd == "number") {
         setupChannel(this, pipeFd);
+        this[kClosesNeeded]++;
+        this.on("disconnect", () => {
+          maybeClose(this);
+        });
       }
 
       (async () => {
@@ -276,7 +305,7 @@ export class ChildProcess extends EventEmitter {
           this.emit("exit", exitCode, signalCode);
           await this.#_waitForChildStreamsToClose();
           this.#closePipes();
-          this.emit("close", exitCode, signalCode);
+          maybeClose(this);
         });
       })();
     } catch (err) {
@@ -310,7 +339,7 @@ export class ChildProcess extends EventEmitter {
 
     /* Cancel any pending IPC I/O */
     if (this.canDisconnect) {
-      this.disconnect?.();
+      this.disconnect();
     }
 
     this.killed = true;
@@ -326,9 +355,7 @@ export class ChildProcess extends EventEmitter {
     this.#process.unref();
   }
 
-  disconnect() {
-    warnNotImplemented("ChildProcess.prototype.disconnect");
-  }
+  disconnect() {}
 
   async #_waitForChildStreamsToClose() {
     const promises = [] as Array<Promise<void>>;
