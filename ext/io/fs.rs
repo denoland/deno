@@ -95,6 +95,7 @@ pub struct FsStat {
   pub mtime: Option<u64>,
   pub atime: Option<u64>,
   pub birthtime: Option<u64>,
+  pub ctime: Option<u64>,
 
   pub dev: u64,
   pub ino: u64,
@@ -163,6 +164,7 @@ impl FsStat {
       mtime: to_msec(metadata.modified()),
       atime: to_msec(metadata.accessed()),
       birthtime: to_msec(metadata.created()),
+      ctime: unix_or_zero!(ctime),
 
       dev: unix_or_zero!(dev),
       ino: unix_or_zero!(ino),
