@@ -17,7 +17,6 @@ use deno_graph::ModuleGraphError;
 use deno_graph::ModuleLoadError;
 use deno_graph::ResolutionError;
 use import_map::ImportMapError;
-use std::fmt::Write;
 
 fn get_import_map_error_class(_: &ImportMapError) -> &'static str {
   "URIError"
@@ -112,17 +111,5 @@ pub fn get_error_class_name(e: &AnyError) -> &'static str {
       e.downcast_ref::<ResolutionError>()
         .map(get_resolution_error_class)
     })
-    .unwrap_or_else(|| {
-      if cfg!(debug_assertions) {
-        log::warn!(
-          "Error '{}' contains boxed error of unknown type:{}",
-          e,
-          e.chain().fold(String::new(), |mut output, e| {
-            let _ = write!(output, "\n  {e:?}");
-            output
-          })
-        );
-      }
-      "Error"
-    })
+    .unwrap_or("Error")
 }
