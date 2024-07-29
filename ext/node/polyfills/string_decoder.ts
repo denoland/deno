@@ -39,9 +39,13 @@ const {
   Symbol,
   MathMin,
   DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
   ObjectPrototypeIsPrototypeOf,
   String,
   TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
   StringPrototypeToLowerCase,
 } = primordials;
 const { isTypedArray } = core;
@@ -83,11 +87,21 @@ function normalizeBuffer(buf: Buffer) {
   }
   if (isBufferType(buf)) {
     return buf;
+  } else if (isTypedArray(buf)) {
+    return Buffer.from(
+      new Uint8Array(
+        TypedArrayPrototypeGetBuffer(buf),
+        TypedArrayPrototypeGetByteOffset(buf),
+        TypedArrayPrototypeGetByteLength(buf),
+      ),
+    );
   } else {
     return Buffer.from(
-      isTypedArray(buf)
-        ? TypedArrayPrototypeGetBuffer(buf)
-        : DataViewPrototypeGetBuffer(buf),
+      new Uint8Array(
+        DataViewPrototypeGetBuffer(buf),
+        DataViewPrototypeGetByteOffset(buf),
+        DataViewPrototypeGetByteLength(buf),
+      ),
     );
   }
 }
