@@ -67,6 +67,7 @@ Deno.test("[node/child_process disconnect] the method exists", async () => {
   const deferred = withTimeout<void>();
   const childProcess = spawn(Deno.execPath(), ["--help"], {
     env: { NO_COLOR: "true" },
+    stdio: ["pipe", "pipe", "pipe", "ipc"],
   });
   try {
     childProcess.disconnect();

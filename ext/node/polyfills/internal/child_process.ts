@@ -339,7 +339,7 @@ export class ChildProcess extends EventEmitter {
 
     /* Cancel any pending IPC I/O */
     if (this.canDisconnect) {
-      this.disconnect();
+      this.disconnect?.();
     }
 
     this.killed = true;
@@ -354,8 +354,6 @@ export class ChildProcess extends EventEmitter {
   unref() {
     this.#process.unref();
   }
-
-  disconnect() {}
 
   async #_waitForChildStreamsToClose() {
     const promises = [] as Array<Promise<void>>;
