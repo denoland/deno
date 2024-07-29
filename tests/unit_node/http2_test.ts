@@ -275,3 +275,38 @@ Deno.test("[node/http2 client] deno doesn't panic on uppercase headers", async (
   await endPromise.promise;
   assertEquals(receivedData, "hello world\n");
 });
+
+Deno.test("[node/http2 ClientHttp2Session.socket]", async () => {
+  const url = "http://127.0.0.1:4246";
+  const client = http2.connect(url);
+  client.on("error", (err) => console.error(err));
+
+  const req = client.request({ ":method": "POST", ":path": "/" });
+  const endPromise = Promise.withResolvers<void>();
+
+  // test that we can access session.socket
+  client.socket.setTimeout(10000);
+  // nodejs allows setting arbitrary properties
+  // deno-lint-ignore no-explicit-any
+  (client.socket as any).nonExistant = 9001;
+  // deno-lint-ignore no-explicit-any
+  assertEquals((client.socket as any).nonExistant, 9001);
+
+  // regular request dance to make sure it keeps working
+  let receivedData = "";
+  req.write("hello");
+  req.setEncoding("utf8");
+
+  req.on("data", (chunk) => {
+    receivedData += chunk;
+  });
+  req.on("end", () => {
+    req.close();
+    client.close();
+    endPromise.resolve();
+  });
+  req.end();
+  await endPromise.promise;
+  client.socket.setTimeout(0);
+  assertEquals(receivedData, "hello world\n");
+});
