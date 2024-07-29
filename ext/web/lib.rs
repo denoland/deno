@@ -162,9 +162,11 @@ fn op_base64_write(
   let mut s = input.into_bytes();
   let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
 
+  let max_len = std::cmp::min(max_len, decoded_len);
+
   buffer[start..start + max_len].copy_from_slice(&s[..max_len]);
 
-  Ok(decoded_len as u32)
+  Ok(max_len as u32)
 }
 
 #[op2]
