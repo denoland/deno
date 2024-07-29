@@ -164,7 +164,7 @@ impl FsStat {
       mtime: to_msec(metadata.modified()),
       atime: to_msec(metadata.accessed()),
       birthtime: to_msec(metadata.created()),
-      ctime: unix_or_zero!(ctime),
+      ctime: Some(unix_or_zero!(ctime) as u64 * 1000),
 
       dev: unix_or_zero!(dev),
       ino: unix_or_zero!(ino),
