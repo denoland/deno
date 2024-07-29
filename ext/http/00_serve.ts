@@ -654,22 +654,21 @@ function serve(arg1, arg2) {
   }
 
   const addr = listener.addr;
-  // If the hostname is "0.0.0.0", we display "localhost" in console
-  // because browsers in Windows don't resolve "0.0.0.0".
-  // See the discussion in https://github.com/denoland/deno_std/issues/1165
-  const hostname = (addr.hostname == "0.0.0.0" || addr.hostname == "::") &&
-      (Deno.build.os === "windows")
-    ? "localhost"
-    : addr.hostname;
-  addr.hostname = hostname;
 
   const onListen = (scheme) => {
     if (options.onListen) {
       options.onListen(addr);
     } else {
-      const host = StringPrototypeIncludes(addr.hostname, ":")
-        ? `[${addr.hostname}]`
+      // If the hostname is "0.0.0.0", we display "localhost" in console
+      // because browsers in Windows don't resolve "0.0.0.0".
+      // See the discussion in https://github.com/denoland/deno_std/issues/1165
+      const hostname = (addr.hostname == "0.0.0.0" || addr.hostname == "::") &&
+          (Deno.build.os === "windows")
+        ? "localhost"
         : addr.hostname;
+      const host = StringPrototypeIncludes(hostname, ":")
+        ? `[${hostname}]`
+        : hostname;
       console.log(`Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
