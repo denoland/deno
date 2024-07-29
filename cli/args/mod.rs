@@ -517,7 +517,7 @@ pub fn discover_npmrc_from_workspace(
 ///
 /// In the future we will need to support it in user directory or global directory
 /// as per https://docs.npmjs.com/cli/v10/configuring-npm/npmrc#files.
-pub fn discover_npmrc(
+fn discover_npmrc(
   maybe_package_json_path: Option<PathBuf>,
   maybe_deno_json_path: Option<PathBuf>,
 ) -> Result<(Arc<ResolvedNpmRc>, Option<PathBuf>), AnyError> {
@@ -527,16 +527,22 @@ pub fn discover_npmrc(
     std::env::var(var_name).ok()
   }
 
+  #[derive(Debug, Error)]
+  #[error("Error loading .npmrc at {}.", path.display())]
+  struct NpmRcLoadError {
+    path: PathBuf,
+    #[source]
+    source: std::io::Error,
+  }
+
   fn try_to_read_npmrc(
     dir: &Path,
-  ) -> Result<Option<(String, PathBuf)>, AnyError> {
+  ) -> Result<Option<(String, PathBuf)>, NpmRcLoadError> {
     let path = dir.join(NPMRC_NAME);
     let maybe_source = match std::fs::read_to_string(&path) {
       Ok(source) => Some(source),
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
-      Err(err) => {
-        bail!("Error loading .npmrc at {}. {:#}", path.display(), err)
-      }
+      Err(err) => return Err(NpmRcLoadError { path, source: err }),
     };
 
     Ok(maybe_source.map(|source| (source, path)))
@@ -577,8 +583,20 @@ pub fn discover_npmrc(
   // home dir and then merge them.
   // 3. Try `.npmrc` in the user's home directory
   if let Some(home_dir) = cache::home_dir() {
-    if let Some((source, path)) = try_to_read_npmrc(&home_dir)? {
-      return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
+    match try_to_read_npmrc(&home_dir) {
+      Ok(Some((source, path))) => {
+        return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
+      }
+      Ok(None) => {}
+      Err(err) if err.source.kind() == std::io::ErrorKind::PermissionDenied => {
+        log::debug!(
+          "Skipping .npmrc in home directory due to permission denied error. {:#}",
+          err
+        );
+      }
+      Err(err) => {
+        return Err(err.into());
+      }
     }
   }
 

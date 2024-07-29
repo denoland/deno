@@ -182,7 +182,7 @@ pub async fn op_node_http_fetch_send(
 
   let request = Rc::try_unwrap(request)
     .ok()
-    .expect("multiple op_fetch_send ongoing");
+    .expect("multiple op_node_http_fetch_send ongoing");
 
   let res = match request.future.await {
     Ok(Ok(res)) => res,

@@ -246,12 +246,13 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
   let reader = std::io::BufReader::new(fp);
 
   let mut count = 0;
-  for (i, line) in reader.lines().enumerate() {
+  // Skip the first line which tracks total CPU time across all cores
+  for (i, line) in reader.lines().skip(1).enumerate() {
     let line = line.ok()?;
     if !line.starts_with("cpu") {
       break;
     }
-    count = i;
+    count = i + 1;
     let mut fields = line.split_whitespace();
     fields.next()?;
     let user = fields.next()?.parse::<u64>().ok()?;
