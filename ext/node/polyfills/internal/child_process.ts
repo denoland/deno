@@ -362,17 +362,25 @@ export class ChildProcess extends EventEmitter {
   }
 }
 
-const supportedNodeStdioTypes: NodeStdio[] = ["pipe", "ignore", "inherit"];
+const supportedNodeStdioTypes: NodeStdio[] = [
+  "pipe",
+  "ignore",
+  "inherit",
+  "ipc",
+];
 function toDenoStdio(
   pipe: NodeStdio | number | Stream | null | undefined,
 ): DenoStdio {
   if (pipe instanceof Stream) {
     return "inherit";
   }
+  if (typeof pipe === "number") {
+    /* Assume it's a rid returned by fs APIs */
+    return pipe;
+  }
 
   if (
-    !supportedNodeStdioTypes.includes(pipe as NodeStdio) ||
-    typeof pipe === "number"
+    !supportedNodeStdioTypes.includes(pipe as NodeStdio)
   ) {
     notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
   }
@@ -385,6 +393,8 @@ function toDenoStdio(
       return "null";
     case "inherit":
       return "inherit";
+    case "ipc":
+      return "ipc_for_internal_use";
     default:
       notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
   }
@@ -866,7 +876,7 @@ export function spawnSync(
     windowsVerbatimArguments = false,
   } = options;
   const [
-    _stdin_ = "pipe", // TODO(bartlomieju): use this?
+    stdin_ = "pipe",
     stdout_ = "pipe",
     stderr_ = "pipe",
     _channel, // TODO(kt3k): handle this correctly
@@ -881,6 +891,7 @@ export function spawnSync(
       env: mapValues(env, (value) => value.toString()),
       stdout: toDenoStdio(stdout_),
       stderr: toDenoStdio(stderr_),
+      stdin: stdin_ == "inherit" ? "inherit" : "null",
       uid,
       gid,
       windowsRawArguments: windowsVerbatimArguments,
@@ -1082,8 +1093,7 @@ function toDenoArgs(args: string[]): string[] {
 
   if (useRunArgs) {
     // -A is not ideal, but needed to propagate permissions.
-    // --unstable is needed for Node compat.
-    denoArgs.unshift("run", "-A", "--unstable");
+    denoArgs.unshift("run", "-A");
   }
 
   return denoArgs;

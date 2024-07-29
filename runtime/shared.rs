@@ -3,7 +3,7 @@
 
 use deno_ast::MediaType;
 use deno_ast::ParseParams;
-use deno_ast::SourceTextInfo;
+use deno_ast::SourceMapOption;
 use deno_core::error::AnyError;
 use deno_core::extension;
 use deno_core::Extension;
@@ -44,7 +44,6 @@ extension!(runtime,
     "13_buffer.js",
     "30_os.js",
     "40_fs_events.js",
-    "40_http.js",
     "40_process.js",
     "40_signals.js",
     "40_tty.js",
@@ -88,22 +87,32 @@ pub fn maybe_transpile_source(
 
   let parsed = deno_ast::parse_module(ParseParams {
     specifier: deno_core::url::Url::parse(&name).unwrap(),
-    text_info: SourceTextInfo::from_string(source.as_str().to_owned()),
+    text: source.into(),
     media_type,
     capture_tokens: false,
     scope_analysis: false,
     maybe_syntax: None,
   })?;
-  let transpiled_source = parsed.transpile(&deno_ast::EmitOptions {
-    imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
-    inline_source_map: false,
-    source_map: cfg!(debug_assertions),
-    ..Default::default()
-  })?;
+  let transpiled_source = parsed
+    .transpile(
+      &deno_ast::TranspileOptions {
+        imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
+        ..Default::default()
+      },
+      &deno_ast::EmitOptions {
+        source_map: if cfg!(debug_assertions) {
+          SourceMapOption::Separate
+        } else {
+          SourceMapOption::None
+        },
+        ..Default::default()
+      },
+    )?
+    .into_source();
 
-  let maybe_source_map: Option<SourceMapData> = transpiled_source
-    .source_map
-    .map(|sm| sm.into_bytes().into());
+  let maybe_source_map: Option<SourceMapData> =
+    transpiled_source.source_map.map(|sm| sm.into());
+  let source_text = String::from_utf8(transpiled_source.source)?;
 
-  Ok((transpiled_source.text.into(), maybe_source_map))
+  Ok((source_text.into(), maybe_source_map))
 }

@@ -1,149 +1,34 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use deno_core::anyhow::Context;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_terminal::colors;
+use file_test_runner::collection::collect_tests_or_exit;
+use file_test_runner::collection::strategies::FileTestMapperStrategy;
+use file_test_runner::collection::strategies::TestPerDirectoryCollectionStrategy;
+use file_test_runner::collection::CollectOptions;
+use file_test_runner::collection::CollectTestsError;
+use file_test_runner::collection::CollectedCategoryOrTest;
+use file_test_runner::collection::CollectedTest;
+use file_test_runner::collection::CollectedTestCategory;
+use file_test_runner::SubTestResult;
+use file_test_runner::TestResult;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use test_util::tests_path;
 use test_util::PathRef;
 use test_util::TestContextBuilder;
 
-pub fn main() {
-  let maybe_filter = parse_cli_arg_filter();
-  let categories = filter(collect_tests(), maybe_filter.as_deref());
-  let total_tests = categories.iter().map(|c| c.tests.len()).sum::<usize>();
-  let mut failures = Vec::new();
-  let _http_guard = test_util::http_server();
-  // todo(dsherret): the output should be changed to be terse
-  // when it passes, but verbose on failure
-  for category in &categories {
-    if category.tests.is_empty() {
-      continue; // skip output when all the tests have been filtered out
-    }
+const MANIFEST_FILE_NAME: &str = "__test__.jsonc";
 
-    eprintln!();
-    eprintln!("     {} {}", colors::green_bold("Running"), category.name);
-    eprintln!();
-    for test in &category.tests {
-      eprint!("test {} ... ", test.name);
-      let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
-      let panic_message = Arc::new(Mutex::new(Vec::<u8>::new()));
-      std::panic::set_hook({
-        let panic_message = panic_message.clone();
-        Box::new(move |info| {
-          panic_message
-            .lock()
-            .extend(format!("{}", info).into_bytes());
-        })
-      });
-      let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-        run_test(test, diagnostic_logger.clone())
-      }));
-      let success = result.is_ok();
-      if !success {
-        let mut output = diagnostic_logger.borrow().clone();
-        output.push(b'\n');
-        output.extend(panic_message.lock().iter());
-        failures.push((test, output));
-      }
-      eprintln!(
-        "{}",
-        if success {
-          colors::green("ok")
-        } else {
-          colors::red("fail")
-        },
-      );
-    }
-  }
-
-  eprintln!();
-  if !failures.is_empty() {
-    eprintln!("spec failures:");
-    eprintln!();
-    for (failure, output) in &failures {
-      eprintln!("---- {} ----", failure.name);
-      eprintln!("{}", String::from_utf8_lossy(output));
-      eprintln!("Test file: {}", failure.manifest_file());
-      eprintln!();
-    }
-    panic!("{} failed of {}", failures.len(), total_tests);
-  } else {
-    eprintln!("{} tests passed", total_tests);
-  }
-  eprintln!();
-}
-
-fn parse_cli_arg_filter() -> Option<String> {
-  let args: Vec<String> = std::env::args().collect();
-  let maybe_filter =
-    args.get(1).filter(|s| !s.starts_with('-') && !s.is_empty());
-  maybe_filter.cloned()
-}
-
-fn run_test(test: &Test, diagnostic_logger: Rc<RefCell<Vec<u8>>>) {
-  let metadata = &test.metadata;
-  let mut builder = TestContextBuilder::new();
-  builder = builder.logging_capture(diagnostic_logger);
-  let cwd = &test.cwd;
-
-  if test.metadata.temp_dir {
-    builder = builder.use_temp_cwd();
-  } else {
-    builder = builder.cwd(cwd.to_string_lossy());
-  }
-
-  if let Some(base) = &metadata.base {
-    match base.as_str() {
-      "npm" => {
-        builder = builder.add_npm_env_vars();
-      }
-      "jsr" => {
-        builder = builder.add_jsr_env_vars().add_npm_env_vars();
-      }
-      _ => panic!("Unknown test base: {}", base),
-    }
-  }
-
-  let context = builder.build();
-
-  if test.metadata.temp_dir {
-    // copy all the files in the cwd to a temp directory
-    // excluding the metadata and assertion files
-    let temp_dir = context.temp_dir().path();
-    let assertion_paths = test.resolve_test_and_assertion_files();
-    cwd.copy_to_recursive_with_exclusions(temp_dir, &assertion_paths);
-  }
-
-  for step in &metadata.steps {
-    if step.clean_deno_dir {
-      context.deno_dir().path().remove_dir_all();
-    }
-
-    let expected_output = if step.output.ends_with(".out") {
-      let test_output_path = cwd.join(&step.output);
-      test_output_path.read_to_string()
-    } else {
-      step.output.clone()
-    };
-    let command = context.new_command().envs(&step.envs);
-    let command = match &step.args {
-      VecOrString::Vec(args) => command.args_vec(args),
-      VecOrString::String(text) => command.args(text),
-    };
-    let output = command.run();
-    output.assert_matches_text(expected_output);
-    output.assert_exit_code(step.exit_code);
-  }
-}
+static NO_CAPTURE: Lazy<bool> =
+  Lazy::new(|| std::env::args().any(|arg| arg == "--nocapture"));
 
 #[derive(Clone, Deserialize)]
 #[serde(untagged)]
@@ -151,6 +36,8 @@ enum VecOrString {
   Vec(Vec<String>),
   String(String),
 }
+
+type JsonMap = serde_json::Map<String, serde_json::Value>;
 
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -163,6 +50,72 @@ struct MultiTestMetaData {
   /// The base environment to use for the test.
   #[serde(default)]
   pub base: Option<String>,
+  #[serde(default)]
+  pub envs: HashMap<String, String>,
+  #[serde(default)]
+  pub tests: BTreeMap<String, JsonMap>,
+}
+
+impl MultiTestMetaData {
+  pub fn into_collected_tests(
+    mut self,
+    parent_test: &CollectedTest,
+  ) -> Vec<CollectedTest<serde_json::Value>> {
+    fn merge_json_value(
+      multi_test_meta_data: &MultiTestMetaData,
+      value: &mut JsonMap,
+    ) {
+      if let Some(base) = &multi_test_meta_data.base {
+        if !value.contains_key("base") {
+          value.insert("base".to_string(), base.clone().into());
+        }
+      }
+      if multi_test_meta_data.temp_dir && !value.contains_key("tempDir") {
+        value.insert("tempDir".to_string(), true.into());
+      }
+      if !multi_test_meta_data.envs.is_empty() {
+        if !value.contains_key("envs") {
+          value.insert("envs".to_string(), JsonMap::default().into());
+        }
+        let envs_obj = value.get_mut("envs").unwrap().as_object_mut().unwrap();
+        for (key, value) in &multi_test_meta_data.envs {
+          if !envs_obj.contains_key(key) {
+            envs_obj.insert(key.into(), value.clone().into());
+          }
+        }
+      }
+    }
+
+    let mut collected_tests = Vec::with_capacity(self.tests.len());
+    for (name, mut json_data) in std::mem::take(&mut self.tests) {
+      merge_json_value(&self, &mut json_data);
+      collected_tests.push(CollectedTest {
+        name: format!("{}::{}", parent_test.name, name),
+        path: parent_test.path.clone(),
+        data: serde_json::Value::Object(json_data),
+      });
+    }
+
+    collected_tests
+  }
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct MultiStepMetaData {
+  /// Whether to copy all the non-assertion files in the current
+  /// test directory to a temporary directory before running the
+  /// steps.
+  #[serde(default)]
+  pub temp_dir: bool,
+  /// The base environment to use for the test.
+  #[serde(default)]
+  pub base: Option<String>,
+  #[serde(default)]
+  pub envs: HashMap<String, String>,
+  #[serde(default)]
+  pub repeat: Option<usize>,
+  #[serde(default)]
   pub steps: Vec<StepMetaData>,
 }
 
@@ -173,15 +126,19 @@ struct SingleTestMetaData {
   pub base: Option<String>,
   #[serde(default)]
   pub temp_dir: bool,
+  #[serde(default)]
+  pub repeat: Option<usize>,
   #[serde(flatten)]
   pub step: StepMetaData,
 }
 
 impl SingleTestMetaData {
-  pub fn into_multi(self) -> MultiTestMetaData {
-    MultiTestMetaData {
+  pub fn into_multi(self) -> MultiStepMetaData {
+    MultiStepMetaData {
       base: self.base,
       temp_dir: self.temp_dir,
+      repeat: self.repeat,
+      envs: Default::default(),
       steps: vec![self.step],
     }
   }
@@ -190,10 +147,14 @@ impl SingleTestMetaData {
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct StepMetaData {
-  /// Whether to clean the deno_dir before running the step.
+  /// If the test should be retried multiple times on failure.
   #[serde(default)]
-  pub clean_deno_dir: bool,
+  pub flaky: bool,
   pub args: VecOrString,
+  pub cwd: Option<String>,
+  #[serde(rename = "if")]
+  pub if_cond: Option<String>,
+  pub command_name: Option<String>,
   #[serde(default)]
   pub envs: HashMap<String, String>,
   pub output: String,
@@ -201,115 +162,245 @@ struct StepMetaData {
   pub exit_code: i32,
 }
 
-#[derive(Clone)]
-struct Test {
-  pub name: String,
-  pub cwd: PathRef,
-  pub metadata: MultiTestMetaData,
+pub fn main() {
+  let root_category =
+    collect_tests_or_exit::<serde_json::Value>(CollectOptions {
+      base: tests_path().join("specs").to_path_buf(),
+      strategy: Box::new(FileTestMapperStrategy {
+        base_strategy: TestPerDirectoryCollectionStrategy {
+          file_name: MANIFEST_FILE_NAME.to_string(),
+        },
+        map: map_test_within_file,
+      }),
+      filter_override: None,
+    });
+
+  if root_category.is_empty() {
+    return; // all tests filtered out
+  }
+
+  let _http_guard = test_util::http_server();
+  file_test_runner::run_tests(
+    &root_category,
+    file_test_runner::RunOptions {
+      parallel: !*NO_CAPTURE,
+    },
+    run_test,
+  );
 }
 
-impl Test {
-  pub fn manifest_file(&self) -> PathRef {
-    self.cwd.join("__test__.json")
+/// Maps a __test__.jsonc file to a category of tests if it contains a "test" object.
+fn map_test_within_file(
+  test: CollectedTest,
+) -> Result<CollectedCategoryOrTest<serde_json::Value>, CollectTestsError> {
+  let test_path = PathRef::new(&test.path);
+  let metadata_value = test_path.read_jsonc_value();
+  if metadata_value
+    .as_object()
+    .map(|o| o.contains_key("tests"))
+    .unwrap_or(false)
+  {
+    let data: MultiTestMetaData = serde_json::from_value(metadata_value)
+      .with_context(|| format!("Failed deserializing {}", test_path))
+      .map_err(CollectTestsError::Other)?;
+    Ok(CollectedCategoryOrTest::Category(CollectedTestCategory {
+      children: data
+        .into_collected_tests(&test)
+        .into_iter()
+        .map(CollectedCategoryOrTest::Test)
+        .collect(),
+      name: test.name,
+      path: test.path,
+    }))
+  } else {
+    Ok(CollectedCategoryOrTest::Test(CollectedTest {
+      name: test.name,
+      path: test.path,
+      data: metadata_value,
+    }))
   }
 }
 
-impl Test {
-  pub fn resolve_test_and_assertion_files(&self) -> HashSet<PathRef> {
-    let mut result = HashSet::with_capacity(self.metadata.steps.len() + 1);
-    result.insert(self.manifest_file());
-    result.extend(
-      self
-        .metadata
-        .steps
-        .iter()
-        .map(|step| self.cwd.join(&step.output)),
-    );
-    result
-  }
-}
-
-struct TestCategory {
-  pub name: String,
-  pub tests: Vec<Test>,
-}
-
-fn filter(
-  categories: Vec<TestCategory>,
-  maybe_filter: Option<&str>,
-) -> Vec<TestCategory> {
-  if categories.iter().all(|c| c.tests.is_empty()) {
-    panic!("no tests found");
-  }
-  match maybe_filter {
-    Some(filter) => categories
-      .into_iter()
-      .map(|mut c| {
-        c.tests.retain(|t| t.name.contains(filter));
-        c
-      })
-      .collect(),
-    None => categories,
-  }
-}
-
-fn collect_tests() -> Vec<TestCategory> {
-  let specs_dir = tests_path().join("specs");
-  let mut result = Vec::new();
-  for entry in specs_dir.read_dir() {
-    let entry = entry.unwrap();
-    let file_type = entry
-      .file_type()
-      .context(entry.path().to_string_lossy().to_string())
-      .unwrap();
-    if !file_type.is_dir() {
-      continue;
+fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
+  let cwd = PathRef::new(&test.path).parent();
+  let metadata_value = test.data.clone();
+  let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
+  let result = TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
+    let metadata = deserialize_value(metadata_value);
+    if let Some(repeat) = metadata.repeat {
+      TestResult::SubTests(
+        (0..repeat)
+          .map(|i| {
+            let diagnostic_logger = diagnostic_logger.clone();
+            SubTestResult {
+              name: format!("run {}", i + 1),
+              result: TestResult::from_maybe_panic(AssertUnwindSafe(|| {
+                run_test_inner(&metadata, &cwd, diagnostic_logger);
+              })),
+            }
+          })
+          .collect(),
+      )
+    } else {
+      run_test_inner(&metadata, &cwd, diagnostic_logger.clone());
+      TestResult::Passed
     }
-
-    let mut category = TestCategory {
-      name: format!("specs::{}", entry.file_name().to_string_lossy()),
-      tests: Vec::new(),
-    };
-
-    let category_path = PathRef::new(entry.path());
-    for entry in category_path.read_dir() {
-      let entry = entry.unwrap();
-      let file_type = entry
-        .file_type()
-        .context(entry.path().to_string_lossy().to_string())
-        .unwrap();
-      if !file_type.is_dir() {
-        continue;
-      }
-
-      let test_dir = PathRef::new(entry.path());
-      let metadata_path = test_dir.join("__test__.jsonc");
-      let metadata_value = metadata_path.read_jsonc_value();
-      // checking for "steps" leads to a more targeted error message
-      // instead of when deserializing an untagged enum
-      let metadata = if metadata_value
-        .as_object()
-        .and_then(|o| o.get("steps"))
-        .is_some()
-      {
-        serde_json::from_value::<MultiTestMetaData>(metadata_value)
-      } else {
-        serde_json::from_value::<SingleTestMetaData>(metadata_value)
-          .map(|s| s.into_multi())
-      }
-      .with_context(|| format!("Failed to parse {}", metadata_path))
-      .unwrap();
-      category.tests.push(Test {
-        name: format!(
-          "{}::{}",
-          category.name,
-          entry.file_name().to_string_lossy()
-        ),
-        cwd: test_dir,
-        metadata,
-      });
+  }));
+  match result {
+    TestResult::Failed {
+      output: panic_output,
+    } => {
+      let mut output = diagnostic_logger.borrow().clone();
+      output.push(b'\n');
+      output.extend(panic_output);
+      TestResult::Failed { output }
     }
-    result.push(category);
+    TestResult::Passed | TestResult::Ignored | TestResult::SubTests(_) => {
+      result
+    }
   }
+}
+
+fn run_test_inner(
+  metadata: &MultiStepMetaData,
+  cwd: &PathRef,
+  diagnostic_logger: Rc<RefCell<Vec<u8>>>,
+) {
+  let context = test_context_from_metadata(metadata, cwd, diagnostic_logger);
+  for step in metadata.steps.iter().filter(|s| should_run_step(s)) {
+    let run_func = || run_step(step, metadata, cwd, &context);
+    if step.flaky {
+      run_flaky(run_func);
+    } else {
+      run_func();
+    }
+  }
+}
+
+fn deserialize_value(metadata_value: serde_json::Value) -> MultiStepMetaData {
+  // checking for "steps" leads to a more targeted error message
+  // instead of when deserializing an untagged enum
+  if metadata_value
+    .as_object()
+    .map(|o| o.contains_key("steps"))
+    .unwrap_or(false)
+  {
+    serde_json::from_value::<MultiStepMetaData>(metadata_value)
+  } else {
+    serde_json::from_value::<SingleTestMetaData>(metadata_value)
+      .map(|s| s.into_multi())
+  }
+  .context("Failed to parse test spec")
+  .unwrap()
+}
+
+fn test_context_from_metadata(
+  metadata: &MultiStepMetaData,
+  cwd: &PathRef,
+  diagnostic_logger: Rc<RefCell<Vec<u8>>>,
+) -> test_util::TestContext {
+  let mut builder = TestContextBuilder::new();
+  builder = builder.logging_capture(diagnostic_logger);
+
+  if metadata.temp_dir {
+    builder = builder.use_temp_cwd();
+  } else {
+    builder = builder.cwd(cwd.to_string_lossy());
+  }
+
+  match &metadata.base {
+    // todo(dsherret): add bases in the future as needed
+    Some(base) => panic!("Unknown test base: {}", base),
+    None => {
+      // by default add all these
+      builder = builder
+        .add_jsr_env_vars()
+        .add_npm_env_vars()
+        .add_compile_env_vars();
+    }
+  }
+
+  let context = builder.build();
+
+  if metadata.temp_dir {
+    // copy all the files in the cwd to a temp directory
+    // excluding the metadata and assertion files
+    let temp_dir = context.temp_dir().path();
+    let assertion_paths = resolve_test_and_assertion_files(cwd, metadata);
+    cwd.copy_to_recursive_with_exclusions(temp_dir, &assertion_paths);
+  }
+  context
+}
+
+fn should_run_step(step: &StepMetaData) -> bool {
+  if let Some(cond) = &step.if_cond {
+    match cond.as_str() {
+      "windows" => cfg!(windows),
+      "unix" => cfg!(unix),
+      "mac" => cfg!(target_os = "macos"),
+      "linux" => cfg!(target_os = "linux"),
+      value => panic!("Unknown if condition: {}", value),
+    }
+  } else {
+    true
+  }
+}
+
+fn run_flaky(action: impl Fn()) {
+  for _ in 0..2 {
+    let result = std::panic::catch_unwind(AssertUnwindSafe(&action));
+    if result.is_ok() {
+      return;
+    }
+  }
+
+  // surface error on third try
+  action();
+}
+
+fn run_step(
+  step: &StepMetaData,
+  metadata: &MultiStepMetaData,
+  cwd: &PathRef,
+  context: &test_util::TestContext,
+) {
+  let command = context
+    .new_command()
+    .envs(metadata.envs.iter().chain(step.envs.iter()));
+  let command = match &step.args {
+    VecOrString::Vec(args) => command.args_vec(args),
+    VecOrString::String(text) => command.args(text),
+  };
+  let command = match &step.cwd {
+    Some(cwd) => command.current_dir(cwd),
+    None => command,
+  };
+  let command = match &step.command_name {
+    Some(command_name) => command.name(command_name),
+    None => command,
+  };
+  let command = match *NO_CAPTURE {
+    // deprecated is only to prevent use, so this is fine here
+    #[allow(deprecated)]
+    true => command.show_output(),
+    false => command,
+  };
+  let output = command.run();
+  if step.output.ends_with(".out") {
+    let test_output_path = cwd.join(&step.output);
+    output.assert_matches_file(test_output_path);
+  } else {
+    output.assert_matches_text(&step.output);
+  }
+  output.assert_exit_code(step.exit_code);
+}
+
+fn resolve_test_and_assertion_files(
+  dir: &PathRef,
+  metadata: &MultiStepMetaData,
+) -> HashSet<PathRef> {
+  let mut result = HashSet::with_capacity(metadata.steps.len() + 1);
+  result.insert(dir.join(MANIFEST_FILE_NAME));
+  result.extend(metadata.steps.iter().map(|step| dir.join(&step.output)));
   result
 }

@@ -13,10 +13,12 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_npm::registry::NpmPackageInfo;
-use deno_runtime::deno_node::NpmResolver;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_node::NodeRequireResolver;
+use deno_runtime::deno_node::NpmProcessStateProvider;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use node_resolver::NpmResolver;
 
 use crate::args::npm_registry_url;
 use crate::file_fetcher::FileFetcher;
@@ -25,7 +27,6 @@ pub use self::byonm::ByonmCliNpmResolver;
 pub use self::byonm::CliNpmResolverByonmCreateOptions;
 pub use self::cache_dir::NpmCacheDir;
 pub use self::managed::CliNpmResolverManagedCreateOptions;
-pub use self::managed::CliNpmResolverManagedPackageJsonInstallerOption;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 
@@ -64,6 +65,10 @@ pub enum InnerCliNpmResolverRef<'a> {
 
 pub trait CliNpmResolver: NpmResolver {
   fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver>;
+  fn into_require_resolver(self: Arc<Self>) -> Arc<dyn NodeRequireResolver>;
+  fn into_process_state_provider(
+    self: Arc<Self>,
+  ) -> Arc<dyn NpmProcessStateProvider>;
 
   fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver>;
 
@@ -100,11 +105,11 @@ pub trait CliNpmResolver: NpmResolver {
 pub struct NpmFetchResolver {
   nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
   info_by_name: DashMap<String, Option<Arc<NpmPackageInfo>>>,
-  file_fetcher: FileFetcher,
+  file_fetcher: Arc<FileFetcher>,
 }
 
 impl NpmFetchResolver {
-  pub fn new(file_fetcher: FileFetcher) -> Self {
+  pub fn new(file_fetcher: Arc<FileFetcher>) -> Self {
     Self {
       nv_by_req: Default::default(),
       info_by_name: Default::default(),
@@ -119,7 +124,7 @@ impl NpmFetchResolver {
     let maybe_get_nv = || async {
       let name = req.name.clone();
       let package_info = self.package_info(&name).await?;
-      // Find the first matching version of the package which is cached.
+      // Find the first matching version of the package.
       let mut versions = package_info.versions.keys().collect::<Vec<_>>();
       versions.sort();
       let version = versions
@@ -140,11 +145,16 @@ impl NpmFetchResolver {
     }
     let fetch_package_info = || async {
       let info_url = npm_registry_url().join(name).ok()?;
-      let file = self
-        .file_fetcher
-        .fetch(&info_url, PermissionsContainer::allow_all())
-        .await
-        .ok()?;
+      let file_fetcher = self.file_fetcher.clone();
+      // spawn due to the lsp's `Send` requirement
+      let file = deno_core::unsync::spawn(async move {
+        file_fetcher
+          .fetch(&info_url, &PermissionsContainer::allow_all())
+          .await
+          .ok()
+      })
+      .await
+      .ok()??;
       serde_json::from_slice::<NpmPackageInfo>(&file.source).ok()
     };
     let info = fetch_package_info().await.map(Arc::new);

@@ -1,17 +1,17 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::io::Read;
+use std::sync::Arc;
 
 use deno_core::error::AnyError;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::WorkerExecutionMode;
 
 use crate::args::EvalFlags;
 use crate::args::Flags;
-use crate::args::RunFlags;
 use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
-use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -19,8 +19,9 @@ use crate::util::file_watcher::WatcherRestartMode;
 pub mod hmr;
 
 pub async fn run_script(
-  flags: Flags,
-  run_flags: RunFlags,
+  mode: WorkerExecutionMode,
+  flags: Arc<Flags>,
+  watch: Option<WatchFlagsWithPaths>,
 ) -> Result<i32, AnyError> {
   if !flags.has_permission() && flags.has_permission_in_argv() {
     log::warn!(
@@ -33,23 +34,16 @@ To grant permissions, set them before the script argument. For example:
     );
   }
 
-  if let Some(watch_flags) = run_flags.watch {
-    return run_with_watch(flags, watch_flags).await;
+  if let Some(watch_flags) = watch {
+    return run_with_watch(mode, flags, watch_flags).await;
   }
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line
-  let factory = CliFactory::from_flags(flags)?;
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let deno_dir = factory.deno_dir()?;
-  let http_client = factory.http_client();
-  let cli_options = factory.cli_options();
-
-  if cli_options.unstable_sloppy_imports() {
-    log::warn!(
-      "{} Sloppy imports are not recommended and have a negative impact on performance.",
-      crate::colors::yellow("Warning"),
-    );
-  }
+  let http_client = factory.http_client_provider();
 
   // Run a background task that checks for available upgrades or output
   // if an earlier run of this background task found a new version of Deno.
@@ -64,20 +58,20 @@ To grant permissions, set them before the script argument. For example:
   maybe_npm_install(&factory).await?;
 
   let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options(),
+    &cli_options.permissions_options()?,
   )?);
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
-    .create_main_worker(main_module, permissions)
+    .create_main_worker(mode, main_module, permissions)
     .await?;
 
   let exit_code = worker.run().await?;
   Ok(exit_code)
 }
 
-pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+pub async fn run_from_stdin(flags: Arc<Flags>) -> Result<i32, AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
 
   maybe_npm_install(&factory).await?;
@@ -85,7 +79,7 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let file_fetcher = factory.file_fetcher()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options(),
+    &cli_options.permissions_options()?,
   )?);
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -98,7 +92,7 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   });
 
   let mut worker = worker_factory
-    .create_main_worker(main_module, permissions)
+    .create_main_worker(WorkerExecutionMode::Run, main_module, permissions)
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)
@@ -107,7 +101,8 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 // TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
 // code properly.
 async fn run_with_watch(
-  flags: Flags,
+  mode: WorkerExecutionMode,
+  flags: Arc<Flags>,
   watch_flags: WatchFlagsWithPaths,
 ) -> Result<i32, AnyError> {
   util::file_watcher::watch_recv(
@@ -120,9 +115,11 @@ async fn run_with_watch(
     WatcherRestartMode::Automatic,
     move |flags, watcher_communicator, _changed_paths| {
       Ok(async move {
-        let factory = CliFactoryBuilder::new()
-          .build_from_flags_for_watcher(flags, watcher_communicator.clone())?;
-        let cli_options = factory.cli_options();
+        let factory = CliFactory::from_flags_for_watcher(
+          flags,
+          watcher_communicator.clone(),
+        );
+        let cli_options = factory.cli_options()?;
         let main_module = cli_options.resolve_main_module()?;
 
         maybe_npm_install(&factory).await?;
@@ -130,12 +127,12 @@ async fn run_with_watch(
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
         let permissions = PermissionsContainer::new(Permissions::from_options(
-          &cli_options.permissions_options(),
+          &cli_options.permissions_options()?,
         )?);
         let mut worker = factory
           .create_cli_main_worker_factory()
           .await?
-          .create_main_worker(main_module, permissions)
+          .create_main_worker(mode, main_module, permissions)
           .await?;
 
         if watch_flags.hmr {
@@ -154,11 +151,11 @@ async fn run_with_watch(
 }
 
 pub async fn eval_command(
-  flags: Flags,
+  flags: Arc<Flags>,
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let file_fetcher = factory.file_fetcher()?;
   let main_module = cli_options.resolve_main_module()?;
 
@@ -180,11 +177,11 @@ pub async fn eval_command(
   });
 
   let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options(),
+    &cli_options.permissions_options()?,
   )?);
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut worker = worker_factory
-    .create_main_worker(main_module, permissions)
+    .create_main_worker(WorkerExecutionMode::Eval, main_module, permissions)
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)
@@ -193,7 +190,7 @@ pub async fn eval_command(
 async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
   // ensure an "npm install" is done if the user has explicitly
   // opted into using a managed node_modules directory
-  if factory.cli_options().node_modules_dir_enablement() == Some(true) {
+  if factory.cli_options()?.node_modules_dir_enablement() == Some(true) {
     if let Some(npm_resolver) = factory.npm_resolver().await?.as_managed() {
       npm_resolver.ensure_top_level_package_json_install().await?;
     }

@@ -69,7 +69,7 @@ export function parseScheduleToString(
 
     // Automatically override unspecified values for convenience. For example,
     // to run every 2 hours, `{ hour: { every: 2 } }` can be specified without
-    // explicitely specifying `minute`.
+    // explicitly specifying `minute`.
     if (minute !== undefined) {
       // Nothing to override.
     } else if (hour !== undefined) {

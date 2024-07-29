@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
+
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
@@ -13,8 +16,6 @@ use std::process::Command;
 use std::process::Stdio;
 use std::time::SystemTime;
 use test_util::PathRef;
-
-include!("../util/time.rs");
 
 mod http;
 mod lsp;
@@ -123,6 +124,8 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "check",
       "--reload",
       "--unstable",
+      "--config",
+      "tests/config/deno.json",
       "tests/util/std/http/file_server_test.ts",
     ],
     None,
@@ -134,6 +137,8 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "--reload",
       "--no-check",
       "--unstable",
+      "--config",
+      "tests/config/deno.json",
       "tests/util/std/http/file_server_test.ts",
     ],
     None,
@@ -143,6 +148,8 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
     &[
       "bundle",
       "--unstable",
+      "--config",
+      "tests/config/deno.json",
       "tests/util/std/http/file_server_test.ts",
     ],
     None,
@@ -153,6 +160,8 @@ const EXEC_TIME_BENCHMARKS: &[(&str, &[&str], Option<i32>)] = &[
       "bundle",
       "--no-check",
       "--unstable",
+      "--config",
+      "tests/config/deno.json",
       "tests/util/std/http/file_server_test.ts",
     ],
     None,
@@ -319,6 +328,8 @@ fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
         deno_exe.to_str().unwrap(),
         "bundle",
         "--unstable",
+        "--config",
+        "tests/config/deno.json",
         url,
         &path,
       ],
@@ -431,11 +442,16 @@ async fn main() -> Result<()> {
   println!("Starting Deno benchmark");
 
   let target_dir = test_util::target_dir();
-  let deno_exe = test_util::deno_exe_path().to_path_buf();
+  let deno_exe = if let Ok(p) = std::env::var("DENO_BENCH_EXE") {
+    PathBuf::from(p)
+  } else {
+    test_util::deno_exe_path().to_path_buf()
+  };
   env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {
-    created_at: utc_now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    created_at: chrono::Utc::now()
+      .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     sha1: test_util::run_collect(
       &["git", "rev-parse", "HEAD"],
       None,

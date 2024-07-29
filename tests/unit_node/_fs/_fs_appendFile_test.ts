@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows, fail } from "@std/assert/mod.ts";
+import { assertEquals, assertThrows, fail } from "@std/assert";
 import { appendFile, appendFileSync } from "node:fs";
-import { fromFileUrl } from "@std/path/mod.ts";
+import { fromFileUrl } from "@std/path";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 
 const decoder = new TextDecoder("utf-8");

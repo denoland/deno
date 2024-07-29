@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-write --allow-read --allow-run --allow-net
+#!/usr/bin/env -S deno run --allow-write --allow-read --allow-run --allow-net --config=tests/config/deno.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { join, ROOT_PATH } from "./util.js";
 
@@ -9,7 +9,7 @@ const cmd = new Deno.Command("deno", {
     "run",
     "-A",
     "--no-config",
-    "npm:dprint@0.45.0",
+    "npm:dprint@0.47.2",
     subcommand,
     "--config=" + configFile,
   ],

@@ -1,0 +1,6 @@
+Checking for slow types in the public API...
+Simulating publish of @foo/bar@1.0.0 with files:
+   file:///[WILDCARD]/b/index.ts (27B)
+   file:///[WILDCARD]/deno.json (87B)
+   file:///[WILDCARD]/mod.ts (35B)
+Warning Aborting due to --dry-run

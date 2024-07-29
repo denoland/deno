@@ -4,6 +4,7 @@ use crate::args::Flags;
 use crate::colors;
 use crate::util::fs::canonicalize_path;
 
+use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
@@ -72,6 +73,7 @@ impl DebouncedReceiver {
   }
 }
 
+#[allow(clippy::print_stderr)]
 async fn error_handler<F>(watch_future: F) -> bool
 where
   F: Future<Output = Result<(), AnyError>>,
@@ -131,8 +133,9 @@ fn create_print_after_restart_fn(
   clear_screen: bool,
 ) -> impl Fn() {
   move || {
+    #[allow(clippy::print_stderr)]
     if clear_screen && std::io::stderr().is_terminal() {
-      eprint!("{CLEAR_SCREEN}");
+      eprint!("{}", CLEAR_SCREEN);
     }
     info!(
       "{} File change detected! Restarting!",
@@ -160,6 +163,9 @@ pub struct WatcherCommunicator {
 
 impl WatcherCommunicator {
   pub fn watch_paths(&self, paths: Vec<PathBuf>) -> Result<(), AnyError> {
+    if paths.is_empty() {
+      return Ok(());
+    }
     self.paths_to_watch_tx.send(paths).map_err(AnyError::from)
   }
 
@@ -189,16 +195,16 @@ impl WatcherCommunicator {
 /// Creates a file watcher.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
-/// changes. For example, in the case where we would like to bundle, then `operation` would
-/// have the logic for it like bundling the code.
+///   changes. For example, in the case where we would like to bundle, then `operation` would
+///   have the logic for it like bundling the code.
 pub async fn watch_func<O, F>(
-  flags: Flags,
+  flags: Arc<Flags>,
   print_config: PrintConfig,
   operation: O,
 ) -> Result<(), AnyError>
 where
   O: FnMut(
-    Flags,
+    Arc<Flags>,
     Arc<WatcherCommunicator>,
     Option<Vec<PathBuf>>,
   ) -> Result<F, AnyError>,
@@ -228,22 +234,23 @@ pub enum WatcherRestartMode {
 /// Creates a file watcher.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
-/// changes. For example, in the case where we would like to bundle, then `operation` would
-/// have the logic for it like bundling the code.
+///    changes. For example, in the case where we would like to bundle, then `operation` would
+///    have the logic for it like bundling the code.
 pub async fn watch_recv<O, F>(
-  mut flags: Flags,
+  mut flags: Arc<Flags>,
   print_config: PrintConfig,
   restart_mode: WatcherRestartMode,
   mut operation: O,
 ) -> Result<(), AnyError>
 where
   O: FnMut(
-    Flags,
+    Arc<Flags>,
     Arc<WatcherCommunicator>,
     Option<Vec<PathBuf>>,
   ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
+  let exclude_set = flags.resolve_watch_exclude_set()?;
   let (paths_to_watch_tx, mut paths_to_watch_rx) =
     tokio::sync::mpsc::unbounded_channel();
   let (restart_tx, mut restart_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -274,7 +281,9 @@ where
   deno_core::unsync::spawn(async move {
     loop {
       let received_changed_paths = watcher_receiver.recv().await;
-      *changed_paths_.borrow_mut() = received_changed_paths.clone();
+      changed_paths_
+        .borrow_mut()
+        .clone_from(&received_changed_paths);
 
       match *watcher_.restart_mode.lock() {
         WatcherRestartMode::Automatic => {
@@ -297,12 +306,12 @@ where
     }
 
     let mut watcher = new_watcher(watcher_sender.clone())?;
-    consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx);
+    consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
 
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
-        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
+        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap(), &exclude_set);
       }
     };
     let operation_future = error_handler(operation(
@@ -312,7 +321,12 @@ where
     )?);
 
     // don't reload dependencies after the first run
-    flags.reload = false;
+    if flags.reload {
+      flags = Arc::new(Flags {
+        reload: false,
+        ..Arc::unwrap_or_clone(flags)
+      });
+    }
 
     select! {
       _ = receiver_future => {},
@@ -321,7 +335,7 @@ where
         continue;
       },
       success = operation_future => {
-        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx);
+        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
         // TODO(bartlomieju): print exit code here?
         info!(
           "{} {} {}. Restarting on file change...",
@@ -334,11 +348,11 @@ where
           }
         );
       },
-    };
+    }
     let receiver_future = async {
       loop {
         let maybe_paths = paths_to_watch_rx.recv().await;
-        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
+        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap(), &exclude_set);
       }
     };
 
@@ -351,7 +365,7 @@ where
         print_after_restart();
         continue;
       },
-    };
+    }
   }
 }
 
@@ -376,28 +390,41 @@ fn new_watcher(
         .iter()
         .filter_map(|path| canonicalize_path(path).ok())
         .collect();
+
       sender.send(paths).unwrap();
     },
     Default::default(),
   )?)
 }
 
-fn add_paths_to_watcher(watcher: &mut RecommendedWatcher, paths: &[PathBuf]) {
+fn add_paths_to_watcher(
+  watcher: &mut RecommendedWatcher,
+  paths: &[PathBuf],
+  paths_to_exclude: &PathOrPatternSet,
+) {
   // Ignore any error e.g. `PathNotFound`
+  let mut watched_paths = Vec::new();
+
   for path in paths {
+    if paths_to_exclude.matches_path(path) {
+      continue;
+    }
+
+    watched_paths.push(path.clone());
     let _ = watcher.watch(path, RecursiveMode::Recursive);
   }
-  log::debug!("Watching paths: {:?}", paths);
+  log::debug!("Watching paths: {:?}", watched_paths);
 }
 
 fn consume_paths_to_watch(
   watcher: &mut RecommendedWatcher,
   receiver: &mut UnboundedReceiver<Vec<PathBuf>>,
+  exclude_set: &PathOrPatternSet,
 ) {
   loop {
     match receiver.try_recv() {
       Ok(paths) => {
-        add_paths_to_watcher(watcher, &paths);
+        add_paths_to_watcher(watcher, &paths, exclude_set);
       }
       Err(e) => match e {
         mpsc::error::TryRecvError::Empty => {

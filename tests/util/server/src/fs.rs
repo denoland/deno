@@ -150,24 +150,29 @@ impl PathRef {
     .unwrap_or_else(|| panic!("JSON file was empty for {}", self))
   }
 
+  #[track_caller]
   pub fn rename(&self, to: impl AsRef<Path>) {
     fs::rename(self, self.join(to)).unwrap();
   }
 
+  #[track_caller]
   pub fn append(&self, text: impl AsRef<str>) {
     let mut file = OpenOptions::new().append(true).open(self).unwrap();
     file.write_all(text.as_ref().as_bytes()).unwrap();
   }
 
-  pub fn write(&self, text: impl AsRef<str>) {
-    fs::write(self, text.as_ref()).unwrap();
+  #[track_caller]
+  pub fn write(&self, text: impl AsRef<[u8]>) {
+    fs::write(self, text).unwrap();
   }
 
+  #[track_caller]
   pub fn write_json<TValue: Serialize>(&self, value: &TValue) {
     let text = serde_json::to_string_pretty(value).unwrap();
     self.write(text);
   }
 
+  #[track_caller]
   pub fn symlink_dir(
     &self,
     oldpath: impl AsRef<Path>,
@@ -187,6 +192,7 @@ impl PathRef {
     }
   }
 
+  #[track_caller]
   pub fn symlink_file(
     &self,
     oldpath: impl AsRef<Path>,
@@ -206,12 +212,14 @@ impl PathRef {
     }
   }
 
+  #[track_caller]
   pub fn read_dir(&self) -> fs::ReadDir {
     fs::read_dir(self.as_path())
       .with_context(|| format!("Reading {}", self.as_path().display()))
       .unwrap()
   }
 
+  #[track_caller]
   pub fn copy(&self, to: &impl AsRef<Path>) {
     std::fs::copy(self.as_path(), to)
       .with_context(|| format!("Copying {} to {}", self, to.as_ref().display()))
@@ -247,6 +255,14 @@ impl PathRef {
     }
   }
 
+  #[track_caller]
+  pub fn mark_executable(&self) {
+    if cfg!(unix) {
+      Command::new("chmod").arg("+x").arg(self).output().unwrap();
+    }
+  }
+
+  #[track_caller]
   pub fn make_dir_readonly(&self) {
     self.create_dir_all();
     if cfg!(windows) {
@@ -461,7 +477,7 @@ impl TempDir {
     self.target_path().join(from).rename(to)
   }
 
-  pub fn write(&self, path: impl AsRef<Path>, text: impl AsRef<str>) {
+  pub fn write(&self, path: impl AsRef<Path>, text: impl AsRef<[u8]>) {
     self.target_path().join(path).write(text)
   }
 

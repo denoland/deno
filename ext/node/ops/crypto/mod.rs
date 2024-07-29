@@ -7,7 +7,6 @@ use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
 use deno_core::OpState;
-use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ToJsBuffer;
 use elliptic_curve::sec1::ToEncodedPoint;
@@ -42,12 +41,17 @@ use rsa::Oaep;
 use rsa::Pkcs1v15Encrypt;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
+use spki::EncodePublicKey;
 
 mod cipher;
 mod dh;
 mod digest;
+mod md5_sha1;
 mod primes;
 pub mod x509;
+
+use self::digest::match_fixed_digest_with_eager_block_buffer;
+use self::digest::match_fixed_digest_with_oid;
 
 #[op2(fast)]
 pub fn op_node_check_prime(
@@ -95,18 +99,13 @@ pub fn op_node_check_prime_bytes_async(
   })
 }
 
-#[op2(fast)]
-#[smi]
+#[op2]
+#[cppgc]
 pub fn op_node_create_hash(
-  state: &mut OpState,
   #[string] algorithm: &str,
-) -> u32 {
-  state
-    .resource_table
-    .add(match digest::Context::new(algorithm) {
-      Ok(context) => context,
-      Err(_) => return 0,
-    })
+  output_length: Option<u32>,
+) -> Result<digest::Hasher, AnyError> {
+  digest::Hasher::new(algorithm, output_length.map(|l| l as usize))
 }
 
 #[op2]
@@ -117,65 +116,44 @@ pub fn op_node_get_hashes() -> Vec<&'static str> {
 
 #[op2(fast)]
 pub fn op_node_hash_update(
-  state: &mut OpState,
-  #[smi] rid: u32,
+  #[cppgc] hasher: &digest::Hasher,
   #[buffer] data: &[u8],
 ) -> bool {
-  let context = match state.resource_table.get::<digest::Context>(rid) {
-    Ok(context) => context,
-    _ => return false,
-  };
-  context.update(data);
-  true
+  hasher.update(data)
 }
 
 #[op2(fast)]
 pub fn op_node_hash_update_str(
-  state: &mut OpState,
-  #[smi] rid: u32,
+  #[cppgc] hasher: &digest::Hasher,
   #[string] data: &str,
 ) -> bool {
-  let context = match state.resource_table.get::<digest::Context>(rid) {
-    Ok(context) => context,
-    _ => return false,
-  };
-  context.update(data.as_bytes());
-  true
+  hasher.update(data.as_bytes())
 }
 
 #[op2]
-#[serde]
+#[buffer]
 pub fn op_node_hash_digest(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> Result<ToJsBuffer, AnyError> {
-  let context = state.resource_table.take::<digest::Context>(rid)?;
-  let context = Rc::try_unwrap(context)
-    .map_err(|_| type_error("Hash context is already in use"))?;
-  Ok(context.digest()?.into())
+  #[cppgc] hasher: &digest::Hasher,
+) -> Option<Box<[u8]>> {
+  hasher.digest()
 }
 
 #[op2]
 #[string]
 pub fn op_node_hash_digest_hex(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> Result<String, AnyError> {
-  let context = state.resource_table.take::<digest::Context>(rid)?;
-  let context = Rc::try_unwrap(context)
-    .map_err(|_| type_error("Hash context is already in use"))?;
-  let digest = context.digest()?;
-  Ok(faster_hex::hex_string(&digest))
+  #[cppgc] hasher: &digest::Hasher,
+) -> Option<String> {
+  let digest = hasher.digest()?;
+  Some(faster_hex::hex_string(&digest))
 }
 
-#[op2(fast)]
-#[smi]
+#[op2]
+#[cppgc]
 pub fn op_node_hash_clone(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> Result<ResourceId, AnyError> {
-  let context = state.resource_table.get::<digest::Context>(rid)?;
-  Ok(state.resource_table.add(context.as_ref().clone()))
+  #[cppgc] hasher: &digest::Hasher,
+  output_length: Option<u32>,
+) -> Result<Option<digest::Hasher>, AnyError> {
+  hasher.clone_inner(output_length.map(|l| l as usize))
 }
 
 #[op2]
@@ -408,33 +386,30 @@ pub fn op_node_sign(
     RSA_ENCRYPTION_OID => {
       use rsa::pkcs1v15::SigningKey;
       let key = RsaPrivateKey::from_pkcs1_der(pkey)?;
-      Ok(
-        match digest_type {
-          "sha224" => {
-            let signing_key = SigningKey::<sha2::Sha224>::new(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          "sha256" => {
-            let signing_key = SigningKey::<sha2::Sha256>::new(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          "sha384" => {
-            let signing_key = SigningKey::<sha2::Sha384>::new(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          "sha512" => {
-            let signing_key = SigningKey::<sha2::Sha512>::new(key);
-            signing_key.sign_prehash(digest)?.to_vec()
-          }
-          _ => {
-            return Err(type_error(format!(
-              "Unknown digest algorithm: {}",
-              digest_type
-            )))
-          }
+
+      // md5-sha1 is special, because it's not wrapped in an ASN.1 DigestInfo
+      // (so has no prefix).
+      // See https://github.com/openssl/openssl/blob/af82623d32962b3eff5b0f0b0dedec5eb730b231/crypto/rsa/rsa_sign.c#L285
+      if digest_type == "md5-sha1" {
+        let signing_key = SigningKey::<md5_sha1::Md5Sha1>::new_unprefixed(key);
+        let signature = signing_key.sign_prehash(digest)?.to_vec();
+        return Ok(signature.into());
+      }
+
+      let signature = match_fixed_digest_with_oid!(
+        digest_type,
+        fn <D>() {
+          let signing_key = SigningKey::<D>::new(key);
+          signing_key.sign_prehash(digest)?.to_vec()
+        },
+        _ => {
+          return Err(type_error(format!(
+            "digest not allowed for RSA signature: {}",
+            digest_type
+          )))
         }
-        .into(),
-      )
+      );
+      Ok(signature.into())
     }
     // signature structure encoding is DER by default for DSA and ECDSA.
     //
@@ -482,29 +457,35 @@ pub fn op_node_verify(
           )))
         }
       };
-      Ok(match digest_type {
-        "sha224" => VerifyingKey::<sha2::Sha224>::new(key)
+
+      // md5-sha1 is special, because it's not wrapped in an ASN.1 DigestInfo
+      // (so has no prefix).
+      // See https://github.com/openssl/openssl/blob/af82623d32962b3eff5b0f0b0dedec5eb730b231/crypto/rsa/rsa_sign.c#L285
+      if digest_type == "md5-sha1" {
+        let verifying_key =
+          VerifyingKey::<md5_sha1::Md5Sha1>::new_unprefixed(key);
+        let verified = verifying_key
           .verify_prehash(digest, &signature.try_into()?)
-          .is_ok(),
-        "sha256" => VerifyingKey::<sha2::Sha256>::new(key)
-          .verify_prehash(digest, &signature.try_into()?)
-          .is_ok(),
-        "sha384" => VerifyingKey::<sha2::Sha384>::new(key)
-          .verify_prehash(digest, &signature.try_into()?)
-          .is_ok(),
-        "sha512" => VerifyingKey::<sha2::Sha512>::new(key)
-          .verify_prehash(digest, &signature.try_into()?)
-          .is_ok(),
+          .is_ok();
+        return Ok(verified);
+      }
+
+      Ok(match_fixed_digest_with_oid!(
+        digest_type,
+        fn <D>() {
+          let verifying_key = VerifyingKey::<D>::new(key);
+          verifying_key.verify_prehash(digest, &signature.try_into()?).is_ok()
+        },
         _ => {
           return Err(type_error(format!(
-            "Unknown digest algorithm: {}",
+            "digest not allowed for RSA signature: {}",
             digest_type
           )))
         }
-      })
+      ))
     }
     _ => Err(type_error(format!(
-      "Verifying with {} keys is not supported yet",
+      "Verifying with {} keys is not supported",
       key_type
     ))),
   }
@@ -514,28 +495,22 @@ fn pbkdf2_sync(
   password: &[u8],
   salt: &[u8],
   iterations: u32,
-  digest: &str,
+  algorithm_name: &str,
   derived_key: &mut [u8],
 ) -> Result<(), AnyError> {
-  macro_rules! pbkdf2_hmac {
-    ($digest:ty) => {{
-      pbkdf2::pbkdf2_hmac::<$digest>(password, salt, iterations, derived_key)
-    }};
-  }
-
-  match digest {
-    "md4" => pbkdf2_hmac!(md4::Md4),
-    "md5" => pbkdf2_hmac!(md5::Md5),
-    "ripemd160" => pbkdf2_hmac!(ripemd::Ripemd160),
-    "sha1" => pbkdf2_hmac!(sha1::Sha1),
-    "sha224" => pbkdf2_hmac!(sha2::Sha224),
-    "sha256" => pbkdf2_hmac!(sha2::Sha256),
-    "sha384" => pbkdf2_hmac!(sha2::Sha384),
-    "sha512" => pbkdf2_hmac!(sha2::Sha512),
-    _ => return Err(type_error("Unknown digest")),
-  }
-
-  Ok(())
+  match_fixed_digest_with_eager_block_buffer!(
+    algorithm_name,
+    fn <D>() {
+      pbkdf2::pbkdf2_hmac::<D>(password, salt, iterations, derived_key);
+      Ok(())
+    },
+    _ => {
+      Err(type_error(format!(
+        "unsupported digest: {}",
+        algorithm_name
+      )))
+    }
+  )
 }
 
 #[op2]
@@ -584,50 +559,40 @@ pub async fn op_node_generate_secret_async(#[smi] len: i32) -> ToJsBuffer {
 }
 
 fn hkdf_sync(
-  hash: &str,
+  digest_algorithm: &str,
   ikm: &[u8],
   salt: &[u8],
   info: &[u8],
   okm: &mut [u8],
 ) -> Result<(), AnyError> {
-  macro_rules! hkdf {
-    ($hash:ty) => {{
-      let hk = Hkdf::<$hash>::new(Some(salt), ikm);
+  match_fixed_digest_with_eager_block_buffer!(
+    digest_algorithm,
+    fn <D>() {
+      let hk = Hkdf::<D>::new(Some(salt), ikm);
       hk.expand(info, okm)
-        .map_err(|_| type_error("HKDF-Expand failed"))?;
-    }};
-  }
-
-  match hash {
-    "md4" => hkdf!(md4::Md4),
-    "md5" => hkdf!(md5::Md5),
-    "ripemd160" => hkdf!(ripemd::Ripemd160),
-    "sha1" => hkdf!(sha1::Sha1),
-    "sha224" => hkdf!(sha2::Sha224),
-    "sha256" => hkdf!(sha2::Sha256),
-    "sha384" => hkdf!(sha2::Sha384),
-    "sha512" => hkdf!(sha2::Sha512),
-    _ => return Err(type_error("Unknown digest")),
-  }
-
-  Ok(())
+        .map_err(|_| type_error("HKDF-Expand failed"))
+    },
+    _ => {
+      Err(type_error(format!("Unsupported digest: {}", digest_algorithm)))
+    }
+  )
 }
 
 #[op2(fast)]
 pub fn op_node_hkdf(
-  #[string] hash: &str,
+  #[string] digest_algorithm: &str,
   #[buffer] ikm: &[u8],
   #[buffer] salt: &[u8],
   #[buffer] info: &[u8],
   #[buffer] okm: &mut [u8],
 ) -> Result<(), AnyError> {
-  hkdf_sync(hash, ikm, salt, info, okm)
+  hkdf_sync(digest_algorithm, ikm, salt, info, okm)
 }
 
 #[op2(async)]
 #[serde]
 pub async fn op_node_hkdf_async(
-  #[string] hash: String,
+  #[string] digest_algorithm: String,
   #[buffer] ikm: JsBuffer,
   #[buffer] salt: JsBuffer,
   #[buffer] info: JsBuffer,
@@ -635,7 +600,7 @@ pub async fn op_node_hkdf_async(
 ) -> Result<ToJsBuffer, AnyError> {
   spawn_blocking(move || {
     let mut okm = vec![0u8; okm_len];
-    hkdf_sync(&hash, &ikm, &salt, &info, &mut okm)?;
+    hkdf_sync(&digest_algorithm, &ikm, &salt, &info, &mut okm)?;
     Ok(okm.into())
   })
   .await?
@@ -681,13 +646,32 @@ pub async fn op_node_generate_rsa_async(
   spawn_blocking(move || generate_rsa(modulus_length, public_exponent)).await?
 }
 
+#[op2]
+#[string]
+pub fn op_node_export_rsa_public_pem(
+  #[buffer] pkcs1_der: &[u8],
+) -> Result<String, AnyError> {
+  let public_key = RsaPublicKey::from_pkcs1_der(pkcs1_der)?;
+  let export = public_key.to_public_key_pem(Default::default())?;
+  Ok(export)
+}
+
+#[op2]
+#[serde]
+pub fn op_node_export_rsa_spki_der(
+  #[buffer] pkcs1_der: &[u8],
+) -> Result<ToJsBuffer, AnyError> {
+  let public_key = RsaPublicKey::from_pkcs1_der(pkcs1_der)?;
+  let export = public_key.to_public_key_der()?.to_vec();
+  Ok(export.into())
+}
+
 fn dsa_generate(
   modulus_length: usize,
   divisor_length: usize,
 ) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   let mut rng = rand::thread_rng();
   use dsa::pkcs8::EncodePrivateKey;
-  use dsa::pkcs8::EncodePublicKey;
   use dsa::Components;
   use dsa::KeySize;
   use dsa::SigningKey;
@@ -1404,6 +1388,7 @@ pub const EC_OID: const_oid::ObjectIdentifier =
 // }
 pub struct PssPrivateKeyParameters<'a> {
   pub hash_algorithm: rsa::pkcs8::AlgorithmIdentifierRef<'a>,
+  #[allow(dead_code)]
   pub mask_gen_algorithm: rsa::pkcs8::AlgorithmIdentifierRef<'a>,
   pub salt_length: u32,
 }
@@ -1472,8 +1457,13 @@ fn parse_private_key(
 ) -> Result<pkcs8::SecretDocument, AnyError> {
   match format {
     "pem" => {
-      let (_, doc) =
-        pkcs8::SecretDocument::from_pem(std::str::from_utf8(key).unwrap())?;
+      let pem = std::str::from_utf8(key).map_err(|err| {
+        type_error(format!(
+          "Invalid PEM private key: not valid utf8 starting at byte {}",
+          err.valid_up_to()
+        ))
+      })?;
+      let (_, doc) = pkcs8::SecretDocument::from_pem(pem)?;
       Ok(doc)
     }
     "der" => {
@@ -1579,8 +1569,13 @@ fn parse_public_key(
 ) -> Result<pkcs8::Document, AnyError> {
   match format {
     "pem" => {
-      let (label, doc) =
-        pkcs8::Document::from_pem(std::str::from_utf8(key).unwrap())?;
+      let pem = std::str::from_utf8(key).map_err(|err| {
+        type_error(format!(
+          "Invalid PEM private key: not valid utf8 starting at byte {}",
+          err.valid_up_to()
+        ))
+      })?;
+      let (label, doc) = pkcs8::Document::from_pem(pem)?;
       if label != "PUBLIC KEY" {
         return Err(type_error("Invalid PEM label"));
       }

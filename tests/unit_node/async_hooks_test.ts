@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { AsyncLocalStorage, AsyncResource } from "node:async_hooks";
-import { assert, assertEquals } from "@std/assert/mod.ts";
+import { assert, assertEquals } from "@std/assert";
 
 Deno.test(async function foo() {
   const asyncLocalStorage = new AsyncLocalStorage();
@@ -93,4 +93,45 @@ Deno.test(async function enterWith() {
 
   assertEquals(await deferred.promise, { x: 2 });
   assertEquals(await deferred1.promise, { x: 1 });
+});
+
+Deno.test(async function snapshot() {
+  const als = new AsyncLocalStorage();
+  const deferred = Promise.withResolvers();
+
+  als.run(null, () => {
+    const snapshot = AsyncLocalStorage.snapshot();
+    als.run({ x: 1 }, () => {
+      deferred.resolve(snapshot(() => als.getStore()));
+    });
+  });
+
+  assertEquals(await deferred.promise, null);
+});
+
+Deno.test(async function bind() {
+  const als = new AsyncLocalStorage();
+  const deferred = Promise.withResolvers();
+
+  const bound = als.run(null, () => {
+    return AsyncLocalStorage.bind(() => {
+      deferred.resolve(als.getStore());
+    });
+  });
+
+  als.run({ x: 1 }, () => {
+    bound();
+  });
+
+  assertEquals(await deferred.promise, null);
+});
+
+Deno.test(function asyncResourceStub() {
+  const resource = new AsyncResource("dbquery");
+  assert(typeof resource.asyncId() === "number");
+});
+
+Deno.test(function emitDestroyStub() {
+  const resource = new AsyncResource("foo");
+  assert(typeof resource.emitDestroy === "function");
 });

@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
 #![allow(clippy::undocumented_unsafe_blocks)]
 
 use std::os::raw::c_void;

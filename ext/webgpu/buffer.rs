@@ -2,7 +2,6 @@
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::futures::channel::oneshot;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -10,8 +9,9 @@ use deno_core::ResourceId;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
-use wgpu_core::resource::BufferAccessResult;
 
 use super::error::DomExceptionOperationError;
 use super::error::WebGpuResult;
@@ -26,8 +26,7 @@ impl Resource for WebGpuBuffer {
   }
 
   fn close(self: Rc<Self>) {
-    let instance = &self.0;
-    gfx_select!(self.1 => instance.buffer_drop(self.1, true));
+    gfx_select!(self.1 => self.0.buffer_drop(self.1, true));
   }
 }
 
@@ -65,7 +64,7 @@ pub fn op_webgpu_create_buffer(
   gfx_put!(device => instance.device_create_buffer(
     device,
     &descriptor,
-    ()
+    None
   ) => state, WebGpuBuffer)
 }
 
@@ -79,9 +78,8 @@ pub async fn op_webgpu_buffer_get_map_async(
   #[number] offset: u64,
   #[number] size: u64,
 ) -> Result<WebGpuResult, AnyError> {
-  let (sender, receiver) = oneshot::channel::<BufferAccessResult>();
-
   let device;
+  let done = Arc::new(Mutex::new(None));
   {
     let state_ = state.borrow();
     let instance = state_.borrow::<super::Instance>();
@@ -93,55 +91,48 @@ pub async fn op_webgpu_buffer_get_map_async(
       .get::<super::WebGpuDevice>(device_rid)?;
     device = device_resource.1;
 
+    let done_ = done.clone();
     let callback = Box::new(move |status| {
-      sender.send(status).unwrap();
+      *done_.lock().unwrap() = Some(status);
     });
 
-    // TODO(lucacasonato): error handling
     let maybe_err = gfx_select!(buffer => instance.buffer_map_async(
-            buffer,
-            offset..(offset + size),
-            wgpu_core::resource::BufferMapOperation {
-                host: match mode {
-                    1 => wgpu_core::device::HostMap::Read,
-                    2 => wgpu_core::device::HostMap::Write,
-                    _ => unreachable!(),
-                },
-                callback: wgpu_core::resource::BufferMapCallback::from_rust(callback),
-            }
-        ))
-        .err();
+      buffer,
+      offset,
+      Some(size),
+      wgpu_core::resource::BufferMapOperation {
+        host: match mode {
+          1 => wgpu_core::device::HostMap::Read,
+          2 => wgpu_core::device::HostMap::Write,
+          _ => unreachable!(),
+        },
+        callback: Some(wgpu_core::resource::BufferMapCallback::from_rust(callback)),
+      }
+    ))
+    .err();
 
     if maybe_err.is_some() {
       return Ok(WebGpuResult::maybe_err(maybe_err));
     }
   }
 
-  let done = Rc::new(RefCell::new(false));
-  let done_ = done.clone();
-  let device_poll_fut = async move {
-    while !*done.borrow() {
-      {
-        let state = state.borrow();
-        let instance = state.borrow::<super::Instance>();
-        gfx_select!(device => instance.device_poll(device, wgpu_types::Maintain::Wait))
-                    .unwrap();
+  loop {
+    let result = done.lock().unwrap().take();
+    match result {
+      Some(Ok(())) => return Ok(WebGpuResult::empty()),
+      Some(Err(e)) => {
+        return Err(DomExceptionOperationError::new(&e.to_string()).into())
       }
-      tokio::time::sleep(Duration::from_millis(10)).await;
+      None => {
+        {
+          let state = state.borrow();
+          let instance = state.borrow::<super::Instance>();
+          gfx_select!(device => instance.device_poll(device, wgpu_types::Maintain::Poll)).unwrap();
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+      }
     }
-    Ok::<(), AnyError>(())
-  };
-
-  let receiver_fut = async move {
-    receiver.await??;
-    let mut done = done_.borrow_mut();
-    *done = true;
-    Ok::<(), AnyError>(())
-  };
-
-  tokio::try_join!(device_poll_fut, receiver_fut)?;
-
-  Ok(WebGpuResult::empty())
+  }
 }
 
 #[op2]

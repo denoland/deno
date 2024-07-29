@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-write --allow-read --allow-run --allow-net
+#!/usr/bin/env -S deno run --allow-write --allow-read --allow-run --allow-net --config=tests/config/deno.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { buildMode, getPrebuilt, getSources, join, ROOT_PATH } from "./util.js";
 import { checkCopyright } from "./copyright_checker.js";
@@ -21,6 +21,7 @@ if (js) {
   promises.push(dlint());
   promises.push(dlintPreferPrimordials());
   promises.push(ensureCiYmlUpToDate());
+  promises.push(ensureNoNewITests());
 
   if (rs) {
     promises.push(checkCopyright());
@@ -50,20 +51,22 @@ async function dlint() {
     ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
     ":!:cli/tsc/dts/**",
-    ":!:target/**",
+    ":!:target/",
+    ":!:tests/registry/**",
     ":!:tests/specs/**",
     ":!:tests/testdata/encoding/**",
     ":!:tests/testdata/error_syntax.js",
     ":!:tests/testdata/file_extensions/ts_with_js_extension.js",
     ":!:tests/testdata/fmt/**",
-    ":!:tests/testdata/npm/**",
     ":!:tests/testdata/lint/**",
+    ":!:tests/testdata/npm/**",
     ":!:tests/testdata/run/**",
     ":!:tests/testdata/tsc/**",
     ":!:tests/testdata/test/glob/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
     ":!:tests/wpt/suite/**",
+    ":!:tests/wpt/runner/**",
   ]);
 
   if (!sourceFiles.length) {
@@ -160,6 +163,12 @@ async function clippy() {
       "warnings",
       "--deny",
       "clippy::unused_async",
+      // generally prefer the `log` crate, but ignore
+      // these print_* rules if necessary
+      "--deny",
+      "clippy::print_stderr",
+      "--deny",
+      "clippy::print_stdout",
     ],
     stdout: "inherit",
     stderr: "inherit",
@@ -178,5 +187,68 @@ async function ensureCiYmlUpToDate() {
     throw new Error(
       "./.github/workflows/ci.yml is out of date. Run: ./.github/workflows/ci.generate.ts",
     );
+  }
+}
+
+async function ensureNoNewITests() {
+  // Note: Only decrease these numbers. Never increase them!!
+  // This is to help ensure we slowly deprecate these tests and
+  // replace them with spec tests.
+  const iTestCounts = {
+    "bench_tests.rs": 0,
+    "bundle_tests.rs": 11,
+    "cache_tests.rs": 0,
+    "cert_tests.rs": 0,
+    "check_tests.rs": 23,
+    "compile_tests.rs": 0,
+    "coverage_tests.rs": 0,
+    "doc_tests.rs": 15,
+    "eval_tests.rs": 9,
+    "flags_tests.rs": 0,
+    "fmt_tests.rs": 17,
+    "info_tests.rs": 18,
+    "init_tests.rs": 0,
+    "inspector_tests.rs": 0,
+    "install_tests.rs": 0,
+    "jsr_tests.rs": 0,
+    "js_unit_tests.rs": 0,
+    "jupyter_tests.rs": 0,
+    "lint_tests.rs": 18,
+    // Read the comment above. Please don't increase these numbers!
+    "lsp_tests.rs": 0,
+    "node_compat_tests.rs": 4,
+    "node_unit_tests.rs": 2,
+    "npm_tests.rs": 93,
+    "pm_tests.rs": 0,
+    "publish_tests.rs": 0,
+    "repl_tests.rs": 0,
+    "run_tests.rs": 360,
+    "shared_library_tests.rs": 0,
+    "task_tests.rs": 30,
+    "test_tests.rs": 77,
+    "upgrade_tests.rs": 0,
+    "vendor_tests.rs": 1,
+    "watcher_tests.rs": 0,
+    "worker_tests.rs": 18,
+  };
+  const integrationDir = join(ROOT_PATH, "tests", "integration");
+  for await (const entry of Deno.readDir(integrationDir)) {
+    if (!entry.name.endsWith("_tests.rs")) {
+      continue;
+    }
+    const fileText = await Deno.readTextFile(join(integrationDir, entry.name));
+    const actualCount = fileText.match(/itest\!/g)?.length ?? 0;
+    const expectedCount = iTestCounts[entry.name] ?? 0;
+    // console.log(`"${entry.name}": ${actualCount},`);
+    if (actualCount > expectedCount) {
+      throw new Error(
+        `New itest added to ${entry.name}! The itest macro is deprecated. Please move your new test to ~/tests/specs.`,
+      );
+    } else if (actualCount < expectedCount) {
+      throw new Error(
+        `Thanks for removing an itest in ${entry.name}. ` +
+          `Please update the count in tools/lint.js for this file to ${actualCount}.`,
+      );
+    }
   }
 }

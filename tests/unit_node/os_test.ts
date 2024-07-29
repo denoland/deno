@@ -7,7 +7,7 @@ import {
   assertEquals,
   assertNotEquals,
   assertThrows,
-} from "@std/assert/mod.ts";
+} from "@std/assert";
 
 Deno.test({
   name: "build architecture is a string",
@@ -43,6 +43,14 @@ Deno.test({
 Deno.test({
   name: "home directory is a string",
   fn() {
+    assertEquals(typeof os.homedir(), "string");
+  },
+});
+
+Deno.test({
+  name: "home directory when HOME is not set",
+  fn() {
+    Deno.env.delete("HOME");
     assertEquals(typeof os.homedir(), "string");
   },
 });

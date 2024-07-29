@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, assertStringIncludes } from "./test_util.ts";
-import { concat } from "@std/bytes/concat.ts";
+import { concat } from "@std/bytes/concat";
 
 Deno.test(function blobString() {
   const b1 = new Blob(["Hello World"]);
@@ -85,7 +85,7 @@ Deno.test(async function blobStream() {
   const read = async (): Promise<void> => {
     const { done, value } = await reader.read();
     if (!done && value) {
-      bytes = concat(bytes, value);
+      bytes = concat([bytes, value]);
       return read();
     }
   };

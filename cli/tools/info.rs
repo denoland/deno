@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Write;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
@@ -30,32 +30,36 @@ use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
 use crate::factory::CliFactory;
-use crate::graph_util::graph_lock_or_exit;
+use crate::graph_util::graph_exit_lock_errors;
 use crate::npm::CliNpmResolver;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;
 
-pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+pub async fn info(
+  flags: Arc<Flags>,
+  info_flags: InfoFlags,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   if let Some(specifier) = info_flags.file {
     let module_graph_builder = factory.module_graph_builder().await?;
     let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
-    let maybe_lockfile = factory.maybe_lockfile();
-    let maybe_imports_map = factory.maybe_import_map().await?;
+    let maybe_lockfile = cli_options.maybe_lockfile();
+    let resolver = factory.workspace_resolver().await?;
 
-    let maybe_import_specifier = if let Some(imports_map) = maybe_imports_map {
-      if let Ok(imports_specifier) =
-        imports_map.resolve(&specifier, imports_map.base_url())
-      {
-        Some(imports_specifier)
+    let maybe_import_specifier =
+      if let Some(import_map) = resolver.maybe_import_map() {
+        if let Ok(imports_specifier) =
+          import_map.resolve(&specifier, import_map.base_url())
+        {
+          Some(imports_specifier)
+        } else {
+          None
+        }
       } else {
         None
-      }
-    } else {
-      None
-    };
+      };
 
     let specifier = match maybe_import_specifier {
       Some(specifier) => specifier,
@@ -68,13 +72,10 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
       .create_graph_with_loader(GraphKind::All, vec![specifier], &mut loader)
       .await?;
 
-    // If there is a lockfile...
+    // write out the lockfile if there is one
     if let Some(lockfile) = &maybe_lockfile {
-      let mut lockfile = lockfile.lock();
-      // validate the integrity of all the modules
-      graph_lock_or_exit(&graph, &mut lockfile);
-      // update it with anything new
-      lockfile.write().context("Failed writing lockfile.")?;
+      graph_exit_lock_errors(&graph);
+      lockfile.write_if_changed()?;
     }
 
     if info_flags.json {
@@ -97,6 +98,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   Ok(())
 }
 
+#[allow(clippy::print_stdout)]
 fn print_cache_info(
   factory: &CliFactory,
   json: bool,
@@ -667,18 +669,6 @@ impl<'a> GraphDisplayContext<'a> {
       }
       ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
         self.build_error_msg(specifier, "(missing)")
-      }
-      ModuleError::MissingWorkspaceMemberExports { .. } => {
-        self.build_error_msg(specifier, "(missing exports)")
-      }
-      ModuleError::UnknownExport { .. } => {
-        self.build_error_msg(specifier, "(unknown export)")
-      }
-      ModuleError::UnknownPackage { .. } => {
-        self.build_error_msg(specifier, "(unknown package)")
-      }
-      ModuleError::UnknownPackageReq { .. } => {
-        self.build_error_msg(specifier, "(unknown package constraint)")
       }
     }
   }

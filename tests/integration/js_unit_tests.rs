@@ -30,6 +30,7 @@ util::unit_test_factory!(
     error_stack_test,
     error_test,
     esnext_test,
+    event_source_test,
     event_target_test,
     event_test,
     fetch_test,
@@ -93,6 +94,7 @@ util::unit_test_factory!(
     text_encoding_test,
     timers_test,
     tls_test,
+    tls_sni_test,
     truncate_test,
     tty_color_test,
     tty_test,
@@ -128,7 +130,7 @@ fn js_unit_test(test: String) {
     .arg("--no-prompt");
 
   // TODO(mmastrac): it would be better to just load a test CA for all tests
-  let deno = if test == "websocket_test" {
+  let deno = if test == "websocket_test" || test == "tls_sni_test" {
     deno.arg("--unsafely-ignore-certificate-errors")
   } else {
     deno

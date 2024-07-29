@@ -1,7 +1,9 @@
+[UNORDERED_START]
 Download http://127.0.0.1:4250/@denotest/subset-type-graph/meta.json
 Download http://127.0.0.1:4250/@denotest/subset-type-graph-invalid/meta.json
 Download http://127.0.0.1:4250/@denotest/subset-type-graph/0.1.0_meta.json
 Download http://127.0.0.1:4250/@denotest/subset-type-graph-invalid/0.1.0_meta.json
+[UNORDERED_END]
 [UNORDERED_START]
 Download http://127.0.0.1:4250/@denotest/subset-type-graph/0.1.0/mod.ts
 Download http://127.0.0.1:4250/@denotest/subset-type-graph-invalid/0.1.0/mod.ts

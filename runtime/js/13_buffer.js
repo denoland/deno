@@ -48,7 +48,7 @@ class Buffer {
     internals.warnOnDeprecatedApi(
       "new Deno.Buffer()",
       new Error().stack,
-      "Use `Buffer` from `https://deno.land/std/io/buffer.ts` instead.",
+      "Use `Buffer` from `https://jsr.io/@std/io/doc/buffer/~` instead.",
     );
     if (ab == null) {
       this.#buf = new Uint8Array(0);
@@ -238,7 +238,7 @@ async function readAll(r) {
   internals.warnOnDeprecatedApi(
     "Deno.readAll()",
     new Error().stack,
-    "Use `readAll()` from `https://deno.land/std/io/read_all.ts` instead.",
+    "Use `readAll()` from `https://jsr.io/@std/io/doc/read-all/~` instead.",
   );
   const buf = new Buffer();
   await buf.readFrom(r);
@@ -249,7 +249,7 @@ function readAllSync(r) {
   internals.warnOnDeprecatedApi(
     "Deno.readAllSync()",
     new Error().stack,
-    "Use `readAllSync()` from `https://deno.land/std/io/read_all.ts` instead.",
+    "Use `readAllSync()` from `https://jsr.io/@std/io/doc/read-all/~` instead.",
   );
   const buf = new Buffer();
   buf.readFromSync(r);
@@ -260,7 +260,7 @@ async function writeAll(w, arr) {
   internals.warnOnDeprecatedApi(
     "Deno.writeAll()",
     new Error().stack,
-    "Use `writeAll()` from `https://deno.land/std/io/write_all.ts` instead.",
+    "Use `writeAll()` from `https://jsr.io/@std/io/doc/write-all/~` instead.",
   );
   let nwritten = 0;
   while (nwritten < arr.length) {
@@ -272,7 +272,7 @@ function writeAllSync(w, arr) {
   internals.warnOnDeprecatedApi(
     "Deno.writeAllSync()",
     new Error().stack,
-    "Use `writeAllSync()` from `https://deno.land/std/io/write_all.ts` instead.",
+    "Use `writeAllSync()` from `https://jsr.io/@std/io/doc/write-all/~` instead.",
   );
   let nwritten = 0;
   while (nwritten < arr.length) {

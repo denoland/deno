@@ -17,6 +17,8 @@
  * ERR_INVALID_PACKAGE_CONFIG // package.json stuff, probably useless
  */
 
+import { primordials } from "ext:core/mod.js";
+const { JSONStringify, SymbolFor } = primordials;
 import { format, inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import {
@@ -347,9 +349,8 @@ export class NodeErrorAbstraction extends Error {
     super(message);
     this.code = code;
     this.name = name;
-    //This number changes depending on the name of this class
-    //20 characters as of now
-    this.stack = this.stack && `${name} [${this.code}]${this.stack.slice(20)}`;
+    this.stack = this.stack &&
+      `${name} [${this.code}]${this.stack.slice(this.name.length)}`;
   }
 
   override toString() {
@@ -420,8 +421,11 @@ export interface NodeSystemErrorCtx {
 // `err.info`.
 // The context passed into this error must have .code, .syscall and .message,
 // and may have .path and .dest.
-class NodeSystemError extends NodeErrorAbstraction {
+class NodeSystemError extends Error {
+  code: string;
   constructor(key: string, context: NodeSystemErrorCtx, msgPrefix: string) {
+    super();
+    this.code = key;
     let message = `${msgPrefix}: ${context.syscall} returned ` +
       `${context.code} (${context.message})`;
 
@@ -432,8 +436,6 @@ class NodeSystemError extends NodeErrorAbstraction {
       message += ` => ${context.dest}`;
     }
 
-    super("SystemError", key, message);
-
     captureLargerStackTrace(this);
 
     Object.defineProperties(this, {
@@ -441,6 +443,18 @@ class NodeSystemError extends NodeErrorAbstraction {
         value: true,
         enumerable: false,
         writable: false,
+        configurable: true,
+      },
+      name: {
+        value: "SystemError",
+        enumerable: false,
+        writable: true,
+        configurable: true,
+      },
+      message: {
+        value: message,
+        enumerable: false,
+        writable: true,
         configurable: true,
       },
       info: {
@@ -500,6 +514,15 @@ class NodeSystemError extends NodeErrorAbstraction {
 
   override toString() {
     return `${this.name} [${this.code}]: ${this.message}`;
+  }
+
+  // deno-lint-ignore no-explicit-any
+  [SymbolFor("nodejs.util.inspect.custom")](_recurseTimes: number, ctx: any) {
+    return inspect(this, {
+      ...ctx,
+      getters: true,
+      customInspect: false,
+    });
   }
 }
 
@@ -612,7 +635,6 @@ export class ERR_INVALID_ARG_TYPE_RANGE extends NodeRangeError {
 export class ERR_INVALID_ARG_TYPE extends NodeTypeError {
   constructor(name: string, expected: string | string[], actual: unknown) {
     const msg = createInvalidArgType(name, expected);
-
     super("ERR_INVALID_ARG_TYPE", `${msg}.${invalidArgTypeHelper(actual)}`);
   }
 
@@ -667,9 +689,7 @@ function invalidArgTypeHelper(input: any) {
   return ` Received type ${typeof input} (${inspected})`;
 }
 
-export class ERR_OUT_OF_RANGE extends RangeError {
-  code = "ERR_OUT_OF_RANGE";
-
+export class ERR_OUT_OF_RANGE extends NodeRangeError {
   constructor(
     str: string,
     range: string,
@@ -694,15 +714,7 @@ export class ERR_OUT_OF_RANGE extends RangeError {
     }
     msg += ` It must be ${range}. Received ${received}`;
 
-    super(msg);
-
-    const { name } = this;
-    // Add the error code to the name to include it in the stack trace.
-    this.name = `${name} [${this.code}]`;
-    // Access the stack to generate the error message including the error code from the name.
-    this.stack;
-    // Reset the name to the actual name.
-    this.name = name;
+    super("ERR_OUT_OF_RANGE", msg);
   }
 }
 
@@ -2562,6 +2574,12 @@ export class ERR_HTTP_SOCKET_ASSIGNED extends NodeError {
   }
 }
 
+export class ERR_INVALID_STATE extends NodeError {
+  constructor(message: string) {
+    super("ERR_INVALID_STATE", `Invalid state: ${message}`);
+  }
+}
+
 interface UvExceptionContext {
   syscall: string;
   path?: string;
@@ -2629,6 +2647,11 @@ codes.ERR_OUT_OF_RANGE = ERR_OUT_OF_RANGE;
 codes.ERR_SOCKET_BAD_PORT = ERR_SOCKET_BAD_PORT;
 codes.ERR_BUFFER_OUT_OF_BOUNDS = ERR_BUFFER_OUT_OF_BOUNDS;
 codes.ERR_UNKNOWN_ENCODING = ERR_UNKNOWN_ENCODING;
+codes.ERR_PARSE_ARGS_INVALID_OPTION_VALUE = ERR_PARSE_ARGS_INVALID_OPTION_VALUE;
+codes.ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL =
+  ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL;
+codes.ERR_PARSE_ARGS_UNKNOWN_OPTION = ERR_PARSE_ARGS_UNKNOWN_OPTION;
+
 // TODO(kt3k): assign all error classes here.
 
 /**
@@ -2817,6 +2840,7 @@ export default {
   ERR_INVALID_RETURN_PROPERTY,
   ERR_INVALID_RETURN_PROPERTY_VALUE,
   ERR_INVALID_RETURN_VALUE,
+  ERR_INVALID_STATE,
   ERR_INVALID_SYNC_FORK_INPUT,
   ERR_INVALID_THIS,
   ERR_INVALID_TUPLE,
@@ -2846,6 +2870,7 @@ export default {
   ERR_OUT_OF_RANGE,
   ERR_PACKAGE_IMPORT_NOT_DEFINED,
   ERR_PACKAGE_PATH_NOT_EXPORTED,
+  ERR_PARSE_ARGS_INVALID_OPTION_VALUE,
   ERR_QUICCLIENTSESSION_FAILED,
   ERR_QUICCLIENTSESSION_FAILED_SETSOCKET,
   ERR_QUICSESSION_DESTROYED,

@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { partition } from "@std/collections/partition.ts";
-import { join } from "@std/path/mod.ts";
-import * as JSONC from "@std/jsonc/mod.ts";
+import { partition } from "@std/collections/partition";
+import { join } from "@std/path";
+import * as JSONC from "@std/jsonc";
 /**
  * The test suite matches the folders inside the `test` folder inside the
  * node repo

@@ -1,4 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use base64::prelude::BASE64_STANDARD;
@@ -29,10 +30,7 @@ use prost::Message;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env;
-use std::net::Ipv6Addr;
 use std::net::SocketAddr;
-use std::net::SocketAddrV6;
-use std::path::PathBuf;
 use std::result::Result;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
@@ -40,7 +38,8 @@ use tokio::net::TcpStream;
 
 mod grpc;
 mod hyper_utils;
-mod registry;
+mod jsr_registry;
+mod npm_registry;
 mod ws;
 
 use hyper_utils::run_server;
@@ -48,13 +47,14 @@ use hyper_utils::run_server_with_acceptor;
 use hyper_utils::ServerKind;
 use hyper_utils::ServerOptions;
 
+use crate::TEST_SERVERS_COUNT;
+
 use super::https::get_tls_listener_stream;
 use super::https::SupportedHttpVersions;
-use super::npm::CUSTOM_NPM_PACKAGE_CACHE;
 use super::std_path;
 use super::testdata_path;
 
-const PORT: u16 = 4545;
+pub(crate) const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
 const TEST_BASIC_AUTH_USERNAME: &str = "testuser123";
 const TEST_BASIC_AUTH_PASSWORD: &str = "testpassabc";
@@ -69,7 +69,10 @@ const REDIRECT_ABSOLUTE_PORT: u16 = 4550;
 const AUTH_REDIRECT_PORT: u16 = 4551;
 const TLS_CLIENT_AUTH_PORT: u16 = 4552;
 const BASIC_AUTH_REDIRECT_PORT: u16 = 4554;
+// 4555 is used by the proxy server
+// 4556 is used by net_listen_allow_localhost_4555_fail
 const TLS_PORT: u16 = 4557;
+// 4558 is used by net_listen_allow_localhost_4555
 const HTTPS_PORT: u16 = 5545;
 const H1_ONLY_TLS_PORT: u16 = 5546;
 const H2_ONLY_TLS_PORT: u16 = 5547;
@@ -83,8 +86,11 @@ const WS_CLOSE_PORT: u16 = 4244;
 const WS_PING_PORT: u16 = 4245;
 const H2_GRPC_PORT: u16 = 4246;
 const H2S_GRPC_PORT: u16 = 4247;
-const REGISTRY_SERVER_PORT: u16 = 4250;
+const JSR_REGISTRY_SERVER_PORT: u16 = 4250;
 const PROVENANCE_MOCK_SERVER_PORT: u16 = 4251;
+pub(crate) const PUBLIC_NPM_REGISTRY_PORT: u16 = 4260;
+pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4261;
+pub(crate) const PRIVATE_NPM_REGISTRY_2_PORT: u16 = 4262;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
@@ -119,7 +125,6 @@ pub async fn run_all_servers() {
   let client_auth_server_https_fut =
     wrap_client_auth_https_server(HTTPS_CLIENT_AUTH_PORT);
   let main_server_fut = wrap_main_server(PORT);
-  let main_server_ipv6_fut = wrap_main_ipv6_server(PORT);
   let main_server_https_fut = wrap_main_https_server(HTTPS_PORT);
   let h1_only_server_tls_fut = wrap_https_h1_only_tls_server(H1_ONLY_TLS_PORT);
   let h2_only_server_tls_fut = wrap_https_h2_only_tls_server(H2_ONLY_TLS_PORT);
@@ -127,42 +132,51 @@ pub async fn run_all_servers() {
   let h2_only_server_fut = wrap_http_h2_only_server(H2_ONLY_PORT);
   let h2_grpc_server_fut = grpc::h2_grpc_server(H2_GRPC_PORT, H2S_GRPC_PORT);
 
-  let registry_server_fut = registry::registry_server(REGISTRY_SERVER_PORT);
+  let registry_server_fut =
+    jsr_registry::registry_server(JSR_REGISTRY_SERVER_PORT);
   let provenance_mock_server_fut =
-    registry::provenance_mock_server(PROVENANCE_MOCK_SERVER_PORT);
+    jsr_registry::provenance_mock_server(PROVENANCE_MOCK_SERVER_PORT);
 
-  let server_fut = async {
-    futures::join!(
-      redirect_server_fut,
-      ws_server_fut,
-      ws_ping_server_fut,
-      wss_server_fut,
-      wss2_server_fut,
-      tls_server_fut,
-      tls_client_auth_server_fut,
-      ws_close_server_fut,
-      another_redirect_server_fut,
-      auth_redirect_server_fut,
-      basic_auth_redirect_server_fut,
-      inf_redirects_server_fut,
-      double_redirects_server_fut,
-      abs_redirect_server_fut,
-      main_server_fut,
-      main_server_ipv6_fut,
-      main_server_https_fut,
-      client_auth_server_https_fut,
-      h1_only_server_tls_fut,
-      h2_only_server_tls_fut,
-      h1_only_server_fut,
-      h2_only_server_fut,
-      h2_grpc_server_fut,
-      registry_server_fut,
-      provenance_mock_server_fut,
-    )
-  }
-  .boxed_local();
+  let npm_registry_server_futs =
+    npm_registry::public_npm_registry(PUBLIC_NPM_REGISTRY_PORT);
+  let private_npm_registry_1_server_futs =
+    npm_registry::private_npm_registry1(PRIVATE_NPM_REGISTRY_1_PORT);
+  let private_npm_registry_2_server_futs =
+    npm_registry::private_npm_registry2(PRIVATE_NPM_REGISTRY_2_PORT);
 
-  server_fut.await;
+  let mut futures = vec![
+    redirect_server_fut.boxed_local(),
+    ws_server_fut.boxed_local(),
+    ws_ping_server_fut.boxed_local(),
+    wss_server_fut.boxed_local(),
+    wss2_server_fut.boxed_local(),
+    tls_server_fut.boxed_local(),
+    tls_client_auth_server_fut.boxed_local(),
+    ws_close_server_fut.boxed_local(),
+    another_redirect_server_fut.boxed_local(),
+    auth_redirect_server_fut.boxed_local(),
+    basic_auth_redirect_server_fut.boxed_local(),
+    inf_redirects_server_fut.boxed_local(),
+    double_redirects_server_fut.boxed_local(),
+    abs_redirect_server_fut.boxed_local(),
+    main_server_fut.boxed_local(),
+    main_server_https_fut.boxed_local(),
+    client_auth_server_https_fut.boxed_local(),
+    h1_only_server_tls_fut.boxed_local(),
+    h2_only_server_tls_fut.boxed_local(),
+    h1_only_server_fut.boxed_local(),
+    h2_only_server_fut.boxed_local(),
+    h2_grpc_server_fut.boxed_local(),
+    registry_server_fut.boxed_local(),
+    provenance_mock_server_fut.boxed_local(),
+  ];
+  futures.extend(npm_registry_server_futs);
+  futures.extend(private_npm_registry_1_server_futs);
+  futures.extend(private_npm_registry_2_server_futs);
+
+  assert_eq!(futures.len(), TEST_SERVERS_COUNT);
+
+  futures::future::join_all(futures).await;
 }
 
 fn empty_body() -> UnsyncBoxBody<Bytes, Infallible> {
@@ -797,6 +811,46 @@ async fn main_server(
       );
       Ok(res)
     }
+    (_, "/jsx-types/jsx-runtime") | (_, "/jsx-types/jsx-dev-runtime") => {
+      let mut res = Response::new(string_body(
+        r#"
+/// <reference types="./jsx-runtime.d.ts" />
+        "#,
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/javascript"),
+      );
+      Ok(res)
+    }
+    (_, "/jsx-types/jsx-runtime.d.ts") => {
+      let mut res = Response::new(string_body(
+        r#"export function jsx(
+          _type: "a" | "b",
+          _props: any,
+          _key: any,
+          _source: any,
+          _self: any,
+        ): any;
+        export const jsxs: typeof jsx;
+        export const jsxDEV: typeof jsx;
+        export const Fragment: unique symbol;
+
+        declare global {
+          namespace JSX {
+            interface IntrinsicElements {
+              [tagName: string]: Record<string, any>;
+            }
+          }
+        }
+        "#,
+      ));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
     (_, "/dynamic") => {
       let mut res = Response::new(string_body(
         &serde_json::to_string_pretty(&std::time::SystemTime::now()).unwrap(),
@@ -1079,64 +1133,21 @@ async fn main_server(
       );
     }
     _ => {
+      let uri_path = req.uri().path();
       let mut file_path = testdata_path().to_path_buf();
-      file_path.push(&req.uri().path()[1..].replace("%2f", "/"));
+      file_path.push(uri_path[1..].replace("%2f", "/"));
       if let Ok(file) = tokio::fs::read(&file_path).await {
-        let file_resp = custom_headers(req.uri().path(), file);
+        let file_resp = custom_headers(uri_path, file);
         return Ok(file_resp);
       }
 
-      // serve npm registry files
-      if let Some(suffix) = req
-        .uri()
-        .path()
-        .strip_prefix("/npm/registry/@denotest/")
-        .or_else(|| req.uri().path().strip_prefix("/npm/registry/@denotest%2f"))
-      {
-        // serve all requests to /npm/registry/@deno using the file system
-        // at that path
-        match handle_custom_npm_registry_path(suffix) {
-          Ok(Some(response)) => return Ok(response),
-          Ok(None) => {} // ignore, not found
-          Err(err) => {
-            return Response::builder()
-              .status(StatusCode::INTERNAL_SERVER_ERROR)
-              .body(string_body(&format!("{err:#}")))
-              .map_err(|e| e.into());
-          }
-        }
-      } else if req.uri().path().starts_with("/npm/registry/") {
-        // otherwise, serve based on registry.json and tgz files
-        let is_tarball = req.uri().path().ends_with(".tgz");
-        if !is_tarball {
-          file_path.push("registry.json");
-        }
-        if let Ok(file) = tokio::fs::read(&file_path).await {
-          let file_resp = custom_headers(req.uri().path(), file);
-          return Ok(file_resp);
-        } else if should_download_npm_packages() {
-          if let Err(err) =
-            download_npm_registry_file(req.uri(), &file_path, is_tarball).await
-          {
-            return Response::builder()
-              .status(StatusCode::INTERNAL_SERVER_ERROR)
-              .body(string_body(&format!("{err:#}")))
-              .map_err(|e| e.into());
-          };
-
-          // serve the file
-          if let Ok(file) = tokio::fs::read(&file_path).await {
-            let file_resp = custom_headers(req.uri().path(), file);
-            return Ok(file_resp);
-          }
-        }
-      } else if let Some(suffix) = req.uri().path().strip_prefix("/deno_std/") {
+      if let Some(suffix) = uri_path.strip_prefix("/deno_std/") {
         let file_path = std_path().join(suffix);
         if let Ok(file) = tokio::fs::read(&file_path).await {
-          let file_resp = custom_headers(req.uri().path(), file);
+          let file_resp = custom_headers(uri_path, file);
           return Ok(file_resp);
         }
-      } else if let Some(suffix) = req.uri().path().strip_prefix("/sleep/") {
+      } else if let Some(suffix) = uri_path.strip_prefix("/sleep/") {
         let duration = suffix.parse::<u64>().unwrap();
         tokio::time::sleep(Duration::from_millis(duration)).await;
         return Response::builder()
@@ -1152,79 +1163,6 @@ async fn main_server(
         .map_err(|e| e.into())
     }
   };
-}
-
-fn handle_custom_npm_registry_path(
-  path: &str,
-) -> Result<Option<Response<UnsyncBoxBody<Bytes, Infallible>>>, anyhow::Error> {
-  let parts = path
-    .split('/')
-    .filter(|p| !p.is_empty())
-    .collect::<Vec<_>>();
-  let cache = &CUSTOM_NPM_PACKAGE_CACHE;
-  let package_name = format!("@denotest/{}", parts[0]);
-  if parts.len() == 2 {
-    if let Some(file_bytes) =
-      cache.tarball_bytes(&package_name, parts[1].trim_end_matches(".tgz"))?
-    {
-      let file_resp = custom_headers("file.tgz", file_bytes);
-      return Ok(Some(file_resp));
-    }
-  } else if parts.len() == 1 {
-    if let Some(registry_file) = cache.registry_file(&package_name)? {
-      let file_resp = custom_headers("registry.json", registry_file);
-      return Ok(Some(file_resp));
-    }
-  }
-
-  Ok(None)
-}
-
-fn should_download_npm_packages() -> bool {
-  // when this env var is set, it will download and save npm packages
-  // to the testdata/npm/registry directory
-  std::env::var("DENO_TEST_UTIL_UPDATE_NPM") == Ok("1".to_string())
-}
-
-async fn download_npm_registry_file(
-  uri: &hyper::Uri,
-  file_path: &PathBuf,
-  is_tarball: bool,
-) -> Result<(), anyhow::Error> {
-  let url_parts = uri
-    .path()
-    .strip_prefix("/npm/registry/")
-    .unwrap()
-    .split('/')
-    .collect::<Vec<_>>();
-  let package_name = if url_parts[0].starts_with('@') {
-    url_parts.into_iter().take(2).collect::<Vec<_>>().join("/")
-  } else {
-    url_parts.into_iter().take(1).collect::<Vec<_>>().join("/")
-  };
-  let url = if is_tarball {
-    let file_name = file_path.file_name().unwrap().to_string_lossy();
-    format!("https://registry.npmjs.org/{package_name}/-/{file_name}")
-  } else {
-    format!("https://registry.npmjs.org/{package_name}")
-  };
-  let client = reqwest::Client::new();
-  let response = client.get(url).send().await?;
-  let bytes = response.bytes().await?;
-  let bytes = if is_tarball {
-    bytes.to_vec()
-  } else {
-    String::from_utf8(bytes.to_vec())
-      .unwrap()
-      .replace(
-        &format!("https://registry.npmjs.org/{package_name}/-/"),
-        &format!("http://localhost:4545/npm/registry/{package_name}/"),
-      )
-      .into_bytes()
-  };
-  std::fs::create_dir_all(file_path.parent().unwrap())?;
-  std::fs::write(file_path, bytes)?;
-  Ok(())
 }
 
 async fn wrap_redirect_server(port: u16) {
@@ -1320,21 +1258,9 @@ async fn wrap_abs_redirect_server(port: u16) {
 
 async fn wrap_main_server(port: u16) {
   let main_server_addr = SocketAddr::from(([127, 0, 0, 1], port));
-  wrap_main_server_for_addr(&main_server_addr).await
-}
-
-// necessary because on Windows the npm binary will resolve localhost to ::1
-async fn wrap_main_ipv6_server(port: u16) {
-  let ipv6_loopback = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1);
-  let main_server_addr =
-    SocketAddr::V6(SocketAddrV6::new(ipv6_loopback, port, 0, 0));
-  wrap_main_server_for_addr(&main_server_addr).await
-}
-
-async fn wrap_main_server_for_addr(main_server_addr: &SocketAddr) {
   run_server(
     ServerOptions {
-      addr: *main_server_addr,
+      addr: main_server_addr,
       kind: ServerKind::Auto,
       error_msg: "HTTP server error",
     },
@@ -1441,7 +1367,7 @@ async fn wrap_client_auth_https_server(port: u16) {
   .await
 }
 
-fn custom_headers(
+pub fn custom_headers(
   p: &str,
   body: Vec<u8>,
 ) -> Response<UnsyncBoxBody<Bytes, Infallible>> {

@@ -96,7 +96,7 @@ export class TLSSocket extends net.Socket {
       caCerts = [new TextDecoder().decode(caCerts)];
     }
     tlsOptions.caCerts = caCerts;
-    tlsOptions.alpnProtocols = ["h2", "http/1.1"];
+    tlsOptions.alpnProtocols = opts.ALPNProtocols;
 
     super({
       handle: _wrapHandle(tlsOptions, socket),
@@ -114,7 +114,7 @@ export class TLSSocket extends net.Socket {
     this.secureConnecting = true;
     this._SNICallback = null;
     this.servername = null;
-    this.alpnProtocols = tlsOptions.alpnProtocols;
+    this.alpnProtocols = tlsOptions.ALPNProtocols;
     this.authorized = false;
     this.authorizationError = null;
     this[kRes] = null;

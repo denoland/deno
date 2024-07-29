@@ -1,5 +1,4 @@
 {
-  "base": "jsr",
   "args": "check --all main.ts",
   "output": "main.check.out",
   "exitCode": 1

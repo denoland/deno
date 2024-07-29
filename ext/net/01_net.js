@@ -28,6 +28,8 @@ import {
   op_set_keepalive,
   op_set_nodelay,
 } from "ext:core/ops";
+const UDP_DGRAM_MAXSIZE = 65507;
+
 const {
   Error,
   Number,
@@ -100,6 +102,12 @@ class Conn {
   #writable;
 
   constructor(rid, remoteAddr, localAddr) {
+    if (internals.future) {
+      ObjectDefineProperty(this, "rid", {
+        enumerable: false,
+        value: undefined,
+      });
+    }
     ObjectDefineProperty(this, internalRidSymbol, {
       enumerable: false,
       value: rid,
@@ -260,6 +268,12 @@ class Listener {
   #promise = null;
 
   constructor(rid, addr) {
+    if (internals.future) {
+      ObjectDefineProperty(this, "rid", {
+        enumerable: false,
+        value: undefined,
+      });
+    }
     ObjectDefineProperty(this, internalRidSymbol, {
       enumerable: false,
       value: rid,
@@ -366,7 +380,7 @@ class DatagramConn {
   #unref = false;
   #promise = null;
 
-  constructor(rid, addr, bufSize = 1024) {
+  constructor(rid, addr, bufSize = UDP_DGRAM_MAXSIZE) {
     this.#rid = rid;
     this.#addr = addr;
     this.bufSize = bufSize;

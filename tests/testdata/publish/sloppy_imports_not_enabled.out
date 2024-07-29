@@ -1,2 +1,0 @@
-error: [WILDCARD] Maybe specify path to 'index.ts' file in directory instead or run with --unstable-sloppy-imports
-    at file:///[WILDCARD]/sloppy_imports/mod.ts:1:20

@@ -9,8 +9,8 @@ import {
   assertNotStrictEquals,
   assertStrictEquals,
   assertStringIncludes,
-} from "@std/assert/mod.ts";
-import * as path from "@std/path/mod.ts";
+} from "@std/assert";
+import * as path from "@std/path";
 
 const { spawn, spawnSync, execFile, execFileSync, ChildProcess } = CP;
 
@@ -823,3 +823,35 @@ Deno.test(function spawnCommandNullStdioArray() {
 
   assertEquals(ret.status, 0);
 });
+
+Deno.test(
+  function stdinInherit() {
+    const script = `
+      function timeoutPromise(promise, timeout) {
+        return new Promise((resolve, reject) => {
+          const timeoutId = setTimeout(() => {
+            Deno.exit(69);
+          }, timeout);
+          promise.then((value) => {
+            clearTimeout(timeoutId);
+            resolve(value);
+          }, (reason) => {
+            clearTimeout(timeoutId);
+            reject(reason);
+          });
+        });
+      }
+
+      await timeoutPromise(Deno.stdin.read(new Uint8Array(1)), 100)
+    `;
+
+    const output = spawnSync(Deno.execPath(), ["eval", script], {
+      stdio: "inherit",
+    });
+
+    // We want to timeout to occur because the stdin isn't 'null'
+    assertEquals(output.status, 69);
+    assertEquals(output.stdout, null);
+    assertEquals(output.stderr, null);
+  },
+);

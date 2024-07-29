@@ -6,24 +6,6 @@ use util::env_vars_for_npm_tests;
 use util::TestContext;
 use util::TestContextBuilder;
 
-itest!(_095_check_with_bare_import {
-  args: "check cache/095_cache_with_bare_import.ts",
-  output: "cache/095_cache_with_bare_import.ts.out",
-  exit_code: 1,
-});
-
-itest!(check_extensionless {
-  args: "check --reload http://localhost:4545/subdir/no_js_ext",
-  output: "cache/cache_extensionless.out",
-  http_server: true,
-});
-
-itest!(check_random_extension {
-  args: "check --reload http://localhost:4545/subdir/no_js_ext@1.0.0",
-  output: "cache/cache_random_extension.out",
-  http_server: true,
-});
-
 itest!(check_all {
   args: "check --quiet --all check/all/check_all.ts",
   output: "check/all/check_all.out",
@@ -145,12 +127,6 @@ itest!(check_imported_files_listed_in_exclude_option {
   exit_code: 1,
 });
 
-itest!(check_with_excluded_file_specified {
-  args: "check lib/types.d.ts",
-  cwd: Some("check/excluded_file_specified/"),
-  output: "check/excluded_file_specified/check.out",
-});
-
 #[test]
 fn cache_switching_config_then_no_config() {
   let context = TestContext::default();
@@ -215,7 +191,7 @@ fn reload_flag() {
 
 #[test]
 fn typecheck_declarations_ns() {
-  let context = TestContext::default();
+  let context = TestContextBuilder::for_jsr().build();
   let args = vec![
     "test".to_string(),
     "--doc".to_string(),
@@ -224,7 +200,12 @@ fn typecheck_declarations_ns() {
       .to_string_lossy()
       .into_owned(),
   ];
-  let output = context.new_command().args_vec(args).split_output().run();
+  let output = context
+    .new_command()
+    .args_vec(args)
+    .envs(util::env_vars_for_jsr_tests())
+    .split_output()
+    .run();
 
   println!("stdout: {}", output.stdout());
   println!("stderr: {}", output.stderr());
@@ -272,13 +253,6 @@ itest!(check_dts {
   args: "check --quiet check/dts/check_dts.d.ts",
   output: "check/dts/check_dts.out",
   exit_code: 1,
-});
-
-itest!(check_types_dts {
-  args: "check main.ts",
-  cwd: Some("check/types_dts/"),
-  output: "check/types_dts/main.out",
-  exit_code: 0,
 });
 
 itest!(package_json_basic {
@@ -417,106 +391,4 @@ fn npm_module_check_then_error() {
     .run()
     .assert_matches_text("Check [WILDCARD]main.ts\nerror: TS2305[WILDCARD]has no exported member 'oldName'[WILDCARD]")
     .assert_exit_code(1);
-}
-
-#[test]
-fn test_unstable_sloppy_imports_dts_files() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
-  let temp_dir = context.temp_dir();
-  temp_dir.write("a.ts", "export class A {}"); // resolves this
-  temp_dir.write("a.d.ts", "export class A2 {}");
-
-  temp_dir.write("b.js", "export class B {}");
-  temp_dir.write("b.d.ts", "export class B2 {}"); // this
-
-  temp_dir.write("c.mts", "export class C {}"); // this
-  temp_dir.write("c.d.mts", "export class C2 {}");
-
-  temp_dir.write("d.mjs", "export class D {}");
-  temp_dir.write("d.d.mts", "export class D2 {}"); // this
-
-  let temp_dir = temp_dir.path();
-
-  let dir = temp_dir.join("dir_ts");
-  dir.create_dir_all();
-  dir.join("index.ts").write("export class Dir {}"); // this
-  dir.join("index.d.ts").write("export class Dir2 {}");
-
-  let dir = temp_dir.join("dir_js");
-  dir.create_dir_all();
-  dir.join("index.js").write("export class Dir {}");
-  dir.join("index.d.ts").write("export class Dir2 {}"); // this
-
-  let dir = temp_dir.join("dir_mts");
-  dir.create_dir_all();
-  dir.join("index.mts").write("export class Dir {}"); // this
-  dir.join("index.d.ts").write("export class Dir2 {}");
-
-  let dir = temp_dir.join("dir_mjs");
-  dir.create_dir_all();
-  dir.join("index.mjs").write("export class Dir {}");
-  dir.join("index.d.ts").write("export class Dir2 {}"); // this
-
-  temp_dir.join("main.ts").write(
-    r#"import * as a from "./a.js";
-import * as b from "./b.js";
-import * as c from "./c.mjs";
-import * as d from "./d.mjs";
-
-console.log(a.A);
-console.log(b.B2);
-console.log(c.C);
-console.log(d.D2);
-
-import * as a2 from "./a";
-import * as b2 from "./b";
-import * as c2 from "./c";
-import * as d2 from "./d";
-
-console.log(a2.A);
-console.log(b2.B2);
-console.log(c2.C);
-console.log(d2.D2);
-
-import * as dirTs from "./dir_ts";
-import * as dirJs from "./dir_js";
-import * as dirMts from "./dir_mts";
-import * as dirMjs from "./dir_mjs";
-
-console.log(dirTs.Dir);
-console.log(dirJs.Dir2);
-console.log(dirMts.Dir);
-console.log(dirMjs.Dir2);
-"#,
-  );
-
-  context
-    .new_command()
-    .args("check --unstable-sloppy-imports main.ts")
-    .run()
-    .assert_matches_text(
-      r#"Warning Sloppy module resolution (hint: update .js extension to .ts)
-    at file:///[WILDCARD]/main.ts:1:20
-Warning Sloppy module resolution (hint: update .mjs extension to .mts)
-    at file:///[WILDCARD]/main.ts:3:20
-Warning Sloppy module resolution (hint: add .ts extension)
-    at file:///[WILDCARD]/main.ts:11:21
-Warning Sloppy module resolution (hint: add .js extension)
-    at file:///[WILDCARD]/main.ts:12:21
-Warning Sloppy module resolution (hint: add .mts extension)
-    at file:///[WILDCARD]/main.ts:13:21
-Warning Sloppy module resolution (hint: add .mjs extension)
-    at file:///[WILDCARD]/main.ts:14:21
-Warning Sloppy module resolution (hint: specify path to index.ts file in directory instead)
-    at file:///[WILDCARD]/main.ts:21:24
-Warning Sloppy module resolution (hint: specify path to index.js file in directory instead)
-    at file:///[WILDCARD]/main.ts:22:24
-Warning Sloppy module resolution (hint: specify path to index.mts file in directory instead)
-    at file:///[WILDCARD]/main.ts:23:25
-Warning Sloppy module resolution (hint: specify path to index.mjs file in directory instead)
-    at file:///[WILDCARD]/main.ts:24:25
-Check [WILDCARD]main.ts
-"#,
-    )
-    .assert_exit_code(0);
 }

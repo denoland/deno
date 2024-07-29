@@ -2,6 +2,7 @@
 
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
+use super::cache_db::CacheDBHash;
 use super::cache_db::CacheFailure;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
@@ -9,13 +10,13 @@ use deno_runtime::deno_webstorage::rusqlite::params;
 
 pub static TYPE_CHECK_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   table_initializer: concat!(
-    "CREATE TABLE IF NOT EXISTS checkcache (
-      check_hash TEXT PRIMARY KEY
-    );",
-    "CREATE TABLE IF NOT EXISTS tsbuildinfo (
-      specifier TEXT PRIMARY KEY,
-      text TEXT NOT NULL
-    );",
+    "CREATE TABLE IF NOT EXISTS checkcache (",
+    "check_hash INT PRIMARY KEY",
+    ");",
+    "CREATE TABLE IF NOT EXISTS tsbuildinfo (",
+    "specifier TEXT PRIMARY KEY,",
+    "text TEXT NOT NULL",
+    ");",
   ),
   on_version_change: concat!(
     "DELETE FROM checkcache;",
@@ -37,7 +38,7 @@ impl TypeCheckCache {
     Self(db)
   }
 
-  pub fn has_check_hash(&self, hash: u64) -> bool {
+  pub fn has_check_hash(&self, hash: CacheDBHash) -> bool {
     match self.hash_check_hash_result(hash) {
       Ok(val) => val,
       Err(err) => {
@@ -52,14 +53,17 @@ impl TypeCheckCache {
     }
   }
 
-  fn hash_check_hash_result(&self, hash: u64) -> Result<bool, AnyError> {
+  fn hash_check_hash_result(
+    &self,
+    hash: CacheDBHash,
+  ) -> Result<bool, AnyError> {
     self.0.exists(
       "SELECT * FROM checkcache WHERE check_hash=?1 LIMIT 1",
-      params![hash.to_string()],
+      params![hash],
     )
   }
 
-  pub fn add_check_hash(&self, check_hash: u64) {
+  pub fn add_check_hash(&self, check_hash: CacheDBHash) {
     if let Err(err) = self.add_check_hash_result(check_hash) {
       if cfg!(debug_assertions) {
         panic!("Error saving check hash: {err}");
@@ -69,13 +73,16 @@ impl TypeCheckCache {
     }
   }
 
-  fn add_check_hash_result(&self, check_hash: u64) -> Result<(), AnyError> {
+  fn add_check_hash_result(
+    &self,
+    check_hash: CacheDBHash,
+  ) -> Result<(), AnyError> {
     let sql = "
     INSERT OR REPLACE INTO
       checkcache (check_hash)
     VALUES
       (?1)";
-    self.0.execute(sql, params![&check_hash.to_string(),])?;
+    self.0.execute(sql, params![check_hash])?;
     Ok(())
   }
 
@@ -123,10 +130,10 @@ mod test {
     let conn = CacheDB::in_memory(&TYPE_CHECK_CACHE_DB, "1.0.0");
     let cache = TypeCheckCache::new(conn);
 
-    assert!(!cache.has_check_hash(1));
-    cache.add_check_hash(1);
-    assert!(cache.has_check_hash(1));
-    assert!(!cache.has_check_hash(2));
+    assert!(!cache.has_check_hash(CacheDBHash::new(1)));
+    cache.add_check_hash(CacheDBHash::new(1));
+    assert!(cache.has_check_hash(CacheDBHash::new(1)));
+    assert!(!cache.has_check_hash(CacheDBHash::new(2)));
 
     let specifier1 = ModuleSpecifier::parse("file:///test.json").unwrap();
     assert_eq!(cache.get_tsbuildinfo(&specifier1), None);
@@ -137,9 +144,9 @@ mod test {
     let conn = cache.0.recreate_with_version("2.0.0");
     let cache = TypeCheckCache::new(conn);
 
-    assert!(!cache.has_check_hash(1));
-    cache.add_check_hash(1);
-    assert!(cache.has_check_hash(1));
+    assert!(!cache.has_check_hash(CacheDBHash::new(1)));
+    cache.add_check_hash(CacheDBHash::new(1));
+    assert!(cache.has_check_hash(CacheDBHash::new(1)));
     assert_eq!(cache.get_tsbuildinfo(&specifier1), None);
     cache.set_tsbuildinfo(&specifier1, "test");
     assert_eq!(cache.get_tsbuildinfo(&specifier1), Some("test".to_string()));
@@ -148,13 +155,13 @@ mod test {
     let conn = cache.0.recreate_with_version("2.0.0");
     let cache = TypeCheckCache::new(conn);
 
-    assert!(cache.has_check_hash(1));
-    assert!(!cache.has_check_hash(2));
+    assert!(cache.has_check_hash(CacheDBHash::new(1)));
+    assert!(!cache.has_check_hash(CacheDBHash::new(2)));
     assert_eq!(cache.get_tsbuildinfo(&specifier1), Some("test".to_string()));
 
     // adding when already exists should not cause issue
-    cache.add_check_hash(1);
-    assert!(cache.has_check_hash(1));
+    cache.add_check_hash(CacheDBHash::new(1));
+    assert!(cache.has_check_hash(CacheDBHash::new(1)));
     cache.set_tsbuildinfo(&specifier1, "other");
     assert_eq!(
       cache.get_tsbuildinfo(&specifier1),

@@ -210,7 +210,7 @@ class Kv {
       cursor?: string;
       reverse?: boolean;
       consistency?: Deno.KvConsistencyLevel;
-    } = {},
+    } = { __proto__: null },
   ): KvListIterator {
     if (options.limit !== undefined && options.limit <= 0) {
       throw new Error("limit must be positive");
@@ -340,7 +340,7 @@ class Kv {
     finishMessageOps.clear();
   }
 
-  watch(keys: Deno.KvKey[], options = {}) {
+  watch(keys: Deno.KvKey[], options = { __proto__: null }) {
     const raw = options.raw ?? false;
     const rid = op_kv_watch(this.#rid, keys);
     const lastEntries: (Deno.KvEntryMaybe<unknown> | undefined)[] = ArrayFrom(

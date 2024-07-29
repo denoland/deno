@@ -14,11 +14,8 @@
  * @module
  */
 
-import type {
-  BufReader,
-  ReadLineResult,
-} from "../../../tests/util/std/io/buf_reader.ts";
-import { concat } from "../../../tests/util/std/bytes/concat.ts";
+import type { BufReader, ReadLineResult } from "@std/io/buf-reader";
+import { concat } from "@std/bytes/concat";
 
 // Constants created for DRY
 const CHAR_SPACE: number = " ".charCodeAt(0);
@@ -152,7 +149,7 @@ export class TextProtoReader {
       //TODO(SmashingQuasar): Kept skipSpace to preserve behavior but it should be looked into to check if it makes sense when this is used.
 
       if (r !== null && this.skipSpace(r.line) !== 0) {
-        line = concat(line, r.line);
+        line = concat([line, r.line]);
       }
     } while (r !== null && r.more);
 

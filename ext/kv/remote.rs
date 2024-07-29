@@ -8,16 +8,22 @@ use std::sync::Arc;
 use crate::DatabaseHandler;
 use anyhow::Context;
 use async_trait::async_trait;
+use bytes::Bytes;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::futures::Stream;
 use deno_core::OpState;
 use deno_fetch::create_http_client;
 use deno_fetch::CreateHttpClientOptions;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
+use deno_tls::TlsKeys;
 use denokv_remote::MetadataEndpoint;
 use denokv_remote::Remote;
+use denokv_remote::RemoteResponse;
+use denokv_remote::RemoteTransport;
+use http_body_util::BodyExt;
 use url::Url;
 
 #[derive(Clone)]
@@ -26,7 +32,7 @@ pub struct HttpOptions {
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub proxy: Option<Proxy>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub client_cert_chain_and_key: Option<(String, String)>,
+  pub client_cert_chain_and_key: TlsKeys,
 }
 
 impl HttpOptions {
@@ -45,6 +51,22 @@ pub trait RemoteDbHandlerPermissions {
     url: &Url,
     api_name: &str,
   ) -> Result<(), AnyError>;
+}
+
+impl RemoteDbHandlerPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_env(&mut self, var: &str) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_env(self, var)
+  }
+
+  #[inline(always)]
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_net_url(self, url, api_name)
+  }
 }
 
 pub struct RemoteDbHandler<P: RemoteDbHandlerPermissions + 'static> {
@@ -85,11 +107,52 @@ impl<P: RemoteDbHandlerPermissions + 'static> denokv_remote::RemotePermissions
   }
 }
 
+#[derive(Clone)]
+pub struct FetchClient(deno_fetch::Client);
+pub struct FetchResponse(http::Response<deno_fetch::ResBody>);
+
+impl RemoteTransport for FetchClient {
+  type Response = FetchResponse;
+  async fn post(
+    &self,
+    url: Url,
+    headers: http::HeaderMap,
+    body: Bytes,
+  ) -> Result<(Url, http::StatusCode, Self::Response), anyhow::Error> {
+    let body = http_body_util::Full::new(body)
+      .map_err(|never| match never {})
+      .boxed();
+    let mut req = http::Request::new(body);
+    *req.method_mut() = http::Method::POST;
+    *req.uri_mut() = url.as_str().parse()?;
+    *req.headers_mut() = headers;
+
+    let res = self.0.clone().send(req).await?;
+    let status = res.status();
+    Ok((url, status, FetchResponse(res)))
+  }
+}
+
+impl RemoteResponse for FetchResponse {
+  async fn bytes(self) -> Result<Bytes, anyhow::Error> {
+    Ok(self.0.collect().await?.to_bytes())
+  }
+  fn stream(
+    self,
+  ) -> impl Stream<Item = Result<Bytes, anyhow::Error>> + Send + Sync {
+    self.0.into_body().into_data_stream()
+  }
+  async fn text(self) -> Result<String, anyhow::Error> {
+    let bytes = self.bytes().await?;
+    Ok(std::str::from_utf8(&bytes)?.into())
+  }
+}
+
 #[async_trait(?Send)]
 impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
   for RemoteDbHandler<P>
 {
-  type DB = Remote<PermissionChecker<P>>;
+  type DB = Remote<PermissionChecker<P>, FetchClient>;
 
   async fn open(
     &self,
@@ -134,20 +197,25 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
         unsafely_ignore_certificate_errors: options
           .unsafely_ignore_certificate_errors
           .clone(),
-        client_cert_chain_and_key: options.client_cert_chain_and_key.clone(),
+        client_cert_chain_and_key: options
+          .client_cert_chain_and_key
+          .clone()
+          .try_into()
+          .unwrap(),
         pool_max_idle_per_host: None,
         pool_idle_timeout: None,
         http1: false,
         http2: true,
       },
     )?;
+    let fetch_client = FetchClient(client);
 
     let permissions = PermissionChecker {
       state: state.clone(),
       _permissions: PhantomData,
     };
 
-    let remote = Remote::new(client, permissions, metadata_endpoint);
+    let remote = Remote::new(fetch_client, permissions, metadata_endpoint);
 
     Ok(remote)
   }

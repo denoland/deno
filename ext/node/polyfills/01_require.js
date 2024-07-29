@@ -132,7 +132,7 @@ import punycode from "node:punycode";
 import process from "node:process";
 import querystring from "node:querystring";
 import readline from "node:readline";
-import readlinePromises from "ext:deno_node/readline/promises.ts";
+import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
 import stream from "node:stream";
 import streamConsumers from "node:stream/consumers";
@@ -218,6 +218,7 @@ function setupBuiltinModules() {
     "internal/util/inspect": internalUtilInspect,
     "internal/util": internalUtil,
     net,
+    module: Module,
     os,
     "path/posix": pathPosix,
     "path/win32": pathWin32,
@@ -264,9 +265,6 @@ function setupBuiltinModules() {
 }
 setupBuiltinModules();
 
-// Map used to store CJS parsing data.
-const cjsParseCache = new SafeWeakMap();
-
 function pathDirname(filepath) {
   if (filepath == null) {
     throw new Error("Empty filepath.");
@@ -285,11 +283,10 @@ const nativeModulePolyfill = new SafeMap();
 const relativeResolveCache = ObjectCreate(null);
 let requireDepth = 0;
 let statCache = null;
-let isPreloading = false;
 let mainModule = null;
 let hasBrokenOnInspectBrk = false;
 let hasInspectBrk = false;
-// Are we running with --node-modules-dir flag?
+// Are we running with --node-modules-dir flag or byonm?
 let usesLocalNodeModulesDir = false;
 
 function stat(filename) {
@@ -478,6 +475,7 @@ function Module(id = "", parent) {
   updateChildren(parent, this, false);
   this.filename = null;
   this.loaded = false;
+  this.parent = parent;
   this.children = [];
 }
 
@@ -765,9 +763,7 @@ Module._resolveFilename = function (
 
   if (typeof options === "object" && options !== null) {
     if (ArrayIsArray(options.paths)) {
-      const isRelative = op_require_is_request_relative(
-        request,
-      );
+      const isRelative = op_require_is_request_relative(request);
 
       if (isRelative) {
         paths = options.paths;
@@ -847,6 +843,29 @@ Module._resolveFilename = function (
   const err = new Error(message);
   err.code = "MODULE_NOT_FOUND";
   err.requireStack = requireStack;
+
+  // fallback and attempt to resolve bare specifiers using
+  // the global cache when not using --node-modules-dir
+  if (
+    !usesLocalNodeModulesDir &&
+    ArrayIsArray(options?.paths) &&
+    request[0] !== "." &&
+    request[0] !== "#" &&
+    !request.startsWith("file:///") &&
+    !op_require_is_request_relative(request) &&
+    !op_require_path_is_absolute(request)
+  ) {
+    try {
+      return Module._resolveFilename(request, parent, isMain, {
+        ...options,
+        paths: undefined,
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  // throw the original error
   throw err;
 };
 
@@ -1036,7 +1055,7 @@ Module._extensions[".js"] = function (module, filename) {
 
   if (StringPrototypeEndsWith(filename, ".js")) {
     const pkg = op_require_read_closest_package_json(filename);
-    if (pkg && pkg.exists && pkg.typ === "module") {
+    if (pkg && pkg.typ === "module") {
       throw createRequireEsmError(
         filename,
         moduleParentCache.get(module)?.filename,
@@ -1082,10 +1101,12 @@ Module._extensions[".json"] = function (module, filename) {
 
 // Native extension for .node
 Module._extensions[".node"] = function (module, filename) {
-  if (filename.endsWith("fsevents.node")) {
-    throw new Error("Using fsevents module is currently not supported");
-  }
-  module.exports = op_napi_open(filename, globalThis);
+  module.exports = op_napi_open(
+    filename,
+    globalThis,
+    nodeGlobals.Buffer,
+    reportError,
+  );
 };
 
 function createRequireFromPath(filename) {
@@ -1242,6 +1263,15 @@ internals.requireImpl = {
   Module,
   nativeModuleExports,
 };
+
+/**
+ * @param {string} path
+ * @returns {SourceMap | undefined}
+ */
+export function findSourceMap(_path) {
+  // TODO(@marvinhagemeister): Stub implementation for now to unblock ava
+  return undefined;
+}
 
 export { builtinModules, createRequire, isBuiltin, Module };
 export const _cache = Module._cache;

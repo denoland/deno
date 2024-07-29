@@ -14,7 +14,6 @@ const {
   isTypedArray,
 } = core;
 import {
-  op_arraybuffer_was_detached,
   // TODO(mmastrac): use readAll
   op_read_all,
   op_readable_stream_resource_allocate,
@@ -25,13 +24,14 @@ import {
   op_readable_stream_resource_write_buf,
   op_readable_stream_resource_write_error,
   op_readable_stream_resource_write_sync,
-  op_transfer_arraybuffer,
 } from "ext:core/ops";
 const {
   ArrayBuffer,
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
+  ArrayBufferPrototypeGetDetached,
   ArrayBufferPrototypeSlice,
+  ArrayBufferPrototypeTransferToFixedLength,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
@@ -279,8 +279,7 @@ function isDetachedBuffer(O) {
   if (isSharedArrayBuffer(O)) {
     return false;
   }
-  return ArrayBufferPrototypeGetByteLength(O) === 0 &&
-    op_arraybuffer_was_detached(O);
+  return ArrayBufferPrototypeGetDetached(O);
 }
 
 /**
@@ -295,14 +294,6 @@ function canTransferArrayBuffer(O) {
   }
   // TODO(@crowlKats): 4. If SameValue(O.[[ArrayBufferDetachKey]], undefined) is false, return false.
   return true;
-}
-
-/**
- * @param {ArrayBufferLike} O
- * @returns {ArrayBufferLike}
- */
-function transferArrayBuffer(O) {
-  return op_transfer_arraybuffer(O);
 }
 
 /**
@@ -1359,7 +1350,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
       "chunk's buffer is detached and so cannot be enqueued",
     );
   }
-  const transferredBuffer = transferArrayBuffer(buffer);
+  const transferredBuffer = ArrayBufferPrototypeTransferToFixedLength(buffer);
   if (controller[_pendingPullIntos].length !== 0) {
     const firstPendingPullInto = controller[_pendingPullIntos][0];
     // deno-lint-ignore prefer-primordials
@@ -1369,7 +1360,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
       );
     }
     readableByteStreamControllerInvalidateBYOBRequest(controller);
-    firstPendingPullInto.buffer = transferArrayBuffer(
+    firstPendingPullInto.buffer = ArrayBufferPrototypeTransferToFixedLength(
       // deno-lint-ignore prefer-primordials
       firstPendingPullInto.buffer,
     );
@@ -1995,6 +1986,10 @@ function readableByteStreamControllerPullInto(
       case "Uint32Array":
         ctor = Uint32Array;
         break;
+      case "Float16Array":
+        // TODO(petamoriken): add Float16Array to primordials
+        ctor = Float16Array;
+        break;
       case "Float32Array":
         ctor = Float32Array;
         break;
@@ -2025,7 +2020,7 @@ function readableByteStreamControllerPullInto(
   assert(minimumFill % elementSize === 0);
 
   try {
-    buffer = transferArrayBuffer(buffer);
+    buffer = ArrayBufferPrototypeTransferToFixedLength(buffer);
   } catch (e) {
     readIntoRequest.errorSteps(e);
     return;
@@ -2118,8 +2113,10 @@ function readableByteStreamControllerRespond(controller, bytesWritten) {
       throw new RangeError("bytesWritten out of range");
     }
   }
-  // deno-lint-ignore prefer-primordials
-  firstDescriptor.buffer = transferArrayBuffer(firstDescriptor.buffer);
+  firstDescriptor.buffer = ArrayBufferPrototypeTransferToFixedLength(
+    // deno-lint-ignore prefer-primordials
+    firstDescriptor.buffer,
+  );
   readableByteStreamControllerRespondInternal(controller, bytesWritten);
 }
 
@@ -2336,7 +2333,7 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
       "The region specified by view is larger than byobRequest",
     );
   }
-  firstDescriptor.buffer = transferArrayBuffer(buffer);
+  firstDescriptor.buffer = ArrayBufferPrototypeTransferToFixedLength(buffer);
   readableByteStreamControllerRespondInternal(controller, byteLength);
 }
 
@@ -2480,8 +2477,10 @@ function readableByteStreamControllerConvertPullIntoDescriptor(
   // deno-lint-ignore prefer-primordials
   assert(bytesFilled <= pullIntoDescriptor.byteLength);
   assert((bytesFilled % elementSize) === 0);
-  // deno-lint-ignore prefer-primordials
-  const buffer = transferArrayBuffer(pullIntoDescriptor.buffer);
+  const buffer = ArrayBufferPrototypeTransferToFixedLength(
+    // deno-lint-ignore prefer-primordials
+    pullIntoDescriptor.buffer,
+  );
   return new pullIntoDescriptor.viewConstructor(
     buffer,
     // deno-lint-ignore prefer-primordials
@@ -4960,11 +4959,11 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
       return PromiseResolve({ value: undefined, done: true });
     };
 
-    const returnPromise = reader[_iteratorNext]
+    reader[_iteratorNext] = reader[_iteratorNext]
       ? PromisePrototypeThen(reader[_iteratorNext], returnSteps, returnSteps)
       : returnSteps();
     return PromisePrototypeThen(
-      returnPromise,
+      reader[_iteratorNext],
       () => ({ value: arg, done: true }),
     );
   },
@@ -5084,28 +5083,32 @@ function initializeCountSizeFunction(globalObject) {
   WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
 }
 
-async function* createAsyncFromSyncIterator(syncIterator) {
-  // deno-lint-ignore prefer-primordials
-  yield* syncIterator;
-}
-
 // Ref: https://tc39.es/ecma262/#sec-getiterator
-function getIterator(obj, async = false) {
-  if (async) {
-    if (obj[SymbolAsyncIterator] === undefined) {
-      if (obj[SymbolIterator] === undefined) {
-        throw new TypeError("No iterator found");
-      }
-      return createAsyncFromSyncIterator(obj[SymbolIterator]());
-    } else {
-      return obj[SymbolAsyncIterator]();
+function getAsyncOrSyncIterator(obj) {
+  let iterator;
+  if (obj[SymbolAsyncIterator] != null) {
+    iterator = obj[SymbolAsyncIterator]();
+    if (!isObject(iterator)) {
+      throw new TypeError(
+        "[Symbol.asyncIterator] returned a non-object value",
+      );
+    }
+  } else if (obj[SymbolIterator] != null) {
+    iterator = obj[SymbolIterator]();
+    if (!isObject(iterator)) {
+      throw new TypeError("[Symbol.iterator] returned a non-object value");
     }
   } else {
-    if (obj[SymbolIterator] === undefined) {
-      throw new TypeError("No iterator found");
-    }
-    return obj[SymbolIterator]();
+    throw new TypeError("No iterator found");
   }
+  if (typeof iterator.next !== "function") {
+    throw new TypeError("iterator.next is not a function");
+  }
+  return iterator;
+}
+
+function isObject(x) {
+  return (typeof x === "object" && x != null) || typeof x === "function";
 }
 
 const _resourceBacking = Symbol("[[resourceBacking]]");
@@ -5200,26 +5203,29 @@ class ReadableStream {
     );
     asyncIterable = webidl.converters.any(asyncIterable);
 
-    const iterator = getIterator(asyncIterable, true);
+    const iterator = getAsyncOrSyncIterator(asyncIterable);
 
     const stream = createReadableStream(noop, async () => {
       // deno-lint-ignore prefer-primordials
       const res = await iterator.next();
-      if (typeof res !== "object") {
+      if (!isObject(res)) {
         throw new TypeError("iterator.next value is not an object");
       }
       if (res.done) {
         readableStreamDefaultControllerClose(stream[_controller]);
       } else {
-        readableStreamDefaultControllerEnqueue(stream[_controller], res.value);
+        readableStreamDefaultControllerEnqueue(
+          stream[_controller],
+          await res.value,
+        );
       }
     }, async (reason) => {
-      if (typeof iterator.return === "undefined") {
+      if (iterator.return == null) {
         return undefined;
       } else {
         // deno-lint-ignore prefer-primordials
         const res = await iterator.return(reason);
-        if (typeof res !== "object") {
+        if (!isObject(res)) {
           throw new TypeError("iterator.return value is not an object");
         } else {
           return undefined;
@@ -5270,7 +5276,7 @@ class ReadableStream {
         "Argument 1",
       );
     } else {
-      options = {};
+      options = { __proto__: null };
     }
     if (options.mode === undefined) {
       return acquireReadableStreamDefaultReader(this);
@@ -5286,7 +5292,7 @@ class ReadableStream {
    * @param {PipeOptions=} options
    * @returns {ReadableStream<T>}
    */
-  pipeThrough(transform, options = {}) {
+  pipeThrough(transform, options = { __proto__: null }) {
     webidl.assertBranded(this, ReadableStreamPrototype);
     const prefix = "Failed to execute 'pipeThrough' on 'ReadableStream'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -5325,7 +5331,7 @@ class ReadableStream {
    * @param {PipeOptions=} options
    * @returns {Promise<void>}
    */
-  pipeTo(destination, options = {}) {
+  pipeTo(destination, options = { __proto__: null }) {
     try {
       webidl.assertBranded(this, ReadableStreamPrototype);
       const prefix = "Failed to execute 'pipeTo' on 'ReadableStream'";
@@ -5563,7 +5569,7 @@ class ReadableStreamBYOBReader {
    * @param {ReadableStreamBYOBReaderReadOptions} options
    *  @returns {Promise<ReadableStreamBYOBReadResult>}
    */
-  read(view, options = {}) {
+  read(view, options = { __proto__: null }) {
     try {
       webidl.assertBranded(this, ReadableStreamBYOBReaderPrototype);
       const prefix = "Failed to execute 'read' on 'ReadableStreamBYOBReader'";
@@ -6147,8 +6153,8 @@ class TransformStream {
    */
   constructor(
     transformer = undefined,
-    writableStrategy = {},
-    readableStrategy = {},
+    writableStrategy = { __proto__: null },
+    readableStrategy = { __proto__: null },
   ) {
     const prefix = "Failed to construct 'TransformStream'";
     if (transformer !== undefined) {

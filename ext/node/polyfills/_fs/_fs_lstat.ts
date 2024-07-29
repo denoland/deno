@@ -3,6 +3,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import {
   BigIntStats,
   CFISBIS,
@@ -56,16 +57,31 @@ export const lstatPromise = promisify(lstat) as (
 export function lstatSync(path: string | URL): Stats;
 export function lstatSync(
   path: string | URL,
-  options: { bigint: false },
+  options: { bigint: false; throwIfNoEntry?: boolean },
 ): Stats;
 export function lstatSync(
   path: string | URL,
-  options: { bigint: true },
+  options: { bigint: true; throwIfNoEntry?: boolean },
 ): BigIntStats;
 export function lstatSync(
   path: string | URL,
   options?: statOptions,
 ): Stats | BigIntStats {
-  const origin = Deno.lstatSync(path);
-  return CFISBIS(origin, options?.bigint || false);
+  try {
+    const origin = Deno.lstatSync(path);
+    return CFISBIS(origin, options?.bigint || false);
+  } catch (err) {
+    if (
+      options?.throwIfNoEntry === false &&
+      err instanceof Deno.errors.NotFound
+    ) {
+      return;
+    }
+
+    if (err instanceof Error) {
+      throw denoErrorToNodeError(err, { syscall: "stat" });
+    } else {
+      throw err;
+    }
+  }
 }

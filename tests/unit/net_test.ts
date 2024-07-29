@@ -386,6 +386,70 @@ Deno.test(
 );
 
 Deno.test(
+  { permissions: { net: true } },
+  async function netUdpSendReceiveTestSizeLimits() {
+    // Ensure payload being sent is within UDP limit, which seems to be 65507
+    // bytes
+    const alice = Deno.listenDatagram({
+      port: listenPort,
+      transport: "udp",
+      hostname: "127.0.0.1",
+    });
+    // wrap this in a try/catch so other tests can continue if we fail
+    // if we don't close here then listening on future tests fails
+    try {
+      assert(alice.addr.transport === "udp");
+      assertEquals(alice.addr.port, listenPort);
+      assertEquals(alice.addr.hostname, "127.0.0.1");
+    } catch (err) {
+      alice.close();
+      throw err;
+    }
+
+    const bob = Deno.listenDatagram({
+      port: listenPort2,
+      transport: "udp",
+      hostname: "127.0.0.1",
+    });
+    try {
+      assert(bob.addr.transport === "udp");
+      assertEquals(bob.addr.port, listenPort2);
+      assertEquals(bob.addr.hostname, "127.0.0.1");
+    } catch (err) {
+      bob.close();
+      throw err;
+    }
+
+    const sizes = [0, 1, 2, 256, 1024, 4096, 16384, 65506, 65507, 65508, 65536];
+    const rx = /.+ \(os error \d+\)/;
+
+    for (const size of sizes) {
+      const tosend = new Uint8Array(size);
+      let byteLength = 0;
+      try {
+        byteLength = await alice.send(tosend, bob.addr);
+      } catch (err) {
+        // Note: we have to do the test this way as different OS's have
+        // different UDP size limits enabled, so we will just ensure if
+        // an error is thrown it is the one we are expecting.
+        assert(err.message.match(rx));
+        alice.close();
+        bob.close();
+        return;
+      }
+      assertEquals(byteLength, size);
+      const [recvd, remote] = await bob.receive();
+      assert(remote.transport === "udp");
+      assertEquals(remote.port, listenPort);
+      assertEquals(recvd.length, size);
+    }
+
+    alice.close();
+    bob.close();
+  },
+);
+
+Deno.test(
   { permissions: { net: true }, ignore: true },
   async function netUdpSendReceiveBroadcast() {
     // Must bind sender to an address that can send to the broadcast address on MacOS.
@@ -1205,6 +1269,7 @@ Deno.test({
         conn.close();
         listener1Recv = true;
         p1 = undefined;
+        listener1.close();
       }).catch(() => {});
     }
     if (!p2) {
@@ -1212,14 +1277,13 @@ Deno.test({
         conn.close();
         listener2Recv = true;
         p2 = undefined;
+        listener2.close();
       }).catch(() => {});
     }
     const conn = await Deno.connect({ port });
     conn.close();
     await Promise.race([p1, p2]);
   }
-  listener1.close();
-  listener2.close();
 });
 
 Deno.test({

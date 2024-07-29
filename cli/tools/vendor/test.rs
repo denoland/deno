@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -112,11 +113,17 @@ impl TestLoader {
 
 impl Loader for TestLoader {
   fn load(
-    &mut self,
+    &self,
     specifier: &ModuleSpecifier,
     _options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
-    let specifier = self.redirects.get(specifier).unwrap_or(specifier);
+    if let Some(redirect) = self.redirects.get(specifier) {
+      return Box::pin(futures::future::ready(Ok(Some(
+        LoadResponse::Redirect {
+          specifier: redirect.clone(),
+        },
+      ))));
+    }
     let result = self.files.get(specifier).map(|result| match result {
       Ok(result) => Ok(LoadResponse::Module {
         specifier: specifier.clone(),
@@ -144,10 +151,6 @@ struct TestVendorEnvironment {
 }
 
 impl VendorEnvironment for TestVendorEnvironment {
-  fn cwd(&self) -> Result<PathBuf, AnyError> {
-    Ok(make_path("/"))
-  }
-
   fn create_dir_all(&self, dir_path: &Path) -> Result<(), AnyError> {
     let mut directories = self.directories.borrow_mut();
     for path in dir_path.ancestors() {
@@ -169,10 +172,6 @@ impl VendorEnvironment for TestVendorEnvironment {
     );
     Ok(())
   }
-
-  fn path_exists(&self, path: &Path) -> bool {
-    self.files.borrow().contains_key(&path.to_path_buf())
-  }
 }
 
 pub struct VendorOutput {
@@ -184,7 +183,7 @@ pub struct VendorOutput {
 pub struct VendorTestBuilder {
   entry_points: Vec<ModuleSpecifier>,
   loader: TestLoader,
-  original_import_map: Option<ImportMap>,
+  maybe_original_import_map: Option<ImportMap>,
   environment: TestVendorEnvironment,
   jsx_import_source_config: Option<JsxImportSourceConfig>,
 }
@@ -209,7 +208,7 @@ impl VendorTestBuilder {
     &mut self,
     import_map: ImportMap,
   ) -> &mut Self {
-    self.original_import_map = Some(import_map);
+    self.maybe_original_import_map = Some(import_map);
     self
   }
 
@@ -235,8 +234,9 @@ impl VendorTestBuilder {
     let loader = self.loader.clone();
     let parsed_source_cache = ParsedSourceCache::default();
     let resolver = Arc::new(build_resolver(
+      output_dir.parent().unwrap(),
       self.jsx_import_source_config.clone(),
-      self.original_import_map.clone(),
+      self.maybe_original_import_map.clone(),
     ));
     super::build::build(super::build::BuildInput {
       entry_points,
@@ -244,13 +244,12 @@ impl VendorTestBuilder {
         let resolver = resolver.clone();
         move |entry_points| {
           async move {
-            let analyzer = DefaultModuleAnalyzer::default();
             Ok(
               build_test_graph(
                 entry_points,
                 loader,
                 resolver.as_graph_resolver(),
-                &analyzer,
+                &DefaultModuleAnalyzer,
               )
               .await,
             )
@@ -260,8 +259,7 @@ impl VendorTestBuilder {
       },
       parsed_source_cache: &parsed_source_cache,
       output_dir: &output_dir,
-      maybe_original_import_map: self.original_import_map.as_ref(),
-      maybe_lockfile: None,
+      maybe_original_import_map: self.maybe_original_import_map.as_ref(),
       maybe_jsx_import_source: self.jsx_import_source_config.as_ref(),
       resolver: resolver.as_graph_resolver(),
       environment: &self.environment,
@@ -290,16 +288,21 @@ impl VendorTestBuilder {
 }
 
 fn build_resolver(
+  root_dir: &Path,
   maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
-  original_import_map: Option<ImportMap>,
+  maybe_original_import_map: Option<ImportMap>,
 ) -> CliGraphResolver {
   CliGraphResolver::new(CliGraphResolverOptions {
     node_resolver: None,
     npm_resolver: None,
     sloppy_imports_resolver: None,
-    package_json_deps_provider: Default::default(),
+    workspace_resolver: Arc::new(WorkspaceResolver::new_raw(
+      Arc::new(ModuleSpecifier::from_directory_path(root_dir).unwrap()),
+      maybe_original_import_map,
+      Vec::new(),
+      deno_config::workspace::PackageJsonDepResolution::Enabled,
+    )),
     maybe_jsx_import_source_config,
-    maybe_import_map: original_import_map.map(Arc::new),
     maybe_vendor_dir: None,
     bare_node_builtins_enabled: false,
   })
@@ -307,7 +310,7 @@ fn build_resolver(
 
 async fn build_test_graph(
   roots: Vec<ModuleSpecifier>,
-  mut loader: TestLoader,
+  loader: TestLoader,
   resolver: &dyn deno_graph::source::Resolver,
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
@@ -315,10 +318,10 @@ async fn build_test_graph(
   graph
     .build(
       roots,
-      &mut loader,
+      &loader,
       deno_graph::BuildOptions {
         resolver: Some(resolver),
-        module_analyzer: Some(analyzer),
+        module_analyzer: analyzer,
         ..Default::default()
       },
     )

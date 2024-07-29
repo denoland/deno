@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::io;
 use std::io::SeekFrom;
@@ -28,11 +27,54 @@ use rand::Rng;
 use serde::Serialize;
 
 use crate::check_unstable;
+use crate::interface::AccessCheckFn;
 use crate::interface::FileSystemRc;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
 use crate::FsPermissions;
 use crate::OpenOptions;
+
+fn sync_permission_check<'a, P: FsPermissions + 'static>(
+  permissions: &'a mut P,
+  api_name: &'static str,
+) -> impl AccessCheckFn + 'a {
+  move |resolved, path, options| {
+    permissions.check(resolved, options, path, api_name)
+  }
+}
+
+fn async_permission_check<P: FsPermissions + 'static>(
+  state: Rc<RefCell<OpState>>,
+  api_name: &'static str,
+) -> impl AccessCheckFn {
+  move |resolved, path, options| {
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<P>();
+    permissions.check(resolved, options, path, api_name)
+  }
+}
+
+fn map_permission_error(
+  operation: &'static str,
+  error: FsError,
+  path: &Path,
+) -> AnyError {
+  match error {
+    FsError::PermissionDenied(err) => {
+      let path = format!("{path:?}");
+      let (path, truncated) = if path.len() > 1024 {
+        (&path[0..1024], "...(truncated)")
+      } else {
+        (path.as_str(), "")
+      };
+      custom_error("PermissionDenied", format!("Requires {err} access to {path}{truncated}, run again with the --allow-{err} flag"))
+    }
+    err => Err::<(), _>(err)
+      .context_path(operation, path)
+      .err()
+      .unwrap(),
+  }
+}
 
 #[op2]
 #[string]
@@ -89,12 +131,14 @@ where
   let path = PathBuf::from(path);
 
   let options = options.unwrap_or_else(OpenOptions::read);
-  let permissions = state.borrow_mut::<P>();
-  permissions.check(&options, &path, "Deno.openSync()")?;
 
-  let fs = state.borrow::<FileSystemRc>();
-  let file = fs.open_sync(&path, options).context_path("open", &path)?;
-
+  let fs = state.borrow::<FileSystemRc>().clone();
+  let mut access_check =
+    sync_permission_check::<P>(state.borrow_mut(), "Deno.openSync()");
+  let file = fs
+    .open_sync(&path, options, Some(&mut access_check))
+    .map_err(|error| map_permission_error("open", error, &path))?;
+  drop(access_check);
   let rid = state
     .resource_table
     .add(FileResource::new(file, "fsFile".to_string()));
@@ -114,16 +158,13 @@ where
   let path = PathBuf::from(path);
 
   let options = options.unwrap_or_else(OpenOptions::read);
-  let fs = {
-    let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<P>();
-    permissions.check(&options, &path, "Deno.open()")?;
-    state.borrow::<FileSystemRc>().clone()
-  };
+  let mut access_check =
+    async_permission_check::<P>(state.clone(), "Deno.open()");
+  let fs = state.borrow().borrow::<FileSystemRc>().clone();
   let file = fs
-    .open_async(path.clone(), options)
+    .open_async(path.clone(), options, Some(&mut access_check))
     .await
-    .context_path("open", &path)?;
+    .map_err(|error| map_permission_error("open", error, &path))?;
 
   let rid = state
     .borrow_mut()
@@ -961,11 +1002,10 @@ where
   };
 
   let mut rng = thread_rng();
-
   const MAX_TRIES: u32 = 10;
   for _ in 0..MAX_TRIES {
     let path = tmp_name(&mut rng, &dir, prefix.as_deref(), suffix.as_deref())?;
-    match fs.open_sync(&path, open_opts) {
+    match fs.open_sync(&path, open_opts, None) {
       Ok(_) => return path_into_string(path.into_os_string()),
       Err(FsError::Io(ref e)) if e.kind() == io::ErrorKind::AlreadyExists => {
         continue;
@@ -1007,7 +1047,7 @@ where
   const MAX_TRIES: u32 = 10;
   for _ in 0..MAX_TRIES {
     let path = tmp_name(&mut rng, &dir, prefix.as_deref(), suffix.as_deref())?;
-    match fs.clone().open_async(path.clone(), open_opts).await {
+    match fs.clone().open_async(path.clone(), open_opts, None).await {
       Ok(_) => return path_into_string(path.into_os_string()),
       Err(FsError::Io(ref e)) if e.kind() == io::ErrorKind::AlreadyExists => {
         continue;
@@ -1150,14 +1190,13 @@ where
 {
   let path = PathBuf::from(path);
 
-  let permissions = state.borrow_mut::<P>();
   let options = OpenOptions::write(create, append, create_new, mode);
-  permissions.check(&options, &path, "Deno.writeFileSync()")?;
+  let fs = state.borrow::<FileSystemRc>().clone();
+  let mut access_check =
+    sync_permission_check::<P>(state.borrow_mut(), "Deno.writeFileSync()");
 
-  let fs = state.borrow::<FileSystemRc>();
-
-  fs.write_file_sync(&path, options, &data)
-    .context_path("writefile", &path)?;
+  fs.write_file_sync(&path, options, Some(&mut access_check), &data)
+    .map_err(|error| map_permission_error("writefile", error, &path))?;
 
   Ok(())
 }
@@ -1181,16 +1220,21 @@ where
 
   let options = OpenOptions::write(create, append, create_new, mode);
 
+  let mut access_check =
+    async_permission_check::<P>(state.clone(), "Deno.writeFile()");
   let (fs, cancel_handle) = {
-    let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<P>();
-    permissions.check(&options, &path, "Deno.writeFile()")?;
+    let state = state.borrow_mut();
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
     (state.borrow::<FileSystemRc>().clone(), cancel_handle)
   };
 
-  let fut = fs.write_file_async(path.clone(), options, data.to_vec());
+  let fut = fs.write_file_async(
+    path.clone(),
+    options,
+    Some(&mut access_check),
+    data.to_vec(),
+  );
 
   if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
@@ -1201,9 +1245,11 @@ where
       }
     };
 
-    res?.context_path("writefile", &path)?;
+    res?.map_err(|error| map_permission_error("writefile", error, &path))?;
   } else {
-    fut.await.context_path("writefile", &path)?;
+    fut
+      .await
+      .map_err(|error| map_permission_error("writefile", error, &path))?;
   }
 
   Ok(())
@@ -1220,11 +1266,12 @@ where
 {
   let path = PathBuf::from(path);
 
-  let permissions = state.borrow_mut::<P>();
-  permissions.check_read(&path, "Deno.readFileSync()")?;
-
-  let fs = state.borrow::<FileSystemRc>();
-  let buf = fs.read_file_sync(&path).context_path("readfile", &path)?;
+  let fs = state.borrow::<FileSystemRc>().clone();
+  let mut access_check =
+    sync_permission_check::<P>(state.borrow_mut(), "Deno.readFileSync()");
+  let buf = fs
+    .read_file_sync(&path, Some(&mut access_check))
+    .map_err(|error| map_permission_error("readfile", error, &path))?;
 
   Ok(buf.into())
 }
@@ -1241,16 +1288,16 @@ where
 {
   let path = PathBuf::from(path);
 
+  let mut access_check =
+    async_permission_check::<P>(state.clone(), "Deno.readFile()");
   let (fs, cancel_handle) = {
-    let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<P>();
-    permissions.check_read(&path, "Deno.readFile()")?;
+    let state = state.borrow();
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
     (state.borrow::<FileSystemRc>().clone(), cancel_handle)
   };
 
-  let fut = fs.read_file_async(path.clone());
+  let fut = fs.read_file_async(path.clone(), Some(&mut access_check));
 
   let buf = if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
@@ -1261,9 +1308,11 @@ where
       }
     };
 
-    res?.context_path("readfile", &path)?
+    res?.map_err(|error| map_permission_error("readfile", error, &path))?
   } else {
-    fut.await.context_path("readfile", &path)?
+    fut
+      .await
+      .map_err(|error| map_permission_error("readfile", error, &path))?
   };
 
   Ok(buf.into())
@@ -1280,13 +1329,14 @@ where
 {
   let path = PathBuf::from(path);
 
-  let permissions = state.borrow_mut::<P>();
-  permissions.check_read(&path, "Deno.readFileSync()")?;
+  let fs = state.borrow::<FileSystemRc>().clone();
+  let mut access_check =
+    sync_permission_check::<P>(state.borrow_mut(), "Deno.readFileSync()");
+  let str = fs
+    .read_text_file_lossy_sync(&path, Some(&mut access_check))
+    .map_err(|error| map_permission_error("readfile", error, &path))?;
 
-  let fs = state.borrow::<FileSystemRc>();
-  let buf = fs.read_file_sync(&path).context_path("readfile", &path)?;
-
-  Ok(string_from_utf8_lossy(buf))
+  Ok(str)
 }
 
 #[op2(async)]
@@ -1301,18 +1351,19 @@ where
 {
   let path = PathBuf::from(path);
 
+  let mut access_check =
+    async_permission_check::<P>(state.clone(), "Deno.readFile()");
   let (fs, cancel_handle) = {
-    let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<P>();
-    permissions.check_read(&path, "Deno.readFile()")?;
+    let state = state.borrow_mut();
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
     (state.borrow::<FileSystemRc>().clone(), cancel_handle)
   };
 
-  let fut = fs.read_file_async(path.clone());
+  let fut =
+    fs.read_text_file_lossy_async(path.clone(), Some(&mut access_check));
 
-  let buf = if let Some(cancel_handle) = cancel_handle {
+  let str = if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
 
     if let Some(cancel_rid) = cancel_rid {
@@ -1321,23 +1372,14 @@ where
       }
     };
 
-    res?.context_path("readfile", &path)?
+    res?.map_err(|error| map_permission_error("readfile", error, &path))?
   } else {
-    fut.await.context_path("readfile", &path)?
+    fut
+      .await
+      .map_err(|error| map_permission_error("readfile", error, &path))?
   };
 
-  Ok(string_from_utf8_lossy(buf))
-}
-
-// Like String::from_utf8_lossy but operates on owned values
-fn string_from_utf8_lossy(buf: Vec<u8>) -> String {
-  match String::from_utf8_lossy(&buf) {
-    // buf contained non-utf8 chars than have been patched
-    Cow::Owned(s) => s,
-    // SAFETY: if Borrowed then the buf only contains utf8 chars,
-    // we do this instead of .into_owned() to avoid copying the input buf
-    Cow::Borrowed(_) => unsafe { String::from_utf8_unchecked(buf) },
-  }
+  Ok(str)
 }
 
 fn to_seek_from(offset: i64, whence: i32) -> Result<SeekFrom, AnyError> {
@@ -1390,33 +1432,11 @@ pub fn op_fs_fdatasync_sync(
   Ok(())
 }
 
-#[op2(fast)]
-pub fn op_fs_fdatasync_sync_unstable(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  check_unstable(state, "Deno.FsFile.syncDataSync");
-  let file = FileResource::get_file(state, rid)?;
-  file.datasync_sync()?;
-  Ok(())
-}
-
 #[op2(async)]
 pub async fn op_fs_fdatasync_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
-  let file = FileResource::get_file(&state.borrow(), rid)?;
-  file.datasync_async().await?;
-  Ok(())
-}
-
-#[op2(async)]
-pub async fn op_fs_fdatasync_async_unstable(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  check_unstable(&state.borrow(), "Deno.FsFile.syncData");
   let file = FileResource::get_file(&state.borrow(), rid)?;
   file.datasync_async().await?;
   Ok(())
@@ -1432,33 +1452,11 @@ pub fn op_fs_fsync_sync(
   Ok(())
 }
 
-#[op2(fast)]
-pub fn op_fs_fsync_sync_unstable(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  check_unstable(state, "Deno.FsFile.syncSync");
-  let file = FileResource::get_file(state, rid)?;
-  file.sync_sync()?;
-  Ok(())
-}
-
 #[op2(async)]
 pub async fn op_fs_fsync_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
-  let file = FileResource::get_file(&state.borrow(), rid)?;
-  file.sync_async().await?;
-  Ok(())
-}
-
-#[op2(async)]
-pub async fn op_fs_fsync_async_unstable(
-  state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  check_unstable(&state.borrow(), "Deno.FsFile.sync");
   let file = FileResource::get_file(&state.borrow(), rid)?;
   file.sync_async().await?;
   Ok(())
@@ -1489,7 +1487,7 @@ pub async fn op_fs_file_stat_async(
 }
 
 #[op2(fast)]
-pub fn op_fs_flock_sync(
+pub fn op_fs_flock_sync_unstable(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   exclusive: bool,
@@ -1501,7 +1499,7 @@ pub fn op_fs_flock_sync(
 }
 
 #[op2(async)]
-pub async fn op_fs_flock_async(
+pub async fn op_fs_flock_async_unstable(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   exclusive: bool,
@@ -1513,7 +1511,7 @@ pub async fn op_fs_flock_async(
 }
 
 #[op2(fast)]
-pub fn op_fs_funlock_sync(
+pub fn op_fs_funlock_sync_unstable(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
@@ -1524,11 +1522,53 @@ pub fn op_fs_funlock_sync(
 }
 
 #[op2(async)]
-pub async fn op_fs_funlock_async(
+pub async fn op_fs_funlock_async_unstable(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
   check_unstable(&state.borrow(), "Deno.funlock");
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  file.unlock_async().await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_fs_flock_sync(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  exclusive: bool,
+) -> Result<(), AnyError> {
+  let file = FileResource::get_file(state, rid)?;
+  file.lock_sync(exclusive)?;
+  Ok(())
+}
+
+#[op2(async)]
+pub async fn op_fs_flock_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  exclusive: bool,
+) -> Result<(), AnyError> {
+  let file = FileResource::get_file(&state.borrow(), rid)?;
+  file.lock_async(exclusive).await?;
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_fs_funlock_sync(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<(), AnyError> {
+  let file = FileResource::get_file(state, rid)?;
+  file.unlock_sync()?;
+  Ok(())
+}
+
+#[op2(async)]
+pub async fn op_fs_funlock_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<(), AnyError> {
   let file = FileResource::get_file(&state.borrow(), rid)?;
   file.unlock_async().await?;
   Ok(())

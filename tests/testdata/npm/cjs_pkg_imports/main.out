@@ -1,3 +1,3 @@
-Download http://localhost:4545/npm/registry/@denotest/cjs-pkg-imports
-Download http://localhost:4545/npm/registry/@denotest/cjs-pkg-imports/1.0.0.tgz
+Download http://localhost:4260/@denotest/cjs-pkg-imports
+Download http://localhost:4260/@denotest/cjs-pkg-imports/1.0.0.tgz
 { crypto: Crypto { subtle: SubtleCrypto {} }, number: 5 }

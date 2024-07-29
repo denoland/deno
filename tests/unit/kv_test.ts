@@ -7,7 +7,7 @@ import {
   assertRejects,
   assertThrows,
 } from "./test_util.ts";
-import { assertType, IsExact } from "@std/testing/types.ts";
+import { assertType, IsExact } from "@std/testing/types";
 
 const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 
@@ -472,7 +472,7 @@ dbTest("atomic mutation type=sum wrong type in mutation", async (db) => {
         .commit();
     },
     TypeError,
-    "Failed to perform 'sum' mutation on a non-U64 operand",
+    "Cannot sum KvU64 with Number",
   );
 });
 

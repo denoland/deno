@@ -7,10 +7,10 @@ use crate::args::UpgradeFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
 use crate::standalone::binary::unpack_into_dir;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
-use crate::util::time;
 use crate::version;
 
 use async_trait::async_trait;
@@ -60,7 +60,7 @@ impl RealUpdateCheckerEnvironment {
     Self {
       cache_file_path,
       // cache the current time
-      current_time: time::utc_now(),
+      current_time: chrono::Utc::now(),
     }
   }
 }
@@ -102,17 +102,17 @@ trait VersionProvider: Clone {
 
 #[derive(Clone)]
 struct RealVersionProvider {
-  http_client: Arc<HttpClient>,
+  http_client_provider: Arc<HttpClientProvider>,
   check_kind: UpgradeCheckKind,
 }
 
 impl RealVersionProvider {
   pub fn new(
-    http_client: Arc<HttpClient>,
+    http_client_provider: Arc<HttpClientProvider>,
     check_kind: UpgradeCheckKind,
   ) -> Self {
     Self {
-      http_client,
+      http_client_provider,
       check_kind,
     }
   }
@@ -125,8 +125,12 @@ impl VersionProvider for RealVersionProvider {
   }
 
   async fn latest_version(&self) -> Result<String, AnyError> {
-    get_latest_version(&self.http_client, self.release_kind(), self.check_kind)
-      .await
+    get_latest_version(
+      &self.http_client_provider.get_or_create()?,
+      self.release_kind(),
+      self.check_kind,
+    )
+    .await
   }
 
   fn current_version(&self) -> Cow<str> {
@@ -242,7 +246,7 @@ pub fn upgrade_check_enabled() -> bool {
 }
 
 pub fn check_for_upgrades(
-  http_client: Arc<HttpClient>,
+  http_client_provider: Arc<HttpClientProvider>,
   cache_file_path: PathBuf,
 ) {
   if !upgrade_check_enabled() {
@@ -251,7 +255,7 @@ pub fn check_for_upgrades(
 
   let env = RealUpdateCheckerEnvironment::new(cache_file_path);
   let version_provider =
-    RealVersionProvider::new(http_client, UpgradeCheckKind::Execution);
+    RealVersionProvider::new(http_client_provider, UpgradeCheckKind::Execution);
   let update_checker = UpdateChecker::new(env, version_provider);
 
   if update_checker.should_check_for_new_version() {
@@ -274,23 +278,17 @@ pub fn check_for_upgrades(
   if let Some(upgrade_version) = update_checker.should_prompt() {
     if log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal() {
       if version::is_canary() {
-        eprint!(
-          "{} ",
-          colors::green("A new canary release of Deno is available.")
-        );
-        eprintln!(
-          "{}",
+        log::info!(
+          "{} {}",
+          colors::green("A new canary release of Deno is available."),
           colors::italic_gray("Run `deno upgrade --canary` to install it.")
         );
       } else {
-        eprint!(
-          "{} {} → {} ",
+        log::info!(
+          "{} {} → {} {}",
           colors::green("A new release of Deno is available:"),
           colors::cyan(version::deno()),
-          colors::cyan(&upgrade_version)
-        );
-        eprintln!(
-          "{}",
+          colors::cyan(&upgrade_version),
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
       }
@@ -307,14 +305,14 @@ pub struct LspVersionUpgradeInfo {
 }
 
 pub async fn check_for_upgrades_for_lsp(
-  http_client: Arc<HttpClient>,
+  http_client_provider: Arc<HttpClientProvider>,
 ) -> Result<Option<LspVersionUpgradeInfo>, AnyError> {
   if !upgrade_check_enabled() {
     return Ok(None);
   }
 
   let version_provider =
-    RealVersionProvider::new(http_client, UpgradeCheckKind::Lsp);
+    RealVersionProvider::new(http_client_provider, UpgradeCheckKind::Lsp);
   check_for_upgrades_for_lsp_with_provider(&version_provider).await
 }
 
@@ -373,15 +371,20 @@ async fn fetch_and_store_latest_version<
 }
 
 pub async fn upgrade(
-  flags: Flags,
+  flags: Arc<Flags>,
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let client = factory.http_client();
+  let factory = CliFactory::from_flags(flags);
+  let client = factory.http_client_provider().get_or_create()?;
   let current_exe_path = std::env::current_exe()?;
-  let full_path_output_flag = upgrade_flags
-    .output
-    .map(|output| factory.cli_options().initial_cwd().join(output));
+  let full_path_output_flag = match &upgrade_flags.output {
+    Some(output) => Some(
+      std::env::current_dir()
+        .context("failed getting cwd")?
+        .join(output),
+    ),
+    None => None,
+  };
   let output_exe_path =
     full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
 
@@ -452,7 +455,7 @@ pub async fn upgrade(
       };
 
       let latest_version =
-        get_latest_version(client, release_kind, UpgradeCheckKind::Execution)
+        get_latest_version(&client, release_kind, UpgradeCheckKind::Execution)
           .await?;
 
       let current_is_most_recent = if upgrade_flags.canary {
@@ -498,7 +501,7 @@ pub async fn upgrade(
     )
   };
 
-  let archive_data = download_package(client, &download_url)
+  let archive_data = download_package(&client, &download_url)
     .await
     .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
 
@@ -573,7 +576,7 @@ async fn get_latest_version(
   check_kind: UpgradeCheckKind,
 ) -> Result<String, AnyError> {
   let url = get_url(release_kind, env!("TARGET"), check_kind);
-  let text = client.download_text(url).await?;
+  let text = client.download_text(url.parse()?).await?;
   Ok(normalize_version_from_server(release_kind, &text))
 }
 
@@ -626,7 +629,7 @@ async fn download_package(
     // text above which will stay alive after the progress bars are complete
     let progress = progress_bar.update("");
     client
-      .download_with_progress(download_url, &progress)
+      .download_with_progress(download_url.parse()?, None, &progress)
       .await?
   };
   match maybe_bytes {
@@ -791,7 +794,7 @@ mod test {
         current_version: Default::default(),
         is_canary: Default::default(),
         latest_version: Rc::new(RefCell::new(Ok("".to_string()))),
-        time: Rc::new(RefCell::new(crate::util::time::utc_now())),
+        time: Rc::new(RefCell::new(chrono::Utc::now())),
       }
     }
 

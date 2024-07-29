@@ -9,26 +9,33 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::DenoPkgJsonFsAdapter;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::NpmResolver;
+use deno_runtime::deno_node::NodeRequireResolver;
+use deno_runtime::deno_node::NpmProcessStateProvider;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::package::PackageReq;
+use node_resolver::errors::PackageFolderResolveError;
+use node_resolver::errors::PackageFolderResolveIoError;
+use node_resolver::errors::PackageJsonLoadError;
+use node_resolver::errors::PackageNotFoundError;
+use node_resolver::load_pkg_json;
+use node_resolver::NpmResolver;
 
-use crate::args::package_json::get_local_package_json_version_reqs;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
-use crate::util::path::specifier_to_file_path;
+use deno_runtime::fs_util::specifier_to_file_path;
 
-use super::common::types_package_name;
 use super::CliNpmResolver;
 use super::InnerCliNpmResolverRef;
 
 pub struct CliNpmResolverByonmCreateOptions {
   pub fs: Arc<dyn FileSystem>,
-  pub root_node_modules_dir: PathBuf,
+  // todo(dsherret): investigate removing this
+  pub root_node_modules_dir: Option<PathBuf>,
 }
 
 pub fn create_byonm_npm_resolver(
@@ -43,7 +50,16 @@ pub fn create_byonm_npm_resolver(
 #[derive(Debug)]
 pub struct ByonmCliNpmResolver {
   fs: Arc<dyn FileSystem>,
-  root_node_modules_dir: PathBuf,
+  root_node_modules_dir: Option<PathBuf>,
+}
+
+impl ByonmCliNpmResolver {
+  fn load_pkg_json(
+    &self,
+    path: &Path,
+  ) -> Result<Option<Arc<PackageJson>>, PackageJsonLoadError> {
+    load_pkg_json(&DenoPkgJsonFsAdapter(self.fs.as_ref()), path)
+  }
 }
 
 impl ByonmCliNpmResolver {
@@ -52,14 +68,12 @@ impl ByonmCliNpmResolver {
     &self,
     dep_name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Option<PackageJson> {
+  ) -> Option<Arc<PackageJson>> {
     let referrer_path = referrer.to_file_path().ok()?;
     let mut current_folder = referrer_path.parent()?;
     loop {
       let pkg_json_path = current_folder.join("package.json");
-      if let Ok(pkg_json) =
-        PackageJson::load_skip_read_permission(self.fs.as_ref(), pkg_json_path)
-      {
+      if let Ok(Some(pkg_json)) = self.load_pkg_json(&pkg_json_path) {
         if let Some(deps) = &pkg_json.dependencies {
           if deps.contains_key(dep_name) {
             return Some(pkg_json);
@@ -79,74 +93,126 @@ impl ByonmCliNpmResolver {
       }
     }
   }
+
+  fn resolve_pkg_json_and_alias_for_req(
+    &self,
+    req: &PackageReq,
+    referrer: &ModuleSpecifier,
+  ) -> Result<(Arc<PackageJson>, String), AnyError> {
+    fn resolve_alias_from_pkg_json(
+      req: &PackageReq,
+      pkg_json: &PackageJson,
+    ) -> Option<String> {
+      let deps = pkg_json.resolve_local_package_json_deps();
+      for (key, value) in deps {
+        if let Ok(value) = value {
+          match value {
+            PackageJsonDepValue::Req(dep_req) => {
+              if dep_req.name == req.name
+                && dep_req.version_req.intersects(&req.version_req)
+              {
+                return Some(key);
+              }
+            }
+            PackageJsonDepValue::Workspace(_workspace) => {
+              if key == req.name && req.version_req.tag() == Some("workspace") {
+                return Some(key);
+              }
+            }
+          }
+        }
+      }
+      None
+    }
+
+    // attempt to resolve the npm specifier from the referrer's package.json,
+    if let Ok(file_path) = specifier_to_file_path(referrer) {
+      let mut current_path = file_path.as_path();
+      while let Some(dir_path) = current_path.parent() {
+        let package_json_path = dir_path.join("package.json");
+        if let Some(pkg_json) = self.load_pkg_json(&package_json_path)? {
+          if let Some(alias) =
+            resolve_alias_from_pkg_json(req, pkg_json.as_ref())
+          {
+            return Ok((pkg_json, alias));
+          }
+        }
+        current_path = dir_path;
+      }
+    }
+
+    // otherwise, fall fallback to the project's package.json
+    if let Some(root_node_modules_dir) = &self.root_node_modules_dir {
+      let root_pkg_json_path =
+        root_node_modules_dir.parent().unwrap().join("package.json");
+      if let Some(pkg_json) = self.load_pkg_json(&root_pkg_json_path)? {
+        if let Some(alias) = resolve_alias_from_pkg_json(req, pkg_json.as_ref())
+        {
+          return Ok((pkg_json, alias));
+        }
+      }
+    }
+
+    bail!(
+      concat!(
+        "Could not find a matching package for 'npm:{}' in a package.json file. ",
+        "You must specify this as a package.json dependency when the ",
+        "node_modules folder is not managed by Deno.",
+      ),
+      req,
+    );
+  }
 }
 
 impl NpmResolver for ByonmCliNpmResolver {
-  fn get_npm_process_state(&self) -> String {
-    serde_json::to_string(&NpmProcessState {
-      kind: NpmProcessStateKind::Byonm,
-      local_node_modules_path: Some(
-        self.root_node_modules_dir.to_string_lossy().to_string(),
-      ),
-    })
-    .unwrap()
-  }
-
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    mode: NodeResolutionMode,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, PackageFolderResolveError> {
     fn inner(
       fs: &dyn FileSystem,
       name: &str,
       referrer: &ModuleSpecifier,
-      mode: NodeResolutionMode,
-    ) -> Result<PathBuf, AnyError> {
-      let referrer_file = specifier_to_file_path(referrer)?;
-      let types_pkg_name = if mode.is_types() && !name.starts_with("@types/") {
-        Some(types_package_name(name))
-      } else {
-        None
-      };
-      let mut current_folder = referrer_file.parent().unwrap();
-      loop {
-        let node_modules_folder = if current_folder.ends_with("node_modules") {
-          Cow::Borrowed(current_folder)
-        } else {
-          Cow::Owned(current_folder.join("node_modules"))
-        };
+    ) -> Result<PathBuf, PackageFolderResolveError> {
+      let maybe_referrer_file = specifier_to_file_path(referrer).ok();
+      let maybe_start_folder =
+        maybe_referrer_file.as_ref().and_then(|f| f.parent());
+      if let Some(start_folder) = maybe_start_folder {
+        for current_folder in start_folder.ancestors() {
+          let node_modules_folder = if current_folder.ends_with("node_modules")
+          {
+            Cow::Borrowed(current_folder)
+          } else {
+            Cow::Owned(current_folder.join("node_modules"))
+          };
 
-        // attempt to resolve the types package first, then fallback to the regular package
-        if let Some(types_pkg_name) = &types_pkg_name {
-          let sub_dir = join_package_name(&node_modules_folder, types_pkg_name);
+          let sub_dir = join_package_name(&node_modules_folder, name);
           if fs.is_dir_sync(&sub_dir) {
             return Ok(sub_dir);
           }
         }
-
-        let sub_dir = join_package_name(&node_modules_folder, name);
-        if fs.is_dir_sync(&sub_dir) {
-          return Ok(sub_dir);
-        }
-
-        if let Some(parent) = current_folder.parent() {
-          current_folder = parent;
-        } else {
-          break;
-        }
       }
 
-      bail!(
-        "could not find package '{}' from referrer '{}'.",
-        name,
-        referrer
-      );
+      Err(
+        PackageNotFoundError {
+          package_name: name.to_string(),
+          referrer: referrer.clone(),
+          referrer_extra: None,
+        }
+        .into(),
+      )
     }
 
-    let path = inner(&*self.fs, name, referrer, mode)?;
-    Ok(self.fs.realpath_sync(&path)?)
+    let path = inner(&*self.fs, name, referrer)?;
+    self.fs.realpath_sync(&path).map_err(|err| {
+      PackageFolderResolveIoError {
+        package_name: name.to_string(),
+        referrer: referrer.clone(),
+        source: err.into_io_error(),
+      }
+      .into()
+    })
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
@@ -156,10 +222,12 @@ impl NpmResolver for ByonmCliNpmResolver {
         .to_ascii_lowercase()
         .contains("/node_modules/")
   }
+}
 
+impl NodeRequireResolver for ByonmCliNpmResolver {
   fn ensure_read_permission(
     &self,
-    permissions: &dyn NodePermissions,
+    permissions: &mut dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     if !path
@@ -172,8 +240,31 @@ impl NpmResolver for ByonmCliNpmResolver {
   }
 }
 
+impl NpmProcessStateProvider for ByonmCliNpmResolver {
+  fn get_npm_process_state(&self) -> String {
+    serde_json::to_string(&NpmProcessState {
+      kind: NpmProcessStateKind::Byonm,
+      local_node_modules_path: self
+        .root_node_modules_dir
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string()),
+    })
+    .unwrap()
+  }
+}
+
 impl CliNpmResolver for ByonmCliNpmResolver {
   fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver> {
+    self
+  }
+
+  fn into_require_resolver(self: Arc<Self>) -> Arc<dyn NodeRequireResolver> {
+    self
+  }
+
+  fn into_process_state_provider(
+    self: Arc<Self>,
+  ) -> Arc<dyn NpmProcessStateProvider> {
     self
   }
 
@@ -189,7 +280,7 @@ impl CliNpmResolver for ByonmCliNpmResolver {
   }
 
   fn root_node_modules_path(&self) -> Option<&PathBuf> {
-    Some(&self.root_node_modules_dir)
+    self.root_node_modules_dir.as_ref()
   }
 
   fn resolve_pkg_folder_from_deno_module_req(
@@ -197,68 +288,34 @@ impl CliNpmResolver for ByonmCliNpmResolver {
     req: &PackageReq,
     referrer: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError> {
-    fn resolve_from_package_json(
-      req: &PackageReq,
-      fs: &dyn FileSystem,
-      path: PathBuf,
-    ) -> Result<PathBuf, AnyError> {
-      let package_json = PackageJson::load_skip_read_permission(fs, path)?;
-      let deps = get_local_package_json_version_reqs(&package_json);
-      for (key, value) in deps {
-        if let Ok(value) = value {
-          if value.name == req.name
-            && value.version_req.intersects(&req.version_req)
-          {
-            let package_path = package_json
-              .path
-              .parent()
-              .unwrap()
-              .join("node_modules")
-              .join(key);
-            return Ok(canonicalize_path_maybe_not_exists_with_fs(
-              &package_path,
-              fs,
-            )?);
-          }
-        }
-      }
-      bail!(
-        concat!(
-          "Could not find a matching package for 'npm:{}' in '{}'. ",
-          "You must specify this as a package.json dependency when the ",
-          "node_modules folder is not managed by Deno.",
-        ),
-        req,
-        package_json.path.display()
-      );
-    }
-
-    // attempt to resolve the npm specifier from the referrer's package.json,
-    // but otherwise fallback to the project's package.json
-    if let Ok(file_path) = specifier_to_file_path(referrer) {
-      let mut current_path = file_path.as_path();
-      while let Some(dir_path) = current_path.parent() {
-        let package_json_path = dir_path.join("package.json");
-        if self.fs.exists_sync(&package_json_path) {
-          return resolve_from_package_json(
-            req,
-            self.fs.as_ref(),
-            package_json_path,
-          );
-        }
-        current_path = dir_path;
+    // resolve the pkg json and alias
+    let (pkg_json, alias) =
+      self.resolve_pkg_json_and_alias_for_req(req, referrer)?;
+    // now try node resolution
+    for ancestor in pkg_json.path.parent().unwrap().ancestors() {
+      let node_modules_folder = ancestor.join("node_modules");
+      let sub_dir = join_package_name(&node_modules_folder, &alias);
+      if self.fs.is_dir_sync(&sub_dir) {
+        return Ok(canonicalize_path_maybe_not_exists_with_fs(
+          &sub_dir,
+          self.fs.as_ref(),
+        )?);
       }
     }
 
-    resolve_from_package_json(
-      req,
-      self.fs.as_ref(),
-      self
-        .root_node_modules_dir
-        .parent()
-        .unwrap()
-        .join("package.json"),
-    )
+    bail!(
+      concat!(
+        "Could not find \"{}\" in a node_modules folder. ",
+        "Deno expects the node_modules/ directory to be up to date. ",
+        "Did you forget to run `{}`?"
+      ),
+      alias,
+      if *crate::args::DENO_FUTURE {
+        "deno install"
+      } else {
+        "npm install"
+      }
+    );
   }
 
   fn check_state_hash(&self) -> Option<u64> {

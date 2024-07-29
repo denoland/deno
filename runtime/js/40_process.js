@@ -134,7 +134,7 @@ function run({
   cmd,
   cwd = undefined,
   clearEnv = false,
-  env = {},
+  env = { __proto__: null },
   gid = undefined,
   uid = undefined,
   stdout = "inherit",
@@ -172,7 +172,7 @@ function spawnChildInner(opFn, command, apiName, {
   args = [],
   cwd = undefined,
   clearEnv = false,
-  env = {},
+  env = { __proto__: null },
   uid = undefined,
   gid = undefined,
   stdin = "null",
@@ -181,7 +181,7 @@ function spawnChildInner(opFn, command, apiName, {
   signal = undefined,
   windowsRawArguments = false,
   ipc = -1,
-} = {}) {
+} = { __proto__: null }) {
   const child = opFn({
     cmd: pathFromURL(command),
     args: ArrayPrototypeMap(args, String),
@@ -202,7 +202,7 @@ function spawnChildInner(opFn, command, apiName, {
   });
 }
 
-function spawnChild(command, options = {}) {
+function spawnChild(command, options = { __proto__: null }) {
   return spawnChildInner(
     op_spawn_child,
     command,
@@ -392,14 +392,14 @@ function spawnSync(command, {
   args = [],
   cwd = undefined,
   clearEnv = false,
-  env = {},
+  env = { __proto__: null },
   uid = undefined,
   gid = undefined,
   stdin = "null",
   stdout = "piped",
   stderr = "piped",
   windowsRawArguments = false,
-} = {}) {
+} = { __proto__: null }) {
   if (stdin === "piped") {
     throw new TypeError(
       "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",

@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { Buffer, BufReader, BufWriter } from "@std/io/mod.ts";
+
+// deno-lint-ignore-file no-deprecated-deno-api
+
+import { Buffer, BufReader, BufWriter } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -10,7 +13,7 @@ import {
   delay,
   fail,
 } from "./test_util.ts";
-import { join } from "@std/path/mod.ts";
+import { join } from "@std/path";
 
 const listenPort = 4507;
 const listenPort2 = 4508;
@@ -239,7 +242,7 @@ Deno.test(
       headers: { "connection": "close" },
     });
 
-    await resp.arrayBuffer();
+    await resp.body?.cancel();
     await promise;
   },
 );
@@ -963,7 +966,7 @@ Deno.test(
       await respondWith(new Response(f.readable, { status: 200 }));
     })();
     const resp = await fetch(`http://127.0.0.1:${listenPort}/`);
-    const body = await resp.arrayBuffer();
+    const body = await resp.bytes();
     assertEquals(body.byteLength, 70 * 1024);
     await promise;
     httpConn!.close();
@@ -1293,8 +1296,8 @@ Deno.test(
 
     const resp = await fetch(`http://localhost:${listenPort}/`);
     assertEquals(resp.status, 200);
-    const body = await resp.arrayBuffer();
-    assertEquals(new Uint8Array(body), new Uint8Array([128]));
+    const body = await resp.bytes();
+    assertEquals(body, new Uint8Array([128]));
 
     await promise;
     httpConn!.close();
@@ -2094,7 +2097,6 @@ Deno.test({
         "--header",
         "Accept-Encoding: deflate, gzip",
       ];
-      // deno-lint-ignore no-deprecated-deno-api
       const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
       const status = await proc.status();
       assert(status.success);
@@ -2157,7 +2159,6 @@ Deno.test({
         "--header",
         "Accept-Encoding: deflate, gzip",
       ];
-      // deno-lint-ignore no-deprecated-deno-api
       const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
       const status = await proc.status();
       assert(status.success);
@@ -2571,9 +2572,11 @@ for (const compression of [true, false]) {
       const result = await reader.read();
       assert(!result.done);
       assertEquals(result.value, new Uint8Array([65]));
-      const err = await assertRejects(() => reader.read());
-      assert(err instanceof TypeError);
-      assert(err.message.includes("unexpected EOF"));
+      await assertRejects(
+        () => reader.read(),
+        TypeError,
+        "body",
+      );
 
       const httpConn = await server;
       httpConn.close();
@@ -2607,9 +2610,11 @@ for (const compression of [true, false]) {
       const result = await reader.read();
       assert(!result.done);
       assertEquals(result.value, new Uint8Array([65]));
-      const err = await assertRejects(() => reader.read());
-      assert(err instanceof TypeError);
-      assert(err.message.includes("unexpected internal error encountered"));
+      await assertRejects(
+        () => reader.read(),
+        TypeError,
+        "body",
+      );
 
       const httpConn = await server;
       httpConn.close();
@@ -2667,6 +2672,61 @@ Deno.test(
     assertEquals(response, null);
   },
 );
+
+Deno.test("proxy with fetch", async () => {
+  const listener = Deno.listen({ port: listenPort });
+  const deferred = Promise.withResolvers<void>();
+
+  const server = Deno.serve({ port: listenPort + 1 }, (_req) => {
+    return new Response("Hello world");
+  });
+
+  let httpConn: Deno.HttpConn;
+  async function handleHttp(conn: Deno.Conn) {
+    httpConn = Deno.serveHttp(conn);
+    for await (const e of httpConn) {
+      await e.respondWith(serve(e.request));
+      break;
+    }
+  }
+
+  async function serve(req: Request) {
+    return await fetch(`http://localhost:${listenPort + 1}/`, req);
+  }
+
+  const originServer = (async () => {
+    for await (const conn of listener) {
+      handleHttp(conn);
+      break;
+    }
+  })();
+
+  const proxiedRequest = (async () => {
+    const conn = await Deno.connect({ port: listenPort });
+    const payload = new TextEncoder().encode(
+      "POST /api/sessions HTTP/1.1\x0d\x0aConnection: keep-alive\x0d\x0aContent-Length: 2\x0d\x0a\x0d\x0a{}",
+    );
+    const n = await conn.write(payload);
+    assertEquals(n, 76);
+    const buf = new Uint8Array(1000);
+    const nread = await conn.read(buf);
+    assertEquals(nread, 150);
+    const respText = new TextDecoder().decode(buf);
+    assert(respText.includes("HTTP/1.1 200 OK"));
+    assert(respText.includes("content-type: text/plain;charset=UTF-8"));
+    assert(respText.includes("vary: Accept-Encoding"));
+    assert(respText.includes("content-length: 11"));
+    assert(respText.includes("Hello world"));
+    conn.close();
+    deferred.resolve();
+  })();
+  await proxiedRequest;
+  await originServer;
+  await deferred.promise;
+  await server.shutdown();
+  await server.finished;
+  httpConn!.close();
+});
 
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6

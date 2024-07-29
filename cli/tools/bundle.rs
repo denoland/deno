@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_graph::Module;
@@ -11,13 +12,12 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TsConfigType;
 use crate::factory::CliFactory;
-use crate::factory::CliFactoryBuilder;
 use crate::graph_util::error_for_any_npm_specifier;
 use crate::util;
 use crate::util::display;
 
 pub async fn bundle(
-  flags: Flags,
+  flags: Arc<Flags>,
   bundle_flags: BundleFlags,
 ) -> Result<(), AnyError> {
   log::info!(
@@ -35,11 +35,11 @@ pub async fn bundle(
       move |flags, watcher_communicator, _changed_paths| {
         let bundle_flags = bundle_flags.clone();
         Ok(async move {
-          let factory = CliFactoryBuilder::new().build_from_flags_for_watcher(
+          let factory = CliFactory::from_flags_for_watcher(
             flags,
             watcher_communicator.clone(),
-          )?;
-          let cli_options = factory.cli_options();
+          );
+          let cli_options = factory.cli_options()?;
           let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
           bundle_action(factory, &bundle_flags).await?;
 
@@ -49,7 +49,7 @@ pub async fn bundle(
     )
     .await?;
   } else {
-    let factory = CliFactory::from_flags(flags)?;
+    let factory = CliFactory::from_flags(flags);
     bundle_action(factory, &bundle_flags).await?;
   }
 
@@ -60,11 +60,11 @@ async fn bundle_action(
   factory: CliFactory,
   bundle_flags: &BundleFlags,
 ) -> Result<(), AnyError> {
-  let cli_options = factory.cli_options();
+  let cli_options = factory.cli_options()?;
   let module_specifier = cli_options.resolve_main_module()?;
   log::debug!(">>>>> bundle START");
   let module_graph_creator = factory.module_graph_creator().await?;
-  let cli_options = factory.cli_options();
+  let cli_options = factory.cli_options()?;
 
   let graph = module_graph_creator
     .create_graph_and_maybe_check(vec![module_specifier.clone()])
@@ -125,7 +125,10 @@ async fn bundle_action(
       );
     }
   } else {
-    println!("{}", bundle_output.code);
+    #[allow(clippy::print_stdout)]
+    {
+      println!("{}", bundle_output.code);
+    }
   }
   Ok(())
 }
@@ -144,15 +147,18 @@ fn bundle_module_graph(
     }
   }
 
+  let (transpile_options, emit_options) =
+    crate::args::ts_config_to_transpile_and_emit_options(
+      ts_config_result.ts_config,
+    )?;
   deno_emit::bundle_graph(
     graph,
     deno_emit::BundleOptions {
       minify: false,
       bundle_type: deno_emit::BundleType::Module,
-      emit_options: crate::args::ts_config_to_emit_options(
-        ts_config_result.ts_config,
-      ),
+      emit_options,
       emit_ignore_directives: true,
+      transpile_options,
     },
   )
 }

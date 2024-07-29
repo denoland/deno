@@ -28,6 +28,10 @@ const {
 
 import { setExitHandler } from "ext:runtime/30_os.js";
 
+// Capture `Deno` global so that users deleting or mangling it, won't
+// have impact on our sanitizers.
+const DenoNs = globalThis.Deno;
+
 /**
  * @typedef {{
  *   id: number,
@@ -101,7 +105,20 @@ function assertExit(fn, isTest) {
 
     try {
       const innerResult = await fn(...new SafeArrayIterator(params));
-      if (innerResult) return innerResult;
+      const exitCode = DenoNs.exitCode;
+      if (exitCode !== 0) {
+        // Reset the code to allow other tests to run...
+        DenoNs.exitCode = 0;
+        // ...and fail the current test.
+        throw new Error(
+          `${
+            isTest ? "Test case" : "Bench"
+          } finished with exit code set to ${exitCode}.`,
+        );
+      }
+      if (innerResult) {
+        return innerResult;
+      }
     } finally {
       setExitHandler(null);
     }
@@ -196,7 +213,7 @@ function testInner(
   nameOrFnOrOptions,
   optionsOrFn,
   maybeFn,
-  overrides = {},
+  overrides = { __proto__: null },
 ) {
   // No-op if we're not running in `deno test` subcommand.
   if (typeof op_register_test !== "function") {

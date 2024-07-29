@@ -4,13 +4,13 @@ use super::diagnostics::DenoDiagnostic;
 use super::diagnostics::DiagnosticSource;
 use super::documents::Documents;
 use super::language_server;
+use super::resolver::LspResolver;
 use super::tsc;
 
 use crate::args::jsr_url;
-use crate::npm::CliNpmResolver;
-use crate::resolver::CliNodeResolver;
-use crate::tools::lint::create_linter;
-use crate::util::path::specifier_to_file_path;
+use crate::tools::lint::CliLinter;
+use deno_lint::diagnostic::LintDiagnosticRange;
+use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
@@ -23,11 +23,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use deno_lint::diagnostic::LintDiagnostic;
-use deno_lint::rules::LintRule;
-use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::jsr::JsrPackageNvReference;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -37,6 +33,7 @@ use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
 use deno_semver::Version;
 use import_map::ImportMap;
+use node_resolver::NpmResolver;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
@@ -74,10 +71,14 @@ static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
     .collect()
   });
 
-static IMPORT_SPECIFIER_RE: Lazy<Regex> =
-  lazy_regex::lazy_regex!(r#"\sfrom\s+["']([^"']*)["']"#);
+static IMPORT_SPECIFIER_RE: Lazy<Regex> = lazy_regex::lazy_regex!(
+  r#"\sfrom\s+["']([^"']*)["']|import\s*\(\s*["']([^"']*)["']\s*\)"#
+);
 
-const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
+const SUPPORTED_EXTENSIONS: &[&str] = &[
+  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts", ".cjs", ".cts", ".d.ts",
+  ".d.mts", ".d.cts",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DataQuickFixChange {
@@ -146,8 +147,10 @@ impl Reference {
   }
 }
 
-fn as_lsp_range_from_diagnostic(diagnostic: &LintDiagnostic) -> Range {
-  as_lsp_range(diagnostic.range, &diagnostic.text_info)
+fn as_lsp_range_from_lint_diagnostic(
+  diagnostic_range: &LintDiagnosticRange,
+) -> Range {
+  as_lsp_range(diagnostic_range.range, &diagnostic_range.text_info)
 }
 
 fn as_lsp_range(
@@ -170,36 +173,39 @@ fn as_lsp_range(
 
 pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
-  lint_rules: Vec<&'static dyn LintRule>,
+  linter: &CliLinter,
 ) -> Result<Vec<Reference>, AnyError> {
-  let linter = create_linter(lint_rules);
   let lint_diagnostics = linter.lint_with_ast(parsed_source);
 
   Ok(
     lint_diagnostics
       .into_iter()
-      .map(|d| Reference {
-        range: as_lsp_range_from_diagnostic(&d),
-        category: Category::Lint {
-          message: d.message,
-          code: d.code,
-          hint: d.hint,
-          quick_fixes: d
-            .fixes
-            .into_iter()
-            .map(|f| DataQuickFix {
-              description: f.description.to_string(),
-              changes: f
-                .changes
-                .into_iter()
-                .map(|change| DataQuickFixChange {
-                  range: as_lsp_range(change.range, &d.text_info),
-                  new_text: change.new_text.to_string(),
-                })
-                .collect(),
-            })
-            .collect(),
-        },
+      .filter_map(|d| {
+        let range = d.range.as_ref()?;
+        Some(Reference {
+          range: as_lsp_range_from_lint_diagnostic(range),
+          category: Category::Lint {
+            message: d.details.message,
+            code: d.details.code.to_string(),
+            hint: d.details.hint,
+            quick_fixes: d
+              .details
+              .fixes
+              .into_iter()
+              .map(|f| DataQuickFix {
+                description: f.description.to_string(),
+                changes: f
+                  .changes
+                  .into_iter()
+                  .map(|change| DataQuickFixChange {
+                    range: as_lsp_range(change.range, &range.text_info),
+                    new_text: change.new_text.to_string(),
+                  })
+                  .collect(),
+              })
+              .collect(),
+          },
+        })
       })
       .collect(),
   )
@@ -217,22 +223,19 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
   maybe_import_map: Option<&'a ImportMap>,
-  node_resolver: Option<&'a CliNodeResolver>,
-  npm_resolver: Option<&'a dyn CliNpmResolver>,
+  resolver: &'a LspResolver,
 }
 
 impl<'a> TsResponseImportMapper<'a> {
   pub fn new(
     documents: &'a Documents,
     maybe_import_map: Option<&'a ImportMap>,
-    node_resolver: Option<&'a CliNodeResolver>,
-    npm_resolver: Option<&'a dyn CliNpmResolver>,
+    resolver: &'a LspResolver,
   ) -> Self {
     Self {
       documents,
       maybe_import_map,
-      node_resolver,
-      npm_resolver,
+      resolver,
     }
   }
 
@@ -253,6 +256,8 @@ impl<'a> TsResponseImportMapper<'a> {
       }
     }
 
+    let file_referrer = self.documents.get_file_referrer(referrer);
+
     if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
     {
       let mut segments = jsr_path.split('/');
@@ -264,8 +269,11 @@ impl<'a> TsResponseImportMapper<'a> {
       let version = Version::parse_standard(segments.next()?).ok()?;
       let nv = PackageNv { name, version };
       let path = segments.collect::<Vec<_>>().join("/");
-      let jsr_resolver = self.documents.get_jsr_resolver();
-      let export = jsr_resolver.lookup_export_for_path(&nv, &path)?;
+      let export = self.resolver.jsr_lookup_export_for_path(
+        &nv,
+        &path,
+        file_referrer.as_deref(),
+      )?;
       let sub_path = (export != ".").then_some(export);
       let mut req = None;
       req = req.or_else(|| {
@@ -287,7 +295,11 @@ impl<'a> TsResponseImportMapper<'a> {
         }
         None
       });
-      req = req.or_else(|| jsr_resolver.lookup_req_for_nv(&nv));
+      req = req.or_else(|| {
+        self
+          .resolver
+          .jsr_lookup_req_for_nv(&nv, file_referrer.as_deref())
+      });
       let spec_str = if let Some(req) = req {
         let req_ref = PackageReqReference { req, sub_path };
         JsrPackageReqReference::new(req_ref).to_string()
@@ -304,8 +316,9 @@ impl<'a> TsResponseImportMapper<'a> {
       return Some(spec_str);
     }
 
-    if let Some(npm_resolver) =
-      self.npm_resolver.as_ref().and_then(|r| r.as_managed())
+    if let Some(npm_resolver) = self
+      .resolver
+      .maybe_managed_npm_resolver(file_referrer.as_deref())
     {
       if npm_resolver.in_npm_package(specifier) {
         if let Ok(Some(pkg_id)) =
@@ -370,9 +383,9 @@ impl<'a> TsResponseImportMapper<'a> {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    let node_resolver = self.node_resolver?;
-    let package_json = node_resolver
-      .get_closest_package_json(specifier, &PermissionsContainer::allow_all())
+    let package_json = self
+      .resolver
+      .get_closest_package_json(specifier)
       .ok()
       .flatten()?;
     let root_folder = package_json.path.parent()?;
@@ -429,6 +442,7 @@ impl<'a> TsResponseImportMapper<'a> {
         return Some(specifier);
       }
     }
+    let specifier = specifier.strip_suffix(".js").unwrap_or(specifier);
     for ext in SUPPORTED_EXTENSIONS {
       let specifier_with_ext = format!("{specifier}{ext}");
       if self
@@ -517,7 +531,8 @@ pub fn fix_ts_import_changes(
         .map(|line| {
           // This assumes that there's only one import per line.
           if let Some(captures) = IMPORT_SPECIFIER_RE.captures(line) {
-            let specifier = captures.get(1).unwrap().as_str();
+            let specifier =
+              captures.iter().skip(1).find_map(|s| s).unwrap().as_str();
             if let Some(new_specifier) =
               import_mapper.check_unresolved_specifier(specifier, referrer)
             {
@@ -552,7 +567,10 @@ fn fix_ts_import_action(
   action: &tsc::CodeFixAction,
   import_mapper: &TsResponseImportMapper,
 ) -> Result<tsc::CodeFixAction, AnyError> {
-  if action.fix_name == "import" {
+  if matches!(
+    action.fix_name.as_str(),
+    "import" | "fixMissingFunctionDeclaration"
+  ) {
     let change = action
       .changes
       .first()
@@ -646,6 +664,10 @@ fn is_preferred(
         }
       }
       true
+    } else if let CodeActionKind::Deno(_) = i {
+      // This is to make sure 'Remove import' isn't preferred over 'Cache
+      // dependencies'.
+      return false;
     } else {
       true
     }
@@ -710,8 +732,8 @@ impl CodeActionCollection {
     &mut self,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
-    maybe_text_info: Option<SourceTextInfo>,
-    maybe_parsed_source: Option<deno_ast::ParsedSource>,
+    maybe_text_info: Option<&SourceTextInfo>,
+    maybe_parsed_source: Option<&deno_ast::ParsedSource>,
   ) -> Result<(), AnyError> {
     if let Some(data_quick_fixes) = diagnostic
       .data
@@ -760,8 +782,8 @@ impl CodeActionCollection {
     &mut self,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
-    maybe_text_info: Option<SourceTextInfo>,
-    maybe_parsed_source: Option<deno_ast::ParsedSource>,
+    maybe_text_info: Option<&SourceTextInfo>,
+    maybe_parsed_source: Option<&deno_ast::ParsedSource>,
   ) -> Result<(), AnyError> {
     let code = diagnostic
       .code
@@ -816,7 +838,7 @@ impl CodeActionCollection {
       .push(CodeActionKind::DenoLint(ignore_error_action));
 
     // Disable a lint error for the entire file.
-    let maybe_ignore_comment = maybe_parsed_source.clone().and_then(|ps| {
+    let maybe_ignore_comment = maybe_parsed_source.and_then(|ps| {
       // Note: we can use ps.get_leading_comments() but it doesn't
       // work when shebang is present at the top of the file.
       ps.comments().get_vec().iter().find_map(|c| {
@@ -847,9 +869,8 @@ impl CodeActionCollection {
     if let Some(ignore_comment) = maybe_ignore_comment {
       new_text = format!(" {code}");
       // Get the end position of the comment.
-      let line = maybe_parsed_source
+      let line = maybe_text_info
         .unwrap()
-        .text_info()
         .line_and_column_index(ignore_comment.end());
       let position = lsp::Position {
         line: line.line_index as u32,
@@ -942,7 +963,7 @@ impl CodeActionCollection {
     let action = fix_ts_import_action(
       specifier,
       action,
-      &language_server.get_ts_response_import_mapper(),
+      &language_server.get_ts_response_import_mapper(specifier),
     )?;
     let edit = ts_changes_to_edit(&action.changes, language_server)?;
     let code_action = lsp::CodeAction {
@@ -1030,18 +1051,18 @@ impl CodeActionCollection {
 
   /// Move out the code actions and return them as a `CodeActionResponse`.
   pub fn get_response(self) -> lsp::CodeActionResponse {
-    // Prefer TSC fixes first, then Deno fixes, then Deno lint fixes.
-    let (tsc, rest): (Vec<_>, Vec<_>) = self
+    // Prefer Deno fixes first, then TSC fixes, then Deno lint fixes.
+    let (deno, rest): (Vec<_>, Vec<_>) = self
       .actions
       .into_iter()
-      .partition(|a| matches!(a, CodeActionKind::Tsc(..)));
-    let (deno, deno_lint): (Vec<_>, Vec<_>) = rest
-      .into_iter()
       .partition(|a| matches!(a, CodeActionKind::Deno(_)));
-
-    tsc
+    let (tsc, deno_lint): (Vec<_>, Vec<_>) = rest
       .into_iter()
-      .chain(deno)
+      .partition(|a| matches!(a, CodeActionKind::Tsc(..)));
+
+    deno
+      .into_iter()
+      .chain(tsc)
       .chain(deno_lint)
       .map(|k| match k {
         CodeActionKind::Deno(c) => lsp::CodeActionOrCommand::CodeAction(c),
@@ -1122,9 +1143,11 @@ impl CodeActionCollection {
 /// Prepend the whitespace characters found at the start of line_content to content.
 fn prepend_whitespace(content: String, line_content: Option<String>) -> String {
   if let Some(line) = line_content {
-    let whitespaces =
-      line.chars().position(|c| !c.is_whitespace()).unwrap_or(0);
-    let whitespace = &line[0..whitespaces];
+    let whitespace_end = line
+      .char_indices()
+      .find_map(|(i, c)| (!c.is_whitespace()).then_some(i))
+      .unwrap_or(0);
+    let whitespace = &line[0..whitespace_end];
     format!("{}{}", &whitespace, content)
   } else {
     content
@@ -1265,6 +1288,15 @@ mod tests {
       )
       .unwrap(),
       "utils/sub_utils"
+    );
+  }
+
+  #[test]
+  fn test_prepend_whitespace() {
+    // Regression test for https://github.com/denoland/deno/issues/23361.
+    assert_eq!(
+      &prepend_whitespace("foo".to_string(), Some("\u{a0}bar".to_string())),
+      "\u{a0}foo"
     );
   }
 }

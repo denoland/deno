@@ -5,6 +5,7 @@ use std::process::Stdio;
 use std::time::Instant;
 use test_util as util;
 use test_util::TempDir;
+use test_util::TestContext;
 use util::TestContextBuilder;
 
 // Warning: this test requires internet access.
@@ -144,15 +145,14 @@ fn upgrade_with_out_in_tmpdir() {
   assert!(v.contains("1.11.5"));
 }
 
-// Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_invalid_stable_version() {
-  let temp_dir = TempDir::new();
+  let context = upgrade_context();
+  let temp_dir = context.temp_dir();
   let exe_path = temp_dir.path().join("deno");
   util::deno_exe_path().copy(&exe_path);
   assert!(exe_path.exists());
+  exe_path.mark_executable();
   let output = Command::new(&exe_path)
     .arg("upgrade")
     .arg("--version")
@@ -164,20 +164,19 @@ fn upgrade_invalid_stable_version() {
     .unwrap();
   assert!(!output.status.success());
   assert_eq!(
-    "error: Invalid semver passed\n",
+    "error: Invalid version passed\n",
     util::strip_ansi_codes(&String::from_utf8(output.stderr).unwrap())
   );
 }
 
-// Warning: this test requires internet access.
-// TODO(#7412): reenable. test is flaky
 #[test]
-#[ignore]
 fn upgrade_invalid_canary_version() {
-  let temp_dir = TempDir::new();
+  let context = upgrade_context();
+  let temp_dir = context.temp_dir();
   let exe_path = temp_dir.path().join("deno");
   util::deno_exe_path().copy(&exe_path);
   assert!(exe_path.exists());
+  exe_path.mark_executable();
   let output = Command::new(&exe_path)
     .arg("upgrade")
     .arg("--canary")
@@ -195,16 +194,42 @@ fn upgrade_invalid_canary_version() {
   );
 }
 
+#[flaky_test::flaky_test]
+fn upgrade_invalid_lockfile() {
+  let context = upgrade_context();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.deno", r#"{ \"lock\": true }"#);
+  temp_dir.write(
+    "deno.lock",
+    r#"{
+  "version": "invalid",
+}"#,
+  );
+  let exe_path = temp_dir.path().join("deno");
+  util::deno_exe_path().copy(&exe_path);
+  assert!(exe_path.exists());
+  exe_path.mark_executable();
+  let output = Command::new(&exe_path)
+    .arg("upgrade")
+    .arg("--version")
+    .arg("foobar")
+    .arg("--dry-run")
+    .stderr(Stdio::piped())
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+  assert!(!output.status.success());
+  // should make it here instead of erroring on an invalid lockfile
+  assert_eq!(
+    "error: Invalid version passed\n",
+    util::strip_ansi_codes(&String::from_utf8(output.stderr).unwrap())
+  );
+}
+
 #[test]
 fn upgrade_prompt() {
-  let context = TestContextBuilder::new()
-    .use_http_server()
-    .use_temp_cwd()
-    .env(
-      "DENO_DONT_USE_INTERNAL_BASE_UPGRADE_URL",
-      "http://localhost:4545",
-    )
-    .build();
+  let context = upgrade_context();
   let temp_dir = context.temp_dir();
   // start a task that goes indefinitely in order to allow
   // the upgrade check to occur
@@ -256,4 +281,15 @@ fn upgrade_lsp_repl_sleeps() {
   // the test server will sleep for 95 seconds, so ensure this is less
   let elapsed_secs = start_instant.elapsed().as_secs();
   assert!(elapsed_secs < 94, "elapsed_secs: {}", elapsed_secs);
+}
+
+fn upgrade_context() -> TestContext {
+  TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .env(
+      "DENO_DONT_USE_INTERNAL_BASE_UPGRADE_URL",
+      "http://localhost:4545",
+    )
+    .build()
 }

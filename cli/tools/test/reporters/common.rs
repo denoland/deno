@@ -136,13 +136,8 @@ pub(super) fn report_summary(
         if !failure.hide_in_summary() {
           let failure_title = format_test_for_summary(cwd, description);
           writeln!(writer, "{}", &failure_title).unwrap();
-          writeln!(
-            writer,
-            "{}: {}",
-            colors::red_bold("error"),
-            failure.to_string()
-          )
-          .unwrap();
+          writeln!(writer, "{}: {}", colors::red_bold("error"), failure)
+            .unwrap();
           writeln!(writer).unwrap();
           failure_titles.push(failure_title);
         }

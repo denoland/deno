@@ -2,7 +2,21 @@
 
 // Validation logic in this file is shared with registry/api/src/ids.rs
 
+use std::collections::HashSet;
+use std::path::Path;
+use std::path::PathBuf;
+
+use deno_ast::MediaType;
+use deno_ast::ModuleSpecifier;
+use deno_config::glob::FileCollector;
+use deno_config::glob::FilePatterns;
+use deno_core::error::AnyError;
 use thiserror::Error;
+
+use crate::args::CliOptions;
+
+use super::diagnostics::PublishDiagnostic;
+use super::diagnostics::PublishDiagnosticsCollector;
 
 /// A package path, like '/foo' or '/foo/bar'. The path is prefixed with a slash
 /// and does not end with a slash.
@@ -195,4 +209,141 @@ pub enum PackagePathValidationError {
 
   #[error("package path must not contain invalid characters (found '{}')", .0.escape_debug())]
   InvalidOtherChar(char),
+}
+
+pub struct CollectedPublishPath {
+  pub specifier: ModuleSpecifier,
+  pub path: PathBuf,
+  /// Relative path to use in the tarball. This should be prefixed with a `/`.
+  pub relative_path: String,
+  /// Specify the contents for any injected paths.
+  pub maybe_content: Option<Vec<u8>>,
+}
+
+pub struct CollectPublishPathsOptions<'a> {
+  pub root_dir: &'a Path,
+  pub cli_options: &'a CliOptions,
+  pub file_patterns: FilePatterns,
+  pub force_include_paths: Vec<PathBuf>,
+  pub diagnostics_collector: &'a PublishDiagnosticsCollector,
+}
+
+pub fn collect_publish_paths(
+  opts: CollectPublishPathsOptions,
+) -> Result<Vec<CollectedPublishPath>, AnyError> {
+  let diagnostics_collector = opts.diagnostics_collector;
+  let publish_paths =
+    collect_paths(opts.cli_options, diagnostics_collector, opts.file_patterns)?;
+  let publish_paths_set = publish_paths.iter().cloned().collect::<HashSet<_>>();
+  let capacity = publish_paths.len() + opts.force_include_paths.len();
+  let mut paths = HashSet::with_capacity(capacity);
+  let mut result = Vec::with_capacity(capacity);
+  let force_include_paths = opts
+    .force_include_paths
+    .into_iter()
+    .filter(|path| !publish_paths_set.contains(path));
+  for path in publish_paths.into_iter().chain(force_include_paths) {
+    let Ok(specifier) = ModuleSpecifier::from_file_path(&path) else {
+      diagnostics_collector
+        .to_owned()
+        .push(PublishDiagnostic::InvalidPath {
+          path: path.to_path_buf(),
+          message: "unable to convert path to url".to_string(),
+        });
+      continue;
+    };
+
+    let Ok(relative_path) = path.strip_prefix(opts.root_dir) else {
+      diagnostics_collector
+        .to_owned()
+        .push(PublishDiagnostic::InvalidPath {
+          path: path.to_path_buf(),
+          message: "path is not in publish directory".to_string(),
+        });
+      continue;
+    };
+
+    let relative_path =
+      relative_path
+        .components()
+        .fold("".to_string(), |mut path, component| {
+          path.push('/');
+          match component {
+            std::path::Component::Normal(normal) => {
+              path.push_str(&normal.to_string_lossy())
+            }
+            std::path::Component::CurDir => path.push('.'),
+            std::path::Component::ParentDir => path.push_str(".."),
+            _ => unreachable!(),
+          }
+          path
+        });
+
+    match PackagePath::new(relative_path.clone()) {
+      Ok(package_path) => {
+        if !paths.insert(package_path) {
+          diagnostics_collector.to_owned().push(
+            PublishDiagnostic::DuplicatePath {
+              path: path.to_path_buf(),
+            },
+          );
+        }
+      }
+      Err(err) => {
+        diagnostics_collector
+          .to_owned()
+          .push(PublishDiagnostic::InvalidPath {
+            path: path.to_path_buf(),
+            message: err.to_string(),
+          });
+      }
+    }
+
+    let media_type = MediaType::from_specifier(&specifier);
+    if matches!(media_type, MediaType::Jsx | MediaType::Tsx) {
+      diagnostics_collector.push(PublishDiagnostic::UnsupportedJsxTsx {
+        specifier: specifier.clone(),
+      });
+    }
+
+    result.push(CollectedPublishPath {
+      specifier,
+      path,
+      relative_path,
+      maybe_content: None,
+    });
+  }
+
+  Ok(result)
+}
+
+fn collect_paths(
+  cli_options: &CliOptions,
+  diagnostics_collector: &PublishDiagnosticsCollector,
+  file_patterns: FilePatterns,
+) -> Result<Vec<PathBuf>, AnyError> {
+  FileCollector::new(|e| {
+    if !e.metadata.is_file {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(e.path) {
+        diagnostics_collector.push(PublishDiagnostic::UnsupportedFileType {
+          specifier,
+          kind: if e.metadata.is_symlink {
+            "symlink".to_string()
+          } else {
+            "Unknown".to_string()
+          },
+        });
+      }
+      return false;
+    }
+    e.path
+      .file_name()
+      .map(|s| s != ".DS_Store" && s != ".gitignore")
+      .unwrap_or(true)
+  })
+  .ignore_git_folder()
+  .ignore_node_modules()
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .use_gitignore()
+  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, file_patterns)
 }

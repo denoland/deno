@@ -7,6 +7,21 @@ if (prTitle == null) {
 
 console.log("PR title:", prTitle);
 
+if (
+  prTitle.startsWith("chore:") && prTitle.includes("deno_core") &&
+  (prTitle.includes("upgrade") || prTitle.includes("update"))
+) {
+  console.error([
+    "Please categorize this deno_core upgrade as a 'feat:', 'fix:' or a ",
+    "'refactor:'. If your upgrade does not fall into either of these ",
+    "categories, wait until the next deno_core release.\n\n",
+    "For feats and fixes, please title your PR outlining the fixed issue ",
+    "rather than just `fix: upgrade deno_core` so that users understand the ",
+    "change that was made in the changelog.",
+  ].join(""));
+  Deno.exit(1);
+}
+
 // This is a release PR, so it's valid.
 if (/^[^\s]+\.[^\s]+\.[^\s]+$/.test(prTitle)) {
   console.log("Valid.");
@@ -33,6 +48,9 @@ const validPrefixes = [
   "Reland ",
   // Allow landing breaking changes that are properly marked
   "BREAKING",
+  // Allow landing breaking changes that will be applied in Deno 2, or available
+  // immediately with DENO_FUTURE=1 env var
+  "FUTURE",
 ];
 
 if (validPrefixes.some((prefix) => prTitle.startsWith(prefix))) {

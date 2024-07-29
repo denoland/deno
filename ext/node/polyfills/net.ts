@@ -24,6 +24,8 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import { BlockList, SocketAddress } from "ext:deno_node/internal/blocklist.mjs";
+
 import { EventEmitter } from "node:events";
 import {
   isIP,
@@ -2472,7 +2474,7 @@ export function createServer(
   return new Server(options, connectionListener);
 }
 
-export { isIP, isIPv4, isIPv6 };
+export { BlockList, isIP, isIPv4, isIPv6, SocketAddress };
 
 export default {
   _createServerHandle,
@@ -2480,6 +2482,8 @@ export default {
   isIP,
   isIPv4,
   isIPv6,
+  BlockList,
+  SocketAddress,
   connect,
   createConnection,
   createServer,

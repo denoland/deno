@@ -2,12 +2,7 @@
 
 // Requires to be run with `--allow-net` flag
 
-import {
-  assert,
-  assertEquals,
-  assertMatch,
-  assertThrows,
-} from "@std/assert/mod.ts";
+import { assert, assertEquals, assertMatch, assertThrows } from "@std/assert";
 
 function resolveWorker(worker: string): string {
   return import.meta.resolve(`../testdata/workers/${worker}`);
@@ -689,7 +684,7 @@ Deno.test({
 
     assert(worker);
     const response = await fetch("http://localhost:4506");
-    assert(await response.arrayBuffer());
+    assert(await response.bytes());
     worker.terminate();
   },
 });

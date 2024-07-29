@@ -1,14 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-// Usage: provide a port as argument to run hyper_hello benchmark server
-// otherwise this starts multiple servers on many ports for test endpoints.
-use futures::FutureExt;
-use futures::Stream;
-use futures::StreamExt;
-use once_cell::sync::Lazy;
-use pretty_assertions::assert_eq;
-use pty::Pty;
-use regex::Regex;
-use serde::Serialize;
+
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
+
 use std::collections::HashMap;
 use std::env;
 use std::io::Write;
@@ -18,8 +12,17 @@ use std::process::Command;
 use std::process::Output;
 use std::process::Stdio;
 use std::result::Result;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
+
+use futures::FutureExt;
+use futures::Stream;
+use futures::StreamExt;
+use once_cell::sync::Lazy;
+use parking_lot::Mutex;
+use parking_lot::MutexGuard;
+use pretty_assertions::assert_eq;
+use pty::Pty;
+use regex::Regex;
+use serde::Serialize;
 use tokio::net::TcpStream;
 use url::Url;
 
@@ -47,8 +50,7 @@ pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
 pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
-static GUARD: Lazy<Mutex<HttpServerCount>> =
-  Lazy::new(|| Mutex::new(HttpServerCount::default()));
+static GUARD: Lazy<Mutex<HttpServerCount>> = Lazy::new(Default::default);
 
 pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   vec![
@@ -176,7 +178,7 @@ pub fn deno_config_path() -> PathRef {
 
 /// Test server registry url.
 pub fn npm_registry_url() -> String {
-  "http://localhost:4545/npm/registry/".to_string()
+  "http://localhost:4260/".to_string()
 }
 
 pub fn npm_registry_unset_url() -> String {
@@ -305,44 +307,19 @@ async fn get_tcp_listener_stream(
   futures::stream::select_all(listeners)
 }
 
+pub const TEST_SERVERS_COUNT: usize = 30;
+
 #[derive(Default)]
 struct HttpServerCount {
   count: usize,
-  test_server: Option<Child>,
+  test_server: Option<HttpServerStarter>,
 }
 
 impl HttpServerCount {
   fn inc(&mut self) {
     self.count += 1;
     if self.test_server.is_none() {
-      assert_eq!(self.count, 1);
-
-      println!("test_server starting...");
-      let mut test_server = Command::new(test_server_path())
-        .current_dir(testdata_path())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("failed to execute test_server");
-      let stdout = test_server.stdout.as_mut().unwrap();
-      use std::io::BufRead;
-      use std::io::BufReader;
-      let lines = BufReader::new(stdout).lines();
-
-      // Wait for all the servers to report being ready.
-      let mut ready_count = 0;
-      for maybe_line in lines {
-        if let Ok(line) = maybe_line {
-          if line.starts_with("ready:") {
-            ready_count += 1;
-          }
-          if ready_count == 12 {
-            break;
-          }
-        } else {
-          panic!("{}", maybe_line.unwrap_err());
-        }
-      }
-      self.test_server = Some(test_server);
+      self.test_server = Some(Default::default());
     }
   }
 
@@ -350,17 +327,7 @@ impl HttpServerCount {
     assert!(self.count > 0);
     self.count -= 1;
     if self.count == 0 {
-      let mut test_server = self.test_server.take().unwrap();
-      match test_server.try_wait() {
-        Ok(None) => {
-          test_server.kill().expect("failed to kill test_server");
-          let _ = test_server.wait();
-        }
-        Ok(Some(status)) => {
-          panic!("test_server exited unexpectedly {status}")
-        }
-        Err(e) => panic!("test_server error: {e}"),
-      }
+      self.test_server.take();
     }
   }
 }
@@ -372,14 +339,58 @@ impl Drop for HttpServerCount {
   }
 }
 
-fn lock_http_server<'a>() -> MutexGuard<'a, HttpServerCount> {
-  let r = GUARD.lock();
-  if let Err(poison_err) = r {
-    // If panics happened, ignore it. This is for tests.
-    poison_err.into_inner()
-  } else {
-    r.unwrap()
+struct HttpServerStarter {
+  test_server: Child,
+}
+
+impl Default for HttpServerStarter {
+  fn default() -> Self {
+    println!("test_server starting...");
+    let mut test_server = Command::new(test_server_path())
+      .current_dir(testdata_path())
+      .stdout(Stdio::piped())
+      .spawn()
+      .expect("failed to execute test_server");
+    let stdout = test_server.stdout.as_mut().unwrap();
+    use std::io::BufRead;
+    use std::io::BufReader;
+    let lines = BufReader::new(stdout).lines();
+
+    // Wait for all the servers to report being ready.
+    let mut ready_count = 0;
+    for maybe_line in lines {
+      if let Ok(line) = maybe_line {
+        if line.starts_with("ready:") {
+          ready_count += 1;
+        }
+        if ready_count == TEST_SERVERS_COUNT {
+          break;
+        }
+      } else {
+        panic!("{}", maybe_line.unwrap_err());
+      }
+    }
+    Self { test_server }
   }
+}
+
+impl Drop for HttpServerStarter {
+  fn drop(&mut self) {
+    match self.test_server.try_wait() {
+      Ok(None) => {
+        self.test_server.kill().expect("failed to kill test_server");
+        let _ = self.test_server.wait();
+      }
+      Ok(Some(status)) => {
+        panic!("test_server exited unexpectedly {status}")
+      }
+      Err(e) => panic!("test_server error: {e}"),
+    }
+  }
+}
+
+fn lock_http_server<'a>() -> MutexGuard<'a, HttpServerCount> {
+  GUARD.lock()
 }
 
 pub struct HttpServerGuard {}
@@ -739,12 +750,14 @@ pub fn wildcard_match_detailed(
           }
           None => {
             let was_wildcard_or_line = was_last_wildcard || was_last_wildline;
-            let mut max_found_index = 0;
+            let mut max_search_text_found_index = 0;
+            let mut max_current_text_found_index = 0;
             for (index, _) in search_text.char_indices() {
               let sub_string = &search_text[..index];
               if let Some(found_index) = current_text.find(sub_string) {
                 if was_wildcard_or_line || found_index == 0 {
-                  max_found_index = index;
+                  max_search_text_found_index = index;
+                  max_current_text_found_index = found_index;
                 } else {
                   break;
                 }
@@ -752,11 +765,11 @@ pub fn wildcard_match_detailed(
                 break;
               }
             }
-            if !was_wildcard_or_line && max_found_index > 0 {
+            if !was_wildcard_or_line && max_search_text_found_index > 0 {
               output_lines.push(format!(
                 "<FOUND>{}</FOUND>",
                 colors::gray(annotate_whitespace(
-                  &search_text[..max_found_index]
+                  &search_text[..max_search_text_found_index]
                 ))
               ));
             }
@@ -766,18 +779,19 @@ pub fn wildcard_match_detailed(
               if was_wildcard_or_line {
                 search_text
               } else {
-                &search_text[max_found_index..]
+                &search_text[max_search_text_found_index..]
               },
             )));
-            if was_wildcard_or_line && max_found_index > 0 {
+            if was_wildcard_or_line && max_search_text_found_index > 0 {
               output_lines.push(format!(
                 "==== MAX FOUND ====\n{}",
                 colors::red(annotate_whitespace(
-                  &search_text[..max_found_index]
+                  &search_text[..max_search_text_found_index]
                 ))
               ));
             }
-            let actual_next_text = &current_text[max_found_index..];
+            let actual_next_text =
+              &current_text[max_current_text_found_index..];
             let max_next_text_len = 40;
             let next_text_len =
               std::cmp::min(max_next_text_len, actual_next_text.len());
@@ -832,25 +846,45 @@ pub fn wildcard_match_detailed(
           );
           return WildcardMatchResult::Fail(output_lines.join("\n"));
         }
-        for (actual, expected) in actual_lines.iter().zip(expected_lines.iter())
+
+        if let Some(invalid_expected) =
+          expected_lines.iter().find(|e| e.contains("[WILDCARD]"))
         {
-          if actual != expected {
-            output_lines
-              .push("==== UNORDERED LINE DID NOT MATCH ====".to_string());
-            output_lines.push(format!(
-              "  ACTUAL: {}",
-              colors::red(annotate_whitespace(actual))
-            ));
-            output_lines.push(format!(
-              "EXPECTED: {}",
-              colors::green(annotate_whitespace(expected))
-            ));
-            return WildcardMatchResult::Fail(output_lines.join("\n"));
-          } else {
+          panic!(
+            concat!(
+              "Cannot use [WILDCARD] inside [UNORDERED_START]. Use [WILDLINE] instead.\n",
+              "  Invalid expected line: {}"
+            ),
+            invalid_expected
+          );
+        }
+
+        for actual_line in actual_lines {
+          let maybe_found_index =
+            expected_lines.iter().position(|expected_line| {
+              actual_line == *expected_line
+                || wildcard_match(expected_line, actual_line)
+            });
+          if let Some(found_index) = maybe_found_index {
+            let expected = expected_lines.remove(found_index);
             output_lines.push(format!(
               "<FOUND>{}</FOUND>",
               colors::gray(annotate_whitespace(expected))
             ));
+          } else {
+            output_lines
+              .push("==== UNORDERED LINE DID NOT MATCH ====".to_string());
+            output_lines.push(format!(
+              "  ACTUAL: {}",
+              colors::red(annotate_whitespace(actual_line))
+            ));
+            for expected in expected_lines {
+              output_lines.push(format!(
+                "  EXPECTED ANY: {}",
+                colors::green(annotate_whitespace(expected))
+              ));
+            }
+            return WildcardMatchResult::Fail(output_lines.join("\n"));
           }
         }
       }
@@ -897,7 +931,7 @@ fn parse_wildcard_pattern_text(
   enum InnerPart<'a> {
     Wildcard,
     Wildline,
-    Wildnum(usize),
+    Wildchars(usize),
     UnorderedLines(Vec<&'a str>),
     Char,
   }
@@ -921,7 +955,12 @@ fn parse_wildcard_pattern_text(
         Ok((input, value))
       }
 
-      fn parse_wild_num(input: &str) -> ParseResult<usize> {
+      fn parse_wild_char(input: &str) -> ParseResult<()> {
+        let (input, _) = tag("[WILDCHAR]")(input)?;
+        ParseResult::Ok((input, ()))
+      }
+
+      fn parse_wild_chars(input: &str) -> ParseResult<usize> {
         let (input, _) = tag("[WILDCHARS(")(input)?;
         let (input, times) = parse_num(input)?;
         let (input, _) = tag(")]")(input)?;
@@ -929,10 +968,11 @@ fn parse_wildcard_pattern_text(
       }
 
       while !self.current_input.is_empty() {
-        let (next_input, inner_part) = or5(
+        let (next_input, inner_part) = or6(
           map(tag("[WILDCARD]"), |_| InnerPart::Wildcard),
           map(tag("[WILDLINE]"), |_| InnerPart::Wildline),
-          map(parse_wild_num, InnerPart::Wildnum),
+          map(parse_wild_char, |_| InnerPart::Wildchars(1)),
+          map(parse_wild_chars, InnerPart::Wildchars),
           map(parse_unordered_lines, |lines| {
             InnerPart::UnorderedLines(lines)
           }),
@@ -947,7 +987,7 @@ fn parse_wildcard_pattern_text(
             self.queue_previous_text(next_input);
             self.parts.push(WildcardPatternPart::Wildline);
           }
-          InnerPart::Wildnum(times) => {
+          InnerPart::Wildchars(times) => {
             self.queue_previous_text(next_input);
             self.parts.push(WildcardPatternPart::Wildnum(times));
           }

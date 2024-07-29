@@ -10,6 +10,7 @@ use deno_core::snapshot::*;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_http::DefaultHttpPropertyExtractor;
+use deno_io::fs::FsError;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
@@ -80,21 +81,21 @@ impl deno_node::NodePermissions for Permissions {
     unreachable!("snapshotting!")
   }
   fn check_read_with_api_name(
-    &self,
+    &mut self,
     _p: &Path,
     _api_name: Option<&str>,
   ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
   fn check_write_with_api_name(
-    &self,
+    &mut self,
     _p: &Path,
     _api_name: Option<&str>,
   ) -> Result<(), deno_core::error::AnyError> {
     unreachable!("snapshotting!")
   }
   fn check_sys(
-    &self,
+    &mut self,
     _kind: &str,
     _api_name: &str,
   ) -> Result<(), deno_core::error::AnyError> {
@@ -129,6 +130,17 @@ impl deno_net::NetPermissions for Permissions {
 }
 
 impl deno_fs::FsPermissions for Permissions {
+  fn check_open<'a>(
+    &mut self,
+    _resolved: bool,
+    _read: bool,
+    _write: bool,
+    _path: &'a Path,
+    _api_name: &str,
+  ) -> Result<std::borrow::Cow<'a, Path>, FsError> {
+    unreachable!("snapshotting!")
+  }
+
   fn check_read(
     &mut self,
     _path: &Path,
@@ -201,11 +213,13 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
 pub fn create_runtime_snapshot(
   snapshot_path: PathBuf,
   snapshot_options: SnapshotOptions,
+  // NOTE: For embedders that wish to add additional extensions to the snapshot
+  custom_extensions: Vec<Extension>,
 ) {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
   let fs = std::sync::Arc::new(deno_fs::RealFs);
-  let extensions: Vec<Extension> = vec![
+  let mut extensions: Vec<Extension> = vec![
     deno_webidl::deno_webidl::init_ops_and_esm(),
     deno_console::deno_console::init_ops_and_esm(),
     deno_url::deno_url::init_ops_and_esm(),
@@ -257,6 +271,7 @@ pub fn create_runtime_snapshot(
     ops::bootstrap::deno_bootstrap::init_ops(Some(snapshot_options)),
     ops::web_worker::deno_web_worker::init_ops(),
   ];
+  extensions.extend(custom_extensions);
 
   let output = create_snapshot(
     CreateSnapshotOptions {
@@ -270,7 +285,15 @@ pub fn create_runtime_snapshot(
         let isolate = rt.v8_isolate();
         let scope = &mut v8::HandleScope::new(isolate);
 
-        let ctx = v8::Context::new(scope);
+        let tmpl = deno_node::init_global_template(
+          scope,
+          deno_node::ContextInitMode::ForSnapshot,
+        );
+        let ctx = deno_node::create_v8_context(
+          scope,
+          tmpl,
+          deno_node::ContextInitMode::ForSnapshot,
+        );
         assert_eq!(scope.add_context(ctx), deno_node::VM_CONTEXT_INDEX);
       })),
       skip_op_registration: false,
@@ -281,6 +304,7 @@ pub fn create_runtime_snapshot(
   let mut snapshot = std::fs::File::create(snapshot_path).unwrap();
   snapshot.write_all(&output.output).unwrap();
 
+  #[allow(clippy::print_stdout)]
   for path in output.files_loaded_during_snapshot {
     println!("cargo:rerun-if-changed={}", path.display());
   }

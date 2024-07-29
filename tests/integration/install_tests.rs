@@ -2,6 +2,7 @@
 
 use test_util as util;
 use test_util::assert_contains;
+use test_util::assert_not_contains;
 use util::TestContext;
 use util::TestContextBuilder;
 
@@ -17,9 +18,54 @@ fn install_basic() {
   // ensure a lockfile doesn't get created or updated locally
   temp_dir.write("deno.json", "{}");
 
-  context
+  let output = context
     .new_command()
     .args("install --check --name echo_test http://localhost:4545/echo.ts")
+    .envs([
+      ("HOME", temp_dir_str.as_str()),
+      ("USERPROFILE", temp_dir_str.as_str()),
+      ("DENO_INSTALL_ROOT", ""),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  let output_text = output.combined_output();
+  assert_contains!(
+    output_text,
+    "`deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag."
+  );
+
+  // no lockfile should be created locally
+  assert!(!temp_dir.path().join("deno.lock").exists());
+
+  let mut file_path = temp_dir.path().join(".deno/bin/echo_test");
+  assert!(file_path.exists());
+
+  if cfg!(windows) {
+    file_path = file_path.with_extension("cmd");
+  }
+
+  let content = file_path.read_to_string();
+  // ensure there's a trailing newline so the shell script can be
+  // more versatile.
+  assert_eq!(content.chars().last().unwrap(), '\n');
+
+  if cfg!(windows) {
+    assert_contains!(
+      content,
+      r#""run" "--check" "--no-config" "http://localhost:4545/echo.ts""#
+    );
+  } else {
+    assert_contains!(
+      content,
+      r#"run --check --no-config 'http://localhost:4545/echo.ts'"#
+    );
+  }
+
+  // now uninstall
+  context
+    .new_command()
+    .args("uninstall echo_test")
     .envs([
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
@@ -28,6 +74,43 @@ fn install_basic() {
     .run()
     .skip_output_check()
     .assert_exit_code(0);
+
+  // ensure local lockfile still doesn't exist
+  assert!(!temp_dir.path().join("deno.lock").exists());
+  // ensure uninstall occurred
+  assert!(!file_path.exists());
+}
+
+#[test]
+fn install_basic_global() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let temp_dir_str = temp_dir.path().to_string();
+
+  // ensure a lockfile doesn't get created or updated locally
+  temp_dir.write("deno.json", "{}");
+
+  let output = context
+    .new_command()
+    .args(
+      "install --global --check --name echo_test http://localhost:4545/echo.ts",
+    )
+    .envs([
+      ("HOME", temp_dir_str.as_str()),
+      ("USERPROFILE", temp_dir_str.as_str()),
+      ("DENO_INSTALL_ROOT", ""),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  let output_text = output.combined_output();
+  assert_not_contains!(
+    output_text,
+    "`deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag."
+  );
 
   // no lockfile should be created locally
   assert!(!temp_dir.path().join("deno.lock").exists());

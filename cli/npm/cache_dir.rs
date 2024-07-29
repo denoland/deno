@@ -20,10 +20,13 @@ pub struct NpmCacheDir {
   root_dir: PathBuf,
   // cached url representation of the root directory
   root_dir_url: Url,
+  // A list of all registry that were discovered via `.npmrc` files
+  // turned into a safe directory names.
+  known_registries_dirnames: Vec<String>,
 }
 
 impl NpmCacheDir {
-  pub fn new(root_dir: PathBuf) -> Self {
+  pub fn new(root_dir: PathBuf, known_registries_urls: Vec<Url>) -> Self {
     fn try_get_canonicalized_root_dir(
       root_dir: &Path,
     ) -> Result<PathBuf, AnyError> {
@@ -38,10 +41,25 @@ impl NpmCacheDir {
     let root_dir =
       try_get_canonicalized_root_dir(&root_dir).unwrap_or(root_dir);
     let root_dir_url = Url::from_directory_path(&root_dir).unwrap();
+
+    let known_registries_dirnames: Vec<_> = known_registries_urls
+      .into_iter()
+      .map(|url| {
+        root_url_to_safe_local_dirname(&url)
+          .to_string_lossy()
+          .replace('\\', "/")
+      })
+      .collect();
+
     Self {
       root_dir,
       root_dir_url,
+      known_registries_dirnames,
     }
+  }
+
+  pub fn root_dir(&self) -> &Path {
+    &self.root_dir
   }
 
   pub fn root_dir_url(&self) -> &Url {
@@ -54,7 +72,7 @@ impl NpmCacheDir {
     registry_url: &Url,
   ) -> PathBuf {
     if folder_id.copy_index == 0 {
-      self.package_folder_for_name_and_version(&folder_id.nv, registry_url)
+      self.package_folder_for_nv(&folder_id.nv, registry_url)
     } else {
       self
         .package_name_folder(&folder_id.nv.name, registry_url)
@@ -62,7 +80,7 @@ impl NpmCacheDir {
     }
   }
 
-  pub fn package_folder_for_name_and_version(
+  pub fn package_folder_for_nv(
     &self,
     package: &PackageNv,
     registry_url: &Url,
@@ -88,7 +106,7 @@ impl NpmCacheDir {
     }
   }
 
-  pub fn registry_folder(&self, registry_url: &Url) -> PathBuf {
+  fn registry_folder(&self, registry_url: &Url) -> PathBuf {
     self
       .root_dir
       .join(root_url_to_safe_local_dirname(registry_url))
@@ -97,22 +115,31 @@ impl NpmCacheDir {
   pub fn resolve_package_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-    registry_url: &Url,
   ) -> Option<NpmPackageCacheFolderId> {
-    let registry_root_dir = self
-      .root_dir_url
-      .join(&format!(
-        "{}/",
-        root_url_to_safe_local_dirname(registry_url)
-          .to_string_lossy()
-          .replace('\\', "/")
-      ))
-      // this not succeeding indicates a fatal issue, so unwrap
-      .unwrap();
-    let mut relative_url = registry_root_dir.make_relative(specifier)?;
-    if relative_url.starts_with("../") {
-      return None;
+    let mut maybe_relative_url = None;
+
+    // Iterate through known registries and try to get a match.
+    for registry_dirname in &self.known_registries_dirnames {
+      let registry_root_dir = self
+        .root_dir_url
+        .join(&format!("{}/", registry_dirname))
+        // this not succeeding indicates a fatal issue, so unwrap
+        .unwrap();
+
+      let Some(relative_url) = registry_root_dir.make_relative(specifier)
+      else {
+        continue;
+      };
+
+      if relative_url.starts_with("../") {
+        continue;
+      }
+
+      maybe_relative_url = Some(relative_url);
+      break;
     }
+
+    let mut relative_url = maybe_relative_url?;
 
     // base32 decode the url if it starts with an underscore
     // * Ex. _{base32(package_name)}/
@@ -194,8 +221,8 @@ mod test {
   fn should_get_package_folder() {
     let deno_dir = crate::cache::DenoDir::new(None).unwrap();
     let root_dir = deno_dir.npm_folder_path();
-    let cache = NpmCacheDir::new(root_dir.clone());
     let registry_url = Url::parse("https://registry.npmjs.org/").unwrap();
+    let cache = NpmCacheDir::new(root_dir.clone(), vec![registry_url.clone()]);
 
     assert_eq!(
       cache.package_folder_for_id(

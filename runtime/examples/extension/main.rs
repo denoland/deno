@@ -1,5 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::print_stdout)]
+#![allow(clippy::print_stderr)]
+
 use std::path::Path;
 use std::rc::Rc;
 
@@ -7,7 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::FsModuleLoader;
 use deno_core::ModuleSpecifier;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 

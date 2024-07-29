@@ -2,6 +2,7 @@
 
 use deno_core::op2;
 use deno_core::OpState;
+use deno_terminal::colors::ColorLevel;
 use serde::Serialize;
 
 use crate::BootstrapOptions;
@@ -16,7 +17,9 @@ deno_core::extension!(
     op_bootstrap_language,
     op_bootstrap_log_level,
     op_bootstrap_no_color,
-    op_bootstrap_is_tty,
+    op_bootstrap_color_depth,
+    op_bootstrap_is_stdout_tty,
+    op_bootstrap_is_stderr_tty,
     op_bootstrap_unstable_args,
     op_snapshot_options,
   ],
@@ -41,11 +44,20 @@ pub struct SnapshotOptions {
 
 impl Default for SnapshotOptions {
   fn default() -> Self {
+    let arch = std::env::consts::ARCH;
+    let platform = std::env::consts::OS;
+    let target = match platform {
+      "macos" => format!("{}-apple-darwin", arch),
+      "linux" => format!("{}-unknown-linux-gnu", arch),
+      "windows" => format!("{}-pc-windows-msvc", arch),
+      rest => format!("{}-{}", arch, rest),
+    };
+
     Self {
       deno_version: "dev".to_owned(),
       ts_version: "n/a".to_owned(),
       v8_version: deno_core::v8_version(),
-      target: std::env::consts::ARCH.to_owned(),
+      target,
     }
   }
 }
@@ -117,7 +129,24 @@ pub fn op_bootstrap_no_color(state: &mut OpState) -> bool {
 }
 
 #[op2(fast)]
-pub fn op_bootstrap_is_tty(state: &mut OpState) -> bool {
+pub fn op_bootstrap_color_depth(state: &mut OpState) -> i32 {
   let options = state.borrow::<BootstrapOptions>();
-  options.is_tty
+  match options.color_level {
+    ColorLevel::None => 1,
+    ColorLevel::Ansi => 4,
+    ColorLevel::Ansi256 => 8,
+    ColorLevel::TrueColor => 24,
+  }
+}
+
+#[op2(fast)]
+pub fn op_bootstrap_is_stdout_tty(state: &mut OpState) -> bool {
+  let options = state.borrow::<BootstrapOptions>();
+  options.is_stdout_tty
+}
+
+#[op2(fast)]
+pub fn op_bootstrap_is_stderr_tty(state: &mut OpState) -> bool {
+  let options = state.borrow::<BootstrapOptions>();
+  options.is_stderr_tty
 }

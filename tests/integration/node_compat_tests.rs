@@ -21,3 +21,17 @@ itest!(node_test_module_no_sanitizers {
   // exit_code: 123,
   http_server: true,
 });
+
+itest!(
+  node_process_beforeexit_exit_events_emitted_without_listeners {
+    args: "run node/process_beforeexit_exit_events.ts",
+    output: "node/process_beforeexit_exit_events.out",
+    exit_code: 0,
+  }
+);
+
+itest!(web_node_events_dispatched_in_correct_order {
+  args: "run node/events_order.ts",
+  output: "node/events_order.out",
+  exit_code: 0,
+});

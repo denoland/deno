@@ -18,6 +18,7 @@ mod js;
 mod node;
 mod npm;
 mod resolver;
+mod task_runner;
 mod util;
 mod version;
 mod worker;
@@ -30,11 +31,14 @@ use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
 
+use std::borrow::Cow;
+use std::collections::HashMap;
 use std::env;
 use std::env::current_exe;
 
 use crate::args::Flags;
 
+#[allow(clippy::print_stderr)]
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   eprintln!(
     "Unstable API '{api_name}'. The `--unstable-{}` flag must be provided.",
@@ -43,6 +47,7 @@ pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   std::process::exit(70);
 }
 
+#[allow(clippy::print_stderr)]
 fn exit_with_message(message: &str, code: i32) -> ! {
   eprintln!(
     "{}: {}",
@@ -56,7 +61,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
     Err(error) => {
-      let mut error_string = format!("{error:?}");
+      let mut error_string = format!("{:?}", error);
 
       if let Some(e) = error.downcast_ref::<JsError>() {
         error_string = format_js_error(e);
@@ -67,15 +72,27 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   }
 }
 
+fn load_env_vars(env_vars: &HashMap<String, String>) {
+  env_vars.iter().for_each(|env_var| {
+    if env::var(env_var.0).is_err() {
+      std::env::set_var(env_var.0, env_var.1);
+    }
+  })
+}
+
 fn main() {
   let args: Vec<_> = env::args_os().collect();
   let current_exe_path = current_exe().unwrap();
-  let standalone = standalone::extract_standalone(&current_exe_path, args);
+  let standalone =
+    standalone::extract_standalone(&current_exe_path, Cow::Owned(args));
   let future = async move {
     match standalone {
       Ok(Some(future)) => {
         let (metadata, eszip) = future.await?;
-        standalone::run(eszip, metadata).await
+        util::logger::init(metadata.log_level);
+        load_env_vars(&metadata.env_vars_from_env_file);
+        let exit_code = standalone::run(eszip, metadata).await?;
+        std::process::exit(exit_code);
       }
       Ok(None) => Ok(()),
       Err(err) => Err(err),

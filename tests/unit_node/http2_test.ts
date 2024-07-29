@@ -1,8 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import * as http2 from "node:http2";
+import { Buffer } from "node:buffer";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import * as net from "node:net";
-import { assert, assertEquals } from "@std/assert/mod.ts";
+import { assert, assertEquals } from "@std/assert";
 import { curlRequest } from "../unit/test_util.ts";
 
 for (const url of ["http://127.0.0.1:4246", "https://127.0.0.1:4247"]) {
@@ -163,4 +166,112 @@ Deno.test("[node/http2.createServer()]", {
   // https://github.com/denoland/deno/blob/749b6e45e58ac87188027f79fe403d130f86bd73/ext/node/polyfills/net.ts#L2396-L2402
   // Issue: https://github.com/denoland/deno/issues/22764
   await new Promise<void>((resolve) => server.on("close", resolve));
+});
+
+Deno.test("[node/http2 client] write image buffer on request stream works", async () => {
+  const url = "https://localhost:5545";
+  const client = http2.connect(url);
+  client.on("error", (err) => console.error(err));
+
+  const imagePath = join(import.meta.dirname!, "testdata", "green.jpg");
+  const buffer = await readFile(imagePath);
+  const req = client.request({ ":method": "POST", ":path": "/echo_server" });
+  req.write(buffer, (err) => {
+    if (err) throw err;
+  });
+
+  let receivedData: Buffer;
+  req.on("data", (chunk) => {
+    if (!receivedData) {
+      receivedData = chunk;
+    } else {
+      receivedData = Buffer.concat([receivedData, chunk]);
+    }
+  });
+  req.end();
+
+  const endPromise = Promise.withResolvers<void>();
+  setTimeout(() => {
+    try {
+      client.close();
+    } catch (_) {
+      // pass
+    }
+    endPromise.resolve();
+  }, 2000);
+
+  await endPromise.promise;
+  assertEquals(receivedData!, buffer);
+});
+
+Deno.test("[node/http2 client] write 512kb buffer on request stream works", async () => {
+  const url = "https://localhost:5545";
+  const client = http2.connect(url);
+  client.on("error", (err) => console.error(err));
+
+  const filePath = join(
+    import.meta.dirname!,
+    "testdata",
+    "lorem_ipsum_512kb.txt",
+  );
+  const buffer = await readFile(filePath);
+  const req = client.request({ ":method": "POST", ":path": "/echo_server" });
+  req.write(buffer, (err) => {
+    if (err) throw err;
+  });
+
+  let receivedData: Buffer;
+  req.on("data", (chunk) => {
+    if (!receivedData) {
+      receivedData = chunk;
+    } else {
+      receivedData = Buffer.concat([receivedData, chunk]);
+    }
+  });
+  req.end();
+
+  const endPromise = Promise.withResolvers<void>();
+  setTimeout(() => {
+    try {
+      client.close();
+    } catch (_) {
+      // pass
+    }
+    endPromise.resolve();
+  }, 2000);
+
+  await endPromise.promise;
+  assertEquals(receivedData!, buffer);
+});
+
+// https://github.com/denoland/deno/issues/24678
+Deno.test("[node/http2 client] deno doesn't panic on uppercase headers", async () => {
+  const url = "http://127.0.0.1:4246";
+  const client = http2.connect(url);
+  client.on("error", (err) => console.error(err));
+
+  // The "User-Agent" header has uppercase characters to test the panic.
+  const req = client.request({
+    ":method": "POST",
+    ":path": "/",
+    "User-Agent": "http2",
+  });
+  const endPromise = Promise.withResolvers<void>();
+
+  let receivedData = "";
+
+  req.write("hello");
+  req.setEncoding("utf8");
+
+  req.on("data", (chunk) => {
+    receivedData += chunk;
+  });
+  req.on("end", () => {
+    req.close();
+    client.close();
+    endPromise.resolve();
+  });
+  req.end();
+  await endPromise.promise;
+  assertEquals(receivedData, "hello world\n");
 });

@@ -1,0 +1,5 @@
+{
+  "args": "bench bench_formatting.ts",
+  "output": "bench_formatting.out",
+  "exitCode": 0
+}

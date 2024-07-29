@@ -145,12 +145,13 @@ const windowOrWorkerGlobalScope = {
   [webidl.brand]: core.propNonEnumerable(webidl.brand),
 };
 
-const unstableForWindowOrWorkerGlobalScope = {};
+const unstableForWindowOrWorkerGlobalScope = { __proto__: null };
 unstableForWindowOrWorkerGlobalScope[unstableIds.broadcastChannel] = {
   BroadcastChannel: core.propNonEnumerable(broadcastChannel.BroadcastChannel),
 };
 unstableForWindowOrWorkerGlobalScope[unstableIds.net] = {
   WebSocketStream: core.propNonEnumerable(webSocketStream.WebSocketStream),
+  WebSocketError: core.propNonEnumerable(webSocketStream.WebSocketError),
 };
 // deno-fmt-ignore
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {

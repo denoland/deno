@@ -32,6 +32,7 @@ use crate::npm_registry_unset_url;
 use crate::pty::Pty;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
+use crate::tests_path;
 use crate::HttpServerGuard;
 use crate::TempDir;
 
@@ -88,6 +89,7 @@ pub struct TestContextBuilder {
   use_http_server: bool,
   use_temp_cwd: bool,
   use_symlinked_temp_dir: bool,
+  use_canonicalized_temp_dir: bool,
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
@@ -139,6 +141,23 @@ impl TestContextBuilder {
   #[deprecated]
   pub fn use_symlinked_temp_dir(mut self) -> Self {
     self.use_symlinked_temp_dir = true;
+    self
+  }
+
+  /// Causes the temp directory to go to its canonicalized path instead
+  /// of being in a symlinked temp dir on the CI.
+  ///
+  /// Note: This method is not actually deprecated. It's just deprecated
+  /// to discourage its use. Use it sparingly and document why you're using
+  /// it. You better have a good reason other than being lazy!
+  ///
+  /// If your tests are failing because the temp dir is symlinked on the CI,
+  /// then it likely means your code doesn't properly handle when Deno is running
+  /// in a symlinked directory. That's a bug and you should fix it without using
+  /// this.
+  #[deprecated]
+  pub fn use_canonicalized_temp_dir(mut self) -> Self {
+    self.use_canonicalized_temp_dir = true;
     self
   }
 
@@ -206,13 +225,21 @@ impl TestContextBuilder {
       panic!("{}", err);
     }
 
-    let temp_dir_path = self
-      .temp_dir_path
-      .clone()
-      .unwrap_or_else(std::env::temp_dir);
-    let deno_dir = TempDir::new_in(&temp_dir_path);
-    let temp_dir = TempDir::new_in(&temp_dir_path);
+    let temp_dir_path = PathRef::new(
+      self
+        .temp_dir_path
+        .clone()
+        .unwrap_or_else(std::env::temp_dir),
+    );
+    let temp_dir_path = if self.use_canonicalized_temp_dir {
+      temp_dir_path.canonicalize()
+    } else {
+      temp_dir_path
+    };
+    let deno_dir = TempDir::new_in(temp_dir_path.as_path());
+    let temp_dir = TempDir::new_in(temp_dir_path.as_path());
     let temp_dir = if self.use_symlinked_temp_dir {
+      assert!(!self.use_canonicalized_temp_dir); // code doesn't handle using both of these
       TempDir::new_symlinked(temp_dir)
     } else {
       temp_dir
@@ -225,9 +252,6 @@ impl TestContextBuilder {
     }
 
     let deno_exe = deno_exe_path();
-    self
-      .diagnostic_logger
-      .writeln(format!("deno_exe path {}", deno_exe));
 
     let http_server_guard = if self.use_http_server {
       Some(Rc::new(http_server()))
@@ -295,9 +319,13 @@ impl TestContext {
   }
 
   pub fn new_lsp_command(&self) -> LspClientBuilder {
-    LspClientBuilder::new_with_dir(self.deno_dir.clone())
+    let mut builder = LspClientBuilder::new_with_dir(self.deno_dir.clone())
       .deno_exe(&self.deno_exe)
-      .set_root_dir(self.temp_dir.path().clone())
+      .set_root_dir(self.temp_dir.path().clone());
+    for (key, value) in &self.envs {
+      builder = builder.env(key, value);
+    }
+    builder
   }
 
   pub fn run_npm(&self, args: impl AsRef<str>) {
@@ -386,6 +414,7 @@ pub struct TestCommandBuilder {
   args_text: String,
   args_vec: Vec<String>,
   split_output: bool,
+  show_output: bool,
 }
 
 impl TestCommandBuilder {
@@ -405,6 +434,7 @@ impl TestCommandBuilder {
       command_name: "deno".to_string(),
       args_text: "".to_string(),
       args_vec: Default::default(),
+      show_output: false,
     }
   }
 
@@ -481,6 +511,16 @@ impl TestCommandBuilder {
     self
   }
 
+  /// Set this to enable streaming the output of the command to stderr.
+  ///
+  /// Not deprecated, this is just here so you don't accidentally
+  /// commit code with this enabled.
+  #[deprecated]
+  pub fn show_output(mut self) -> Self {
+    self.show_output = true;
+    self
+  }
+
   pub fn stdin<T: Into<Stdio>>(mut self, cfg: T) -> Self {
     self.stdin = Some(StdioContainer::new(cfg.into()));
     self
@@ -545,9 +585,10 @@ impl TestCommandBuilder {
       return;
     }
 
-    let args = self.build_args();
+    let cwd = self.build_cwd();
+    let args = self.build_args(&cwd);
     let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
-    let mut envs = self.build_envs();
+    let mut envs = self.build_envs(&cwd);
     if !envs.contains_key("NO_COLOR") {
       // set this by default for pty tests
       envs.insert("NO_COLOR".to_string(), "1".to_string());
@@ -561,11 +602,6 @@ impl TestCommandBuilder {
       }
     }
 
-    let cwd = self
-      .cwd
-      .as_ref()
-      .map(PathBuf::from)
-      .unwrap_or_else(|| std::env::current_dir().unwrap());
     let command_path = self.build_command_path();
 
     self.diagnostic_logger.writeln(format!(
@@ -609,10 +645,27 @@ impl TestCommandBuilder {
   }
 
   pub fn run(&self) -> TestCommandOutput {
-    fn read_pipe_to_string(mut pipe: os_pipe::PipeReader) -> String {
-      let mut output = String::new();
-      pipe.read_to_string(&mut output).unwrap();
-      output
+    fn read_pipe_to_string(
+      mut pipe: os_pipe::PipeReader,
+      output_to_stderr: bool,
+    ) -> String {
+      if output_to_stderr {
+        let mut buffer = vec![0; 512];
+        let mut final_data = Vec::new();
+        loop {
+          let size = pipe.read(&mut buffer).unwrap();
+          if size == 0 {
+            break;
+          }
+          final_data.extend(&buffer[..size]);
+          std::io::stderr().write_all(&buffer[..size]).unwrap();
+        }
+        String::from_utf8_lossy(&final_data).to_string()
+      } else {
+        let mut output = String::new();
+        pipe.read_to_string(&mut output).unwrap();
+        output
+      }
     }
 
     fn sanitize_output(text: String, args: &[OsString]) -> String {
@@ -636,11 +689,16 @@ impl TestCommandBuilder {
       let (stderr_reader, stderr_writer) = pipe().unwrap();
       command.stdout(stdout_writer);
       command.stderr(stderr_writer);
+      let show_output = self.show_output;
       (
         None,
         Some((
-          std::thread::spawn(move || read_pipe_to_string(stdout_reader)),
-          std::thread::spawn(move || read_pipe_to_string(stderr_reader)),
+          std::thread::spawn(move || {
+            read_pipe_to_string(stdout_reader, show_output)
+          }),
+          std::thread::spawn(move || {
+            read_pipe_to_string(stderr_reader, show_output)
+          }),
         )),
       )
     } else {
@@ -663,8 +721,9 @@ impl TestCommandBuilder {
     // and dropping it closes them.
     drop(command);
 
-    let combined = combined_reader
-      .map(|pipe| sanitize_output(read_pipe_to_string(pipe), &args));
+    let combined = combined_reader.map(|pipe| {
+      sanitize_output(read_pipe_to_string(pipe, self.show_output), &args)
+    });
 
     let status = process.wait().unwrap();
     let std_out_err = std_out_err_handle.map(|(stdout, stderr)| {
@@ -698,19 +757,18 @@ impl TestCommandBuilder {
 
   fn build_command(&self) -> Command {
     let command_path = self.build_command_path();
-    let args = self.build_args();
+    let cwd = self.build_cwd();
+    let args = self.build_args(&cwd);
     self.diagnostic_logger.writeln(format!(
       "command {} {}",
       command_path,
       args.join(" ")
     ));
     let mut command = Command::new(command_path);
-    if let Some(cwd) = &self.cwd {
-      self
-        .diagnostic_logger
-        .writeln(format!("command cwd {}", cwd));
-      command.current_dir(cwd);
-    }
+    self
+      .diagnostic_logger
+      .writeln(format!("command cwd {}", cwd.display()));
+    command.current_dir(&cwd);
     if let Some(stdin) = &self.stdin {
       command.stdin(stdin.take());
     }
@@ -725,7 +783,7 @@ impl TestCommandBuilder {
     if self.env_clear {
       command.env_clear();
     }
-    let envs = self.build_envs();
+    let envs = self.build_envs(&cwd);
     command.envs(envs);
     command.stdin(Stdio::piped());
     command
@@ -739,12 +797,14 @@ impl TestCommandBuilder {
     };
     if command_name == "deno" {
       deno_exe_path()
+    } else if command_name.starts_with("./") && self.cwd.is_some() {
+      self.cwd.as_ref().unwrap().join(command_name)
     } else {
       PathRef::new(PathBuf::from(command_name))
     }
   }
 
-  fn build_args(&self) -> Vec<String> {
+  fn build_args(&self, cwd: &Path) -> Vec<String> {
     if self.args_vec.is_empty() {
       std::borrow::Cow::Owned(
         self
@@ -761,11 +821,19 @@ impl TestCommandBuilder {
       std::borrow::Cow::Borrowed(&self.args_vec)
     }
     .iter()
-    .map(|arg| arg.replace("$TESTDATA", &testdata_path().to_string_lossy()))
+    .map(|arg| self.replace_vars(arg, cwd))
     .collect::<Vec<_>>()
   }
 
-  fn build_envs(&self) -> HashMap<String, String> {
+  fn build_cwd(&self) -> PathBuf {
+    self
+      .cwd
+      .as_ref()
+      .map(PathBuf::from)
+      .unwrap_or_else(|| std::env::current_dir().unwrap())
+  }
+
+  fn build_envs(&self, cwd: &Path) -> HashMap<String, String> {
     let mut envs = self.envs.clone();
     if !envs.contains_key("DENO_DIR") {
       envs.insert("DENO_DIR".to_string(), self.deno_dir.path().to_string());
@@ -782,7 +850,22 @@ impl TestCommandBuilder {
     for key in &self.envs_remove {
       envs.remove(key);
     }
+
+    // update any test variables in the env value
+    for value in envs.values_mut() {
+      *value = self.replace_vars(value, cwd);
+    }
+
     envs
+  }
+
+  fn replace_vars(&self, text: &str, cwd: &Path) -> String {
+    // todo(dsherret): use monch to extract out the vars
+    text
+      .replace("$DENO_DIR", &self.deno_dir.path().to_string_lossy())
+      .replace("$TESTDATA", &testdata_path().to_string_lossy())
+      .replace("$TESTS", &tests_path().to_string_lossy())
+      .replace("$PWD", &cwd.to_string_lossy())
   }
 }
 

@@ -8,7 +8,7 @@ import {
   assertRejects,
   assertThrows,
 } from "./test_util.ts";
-import { copy } from "@std/streams/copy.ts";
+import { copy } from "@std/io/copy";
 
 // Note tests for Deno.FsFile.setRaw is in integration tests.
 
