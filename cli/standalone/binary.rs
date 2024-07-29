@@ -214,8 +214,7 @@ pub fn extract_standalone(
   };
 
   // We do the first part sync so it can complete quickly
-  let trailer: [u8; TRAILER_SIZE] = data[0..TRAILER_SIZE].try_into().unwrap();
-  let trailer = match Trailer::parse(&trailer)? {
+  let trailer = match Trailer::parse(&data[0..TRAILER_SIZE])? {
     None => return Ok(None),
     Some(trailer) => trailer,
   };
