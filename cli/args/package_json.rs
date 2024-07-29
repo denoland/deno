@@ -1,292 +1,105 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
-use deno_npm::registry::parse_dep_entry_name_and_raw_version;
-use deno_runtime::deno_node::PackageJson;
-use deno_semver::npm::NpmVersionReqParseError;
+use deno_config::workspace::Workspace;
+use deno_package_json::PackageJsonDepValue;
 use deno_semver::package::PackageReq;
-use deno_semver::VersionReq;
-use indexmap::IndexMap;
-use thiserror::Error;
 
-#[derive(Debug, Error, Clone)]
-pub enum PackageJsonDepValueParseError {
-  #[error(transparent)]
-  VersionReq(#[from] NpmVersionReqParseError),
-  #[error("Not implemented scheme '{scheme}'")]
-  Unsupported { scheme: String },
+#[derive(Debug)]
+pub struct InstallNpmRemotePkg {
+  pub alias: String,
+  // todo(24419): use this when setting up the node_modules dir
+  #[allow(dead_code)]
+  pub base_dir: PathBuf,
+  pub req: PackageReq,
 }
 
-pub type PackageJsonDeps =
-  IndexMap<String, Result<PackageReq, PackageJsonDepValueParseError>>;
+#[derive(Debug)]
+pub struct InstallNpmWorkspacePkg {
+  pub alias: String,
+  // todo(24419): use this when setting up the node_modules dir
+  #[allow(dead_code)]
+  pub base_dir: PathBuf,
+  pub target_dir: PathBuf,
+}
 
 #[derive(Debug, Default)]
-pub struct PackageJsonDepsProvider(Option<PackageJsonDeps>);
-
-impl PackageJsonDepsProvider {
-  pub fn new(deps: Option<PackageJsonDeps>) -> Self {
-    Self(deps)
-  }
-
-  pub fn deps(&self) -> Option<&PackageJsonDeps> {
-    self.0.as_ref()
-  }
-
-  pub fn reqs(&self) -> Option<Vec<&PackageReq>> {
-    match &self.0 {
-      Some(deps) => {
-        let mut package_reqs = deps
-          .values()
-          .filter_map(|r| r.as_ref().ok())
-          .collect::<Vec<_>>();
-        package_reqs.sort(); // deterministic resolution
-        Some(package_reqs)
-      }
-      None => None,
-    }
-  }
+pub struct PackageJsonInstallDepsProvider {
+  remote_pkgs: Vec<InstallNpmRemotePkg>,
+  workspace_pkgs: Vec<InstallNpmWorkspacePkg>,
 }
 
-/// Gets an application level package.json's npm package requirements.
-///
-/// Note that this function is not general purpose. It is specifically for
-/// parsing the application level package.json that the user has control
-/// over. This is a design limitation to allow mapping these dependency
-/// entries to npm specifiers which can then be used in the resolver.
-pub fn get_local_package_json_version_reqs(
-  package_json: &PackageJson,
-) -> PackageJsonDeps {
-  fn parse_entry(
-    key: &str,
-    value: &str,
-  ) -> Result<PackageReq, PackageJsonDepValueParseError> {
-    if value.starts_with("workspace:")
-      || value.starts_with("file:")
-      || value.starts_with("git:")
-      || value.starts_with("http:")
-      || value.starts_with("https:")
-    {
-      return Err(PackageJsonDepValueParseError::Unsupported {
-        scheme: value.split(':').next().unwrap().to_string(),
-      });
-    }
-    let (name, version_req) = parse_dep_entry_name_and_raw_version(key, value);
-    let result = VersionReq::parse_from_npm(version_req);
-    match result {
-      Ok(version_req) => Ok(PackageReq {
-        name: name.to_string(),
-        version_req,
-      }),
-      Err(err) => Err(PackageJsonDepValueParseError::VersionReq(err)),
-    }
+impl PackageJsonInstallDepsProvider {
+  pub fn empty() -> Self {
+    Self::default()
   }
 
-  fn insert_deps(
-    deps: Option<&IndexMap<String, String>>,
-    result: &mut PackageJsonDeps,
-  ) {
-    if let Some(deps) = deps {
-      for (key, value) in deps {
-        result
-          .entry(key.to_string())
-          .or_insert_with(|| parse_entry(key, value));
-      }
-    }
-  }
+  pub fn from_workspace(workspace: &Arc<Workspace>) -> Self {
+    let mut workspace_pkgs = Vec::new();
+    let mut remote_pkgs = Vec::new();
+    let workspace_npm_pkgs = workspace.npm_packages();
+    for pkg_json in workspace.package_jsons() {
+      let deps = pkg_json.resolve_local_package_json_deps();
+      let mut pkg_pkgs = Vec::with_capacity(deps.len());
+      for (alias, dep) in deps {
+        let Ok(dep) = dep else {
+          continue;
+        };
+        match dep {
+          PackageJsonDepValue::Req(pkg_req) => {
+            let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
+              pkg.matches_req(&pkg_req)
+              // do not resolve to the current package
+              && pkg.pkg_json.path != pkg_json.path
+            });
 
-  let deps = package_json.dependencies.as_ref();
-  let dev_deps = package_json.dev_dependencies.as_ref();
-  let mut result = IndexMap::new();
-
-  // favors the deps over dev_deps
-  insert_deps(deps, &mut result);
-  insert_deps(dev_deps, &mut result);
-
-  result
-}
-
-/// Attempts to discover the package.json file, maybe stopping when it
-/// reaches the specified `maybe_stop_at` directory.
-pub fn discover_from(
-  start: &Path,
-  maybe_stop_at: Option<PathBuf>,
-) -> Result<Option<PackageJson>, AnyError> {
-  const PACKAGE_JSON_NAME: &str = "package.json";
-
-  // note: ancestors() includes the `start` path
-  for ancestor in start.ancestors() {
-    let path = ancestor.join(PACKAGE_JSON_NAME);
-
-    let source = match std::fs::read_to_string(&path) {
-      Ok(source) => source,
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        if let Some(stop_at) = maybe_stop_at.as_ref() {
-          if ancestor == stop_at {
-            break;
+            if let Some(pkg) = workspace_pkg {
+              workspace_pkgs.push(InstallNpmWorkspacePkg {
+                alias,
+                base_dir: pkg_json.dir_path().to_path_buf(),
+                target_dir: pkg.pkg_json.dir_path().to_path_buf(),
+              });
+            } else {
+              pkg_pkgs.push(InstallNpmRemotePkg {
+                alias,
+                base_dir: pkg_json.dir_path().to_path_buf(),
+                req: pkg_req,
+              });
+            }
+          }
+          PackageJsonDepValue::Workspace(version_req) => {
+            if let Some(pkg) = workspace_npm_pkgs.iter().find(|pkg| {
+              pkg.matches_name_and_version_req(&alias, &version_req)
+            }) {
+              workspace_pkgs.push(InstallNpmWorkspacePkg {
+                alias,
+                base_dir: pkg_json.dir_path().to_path_buf(),
+                target_dir: pkg.pkg_json.dir_path().to_path_buf(),
+              });
+            }
           }
         }
-        continue;
       }
-      Err(err) => bail!(
-        "Error loading package.json at {}. {:#}",
-        path.display(),
-        err
-      ),
-    };
+      // sort within each package
+      pkg_pkgs.sort_by(|a, b| a.alias.cmp(&b.alias));
 
-    let package_json = PackageJson::load_from_string(path.clone(), source)?;
-    log::debug!("package.json file found at '{}'", path.display());
-    return Ok(Some(package_json));
+      remote_pkgs.extend(pkg_pkgs);
+    }
+    remote_pkgs.shrink_to_fit();
+    workspace_pkgs.shrink_to_fit();
+    Self {
+      remote_pkgs,
+      workspace_pkgs,
+    }
   }
 
-  log::debug!("No package.json file found");
-  Ok(None)
-}
-
-#[cfg(test)]
-mod test {
-  use pretty_assertions::assert_eq;
-  use std::path::PathBuf;
-
-  use super::*;
-
-  fn get_local_package_json_version_reqs_for_tests(
-    package_json: &PackageJson,
-  ) -> IndexMap<String, Result<PackageReq, String>> {
-    get_local_package_json_version_reqs(package_json)
-      .into_iter()
-      .map(|(k, v)| {
-        (
-          k,
-          match v {
-            Ok(v) => Ok(v),
-            Err(err) => Err(err.to_string()),
-          },
-        )
-      })
-      .collect::<IndexMap<_, _>>()
+  pub fn remote_pkgs(&self) -> &Vec<InstallNpmRemotePkg> {
+    &self.remote_pkgs
   }
 
-  #[test]
-  fn test_get_local_package_json_version_reqs() {
-    let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
-    package_json.dependencies = Some(IndexMap::from([
-      ("test".to_string(), "^1.2".to_string()),
-      ("other".to_string(), "npm:package@~1.3".to_string()),
-    ]));
-    package_json.dev_dependencies = Some(IndexMap::from([
-      ("package_b".to_string(), "~2.2".to_string()),
-      // should be ignored
-      ("other".to_string(), "^3.2".to_string()),
-    ]));
-    let deps = get_local_package_json_version_reqs_for_tests(&package_json);
-    assert_eq!(
-      deps,
-      IndexMap::from([
-        (
-          "test".to_string(),
-          Ok(PackageReq::from_str("test@^1.2").unwrap())
-        ),
-        (
-          "other".to_string(),
-          Ok(PackageReq::from_str("package@~1.3").unwrap())
-        ),
-        (
-          "package_b".to_string(),
-          Ok(PackageReq::from_str("package_b@~2.2").unwrap())
-        )
-      ])
-    );
-  }
-
-  #[test]
-  fn test_get_local_package_json_version_reqs_errors_non_npm_specifier() {
-    let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
-    package_json.dependencies = Some(IndexMap::from([(
-      "test".to_string(),
-      "%*(#$%()".to_string(),
-    )]));
-    let map = get_local_package_json_version_reqs_for_tests(&package_json);
-    assert_eq!(
-      map,
-      IndexMap::from([(
-        "test".to_string(),
-        Err(
-          concat!(
-            "Invalid npm version requirement. Unexpected character.\n",
-            "  %*(#$%()\n",
-            "  ~"
-          )
-          .to_string()
-        )
-      )])
-    );
-  }
-
-  #[test]
-  fn test_get_local_package_json_version_reqs_range() {
-    let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
-    package_json.dependencies = Some(IndexMap::from([(
-      "test".to_string(),
-      "1.x - 1.3".to_string(),
-    )]));
-    let map = get_local_package_json_version_reqs_for_tests(&package_json);
-    assert_eq!(
-      map,
-      IndexMap::from([(
-        "test".to_string(),
-        Ok(PackageReq {
-          name: "test".to_string(),
-          version_req: VersionReq::parse_from_npm("1.x - 1.3").unwrap()
-        })
-      )])
-    );
-  }
-
-  #[test]
-  fn test_get_local_package_json_version_reqs_skips_certain_specifiers() {
-    let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
-    package_json.dependencies = Some(IndexMap::from([
-      ("test".to_string(), "1".to_string()),
-      ("work-test".to_string(), "workspace:1.1.1".to_string()),
-      ("file-test".to_string(), "file:something".to_string()),
-      ("git-test".to_string(), "git:something".to_string()),
-      ("http-test".to_string(), "http://something".to_string()),
-      ("https-test".to_string(), "https://something".to_string()),
-    ]));
-    let result = get_local_package_json_version_reqs_for_tests(&package_json);
-    assert_eq!(
-      result,
-      IndexMap::from([
-        (
-          "file-test".to_string(),
-          Err("Not implemented scheme 'file'".to_string()),
-        ),
-        (
-          "git-test".to_string(),
-          Err("Not implemented scheme 'git'".to_string()),
-        ),
-        (
-          "http-test".to_string(),
-          Err("Not implemented scheme 'http'".to_string()),
-        ),
-        (
-          "https-test".to_string(),
-          Err("Not implemented scheme 'https'".to_string()),
-        ),
-        (
-          "test".to_string(),
-          Ok(PackageReq::from_str("test@1").unwrap())
-        ),
-        (
-          "work-test".to_string(),
-          Err("Not implemented scheme 'workspace'".to_string()),
-        )
-      ])
-    );
+  pub fn workspace_pkgs(&self) -> &Vec<InstallNpmWorkspacePkg> {
+    &self.workspace_pkgs
   }
 }

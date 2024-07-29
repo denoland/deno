@@ -169,7 +169,7 @@ impl DenoDir {
 
 /// To avoid the poorly managed dirs crate
 #[cfg(not(windows))]
-mod dirs {
+pub mod dirs {
   use std::path::PathBuf;
 
   pub fn cache_dir() -> Option<PathBuf> {
@@ -227,7 +227,7 @@ mod dirs {
 // https://github.com/dirs-dev/dirs-sys-rs/blob/ec7cee0b3e8685573d847f0a0f60aae3d9e07fa2/src/lib.rs#L140-L164
 // MIT license. Copyright (c) 2018-2019 dirs-rs contributors
 #[cfg(windows)]
-mod dirs {
+pub mod dirs {
   use std::ffi::OsString;
   use std::os::windows::ffi::OsStringExt;
   use std::path::PathBuf;
@@ -266,6 +266,12 @@ mod dirs {
   }
 
   pub fn home_dir() -> Option<PathBuf> {
+    if let Some(userprofile) = std::env::var_os("USERPROFILE") {
+      if !userprofile.is_empty() {
+        return Some(PathBuf::from(userprofile));
+      }
+    }
+
     known_folder(&knownfolders::FOLDERID_Profile)
   }
 }

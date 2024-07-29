@@ -304,3 +304,15 @@ Deno.test(
     );
   },
 );
+
+Deno.test(
+  { ignore: Deno.build.os !== "linux" },
+  function signalAliasLinux() {
+    const i = () => {};
+    Deno.addSignalListener("SIGUNUSED", i);
+    Deno.addSignalListener("SIGPOLL", i);
+
+    Deno.removeSignalListener("SIGUNUSED", i);
+    Deno.removeSignalListener("SIGPOLL", i);
+  },
+);

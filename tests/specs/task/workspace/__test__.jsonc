@@ -1,0 +1,52 @@
+{
+  "tests": {
+    "root": {
+      "args": "task",
+      "output": "root.out",
+      "exitCode": 1
+    },
+    "package_a": {
+      "args": "task",
+      "cwd": "package-a",
+      "output": "package-a.out",
+      "exitCode": 1
+    },
+    "package_b": {
+      "args": "task",
+      "cwd": "package-b",
+      "output": "package-b.out",
+      "exitCode": 1
+    },
+    "scripts": {
+      "args": "task",
+      "cwd": "scripts",
+      "output": "scripts.out",
+      "exitCode": 1
+    },
+    "package_b_tasks": {
+      "steps": [{
+        "args": "task --quiet pkg-json-root",
+        "cwd": "package-b",
+        // uses the workspace as cwd
+        "output": "pkg-json [WILDLINE]workspace\n"
+      }, {
+        "args": "task --quiet pkg-json-root-2",
+        "cwd": "package-b",
+        // uses package-b as cwd
+        "output": "override [WILDLINE]package-b\n"
+      }, {
+        "args": "task --quiet echo-package-b",
+        "cwd": "package-b",
+        "output": "hi [WILDLINE]package-b\n"
+      }, {
+        "args": "task --quiet echo-root",
+        "cwd": "package-b",
+        "output": "override root [WILDLINE]package-b\n"
+      }, {
+        "args": "task --quiet echo-root",
+        "cwd": "package-a",
+        "output": "[WILDLINE]workspace\n"
+      }]
+    }
+  }
+}

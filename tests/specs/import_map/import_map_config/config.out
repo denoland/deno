@@ -1,4 +1,5 @@
-Warning "importMap" setting is ignored when "imports" or "scopes" are specified in the config file.
+Warning "importMap" field is ignored when "imports" or "scopes" are specified in the config file.
+    at file:///[WILDLINE]/import_map_config/config.json
 Hello from remapped moment!
 Hello from remapped moment dir!
 Hello from remapped lodash!

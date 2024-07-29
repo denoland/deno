@@ -1,11 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertThrows } from "@std/assert/mod.ts";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import { Dirent as Dirent_ } from "node:fs";
 
 // deno-lint-ignore no-explicit-any
 const Dirent = Dirent_ as any;
 
 class DirEntryMock implements Deno.DirEntry {
+  parentPath = "";
   name = "";
   isFile = false;
   isDirectory = false;
@@ -78,5 +79,17 @@ Deno.test({
       Error,
       "does not yet support",
     );
+  },
+});
+
+Deno.test({
+  name: "Path and parent path is correct",
+  fn() {
+    const entry: DirEntryMock = new DirEntryMock();
+    entry.name = "my_file";
+    entry.parentPath = "/home/user";
+    assertEquals(new Dirent(entry).name, "my_file");
+    assertEquals(new Dirent(entry).path, "/home/user");
+    assertEquals(new Dirent(entry).parentPath, "/home/user");
   },
 });

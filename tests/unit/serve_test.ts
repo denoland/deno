@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assertMatch, assertRejects } from "@std/assert/mod.ts";
-import { Buffer, BufReader, BufWriter } from "@std/io/mod.ts";
+import { assertMatch, assertRejects } from "@std/assert";
+import { Buffer, BufReader, BufWriter } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -748,9 +748,11 @@ Deno.test(
     const consoleLog = console.log;
     console.log = (msg) => {
       try {
-        const match = msg.match(/Listening on http:\/\/localhost:(\d+)\//);
+        const match = msg.match(
+          /Listening on http:\/\/(localhost|0\.0\.0\.0):(\d+)\//,
+        );
         assert(!!match, `Didn't match ${msg}`);
-        const port = +match[1];
+        const port = +match[2];
         assert(port > 0 && port < 65536);
       } finally {
         ac.abort();
@@ -3522,7 +3524,7 @@ Deno.test(
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(clientError.message.includes("error sending request for url"));
+      assert(clientError.message.includes("client error"));
     } finally {
       ac.abort();
       await server.finished;
@@ -3570,7 +3572,7 @@ Deno.test({
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(clientError.message.includes("error sending request for url"));
+      assert(clientError.message.includes("client error"));
     } finally {
       ac.abort();
       await server.finished;
@@ -4034,3 +4036,28 @@ Deno.test(
     await server.finished;
   },
 );
+
+Deno.test({
+  name: "HTTP Server test (error on non-unix platform)",
+  ignore: Deno.build.os !== "windows",
+}, async () => {
+  await assertRejects(
+    async () => {
+      const ac = new AbortController();
+      const server = Deno.serve({
+        path: "path/to/socket",
+        handler: (_req) => new Response("Hello, world"),
+        signal: ac.signal,
+        onListen({ path: _path }) {
+          console.log(`Server started at ${_path}`);
+        },
+      });
+      server.finished.then(() => console.log("Server closed"));
+      console.log("Closing server...");
+      ac.abort();
+      await new Promise((resolve) => setTimeout(resolve, 100)); // Example of awaiting something
+    },
+    Error,
+    'Operation `"op_net_listen_unix"` not supported on non-unix platforms.',
+  );
+});

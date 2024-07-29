@@ -71,19 +71,16 @@ impl BinEntries {
     self.entries.push((package, package_path));
   }
 
-  /// Finish setting up the bin entries, writing the necessary files
-  /// to disk.
-  pub(super) fn finish(
-    mut self,
+  fn for_each_entry(
+    &mut self,
     snapshot: &NpmResolutionSnapshot,
-    bin_node_modules_dir_path: &Path,
+    mut f: impl FnMut(
+      &NpmResolutionPackage,
+      &Path,
+      &str, // bin name
+      &str, // bin script
+    ) -> Result<(), AnyError>,
   ) -> Result<(), AnyError> {
-    if !self.entries.is_empty() && !bin_node_modules_dir_path.exists() {
-      std::fs::create_dir_all(bin_node_modules_dir_path).with_context(
-        || format!("Creating '{}'", bin_node_modules_dir_path.display()),
-      )?;
-    }
-
     if !self.collisions.is_empty() {
       // walking the dependency tree to find out the depth of each package
       // is sort of expensive, so we only do it if there's a collision
@@ -101,13 +98,7 @@ impl BinEntries {
               // we already set up a bin entry with this name
               continue;
             }
-            set_up_bin_entry(
-              package,
-              name,
-              script,
-              package_path,
-              bin_node_modules_dir_path,
-            )?;
+            f(package, package_path, name, script)?;
           }
           deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
             for (name, script) in entries {
@@ -115,18 +106,53 @@ impl BinEntries {
                 // we already set up a bin entry with this name
                 continue;
               }
-              set_up_bin_entry(
-                package,
-                name,
-                script,
-                package_path,
-                bin_node_modules_dir_path,
-              )?;
+              f(package, package_path, name, script)?;
             }
           }
         }
       }
     }
+
+    Ok(())
+  }
+
+  /// Collect the bin entries into a vec of (name, script path)
+  pub(super) fn into_bin_files(
+    mut self,
+    snapshot: &NpmResolutionSnapshot,
+  ) -> Vec<(String, PathBuf)> {
+    let mut bins = Vec::new();
+    self
+      .for_each_entry(snapshot, |_, package_path, name, script| {
+        bins.push((name.to_string(), package_path.join(script)));
+        Ok(())
+      })
+      .unwrap();
+    bins
+  }
+
+  /// Finish setting up the bin entries, writing the necessary files
+  /// to disk.
+  pub(super) fn finish(
+    mut self,
+    snapshot: &NpmResolutionSnapshot,
+    bin_node_modules_dir_path: &Path,
+  ) -> Result<(), AnyError> {
+    if !self.entries.is_empty() && !bin_node_modules_dir_path.exists() {
+      std::fs::create_dir_all(bin_node_modules_dir_path).with_context(
+        || format!("Creating '{}'", bin_node_modules_dir_path.display()),
+      )?;
+    }
+
+    self.for_each_entry(snapshot, |package, package_path, name, script| {
+      set_up_bin_entry(
+        package,
+        name,
+        script,
+        package_path,
+        bin_node_modules_dir_path,
+      )
+    })?;
 
     Ok(())
   }

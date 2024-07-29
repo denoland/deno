@@ -1,9 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::resolve_no_prompt;
-use crate::args::write_lockfile_if_has_changes;
 use crate::args::AddFlags;
 use crate::args::CaData;
+use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::InstallFlagsGlobal;
@@ -15,7 +15,6 @@ use crate::factory::CliFactory;
 use crate::http_util::HttpClientProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
-use deno_config::ConfigFlag;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -36,6 +35,7 @@ use std::path::PathBuf;
 
 #[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
+use std::sync::Arc;
 
 static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
   RegexBuilder::new(r"^[a-z0-9][\w-]*$")
@@ -262,33 +262,33 @@ pub fn uninstall(uninstall_flags: UninstallFlags) -> Result<(), AnyError> {
 }
 
 async fn install_local(
-  flags: Flags,
+  flags: Arc<Flags>,
   maybe_add_flags: Option<AddFlags>,
 ) -> Result<(), AnyError> {
   if let Some(add_flags) = maybe_add_flags {
     return super::registry::add(flags, add_flags).await;
   }
 
-  let factory = CliFactory::from_flags(flags)?;
+  let factory = CliFactory::from_flags(flags);
   crate::module_loader::load_top_level_deps(&factory).await?;
 
-  if let Some(lockfile) = factory.cli_options().maybe_lockfile() {
-    write_lockfile_if_has_changes(&mut lockfile.lock())?;
+  if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
+    lockfile.write_if_changed()?;
   }
 
   Ok(())
 }
 
 pub async fn install_command(
-  flags: Flags,
+  flags: Arc<Flags>,
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
-  if !install_flags.global {
-    log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
-  }
-
   match install_flags.kind {
     InstallKind::Global(global_flags) => {
+      if !install_flags.global {
+        log::warn!("⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.");
+      }
+
       install_global(flags, global_flags).await
     }
     InstallKind::Local(maybe_add_flags) => {
@@ -298,11 +298,11 @@ pub async fn install_command(
 }
 
 async fn install_global(
-  flags: Flags,
+  flags: Arc<Flags>,
   install_flags_global: InstallFlagsGlobal,
 ) -> Result<(), AnyError> {
   // ensure the module is cached
-  let factory = CliFactory::from_flags(flags.clone())?;
+  let factory = CliFactory::from_flags(flags.clone());
   factory
     .main_module_graph_container()
     .await?
@@ -311,16 +311,16 @@ async fn install_global(
   let http_client = factory.http_client_provider();
 
   // create the install shim
-  create_install_shim(http_client, flags, install_flags_global).await
+  create_install_shim(http_client, &flags, install_flags_global).await
 }
 
 async fn create_install_shim(
   http_client_provider: &HttpClientProvider,
-  flags: Flags,
+  flags: &Flags,
   install_flags_global: InstallFlagsGlobal,
 ) -> Result<(), AnyError> {
   let shim_data =
-    resolve_shim_data(http_client_provider, &flags, &install_flags_global)
+    resolve_shim_data(http_client_provider, flags, &install_flags_global)
       .await?;
 
   // ensure directory exists
@@ -467,6 +467,10 @@ async fn resolve_shim_data(
     executable_args.push("--cached-only".to_string());
   }
 
+  if flags.frozen_lockfile {
+    executable_args.push("--frozen".to_string());
+  }
+
   if resolve_no_prompt(&flags.permissions) {
     executable_args.push("--no-prompt".to_string());
   }
@@ -568,11 +572,11 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
+  use crate::args::ConfigFlag;
   use crate::args::PermissionFlags;
   use crate::args::UninstallFlagsGlobal;
   use crate::args::UnstableConfig;
   use crate::util::fs::canonicalize_path;
-  use deno_config::ConfigFlag;
   use std::process::Command;
   use test_util::testdata_path;
   use test_util::TempDir;
@@ -775,7 +779,7 @@ mod tests {
 
     create_install_shim(
       &HttpClientProvider::new(None, None),
-      Flags {
+      &Flags {
         unstable_config: UnstableConfig {
           legacy_flag_enabled: true,
           ..Default::default()
@@ -1170,7 +1174,7 @@ mod tests {
 
     create_install_shim(
       &HttpClientProvider::new(None, None),
-      Flags::default(),
+      &Flags::default(),
       InstallFlagsGlobal {
         module_url: local_module_str.to_string(),
         args: vec![],
@@ -1200,7 +1204,7 @@ mod tests {
 
     create_install_shim(
       &HttpClientProvider::new(None, None),
-      Flags::default(),
+      &Flags::default(),
       InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec![],
@@ -1221,7 +1225,7 @@ mod tests {
     // No force. Install failed.
     let no_force_result = create_install_shim(
       &HttpClientProvider::new(None, None),
-      Flags::default(),
+      &Flags::default(),
       InstallFlagsGlobal {
         module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
         args: vec![],
@@ -1243,7 +1247,7 @@ mod tests {
     // Force. Install success.
     let force_result = create_install_shim(
       &HttpClientProvider::new(None, None),
-      Flags::default(),
+      &Flags::default(),
       InstallFlagsGlobal {
         module_url: "http://localhost:4545/cat.ts".to_string(), // using a different URL
         args: vec![],
@@ -1271,7 +1275,7 @@ mod tests {
 
     let result = create_install_shim(
       &HttpClientProvider::new(None, None),
-      Flags {
+      &Flags {
         config_flag: ConfigFlag::Path(config_file_path.to_string()),
         ..Flags::default()
       },
@@ -1304,7 +1308,7 @@ mod tests {
 
     create_install_shim(
       &HttpClientProvider::new(None, None),
-      Flags::default(),
+      &Flags::default(),
       InstallFlagsGlobal {
         module_url: "http://localhost:4545/echo_server.ts".to_string(),
         args: vec!["\"".to_string()],
@@ -1345,7 +1349,7 @@ mod tests {
 
     create_install_shim(
       &HttpClientProvider::new(None, None),
-      Flags::default(),
+      &Flags::default(),
       InstallFlagsGlobal {
         module_url: local_module_str.to_string(),
         args: vec![],
@@ -1387,7 +1391,7 @@ mod tests {
 
     let result = create_install_shim(
       &HttpClientProvider::new(None, None),
-      Flags {
+      &Flags {
         import_map_path: Some(import_map_path.to_string()),
         ..Flags::default()
       },
@@ -1433,7 +1437,7 @@ mod tests {
 
     let result = create_install_shim(
       &HttpClientProvider::new(None, None),
-      Flags::default(),
+      &Flags::default(),
       InstallFlagsGlobal {
         module_url: file_module_string.to_string(),
         args: vec![],

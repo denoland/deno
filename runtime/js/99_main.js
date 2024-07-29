@@ -92,15 +92,7 @@ import {
 import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
-import {
-  SymbolAsyncDispose,
-  SymbolDispose,
-  SymbolMetadata,
-} from "ext:deno_web/00_infra.js";
-// deno-lint-ignore prefer-primordials
-if (Symbol.asyncDispose) {
-  throw "V8 supports Symbol.asyncDispose now, no need to shim it!";
-}
+import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
   throw "V8 supports Symbol.metadata now, no need to shim it!";
@@ -108,12 +100,6 @@ if (Symbol.metadata) {
 ObjectDefineProperties(Symbol, {
   dispose: {
     value: SymbolDispose,
-    enumerable: false,
-    writable: false,
-    configurable: false,
-  },
-  asyncDispose: {
-    value: SymbolAsyncDispose,
     enumerable: false,
     writable: false,
     configurable: false,
@@ -401,7 +387,6 @@ function formatException(error) {
 }
 
 core.registerErrorClass("NotFound", errors.NotFound);
-core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
 core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
 core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
 core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
@@ -593,6 +578,7 @@ const NOT_IMPORTED_OPS = [
 
   // Related to `Deno.jupyter` API
   "op_jupyter_broadcast",
+  "op_jupyter_input",
 
   // Related to `Deno.test()` API
   "op_test_event_step_result_failed",

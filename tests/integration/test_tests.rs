@@ -93,7 +93,7 @@ test 0 => ./fail_with_contain_unicode_filename🦕.ts:[WILDCARD]
 error: Error
   throw new Error();
         ^
-    at [WILDCARD]/fail_with_contain_unicode_filename%F0%9F%A6%95.ts:[WILDCARD]
+    at [WILDCARD]/fail_with_contain_unicode_filename🦕.ts:[WILDCARD]
 
  FAILURES 
 
@@ -251,13 +251,13 @@ itest!(no_run {
 });
 
 itest!(allow_all {
-  args: "test --allow-all test/allow_all.ts",
+  args: "test --config ../config/deno.json --allow-all test/allow_all.ts",
   exit_code: 0,
   output: "test/allow_all.out",
 });
 
 itest!(allow_none {
-  args: "test test/allow_none.ts",
+  args: "test --config ../config/deno.json test/allow_none.ts",
   exit_code: 1,
   output: "test/allow_none.out",
 });

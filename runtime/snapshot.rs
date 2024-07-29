@@ -254,7 +254,7 @@ pub fn create_runtime_snapshot(
     deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
     deno_io::deno_io::init_ops_and_esm(Default::default()),
     deno_fs::deno_fs::init_ops_and_esm::<Permissions>(fs.clone()),
-    deno_node::deno_node::init_ops_and_esm::<Permissions>(None, None, fs),
+    deno_node::deno_node::init_ops_and_esm::<Permissions>(None, fs),
     runtime::init_ops_and_esm(),
     ops::runtime::deno_runtime::init_ops("deno:runtime".parse().unwrap()),
     ops::worker_host::deno_worker_host::init_ops(

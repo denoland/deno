@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertThrows } from "@std/assert/mod.ts";
+import { assertEquals, assertThrows } from "@std/assert";
 import {
   createContext,
   isContext,

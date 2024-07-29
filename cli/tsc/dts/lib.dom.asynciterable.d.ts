@@ -28,7 +28,6 @@ interface FileSystemDirectoryHandle {
 }
 
 interface ReadableStream<R = any> {
-    [Symbol.asyncIterator](options?: {
-        preventCancel?: boolean;
-    }): AsyncIterableIterator<R>;
+    [Symbol.asyncIterator](options?: ReadableStreamIteratorOptions): AsyncIterableIterator<R>;
+    values(options?: ReadableStreamIteratorOptions): AsyncIterableIterator<R>;
 }

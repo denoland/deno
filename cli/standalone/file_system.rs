@@ -145,6 +145,26 @@ impl FileSystem for DenoCompileFileSystem {
     RealFs.chown_async(path, uid, gid).await
   }
 
+  fn lchown_sync(
+    &self,
+    path: &Path,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.lchown_sync(path, uid, gid)
+  }
+
+  async fn lchown_async(
+    &self,
+    path: PathBuf,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.lchown_async(path, uid, gid).await
+  }
+
   fn remove_sync(&self, path: &Path, recursive: bool) -> FsResult<()> {
     self.error_if_in_vfs(path)?;
     RealFs.remove_sync(path, recursive)
@@ -347,6 +367,31 @@ impl FileSystem for DenoCompileFileSystem {
     self.error_if_in_vfs(&path)?;
     RealFs
       .utime_async(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+      .await
+  }
+
+  fn lutime_sync(
+    &self,
+    path: &Path,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.lutime_sync(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+  }
+  async fn lutime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs
+      .lutime_async(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
       .await
   }
 }

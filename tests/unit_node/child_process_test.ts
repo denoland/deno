@@ -9,8 +9,8 @@ import {
   assertNotStrictEquals,
   assertStrictEquals,
   assertStringIncludes,
-} from "@std/assert/mod.ts";
-import * as path from "@std/path/mod.ts";
+} from "@std/assert";
+import * as path from "@std/path";
 
 const { spawn, spawnSync, execFile, execFileSync, ChildProcess } = CP;
 

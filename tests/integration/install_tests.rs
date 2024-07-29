@@ -109,7 +109,7 @@ fn install_basic_global() {
   let output_text = output.combined_output();
   assert_not_contains!(
     output_text,
-    "`deno install` behavior will change in Deno 2. To preserve the current behavior use `-g` or `--global` flag."
+    "`deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag."
   );
 
   // no lockfile should be created locally

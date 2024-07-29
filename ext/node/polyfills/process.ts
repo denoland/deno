@@ -7,6 +7,7 @@
 import { core, internals } from "ext:core/mod.js";
 import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
 import {
+  op_getegid,
   op_geteuid,
   op_node_process_kill,
   op_process_abort,
@@ -83,9 +84,9 @@ let ProcessExitCode: undefined | null | string | number;
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
   if (code || code === 0) {
-    denoOs.setExitCode(code);
+    process.exitCode = code;
   } else if (Number.isNaN(code)) {
-    denoOs.setExitCode(1);
+    process.exitCode = 1;
   }
 
   ProcessExitCode = denoOs.getExitCode();
@@ -309,15 +310,16 @@ export function kill(pid: number, sig: string | number = "SIGTERM") {
   return true;
 }
 
-let getgid, getuid, geteuid;
+let getgid, getuid, getegid, geteuid;
 
 if (!isWindows) {
   getgid = () => Deno.gid();
   getuid = () => Deno.uid();
+  getegid = () => op_getegid();
   geteuid = () => op_geteuid();
 }
 
-export { geteuid, getgid, getuid };
+export { getegid, geteuid, getgid, getuid };
 
 const ALLOWED_FLAGS = buildAllowedFlags();
 
@@ -403,8 +405,13 @@ Process.prototype.chdir = chdir;
 
 /** https://nodejs.org/api/process.html#processconfig */
 Process.prototype.config = {
-  target_defaults: {},
-  variables: {},
+  target_defaults: {
+    default_configuration: "Release",
+  },
+  variables: {
+    llvm_version: "0.0",
+    enable_lto: "false",
+  },
 };
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
@@ -684,6 +691,9 @@ Process.prototype.getgid = getgid;
 Process.prototype.getuid = getuid;
 
 /** This method is removed on Windows */
+Process.prototype.getegid = getegid;
+
+/** This method is removed on Windows */
 Process.prototype.geteuid = geteuid;
 
 // TODO(kt3k): Implement this when we added -e option to node compat mode
@@ -724,12 +734,16 @@ Process.prototype.noDeprecation = false;
 if (isWindows) {
   delete Process.prototype.getgid;
   delete Process.prototype.getuid;
+  delete Process.prototype.getegid;
   delete Process.prototype.geteuid;
 }
 
 /** https://nodejs.org/api/process.html#process_process */
 // @ts-ignore TS doesn't work well with ES5 classes
 const process = new Process();
+
+/* Set owned property */
+process.versions = versions;
 
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,

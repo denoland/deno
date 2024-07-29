@@ -50,10 +50,10 @@ declare interface ImportMeta {
    * * Example:
    * ```
    * // Unix
-   * console.log(import.meta.dirname); // /home/alice/
+   * console.log(import.meta.dirname); // /home/alice
    *
    * // Windows
-   * console.log(import.meta.dirname); // C:\alice\
+   * console.log(import.meta.dirname); // C:\alice
    * ```
    */
   dirname?: string;
@@ -4416,6 +4416,8 @@ declare namespace Deno {
     | "SIGINFO"
     | "SIGINT"
     | "SIGIO"
+    | "SIGPOLL"
+    | "SIGUNUSED"
     | "SIGKILL"
     | "SIGPIPE"
     | "SIGPROF"
@@ -4967,12 +4969,17 @@ declare namespace Deno {
       | "osUptime"
       | "uid"
       | "gid"
-      | "cpus";
+      | "username"
+      | "cpus"
+      | "homedir"
+      | "statfs"
+      | "getPriority"
+      | "setPriority";
   }
 
   /** The permission descriptor for the `allow-ffi` and `deny-ffi` permissions, which controls
    * access to loading _foreign_ code and interfacing with it via the
-   * [Foreign Function Interface API](https://deno.land/manual/runtime/ffi_api)
+   * [Foreign Function Interface API](https://docs.deno.com/runtime/manual/runtime/ffi_api)
    * available in Deno.  The option `path` allows scoping the permission to a
    * specific path on the host.
    *
@@ -6255,6 +6262,8 @@ declare namespace Deno {
    */
   export interface ServeOptions {
     /** The port to listen on.
+     *
+     * Set to `0` to listen on any available port.
      *
      * @default {8000} */
     port?: number;

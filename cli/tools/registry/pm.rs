@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::TextChange;
-use deno_config::FmtOptionsConfig;
+use deno_config::deno_json::FmtOptionsConfig;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -49,8 +49,8 @@ impl DenoConfigFormat {
 }
 
 enum DenoOrPackageJson {
-  Deno(deno_config::ConfigFile, DenoConfigFormat),
-  Npm(deno_node::PackageJson, Option<FmtOptionsConfig>),
+  Deno(Arc<deno_config::deno_json::ConfigFile>, DenoConfigFormat),
+  Npm(Arc<deno_node::PackageJson>, Option<FmtOptionsConfig>),
 }
 
 impl DenoOrPackageJson {
@@ -87,7 +87,6 @@ impl DenoOrPackageJson {
       DenoOrPackageJson::Deno(deno, ..) => deno
         .to_fmt_config()
         .ok()
-        .flatten()
         .map(|f| f.options)
         .unwrap_or_default(),
       DenoOrPackageJson::Npm(_, config) => config.clone().unwrap_or_default(),
@@ -120,11 +119,12 @@ impl DenoOrPackageJson {
   /// creates a `deno.json` file - in this case
   /// we also return a new `CliFactory` that knows about
   /// the new config
-  fn from_flags(flags: Flags) -> Result<(Self, CliFactory), AnyError> {
-    let factory = CliFactory::from_flags(flags.clone())?;
-    let options = factory.cli_options().clone();
+  fn from_flags(flags: Arc<Flags>) -> Result<(Self, CliFactory), AnyError> {
+    let factory = CliFactory::from_flags(flags.clone());
+    let options = factory.cli_options()?;
+    let start_dir = &options.start_dir;
 
-    match (options.maybe_config_file(), options.maybe_package_json()) {
+    match (start_dir.maybe_deno_json(), start_dir.maybe_pkg_json()) {
       // when both are present, for now,
       // default to deno.json
       (Some(deno), Some(_) | None) => Ok((
@@ -140,21 +140,19 @@ impl DenoOrPackageJson {
       (None, Some(_) | None) => {
         std::fs::write(options.initial_cwd().join("deno.json"), "{}\n")
           .context("Failed to create deno.json file")?;
+        drop(factory); // drop to prevent use
         log::info!("Created deno.json configuration file.");
-        let new_factory = CliFactory::from_flags(flags.clone())?;
-        let new_options = new_factory.cli_options().clone();
+        let factory = CliFactory::from_flags(flags.clone());
+        let options = factory.cli_options()?.clone();
+        let start_dir = &options.start_dir;
         Ok((
           DenoOrPackageJson::Deno(
-            new_options
-              .maybe_config_file()
-              .as_ref()
-              .ok_or_else(|| {
-                anyhow!("config not found, but it was just created")
-              })?
-              .clone(),
+            start_dir.maybe_deno_json().cloned().ok_or_else(|| {
+              anyhow!("config not found, but it was just created")
+            })?,
             DenoConfigFormat::Json,
           ),
-          new_factory,
+          factory,
         ))
       }
     }
@@ -177,7 +175,10 @@ fn package_json_dependency_entry(
   }
 }
 
-pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
+pub async fn add(
+  flags: Arc<Flags>,
+  add_flags: AddFlags,
+) -> Result<(), AnyError> {
   let (config_file, cli_factory) =
     DenoOrPackageJson::from_flags(flags.clone())?;
 
@@ -306,12 +307,12 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     .await
     .context("Failed to update configuration file")?;
 
-  // TODO(bartlomieju): we should now cache the imports from the deno.json.
-
+  // clear the previously cached package.json from memory before reloading it
+  node_resolver::PackageJsonThreadLocalCache::clear();
   // make a new CliFactory to pick up the updated config file
-  let cli_factory = CliFactory::from_flags(flags)?;
+  let cli_factory = CliFactory::from_flags(flags);
   // cache deps
-  if cli_factory.cli_options().enable_future_features() {
+  if cli_factory.cli_options()?.enable_future_features() {
     crate::module_loader::load_top_level_deps(&cli_factory).await?;
   }
 

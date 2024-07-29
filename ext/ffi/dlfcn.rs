@@ -60,16 +60,9 @@ pub struct ForeignFunction {
   pub result: NativeType,
   #[serde(rename = "nonblocking")]
   non_blocking: Option<bool>,
-  #[serde(rename = "callback")]
-  #[serde(default = "default_callback")]
-  callback: bool,
   #[serde(rename = "optional")]
   #[serde(default = "default_optional")]
   optional: bool,
-}
-
-fn default_callback() -> bool {
-  false
 }
 
 fn default_optional() -> bool {
@@ -191,7 +184,6 @@ where
           ptr,
           parameter_types: foreign_fn.parameters,
           result_type: foreign_fn.result,
-          can_callback: foreign_fn.callback,
         });
 
         resource.symbols.insert(symbol_key, sym.clone());
