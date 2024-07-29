@@ -845,6 +845,14 @@ fn stat_extra(
     Ok(unix_time_msec as u64)
   }
 
+  const WINDOWS_TICK: i64 = 10_000; // 100-nanosecond intervals in a millisecond
+  const SEC_TO_UNIX_EPOCH: i64 = 11_644_473_600; // Seconds between Windows epoch and Unix epoch
+
+  fn windows_time_to_unix_time_msec(windows_time: &i64) -> i64 {
+    let milliseconds_since_windows_epoch = windows_time / WINDOWS_TICK;
+    milliseconds_since_windows_epoch - SEC_TO_UNIX_EPOCH * 1000
+  }
+
   use windows_sys::Wdk::Storage::FileSystem::FILE_ALL_INFORMATION;
 
   unsafe fn query_file_information(
@@ -866,14 +874,6 @@ fn stat_extra(
     }
 
     Ok(info.assume_init())
-  }
-
-  const WINDOWS_TICK: i64 = 10_000; // 100-nanosecond intervals in a millisecond
-  const SEC_TO_UNIX_EPOCH: i64 = 11_644_473_600; // Seconds between Windows epoch and Unix epoch
-
-  fn windows_time_to_unix_time_msec(windows_time: &i64) -> i64 {
-    let milliseconds_since_windows_epoch = windows_time / WINDOWS_TICK;
-    milliseconds_since_windows_epoch - SEC_TO_UNIX_EPOCH * 1000
   }
 
   // SAFETY: winapi calls
