@@ -28,7 +28,7 @@ import {
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { EventEmitter } from "node:events";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
-import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
 import { Readable, Stream, Writable } from "node:stream";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
@@ -253,7 +253,7 @@ export class ChildProcess extends EventEmitter {
           maybeClose(this);
         });
       }
-      // TODO: once we impl > 3 stdio pipes make sure we also listen for their
+      // TODO(nathanwhit): once we impl > 3 stdio pipes make sure we also listen for their
       // close events (like above)
 
       this.stdio[0] = this.stdin;

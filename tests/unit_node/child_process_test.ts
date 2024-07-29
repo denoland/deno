@@ -9,6 +9,7 @@ import {
   assertNotStrictEquals,
   assertStrictEquals,
   assertStringIncludes,
+  assertThrows,
 } from "@std/assert";
 import * as path from "@std/path";
 
@@ -979,11 +980,5 @@ Deno.test(async function killMultipleTimesNoError() {
   child.kill();
 
   // explicitly calling disconnect after kill should throw
-  let threw = false;
-  try {
-    child.disconnect();
-  } catch (_) {
-    threw = true;
-  }
-  assert(threw);
+  assertThrows(() => child.disconnect());
 });
