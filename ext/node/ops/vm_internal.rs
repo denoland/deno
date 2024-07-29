@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::get_host_defined_options;
+use crate::create_host_defined_options;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::v8;
@@ -21,7 +21,7 @@ impl ContextifyScript {
     source_str: v8::Local<v8::String>,
   ) -> Result<Self, AnyError> {
     let resource_name = v8::undefined(scope);
-    let host_defined_options = get_host_defined_options(scope);
+    let host_defined_options = create_host_defined_options(scope);
     let origin = v8::ScriptOrigin::new(
       scope,
       resource_name.into(),

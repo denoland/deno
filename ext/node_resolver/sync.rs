@@ -15,4 +15,9 @@ mod inner {
 #[cfg(not(feature = "sync"))]
 mod inner {
   pub use std::rc::Rc as MaybeArc;
+
+  pub trait MaybeSync {}
+  impl<T> MaybeSync for T where T: ?Sized {}
+  pub trait MaybeSend {}
+  impl<T> MaybeSend for T where T: ?Sized {}
 }

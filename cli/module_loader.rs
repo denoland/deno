@@ -63,7 +63,7 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
 use deno_runtime::code_cache;
-use deno_runtime::deno_node::get_host_defined_options;
+use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::NodeResolutionMode;
@@ -732,7 +732,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
   ) -> Option<deno_core::v8::Local<'s, deno_core::v8::Data>> {
     let name = deno_core::ModuleSpecifier::parse(name).ok()?;
     if self.0.shared.node_resolver.in_npm_package(&name) {
-      Some(get_host_defined_options(scope))
+      Some(create_host_defined_options(scope))
     } else {
       None
     }

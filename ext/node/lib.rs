@@ -843,7 +843,7 @@ impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
   }
 }
 
-pub fn get_host_defined_options<'s>(
+pub fn create_host_defined_options<'s>(
   scope: &mut v8::HandleScope<'s>,
 ) -> v8::Local<'s, v8::Data> {
   let host_defined_options = v8::PrimitiveArray::new(scope, 1);

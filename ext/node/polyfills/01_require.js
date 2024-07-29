@@ -1004,7 +1004,7 @@ Module.prototype._compile = function (content, filename, format) {
   const compiledWrapper = wrapSafe(filename, content, this, format);
 
   if (format === "module") {
-    // TODO: implement require esm
+    // TODO(https://github.com/denoland/deno/issues/24822): implement require esm
     throw createRequireEsmError(
       filename,
       moduleParentCache.get(module)?.filename,
@@ -1070,7 +1070,7 @@ Module._extensions[".js"] = function (module, filename) {
   if (StringPrototypeEndsWith(filename, ".js")) {
     const pkg = op_require_read_closest_package_json(filename);
     if (pkg?.typ === "module") {
-      // TODO: implement require esm
+      // TODO(https://github.com/denoland/deno/issues/24822): implement require esm
       format = "module";
       throw createRequireEsmError(
         filename,
