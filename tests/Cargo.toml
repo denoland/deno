@@ -14,6 +14,7 @@ path = "lib.rs"
 
 [features]
 run = []
+upgrade = []
 
 [[test]]
 name = "integration_tests"
