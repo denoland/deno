@@ -825,23 +825,22 @@ fn stat_extra(
     use winapi::um::fileapi::FILE_BASIC_INFO;
     use winapi::shared::minwindef::FALSE;
     use winapi::um::winbase::GetFileInformationByHandleEx;
-    use winapi::um::minwinbase::FileBasicInfo;
 
-    let mut file_info = {
-      let mut file_info: FILE_BASIC_INFO = std::mem::zeroed();
+    let mut change_time = {
+      let mut file_info: FILE_BASIC_INFO = mem::zeroed();
       if GetFileInformationByHandleEx(
         handle,
         FileBasicInfo,
         &mut file_info as *mut _ as *mut _,
-        std::mem::size_of::<FILE_BASIC_INFO>() as u32,
+        mem::size_of::<FILE_BASIC_INFO>() as u32,
       ) == FALSE {
         return Err(std::io::Error::last_os_error());
       }
 
-      file_info.assume_init()
+      file_info.ChangeTime.QuadPart()
     };
 
-    let windows_time = file_info.ChangeTime;
+    let windows_time = change_time;
     let unix_time_msec = windows_time_to_unix_time_msec(windows_time);
 
     Ok(unix_time_msec as u64)
