@@ -290,8 +290,8 @@ export function convertFileInfoToStats(origin: Deno.FileInfo): Stats {
     isFIFO: () => false,
     isCharacterDevice: () => false,
     isSocket: () => false,
-    ctime: origin.mtime,
-    ctimeMs: origin.mtime?.getTime() || null,
+    ctime: origin.ctime,
+    ctimeMs: origin.ctime?.getTime() || null,
   });
 
   return stats;
