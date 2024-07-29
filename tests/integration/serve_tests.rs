@@ -2,7 +2,6 @@
 
 use std::io::Read;
 
-use deno_fetch::reqwest;
 use pretty_assertions::assert_eq;
 use regex::Regex;
 use test_util as util;
@@ -22,8 +21,8 @@ async fn deno_serve_port_0() {
   let mut buffer = [0; 52];
   let _read = stdout.read(&mut buffer).unwrap();
   let msg = std::str::from_utf8(&buffer).unwrap();
-  let port_regex = Regex::new(r"(\d+)").unwrap();
-  let port = port_regex.find(msg).unwrap().as_str();
+  let port_regex = Regex::new(r":(\d+)").unwrap();
+  let port = port_regex.captures(msg).unwrap().get(1).unwrap().as_str();
 
   let cert = reqwest::Certificate::from_pem(include_bytes!(
     "../testdata/tls/RootCA.crt"
@@ -65,8 +64,8 @@ async fn deno_serve_no_args() {
   let mut buffer = [0; 52];
   let _read = stdout.read(&mut buffer).unwrap();
   let msg = std::str::from_utf8(&buffer).unwrap();
-  let port_regex = Regex::new(r"(\d+)").unwrap();
-  let port = port_regex.find(msg).unwrap().as_str();
+  let port_regex = Regex::new(r":(\d+)").unwrap();
+  let port = port_regex.captures(msg).unwrap().get(1).unwrap().as_str();
 
   let cert = reqwest::Certificate::from_pem(include_bytes!(
     "../testdata/tls/RootCA.crt"

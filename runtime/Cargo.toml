@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.169.0"
+version = "0.172.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -94,6 +94,7 @@ deno_webgpu.workspace = true
 deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
+node_resolver = { workspace = true, features = ["sync"] }
 
 dlopen2.workspace = true
 encoding_rs.workspace = true

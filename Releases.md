@@ -6,6 +6,70 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.45.4 / 2024.07.26
+
+- Reland "fix: CFunctionInfo and CTypeInfo leaks (#24634)" (#24692)
+- fix(ext/fetch): respect authority from URL (#24705)
+- fix(ext/fetch): use correct ALPN to proxies (#24696)
+- fix(ext/node): read correct CPU usage stats on Linux (#24732)
+- fix(ext/node/net): emit `error` before `close` when connection is refused
+  (#24656)
+- fix(future): Emit `deno install` warning less often, suggest `deno install` in
+  error message (#24706)
+- fix(lsp): rewrite import for 'infer return type' action (#24685)
+- fix(node): better detection for when to surface node resolution errors
+  (#24653)
+- fix(node): cjs pkg dynamically importing esm-only pkg fails (#24730)
+- fix(node/worker_threads): support `port.once()` (#24725)
+- fix(publish): workspace included license file had incorrect path (#24747)
+- fix(unstable): move sloppy-import warnings to lint rule (#24710)
+- fix(upgrade): do not error if config in cwd invalid (#24689)
+- fix(workspaces/publish): include the license file from the workspace root if
+  not in pkg (#24714)
+- fix: enable the reporting of parsing related problems when running deno lint
+  (#24332)
+- fix: support `npm:bindings` and `npm:callsites` packages (#24727)
+- fix: update lsp error message of 'relative import path' to 'use deno add' for
+  npm/jsr packages (#24524)
+- fix: decode percent-encoding source string in `Error.stack` (#24709)
+- perf: update deno_doc (#24700)
+
+### 1.45.3 / 2024.07.22
+
+- Reland "refactor(fetch): reimplement fetch with hyper instead of reqwest"
+  (#24593)
+- fix(cli): Create child node_modules for conflicting dependency versions,
+  respect aliases in package.json (#24609)
+- fix(cli): Respect implied BYONM from DENO_FUTURE in `deno task` (#24652)
+- fix(cli): add NAPI support in standalone mode (#24642)
+- fix(cron): improve error message for invalid cron names (#24644)
+- fix(docs): fix some deno.land/manual broken urls (#24557)
+- fix(ext/console): Error Cause Not Inspect-Formatted when printed (#24526)
+- fix(ext/node): do not expose `self` global in node (#24637)
+- fix(ext/node): http request uploads of subarray of buffer should work (#24603)
+- fix(ext/node): stat.mode on windows (#24434)
+- fix(fmt): was sometimes putting comments in front of commas in parameter lists
+  (#24650)
+- fix(init): use bare specifier for `jsr:@std/assert` (#24581)
+- fix(lsp): hang when caching failed (#24651)
+- fix(lsp): scope attribution for asset documents (#24663)
+- fix(lsp): support npm workspaces and fix some resolution issues (#24627)
+- fix(node): Fix `--allow-scripts` with no `deno.json` (#24533)
+- fix(node): support `tty.hasColors()` and `tty.getColorDepth()` (#24619)
+- fix(npm): handle packages with only pre-released 0.0.0 versions (#24563)
+- fix(publish): surface syntax errors when using --no-check (#24620)
+- fix(publish): warn about missing license file (#24677)
+- fix(std/http2): release window capacity back to remote stream (#24576)
+- fix(types): Conform lib.deno_web.d.ts to lib.dom.d.ts and lib.webworker.d.ts
+  (#24599)
+- fix(workspace): do not resolve to self for npm pkg depending on matching req
+  (#24591)
+- fix(workspace): support resolving bare specifiers to npm pkgs within a
+  workspace (#24611)
+- fix: make vendor cache manifest more deterministic (#24658)
+- fix: missing `emitWarning` import (#24587)
+- perf(ext/node): optimize fs.exists[Sync] (#24613)
+
 ### 1.45.2 / 2024.07.12
 
 - fix(cli/init): broken link in deno init sample template (#24545)

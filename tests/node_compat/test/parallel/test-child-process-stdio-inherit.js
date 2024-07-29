@@ -27,7 +27,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 // TODO(PolarETech): The process.argv[3] check should be argv[2], and
-// the args passed to spawn() should not need to include "require.ts".
+// the args passed to spawn() should not need to include "runner.ts".
 
 'use strict';
 require('../common');
@@ -40,7 +40,7 @@ else
   grandparent();
 
 function grandparent() {
-  const child = spawn(process.execPath, ['require.ts', __filename, 'parent']);
+  const child = spawn(process.execPath, ['runner.ts', __filename, 'parent']);
   child.stderr.pipe(process.stderr);
   let output = '';
   const input = 'asdfasdf';

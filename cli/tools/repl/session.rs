@@ -254,7 +254,7 @@ impl ReplSession {
         ))
       })?;
     let ts_config_for_emit = cli_options
-      .resolve_ts_config_for_emit(deno_config::TsConfigType::Emit)?;
+      .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
     let (transpile_options, _) =
       crate::args::ts_config_to_transpile_and_emit_options(
         ts_config_for_emit.ts_config,

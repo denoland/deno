@@ -2,7 +2,7 @@
 import { createHash, createHmac, getHashes } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
-import { assert, assertEquals } from "@std/assert/mod.ts";
+import { assert, assertEquals } from "@std/assert";
 
 // https://github.com/denoland/deno/issues/18140
 Deno.test({

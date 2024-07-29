@@ -30,12 +30,14 @@ use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
-use deno_runtime::deno_node::NodeModuleKind;
-use deno_runtime::deno_node::NodeResolution;
-use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
 use deno_semver::npm::NpmPackageReqReference;
 use lsp_types::Url;
+use node_resolver::errors::NodeJsErrorCode;
+use node_resolver::errors::NodeJsErrorCoded;
+use node_resolver::NodeModuleKind;
+use node_resolver::NodeResolution;
+use node_resolver::NodeResolutionMode;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -756,13 +758,21 @@ fn resolve_graph_specifier_types(
           .as_managed()
           .unwrap() // should never be byonm because it won't create Module::Npm
           .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
-        let maybe_resolution =
+        let res_result =
           npm.node_resolver.resolve_package_subpath_from_deno_module(
             &package_folder,
             module.nv_reference.sub_path(),
             Some(referrer),
             NodeResolutionMode::Types,
-          )?;
+          );
+        let maybe_resolution = match res_result {
+          Ok(res) => Some(res),
+          Err(err) => match err.code() {
+            NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+            | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
+            _ => return Err(err.into()),
+          },
+        };
         Ok(Some(NodeResolution::into_specifier_and_media_type(
           maybe_resolution,
         )))
@@ -805,8 +815,7 @@ fn resolve_non_graph_specifier_types(
           referrer_kind,
           NodeResolutionMode::Types,
         )
-        .ok()
-        .flatten(),
+        .ok(),
     )))
   } else if let Ok(npm_req_ref) = NpmPackageReqReference::from_str(specifier) {
     debug_assert_eq!(referrer_kind, NodeModuleKind::Esm);
@@ -817,13 +826,20 @@ fn resolve_non_graph_specifier_types(
     let package_folder = npm
       .npm_resolver
       .resolve_pkg_folder_from_deno_module_req(npm_req_ref.req(), referrer)?;
-    let maybe_resolution = node_resolver
-      .resolve_package_subpath_from_deno_module(
-        &package_folder,
-        npm_req_ref.sub_path(),
-        Some(referrer),
-        NodeResolutionMode::Types,
-      )?;
+    let res_result = node_resolver.resolve_package_subpath_from_deno_module(
+      &package_folder,
+      npm_req_ref.sub_path(),
+      Some(referrer),
+      NodeResolutionMode::Types,
+    );
+    let maybe_resolution = match res_result {
+      Ok(res) => Some(res),
+      Err(err) => match err.code() {
+        NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+        | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
+        _ => return Err(err.into()),
+      },
+    };
     Ok(Some(NodeResolution::into_specifier_and_media_type(
       maybe_resolution,
     )))
