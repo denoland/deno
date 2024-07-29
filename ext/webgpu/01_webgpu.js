@@ -502,9 +502,9 @@ class GPUAdapter {
   }
 
   /**
-   * @returns {Promise<GPUAdapterInfo>}
+   * @returns {GPUAdapterInfo}
    */
-  requestAdapterInfo() {
+  get info() {
     webidl.assertBranded(this, GPUAdapterPrototype);
 
     if (this[_invalid]) {
@@ -525,7 +525,7 @@ class GPUAdapter {
     adapterInfo[_architecture] = architecture;
     adapterInfo[_device] = device;
     adapterInfo[_description] = description;
-    return PromiseResolve(adapterInfo);
+    return adapterInfo;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
