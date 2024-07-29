@@ -47,6 +47,7 @@ const {
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
   StringPrototypeToLowerCase,
+  Uint8Array,
 } = primordials;
 const { isTypedArray } = core;
 
