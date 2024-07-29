@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::IsTerminal;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -13,6 +14,7 @@ use base64::Engine;
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::Workspace;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -43,7 +45,7 @@ use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
 use crate::resolver::SloppyImportsResolver;
 use crate::tools::check::CheckOptions;
-use crate::tools::lint::no_slow_types;
+use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::tools::registry::diagnostics::PublishDiagnostic;
 use crate::tools::registry::diagnostics::PublishDiagnosticsCollector;
 use crate::util::display::human_size;
@@ -72,19 +74,19 @@ use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
 
 pub async fn publish(
-  flags: Flags,
+  flags: Arc<Flags>,
   publish_flags: PublishFlags,
 ) -> Result<(), AnyError> {
-  let cli_factory = CliFactory::from_flags(flags)?;
+  let cli_factory = CliFactory::from_flags(flags);
 
   let auth_method =
     get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
-  let directory_path = cli_factory.cli_options().initial_cwd();
-  let cli_options = cli_factory.cli_options();
-  let publish_configs = cli_options.workspace.jsr_packages_for_publish();
+  let cli_options = cli_factory.cli_options()?;
+  let directory_path = cli_options.initial_cwd();
+  let publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
-    match cli_options.workspace.resolve_start_ctx().maybe_deno_json() {
+    match cli_options.start_dir.maybe_deno_json() {
       Some(deno_json) => {
         debug_assert!(!deno_json.is_package());
         bail!(
@@ -121,7 +123,7 @@ pub async fn publish(
     cli_factory.module_graph_creator().await?.clone(),
     cli_factory.parsed_source_cache().clone(),
     cli_factory.type_checker().await?.clone(),
-    cli_factory.cli_options().clone(),
+    cli_options.clone(),
     specifier_unfurler,
   );
 
@@ -339,7 +341,7 @@ impl PublishPreparer {
       for package in package_configs {
         let export_urls = package.config_file.resolve_export_value_urls()?;
         let diagnostics =
-          no_slow_types::collect_no_slow_type_diagnostics(&export_urls, &graph);
+          collect_no_slow_type_diagnostics(&graph, &export_urls);
         if !diagnostics.is_empty() {
           any_pkg_had_diagnostics = true;
           for diagnostic in diagnostics {
@@ -437,7 +439,7 @@ impl PublishPreparer {
     let Some((scope, name_no_scope)) = name_no_at.split_once('/') else {
       bail!("Invalid package name, use '@<scope_name>/<package_name> format");
     };
-    let file_patterns = package.member_ctx.to_publish_config()?.files;
+    let file_patterns = package.member_dir.to_publish_config()?.files;
 
     let tarball = deno_core::unsync::spawn_blocking({
       let diagnostics_collector = diagnostics_collector.clone();
@@ -448,7 +450,7 @@ impl PublishPreparer {
       move || {
         let root_specifier =
           ModuleSpecifier::from_directory_path(&root_dir).unwrap();
-        let publish_paths =
+        let mut publish_paths =
           paths::collect_publish_paths(paths::CollectPublishPathsOptions {
             root_dir: &root_dir,
             cli_options: &cli_options,
@@ -462,8 +464,30 @@ impl PublishPreparer {
           &publish_paths,
           &diagnostics_collector,
         );
+
+        if !has_license_file(publish_paths.iter().map(|p| &p.specifier)) {
+          if let Some(license_path) =
+            resolve_license_file(&root_dir, cli_options.workspace())
+          {
+            // force including the license file from the package or workspace root
+            publish_paths.push(CollectedPublishPath {
+              specifier: ModuleSpecifier::from_file_path(&license_path)
+                .unwrap(),
+              relative_path: "/LICENSE".to_string(),
+              maybe_content: Some(std::fs::read(&license_path).with_context(
+                || format!("failed reading '{}'.", license_path.display()),
+              )?),
+              path: license_path,
+            });
+          } else {
+            diagnostics_collector.push(PublishDiagnostic::MissingLicense {
+              expected_path: root_dir.join("LICENSE"),
+            });
+          }
+        }
+
         tar::create_gzipped_tarball(
-          &publish_paths,
+          publish_paths,
           LazyGraphSourceParser::new(&source_cache, &graph),
           &diagnostics_collector,
           &unfurler,
@@ -990,14 +1014,6 @@ async fn publish_package(
     );
   }
 
-  log::info!(
-    "{} @{}/{}@{}",
-    colors::green("Successfully published"),
-    package.scope,
-    package.package,
-    package.version
-  );
-
   let enable_provenance = std::env::var("DISABLE_JSR_PROVENANCE").is_err()
     && (auth::is_gha() && auth::gha_oidc_token().is_some() && provenance);
 
@@ -1046,6 +1062,14 @@ async fn publish_package(
       .send()
       .await?;
   }
+
+  log::info!(
+    "{} @{}/{}@{}",
+    colors::green("Successfully published"),
+    package.scope,
+    package.package,
+    package.version
+  );
 
   log::info!(
     "{}",
@@ -1187,6 +1211,54 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
   }
 }
 
+static SUPPORTED_LICENSE_FILE_NAMES: [&str; 6] = [
+  "LICENSE",
+  "LICENSE.md",
+  "LICENSE.txt",
+  "LICENCE",
+  "LICENCE.md",
+  "LICENCE.txt",
+];
+
+fn resolve_license_file(
+  pkg_root_dir: &Path,
+  workspace: &Workspace,
+) -> Option<PathBuf> {
+  let workspace_root_dir = workspace.root_dir_path();
+  let mut dirs = Vec::with_capacity(2);
+  dirs.push(pkg_root_dir);
+  if workspace_root_dir != pkg_root_dir {
+    dirs.push(&workspace_root_dir);
+  }
+  for dir in dirs {
+    for file_name in &SUPPORTED_LICENSE_FILE_NAMES {
+      let file_path = dir.join(file_name);
+      if file_path.exists() {
+        return Some(file_path);
+      }
+    }
+  }
+  None
+}
+
+fn has_license_file<'a>(
+  mut specifiers: impl Iterator<Item = &'a ModuleSpecifier>,
+) -> bool {
+  let supported_license_files = SUPPORTED_LICENSE_FILE_NAMES
+    .iter()
+    .map(|s| s.to_lowercase())
+    .collect::<HashSet<_>>();
+  specifiers.any(|specifier| {
+    specifier
+      .path()
+      .rsplit_once('/')
+      .map(|(_, file)| {
+        supported_license_files.contains(file.to_lowercase().as_str())
+      })
+      .unwrap_or(false)
+  })
+}
+
 #[allow(clippy::print_stderr)]
 fn ring_bell() {
   // ASCII code for the bell character.
@@ -1195,6 +1267,10 @@ fn ring_bell() {
 
 #[cfg(test)]
 mod tests {
+  use deno_ast::ModuleSpecifier;
+
+  use crate::tools::registry::has_license_file;
+
   use super::tar::PublishableTarball;
   use super::tar::PublishableTarballFile;
   use super::verify_version_manifest;
@@ -1295,5 +1371,32 @@ mod tests {
     };
 
     assert!(verify_version_manifest(meta_bytes, &package).is_err());
+  }
+
+  #[test]
+  fn test_has_license_files() {
+    fn has_license_file_str(expected: &[&str]) -> bool {
+      let specifiers = expected
+        .iter()
+        .map(|s| ModuleSpecifier::parse(s).unwrap())
+        .collect::<Vec<_>>();
+      has_license_file(specifiers.iter())
+    }
+
+    assert!(has_license_file_str(&["file:///LICENSE"]));
+    assert!(has_license_file_str(&["file:///license"]));
+    assert!(has_license_file_str(&["file:///LICENSE.txt"]));
+    assert!(has_license_file_str(&["file:///LICENSE.md"]));
+    assert!(has_license_file_str(&["file:///LICENCE"]));
+    assert!(has_license_file_str(&["file:///LICENCE.txt"]));
+    assert!(has_license_file_str(&["file:///LICENCE.md"]));
+    assert!(has_license_file_str(&[
+      "file:///other",
+      "file:///test/LICENCE.md"
+    ]),);
+    assert!(!has_license_file_str(&[
+      "file:///other",
+      "file:///test/tLICENSE"
+    ]),);
   }
 }

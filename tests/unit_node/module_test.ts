@@ -7,7 +7,7 @@ import {
   isBuiltin,
   Module,
 } from "node:module";
-import { assert, assertEquals } from "@std/assert/mod.ts";
+import { assert, assertEquals } from "@std/assert";
 import process from "node:process";
 import * as path from "node:path";
 

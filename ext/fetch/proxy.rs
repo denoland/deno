@@ -17,6 +17,8 @@ use deno_tls::rustls::ClientConfig as TlsConfig;
 use http::header::HeaderValue;
 use http::uri::Scheme;
 use http::Uri;
+use hyper_rustls::HttpsConnector;
+use hyper_rustls::MaybeHttpsStream;
 use hyper_util::client::legacy::connect::Connected;
 use hyper_util::client::legacy::connect::Connection;
 use hyper_util::rt::TokioIo;
@@ -29,10 +31,14 @@ use tower_service::Service;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ProxyConnector<C> {
-  connector: C,
-  proxies: Arc<Proxies>,
-  tls: Arc<TlsConfig>,
-  user_agent: Option<HeaderValue>,
+  pub(crate) http: C,
+  pub(crate) proxies: Arc<Proxies>,
+  /// TLS config when destination is not a proxy
+  pub(crate) tls: Arc<TlsConfig>,
+  /// TLS config when destination is a proxy
+  /// Notably, does not include ALPN
+  pub(crate) tls_proxy: Arc<TlsConfig>,
+  pub(crate) user_agent: Option<HeaderValue>,
 }
 
 #[derive(Debug)]
@@ -100,7 +106,7 @@ pub(crate) fn from_env() -> Proxies {
   Proxies { intercepts, no }
 }
 
-pub(crate) fn basic_auth(user: &str, pass: &str) -> HeaderValue {
+pub fn basic_auth(user: &str, pass: Option<&str>) -> HeaderValue {
   use base64::prelude::BASE64_STANDARD;
   use base64::write::EncoderWriter;
   use std::io::Write;
@@ -108,7 +114,10 @@ pub(crate) fn basic_auth(user: &str, pass: &str) -> HeaderValue {
   let mut buf = b"Basic ".to_vec();
   {
     let mut encoder = EncoderWriter::new(&mut buf, &BASE64_STANDARD);
-    let _ = write!(encoder, "{user}:{pass}");
+    let _ = write!(encoder, "{user}:");
+    if let Some(password) = pass {
+      let _ = write!(encoder, "{password}");
+    }
   }
   let mut header =
     HeaderValue::from_bytes(&buf).expect("base64 is always valid HeaderValue");
@@ -134,10 +143,10 @@ impl Intercept {
   pub(crate) fn set_auth(&mut self, user: &str, pass: &str) {
     match self.target {
       Target::Http { ref mut auth, .. } => {
-        *auth = Some(basic_auth(user, pass));
+        *auth = Some(basic_auth(user, Some(pass)));
       }
       Target::Https { ref mut auth, .. } => {
-        *auth = Some(basic_auth(user, pass));
+        *auth = Some(basic_auth(user, Some(pass)));
       }
       Target::Socks { ref mut auth, .. } => {
         *auth = Some((user.into(), pass.into()));
@@ -186,7 +195,7 @@ impl Target {
       if is_socks {
         socks_auth = Some((user.into(), pass.into()));
       } else {
-        http_auth = Some(basic_auth(user, pass));
+        http_auth = Some(basic_auth(user, Some(pass)));
       }
       builder = builder.authority(host_port);
     } else {
@@ -361,23 +370,6 @@ impl DomainMatcher {
 }
 
 impl<C> ProxyConnector<C> {
-  pub(crate) fn new(
-    proxies: Arc<Proxies>,
-    connector: C,
-    tls: Arc<TlsConfig>,
-  ) -> Self {
-    ProxyConnector {
-      connector,
-      proxies,
-      tls,
-      user_agent: None,
-    }
-  }
-
-  pub(crate) fn user_agent(&mut self, val: HeaderValue) {
-    self.user_agent = Some(val);
-  }
-
   fn intercept(&self, dst: &Uri) -> Option<&Intercept> {
     self.proxies.intercept(dst)
   }
@@ -438,12 +430,13 @@ pub enum Proxied<T> {
 
 impl<C> Service<Uri> for ProxyConnector<C>
 where
-  C: Service<Uri>,
-  C::Response: hyper::rt::Read + hyper::rt::Write + Unpin + Send + 'static,
+  C: Service<Uri> + Clone,
+  C::Response:
+    hyper::rt::Read + hyper::rt::Write + Connection + Unpin + Send + 'static,
   C::Future: Send + 'static,
   C::Error: Into<BoxError> + 'static,
 {
-  type Response = Proxied<C::Response>;
+  type Response = Proxied<MaybeHttpsStream<C::Response>>;
   type Error = BoxError;
   type Future = BoxFuture<Result<Self::Response, Self::Error>>;
 
@@ -451,7 +444,7 @@ where
     &mut self,
     cx: &mut Context<'_>,
   ) -> Poll<Result<(), Self::Error>> {
-    self.connector.poll_ready(cx).map_err(Into::into)
+    self.http.poll_ready(cx).map_err(Into::into)
   }
 
   fn call(&mut self, orig_dst: Uri) -> Self::Future {
@@ -467,10 +460,12 @@ where
           dst: proxy_dst,
           auth,
         } => {
-          let connecting = self.connector.call(proxy_dst);
+          let mut connector =
+            HttpsConnector::from((self.http.clone(), self.tls_proxy.clone()));
+          let connecting = connector.call(proxy_dst);
           let tls = TlsConnector::from(self.tls.clone());
           Box::pin(async move {
-            let mut io = connecting.await.map_err(Into::into)?;
+            let mut io = connecting.await.map_err(Into::<BoxError>::into)?;
 
             if is_https {
               tunnel(&mut io, &orig_dst, user_agent, auth).await?;
@@ -529,9 +524,11 @@ where
         }
       };
     }
+
+    let mut connector =
+      HttpsConnector::from((self.http.clone(), self.tls.clone()));
     Box::pin(
-      self
-        .connector
+      connector
         .call(orig_dst)
         .map_ok(Proxied::PassThrough)
         .map_err(Into::into),
@@ -721,7 +718,14 @@ where
     match self {
       Proxied::PassThrough(ref p) => p.connected(),
       Proxied::HttpForward(ref p) => p.connected().proxy(true),
-      Proxied::HttpTunneled(ref p) => p.inner().get_ref().0.connected(),
+      Proxied::HttpTunneled(ref p) => {
+        let tunneled_tls = p.inner().get_ref();
+        if tunneled_tls.1.alpn_protocol() == Some(b"h2") {
+          tunneled_tls.0.connected().negotiated_h2()
+        } else {
+          tunneled_tls.0.connected()
+        }
+      }
       Proxied::Socks(ref p) => p.connected(),
       Proxied::SocksTls(ref p) => p.inner().get_ref().0.connected(),
     }

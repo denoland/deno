@@ -32,10 +32,12 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node::errors::PackageFolderResolveError;
-use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
 use deno_runtime::deno_node::NodePermissions;
 use deno_semver::package::PackageNv;
+use node_resolver::errors::PackageFolderResolveError;
+use node_resolver::errors::PackageFolderResolveIoError;
+use node_resolver::errors::PackageNotFoundError;
+use node_resolver::errors::ReferrerNotFoundError;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -185,14 +187,14 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   ) -> Result<PathBuf, PackageFolderResolveError> {
     let maybe_local_path = self
       .resolve_folder_for_specifier(referrer)
-      .map_err(|err| PackageFolderResolveErrorKind::Io {
+      .map_err(|err| PackageFolderResolveIoError {
         package_name: name.to_string(),
         referrer: referrer.clone(),
         source: err,
       })?;
     let Some(local_path) = maybe_local_path else {
       return Err(
-        PackageFolderResolveErrorKind::NotFoundReferrer {
+        ReferrerNotFoundError {
           referrer: referrer.clone(),
           referrer_extra: None,
         }
@@ -220,7 +222,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     }
 
     Err(
-      PackageFolderResolveErrorKind::NotFoundPackage {
+      PackageNotFoundError {
         package_name: name.to_string(),
         referrer: referrer.clone(),
         referrer_extra: None,
@@ -282,12 +284,8 @@ fn resolve_baseline_custom_commands(
   custom_commands
     .insert("npm".to_string(), Rc::new(crate::task_runner::NpmCommand));
 
-  custom_commands.insert(
-    "node".to_string(),
-    Rc::new(crate::task_runner::NodeCommand {
-      force_node_modules_dir: true,
-    }),
-  );
+  custom_commands
+    .insert("node".to_string(), Rc::new(crate::task_runner::NodeCommand));
 
   custom_commands.insert(
     "node-gyp".to_string(),

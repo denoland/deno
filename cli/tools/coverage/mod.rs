@@ -32,6 +32,7 @@ use std::io::BufWriter;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use text_lines::TextLines;
 use uuid::Uuid;
 
@@ -473,17 +474,17 @@ fn filter_coverages(
 }
 
 pub async fn cover_files(
-  flags: Flags,
+  flags: Arc<Flags>,
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
   if coverage_flags.files.include.is_empty() {
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  let factory = CliFactory::from_flags(flags)?;
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let npm_resolver = factory.npm_resolver().await?;
   let file_fetcher = factory.file_fetcher()?;
-  let cli_options = factory.cli_options();
   let emitter = factory.emitter()?;
 
   assert!(!coverage_flags.files.include.is_empty());

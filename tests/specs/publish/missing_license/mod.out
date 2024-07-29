@@ -1,0 +1,12 @@
+Check file:///[WILDLINE]/missing_license/mod.ts
+Checking for slow types in the public API...
+Check file:///[WILDLINE]/missing_license/mod.ts
+warning[missing-license]: missing license file
+ --> [WILDLINE]LICENSE
+  = hint: add a LICENSE file to the package and ensure it is not ignored from being published
+
+  docs: https://jsr.io/go/missing-license
+
+Publishing @scope/pkg@1.0.0 ...
+Successfully published @scope/pkg@1.0.0
+Visit http://127.0.0.1:4250/@scope/pkg@1.0.0 for details

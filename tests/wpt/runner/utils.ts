@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 /// FLAGS
 
-import { parse } from "../../util/std/flags/mod.ts";
+import { parseArgs } from "@std/cli/parse-args";
 import { join, resolve, ROOT_PATH } from "../../../tools/util.js";
 
 export const {
@@ -15,7 +15,7 @@ export const {
   ["inspect-brk"]: inspectBrk,
   ["no-ignore"]: noIgnore,
   binary,
-} = parse(Deno.args, {
+} = parseArgs(Deno.args, {
   "--": true,
   boolean: ["quiet", "release", "no-interactive", "inspect-brk", "no-ignore"],
   string: ["json", "wptreport", "binary"],

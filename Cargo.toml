@@ -21,6 +21,7 @@ members = [
   "ext/napi",
   "ext/net",
   "ext/node",
+  "ext/node_resolver",
   "ext/url",
   "ext/web",
   "ext/webgpu",
@@ -44,15 +45,15 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.40.0", features = ["transpiling"] }
-deno_core = { version = "0.294.0" }
+deno_core = { version = "0.299.0" }
 
-deno_bench_util = { version = "0.155.0", path = "./bench_util" }
+deno_bench_util = { version = "0.157.0", path = "./bench_util" }
 deno_lockfile = "0.20.0"
 deno_media_type = { version = "0.1.4", features = ["module_specifier"] }
-deno_permissions = { version = "0.21.0", path = "./runtime/permissions" }
-deno_runtime = { version = "0.169.0", path = "./runtime" }
+deno_permissions = { version = "0.23.0", path = "./runtime/permissions" }
+deno_runtime = { version = "0.172.0", path = "./runtime" }
 deno_terminal = "0.2.0"
-napi_sym = { version = "0.91.0", path = "./cli/napi/sym" }
+napi_sym = { version = "0.93.0", path = "./cli/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
 denokv_proto = "0.8.1"
@@ -61,28 +62,29 @@ denokv_remote = "0.8.1"
 denokv_sqlite = { default-features = false, version = "0.8.1" }
 
 # exts
-deno_broadcast_channel = { version = "0.155.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.93.0", path = "./ext/cache" }
-deno_canvas = { version = "0.30.0", path = "./ext/canvas" }
-deno_console = { version = "0.161.0", path = "./ext/console" }
-deno_cron = { version = "0.41.0", path = "./ext/cron" }
-deno_crypto = { version = "0.175.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.185.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.148.0", path = "./ext/ffi" }
-deno_fs = { version = "0.71.0", path = "./ext/fs" }
-deno_http = { version = "0.159.0", path = "./ext/http" }
-deno_io = { version = "0.71.0", path = "./ext/io" }
-deno_kv = { version = "0.69.0", path = "./ext/kv" }
-deno_napi = { version = "0.91.0", path = "./ext/napi" }
-deno_net = { version = "0.153.0", path = "./ext/net" }
-deno_node = { version = "0.98.0", path = "./ext/node" }
-deno_tls = { version = "0.148.0", path = "./ext/tls" }
-deno_url = { version = "0.161.0", path = "./ext/url" }
-deno_web = { version = "0.192.0", path = "./ext/web" }
-deno_webgpu = { version = "0.128.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.161.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.166.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.156.0", path = "./ext/webstorage" }
+deno_broadcast_channel = { version = "0.157.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.95.0", path = "./ext/cache" }
+deno_canvas = { version = "0.32.0", path = "./ext/canvas" }
+deno_console = { version = "0.163.0", path = "./ext/console" }
+deno_cron = { version = "0.43.0", path = "./ext/cron" }
+deno_crypto = { version = "0.177.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.187.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.150.0", path = "./ext/ffi" }
+deno_fs = { version = "0.73.0", path = "./ext/fs" }
+deno_http = { version = "0.161.0", path = "./ext/http" }
+deno_io = { version = "0.73.0", path = "./ext/io" }
+deno_kv = { version = "0.71.0", path = "./ext/kv" }
+deno_napi = { version = "0.94.0", path = "./ext/napi" }
+deno_net = { version = "0.155.0", path = "./ext/net" }
+deno_node = { version = "0.100.0", path = "./ext/node" }
+deno_tls = { version = "0.150.0", path = "./ext/tls" }
+deno_url = { version = "0.163.0", path = "./ext/url" }
+deno_web = { version = "0.194.0", path = "./ext/web" }
+deno_webgpu = { version = "0.130.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.163.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.168.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.158.0", path = "./ext/webstorage" }
+node_resolver = { version = "0.2.0", path = "./ext/node_resolver" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
@@ -100,8 +102,8 @@ chrono = { version = "0.4", default-features = false, features = ["std", "serde"
 console_static_text = "=0.8.1"
 data-encoding = "2.3.3"
 data-url = "=0.3.0"
-deno_cache_dir = "=0.10.0"
-deno_config = { version = "=0.24.0", default-features = false }
+deno_cache_dir = "=0.10.2"
+deno_package_json = { version = "=0.1.1", default-features = false }
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
@@ -189,7 +191,7 @@ url = { version = "< 2.5.0", features = ["serde", "expose_internals"] }
 uuid = { version = "1.3.0", features = ["v4"] }
 webpki-roots = "0.26"
 which = "4.2.5"
-zeromq = { version = "=0.3.4", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
+zeromq = { version = "=0.4.0", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zstd = "=0.12.4"
 
 # crypto

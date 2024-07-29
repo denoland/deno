@@ -20,12 +20,14 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_node::errors::PackageFolderResolveError;
-use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NpmResolver;
+use deno_runtime::deno_node::NodeRequireResolver;
+use deno_runtime::deno_node::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use node_resolver::errors::PackageFolderResolveError;
+use node_resolver::errors::PackageFolderResolveIoError;
+use node_resolver::NpmResolver;
 use resolution::AddPkgReqsResult;
 
 use crate::args::CliLockfile;
@@ -531,14 +533,6 @@ fn npm_process_state(
 }
 
 impl NpmResolver for ManagedCliNpmResolver {
-  /// Gets the state of npm for the process.
-  fn get_npm_process_state(&self) -> String {
-    npm_process_state(
-      self.resolution.serialized_valid_snapshot(),
-      self.fs_resolver.node_modules_path().map(|p| p.as_path()),
-    )
-  }
-
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
@@ -549,7 +543,7 @@ impl NpmResolver for ManagedCliNpmResolver {
       .resolve_package_folder_from_package(name, referrer)?;
     let path =
       canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())
-        .map_err(|err| PackageFolderResolveErrorKind::Io {
+        .map_err(|err| PackageFolderResolveIoError {
           package_name: name.to_string(),
           referrer: referrer.clone(),
           source: err,
@@ -563,7 +557,9 @@ impl NpmResolver for ManagedCliNpmResolver {
     debug_assert!(root_dir_url.as_str().ends_with('/'));
     specifier.as_ref().starts_with(root_dir_url.as_str())
   }
+}
 
+impl NodeRequireResolver for ManagedCliNpmResolver {
   fn ensure_read_permission(
     &self,
     permissions: &mut dyn NodePermissions,
@@ -573,8 +569,27 @@ impl NpmResolver for ManagedCliNpmResolver {
   }
 }
 
+impl NpmProcessStateProvider for ManagedCliNpmResolver {
+  fn get_npm_process_state(&self) -> String {
+    npm_process_state(
+      self.resolution.serialized_valid_snapshot(),
+      self.fs_resolver.node_modules_path().map(|p| p.as_path()),
+    )
+  }
+}
+
 impl CliNpmResolver for ManagedCliNpmResolver {
   fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver> {
+    self
+  }
+
+  fn into_require_resolver(self: Arc<Self>) -> Arc<dyn NodeRequireResolver> {
+    self
+  }
+
+  fn into_process_state_provider(
+    self: Arc<Self>,
+  ) -> Arc<dyn NpmProcessStateProvider> {
     self
   }
 

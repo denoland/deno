@@ -1,8 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
-use deno_core::error::format_file_name;
+use deno_core::error::format_frame;
 use deno_core::error::JsError;
-use deno_core::error::JsStackFrame;
 use deno_terminal::colors::cyan;
 use deno_terminal::colors::italic_bold;
 use deno_terminal::colors::red;
@@ -21,96 +20,22 @@ struct IndexedErrorReference<'a> {
   index: usize,
 }
 
-// Keep in sync with `/core/error.js`.
-pub fn format_location(frame: &JsStackFrame) -> String {
-  let _internal = frame
-    .file_name
-    .as_ref()
-    .map(|f| f.starts_with("ext:"))
-    .unwrap_or(false);
-  if frame.is_native {
-    return cyan("native").to_string();
-  }
-  let mut result = String::new();
-  let file_name = frame.file_name.clone().unwrap_or_default();
-  if !file_name.is_empty() {
-    result += &cyan(&format_file_name(&file_name)).to_string();
-  } else {
-    if frame.is_eval {
-      result +=
-        &(cyan(&frame.eval_origin.as_ref().unwrap()).to_string() + ", ");
-    }
-    result += &cyan("<anonymous>").to_string();
-  }
-  if let Some(line_number) = frame.line_number {
-    write!(result, ":{}", yellow(&line_number.to_string())).unwrap();
-    if let Some(column_number) = frame.column_number {
-      write!(result, ":{}", yellow(&column_number.to_string())).unwrap();
-    }
-  }
-  result
-}
+struct AnsiColors;
 
-fn format_frame(frame: &JsStackFrame) -> String {
-  let _internal = frame
-    .file_name
-    .as_ref()
-    .map(|f| f.starts_with("ext:"))
-    .unwrap_or(false);
-  let is_method_call =
-    !(frame.is_top_level.unwrap_or_default() || frame.is_constructor);
-  let mut result = String::new();
-  if frame.is_async {
-    result += "async ";
-  }
-  if frame.is_promise_all {
-    result += &italic_bold(&format!(
-      "Promise.all (index {})",
-      frame.promise_index.unwrap_or_default()
-    ))
-    .to_string();
-    return result;
-  }
-  if is_method_call {
-    let mut formatted_method = String::new();
-    if let Some(function_name) = &frame.function_name {
-      if let Some(type_name) = &frame.type_name {
-        if !function_name.starts_with(type_name) {
-          write!(formatted_method, "{type_name}.").unwrap();
-        }
+impl deno_core::error::ErrorFormat for AnsiColors {
+  fn fmt_element(
+    element: deno_core::error::ErrorElement,
+    s: &str,
+  ) -> std::borrow::Cow<'_, str> {
+    use deno_core::error::ErrorElement::*;
+    match element {
+      Anonymous | NativeFrame | FileName | EvalOrigin => {
+        cyan(s).to_string().into()
       }
-      formatted_method += function_name;
-      if let Some(method_name) = &frame.method_name {
-        if !function_name.ends_with(method_name) {
-          write!(formatted_method, " [as {method_name}]").unwrap();
-        }
-      }
-    } else {
-      if let Some(type_name) = &frame.type_name {
-        write!(formatted_method, "{type_name}.").unwrap();
-      }
-      if let Some(method_name) = &frame.method_name {
-        formatted_method += method_name
-      } else {
-        formatted_method += "<anonymous>";
-      }
+      LineNumber | ColumnNumber => yellow(s).to_string().into(),
+      FunctionName | PromiseAll => italic_bold(s).to_string().into(),
     }
-    result += &italic_bold(&formatted_method).to_string();
-  } else if frame.is_constructor {
-    result += "new ";
-    if let Some(function_name) = &frame.function_name {
-      write!(result, "{}", italic_bold(&function_name)).unwrap();
-    } else {
-      result += &cyan("<anonymous>").to_string();
-    }
-  } else if let Some(function_name) = &frame.function_name {
-    result += &italic_bold(&function_name).to_string();
-  } else {
-    result += &format_location(frame);
-    return result;
   }
-  write!(result, " ({})", format_location(frame)).unwrap();
-  result
 }
 
 /// Take an optional source line and associated information to format it into
@@ -254,7 +179,7 @@ fn format_js_error_inner(
     0,
   ));
   for frame in &js_error.frames {
-    write!(s, "\n    at {}", format_frame(frame)).unwrap();
+    write!(s, "\n    at {}", format_frame::<AnsiColors>(frame)).unwrap();
   }
   if let Some(cause) = &js_error.cause {
     let is_caused_by_circular = circular

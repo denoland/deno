@@ -1,6 +1,5 @@
 [
   {
-    "kind": "class",
     "name": "Test",
     "isDefault": false,
     "location": {
@@ -13,6 +12,7 @@
     "jsDoc": {
       "doc": "My test class."
     },
+    "kind": "class",
     "classDef": {
       "isAbstract": false,
       "constructors": [],
