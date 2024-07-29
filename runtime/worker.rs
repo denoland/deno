@@ -454,7 +454,7 @@ impl MainWorker {
       ops::web_worker::deno_web_worker::init_ops_and_esm().disable(),
     ];
 
-    #[cfg(hmr)]
+    #[cfg(feature = "hmr")]
     assert!(
       cfg!(not(feature = "only_snapshotted_js_sources")),
       "'hmr' is incompatible with 'only_snapshotted_js_sources'."

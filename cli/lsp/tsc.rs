@@ -215,6 +215,8 @@ pub enum SemicolonPreference {
   Remove,
 }
 
+// Allow due to false positive https://github.com/rust-lang/rust-clippy/issues/13170
+#[allow(clippy::needless_borrows_for_generic_args)]
 fn normalize_diagnostic(
   diagnostic: &mut crate::tsc::Diagnostic,
   specifier_map: &TscSpecifierMap,

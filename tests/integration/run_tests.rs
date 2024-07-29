@@ -2621,7 +2621,7 @@ mod permissions {
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg("--unstable")
         .arg(format!("--allow-{permission}"))
@@ -2655,7 +2655,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!(
           "--allow-{0}={1}",
@@ -2698,7 +2698,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!(
           "--allow-{0}={1}",
@@ -2746,7 +2746,7 @@ mod permissions {
     let js_dir = util::root_path().join("js");
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{permission}={test_dir},{js_dir}"))
         .arg("run/complex_permissions_test.ts")
@@ -2765,7 +2765,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{permission}=."))
         .arg("run/complex_permissions_test.ts")
@@ -2784,7 +2784,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{permission}=tls/../"))
         .arg("run/complex_permissions_test.ts")

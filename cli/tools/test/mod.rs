@@ -1654,7 +1654,7 @@ fn is_supported_test_ext(path: &Path) -> bool {
 /// input order.
 ///
 /// - Specifiers matching the `is_supported_test_ext` predicate are marked as
-/// `TestMode::Documentation`.
+///   `TestMode::Documentation`.
 /// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(

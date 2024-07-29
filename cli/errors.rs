@@ -113,7 +113,7 @@ pub fn get_error_class_name(e: &AnyError) -> &'static str {
         .map(get_resolution_error_class)
     })
     .unwrap_or_else(|| {
-      if cfg!(debug) {
+      if cfg!(debug_assertions) {
         log::warn!(
           "Error '{}' contains boxed error of unknown type:{}",
           e,

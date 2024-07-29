@@ -1050,7 +1050,7 @@ fn junction_or_symlink_dir(
   match junction::create(old_path, new_path) {
     Ok(()) => Ok(()),
     Err(junction_err) => {
-      if cfg!(debug) {
+      if cfg!(debug_assertions) {
         // When running the tests, junctions should be created, but if not then
         // surface this error.
         log::warn!("Error creating junction. {:#}", junction_err);
