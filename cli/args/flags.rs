@@ -1163,6 +1163,12 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
 
   let mut flags = Flags::default();
 
+  flags.unstable_config.bare_node_builtins =
+    matches.get_flag("unstable-bare-node-builtins");
+  flags.unstable_config.byonm = matches.get_flag("unstable-byonm");
+  flags.unstable_config.sloppy_imports =
+    matches.get_flag("unstable-sloppy-imports");
+    
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
   } else if let Some(log_level) = matches.get_one::<String>("log-level") {
@@ -1278,6 +1284,48 @@ fn clap_root() -> Command {
         .action(ArgAction::SetTrue)
         .global(true),
     )
+    // cause --unstable flags to display at the bottom of the help text
+    .next_display_order(1000)
+    .disable_version_flag(true)
+    .arg(
+      Arg::new("version")
+        .short('V')
+        .short_alias('v')
+        .long("version")
+        .action(ArgAction::Version)
+        .help("Print version")
+    )
+    .arg(
+      Arg::new("unstable-bare-node-builtins")
+        .long("unstable-bare-node-builtins")
+        .help("Enable unstable bare node builtins feature")
+        .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .global(true)
+    )
+    .arg(
+      Arg::new("unstable-byonm")
+        .long("unstable-byonm")
+        .help("Enable unstable 'bring your own node_modules' feature")
+        .env("DENO_UNSTABLE_BYONM")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .global(true)
+    )
+    .arg(
+      Arg::new("unstable-sloppy-imports")
+        .long("unstable-sloppy-imports")
+        .help(
+          "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing.",
+        )
+        .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .global(true)
+    )
+    // reset the display order after the unstable flags
+    .next_display_order(0)
     .subcommand(run_subcommand())
     .subcommand(serve_subcommand())
     .defer(|cmd| {
@@ -3037,7 +3085,7 @@ static ALLOW_ALL_HELP: &str = concat!(
   "/basics/permissions\n"
 );
 
-fn unstable_args(app: Command) -> Command {
+fn unstable_runtime_args(app: Command) -> Command {
   let mut app = app
   // Make --unstable flags to display at the bottom of the help text
   .next_display_order(1000)
@@ -3045,32 +3093,6 @@ fn unstable_args(app: Command) -> Command {
     Arg::new("unstable")
       .long("unstable")
       .help("Enable unstable features and APIs")
-      .action(ArgAction::SetTrue)
-  )
-  .arg(
-    Arg::new("unstable-bare-node-builtins")
-      .long("unstable-bare-node-builtins")
-      .help("Enable unstable bare node builtins feature")
-      .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
-      .value_parser(FalseyValueParser::new())
-      .action(ArgAction::SetTrue)
-  )
-  .arg(
-    Arg::new("unstable-byonm")
-      .long("unstable-byonm")
-      .help("Enable unstable 'bring your own node_modules' feature")
-      .env("DENO_UNSTABLE_BYONM")
-      .value_parser(FalseyValueParser::new())
-      .action(ArgAction::SetTrue)
-  )
-  .arg(
-    Arg::new("unstable-sloppy-imports")
-      .long("unstable-sloppy-imports")
-      .help(
-        "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing.",
-      )
-      .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
-      .value_parser(FalseyValueParser::new())
       .action(ArgAction::SetTrue)
   );
 
@@ -3287,7 +3309,7 @@ fn runtime_args(
   include_inspector: bool,
 ) -> Command {
   let app = compile_args(app);
-  let app = unstable_args(app);
+  let app = unstable_runtime_args(app);
   let app = if include_perms {
     permission_args(app)
   } else {
@@ -4587,7 +4609,8 @@ fn compile_args_without_check_parse(
   ca_file_arg_parse(flags, matches);
 }
 
-fn unstable_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn unstable_runtime_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+
   if matches.get_flag("unstable") {
     flags.unstable_config.legacy_flag_enabled = true;
   }
@@ -4597,13 +4620,6 @@ fn unstable_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       flags.unstable_config.features.push(name.to_string());
     }
   }
-
-  // TODO(bartlomieju): these flags might actually be used in non-runtime subcommands
-  flags.unstable_config.bare_node_builtins =
-    matches.get_flag("unstable-bare-node-builtins");
-  flags.unstable_config.byonm = matches.get_flag("unstable-byonm");
-  flags.unstable_config.sloppy_imports =
-    matches.get_flag("unstable-sloppy-imports");
 }
 
 fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4709,7 +4725,7 @@ fn runtime_args_parse(
   include_perms: bool,
   include_inspector: bool,
 ) {
-  unstable_args_parse(flags, matches);
+  unstable_runtime_args_parse(flags, matches);
   compile_args_parse(flags, matches);
   cached_only_arg_parse(flags, matches);
   frozen_lockfile_arg_parse(flags, matches);
