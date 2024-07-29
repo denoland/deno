@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::resolve_no_prompt;
 use crate::args::AddFlags;
 use crate::args::CaData;
 use crate::args::ConfigFlag;
@@ -112,11 +111,6 @@ exec deno {} "$@"
 }
 
 fn get_installer_root() -> Result<PathBuf, io::Error> {
-  if let Ok(env_dir) = env::var("DENO_INSTALL_ROOT") {
-    if !env_dir.is_empty() {
-      return canonicalize_path_maybe_not_exists(&PathBuf::from(env_dir));
-    }
-  }
   // Note: on Windows, the $HOME environment variable may be set by users or by
   // third party software, but it is non-standard and should not be relied upon.
   let home_env_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
@@ -471,7 +465,7 @@ async fn resolve_shim_data(
     executable_args.push("--frozen".to_string());
   }
 
-  if resolve_no_prompt(&flags.permissions) {
+  if flags.permissions.no_prompt {
     executable_args.push("--no-prompt".to_string());
   }
 
