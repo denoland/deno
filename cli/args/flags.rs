@@ -1168,7 +1168,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   flags.unstable_config.byonm = matches.get_flag("unstable-byonm");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
-    
+
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
   } else if let Some(log_level) = matches.get_one::<String>("log-level") {
@@ -3087,14 +3087,14 @@ static ALLOW_ALL_HELP: &str = concat!(
 
 fn unstable_runtime_args(app: Command) -> Command {
   let mut app = app
-  // Make --unstable flags to display at the bottom of the help text
-  .next_display_order(1000)
-  .arg(
-    Arg::new("unstable")
-      .long("unstable")
-      .help("Enable unstable features and APIs")
-      .action(ArgAction::SetTrue)
-  );
+    // Make --unstable flags to display at the bottom of the help text
+    .next_display_order(1000)
+    .arg(
+      Arg::new("unstable")
+        .long("unstable")
+        .help("Enable unstable features and APIs")
+        .action(ArgAction::SetTrue),
+    );
 
   for (flag_name, help, _) in crate::UNSTABLE_GRANULAR_FLAGS {
     app = app.arg(
@@ -4610,7 +4610,6 @@ fn compile_args_without_check_parse(
 }
 
 fn unstable_runtime_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-
   if matches.get_flag("unstable") {
     flags.unstable_config.legacy_flag_enabled = true;
   }
