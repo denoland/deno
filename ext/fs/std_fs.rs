@@ -844,6 +844,14 @@ fn stat_extra(
     Ok(info.assume_init())
   }
 
+  const WINDOWS_TICK: i64 = 10_000; // 100-nanosecond intervals in a millisecond
+  const SEC_TO_UNIX_EPOCH: i64 = 11_644_473_600; // Seconds between Windows epoch and Unix epoch
+
+  fn windows_time_to_unix_time_msec(windows_time: i64) -> i64 {
+    let milliseconds_since_windows_epoch = windows_time / WINDOWS_TICK;
+    milliseconds_since_windows_epoch - SEC_TO_UNIX_EPOCH * 1000
+  }
+
   // SAFETY: winapi calls
   unsafe {
     let mut path: Vec<_> = path.as_os_str().encode_wide().collect();
@@ -896,6 +904,8 @@ fn stat_extra(
           | ((libc::S_IREAD | libc::S_IWRITE) >> 6))
           as u32;
       }
+
+      fsstat.ctime = windows_time_to_unix_time_msec(file_info.BasicInformation.ChangeTime);
     }
 
     Ok(())
