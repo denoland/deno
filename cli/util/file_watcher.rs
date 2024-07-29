@@ -195,8 +195,8 @@ impl WatcherCommunicator {
 /// Creates a file watcher.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
-/// changes. For example, in the case where we would like to bundle, then `operation` would
-/// have the logic for it like bundling the code.
+///   changes. For example, in the case where we would like to bundle, then `operation` would
+///   have the logic for it like bundling the code.
 pub async fn watch_func<O, F>(
   flags: Arc<Flags>,
   print_config: PrintConfig,
@@ -234,8 +234,8 @@ pub enum WatcherRestartMode {
 /// Creates a file watcher.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
-/// changes. For example, in the case where we would like to bundle, then `operation` would
-/// have the logic for it like bundling the code.
+///    changes. For example, in the case where we would like to bundle, then `operation` would
+///    have the logic for it like bundling the code.
 pub async fn watch_recv<O, F>(
   mut flags: Arc<Flags>,
   print_config: PrintConfig,
