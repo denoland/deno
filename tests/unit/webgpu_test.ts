@@ -228,7 +228,8 @@ Deno.test({
 
   assertThrows(
     () => {
-      new Deno.UnsafeWindowSurface("cocoa", {
+      new Deno.UnsafeWindowSurface({
+        system: "cocoa",
         windowHandle: null,
         displayHandle: null,
         width: 0,
@@ -244,7 +245,8 @@ Deno.test(function webgpuWindowSurfaceNoWidthHeight() {
   assertThrows(
     () => {
       // @ts-expect-error width and height are required
-      new Deno.UnsafeWindowSurface("x11", {
+      new Deno.UnsafeWindowSurface({
+        system: "x11",
         windowHandle: null,
         displayHandle: null,
       });

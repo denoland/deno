@@ -844,8 +844,8 @@ declare namespace Deno {
    */
   export class UnsafeWindowSurface {
     constructor(
-      system: "cocoa" | "win32" | "x11" | "wayland",
       options: {
+        system: "cocoa" | "win32" | "x11" | "wayland";
         windowHandle: Deno.PointerValue<unknown>;
         displayHandle: Deno.PointerValue<unknown>;
         width: number;

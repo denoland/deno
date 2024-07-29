@@ -179,7 +179,7 @@ class UnsafeWindowSurface {
   #surfaceRid;
   #options;
 
-  constructor(system, options) {
+  constructor(options) {
     if (typeof options !== "object") {
       throw new TypeError("options must be provided.");
     }
@@ -190,7 +190,7 @@ class UnsafeWindowSurface {
     }
 
     this.#surfaceRid = op_webgpu_surface_create(
-      system,
+      options.system,
       options.windowHandle,
       options.displayHandle,
     );
