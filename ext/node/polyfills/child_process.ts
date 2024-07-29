@@ -126,7 +126,7 @@ export function fork(
         execArgv.splice(index, 1);
       } else if (flag.startsWith("-C") || flag.startsWith("--conditions")) {
         let rm = 1;
-        if (flag.indexOf("=") === -1) {
+        if (flag.indexOf("=") !== -1) {
           rm = 2;
         }
         execArgv.splice(index, rm);
