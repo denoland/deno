@@ -179,7 +179,7 @@ class UnsafeWindowSurface {
   #surfaceRid;
   #options;
 
-  constructor(system, win, display, options) {
+  constructor(system, options) {
     if (typeof options !== "object") {
       throw new TypeError("options must be provided.");
     }
@@ -189,7 +189,11 @@ class UnsafeWindowSurface {
       throw new TypeError("width and height must be provided.");
     }
 
-    this.#surfaceRid = op_webgpu_surface_create(system, win, display);
+    this.#surfaceRid = op_webgpu_surface_create(
+      system,
+      options.windowHandle,
+      options.displayHandle,
+    );
     this.#options = options;
   }
 
