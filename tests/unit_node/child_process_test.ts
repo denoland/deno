@@ -12,12 +12,13 @@ import {
   assertThrows,
 } from "@std/assert";
 import * as path from "@std/path";
+import { setTimeout } from "node:timers";
 
 const { spawn, spawnSync, execFile, execFileSync, ChildProcess } = CP;
 
 function withTimeout<T>(
   timeoutInMS = 10_000,
-): ReturnType<typeof Promise.withResolvers<T>> & { clear: () => void } {
+): ReturnType<typeof Promise.withResolvers<T>> {
   const deferred = Promise.withResolvers<T>();
   const timer = setTimeout(() => {
     deferred.reject("Timeout");
@@ -25,10 +26,7 @@ function withTimeout<T>(
   deferred.promise.then(() => {
     clearTimeout(timer);
   });
-  return {
-    clear: () => clearTimeout(timer),
-    ...deferred,
-  };
+  return deferred;
 }
 
 // TODO(uki00a): Once Node.js's `parallel/test-child-process-spawn-error.js` works, this test case should be removed.
@@ -931,16 +929,14 @@ Deno.test(
       "42",
     ];
     let i = 0;
-    const p = Promise.withResolvers<void>();
 
     child.on("message", (message) => {
       assertEquals(message, expect[i]);
       i++;
     });
-    child.on("close", () => p.resolve());
-    await Promise.race([p.promise, timeout.promise]);
+    child.on("close", () => timeout.resolve());
+    await timeout.promise;
     assertEquals(i, expect.length);
-    timeout.clear();
   },
 );
 
@@ -968,7 +964,7 @@ Deno.test(async function childProcessExitsGracefully() {
 Deno.test(async function killMultipleTimesNoError() {
   const loop = `
     while (true) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 10000));
     }
   `;
 
@@ -982,4 +978,65 @@ Deno.test(async function killMultipleTimesNoError() {
 
   // explicitly calling disconnect after kill should throw
   assertThrows(() => child.disconnect());
+});
+
+// Make sure that you receive messages sent before a "message" event listener is set up
+Deno.test(async function bufferMessagesIfNoListener() {
+  const code = `
+    process.on("message", (_) => {
+      process.channel.unref();
+    });
+    process.send("hello");
+    process.send("world");
+    console.error("sent messages");
+  `;
+  const file = await Deno.makeTempFile();
+  await Deno.writeTextFile(file, code);
+  const timeout = withTimeout<void>();
+  const child = CP.fork(file, [], {
+    stdio: ["inherit", "inherit", "pipe", "ipc"],
+  });
+
+  let got = 0;
+  child.on("message", (message) => {
+    if (got++ === 0) {
+      assertEquals(message, "hello");
+    } else {
+      assertEquals(message, "world");
+    }
+  });
+  child.on("close", () => {
+    timeout.resolve();
+  });
+  let stderr = "";
+  child.stderr?.on("data", (data) => {
+    stderr += data;
+    if (stderr.includes("sent messages")) {
+      // now that we've set up the listeners, and the child
+      // has sent the messages, we can let it exit
+      child.send("ready");
+    }
+  });
+  await timeout.promise;
+  assertEquals(got, 2);
+});
+
+Deno.test(async function sendAfterClosedThrows() {
+  const code = ``;
+  const file = await Deno.makeTempFile();
+  await Deno.writeTextFile(file, code);
+  const timeout = withTimeout<void>();
+  const child = CP.fork(file, [], {
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+  });
+  child.on("error", (err) => {
+    assert("code" in err);
+    assertEquals(err.code, "ERR_IPC_CHANNEL_CLOSED");
+    timeout.resolve();
+  });
+  child.on("close", () => {
+    child.send("ready");
+  });
+
+  await timeout.promise;
 });
