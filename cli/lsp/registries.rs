@@ -625,7 +625,7 @@ impl ModuleRegistry {
     let origin_len = origin.chars().count();
     let registries = self.origins.get(&origin)?;
     let path = &resolved[Position::BeforePath..];
-    let path_offset = resolved_str.len() - origin_len;
+    let path_offset = resolved_str.chars().count() - origin_len;
     let mut completions = HashMap::<String, lsp::CompletionItem>::new();
     let mut is_incomplete = false;
     let mut did_match = false;
