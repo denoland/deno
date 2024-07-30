@@ -829,16 +829,20 @@ fn stat_extra(
     use winapi::um::minwinbase::FileBasicInfo;
     use winapi::um::winbase::GetFileInformationByHandleEx;
 
-    let mut file_info: FILE_BASIC_INFO = std::mem::zeroed();
-    if GetFileInformationByHandleEx(
-      handle,
-      FileBasicInfo,
-      &mut file_info as *mut _ as *mut _,
-      std::mem::size_of::<FILE_BASIC_INFO>() as u32,
-    ) == FALSE
-    {
-      return Err(std::io::Error::last_os_error());
-    }
+    let mut file_info = {
+      let mut file_info = std::mem::MaybeUninit::<FILE_BASIC_INFO>::zeroed();
+      if GetFileInformationByHandleEx(
+        handle,
+        FileBasicInfo,
+        &mut file_info as *mut _ as *mut _,
+        std::mem::size_of::<FILE_BASIC_INFO>() as u32,
+      ) == FALSE
+      {
+        return Err(std::io::Error::last_os_error());
+      }
+
+      file_info.assume_init()
+    };
 
     let change_time = file_info.ChangeTime.QuadPart();
 
