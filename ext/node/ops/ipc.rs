@@ -416,7 +416,6 @@ mod impl_ {
         write_half: AsyncRefCell::new(write_half),
         cancel: Default::default(),
         queued_bytes: Default::default(),
-        refed: AtomicBool::new(false),
         ref_tracker,
       }
     }
