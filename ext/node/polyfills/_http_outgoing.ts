@@ -542,7 +542,7 @@ export class OutgoingMessage extends Stream {
     if (data instanceof Buffer) {
       data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
     }
-    if (data.buffer.byteLength > 0) {
+    if (data.byteLength > 0) {
       this._bodyWriter.write(data).then(() => {
         callback?.();
         this.emit("drain");
