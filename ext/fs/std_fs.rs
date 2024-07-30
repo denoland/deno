@@ -810,7 +810,7 @@ fn stat_extra(
 
     let info = {
       let mut info =
-          std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
+        std::mem::MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
       if GetFileInformationByHandle(handle, info.as_mut_ptr()) == FALSE {
         return Err(std::io::Error::last_os_error());
       }
@@ -821,11 +821,13 @@ fn stat_extra(
     Ok(info.dwVolumeSerialNumber as u64)
   }
 
-  unsafe fn get_change_time(handle: winapi::shared::ntdef::HANDLE) -> std::io::Result<u64> {
-    use winapi::um::fileapi::FILE_BASIC_INFO;
+  unsafe fn get_change_time(
+    handle: winapi::shared::ntdef::HANDLE,
+  ) -> std::io::Result<u64> {
     use winapi::shared::minwindef::FALSE;
-    use winapi::um::winbase::GetFileInformationByHandleEx;
+    use winapi::um::fileapi::FILE_BASIC_INFO;
     use winapi::um::minwinbase::FileBasicInfo;
+    use winapi::um::winbase::GetFileInformationByHandleEx;
 
     let mut file_info: FILE_BASIC_INFO = std::mem::zeroed();
     if GetFileInformationByHandleEx(
@@ -833,7 +835,8 @@ fn stat_extra(
       FileBasicInfo,
       &mut file_info as *mut _ as *mut _,
       std::mem::size_of::<FILE_BASIC_INFO>() as u32,
-    ) == FALSE {
+    ) == FALSE
+    {
       return Err(std::io::Error::last_os_error());
     }
 
@@ -901,15 +904,15 @@ fn stat_extra(
 
     if let Ok(file_info) = query_file_information(file_handle) {
       if file_info.BasicInformation.FileAttributes
-          & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT
-          != 0
+        & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT
+        != 0
       {
         fsstat.is_symlink = true;
       }
 
       if file_info.BasicInformation.FileAttributes
-          & winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY
-          != 0
+        & winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY
+        != 0
       {
         fsstat.mode |= libc::S_IFDIR as u32;
         fsstat.size = 0;
@@ -919,16 +922,16 @@ fn stat_extra(
       }
 
       if file_info.BasicInformation.FileAttributes
-          & winapi::um::winnt::FILE_ATTRIBUTE_READONLY
-          != 0
+        & winapi::um::winnt::FILE_ATTRIBUTE_READONLY
+        != 0
       {
         fsstat.mode |=
-            (libc::S_IREAD | (libc::S_IREAD >> 3) | (libc::S_IREAD >> 6)) as u32;
+          (libc::S_IREAD | (libc::S_IREAD >> 3) | (libc::S_IREAD >> 6)) as u32;
       } else {
         fsstat.mode |= ((libc::S_IREAD | libc::S_IWRITE)
-            | ((libc::S_IREAD | libc::S_IWRITE) >> 3)
-            | ((libc::S_IREAD | libc::S_IWRITE) >> 6))
-            as u32;
+          | ((libc::S_IREAD | libc::S_IWRITE) >> 3)
+          | ((libc::S_IREAD | libc::S_IWRITE) >> 6))
+          as u32;
       }
     }
 
