@@ -842,6 +842,7 @@ mod impl_ {
 
     #[test]
     fn ipc_serialization() {
+      deno_core::JsRuntime::init_platform(None);
       let mut runtime = JsRuntime::new(RuntimeOptions::default());
 
       let cases = [
