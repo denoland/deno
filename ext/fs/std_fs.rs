@@ -845,9 +845,7 @@ fn stat_extra(
     };
 
     let change_time = file_info.ChangeTime.QuadPart();
-
-    let windows_time = change_time;
-    let unix_time_msec = windows_time_to_unix_time_msec(windows_time);
+    let unix_time_msec = windows_time_to_unix_time_msec(change_time);
 
     Ok(unix_time_msec as u64)
   }
