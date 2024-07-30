@@ -387,3 +387,12 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
+
+[patch.crates-io]
+deno_ast = { path = "../deno_ast" }
+deno_graph = { path = "../deno_graph" }
+deno_lint = { path = "../deno_lint" }
+dprint-plugin-typescript = { path = "../dprint-plugin-typescript" }
+deno_emit = { path = "../deno_emit/rs-lib" }
+deno_doc = { path = "../deno_doc" }
+eszip = { path = "../eszip" }
