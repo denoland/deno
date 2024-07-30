@@ -57,6 +57,7 @@ libc.workspace = true
 libz-sys.workspace = true
 md-5 = { version = "0.10.5", features = ["oid"] }
 md4 = "0.10.2"
+memchr = "2.7.4"
 node_resolver.workspace = true
 num-bigint.workspace = true
 num-bigint-dig = "0.8.2"
