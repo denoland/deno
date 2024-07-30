@@ -2751,7 +2751,6 @@ Note: running multiple `deno test --clean` calls in series or parallel for the s
         .conflicts_with("no-run")
         .conflicts_with("coverage"),
     )
-    .arg(hmr_arg(true))
     .arg(watch_exclude_arg())
     .arg(no_clear_screen_arg())
     .arg(script_arg().last(true))
@@ -4961,17 +4960,21 @@ fn watch_arg_parse_with_paths(
     });
   }
 
-  matches
-    .remove_many::<String>("hmr")
-    .map(|paths| WatchFlagsWithPaths {
-      paths: paths.collect(),
-      hmr: true,
-      no_clear_screen: matches.get_flag("no-clear-screen"),
-      exclude: matches
-        .remove_many::<String>("watch-exclude")
-        .map(|f| f.collect::<Vec<String>>())
-        .unwrap_or_default(),
-    })
+  if matches.try_contains_id("hmr").is_ok() {
+    return matches.remove_many::<String>("hmr").map(|paths| {
+      WatchFlagsWithPaths {
+        paths: paths.collect(),
+        hmr: true,
+        no_clear_screen: matches.get_flag("no-clear-screen"),
+        exclude: matches
+          .remove_many::<String>("watch-exclude")
+          .map(|f| f.collect::<Vec<String>>())
+          .unwrap_or_default(),
+      }
+    });
+  }
+
+  None
 }
 
 // TODO(ry) move this to utility module and add test.
