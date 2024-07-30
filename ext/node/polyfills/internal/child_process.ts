@@ -22,6 +22,7 @@ import {
   ArrayPrototypeSort,
   ArrayPrototypeUnshift,
   ObjectHasOwn,
+  StringPrototypeStartsWith,
   StringPrototypeToUpperCase,
 } from "ext:deno_node/internal/primordials.mjs";
 
@@ -52,6 +53,7 @@ import {
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
+import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -1186,7 +1188,27 @@ class Control extends EventEmitter {
   }
 }
 
-export function setupChannel(target, ipc) {
+type InternalMessage = {
+  cmd: `NODE_${string}`;
+};
+
+// deno-lint-ignore no-explicit-any
+function isInternal(msg: any): msg is InternalMessage {
+  if (msg && typeof msg === "object") {
+    const cmd = msg["cmd"];
+    if (typeof cmd === "string") {
+      return StringPrototypeStartsWith(cmd, "NODE_");
+    }
+  }
+  return false;
+}
+
+function internalCmdName(msg: InternalMessage): string {
+  return StringPrototypeSlice(msg.cmd, 5);
+}
+
+// deno-lint-ignore no-explicit-any
+export function setupChannel(target: any, ipc: number) {
   const control = new Control(ipc);
   target.channel = control;
 
@@ -1201,10 +1223,18 @@ export function setupChannel(target, ipc) {
         // but it shouldn't keep the event loop from exiting
         core.unrefOpPromise(prom);
         const msg = await prom;
-        if (msg && typeof msg === "object" && msg["cmd"] === "NODE_CLOSE") {
-          // Channel closed.
-          target.disconnect();
-          return;
+        if (isInternal(msg)) {
+          const cmd = internalCmdName(msg);
+          if (cmd === "CLOSE") {
+            // Channel closed.
+            target.disconnect();
+            return;
+          } else {
+            // TODO(nathanwhit): once we add support for sending
+            // handles, if we want to support deno-node IPC interop,
+            // we'll need to handle the NODE_HANDLE_* messages here.
+            continue;
+          }
         }
 
         process.nextTick(handleMessage, msg);
