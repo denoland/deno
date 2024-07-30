@@ -87,23 +87,23 @@ enum CompletionType {
 /// Determine if a completion at a given offset is a string literal or a key/
 /// variable.
 fn get_completion_type(
-  offset: usize,
+  char_offset: usize,
   tokens: &[Token],
   match_result: &MatchResult,
 ) -> Option<CompletionType> {
-  let mut len = 0_usize;
+  let mut char_count = 0_usize;
   for (index, token) in tokens.iter().enumerate() {
     match token {
       Token::String(s) => {
-        len += s.chars().count();
-        if offset < len {
+        char_count += s.chars().count();
+        if char_offset < char_count {
           return Some(CompletionType::Literal(s.clone()));
         }
       }
       Token::Key(k) => {
         if let Some(prefix) = &k.prefix {
-          len += prefix.chars().count();
-          if offset < len {
+          char_count += prefix.chars().count();
+          if char_offset < char_count {
             return Some(CompletionType::Key {
               key: k.clone(),
               prefix: Some(prefix.clone()),
@@ -111,7 +111,7 @@ fn get_completion_type(
             });
           }
         }
-        if offset < len {
+        if char_offset < char_count {
           return None;
         }
         if let StringOrNumber::String(name) = &k.name {
@@ -119,8 +119,8 @@ fn get_completion_type(
             .get(name)
             .map(|s| s.to_string(Some(k), false))
             .unwrap_or_default();
-          len += value.chars().count();
-          if offset <= len {
+          char_count += value.chars().count();
+          if char_offset <= char_count {
             return Some(CompletionType::Key {
               key: k.clone(),
               prefix: None,
@@ -129,8 +129,8 @@ fn get_completion_type(
           }
         }
         if let Some(suffix) = &k.suffix {
-          len += suffix.chars().count();
-          if offset <= len {
+          char_count += suffix.chars().count();
+          if char_offset <= char_count {
             return Some(CompletionType::Literal(suffix.clone()));
           }
         }
@@ -622,10 +622,10 @@ impl ModuleRegistry {
       .or_else(|| ModuleSpecifier::parse(text).ok().map(Cow::Owned))?;
     let resolved_str = resolved.as_str();
     let origin = base_url(&resolved);
-    let origin_len = origin.chars().count();
+    let origin_char_count = origin.chars().count();
     let registries = self.origins.get(&origin)?;
     let path = &resolved[Position::BeforePath..];
-    let path_offset = resolved_str.chars().count() - origin_len;
+    let path_char_offset = resolved_str.chars().count() - origin_char_count;
     let mut completions = HashMap::<String, lsp::CompletionItem>::new();
     let mut is_incomplete = false;
     let mut did_match = false;
@@ -665,7 +665,7 @@ impl ModuleRegistry {
         if let Some(match_result) = matcher.matches(path) {
           did_match = true;
           let completion_type =
-            get_completion_type(path_offset, &tokens, &match_result);
+            get_completion_type(path_char_offset, &tokens, &match_result);
           match completion_type {
             Some(CompletionType::Literal(s)) => {
               let label = s;
