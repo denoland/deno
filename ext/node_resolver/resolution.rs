@@ -597,7 +597,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
           for key in imports.keys() {
             let pattern_index = key.find('*');
             if let Some(pattern_index) = pattern_index {
-              let key_sub = &key[0..=pattern_index];
+              let key_sub = &key[0..pattern_index];
               if name.starts_with(key_sub) {
                 let pattern_trailer = &key[pattern_index + 1..];
                 if name.len() > key.len()
@@ -607,8 +607,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
                 {
                   best_match = key;
                   best_match_subpath = Some(
-                    name[pattern_index..=(name.len() - pattern_trailer.len())]
-                      .to_string(),
+                    &name[pattern_index..(name.len() - pattern_trailer.len())],
                   );
                 }
               }
@@ -620,7 +619,7 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
             let maybe_resolved = self.resolve_package_target(
               package_json_path.as_ref().unwrap(),
               target,
-              &best_match_subpath.unwrap(),
+              best_match_subpath.unwrap(),
               best_match,
               maybe_referrer,
               referrer_kind,
