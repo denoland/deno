@@ -968,16 +968,22 @@ Deno.test(async function killMultipleTimesNoError() {
     }
   `;
 
+  const timeout = withTimeout<void>();
   const file = await Deno.makeTempFile();
   await Deno.writeTextFile(file, loop);
   const child = CP.fork(file, [], {
     stdio: ["inherit", "inherit", "inherit", "ipc"],
+  });
+  child.on("close", () => {
+    timeout.resolve();
   });
   child.kill();
   child.kill();
 
   // explicitly calling disconnect after kill should throw
   assertThrows(() => child.disconnect());
+
+  await timeout.promise;
 });
 
 // Make sure that you receive messages sent before a "message" event listener is set up
