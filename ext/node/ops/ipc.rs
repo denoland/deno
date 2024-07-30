@@ -79,14 +79,24 @@ mod impl_ {
     use serde::ser::Error;
     if value.is_null_or_undefined() {
       ser.serialize_unit()
-    } else if value.is_number() {
+    } else if value.is_number() || value.is_number_object() {
       let num_value = value.number_value(scope).unwrap();
-      ser.serialize_f64(num_value)
+      if (num_value as i64 as f64) == num_value {
+        ser.serialize_i64(num_value as i64)
+      } else {
+        ser.serialize_f64(num_value)
+      }
     } else if value.is_string() {
       let str = deno_core::serde_v8::to_utf8(value.try_into().unwrap(), scope);
       ser.serialize_str(&str)
+    } else if value.is_string_object() {
+      let str =
+        deno_core::serde_v8::to_utf8(value.to_string(scope).unwrap(), scope);
+      ser.serialize_str(&str)
     } else if value.is_boolean() {
       ser.serialize_bool(value.is_true())
+    } else if value.is_boolean_object() {
+      ser.serialize_bool(value.boolean_value(scope))
     } else if value.is_array() {
       use serde::ser::SerializeSeq;
       let array = v8::Local::<v8::Array>::try_from(value).unwrap();
@@ -643,7 +653,10 @@ mod impl_ {
   mod tests {
     use super::IpcJsonStreamResource;
     use deno_core::serde_json::json;
+    use deno_core::v8;
+    use deno_core::JsRuntime;
     use deno_core::RcRef;
+    use deno_core::RuntimeOptions;
     use std::rc::Rc;
 
     #[allow(clippy::unused_async)]
@@ -805,6 +818,59 @@ mod impl_ {
 
       let empty = b"";
       assert_eq!(super::memchr(b'\n', empty), None);
+    }
+
+    fn wrap_expr(s: &str) -> String {
+      format!("(function () {{ return {s}; }})()")
+    }
+
+    fn serialize_js_to_json(runtime: &mut JsRuntime, js: String) -> String {
+      let val = runtime.execute_script("", js).unwrap();
+      let scope = &mut runtime.handle_scope();
+      let val = v8::Local::new(scope, val);
+      let mut buf = Vec::new();
+      let mut ser = deno_core::serde_json::Serializer::new(&mut buf);
+      super::serialize_v8_value(scope, val, &mut ser).unwrap();
+      String::from_utf8(buf).unwrap()
+    }
+
+    #[test]
+    fn ipc_serialization() {
+      let mut runtime = JsRuntime::new(RuntimeOptions::default());
+
+      let cases = [
+        ("'hello'", "\"hello\""),
+        ("1", "1"),
+        ("1.5", "1.5"),
+        ("Number.NaN", "null"),
+        ("Infinity", "null"),
+        ("Number.MAX_SAFE_INTEGER", &(2i64.pow(53) - 1).to_string()),
+        (
+          "Number.MIN_SAFE_INTEGER",
+          &(-(2i64.pow(53) - 1)).to_string(),
+        ),
+        ("[1, 2, 3]", "[1,2,3]"),
+        ("new Uint8Array([1,2,3])", "[1,2,3]"),
+        (
+          "{ a: 1.5, b: { c: new ArrayBuffer(5) }}",
+          r#"{"a":1.5,"b":{"c":{}}}"#,
+        ),
+        ("new Number(1)", "1"),
+        ("new Boolean(true)", "true"),
+        ("true", "true"),
+        (r#"new String("foo")"#, "\"foo\""),
+        ("null", "null"),
+        (
+          r#"{ a: "field", toJSON() { return "custom"; } }"#,
+          "\"custom\"",
+        ),
+      ];
+
+      for (input, expect) in cases {
+        let js = wrap_expr(input);
+        let actual = serialize_js_to_json(&mut runtime, js);
+        assert_eq!(actual, expect);
+      }
     }
   }
 }
