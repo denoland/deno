@@ -409,10 +409,7 @@ mod impl_ {
     }
 
     #[cfg(all(windows, test))]
-    fn from_stream(
-      pipe: NamedPipeClient,
-      ref_tracker: ExternalOpsTracker,
-    ) -> Self {
+    fn from_stream(pipe: NamedPipeClient, ref_tracker: IpcRefTracker) -> Self {
       let (read_half, write_half) = tokio::io::split(pipe);
       Self {
         read_half: AsyncRefCell::new(IpcJsonStream::new(read_half)),
@@ -679,7 +676,10 @@ mod impl_ {
 
       server.connect().await.unwrap();
       /* Similar to how ops would use the resource */
-      let client = Rc::new(IpcJsonStreamResource::from_stream(client));
+      let client = Rc::new(IpcJsonStreamResource::from_stream(
+        client,
+        super::IpcRefTracker::new_test(),
+      ));
       (client, server)
     }
 
