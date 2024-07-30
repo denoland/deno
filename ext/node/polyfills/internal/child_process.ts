@@ -36,6 +36,7 @@ import {
   AbortError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_IPC_CHANNEL_CLOSED,
   ERR_UNKNOWN_SIGNAL,
 } from "ext:deno_node/internal/errors.ts";
 import { Buffer } from "node:buffer";
@@ -1130,6 +1131,7 @@ function toDenoArgs(args: string[]): string[] {
 }
 
 const kControlDisconnect = Symbol("kControlDisconnect");
+const kPendingMessages = Symbol("kPendingMessages");
 
 // controls refcounting for the IPC channel
 class Control extends EventEmitter {
@@ -1137,6 +1139,7 @@ class Control extends EventEmitter {
   #refs: number = 0;
   #refExplicitlySet = false;
   #connected = true;
+  [kPendingMessages] = [];
   constructor(channel: number) {
     super();
     this.#channel = channel;
@@ -1217,8 +1220,28 @@ export function setupChannel(target, ipc) {
   }
 
   function handleMessage(msg) {
-    target.emit("message", msg);
+    if (!target.channel) {
+      return;
+    }
+    if (target.listenerCount("message") !== 0) {
+      target.emit("message", msg);
+      return;
+    }
+
+    ArrayPrototypePush(target.channel[kPendingMessages], msg);
   }
+
+  target.on("newListener", () => {
+    nextTick(() => {
+      if (!target.channel || !target.listenerCount("message")) {
+        return;
+      }
+      for (const msg of target.channel[kPendingMessages]) {
+        target.emit("message", msg);
+      }
+      target.channel[kPendingMessages] = [];
+    });
+  });
 
   target.send = function (message, handle, options, callback) {
     if (typeof handle === "function") {
@@ -1242,6 +1265,17 @@ export function setupChannel(target, ipc) {
       notImplemented("ChildProcess.send with handle");
     }
 
+    if (!target.connected) {
+      const err = new ERR_IPC_CHANNEL_CLOSED();
+      if (typeof callback === "function") {
+        console.error("ChildProcess.send with callback");
+        process.nextTick(callback, err);
+      } else {
+        nextTick(() => target.emit("error", err));
+      }
+      return false;
+    }
+
     // signals whether the queue is within the limit.
     // if false, the sender should slow down.
     // this acts as a backpressure mechanism.
@@ -1260,15 +1294,16 @@ export function setupChannel(target, ipc) {
   target.connected = true;
 
   target.disconnect = function () {
-    if (!this.connected) {
-      this.emit("error", new Error("IPC channel is already disconnected"));
+    if (!target.connected) {
+      target.emit("error", new Error("IPC channel is already disconnected"));
       return;
     }
 
-    this.connected = false;
+    target.connected = false;
     target.canDisconnect = false;
     control[kControlDisconnect]();
     process.nextTick(() => {
+      target.channel = null;
       core.close(ipc);
       target.emit("disconnect");
     });
