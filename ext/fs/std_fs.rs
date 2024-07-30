@@ -829,7 +829,7 @@ fn stat_extra(
     use winapi::um::minwinbase::FileBasicInfo;
     use winapi::um::winbase::GetFileInformationByHandleEx;
 
-    let mut file_info = {
+    let file_info = {
       let mut file_info = std::mem::MaybeUninit::<FILE_BASIC_INFO>::zeroed();
       if GetFileInformationByHandleEx(
         handle,
