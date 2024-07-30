@@ -434,21 +434,6 @@ mod impl_ {
       write_half.write_all(msg).await?;
       Ok(())
     }
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    async fn write_msg<T: serde::Serialize>(
-      self: Rc<Self>,
-      msg: &T,
-    ) -> Result<(), AnyError> {
-      let mut write_half =
-        RcRef::map(self, |r| &r.write_half).borrow_mut().await;
-      // Perf note: We do not benefit from writev here because
-      // we are always allocating a buffer for serialization anyways.
-      let mut buf = serde_json::to_vec(msg)?;
-      buf.push(b'\n');
-      write_half.write_all(&buf).await?;
-      Ok(())
-    }
   }
 
   // Initial capacity of the buffered reader and the JSON backing buffer.
@@ -458,8 +443,14 @@ mod impl_ {
   // 64kb has been chosen after benchmarking 64 to 66536 << 6 - 1 bytes per message.
   const INITIAL_CAPACITY: usize = 1024 * 64;
 
-  // A buffer for reading from the IPC pipe.
-  // Similar to the internal buffer of `tokio::io::BufReader`.
+  /// A buffer for reading from the IPC pipe.
+  /// Similar to the internal buffer of `tokio::io::BufReader`.
+  ///
+  /// This exists to provide buffered reading while granting mutable access
+  /// to the internal buffer (which isn't exposed through `tokio::io::BufReader`
+  /// or the `AsyncBufRead` trait). `simd_json` requires mutable access to an input
+  /// buffer for parsing, so this allows us to use the read buffer directly as the
+  /// input buffer without a copy (provided the message fits).
   struct ReadBuffer {
     buffer: Box<[u8]>,
     pos: usize,
@@ -754,7 +745,10 @@ mod impl_ {
         Ok::<_, std::io::Error>(())
       });
 
-      ipc.clone().write_msg(&json!("hello")).await?;
+      ipc
+        .clone()
+        .write_msg_bytes(&json_to_bytes(json!("hello")))
+        .await?;
 
       let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
       let msgs = ipc.read_msg().await?.unwrap();
@@ -763,6 +757,12 @@ mod impl_ {
       child.await??;
 
       Ok(())
+    }
+
+    fn json_to_bytes(v: deno_core::serde_json::Value) -> Vec<u8> {
+      let mut buf = deno_core::serde_json::to_vec(&v).unwrap();
+      buf.push(b'\n');
+      buf
     }
 
     #[tokio::test]
@@ -780,8 +780,14 @@ mod impl_ {
         Ok::<_, std::io::Error>(())
       });
 
-      ipc.clone().write_msg(&json!("hello")).await?;
-      ipc.clone().write_msg(&json!("world")).await?;
+      ipc
+        .clone()
+        .write_msg_bytes(&json_to_bytes(json!("hello")))
+        .await?;
+      ipc
+        .clone()
+        .write_msg_bytes(&json_to_bytes(json!("world")))
+        .await?;
 
       let mut ipc = RcRef::map(ipc, |r| &r.read_half).borrow_mut().await;
       let msgs = ipc.read_msg().await?.unwrap();
