@@ -350,6 +350,7 @@ const { 0: statStruct, 1: statBuf } = createByteStruct({
   mtime: "date",
   atime: "date",
   birthtime: "date",
+  ctime: "date",
   dev: "u64",
   ino: "?u64",
   mode: "?u64",
