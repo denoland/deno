@@ -155,6 +155,16 @@ impl FsStat {
       }
     }
 
+    #[inline(always)]
+    fn get_ctime(ctime_or_0: i64) -> Option<u64> {
+      if ctime_or_0 > 0 {
+        // ctime return seconds since epoch, but we need milliseconds
+        return Some(ctime_or_0 as u64 * 1000);
+      }
+
+      None
+    }
+
     Self {
       is_file: metadata.is_file(),
       is_directory: metadata.is_dir(),
@@ -164,7 +174,7 @@ impl FsStat {
       mtime: to_msec(metadata.modified()),
       atime: to_msec(metadata.accessed()),
       birthtime: to_msec(metadata.created()),
-      ctime: Some(unix_or_zero!(ctime) as u64 * 1000),
+      ctime: get_ctime(unix_or_zero!(ctime)),
 
       dev: unix_or_zero!(dev),
       ino: unix_or_zero!(ino),

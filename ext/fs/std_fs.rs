@@ -895,7 +895,7 @@ fn stat_extra(
 
     let result = get_dev(file_handle);
     fsstat.dev = result?;
-    fsstat.ctime = Some(get_change_time(file_handle).unwrap());
+    fsstat.ctime = get_change_time(file_handle).ok();
 
     CloseHandle(file_handle);
 
