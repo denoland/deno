@@ -4445,9 +4445,9 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     );
   }
   let doc = matches.get_flag("doc");
+  #[allow(clippy::print_stderr)]
   let allow_none = matches.get_flag("proceed-when-no-files")
     || if matches.get_flag("allow-none") {
-      #[allow(clippy::print_stderr)]
       eprintln!(
         "⚠️ {}",
         crate::colors::yellow("The `--allow-none` flag is deprecated and will be removed in Deno 2.0.\nUse the `--proceed-when-no-files` flag instead."),
