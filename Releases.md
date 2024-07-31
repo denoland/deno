@@ -6,6 +6,28 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.45.5 / 2024.07.31
+
+- fix(cli): Unhide publish subcommand help string (#24787)
+- fix(compile/windows): handle cjs re-export of relative path with parent
+  component (#24795)
+- fix(ext/node): handle node child_process with --v8-options flag (#24804)
+- fix(ext/node): prevent panic in http2.connect with uppercase header names
+  (#24780)
+- fix(ext/webgpu): don't crash while constructing GPUOutOfMemoryError (#24807)
+- fix(http): Adjust hostname display for Windows when using 0.0.0.0 (#24698)
+- fix(node): Rework node:child_process IPC (#24763)
+- fix(node): support wildcards in package.json imports (#24794)
+- fix(node/fs/promises): watch should be async iterable (#24805)
+- fix(node/timers/promises): add scheduler APIs (#24802)
+- fix(npmrc): skip loading .npmrc in home dir on permission error (#24758)
+- fix(types): fix streams types (#24770)
+- fix(unstable/compile): handle byonm import in sub dir (#24755)
+- fix: actually add missing `node:readline/promises` module (#24772)
+- fix: adapt to new jupyter runtime API and include session IDs (#24762)
+- perf(ext/fetch): speed up `resp.clone()` (#24812)
+- perf(ext/node): improve `Buffer` from string performance (#24567)
+
 ### 1.45.4 / 2024.07.26
 
 - Reland "fix: CFunctionInfo and CTypeInfo leaks (#24634)" (#24692)
