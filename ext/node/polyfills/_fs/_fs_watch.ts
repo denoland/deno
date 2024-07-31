@@ -155,22 +155,43 @@ export function watch(
   return fsWatcher;
 }
 
-export const watchPromise = promisify(watch) as (
-  & ((
-    filename: string | URL,
-    options: watchOptions,
-    listener: watchListener,
-  ) => Promise<FSWatcher>)
-  & ((
-    filename: string | URL,
-    listener: watchListener,
-  ) => Promise<FSWatcher>)
-  & ((
-    filename: string | URL,
-    options: watchOptions,
-  ) => Promise<FSWatcher>)
-  & ((filename: string | URL) => Promise<FSWatcher>)
-);
+export function watchPromise(
+  filename: string | Buffer | URL,
+  options?: {
+    persistent?: boolean;
+    recursive?: boolean;
+    encoding?: string;
+    signal?: AbortSignal;
+  },
+): AsyncIterable<{ eventType: string; filename: string | Buffer | null }> {
+  const watchPath = getValidatedPath(filename).toString();
+
+  const watcher = Deno.watchFs(watchPath, {
+    recursive: options?.recursive ?? false,
+  });
+
+  if (options?.signal) {
+    options?.signal.addEventListener("abort", () => watcher.close());
+  }
+
+  const fsIterable = watcher[Symbol.asyncIterator]();
+  const iterable = {
+    async next() {
+      const result = await fsIterable.next();
+      if (result.done) return result;
+
+      const eventType = convertDenoFsEventToNodeFsEvent(result.value.kind);
+      return {
+        value: { eventType, filename: basename(result.value.paths[0]) },
+        done: result.done,
+      };
+    },
+  };
+
+  return {
+    [Symbol.asyncIterator]: () => iterable,
+  };
+}
 
 type WatchFileListener = (curr: Stats, prev: Stats) => void;
 type WatchFileOptions = {
