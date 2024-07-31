@@ -62,8 +62,7 @@ Deno.test({
     const file = Deno.makeTempFileSync();
     Deno.writeTextFileSync(file, "foo");
 
-    // deno-lint-ignore no-explicit-any
-    const result: any[] = [];
+    const result: { eventType: string; filename: string | null }[] = [];
 
     const controller = new AbortController();
     const watcher = watchPromise(file, {
