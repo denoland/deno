@@ -153,7 +153,7 @@ async fn registry_server_handler(
   // serve the registry package files
   let mut file_path = tests_path().join("registry").join("jsr").to_path_buf();
   file_path.push(
-    &req.uri().path()[1..]
+    req.uri().path()[1..]
       .replace("%2f", "/")
       .replace("%2F", "/"),
   );

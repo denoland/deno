@@ -30,6 +30,7 @@ pub use deno_package_json::PackageJson;
 pub use node_resolver::PathClean;
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
+pub use ops::ipc::IpcRefTracker;
 use ops::vm;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
@@ -327,6 +328,8 @@ deno_core::extension!(deno_node,
     ops::zlib::brotli::op_brotli_decompress_stream,
     ops::zlib::brotli::op_brotli_decompress_stream_end,
     ops::http::op_node_http_request<P>,
+    ops::http::op_node_http_fetch_response_upgrade,
+    ops::http::op_node_http_fetch_send,
     ops::http2::op_http2_connect,
     ops::http2::op_http2_poll_client_connection,
     ops::http2::op_http2_client_request,
@@ -378,6 +381,8 @@ deno_core::extension!(deno_node,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
     ops::ipc::op_node_ipc_read,
+    ops::ipc::op_node_ipc_ref,
+    ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
     ops::process::op_process_abort,
   ],
@@ -598,6 +603,7 @@ deno_core::extension!(deno_node,
     "node:punycode" = "punycode.ts",
     "node:querystring" = "querystring.js",
     "node:readline" = "readline.ts",
+    "node:readline/promises" = "readline/promises.ts",
     "node:repl" = "repl.ts",
     "node:stream" = "stream.ts",
     "node:stream/consumers" = "stream/consumers.mjs",

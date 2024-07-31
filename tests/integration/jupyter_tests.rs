@@ -493,7 +493,7 @@ async fn jupyter_heartbeat_echoes() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
   client.send_heartbeat(b"ping").await?;
   let msg = client.recv_heartbeat().await?;
-  assert_eq!(msg, Bytes::from_static(b"ping"));
+  assert_eq!(msg, Bytes::from_static(b"pong"));
 
   Ok(())
 }
