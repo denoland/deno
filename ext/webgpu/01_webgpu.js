@@ -1490,6 +1490,7 @@ class GPUDevice extends EventTarget {
       fragment = {
         module,
         entryPoint: descriptor.fragment.entryPoint,
+        constants: descriptor.fragment.constants,
         targets: descriptor.fragment.targets,
       };
     }
@@ -1501,6 +1502,7 @@ class GPUDevice extends EventTarget {
       vertex: {
         module,
         entryPoint: descriptor.vertex.entryPoint,
+        constants: descriptor.vertex.constants,
         buffers: descriptor.vertex.buffers,
       },
       primitive: descriptor.primitive,
@@ -1638,6 +1640,7 @@ class GPUDevice extends EventTarget {
       fragment = {
         module,
         entryPoint: descriptor.fragment.entryPoint,
+        constants: descriptor.fragment.constants,
         targets: descriptor.fragment.targets,
       };
     }
@@ -1649,6 +1652,7 @@ class GPUDevice extends EventTarget {
       vertex: {
         module,
         entryPoint: descriptor.vertex.entryPoint,
+        constants: descriptor.vertex.constants,
         buffers: descriptor.vertex.buffers,
       },
       primitive: descriptor.primitive,
