@@ -2,7 +2,6 @@
 import { unwatchFile, watch, watchFile } from "node:fs";
 import { watch as watchPromise } from "node:fs/promises";
 import { assert, assertEquals } from "@std/assert";
-import { setTimeout } from "node:timers";
 
 function wait(time: number) {
   return new Promise((resolve) => {
