@@ -1325,9 +1325,10 @@ Deno.test("[node/http] http.request() post streaming body works", async () => {
     }
   });
 
-  const deferred = Promise.withResolvers<void>();
+  const responseEnded = Promise.withResolvers<void>();
+  const fileClosed = Promise.withResolvers<void>();
   const timeout = setTimeout(() => {
-    deferred.reject(new Error("timeout"));
+    responseEnded.reject(new Error("timeout"));
   }, 5000);
   server.listen(0, () => {
     // deno-lint-ignore no-explicit-any
@@ -1359,7 +1360,7 @@ Deno.test("[node/http] http.request() post streaming body works", async () => {
         const response = JSON.parse(responseBody);
         assertEquals(res.statusCode, 200);
         assertEquals(response.bytes, contentLength);
-        deferred.resolve();
+        responseEnded.resolve();
       });
     });
 
@@ -1369,8 +1370,10 @@ Deno.test("[node/http] http.request() post streaming body works", async () => {
 
     const readStream = fs.createReadStream(filePath);
     readStream.pipe(req);
+    readStream.on("close", fileClosed.resolve);
   });
-  await deferred.promise;
+  await responseEnded.promise;
+  await fileClosed.promise;
   assertEquals(server.listening, true);
   server.close();
   clearTimeout(timeout);

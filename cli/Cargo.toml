@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.45.3"
+version = "1.45.4"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -116,7 +116,7 @@ hyper-util.workspace = true
 import_map = { version = "=0.20.0", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser.workspace = true
-jupyter_runtime = { package = "runtimelib", version = "=0.11.0" }
+jupyter_runtime = { package = "runtimelib", version = "=0.14.0" }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true

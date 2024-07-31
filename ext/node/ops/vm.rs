@@ -140,8 +140,7 @@ mod tests {
   #[test]
   fn test_run_in_this_context() {
     let platform = v8::new_default_platform(0, false).make_shared();
-    v8::V8::initialize_platform(platform);
-    v8::V8::initialize();
+    deno_core::JsRuntime::init_platform(Some(platform));
 
     let isolate = &mut v8::Isolate::new(Default::default());
 
