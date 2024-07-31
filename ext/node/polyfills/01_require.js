@@ -976,9 +976,14 @@ function wrapSafe(
   filename,
   content,
   cjsModuleInstance,
+  format,
 ) {
   const wrapper = Module.wrap(content);
-  const [f, err] = core.evalContext(wrapper, `file://${filename}`);
+  const [f, err] = core.evalContext(
+    wrapper,
+    url.pathToFileURL(filename).toString(),
+    [format !== "module"],
+  );
   if (err) {
     if (process.mainModule === cjsModuleInstance) {
       enrichCJSError(err.thrown);
@@ -995,8 +1000,16 @@ function wrapSafe(
   return f;
 }
 
-Module.prototype._compile = function (content, filename) {
-  const compiledWrapper = wrapSafe(filename, content, this);
+Module.prototype._compile = function (content, filename, format) {
+  const compiledWrapper = wrapSafe(filename, content, this, format);
+
+  if (format === "module") {
+    // TODO(https://github.com/denoland/deno/issues/24822): implement require esm
+    throw createRequireEsmError(
+      filename,
+      moduleParentCache.get(module)?.filename,
+    );
+  }
 
   const dirname = pathDirname(filename);
   const require = makeRequireFunction(this);
@@ -1053,17 +1066,24 @@ Module.prototype._compile = function (content, filename) {
 Module._extensions[".js"] = function (module, filename) {
   const content = op_require_read_file(filename);
 
+  let format;
   if (StringPrototypeEndsWith(filename, ".js")) {
     const pkg = op_require_read_closest_package_json(filename);
-    if (pkg && pkg.typ === "module") {
+    if (pkg?.typ === "module") {
+      // TODO(https://github.com/denoland/deno/issues/24822): implement require esm
+      format = "module";
       throw createRequireEsmError(
         filename,
         moduleParentCache.get(module)?.filename,
       );
+    } else if (pkg?.type === "commonjs") {
+      format = "commonjs";
     }
+  } else if (StringPrototypeEndsWith(filename, ".cjs")) {
+    format = "commonjs";
   }
 
-  module._compile(content, filename);
+  module._compile(content, filename, format);
 };
 
 function createRequireEsmError(filename, parent) {

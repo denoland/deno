@@ -25,6 +25,7 @@ use deno_core::ResolutionKind;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_fs;
+use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -264,6 +265,19 @@ impl ModuleLoader for EmbeddedModuleLoader {
         Err(err.into())
       }
       Err(err) => Err(err.into()),
+    }
+  }
+
+  fn get_host_defined_options<'s>(
+    &self,
+    scope: &mut deno_core::v8::HandleScope<'s>,
+    name: &str,
+  ) -> Option<deno_core::v8::Local<'s, deno_core::v8::Data>> {
+    let name = deno_core::ModuleSpecifier::parse(name).ok()?;
+    if self.shared.node_resolver.in_npm_package(&name) {
+      Some(create_host_defined_options(scope))
+    } else {
+      None
     }
   }
 

@@ -518,8 +518,8 @@ Deno.test(function consoleTestStringifyFunctionWithProperties() {
   ],
   [isArray]: [Function: isArray] { [length]: 1, [name]: "isArray" },
   [from]: [Function: from] { [length]: 1, [name]: "from" },
-  [of]: [Function: of] { [length]: 0, [name]: "of" },
   [fromAsync]: [Function: fromAsync] { [length]: 1, [name]: "fromAsync" },
+  [of]: [Function: of] { [length]: 0, [name]: "of" },
   [Symbol(Symbol.species)]: [Getter]
 }`,
   );
