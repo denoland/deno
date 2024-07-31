@@ -67,10 +67,10 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir = { workspace = true }
 deno_config = { version = "=0.26.1", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "0.144.0", features = ["html", "syntect"] }
-deno_emit = "=0.43.1"
-deno_graph = { version = "=0.80.1" }
-deno_lint = { version = "=0.61.0", features = ["docs"] }
+deno_doc = { version = "0.145.0", features = ["html", "syntect"] }
+deno_emit = "=0.44.0"
+deno_graph = { version = "=0.81.0" }
+deno_lint = { version = "=0.62.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "=0.21.4"
 deno_package_json.workspace = true
@@ -78,7 +78,7 @@ deno_runtime = { workspace = true, features = ["include_js_files_for_snapshottin
 deno_semver = "=0.5.7"
 deno_task_shell = "=0.17.0"
 deno_terminal.workspace = true
-eszip = "=0.72.2"
+eszip = "=0.73.0"
 napi_sym.workspace = true
 node_resolver.workspace = true
 
@@ -100,8 +100,8 @@ dissimilar = "=1.0.4"
 dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.3"
 dprint-plugin-jupyter = "=0.1.3"
-dprint-plugin-markdown = "=0.17.1"
-dprint-plugin-typescript = "=0.91.4"
+dprint-plugin-markdown = "=0.17.2"
+dprint-plugin-typescript = "=0.91.5"
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
 faster-hex.workspace = true

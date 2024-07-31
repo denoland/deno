@@ -102,6 +102,7 @@ pub async fn compile(
     emit_options,
     // make all the modules relative to the root folder
     relative_file_base: Some(root_dir_url),
+    npm_packages: None,
   })?;
 
   log::info!(
