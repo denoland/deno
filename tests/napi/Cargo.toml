@@ -13,10 +13,10 @@ repository.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
-napi-sys = { version = "=2.4.0", default-features = false, features = ["napi7"] }
+napi-sys = { version = "=2.2.2", default-features = false, features = ["napi7"] }
 
 [dev-dependencies]
 test_util.workspace = true
 
 [build-dependencies]
-napi-build = "2"
+napi-build = "1"
