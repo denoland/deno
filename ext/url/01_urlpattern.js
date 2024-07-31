@@ -160,15 +160,27 @@ class URLPattern {
     if (webidl.type(baseURLOrOptions) === "String") {
       webidl.requiredArguments(arguments.length, 1, prefix);
       input = webidl.converters.URLPatternInput(input, prefix, "Argument 1");
-      baseURL = webidl.converters.USVString(baseURLOrOptions, prefix, "Argument 2");
-      options = webidl.converters.URLPatternOptions(maybeOptions, prefix, "Argument 3");
+      baseURL = webidl.converters.USVString(
+        baseURLOrOptions,
+        prefix,
+        "Argument 2",
+      );
+      options = webidl.converters.URLPatternOptions(
+        maybeOptions,
+        prefix,
+        "Argument 3",
+      );
     } else {
       if (input !== undefined) {
         input = webidl.converters.URLPatternInput(input, prefix, "Argument 1");
       } else {
         input = {};
       }
-      options = webidl.converters.URLPatternOptions(maybeOptions, prefix, "Argument 2");
+      options = webidl.converters.URLPatternOptions(
+        maybeOptions,
+        prefix,
+        "Argument 2",
+      );
     }
 
     const components = op_urlpattern_parse(input, baseURL, options);
@@ -399,7 +411,11 @@ webidl.converters["URLPatternInput"] = (V, prefix, context, opts) => {
 
 webidl.converters.URLPatternOptions = webidl
   .createDictionaryConverter("URLPatternOptions", [
-    { key: "ignoreCase", converter: webidl.converters.boolean, defaultValue: false },
+    {
+      key: "ignoreCase",
+      converter: webidl.converters.boolean,
+      defaultValue: false,
+    },
   ]);
 
 export { URLPattern };
