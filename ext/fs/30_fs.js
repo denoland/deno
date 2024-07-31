@@ -621,9 +621,9 @@ function openSync(
     pathFromURL(path),
     options?.read ?? true,
     options?.write ?? false,
-    options?.append ?? false,
     options?.create ?? false,
     options?.truncate ?? false,
+    options?.append ?? false,
     options?.createNew ?? false,
     options?.mode ?? 0,
   );
@@ -640,9 +640,9 @@ async function open(
     pathFromURL(path),
     options?.read ?? true,
     options?.write ?? false,
-    options?.append ?? false,
     options?.create ?? false,
     options?.truncate ?? false,
+    options?.append ?? false,
     options?.createNew ?? false,
     options?.mode ?? 0,
   );
