@@ -191,7 +191,7 @@ class URLPattern {
       try {
         components[key].regexp = new SafeRegExp(
           components[key].regexpString,
-          options.ignoreCase ? "vi" : "v",
+          options.ignoreCase ? "ui" : "u",
         );
       } catch (e) {
         throw new TypeError(`${prefix}: ${key} is invalid; ${e.message}`);
