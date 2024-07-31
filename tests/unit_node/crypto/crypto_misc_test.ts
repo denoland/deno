@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { randomFillSync, randomUUID } from "node:crypto";
 import { assert, assertEquals } from "../../unit/test_util.ts";
-import { assertNotEquals } from "@std/assert/assert_not_equals.ts";
+import { assertNotEquals } from "@std/assert";
 
 Deno.test("[node/crypto.getRandomUUID] works the same way as Web Crypto API", () => {
   assertEquals(randomUUID().length, crypto.randomUUID().length);
