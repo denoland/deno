@@ -118,26 +118,41 @@ where
   state.borrow::<FileSystemRc>().umask(mask).context("umask")
 }
 
-#[op2]
+#[allow(clippy::too_many_arguments)]
+#[op2(fast)]
 #[smi]
 pub fn op_fs_open_sync<P>(
   state: &mut OpState,
-  #[string] path: String,
-  #[serde] options: Option<OpenOptions>,
+  #[string] path: &str,
+  read: bool,
+  write: bool,
+  create: bool,
+  truncate: bool,
+  append: bool,
+  create_new: bool,
+  mode: u32,
 ) -> Result<ResourceId, AnyError>
 where
   P: FsPermissions + 'static,
 {
-  let path = PathBuf::from(path);
+  let path = Path::new(path);
 
-  let options = options.unwrap_or_else(OpenOptions::read);
+  let options = OpenOptions {
+    read,
+    write,
+    create,
+    truncate,
+    append,
+    create_new,
+    mode: if mode == 0 { None } else { Some(mode) },
+  };
 
   let fs = state.borrow::<FileSystemRc>().clone();
   let mut access_check =
     sync_permission_check::<P>(state.borrow_mut(), "Deno.openSync()");
   let file = fs
-    .open_sync(&path, options, Some(&mut access_check))
-    .map_err(|error| map_permission_error("open", error, &path))?;
+    .open_sync(path, options, Some(&mut access_check))
+    .map_err(|error| map_permission_error("open", error, path))?;
   drop(access_check);
   let rid = state
     .resource_table
@@ -145,19 +160,35 @@ where
   Ok(rid)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[op2(async)]
 #[smi]
 pub async fn op_fs_open_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-  #[serde] options: Option<OpenOptions>,
+  read: bool,
+  write: bool,
+  create: bool,
+  truncate: bool,
+  append: bool,
+  create_new: bool,
+  mode: u32,
 ) -> Result<ResourceId, AnyError>
 where
   P: FsPermissions + 'static,
 {
   let path = PathBuf::from(path);
 
-  let options = options.unwrap_or_else(OpenOptions::read);
+  let options = OpenOptions {
+    read,
+    write,
+    create,
+    truncate,
+    append,
+    create_new,
+    mode: if mode == 0 { None } else { Some(mode) },
+  };
+
   let mut access_check =
     async_permission_check::<P>(state.clone(), "Deno.open()");
   let fs = state.borrow().borrow::<FileSystemRc>().clone();

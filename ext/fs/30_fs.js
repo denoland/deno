@@ -619,7 +619,13 @@ function openSync(
   if (options) checkOpenOptions(options);
   const rid = op_fs_open_sync(
     pathFromURL(path),
-    options,
+    options?.read ?? true,
+    options?.write ?? false,
+    options?.append ?? false,
+    options?.create ?? false,
+    options?.truncate ?? false,
+    options?.createNew ?? false,
+    options?.mode ?? 0,
   );
 
   return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
@@ -632,7 +638,13 @@ async function open(
   if (options) checkOpenOptions(options);
   const rid = await op_fs_open_async(
     pathFromURL(path),
-    options,
+    options?.read ?? true,
+    options?.write ?? false,
+    options?.append ?? false,
+    options?.create ?? false,
+    options?.truncate ?? false,
+    options?.createNew ?? false,
+    options?.mode ?? 0,
   );
 
   return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
@@ -810,11 +822,11 @@ function checkOpenOptions(options) {
       (val) => val === true,
     ).length === 0
   ) {
-    throw new Error("OpenOptions requires at least one option to be true");
+    throw new TypeError("OpenOptions requires at least one option to be true");
   }
 
   if (options.truncate && !options.write) {
-    throw new Error("'truncate' option requires 'write' option");
+    throw new TypeError("'truncate' option requires 'write' option");
   }
 
   const createOrCreateNewWithoutWriteOrAppend =
@@ -822,9 +834,13 @@ function checkOpenOptions(options) {
     !(options.write || options.append);
 
   if (createOrCreateNewWithoutWriteOrAppend) {
-    throw new Error(
+    throw new TypeError(
       "'create' or 'createNew' options require 'write' or 'append' option",
     );
+  }
+
+  if (options.mode === 0) {
+    throw new TypeError("OpenOptions 'mode' can not be 0");
   }
 }
 
