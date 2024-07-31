@@ -37,7 +37,7 @@ harness = false
 path = "./bench/lsp_bench_standalone.rs"
 
 [features]
-default = ["upgrade", "__vendored_zlib_ng"]
+default = ["upgrade", "__vendored_zlib_ng", "webgpu"]
 # A feature that enables the upgrade subcommand and the background check for
 # available updates (of deno binary). This is typically disabled for (Linux)
 # distribution packages.
@@ -47,6 +47,8 @@ upgrade = []
 hmr = ["deno_runtime/hmr"]
 # Vendor zlib as zlib-ng
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
+# Feature flags for large extensions.
+webgpu = ["deno_runtime/webgpu"]
 
 [build-dependencies]
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }

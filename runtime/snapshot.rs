@@ -227,6 +227,7 @@ pub fn create_runtime_snapshot(
       Default::default(),
       Default::default(),
     ),
+    #[cfg(feature = "webgpu")]
     deno_webgpu::deno_webgpu::init_ops_and_esm(),
     deno_canvas::deno_canvas::init_ops_and_esm(),
     deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
