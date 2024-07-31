@@ -47,7 +47,7 @@ pub async fn compile(
     log::warn!(
       concat!(
         "{} Sloppy imports are not supported in deno compile. ",
-        "The compiled executable may encouter runtime errors.",
+        "The compiled executable may encounter runtime errors.",
       ),
       crate::colors::yellow("Warning"),
     );
