@@ -660,7 +660,9 @@ pub fn get_root_cert_store(
         for root in roots {
           root_cert_store
             .add(rustls::pki_types::CertificateDer::from(root.0))
-            .map_err(|e| RootCertStoreLoadError::FailedAddSystemCert(e.to_string()))?;
+            .map_err(|e| {
+              RootCertStoreLoadError::FailedAddSystemCert(e.to_string())
+            })?;
         }
       }
       _ => {
