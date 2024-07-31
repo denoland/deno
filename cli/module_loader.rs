@@ -55,7 +55,6 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
-use deno_core::SourceMapGetter;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
 use deno_graph::GraphKind;
@@ -65,20 +64,25 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
 use deno_runtime::code_cache;
-use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
+use node_resolver::NodeResolutionMode;
 
 pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
   let npm_resolver = factory.npm_resolver().await?;
+  let cli_options = factory.cli_options()?;
   if let Some(npm_resolver) = npm_resolver.as_managed() {
-    npm_resolver.ensure_top_level_package_json_install().await?;
-    // TODO(nathanwhit): we call `cache_packages` if the lockfile is modified,
-    // so by calling it here it's possible we end up calling it twice
-    npm_resolver.cache_packages().await?;
+    if !npm_resolver.ensure_top_level_package_json_install().await? {
+      if let Some(lockfile) = cli_options.maybe_lockfile() {
+        lockfile.error_if_changed()?;
+      }
+
+      npm_resolver.cache_packages().await?;
+    }
   }
   // cache as many entries in the import map as we can
-  if let Some(import_map) = factory.maybe_import_map().await? {
+  let resolver = factory.workspace_resolver().await?;
+  if let Some(import_map) = resolver.maybe_import_map() {
     let roots = import_map
       .imports()
       .entries()
@@ -103,7 +107,7 @@ pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
         graph,
         &roots,
         false,
-        factory.cli_options().ts_type_lib_window(),
+        factory.cli_options()?.ts_type_lib_window(),
         deno_runtime::deno_permissions::PermissionsContainer::allow_all(),
       )
       .await?;
@@ -289,8 +293,7 @@ impl CliModuleLoaderFactory {
       shared: self.shared.clone(),
     })));
     ModuleLoaderAndSourceMapGetter {
-      module_loader: loader.clone(),
-      source_map_getter: Some(loader),
+      module_loader: loader,
     }
   }
 }
@@ -443,15 +446,14 @@ impl<TGraphContainer: ModuleGraphContainer>
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
-      specifier,
-      referrer,
-      NodeResolutionMode::Execution,
-    ) {
-      return match result? {
-        Some(res) => Ok(res.into_url()),
-        None => Err(generic_error("not found")),
-      };
+    if self.shared.node_resolver.in_npm_package(referrer) {
+      return Ok(
+        self
+          .shared
+          .node_resolver
+          .resolve(specifier, referrer, NodeResolutionMode::Execution)?
+          .into_url(),
+      );
     }
 
     let graph = self.graph_container.graph();
@@ -507,22 +509,19 @@ impl<TGraphContainer: ModuleGraphContainer>
           .as_managed()
           .unwrap() // byonm won't create a Module::Npm
           .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
-        let maybe_resolution = self
+        self
           .shared
           .node_resolver
           .resolve_package_sub_path_from_deno_module(
             &package_folder,
             module.nv_reference.sub_path(),
-            referrer,
+            Some(referrer),
             NodeResolutionMode::Execution,
           )
           .with_context(|| {
             format!("Could not resolve '{}'.", module.nv_reference)
-          })?;
-        match maybe_resolution {
-          Some(res) => res.into_url(),
-          None => return Err(generic_error("not found")),
-        }
+          })?
+          .into_url()
       }
       Some(Module::Node(module)) => module.specifier.clone(),
       Some(Module::Js(module)) => module.specifier.clone(),
@@ -613,7 +612,8 @@ impl<TGraphContainer: ModuleGraphContainer>
     maybe_referrer: Option<&ModuleSpecifier>,
   ) -> Result<CodeOrDeferredEmit<'graph>, AnyError> {
     if specifier.scheme() == "node" {
-      unreachable!(); // Node built-in modules should be handled internally.
+      // Node built-in modules should be handled internally.
+      unreachable!("Deno bug. {} was misconfigured internally.", specifier);
     }
 
     match graph.get(specifier) {
@@ -827,11 +827,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     }
     std::future::ready(()).boxed_local()
   }
-}
 
-impl<TGraphContainer: ModuleGraphContainer> SourceMapGetter
-  for CliModuleLoader<TGraphContainer>
-{
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
     let specifier = resolve_url(file_name).ok()?;
     match specifier.scheme() {
@@ -844,7 +840,7 @@ impl<TGraphContainer: ModuleGraphContainer> SourceMapGetter
     source_map_from_code(source.code.as_bytes())
   }
 
-  fn get_source_line(
+  fn get_source_mapped_source_line(
     &self,
     file_name: &str,
     line_number: usize,

@@ -2,7 +2,7 @@
   "steps": [
     {
       // Notice `--unstable-*` flags are not needed anymore
-      "args": "run -A main.js",
+      "args": "run -A --config ../../../config/deno.json main.js",
       "output": "main.out",
       "envs": {
         "DENO_FUTURE": "1"
@@ -10,7 +10,7 @@
     },
     {
       // Notice `--unstable-*` flags are not needed anymore
-      "args": "run -A worker.js",
+      "args": "run -A --config ../../../config/deno.json worker.js",
       "output": "main.out",
       "envs": {
         "DENO_FUTURE": "1"

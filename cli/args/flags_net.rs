@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::url::Url;
+use deno_runtime::deno_permissions::NetDescriptor;
 use std::net::IpAddr;
 use std::str::FromStr;
 
@@ -42,21 +43,17 @@ pub fn validator(host_and_port: &str) -> Result<String, String> {
 /// `127.0.0.1:port` and `localhost:port`.
 pub fn parse(paths: Vec<String>) -> clap::error::Result<Vec<String>> {
   let mut out: Vec<String> = vec![];
-  for host_and_port in paths.iter() {
-    if Url::parse(&format!("internal://{host_and_port}")).is_ok()
-      || host_and_port.parse::<IpAddr>().is_ok()
-    {
-      out.push(host_and_port.to_owned())
-    } else if let Ok(port) = host_and_port.parse::<BarePort>() {
+  for host_and_port in paths.into_iter() {
+    if let Ok(port) = host_and_port.parse::<BarePort>() {
       // we got bare port, let's add default hosts
       for host in ["0.0.0.0", "127.0.0.1", "localhost"].iter() {
         out.push(format!("{}:{}", host, port.0));
       }
     } else {
-      return Err(clap::Error::raw(
-        clap::error::ErrorKind::InvalidValue,
-        format!("Bad host:port pair: {host_and_port}"),
-      ));
+      host_and_port.parse::<NetDescriptor>().map_err(|e| {
+        clap::Error::raw(clap::error::ErrorKind::InvalidValue, format!("{e:?}"))
+      })?;
+      out.push(host_and_port)
     }
   }
   Ok(out)
@@ -121,8 +118,8 @@ mod tests {
     let entries = svec![
       "deno.land",
       "deno.land:80",
-      "::",
-      "::1",
+      "[::]",
+      "[::1]",
       "127.0.0.1",
       "[::1]",
       "1.2.3.4:5678",
@@ -142,8 +139,8 @@ mod tests {
     let expected = svec![
       "deno.land",
       "deno.land:80",
-      "::",
-      "::1",
+      "[::]",
+      "[::1]",
       "127.0.0.1",
       "[::1]",
       "1.2.3.4:5678",
@@ -174,10 +171,8 @@ mod tests {
 
   #[test]
   fn parse_net_args_ipv6() {
-    let entries =
-      svec!["::", "::1", "[::1]", "[::]:5678", "[::1]:5678", "::cafe"];
-    let expected =
-      svec!["::", "::1", "[::1]", "[::]:5678", "[::1]:5678", "::cafe"];
+    let entries = svec!["[::1]", "[::]:5678", "[::1]:5678"];
+    let expected = svec!["[::1]", "[::]:5678", "[::1]:5678"];
     let actual = parse(entries).unwrap();
     assert_eq!(actual, expected);
   }
@@ -190,12 +185,36 @@ mod tests {
 
   #[test]
   fn parse_net_args_ipv6_error2() {
-    let entries = svec!["0123:4567:890a:bcde:fg::"];
+    let entries = svec!["::1"];
     assert!(parse(entries).is_err());
   }
 
   #[test]
   fn parse_net_args_ipv6_error3() {
+    let entries = svec!["::"];
+    assert!(parse(entries).is_err());
+  }
+
+  #[test]
+  fn parse_net_args_ipv6_error4() {
+    let entries = svec!["::cafe"];
+    assert!(parse(entries).is_err());
+  }
+
+  #[test]
+  fn parse_net_args_ipv6_error5() {
+    let entries = svec!["1::1"];
+    assert!(parse(entries).is_err());
+  }
+
+  #[test]
+  fn parse_net_args_ipv6_error6() {
+    let entries = svec!["0123:4567:890a:bcde:fg::"];
+    assert!(parse(entries).is_err());
+  }
+
+  #[test]
+  fn parse_net_args_ipv6_error7() {
     let entries = svec!["[::q]:8080"];
     assert!(parse(entries).is_err());
   }

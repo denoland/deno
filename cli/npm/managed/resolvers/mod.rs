@@ -10,6 +10,8 @@ use std::sync::Arc;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 
+use crate::args::LifecycleScriptsConfig;
+use crate::args::PackageJsonInstallDepsProvider;
 use crate::util::progress_bar::ProgressBar;
 
 pub use self::common::NpmPackageFsResolver;
@@ -21,24 +23,29 @@ use super::cache::NpmCache;
 use super::cache::TarballCache;
 use super::resolution::NpmResolution;
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_npm_fs_resolver(
   fs: Arc<dyn FileSystem>,
   npm_cache: Arc<NpmCache>,
+  pkg_json_deps_provider: &Arc<PackageJsonInstallDepsProvider>,
   progress_bar: &ProgressBar,
   resolution: Arc<NpmResolution>,
   tarball_cache: Arc<TarballCache>,
   maybe_node_modules_path: Option<PathBuf>,
   system_info: NpmSystemInfo,
+  lifecycle_scripts: LifecycleScriptsConfig,
 ) -> Arc<dyn NpmPackageFsResolver> {
   match maybe_node_modules_path {
     Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
       npm_cache,
       fs,
+      pkg_json_deps_provider.clone(),
       progress_bar.clone(),
       resolution,
       tarball_cache,
       node_modules_folder,
       system_info,
+      lifecycle_scripts,
     )),
     None => Arc::new(GlobalNpmPackageResolver::new(
       npm_cache,

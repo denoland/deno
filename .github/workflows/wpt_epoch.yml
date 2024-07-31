@@ -37,7 +37,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Log versions
         run: |
@@ -66,9 +66,9 @@ jobs:
       - name: Run web platform tests
         shell: bash
         run: |
-          deno run --unstable -A --lock=tools/deno.lock.json                   \
+          deno run --unstable -A --lock=tools/deno.lock.json --config=tests/config/deno.json \
             ./tests/wpt/wpt.ts setup
-          deno run --unstable -A --lock=tools/deno.lock.json                   \
+          deno run --unstable -A --lock=tools/deno.lock.json --config=tests/config/deno.json \
             ./tests/wpt/wpt.ts run                                             \                                                \
             --binary=$(which deno) --quiet --release --no-ignore --json=wpt.json --wptreport=wptreport.json --exit-zero
 

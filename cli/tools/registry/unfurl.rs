@@ -3,14 +3,17 @@
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
+use deno_config::workspace::MappedResolution;
+use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::WorkspaceResolver;
 use deno_core::ModuleSpecifier;
 use deno_graph::DependencyDescriptor;
 use deno_graph::DynamicTemplatePart;
 use deno_graph::ParserModuleAnalyzer;
 use deno_graph::TypeScriptReference;
+use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_node::is_builtin_node_module;
 
-use crate::resolver::MappedSpecifierResolver;
 use crate::resolver::SloppyImportsResolver;
 
 #[derive(Debug, Clone)]
@@ -38,21 +41,25 @@ impl SpecifierUnfurlerDiagnostic {
   }
 }
 
-pub struct SpecifierUnfurler<'a> {
-  mapped_resolver: &'a MappedSpecifierResolver,
-  sloppy_imports_resolver: Option<&'a SloppyImportsResolver>,
+pub struct SpecifierUnfurler {
+  sloppy_imports_resolver: Option<SloppyImportsResolver>,
+  workspace_resolver: WorkspaceResolver,
   bare_node_builtins: bool,
 }
 
-impl<'a> SpecifierUnfurler<'a> {
+impl SpecifierUnfurler {
   pub fn new(
-    mapped_resolver: &'a MappedSpecifierResolver,
-    sloppy_imports_resolver: Option<&'a SloppyImportsResolver>,
+    sloppy_imports_resolver: Option<SloppyImportsResolver>,
+    workspace_resolver: WorkspaceResolver,
     bare_node_builtins: bool,
   ) -> Self {
+    debug_assert_eq!(
+      workspace_resolver.pkg_json_dep_resolution(),
+      PackageJsonDepResolution::Enabled
+    );
     Self {
-      mapped_resolver,
       sloppy_imports_resolver,
+      workspace_resolver,
       bare_node_builtins,
     }
   }
@@ -62,12 +69,79 @@ impl<'a> SpecifierUnfurler<'a> {
     referrer: &ModuleSpecifier,
     specifier: &str,
   ) -> Option<String> {
-    let resolved =
-      if let Ok(resolved) = self.mapped_resolver.resolve(specifier, referrer) {
-        resolved.into_specifier()
-      } else {
-        None
-      };
+    let resolved = if let Ok(resolved) =
+      self.workspace_resolver.resolve(specifier, referrer)
+    {
+      match resolved {
+        MappedResolution::Normal(specifier)
+        | MappedResolution::ImportMap(specifier) => Some(specifier),
+        MappedResolution::WorkspaceNpmPackage {
+          target_pkg_json: pkg_json,
+          pkg_name,
+          sub_path,
+        } => {
+          // todo(#24612): consider warning or error when this is also a jsr package?
+          ModuleSpecifier::parse(&format!(
+            "npm:{}{}{}",
+            pkg_name,
+            pkg_json
+              .version
+              .as_ref()
+              .map(|v| format!("@^{}", v))
+              .unwrap_or_default(),
+            sub_path
+              .as_ref()
+              .map(|s| format!("/{}", s))
+              .unwrap_or_default()
+          ))
+          .ok()
+        }
+        MappedResolution::PackageJson {
+          alias,
+          sub_path,
+          dep_result,
+          ..
+        } => match dep_result {
+          Ok(dep) => match dep {
+            PackageJsonDepValue::Req(pkg_req) => {
+              // todo(#24612): consider warning or error when this is an npm workspace
+              // member that's also a jsr package?
+              ModuleSpecifier::parse(&format!(
+                "npm:{}{}",
+                pkg_req,
+                sub_path
+                  .as_ref()
+                  .map(|s| format!("/{}", s))
+                  .unwrap_or_default()
+              ))
+              .ok()
+            }
+            PackageJsonDepValue::Workspace(version_req) => {
+              // todo(#24612): consider warning or error when this is also a jsr package?
+              ModuleSpecifier::parse(&format!(
+                "npm:{}@{}{}",
+                alias,
+                version_req,
+                sub_path
+                  .as_ref()
+                  .map(|s| format!("/{}", s))
+                  .unwrap_or_default()
+              ))
+              .ok()
+            }
+          },
+          Err(err) => {
+            log::warn!(
+              "Ignoring failed to resolve package.json dependency. {:#}",
+              err
+            );
+            None
+          }
+        },
+      }
+    } else {
+      None
+    };
     let resolved = match resolved {
       Some(resolved) => resolved,
       None if self.bare_node_builtins && is_builtin_node_module(specifier) => {
@@ -100,11 +174,11 @@ impl<'a> SpecifierUnfurler<'a> {
     //   resolved
     // };
     let resolved =
-      if let Some(sloppy_imports_resolver) = self.sloppy_imports_resolver {
+      if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
         sloppy_imports_resolver
           .resolve(&resolved, deno_graph::source::ResolutionMode::Execution)
-          .as_specifier()
-          .clone()
+          .map(|res| res.into_specifier())
+          .unwrap_or(resolved)
       } else {
         resolved
       };
@@ -112,6 +186,12 @@ impl<'a> SpecifierUnfurler<'a> {
     if relative_resolved == specifier {
       None // nothing to unfurl
     } else {
+      log::debug!(
+        "Unfurled specifier: {} from {} -> {}",
+        specifier,
+        referrer,
+        relative_resolved
+      );
       Some(relative_resolved)
     }
   }
@@ -305,8 +385,6 @@ fn to_range(
 mod tests {
   use std::sync::Arc;
 
-  use crate::args::PackageJsonDepsProvider;
-
   use super::*;
   use deno_ast::MediaType;
   use deno_ast::ModuleSpecifier;
@@ -355,19 +433,16 @@ mod tests {
         }
       }),
     );
-    let mapped_resolver = MappedSpecifierResolver::new(
-      Some(Arc::new(import_map)),
-      Arc::new(PackageJsonDepsProvider::new(Some(
-        package_json.resolve_local_package_json_version_reqs(),
-      ))),
+    let workspace_resolver = WorkspaceResolver::new_raw(
+      Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
+      Some(import_map),
+      vec![Arc::new(package_json)],
+      deno_config::workspace::PackageJsonDepResolution::Enabled,
     );
-
     let fs = Arc::new(RealFs);
-    let sloppy_imports_resolver = SloppyImportsResolver::new(fs);
-
     let unfurler = SpecifierUnfurler::new(
-      &mapped_resolver,
-      Some(&sloppy_imports_resolver),
+      Some(SloppyImportsResolver::new(fs)),
+      workspace_resolver,
       true,
     );
 

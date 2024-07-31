@@ -13,10 +13,10 @@
  * all share the same working directory.
  */
 
-import { magenta } from "@std/fmt/colors.ts";
-import { pooledMap } from "@std/async/pool.ts";
-import { dirname, fromFileUrl, join } from "@std/path/mod.ts";
-import { assertEquals, fail } from "@std/assert/mod.ts";
+import { magenta } from "@std/fmt/colors";
+import { pooledMap } from "@std/async/pool";
+import { dirname, fromFileUrl, join } from "@std/path";
+import { assertEquals, fail } from "@std/assert";
 import {
   config,
   getPathsFromTestSuites,
@@ -30,7 +30,9 @@ const filters = Deno.args;
 const hasFilters = filters.length > 0;
 const toolsPath = dirname(fromFileUrl(import.meta.url));
 const testPaths = partitionParallelTestPaths(
-  getPathsFromTestSuites(config.tests),
+  getPathsFromTestSuites(config.tests).concat(
+    getPathsFromTestSuites(config.ignore),
+  ),
 );
 const cwd = new URL(".", import.meta.url);
 const windowsIgnorePaths = new Set(
@@ -86,6 +88,7 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
         //"--unsafely-ignore-certificate-errors",
         "--unstable-unsafe-proto",
         "--unstable-bare-node-builtins",
+        "--unstable-fs",
         "--v8-flags=" + v8Flags.join(),
       ];
       if (usesNodeTest) {

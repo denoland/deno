@@ -169,6 +169,10 @@ delete Object.prototype.__proto__;
 
   const isCjsCache = new SpecifierIsCjsCache();
 
+  // Maps asset specifiers to the first scope that the asset was loaded into.
+  /** @type {Map<string, string | null>} */
+  const assetScopes = new Map();
+
   /** @type {number | null} */
   let projectVersionCache = null;
 
@@ -731,6 +735,7 @@ delete Object.prototype.__proto__;
           /** @type {[string, ts.Extension] | undefined} */
           const resolved = ops.op_resolve(
             containingFilePath,
+            isCjsCache.has(containingFilePath),
             [fileReference.fileName],
           )?.[0];
           if (resolved) {
@@ -764,6 +769,7 @@ delete Object.prototype.__proto__;
       /** @type {Array<[string, ts.Extension] | undefined>} */
       const resolved = ops.op_resolve(
         base,
+        isCjsCache.has(base),
         specifiers,
       );
       if (resolved) {
@@ -835,6 +841,9 @@ delete Object.prototype.__proto__;
       }
       const sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
+        if (!assetScopes.has(specifier)) {
+          assetScopes.set(specifier, lastRequestScope);
+        }
         // This case only occurs for assets.
         return ts.ScriptSnapshot.fromString(sourceFile.text);
       }
@@ -1208,6 +1217,7 @@ delete Object.prototype.__proto__;
       const newConfigsByScope = maybeChange[2];
       if (newConfigsByScope) {
         isNodeSourceFileCache.clear();
+        assetScopes.clear();
         /** @type { typeof languageServiceEntries.byScope } */
         const newByScope = new Map();
         for (const [scope, config] of newConfigsByScope) {
@@ -1245,6 +1255,12 @@ delete Object.prototype.__proto__;
       }
     }
 
+    // For requests pertaining to an asset document, we make it so that the
+    // passed scope is just its own specifier. We map it to an actual scope here
+    // based on the first scope that the asset was loaded into.
+    if (scope?.startsWith(ASSETS_URL_PREFIX)) {
+      scope = assetScopes.get(scope) ?? null;
+    }
     lastRequestMethod = method;
     lastRequestScope = scope;
     const ls = (scope ? languageServiceEntries.byScope.get(scope)?.ls : null) ??

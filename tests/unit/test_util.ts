@@ -1,9 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import * as colors from "@std/fmt/colors.ts";
-import { assert } from "@std/assert/mod.ts";
+import * as colors from "@std/fmt/colors";
+import { assert } from "@std/assert";
 export { colors };
-import { join, resolve } from "@std/path/mod.ts";
+import { join, resolve } from "@std/path";
 export {
   assert,
   assertEquals,
@@ -20,10 +20,10 @@ export {
   fail,
   unimplemented,
   unreachable,
-} from "@std/assert/mod.ts";
-export { delay } from "@std/async/delay.ts";
-export { readLines } from "@std/io/read_lines.ts";
-export { parse as parseArgs } from "@std/flags/mod.ts";
+} from "@std/assert";
+export { delay } from "@std/async/delay";
+export { readLines } from "@std/io/read-lines";
+export { parseArgs } from "@std/cli/parse-args";
 
 export const DENO_FUTURE = Deno.env.get("DENO_FUTURE") === "1";
 

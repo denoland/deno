@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.44.4"
+version = "1.45.4"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -44,7 +44,7 @@ default = ["upgrade", "__vendored_zlib_ng"]
 upgrade = []
 # A dev feature to disable creations and loading of snapshots in favor of
 # loading JS sources at runtime.
-__runtime_js_sources = ["deno_runtime/__runtime_js_sources"]
+hmr = ["deno_runtime/hmr"]
 # Vendor zlib as zlib-ng
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 
@@ -65,20 +65,22 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = { workspace = true }
-deno_config = { workspace = true, features = ["deno_json", "package_json"] }
+deno_config = { version = "=0.26.1", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.141.0", features = ["html", "syntect"] }
-deno_emit = "=0.43.0"
-deno_graph = { version = "=0.79.0", features = ["tokio_executor"] }
-deno_lint = { version = "=0.60.0", features = ["docs"] }
+deno_doc = { version = "0.144.0", features = ["html", "syntect"] }
+deno_emit = "=0.43.1"
+deno_graph = { version = "=0.80.1", features = ["tokio_executor"] }
+deno_lint = { version = "=0.61.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "=0.21.4"
+deno_package_json.workspace = true
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_semver = "=0.5.6"
+deno_semver = "=0.5.7"
 deno_task_shell = "=0.17.0"
 deno_terminal.workspace = true
-eszip = "=0.72.1"
+eszip = "=0.72.2"
 napi_sym.workspace = true
+node_resolver.workspace = true
 
 async-trait.workspace = true
 base32.workspace = true
@@ -99,7 +101,7 @@ dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.3"
 dprint-plugin-jupyter = "=0.1.3"
 dprint-plugin-markdown = "=0.17.1"
-dprint-plugin-typescript = "=0.91.1"
+dprint-plugin-typescript = "=0.91.4"
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
 faster-hex.workspace = true
@@ -107,11 +109,14 @@ faster-hex.workspace = true
 flate2.workspace = true
 fs3.workspace = true
 glob = "0.3.1"
-ignore = "0.4"
+http.workspace = true
+http-body.workspace = true
+http-body-util.workspace = true
+hyper-util.workspace = true
 import_map = { version = "=0.20.0", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser.workspace = true
-jupyter_runtime = { package = "runtimelib", version = "=0.11.0" }
+jupyter_runtime = { package = "runtimelib", version = "=0.14.0" }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
@@ -129,7 +134,6 @@ phf.workspace = true
 quick-junit = "^0.3.5"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
-reqwest.workspace = true
 ring.workspace = true
 rustyline.workspace = true
 rustyline-derive = "=0.7.0"
@@ -149,7 +153,7 @@ tower-lsp.workspace = true
 twox-hash.workspace = true
 typed-arena = "=2.0.1"
 uuid = { workspace = true, features = ["serde"] }
-walkdir = "=2.3.2"
+which.workspace = true
 zeromq.workspace = true
 zstd.workspace = true
 
@@ -164,6 +168,7 @@ nix.workspace = true
 deno_bench_util.workspace = true
 pretty_assertions.workspace = true
 test_util.workspace = true
+walkdir = "=2.3.2"
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.

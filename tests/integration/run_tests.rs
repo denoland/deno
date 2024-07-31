@@ -11,7 +11,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use deno_core::serde_json::json;
 use deno_core::url;
-use deno_fetch::reqwest;
+
 use deno_tls::rustls;
 use deno_tls::rustls::ClientConnection;
 use deno_tls::rustls_pemfile;
@@ -206,7 +206,7 @@ itest!(_033_import_map_data_uri {
 });
 
 itest!(onload {
-  args: "run --quiet --reload run/onload/main.ts",
+  args: "run --quiet --reload --config ../config/deno.json run/onload/main.ts",
   output: "run/onload/main.out",
 });
 
@@ -1113,7 +1113,9 @@ fn lock_deno_json_package_json_deps_workspace() {
 
   // deno.json
   let deno_json = temp_dir.join("deno.json");
-  deno_json.write_json(&json!({}));
+  deno_json.write_json(&json!({
+    "nodeModulesDir": true
+  }));
 
   // package.json
   let package_json = temp_dir.join("package.json");
@@ -1147,16 +1149,23 @@ fn lock_deno_json_package_json_deps_workspace() {
   let lockfile = temp_dir.join("deno.lock");
   let esm_basic_integrity =
     get_lockfile_npm_package_integrity(&lockfile, "@denotest/esm-basic@1.0.0");
+  let cjs_default_export_integrity = get_lockfile_npm_package_integrity(
+    &lockfile,
+    "@denotest/cjs-default-export@1.0.0",
+  );
 
-  // no "workspace" because deno isn't smart enough to figure this out yet
-  // since it discovered the package.json in a folder different from the lockfile
   lockfile.assert_matches_json(json!({
     "version": "3",
     "packages": {
       "specifiers": {
+        "npm:@denotest/cjs-default-export@1": "npm:@denotest/cjs-default-export@1.0.0",
         "npm:@denotest/esm-basic@1": "npm:@denotest/esm-basic@1.0.0"
       },
       "npm": {
+        "@denotest/cjs-default-export@1.0.0": {
+          "integrity": cjs_default_export_integrity,
+          "dependencies": {}
+        },
         "@denotest/esm-basic@1.0.0": {
           "integrity": esm_basic_integrity,
           "dependencies": {}
@@ -1164,6 +1173,22 @@ fn lock_deno_json_package_json_deps_workspace() {
       }
     },
     "remote": {},
+    "workspace": {
+      "packageJson": {
+        "dependencies": [
+          "npm:@denotest/cjs-default-export@1"
+        ]
+      },
+      "members": {
+        "package-a": {
+          "packageJson": {
+            "dependencies": [
+              "npm:@denotest/esm-basic@1"
+            ]
+          }
+        }
+      }
+    }
   }));
 
   // run a command that causes discovery of the root package.json beside the lockfile
@@ -1201,6 +1226,15 @@ fn lock_deno_json_package_json_deps_workspace() {
         "dependencies": [
           "npm:@denotest/cjs-default-export@1"
         ]
+      },
+      "members": {
+        "package-a": {
+          "packageJson": {
+            "dependencies": [
+              "npm:@denotest/esm-basic@1"
+            ]
+          }
+        }
       }
     }
   });
@@ -2587,7 +2621,7 @@ mod permissions {
   fn with_allow() {
     for permission in &util::PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg("--unstable")
         .arg(format!("--allow-{permission}"))
@@ -2621,7 +2655,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!(
           "--allow-{0}={1}",
@@ -2664,7 +2698,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!(
           "--allow-{0}={1}",
@@ -2712,7 +2746,7 @@ mod permissions {
     let js_dir = util::root_path().join("js");
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{permission}={test_dir},{js_dir}"))
         .arg("run/complex_permissions_test.ts")
@@ -2731,7 +2765,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{permission}=."))
         .arg("run/complex_permissions_test.ts")
@@ -2750,7 +2784,7 @@ mod permissions {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
-        .current_dir(&util::testdata_path())
+        .current_dir(util::testdata_path())
         .arg("run")
         .arg(format!("--allow-{permission}=tls/../"))
         .arg("run/complex_permissions_test.ts")
@@ -3129,12 +3163,12 @@ mod permissions {
 }
 
 itest!(tls_starttls {
-  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem run/tls_starttls.js",
+  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem --config ../config/deno.json run/tls_starttls.js",
   output: "run/tls.out",
 });
 
 itest!(tls_connecttls {
-  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem run/tls_connecttls.js",
+  args: "run --quiet --reload --allow-net --allow-read --cert tls/RootCA.pem --config ../config/deno.json run/tls_connecttls.js",
   output: "run/tls.out",
 });
 
@@ -4478,6 +4512,8 @@ async fn websocket_server_idletimeout() {
     .arg("--allow-net")
     .arg("--cert")
     .arg(root_ca)
+    .arg("--config")
+    .arg("./config/deno.json")
     .arg(script)
     .stdout_piped()
     .spawn()
@@ -4814,86 +4850,6 @@ itest!(unsafe_proto_flag {
   http_server: false,
   exit_code: 0,
 });
-
-#[test]
-fn test_unstable_sloppy_imports() {
-  let context = TestContextBuilder::new().use_temp_cwd().build();
-  let temp_dir = context.temp_dir();
-  temp_dir.write("a.ts", "export class A {}");
-  temp_dir.write("b.js", "export class B {}");
-  temp_dir.write("c.mts", "export class C {}");
-  temp_dir.write("d.mjs", "export class D {}");
-  temp_dir.write("e.tsx", "export class E {}");
-  temp_dir.write("f.jsx", "export class F {}");
-  let dir = temp_dir.path().join("dir");
-  dir.create_dir_all();
-  dir.join("index.tsx").write("export class G {}");
-  temp_dir.write(
-    "main.ts",
-    r#"import * as a from "./a.js";
-import * as b from "./b";
-import * as c from "./c";
-import * as d from "./d";
-import * as e from "./e";
-import * as e2 from "./e.js";
-import * as f from "./f";
-import * as g from "./dir";
-console.log(a.A);
-console.log(b.B);
-console.log(c.C);
-console.log(d.D);
-console.log(e.E);
-console.log(e2.E);
-console.log(f.F);
-console.log(g.G);
-"#,
-  );
-
-  // run without sloppy imports
-  context
-    .new_command()
-    .args("run main.ts")
-    .run()
-    .assert_matches_text(r#"error: Module not found "file:///[WILDCARD]/a.js". Maybe change the extension to '.ts' or run with --unstable-sloppy-imports
-    at file:///[WILDCARD]/main.ts:1:20
-"#)
-    .assert_exit_code(1);
-
-  // now run with sloppy imports
-  temp_dir.write("deno.json", r#"{ "unstable": ["sloppy-imports"] }"#);
-  context
-    .new_command()
-    .args("run main.ts")
-    .run()
-    .assert_matches_text(
-      "Warning Sloppy imports are not recommended and have a negative impact on performance.
-Warning Sloppy module resolution (hint: update .js extension to .ts)
-    at file:///[WILDCARD]/main.ts:1:20
-Warning Sloppy module resolution (hint: add .js extension)
-    at file:///[WILDCARD]/main.ts:2:20
-Warning Sloppy module resolution (hint: add .mts extension)
-    at file:///[WILDCARD]/main.ts:3:20
-Warning Sloppy module resolution (hint: add .mjs extension)
-    at file:///[WILDCARD]/main.ts:4:20
-Warning Sloppy module resolution (hint: add .tsx extension)
-    at file:///[WILDCARD]/main.ts:5:20
-Warning Sloppy module resolution (hint: update .js extension to .tsx)
-    at file:///[WILDCARD]/main.ts:6:21
-Warning Sloppy module resolution (hint: add .jsx extension)
-    at file:///[WILDCARD]/main.ts:7:20
-Warning Sloppy module resolution (hint: specify path to index.tsx file in directory instead)
-    at file:///[WILDCARD]/main.ts:8:20
-[class A]
-[class B]
-[class C]
-[class D]
-[class E]
-[class E]
-[class F]
-[class G]
-",
-    );
-}
 
 itest!(unstable_temporal_api {
   args: "run --no-config --unstable-temporal --check run/unstable_temporal_api/main.ts",
@@ -5343,6 +5299,8 @@ async fn listen_tls_alpn_fail() {
     .arg("--quiet")
     .arg("--allow-net")
     .arg("--allow-read")
+    .arg("--config")
+    .arg("../config/deno.json")
     .arg("./cert/listen_tls_alpn_fail.ts")
     .arg("4505")
     .stdout_piped()

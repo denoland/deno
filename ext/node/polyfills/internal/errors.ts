@@ -18,7 +18,7 @@
  */
 
 import { primordials } from "ext:core/mod.js";
-const { JSONStringify } = primordials;
+const { JSONStringify, SymbolFor } = primordials;
 import { format, inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import {
@@ -421,8 +421,11 @@ export interface NodeSystemErrorCtx {
 // `err.info`.
 // The context passed into this error must have .code, .syscall and .message,
 // and may have .path and .dest.
-class NodeSystemError extends NodeErrorAbstraction {
+class NodeSystemError extends Error {
+  code: string;
   constructor(key: string, context: NodeSystemErrorCtx, msgPrefix: string) {
+    super();
+    this.code = key;
     let message = `${msgPrefix}: ${context.syscall} returned ` +
       `${context.code} (${context.message})`;
 
@@ -433,8 +436,6 @@ class NodeSystemError extends NodeErrorAbstraction {
       message += ` => ${context.dest}`;
     }
 
-    super("SystemError", key, message);
-
     captureLargerStackTrace(this);
 
     Object.defineProperties(this, {
@@ -442,6 +443,18 @@ class NodeSystemError extends NodeErrorAbstraction {
         value: true,
         enumerable: false,
         writable: false,
+        configurable: true,
+      },
+      name: {
+        value: "SystemError",
+        enumerable: false,
+        writable: true,
+        configurable: true,
+      },
+      message: {
+        value: message,
+        enumerable: false,
+        writable: true,
         configurable: true,
       },
       info: {
@@ -501,6 +514,15 @@ class NodeSystemError extends NodeErrorAbstraction {
 
   override toString() {
     return `${this.name} [${this.code}]: ${this.message}`;
+  }
+
+  // deno-lint-ignore no-explicit-any
+  [SymbolFor("nodejs.util.inspect.custom")](_recurseTimes: number, ctx: any) {
+    return inspect(this, {
+      ...ctx,
+      getters: true,
+      customInspect: false,
+    });
   }
 }
 

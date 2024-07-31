@@ -21,15 +21,20 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NpmResolver;
+use deno_runtime::deno_node::NodeRequireResolver;
+use deno_runtime::deno_node::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use node_resolver::errors::PackageFolderResolveError;
+use node_resolver::errors::PackageFolderResolveIoError;
+use node_resolver::NpmResolver;
 use resolution::AddPkgReqsResult;
 
 use crate::args::CliLockfile;
+use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
-use crate::args::PackageJsonDepsProvider;
+use crate::args::PackageJsonInstallDepsProvider;
 use crate::cache::FastInsecureHasher;
 use crate::http_util::HttpClientProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
@@ -66,8 +71,9 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   pub maybe_node_modules_path: Option<PathBuf>,
   pub npm_system_info: NpmSystemInfo,
-  pub package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+  pub package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
   pub npmrc: Arc<ResolvedNpmRc>,
+  pub lifecycle_scripts: LifecycleScriptsConfig,
 }
 
 pub async fn create_managed_npm_resolver_for_lsp(
@@ -96,6 +102,7 @@ pub async fn create_managed_npm_resolver_for_lsp(
       options.maybe_node_modules_path,
       options.npm_system_info,
       snapshot,
+      options.lifecycle_scripts,
     )
   })
   .await
@@ -120,6 +127,7 @@ pub async fn create_managed_npm_resolver(
     options.maybe_node_modules_path,
     options.npm_system_info,
     snapshot,
+    options.lifecycle_scripts,
   ))
 }
 
@@ -131,11 +139,12 @@ fn create_inner(
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
   npm_rc: Arc<ResolvedNpmRc>,
-  package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+  package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
   text_only_progress_bar: crate::util::progress_bar::ProgressBar,
   node_modules_dir_path: Option<PathBuf>,
   npm_system_info: NpmSystemInfo,
   snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
+  lifecycle_scripts: LifecycleScriptsConfig,
 ) -> Arc<dyn CliNpmResolver> {
   let resolution = Arc::new(NpmResolution::from_serialized(
     npm_api.clone(),
@@ -152,11 +161,13 @@ fn create_inner(
   let fs_resolver = create_npm_fs_resolver(
     fs.clone(),
     npm_cache.clone(),
+    &package_json_deps_provider,
     &text_only_progress_bar,
     resolution.clone(),
     tarball_cache.clone(),
     node_modules_dir_path,
     npm_system_info.clone(),
+    lifecycle_scripts.clone(),
   );
   Arc::new(ManagedCliNpmResolver::new(
     fs,
@@ -169,6 +180,7 @@ fn create_inner(
     tarball_cache,
     text_only_progress_bar,
     npm_system_info,
+    lifecycle_scripts,
   ))
 }
 
@@ -249,12 +261,13 @@ pub struct ManagedCliNpmResolver {
   maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
-  package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+  package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
   resolution: Arc<NpmResolution>,
   tarball_cache: Arc<TarballCache>,
   text_only_progress_bar: ProgressBar,
   npm_system_info: NpmSystemInfo,
   top_level_install_flag: AtomicFlag,
+  lifecycle_scripts: LifecycleScriptsConfig,
 }
 
 impl std::fmt::Debug for ManagedCliNpmResolver {
@@ -273,11 +286,12 @@ impl ManagedCliNpmResolver {
     maybe_lockfile: Option<Arc<CliLockfile>>,
     npm_api: Arc<CliNpmRegistryApi>,
     npm_cache: Arc<NpmCache>,
-    package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+    package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
     resolution: Arc<NpmResolution>,
     tarball_cache: Arc<TarballCache>,
     text_only_progress_bar: ProgressBar,
     npm_system_info: NpmSystemInfo,
+    lifecycle_scripts: LifecycleScriptsConfig,
   ) -> Self {
     Self {
       fs,
@@ -291,6 +305,7 @@ impl ManagedCliNpmResolver {
       tarball_cache,
       npm_system_info,
       top_level_install_flag: Default::default(),
+      lifecycle_scripts,
     }
   }
 
@@ -361,12 +376,15 @@ impl ManagedCliNpmResolver {
   }
 
   /// Adds package requirements to the resolver and ensures everything is setup.
+  /// This includes setting up the `node_modules` directory, if applicable.
   pub async fn add_package_reqs(
     &self,
     packages: &[PackageReq],
   ) -> Result<(), AnyError> {
-    let result = self.add_package_reqs_raw(packages).await;
-    result.dependencies_result
+    self
+      .add_package_reqs_raw(packages)
+      .await
+      .dependencies_result
   }
 
   pub async fn add_package_reqs_raw(
@@ -381,6 +399,12 @@ impl ManagedCliNpmResolver {
     }
 
     let mut result = self.resolution.add_package_reqs(packages).await;
+
+    if result.dependencies_result.is_ok() {
+      if let Some(lockfile) = self.maybe_lockfile.as_ref() {
+        result.dependencies_result = lockfile.error_if_changed();
+      }
+    }
     if result.dependencies_result.is_ok() {
       result.dependencies_result =
         self.cache_packages().await.map_err(AnyError::from);
@@ -442,29 +466,41 @@ impl ManagedCliNpmResolver {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
   }
 
+  /// Ensures that the top level `package.json` dependencies are installed.
+  /// This may set up the `node_modules` directory.
+  ///
+  /// Returns `true` if any changes (such as caching packages) were made.
+  /// If this returns `false`, `node_modules` has _not_ been set up.
   pub async fn ensure_top_level_package_json_install(
     &self,
-  ) -> Result<(), AnyError> {
-    let Some(reqs) = self.package_json_deps_provider.reqs() else {
-      return Ok(());
-    };
+  ) -> Result<bool, AnyError> {
     if !self.top_level_install_flag.raise() {
-      return Ok(()); // already did this
+      return Ok(false); // already did this
     }
+    let pkg_json_remote_pkgs = self.package_json_deps_provider.remote_pkgs();
+    if pkg_json_remote_pkgs.is_empty() {
+      return Ok(false);
+    }
+
     // check if something needs resolving before bothering to load all
     // the package information (which is slow)
-    if reqs
-      .iter()
-      .all(|req| self.resolution.resolve_pkg_id_from_pkg_req(req).is_ok())
-    {
+    if pkg_json_remote_pkgs.iter().all(|pkg| {
+      self
+        .resolution
+        .resolve_pkg_id_from_pkg_req(&pkg.req)
+        .is_ok()
+    }) {
       log::debug!(
         "All package.json deps resolvable. Skipping top level install."
       );
-      return Ok(()); // everything is already resolvable
+      return Ok(false); // everything is already resolvable
     }
 
-    let reqs = reqs.into_iter().cloned().collect::<Vec<_>>();
-    self.add_package_reqs(&reqs).await
+    let pkg_reqs = pkg_json_remote_pkgs
+      .iter()
+      .map(|pkg| pkg.req.clone())
+      .collect::<Vec<_>>();
+    self.add_package_reqs(&pkg_reqs).await.map(|_| true)
   }
 
   pub async fn cache_package_info(
@@ -484,34 +520,34 @@ impl ManagedCliNpmResolver {
   }
 }
 
-impl NpmResolver for ManagedCliNpmResolver {
-  /// Gets the state of npm for the process.
-  fn get_npm_process_state(&self) -> String {
-    serde_json::to_string(&NpmProcessState {
-      kind: NpmProcessStateKind::Snapshot(
-        self
-          .resolution
-          .serialized_valid_snapshot()
-          .into_serialized(),
-      ),
-      local_node_modules_path: self
-        .fs_resolver
-        .node_modules_path()
-        .map(|p| p.to_string_lossy().to_string()),
-    })
-    .unwrap()
-  }
+fn npm_process_state(
+  snapshot: ValidSerializedNpmResolutionSnapshot,
+  node_modules_path: Option<&Path>,
+) -> String {
+  serde_json::to_string(&NpmProcessState {
+    kind: NpmProcessStateKind::Snapshot(snapshot.into_serialized()),
+    local_node_modules_path: node_modules_path
+      .map(|p| p.to_string_lossy().to_string()),
+  })
+  .unwrap()
+}
 
+impl NpmResolver for ManagedCliNpmResolver {
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, PackageFolderResolveError> {
     let path = self
       .fs_resolver
       .resolve_package_folder_from_package(name, referrer)?;
     let path =
-      canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())?;
+      canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())
+        .map_err(|err| PackageFolderResolveIoError {
+          package_name: name.to_string(),
+          referrer: referrer.clone(),
+          source: err,
+        })?;
     log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
     Ok(path)
   }
@@ -521,7 +557,9 @@ impl NpmResolver for ManagedCliNpmResolver {
     debug_assert!(root_dir_url.as_str().ends_with('/'));
     specifier.as_ref().starts_with(root_dir_url.as_str())
   }
+}
 
+impl NodeRequireResolver for ManagedCliNpmResolver {
   fn ensure_read_permission(
     &self,
     permissions: &mut dyn NodePermissions,
@@ -531,8 +569,27 @@ impl NpmResolver for ManagedCliNpmResolver {
   }
 }
 
+impl NpmProcessStateProvider for ManagedCliNpmResolver {
+  fn get_npm_process_state(&self) -> String {
+    npm_process_state(
+      self.resolution.serialized_valid_snapshot(),
+      self.fs_resolver.node_modules_path().map(|p| p.as_path()),
+    )
+  }
+}
+
 impl CliNpmResolver for ManagedCliNpmResolver {
   fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver> {
+    self
+  }
+
+  fn into_require_resolver(self: Arc<Self>) -> Arc<dyn NodeRequireResolver> {
+    self
+  }
+
+  fn into_process_state_provider(
+    self: Arc<Self>,
+  ) -> Arc<dyn NpmProcessStateProvider> {
     self
   }
 
@@ -549,11 +606,13 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       create_npm_fs_resolver(
         self.fs.clone(),
         self.npm_cache.clone(),
+        &self.package_json_deps_provider,
         &self.text_only_progress_bar,
         npm_resolution.clone(),
         self.tarball_cache.clone(),
         self.root_node_modules_path().map(ToOwned::to_owned),
         self.npm_system_info.clone(),
+        self.lifecycle_scripts.clone(),
       ),
       self.maybe_lockfile.clone(),
       self.npm_api.clone(),
@@ -563,6 +622,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       self.tarball_cache.clone(),
       self.text_only_progress_bar.clone(),
       self.npm_system_info.clone(),
+      self.lifecycle_scripts.clone(),
     ))
   }
 

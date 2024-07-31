@@ -1135,7 +1135,7 @@ async fn main_server(
     _ => {
       let uri_path = req.uri().path();
       let mut file_path = testdata_path().to_path_buf();
-      file_path.push(&uri_path[1..].replace("%2f", "/"));
+      file_path.push(uri_path[1..].replace("%2f", "/"));
       if let Ok(file) = tokio::fs::read(&file_path).await {
         let file_resp = custom_headers(uri_path, file);
         return Ok(file_resp);

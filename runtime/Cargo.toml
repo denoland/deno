@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.166.0"
+version = "0.172.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -22,11 +22,14 @@ include_js_files_for_snapshotting = [
 ]
 # A dev feature to disable creations and loading of snapshots in favor of
 # loading JS sources at runtime.
-__runtime_js_sources = ["include_js_files_for_snapshotting"]
+hmr = ["include_js_files_for_snapshotting"]
 # Signal that only snapshotted JS sources should be used. This will
 # conditionally exclude the runtime source transpilation logic, and add an
 # assertion that a snapshot is provided.
 only_snapshotted_js_sources = ["include_js_files_for_snapshotting"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 
 [lib]
 name = "deno_runtime"
@@ -94,6 +97,7 @@ deno_webgpu.workspace = true
 deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
+node_resolver = { workspace = true, features = ["sync"] }
 
 dlopen2.workspace = true
 encoding_rs.workspace = true
@@ -118,7 +122,7 @@ tokio.workspace = true
 tokio-metrics.workspace = true
 twox-hash.workspace = true
 uuid.workspace = true
-which = "4.2.5"
+which.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }

@@ -11,7 +11,7 @@ import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import { Buffer } from "node:buffer";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 
-function toDirent(val: Deno.DirEntry): Dirent {
+function toDirent(val: Deno.DirEntry & { parentPath: string }): Dirent {
   return new Dirent(val);
 }
 
@@ -67,13 +67,15 @@ export function readdir(
   }
 
   try {
-    asyncIterableToCallback(Deno.readDir(path.toString()), (val, done) => {
+    path = path.toString();
+    asyncIterableToCallback(Deno.readDir(path), (val, done) => {
       if (typeof path !== "string") return;
       if (done) {
         callback(null, result);
         return;
       }
       if (options?.withFileTypes) {
+        val.parentPath = path;
         result.push(toDirent(val));
       } else result.push(decode(val.name));
     }, (e) => {
@@ -130,8 +132,10 @@ export function readdirSync(
   }
 
   try {
-    for (const file of Deno.readDirSync(path.toString())) {
+    path = path.toString();
+    for (const file of Deno.readDirSync(path)) {
       if (options?.withFileTypes) {
+        file.parentPath = path;
         result.push(toDirent(file));
       } else result.push(decode(file.name));
     }

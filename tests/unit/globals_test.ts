@@ -1,7 +1,12 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-window-prefix no-window
-import { assert, assertEquals, assertRejects } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "./test_util.ts";
 
 Deno.test(function globalThisExists() {
   assert(globalThis != null);
@@ -223,4 +228,11 @@ Deno.test(function mapGroupBy() {
     type: "fruit",
     quantity: 5,
   }]);
+});
+
+Deno.test(function nodeGlobalsRaise() {
+  assertThrows(() => {
+    // @ts-ignore yes that's the point
+    Buffer;
+  }, ReferenceError);
 });

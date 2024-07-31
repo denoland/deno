@@ -1,77 +1,105 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_config::package_json::PackageJsonDeps;
-use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
-use deno_runtime::deno_fs::RealFs;
-use deno_runtime::deno_node::load_pkg_json;
-use deno_runtime::deno_node::PackageJson;
+use deno_config::workspace::Workspace;
+use deno_package_json::PackageJsonDepValue;
 use deno_semver::package::PackageReq;
 
-#[derive(Debug, Default)]
-pub struct PackageJsonDepsProvider(Option<PackageJsonDeps>);
-
-impl PackageJsonDepsProvider {
-  pub fn new(deps: Option<PackageJsonDeps>) -> Self {
-    Self(deps)
-  }
-
-  pub fn deps(&self) -> Option<&PackageJsonDeps> {
-    self.0.as_ref()
-  }
-
-  pub fn reqs(&self) -> Option<Vec<&PackageReq>> {
-    match &self.0 {
-      Some(deps) => {
-        let mut package_reqs = deps
-          .values()
-          .filter_map(|r| r.as_ref().ok())
-          .collect::<Vec<_>>();
-        package_reqs.sort(); // deterministic resolution
-        Some(package_reqs)
-      }
-      None => None,
-    }
-  }
+#[derive(Debug)]
+pub struct InstallNpmRemotePkg {
+  pub alias: String,
+  // todo(24419): use this when setting up the node_modules dir
+  #[allow(dead_code)]
+  pub base_dir: PathBuf,
+  pub req: PackageReq,
 }
 
-/// Attempts to discover the package.json file, maybe stopping when it
-/// reaches the specified `maybe_stop_at` directory.
-pub fn discover_from(
-  start: &Path,
-  maybe_stop_at: Option<PathBuf>,
-) -> Result<Option<Arc<PackageJson>>, AnyError> {
-  const PACKAGE_JSON_NAME: &str = "package.json";
+#[derive(Debug)]
+pub struct InstallNpmWorkspacePkg {
+  pub alias: String,
+  // todo(24419): use this when setting up the node_modules dir
+  #[allow(dead_code)]
+  pub base_dir: PathBuf,
+  pub target_dir: PathBuf,
+}
 
-  // note: ancestors() includes the `start` path
-  for ancestor in start.ancestors() {
-    let path = ancestor.join(PACKAGE_JSON_NAME);
+#[derive(Debug, Default)]
+pub struct PackageJsonInstallDepsProvider {
+  remote_pkgs: Vec<InstallNpmRemotePkg>,
+  workspace_pkgs: Vec<InstallNpmWorkspacePkg>,
+}
 
-    let package_json = match load_pkg_json(&RealFs, &path) {
-      Ok(Some(package_json)) => package_json,
-      Ok(None) => {
-        if let Some(stop_at) = maybe_stop_at.as_ref() {
-          if ancestor == stop_at {
-            break;
-          }
-        }
-        continue;
-      }
-      Err(err) => bail!(
-        "Error loading package.json at {}. {:#}",
-        path.display(),
-        err
-      ),
-    };
-
-    log::debug!("package.json file found at '{}'", path.display());
-    return Ok(Some(package_json));
+impl PackageJsonInstallDepsProvider {
+  pub fn empty() -> Self {
+    Self::default()
   }
 
-  log::debug!("No package.json file found");
-  Ok(None)
+  pub fn from_workspace(workspace: &Arc<Workspace>) -> Self {
+    let mut workspace_pkgs = Vec::new();
+    let mut remote_pkgs = Vec::new();
+    let workspace_npm_pkgs = workspace.npm_packages();
+    for pkg_json in workspace.package_jsons() {
+      let deps = pkg_json.resolve_local_package_json_deps();
+      let mut pkg_pkgs = Vec::with_capacity(deps.len());
+      for (alias, dep) in deps {
+        let Ok(dep) = dep else {
+          continue;
+        };
+        match dep {
+          PackageJsonDepValue::Req(pkg_req) => {
+            let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
+              pkg.matches_req(&pkg_req)
+              // do not resolve to the current package
+              && pkg.pkg_json.path != pkg_json.path
+            });
+
+            if let Some(pkg) = workspace_pkg {
+              workspace_pkgs.push(InstallNpmWorkspacePkg {
+                alias,
+                base_dir: pkg_json.dir_path().to_path_buf(),
+                target_dir: pkg.pkg_json.dir_path().to_path_buf(),
+              });
+            } else {
+              pkg_pkgs.push(InstallNpmRemotePkg {
+                alias,
+                base_dir: pkg_json.dir_path().to_path_buf(),
+                req: pkg_req,
+              });
+            }
+          }
+          PackageJsonDepValue::Workspace(version_req) => {
+            if let Some(pkg) = workspace_npm_pkgs.iter().find(|pkg| {
+              pkg.matches_name_and_version_req(&alias, &version_req)
+            }) {
+              workspace_pkgs.push(InstallNpmWorkspacePkg {
+                alias,
+                base_dir: pkg_json.dir_path().to_path_buf(),
+                target_dir: pkg.pkg_json.dir_path().to_path_buf(),
+              });
+            }
+          }
+        }
+      }
+      // sort within each package
+      pkg_pkgs.sort_by(|a, b| a.alias.cmp(&b.alias));
+
+      remote_pkgs.extend(pkg_pkgs);
+    }
+    remote_pkgs.shrink_to_fit();
+    workspace_pkgs.shrink_to_fit();
+    Self {
+      remote_pkgs,
+      workspace_pkgs,
+    }
+  }
+
+  pub fn remote_pkgs(&self) -> &Vec<InstallNpmRemotePkg> {
+    &self.remote_pkgs
+  }
+
+  pub fn workspace_pkgs(&self) -> &Vec<InstallNpmWorkspacePkg> {
+    &self.workspace_pkgs
+  }
 }

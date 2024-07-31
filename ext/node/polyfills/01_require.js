@@ -132,7 +132,7 @@ import punycode from "node:punycode";
 import process from "node:process";
 import querystring from "node:querystring";
 import readline from "node:readline";
-import readlinePromises from "ext:deno_node/readline/promises.ts";
+import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
 import stream from "node:stream";
 import streamConsumers from "node:stream/consumers";
@@ -1101,9 +1101,6 @@ Module._extensions[".json"] = function (module, filename) {
 
 // Native extension for .node
 Module._extensions[".node"] = function (module, filename) {
-  if (filename.endsWith("fsevents.node")) {
-    throw new Error("Using fsevents module is currently not supported");
-  }
   module.exports = op_napi_open(
     filename,
     globalThis,

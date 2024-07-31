@@ -153,7 +153,7 @@ impl AssetOrDocument {
 
   pub fn scope(&self) -> Option<&ModuleSpecifier> {
     match self {
-      AssetOrDocument::Asset(_) => None,
+      AssetOrDocument::Asset(asset_doc) => Some(asset_doc.specifier()),
       AssetOrDocument::Document(doc) => doc.scope(),
     }
   }
@@ -1246,9 +1246,13 @@ impl Documents {
     &self,
     specifiers: &[String],
     referrer: &ModuleSpecifier,
+    file_referrer: Option<&ModuleSpecifier>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
     let document = self.get(referrer);
-    let file_referrer = document.as_ref().and_then(|d| d.file_referrer());
+    let file_referrer = document
+      .as_ref()
+      .and_then(|d| d.file_referrer())
+      .or(file_referrer);
     let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
     for specifier in specifiers {
@@ -1593,7 +1597,9 @@ fn analyze_module(
 mod tests {
   use super::*;
   use crate::lsp::cache::LspCache;
-  use deno_config::ConfigFile;
+
+  use deno_config::deno_json::ConfigFile;
+  use deno_config::deno_json::ConfigParseOptions;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
@@ -1747,7 +1753,7 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &deno_config::ParseOptions::default(),
+            &ConfigParseOptions::default(),
           )
           .unwrap(),
         )
@@ -1791,7 +1797,7 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &deno_config::ParseOptions::default(),
+            &ConfigParseOptions::default(),
           )
           .unwrap(),
         )
