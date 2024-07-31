@@ -998,7 +998,7 @@ class InnerGPUDevice {
         );
         break;
       case "out-of-memory":
-        constructedError = new GPUOutOfMemoryError();
+        constructedError = new GPUOutOfMemoryError("not enough memory left");
         break;
       case "internal":
         constructedError = new GPUInternalError();
