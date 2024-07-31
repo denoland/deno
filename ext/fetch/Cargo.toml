@@ -38,3 +38,6 @@ tokio-util = { workspace = true, features = ["io"] }
 tower.workspace = true
 tower-http.workspace = true
 tower-service.workspace = true
+
+[dev-dependencies]
+fast-socks5.workspace = true

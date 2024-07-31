@@ -108,6 +108,7 @@ dlopen2 = "0.6.1"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
 encoding_rs = "=0.8.33"
+fast-socks5 = "0.9.6"
 faster-hex = "0.9"
 fastwebsockets = { version = "0.6", features = ["upgrade", "unstable-split"] }
 filetime = "0.2.16"

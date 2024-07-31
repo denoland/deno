@@ -1478,6 +1478,7 @@ dependencies = [
  "deno_permissions",
  "deno_tls",
  "dyn-clone",
+ "fast-socks5",
  "http 1.1.0",
  "http-body-util",
  "hyper 1.4.1",
@@ -2691,6 +2692,20 @@ checksum = "0678ab2d46fa5195aaf59ad034c083d351377d4af57f3e073c074d0da3e3c766"
 dependencies = [
  "bit-set",
  "regex",
+]
+
+[[package]]
+name = "fast-socks5"
+version = "0.9.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f89f36d4ee12370d30d57b16c7e190950a1a916e7dbbb5fd5a412f5ef913fe84"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "log",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
