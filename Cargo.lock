@@ -1350,7 +1350,7 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.300.0"
+version = "0.301.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1834,7 +1834,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.176.0"
+version = "0.177.0"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -6043,7 +6043,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.209.0"
+version = "0.210.0"
 dependencies = [
  "num-bigint",
  "serde",

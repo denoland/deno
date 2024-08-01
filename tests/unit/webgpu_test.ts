@@ -129,10 +129,18 @@ Deno.test({
     vertex: {
       module: shaderModule,
       entryPoint: "vs_main",
+      // only test purpose
+      constants: {
+        value: 0.5,
+      },
     },
     fragment: {
       module: shaderModule,
       entryPoint: "fs_main",
+      // only test purpose
+      constants: {
+        value: 0.5,
+      },
       targets: [
         {
           format: "rgba8unorm-srgb",
