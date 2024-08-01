@@ -173,7 +173,7 @@ slab = "0.4"
 smallvec = "1.13"
 socket2 = { version = "0.5.7", features = ["all"] }
 spki = "0.7.3"
-tar = "=0.4.40"
+tar = "=0.4.41"
 tempfile = "3.10.1"
 termcolor = "1.4.1"
 thiserror = "1.0.63"
