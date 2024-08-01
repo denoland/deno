@@ -165,7 +165,7 @@ scopeguard = "1.2.0"
 serde = { version = "1.0.204", features = ["derive"] }
 serde_bytes = "0.11"
 serde_json = "1.0.121"
-serde_repr = "=0.1.16"
+serde_repr = "=0.1.19"
 sha1 = { version = "0.10.6", features = ["oid"] }
 sha2 = { version = "0.10.8", features = ["oid"] }
 signature = "2.2"
