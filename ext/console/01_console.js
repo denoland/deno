@@ -1603,10 +1603,6 @@ function formatPromise(ctx, value, recurseTimes) {
   return output;
 }
 
-function formatIntlLocale(ctx, value, recurseTimes) {
-  return [ctx.stylize(value.baseName, "special")];
-}
-
 function formatWeakCollection(ctx) {
   return [ctx.stylize("<items unknown>", "special")];
 }
