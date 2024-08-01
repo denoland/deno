@@ -183,7 +183,7 @@ fn write_binary_bytes(
   } else if target.contains("darwin") {
     libsui::Macho::from(original_bin)?
       .write_section("d3n0l4nd", writer)?
-      .build(&mut file_writer)?;
+      .build_and_sign(&mut file_writer)?;
   }
   Ok(())
 }
@@ -194,8 +194,8 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
   };
 
   libsui::utils::is_elf(&data)
-    | libsui::utils::is_pe(&data)
-    | libsui::utils::is_macho(&data)
+    || libsui::utils::is_pe(&data)
+    || libsui::utils::is_macho(&data)
 }
 
 /// This function will try to run this binary as a standalone binary
