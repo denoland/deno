@@ -212,7 +212,7 @@ syn = { version = "2", features = ["full", "extra-traits"] }
 nix = "=0.26.2"
 
 # windows deps
-junction = "=0.2.0"
+junction = "=1.1.0"
 winapi = "=0.3.9"
 windows-sys = { version = "0.52.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_WindowsProgramming", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Win32_System_Pipes", "Wdk_Storage_FileSystem", "Win32_System_Registry"] }
 winres = "=0.1.12"
