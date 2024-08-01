@@ -1120,7 +1120,7 @@ version = "1.45.5"
 dependencies = [
  "async-trait",
  "base32",
- "base64 0.21.7",
+ "base64 0.22.1",
  "bincode",
  "bytes",
  "cache_control",
@@ -1411,7 +1411,7 @@ dependencies = [
  "aes",
  "aes-gcm",
  "aes-kw",
- "base64 0.21.7",
+ "base64 0.22.1",
  "cbc",
  "const-oid",
  "ctr",
@@ -1484,7 +1484,7 @@ dependencies = [
 name = "deno_fetch"
 version = "0.188.0"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "bytes",
  "data-url",
  "deno_core",
@@ -1583,7 +1583,7 @@ version = "0.162.0"
 dependencies = [
  "async-compression",
  "async-trait",
- "base64 0.21.7",
+ "base64 0.22.1",
  "bencher",
  "brotli",
  "bytes",
@@ -1639,7 +1639,7 @@ version = "0.72.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64 0.21.7",
+ "base64 0.22.1",
  "bytes",
  "chrono",
  "deno_core",
@@ -7013,7 +7013,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-stream",
- "base64 0.21.7",
+ "base64 0.22.1",
  "bytes",
  "console_static_text",
  "deno_unsync",
