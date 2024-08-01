@@ -88,12 +88,15 @@ enum UpgradeCheckKind {
 #[async_trait(?Send)]
 trait VersionProvider: Clone {
   fn is_canary(&self) -> bool;
+  fn is_release_candidate(&self) -> bool;
   async fn latest_version(&self) -> Result<String, AnyError>;
   fn current_version(&self) -> Cow<str>;
 
   fn release_kind(&self) -> UpgradeReleaseKind {
     if self.is_canary() {
       UpgradeReleaseKind::Canary
+    } else if self.is_release_candidate() {
+      UpgradeReleaseKind::ReleaseCandidate
     } else {
       UpgradeReleaseKind::Stable
     }
@@ -120,6 +123,10 @@ impl RealVersionProvider {
 
 #[async_trait(?Send)]
 impl VersionProvider for RealVersionProvider {
+  fn is_release_candidate(&self) -> bool {
+    version::is_release_candidate()
+  }
+
   fn is_canary(&self) -> bool {
     version::is_canary()
   }
@@ -449,6 +456,9 @@ pub async fn upgrade(
       let release_kind = if upgrade_flags.canary {
         log::info!("Looking up latest canary version");
         UpgradeReleaseKind::Canary
+      } else if upgrade_flags.release_candidate {
+        log::info!("Looking up latest release candidate version");
+        UpgradeReleaseKind::ReleaseCandidate
       } else {
         log::info!("Looking up latest version");
         UpgradeReleaseKind::Stable
@@ -568,6 +578,7 @@ pub async fn upgrade(
 enum UpgradeReleaseKind {
   Stable,
   Canary,
+  ReleaseCandidate,
 }
 
 async fn get_latest_version(
@@ -588,6 +599,7 @@ fn normalize_version_from_server(
   match release_kind {
     UpgradeReleaseKind::Stable => text.trim_start_matches('v').to_string(),
     UpgradeReleaseKind::Canary => text.to_string(),
+    UpgradeReleaseKind::ReleaseCandidate => todo!(),
   }
 }
 
@@ -601,6 +613,7 @@ fn get_url(
     UpgradeReleaseKind::Canary => {
       Cow::Owned(format!("canary-{target_tuple}-latest.txt"))
     }
+    UpgradeReleaseKind::ReleaseCandidate => Cow::Borrowed("release-2-rc.txt"),
   };
   let query_param = match check_kind {
     UpgradeCheckKind::Execution => "",
@@ -782,6 +795,7 @@ mod test {
   struct TestUpdateCheckerEnvironment {
     file_text: Rc<RefCell<String>>,
     is_canary: Rc<RefCell<bool>>,
+    is_release_candidate: Rc<RefCell<bool>>,
     current_version: Rc<RefCell<String>>,
     latest_version: Rc<RefCell<Result<String, String>>>,
     time: Rc<RefCell<chrono::DateTime<chrono::Utc>>>,
@@ -793,6 +807,7 @@ mod test {
         file_text: Default::default(),
         current_version: Default::default(),
         is_canary: Default::default(),
+        is_release_candidate: Default::default(),
         latest_version: Rc::new(RefCell::new(Ok("".to_string()))),
         time: Rc::new(RefCell::new(chrono::Utc::now())),
       }
@@ -824,10 +839,18 @@ mod test {
     pub fn set_is_canary(&self, is_canary: bool) {
       *self.is_canary.borrow_mut() = is_canary;
     }
+
+    pub fn set_is_release_candidate(&self, is_release_candidate: bool) {
+      *self.is_release_candidate.borrow_mut() = is_release_candidate;
+    }
   }
 
   #[async_trait(?Send)]
   impl VersionProvider for TestUpdateCheckerEnvironment {
+    fn is_release_candidate(&self) -> bool {
+      *self.is_release_candidate.borrow()
+    }
+
     fn is_canary(&self) -> bool {
       *self.is_canary.borrow()
     }
@@ -1026,11 +1049,43 @@ mod test {
     );
     assert_eq!(
       get_url(
-        UpgradeReleaseKind::Stable,
+        UpgradeReleaseKind::ReleaseCandidate,
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Lsp
       ),
-      "https://dl.deno.land/release-latest.txt?lsp"
+      "https://dl.deno.land/release-2-rc.txt?lsp"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::ReleaseCandidate,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-2-rc.txt"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::ReleaseCandidate,
+        "aarch64-apple-darwin",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-2-rc.txt?lsp"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::ReleaseCandidate,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Execution
+      ),
+      "https://dl.deno.land/release-2-rc.txt"
+    );
+    assert_eq!(
+      get_url(
+        UpgradeReleaseKind::ReleaseCandidate,
+        "x86_64-pc-windows-msvc",
+        UpgradeCheckKind::Lsp
+      ),
+      "https://dl.deno.land/release-2-rc.txt?lsp"
     );
   }
 

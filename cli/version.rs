@@ -29,6 +29,11 @@ pub fn get_user_agent() -> &'static str {
   }
 }
 
+// TODO(bartlomieju): how do we decide on that?
+pub fn is_release_candidate() -> bool {
+  false
+}
+
 pub fn is_canary() -> bool {
   option_env!("DENO_CANARY").is_some()
 }
