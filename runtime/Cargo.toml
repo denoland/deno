@@ -117,7 +117,7 @@ regex.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
 serde.workspace = true
 signal-hook = "0.3.17"
-signal-hook-registry = "1.4.0"
+signal-hook-registry = "1.4.2"
 tokio.workspace = true
 tokio-metrics.workspace = true
 twox-hash.workspace = true
@@ -126,7 +126,7 @@ which.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
-ntapi = "0.4.0"
+ntapi = "0.4.1"
 windows-sys.workspace = true
 
 [target.'cfg(unix)'.dependencies]

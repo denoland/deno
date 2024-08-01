@@ -93,7 +93,7 @@ chrono = { workspace = true, features = ["now"] }
 clap = { version = "=4.4.17", features = ["env", "string"] }
 clap_complete = "=4.4.7"
 clap_complete_fig = "=4.4.2"
-color-print = "0.3.5"
+color-print = "0.3.6"
 console_static_text.workspace = true
 dashmap = "5.5.3"
 data-encoding.workspace = true
@@ -127,12 +127,12 @@ memmem.workspace = true
 monch.workspace = true
 notify.workspace = true
 once_cell.workspace = true
-open = "5.0.1"
+open = "5.3.0"
 p256.workspace = true
 pathdiff = "0.2.1"
 percent-encoding.workspace = true
 phf.workspace = true
-quick-junit = "^0.3.5"
+quick-junit = "^0.3.6"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 ring.workspace = true

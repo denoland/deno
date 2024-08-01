@@ -22,7 +22,7 @@ deno_permissions.workspace = true
 encoding_rs.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
-serde = "1.0.149"
+serde = "1.0.204"
 tokio.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 

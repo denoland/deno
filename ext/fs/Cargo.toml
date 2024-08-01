@@ -25,7 +25,7 @@ deno_permissions.workspace = true
 filetime.workspace = true
 libc.workspace = true
 rand.workspace = true
-rayon = "1.8.0"
+rayon = "1.10.0"
 serde.workspace = true
 
 [target.'cfg(unix)'.dependencies]

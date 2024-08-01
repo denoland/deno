@@ -39,7 +39,7 @@ hyper-util.workspace = true
 hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 itertools = "0.10"
 memmem.workspace = true
-mime = "0.3.16"
+mime = "0.3.17"
 once_cell.workspace = true
 percent-encoding.workspace = true
 phf.workspace = true

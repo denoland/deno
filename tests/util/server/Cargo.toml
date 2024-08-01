@@ -15,7 +15,7 @@ path = "src/test_server.rs"
 
 [dependencies]
 anyhow.workspace = true
-async-stream = "0.3.3"
+async-stream = "0.3.5"
 base64.workspace = true
 bytes.workspace = true
 console_static_text.workspace = true
