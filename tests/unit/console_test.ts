@@ -1066,6 +1066,24 @@ Deno.test(async function consoleTestStringifyPromises() {
   assertEquals(strLines[1], "  <rejected> Error: Whoops");
 });
 
+Deno.test(function consoleTestStringifyIntlLocale() {
+  assertEquals(
+    stringify(new Intl.Locale("zh-Hant-TW", { hourCycle: "h12" })),
+    `Locale [Intl.Locale] {
+  baseName: "zh-Hant-TW",
+  calendar: undefined,
+  caseFirst: undefined,
+  collation: undefined,
+  hourCycle: "h12",
+  language: "zh",
+  numberingSystem: undefined,
+  numeric: false,
+  region: "TW",
+  script: "Hant"
+}`,
+  );
+});
+
 Deno.test(function consoleTestWithCustomInspector() {
   class A {
     [customInspect](
