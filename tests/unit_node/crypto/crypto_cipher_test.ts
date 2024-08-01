@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import { buffer, text } from "node:stream/consumers";
-import { assertEquals, assertThrows } from "@std/assert/mod.ts";
+import { assertEquals, assertThrows } from "@std/assert";
 
 const rsaPrivateKey = Deno.readTextFileSync(
   new URL("../testdata/rsa_private.pem", import.meta.url),

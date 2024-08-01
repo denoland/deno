@@ -13,10 +13,10 @@
  * all share the same working directory.
  */
 
-import { magenta } from "@std/fmt/colors.ts";
-import { pooledMap } from "@std/async/pool.ts";
-import { dirname, fromFileUrl, join } from "@std/path/mod.ts";
-import { assertEquals, fail } from "@std/assert/mod.ts";
+import { magenta } from "@std/fmt/colors";
+import { pooledMap } from "@std/async/pool";
+import { dirname, fromFileUrl, join } from "@std/path";
+import { assertEquals, fail } from "@std/assert";
 import {
   config,
   getPathsFromTestSuites,

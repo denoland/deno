@@ -2845,7 +2845,7 @@ fn vendor_subcommand() -> Command {
       .long_about(
         "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.
 Add `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.
-        
+
 Vendor remote modules into a local directory.
 
 Analyzes the provided modules along with their dependencies, downloads
@@ -2894,8 +2894,7 @@ Remote modules and multiple modules may also be specified:
 
 fn publish_subcommand() -> Command {
   Command::new("publish")
-    .hide(true)
-    .about("Unstable preview feature: Publish the current working directory's package or workspace")
+    .about("Publish the current working directory's package or workspace")
     // TODO: .long_about()
     .defer(|cmd| {
       cmd.arg(

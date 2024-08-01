@@ -11,14 +11,18 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_node::errors::PackageFolderResolveError;
-use deno_runtime::deno_node::errors::PackageFolderResolveIoError;
-use deno_runtime::deno_node::errors::PackageNotFoundError;
-use deno_runtime::deno_node::load_pkg_json;
+use deno_runtime::deno_node::DenoPkgJsonFsAdapter;
 use deno_runtime::deno_node::NodePermissions;
-use deno_runtime::deno_node::NpmResolver;
+use deno_runtime::deno_node::NodeRequireResolver;
+use deno_runtime::deno_node::NpmProcessStateProvider;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::package::PackageReq;
+use node_resolver::errors::PackageFolderResolveError;
+use node_resolver::errors::PackageFolderResolveIoError;
+use node_resolver::errors::PackageJsonLoadError;
+use node_resolver::errors::PackageNotFoundError;
+use node_resolver::load_pkg_json;
+use node_resolver::NpmResolver;
 
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
@@ -50,6 +54,15 @@ pub struct ByonmCliNpmResolver {
 }
 
 impl ByonmCliNpmResolver {
+  fn load_pkg_json(
+    &self,
+    path: &Path,
+  ) -> Result<Option<Arc<PackageJson>>, PackageJsonLoadError> {
+    load_pkg_json(&DenoPkgJsonFsAdapter(self.fs.as_ref()), path)
+  }
+}
+
+impl ByonmCliNpmResolver {
   /// Finds the ancestor package.json that contains the specified dependency.
   pub fn find_ancestor_package_json_with_dep(
     &self,
@@ -60,9 +73,7 @@ impl ByonmCliNpmResolver {
     let mut current_folder = referrer_path.parent()?;
     loop {
       let pkg_json_path = current_folder.join("package.json");
-      if let Ok(Some(pkg_json)) =
-        load_pkg_json(self.fs.as_ref(), &pkg_json_path)
-      {
+      if let Ok(Some(pkg_json)) = self.load_pkg_json(&pkg_json_path) {
         if let Some(deps) = &pkg_json.dependencies {
           if deps.contains_key(dep_name) {
             return Some(pkg_json);
@@ -119,9 +130,7 @@ impl ByonmCliNpmResolver {
       let mut current_path = file_path.as_path();
       while let Some(dir_path) = current_path.parent() {
         let package_json_path = dir_path.join("package.json");
-        if let Some(pkg_json) =
-          load_pkg_json(self.fs.as_ref(), &package_json_path)?
-        {
+        if let Some(pkg_json) = self.load_pkg_json(&package_json_path)? {
           if let Some(alias) =
             resolve_alias_from_pkg_json(req, pkg_json.as_ref())
           {
@@ -136,9 +145,7 @@ impl ByonmCliNpmResolver {
     if let Some(root_node_modules_dir) = &self.root_node_modules_dir {
       let root_pkg_json_path =
         root_node_modules_dir.parent().unwrap().join("package.json");
-      if let Some(pkg_json) =
-        load_pkg_json(self.fs.as_ref(), &root_pkg_json_path)?
-      {
+      if let Some(pkg_json) = self.load_pkg_json(&root_pkg_json_path)? {
         if let Some(alias) = resolve_alias_from_pkg_json(req, pkg_json.as_ref())
         {
           return Ok((pkg_json, alias));
@@ -158,17 +165,6 @@ impl ByonmCliNpmResolver {
 }
 
 impl NpmResolver for ByonmCliNpmResolver {
-  fn get_npm_process_state(&self) -> String {
-    serde_json::to_string(&NpmProcessState {
-      kind: NpmProcessStateKind::Byonm,
-      local_node_modules_path: self
-        .root_node_modules_dir
-        .as_ref()
-        .map(|p| p.to_string_lossy().to_string()),
-    })
-    .unwrap()
-  }
-
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
@@ -226,7 +222,9 @@ impl NpmResolver for ByonmCliNpmResolver {
         .to_ascii_lowercase()
         .contains("/node_modules/")
   }
+}
 
+impl NodeRequireResolver for ByonmCliNpmResolver {
   fn ensure_read_permission(
     &self,
     permissions: &mut dyn NodePermissions,
@@ -242,8 +240,31 @@ impl NpmResolver for ByonmCliNpmResolver {
   }
 }
 
+impl NpmProcessStateProvider for ByonmCliNpmResolver {
+  fn get_npm_process_state(&self) -> String {
+    serde_json::to_string(&NpmProcessState {
+      kind: NpmProcessStateKind::Byonm,
+      local_node_modules_path: self
+        .root_node_modules_dir
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string()),
+    })
+    .unwrap()
+  }
+}
+
 impl CliNpmResolver for ByonmCliNpmResolver {
   fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver> {
+    self
+  }
+
+  fn into_require_resolver(self: Arc<Self>) -> Arc<dyn NodeRequireResolver> {
+    self
+  }
+
+  fn into_process_state_provider(
+    self: Arc<Self>,
+  ) -> Arc<dyn NpmProcessStateProvider> {
     self
   }
 
@@ -286,9 +307,14 @@ impl CliNpmResolver for ByonmCliNpmResolver {
       concat!(
         "Could not find \"{}\" in a node_modules folder. ",
         "Deno expects the node_modules/ directory to be up to date. ",
-        "Did you forget to run `npm install`?"
+        "Did you forget to run `{}`?"
       ),
       alias,
+      if *crate::args::DENO_FUTURE {
+        "deno install"
+      } else {
+        "npm install"
+      }
     );
   }
 

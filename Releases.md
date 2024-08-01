@@ -6,6 +6,56 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.45.5 / 2024.07.31
+
+- fix(cli): Unhide publish subcommand help string (#24787)
+- fix(compile/windows): handle cjs re-export of relative path with parent
+  component (#24795)
+- fix(ext/node): handle node child_process with --v8-options flag (#24804)
+- fix(ext/node): prevent panic in http2.connect with uppercase header names
+  (#24780)
+- fix(ext/webgpu): don't crash while constructing GPUOutOfMemoryError (#24807)
+- fix(http): Adjust hostname display for Windows when using 0.0.0.0 (#24698)
+- fix(node): Rework node:child_process IPC (#24763)
+- fix(node): support wildcards in package.json imports (#24794)
+- fix(node/fs/promises): watch should be async iterable (#24805)
+- fix(node/timers/promises): add scheduler APIs (#24802)
+- fix(npmrc): skip loading .npmrc in home dir on permission error (#24758)
+- fix(types): fix streams types (#24770)
+- fix(unstable/compile): handle byonm import in sub dir (#24755)
+- fix: actually add missing `node:readline/promises` module (#24772)
+- fix: adapt to new jupyter runtime API and include session IDs (#24762)
+- perf(ext/fetch): speed up `resp.clone()` (#24812)
+- perf(ext/node): improve `Buffer` from string performance (#24567)
+
+### 1.45.4 / 2024.07.26
+
+- Reland "fix: CFunctionInfo and CTypeInfo leaks (#24634)" (#24692)
+- fix(ext/fetch): respect authority from URL (#24705)
+- fix(ext/fetch): use correct ALPN to proxies (#24696)
+- fix(ext/node): read correct CPU usage stats on Linux (#24732)
+- fix(ext/node/net): emit `error` before `close` when connection is refused
+  (#24656)
+- fix(future): Emit `deno install` warning less often, suggest `deno install` in
+  error message (#24706)
+- fix(lsp): rewrite import for 'infer return type' action (#24685)
+- fix(node): better detection for when to surface node resolution errors
+  (#24653)
+- fix(node): cjs pkg dynamically importing esm-only pkg fails (#24730)
+- fix(node/worker_threads): support `port.once()` (#24725)
+- fix(publish): workspace included license file had incorrect path (#24747)
+- fix(unstable): move sloppy-import warnings to lint rule (#24710)
+- fix(upgrade): do not error if config in cwd invalid (#24689)
+- fix(workspaces/publish): include the license file from the workspace root if
+  not in pkg (#24714)
+- fix: enable the reporting of parsing related problems when running deno lint
+  (#24332)
+- fix: support `npm:bindings` and `npm:callsites` packages (#24727)
+- fix: update lsp error message of 'relative import path' to 'use deno add' for
+  npm/jsr packages (#24524)
+- fix: decode percent-encoding source string in `Error.stack` (#24709)
+- perf: update deno_doc (#24700)
+
 ### 1.45.3 / 2024.07.22
 
 - Reland "refactor(fetch): reimplement fetch with hyper instead of reqwest"

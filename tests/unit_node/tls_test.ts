@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals, assertInstanceOf } from "@std/assert/mod.ts";
-import { delay } from "@std/async/delay.ts";
-import { fromFileUrl, join } from "@std/path/mod.ts";
+import { assertEquals, assertInstanceOf } from "@std/assert";
+import { delay } from "@std/async/delay";
+import { fromFileUrl, join } from "@std/path";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
@@ -48,6 +48,7 @@ for (
     conn.close();
     outgoing.destroy();
     listener.close();
+    await new Promise((resolve) => outgoing.on("close", resolve));
   });
 }
 
@@ -93,6 +94,7 @@ Connection: close
 
 // https://github.com/denoland/deno/pull/20120
 Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
   const ctl = new AbortController();
   const serve = Deno.serve({
     port: 8443,
@@ -119,8 +121,10 @@ Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
     conn.destroy();
     ctl.abort();
   });
+  conn.on("close", resolve);
 
   await serve.finished;
+  await promise;
 });
 
 Deno.test("tls.createServer creates a TLS server", async () => {
@@ -136,6 +140,7 @@ Deno.test("tls.createServer creates a TLS server", async () => {
           socket.destroy();
         }
       });
+      socket.on("close", () => deferred.resolve());
     },
   );
   server.listen(0, async () => {
@@ -166,7 +171,6 @@ Deno.test("tls.createServer creates a TLS server", async () => {
 
     conn.close();
     server.close();
-    deferred.resolve();
   });
   await deferred.promise;
 });

@@ -38,6 +38,7 @@ use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_node::NodeExtInitServices;
 use deno_permissions::PermissionsContainer;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
@@ -155,8 +156,7 @@ pub struct WorkerOptions {
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub node_resolver: Option<Arc<deno_node::NodeResolver>>,
-  pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
+  pub node_services: Option<NodeExtInitServices>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
@@ -224,8 +224,7 @@ impl Default for WorkerOptions {
       cache_storage_dir: Default::default(),
       broadcast_channel: Default::default(),
       root_cert_store_provider: Default::default(),
-      node_resolver: Default::default(),
-      npm_resolver: Default::default(),
+      node_services: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
       startup_snapshot: Default::default(),
@@ -414,8 +413,7 @@ impl MainWorker {
         options.fs.clone(),
       ),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
-        options.node_resolver,
-        options.npm_resolver,
+        options.node_services,
         options.fs,
       ),
       // Ops from this crate
@@ -450,7 +448,7 @@ impl MainWorker {
       ops::web_worker::deno_web_worker::init_ops_and_esm().disable(),
     ];
 
-    #[cfg(hmr)]
+    #[cfg(feature = "hmr")]
     assert!(
       cfg!(not(feature = "only_snapshotted_js_sources")),
       "'hmr' is incompatible with 'only_snapshotted_js_sources'."

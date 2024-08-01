@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.99.0"
+version = "0.101.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,7 +14,7 @@ description = "Node compatibility for Deno"
 path = "lib.rs"
 
 [features]
-sync_fs = ["deno_package_json/sync"]
+sync_fs = ["deno_package_json/sync", "node_resolver/sync"]
 
 [dependencies]
 aead-gcm-stream = "0.1"
@@ -46,6 +46,8 @@ hkdf.workspace = true
 home = "0.5.9"
 http.workspace = true
 http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 idna = "0.3.0"
 indexmap.workspace = true
 ipnetwork = "0.20.0"
@@ -55,6 +57,8 @@ libc.workspace = true
 libz-sys.workspace = true
 md-5 = { version = "0.10.5", features = ["oid"] }
 md4 = "0.10.2"
+memchr = "2.7.4"
+node_resolver.workspace = true
 num-bigint.workspace = true
 num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"

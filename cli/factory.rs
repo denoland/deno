@@ -45,6 +45,7 @@ use crate::resolver::SloppyImportsResolver;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::tools::coverage::CoverageCollector;
+use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -61,13 +62,14 @@ use deno_core::futures::FutureExt;
 use deno_core::FeatureChecker;
 
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node::analyze::NodeCodeTranslator;
+use deno_runtime::deno_node::DenoFsNodeResolverEnv;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use log::warn;
+use node_resolver::analyze::NodeCodeTranslator;
 use once_cell::sync::OnceCell;
 use std::future::Future;
 use std::sync::Arc;
@@ -179,6 +181,7 @@ struct CliFactoryServices {
   node_code_translator: Deferred<Arc<CliNodeCodeTranslator>>,
   node_resolver: Deferred<Arc<NodeResolver>>,
   npm_resolver: Deferred<Arc<dyn CliNpmResolver>>,
+  sloppy_imports_resolver: Deferred<Option<Arc<SloppyImportsResolver>>>,
   text_only_progress_bar: Deferred<ProgressBar>,
   type_checker: Deferred<Arc<TypeChecker>>,
   cjs_resolutions: Deferred<Arc<CjsResolutionStore>>,
@@ -397,6 +400,23 @@ impl CliFactory {
       .await
   }
 
+  pub fn sloppy_imports_resolver(
+    &self,
+  ) -> Result<Option<&Arc<SloppyImportsResolver>>, AnyError> {
+    self
+      .services
+      .sloppy_imports_resolver
+      .get_or_try_init(|| {
+        Ok(
+          self
+            .cli_options()?
+            .unstable_sloppy_imports()
+            .then(|| Arc::new(SloppyImportsResolver::new(self.fs().clone()))),
+        )
+      })
+      .map(|maybe| maybe.as_ref())
+  }
+
   pub async fn workspace_resolver(
     &self,
   ) -> Result<&Arc<WorkspaceResolver>, AnyError> {
@@ -440,11 +460,7 @@ impl CliFactory {
         async {
           let cli_options = self.cli_options()?;
           Ok(Arc::new(CliGraphResolver::new(CliGraphResolverOptions {
-            sloppy_imports_resolver: if cli_options.unstable_sloppy_imports() {
-              Some(SloppyImportsResolver::new(self.fs().clone()))
-            } else {
-              None
-            },
+            sloppy_imports_resolver: self.sloppy_imports_resolver()?.cloned(),
             node_resolver: Some(self.cli_node_resolver().await?.clone()),
             npm_resolver: if cli_options.no_npm() {
               None
@@ -524,6 +540,13 @@ impl CliFactory {
     })
   }
 
+  pub async fn lint_rule_provider(&self) -> Result<LintRuleProvider, AnyError> {
+    Ok(LintRuleProvider::new(
+      self.sloppy_imports_resolver()?.cloned(),
+      Some(self.workspace_resolver().await?.clone()),
+    ))
+  }
+
   pub async fn node_resolver(&self) -> Result<&Arc<NodeResolver>, AnyError> {
     self
       .services
@@ -531,7 +554,7 @@ impl CliFactory {
       .get_or_try_init_async(
         async {
           Ok(Arc::new(NodeResolver::new(
-            self.fs().clone(),
+            DenoFsNodeResolverEnv::new(self.fs().clone()),
             self.npm_resolver().await?.clone().into_npm_resolver(),
           )))
         }
@@ -555,7 +578,7 @@ impl CliFactory {
 
         Ok(Arc::new(NodeCodeTranslator::new(
           cjs_esm_analyzer,
-          self.fs().clone(),
+          DenoFsNodeResolverEnv::new(self.fs().clone()),
           self.node_resolver().await?.clone(),
           self.npm_resolver().await?.clone().into_npm_resolver(),
         )))

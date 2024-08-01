@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assertMatch, assertRejects } from "@std/assert/mod.ts";
-import { Buffer, BufReader, BufWriter } from "@std/io/mod.ts";
+import { assertMatch, assertRejects } from "@std/assert";
+import { Buffer, BufReader, BufWriter } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -748,9 +748,11 @@ Deno.test(
     const consoleLog = console.log;
     console.log = (msg) => {
       try {
-        const match = msg.match(/Listening on http:\/\/localhost:(\d+)\//);
+        const match = msg.match(
+          /Listening on http:\/\/(localhost|0\.0\.0\.0):(\d+)\//,
+        );
         assert(!!match, `Didn't match ${msg}`);
-        const port = +match[1];
+        const port = +match[2];
         assert(port > 0 && port < 65536);
       } finally {
         ac.abort();

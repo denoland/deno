@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals } from "@std/assert/mod.ts";
-import { fromFileUrl, relative } from "@std/path/mod.ts";
+import { assert, assertEquals } from "@std/assert";
+import { fromFileUrl, relative } from "@std/path";
 import {
   brotliCompress,
   brotliCompressSync,
@@ -123,7 +123,9 @@ Deno.test(
 
 Deno.test("should work with dataview", () => {
   const buf = Buffer.from("hello world");
-  const compressed = brotliCompressSync(new DataView(buf.buffer));
+  const compressed = brotliCompressSync(
+    new DataView(buf.buffer, buf.byteOffset, buf.byteLength),
+  );
   const decompressed = brotliDecompressSync(compressed);
   assertEquals(decompressed.toString(), "hello world");
 });
@@ -141,7 +143,9 @@ Deno.test(
   "zlib compression with dataview",
   () => {
     const buf = Buffer.from("hello world");
-    const compressed = gzipSync(new DataView(buf.buffer));
+    const compressed = gzipSync(
+      new DataView(buf.buffer, buf.byteOffset, buf.byteLength),
+    );
     const decompressed = unzipSync(compressed);
     assertEquals(decompressed.toString(), "hello world");
   },
