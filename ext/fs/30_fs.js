@@ -612,22 +612,33 @@ function seek(
   return op_fs_seek_async(rid, offset, whence);
 }
 
+const DEFAULT_READ_OPTIONS = {
+  __proto__: null,
+  read: true,
+  write: false,
+  create: false,
+  truncate: false,
+  append: false,
+  createNew: false,
+  mode: null,
+};
+
 function openSync(
   path,
   options,
 ) {
   if (options) checkOpenOptions(options);
+  options ??= DEFAULT_READ_OPTIONS;
   const rid = op_fs_open_sync(
     pathFromURL(path),
-    options?.read ?? true,
-    options?.write ?? false,
-    options?.create ?? false,
-    options?.truncate ?? false,
-    options?.append ?? false,
-    options?.createNew ?? false,
-    options?.mode ?? 0,
+    options.read ?? false,
+    options.write ?? false,
+    options.create ?? false,
+    options.truncate ?? false,
+    options.append ?? false,
+    options.createNew ?? false,
+    options.mode ?? 0,
   );
-
   return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
 }
 
@@ -636,15 +647,16 @@ async function open(
   options,
 ) {
   if (options) checkOpenOptions(options);
+  options ??= DEFAULT_READ_OPTIONS;
   const rid = await op_fs_open_async(
     pathFromURL(path),
-    options?.read ?? true,
-    options?.write ?? false,
-    options?.create ?? false,
-    options?.truncate ?? false,
-    options?.append ?? false,
-    options?.createNew ?? false,
-    options?.mode ?? 0,
+    options.read ?? false,
+    options.write ?? false,
+    options.create ?? false,
+    options.truncate ?? false,
+    options.append ?? false,
+    options.createNew ?? false,
+    options.mode ?? 0,
   );
 
   return new FsFile(rid, SymbolFor("Deno.internal.FsFile"));
