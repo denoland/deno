@@ -2399,9 +2399,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-jupyter"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c67b0e54b552a4775c221b44ed33be918c400bd8041d1f044f947fbb01025cc0"
+checksum = "5da58744ea71a931702710656a5986bfe76e5fdad37921aa4cb12195729feaf2"
 dependencies = [
  "anyhow",
  "dprint-core",
