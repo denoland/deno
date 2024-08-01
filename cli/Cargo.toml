@@ -104,7 +104,7 @@ dprint-plugin-jupyter = "=0.1.4"
 dprint-plugin-markdown = "=0.17.2"
 dprint-plugin-typescript = "=0.91.5"
 env_logger = "=0.11.5"
-fancy-regex = "=0.10.0"
+fancy-regex = "=0.13.0"
 faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
 flate2.workspace = true
