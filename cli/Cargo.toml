@@ -132,7 +132,7 @@ p256.workspace = true
 pathdiff = "0.2.1"
 percent-encoding.workspace = true
 phf.workspace = true
-quick-junit = "^0.3.6"
+quick-junit = "0.4"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 ring.workspace = true
