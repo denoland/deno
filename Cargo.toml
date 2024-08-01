@@ -104,7 +104,7 @@ data-encoding = "2.6.0"
 data-url = "=0.3.0"
 deno_cache_dir = "=0.10.2"
 deno_package_json = { version = "=0.1.1", default-features = false }
-dlopen2 = "0.6.1"
+dlopen2 = "0.7.0"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.8", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
 encoding_rs = "=0.8.33"

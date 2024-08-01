@@ -15,7 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
-deno_native_certs = "0.3.0"
+deno_native_certs = "0.3.1"
 rustls.workspace = true
 rustls-pemfile.workspace = true
 rustls-tokio-stream.workspace = true
