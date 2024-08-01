@@ -728,7 +728,7 @@ pub async fn run(
 
   // Initialize v8 once from the main thread.
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));
-  deno_core::JsRuntime::init_platform(None);
+  deno_core::JsRuntime::init_platform(None, true);
 
   let mut worker = worker_factory
     .create_main_worker(WorkerExecutionMode::Run, main_module, permissions)
