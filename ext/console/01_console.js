@@ -792,6 +792,24 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
         }
       } else if (
         proxyDetails === null &&
+        ObjectPrototypeIsPrototypeOf(globalThis.Intl.Locale.prototype, value)
+      ) {
+        braces[0] = `${getPrefix(constructor, tag, "Intl.Locale")}{`;
+        ArrayPrototypeUnshift(
+          keys,
+          "baseName",
+          "calendar",
+          "caseFirst",
+          "collation",
+          "hourCycle",
+          "language",
+          "numberingSystem",
+          "numeric",
+          "region",
+          "script",
+        );
+      } else if (
+        proxyDetails === null &&
         typeof globalThis.Temporal !== "undefined" &&
         (
           ObjectPrototypeIsPrototypeOf(
@@ -1583,6 +1601,10 @@ function formatPromise(ctx, value, recurseTimes) {
     ];
   }
   return output;
+}
+
+function formatIntlLocale(ctx, value, recurseTimes) {
+  return [ctx.stylize(value.baseName, "special")];
 }
 
 function formatWeakCollection(ctx) {
