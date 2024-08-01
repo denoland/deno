@@ -151,7 +151,7 @@ class URLPattern {
    * @param {string} [baseURLOrOptions]
    * @param {string} [maybeOptions]
    */
-  constructor(input, baseURLOrOptions = {}, maybeOptions = {}) {
+  constructor(input, baseURLOrOptions = undefined, maybeOptions = undefined) {
     this[webidl.brand] = webidl.brand;
     const prefix = "Failed to construct 'URLPattern'";
 
