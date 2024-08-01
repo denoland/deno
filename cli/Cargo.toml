@@ -145,7 +145,7 @@ shell-escape = "=0.1.5"
 spki = { version = "0.7", features = ["pem"] }
 tar.workspace = true
 tempfile.workspace = true
-text-size = "=1.1.0"
+text-size = "=1.1.1"
 text_lines = "=0.6.0"
 thiserror.workspace = true
 tokio.workspace = true
