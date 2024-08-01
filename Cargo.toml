@@ -193,7 +193,7 @@ uuid = { version = "1.10.0", features = ["v4"] }
 webpki-roots = "0.26"
 which = "6.0.2"
 zeromq = { version = "=0.4.0", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
-zstd = "=0.12.4"
+zstd = "=0.13.2"
 
 # crypto
 hkdf = "0.12.4"
