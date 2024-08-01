@@ -116,3 +116,27 @@ pub fn maybe_transpile_source(
 
   Ok((source_text.into(), maybe_source_map))
 }
+
+pub fn import_assertion_callback(
+  args: deno_core::ImportAssertionsSupportCustomCallbackArgs,
+) {
+  let mut msg = deno_terminal::colors::yellow("⚠️  Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.").to_string();
+  if let Some(specifier) = args.maybe_specifier {
+    if let Some(source_line) = args.maybe_source_line {
+      msg.push('\n');
+      msg.push_str(&source_line);
+      msg.push('\n');
+      msg.push_str(&format!("{:0width$}^", " ", width = args.column_number));
+    }
+    msg.push_str(&format!(
+      "  at {}:{}:{}",
+      specifier,
+      args.maybe_line_number.unwrap(),
+      args.column_number
+    ));
+    #[allow(clippy::print_stderr)]
+    {
+      eprintln!("{}", msg);
+    }
+  }
+}

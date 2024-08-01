@@ -558,6 +558,10 @@ impl WebWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
+      import_assertions_support:
+        deno_core::ImportAssertionsSupport::CustomCallback(Box::new(
+          crate::shared::import_assertion_callback,
+        )),
       ..Default::default()
     });
 
