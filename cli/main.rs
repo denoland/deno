@@ -399,7 +399,7 @@ fn resolve_flags_and_init(
   };
 
   init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
-  deno_core::JsRuntime::init_platform(None, true);
+  deno_core::JsRuntime::init_platform(None, !*DENO_FUTURE);
   util::logger::init(flags.log_level);
 
   Ok(flags)
