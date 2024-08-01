@@ -412,7 +412,7 @@ pub fn op_read_line_prompt(
   let mut editor = Editor::<(), rustyline::history::DefaultHistory>::new()
     .expect("Failed to create editor.");
 
-  editor.set_keyseq_timeout(1);
+  editor.set_keyseq_timeout(Some(1));
   editor
     .bind_sequence(KeyEvent(KeyCode::Esc, Modifiers::empty()), Cmd::Interrupt);
 

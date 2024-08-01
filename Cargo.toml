@@ -159,7 +159,7 @@ rustls = { version = "0.23.12", default-features = false, features = ["logging",
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.3.0"
 rustls-webpki = "0.102"
-rustyline = "=13.0.0"
+rustyline = "=14.0.0"
 saffron = "=0.1.0"
 scopeguard = "1.2.0"
 serde = { version = "1.0.204", features = ["derive"] }
