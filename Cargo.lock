@@ -840,12 +840,12 @@ dependencies = [
 
 [[package]]
 name = "console_static_text"
-version = "0.8.1"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4be93df536dfbcbd39ff7c129635da089901116b88bfc29ec1acb9b56f8ff35"
+checksum = "47a00bd3837aa7e8dc15766ded788486eba8aee03dab4e56f7c7051012a81c23"
 dependencies = [
  "unicode-width",
- "vte",
+ "vte 0.13.0",
 ]
 
 [[package]]
@@ -6404,7 +6404,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55ff8ef943b384c414f54aefa961dd2bd853add74ec75e7ac74cf91dba62bcfa"
 dependencies = [
- "vte",
+ "vte 0.11.1",
 ]
 
 [[package]]
@@ -7783,6 +7783,16 @@ name = "vte"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f5022b5fbf9407086c180e9557be968742d839e68346af7792b8592489732197"
+dependencies = [
+ "utf8parse",
+ "vte_generate_state_changes",
+]
+
+[[package]]
+name = "vte"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40eb22ae96f050e0c0d6f7ce43feeae26c348fc4dea56928ca81537cfaa6188b"
 dependencies = [
  "arrayvec",
  "utf8parse",
