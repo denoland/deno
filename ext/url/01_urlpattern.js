@@ -165,16 +165,20 @@ class URLPattern {
         prefix,
         "Argument 2",
       );
-      options = webidl.converters.URLPatternOptions(
-        maybeOptions,
-        prefix,
-        "Argument 3",
-      );
+      if (options !== undefined) {
+        options = webidl.converters.URLPatternOptions(
+          maybeOptions,
+          prefix,
+          "Argument 3",
+        );
+      } else {
+        options = { __proto: null };
+      }
     } else {
       if (input !== undefined) {
         input = webidl.converters.URLPatternInput(input, prefix, "Argument 1");
       } else {
-        input = {};
+        input = { __proto__: null };
       }
       options = webidl.converters.URLPatternOptions(
         maybeOptions,
