@@ -172,7 +172,7 @@ class URLPattern {
           "Argument 3",
         );
       } else {
-        options = { __proto: null };
+        options = { __proto__: null };
       }
     } else {
       if (input !== undefined) {
