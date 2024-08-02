@@ -1,7 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { AsyncLocalStorage, AsyncResource } from "node:async_hooks";
-import process from "node:process";
-import { setImmediate } from "node:timers";
 import { assert, assertEquals } from "@std/assert";
 
 Deno.test(async function foo() {
@@ -94,7 +92,7 @@ Deno.test(async function enterWith() {
   });
 
   assertEquals(await deferred.promise, { x: 2 });
-  assertEquals(await deferred1.promise, null);
+  assertEquals(await deferred1.promise, { x: 1 });
 });
 
 Deno.test(async function snapshot() {
@@ -136,27 +134,4 @@ Deno.test(function asyncResourceStub() {
 Deno.test(function emitDestroyStub() {
   const resource = new AsyncResource("foo");
   assert(typeof resource.emitDestroy === "function");
-});
-
-Deno.test(async function worksWithAsyncAPIs() {
-  const store = new AsyncLocalStorage();
-  const test = () => assertEquals(store.getStore(), "data");
-  await store.run("data", async () => {
-    test();
-    queueMicrotask(() => test());
-    process.nextTick(() => test());
-    setImmediate(() => test());
-    setTimeout(() => test(), 0);
-    const intervalId = setInterval(() => {
-      test();
-      clearInterval(intervalId);
-    }, 0);
-
-    store.run("data2", () => {
-      assertEquals(store.getStore(), "data2");
-    });
-
-    await new Promise((r) => setTimeout(r, 50));
-    test();
-  });
 });
