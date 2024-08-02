@@ -835,13 +835,14 @@ fn stat_extra(
   unsafe fn query_file_information(
     handle: winapi::shared::ntdef::HANDLE,
   ) -> Result<FILE_ALL_INFORMATION, NTSTATUS> {
+    use windows_sys::Wdk::Storage::FileSystem::NtQueryInformationFile;
     use windows_sys::Win32::Foundation::RtlNtStatusToDosError;
     use windows_sys::Win32::Foundation::ERROR_MORE_DATA;
     use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
-    use windows_sys::Wdk::Storage::FileSystem::NtQueryInformationFile;
 
     let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
-    let mut io_status_block = std::mem::MaybeUninit::<IO_STATUS_BLOCK>::zeroed();
+    let mut io_status_block =
+      std::mem::MaybeUninit::<IO_STATUS_BLOCK>::zeroed();
     let status = NtQueryInformationFile(
       handle as _,
       io_status_block.as_mut_ptr(),
@@ -857,7 +858,6 @@ fn stat_extra(
       // to have that we should retry. However, since we only use BasicInformation and StandardInformation, it is fine to ignore it
       // since struct is populated with other data anyway.
       /// https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile#remarksdd
-
       if converted_status != ERROR_MORE_DATA {
         return Err(converted_status as NTSTATUS);
       }
@@ -887,7 +887,9 @@ fn stat_extra(
     fsstat.dev = result?;
 
     if let Ok(file_info) = query_file_information(file_handle) {
-      fsstat.ctime = Some(windows_time_to_unix_time_msec(&file_info.BasicInformation.ChangeTime) as u64);
+      fsstat.ctime = Some(windows_time_to_unix_time_msec(
+        &file_info.BasicInformation.ChangeTime,
+      ) as u64);
 
       if file_info.BasicInformation.FileAttributes
         & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT
