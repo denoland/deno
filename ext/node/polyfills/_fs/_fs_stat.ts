@@ -336,9 +336,9 @@ export function convertFileInfoToBigIntStats(
     isFIFO: () => false,
     isCharacterDevice: () => false,
     isSocket: () => false,
-    ctime: origin.mtime,
-    ctimeMs: origin.mtime ? BigInt(origin.mtime.getTime()) : null,
-    ctimeNs: origin.mtime ? BigInt(origin.mtime.getTime()) * 1000000n : null,
+    ctime: origin.ctime,
+    ctimeMs: origin.ctime ? BigInt(origin.ctime.getTime()) : null,
+    ctimeNs: origin.ctime ? BigInt(origin.ctime.getTime()) * 1000000n : null,
   });
   return stats;
 }
