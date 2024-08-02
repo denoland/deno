@@ -168,7 +168,7 @@ function run({
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
-function spawnChildInner(opFn, command, apiName, {
+function spawnChildInner(command, apiName, {
   args = [],
   cwd = undefined,
   clearEnv = false,
@@ -181,8 +181,9 @@ function spawnChildInner(opFn, command, apiName, {
   signal = undefined,
   windowsRawArguments = false,
   ipc = -1,
+  extraPipes = [],
 } = { __proto__: null }) {
-  const child = opFn({
+  const child = op_spawn_child({
     cmd: pathFromURL(command),
     args: ArrayPrototypeMap(args, String),
     cwd: pathFromURL(cwd),
@@ -195,6 +196,7 @@ function spawnChildInner(opFn, command, apiName, {
     stderr,
     windowsRawArguments,
     ipc,
+    extraPipes,
   }, apiName);
   return new ChildProcess(illegalConstructorKey, {
     ...child,
@@ -204,7 +206,6 @@ function spawnChildInner(opFn, command, apiName, {
 
 function spawnChild(command, options = { __proto__: null }) {
   return spawnChildInner(
-    op_spawn_child,
     command,
     "Deno.Command().spawn()",
     options,
@@ -222,8 +223,10 @@ function collectOutput(readableStream) {
 }
 
 const _pipeFd = Symbol("[[pipeFd]]");
+const _extraPipeFds = Symbol("[[_extraPipeFds]]");
 
 internals.getPipeFd = (process) => process[_pipeFd];
+internals.getExtraPipeFds = (process) => process[_extraPipeFds];
 
 class ChildProcess {
   #rid;
@@ -231,6 +234,7 @@ class ChildProcess {
   #waitComplete = false;
 
   [_pipeFd];
+  [_extraPipeFds];
 
   #pid;
   get pid() {
@@ -269,6 +273,7 @@ class ChildProcess {
     stdoutRid,
     stderrRid,
     pipeFd, // internal
+    extraPipeRids,
   } = null) {
     if (key !== illegalConstructorKey) {
       throw new TypeError("Illegal constructor.");
@@ -277,6 +282,7 @@ class ChildProcess {
     this.#rid = rid;
     this.#pid = pid;
     this[_pipeFd] = pipeFd;
+    this[_extraPipeFds] = extraPipeRids;
 
     if (stdinRid !== null) {
       this.#stdin = writableStreamForRid(stdinRid);
@@ -380,7 +386,6 @@ function spawn(command, options) {
     );
   }
   return spawnChildInner(
-    op_spawn_child,
     command,
     "Deno.Command().output()",
     options,

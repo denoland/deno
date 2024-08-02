@@ -1797,6 +1797,7 @@ dependencies = [
  "p384",
  "path-clean",
  "pbkdf2",
+ "pin-project",
  "pin-project-lite",
  "rand",
  "regex",
