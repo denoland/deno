@@ -485,7 +485,7 @@ webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
     if (ArrayBufferIsView(V)) {
       return webidl.converters["ArrayBufferView"](V, prefix, context, opts);
     }
-    if (webidl.isIterator(V)) {
+    if (webidl.isAsyncIterator(V)) {
       return webidl.converters["async iterable<Uint8Array>"](
         V,
         prefix,

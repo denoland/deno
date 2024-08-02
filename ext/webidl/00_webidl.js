@@ -921,7 +921,7 @@ function createSequenceConverter(converter) {
   };
 }
 
-function isIterator(obj) {
+function isAsyncIterator(obj) {
   if (obj[SymbolAsyncIterator] === undefined) {
     if (obj[SymbolIterator] === undefined) {
       return false;
@@ -955,24 +955,24 @@ function createAsyncIterableConverter(converter) {
       method = V[SymbolIterator];
 
       if (method === undefined) {
-        throw new TypeError("No iterator found.");
+      throw makeException(
+        TypeError,
+        "is not iterable.",
+        prefix,
+        context,
+      );
       }
 
-      isAsync = true;
+      isAsync = false;
     }
 
     return {
       value: V,
       [AsyncIterable]: AsyncIterable,
-      open() {
+      open(context) {
         const iter = FunctionPrototypeCall(method, V);
         if (type(iter) !== "Object") {
-          throw makeException(
-            TypeError,
-            "invalid iterator.",
-            prefix,
-            context,
-          );
+          throw new TypeError(`${context} could not be iterated because iterator method did not return object, but ${type(iter)}.`);
         }
 
         let asyncIterator = iter;
@@ -992,12 +992,7 @@ function createAsyncIterableConverter(converter) {
             // deno-lint-ignore prefer-primordials
             const iterResult = await asyncIterator.next();
             if (type(iterResult) !== "Object") {
-              throw makeException(
-                TypeError,
-                "can not be converted to async iterable.",
-                prefix,
-                context,
-              );
+              throw TypeError(`${context} failed to iterate next value because the next() method did not return an object, but ${type(iterResult)}.`);
             }
 
             if (iterResult.done) {
@@ -1006,8 +1001,8 @@ function createAsyncIterableConverter(converter) {
 
             const iterValue = converter(
               iterResult.value,
-              prefix,
-              context,
+              `${context} failed to iterate next value`,
+              `The value returned from the next() method`,
               opts,
             );
 
@@ -1021,12 +1016,7 @@ function createAsyncIterableConverter(converter) {
             // deno-lint-ignore prefer-primordials
             const returnPromiseResult = await asyncIterator.return(reason);
             if (type(returnPromiseResult) !== "Object") {
-              throw makeException(
-                TypeError,
-                "can not be converted to async iterable.",
-                prefix,
-                context,
-              );
+              throw TypeError(`${context} failed to close iterator because the return() method did not return an object, but ${type(returnPromiseResult)}.`);
             }
 
             return undefined;
