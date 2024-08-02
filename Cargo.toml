@@ -93,7 +93,7 @@ base32 = "=0.5.1"
 base64 = "0.22.1"
 bencher = "0.1"
 brotli = "6.0.0"
-bytes = "1.7.0"
+bytes = "1.7.1"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
 # Note: Do not use the "clock" feature of chrono, as it links us to CoreFoundation on macOS.
@@ -151,7 +151,7 @@ pretty_assertions = "=1.4.0"
 prost = "0.11"
 prost-build = "0.11"
 rand = "=0.8.5"
-regex = "^1.10.5"
+regex = "^1.10.6"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 ring = "^0.17.8"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
@@ -164,7 +164,7 @@ saffron = "=0.1.0"
 scopeguard = "1.2.0"
 serde = { version = "1.0.204", features = ["derive"] }
 serde_bytes = "0.11"
-serde_json = "1.0.121"
+serde_json = "1.0.122"
 serde_repr = "=0.1.19"
 sha1 = { version = "0.10.6", features = ["oid"] }
 sha2 = { version = "0.10.8", features = ["oid"] }
