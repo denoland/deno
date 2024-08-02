@@ -2002,7 +2002,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             // prefer using ts for formatting instead of js because ts works in more scenarios
             .default_value("ts")
             .value_parser([
-              "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "ipynb",
+              "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "yml", "yaml",
+              "ipynb",
             ]),
         )
         .arg(
