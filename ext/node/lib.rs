@@ -181,15 +181,6 @@ fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
-#[op2(fast)]
-fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
-  let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) else {
-    return false;
-  };
-
-  promise.state() == v8::PromiseState::Rejected
-}
-
 #[op2]
 #[string]
 fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
@@ -350,7 +341,6 @@ deno_core::extension!(deno_node,
     ops::os::op_cpus<P>,
     ops::os::op_homedir<P>,
     op_node_build_os,
-    op_node_is_promise_rejected,
     op_npm_process_state,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
@@ -655,8 +645,8 @@ deno_core::extension!(deno_node,
     });
     vm::DELETER_MAP_FN.with(|deleter| {
       external_references.push(ExternalReference {
-        named_getter: *deleter,
-      },);
+        named_deleter: *deleter,
+      });
     });
     vm::ENUMERATOR_MAP_FN.with(|enumerator| {
       external_references.push(ExternalReference {
@@ -686,7 +676,7 @@ deno_core::extension!(deno_node,
     });
     vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
       external_references.push(ExternalReference {
-        indexed_getter: *deleter,
+        indexed_deleter: *deleter,
       });
     });
     vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
@@ -712,13 +702,13 @@ deno_core::extension!(deno_node,
     });
     global::QUERY_MAP_FN.with(|query| {
       external_references.push(ExternalReference {
-        named_getter: *query,
+        named_query: *query,
       });
     });
     global::DELETER_MAP_FN.with(|deleter| {
       external_references.push(ExternalReference {
-        named_getter: *deleter,
-      },);
+        named_deleter: *deleter,
+      });
     });
     global::ENUMERATOR_MAP_FN.with(|enumerator| {
       external_references.push(ExternalReference {
@@ -841,4 +831,13 @@ impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
       .read_text_file_lossy_sync(path, None)
       .map_err(|err| err.into_io_error())
   }
+}
+
+pub fn create_host_defined_options<'s>(
+  scope: &mut v8::HandleScope<'s>,
+) -> v8::Local<'s, v8::Data> {
+  let host_defined_options = v8::PrimitiveArray::new(scope, 1);
+  let value = v8::Boolean::new(scope, true);
+  host_defined_options.set(scope, 0, value.into());
+  host_defined_options.into()
 }

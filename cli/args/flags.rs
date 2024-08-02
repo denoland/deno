@@ -200,6 +200,7 @@ pub struct FmtFlags {
   pub prose_wrap: Option<String>,
   pub no_semicolons: Option<bool>,
   pub watch: Option<WatchFlags>,
+  pub unstable_yaml: bool,
 }
 
 impl FmtFlags {
@@ -1141,17 +1142,11 @@ Standard Library: https://jsr.io/@std
 Modules: https://jsr.io/ https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
-To start the REPL:
 
-  <g>deno</>
-
-To execute a script:
-
-  <g>deno run https://examples.deno.land/hello-world.ts</>
-
-To evaluate code in the shell:
-
-  <g>deno eval \"console.log(30933 + 404)\"</>
+Deno by Example: https://docs.deno.com/examples
+  Start the REPL:              <g>deno</>
+  Execute a script:            <g>deno run https://examples.deno.land/hello-world.ts</>
+  Evaluate code in the shell:  <g>deno eval \"console.log(30933 + 404)\"</>
 "
   )
 );
@@ -2002,7 +1997,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             // prefer using ts for formatting instead of js because ts works in more scenarios
             .default_value("ts")
             .value_parser([
-              "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "ipynb",
+              "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "yml", "yaml",
+              "ipynb",
             ]),
         )
         .arg(
@@ -2078,6 +2074,13 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             .help(
               "Don't use semicolons except where necessary. Defaults to false.",
             ),
+        )
+        .arg(
+          Arg::new("unstable-yaml")
+            .long("unstable-yaml")
+            .help("Enable formatting YAML files.")
+            .value_parser(FalseyValueParser::new())
+            .action(ArgAction::SetTrue),
         )
     })
 }
@@ -2682,10 +2685,19 @@ Directory arguments are expanded to all contained files matching the glob
         .value_name("N")
         .value_parser(value_parser!(NonZeroUsize)),
     )
+    // TODO(@lucacasonato): remove for Deno 2.0
     .arg(
       Arg::new("allow-none")
         .long("allow-none")
         .help("Don't return error code if no test files are found")
+        .hide(true)
+        .action(ArgAction::SetTrue),
+    )
+    .arg(
+      Arg::new("permit-no-files")
+        .long("permit-no-files")
+        .help("Don't return an error code if no test files were found")
+        .conflicts_with("allow-none")
         .action(ArgAction::SetTrue),
     )
     .arg(
@@ -4084,6 +4096,7 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let single_quote = matches.remove_one::<bool>("single-quote");
   let prose_wrap = matches.remove_one::<String>("prose-wrap");
   let no_semicolons = matches.remove_one::<bool>("no-semicolons");
+  let unstable_yaml = matches.get_flag("unstable-yaml");
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.get_flag("check"),
@@ -4095,6 +4108,7 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     prose_wrap,
     no_semicolons,
     watch: watch_arg_parse(matches),
+    unstable_yaml,
   });
 }
 
@@ -4257,7 +4271,7 @@ fn run_parse(
   // for old versions of @netlify/edge-bundler with new versions of Deno
   // where Deno has gotten smarter at resolving config files.
   //
-  // It's an unfortuante scenario, but Netlify has the version at least
+  // It's an unfortunate scenario, but Netlify has the version at least
   // pinned to 1.x in old versions so we can remove this in Deno 2.0 in
   // a few months.
   fn temp_netlify_deno_1_hack(flags: &mut Flags, script_arg: &str) {
@@ -4436,7 +4450,17 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     );
   }
   let doc = matches.get_flag("doc");
-  let allow_none = matches.get_flag("allow-none");
+  #[allow(clippy::print_stderr)]
+  let allow_none = matches.get_flag("permit-no-files")
+    || if matches.get_flag("allow-none") {
+      eprintln!(
+        "⚠️ {}",
+        crate::colors::yellow("The `--allow-none` flag is deprecated and will be removed in Deno 2.0.\nUse the `--permit-no-files` flag instead."),
+      );
+      true
+    } else {
+      false
+    };
   let filter = matches.remove_one::<String>("filter");
   let clean = matches.get_flag("clean");
 
@@ -5767,6 +5791,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: false,
           watch: Default::default(),
         }),
         ext: Some("ts".to_string()),
@@ -5790,6 +5815,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: false,
           watch: Default::default(),
         }),
         ext: Some("ts".to_string()),
@@ -5813,6 +5839,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: false,
           watch: Default::default(),
         }),
         ext: Some("ts".to_string()),
@@ -5836,6 +5863,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: false,
           watch: Some(Default::default()),
         }),
         ext: Some("ts".to_string()),
@@ -5843,8 +5871,13 @@ mod tests {
       }
     );
 
-    let r =
-      flags_from_vec(svec!["deno", "fmt", "--watch", "--no-clear-screen"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "fmt",
+      "--watch",
+      "--no-clear-screen",
+      "--unstable-yaml"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -5860,6 +5893,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: true,
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
@@ -5894,6 +5928,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: false,
           watch: Some(Default::default()),
         }),
         ext: Some("ts".to_string()),
@@ -5917,6 +5952,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: false,
           watch: Default::default(),
         }),
         ext: Some("ts".to_string()),
@@ -5948,6 +5984,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: false,
           watch: Some(Default::default()),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
@@ -5984,6 +6021,7 @@ mod tests {
           single_quote: Some(true),
           prose_wrap: Some("never".to_string()),
           no_semicolons: Some(true),
+          unstable_yaml: false,
           watch: Default::default(),
         }),
         ext: Some("ts".to_string()),
@@ -6014,6 +6052,7 @@ mod tests {
           single_quote: Some(false),
           prose_wrap: None,
           no_semicolons: Some(false),
+          unstable_yaml: false,
           watch: Default::default(),
         }),
         ext: Some("ts".to_string()),
@@ -8397,7 +8436,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-leaks", "--no-run", "--filter", "- foo", "--coverage=cov", "--clean", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-leaks", "--no-run", "--filter", "- foo", "--coverage=cov", "--clean", "--location", "https:foo", "--allow-net", "--permit-no-files", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {

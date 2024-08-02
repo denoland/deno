@@ -92,9 +92,9 @@ pub enum ResponseBytesInner {
   /// An uncompressed stream.
   UncompressedStream(ResponseStream),
   /// A GZip stream.
-  GZipStream(GZipResponseStream),
+  GZipStream(Box<GZipResponseStream>),
   /// A Brotli stream.
-  BrotliStream(BrotliResponseStream),
+  BrotliStream(Box<BrotliResponseStream>),
 }
 
 impl std::fmt::Debug for ResponseBytesInner {
@@ -133,9 +133,11 @@ impl ResponseBytesInner {
 
   fn from_stream(compression: Compression, stream: ResponseStream) -> Self {
     match compression {
-      Compression::GZip => Self::GZipStream(GZipResponseStream::new(stream)),
+      Compression::GZip => {
+        Self::GZipStream(Box::new(GZipResponseStream::new(stream)))
+      }
       Compression::Brotli => {
-        Self::BrotliStream(BrotliResponseStream::new(stream))
+        Self::BrotliStream(Box::new(BrotliResponseStream::new(stream)))
       }
       _ => Self::UncompressedStream(stream),
     }

@@ -6,6 +6,7 @@ import {
   brotliCompress,
   brotliCompressSync,
   brotliDecompressSync,
+  constants,
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
@@ -123,9 +124,7 @@ Deno.test(
 
 Deno.test("should work with dataview", () => {
   const buf = Buffer.from("hello world");
-  const compressed = brotliCompressSync(
-    new DataView(buf.buffer, buf.byteOffset, buf.byteLength),
-  );
+  const compressed = brotliCompressSync(new DataView(buf.buffer));
   const decompressed = brotliDecompressSync(compressed);
   assertEquals(decompressed.toString(), "hello world");
 });
@@ -139,13 +138,24 @@ Deno.test("should work with a buffer from an encoded string", () => {
   assertEquals(decompressed.toString(), "hello world");
 });
 
+// https://github.com/denoland/deno/issues/24572
+Deno.test("Brotli quality 10 doesn't panic", () => {
+  const e = brotliCompressSync("abc", {
+    params: {
+      [constants.BROTLI_PARAM_QUALITY]: 10,
+    },
+  });
+  assertEquals(
+    new Uint8Array(e.buffer),
+    new Uint8Array([11, 1, 128, 97, 98, 99, 3]),
+  );
+});
+
 Deno.test(
   "zlib compression with dataview",
   () => {
     const buf = Buffer.from("hello world");
-    const compressed = gzipSync(
-      new DataView(buf.buffer, buf.byteOffset, buf.byteLength),
-    );
+    const compressed = gzipSync(new DataView(buf.buffer));
     const decompressed = unzipSync(compressed);
     assertEquals(decompressed.toString(), "hello world");
   },
