@@ -200,6 +200,7 @@ pub struct FmtFlags {
   pub prose_wrap: Option<String>,
   pub no_semicolons: Option<bool>,
   pub watch: Option<WatchFlags>,
+  pub unstable_yaml: bool,
 }
 
 impl FmtFlags {
@@ -2079,6 +2080,14 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             .help(
               "Don't use semicolons except where necessary. Defaults to false.",
             ),
+        )
+        .arg(
+          Arg::new("unstable-yaml")
+            .long("unstable-yaml")
+            .help("Enable formatting YAML files.")
+            .value_parser(FalseyValueParser::new())
+            .action(ArgAction::SetTrue)
+            .global(true),
         )
     })
 }
@@ -4085,6 +4094,7 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let single_quote = matches.remove_one::<bool>("single-quote");
   let prose_wrap = matches.remove_one::<String>("prose-wrap");
   let no_semicolons = matches.remove_one::<bool>("no-semicolons");
+  let unstable_yaml = matches.get_flag("unstable-yaml");
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
     check: matches.get_flag("check"),
@@ -4096,6 +4106,7 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     prose_wrap,
     no_semicolons,
     watch: watch_arg_parse(matches),
+    unstable_yaml,
   });
 }
 
@@ -5768,6 +5779,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: false,
           watch: Default::default(),
         }),
         ext: Some("ts".to_string()),
@@ -5791,6 +5803,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: false,
           watch: Default::default(),
         }),
         ext: Some("ts".to_string()),
@@ -5814,6 +5827,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: false,
           watch: Default::default(),
         }),
         ext: Some("ts".to_string()),
@@ -5837,6 +5851,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: false,
           watch: Some(Default::default()),
         }),
         ext: Some("ts".to_string()),
@@ -5844,8 +5859,13 @@ mod tests {
       }
     );
 
-    let r =
-      flags_from_vec(svec!["deno", "fmt", "--watch", "--no-clear-screen"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "fmt",
+      "--watch",
+      "--no-clear-screen",
+      "--unstable-yaml"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -5861,6 +5881,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: true,
           watch: Some(WatchFlags {
             hmr: false,
             no_clear_screen: true,
@@ -5895,6 +5916,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: false,
           watch: Some(Default::default()),
         }),
         ext: Some("ts".to_string()),
@@ -5918,6 +5940,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: false,
           watch: Default::default(),
         }),
         ext: Some("ts".to_string()),
@@ -5949,6 +5972,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_yaml: false,
           watch: Some(Default::default()),
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
@@ -5985,6 +6009,7 @@ mod tests {
           single_quote: Some(true),
           prose_wrap: Some("never".to_string()),
           no_semicolons: Some(true),
+          unstable_yaml: false,
           watch: Default::default(),
         }),
         ext: Some("ts".to_string()),
@@ -6015,6 +6040,7 @@ mod tests {
           single_quote: Some(false),
           prose_wrap: None,
           no_semicolons: Some(false),
+          unstable_yaml: false,
           watch: Default::default(),
         }),
         ext: Some("ts".to_string()),
