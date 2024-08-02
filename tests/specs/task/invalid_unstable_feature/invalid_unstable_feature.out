@@ -1,5 +1,4 @@
 Task start deno run index.js
-Warning Sloppy imports are not recommended and have a negative impact on performance.
 Warning 'abc' isn't a valid unstable feature
 Warning 'cba' isn't a valid unstable feature
 Hello unstable features

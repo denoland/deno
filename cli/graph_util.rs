@@ -750,8 +750,8 @@ fn enhanced_sloppy_imports_error_message(
     ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
     | ModuleError::Missing(specifier, _) => {
       let additional_message = SloppyImportsResolver::new(fs.clone())
-        .resolve(specifier, ResolutionMode::Execution)
-        .as_suggestion_message()?;
+        .resolve(specifier, ResolutionMode::Execution)?
+        .as_suggestion_message();
       Some(format!(
         "{} {} or run with --unstable-sloppy-imports",
         error,

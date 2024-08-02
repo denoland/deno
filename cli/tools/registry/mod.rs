@@ -45,7 +45,7 @@ use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
 use crate::resolver::SloppyImportsResolver;
 use crate::tools::check::CheckOptions;
-use crate::tools::lint::no_slow_types;
+use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::tools::registry::diagnostics::PublishDiagnostic;
 use crate::tools::registry::diagnostics::PublishDiagnosticsCollector;
 use crate::util::display::human_size;
@@ -341,7 +341,7 @@ impl PublishPreparer {
       for package in package_configs {
         let export_urls = package.config_file.resolve_export_value_urls()?;
         let diagnostics =
-          no_slow_types::collect_no_slow_type_diagnostics(&export_urls, &graph);
+          collect_no_slow_type_diagnostics(&graph, &export_urls);
         if !diagnostics.is_empty() {
           any_pkg_had_diagnostics = true;
           for diagnostic in diagnostics {
@@ -473,7 +473,7 @@ impl PublishPreparer {
             publish_paths.push(CollectedPublishPath {
               specifier: ModuleSpecifier::from_file_path(&license_path)
                 .unwrap(),
-              relative_path: "LICENSE".to_string(),
+              relative_path: "/LICENSE".to_string(),
               maybe_content: Some(std::fs::read(&license_path).with_context(
                 || format!("failed reading '{}'.", license_path.display()),
               )?),
@@ -1014,14 +1014,6 @@ async fn publish_package(
     );
   }
 
-  log::info!(
-    "{} @{}/{}@{}",
-    colors::green("Successfully published"),
-    package.scope,
-    package.package,
-    package.version
-  );
-
   let enable_provenance = std::env::var("DISABLE_JSR_PROVENANCE").is_err()
     && (auth::is_gha() && auth::gha_oidc_token().is_some() && provenance);
 
@@ -1070,6 +1062,14 @@ async fn publish_package(
       .send()
       .await?;
   }
+
+  log::info!(
+    "{} @{}/{}@{}",
+    colors::green("Successfully published"),
+    package.scope,
+    package.package,
+    package.version
+  );
 
   log::info!(
     "{}",

@@ -308,7 +308,7 @@ pub async fn add(
     .context("Failed to update configuration file")?;
 
   // clear the previously cached package.json from memory before reloading it
-  deno_node::PackageJsonThreadLocalCache::clear();
+  node_resolver::PackageJsonThreadLocalCache::clear();
   // make a new CliFactory to pick up the updated config file
   let cli_factory = CliFactory::from_flags(flags);
   // cache deps
@@ -488,7 +488,7 @@ fn update_config_file_content(
       text_changes.push(TextChange {
         range: insert_position..insert_position,
         // NOTE(bartlomieju): adding `\n` here to force the formatter to always
-        // produce a config file that is multline, like so:
+        // produce a config file that is multiline, like so:
         // ```
         // {
         //   "imports": {

@@ -5,7 +5,6 @@
 
 use std::collections::HashSet;
 use std::path::Path;
-use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
@@ -15,42 +14,31 @@ use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_core::JsRuntime;
-use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
+use node_resolver::NpmResolverRc;
 use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
 
-pub mod analyze;
-pub mod errors;
 mod global;
 mod ops;
-mod package_json;
-mod path;
 mod polyfill;
-mod resolution;
 
 pub use deno_package_json::PackageJson;
+pub use node_resolver::PathClean;
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
+pub use ops::ipc::IpcRefTracker;
 use ops::vm;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
-pub use package_json::load_pkg_json;
-pub use package_json::PackageJsonThreadLocalCache;
-pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
-pub use resolution::NodeModuleKind;
-pub use resolution::NodeResolution;
-pub use resolution::NodeResolutionMode;
-pub use resolution::NodeResolver;
-use resolution::NodeResolverRc;
 
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
@@ -149,9 +137,12 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type NpmResolverRc = deno_fs::sync::MaybeArc<dyn NpmResolver>;
+pub type NpmProcessStateProviderRc =
+  deno_fs::sync::MaybeArc<dyn NpmProcessStateProvider>;
 
-pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
+pub trait NpmProcessStateProvider:
+  std::fmt::Debug + MaybeSend + MaybeSync
+{
   /// Gets a string containing the serialized npm state of the process.
   ///
   /// This will be set on the `DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE` environment
@@ -161,34 +152,13 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     // This method is only used in the CLI.
     String::new()
   }
+}
 
-  /// Resolves an npm package folder path from an npm package referrer.
-  fn resolve_package_folder_from_package(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, errors::PackageFolderResolveError>;
+#[allow(clippy::disallowed_types)]
+pub type NodeRequireResolverRc =
+  deno_fs::sync::MaybeArc<dyn NodeRequireResolver>;
 
-  fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
-
-  fn in_npm_package_at_dir_path(&self, path: &Path) -> bool {
-    let specifier =
-      match ModuleSpecifier::from_directory_path(path.to_path_buf().clean()) {
-        Ok(p) => p,
-        Err(_) => return false,
-      };
-    self.in_npm_package(&specifier)
-  }
-
-  fn in_npm_package_at_file_path(&self, path: &Path) -> bool {
-    let specifier =
-      match ModuleSpecifier::from_file_path(path.to_path_buf().clean()) {
-        Ok(p) => p,
-        Err(_) => return false,
-      };
-    self.in_npm_package(&specifier)
-  }
-
+pub trait NodeRequireResolver: std::fmt::Debug + MaybeSend + MaybeSync {
   fn ensure_read_permission(
     &self,
     permissions: &mut dyn NodePermissions,
@@ -223,8 +193,15 @@ fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
 #[op2]
 #[string]
 fn op_npm_process_state(state: &mut OpState) -> Result<String, AnyError> {
-  let npm_resolver = state.borrow_mut::<NpmResolverRc>();
+  let npm_resolver = state.borrow_mut::<NpmProcessStateProviderRc>();
   Ok(npm_resolver.get_npm_process_state())
+}
+
+pub struct NodeExtInitServices {
+  pub node_require_resolver: NodeRequireResolverRc,
+  pub node_resolver: NodeResolverRc,
+  pub npm_process_state_provider: NpmProcessStateProviderRc,
+  pub npm_resolver: NpmResolverRc,
 }
 
 deno_core::extension!(deno_node,
@@ -351,6 +328,8 @@ deno_core::extension!(deno_node,
     ops::zlib::brotli::op_brotli_decompress_stream,
     ops::zlib::brotli::op_brotli_decompress_stream_end,
     ops::http::op_node_http_request<P>,
+    ops::http::op_node_http_fetch_response_upgrade,
+    ops::http::op_node_http_fetch_send,
     ops::http2::op_http2_connect,
     ops::http2::op_http2_poll_client_connection,
     ops::http2::op_http2_client_request,
@@ -402,6 +381,8 @@ deno_core::extension!(deno_node,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
     ops::ipc::op_node_ipc_read,
+    ops::ipc::op_node_ipc_ref,
+    ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
     ops::process::op_process_abort,
   ],
@@ -622,6 +603,7 @@ deno_core::extension!(deno_node,
     "node:punycode" = "punycode.ts",
     "node:querystring" = "querystring.js",
     "node:readline" = "readline.ts",
+    "node:readline/promises" = "readline/promises.ts",
     "node:repl" = "repl.ts",
     "node:stream" = "stream.ts",
     "node:stream/consumers" = "stream/consumers.mjs",
@@ -643,21 +625,17 @@ deno_core::extension!(deno_node,
     "node:zlib" = "zlib.ts",
   ],
   options = {
-    maybe_node_resolver: Option<NodeResolverRc>,
-    maybe_npm_resolver: Option<NpmResolverRc>,
+    maybe_init: Option<NodeExtInitServices>,
     fs: deno_fs::FileSystemRc,
   },
   state = |state, options| {
-    // you should provide both of these or neither
-    debug_assert_eq!(options.maybe_node_resolver.is_some(), options.maybe_npm_resolver.is_some());
-
     state.put(options.fs.clone());
 
-    if let Some(node_resolver) = &options.maybe_node_resolver {
-      state.put(node_resolver.clone());
-    }
-    if let Some(npm_resolver) = &options.maybe_npm_resolver {
-      state.put(npm_resolver.clone());
+    if let Some(init) = &options.maybe_init {
+      state.put(init.node_require_resolver.clone());
+      state.put(init.node_resolver.clone());
+      state.put(init.npm_resolver.clone());
+      state.put(init.npm_process_state_provider.clone());
     }
   },
   global_template_middleware = global_template_middleware,
@@ -677,8 +655,8 @@ deno_core::extension!(deno_node,
     });
     vm::DELETER_MAP_FN.with(|deleter| {
       external_references.push(ExternalReference {
-        named_getter: *deleter,
-      },);
+        named_deleter: *deleter,
+      });
     });
     vm::ENUMERATOR_MAP_FN.with(|enumerator| {
       external_references.push(ExternalReference {
@@ -708,7 +686,7 @@ deno_core::extension!(deno_node,
     });
     vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
       external_references.push(ExternalReference {
-        indexed_getter: *deleter,
+        indexed_deleter: *deleter,
       });
     });
     vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
@@ -734,13 +712,13 @@ deno_core::extension!(deno_node,
     });
     global::QUERY_MAP_FN.with(|query| {
       external_references.push(ExternalReference {
-        named_getter: *query,
+        named_query: *query,
       });
     });
     global::DELETER_MAP_FN.with(|deleter| {
       external_references.push(ExternalReference {
-        named_getter: *deleter,
-      },);
+        named_deleter: *deleter,
+      });
     });
     global::ENUMERATOR_MAP_FN.with(|enumerator| {
       external_references.push(ExternalReference {
@@ -782,4 +760,94 @@ pub fn load_cjs_module(
 
   js_runtime.execute_script(located_script_name!(), source_code)?;
   Ok(())
+}
+
+pub type NodeResolver = node_resolver::NodeResolver<DenoFsNodeResolverEnv>;
+#[allow(clippy::disallowed_types)]
+pub type NodeResolverRc =
+  deno_fs::sync::MaybeArc<node_resolver::NodeResolver<DenoFsNodeResolverEnv>>;
+
+#[derive(Debug)]
+pub struct DenoFsNodeResolverEnv {
+  fs: deno_fs::FileSystemRc,
+}
+
+impl DenoFsNodeResolverEnv {
+  pub fn new(fs: deno_fs::FileSystemRc) -> Self {
+    Self { fs }
+  }
+}
+
+impl node_resolver::env::NodeResolverEnv for DenoFsNodeResolverEnv {
+  fn is_builtin_node_module(&self, specifier: &str) -> bool {
+    is_builtin_node_module(specifier)
+  }
+
+  fn realpath_sync(
+    &self,
+    path: &std::path::Path,
+  ) -> std::io::Result<std::path::PathBuf> {
+    self
+      .fs
+      .realpath_sync(path)
+      .map_err(|err| err.into_io_error())
+  }
+
+  fn stat_sync(
+    &self,
+    path: &std::path::Path,
+  ) -> std::io::Result<node_resolver::env::NodeResolverFsStat> {
+    self
+      .fs
+      .stat_sync(path)
+      .map(|stat| node_resolver::env::NodeResolverFsStat {
+        is_file: stat.is_file,
+        is_dir: stat.is_directory,
+        is_symlink: stat.is_symlink,
+      })
+      .map_err(|err| err.into_io_error())
+  }
+
+  fn exists_sync(&self, path: &std::path::Path) -> bool {
+    self.fs.exists_sync(path)
+  }
+
+  fn pkg_json_fs(&self) -> &dyn deno_package_json::fs::DenoPkgJsonFs {
+    self
+  }
+}
+
+impl deno_package_json::fs::DenoPkgJsonFs for DenoFsNodeResolverEnv {
+  fn read_to_string_lossy(
+    &self,
+    path: &std::path::Path,
+  ) -> Result<String, std::io::Error> {
+    self
+      .fs
+      .read_text_file_lossy_sync(path, None)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+pub struct DenoPkgJsonFsAdapter<'a>(pub &'a dyn deno_fs::FileSystem);
+
+impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
+  fn read_to_string_lossy(
+    &self,
+    path: &Path,
+  ) -> Result<String, std::io::Error> {
+    self
+      .0
+      .read_text_file_lossy_sync(path, None)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+pub fn create_host_defined_options<'s>(
+  scope: &mut v8::HandleScope<'s>,
+) -> v8::Local<'s, v8::Data> {
+  let host_defined_options = v8::PrimitiveArray::new(scope, 1);
+  let value = v8::Boolean::new(scope, true);
+  host_defined_options.set(scope, 0, value.into());
+  host_defined_options.into()
 }

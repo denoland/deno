@@ -684,6 +684,8 @@
       "test-whatwg-url-custom-tostringtag.js",
       "test-whatwg-url-override-hostname.js",
       "test-whatwg-url-properties.js",
+      "test-worker-message-port-infinite-message-loop.js",
+      "test-worker-message-port-multiple-sharedarraybuffers.js",
       "test-worker-message-port-receive-message.js",
       "test-zlib-close-after-error.js",
       "test-zlib-close-after-write.js",

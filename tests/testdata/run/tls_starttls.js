@@ -1,6 +1,6 @@
-import { assert, assertEquals } from "@std/assert/mod.ts";
-import { BufReader } from "@std/io/buf_reader.ts";
-import { BufWriter } from "@std/io/buf_writer.ts";
+import { assert, assertEquals } from "@std/assert";
+import { BufReader } from "@std/io/buf-reader";
+import { BufWriter } from "@std/io/buf-writer";
 import { TextProtoReader } from "./textproto.ts";
 
 const encoder = new TextEncoder();

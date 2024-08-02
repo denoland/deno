@@ -169,7 +169,7 @@ fn upgrade_invalid_stable_version() {
   );
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn upgrade_invalid_canary_version() {
   let context = upgrade_context();
   let temp_dir = context.temp_dir();
@@ -194,7 +194,7 @@ fn upgrade_invalid_canary_version() {
   );
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn upgrade_invalid_lockfile() {
   let context = upgrade_context();
   let temp_dir = context.temp_dir();
@@ -213,6 +213,7 @@ fn upgrade_invalid_lockfile() {
     .arg("upgrade")
     .arg("--version")
     .arg("foobar")
+    .arg("--dry-run")
     .stderr(Stdio::piped())
     .spawn()
     .unwrap()

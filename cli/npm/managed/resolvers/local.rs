@@ -32,12 +32,12 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node::errors::PackageFolderResolveError;
-use deno_runtime::deno_node::errors::PackageFolderResolveIoError;
-use deno_runtime::deno_node::errors::PackageNotFoundError;
-use deno_runtime::deno_node::errors::ReferrerNotFoundError;
 use deno_runtime::deno_node::NodePermissions;
 use deno_semver::package::PackageNv;
+use node_resolver::errors::PackageFolderResolveError;
+use node_resolver::errors::PackageFolderResolveIoError;
+use node_resolver::errors::PackageNotFoundError;
+use node_resolver::errors::ReferrerNotFoundError;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -1048,7 +1048,7 @@ fn junction_or_symlink_dir(
   match junction::create(old_path, new_path) {
     Ok(()) => Ok(()),
     Err(junction_err) => {
-      if cfg!(debug) {
+      if cfg!(debug_assertions) {
         // When running the tests, junctions should be created, but if not then
         // surface this error.
         log::warn!("Error creating junction. {:#}", junction_err);

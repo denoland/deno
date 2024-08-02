@@ -202,6 +202,7 @@ pub fn ts_config_to_transpile_and_emit_options(
       inline_sources: options.inline_sources,
       remove_comments: false,
       source_map,
+      source_map_base: None,
       source_map_file: None,
     },
   ))
@@ -517,7 +518,7 @@ pub fn discover_npmrc_from_workspace(
 ///
 /// In the future we will need to support it in user directory or global directory
 /// as per https://docs.npmjs.com/cli/v10/configuring-npm/npmrc#files.
-pub fn discover_npmrc(
+fn discover_npmrc(
   maybe_package_json_path: Option<PathBuf>,
   maybe_deno_json_path: Option<PathBuf>,
 ) -> Result<(Arc<ResolvedNpmRc>, Option<PathBuf>), AnyError> {
@@ -527,16 +528,22 @@ pub fn discover_npmrc(
     std::env::var(var_name).ok()
   }
 
+  #[derive(Debug, Error)]
+  #[error("Error loading .npmrc at {}.", path.display())]
+  struct NpmRcLoadError {
+    path: PathBuf,
+    #[source]
+    source: std::io::Error,
+  }
+
   fn try_to_read_npmrc(
     dir: &Path,
-  ) -> Result<Option<(String, PathBuf)>, AnyError> {
+  ) -> Result<Option<(String, PathBuf)>, NpmRcLoadError> {
     let path = dir.join(NPMRC_NAME);
     let maybe_source = match std::fs::read_to_string(&path) {
       Ok(source) => Some(source),
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
-      Err(err) => {
-        bail!("Error loading .npmrc at {}. {:#}", path.display(), err)
-      }
+      Err(err) => return Err(NpmRcLoadError { path, source: err }),
     };
 
     Ok(maybe_source.map(|source| (source, path)))
@@ -577,8 +584,20 @@ pub fn discover_npmrc(
   // home dir and then merge them.
   // 3. Try `.npmrc` in the user's home directory
   if let Some(home_dir) = cache::home_dir() {
-    if let Some((source, path)) = try_to_read_npmrc(&home_dir)? {
-      return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
+    match try_to_read_npmrc(&home_dir) {
+      Ok(Some((source, path))) => {
+        return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
+      }
+      Ok(None) => {}
+      Err(err) if err.source.kind() == std::io::ErrorKind::PermissionDenied => {
+        log::debug!(
+          "Skipping .npmrc in home directory due to permission denied error. {:#}",
+          err
+        );
+      }
+      Err(err) => {
+        return Err(err.into());
+      }
     }
   }
 
@@ -605,6 +624,8 @@ pub enum RootCertStoreLoadError {
   UnknownStore(String),
   #[error("Unable to add pem file to certificate store: {0}")]
   FailedAddPemFile(String),
+  #[error("Unable to add system certificate to certificate store: {0}")]
+  FailedAddSystemCert(String),
   #[error("Failed opening CA file: {0}")]
   CaFileOpenError(String),
 }
@@ -640,7 +661,9 @@ pub fn get_root_cert_store(
         for root in roots {
           root_cert_store
             .add(rustls::pki_types::CertificateDer::from(root.0))
-            .expect("Failed to add platform cert to root cert store");
+            .map_err(|e| {
+              RootCertStoreLoadError::FailedAddSystemCert(e.to_string())
+            })?;
         }
       }
       _ => {
@@ -820,9 +843,7 @@ impl CliOptions {
       WorkspaceDiscoverOptions {
         fs: Default::default(), // use real fs
         deno_json_cache: None,
-        pkg_json_cache: Some(
-          &deno_runtime::deno_node::PackageJsonThreadLocalCache,
-        ),
+        pkg_json_cache: Some(&node_resolver::PackageJsonThreadLocalCache),
         workspace_cache: None,
         config_parse_options,
         additional_config_file_names,
@@ -1052,10 +1073,10 @@ impl CliOptions {
   }
 
   pub fn node_ipc_fd(&self) -> Option<i64> {
-    let maybe_node_channel_fd = std::env::var("DENO_CHANNEL_FD").ok();
+    let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
     if let Some(node_channel_fd) = maybe_node_channel_fd {
       // Remove so that child processes don't inherit this environment variable.
-      std::env::remove_var("DENO_CHANNEL_FD");
+      std::env::remove_var("NODE_CHANNEL_FD");
       node_channel_fd.parse::<i64>().ok()
     } else {
       None
