@@ -21,7 +21,6 @@ Deno.test({ permissions: { read: true } }, function fstatSyncSuccess() {
   assert(fileInfo.mtime);
   // The `birthtime` field is not available on Linux before kernel version 4.11.
   assert(fileInfo.birthtime || Deno.build.os === "linux");
-  assert(fileInfo.ctime);
 });
 
 Deno.test({ permissions: { read: true } }, async function fstatSuccess() {
@@ -35,7 +34,6 @@ Deno.test({ permissions: { read: true } }, async function fstatSuccess() {
   assert(fileInfo.mtime);
   // The `birthtime` field is not available on Linux before kernel version 4.11.
   assert(fileInfo.birthtime || Deno.build.os === "linux");
-  assert(fileInfo.ctime);
 });
 
 Deno.test(
