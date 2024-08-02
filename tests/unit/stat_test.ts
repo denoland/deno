@@ -96,8 +96,9 @@ Deno.test(
       tempInfoByUrl.birthtime === null ||
         now - tempInfoByUrl.birthtime.valueOf() < 1000,
     );
-    assert(tempInfoByUrl.ctime !== null &&
-        now - tempInfoByUrl.ctime.valueOf() < 1000
+    assert(
+      tempInfoByUrl.ctime !== null &&
+        now - tempInfoByUrl.ctime.valueOf() < 1000,
     );
 
     Deno.removeSync(tempFile, { recursive: true });
@@ -226,8 +227,9 @@ Deno.test(
       tempInfoByUrl.birthtime === null ||
         now - tempInfoByUrl.birthtime.valueOf() < 1000,
     );
-    assert(tempInfoByUrl.ctime !== null &&
-        now - tempInfoByUrl.ctime.valueOf() < 1000
+    assert(
+      tempInfoByUrl.ctime !== null &&
+        now - tempInfoByUrl.ctime.valueOf() < 1000,
     );
     Deno.removeSync(tempFile, { recursive: true });
     Deno.removeSync(tempFileForUrl, { recursive: true });
