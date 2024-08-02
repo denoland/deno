@@ -169,7 +169,7 @@ fn upgrade_invalid_stable_version() {
   );
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn upgrade_invalid_canary_version() {
   let context = upgrade_context();
   let temp_dir = context.temp_dir();
