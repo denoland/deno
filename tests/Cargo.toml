@@ -14,6 +14,7 @@ path = "lib.rs"
 
 [features]
 run = []
+upgrade = []
 
 [[test]]
 name = "integration_tests"
@@ -53,6 +54,7 @@ once_cell.workspace = true
 os_pipe.workspace = true
 pretty_assertions.workspace = true
 regex.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 test_util.workspace = true
 tokio.workspace = true

@@ -107,7 +107,6 @@ fn standalone_error() {
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
   assert_contains!(stderr, "error: Uncaught (in promise) Error: boom!");
-  assert_contains!(stderr, "throw new Error(\"boom!\");");
   assert_contains!(stderr, "\n    at boom (file://");
   assert_contains!(stderr, "standalone_error.ts:2:9");
   assert_contains!(stderr, "at foo (file://");
@@ -147,7 +146,6 @@ fn standalone_error_module_with_imports() {
   // On Windows, we cannot assert the file path (because '\').
   // Instead we just check for relevant output.
   assert_contains!(stderr, "error: Uncaught (in promise) Error: boom!");
-  assert_contains!(stderr, "throw new Error(\"boom!\");");
   assert_contains!(stderr, "\n    at file://");
   assert_contains!(stderr, "standalone_error_module_with_imports_2.ts:2:7");
   output.assert_exit_code(1);
@@ -197,6 +195,8 @@ fn standalone_follow_redirects() {
       "compile",
       "--output",
       &exe.to_string_lossy(),
+      "--config",
+      "../config/deno.json",
       "./compile/standalone_follow_redirects.ts",
     ])
     .run()

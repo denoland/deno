@@ -1,5 +1,3 @@
-Warning Sloppy module resolution (hint: specify path to index.ts file in directory instead)
-    at file:///[WILDCARD]/mod.ts:1:20
 Check file:///[WILDCARD]/mod.ts
 Checking for slow types in the public API...
 Check file:///[WILDCARD]/mod.ts

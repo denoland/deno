@@ -6,7 +6,7 @@ use deno_core::v8;
 use deno_core::v8::GetPropertyNamesArgs;
 use deno_core::v8::MapFnTo;
 
-use crate::resolution::NodeResolverRc;
+use crate::NodeResolverRc;
 
 // NOTE(bartlomieju): somehow calling `.map_fn_to()` multiple times on a function
 // returns two different pointers. That shouldn't be the case as `.map_fn_to()`
@@ -67,7 +67,7 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 
 // UTF-16 encodings of the managed globals. THIS LIST MUST BE SORTED.
 #[rustfmt::skip]
-const MANAGED_GLOBALS: [&[u16]; 12] = [
+const MANAGED_GLOBALS: [&[u16]; 13] = [
   &str_to_utf16::<6>("Buffer"),
   &str_to_utf16::<14>("clearImmediate"),
   &str_to_utf16::<13>("clearInterval"),
@@ -76,13 +76,14 @@ const MANAGED_GLOBALS: [&[u16]; 12] = [
   &str_to_utf16::<6>("global"),
   &str_to_utf16::<11>("performance"),
   &str_to_utf16::<7>("process"),
+  &str_to_utf16::<4>("self"),
   &str_to_utf16::<12>("setImmediate"),
   &str_to_utf16::<11>("setInterval"),
   &str_to_utf16::<10>("setTimeout"),
   &str_to_utf16::<6>("window"),
 ];
 
-const SHORTEST_MANAGED_GLOBAL: usize = 6;
+const SHORTEST_MANAGED_GLOBAL: usize = 4;
 const LONGEST_MANAGED_GLOBAL: usize = 14;
 
 #[derive(Debug, Clone, Copy)]

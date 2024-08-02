@@ -1,6 +1,3 @@
 {
-  "imports": {
-    "@test_util/": "../../test_util/",
-    "@std/": "../util/std/"
-  }
+  "importMap": "../../import_map.json"
 }

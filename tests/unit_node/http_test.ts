@@ -7,9 +7,9 @@ import https from "node:https";
 import net from "node:net";
 import fs from "node:fs";
 
-import { assert, assertEquals, fail } from "@std/assert/mod.ts";
-import { assertSpyCalls, spy } from "@std/testing/mock.ts";
-import { fromFileUrl, relative } from "@std/path/mod.ts";
+import { assert, assertEquals, fail } from "@std/assert";
+import { assertSpyCalls, spy } from "@std/testing/mock";
+import { fromFileUrl, relative } from "@std/path";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
@@ -846,7 +846,10 @@ Deno.test(
   "[node/http] client upgrade",
   { permissions: { net: true } },
   async () => {
-    const { promise, resolve } = Promise.withResolvers<void>();
+    const { promise: serverClosed, resolve: resolveServer } = Promise
+      .withResolvers<void>();
+    const { promise: socketClosed, resolve: resolveSocket } = Promise
+      .withResolvers<void>();
     const server = http.createServer((req, res) => {
       // @ts-ignore: It exists on TLSSocket
       assert(!req.socket.encrypted);
@@ -887,12 +890,16 @@ Deno.test(
         // @ts-ignore it's a socket for real
         serverSocket!.end();
         server.close(() => {
-          resolve();
+          resolveServer();
+        });
+        socket.on("close", () => {
+          resolveSocket();
         });
       });
     });
 
-    await promise;
+    await serverClosed;
+    await socketClosed;
   },
 );
 
@@ -1318,9 +1325,10 @@ Deno.test("[node/http] http.request() post streaming body works", async () => {
     }
   });
 
-  const deferred = Promise.withResolvers<void>();
+  const responseEnded = Promise.withResolvers<void>();
+  const fileClosed = Promise.withResolvers<void>();
   const timeout = setTimeout(() => {
-    deferred.reject(new Error("timeout"));
+    responseEnded.reject(new Error("timeout"));
   }, 5000);
   server.listen(0, () => {
     // deno-lint-ignore no-explicit-any
@@ -1352,7 +1360,7 @@ Deno.test("[node/http] http.request() post streaming body works", async () => {
         const response = JSON.parse(responseBody);
         assertEquals(res.statusCode, 200);
         assertEquals(response.bytes, contentLength);
-        deferred.resolve();
+        responseEnded.resolve();
       });
     });
 
@@ -1362,8 +1370,10 @@ Deno.test("[node/http] http.request() post streaming body works", async () => {
 
     const readStream = fs.createReadStream(filePath);
     readStream.pipe(req);
+    readStream.on("close", fileClosed.resolve);
   });
-  await deferred.promise;
+  await responseEnded.promise;
+  await fileClosed.promise;
   assertEquals(server.listening, true);
   server.close();
   clearTimeout(timeout);

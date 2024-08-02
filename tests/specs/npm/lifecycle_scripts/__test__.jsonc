@@ -132,6 +132,19 @@
           "output": "no_deno_json.out"
         }
       ]
+    },
+    "lifecycle_scripts_no_deno_json_conflicting_bin": {
+      "tempDir": true,
+      "steps": [
+        {
+          "args": ["eval", "Deno.removeSync('deno.json')"],
+          "output": ""
+        },
+        {
+          "args": "cache --allow-scripts --node-modules-dir=true conflicting_bin.js",
+          "output": "conflicting_bin.out"
+        }
+      ]
     }
   }
 }

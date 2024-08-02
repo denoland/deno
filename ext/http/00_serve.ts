@@ -657,7 +657,8 @@ function serve(arg1, arg2) {
   // If the hostname is "0.0.0.0", we display "localhost" in console
   // because browsers in Windows don't resolve "0.0.0.0".
   // See the discussion in https://github.com/denoland/deno_std/issues/1165
-  const hostname = addr.hostname == "0.0.0.0" || addr.hostname == "::"
+  const hostname = (addr.hostname == "0.0.0.0" || addr.hostname == "::") &&
+      (Deno.build.os === "windows")
     ? "localhost"
     : addr.hostname;
   addr.hostname = hostname;

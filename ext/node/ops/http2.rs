@@ -27,12 +27,12 @@ use h2;
 use h2::Reason;
 use h2::RecvStream;
 use http;
+use http::header::HeaderName;
+use http::header::HeaderValue;
 use http::request::Parts;
 use http::HeaderMap;
 use http::Response;
 use http::StatusCode;
-use reqwest::header::HeaderName;
-use reqwest::header::HeaderValue;
 use url::Url;
 
 pub struct Http2Client {
@@ -247,7 +247,7 @@ pub async fn op_http2_send_response(
   }
   for (name, value) in headers {
     response.headers_mut().append(
-      HeaderName::from_lowercase(&name).unwrap(),
+      HeaderName::from_bytes(&name).unwrap(),
       HeaderValue::from_bytes(&value).unwrap(),
     );
   }
@@ -317,7 +317,7 @@ pub async fn op_http2_client_request(
 
   for (name, value) in headers {
     req.headers_mut().unwrap().append(
-      HeaderName::from_lowercase(&name).unwrap(),
+      HeaderName::from_bytes(&name).unwrap(),
       HeaderValue::from_bytes(&value).unwrap(),
     );
   }
