@@ -7,7 +7,6 @@ use crate::args::TestReporterConfig;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
-use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_container::MainModuleGraphContainer;
@@ -887,12 +886,11 @@ async fn run_tests_for_worker_inner(
     // failing. If we don't do this, a connection to a test server we just tore down might be re-used in
     // the next test.
     // TODO(mmastrac): this should be some sort of callback that we can implement for any subsystem
-    #[allow(clippy::disallowed_types)] // allow using reqwest::Client here
     worker
       .js_runtime
       .op_state()
       .borrow_mut()
-      .try_take::<deno_runtime::deno_fetch::reqwest::Client>();
+      .try_take::<deno_runtime::deno_fetch::Client>();
 
     if desc.ignore {
       send_test_event(
@@ -1679,7 +1677,7 @@ fn is_supported_test_ext(path: &Path) -> bool {
 /// input order.
 ///
 /// - Specifiers matching the `is_supported_test_ext` predicate are marked as
-/// `TestMode::Documentation`.
+///   `TestMode::Documentation`.
 /// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
@@ -1763,11 +1761,11 @@ async fn fetch_specifiers_with_test_mode(
 }
 
 pub async fn run_tests(
-  flags: Flags,
+  flags: Arc<Flags>,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let workspace_test_options =
     cli_options.resolve_workspace_test_options(&test_flags);
   let file_fetcher = factory.file_fetcher()?;
@@ -1847,7 +1845,7 @@ pub async fn run_tests(
 }
 
 pub async fn run_tests_with_watch(
-  flags: Flags,
+  flags: Arc<Flags>,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   // On top of the sigint handlers which are added and unbound for each test
@@ -1876,9 +1874,11 @@ pub async fn run_tests_with_watch(
     move |flags, watcher_communicator, changed_paths| {
       let test_flags = test_flags.clone();
       Ok(async move {
-        let factory = CliFactoryBuilder::new()
-          .build_from_flags_for_watcher(flags, watcher_communicator.clone())?;
-        let cli_options = factory.cli_options();
+        let factory = CliFactory::from_flags_for_watcher(
+          flags,
+          watcher_communicator.clone(),
+        );
+        let cli_options = factory.cli_options()?;
         let workspace_test_options =
           cli_options.resolve_workspace_test_options(&test_flags);
 

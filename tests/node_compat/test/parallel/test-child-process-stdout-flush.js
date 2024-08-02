@@ -27,7 +27,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 // TODO(PolarETech): The args passed to spawn() should not need to
-// include "require.ts".
+// include "runner.ts".
 
 'use strict';
 const common = require('../common');
@@ -39,7 +39,7 @@ const sub = fixtures.path('print-chars.js');
 
 const n = 500000;
 
-const child = spawn(process.argv[0], ['require.ts', sub, n]);
+const child = spawn(process.argv[0], ['runner.ts', sub, n]);
 
 let count = 0;
 

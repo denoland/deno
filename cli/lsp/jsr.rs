@@ -24,7 +24,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::config::Config;
 use super::config::ConfigData;
 use super::search::PackageSearchApi;
 
@@ -44,26 +43,31 @@ impl JsrCacheResolver {
   pub fn new(
     cache: Arc<dyn HttpCache>,
     config_data: Option<&ConfigData>,
-    config: &Config,
   ) -> Self {
     let nv_by_req = DashMap::new();
     let info_by_nv = DashMap::new();
     let info_by_name = DashMap::new();
     let mut workspace_scope_by_name = HashMap::new();
     if let Some(config_data) = config_data {
-      let config_data_by_scope = config.tree.data_by_scope();
-      for member_scope in config_data.workspace_members.as_ref() {
-        let Some(member_data) = config_data_by_scope.get(member_scope) else {
+      for jsr_pkg_config in config_data.member_dir.workspace.jsr_packages() {
+        let Some(exports) = &jsr_pkg_config.config_file.json.exports else {
           continue;
         };
-        let Some(package_config) = member_data.package_config.as_ref() else {
+        let Some(version) = &jsr_pkg_config.config_file.json.version else {
           continue;
+        };
+        let Ok(version) = Version::parse_standard(version) else {
+          continue;
+        };
+        let nv = PackageNv {
+          name: jsr_pkg_config.name.clone(),
+          version: version.clone(),
         };
         info_by_name.insert(
-          package_config.nv.name.clone(),
+          nv.name.clone(),
           Some(Arc::new(JsrPackageInfo {
             versions: [(
-              package_config.nv.version.clone(),
+              nv.version.clone(),
               JsrPackageInfoVersion { yanked: false },
             )]
             .into_iter()
@@ -71,16 +75,21 @@ impl JsrCacheResolver {
           })),
         );
         info_by_nv.insert(
-          package_config.nv.clone(),
+          nv.clone(),
           Some(Arc::new(JsrPackageVersionInfo {
-            exports: package_config.exports.clone(),
+            exports: exports.clone(),
             module_graph_1: None,
             module_graph_2: None,
             manifest: Default::default(),
           })),
         );
-        workspace_scope_by_name
-          .insert(package_config.nv.name.clone(), member_scope.clone());
+        workspace_scope_by_name.insert(
+          nv.name.clone(),
+          ModuleSpecifier::from_directory_path(
+            jsr_pkg_config.config_file.dir_path(),
+          )
+          .unwrap(),
+        );
       }
     }
     if let Some(lockfile) = config_data.and_then(|d| d.lockfile.as_ref()) {

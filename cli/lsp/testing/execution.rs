@@ -212,13 +212,15 @@ impl TestRun {
   ) -> Result<(), AnyError> {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
-    let flags = flags_from_vec(args.into_iter().map(From::from).collect())?;
-    let factory = CliFactory::from_flags(flags)?;
+    let flags =
+      Arc::new(flags_from_vec(args.into_iter().map(From::from).collect())?);
+    let factory = CliFactory::from_flags(flags);
+    let cli_options = factory.cli_options()?;
     // Various test files should not share the same permissions in terms of
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.
     let permissions =
-      Permissions::from_options(&factory.cli_options().permissions_options()?)?;
+      Permissions::from_options(&cli_options.permissions_options()?)?;
     let main_graph_container = factory.main_module_graph_container().await?;
     test::check_specifiers(
       factory.file_fetcher()?,
@@ -231,19 +233,18 @@ impl TestRun {
     )
     .await?;
 
-    let (concurrent_jobs, fail_fast) = if let DenoSubcommand::Test(test_flags) =
-      factory.cli_options().sub_command()
-    {
-      (
-        test_flags
-          .concurrent_jobs
-          .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
-          .into(),
-        test_flags.fail_fast,
-      )
-    } else {
-      unreachable!("Should always be Test subcommand.");
-    };
+    let (concurrent_jobs, fail_fast) =
+      if let DenoSubcommand::Test(test_flags) = cli_options.sub_command() {
+        (
+          test_flags
+            .concurrent_jobs
+            .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
+            .into(),
+          test_flags.fail_fast,
+        )
+      } else {
+        unreachable!("Should always be Test subcommand.");
+      };
 
     // TODO(mmastrac): Temporarily limit concurrency in windows testing to avoid named pipe issue:
     // *** Unexpected server pipe failure '"\\\\.\\pipe\\deno_pipe_e30f45c9df61b1e4.1198.222\\0"': 3

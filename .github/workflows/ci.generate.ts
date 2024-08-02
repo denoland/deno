@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 7;
+const cacheVersion = 10;
 
 const ubuntuX86Runner = "ubuntu-22.04";
 const ubuntuX86XlRunner = "ubuntu-22.04-xl";
@@ -629,6 +629,7 @@ const ci = {
             path: [
               "./target",
               "!./target/*/gn_out",
+              "!./target/*/gn_root",
               "!./target/*/*.zip",
               "!./target/*/*.tar.gz",
             ].join("\n"),
@@ -825,7 +826,7 @@ const ci = {
             "!startsWith(github.ref, 'refs/tags/')",
           ].join("\n"),
           run:
-            "target/release/deno run -A --unstable ext/websocket/autobahn/fuzzingclient.js",
+            "target/release/deno run -A --unstable --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js",
         },
         {
           name: "Test (full, debug)",
@@ -878,9 +879,9 @@ const ci = {
             DENO_BIN: "./target/debug/deno",
           },
           run: [
-            "deno run -A --unstable --lock=tools/deno.lock.json       \\",
+            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             "        ./tests/wpt/wpt.ts setup",
-            "deno run -A --unstable --lock=tools/deno.lock.json       \\",
+            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             '         ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"',
           ].join("\n"),
         },
@@ -891,9 +892,9 @@ const ci = {
             DENO_BIN: "./target/release/deno",
           },
           run: [
-            "deno run -A --unstable --lock=tools/deno.lock.json        \\",
+            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             "         ./tests/wpt/wpt.ts setup",
-            "deno run -A --unstable --lock=tools/deno.lock.json        \\",
+            "deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\\",
             "         ./tests/wpt/wpt.ts run --quiet --release         \\",
             '                            --binary="$DENO_BIN"          \\',
             "                            --json=wpt.json               \\",

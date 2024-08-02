@@ -6,10 +6,11 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
-use deno_runtime::deno_node::analyze::CjsAnalysisExports;
-use deno_runtime::deno_node::analyze::CjsCodeAnalyzer;
-use deno_runtime::deno_node::analyze::NodeCodeTranslator;
+use deno_runtime::deno_node::DenoFsNodeResolverEnv;
+use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
+use node_resolver::analyze::CjsAnalysisExports;
+use node_resolver::analyze::CjsCodeAnalyzer;
+use node_resolver::analyze::NodeCodeTranslator;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -17,7 +18,8 @@ use crate::cache::CacheDBHash;
 use crate::cache::NodeAnalysisCache;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
-pub type CliNodeCodeTranslator = NodeCodeTranslator<CliCjsCodeAnalyzer>;
+pub type CliNodeCodeTranslator =
+  NodeCodeTranslator<CliCjsCodeAnalyzer, DenoFsNodeResolverEnv>;
 
 /// Resolves a specifier that is pointing into a node_modules folder.
 ///

@@ -4236,7 +4236,7 @@ declare namespace Deno {
    * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
    * for migration instructions.
    *
-   * @category Sub Process */
+   * @category Subprocess */
   export interface RunOptions {
     /** Arguments to pass.
      *
@@ -4303,7 +4303,7 @@ declare namespace Deno {
    * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
    * for migration instructions.
    *
-   * @category Sub Process */
+   * @category Subprocess */
   export type ProcessStatus =
     | {
       success: true;
@@ -4324,7 +4324,7 @@ declare namespace Deno {
    * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
    * for migration instructions.
    *
-   * @category Sub Process */
+   * @category Subprocess */
   export class Process<T extends RunOptions = RunOptions> {
     /** The resource ID of the sub-process. */
     readonly rid: number;
@@ -4530,7 +4530,7 @@ declare namespace Deno {
    * for migration instructions.
    *
    * @tags allow-run
-   * @category Sub Process
+   * @category Subprocess
    */
   export function run<T extends RunOptions = RunOptions>(opt: T): Process<T>;
 
@@ -4599,7 +4599,7 @@ declare namespace Deno {
    * ```
    *
    * @tags allow-run
-   * @category Sub Process
+   * @category Subprocess
    */
   export class Command {
     constructor(command: string | URL, options?: CommandOptions);
@@ -4633,7 +4633,7 @@ declare namespace Deno {
    * The interface for handling a child process returned from
    * {@linkcode Deno.Command.spawn}.
    *
-   * @category Sub Process
+   * @category Subprocess
    */
   export class ChildProcess implements AsyncDisposable {
     get stdin(): WritableStream<Uint8Array>;
@@ -4667,7 +4667,7 @@ declare namespace Deno {
   /**
    * Options which can be set when calling {@linkcode Deno.Command}.
    *
-   * @category Sub Process
+   * @category Subprocess
    */
   export interface CommandOptions {
     /** Arguments to pass to the process. */
@@ -4729,7 +4729,7 @@ declare namespace Deno {
   }
 
   /**
-   * @category Sub Process
+   * @category Subprocess
    */
   export interface CommandStatus {
     /** If the child process exits with a 0 status code, `success` will be set
@@ -4746,7 +4746,7 @@ declare namespace Deno {
    * {@linkcode Deno.Command.outputSync} which represents the result of spawning the
    * child process.
    *
-   * @category Sub Process
+   * @category Subprocess
    */
   export interface CommandOutput extends CommandStatus {
     /** The buffered output from the child process' `stdout`. */
@@ -4979,7 +4979,7 @@ declare namespace Deno {
 
   /** The permission descriptor for the `allow-ffi` and `deny-ffi` permissions, which controls
    * access to loading _foreign_ code and interfacing with it via the
-   * [Foreign Function Interface API](https://deno.land/manual/runtime/ffi_api)
+   * [Foreign Function Interface API](https://docs.deno.com/runtime/manual/runtime/ffi_api)
    * available in Deno.  The option `path` allows scoping the permission to a
    * specific path on the host.
    *
@@ -5822,7 +5822,7 @@ declare namespace Deno {
    * Requires `allow-run` permission.
    *
    * @tags allow-run
-   * @category Sub Process
+   * @category Subprocess
    */
   export function kill(pid: number, signo?: Signal): void;
 

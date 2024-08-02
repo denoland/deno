@@ -20,6 +20,11 @@ exports.checkWindowGlobal = function () {
   console.log(Object.getOwnPropertyDescriptor(globalThis, "window") !== undefined);
 }
 
+exports.checkSelfGlobal = function () {
+  console.log("self" in globalThis);
+  console.log(Object.getOwnPropertyDescriptor(globalThis, "self") !== undefined);
+}
+
 exports.getFoo = function () {
   return globalThis.foo;
 }

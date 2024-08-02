@@ -5,6 +5,43 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
+use deno_ast::MediaType;
+use deno_config::workspace::MappedResolution;
+use deno_config::workspace::MappedResolutionError;
+use deno_config::workspace::WorkspaceResolver;
+use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
+use deno_core::v8_set_flags;
+use deno_core::FeatureChecker;
+use deno_core::ModuleLoader;
+use deno_core::ModuleSourceCode;
+use deno_core::ModuleSpecifier;
+use deno_core::ModuleType;
+use deno_core::RequestedModuleType;
+use deno_core::ResolutionKind;
+use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_package_json::PackageJsonDepValue;
+use deno_runtime::deno_fs;
+use deno_runtime::deno_node::create_host_defined_options;
+use deno_runtime::deno_node::NodeResolver;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::WorkerExecutionMode;
+use deno_runtime::WorkerLogLevel;
+use deno_semver::npm::NpmPackageReqReference;
+use eszip::EszipRelativeFileBaseUrl;
+use import_map::parse_from_json;
+use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::NodeResolutionMode;
+use std::borrow::Cow;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
 use crate::args::npm_pkg_req_ref_to_binary_command;
@@ -33,41 +70,6 @@ use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
 use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
-use deno_ast::MediaType;
-use deno_config::package_json::PackageJsonDepValue;
-use deno_config::workspace::MappedResolution;
-use deno_config::workspace::MappedResolutionError;
-use deno_config::workspace::WorkspaceResolver;
-use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
-use deno_core::futures::FutureExt;
-use deno_core::v8_set_flags;
-use deno_core::FeatureChecker;
-use deno_core::ModuleLoader;
-use deno_core::ModuleSourceCode;
-use deno_core::ModuleSpecifier;
-use deno_core::ModuleType;
-use deno_core::RequestedModuleType;
-use deno_core::ResolutionKind;
-use deno_npm::npm_rc::ResolvedNpmRc;
-use deno_runtime::deno_fs;
-use deno_runtime::deno_node::analyze::NodeCodeTranslator;
-use deno_runtime::deno_node::NodeResolutionMode;
-use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::WorkerExecutionMode;
-use deno_runtime::WorkerLogLevel;
-use deno_semver::npm::NpmPackageReqReference;
-use eszip::EszipRelativeFileBaseUrl;
-use import_map::parse_from_json;
-use std::borrow::Cow;
-use std::rc::Rc;
-use std::sync::Arc;
 
 pub mod binary;
 mod file_system;
@@ -88,7 +90,7 @@ struct WorkspaceEszipModule {
 
 struct WorkspaceEszip {
   eszip: eszip::EszipV2,
-  root_dir_url: ModuleSpecifier,
+  root_dir_url: Arc<ModuleSpecifier>,
 }
 
 impl WorkspaceEszip {
@@ -151,21 +153,36 @@ impl ModuleLoader for EmbeddedModuleLoader {
       })?
     };
 
-    if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
-      specifier,
-      &referrer,
-      NodeResolutionMode::Execution,
-    ) {
-      return match result? {
-        Some(res) => Ok(res.into_url()),
-        None => Err(generic_error("not found")),
-      };
+    if self.shared.node_resolver.in_npm_package(&referrer) {
+      return Ok(
+        self
+          .shared
+          .node_resolver
+          .resolve(specifier, &referrer, NodeResolutionMode::Execution)?
+          .into_url(),
+      );
     }
 
     let mapped_resolution =
       self.shared.workspace_resolver.resolve(specifier, &referrer);
 
     match mapped_resolution {
+      Ok(MappedResolution::WorkspaceNpmPackage {
+        target_pkg_json: pkg_json,
+        sub_path,
+        ..
+      }) => Ok(
+        self
+          .shared
+          .node_resolver
+          .resolve_package_sub_path_from_deno_module(
+            pkg_json.dir_path(),
+            sub_path.as_deref(),
+            Some(&referrer),
+            NodeResolutionMode::Execution,
+          )?
+          .into_url(),
+      ),
       Ok(MappedResolution::PackageJson {
         dep_result,
         sub_path,
@@ -226,27 +243,41 @@ impl ModuleLoader for EmbeddedModuleLoader {
           }
         }
 
-        self
-          .shared
-          .node_resolver
-          .handle_if_in_node_modules(specifier)
+        Ok(
+          self
+            .shared
+            .node_resolver
+            .handle_if_in_node_modules(&specifier)?
+            .unwrap_or(specifier),
+        )
       }
       Err(err)
         if err.is_unmapped_bare_specifier() && referrer.scheme() == "file" =>
       {
-        // todo(dsherret): return a better error from node resolution so that
-        // we can more easily tell whether to surface it or not
-        let node_result = self.shared.node_resolver.resolve(
+        let maybe_res = self.shared.node_resolver.resolve_if_for_npm_pkg(
           specifier,
           &referrer,
           NodeResolutionMode::Execution,
-        );
-        if let Ok(Some(res)) = node_result {
+        )?;
+        if let Some(res) = maybe_res {
           return Ok(res.into_url());
         }
         Err(err.into())
       }
       Err(err) => Err(err.into()),
+    }
+  }
+
+  fn get_host_defined_options<'s>(
+    &self,
+    scope: &mut deno_core::v8::HandleScope<'s>,
+    name: &str,
+  ) -> Option<deno_core::v8::Local<'s, deno_core::v8::Data>> {
+    let name = deno_core::ModuleSpecifier::parse(name).ok()?;
+    if self.shared.node_resolver.in_npm_package(&name) {
+      Some(create_host_defined_options(scope))
+    } else {
+      None
     }
   }
 
@@ -369,7 +400,6 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
         root_permissions,
         dynamic_permissions,
       }),
-      source_map_getter: None,
     }
   }
 
@@ -384,7 +414,6 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
         root_permissions,
         dynamic_permissions,
       }),
-      source_map_getter: None,
     }
   }
 }
@@ -427,7 +456,8 @@ pub async fn run(
   let npm_registry_url = ModuleSpecifier::parse("https://localhost/").unwrap();
   let root_path =
     std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name));
-  let root_dir_url = ModuleSpecifier::from_directory_path(&root_path).unwrap();
+  let root_dir_url =
+    Arc::new(ModuleSpecifier::from_directory_path(&root_path).unwrap());
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
   let root_node_modules_path = root_path.join("node_modules");
   let npm_cache_dir = NpmCacheDir::new(
@@ -534,7 +564,7 @@ pub async fn run(
 
   let has_node_modules_dir = npm_resolver.root_node_modules_path().is_some();
   let node_resolver = Arc::new(NodeResolver::new(
-    fs.clone(),
+    deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
     npm_resolver.clone().into_npm_resolver(),
   ));
   let cjs_resolutions = Arc::new(CjsResolutionStore::default());
@@ -544,7 +574,7 @@ pub async fn run(
     CliCjsCodeAnalyzer::new(node_analysis_cache, fs.clone());
   let node_code_translator = Arc::new(NodeCodeTranslator::new(
     cjs_esm_code_analyzer,
-    fs.clone(),
+    deno_runtime::deno_node::DenoFsNodeResolverEnv::new(fs.clone()),
     node_resolver.clone(),
     npm_resolver.clone().into_npm_resolver(),
   ));
@@ -574,11 +604,12 @@ pub async fn run(
           .to_file_path()
           .unwrap();
         let pkg_json =
-          deno_config::package_json::PackageJson::load_from_value(path, json);
+          deno_package_json::PackageJson::load_from_value(path, json);
         Arc::new(pkg_json)
       })
       .collect();
     WorkspaceResolver::new_raw(
+      root_dir_url.clone(),
       import_map,
       pkg_jsons,
       metadata.workspace_resolver.pkg_json_resolution,
@@ -697,7 +728,7 @@ pub async fn run(
 
   // Initialize v8 once from the main thread.
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));
-  deno_core::JsRuntime::init_platform(None);
+  deno_core::JsRuntime::init_platform(None, true);
 
   let mut worker = worker_factory
     .create_main_worker(WorkerExecutionMode::Run, main_module, permissions)
