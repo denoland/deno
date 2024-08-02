@@ -856,6 +856,7 @@ fn stat_extra(
       // If error more data is returned, then it means that the buffer is too small to get full filename information
       // to have that we should retry. However, since we only use BasicInformation and StandardInformation, it is fine to ignore it
       // since struct is populated with other data anyway.
+      /// https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationfile#remarks
 
       if converted_status != ERROR_MORE_DATA {
         return Err(converted_status as NTSTATUS);
