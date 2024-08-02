@@ -3,7 +3,6 @@
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
-use deno_config::package_json::PackageJsonDepValue;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceResolver;
@@ -12,6 +11,7 @@ use deno_graph::DependencyDescriptor;
 use deno_graph::DynamicTemplatePart;
 use deno_graph::ParserModuleAnalyzer;
 use deno_graph::TypeScriptReference;
+use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_node::is_builtin_node_module;
 
 use crate::resolver::SloppyImportsResolver;
@@ -177,8 +177,8 @@ impl SpecifierUnfurler {
       if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
         sloppy_imports_resolver
           .resolve(&resolved, deno_graph::source::ResolutionMode::Execution)
-          .as_specifier()
-          .clone()
+          .map(|res| res.into_specifier())
+          .unwrap_or(resolved)
       } else {
         resolved
       };

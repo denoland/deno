@@ -8,8 +8,8 @@ use super::resolver::LspResolver;
 use super::tsc;
 
 use crate::args::jsr_url;
-use crate::tools::lint::create_linter;
-use deno_lint::linter::LintConfig;
+use crate::tools::lint::CliLinter;
+use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::SourceRange;
@@ -23,9 +23,6 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
-use deno_lint::diagnostic::LintDiagnostic;
-use deno_lint::rules::LintRule;
-use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
 use deno_semver::jsr::JsrPackageNvReference;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -36,6 +33,7 @@ use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
 use deno_semver::Version;
 use import_map::ImportMap;
+use node_resolver::NpmResolver;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
@@ -73,8 +71,9 @@ static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
     .collect()
   });
 
-static IMPORT_SPECIFIER_RE: Lazy<Regex> =
-  lazy_regex::lazy_regex!(r#"\sfrom\s+["']([^"']*)["']"#);
+static IMPORT_SPECIFIER_RE: Lazy<Regex> = lazy_regex::lazy_regex!(
+  r#"\sfrom\s+["']([^"']*)["']|import\s*\(\s*["']([^"']*)["']\s*\)"#
+);
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[
   ".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts", ".cjs", ".cts", ".d.ts",
@@ -148,8 +147,10 @@ impl Reference {
   }
 }
 
-fn as_lsp_range_from_diagnostic(diagnostic: &LintDiagnostic) -> Range {
-  as_lsp_range(diagnostic.range, &diagnostic.text_info)
+fn as_lsp_range_from_lint_diagnostic(
+  diagnostic_range: &LintDiagnosticRange,
+) -> Range {
+  as_lsp_range(diagnostic_range.range, &diagnostic_range.text_info)
 }
 
 fn as_lsp_range(
@@ -172,37 +173,39 @@ fn as_lsp_range(
 
 pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
-  lint_rules: Vec<&'static dyn LintRule>,
-  lint_config: LintConfig,
+  linter: &CliLinter,
 ) -> Result<Vec<Reference>, AnyError> {
-  let linter = create_linter(lint_rules);
-  let lint_diagnostics = linter.lint_with_ast(parsed_source, lint_config);
+  let lint_diagnostics = linter.lint_with_ast(parsed_source);
 
   Ok(
     lint_diagnostics
       .into_iter()
-      .map(|d| Reference {
-        range: as_lsp_range_from_diagnostic(&d),
-        category: Category::Lint {
-          message: d.message,
-          code: d.code,
-          hint: d.hint,
-          quick_fixes: d
-            .fixes
-            .into_iter()
-            .map(|f| DataQuickFix {
-              description: f.description.to_string(),
-              changes: f
-                .changes
-                .into_iter()
-                .map(|change| DataQuickFixChange {
-                  range: as_lsp_range(change.range, &d.text_info),
-                  new_text: change.new_text.to_string(),
-                })
-                .collect(),
-            })
-            .collect(),
-        },
+      .filter_map(|d| {
+        let range = d.range.as_ref()?;
+        Some(Reference {
+          range: as_lsp_range_from_lint_diagnostic(range),
+          category: Category::Lint {
+            message: d.details.message,
+            code: d.details.code.to_string(),
+            hint: d.details.hint,
+            quick_fixes: d
+              .details
+              .fixes
+              .into_iter()
+              .map(|f| DataQuickFix {
+                description: f.description.to_string(),
+                changes: f
+                  .changes
+                  .into_iter()
+                  .map(|change| DataQuickFixChange {
+                    range: as_lsp_range(change.range, &range.text_info),
+                    new_text: change.new_text.to_string(),
+                  })
+                  .collect(),
+              })
+              .collect(),
+          },
+        })
       })
       .collect(),
   )
@@ -528,7 +531,8 @@ pub fn fix_ts_import_changes(
         .map(|line| {
           // This assumes that there's only one import per line.
           if let Some(captures) = IMPORT_SPECIFIER_RE.captures(line) {
-            let specifier = captures.get(1).unwrap().as_str();
+            let specifier =
+              captures.iter().skip(1).find_map(|s| s).unwrap().as_str();
             if let Some(new_specifier) =
               import_mapper.check_unresolved_specifier(specifier, referrer)
             {

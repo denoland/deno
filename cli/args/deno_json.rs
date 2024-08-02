@@ -7,8 +7,64 @@ use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 
+#[cfg(test)] // happens to only be used by the tests at the moment
+pub struct DenoConfigFsAdapter<'a>(
+  pub &'a dyn deno_runtime::deno_fs::FileSystem,
+);
+
+#[cfg(test)]
+impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
+  fn read_to_string_lossy(
+    &self,
+    path: &std::path::Path,
+  ) -> Result<String, std::io::Error> {
+    self
+      .0
+      .read_text_file_lossy_sync(path, None)
+      .map_err(|err| err.into_io_error())
+  }
+
+  fn stat_sync(
+    &self,
+    path: &std::path::Path,
+  ) -> Result<deno_config::fs::FsMetadata, std::io::Error> {
+    self
+      .0
+      .stat_sync(path)
+      .map(|stat| deno_config::fs::FsMetadata {
+        is_file: stat.is_file,
+        is_directory: stat.is_directory,
+        is_symlink: stat.is_symlink,
+      })
+      .map_err(|err| err.into_io_error())
+  }
+
+  fn read_dir(
+    &self,
+    path: &std::path::Path,
+  ) -> Result<Vec<deno_config::fs::FsDirEntry>, std::io::Error> {
+    self
+      .0
+      .read_dir_sync(path)
+      .map_err(|err| err.into_io_error())
+      .map(|entries| {
+        entries
+          .into_iter()
+          .map(|e| deno_config::fs::FsDirEntry {
+            path: path.join(e.name),
+            metadata: deno_config::fs::FsMetadata {
+              is_file: e.is_file,
+              is_directory: e.is_directory,
+              is_symlink: e.is_symlink,
+            },
+          })
+          .collect()
+      })
+  }
+}
+
 pub fn deno_json_deps(
-  config: &deno_config::ConfigFile,
+  config: &deno_config::deno_json::ConfigFile,
 ) -> HashSet<JsrDepPackageReq> {
   let values = imports_values(config.json.imports.as_ref())
     .into_iter()

@@ -121,7 +121,7 @@ fn validate_cron_name(name: &str) -> Result<(), AnyError> {
   if !name.chars().all(|c| {
     c.is_ascii_whitespace() || c.is_ascii_alphanumeric() || c == '_' || c == '-'
   }) {
-    return Err(type_error("Invalid cron name"));
+    return Err(type_error("Invalid cron name. Only alphanumeric characters, whitespace, hyphens, and underscores are allowed"));
   }
   Ok(())
 }

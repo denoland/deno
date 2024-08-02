@@ -49,12 +49,15 @@ use std::sync::Arc;
 use crate::cache::IncrementalCache;
 
 /// Format JavaScript/TypeScript files.
-pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
+pub async fn format(
+  flags: Arc<Flags>,
+  fmt_flags: FmtFlags,
+) -> Result<(), AnyError> {
   if fmt_flags.is_stdin() {
     let cli_options = CliOptions::from_flags(flags)?;
-    let start_ctx = cli_options.workspace.resolve_start_ctx();
-    let fmt_config = start_ctx
-      .to_fmt_config(FilePatterns::new_with_base(start_ctx.dir_path()))?;
+    let start_dir = &cli_options.start_dir;
+    let fmt_config = start_dir
+      .to_fmt_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
     let fmt_options = FmtOptions::resolve(fmt_config, &fmt_flags);
     return format_stdin(
       &fmt_flags,
@@ -74,8 +77,8 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
       move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
         Ok(async move {
-          let factory = CliFactory::from_flags(flags)?;
-          let cli_options = factory.cli_options();
+          let factory = CliFactory::from_flags(flags);
+          let cli_options = factory.cli_options()?;
           let caches = factory.caches()?;
           let mut paths_with_options_batches =
             resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
@@ -119,9 +122,9 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
     )
     .await?;
   } else {
-    let factory = CliFactory::from_flags(flags)?;
+    let factory = CliFactory::from_flags(flags);
+    let cli_options = factory.cli_options()?;
     let caches = factory.caches()?;
-    let cli_options = factory.cli_options();
     let paths_with_options_batches =
       resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
     format_files(caches, &fmt_flags, paths_with_options_batches).await?;
@@ -230,6 +233,8 @@ fn format_markdown(
           | "typescript"
           | "json"
           | "jsonc"
+          | "yml"
+          | "yaml"
       ) {
         // It's important to tell dprint proper file extension, otherwise
         // it might parse the file twice.
@@ -241,19 +246,28 @@ fn format_markdown(
 
         let fake_filename =
           PathBuf::from(format!("deno_fmt_stdin.{extension}"));
-        if matches!(extension, "json" | "jsonc") {
-          let mut json_config = get_resolved_json_config(fmt_options);
-          json_config.line_width = line_width;
-          dprint_plugin_json::format_text(&fake_filename, text, &json_config)
-        } else {
-          let mut codeblock_config =
-            get_resolved_typescript_config(fmt_options);
-          codeblock_config.line_width = line_width;
-          dprint_plugin_typescript::format_text(
-            &fake_filename,
-            text.to_string(),
-            &codeblock_config,
+        match extension {
+          "json" | "jsonc" => {
+            let mut json_config = get_resolved_json_config(fmt_options);
+            json_config.line_width = line_width;
+            dprint_plugin_json::format_text(&fake_filename, text, &json_config)
+          }
+          "yml" | "yaml" => pretty_yaml::format_text(
+            text,
+            &get_resolved_yaml_config(fmt_options),
           )
+          .map(Some)
+          .map_err(AnyError::from),
+          _ => {
+            let mut codeblock_config =
+              get_resolved_typescript_config(fmt_options);
+            codeblock_config.line_width = line_width;
+            dprint_plugin_typescript::format_text(
+              &fake_filename,
+              text.to_string(),
+              &codeblock_config,
+            )
+          }
         }
       } else {
         Ok(None)
@@ -287,6 +301,12 @@ pub fn format_file(
       format_markdown(file_text, fmt_options)
     }
     "json" | "jsonc" => format_json(file_path, file_text, fmt_options),
+    "yml" | "yaml" => pretty_yaml::format_text(
+      file_text,
+      &get_resolved_yaml_config(fmt_options),
+    )
+    .map(Some)
+    .map_err(AnyError::from),
     "ipynb" => dprint_plugin_jupyter::format_text(
       file_text,
       |file_path: &Path, file_text: String| {
@@ -684,6 +704,41 @@ fn get_resolved_json_config(
   builder.build()
 }
 
+fn get_resolved_yaml_config(
+  options: &FmtOptionsConfig,
+) -> pretty_yaml::config::FormatOptions {
+  use pretty_yaml::config::*;
+
+  let layout_options = LayoutOptions {
+    print_width: options.line_width.unwrap_or(80) as usize,
+    use_tabs: options.use_tabs.unwrap_or_default(),
+    indent_width: options.indent_width.unwrap_or(2) as usize,
+    line_break: LineBreak::Lf,
+  };
+
+  let language_options = LanguageOptions {
+    quotes: if let Some(true) = options.single_quote {
+      Quotes::PreferSingle
+    } else {
+      Quotes::PreferDouble
+    },
+    trailing_comma: true,
+    format_comments: false,
+    indent_block_sequence_in_map: true,
+    brace_spacing: true,
+    bracket_spacing: false,
+    dash_spacing: DashSpacing::OneSpace,
+    trim_trailing_whitespaces: true,
+    trim_trailing_zero: false,
+    ignore_comment_directive: "deno-fmt-ignore".into(),
+  };
+
+  FormatOptions {
+    layout: layout_options,
+    language: language_options,
+  }
+}
+
 struct FileContents {
   text: String,
   had_bom: bool,
@@ -782,6 +837,8 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "mdwn"
         | "mdown"
         | "markdown"
+        | "yml"
+        | "yaml"
         | "ipynb"
     )
   })
@@ -816,6 +873,10 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
     assert!(is_supported_ext_fmt(Path::new("foo.json")));
     assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
+    assert!(is_supported_ext_fmt(Path::new("foo.yml")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Yml")));
+    assert!(is_supported_ext_fmt(Path::new("foo.yaml")));
+    assert!(is_supported_ext_fmt(Path::new("foo.YaML")));
     assert!(is_supported_ext_fmt(Path::new("foo.ipynb")));
   }
 

@@ -15,7 +15,7 @@ import {
 } from "node:crypto";
 import { promisify } from "node:util";
 import { Buffer } from "node:buffer";
-import { assert, assertEquals, assertThrows } from "@std/assert/mod.ts";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 
 const RUN_SLOW_TESTS = Deno.env.get("SLOW_TESTS") === "1";
 

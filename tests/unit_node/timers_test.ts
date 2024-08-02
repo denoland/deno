@@ -1,6 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assert, fail } from "@std/assert/mod.ts";
+import { assert, fail } from "@std/assert";
 import * as timers from "node:timers";
 import * as timersPromises from "node:timers/promises";
 
@@ -64,6 +64,29 @@ Deno.test("[node/timers/promises setTimeout]", () => {
 
   assert(p instanceof Promise);
   return p;
+});
+
+Deno.test("[node/timers/promises scheduler.wait]", async () => {
+  const { scheduler } = timersPromises;
+  let resolved = false;
+  timers.setTimeout(() => (resolved = true), 20);
+  const p = scheduler.wait(20);
+
+  assert(p instanceof Promise);
+  await p;
+  assert(resolved);
+});
+
+Deno.test("[node/timers/promises scheduler.yield]", async () => {
+  const { scheduler } = timersPromises;
+  let resolved = false;
+  timers.setImmediate(() => resolved = true);
+
+  const p = scheduler.yield();
+  assert(p instanceof Promise);
+  await p;
+
+  assert(resolved);
 });
 
 // Regression test for https://github.com/denoland/deno/issues/17981

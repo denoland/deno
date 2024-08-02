@@ -11,7 +11,6 @@ use clap::Command;
 use clap::ValueHint;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
-use deno_config::ConfigFlag;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -41,6 +40,14 @@ use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
 use super::DENO_FUTURE;
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum ConfigFlag {
+  #[default]
+  Discover,
+  Path(String),
+  Disabled,
+}
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FileFlags {
@@ -1989,7 +1996,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             // prefer using ts for formatting instead of js because ts works in more scenarios
             .default_value("ts")
             .value_parser([
-              "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "ipynb",
+              "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "yml", "yaml",
+              "ipynb",
             ]),
         )
         .arg(
@@ -2832,7 +2840,7 @@ fn vendor_subcommand() -> Command {
       .long_about(
         "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.
 Add `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.
-        
+
 Vendor remote modules into a local directory.
 
 Analyzes the provided modules along with their dependencies, downloads
@@ -2881,8 +2889,7 @@ Remote modules and multiple modules may also be specified:
 
 fn publish_subcommand() -> Command {
   Command::new("publish")
-    .hide(true)
-    .about("Unstable preview feature: Publish the current working directory's package or workspace")
+    .about("Publish the current working directory's package or workspace")
     // TODO: .long_about()
     .defer(|cmd| {
       cmd.arg(
@@ -4245,7 +4252,7 @@ fn run_parse(
   // for old versions of @netlify/edge-bundler with new versions of Deno
   // where Deno has gotten smarter at resolving config files.
   //
-  // It's an unfortuante scenario, but Netlify has the version at least
+  // It's an unfortunate scenario, but Netlify has the version at least
   // pinned to 1.x in old versions so we can remove this in Deno 2.0 in
   // a few months.
   fn temp_netlify_deno_1_hack(flags: &mut Flags, script_arg: &str) {
