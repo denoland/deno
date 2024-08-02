@@ -2683,10 +2683,19 @@ Directory arguments are expanded to all contained files matching the glob
         .value_name("N")
         .value_parser(value_parser!(NonZeroUsize)),
     )
+    // TODO(@lucacasonato): remove for Deno 2.0
     .arg(
       Arg::new("allow-none")
         .long("allow-none")
         .help("Don't return error code if no test files are found")
+        .hide(true)
+        .action(ArgAction::SetTrue),
+    )
+    .arg(
+      Arg::new("permit-no-files")
+        .long("permit-no-files")
+        .help("Don't return an error code if no test files were found")
+        .conflicts_with("allow-none")
         .action(ArgAction::SetTrue),
     )
     .arg(
@@ -4437,7 +4446,17 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     );
   }
   let doc = matches.get_flag("doc");
-  let allow_none = matches.get_flag("allow-none");
+  #[allow(clippy::print_stderr)]
+  let allow_none = matches.get_flag("permit-no-files")
+    || if matches.get_flag("allow-none") {
+      eprintln!(
+        "⚠️ {}",
+        crate::colors::yellow("The `--allow-none` flag is deprecated and will be removed in Deno 2.0.\nUse the `--permit-no-files` flag instead."),
+      );
+      true
+    } else {
+      false
+    };
   let filter = matches.remove_one::<String>("filter");
   let clean = matches.get_flag("clean");
 
@@ -8398,7 +8417,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-leaks", "--no-run", "--filter", "- foo", "--coverage=cov", "--clean", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-leaks", "--no-run", "--filter", "- foo", "--coverage=cov", "--clean", "--location", "https:foo", "--allow-net", "--permit-no-files", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
