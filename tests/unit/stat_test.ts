@@ -21,6 +21,7 @@ Deno.test({ permissions: { read: true } }, function fstatSyncSuccess() {
   assert(fileInfo.mtime);
   // The `birthtime` field is not available on Linux before kernel version 4.11.
   assert(fileInfo.birthtime || Deno.build.os === "linux");
+  assert(fileInfo.ctime);
 });
 
 Deno.test({ permissions: { read: true } }, async function fstatSuccess() {
@@ -34,6 +35,7 @@ Deno.test({ permissions: { read: true } }, async function fstatSuccess() {
   assert(fileInfo.mtime);
   // The `birthtime` field is not available on Linux before kernel version 4.11.
   assert(fileInfo.birthtime || Deno.build.os === "linux");
+  assert(fileInfo.ctime);
 });
 
 Deno.test(
@@ -59,6 +61,7 @@ Deno.test(
     assert(
       tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000,
     );
+    assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 1000);
 
     const readmeInfoByUrl = Deno.statSync(pathToAbsoluteFileUrl("README.md"));
     assert(readmeInfoByUrl.isFile);
@@ -92,6 +95,9 @@ Deno.test(
     assert(
       tempInfoByUrl.birthtime === null ||
         now - tempInfoByUrl.birthtime.valueOf() < 1000,
+    );
+    assert(tempInfoByUrl.ctime !== null &&
+        now - tempInfoByUrl.ctime.valueOf() < 1000
     );
 
     Deno.removeSync(tempFile, { recursive: true });
@@ -199,6 +205,7 @@ Deno.test(
     assert(
       tempInfo.birthtime === null || now - tempInfo.birthtime.valueOf() < 1000,
     );
+    assert(tempInfo.ctime !== null && now - tempInfo.ctime.valueOf() < 1000);
 
     const tempFileForUrl = await Deno.makeTempFile();
     const tempInfoByUrl = await Deno.stat(
@@ -219,7 +226,9 @@ Deno.test(
       tempInfoByUrl.birthtime === null ||
         now - tempInfoByUrl.birthtime.valueOf() < 1000,
     );
-
+    assert(tempInfoByUrl.ctime !== null &&
+        now - tempInfoByUrl.ctime.valueOf() < 1000
+    );
     Deno.removeSync(tempFile, { recursive: true });
     Deno.removeSync(tempFileForUrl, { recursive: true });
   },
