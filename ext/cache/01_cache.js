@@ -134,6 +134,22 @@ class Cache {
       throw new TypeError("Response body is already used");
     }
 
+    // If response body is a string or Uint8Array, attempt to auto-detect content-length
+    const headerList = [...innerResponse.headerList];
+    if (
+      innerResponse.body !== null &&
+      !getHeader(headerList, "content-length")
+    ) {
+      const byteLength = typeof innerResponse.body.source === "string"
+        ? new TextEncoder().encode(innerResponse.body.source).length
+        : innerResponse.body.source instanceof Uint8Array
+        ? innerResponse.body.source.length
+        : undefined;
+      if (typeof byteLength === "number") {
+        headerList.push(["content-length", "" + byteLength]);
+      }
+    }
+
     const stream = innerResponse.body?.stream;
     let rid = null;
     if (stream) {
@@ -157,7 +173,7 @@ class Cache {
         cacheId: this[_id],
         // deno-lint-ignore prefer-primordials
         requestUrl: reqUrl.toString(),
-        responseHeaders: innerResponse.headerList,
+        responseHeaders: headerList,
         requestHeaders: innerRequest.headerList,
         responseStatus: innerResponse.status,
         responseStatusText: innerResponse.statusMessage,

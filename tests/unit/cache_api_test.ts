@@ -92,6 +92,26 @@ Deno.test(async function cacheApi() {
     assertEquals(await res3?.json(), { msg: "hello world" });
   }
 
+  // Test that cache.put() sets content-length for UTF-8 string bodies.
+  {
+    const req = "https://deno.com";
+    await cache.put(req, new Response("some string 中文"));
+    const res = await cache.match(req);
+    assertEquals(res?.headers.get("content-length"), "18");
+    assertEquals(await res?.text(), "some string 中文");
+    assert(await cache.delete(req));
+  }
+
+  // Test that cache.put() sets content-length for Uint8Array bodies.
+  {
+    const req = "https://deno.com";
+    await cache.put(req, new Response(new TextEncoder().encode("some bytes")));
+    const res = await cache.match(req);
+    assertEquals(res?.headers.get("content-length"), "10");
+    assertEquals(await res?.text(), "some bytes");
+    assert(await cache.delete(req));
+  }
+
   assert(await caches.delete(cacheName));
   assertFalse(await caches.has(cacheName));
 });
