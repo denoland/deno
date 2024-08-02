@@ -123,13 +123,12 @@ pub fn import_assertion_callback(
   let mut msg = deno_terminal::colors::yellow("⚠️  Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.").to_string();
   if let Some(specifier) = args.maybe_specifier {
     if let Some(source_line) = args.maybe_source_line {
-      msg.push('\n');
+      msg.push_str("\n\n");
       msg.push_str(&source_line);
-      msg.push('\n');
-      msg.push_str(&format!("{:0width$}^", " ", width = args.column_number));
+      msg.push_str("\n\n");
     }
     msg.push_str(&format!(
-      "  at {}:{}:{}",
+      "  at {}:{}:{}\n",
       specifier,
       args.maybe_line_number.unwrap(),
       args.column_number

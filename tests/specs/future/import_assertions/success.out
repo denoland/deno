@@ -1,1 +1,7 @@
+⚠️  Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.
+
+import foo from "./main.json" assert { type: "json" };
+
+  at file:///Users/ib/dev/deno/tests/specs/future/import_assertions/main.js:1:30
+
 { foo: "foo" }

@@ -382,11 +382,15 @@ fn resolve_flags_and_init(
     DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
     _ => {
       if *DENO_FUTURE {
+        // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
+        // and its settings.
         // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
         // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
         vec!["--no-harmony-import-assertions".to_string()]
       } else {
         vec![
+          // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
+          // and its settings.
           // If we're still in v1.X version we want to support import assertions.
           // V8 12.6 unshipped the support by default, so force it by passing a
           // flag.
