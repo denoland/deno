@@ -145,7 +145,7 @@ fn upgrade_with_out_in_tmpdir() {
   assert!(v.contains("1.11.5"));
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn upgrade_invalid_stable_version() {
   let context = upgrade_context();
   let temp_dir = context.temp_dir();

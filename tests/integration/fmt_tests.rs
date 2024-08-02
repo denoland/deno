@@ -49,6 +49,7 @@ fn fmt_test() {
     .current_dir(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
+      "--unstable-yaml".to_string(),
       format!(
         "--ignore={badly_formatted_js},{badly_formatted_md},{badly_formatted_json},{badly_formatted_yaml},{badly_formatted_ipynb}",
       ),
@@ -69,6 +70,7 @@ fn fmt_test() {
     .args_vec(vec![
       "fmt".to_string(),
       "--check".to_string(),
+      "--unstable-yaml".to_string(),
       badly_formatted_js.to_string(),
       badly_formatted_md.to_string(),
       badly_formatted_json.to_string(),
@@ -86,6 +88,7 @@ fn fmt_test() {
     .current_dir(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
+      "--unstable-yaml".to_string(),
       badly_formatted_js.to_string(),
       badly_formatted_md.to_string(),
       badly_formatted_json.to_string(),

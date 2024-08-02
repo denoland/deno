@@ -13,6 +13,7 @@ use crate::args::FmtFlags;
 use crate::args::FmtOptions;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
+use crate::args::UnstableFmtOptions;
 use crate::cache::Caches;
 use crate::colors;
 use crate::factory::CliFactory;
@@ -58,7 +59,11 @@ pub async fn format(
     let start_dir = &cli_options.start_dir;
     let fmt_config = start_dir
       .to_fmt_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
-    let fmt_options = FmtOptions::resolve(fmt_config, &fmt_flags);
+    let fmt_options = FmtOptions::resolve(
+      fmt_config,
+      cli_options.resolve_config_unstable_fmt_options(),
+      &fmt_flags,
+    );
     return format_stdin(
       &fmt_flags,
       fmt_options,
@@ -184,11 +189,16 @@ async fn format_files(
     let paths = paths_with_options.paths;
     let incremental_cache = Arc::new(IncrementalCache::new(
       caches.fmt_incremental_cache_db(),
-      &fmt_options.options,
+      &(&fmt_options.options, &fmt_options.unstable), // cache key
       &paths,
     ));
     formatter
-      .handle_files(paths, fmt_options.options, incremental_cache.clone())
+      .handle_files(
+        paths,
+        fmt_options.options,
+        fmt_options.unstable,
+        incremental_cache.clone(),
+      )
       .await?;
     incremental_cache.wait_completion().await;
   }
@@ -212,6 +222,7 @@ fn collect_fmt_files(
 fn format_markdown(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
+  unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
   let markdown_config = get_resolved_markdown_config(fmt_options);
   dprint_plugin_markdown::format_text(
@@ -252,12 +263,18 @@ fn format_markdown(
             json_config.line_width = line_width;
             dprint_plugin_json::format_text(&fake_filename, text, &json_config)
           }
-          "yml" | "yaml" => pretty_yaml::format_text(
-            text,
-            &get_resolved_yaml_config(fmt_options),
-          )
-          .map(Some)
-          .map_err(AnyError::from),
+          "yml" | "yaml" => {
+            if unstable_options.yaml {
+              pretty_yaml::format_text(
+                text,
+                &get_resolved_yaml_config(fmt_options),
+              )
+              .map(Some)
+              .map_err(AnyError::from)
+            } else {
+              Ok(None)
+            }
+          }
           _ => {
             let mut codeblock_config =
               get_resolved_typescript_config(fmt_options);
@@ -293,24 +310,31 @@ pub fn format_file(
   file_path: &Path,
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
+  unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
   let ext = get_extension(file_path).unwrap_or_default();
 
   match ext.as_str() {
     "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown" => {
-      format_markdown(file_text, fmt_options)
+      format_markdown(file_text, fmt_options, unstable_options)
     }
     "json" | "jsonc" => format_json(file_path, file_text, fmt_options),
-    "yml" | "yaml" => pretty_yaml::format_text(
-      file_text,
-      &get_resolved_yaml_config(fmt_options),
-    )
-    .map(Some)
-    .map_err(AnyError::from),
+    "yml" | "yaml" => {
+      if unstable_options.yaml {
+        pretty_yaml::format_text(
+          file_text,
+          &get_resolved_yaml_config(fmt_options),
+        )
+        .map(Some)
+        .map_err(AnyError::from)
+      } else {
+        Ok(None)
+      }
+    }
     "ipynb" => dprint_plugin_jupyter::format_text(
       file_text,
       |file_path: &Path, file_text: String| {
-        format_file(file_path, &file_text, fmt_options)
+        format_file(file_path, &file_text, fmt_options, unstable_options)
       },
     ),
     _ => {
@@ -340,6 +364,7 @@ trait Formatter {
     &self,
     paths: Vec<PathBuf>,
     fmt_options: FmtOptionsConfig,
+    unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
   ) -> Result<(), AnyError>;
 
@@ -358,6 +383,7 @@ impl Formatter for CheckFormatter {
     &self,
     paths: Vec<PathBuf>,
     fmt_options: FmtOptionsConfig,
+    unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
   ) -> Result<(), AnyError> {
     // prevent threads outputting at the same time
@@ -375,7 +401,12 @@ impl Formatter for CheckFormatter {
           return Ok(());
         }
 
-        match format_file(&file_path, &file_text, &fmt_options) {
+        match format_file(
+          &file_path,
+          &file_text,
+          &fmt_options,
+          &unstable_options,
+        ) {
           Ok(Some(formatted_text)) => {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock();
@@ -450,6 +481,7 @@ impl Formatter for RealFormatter {
     &self,
     paths: Vec<PathBuf>,
     fmt_options: FmtOptionsConfig,
+    unstable_options: UnstableFmtOptions,
     incremental_cache: Arc<IncrementalCache>,
   ) -> Result<(), AnyError> {
     let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
@@ -469,8 +501,9 @@ impl Formatter for RealFormatter {
         match format_ensure_stable(
           &file_path,
           &file_contents.text,
-          &fmt_options,
-          format_file,
+          |file_path, file_text| {
+            format_file(file_path, file_text, &fmt_options, &unstable_options)
+          },
         ) {
           Ok(Some(formatted_text)) => {
             incremental_cache.update_file(&file_path, &formatted_text);
@@ -527,20 +560,15 @@ impl Formatter for RealFormatter {
 fn format_ensure_stable(
   file_path: &Path,
   file_text: &str,
-  fmt_options: &FmtOptionsConfig,
-  fmt_func: impl Fn(
-    &Path,
-    &str,
-    &FmtOptionsConfig,
-  ) -> Result<Option<String>, AnyError>,
+  fmt_func: impl Fn(&Path, &str) -> Result<Option<String>, AnyError>,
 ) -> Result<Option<String>, AnyError> {
-  let formatted_text = fmt_func(file_path, file_text, fmt_options)?;
+  let formatted_text = fmt_func(file_path, file_text)?;
 
   match formatted_text {
     Some(mut current_text) => {
       let mut count = 0;
       loop {
-        match fmt_func(file_path, &current_text, fmt_options) {
+        match fmt_func(file_path, &current_text) {
           Ok(Some(next_pass_text)) => {
             // just in case
             if next_pass_text == current_text {
@@ -595,7 +623,12 @@ fn format_stdin(
     bail!("Failed to read from stdin");
   }
   let file_path = PathBuf::from(format!("_stdin.{ext}"));
-  let formatted_text = format_file(&file_path, &source, &fmt_options.options)?;
+  let formatted_text = format_file(
+    &file_path,
+    &source,
+    &fmt_options.options,
+    &fmt_options.unstable,
+  )?;
   if fmt_flags.check {
     #[allow(clippy::print_stdout)]
     if formatted_text.is_some() {
@@ -883,23 +916,17 @@ mod test {
   #[test]
   #[should_panic(expected = "Formatting not stable. Bailed after 5 tries.")]
   fn test_format_ensure_stable_unstable_format() {
-    format_ensure_stable(
-      &PathBuf::from("mod.ts"),
-      "1",
-      &Default::default(),
-      |_, file_text, _| Ok(Some(format!("1{file_text}"))),
-    )
+    format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
+      Ok(Some(format!("1{file_text}")))
+    })
     .unwrap();
   }
 
   #[test]
   fn test_format_ensure_stable_error_first() {
-    let err = format_ensure_stable(
-      &PathBuf::from("mod.ts"),
-      "1",
-      &Default::default(),
-      |_, _, _| bail!("Error formatting."),
-    )
+    let err = format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, _| {
+      bail!("Error formatting.")
+    })
     .unwrap_err();
 
     assert_eq!(err.to_string(), "Error formatting.");
@@ -908,28 +935,20 @@ mod test {
   #[test]
   #[should_panic(expected = "Formatting succeeded initially, but failed when")]
   fn test_format_ensure_stable_error_second() {
-    format_ensure_stable(
-      &PathBuf::from("mod.ts"),
-      "1",
-      &Default::default(),
-      |_, file_text, _| {
-        if file_text == "1" {
-          Ok(Some("11".to_string()))
-        } else {
-          bail!("Error formatting.")
-        }
-      },
-    )
+    format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
+      if file_text == "1" {
+        Ok(Some("11".to_string()))
+      } else {
+        bail!("Error formatting.")
+      }
+    })
     .unwrap();
   }
 
   #[test]
   fn test_format_stable_after_two() {
-    let result = format_ensure_stable(
-      &PathBuf::from("mod.ts"),
-      "1",
-      &Default::default(),
-      |_, file_text, _| {
+    let result =
+      format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
         if file_text == "1" {
           Ok(Some("11".to_string()))
         } else if file_text == "11" {
@@ -937,9 +956,8 @@ mod test {
         } else {
           unreachable!();
         }
-      },
-    )
-    .unwrap();
+      })
+      .unwrap();
 
     assert_eq!(result, Some("11".to_string()));
   }
@@ -953,6 +971,7 @@ mod test {
         single_quote: Some(true),
         ..Default::default()
       },
+      &UnstableFmtOptions::default(),
     )
     .unwrap()
     .unwrap();
