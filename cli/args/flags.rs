@@ -2086,8 +2086,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             .long("unstable-yaml")
             .help("Enable formatting YAML files.")
             .value_parser(FalseyValueParser::new())
-            .action(ArgAction::SetTrue)
-            .global(true),
+            .action(ArgAction::SetTrue),
         )
     })
 }
