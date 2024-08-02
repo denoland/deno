@@ -135,7 +135,7 @@ class Cache {
     }
 
     // If response body is a string or Uint8Array, attempt to auto-detect content-length
-    const headerList = [...innerResponse.headerList];
+    let headerList = innerResponse.headerList;
     if (
       innerResponse.body !== null &&
       !getHeader(headerList, "content-length")
@@ -146,7 +146,7 @@ class Cache {
         ? innerResponse.body.source.length
         : undefined;
       if (typeof byteLength === "number") {
-        headerList.push(["content-length", "" + byteLength]);
+        headerList = [...headerList, ["content-length", "" + byteLength]];
       }
     }
 
