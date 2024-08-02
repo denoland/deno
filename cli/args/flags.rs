@@ -1141,17 +1141,11 @@ Standard Library: https://jsr.io/@std
 Modules: https://jsr.io/ https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
-To start the REPL:
 
-  <g>deno</>
-
-To execute a script:
-
-  <g>deno run https://examples.deno.land/hello-world.ts</>
-
-To evaluate code in the shell:
-
-  <g>deno eval \"console.log(30933 + 404)\"</>
+Deno by Example: https://docs.deno.com/examples
+  Start the REPL:              <g>deno</>
+  Execute a script:            <g>deno run https://examples.deno.land/hello-world.ts</>
+  Evaluate code in the shell:  <g>deno eval \"console.log(30933 + 404)\"</>
 "
   )
 );
