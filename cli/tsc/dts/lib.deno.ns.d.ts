@@ -3595,8 +3595,7 @@ declare namespace Deno {
     ino: number | null;
     /** The underlying raw `st_mode` bits that contain the standard Unix
      * permissions for this file/directory.
-     *
-     * _Linux/Mac OS only._ */
+     */
     mode: number | null;
     /** Number of hard links pointing to this file.
      *

@@ -299,7 +299,6 @@ Deno.test(
     const s = Deno.statSync(filename);
     assert(s.dev !== 0);
     assert(s.ino === null);
-    assert(s.mode === null);
     assert(s.nlink === null);
     assert(s.uid === null);
     assert(s.gid === null);
