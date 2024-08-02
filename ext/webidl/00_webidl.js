@@ -1425,7 +1425,7 @@ export {
   createSequenceConverter,
   illegalConstructor,
   invokeCallbackFunction,
-  isIterator,
+  isAsyncIterator,
   makeException,
   mixinPairIterable,
   requiredArguments,
