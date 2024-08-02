@@ -19,7 +19,6 @@ import {
   asciiToBytes,
   base64ToBytes,
   base64UrlToBytes,
-  base64Write,
   bytesToAscii,
   bytesToUtf16le,
   hexToBytes,
@@ -42,15 +41,6 @@ import { atob, btoa } from "ext:deno_web/05_base64.js";
 import { Blob } from "ext:deno_web/09_file.js";
 
 export { atob, Blob, btoa };
-
-class FastBuffer extends Uint8Array {
-  // Using an explicit constructor here is necessary to avoid relying on
-  // `Array.prototype[Symbol.iterator]`, which can be mutated by users.
-  // eslint-disable-next-line no-useless-constructor
-  constructor(bufferOrLength, byteOffset, length) {
-    super(bufferOrLength, byteOffset, length);
-  }
-}
 
 const utf8Encoder = new TextEncoder();
 
@@ -82,9 +72,6 @@ export const constants = {
   MAX_STRING_LENGTH: kStringMaxLength,
 };
 
-FastBuffer.prototype.constructor = Buffer;
-Buffer.prototype = FastBuffer.prototype;
-
 Object.defineProperty(Buffer.prototype, "parent", {
   enumerable: true,
   get: function () {
@@ -111,7 +98,9 @@ function createBuffer(length) {
       'The value "' + length + '" is invalid for option "size"',
     );
   }
-  return new FastBuffer(length);
+  const buf = new Uint8Array(length);
+  Object.setPrototypeOf(buf, Buffer.prototype);
+  return buf;
 }
 
 export function Buffer(arg, encodingOrOffset, length) {
@@ -128,32 +117,7 @@ export function Buffer(arg, encodingOrOffset, length) {
   return _from(arg, encodingOrOffset, length);
 }
 
-Object.defineProperty(Buffer, Symbol.species, {
-  __proto__: null,
-  enumerable: false,
-  configurable: true,
-  get() {
-    return FastBuffer;
-  },
-});
-
-Buffer.poolSize = 8 * 1024;
-let poolSize, poolOffset, allocPool;
-
-function createPool() {
-  poolSize = Buffer.poolSize;
-  allocPool = new Uint8Array(poolSize).buffer;
-  poolOffset = 0;
-}
-createPool();
-
-function alignPool() {
-  // Ensure aligned slices
-  if (poolOffset & 0x7) {
-    poolOffset |= 0x7;
-    poolOffset++;
-  }
-}
+Buffer.poolSize = 8192;
 
 function _from(value, encodingOrOffset, length) {
   if (typeof value === "string") {
@@ -240,28 +204,6 @@ Buffer.allocUnsafeSlow = function allocUnsafeSlow(size) {
   return _allocUnsafe(size);
 };
 
-function fromStringFast(string, ops) {
-  const length = ops.byteLength(string);
-  if (length >= (Buffer.poolSize >>> 1)) {
-    const data = ops.create(string);
-    Object.setPrototypeOf(data, Buffer.prototype);
-    return data;
-  }
-
-  if (length > (poolSize - poolOffset)) {
-    createPool();
-  }
-  let b = new FastBuffer(allocPool, poolOffset, length);
-  const actual = ops.write(b, string, 0, length);
-  if (actual != length) {
-    // byteLength() may overestimate. That's a rare case, though.
-    b = new FastBuffer(allocPool, poolOffset, actual);
-  }
-  poolOffset += actual;
-  alignPool();
-  return b;
-}
-
 function fromString(string, encoding) {
   if (typeof encoding !== "string" || encoding === "") {
     encoding = "utf8";
@@ -269,15 +211,19 @@ function fromString(string, encoding) {
   if (!Buffer.isEncoding(encoding)) {
     throw new codes.ERR_UNKNOWN_ENCODING(encoding);
   }
-  const ops = getEncodingOps(encoding);
-  if (ops === undefined) {
-    throw new codes.ERR_UNKNOWN_ENCODING(encoding);
+  const length = byteLength(string, encoding) | 0;
+  let buf = createBuffer(length);
+  const actual = buf.write(string, encoding);
+  if (actual !== length) {
+    buf = buf.slice(0, actual);
   }
-  return fromStringFast(string, ops);
+  return buf;
 }
 
 function fromArrayLike(obj) {
-  return new FastBuffer(obj);
+  const buf = new Uint8Array(obj);
+  Object.setPrototypeOf(buf, Buffer.prototype);
+  return buf;
 }
 
 function fromObject(obj) {
@@ -314,7 +260,7 @@ Object.setPrototypeOf(SlowBuffer.prototype, Uint8Array.prototype);
 Object.setPrototypeOf(SlowBuffer, Uint8Array);
 
 Buffer.isBuffer = function isBuffer(b) {
-  return b instanceof Buffer;
+  return b != null && b._isBuffer === true && b !== Buffer.prototype;
 };
 
 Buffer.compare = function compare(a, b) {
@@ -718,12 +664,12 @@ Buffer.prototype.base64Slice = function base64Slice(
   }
 };
 
-Buffer.prototype.base64Write = function base64Write_(
+Buffer.prototype.base64Write = function base64Write(
   string,
   offset,
   length,
 ) {
-  return base64Write(string, this, offset, length);
+  return blitBuffer(base64ToBytes(string), this, offset, length);
 };
 
 Buffer.prototype.base64urlSlice = function base64urlSlice(
@@ -791,8 +737,8 @@ Buffer.prototype.ucs2Write = function ucs2Write(string, offset, length) {
   );
 };
 
-Buffer.prototype.utf8Slice = function utf8Slice(offset, length) {
-  return _utf8Slice(this, offset, length);
+Buffer.prototype.utf8Slice = function utf8Slice(string, offset, length) {
+  return _utf8Slice(this, string, offset, length);
 };
 
 Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
@@ -885,7 +831,9 @@ function fromArrayBuffer(obj, byteOffset, length) {
     }
   }
 
-  return new FastBuffer(obj, byteOffset, length);
+  const buffer = new Uint8Array(obj, byteOffset, length);
+  Object.setPrototypeOf(buffer, Buffer.prototype);
+  return buffer;
 }
 
 function _base64Slice(buf, start, end) {
@@ -2157,7 +2105,6 @@ export const encodingOps = {
         dir,
       ),
     slice: (buf, start, end) => buf.asciiSlice(start, end),
-    create: (string) => asciiToBytes(string),
     write: (buf, string, offset, len) => buf.asciiWrite(string, offset, len),
   },
   base64: {
@@ -2172,7 +2119,6 @@ export const encodingOps = {
         encodingsMap.base64,
         dir,
       ),
-    create: (string) => base64ToBytes(string),
     slice: (buf, start, end) => buf.base64Slice(start, end),
     write: (buf, string, offset, len) => buf.base64Write(string, offset, len),
   },
@@ -2188,7 +2134,6 @@ export const encodingOps = {
         encodingsMap.base64url,
         dir,
       ),
-    create: (string) => base64UrlToBytes(string),
     slice: (buf, start, end) => buf.base64urlSlice(start, end),
     write: (buf, string, offset, len) =>
       buf.base64urlWrite(string, offset, len),
@@ -2205,7 +2150,6 @@ export const encodingOps = {
         encodingsMap.hex,
         dir,
       ),
-    create: (string) => hexToBytes(string),
     slice: (buf, start, end) => buf.hexSlice(start, end),
     write: (buf, string, offset, len) => buf.hexWrite(string, offset, len),
   },
@@ -2221,7 +2165,6 @@ export const encodingOps = {
         encodingsMap.latin1,
         dir,
       ),
-    create: (string) => asciiToBytes(string),
     slice: (buf, start, end) => buf.latin1Slice(start, end),
     write: (buf, string, offset, len) => buf.latin1Write(string, offset, len),
   },
@@ -2237,7 +2180,6 @@ export const encodingOps = {
         encodingsMap.utf16le,
         dir,
       ),
-    create: (string) => utf16leToBytes(string),
     slice: (buf, start, end) => buf.ucs2Slice(start, end),
     write: (buf, string, offset, len) => buf.ucs2Write(string, offset, len),
   },
@@ -2253,7 +2195,6 @@ export const encodingOps = {
         encodingsMap.utf8,
         dir,
       ),
-    create: (string) => utf8Encoder.encode(string),
     slice: (buf, start, end) => buf.utf8Slice(start, end),
     write: (buf, string, offset, len) => buf.utf8Write(string, offset, len),
   },
@@ -2269,7 +2210,6 @@ export const encodingOps = {
         encodingsMap.utf16le,
         dir,
       ),
-    create: (string) => utf16leToBytes(string),
     slice: (buf, start, end) => buf.ucs2Slice(start, end),
     write: (buf, string, offset, len) => buf.ucs2Write(string, offset, len),
   },
