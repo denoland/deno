@@ -955,12 +955,12 @@ function createAsyncIterableConverter(converter) {
       method = V[SymbolIterator];
 
       if (method === undefined) {
-      throw makeException(
-        TypeError,
-        "is not iterable.",
-        prefix,
-        context,
-      );
+        throw makeException(
+          TypeError,
+          "is not iterable.",
+          prefix,
+          context,
+        );
       }
 
       isAsync = false;
@@ -972,7 +972,11 @@ function createAsyncIterableConverter(converter) {
       open(context) {
         const iter = FunctionPrototypeCall(method, V);
         if (type(iter) !== "Object") {
-          throw new TypeError(`${context} could not be iterated because iterator method did not return object, but ${type(iter)}.`);
+          throw new TypeError(
+            `${context} could not be iterated because iterator method did not return object, but ${
+              type(iter)
+            }.`,
+          );
         }
 
         let asyncIterator = iter;
@@ -992,7 +996,11 @@ function createAsyncIterableConverter(converter) {
             // deno-lint-ignore prefer-primordials
             const iterResult = await asyncIterator.next();
             if (type(iterResult) !== "Object") {
-              throw TypeError(`${context} failed to iterate next value because the next() method did not return an object, but ${type(iterResult)}.`);
+              throw TypeError(
+                `${context} failed to iterate next value because the next() method did not return an object, but ${
+                  type(iterResult)
+                }.`,
+              );
             }
 
             if (iterResult.done) {
@@ -1016,7 +1024,11 @@ function createAsyncIterableConverter(converter) {
             // deno-lint-ignore prefer-primordials
             const returnPromiseResult = await asyncIterator.return(reason);
             if (type(returnPromiseResult) !== "Object") {
-              throw TypeError(`${context} failed to close iterator because the return() method did not return an object, but ${type(returnPromiseResult)}.`);
+              throw TypeError(
+                `${context} failed to close iterator because the return() method did not return an object, but ${
+                  type(returnPromiseResult)
+                }.`,
+              );
             }
 
             return undefined;
