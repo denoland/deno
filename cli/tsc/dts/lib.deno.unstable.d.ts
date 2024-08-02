@@ -856,7 +856,7 @@ declare namespace Deno {
    *
    * These are unstable options which can be used with {@linkcode Deno.run}.
    *
-   * @category Sub Process
+   * @category Subprocess
    * @experimental
    */
   export interface UnstableRunOptions extends RunOptions {
@@ -919,7 +919,7 @@ declare namespace Deno {
    * Requires `allow-run` permission.
    *
    * @tags allow-run
-   * @category Sub Process
+   * @category Subprocess
    * @experimental
    */
   export function run<T extends UnstableRunOptions = UnstableRunOptions>(
