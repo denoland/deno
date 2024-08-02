@@ -4257,7 +4257,7 @@ fn run_parse(
   // for old versions of @netlify/edge-bundler with new versions of Deno
   // where Deno has gotten smarter at resolving config files.
   //
-  // It's an unfortuante scenario, but Netlify has the version at least
+  // It's an unfortunate scenario, but Netlify has the version at least
   // pinned to 1.x in old versions so we can remove this in Deno 2.0 in
   // a few months.
   fn temp_netlify_deno_1_hack(flags: &mut Flags, script_arg: &str) {
