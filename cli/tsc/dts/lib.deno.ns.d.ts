@@ -5316,7 +5316,7 @@ declare namespace Deno {
    * Give the following command line invocation of Deno:
    *
    * ```sh
-   * deno run --allow-read https://examples.deno.land/command-line-arguments.ts Sushi
+   * deno run --allow-read https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/command-line-arguments.ts Sushi
    * ```
    *
    * Then `Deno.args` will contain:

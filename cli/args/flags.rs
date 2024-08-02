@@ -1147,7 +1147,7 @@ To start the REPL:
 
 To execute a script:
 
-  <g>deno run https://examples.deno.land/hello-world.ts</>
+  <g>deno run https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/hello-world.ts</>
 
 To evaluate code in the shell:
 
@@ -2222,7 +2222,7 @@ Global installation
 If the --global flag is set, installs a script as an executable in the installation root's bin directory.
 
   deno install --global --allow-net --allow-read jsr:@std/http/file-server
-  deno install -g https://examples.deno.land/color-logging.ts
+  deno install -g https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/color-logging.ts
 
 To change the executable name, use -n/--name:
 
@@ -2259,7 +2259,7 @@ fn install_subcommand() -> Command {
 "Installs a script as an executable in the installation root's bin directory.
 
   deno install --global --allow-net --allow-read jsr:@std/http/file-server
-  deno install -g https://examples.deno.land/color-logging.ts
+  deno install -g https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/color-logging.ts
 
 To change the executable name, use -n/--name:
 
@@ -2525,7 +2525,7 @@ fn run_subcommand() -> Command {
 By default all programs are run in sandbox without access to disk, network or
 ability to spawn subprocesses.
 
-  deno run https://examples.deno.land/hello-world.ts
+  deno run https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/hello-world.ts
 
 Grant all permissions:
 
@@ -2541,7 +2541,7 @@ Grant permission to read allow-listed files from disk:
 
 Specifying the filename '-' to read the file from stdin.
 
-  curl https://examples.deno.land/hello-world.ts | deno run -",
+  curl https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/hello-world.ts | deno run -",
     )
 }
 
@@ -6740,7 +6740,7 @@ mod tests {
   #[test]
   fn repl_with_eval_file_flag() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "repl", "--eval-file=./a.js,./b.ts,https://examples.deno.land/hello-world.ts"]);
+    let r = flags_from_vec(svec!["deno", "repl", "--eval-file=./a.js,./b.ts,https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/hello-world.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6748,7 +6748,7 @@ mod tests {
           eval_files: Some(vec![
             "./a.js".to_string(),
             "./b.ts".to_string(),
-            "https://examples.deno.land/hello-world.ts".to_string()
+            "https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/hello-world.ts".to_string()
           ]),
           eval: None,
           is_default_command: false,
@@ -9255,13 +9255,13 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "compile",
-      "https://examples.deno.land/color-logging.ts"
+      "https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/color-logging.ts"
     ]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Compile(CompileFlags {
-          source_file: "https://examples.deno.land/color-logging.ts"
+          source_file: "https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/color-logging.ts"
             .to_string(),
           output: None,
           args: vec![],
@@ -9278,12 +9278,12 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "--env=.example.env", "https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/color-logging.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Compile(CompileFlags {
-          source_file: "https://examples.deno.land/color-logging.ts"
+          source_file: "https://raw.githubusercontent.com/denoland/deno-docs/main/by-example/color-logging.ts"
             .to_string(),
           output: Some(String::from("colors")),
           args: svec!["foo", "bar", "-p", "8080"],
