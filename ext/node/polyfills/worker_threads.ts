@@ -356,7 +356,7 @@ internals.__initWorkerThreads = (
       (ev: any) => any
     >();
 
-    parentPort = self as ParentPort;
+    parentPort = globalThis as ParentPort;
     threadId = workerId;
     if (maybeWorkerMetadata) {
       const { 0: metadata, 1: _ } = maybeWorkerMetadata;
@@ -535,6 +535,13 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
   };
   port.ref = () => {
     port[refMessagePort](true);
+  };
+  port.once = (name: string | symbol, listener) => {
+    const fn = (event) => {
+      port.off(name, fn);
+      return listener(event);
+    };
+    port.on(name, fn);
   };
   return port;
 }

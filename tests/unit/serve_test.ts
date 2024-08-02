@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assertMatch, assertRejects } from "@std/assert/mod.ts";
-import { Buffer, BufReader, BufWriter } from "@std/io/mod.ts";
+import { assertMatch, assertRejects } from "@std/assert";
+import { Buffer, BufReader, BufWriter } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -631,6 +631,51 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerMultipleResponseBodyConsume() {
+    const ac = new AbortController();
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const response = new Response("Hello World");
+    let hadError = false;
+    const server = Deno.serve({
+      handler: () => {
+        return response;
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(resolve),
+      onError: () => {
+        hadError = true;
+        return new Response("Internal Server Error", { status: 500 });
+      },
+    });
+
+    await promise;
+    assert(!response.bodyUsed);
+
+    const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+      headers: { "connection": "close" },
+    });
+    assertEquals(resp.status, 200);
+    const text = await resp.text();
+    assertEquals(text, "Hello World");
+    assert(response.bodyUsed);
+
+    const resp2 = await fetch(`http://127.0.0.1:${servePort}/`, {
+      headers: { "connection": "close" },
+    });
+    assertEquals(resp2.status, 500);
+    const text2 = await resp2.text();
+    assertEquals(text2, "Internal Server Error");
+    assert(hadError);
+    assert(response.bodyUsed);
+
+    ac.abort();
+    await server.finished;
+  },
+);
+
 Deno.test({ permissions: { net: true } }, async function httpServerOverload1() {
   const ac = new AbortController();
   const deferred = Promise.withResolvers<void>();
@@ -748,9 +793,11 @@ Deno.test(
     const consoleLog = console.log;
     console.log = (msg) => {
       try {
-        const match = msg.match(/Listening on http:\/\/localhost:(\d+)\//);
+        const match = msg.match(
+          /Listening on http:\/\/(localhost|0\.0\.0\.0):(\d+)\//,
+        );
         assert(!!match, `Didn't match ${msg}`);
-        const port = +match[1];
+        const port = +match[2];
         assert(port > 0 && port < 65536);
       } finally {
         ac.abort();
@@ -3592,7 +3639,7 @@ Deno.test(
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(clientError.message.includes("error sending request for url"));
+      assert(clientError.message.includes("client error"));
     } finally {
       ac.abort();
       await server.finished;
@@ -3640,7 +3687,7 @@ Deno.test({
       fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
-      assert(clientError.message.includes("error sending request for url"));
+      assert(clientError.message.includes("client error"));
     } finally {
       ac.abort();
       await server.finished;

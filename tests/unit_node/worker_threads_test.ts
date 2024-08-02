@@ -6,8 +6,8 @@ import {
   assertObjectMatch,
   assertThrows,
   fail,
-} from "@std/assert/mod.ts";
-import { fromFileUrl, relative, SEPARATOR } from "@std/path/mod.ts";
+} from "@std/assert";
+import { fromFileUrl, relative, SEPARATOR } from "@std/path";
 import * as workerThreads from "node:worker_threads";
 import { EventEmitter, once } from "node:events";
 import process from "node:process";

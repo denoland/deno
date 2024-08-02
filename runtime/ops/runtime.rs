@@ -2,13 +2,14 @@
 
 use deno_core::error::AnyError;
 use deno_core::op2;
+use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_permissions::PermissionsContainer;
 
 deno_core::extension!(
   deno_runtime,
-  ops = [op_main_module, op_ppid],
+  ops = [op_main_module, op_ppid, op_get_extras_binding_object],
   options = { main_module: ModuleSpecifier },
   state = |state, options| {
     state.put::<ModuleSpecifier>(options.main_module);
@@ -93,4 +94,12 @@ pub fn op_ppid() -> i64 {
     use std::os::unix::process::parent_id;
     parent_id().into()
   }
+}
+
+#[op2]
+pub fn op_get_extras_binding_object<'a>(
+  scope: &mut v8::HandleScope<'a>,
+) -> v8::Local<'a, v8::Value> {
+  let context = scope.get_current_context();
+  context.get_extras_binding_object(scope).into()
 }

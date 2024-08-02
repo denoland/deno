@@ -340,7 +340,7 @@ export function userInfo(
   if (!_homedir) {
     throw new ERR_OS_NO_HOMEDIR();
   }
-  let shell = isWindows ? (Deno.env.get("SHELL") || null) : null;
+  let shell = isWindows ? null : (Deno.env.get("SHELL") || null);
   let username = op_node_os_username();
 
   if (options?.encoding === "buffer") {

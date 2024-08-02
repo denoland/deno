@@ -22,11 +22,11 @@ use std::sync::Arc;
 use super::installer::infer_name_from_url;
 
 pub async fn compile(
-  flags: Flags,
+  flags: Arc<Flags>,
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let module_graph_creator = factory.module_graph_creator().await?;
   let parsed_source_cache = factory.parsed_source_cache();
   let binary_writer = factory.create_compile_binary_writer().await?;
@@ -47,7 +47,7 @@ pub async fn compile(
     log::warn!(
       concat!(
         "{} Sloppy imports are not supported in deno compile. ",
-        "The compiled executable may encouter runtime errors.",
+        "The compiled executable may encounter runtime errors.",
       ),
       crate::colors::yellow("Warning"),
     );
@@ -77,15 +77,15 @@ pub async fn compile(
     graph
   };
 
-  let ts_config_for_emit =
-    cli_options.resolve_ts_config_for_emit(deno_config::TsConfigType::Emit)?;
+  let ts_config_for_emit = cli_options
+    .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
   let (transpile_options, emit_options) =
     crate::args::ts_config_to_transpile_and_emit_options(
       ts_config_for_emit.ts_config,
     )?;
   let parser = parsed_source_cache.as_capturing_parser();
   let root_dir_url = resolve_root_dir_from_specifiers(
-    cli_options.workspace.root_folder().0,
+    cli_options.workspace().root_dir(),
     graph.specifiers().map(|(s, _)| s).chain(
       cli_options
         .node_modules_dir_path()
@@ -102,6 +102,7 @@ pub async fn compile(
     emit_options,
     // make all the modules relative to the root folder
     relative_file_base: Some(root_dir_url),
+    npm_packages: None,
   })?;
 
   log::info!(
@@ -123,12 +124,13 @@ pub async fn compile(
   ));
   let temp_path = output_path.with_file_name(temp_filename);
 
-  let mut file = std::fs::File::create(&temp_path).with_context(|| {
+  let file = std::fs::File::create(&temp_path).with_context(|| {
     format!("Opening temporary file '{}'", temp_path.display())
   })?;
+
   let write_result = binary_writer
     .write_bin(
-      &mut file,
+      file,
       eszip,
       root_dir_url,
       &module_specifier,
@@ -139,7 +141,6 @@ pub async fn compile(
     .with_context(|| {
       format!("Writing temporary file '{}'", temp_path.display())
     });
-  drop(file);
 
   // set it as executable
   #[cfg(unix)]

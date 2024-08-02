@@ -1,0 +1,10 @@
+{
+  "steps": [{
+    "args": "run main.ts",
+    "output": "no_sloppy.out",
+    "exitCode": 1
+  }, {
+    "args": "run --unstable-sloppy-imports main.ts",
+    "output": "sloppy.out"
+  }]
+}

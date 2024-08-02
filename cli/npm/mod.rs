@@ -13,10 +13,12 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_npm::registry::NpmPackageInfo;
-use deno_runtime::deno_node::NpmResolver;
+use deno_runtime::deno_node::NodeRequireResolver;
+use deno_runtime::deno_node::NpmProcessStateProvider;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use node_resolver::NpmResolver;
 
 use crate::args::npm_registry_url;
 use crate::file_fetcher::FileFetcher;
@@ -63,6 +65,10 @@ pub enum InnerCliNpmResolverRef<'a> {
 
 pub trait CliNpmResolver: NpmResolver {
   fn into_npm_resolver(self: Arc<Self>) -> Arc<dyn NpmResolver>;
+  fn into_require_resolver(self: Arc<Self>) -> Arc<dyn NodeRequireResolver>;
+  fn into_process_state_provider(
+    self: Arc<Self>,
+  ) -> Arc<dyn NpmProcessStateProvider>;
 
   fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver>;
 

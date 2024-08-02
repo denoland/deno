@@ -215,16 +215,13 @@ pub async fn get_import_completions(
       module_registries,
     )
     .await;
-    let offset = if position.character > range.start.character {
-      (position.character - range.start.character) as usize
-    } else {
-      0
-    };
     let maybe_list = module_registries
-      .get_completions(&text, offset, &range, |s| {
+      .get_completions(&text, &range, resolved.as_ref(), |s| {
         documents.exists(s, file_referrer)
       })
       .await;
+    let maybe_list = maybe_list
+      .or_else(|| module_registries.get_origin_completions(&text, &range));
     let list = maybe_list.unwrap_or_else(|| CompletionList {
       items: get_workspace_completions(specifier, &text, &range, documents),
       is_incomplete: false,
@@ -804,7 +801,7 @@ mod tests {
     fs_sources: &[(&str, &str)],
   ) -> Documents {
     let temp_dir = TempDir::new();
-    let cache = LspCache::new(Some(temp_dir.uri()));
+    let cache = LspCache::new(Some(temp_dir.uri().join(".deno_dir").unwrap()));
     let mut documents = Documents::default();
     documents.update_config(
       &Default::default(),

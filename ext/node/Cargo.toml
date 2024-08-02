@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.98.0"
+version = "0.101.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,6 +12,9 @@ description = "Node compatibility for Deno"
 
 [lib]
 path = "lib.rs"
+
+[features]
+sync_fs = ["deno_package_json/sync", "node_resolver/sync"]
 
 [dependencies]
 aead-gcm-stream = "0.1"
@@ -23,13 +26,13 @@ bytes.workspace = true
 cbc.workspace = true
 const-oid = "0.9.5"
 data-encoding.workspace = true
-deno_config = { workspace = true, default-features = false, features = ["package_json"] }
 deno_core.workspace = true
 deno_fetch.workspace = true
 deno_fs.workspace = true
 deno_io.workspace = true
 deno_media_type.workspace = true
 deno_net.workspace = true
+deno_package_json.workspace = true
 deno_permissions.workspace = true
 deno_whoami = "0.1.0"
 digest = { version = "0.10.5", features = ["core-api", "std"] }
@@ -42,6 +45,9 @@ h2.workspace = true
 hkdf.workspace = true
 home = "0.5.9"
 http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 idna = "0.3.0"
 indexmap.workspace = true
 ipnetwork = "0.20.0"
@@ -51,6 +57,8 @@ libc.workspace = true
 libz-sys.workspace = true
 md-5 = { version = "0.10.5", features = ["oid"] }
 md4 = "0.10.2"
+memchr = "2.7.4"
+node_resolver.workspace = true
 num-bigint.workspace = true
 num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"
@@ -64,7 +72,6 @@ pbkdf2 = "0.12.1"
 pin-project-lite = "0.2.13"
 rand.workspace = true
 regex.workspace = true
-reqwest.workspace = true
 ring.workspace = true
 ripemd = { version = "0.1.3", features = ["oid"] }
 rsa.workspace = true

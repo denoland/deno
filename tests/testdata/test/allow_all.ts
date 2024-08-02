@@ -1,4 +1,4 @@
-import { assertEquals } from "../../../tests/util/std/assert/mod.ts";
+import { assertEquals } from "@std/assert";
 
 const permissions: Deno.PermissionName[] = [
   "read",

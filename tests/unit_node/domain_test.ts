@@ -4,7 +4,7 @@
 
 import domain from "node:domain";
 import { EventEmitter } from "node:events";
-import { assertEquals } from "@std/assert/mod.ts";
+import { assertEquals } from "@std/assert";
 
 Deno.test("should work on throws", async function () {
   const deferred = Promise.withResolvers<void>();
