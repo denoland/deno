@@ -4737,7 +4737,7 @@ declare namespace Deno {
     success: boolean;
     /** The exit code of the child process. */
     code: number;
-    /** The signal associated with the child process. */
+    /** The signal associated with the child process. This field is `null` on Windows. */
     signal: Signal | null;
   }
 
