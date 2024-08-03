@@ -1752,10 +1752,10 @@ create_struct_writer! {
     birthtime: u64,
     ctime_set: bool,
     ctime: u64,
+    mode: u32,
     // Following are only valid under Unix.
     dev: u64,
     ino: u64,
-    mode: u32,
     nlink: u64,
     uid: u32,
     gid: u32,
