@@ -401,6 +401,85 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
     Ok(resolve_response)
   }
 
+  fn resolve_ts_script_in_npm_pkg(
+    &self,
+    maybe_package_config: Option<std::sync::Arc<PackageJson>>,
+    url: Url,
+  ) -> Result<NodeResolution, UrlToNodeResolutionError> {
+    let c = match maybe_package_config {
+      Some(c) => c,
+      None => {
+        return Err(TypeScriptNotSupportedInNpmError { specifier: url }.into())
+      }
+    };
+
+    let bin_paths = match &c.bin {
+      Some(Value::Object(bin_paths)) => bin_paths,
+      _ => {
+        return Err(TypeScriptNotSupportedInNpmError { specifier: url }.into())
+      }
+    };
+
+    let url_path = match url.to_file_path() {
+      Ok(url_path) => url_path,
+      Err(e) => {
+        return Err(TypeScriptNotSupportedInNpmError { specifier: url }.into())
+      }
+    };
+    let url_path = match std::fs::canonicalize(&url_path) {
+      Ok(canonical_url_path) => canonical_url_path,
+      Err(e) => {
+        return Err(TypeScriptNotSupportedInNpmError { specifier: url }.into())
+      }
+    };
+
+    let canonical_url = match Url::from_file_path(&url_path) {
+      Ok(canonical_url) => canonical_url,
+      Err(e) => {
+        return Err(TypeScriptNotSupportedInNpmError { specifier: url }.into())
+      }
+    };
+
+    // If the "canonical" URL can be traced to a node_module package, this means that
+    // the pacakge is not "local", and therefore we should not support TypeScript.
+    if self.in_npm_package(&canonical_url) {
+      return Err(TypeScriptNotSupportedInNpmError { specifier: url }.into());
+    }
+
+    let pkg_dir = match c.path.parent() {
+      Some(pkg_dir) => pkg_dir,
+      None => {
+        return Err(TypeScriptNotSupportedInNpmError { specifier: url }.into())
+      }
+    };
+
+    for (_, bin_path) in bin_paths.into_iter() {
+      let bin_path = match bin_path {
+        Value::String(bin_path) => bin_path,
+        _ => {
+          return Err(
+            TypeScriptNotSupportedInNpmError { specifier: url }.into(),
+          )
+        }
+      };
+      let bin_path = match Path::new(&bin_path).join(bin_path).canonicalize() {
+        Ok(bin_path) => bin_path,
+        Err(e) => {
+          return Err(
+            TypeScriptNotSupportedInNpmError { specifier: url }.into(),
+          )
+        }
+      };
+
+      // We only finish the resolution if the URL points to a "binary" file
+      if bin_path.starts_with(pkg_dir) && bin_path == url_path {
+        return Ok(NodeResolution::Esm(canonical_url));
+      }
+    }
+
+    Err(TypeScriptNotSupportedInNpmError { specifier: url }.into())
+  }
+
   pub fn url_to_node_resolution(
     &self,
     url: Url,
@@ -419,7 +498,9 @@ impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
       Ok(NodeResolution::Esm(url))
     } else if url_str.ends_with(".ts") || url_str.ends_with(".mts") {
       if self.in_npm_package(&url) {
-        Err(TypeScriptNotSupportedInNpmError { specifier: url }.into())
+        let maybe_package_config = self.get_closest_package_json(&url)?;
+
+        self.resolve_ts_script_in_npm_pkg(maybe_package_config, url)
       } else {
         Ok(NodeResolution::Esm(url))
       }
