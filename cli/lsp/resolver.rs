@@ -433,7 +433,7 @@ async fn create_npm_resolver(
   cache: &LspCache,
   http_client_provider: &Arc<HttpClientProvider>,
 ) -> Option<Arc<dyn CliNpmResolver>> {
-  let enable_byonm = config_data.map(|d| d.byonm).unwrap_or(*DENO_FUTURE);
+  let enable_byonm = config_data.map(|d| d.byonm).unwrap_or(false);
   let options = if enable_byonm {
     CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
       fs: Arc::new(deno_fs::RealFs),
