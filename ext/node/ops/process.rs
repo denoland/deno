@@ -62,3 +62,8 @@ pub fn op_node_process_kill(
 pub fn op_process_abort() {
   std::process::abort();
 }
+
+// #[op2(fast)]
+// pub fn op_node_ref_pipe(state: &mut OpState, #[smi] rid: i32) {
+//   state.resource_table.get(rid)
+// }

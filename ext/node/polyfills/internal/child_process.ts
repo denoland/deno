@@ -53,27 +53,10 @@ import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "node:process";
 import { StringPrototypeSlice } from "ext:deno_node/internal/primordials.mjs";
-import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { providerType } from "ext:deno_node/internal_binding/async_wrap.ts";
-import { Duplex } from "node:stream";
-import {
-  kAfterAsyncWrite,
-  kBuffer,
-  kBufferCb,
-  kBufferGen,
-  kHandle,
-  kUpdateTimer,
-  onStreamRead,
-  writeGeneric,
-  writevGeneric,
-} from "ext:deno_node/internal/stream_base_commons.ts";
-import {
-  asyncIdSymbol,
-  newAsyncId,
-  ownerSymbol,
-} from "ext:deno_node/internal/async_hooks.ts";
+import { StreamBase } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { Pipe, socketType } from "ext:deno_node/internal_binding/pipe_wrap.ts";
 import console from "node:console";
-import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+import { Socket } from "node:net";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -138,23 +121,7 @@ function maybeClose(child: ChildProcess) {
   }
 }
 
-interface Reader {
-  read(p: Uint8Array): Promise<number | null>;
-}
-
-interface Writer {
-  write(p: Uint8Array): Promise<number>;
-}
-
-export interface Closer {
-  close(): void;
-}
-
-type Ref = { ref(): void; unref(): void };
-
-const kLastWriteQueueSize = Symbol("lastWriteQueueSize");
-
-class PipeThing implements Reader, Writer, Closer, Ref {
+class PipeThing implements StreamBase {
   #rid: number;
   constructor(rid: number) {
     this.#rid = rid;
@@ -162,8 +129,11 @@ class PipeThing implements Reader, Writer, Closer, Ref {
   close(): void {
     core.close(this.#rid);
   }
-  read(p: Uint8Array): Promise<number | null> {
-    return core.read(this.#rid, p).then((n: number) => n > 0 ? n : null);
+  async read(p: Uint8Array): Promise<number | null> {
+    const readPromise = core.read(this.#rid, p);
+    core.unrefOpPromise(readPromise);
+    const nread = await readPromise;
+    return nread > 0 ? nread : null;
   }
   ref(): void {
     return;
@@ -173,206 +143,6 @@ class PipeThing implements Reader, Writer, Closer, Ref {
   }
   write(p: Uint8Array): Promise<number> {
     return core.write(this.#rid, p);
-  }
-}
-
-export class PipeyWrap extends LibuvStreamWrap {
-  constructor(inner: PipeThing) {
-    super(providerType.PIPEWRAP, inner);
-  }
-}
-
-function _tryReadStart(pipe: Pipey) {
-  // Not already reading, start the flow.
-  pipe._handle!.reading = true;
-  const err = pipe._handle!.readStart();
-
-  if (err) {
-    pipe.destroy(errnoException(err, "read"));
-  }
-}
-
-interface OnReadOptions {
-  buffer: Uint8Array | (() => Uint8Array);
-  /**
-   * This function is called for every chunk of incoming data.
-   *
-   * Two arguments are passed to it: the number of bytes written to buffer and
-   * a reference to buffer.
-   *
-   * Return `false` from this function to implicitly `pause()` the socket.
-   */
-  callback(bytesWritten: number, buf: Uint8Array): boolean;
-}
-
-function _getNewAsyncId(handle?: PipeyWrap): number {
-  return !handle || typeof handle.getAsyncId !== "function"
-    ? newAsyncId()
-    : handle.getAsyncId();
-}
-
-function _initHandle(pipe: Pipey) {
-  if (pipe._handle) {
-    // deno-lint-ignore no-explicit-any
-    (pipe._handle as any)[ownerSymbol] = pipe;
-    pipe._handle.onread = onStreamRead;
-    pipe[asyncIdSymbol] = _getNewAsyncId(pipe._handle);
-    let userBuf = pipe[kBuffer];
-
-    if (userBuf) {
-      const bufGen = pipe[kBufferGen];
-
-      if (bufGen !== null) {
-        userBuf = bufGen();
-
-        if (!isUint8Array(userBuf)) {
-          return;
-        }
-
-        pipe[kBuffer] = userBuf;
-      }
-
-      pipe._handle.useUserBuffer(userBuf);
-    }
-  }
-}
-
-export class Pipey extends Duplex {
-  // Problem with this is that users can supply their own handle, that may not
-  // have `handle.getAsyncId()`. In this case an `[asyncIdSymbol]` should
-  // probably be supplied by `async_hooks`.
-  [asyncIdSymbol] = -1;
-
-  [kHandle]: PipeyWrap;
-  [kLastWriteQueueSize] = 0;
-  [kBuffer]: Uint8Array | boolean | null = null;
-  [kBufferCb]: OnReadOptions["callback"] | null = null;
-  [kBufferGen]: (() => Uint8Array) | null = null;
-  _pendingData: Uint8Array | string | null = null;
-  _pendingEncoding = "";
-  // deno-lint-ignore no-explicit-any
-  _parent: any = null;
-  constructor(inner: PipeyWrap) {
-    super();
-    this[kHandle] = inner;
-    _initHandle(this);
-
-    // If we have a handle, then start the flow of data into the
-    // buffer. If not, then this will happen when we connect.
-    if (this._handle) {
-      this.read(0);
-    }
-  }
-
-  get [kUpdateTimer]() {
-    // return this._unrefTimer;
-    return () => {};
-  }
-  [kAfterAsyncWrite]() {
-    this[kLastWriteQueueSize] = 0;
-  }
-  /**
-   * @param size Optional argument to specify how much data to read.
-   */
-  override read(
-    size?: number,
-  ): string | Uint8Array | Buffer | null | undefined {
-    if (
-      this._handle &&
-      !this._handle.reading
-    ) {
-      _tryReadStart(this);
-    }
-
-    return Duplex.prototype.read.call(this, size);
-  }
-
-  override _read(_size?: number) {
-    if (!this._handle.reading) {
-      _tryReadStart(this);
-    }
-  }
-
-  get _handle() {
-    return this[kHandle];
-  }
-
-  _writeGeneric(
-    writev: boolean,
-    // deno-lint-ignore no-explicit-any
-    data: any,
-    encoding: string,
-    cb: (error?: Error | null) => void,
-  ) {
-    this._pendingData = null;
-    this._pendingEncoding = "";
-
-    if (!this._handle) {
-      cb(new Error());
-
-      return false;
-    }
-
-    let req;
-
-    if (writev) {
-      req = writevGeneric(this, data, cb);
-    } else {
-      req = writeGeneric(this, data, encoding, cb);
-    }
-    if (req.async) {
-      this[kLastWriteQueueSize] = req.bytes;
-    }
-  }
-
-  override _write(
-    // deno-lint-ignore no-explicit-any
-    data: any,
-    encoding: string,
-    cb: (error?: Error | null) => void,
-  ) {
-    this._writeGeneric(false, data, encoding, cb);
-  }
-
-  /**
-   * Pauses the reading of data. That is, `"data"` events will not be emitted.
-   * Useful to throttle back an upload.
-   *
-   * @return The socket itself.
-   */
-  override pause(): this {
-    if (
-      this._handle &&
-      this._handle.reading
-    ) {
-      this._handle.reading = false;
-
-      if (!this.destroyed) {
-        const err = this._handle.readStop();
-
-        if (err) {
-          this.destroy(errnoException(err, "read"));
-        }
-      }
-    }
-
-    return Duplex.prototype.pause.call(this) as unknown as this;
-  }
-
-  /**
-   * Resumes reading after a call to `socket.pause()`.
-   *
-   * @return The socket itself.
-   */
-  override resume(): this {
-    if (
-      this._handle &&
-      !this._handle.reading
-    ) {
-      _tryReadStart(this);
-    }
-
-    return Duplex.prototype.resume.call(this) as this;
   }
 }
 
@@ -543,9 +313,16 @@ export class ChildProcess extends EventEmitter {
           offset++;
         }
         if (pipeRids[i]) {
-          this.stdio[i + offset] = new Pipey(
-            new PipeyWrap(new PipeThing(pipeRids[i])),
+          this.stdio[i + offset] = new Socket(
+            {
+              handle: new Pipe(
+                socketType.IPC,
+                new PipeThing(pipeRids[i]),
+              ),
+              // deno-lint-ignore no-explicit-any
+            } as any,
           );
+
           // this.stdio[i + offset] = new PipeThing(pipeRids[i]);
         }
       }

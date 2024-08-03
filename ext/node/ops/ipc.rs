@@ -39,9 +39,9 @@ mod impl_ {
   use tokio::io::AsyncWriteExt;
   use tokio::io::ReadBuf;
 
-  use crate::BiPipe;
-  use crate::BiPipeRead;
-  use crate::BiPipeWrite;
+  use deno_io::BiPipe;
+  use deno_io::BiPipeRead;
+  use deno_io::BiPipeWrite;
 
   #[cfg(windows)]
   type NamedPipeClient = tokio::net::windows::named_pipe::NamedPipeClient;

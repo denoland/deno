@@ -224,7 +224,7 @@ type CreateCommand = (
 );
 
 fn create_pipe(
-) -> Result<(deno_node::RawPipeHandle, deno_node::RawPipeHandle), AnyError> {
+) -> Result<(deno_io::RawBiPipeHandle, deno_io::RawBiPipeHandle), AnyError> {
   #[cfg(unix)]
   {
     // SockFlag is broken on macOS
@@ -468,7 +468,7 @@ fn create_command(
         let (fd1, fd2) = create_pipe()?;
         fds_to_dup.push((fd2, fd));
         let rid = state.resource_table.add(
-          match deno_node::BiPipeResource::from_raw_handle(fd1) {
+          match deno_io::BiPipeResource::from_raw_handle(fd1) {
             Ok(v) => v,
             Err(e) => {
               log::warn!("Failed to open bidirectional pipe for fd {fd}: {e}");

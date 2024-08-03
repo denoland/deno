@@ -21,6 +21,7 @@ fs3.workspace = true
 log.workspace = true
 once_cell.workspace = true
 tokio.workspace = true
+pin-project.workspace = true
 
 [target.'cfg(not(windows))'.dependencies]
 os_pipe.workspace = true

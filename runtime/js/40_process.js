@@ -422,6 +422,7 @@ function spawnSync(command, {
     stdout,
     stderr,
     windowsRawArguments,
+    extraPipes: [],
   });
   return {
     success: result.status.success,
