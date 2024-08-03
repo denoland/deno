@@ -475,8 +475,12 @@ impl HtmlCoverageReporter {
       format!("Coverage report for {node}")
     };
     let title = title.replace(std::path::MAIN_SEPARATOR, "/");
+    let breadcrumbs_parts =
+      node.split(std::path::MAIN_SEPARATOR).collect::<Vec<_>>();
     let head = self.create_html_head(&title);
-    let header = self.create_html_header(&title, stats);
+    let breadcrumb_navigation =
+      self.create_breadcrumbs_navigation(&breadcrumbs_parts, is_dir);
+    let header = self.create_html_header(&title, stats, &breadcrumb_navigation);
     let footer = self.create_html_footer(timestamp);
     format!(
       "<!doctype html>
@@ -515,6 +519,7 @@ impl HtmlCoverageReporter {
     &self,
     title: &str,
     stats: &CoverageStats,
+    breadcrumb_navigation: &String,
   ) -> String {
     let CoverageStats {
       line_hit,
@@ -544,6 +549,9 @@ impl HtmlCoverageReporter {
             <span class='fraction'>{line_hit}/{line_total}</span>
           </div>
         </div>
+        <ul class='breadcrumb'>
+          {breadcrumb_navigation}
+        </ul>
       </div>
       <div class='status-line {line_class}'></div>"
     )
@@ -680,5 +688,43 @@ impl HtmlCoverageReporter {
         </tr>
       </table>"
     )
+  }
+
+  pub fn create_breadcrumbs_navigation(
+    &self,
+    breadcrumbs_parts: &[&str],
+    is_dir: bool,
+  ) -> String {
+    let mut breadcrumbs_html = Vec::new();
+    let root_repeats = if is_dir {
+      breadcrumbs_parts.len()
+    } else {
+      breadcrumbs_parts.len() - 1
+    };
+
+    let mut root_url = "../".repeat(root_repeats);
+    root_url += "index.html";
+    breadcrumbs_html
+      .push((format!("<li><a href='{root_url}'>Home</a></li>")).to_string());
+
+    for (index, breadcrumb) in breadcrumbs_parts.iter().enumerate() {
+      let mut full_url = "../".repeat(breadcrumbs_parts.len() - (index + 1));
+
+      if is_dir {
+        full_url += "index.html";
+      } else {
+        full_url += breadcrumb;
+        if index != breadcrumbs_parts.len() - 1 {
+          full_url += "/index.html";
+        } else {
+          full_url += ".html";
+        }
+      }
+
+      breadcrumbs_html
+        .push(format!("<li><a href='{full_url}'>{breadcrumb}</a></li>"))
+    }
+
+    breadcrumbs_html.into_iter().collect::<Vec<_>>().join(" ")
   }
 }
