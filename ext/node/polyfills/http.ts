@@ -851,7 +851,7 @@ class ClientRequest extends OutgoingMessage {
     }
     const protocol = this.protocol ?? this.defaultProtocol;
     const auth = this.auth;
-    const host = this.host ?? this.hostname ?? "localhost";
+    const host = this.hostname ?? this.host ?? "localhost";
     const hash = this.hash ? `#${this.hash}` : "";
     const defaultPort = this.agent?.defaultPort;
     const port = this.port ?? defaultPort ?? 80;

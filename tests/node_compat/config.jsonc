@@ -397,6 +397,7 @@
       // "test-http-outgoing-message-inheritance.js",
       "test-http-outgoing-renderHeaders.js",
       "test-http-outgoing-settimeout.js",
+      "test-http-request-create-url-from-options.js",
       "test-http-url.parse-https.request.js",
       "test-http-url.parse-only-support-http-https-protocol.js",
       "test-net-access-byteswritten.js",
