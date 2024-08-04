@@ -40,3 +40,9 @@ function foo(): number {
 - item1
 - item2
 ```
+
+```css
+#app > .btn {
+  color: #000;
+}
+```

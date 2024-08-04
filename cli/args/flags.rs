@@ -200,6 +200,7 @@ pub struct FmtFlags {
   pub prose_wrap: Option<String>,
   pub no_semicolons: Option<bool>,
   pub watch: Option<WatchFlags>,
+  pub unstable_css: bool,
   pub unstable_yaml: bool,
 }
 
@@ -1997,8 +1998,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             // prefer using ts for formatting instead of js because ts works in more scenarios
             .default_value("ts")
             .value_parser([
-              "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "yml", "yaml",
-              "ipynb",
+              "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "css", "scss",
+              "sass", "less", "yml", "yaml", "ipynb",
             ]),
         )
         .arg(
@@ -2074,6 +2075,13 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             .help(
               "Don't use semicolons except where necessary. Defaults to false.",
             ),
+        )
+        .arg(
+          Arg::new("unstable-css")
+            .long("unstable-css")
+            .help("Enable formatting CSS, SCSS, Sass and Less files.")
+            .value_parser(FalseyValueParser::new())
+            .action(ArgAction::SetTrue),
         )
         .arg(
           Arg::new("unstable-yaml")
@@ -4096,6 +4104,7 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let single_quote = matches.remove_one::<bool>("single-quote");
   let prose_wrap = matches.remove_one::<String>("prose-wrap");
   let no_semicolons = matches.remove_one::<bool>("no-semicolons");
+  let unstable_css = matches.get_flag("unstable-css");
   let unstable_yaml = matches.get_flag("unstable-yaml");
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
@@ -4108,6 +4117,7 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     prose_wrap,
     no_semicolons,
     watch: watch_arg_parse(matches),
+    unstable_css,
     unstable_yaml,
   });
 }
@@ -5791,6 +5801,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_css: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -5815,6 +5826,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_css: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -5839,6 +5851,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_css: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -5863,6 +5876,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_css: false,
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
@@ -5876,6 +5890,7 @@ mod tests {
       "fmt",
       "--watch",
       "--no-clear-screen",
+      "--unstable-css",
       "--unstable-yaml"
     ]);
     assert_eq!(
@@ -5893,6 +5908,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_css: true,
           unstable_yaml: true,
           watch: Some(WatchFlags {
             hmr: false,
@@ -5928,6 +5944,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_css: false,
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
@@ -5952,6 +5969,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_css: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -5984,6 +6002,7 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          unstable_css: false,
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
@@ -6021,6 +6040,7 @@ mod tests {
           single_quote: Some(true),
           prose_wrap: Some("never".to_string()),
           no_semicolons: Some(true),
+          unstable_css: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -6052,6 +6072,7 @@ mod tests {
           single_quote: Some(false),
           prose_wrap: None,
           no_semicolons: Some(false),
+          unstable_css: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
