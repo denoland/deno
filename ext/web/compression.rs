@@ -61,7 +61,9 @@ pub fn op_compression_write(
   #[anybuffer] input: &[u8],
 ) -> Result<Vec<u8>, AnyError> {
   let mut inner = resource.0.borrow_mut();
-  let inner = inner.as_mut().ok_or_else(|| type_error("resource is closed"))?;
+  let inner = inner
+    .as_mut()
+    .ok_or_else(|| type_error("resource is closed"))?;
   let out: Vec<u8> = match &mut *inner {
     Inner::DeflateDecoder(d) => {
       d.write_all(input).map_err(|e| type_error(e.to_string()))?;
@@ -104,9 +106,11 @@ pub fn op_compression_finish(
   #[cppgc] resource: &CompressionResource,
   report_errors: bool,
 ) -> Result<Vec<u8>, AnyError> {
-  let inner = resource.0.borrow_mut().take().ok_or_else(|| {
-    type_error("resource is closed")
-  })?;
+  let inner = resource
+    .0
+    .borrow_mut()
+    .take()
+    .ok_or_else(|| type_error("resource is closed"))?;
   let out = match inner {
     Inner::DeflateDecoder(d) => {
       d.finish().map_err(|e| type_error(e.to_string()))
