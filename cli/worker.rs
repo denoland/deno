@@ -399,6 +399,7 @@ impl CliMainWorker {
   }
 }
 
+#[derive(Clone)]
 pub struct CliMainWorkerFactory {
   shared: Arc<SharedWorkerState>,
 }
@@ -531,7 +532,7 @@ impl CliMainWorkerFactory {
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
     let create_web_worker_cb =
-      create_web_worker_callback(mode, shared.clone(), stdio.clone());
+      create_web_worker_callback(shared.clone(), stdio.clone());
 
     let maybe_storage_key = shared
       .storage_key_resolver
@@ -724,7 +725,6 @@ impl CliMainWorkerFactory {
 }
 
 fn create_web_worker_callback(
-  mode: WorkerExecutionMode,
   shared: Arc<SharedWorkerState>,
   stdio: deno_runtime::deno_io::Stdio,
 ) -> Arc<CreateWebWorkerCb> {
@@ -737,7 +737,7 @@ fn create_web_worker_callback(
         args.permissions.clone(),
       );
     let create_web_worker_cb =
-      create_web_worker_callback(mode, shared.clone(), stdio.clone());
+      create_web_worker_callback(shared.clone(), stdio.clone());
 
     let maybe_storage_key = shared
       .storage_key_resolver
@@ -787,7 +787,7 @@ fn create_web_worker_callback(
         disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
         verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
         future: shared.enable_future_features,
-        mode,
+        mode: WorkerExecutionMode::Worker,
         serve_port: shared.serve_port,
         serve_host: shared.serve_host.clone(),
       },
