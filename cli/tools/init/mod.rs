@@ -29,7 +29,7 @@ pub fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
       console.log(req.url);
       return new Response("Hello world");
   }
-}
+} satisfies Deno.ServeDefaultExport;
 "#,
     )?;
     create_file(

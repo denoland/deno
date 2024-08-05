@@ -2105,7 +2105,7 @@ fn init_subcommand() -> Command {
         .arg(
           Arg::new("serve")
             .long("serve")
-            .long_help("Generate an exmaple project for `deno serve`")
+            .long_help("Generate an example project for `deno serve`")
             .conflicts_with("lib")
             .required(false)
             .action(ArgAction::SetTrue),
