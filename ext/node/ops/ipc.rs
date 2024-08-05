@@ -90,8 +90,14 @@ mod impl_ {
       let str = deno_core::serde_v8::to_utf8(value.try_into().unwrap(), scope);
       ser.serialize_str(&str)
     } else if value.is_string_object() {
-      let str =
-        deno_core::serde_v8::to_utf8(value.to_string(scope).unwrap(), scope);
+      let str = deno_core::serde_v8::to_utf8(
+        value.to_string(scope).ok_or_else(|| {
+          S::Error::custom(deno_core::error::generic_error(
+            "toString on string object failed",
+          ))
+        })?,
+        scope,
+      );
       ser.serialize_str(&str)
     } else if value.is_boolean() {
       ser.serialize_bool(value.is_true())
@@ -99,7 +105,7 @@ mod impl_ {
       ser.serialize_bool(value.boolean_value(scope))
     } else if value.is_array() {
       use serde::ser::SerializeSeq;
-      let array = v8::Local::<v8::Array>::try_from(value).unwrap();
+      let array = value.cast::<v8::Array>();
       let length = array.length();
       let mut seq = ser.serialize_seq(Some(length as usize))?;
       for i in 0..length {
@@ -111,13 +117,13 @@ mod impl_ {
     } else if value.is_object() {
       use serde::ser::SerializeMap;
       if value.is_array_buffer_view() {
-        let buffer = v8::Local::<v8::ArrayBufferView>::try_from(value).unwrap();
+        let buffer = value.cast::<v8::ArrayBufferView>();
         let mut buf = vec![0u8; buffer.byte_length()];
         let copied = buffer.copy_contents(&mut buf);
-        assert_eq!(copied, buf.len());
+        debug_assert_eq!(copied, buf.len());
         return ser.serialize_bytes(&buf);
       }
-      let object = value.to_object(scope).unwrap();
+      let object = value.cast::<v8::Object>();
       // node uses `JSON.stringify`, so to match its behavior (and allow serializing custom objects)
       // we need to respect the `toJSON` method if it exists.
       let to_json_key = v8::String::new_from_utf8(
@@ -128,8 +134,7 @@ mod impl_ {
       .unwrap()
       .into();
       if let Some(to_json) = object.get(scope, to_json_key) {
-        if to_json.is_function() {
-          let to_json = v8::Local::<v8::Function>::try_from(to_json).unwrap();
+        if let Ok(to_json) = to_json.try_cast::<v8::Function>() {
           let json_value = to_json.call(scope, object.into(), &[]).unwrap();
           return serialize_v8_value(scope, json_value, ser);
         }
@@ -872,6 +877,7 @@ mod impl_ {
           r#"{ a: "field", toJSON() { return "custom"; } }"#,
           "\"custom\"",
         ),
+        (r#"{ a: undefined, b: 1 }"#, "{\"b\":1}"),
       ];
 
       for (input, expect) in cases {
