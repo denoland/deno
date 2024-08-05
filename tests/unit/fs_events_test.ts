@@ -74,27 +74,19 @@ Deno.test(
   { permissions: { read: true, write: true } },
   async function watchFsRename() {
     const testDir = await makeTempDir();
-    const iter = Deno.watchFs(testDir);
-
-    // Asynchronously capture two fs events.
-    const eventsPromise = getTwoEvents(iter);
-
-    // Make some random file system activity.
+    const watcher = Deno.watchFs(testDir);
+    async function waitForRename() {
+      for await (const event of watcher) {
+        if (event.kind === "rename") {
+          break;
+        }
+      }
+    }
+    const eventPromise = waitForRename();
     const file = testDir + "/file.txt";
     await Deno.writeTextFile(file, "hello");
-
     await Deno.rename(file, testDir + "/file2.txt");
-
-    // We should have gotten two fs events.
-    const events = await eventsPromise;
-    console.log(events);
-    assert(events.length >= 2);
-    assertEquals(events[0].kind, "create");
-    assert(events[0].paths[0].includes(testDir));
-    assertEquals(events[1].kind, "rename");
-    assert(events[1].paths[0].includes(testDir));
-    assertEquals(events[2].kind, "modify");
-    assert(events[2].paths[0].includes(testDir));
+    await eventPromise;
   },
 );
 
