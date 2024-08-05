@@ -20,7 +20,45 @@ pub fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
     cwd
   };
 
-  if init_flags.lib {
+  if init_flags.serve {
+    create_file(
+      &dir,
+      "main.ts",
+      r#"export default {
+  fetch(req) {
+      console.log(req.url);
+      return new Response("Hello world");
+  }
+}
+"#,
+    )?;
+    create_file(
+      &dir,
+      "main_test.ts",
+      r#"import { assertEquals } from "@std/assert";
+import server from "./main.ts";
+
+Deno.test(async function serverFetch() {
+  const req = new Request("https://deno.land");
+  const res = await server.fetch(req);
+  assertEquals(await res.text(), "Hello world");
+});
+"#,
+    )?;
+
+    create_json_file(
+      &dir,
+      "deno.json",
+      &json!({
+        "tasks": {
+          "dev": "deno serve --watch main.ts"
+        },
+        "imports": {
+          "@std/assert": "jsr:@std/assert@1"
+        }
+      }),
+    )?;
+  } else if init_flags.lib {
     // Extract the directory name to use as the project name
     let project_name = dir
       .file_name()
@@ -111,7 +149,19 @@ Deno.test(function addTest() {
     info!("  cd {}", dir);
     info!("");
   }
-  if init_flags.lib {
+  if init_flags.serve {
+    info!("  {}", colors::gray("# Run the server"));
+    info!("  deno serve main.ts");
+    info!("");
+    info!(
+      "  {}",
+      colors::gray("# Run the server and watch for file changes")
+    );
+    info!("  deno task dev");
+    info!("");
+    info!("  {}", colors::gray("# Run the tests"));
+    info!("  deno test");
+  } else if init_flags.lib {
     info!("  {}", colors::gray("# Run the tests"));
     info!("  deno test");
     info!("");
