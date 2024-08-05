@@ -37,6 +37,7 @@ use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
+use args::TaskFlags;
 use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 
@@ -52,6 +53,7 @@ use deno_terminal::colors;
 use factory::CliFactory;
 use std::env;
 use std::future::Future;
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -177,16 +179,32 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.is_stdin() {
-        tools::run::run_from_stdin(flags).await
+        tools::run::run_from_stdin(flags.clone()).await
       } else {
-        tools::run::run_script(WorkerExecutionMode::Run, flags, run_flags.watch).await
+        let result = tools::run::run_script(WorkerExecutionMode::Run, flags.clone(), run_flags.watch).await;
+       match result {
+         Ok(v) =>  Ok(v),
+         Err(err) => {
+          if err.to_string().contains("Module not found") {
+            let mut new_flags = flags.deref().clone();
+            let task_flags = TaskFlags {
+                cwd: run_flags.cwd.clone(),
+                task: Some(run_flags.script.clone()),
+            };
+            new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
+            tools::task::execute_script(Arc::new(new_flags), task_flags.clone(), true).await
+          } else {
+            Err(err)
+          }
+         },
+       }
       }
     }),
     DenoSubcommand::Serve(serve_flags) => spawn_subcommand(async move {
       tools::run::run_script(WorkerExecutionMode::Serve, flags, serve_flags.watch).await
     }),
     DenoSubcommand::Task(task_flags) => spawn_subcommand(async {
-      tools::task::execute_script(flags, task_flags).await
+      tools::task::execute_script(flags, task_flags, false).await
     }),
     DenoSubcommand::Test(test_flags) => {
       spawn_subcommand(async {

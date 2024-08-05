@@ -28,6 +28,7 @@ use std::sync::Arc;
 pub async fn execute_script(
   flags: Arc<Flags>,
   task_flags: TaskFlags,
+  using_run: bool,
 ) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
@@ -140,7 +141,12 @@ pub async fn execute_script(
       }
     },
     None => {
-      log::error!("Task not found: {task_name}");
+      let message = if using_run {
+        format!("Script or task not found: {}", task_name)
+      } else {
+        format!("Task not found: {}", task_name)
+      };
+      log::error!("{}", message);
       if log::log_enabled!(log::Level::Error) {
         print_available_tasks(
           &mut std::io::stderr(),
