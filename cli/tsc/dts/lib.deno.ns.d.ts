@@ -6256,6 +6256,12 @@ declare namespace Deno {
     info: ServeHandlerInfo,
   ) => Response | Promise<Response>;
 
+  export interface Serve {
+    fetch: (
+      request: Request,
+    ) => Response | Promise<Response>;
+  }
+
   /** Options which can be set when calling {@linkcode Deno.serve}.
    *
    * @category HTTP Server
