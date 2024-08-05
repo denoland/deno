@@ -361,12 +361,14 @@ class FSWatcher extends EventEmitter {
   }
 }
 
-type NodeFsEventType = "rename" | "change";
+type NodeFsEventType = "rename" | "change" | "rename";
 
 function convertDenoFsEventToNodeFsEvent(
   kind: Deno.FsEvent["kind"],
 ): NodeFsEventType {
   if (kind === "create" || kind === "remove") {
+    return "rename";
+  } else if (kind === "rename") {
     return "rename";
   } else {
     return "change";

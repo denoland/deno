@@ -14,6 +14,7 @@ use deno_core::op2;
 
 use deno_permissions::PermissionsContainer;
 use notify::event::Event as NotifyEvent;
+use notify::event::ModifyKind;
 use notify::Error as NotifyError;
 use notify::EventKind;
 use notify::RecommendedWatcher;
@@ -71,7 +72,13 @@ impl From<NotifyEvent> for FsEvent {
       EventKind::Any => "any",
       EventKind::Access(_) => "access",
       EventKind::Create(_) => "create",
-      EventKind::Modify(_) => "modify",
+      EventKind::Modify(modify_event) => match modify_event {
+        ModifyKind::Name(_) => "rename",
+        ModifyKind::Any
+        | ModifyKind::Data(_)
+        | ModifyKind::Metadata(_)
+        | ModifyKind::Other => "modify",
+      },
       EventKind::Remove(_) => "remove",
       EventKind::Other => "other",
     };
