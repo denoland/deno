@@ -149,6 +149,9 @@ mod impl_ {
         let key = keys.get_index(scope, i).unwrap();
         let key_str = key.to_rust_string_lossy(scope);
         let value = object.get(scope, key).unwrap();
+        if value.is_undefined() {
+          continue;
+        }
         map.serialize_entry(
           &key_str,
           &SerializeWrapper(RefCell::new(scope), value),
