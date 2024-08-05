@@ -249,6 +249,15 @@ declare interface URLPatternResult {
   hash: URLPatternComponentResult;
 }
 
+declare interface URLPatternOptions {
+  /**
+   * Enables case-insensitive matching.
+   *
+   * @default {false}
+   */
+  ignoreCase: boolean;
+}
+
 /**
  * The URLPattern API provides a web platform primitive for matching URLs based
  * on a convenient pattern syntax.
@@ -343,6 +352,9 @@ declare interface URLPattern {
   readonly search: string;
   /** The pattern string for the `hash`. */
   readonly hash: string;
+
+  /** Whether or not any of the specified groups use regexp groups. */
+  readonly hasRegExpGroups: boolean;
 }
 
 /**
@@ -377,5 +389,6 @@ declare interface URLPattern {
  */
 declare var URLPattern: {
   readonly prototype: URLPattern;
-  new (input: URLPatternInput, baseURL?: string): URLPattern;
+  new (input: URLPatternInput, baseURL: string, options?: URLPatternOptions): URLPattern;
+  new (input?: URLPatternInput, options?: URLPatternOptions): URLPattern;
 };
