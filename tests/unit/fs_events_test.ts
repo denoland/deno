@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import console from "node:console";
 import { assert, assertEquals, assertThrows, delay } from "./test_util.ts";
 
 // TODO(ry) Add more tests to specify format.
