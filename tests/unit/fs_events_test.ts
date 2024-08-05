@@ -88,11 +88,11 @@ Deno.test(
     // We should have gotten two fs events.
     const events = await eventsPromise;
     assert(events.length >= 2);
-    assert(events[0].kind == "create");
+    assertEquals(events[0].kind, "create");
     assert(events[0].paths[0].includes(testDir));
-    assert(events[1].kind == "rename");
+    assertEquals(events[1].kind, "rename");
     assert(events[1].paths[0].includes(testDir));
-    assert(events[2].kind == "modify");
+    assertEquals(events[2].kind, "modify");
     assert(events[2].paths[0].includes(testDir));
   },
 );
