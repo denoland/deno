@@ -324,10 +324,22 @@ impl PermissionPrompter for TtyPrompter {
       write!(&mut output, "{}", colors::bold(message.clone())).unwrap();
       writeln!(&mut output, "{}", colors::bold(".")).unwrap();
       if let Some(api_name) = api_name.clone() {
-        writeln!(&mut output, "├ Requested by `{api_name}` API.").unwrap();
+        writeln!(
+          &mut output,
+          "├- Requested by `{}` API.",
+          colors::bold(api_name)
+        )
+        .unwrap();
       }
+      let msg = format!(
+        "Learn more at: {}",
+        colors::cyan_with_underline(
+          "https://docs.deno.land/permissions#<TODO: permission kind>"
+        )
+      );
+      writeln!(&mut output, "├- {}", colors::italic(&msg)).unwrap();
       let msg = format!("Run again with --allow-{name} to bypass this prompt.");
-      writeln!(&mut output, "├ {}", colors::italic(&msg)).unwrap();
+      writeln!(&mut output, "├- {}", colors::italic(&msg)).unwrap();
       write!(&mut output, "└ {}", colors::bold("Allow?")).unwrap();
       write!(&mut output, " {opts} > ").unwrap();
 
@@ -355,7 +367,7 @@ impl PermissionPrompter for TtyPrompter {
         'y' | 'Y' => {
           clear_n_lines(
             &mut stderr_lock,
-            if api_name.is_some() { 4 } else { 3 },
+            if api_name.is_some() { 5 } else { 4 },
           );
           let msg = format!("Granted {message}.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
@@ -364,7 +376,7 @@ impl PermissionPrompter for TtyPrompter {
         'n' | 'N' | '\x1b' => {
           clear_n_lines(
             &mut stderr_lock,
-            if api_name.is_some() { 4 } else { 3 },
+            if api_name.is_some() { 5 } else { 4 },
           );
           let msg = format!("Denied {message}.");
           writeln!(stderr_lock, "❌ {}", colors::bold(&msg)).unwrap();
@@ -373,7 +385,7 @@ impl PermissionPrompter for TtyPrompter {
         'A' if is_unary => {
           clear_n_lines(
             &mut stderr_lock,
-            if api_name.is_some() { 4 } else { 3 },
+            if api_name.is_some() { 5 } else { 4 },
           );
           let msg = format!("Granted all {name} access.");
           writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
