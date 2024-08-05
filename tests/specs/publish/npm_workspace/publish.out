@@ -16,4 +16,4 @@ Simulating publish of @scope/subtract@1.0.0 with files:
    file:///[WILDLINE]/npm_workspace/subtract/jsr.json ([WILDLINE])
    file:///[WILDLINE]/npm_workspace/subtract/package.json ([WILDLINE])
 [UNORDERED_END]
-Warning Aborting due to --dry-run
+Success Dry run has succeeded

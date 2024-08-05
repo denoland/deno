@@ -5,4 +5,4 @@ Simulating publish of @scope/package@0.0.0 with files:
    file:///[WILDLINE]/LICENSE ([WILDLINE])
    file:///[WILDLINE]/deno.jsonc ([WILDLINE])
    file:///[WILDLINE]/mod.ts ([WILDLINE])
-Warning Aborting due to --dry-run
+Success Dry run has succeeded

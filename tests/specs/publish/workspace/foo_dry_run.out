@@ -6,4 +6,4 @@ Simulating publish of @foo/foo@1.0.0 with files:
    file:///[WILDLINE]/workspace/LICENSE (0B)
    file:///[WILDLINE]/workspace/foo/deno.json (135B)
    file:///[WILDLINE]/workspace/foo/mod.ts (118B)
-Warning Aborting due to --dry-run
+Success Dry run has succeeded
