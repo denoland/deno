@@ -31,7 +31,7 @@ impl EmitCache {
     Self {
       disk_cache,
       cli_version: crate::version::deno(),
-      emit_failed_flag: Default::default()
+      emit_failed_flag: Default::default(),
     }
   }
 

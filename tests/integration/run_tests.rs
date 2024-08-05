@@ -5350,6 +5350,9 @@ fn emit_failed_readonly_file_system() {
   let temp_dir = context.temp_dir().path();
   temp_dir.join("main.ts").write("import './other.ts';");
   temp_dir.join("other.ts").write("console.log('hi');");
-  let output = context.new_command().args("run --log-level=debug main.ts").run();
+  let output = context
+    .new_command()
+    .args("run --log-level=debug main.ts")
+    .run();
   output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
 }
