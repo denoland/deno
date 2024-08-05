@@ -34,6 +34,17 @@ fn compile_basic() {
     output.assert_matches_text("Welcome to Deno!\n");
   }
 
+  // On arm64 macOS, check if `codesign -v` passes
+  #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+  {
+    let output = std::process::Command::new("codesign")
+      .arg("-v")
+      .arg(&exe)
+      .output()
+      .unwrap();
+    assert!(output.status.success());
+  }
+
   // now ensure this works when the deno_dir is readonly
   let readonly_dir = dir.path().join("readonly");
   readonly_dir.make_dir_readonly();

@@ -59,7 +59,6 @@ let knownGlobals = [
   queueMicrotask,
   removeEventListener,
   reportError,
-  self,
   sessionStorage,
   setImmediate,
 ];

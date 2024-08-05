@@ -86,7 +86,9 @@ export function randomFillSync(buf, offset = 0, size) {
     return buf;
   }
 
-  const bytes = new Uint8Array(buf.buffer ? buf.buffer : buf, offset, size);
+  const bytes = isAnyArrayBuffer(buf)
+    ? new Uint8Array(buf, offset, size)
+    : new Uint8Array(buf.buffer, buf.byteOffset + offset, size);
   op_node_generate_secret(bytes);
 
   return buf;

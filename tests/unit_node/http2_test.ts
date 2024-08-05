@@ -243,3 +243,35 @@ Deno.test("[node/http2 client] write 512kb buffer on request stream works", asyn
   await endPromise.promise;
   assertEquals(receivedData!, buffer);
 });
+
+// https://github.com/denoland/deno/issues/24678
+Deno.test("[node/http2 client] deno doesn't panic on uppercase headers", async () => {
+  const url = "http://127.0.0.1:4246";
+  const client = http2.connect(url);
+  client.on("error", (err) => console.error(err));
+
+  // The "User-Agent" header has uppercase characters to test the panic.
+  const req = client.request({
+    ":method": "POST",
+    ":path": "/",
+    "User-Agent": "http2",
+  });
+  const endPromise = Promise.withResolvers<void>();
+
+  let receivedData = "";
+
+  req.write("hello");
+  req.setEncoding("utf8");
+
+  req.on("data", (chunk) => {
+    receivedData += chunk;
+  });
+  req.on("end", () => {
+    req.close();
+    client.close();
+    endPromise.resolve();
+  });
+  req.end();
+  await endPromise.promise;
+  assertEquals(receivedData, "hello world\n");
+});

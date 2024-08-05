@@ -44,3 +44,8 @@ function foo(): number {
   ["1",      "2"]
 }
 ```
+
+```yaml
+-  item1
+-  item2
+```
