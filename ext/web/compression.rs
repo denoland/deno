@@ -132,9 +132,9 @@ pub fn op_compression_finish(
       if report_errors {
         Err(err)
       } else {
-        Ok(Vec::with_capacity(0).into())
+        Ok(Vec::with_capacity(0))
       }
     }
-    Ok(out) => Ok(out.into()),
+    Ok(out) => Ok(out),
   }
 }
