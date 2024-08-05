@@ -1218,9 +1218,13 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
     }
   } else {
     let has_non_globals = app
-      .get_opts()
+      .get_arguments()
       .filter(|arg| !arg.is_global_set())
-      .any(|arg| matches.contains_id(arg.get_id().as_str()));
+      .any(|arg| {
+        matches
+          .value_source(arg.get_id().as_str())
+          .is_some_and(|value| value != clap::parser::ValueSource::DefaultValue)
+      });
 
     if has_non_globals || matches.contains_id("script_arg") {
       run_parse(&mut flags, &mut matches, app, false)?;
@@ -4336,15 +4340,17 @@ fn run_parse(
   let mut script_arg =
     matches.remove_many::<String>("script_arg").ok_or_else(|| {
       let mut app = app;
-      let subcommand = if is_run_subommand {
-        app.find_subcommand_mut("run").unwrap()
+      if is_run_subommand {
+        app.find_subcommand_mut("run").unwrap().error(
+          clap::error::ErrorKind::MissingRequiredArgument,
+          "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
+        )
       } else {
-        &mut app
-      };
-      subcommand.error(
-        clap::error::ErrorKind::MissingRequiredArgument,
-        "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
-      )
+        app.error(
+          clap::error::ErrorKind::MissingRequiredArgument,
+          "[SCRIPT_ARG] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand",
+        )
+      }
     })?;
 
   let script = script_arg.next().unwrap();
@@ -10177,5 +10183,61 @@ mod tests {
         }
       }
     }
+  }
+
+  #[test]
+  fn bare_run() {
+    let r = flags_from_vec(svec!["deno", "--no-config", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        config_flag: ConfigFlag::Disabled,
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bare_global() {
+    let r = flags_from_vec(svec!["deno", "--log-level=debug"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Repl(ReplFlags {
+          eval_files: None,
+          eval: None,
+          is_default_command: true,
+        }),
+        log_level: Some(Level::Debug),
+        permissions: PermissionFlags {
+          allow_all: false,
+          allow_net: Some(vec![]),
+          allow_env: Some(vec![]),
+          allow_run: Some(vec![]),
+          allow_read: Some(vec![]),
+          allow_sys: Some(vec![]),
+          allow_write: Some(vec![]),
+          allow_ffi: Some(vec![]),
+          allow_hrtime: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bare_with_flag_no_file() {
+    let r = flags_from_vec(svec!["deno", "--no-config"]);
+
+    let err = r.unwrap_err();
+    assert!(err.to_string().contains("error: [SCRIPT_ARG] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand"));
+    assert!(err
+      .to_string()
+      .contains("Usage: deno [OPTIONS] [SCRIPT_ARG]... [COMMAND]"));
   }
 }
