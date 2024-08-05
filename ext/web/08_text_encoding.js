@@ -183,7 +183,6 @@ class TextDecoder {
       return op_encoding_decode(input, this.#rid, stream);
     } finally {
       if (!stream && this.#rid !== null) {
-        core.close(this.#rid);
         this.#rid = null;
       }
     }
