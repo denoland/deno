@@ -249,7 +249,11 @@ declare interface URLPatternResult {
   hash: URLPatternComponentResult;
 }
 
-/** Options for the {@linkcode URLPattern} constructor. */
+/**
+ * Options for the {@linkcode URLPattern} constructor.
+ *
+ * @category URL
+ */
 declare interface URLPatternOptions {
   /**
    * Enables case-insensitive matching.
