@@ -153,8 +153,8 @@ class URLPattern {
    */
   constructor(
     input,
-    baseURLOrOptions = { __proto__: null },
-    maybeOptions = { __proto__: null },
+    baseURLOrOptions = undefined,
+    maybeOptions = undefined,
   ) {
     this[webidl.brand] = webidl.brand;
     const prefix = "Failed to construct 'URLPattern'";
@@ -170,7 +170,7 @@ class URLPattern {
         "Argument 2",
       );
       options = webidl.converters.URLPatternOptions(
-        maybeOptions,
+        options !== undefined ? maybeOptions : { __proto: null },
         prefix,
         "Argument 3",
       );
