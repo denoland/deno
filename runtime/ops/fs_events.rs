@@ -72,7 +72,7 @@ impl From<NotifyEvent> for FsEvent {
       EventKind::Any => "any",
       EventKind::Access(_) => "access",
       EventKind::Create(_) => "create",
-      EventKind::Modify(modify_event) => match modify_event {
+      EventKind::Modify(modify_kind) => match modify_kind {
         ModifyKind::Name(_) => "rename",
         ModifyKind::Any
         | ModifyKind::Data(_)

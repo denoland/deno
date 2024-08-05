@@ -70,6 +70,33 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsRename() {
+    const testDir = await makeTempDir();
+    const iter = Deno.watchFs(testDir);
+
+    // Asynchronously capture two fs events.
+    const eventsPromise = getTwoEvents(iter);
+
+    // Make some random file system activity.
+    const file = testDir + "/file.txt";
+    await Deno.writeTextFile(file, "hello");
+
+    await Deno.rename(file, testDir + "/file2.txt");
+
+    // We should have gotten two fs events.
+    const events = await eventsPromise;
+    assert(events.length >= 2);
+    assert(events[0].kind == "create");
+    assert(events[0].paths[0].includes(testDir));
+    assert(events[1].kind == "rename");
+    assert(events[1].paths[0].includes(testDir));
+    assert(events[2].kind == "modify");
+    assert(events[2].paths[0].includes(testDir));
+  },
+);
+
 // TODO(kt3k): This test is for the backward compatibility of `.return` method.
 // This should be removed at 2.0
 Deno.test(
