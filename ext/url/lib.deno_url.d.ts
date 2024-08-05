@@ -389,6 +389,10 @@ declare interface URLPattern {
  */
 declare var URLPattern: {
   readonly prototype: URLPattern;
-  new (input: URLPatternInput, baseURL: string, options?: URLPatternOptions): URLPattern;
+  new (
+    input: URLPatternInput,
+    baseURL: string,
+    options?: URLPatternOptions,
+  ): URLPattern;
   new (input?: URLPatternInput, options?: URLPatternOptions): URLPattern;
 };
