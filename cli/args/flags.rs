@@ -1205,7 +1205,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "lint" => lint_parse(&mut flags, &mut m),
       "lsp" => lsp_parse(&mut flags, &mut m),
       "repl" => repl_parse(&mut flags, &mut m),
-      "run" => run_parse(&mut flags, &mut m, app)?,
+      "run" => run_parse(&mut flags, &mut m, app, true)?,
       "serve" => serve_parse(&mut flags, &mut m, app)?,
       "task" => task_parse(&mut flags, &mut m),
       "test" => test_parse(&mut flags, &mut m),
@@ -1217,14 +1217,23 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       _ => unreachable!(),
     }
   } else {
-    handle_repl_flags(
-      &mut flags,
-      ReplFlags {
-        eval_files: None,
-        eval: None,
-        is_default_command: true,
-      },
-    )
+    let has_non_globals = app
+      .get_opts()
+      .filter(|arg| !arg.is_global_set())
+      .any(|arg| matches.contains_id(arg.get_id().as_str()));
+
+    if has_non_globals || matches.contains_id("script_arg") {
+      run_parse(&mut flags, &mut matches, app, false)?;
+    } else {
+      handle_repl_flags(
+        &mut flags,
+        ReplFlags {
+          eval_files: None,
+          eval: None,
+          is_default_command: true,
+        },
+      )
+    }
   }
 
   Ok(flags)
@@ -1259,7 +1268,7 @@ fn clap_root() -> Command {
     crate::version::TYPESCRIPT
   );
 
-  let mut cmd = Command::new("deno")
+  let mut cmd = run_args(Command::new("deno"), false)
     .bin_name("deno")
     .styles(
       clap::builder::Styles::styled()
@@ -2505,21 +2514,27 @@ fn repl_subcommand() -> Command {
       .arg(env_file_arg())
 }
 
-fn run_subcommand() -> Command {
-  runtime_args(Command::new("run"), true, true)
+fn run_args(command: Command, require_script: bool) -> Command {
+  runtime_args(command, true, true)
     .arg(check_arg(false))
     .arg(watch_arg(true))
     .arg(watch_exclude_arg())
     .arg(hmr_arg(true))
     .arg(no_clear_screen_arg())
     .arg(executable_ext_arg())
-    .arg(
+    .arg(if require_script {
       script_arg()
         .required_unless_present("v8-flags")
-        .trailing_var_arg(true),
-    )
+        .trailing_var_arg(true)
+    } else {
+      script_arg().trailing_var_arg(true)
+    })
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
+}
+
+fn run_subcommand() -> Command {
+  run_args(Command::new("run"), true)
     .about("Run a JavaScript or TypeScript program")
     .long_about(
       "Run a JavaScript or TypeScript program
@@ -4265,6 +4280,7 @@ fn run_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
   app: Command,
+  is_run_subommand: bool,
 ) -> clap::error::Result<()> {
   // todo(dsherret): remove this in Deno 2.0
   // This is a hack to make https://github.com/netlify/build/pull/5767 work
@@ -4320,7 +4336,11 @@ fn run_parse(
   let mut script_arg =
     matches.remove_many::<String>("script_arg").ok_or_else(|| {
       let mut app = app;
-      let subcommand = &mut app.find_subcommand_mut("run").unwrap();
+      let subcommand = if is_run_subommand {
+        app.find_subcommand_mut("run").unwrap()
+      } else {
+        &mut app
+      };
       subcommand.error(
         clap::error::ErrorKind::MissingRequiredArgument,
         "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
