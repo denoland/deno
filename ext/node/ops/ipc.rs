@@ -165,9 +165,10 @@ mod impl_ {
       map.end()
     } else {
       // TODO(nathanwhit): better error message
-      Err(S::Error::custom(deno_core::error::type_error(
-        "Unsupported type",
-      )))
+      Err(S::Error::custom(deno_core::error::type_error(format!(
+        "Unsupported type: {}",
+        value.type_repr()
+      ))))
     }
   }
 
