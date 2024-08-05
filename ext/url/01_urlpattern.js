@@ -170,7 +170,7 @@ class URLPattern {
         "Argument 2",
       );
       options = webidl.converters.URLPatternOptions(
-        options !== undefined ? maybeOptions : { __proto: null },
+        maybeOptions !== undefined ? maybeOptions : { __proto: null },
         prefix,
         "Argument 3",
       );
