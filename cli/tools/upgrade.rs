@@ -384,19 +384,15 @@ pub async fn upgrade(
   if upgrade_flags.list {
     let response = client
       .get(Url::parse("https://deno.com/versions.json").unwrap())?
-      // .header(
-      //   http::HeaderName::from_static("accept"),
-      //   http::HeaderValue::from_static("application/json"),
-      // )
       .send()
       .await?;
     let body = response.collect().await?.to_bytes();
     let json_body: serde_json::Value = serde_json::from_slice(&body)?;
     if let Some(cli_versions) = json_body.get("cli") {
       if let Some(versions) = cli_versions.as_array() {
-        log::info!("Available versions:");
-        for version in versions {
-          log::info!(" - {}", colors::green(version));
+        log::info!("{}", colors::bold("Available recent versions:"));
+        for version in versions.iter().take(10) {
+          log::info!(" - {}", colors::green(version.as_str().unwrap()));
         }
       }
     }
