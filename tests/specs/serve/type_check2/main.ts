@@ -3,4 +3,4 @@ export default {
     console.log(request.doesnt_exist);
     return new Response("Hello world!");
   },
-} satisfies Deno.Serve;
+} satisfies Deno.ServeDefaultExport;

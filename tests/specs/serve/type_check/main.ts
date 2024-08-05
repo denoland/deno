@@ -1,4 +1,4 @@
 export default {
   bad() {
   },
-} satisfies Deno.Serve;
+} satisfies Deno.ServeDefaultExport;
