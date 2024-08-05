@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+import console from "node:console";
 import { assert, assertEquals, assertThrows, delay } from "./test_util.ts";
 
 // TODO(ry) Add more tests to specify format.
@@ -87,6 +88,7 @@ Deno.test(
 
     // We should have gotten two fs events.
     const events = await eventsPromise;
+    console.log(events);
     assert(events.length >= 2);
     assertEquals(events[0].kind, "create");
     assert(events[0].paths[0].includes(testDir));
