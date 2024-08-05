@@ -6256,7 +6256,7 @@ declare namespace Deno {
     info: ServeHandlerInfo,
   ) => Response | Promise<Response>;
 
-  export interface Serve {
+  export interface ServeDefaultExport {
     fetch: (
       request: Request,
     ) => Response | Promise<Response>;
