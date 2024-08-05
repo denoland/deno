@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
@@ -21,11 +20,10 @@ struct EmitMetadata {
 }
 
 /// The cache that stores previously emitted files.
-#[derive(Clone)]
 pub struct EmitCache {
   disk_cache: DiskCache,
   cli_version: &'static str,
-  emit_failed_flag: Arc<AtomicFlag>,
+  emit_failed_flag: AtomicFlag,
 }
 
 impl EmitCache {

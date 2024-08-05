@@ -364,7 +364,7 @@ pub struct ModuleGraphBuilder {
   parsed_source_cache: Arc<ParsedSourceCache>,
   lockfile: Option<Arc<CliLockfile>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-  emit_cache: cache::EmitCache,
+  emit_cache: Arc<cache::EmitCache>,
   file_fetcher: Arc<FileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
 }
@@ -381,7 +381,7 @@ impl ModuleGraphBuilder {
     parsed_source_cache: Arc<ParsedSourceCache>,
     lockfile: Option<Arc<CliLockfile>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-    emit_cache: cache::EmitCache,
+    emit_cache: Arc<cache::EmitCache>,
     file_fetcher: Arc<FileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
   ) -> Self {
