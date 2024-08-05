@@ -5,24 +5,28 @@ pub const TYPESCRIPT: &str = env!("TS_VERSION");
 
 pub fn deno() -> &'static str {
   if is_canary() {
-    concat!("2.0.0-rc.0", "+", env!("GIT_COMMIT_HASH_SHORT"))
+    concat!(
+      env!("CARGO_PKG_VERSION"),
+      "+",
+      env!("GIT_COMMIT_HASH_SHORT")
+    )
   } else {
-    "2.0.0-rc.0"
+    env!("CARGO_PKG_VERSION")
   }
 }
 
 // Keep this in sync with `deno()` above
 pub fn get_user_agent() -> &'static str {
   if is_canary() {
-    concat!("Deno/", "2.0.0-rc.0", "+", env!("GIT_COMMIT_HASH_SHORT"))
+    concat!(
+      "Deno/",
+      env!("CARGO_PKG_VERSION"),
+      "+",
+      env!("GIT_COMMIT_HASH_SHORT")
+    )
   } else {
-    concat!("Deno/", "2.0.0-rc.0")
+    concat!("Deno/", env!("CARGO_PKG_VERSION"))
   }
-}
-
-// TODO(bartlomieju): how do we decide on that?
-pub fn is_release_candidate() -> bool {
-  false
 }
 
 pub fn is_canary() -> bool {
@@ -33,6 +37,6 @@ pub fn release_version_or_canary_commit_hash() -> &'static str {
   if is_canary() {
     GIT_COMMIT_HASH
   } else {
-    "2.0.0-rc.0"
+    env!("CARGO_PKG_VERSION")
   }
 }

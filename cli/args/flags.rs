@@ -1255,7 +1255,6 @@ fn clap_root() -> Command {
   let long_version = format!(
     "{} ({}, {})\nv8 {}\ntypescript {}",
     crate::version::deno(),
-    // TODO(bartlomieju): update to show release candidate
     if crate::version::is_canary() {
       "canary"
     } else {
