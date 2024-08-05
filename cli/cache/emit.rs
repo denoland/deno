@@ -1,11 +1,13 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::unsync::sync::AtomicFlag;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -23,6 +25,7 @@ struct EmitMetadata {
 pub struct EmitCache {
   disk_cache: DiskCache,
   cli_version: &'static str,
+  emit_failed_flag: Arc<AtomicFlag>,
 }
 
 impl EmitCache {
@@ -30,6 +33,7 @@ impl EmitCache {
     Self {
       disk_cache,
       cli_version: crate::version::deno(),
+      emit_failed_flag: Default::default()
     }
   }
 
@@ -87,12 +91,10 @@ impl EmitCache {
     code: &[u8],
   ) {
     if let Err(err) = self.set_emit_code_result(specifier, source_hash, code) {
-      // should never error here, but if it ever does don't fail
-      if cfg!(debug_assertions) {
-        panic!("Error saving emit data ({specifier}): {err}");
-      } else {
-        log::debug!("Error saving emit data({}): {}", specifier, err);
-      }
+      // might error in cases such as a readonly file system
+      log::debug!("Error saving emit data ({}): {}", specifier, err);
+      // assume the cache can't be written to and disable caching to it
+      self.emit_failed_flag.raise();
     }
   }
 
@@ -102,6 +104,11 @@ impl EmitCache {
     source_hash: u64,
     code: &[u8],
   ) -> Result<(), AnyError> {
+    if self.emit_failed_flag.is_raised() {
+      log::debug!("Skipped emit cache save of {}", specifier);
+      return Ok(());
+    }
+
     let meta_filename = self
       .get_meta_filename(specifier)
       .ok_or_else(|| anyhow!("Could not get meta filename."))?;
@@ -161,6 +168,7 @@ mod test {
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
       cli_version: "1.0.0",
+      emit_failed_flag: Default::default(),
     };
     let to_string =
       |bytes: Vec<u8>| -> String { String::from_utf8(bytes).unwrap() };
@@ -192,6 +200,7 @@ mod test {
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
       cli_version: "2.0.0",
+      emit_failed_flag: Default::default(),
     };
     assert_eq!(cache.get_emit_code(&specifier1, 10), None);
     cache.set_emit_code(&specifier1, 5, emit_code1.as_bytes());
@@ -200,6 +209,7 @@ mod test {
     let cache = EmitCache {
       disk_cache,
       cli_version: "2.0.0",
+      emit_failed_flag: Default::default(),
     };
     assert_eq!(
       cache.get_emit_code(&specifier1, 5).map(to_string),
