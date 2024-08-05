@@ -353,6 +353,7 @@ pub fn op_net_listen_tcp<NP>(
   state: &mut OpState,
   #[serde] addr: IpAddr,
   reuse_port: bool,
+  load_balanced: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -367,7 +368,11 @@ where
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
 
-  let listener = TcpListener::bind_direct(addr, reuse_port)?;
+  let listener = if load_balanced {
+    TcpListener::bind_load_balanced(addr)
+  } else {
+    TcpListener::bind_direct(addr, reuse_port)
+  }?;
   let local_addr = listener.local_addr()?;
   let listener_resource = NetworkListenerResource::new(listener);
   let rid = state.resource_table.add(listener_resource);

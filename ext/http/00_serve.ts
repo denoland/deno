@@ -579,6 +579,8 @@ type RawServeOptions = {
   handler?: RawHandler;
 };
 
+const kLoadBalanced = Symbol("kLoadBalanced");
+
 function serve(arg1, arg2) {
   let options: RawServeOptions | undefined;
   let handler: RawHandler | undefined;
@@ -634,6 +636,7 @@ function serve(arg1, arg2) {
     hostname: options.hostname ?? "0.0.0.0",
     port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
+    loadBalanced: options.loadBalanced ?? options[kLoadBalanced] ?? false,
   };
 
   if (options.certFile || options.keyFile) {
@@ -846,6 +849,7 @@ function registerDeclarativeServer(exports) {
       Deno.serve({
         port: servePort,
         hostname: serveHost,
+        [kLoadBalanced]: true,
         onListen: ({ port, hostname }) => {
           console.debug(
             `%cdeno serve%c: Listening on %chttp://${hostname}:${port}/%c`,
