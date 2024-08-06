@@ -417,7 +417,7 @@ function createGPUAdapter(inner) {
   return adapter;
 }
 
-const _adapterInfo = Symbol("[[AdapterInfo]]");
+const _adapterInfo = Symbol("[[adapterInfo]]");
 const _invalid = Symbol("[[invalid]]");
 class GPUAdapter {
   /** @type {InnerGPUAdapter} */
@@ -425,7 +425,7 @@ class GPUAdapter {
   /** @type {GPUAdapterInfo | undefined} */
   [_adapterInfo];
   /** @type {boolean} */
-  [_invalid];
+  [_invalid] = false;
 
   /** @returns {GPUSupportedFeatures} */
   get features() {
