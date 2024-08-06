@@ -56,8 +56,8 @@ class TextDecoder {
   /** @type {boolean} */
   #utf8SinglePass;
 
-  /** @type {number | null} */
-  #rid = null;
+  /** @type {object | null} */
+  #handle = null;
 
   /**
    * @param {string} label
@@ -159,7 +159,7 @@ class TextDecoder {
       }
 
       // Fast path for single pass encoding.
-      if (!stream && this.#rid === null) {
+      if (!stream && this.#handle === null) {
         // Fast path for utf8 single pass encoding.
         if (this.#utf8SinglePass) {
           return op_encoding_decode_utf8(input, this.#ignoreBOM);
@@ -173,17 +173,17 @@ class TextDecoder {
         );
       }
 
-      if (this.#rid === null) {
-        this.#rid = op_encoding_new_decoder(
+      if (this.#handle === null) {
+        this.#handle = op_encoding_new_decoder(
           this.#encoding,
           this.#fatal,
           this.#ignoreBOM,
         );
       }
-      return op_encoding_decode(input, this.#rid, stream);
+      return op_encoding_decode(input, this.#handle, stream);
     } finally {
-      if (!stream && this.#rid !== null) {
-        this.#rid = null;
+      if (!stream && this.#handle !== null) {
+        this.#handle = null;
       }
     }
   }
