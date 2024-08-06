@@ -88,15 +88,13 @@ enum UpgradeCheckKind {
 #[async_trait(?Send)]
 trait VersionProvider: Clone {
   fn is_canary(&self) -> bool;
-  fn is_release_candidate(&self) -> bool;
+  async fn is_release_candidate(&self) -> Result<bool, AnyError>;
   async fn latest_version(&self) -> Result<String, AnyError>;
   fn current_version(&self) -> Cow<str>;
 
   fn release_kind(&self) -> UpgradeReleaseKind {
     if self.is_canary() {
       UpgradeReleaseKind::Canary
-    } else if self.is_release_candidate() {
-      UpgradeReleaseKind::ReleaseCandidate
     } else {
       UpgradeReleaseKind::Stable
     }
@@ -123,8 +121,14 @@ impl RealVersionProvider {
 
 #[async_trait(?Send)]
 impl VersionProvider for RealVersionProvider {
-  fn is_release_candidate(&self) -> bool {
-    version::is_release_candidate()
+  async fn is_release_candidate(&self) -> Result<bool, AnyError> {
+    let rc_versions = get_rc_versions(
+      &self.http_client_provider.get_or_create()?,
+      self.check_kind,
+    )
+    .await?;
+
+    Ok(rc_versions.contains(&self.current_version().to_string()))
   }
 
   fn is_canary(&self) -> bool {
@@ -581,6 +585,27 @@ enum UpgradeReleaseKind {
   ReleaseCandidate,
 }
 
+fn parse_rc_versions_text(text: &str) -> Result<Vec<String>, AnyError> {
+  let lines: Vec<_> = text.split("\n").map(|s| s.to_string()).collect();
+  if lines.is_empty() {
+    bail!("No release candidates available");
+  }
+  Ok(lines)
+}
+
+async fn get_rc_versions(
+  client: &HttpClient,
+  check_kind: UpgradeCheckKind,
+) -> Result<Vec<String>, AnyError> {
+  let url = get_url(
+    UpgradeReleaseKind::ReleaseCandidate,
+    env!("TARGET"),
+    check_kind,
+  );
+  let text = client.download_text(url.parse()?).await?;
+  parse_rc_versions_text(&text)
+}
+
 async fn get_latest_version(
   client: &HttpClient,
   release_kind: UpgradeReleaseKind,
@@ -599,7 +624,7 @@ fn normalize_version_from_server(
   match release_kind {
     UpgradeReleaseKind::Stable => text.trim_start_matches('v').to_string(),
     UpgradeReleaseKind::Canary => text.to_string(),
-    UpgradeReleaseKind::ReleaseCandidate => todo!(),
+    UpgradeReleaseKind::ReleaseCandidate => unreachable!(),
   }
 }
 
@@ -847,8 +872,8 @@ mod test {
 
   #[async_trait(?Send)]
   impl VersionProvider for TestUpdateCheckerEnvironment {
-    fn is_release_candidate(&self) -> bool {
-      *self.is_release_candidate.borrow()
+    async fn is_release_candidate(&self) -> Result<bool, AnyError> {
+      Ok(*self.is_release_candidate.borrow())
     }
 
     fn is_canary(&self) -> bool {
