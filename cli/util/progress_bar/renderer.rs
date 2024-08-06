@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use deno_terminal::colors;
@@ -19,7 +21,7 @@ pub struct ProgressDataDisplayEntry {
 #[derive(Clone)]
 pub struct ProgressData {
   pub terminal_width: u32,
-  pub display_entry: ProgressDataDisplayEntry,
+  pub display_entry: Vec<ProgressDataDisplayEntry>,
   pub pending_entries: usize,
   pub percent_done: f64,
   pub total_entries: usize,
@@ -36,9 +38,11 @@ pub struct BarProgressBarRenderer;
 
 impl ProgressBarRenderer for BarProgressBarRenderer {
   fn render(&self, data: ProgressData) -> String {
+    // In `ProgressBarRenderer` we only care about first entry.
+    let display_entry = &data.display_entry[0];
     let (bytes_text, bytes_text_max_width) = {
-      let total_size = data.display_entry.total_size;
-      let pos = data.display_entry.position;
+      let total_size = display_entry.total_size;
+      let pos = display_entry.position;
       if total_size == 0 {
         (String::new(), 0)
       } else {
@@ -69,11 +73,11 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
 
     let elapsed_text = get_elapsed_text(data.duration);
     let mut text = String::new();
-    if !data.display_entry.message.is_empty() {
+    if !display_entry.message.is_empty() {
       text.push_str(&format!(
         "{} {}{}\n",
         colors::green("Download"),
-        data.display_entry.message,
+        display_entry.message,
         bytes_text,
       ));
     }
@@ -106,7 +110,7 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
     text.push(']');
 
     // suffix
-    if data.display_entry.message.is_empty() {
+    if display_entry.message.is_empty() {
       text.push_str(&colors::gray(bytes_text).to_string());
     }
     text.push_str(&colors::gray(total_text).to_string());
@@ -116,40 +120,82 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
 }
 
 #[derive(Debug)]
-pub struct TextOnlyProgressBarRenderer;
+pub struct TextOnlyProgressBarRenderer {
+  last_tick: AtomicUsize,
+  start_time: std::time::Instant,
+}
+
+impl Default for TextOnlyProgressBarRenderer {
+  fn default() -> Self {
+    Self {
+      last_tick: Default::default(),
+      start_time: std::time::Instant::now(),
+    }
+  }
+}
 
 impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
   fn render(&self, data: ProgressData) -> String {
-    let bytes_text = {
-      let total_size = data.display_entry.total_size;
-      let pos = data.display_entry.position;
-      if total_size == 0 {
-        String::new()
-      } else {
-        format!(
-          " {}/{}",
-          human_download_size(pos, total_size),
-          human_download_size(total_size, total_size)
-        )
-      }
+    let last_tick = {
+      let last_tick = self.last_tick.load(Ordering::Relaxed);
+      let last_tick = (last_tick + 1) % 8;
+      self.last_tick.store(last_tick, Ordering::Relaxed);
+      last_tick
     };
+    let current_time = std::time::Instant::now();
+
+    const SPINNER_CHARS: [&'static str; 8] =
+      ["⣷", "⣯", "⣟", "⡿", "⢿", "⣻", "⣽", "⣾"];
+    let spinner_char = SPINNER_CHARS[last_tick];
+    let mut display_str = format!(
+      "{} {} ",
+      data.display_entry[0].prompt.as_text(),
+      spinner_char
+    );
+
+    let elapsed_time = current_time - self.start_time;
+    let fmt_elapsed_time = get_elapsed_text(elapsed_time);
+
     let total_text = if data.total_entries <= 1 {
       String::new()
     } else {
       format!(
-        " ({}/{})",
+        " {}/{}",
         data.total_entries - data.pending_entries,
         data.total_entries
       )
     };
 
-    format!(
-      "{} {}{}{}",
-      data.display_entry.prompt.as_text(),
-      data.display_entry.message,
-      colors::gray(bytes_text),
-      colors::gray(total_text),
-    )
+    display_str.push_str(&format!("{}{}\n", fmt_elapsed_time, total_text));
+
+    for i in 0..4 {
+      let Some(display_entry) = data.display_entry.get(i) else {
+        // display_str.push('\n');
+        // continue;
+        break;
+      };
+
+      let bytes_text = {
+        let total_size = display_entry.total_size;
+        let pos = display_entry.position;
+        if total_size == 0 {
+          String::new()
+        } else {
+          format!(
+            " {}/{}",
+            human_download_size(pos, total_size),
+            human_download_size(total_size, total_size)
+          )
+        }
+      };
+
+      display_str.push_str(
+        &colors::gray(format!(" - {}{}\n", display_entry.message, bytes_text))
+          .to_string(),
+      );
+    }
+
+    display_str
   }
 }
 
@@ -252,7 +298,7 @@ mod test {
 
   #[test]
   fn should_render_text_only_progress() {
-    let renderer = TextOnlyProgressBarRenderer;
+    let renderer = TextOnlyProgressBarRenderer::default();
     let mut data = ProgressData {
       display_entry: ProgressDataDisplayEntry {
         prompt: ProgressMessagePrompt::Blocking,
