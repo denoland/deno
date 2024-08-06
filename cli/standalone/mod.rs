@@ -8,6 +8,7 @@
 use deno_ast::MediaType;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionError;
+use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -167,6 +168,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
       self.shared.workspace_resolver.resolve(specifier, &referrer);
 
     match mapped_resolution {
+      Ok(MappedResolution::WorkspaceJsrPackage { specifier, .. }) => {
+        Ok(specifier)
+      }
       Ok(MappedResolution::WorkspaceNpmPackage {
         target_pkg_json: pkg_json,
         sub_path,
@@ -611,6 +615,17 @@ pub async fn run(
     WorkspaceResolver::new_raw(
       root_dir_url.clone(),
       import_map,
+      metadata
+        .workspace_resolver
+        .jsr_pkgs
+        .iter()
+        .map(|pkg| ResolverWorkspaceJsrPackage {
+          base: root_dir_url.join(&pkg.relative_base).unwrap(),
+          name: pkg.name.clone(),
+          version: pkg.version.clone(),
+          exports: pkg.exports.clone(),
+        })
+        .collect(),
       pkg_jsons,
       metadata.workspace_resolver.pkg_json_resolution,
     )

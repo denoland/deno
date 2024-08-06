@@ -203,11 +203,14 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
           None => Ok(specifier),
         }
       }
-      deno_config::workspace::MappedResolution::WorkspaceNpmPackage {
+      deno_config::workspace::MappedResolution::WorkspaceJsrPackage {
+        ..
+      }
+      | deno_config::workspace::MappedResolution::WorkspaceNpmPackage {
         ..
       }
       | deno_config::workspace::MappedResolution::PackageJson { .. } => {
-        Err(ResolveError::Other(anyhow!("")))
+        Err(ResolveError::Other(anyhow!(""))) // intentionally empty
       }
     }
   }
