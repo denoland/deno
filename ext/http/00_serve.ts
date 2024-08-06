@@ -636,7 +636,7 @@ function serve(arg1, arg2) {
     hostname: options.hostname ?? "0.0.0.0",
     port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
-    loadBalanced: options.loadBalanced ?? options[kLoadBalanced] ?? false,
+    loadBalanced: options[kLoadBalanced] ?? false,
   };
 
   if (options.certFile || options.keyFile) {
