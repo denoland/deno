@@ -713,6 +713,38 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       15: serveWorkerCount,
     } = runtimeOptions;
 
+    if (mode === executionModes.serve) {
+      if (serveIsMain && serveWorkerCount) {
+        const origLog = console.log;
+        const origError = console.error;
+        const base = `serve-worker-0`;
+        const prefix = `[${base.padEnd(15, " ")}]`;
+        console.log = (...args) => {
+          return origLog(prefix, ...args);
+        };
+        console.error = (...args) => {
+          return origError(prefix, ...args);
+        };
+      } else if (serveWorkerCount !== null) {
+        const origLog = console.log;
+        const origError = console.error;
+        const base = `serve-worker-${serveWorkerCount + 1}`;
+        const prefix = `[${base.padEnd(15, " ")}]`;
+        console.log = (...args) => {
+          return origLog(
+            prefix,
+            ...args,
+          );
+        };
+        console.error = (...args) => {
+          return origError(
+            prefix,
+            ...args,
+          );
+        };
+      }
+    }
+
     if (mode === executionModes.run || mode === executionModes.serve) {
       let serve = undefined;
       core.addMainModuleHandler((main) => {
