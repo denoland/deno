@@ -1,0 +1,4 @@
+Script or task not found: not_found
+Available tasks:
+- main
+    deno run main.ts

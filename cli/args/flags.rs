@@ -2516,6 +2516,7 @@ fn run_subcommand() -> Command {
     .arg(no_clear_screen_arg())
     .arg(executable_ext_arg())
     // TODO(@satyarohith): support the functionality of `--cwd` in `deno run`
+    // or remove it from 'deno task' subcommand.
     .arg(cwd_arg().hide(true))
     .arg(
       script_arg()
@@ -5142,6 +5143,7 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![],
           }),
+          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5167,6 +5169,7 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
+          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5192,6 +5195,7 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
+          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5217,6 +5221,7 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
+          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5244,6 +5249,7 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![],
           }),
+          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5273,6 +5279,7 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
+          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5302,6 +5309,7 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![String::from("foo")],
           }),
+          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5327,6 +5335,7 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![String::from("bar")],
           }),
+          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5353,6 +5362,7 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![String::from("foo"), String::from("bar")],
           }),
+          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5379,6 +5389,7 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![String::from("baz"), String::from("qux"),],
           }),
+          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
