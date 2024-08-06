@@ -28,17 +28,21 @@ pub fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   type Route,
   route,
 } from "https://raw.githubusercontent.com/denoland/std/router/http/route.ts";
+import { serveDir } from "@std/http/file-server";
 
 const routes: Route[] = [
   {
-    path: "/about",
-    handler: (_request) => new Response("About page"),
+    path: "/",
+    handler: (_request) => new Response("Home page"),
   },
   {
-    path: "/users/:id",
-    method: "GET",
+    path: new URLPattern({ pathname: "/users/:id" }),
     handler: (_request, _info, params) =>
       new Response(params?.pathname.groups.id),
+  },
+  {
+    path: new URLPattern({ pathname: "/static/*" }),
+    handler: (req) => serveDir(req, { urlRoot: "./" }),
   },
 ];
 
@@ -65,7 +69,25 @@ import server from "./main.ts";
 Deno.test(async function serverFetch() {
   const req = new Request("https://deno.land");
   const res = await server.fetch(req);
-  assertEquals(await res.text(), "Hello world");
+  assertEquals(await res.text(), "Home page");
+});
+
+Deno.test(async function serverFetchNotFound() {
+  const req = new Request("https://deno.land/404");
+  const res = await server.fetch(req);
+  assertEquals(res.status, 404);
+});
+
+Deno.test(async function serverFetchUsers() {
+  const req = new Request("https://deno.land/users/123");
+  const res = await server.fetch(req);
+  assertEquals(await res.text(), "123");
+});
+
+Deno.test(async function serverFetchStatic() {
+  const req = new Request("https://deno.land/static/main.ts");
+  const res = await server.fetch(req);
+  assertEquals(res.headers.get("content-type"), "text/plain;charset=UTF-8");
 });
 "#,
     )?;
@@ -75,10 +97,11 @@ Deno.test(async function serverFetch() {
       "deno.json",
       &json!({
         "tasks": {
-          "dev": "deno serve --watch main.ts"
+          "dev": "deno serve --watch --allow-read main.ts",
         },
         "imports": {
-          "@std/assert": "jsr:@std/assert@1"
+          "@std/assert": "jsr:@std/assert@1",
+          "@std/http": "jsr:@std/http@1",
         }
       }),
     )?;
@@ -175,7 +198,7 @@ Deno.test(function addTest() {
   }
   if init_flags.serve {
     info!("  {}", colors::gray("# Run the server"));
-    info!("  deno serve main.ts");
+    info!("  deno serve --allow-read main.ts");
     info!("");
     info!(
       "  {}",
@@ -184,7 +207,7 @@ Deno.test(function addTest() {
     info!("  deno task dev");
     info!("");
     info!("  {}", colors::gray("# Run the tests"));
-    info!("  deno test");
+    info!("  deno --allow-read test");
   } else if init_flags.lib {
     info!("  {}", colors::gray("# Run the tests"));
     info!("  deno test");
