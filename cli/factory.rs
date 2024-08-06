@@ -367,6 +367,19 @@ impl CliFactory {
             }),
           })
         } else {
+          let maybe_node_modules_path = cli_options
+            .node_modules_dir_path()
+            .and_then(|node_modules| if let Ok(deno_dir) = self.deno_dir() {
+              if node_modules.starts_with(&deno_dir.root) {
+                // If the node_modules path is inside the deno_dir, we don't want to use it.
+                None
+              } else {
+                Some(node_modules.clone())
+              }
+            } else {
+              Some(node_modules.clone())
+            });
+
           CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
             snapshot: match cli_options.resolve_npm_resolution_snapshot()? {
               Some(snapshot) => {
@@ -387,7 +400,7 @@ impl CliFactory {
             npm_global_cache_dir: self.deno_dir()?.npm_folder_path(),
             cache_setting: cli_options.cache_setting(),
             text_only_progress_bar: self.text_only_progress_bar().clone(),
-            maybe_node_modules_path: cli_options.node_modules_dir_path().cloned(),
+            maybe_node_modules_path,
             package_json_deps_provider: Arc::new(PackageJsonInstallDepsProvider::from_workspace(
               cli_options.workspace(),
             )),
