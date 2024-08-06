@@ -97,7 +97,9 @@ trait VersionProvider: Clone {
   fn current_version(&self) -> Cow<str>;
 
   // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
-  async fn get_current_exe_release_channel(&self) -> ReleaseChannel;
+  async fn get_current_exe_release_channel(
+    &self,
+  ) -> Result<ReleaseChannel, AnyError>;
 }
 
 #[derive(Clone)]
@@ -137,11 +139,13 @@ impl VersionProvider for RealVersionProvider {
   }
 
   // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
-  async fn get_current_exe_release_channel(&self) -> ReleaseChannel {
+  async fn get_current_exe_release_channel(
+    &self,
+  ) -> Result<ReleaseChannel, AnyError> {
     if version::is_canary() {
-      ReleaseChannel::Canary
+      Ok(ReleaseChannel::Canary)
     } else {
-      ReleaseChannel::Stable
+      Ok(ReleaseChannel::Stable)
     }
   }
 }
@@ -329,7 +333,7 @@ async fn check_for_upgrades_for_lsp_with_provider(
   version_provider: &impl VersionProvider,
 ) -> Result<Option<LspVersionUpgradeInfo>, AnyError> {
   let release_channel =
-    version_provider.get_current_exe_release_channel().await;
+    version_provider.get_current_exe_release_channel().await?;
   let latest_version = version_provider.latest_version(release_channel).await?;
   let current_version = version_provider.current_version();
 
@@ -373,8 +377,11 @@ async fn fetch_and_store_latest_version<
   version_provider: &TVersionProvider,
 ) {
   // Fetch latest version or commit hash from server.
-  let release_channel =
-    version_provider.get_current_exe_release_channel().await;
+  let Ok(release_channel) =
+    version_provider.get_current_exe_release_channel().await
+  else {
+    return;
+  };
   let Ok(latest_version) =
     version_provider.latest_version(release_channel).await
   else {
@@ -885,11 +892,13 @@ mod test {
     }
 
     // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
-    async fn get_current_exe_release_channel(&self) -> ReleaseChannel {
+    async fn get_current_exe_release_channel(
+      &self,
+    ) -> Result<ReleaseChannel, AnyError> {
       if *self.is_canary.borrow() {
-        ReleaseChannel::Canary
+        Ok(ReleaseChannel::Canary)
       } else {
-        ReleaseChannel::Stable
+        Ok(ReleaseChannel::Stable)
       }
     }
   }
