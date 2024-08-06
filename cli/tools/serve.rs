@@ -91,7 +91,6 @@ async fn do_serve(
     let permissions = permissions.clone();
     let (tx, rx) = tokio::sync::oneshot::channel();
     channels.push(rx);
-    // tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     std::thread::Builder::new()
       .name(format!("serve-worker-{i}"))
       .spawn(move || {
