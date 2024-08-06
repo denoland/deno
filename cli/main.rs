@@ -197,13 +197,9 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
             let result  = tools::task::execute_script(Arc::new(new_flags), task_flags.clone(), true).await;
             match result {
               Ok(v) => Ok(v),
-              Err(task_err) => {
-                if task_err.to_string().starts_with(DENO_TASK_COULDNT_FIND_CONFIG) {
-                  // Return script error instead of task error as the user didn't intend to run a task.
+              Err(_) => {
+                  // Return script error for backwards compatibility.
                   Err(script_err)
-                } else {
-                  Err(task_err)
-                }
               }
             }
           } else {
