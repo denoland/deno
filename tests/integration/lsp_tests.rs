@@ -7522,22 +7522,6 @@ fn lsp_completions_node_specifier() {
   );
   assert!(!list.is_incomplete);
   assert_eq!(
-    json!(list.items.first()),
-    json!({
-      "label": "node:assert",
-      "kind": 17,
-      "detail": "(node)",
-      "textEdit": {
-        "range": {
-          "start": { "line": 0, "character": 16 },
-          "end": { "line": 0, "character": 23 },
-        },
-        "newText": "node:assert",
-      },
-      "commitCharacters": ["\"", "'"],
-    }),
-  );
-  assert_eq!(
     list
       .items
       .iter()
@@ -7597,6 +7581,25 @@ fn lsp_completions_node_specifier() {
       "node:zlib",
     ],
   );
+  for item in &list.items {
+    let specifier = item.label.as_str();
+    assert_eq!(
+      json!(item),
+      json!({
+        "label": specifier,
+        "kind": 17,
+        "detail": "(node)",
+        "textEdit": {
+          "range": {
+            "start": { "line": 0, "character": 16 },
+            "end": { "line": 0, "character": 23 },
+          },
+          "newText": specifier,
+        },
+        "commitCharacters": ["\"", "'"],
+      }),
+    );
+  }
   client.shutdown();
 }
 
