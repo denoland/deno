@@ -864,9 +864,7 @@ function registerDeclarativeServer(exports) {
             );
           }
         },
-        handler: (req) => {
-          return exports.fetch(req);
-        },
+        handler: exports.fetch,
       });
     };
   }
