@@ -417,14 +417,15 @@ function createGPUAdapter(inner) {
   return adapter;
 }
 
+const _adapterInfo = Symbol("[[AdapterInfo]]");
 const _invalid = Symbol("[[invalid]]");
 class GPUAdapter {
   /** @type {InnerGPUAdapter} */
   [_adapter];
+  /** @type {GPUAdapterInfo | undefined} */
+  [_adapterInfo];
   /** @type {boolean} */
   [_invalid];
-  /** @type {GPUAdapterInfo | undefined} */
-  #adapterInfo;
 
   /** @returns {GPUSupportedFeatures} */
   get features() {
@@ -509,14 +510,14 @@ class GPUAdapter {
   get info() {
     webidl.assertBranded(this, GPUAdapterPrototype);
 
+    if (this[_adapterInfo] !== undefined) {
+      return this[_adapterInfo];
+    }
+
     if (this[_invalid]) {
       throw new TypeError(
         "The adapter cannot be reused, as it has been invalidated by a device creation",
       );
-    }
-
-    if (this.#adapterInfo !== undefined) {
-      return this.#adapterInfo;
     }
 
     const {
@@ -531,7 +532,7 @@ class GPUAdapter {
     adapterInfo[_architecture] = architecture;
     adapterInfo[_device] = device;
     adapterInfo[_description] = description;
-    this.#adapterInfo = adapterInfo;
+    this[_adapterInfo] = adapterInfo;
     return adapterInfo;
   }
 
@@ -543,6 +544,7 @@ class GPUAdapter {
         keys: [
           "features",
           "limits",
+          "info",
           "isFallbackAdapter",
         ],
       }),
