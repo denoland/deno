@@ -76,9 +76,7 @@ impl SpecifierUnfurler {
         MappedResolution::Normal(specifier)
         | MappedResolution::ImportMap(specifier) => Some(specifier),
         MappedResolution::WorkspaceJsrPackage { pkg_req_ref, .. } => {
-          Some(ModuleSpecifier::parse(
-            &pkg_req_ref.to_string()
-          ).unwrap())
+          Some(ModuleSpecifier::parse(&pkg_req_ref.to_string()).unwrap())
         }
         MappedResolution::WorkspaceNpmPackage {
           target_pkg_json: pkg_json,
@@ -394,14 +392,14 @@ mod tests {
   use deno_ast::MediaType;
   use deno_ast::ModuleSpecifier;
   use deno_config::workspace::ResolverWorkspaceJsrPackage;
-use deno_core::serde_json::json;
+  use deno_core::serde_json::json;
   use deno_core::url::Url;
   use deno_runtime::deno_fs::RealFs;
   use deno_runtime::deno_node::PackageJson;
   use deno_semver::Version;
-use import_map::ImportMapWithDiagnostics;
+  use import_map::ImportMapWithDiagnostics;
   use indexmap::IndexMap;
-use pretty_assertions::assert_eq;
+  use pretty_assertions::assert_eq;
   use test_util::testdata_path;
 
   fn parse_ast(specifier: &Url, source_code: &str) -> ParsedSource {
@@ -445,12 +443,11 @@ use pretty_assertions::assert_eq;
       Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
       Some(import_map),
       vec![ResolverWorkspaceJsrPackage {
-        base: ModuleSpecifier::from_directory_path(&cwd.join("jsr-package")).unwrap(),
+        base: ModuleSpecifier::from_directory_path(cwd.join("jsr-package"))
+          .unwrap(),
         name: "@denotest/example".to_string(),
         version: Some(Version::parse_standard("1.0.0").unwrap()),
-        exports: IndexMap::from([
-          (".".to_string(), "mod.ts".to_string())
-        ])
+        exports: IndexMap::from([(".".to_string(), "mod.ts".to_string())]),
       }],
       vec![Arc::new(package_json)],
       deno_config::workspace::PackageJsonDepResolution::Enabled,
