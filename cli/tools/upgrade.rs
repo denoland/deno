@@ -370,6 +370,50 @@ async fn fetch_and_store_latest_version<
   );
 }
 
+enum RequestedVersion {
+  LatestStable,
+  LatestCanary,
+  SpecificStable(String),
+  SpecificCanary(String),
+}
+
+impl RequestedVersion {
+  fn from_upgrade_flags(upgrade_flags: UpgradeFlags) -> Result<Self, AnyError> {
+    let is_canary = upgrade_flags.canary;
+
+    let Some(version) = upgrade_flags.version else {
+      if is_canary {
+        return Ok(Self::LatestCanary);
+      } else {
+        return Ok(Self::LatestStable);
+      }
+    };
+
+    let passed_version = upgrade_flags.version.unwrap();
+    let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
+    let passed_version = passed_version
+      .strip_prefix('v')
+      .unwrap_or(&passed_version)
+      .to_string();
+
+    if is_canary {
+      if !re_hash.is_match(&passed_version) {
+        bail!("Invalid commit hash passed");
+      }
+      Ok(Self::SpecificCanary(passed_version))
+    } else {
+      if Version::parse_standard(&version).is_err() {
+        bail!("Invalid version passed");
+      };
+      Ok(Self::SpecificStable(passed_version))
+    }
+  }
+
+  fn is_canary(&self) -> bool {
+    matches!(self, Self::LatestCanary | Self::SpecificCanary(_))
+  }
+}
+
 pub async fn upgrade(
   flags: Arc<Flags>,
   upgrade_flags: UpgradeFlags,
@@ -411,57 +455,20 @@ pub async fn upgrade(
     fs::metadata(&current_exe_path)?.permissions()
   };
 
-  let install_version = match upgrade_flags.version {
-    Some(passed_version) => {
-      let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
-      let passed_version = passed_version
-        .strip_prefix('v')
-        .unwrap_or(&passed_version)
-        .to_string();
+  let force = upgrade_flags.force;
+  let requested_version = RequestedVersion::from_upgrade_flags(upgrade_flags)?;
 
-      if upgrade_flags.canary && !re_hash.is_match(&passed_version) {
-        bail!("Invalid commit hash passed");
-      } else if !upgrade_flags.canary
-        && Version::parse_standard(&passed_version).is_err()
-      {
-        bail!("Invalid version passed");
-      }
+  let install_version = match requested_version {
+    RequestedVersion::LatestStable => {
+      log::info!("Looking up latest version");
+      let latest_version = get_latest_version(
+        &client,
+        UpgradeReleaseKind::Stable,
+        UpgradeCheckKind::Execution,
+      )
+      .await?;
 
-      let current_is_passed = if upgrade_flags.canary {
-        crate::version::GIT_COMMIT_HASH == passed_version
-      } else if !crate::version::is_canary() {
-        crate::version::deno() == passed_version
-      } else {
-        false
-      };
-
-      if !upgrade_flags.force
-        && full_path_output_flag.is_none()
-        && current_is_passed
-      {
-        log::info!("Version {} is already installed", crate::version::deno());
-        return Ok(());
-      }
-
-      passed_version
-    }
-    None => {
-      let release_kind = if upgrade_flags.canary {
-        log::info!("Looking up latest canary version");
-        UpgradeReleaseKind::Canary
-      } else {
-        log::info!("Looking up latest version");
-        UpgradeReleaseKind::Stable
-      };
-
-      let latest_version =
-        get_latest_version(&client, release_kind, UpgradeCheckKind::Execution)
-          .await?;
-
-      let current_is_most_recent = if upgrade_flags.canary {
-        let latest_hash = &latest_version;
-        crate::version::GIT_COMMIT_HASH == latest_hash
-      } else if !crate::version::is_canary() {
+      let current_is_most_recent = if !crate::version::is_canary() {
         let current = Version::parse_standard(crate::version::deno()).unwrap();
         let latest = Version::parse_standard(&latest_version).unwrap();
         current >= latest
@@ -469,23 +476,67 @@ pub async fn upgrade(
         false
       };
 
-      if !upgrade_flags.force
-        && full_path_output_flag.is_none()
-        && current_is_most_recent
-      {
+      if !force && full_path_output_flag.is_none() && current_is_most_recent {
         log::info!(
           "Local deno version {} is the most recent release",
-          if upgrade_flags.canary {
-            crate::version::GIT_COMMIT_HASH
-          } else {
-            crate::version::deno()
-          }
+          crate::version::deno()
         );
         return Ok(());
       } else {
         log::info!("Found latest version {}", latest_version);
         latest_version
       }
+    }
+    RequestedVersion::SpecificStable(passed_version) => {
+      let current_is_passed = if !crate::version::is_canary() {
+        crate::version::deno() == passed_version
+      } else {
+        false
+      };
+
+      if !force && full_path_output_flag.is_none() && current_is_passed {
+        log::info!("Version {} is already installed", crate::version::deno());
+        return Ok(());
+      }
+
+      passed_version
+    }
+    RequestedVersion::LatestCanary => {
+      log::info!("Looking up latest canary version");
+      let latest_version = get_latest_version(
+        &client,
+        UpgradeReleaseKind::Canary,
+        UpgradeCheckKind::Execution,
+      )
+      .await?;
+
+      let current_is_most_recent =
+        crate::version::GIT_COMMIT_HASH == &latest_version;
+
+      if !force && full_path_output_flag.is_none() && current_is_most_recent {
+        log::info!(
+          "Local deno version {} is the most recent release",
+          crate::version::GIT_COMMIT_HASH
+        );
+        return Ok(());
+      } else {
+        log::info!("Found latest version {}", latest_version);
+        latest_version
+      }
+    }
+    RequestedVersion::SpecificCanary(passed_version) => {
+      let current_is_passed = if !crate::version::is_canary() {
+        crate::version::GIT_COMMIT_HASH == passed_version
+      } else {
+        false
+      };
+
+      if !force && full_path_output_flag.is_none() && current_is_passed {
+        log::info!("Version {} is already installed", crate::version::deno());
+        return Ok(());
+      }
+
+      passed_version
     }
   };
 
