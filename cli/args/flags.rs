@@ -332,6 +332,7 @@ pub struct ServeFlags {
   pub watch: Option<WatchFlagsWithPaths>,
   pub port: u16,
   pub host: String,
+  pub worker_count: Option<usize>,
 }
 
 impl ServeFlags {
@@ -342,6 +343,7 @@ impl ServeFlags {
       watch: None,
       port,
       host: host.to_owned(),
+      worker_count: None,
     }
   }
 }
@@ -2642,6 +2644,13 @@ fn serve_subcommand() -> Command {
         .help("The TCP address to serve on, defaulting to 0.0.0.0 (all interfaces).")
         .value_parser(serve_host_validator),
     )
+    .arg(
+      Arg::new("parallel").long("parallel").num_args(0..=1)
+      .help("Run multiple server workers. Pass 0 to use the number of cores. Defaults to 0.")
+      .require_equals(true)
+      .default_missing_value("0")
+      .value_parser(value_parser!(usize))
+    )
     .arg(check_arg(false))
     .arg(watch_arg(true))
     .arg(watch_exclude_arg())
@@ -4348,6 +4357,14 @@ fn serve_parse(
     .remove_one::<String>("host")
     .unwrap_or_else(|| "0.0.0.0".to_owned());
 
+  let worker_count = matches.remove_one::<usize>("parallel").map(|n| {
+    if n == 0 {
+      std::thread::available_parallelism().unwrap().get()
+    } else {
+      n
+    }
+  });
+
   runtime_args_parse(flags, matches, true, true);
   // If the user didn't pass --allow-net, add this port to the network
   // allowlist. If the host is 0.0.0.0, we add :{port} and allow the same network perms
@@ -4387,6 +4404,7 @@ fn serve_parse(
     watch: watch_arg_parse_with_paths(matches),
     port,
     host,
+    worker_count,
   });
 
   Ok(())

@@ -845,19 +845,24 @@ function registerDeclarativeServer(exports) {
         "Invalid type for fetch: must be a function with a single or no parameter",
       );
     }
-    return ({ servePort, serveHost }) => {
+    return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
       Deno.serve({
         port: servePort,
         hostname: serveHost,
-        [kLoadBalanced]: true,
+        [kLoadBalanced]: serveWorkerCount > 1,
         onListen: ({ port, hostname }) => {
-          console.debug(
-            `%cdeno serve%c: Listening on %chttp://${hostname}:${port}/%c`,
-            "color: green",
-            "color: inherit",
-            "color: yellow",
-            "color: inherit",
-          );
+          if (serveIsMain) {
+            const nThreads = serveWorkerCount > 1
+              ? ` with ${serveWorkerCount} threads`
+              : "";
+            console.debug(
+              `%cdeno serve%c: Listening on %chttp://${hostname}:${port}/%c${nThreads}`,
+              "color: green",
+              "color: inherit",
+              "color: yellow",
+              "color: inherit",
+            );
+          }
         },
         handler: (req) => {
           return exports.fetch(req);

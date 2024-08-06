@@ -709,6 +709,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       11: mode,
       12: servePort,
       13: serveHost,
+      14: serveIsMain,
+      15: serveWorkerCount,
     } = runtimeOptions;
 
     if (mode === executionModes.run || mode === executionModes.serve) {
@@ -725,13 +727,16 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         }
 
         if (mode === executionModes.serve && !serve) {
-          console.error(
-            `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
-            "color: yellow;",
-            "color: inherit;",
-            "font-weight: bold;",
-            "font-weight: normal;",
-          );
+          if (serveIsMain) {
+            // Only error if main worker
+            console.error(
+              `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
+              "color: yellow;",
+              "color: inherit;",
+              "font-weight: bold;",
+              "font-weight: normal;",
+            );
+          }
           return;
         }
 
@@ -746,7 +751,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
             );
           }
           if (mode === executionModes.serve) {
-            serve({ servePort, serveHost });
+            serve({ servePort, serveHost, serveIsMain, serveWorkerCount });
           }
         }
       });

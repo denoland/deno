@@ -9,6 +9,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use super::run::check_permission_before_script;
 use super::run::maybe_npm_install;
 use crate::args::Flags;
+use crate::args::ServeFlags;
 use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -16,12 +17,13 @@ use crate::worker::CliMainWorkerFactory;
 
 pub async fn serve(
   flags: Arc<Flags>,
-  watch: Option<WatchFlagsWithPaths>,
+  serve_flags: ServeFlags,
 ) -> Result<i32, AnyError> {
   check_permission_before_script(&flags);
 
-  if let Some(watch_flags) = watch {
-    return serve_with_watch(flags, watch_flags).await;
+  if let Some(watch_flags) = serve_flags.watch {
+    return serve_with_watch(flags, watch_flags, serve_flags.worker_count)
+      .await;
   }
 
   let factory = CliFactory::from_flags(flags);
@@ -46,39 +48,62 @@ pub async fn serve(
   )?);
   let worker_factory = factory.create_cli_main_worker_factory().await?;
 
-  do_serve(worker_factory, main_module, permissions, false).await
+  do_serve(
+    worker_factory,
+    main_module,
+    permissions,
+    serve_flags.worker_count,
+    false,
+  )
+  .await
 }
 
 async fn do_serve(
   worker_factory: CliMainWorkerFactory,
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
+  worker_count: Option<usize>,
   hmr: bool,
 ) -> Result<i32, AnyError> {
   let mut worker = worker_factory
     .create_main_worker(
-      deno_runtime::WorkerExecutionMode::Serve,
+      deno_runtime::WorkerExecutionMode::Serve {
+        is_main: true,
+        worker_count,
+      },
       main_module.clone(),
       permissions.clone(),
     )
     .await?;
+  let worker_count = match worker_count {
+    None | Some(1) => return worker.run().await,
+    Some(c) => c,
+  };
 
   let main = deno_core::unsync::spawn(async move { worker.run().await });
-  let n = std::thread::available_parallelism()?.get();
-  let mut channels = Vec::with_capacity(n);
-  for i in 0..n {
+
+  let extra_workers = worker_count.saturating_sub(1);
+
+  let mut channels = Vec::with_capacity(extra_workers);
+  for i in 0..extra_workers {
     let worker_factory = worker_factory.clone();
     let main_module = main_module.clone();
     let permissions = permissions.clone();
     let (tx, rx) = tokio::sync::oneshot::channel();
     channels.push(rx);
-
+    // tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     std::thread::Builder::new()
       .name(format!("serve-worker-{i}"))
       .spawn(move || {
         deno_runtime::tokio_util::create_and_run_current_thread(async move {
-          let result =
-            run_worker(worker_factory, main_module, permissions, hmr).await;
+          let result = run_worker(
+            worker_count,
+            worker_factory,
+            main_module,
+            permissions,
+            hmr,
+          )
+          .await;
           let _ = tx.send(result);
         });
       })?;
@@ -91,17 +116,20 @@ async fn do_serve(
     )
   )?;
 
-  let main_ret = main_result?;
+  let mut exit_code = main_result?;
   for res in worker_results {
     let ret = res?;
-    if ret != 0 {
-      return Ok(ret);
+    if ret != 0 && exit_code == 0 {
+      exit_code = ret;
     }
   }
-  Ok(main_ret)
+  Ok(exit_code)
+
+  // main.await?
 }
 
 async fn run_worker(
+  worker_count: usize,
   worker_factory: CliMainWorkerFactory,
   main_module: ModuleSpecifier,
   permissions: PermissionsContainer,
@@ -109,7 +137,10 @@ async fn run_worker(
 ) -> Result<i32, AnyError> {
   let mut worker = worker_factory
     .create_main_worker(
-      deno_runtime::WorkerExecutionMode::Serve,
+      deno_runtime::WorkerExecutionMode::Serve {
+        is_main: false,
+        worker_count: Some(worker_count),
+      },
       main_module,
       permissions,
     )
@@ -125,6 +156,7 @@ async fn run_worker(
 async fn serve_with_watch(
   flags: Arc<Flags>,
   watch_flags: WatchFlagsWithPaths,
+  worker_count: Option<usize>,
 ) -> Result<i32, AnyError> {
   let hmr = watch_flags.hmr;
   crate::util::file_watcher::watch_recv(
@@ -153,7 +185,8 @@ async fn serve_with_watch(
         )?);
         let worker_factory = factory.create_cli_main_worker_factory().await?;
 
-        do_serve(worker_factory, main_module, permissions, hmr).await?;
+        do_serve(worker_factory, main_module, permissions, worker_count, hmr)
+          .await?;
 
         Ok(())
       })
