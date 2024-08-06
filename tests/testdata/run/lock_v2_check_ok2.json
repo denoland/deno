@@ -1,5 +1,5 @@
 {
-  "version": "3",
+  "version": "2",
   "remote": {
     "http://localhost:4545/subdir/mt_application_ecmascript.j2.js": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
     "http://localhost:4545/subdir/mt_application_x_javascript.j4.js": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
@@ -9,16 +9,5 @@
     "http://localhost:4545/subdir/mt_text_typescript.t1.ts": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
     "http://localhost:4545/subdir/mt_video_mp2t.t3.ts": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18",
     "http://localhost:4545/subdir/mt_video_vdn.t2.ts": "3a3e002e2f92dc8f045bd4a7c66b4791453ad0417b038dd2b2d9d0f277c44f18"
-  },
-  "workspace": {
-    "packageJson": {
-      "dependencies": [
-        "npm:@ngrx/store-devtools@^14.3.2",
-        "npm:@stripe/stripe-js@^2.1.6",
-        "npm:path-to-regexp@^7.0.0",
-        "npm:stripe@^13.8.0",
-        "npm:uuid@^3.4.0"
-      ]
-    }
   }
 }
