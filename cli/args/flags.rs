@@ -9962,7 +9962,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
           dir: None,
-          lib: true
+          lib: true,
           serve: false,
         }),
         ..Flags::default()
