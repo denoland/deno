@@ -2060,3 +2060,14 @@ Deno.test("URL authority is used as 'Authorization' header", async () => {
   await server.finished;
   assertEquals(authHeader, "Basic ZGVubzpsYW5k");
 });
+
+Deno.test(
+  { permissions: { net: true } },
+  async function errorMessageIncludesUrlAndDetails() {
+    await assertRejects(
+      () => fetch("http://example.invalid"),
+      TypeError,
+      "error sending request for url (http://example.invalid/): client error (Connect): dns error: failed to lookup address information:",
+    );
+  },
+);

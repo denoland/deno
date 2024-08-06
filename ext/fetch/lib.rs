@@ -1098,7 +1098,15 @@ impl Client {
       req.headers_mut().insert(PROXY_AUTHORIZATION, auth.clone());
     }
 
-    let resp = self.inner.oneshot(req).await?;
+    let url = req.uri().to_string();
+
+    let resp = self.inner.oneshot(req).await.map_err(|e| {
+      anyhow!(
+        "error sending request for url ({url}): {}",
+        // NOTE: we can use `std::error::Report` instead once it's stabilized.
+        error_reporter::Report::new(e)
+      )
+    })?;
     Ok(resp.map(|b| b.map_err(|e| anyhow!(e)).boxed()))
   }
 }
