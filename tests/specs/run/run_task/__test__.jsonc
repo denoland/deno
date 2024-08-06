@@ -4,7 +4,7 @@
       "args": "run main",
       "output": "main.out"
     },
-    "deno_run_script_task_not_found": {
+    "deno_run_module_task_not_found": {
       "args": "run not_found",
       "output": "not_found.out",
       "exitCode": 1

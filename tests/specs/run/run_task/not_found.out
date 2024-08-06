@@ -1,4 +1,1 @@
-Script or task not found: not_found
-Available tasks:
-- main
-    deno run main.ts
+error: Module not found "file:///[WILDCARD]/not_found".
