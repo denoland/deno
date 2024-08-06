@@ -190,7 +190,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
           if script_err.to_string().starts_with(MODULE_NOT_FOUND) {
             let mut new_flags = flags.deref().clone();
             let task_flags = TaskFlags {
-                cwd: run_flags.cwd.clone(),
+                cwd: None,
                 task: Some(run_flags.script.clone()),
             };
             new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());

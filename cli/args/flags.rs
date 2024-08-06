@@ -301,7 +301,6 @@ pub struct ReplFlags {
 pub struct RunFlags {
   pub script: String,
   pub watch: Option<WatchFlagsWithPaths>,
-  pub cwd: Option<String>,
 }
 
 impl RunFlags {
@@ -310,7 +309,6 @@ impl RunFlags {
     Self {
       script,
       watch: None,
-      cwd: None,
     }
   }
 
@@ -2515,9 +2513,6 @@ fn run_subcommand() -> Command {
     .arg(hmr_arg(true))
     .arg(no_clear_screen_arg())
     .arg(executable_ext_arg())
-    // TODO(@satyarohith): support the functionality of `--cwd` in `deno run`
-    // or remove it from 'deno task' subcommand.
-    .arg(cwd_arg().hide(true))
     .arg(
       script_arg()
         .required_unless_present("v8-flags")
@@ -2618,7 +2613,13 @@ fn task_subcommand() -> Command {
         .allow_external_subcommands(true)
         .subcommand_value_name("TASK")
         .arg(config_arg())
-        .arg(cwd_arg())
+        .arg(
+          Arg::new("cwd")
+            .long("cwd")
+            .value_name("DIR")
+            .help("Specify the directory to run the task in")
+            .value_hint(ValueHint::DirPath),
+        )
     })
 }
 
@@ -3668,14 +3669,6 @@ fn script_arg() -> Arg {
     .value_hint(ValueHint::FilePath)
 }
 
-fn cwd_arg() -> Arg {
-  Arg::new("cwd")
-    .long("cwd")
-    .value_name("DIR")
-    .help("Specify the directory to run the task in")
-    .value_hint(ValueHint::DirPath)
-}
-
 fn lock_arg() -> Arg {
   Arg::new("lock")
     .long("lock")
@@ -4343,7 +4336,6 @@ fn run_parse(
   flags.subcommand = DenoSubcommand::Run(RunFlags {
     script,
     watch: watch_arg_parse_with_paths(matches),
-    cwd: matches.remove_one::<String>("cwd"),
   });
 
   Ok(())
@@ -5143,7 +5135,6 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![],
           }),
-          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5169,7 +5160,6 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
-          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5195,7 +5185,6 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
-          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5221,7 +5210,6 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
-          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5249,7 +5237,6 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![],
           }),
-          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5279,7 +5266,6 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
-          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5309,7 +5295,6 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![String::from("foo")],
           }),
-          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5335,7 +5320,6 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![String::from("bar")],
           }),
-          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5362,7 +5346,6 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![String::from("foo"), String::from("bar")],
           }),
-          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5389,7 +5372,6 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![String::from("baz"), String::from("qux"),],
           }),
-          cwd: None,
         }),
         code_cache_enabled: true,
         ..Flags::default()
