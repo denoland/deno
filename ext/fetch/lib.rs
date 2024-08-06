@@ -26,6 +26,7 @@ use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
+use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
@@ -429,7 +430,7 @@ where
 
       let mut request = http::Request::new(body);
       *request.method_mut() = method.clone();
-      *request.uri_mut() = uri;
+      *request.uri_mut() = uri.clone();
 
       if let Some((username, password)) = maybe_authority {
         request.headers_mut().insert(
@@ -469,8 +470,21 @@ where
       let cancel_handle = CancelHandle::new_rc();
       let cancel_handle_ = cancel_handle.clone();
 
-      let fut =
-        async move { client.send(request).or_cancel(cancel_handle_).await };
+      let fut = {
+        async move {
+          client
+            .send(request)
+            .map_err(|e| {
+              anyhow!(
+                "error sending request for url ({uri}): {}",
+                // NOTE: we can use `std::error::Report` instead once it's stabilized.
+                error_reporter::Report::new(e)
+              )
+            })
+            .or_cancel(cancel_handle_)
+            .await
+        }
+      };
 
       let request_rid = state.resource_table.add(FetchRequestResource {
         future: Box::pin(fut),
@@ -1086,7 +1100,7 @@ impl Client {
   pub async fn send(
     self,
     mut req: http::Request<ReqBody>,
-  ) -> Result<http::Response<ResBody>, AnyError> {
+  ) -> Result<http::Response<ResBody>, hyper_util::client::legacy::Error> {
     req
       .headers_mut()
       .entry(USER_AGENT)
@@ -1098,15 +1112,7 @@ impl Client {
       req.headers_mut().insert(PROXY_AUTHORIZATION, auth.clone());
     }
 
-    let url = req.uri().to_string();
-
-    let resp = self.inner.oneshot(req).await.map_err(|e| {
-      anyhow!(
-        "error sending request for url ({url}): {}",
-        // NOTE: we can use `std::error::Report` instead once it's stabilized.
-        error_reporter::Report::new(e)
-      )
-    })?;
+    let resp = self.inner.oneshot(req).await?;
     Ok(resp.map(|b| b.map_err(|e| anyhow!(e)).boxed()))
   }
 }

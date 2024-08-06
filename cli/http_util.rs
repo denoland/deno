@@ -389,10 +389,10 @@ impl HttpClient {
     let response = match self.client.clone().send(request).await {
       Ok(resp) => resp,
       Err(err) => {
-        if is_error_connect(&err) {
+        if err.is_connect() {
           return Ok(FetchOnceResult::RequestError(err.to_string()));
         }
-        return Err(err);
+        return Err(err.into());
       }
     };
 
@@ -530,7 +530,7 @@ impl HttpClient {
       .clone()
       .send(req)
       .await
-      .map_err(DownloadError::Fetch)?;
+      .map_err(|e| DownloadError::Fetch(e.into()))?;
     let status = response.status();
     if status.is_redirection() {
       for _ in 0..5 {
@@ -550,7 +550,7 @@ impl HttpClient {
           .clone()
           .send(req)
           .await
-          .map_err(DownloadError::Fetch)?;
+          .map_err(|e| DownloadError::Fetch(e.into()))?;
         let status = new_response.status();
         if status.is_redirection() {
           response = new_response;
@@ -564,13 +564,6 @@ impl HttpClient {
       Ok((response, url))
     }
   }
-}
-
-fn is_error_connect(err: &AnyError) -> bool {
-  err
-    .downcast_ref::<hyper_util::client::legacy::Error>()
-    .map(|err| err.is_connect())
-    .unwrap_or(false)
 }
 
 async fn get_response_body_with_progress(
@@ -676,7 +669,7 @@ impl RequestBuilder {
   pub async fn send(
     self,
   ) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
-    self.client.send(self.req).await
+    self.client.send(self.req).await.map_err(Into::into)
   }
 
   pub fn build(self) -> http::Request<deno_fetch::ReqBody> {
