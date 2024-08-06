@@ -210,7 +210,8 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
         ..
       }
       | deno_config::workspace::MappedResolution::PackageJson { .. } => {
-        Err(ResolveError::Other(anyhow!(""))) // intentionally empty
+        // this error is ignored
+        Err(ResolveError::Other(anyhow!("")))
       }
     }
   }
