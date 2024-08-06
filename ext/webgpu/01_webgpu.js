@@ -423,6 +423,8 @@ class GPUAdapter {
   [_adapter];
   /** @type {bool} */
   [_invalid];
+  /** @type {GPUAdapterInfo | undefined} */
+  #adapterInfo;
 
   /** @returns {GPUSupportedFeatures} */
   get features() {
@@ -513,6 +515,10 @@ class GPUAdapter {
       );
     }
 
+    if (this.#adapterInfo !== undefined) {
+      return this.#adapterInfo;
+    }
+
     const {
       vendor,
       architecture,
@@ -525,6 +531,7 @@ class GPUAdapter {
     adapterInfo[_architecture] = architecture;
     adapterInfo[_device] = device;
     adapterInfo[_description] = description;
+    this.#adapterInfo = adapterInfo;
     return adapterInfo;
   }
 
