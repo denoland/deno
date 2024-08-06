@@ -65,7 +65,7 @@ const REQUEST_BODY_HEADER_NAMES = [
 
 /**
  * @param {number} rid
- * @returns {Promise<{ status: number, statusText: string, headers: [string, string][], url: string, responseRid: number, error: string? }>}
+ * @returns {Promise<{ status: number, statusText: string, headers: [string, string][], url: string, responseRid: number, error: [string, string]? }>}
  */
 function opFetchSend(rid) {
   return op_fetch_send(rid);
@@ -177,8 +177,9 @@ async function mainFetch(req, recursive, terminator) {
     }
   }
   // Re-throw any body errors
-  if (resp.error) {
-    throw new TypeError("body failed", { cause: new Error(resp.error) });
+  if (resp.error !== null) {
+    const [message, cause] = resp.error;
+    throw new TypeError(message, { cause: new Error(cause) });
   }
   if (terminator.aborted) return abortedNetworkError();
 

@@ -389,7 +389,7 @@ impl HttpClient {
     let response = match self.client.clone().send(request).await {
       Ok(resp) => resp,
       Err(err) => {
-        if err.is_connect() {
+        if err.is_connect_error() {
           return Ok(FetchOnceResult::RequestError(err.to_string()));
         }
         return Err(err.into());

@@ -1976,14 +1976,17 @@ Deno.test(
       },
     });
 
-    const err = await assertRejects(() =>
-      fetch(`http://localhost:${listenPort}/`, {
-        body: stream,
-        method: "POST",
-      })
+    const url = `http://localhost:${listenPort}/`;
+    const err = await assertRejects(
+      () =>
+        fetch(url, {
+          body: stream,
+          method: "POST",
+        }),
+      TypeError,
+      `error sending request for url (${url}): client error (SendRequest): error from user's Body stream`,
     );
 
-    assert(err instanceof TypeError, `err was not a TypeError ${err}`);
     assert(err.cause, `err.cause was null ${err}`);
     assert(
       err.cause instanceof Error,
