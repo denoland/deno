@@ -2930,3 +2930,10 @@ async fn test_private_npm_registry() {
   let resp = client.execute(req).await.unwrap();
   assert_eq!(resp.status(), reqwest::StatusCode::OK);
 }
+
+itest!(exec_file_inside_npm_package {
+  args: "run -A npm/exec_file/main.ts",
+  output_str: Some("[WILDCARD]Hello, world!\n"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
