@@ -178,7 +178,7 @@ async function mainFetch(req, recursive, terminator) {
   }
   // Re-throw any body errors
   if (resp.error !== null) {
-    const [message, cause] = resp.error;
+    const { 0: message, 1: cause } = resp.error;
     throw new TypeError(message, { cause: new Error(cause) });
   }
   if (terminator.aborted) return abortedNetworkError();
