@@ -888,6 +888,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "countme"
+version = "3.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7704b5fdd17b18ae31c4c1da5a2e0305a2bf17b5249300a9ee9ed7b72114c636"
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1183,6 +1189,7 @@ dependencies = [
  "percent-encoding",
  "phf 0.11.2",
  "pretty_assertions",
+ "pretty_yaml",
  "quick-junit",
  "rand",
  "regex",
@@ -1350,9 +1357,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.301.0"
+version = "0.302.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d595cedb88ce9972e35b6b6ea3832792a570412c06c4ef2fe2b1e54505595e51"
+checksum = "063e249fa30a9ee3320f5b1a69f86be1d98db234a112671ad85f648c876a6705"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1836,9 +1843,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.177.0"
+version = "0.178.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9e89d5b94f766a73ecfa03b8481c9b4932d137670bdd9b227e5fcf283175af7"
+checksum = "1df4f8e16146f71cd35f3730350005be64807e37a89900366b55d6d798ab545a"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -2421,9 +2428,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.91.5"
+version = "0.91.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d4a48d899392c00c7b310e2b6f88deb75cd64b860fff85008af667aecb6e78a"
+checksum = "390da1b0ba3761f824518a3e4f06ca273837ba16fac73560efd201342b980561"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -5075,6 +5082,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pretty_yaml"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22ba50511591c8e1d84125f7e2e6d17ccb06865c484b812f5ee3af61f42a66be"
+dependencies = [
+ "rowan",
+ "tiny_pretty",
+ "yaml_parser",
+]
+
+[[package]]
 name = "prettyplease"
 version = "0.1.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5479,9 +5497,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.10.4"
+version = "1.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c117dbdfde9c8308975b6a18d71f3f385c89461f7b3fb054288ecf2a2058ba4c"
+checksum = "b91213439dad192326a0d7c6ee3955910425f441d7038e0d6933b0aec5c4517f"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -5613,6 +5631,19 @@ dependencies = [
  "bitflags 2.5.0",
  "serde",
  "serde_derive",
+]
+
+[[package]]
+name = "rowan"
+version = "0.15.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32a58fa8a7ccff2aec4f39cc45bf5f985cec7125ab271cf681c279fd00192b49"
+dependencies = [
+ "countme",
+ "hashbrown",
+ "memoffset 0.9.1",
+ "rustc-hash",
+ "text-size",
 ]
 
 [[package]]
@@ -6047,9 +6078,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.210.0"
+version = "0.211.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef949bc9a8f4eb6c6620ed5e52c60f8d7239ef31c9c5e1eb3ad88d882ad9bde2"
+checksum = "74f34bfd3eb4e7d79bfb7ec0c0870cc4413289c047502c87e3011f09a5d0dd98"
 dependencies = [
  "num-bigint",
  "serde",
@@ -7106,6 +7137,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiny_pretty"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b3f46f0549180b9c6f7f76270903f1a06867c43a03998b99dce81aa1760c3b2"
+
+[[package]]
 name = "tinyvec"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7254,7 +7291,7 @@ dependencies = [
  "serde",
  "serde_spanned",
  "toml_datetime",
- "winnow",
+ "winnow 0.5.40",
 ]
 
 [[package]]
@@ -7640,11 +7677,10 @@ dependencies = [
 
 [[package]]
 name = "urlpattern"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9bd5ff03aea02fa45b13a7980151fe45009af1980ba69f651ec367121a31609"
+checksum = "70acd30e3aa1450bc2eece896ce2ad0d178e9c079493819301573dae3c37ba6d"
 dependencies = [
- "derive_more",
  "regex",
  "serde",
  "unic-ucd-ident",
@@ -7682,9 +7718,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.101.0"
+version = "0.102.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06bc034c7b5e85fac85d2c6f181878266dd344790702d03e946c25cba78646a9"
+checksum = "88a710d5b95bff79a90708203cf9f74384e080d21fc6664aa4df463f2c66ac83"
 dependencies = [
  "bindgen",
  "bitflags 2.5.0",
@@ -8219,6 +8255,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "winnow"
+version = "0.6.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "557404e450152cd6795bb558bca69e43c585055f4606e3bcae5894fc6dac9ba0"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "winreg"
 version = "0.50.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8313,6 +8358,16 @@ name = "xml-rs"
 version = "0.8.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "791978798f0597cfc70478424c2b4fdc2b7a8024aaff78497ef00f24ef674193"
+
+[[package]]
+name = "yaml_parser"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a6a39b6b5ba0d02c910d05d7fbc366a4befb8901ea107dcde9c1c97acb8a366"
+dependencies = [
+ "rowan",
+ "winnow 0.6.15",
+]
 
 [[package]]
 name = "yansi"

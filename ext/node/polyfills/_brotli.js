@@ -9,10 +9,7 @@ const {
   TypedArrayPrototypeSlice,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeGetByteLength,
-  TypedArrayPrototypeGetByteOffset,
   DataViewPrototypeGetBuffer,
-  DataViewPrototypeGetByteLength,
-  DataViewPrototypeGetByteOffset,
   TypedArrayPrototypeGetBuffer,
 } = primordials;
 const { isTypedArray, isDataView, close } = core;
@@ -41,17 +38,9 @@ const toU8 = (input) => {
   }
 
   if (isTypedArray(input)) {
-    return new Uint8Array(
-      TypedArrayPrototypeGetBuffer(input),
-      TypedArrayPrototypeGetByteOffset(input),
-      TypedArrayPrototypeGetByteLength(input),
-    );
+    return new Uint8Array(TypedArrayPrototypeGetBuffer(input));
   } else if (isDataView(input)) {
-    return new Uint8Array(
-      DataViewPrototypeGetBuffer(input),
-      DataViewPrototypeGetByteOffset(input),
-      DataViewPrototypeGetByteLength(input),
-    );
+    return new Uint8Array(DataViewPrototypeGetBuffer(input));
   }
 
   return input;
@@ -132,12 +121,19 @@ export class BrotliCompress extends Transform {
 }
 
 function oneOffCompressOptions(options) {
-  const quality = options?.params?.[constants.BROTLI_PARAM_QUALITY] ??
+  let quality = options?.params?.[constants.BROTLI_PARAM_QUALITY] ??
     constants.BROTLI_DEFAULT_QUALITY;
   const lgwin = options?.params?.[constants.BROTLI_PARAM_LGWIN] ??
     constants.BROTLI_DEFAULT_WINDOW;
   const mode = options?.params?.[constants.BROTLI_PARAM_MODE] ??
     constants.BROTLI_MODE_GENERIC;
+
+  // NOTE(bartlomieju): currently the rust-brotli crate panics if the quality
+  // is set to 10. Coerce it down to 9.5 which is the maximum supported value.
+  // https://github.com/dropbox/rust-brotli/issues/216
+  if (quality == 10) {
+    quality = 9.5;
+  }
 
   return {
     quality,

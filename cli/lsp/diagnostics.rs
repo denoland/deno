@@ -1532,7 +1532,7 @@ fn diagnose_dependency(
         // If not @deno-types, diagnose the types if the code errored because
         // it's likely resolving into the node_modules folder, which might be
         // erroring correctly due to resolution only being for bundlers. Let this
-        // fail at runtime if necesarry, but don't bother erroring in the editor
+        // fail at runtime if necessary, but don't bother erroring in the editor
         || !is_types_deno_types && matches!(dependency.maybe_type, Resolution::Ok(_))
           && matches!(dependency.maybe_code, Resolution::Err(_))
       {

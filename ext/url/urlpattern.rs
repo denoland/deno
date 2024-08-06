@@ -14,6 +14,7 @@ use urlpattern::quirks::UrlPattern;
 pub fn op_urlpattern_parse(
   #[serde] input: StringOrInit,
   #[string] base_url: Option<String>,
+  #[serde] options: urlpattern::UrlPatternOptions,
 ) -> Result<UrlPattern, AnyError> {
   let init = urlpattern::quirks::process_construct_pattern_input(
     input,
@@ -21,7 +22,7 @@ pub fn op_urlpattern_parse(
   )
   .map_err(|e| type_error(e.to_string()))?;
 
-  let pattern = urlpattern::quirks::parse_pattern(init)
+  let pattern = urlpattern::quirks::parse_pattern(init, options)
     .map_err(|e| type_error(e.to_string()))?;
 
   Ok(pattern)
