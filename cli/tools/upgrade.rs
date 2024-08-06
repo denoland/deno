@@ -11,7 +11,7 @@ use crate::http_util::HttpClientProvider;
 use crate::standalone::binary::unpack_into_dir;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
-use crate::version;
+use crate::version as current_bin_version;
 
 use async_trait::async_trait;
 use deno_core::anyhow::bail;
@@ -121,7 +121,7 @@ impl RealVersionProvider {
 #[async_trait(?Send)]
 impl VersionProvider for RealVersionProvider {
   fn is_canary(&self) -> bool {
-    version::is_canary()
+    current_bin_version::is_canary()
   }
 
   async fn latest_version(&self) -> Result<String, AnyError> {
@@ -134,7 +134,7 @@ impl VersionProvider for RealVersionProvider {
   }
 
   fn current_version(&self) -> Cow<str> {
-    Cow::Borrowed(version::release_version_or_canary_commit_hash())
+    Cow::Borrowed(current_bin_version::release_version_or_canary_commit_hash())
   }
 }
 
@@ -277,7 +277,7 @@ pub fn check_for_upgrades(
   // Print a message if an update is available
   if let Some(upgrade_version) = update_checker.should_prompt() {
     if log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal() {
-      if version::is_canary() {
+      if current_bin_version::is_canary() {
         log::info!(
           "{} {}",
           colors::green("A new canary release of Deno is available."),
@@ -287,7 +287,7 @@ pub fn check_for_upgrades(
         log::info!(
           "{} {} → {} {}",
           colors::green("A new release of Deno is available:"),
-          colors::cyan(version::deno()),
+          colors::cyan(current_bin_version::deno()),
           colors::cyan(&upgrade_version),
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
@@ -381,7 +381,7 @@ impl RequestedVersion {
   fn from_upgrade_flags(upgrade_flags: UpgradeFlags) -> Result<Self, AnyError> {
     let is_canary = upgrade_flags.canary;
 
-    let Some(version) = upgrade_flags.version else {
+    let Some(passed_version) = upgrade_flags.version else {
       if is_canary {
         return Ok(Self::LatestCanary);
       } else {
@@ -389,7 +389,6 @@ impl RequestedVersion {
       }
     };
 
-    let passed_version = upgrade_flags.version.unwrap();
     let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
     let passed_version = passed_version
       .strip_prefix('v')
@@ -402,7 +401,7 @@ impl RequestedVersion {
       }
       Ok(Self::SpecificCanary(passed_version))
     } else {
-      if Version::parse_standard(&version).is_err() {
+      if Version::parse_standard(&passed_version).is_err() {
         bail!("Invalid version passed");
       };
       Ok(Self::SpecificStable(passed_version))
@@ -456,7 +455,8 @@ pub async fn upgrade(
   };
 
   let force = upgrade_flags.force;
-  let requested_version = RequestedVersion::from_upgrade_flags(upgrade_flags)?;
+  let requested_version =
+    RequestedVersion::from_upgrade_flags(upgrade_flags.clone())?;
 
   let install_version = match requested_version {
     RequestedVersion::LatestStable => {
@@ -468,8 +468,9 @@ pub async fn upgrade(
       )
       .await?;
 
-      let current_is_most_recent = if !crate::version::is_canary() {
-        let current = Version::parse_standard(crate::version::deno()).unwrap();
+      let current_is_most_recent = if !current_bin_version::is_canary() {
+        let current =
+          Version::parse_standard(current_bin_version::deno()).unwrap();
         let latest = Version::parse_standard(&latest_version).unwrap();
         current >= latest
       } else {
@@ -479,7 +480,7 @@ pub async fn upgrade(
       if !force && full_path_output_flag.is_none() && current_is_most_recent {
         log::info!(
           "Local deno version {} is the most recent release",
-          crate::version::deno()
+          current_bin_version::deno()
         );
         return Ok(());
       } else {
@@ -488,14 +489,17 @@ pub async fn upgrade(
       }
     }
     RequestedVersion::SpecificStable(passed_version) => {
-      let current_is_passed = if !crate::version::is_canary() {
-        crate::version::deno() == passed_version
+      let current_is_passed = if !current_bin_version::is_canary() {
+        current_bin_version::deno() == passed_version
       } else {
         false
       };
 
       if !force && full_path_output_flag.is_none() && current_is_passed {
-        log::info!("Version {} is already installed", crate::version::deno());
+        log::info!(
+          "Version {} is already installed",
+          current_bin_version::deno()
+        );
         return Ok(());
       }
 
@@ -511,12 +515,12 @@ pub async fn upgrade(
       .await?;
 
       let current_is_most_recent =
-        crate::version::GIT_COMMIT_HASH == &latest_version;
+        current_bin_version::GIT_COMMIT_HASH == latest_version;
 
       if !force && full_path_output_flag.is_none() && current_is_most_recent {
         log::info!(
           "Local deno version {} is the most recent release",
-          crate::version::GIT_COMMIT_HASH
+          current_bin_version::GIT_COMMIT_HASH
         );
         return Ok(());
       } else {
@@ -525,14 +529,17 @@ pub async fn upgrade(
       }
     }
     RequestedVersion::SpecificCanary(passed_version) => {
-      let current_is_passed = if !crate::version::is_canary() {
-        crate::version::GIT_COMMIT_HASH == passed_version
+      let current_is_passed = if !current_bin_version::is_canary() {
+        current_bin_version::GIT_COMMIT_HASH == passed_version
       } else {
         false
       };
 
       if !force && full_path_output_flag.is_none() && current_is_passed {
-        log::info!("Version {} is already installed", crate::version::deno());
+        log::info!(
+          "Version {} is already installed",
+          current_bin_version::deno()
+        );
         return Ok(());
       }
 
@@ -573,7 +580,7 @@ pub async fn upgrade(
     fs::remove_file(&new_exe_path)?;
     log::info!("Upgraded successfully (dry run)");
     if !upgrade_flags.canary {
-      print_release_notes(version::deno(), &install_version);
+      print_release_notes(current_bin_version::deno(), &install_version);
     }
   } else {
     let output_exe_path =
@@ -607,7 +614,7 @@ pub async fn upgrade(
     }
     log::info!("Upgraded successfully");
     if !upgrade_flags.canary {
-      print_release_notes(version::deno(), &install_version);
+      print_release_notes(current_bin_version::deno(), &install_version);
     }
   }
 
