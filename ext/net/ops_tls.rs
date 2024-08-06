@@ -475,6 +475,7 @@ fn load_private_keys_from_file(
 pub struct ListenTlsArgs {
   alpn_protocols: Option<Vec<String>>,
   reuse_port: bool,
+  #[serde(default)]
   load_balanced: bool,
 }
 
