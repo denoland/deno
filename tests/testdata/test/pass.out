@@ -12,42 +12,42 @@ test 8 ...
 ------- output -------
 console.log
 ----- output end -----
-test 8 ... ok ([WILDCARD])
+  test 8 ... ok ([WILDCARD])
 test 9 ...
 ------- output -------
 console.error
 ----- output end -----
-test 9 ... ok ([WILDCARD])
+  test 9 ... ok ([WILDCARD])
 test\b ...
 ------- output -------
 console.error
 ----- output end -----
-test\b ... ok ([WILDCARD])
+  test\b ... ok ([WILDCARD])
 test\f ...
 ------- output -------
 console.error
 ----- output end -----
-test\f ... ok ([WILDCARD])
+  test\f ... ok ([WILDCARD])
 test\t ...
 ------- output -------
 console.error
 ----- output end -----
-test\t ... ok ([WILDCARD])
+  test\t ... ok ([WILDCARD])
 test\n ...
 ------- output -------
 console.error
 ----- output end -----
-test\n ... ok ([WILDCARD])
+  test\n ... ok ([WILDCARD])
 test\r ...
 ------- output -------
 console.error
 ----- output end -----
-test\r ... ok ([WILDCARD])
+  test\r ... ok ([WILDCARD])
 test\v ...
 ------- output -------
 console.error
 ----- output end -----
-test\v ... ok ([WILDCARD])
+  test\v ... ok ([WILDCARD])
 
 ok | 16 passed | 0 failed ([WILDCARD])
 

@@ -4,55 +4,55 @@ sync pass todo ...
 ------- output -------
 Warning: Not implemented: test.TestContext.todo
 ----- output end -----
-sync pass todo ... ok [WILDCARD]
+  sync pass todo ... ok [WILDCARD]
 sync pass todo with message ...
 ------- output -------
 Warning: Not implemented: test.TestContext.todo
 ----- output end -----
-sync pass todo with message ... ok [WILDCARD]
+  sync pass todo with message ... ok [WILDCARD]
 sync fail todo ...
 ------- output -------
 Warning: Not implemented: test.TestContext.todo
 ----- output end -----
-sync fail todo ... FAILED [WILDCARD]
+  sync fail todo ... FAILED [WILDCARD]
 sync fail todo with message ...
 ------- output -------
 Warning: Not implemented: test.TestContext.todo
 ----- output end -----
-sync fail todo with message ... FAILED [WILDCARD]
+  sync fail todo with message ... FAILED [WILDCARD]
 sync skip pass ...
 ------- output -------
 Warning: Not implemented: test.TestContext.skip
 ----- output end -----
-sync skip pass ... ok [WILDCARD]
+  sync skip pass ... ok [WILDCARD]
 sync skip pass with message ...
 ------- output -------
 Warning: Not implemented: test.TestContext.skip
 ----- output end -----
-sync skip pass with message ... ok [WILDCARD]
+  sync skip pass with message ... ok [WILDCARD]
 sync pass ...
 ------- output -------
 DIAGNOSTIC: this test should pass
 ----- output end -----
-sync pass ... ok [WILDCARD]
+  sync pass ... ok [WILDCARD]
 sync throw fail ... FAILED [WILDCARD]
 async skip pass ...
 ------- output -------
 Warning: Not implemented: test.TestContext.skip
 ----- output end -----
-async skip pass ... ok [WILDCARD]
+  async skip pass ... ok [WILDCARD]
 async pass ... ok [WILDCARD]
 async throw fail ... FAILED [WILDCARD]
 nested test ...
   nested 1 ...
     nested 2 ... ok [WILDCARD]
-  nested 1 ... ok [WILDCARD]
-nested test ... ok [WILDCARD]
+    nested 1 ... ok [WILDCARD]
+  nested test ... ok [WILDCARD]
 async skip fail ...
 ------- output -------
 Warning: Not implemented: test.TestContext.skip
 ----- output end -----
-async skip fail ... FAILED [WILDCARD]
+  async skip fail ... FAILED [WILDCARD]
 async assertion fail ... FAILED [WILDCARD]
 resolve pass ... ok [WILDCARD]
 reject fail ... FAILED [WILDCARD]
