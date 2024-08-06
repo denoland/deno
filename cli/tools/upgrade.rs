@@ -87,8 +87,6 @@ enum UpgradeCheckKind {
 
 #[async_trait(?Send)]
 trait VersionProvider: Clone {
-  fn is_canary(&self) -> bool;
-
   /// Fetch latest available version for the given release channel
   async fn latest_version(
     &self,
@@ -98,14 +96,8 @@ trait VersionProvider: Clone {
   // TODO(bartlomieju): what this one actually returns?
   fn current_version(&self) -> Cow<str>;
 
-  // TODO(bartlomieju): make it async
-  fn get_current_exe_release_channel(&self) -> ReleaseChannel {
-    if self.is_canary() {
-      ReleaseChannel::Canary
-    } else {
-      ReleaseChannel::Stable
-    }
-  }
+  // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
+  async fn get_current_exe_release_channel(&self) -> ReleaseChannel;
 }
 
 #[derive(Clone)]
@@ -128,10 +120,6 @@ impl RealVersionProvider {
 
 #[async_trait(?Send)]
 impl VersionProvider for RealVersionProvider {
-  fn is_canary(&self) -> bool {
-    version::is_canary()
-  }
-
   async fn latest_version(
     &self,
     release_channel: ReleaseChannel,
@@ -146,6 +134,15 @@ impl VersionProvider for RealVersionProvider {
 
   fn current_version(&self) -> Cow<str> {
     Cow::Borrowed(version::release_version_or_canary_commit_hash())
+  }
+
+  // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
+  async fn get_current_exe_release_channel(&self) -> ReleaseChannel {
+    if version::is_canary() {
+      ReleaseChannel::Canary
+    } else {
+      ReleaseChannel::Stable
+    }
   }
 }
 
@@ -312,6 +309,7 @@ pub fn check_for_upgrades(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LspVersionUpgradeInfo {
   pub latest_version: String,
+  // TODO(bartlomieju): use `ReleaseChannel` instead
   pub is_canary: bool,
 }
 
@@ -330,28 +328,40 @@ pub async fn check_for_upgrades_for_lsp(
 async fn check_for_upgrades_for_lsp_with_provider(
   version_provider: &impl VersionProvider,
 ) -> Result<Option<LspVersionUpgradeInfo>, AnyError> {
-  let release_channel = version_provider.get_current_exe_release_channel();
+  let release_channel =
+    version_provider.get_current_exe_release_channel().await;
   let latest_version = version_provider.latest_version(release_channel).await?;
   let current_version = version_provider.current_version();
+
+  // Nothing to upgrade
   if current_version == latest_version {
-    Ok(None) // nothing to upgrade
-  } else if version_provider.is_canary() {
-    Ok(Some(LspVersionUpgradeInfo {
-      latest_version,
-      is_canary: true,
-    }))
-  } else {
-    if let Ok(current) = Version::parse_standard(&current_version) {
-      if let Ok(latest) = Version::parse_standard(&latest_version) {
-        if current >= latest {
-          return Ok(None); // nothing to upgrade
+    return Ok(None);
+  }
+
+  match release_channel {
+    ReleaseChannel::Stable => {
+      if let Ok(current) = Version::parse_standard(&current_version) {
+        if let Ok(latest) = Version::parse_standard(&latest_version) {
+          if current >= latest {
+            return Ok(None); // nothing to upgrade
+          }
         }
       }
+      Ok(Some(LspVersionUpgradeInfo {
+        latest_version,
+        is_canary: false,
+      }))
     }
-    Ok(Some(LspVersionUpgradeInfo {
+
+    ReleaseChannel::Canary => Ok(Some(LspVersionUpgradeInfo {
       latest_version,
-      is_canary: false,
-    }))
+      is_canary: true,
+    })),
+
+    // TODO(bartlomieju)
+    ReleaseChannel::Lts => unreachable!(),
+    // TODO(bartlomieju)
+    ReleaseChannel::Rc => unreachable!(),
   }
 }
 
@@ -363,7 +373,8 @@ async fn fetch_and_store_latest_version<
   version_provider: &TVersionProvider,
 ) {
   // Fetch latest version or commit hash from server.
-  let release_channel = version_provider.get_current_exe_release_channel();
+  let release_channel =
+    version_provider.get_current_exe_release_channel().await;
   let Ok(latest_version) =
     version_provider.latest_version(release_channel).await
   else {
@@ -858,10 +869,6 @@ mod test {
 
   #[async_trait(?Send)]
   impl VersionProvider for TestUpdateCheckerEnvironment {
-    fn is_canary(&self) -> bool {
-      *self.is_canary.borrow()
-    }
-
     // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
     async fn latest_version(
       &self,
@@ -875,6 +882,15 @@ mod test {
 
     fn current_version(&self) -> Cow<str> {
       Cow::Owned(self.current_version.borrow().clone())
+    }
+
+    // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
+    async fn get_current_exe_release_channel(&self) -> ReleaseChannel {
+      if *self.is_canary.borrow() {
+        ReleaseChannel::Canary
+      } else {
+        ReleaseChannel::Stable
+      }
     }
   }
 
