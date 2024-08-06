@@ -57,7 +57,6 @@ use std::future::Future;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tools::task::DENO_TASK_COULDNT_FIND_CONFIG;
 
 /// Ensures that all subcommands return an i32 exit code and an [`AnyError`] error type.
 trait SubcommandOutput {
