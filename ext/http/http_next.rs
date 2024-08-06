@@ -300,16 +300,37 @@ where
   .unwrap()
   .into();
 
-  let authority: v8::Local<v8::Value> = match request_properties.authority {
-    Some(authority) => v8::String::new_from_utf8(
+  let scheme: v8::Local<v8::Value> = match request_parts.uri.scheme_str() {
+    Some(scheme) => v8::String::new_from_utf8(
       scope,
-      authority.as_ref(),
+      scheme.as_bytes(),
       v8::NewStringType::Normal,
     )
     .unwrap()
     .into(),
     None => v8::undefined(scope).into(),
   };
+
+  let authority: v8::Local<v8::Value> =
+    if let Some(authority) = request_parts.uri.authority() {
+      v8::String::new_from_utf8(
+        scope,
+        authority.as_str().as_ref(),
+        v8::NewStringType::Normal,
+      )
+      .unwrap()
+      .into()
+    } else if let Some(authority) = request_properties.authority {
+      v8::String::new_from_utf8(
+        scope,
+        authority.as_ref(),
+        v8::NewStringType::Normal,
+      )
+      .unwrap()
+      .into()
+    } else {
+      v8::undefined(scope).into()
+    };
 
   // Only extract the path part - we handle authority elsewhere
   let path = match &request_parts.uri.path_and_query() {
@@ -335,7 +356,7 @@ where
     None => v8::undefined(scope).into(),
   };
 
-  let vec = [method, authority, path, peer_address, port];
+  let vec = [method, authority, path, peer_address, port, scheme];
   v8::Array::new_with_elements(scope, vec.as_slice())
 }
 

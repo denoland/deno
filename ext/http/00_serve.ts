@@ -264,32 +264,19 @@ class InnerRequest {
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
     }
 
+    const method = this.#methodAndUri[0];
+    const scheme = this.#methodAndUri[5] !== undefined
+      ? `${this.#methodAndUri[5]}://`
+      : this.#context.scheme;
+    const authority = this.#methodAndUri[1] ?? this.#context.fallbackHost;
     const path = this.#methodAndUri[2];
 
-    // * is valid for OPTIONS
-    if (path === "*") {
-      return this.#urlValue = "*";
-    }
-
     // If the path is empty, return the authority (valid for CONNECT)
-    if (path == "") {
+    if (method == "CONNECT") {
       return this.#urlValue = this.#methodAndUri[1];
     }
 
-    // CONNECT requires an authority
-    if (this.#methodAndUri[0] == "CONNECT") {
-      return this.#urlValue = this.#methodAndUri[1];
-    }
-
-    const hostname = this.#methodAndUri[1];
-    if (hostname) {
-      // Construct a URL from the scheme, the hostname, and the path
-      return this.#urlValue = this.#context.scheme + hostname + path;
-    }
-
-    // Construct a URL from the scheme, the fallback hostname, and the path
-    return this.#urlValue = this.#context.scheme + this.#context.fallbackHost +
-      path;
+    return this.#urlValue = scheme + authority + path;
   }
 
   get completed() {
@@ -595,11 +582,13 @@ function serve(arg1, arg2) {
     options = { __proto__: null };
   }
 
-  const canOverrideOptions = !ObjectHasOwn(options, "path")
-    && !ObjectHasOwn(options, "hostname")
-    && !ObjectHasOwn(options, "port");
-  const env = Deno.permissions.querySync({ name: "env", variable: "DENO_SERVE_ADDRESS" }).state === "granted"
-    && Deno.env.get("DENO_SERVE_ADDRESS");
+  const canOverrideOptions = !ObjectHasOwn(options, "path") &&
+    !ObjectHasOwn(options, "hostname") &&
+    !ObjectHasOwn(options, "port");
+  const env =
+    Deno.permissions.querySync({ name: "env", variable: "DENO_SERVE_ADDRESS" })
+        .state === "granted" &&
+    Deno.env.get("DENO_SERVE_ADDRESS");
 
   if (canOverrideOptions && env) {
     const delim = env.indexOf("/");

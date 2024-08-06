@@ -269,12 +269,6 @@ fn req_host<'a>(
   addr_type: NetworkStreamType,
   port: u16,
 ) -> Option<Cow<'a, str>> {
-  // Unix sockets always use the socket address
-  #[cfg(unix)]
-  if addr_type == NetworkStreamType::Unix {
-    return None;
-  }
-
   // It is rare that an authority will be passed, but if it does, it takes priority
   if let Some(auth) = uri.authority() {
     match addr_type {
