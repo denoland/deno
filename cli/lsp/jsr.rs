@@ -157,7 +157,7 @@ impl JsrCacheResolver {
     let maybe_nv = self.req_to_nv(&req);
     let nv = maybe_nv.as_ref()?;
     let info = self.package_version_info(nv)?;
-    let path = info.export(&normalize_export_name(req_ref.sub_path()))?;
+    let path = info.export(&req_ref.export_name())?;
     if let Some(workspace_scope) = self.workspace_scope_by_name.get(&nv.name) {
       workspace_scope.join(path).ok()
     } else {
@@ -265,30 +265,6 @@ fn read_cached_url(
       deno_cache_dir::GlobalToLocalCopy::Disallow,
     )
     .ok()?
-}
-
-// TODO(nayeemrmn): This is duplicated from a private function in deno_graph
-// 0.65.1. Make it public or cleanup otherwise.
-fn normalize_export_name(sub_path: Option<&str>) -> Cow<str> {
-  let Some(sub_path) = sub_path else {
-    return Cow::Borrowed(".");
-  };
-  if sub_path.is_empty() || matches!(sub_path, "/" | ".") {
-    Cow::Borrowed(".")
-  } else {
-    let sub_path = if sub_path.starts_with('/') {
-      Cow::Owned(format!(".{}", sub_path))
-    } else if !sub_path.starts_with("./") {
-      Cow::Owned(format!("./{}", sub_path))
-    } else {
-      Cow::Borrowed(sub_path)
-    };
-    if let Some(prefix) = sub_path.strip_suffix('/') {
-      Cow::Owned(prefix.to_string())
-    } else {
-      sub_path
-    }
-  }
 }
 
 #[derive(Debug)]
