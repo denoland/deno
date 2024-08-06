@@ -95,14 +95,8 @@ async fn do_serve(
       .name(format!("serve-worker-{i}"))
       .spawn(move || {
         deno_runtime::tokio_util::create_and_run_current_thread(async move {
-          let result = run_worker(
-            worker_count,
-            worker_factory,
-            main_module,
-            permissions,
-            hmr,
-          )
-          .await;
+          let result =
+            run_worker(i, worker_factory, main_module, permissions, hmr).await;
           let _ = tx.send(result);
         });
       })?;
