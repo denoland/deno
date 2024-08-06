@@ -226,14 +226,18 @@ fn get_minor_version(version: &str) -> &str {
 fn print_release_notes(current_version: &str, new_version: &str) {
   if get_minor_version(current_version) != get_minor_version(new_version) {
     log::info!(
-      "{}{}",
-      "Release notes: https://github.com/denoland/deno/releases/tag/v",
-      &new_version,
+      "Release notes:\n\n  {}\n",
+      colors::bold(format!(
+        "https://github.com/denoland/deno/releases/tag/v{}",
+        &new_version,
+      ))
     );
     log::info!(
-      "{}{}",
-      "Blog post: https://deno.com/blog/v",
-      get_minor_version(new_version)
+      "Blog post:\n\n  {}\n",
+      colors::bold(format!(
+        "https://deno.com/blog/v{}",
+        get_minor_version(new_version)
+      ))
     );
   }
 }
@@ -447,10 +451,10 @@ pub async fn upgrade(
     }
     None => {
       let release_kind = if upgrade_flags.canary {
-        log::info!("Looking up latest canary version");
+        log::info!("{}", colors::gray("Looking up latest canary version"));
         UpgradeReleaseKind::Canary
       } else {
-        log::info!("Looking up latest version");
+        log::info!("{}", colors::gray("Looking up latest version"));
         UpgradeReleaseKind::Stable
       };
 
@@ -474,16 +478,22 @@ pub async fn upgrade(
         && current_is_most_recent
       {
         log::info!(
-          "Local deno version {} is the most recent release",
-          if upgrade_flags.canary {
-            crate::version::GIT_COMMIT_HASH
-          } else {
-            crate::version::deno()
-          }
+          "{}",
+          colors::green(format!(
+            "\nLocal deno version {} is the most recent release\n",
+            if upgrade_flags.canary {
+              crate::version::GIT_COMMIT_HASH
+            } else {
+              crate::version::deno()
+            }
+          ))
         );
         return Ok(());
       } else {
-        log::info!("Found latest version {}", latest_version);
+        log::info!(
+          "{}",
+          colors::bold(format!("\nFound latest version {}\n", latest_version))
+        );
         latest_version
       }
     }
@@ -505,7 +515,10 @@ pub async fn upgrade(
     .await
     .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
 
-  log::info!("Deno is upgrading to version {}", &install_version);
+  log::info!(
+    "{}",
+    colors::gray(format!("Deno is upgrading to version {}", &install_version))
+  );
 
   let temp_dir = tempfile::TempDir::new()?;
   let new_exe_path = unpack_into_dir(
@@ -554,7 +567,13 @@ pub async fn upgrade(
         return Err(err.into());
       }
     }
-    log::info!("Upgraded successfully");
+    log::info!(
+      "{}",
+      colors::green(format!(
+        "\nUpgraded successfully to Deno v{}\n",
+        install_version
+      ))
+    );
     if !upgrade_flags.canary {
       print_release_notes(version::deno(), &install_version);
     }
@@ -622,7 +641,7 @@ async fn download_package(
   client: &HttpClient,
   download_url: &str,
 ) -> Result<Vec<u8>, AnyError> {
-  log::info!("Downloading {}", &download_url);
+  log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
   let maybe_bytes = {
     let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
     // provide an empty string here in order to prefer the downloading
