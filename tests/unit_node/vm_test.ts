@@ -128,7 +128,7 @@ Deno.test({
     const obj = {};
     assertEquals(isContext(obj), false);
     assertEquals(isContext(globalThis), false);
-    const sandbox = runInNewContext("{}");
+    const sandbox = runInNewContext("({})");
     assertEquals(isContext(sandbox), false);
   },
 });

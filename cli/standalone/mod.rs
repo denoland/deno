@@ -132,6 +132,8 @@ struct EmbeddedModuleLoader {
   dynamic_permissions: PermissionsContainer,
 }
 
+pub const MODULE_NOT_FOUND: &str = "Module not found";
+
 impl ModuleLoader for EmbeddedModuleLoader {
   fn resolve(
     &self,
@@ -340,7 +342,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
     let Some(module) = self.shared.eszip.get_module(original_specifier) else {
       return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
-        "Module not found: {}",
+        "{MODULE_NOT_FOUND}: {}",
         original_specifier
       ))));
     };

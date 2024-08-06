@@ -303,8 +303,10 @@ deno_core::extension!(deno_node,
     ops::vm::op_vm_create_script,
     ops::vm::op_vm_create_context,
     ops::vm::op_vm_script_run_in_context,
-    ops::vm::op_vm_script_run_in_this_context,
     ops::vm::op_vm_is_context,
+    ops::vm::op_vm_compile_function,
+    ops::vm::op_vm_script_get_source_map_url,
+    ops::vm::op_vm_script_create_cached_data,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
     ops::idna::op_node_idna_punycode_to_ascii,
@@ -620,7 +622,7 @@ deno_core::extension!(deno_node,
     "node:util" = "util.ts",
     "node:util/types" = "util/types.ts",
     "node:v8" = "v8.ts",
-    "node:vm" = "vm.ts",
+    "node:vm" = "vm.js",
     "node:worker_threads" = "worker_threads.ts",
     "node:zlib" = "zlib.ts",
   ],
@@ -643,6 +645,11 @@ deno_core::extension!(deno_node,
   customizer = |ext: &mut deno_core::Extension| {
     let mut external_references = Vec::with_capacity(14);
 
+    vm::QUERY_MAP_FN.with(|query| {
+      external_references.push(ExternalReference {
+        named_query: *query,
+      });
+    });
     vm::GETTER_MAP_FN.with(|getter| {
       external_references.push(ExternalReference {
         named_getter: *getter,
@@ -651,6 +658,11 @@ deno_core::extension!(deno_node,
     vm::SETTER_MAP_FN.with(|setter| {
       external_references.push(ExternalReference {
         named_setter: *setter,
+      });
+    });
+    vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
+      external_references.push(ExternalReference {
+        named_getter: *descriptor,
       });
     });
     vm::DELETER_MAP_FN.with(|deleter| {
@@ -668,12 +680,12 @@ deno_core::extension!(deno_node,
         named_definer: *definer,
       });
     });
-    vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
+
+    vm::INDEXED_QUERY_MAP_FN.with(|query| {
       external_references.push(ExternalReference {
-        named_getter: *descriptor,
+        indexed_query: *query,
       });
     });
-
     vm::INDEXED_GETTER_MAP_FN.with(|getter| {
       external_references.push(ExternalReference {
         indexed_getter: *getter,
@@ -682,6 +694,11 @@ deno_core::extension!(deno_node,
     vm::INDEXED_SETTER_MAP_FN.with(|setter| {
       external_references.push(ExternalReference {
         indexed_setter: *setter,
+      });
+    });
+    vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
+      external_references.push(ExternalReference {
+        indexed_getter: *descriptor,
       });
     });
     vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
@@ -694,9 +711,9 @@ deno_core::extension!(deno_node,
         indexed_definer: *definer,
       });
     });
-    vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
+    vm::INDEXED_ENUMERATOR_MAP_FN.with(|enumerator| {
       external_references.push(ExternalReference {
-        indexed_getter: *descriptor,
+        enumerator: *enumerator,
       });
     });
 
