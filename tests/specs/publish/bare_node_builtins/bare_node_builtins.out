@@ -9,4 +9,4 @@ Simulating publish of @foo/bar@1.0.0 with files:
    file:///[WILDLINE]/LICENSE ([WILDLINE])
    file:///[WILDLINE]/deno.json (87B)
    file:///[WILDLINE]/mod.ts (121B)
-Success Dry run has succeeded
+Success Dry run complete

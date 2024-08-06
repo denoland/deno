@@ -165,7 +165,7 @@ pub async fn publish(
         log::info!("   {} ({})", file.specifier, human_size(file.size as f64),);
       }
     }
-    log::warn!("{} Dry run has succeeded", colors::green("Success"));
+    log::warn!("{} Dry run complete", colors::green("Success"));
     return Ok(());
   }
 
