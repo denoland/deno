@@ -140,7 +140,7 @@ impl VersionProvider for RealVersionProvider {
 
 struct UpdateChecker<
   TEnvironment: UpdateCheckerEnvironment,
-  TVersionProvider: VersionProvider
+  TVersionProvider: VersionProvider,
 > {
   env: TEnvironment,
   version_provider: TVersionProvider,

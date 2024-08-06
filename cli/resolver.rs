@@ -555,10 +555,7 @@ impl Resolver for CliGraphResolver {
             Ok(specifier)
           }
         }
-        MappedResolution::WorkspaceJsrPackage {
-          specifier,
-          ..
-        } => {
+        MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
           Ok(specifier)
         }
         MappedResolution::WorkspaceNpmPackage {

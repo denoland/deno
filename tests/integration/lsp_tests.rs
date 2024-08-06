@@ -14093,7 +14093,10 @@ fn lsp_deno_json_workspace_jsr_resolution() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": format!("**Resolved Dependency**\n\n**Code**: jsr&#8203;:&#8203;@org/project1&#8203;@^1.0.0 (<{}project1/mod.ts>)\n", temp_dir.uri()),
+        "value": format!(
+          "**Resolved Dependency**\n\n**Code**: file&#8203;://{}\n",
+          temp_dir.uri().join("project1/mod.ts").unwrap().path(),
+        ),
       },
       "range": {
         "start": { "line": 0, "character": 7 },
