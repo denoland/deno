@@ -488,7 +488,7 @@ fn update_config_file_content(
       text_changes.push(TextChange {
         range: insert_position..insert_position,
         // NOTE(bartlomieju): adding `\n` here to force the formatter to always
-        // produce a config file that is multline, like so:
+        // produce a config file that is multiline, like so:
         // ```
         // {
         //   "imports": {

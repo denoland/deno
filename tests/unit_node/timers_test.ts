@@ -66,6 +66,29 @@ Deno.test("[node/timers/promises setTimeout]", () => {
   return p;
 });
 
+Deno.test("[node/timers/promises scheduler.wait]", async () => {
+  const { scheduler } = timersPromises;
+  let resolved = false;
+  timers.setTimeout(() => (resolved = true), 20);
+  const p = scheduler.wait(20);
+
+  assert(p instanceof Promise);
+  await p;
+  assert(resolved);
+});
+
+Deno.test("[node/timers/promises scheduler.yield]", async () => {
+  const { scheduler } = timersPromises;
+  let resolved = false;
+  timers.setImmediate(() => resolved = true);
+
+  const p = scheduler.yield();
+  assert(p instanceof Promise);
+  await p;
+
+  assert(resolved);
+});
+
 // Regression test for https://github.com/denoland/deno/issues/17981
 Deno.test("[node/timers refresh cancelled timer]", () => {
   const { setTimeout, clearTimeout } = timers;

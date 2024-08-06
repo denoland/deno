@@ -47,7 +47,7 @@ pub async fn compile(
     log::warn!(
       concat!(
         "{} Sloppy imports are not supported in deno compile. ",
-        "The compiled executable may encouter runtime errors.",
+        "The compiled executable may encounter runtime errors.",
       ),
       crate::colors::yellow("Warning"),
     );
@@ -102,6 +102,7 @@ pub async fn compile(
     emit_options,
     // make all the modules relative to the root folder
     relative_file_base: Some(root_dir_url),
+    npm_packages: None,
   })?;
 
   log::info!(
@@ -123,12 +124,13 @@ pub async fn compile(
   ));
   let temp_path = output_path.with_file_name(temp_filename);
 
-  let mut file = std::fs::File::create(&temp_path).with_context(|| {
+  let file = std::fs::File::create(&temp_path).with_context(|| {
     format!("Opening temporary file '{}'", temp_path.display())
   })?;
+
   let write_result = binary_writer
     .write_bin(
-      &mut file,
+      file,
       eszip,
       root_dir_url,
       &module_specifier,
@@ -139,7 +141,6 @@ pub async fn compile(
     .with_context(|| {
       format!("Writing temporary file '{}'", temp_path.display())
     });
-  drop(file);
 
   // set it as executable
   #[cfg(unix)]

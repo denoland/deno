@@ -9,8 +9,10 @@ import {
   assertNotStrictEquals,
   assertStrictEquals,
   assertStringIncludes,
+  assertThrows,
 } from "@std/assert";
 import * as path from "@std/path";
+import { setTimeout } from "node:timers";
 
 const { spawn, spawnSync, execFile, execFileSync, ChildProcess } = CP;
 
@@ -63,6 +65,7 @@ Deno.test("[node/child_process disconnect] the method exists", async () => {
   const deferred = withTimeout<void>();
   const childProcess = spawn(Deno.execPath(), ["--help"], {
     env: { NO_COLOR: "true" },
+    stdio: ["pipe", "pipe", "pipe", "ipc"],
   });
   try {
     childProcess.disconnect();
@@ -855,3 +858,191 @@ Deno.test(
     assertEquals(output.stderr, null);
   },
 );
+
+Deno.test(
+  async function ipcSerialization() {
+    const timeout = withTimeout<void>();
+    const script = `
+      if (typeof process.send !== "function") {
+        console.error("process.send is not a function");
+        process.exit(1);
+      }
+
+      class BigIntWrapper {
+        constructor(value) {
+          this.value = value;
+        }
+        toJSON() {
+          return this.value.toString();
+        }
+      }
+
+      const makeSab = (arr) => {
+        const sab = new SharedArrayBuffer(arr.length);
+        const buf = new Uint8Array(sab);
+        for (let i = 0; i < arr.length; i++) {
+          buf[i] = arr[i];
+        }
+        return buf;
+      };
+
+
+      const inputs = [
+        "foo",
+        {
+          foo: "bar",
+        },
+        42,
+        true,
+        null,
+        new Uint8Array([1, 2, 3]),
+        {
+          foo: new Uint8Array([1, 2, 3]),
+          bar: makeSab([4, 5, 6]),
+        },
+        [1, { foo: 2 }, [3, 4]],
+        new BigIntWrapper(42n),
+      ];
+      for (const input of inputs) {
+        process.send(input);
+      }
+    `;
+    const file = await Deno.makeTempFile();
+    await Deno.writeTextFile(file, script);
+    const child = CP.fork(file, [], {
+      stdio: ["inherit", "inherit", "inherit", "ipc"],
+    });
+    const expect = [
+      "foo",
+      {
+        foo: "bar",
+      },
+      42,
+      true,
+      null,
+      [1, 2, 3],
+      {
+        foo: [1, 2, 3],
+        bar: [4, 5, 6],
+      },
+      [1, { foo: 2 }, [3, 4]],
+      "42",
+    ];
+    let i = 0;
+
+    child.on("message", (message) => {
+      assertEquals(message, expect[i]);
+      i++;
+    });
+    child.on("close", () => timeout.resolve());
+    await timeout.promise;
+    assertEquals(i, expect.length);
+  },
+);
+
+Deno.test(async function childProcessExitsGracefully() {
+  const testdataDir = path.join(
+    path.dirname(path.fromFileUrl(import.meta.url)),
+    "testdata",
+  );
+  const script = path.join(
+    testdataDir,
+    "node_modules",
+    "foo",
+    "index.js",
+  );
+  const p = Promise.withResolvers<void>();
+  const cp = CP.fork(script, [], {
+    cwd: testdataDir,
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+  });
+  cp.on("close", () => p.resolve());
+
+  await p.promise;
+});
+
+Deno.test(async function killMultipleTimesNoError() {
+  const loop = `
+    while (true) {
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+    }
+  `;
+
+  const timeout = withTimeout<void>();
+  const file = await Deno.makeTempFile();
+  await Deno.writeTextFile(file, loop);
+  const child = CP.fork(file, [], {
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+  });
+  child.on("close", () => {
+    timeout.resolve();
+  });
+  child.kill();
+  child.kill();
+
+  // explicitly calling disconnect after kill should throw
+  assertThrows(() => child.disconnect());
+
+  await timeout.promise;
+});
+
+// Make sure that you receive messages sent before a "message" event listener is set up
+Deno.test(async function bufferMessagesIfNoListener() {
+  const code = `
+    process.on("message", (_) => {
+      process.channel.unref();
+    });
+    process.send("hello");
+    process.send("world");
+    console.error("sent messages");
+  `;
+  const file = await Deno.makeTempFile();
+  await Deno.writeTextFile(file, code);
+  const timeout = withTimeout<void>();
+  const child = CP.fork(file, [], {
+    stdio: ["inherit", "inherit", "pipe", "ipc"],
+  });
+
+  let got = 0;
+  child.on("message", (message) => {
+    if (got++ === 0) {
+      assertEquals(message, "hello");
+    } else {
+      assertEquals(message, "world");
+    }
+  });
+  child.on("close", () => {
+    timeout.resolve();
+  });
+  let stderr = "";
+  child.stderr?.on("data", (data) => {
+    stderr += data;
+    if (stderr.includes("sent messages")) {
+      // now that we've set up the listeners, and the child
+      // has sent the messages, we can let it exit
+      child.send("ready");
+    }
+  });
+  await timeout.promise;
+  assertEquals(got, 2);
+});
+
+Deno.test(async function sendAfterClosedThrows() {
+  const code = ``;
+  const file = await Deno.makeTempFile();
+  await Deno.writeTextFile(file, code);
+  const timeout = withTimeout<void>();
+  const child = CP.fork(file, [], {
+    stdio: ["inherit", "inherit", "inherit", "ipc"],
+  });
+  child.on("error", (err) => {
+    assert("code" in err);
+    assertEquals(err.code, "ERR_IPC_CHANNEL_CLOSED");
+    timeout.resolve();
+  });
+  child.on("close", () => {
+    child.send("ready");
+  });
+
+  await timeout.promise;
+});

@@ -30,6 +30,7 @@ pub use deno_package_json::PackageJson;
 pub use node_resolver::PathClean;
 pub use ops::ipc::ChildPipeFd;
 pub use ops::ipc::IpcJsonStreamResource;
+pub use ops::ipc::IpcRefTracker;
 use ops::vm;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
@@ -327,6 +328,8 @@ deno_core::extension!(deno_node,
     ops::zlib::brotli::op_brotli_decompress_stream,
     ops::zlib::brotli::op_brotli_decompress_stream_end,
     ops::http::op_node_http_request<P>,
+    ops::http::op_node_http_fetch_response_upgrade,
+    ops::http::op_node_http_fetch_send,
     ops::http2::op_http2_connect,
     ops::http2::op_http2_poll_client_connection,
     ops::http2::op_http2_client_request,
@@ -378,6 +381,8 @@ deno_core::extension!(deno_node,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
     ops::ipc::op_node_ipc_read,
+    ops::ipc::op_node_ipc_ref,
+    ops::ipc::op_node_ipc_unref,
     ops::process::op_node_process_kill,
     ops::process::op_process_abort,
   ],
@@ -650,8 +655,8 @@ deno_core::extension!(deno_node,
     });
     vm::DELETER_MAP_FN.with(|deleter| {
       external_references.push(ExternalReference {
-        named_getter: *deleter,
-      },);
+        named_deleter: *deleter,
+      });
     });
     vm::ENUMERATOR_MAP_FN.with(|enumerator| {
       external_references.push(ExternalReference {
@@ -681,7 +686,7 @@ deno_core::extension!(deno_node,
     });
     vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
       external_references.push(ExternalReference {
-        indexed_getter: *deleter,
+        indexed_deleter: *deleter,
       });
     });
     vm::INDEXED_DEFINER_MAP_FN.with(|definer| {
@@ -707,13 +712,13 @@ deno_core::extension!(deno_node,
     });
     global::QUERY_MAP_FN.with(|query| {
       external_references.push(ExternalReference {
-        named_getter: *query,
+        named_query: *query,
       });
     });
     global::DELETER_MAP_FN.with(|deleter| {
       external_references.push(ExternalReference {
-        named_getter: *deleter,
-      },);
+        named_deleter: *deleter,
+      });
     });
     global::ENUMERATOR_MAP_FN.with(|enumerator| {
       external_references.push(ExternalReference {
@@ -836,4 +841,13 @@ impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
       .read_text_file_lossy_sync(path, None)
       .map_err(|err| err.into_io_error())
   }
+}
+
+pub fn create_host_defined_options<'s>(
+  scope: &mut v8::HandleScope<'s>,
+) -> v8::Local<'s, v8::Data> {
+  let host_defined_options = v8::PrimitiveArray::new(scope, 1);
+  let value = v8::Boolean::new(scope, true);
+  host_defined_options.set(scope, 0, value.into());
+  host_defined_options.into()
 }

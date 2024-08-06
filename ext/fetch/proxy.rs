@@ -269,10 +269,10 @@ impl NoProxy {
   /// * If neither environment variable is set, `None` is returned
   /// * Entries are expected to be comma-separated (whitespace between entries is ignored)
   /// * IP addresses (both IPv4 and IPv6) are allowed, as are optional subnet masks (by adding /size,
-  /// for example "`192.168.1.0/24`").
+  ///   for example "`192.168.1.0/24`").
   /// * An entry "`*`" matches all hostnames (this is the only wildcard allowed)
   /// * Any other entry is considered a domain name (and may contain a leading dot, for example `google.com`
-  /// and `.google.com` are equivalent) and would match both that domain AND all subdomains.
+  ///   and `.google.com` are equivalent) and would match both that domain AND all subdomains.
   ///
   /// For example, if `"NO_PROXY=google.com, 192.168.1.0/24"` was set, all of the following would match
   /// (and therefore would bypass the proxy):
@@ -727,7 +727,14 @@ where
         }
       }
       Proxied::Socks(ref p) => p.connected(),
-      Proxied::SocksTls(ref p) => p.inner().get_ref().0.connected(),
+      Proxied::SocksTls(ref p) => {
+        let tunneled_tls = p.inner().get_ref();
+        if tunneled_tls.1.alpn_protocol() == Some(b"h2") {
+          tunneled_tls.0.connected().negotiated_h2()
+        } else {
+          tunneled_tls.0.connected()
+        }
+      }
     }
   }
 }

@@ -631,6 +631,51 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerMultipleResponseBodyConsume() {
+    const ac = new AbortController();
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const response = new Response("Hello World");
+    let hadError = false;
+    const server = Deno.serve({
+      handler: () => {
+        return response;
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(resolve),
+      onError: () => {
+        hadError = true;
+        return new Response("Internal Server Error", { status: 500 });
+      },
+    });
+
+    await promise;
+    assert(!response.bodyUsed);
+
+    const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+      headers: { "connection": "close" },
+    });
+    assertEquals(resp.status, 200);
+    const text = await resp.text();
+    assertEquals(text, "Hello World");
+    assert(response.bodyUsed);
+
+    const resp2 = await fetch(`http://127.0.0.1:${servePort}/`, {
+      headers: { "connection": "close" },
+    });
+    assertEquals(resp2.status, 500);
+    const text2 = await resp2.text();
+    assertEquals(text2, "Internal Server Error");
+    assert(hadError);
+    assert(response.bodyUsed);
+
+    ac.abort();
+    await server.finished;
+  },
+);
+
 Deno.test({ permissions: { net: true } }, async function httpServerOverload1() {
   const ac = new AbortController();
   const deferred = Promise.withResolvers<void>();
