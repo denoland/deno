@@ -421,7 +421,7 @@ const _invalid = Symbol("[[invalid]]");
 class GPUAdapter {
   /** @type {InnerGPUAdapter} */
   [_adapter];
-  /** @type {bool} */
+  /** @type {boolean} */
   [_invalid];
   /** @type {GPUAdapterInfo | undefined} */
   #adapterInfo;
@@ -937,7 +937,6 @@ function GPUObjectBaseMixin(name, type) {
  * @property {number | undefined} rid
  * @property {GPUSupportedFeatures} features
  * @property {GPUSupportedLimits} limits
- * @property {GPUDevice} device
  */
 
 class InnerGPUDevice {
