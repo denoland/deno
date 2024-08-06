@@ -25,6 +25,9 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+pub const DENO_TASK_COULDNT_FIND_CONFIG: &str =
+  "deno task couldn't find deno.json(c)";
+
 pub async fn execute_script(
   flags: Arc<Flags>,
   task_flags: TaskFlags,
@@ -34,7 +37,7 @@ pub async fn execute_script(
   let cli_options = factory.cli_options()?;
   let start_dir = &cli_options.start_dir;
   if !start_dir.has_deno_or_pkg_json() {
-    bail!("deno task couldn't find deno.json(c). See https://deno.land/manual@v{}/getting_started/configuration_file", env!("CARGO_PKG_VERSION"))
+    bail!("{DENO_TASK_COULDNT_FIND_CONFIG}. See https://deno.land/manual@v{}/getting_started/configuration_file", env!("CARGO_PKG_VERSION"))
   }
   let force_use_pkg_json =
     std::env::var_os(crate::task_runner::USE_PKG_JSON_HIDDEN_ENV_VAR_NAME)

@@ -51,11 +51,13 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_terminal::colors;
 use factory::CliFactory;
+use standalone::MODULE_NOT_FOUND;
 use std::env;
 use std::future::Future;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tools::task::DENO_TASK_COULDNT_FIND_CONFIG;
 
 /// Ensures that all subcommands return an i32 exit code and an [`AnyError`] error type.
 trait SubcommandOutput {
@@ -184,17 +186,28 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         let result = tools::run::run_script(WorkerExecutionMode::Run, flags.clone(), run_flags.watch).await;
        match result {
          Ok(v) =>  Ok(v),
-         Err(err) => {
-          if err.to_string().contains("Module not found") {
+         Err(script_err) => {
+          if script_err.to_string().starts_with(MODULE_NOT_FOUND) {
             let mut new_flags = flags.deref().clone();
             let task_flags = TaskFlags {
                 cwd: run_flags.cwd.clone(),
                 task: Some(run_flags.script.clone()),
             };
             new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
-            tools::task::execute_script(Arc::new(new_flags), task_flags.clone(), true).await
+            let result  = tools::task::execute_script(Arc::new(new_flags), task_flags.clone(), true).await;
+            match result {
+              Ok(v) => Ok(v),
+              Err(task_err) => {
+                if task_err.to_string().starts_with(DENO_TASK_COULDNT_FIND_CONFIG) {
+                  // Return script error instead of task error as the user didn't intend to run a task.
+                  Err(script_err)
+                } else {
+                  Err(task_err)
+                }
+              }
+            }
           } else {
-            Err(err)
+            Err(script_err)
           }
          },
        }
