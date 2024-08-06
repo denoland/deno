@@ -24,12 +24,36 @@ pub fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
     create_file(
       &dir,
       "main.ts",
-      r#"export default {
+      r#"import {
+  type Route,
+  route,
+} from "https://raw.githubusercontent.com/denoland/std/router/http/route.ts";
+
+const routes: Route[] = [
+  {
+    path: "/about",
+    handler: (_request) => new Response("About page"),
+  },
+  {
+    path: "/users/:id",
+    method: "GET",
+    handler: (_request, _info, params) =>
+      new Response(params?.pathname.groups.id),
+  },
+];
+
+function defaultHandler(_request: Request) {
+  return new Response("Not found", { status: 404 });
+}
+
+const handler = route(routes, defaultHandler);
+
+export default {
   fetch(req) {
-      console.log(req.url);
-      return new Response("Hello world");
-  }
+    return handler(req);
+  },
 } satisfies Deno.ServeDefaultExport;
+
 "#,
     )?;
     create_file(
