@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -13,10 +15,10 @@ fn unzip_with_shell(
   temp_dir_path: &Path,
 ) -> Result<(), AnyError> {
   let unpack_status = if cfg!(windows) {
-    fs::write(&archive_path, &archive_data)?;
+    fs::write(archive_path, &archive_data)?;
     Command::new("tar.exe")
       .arg("xf")
-      .arg(&archive_path)
+      .arg(archive_path)
       .arg("-C")
       .arg(temp_dir_path)
       .spawn()
@@ -32,10 +34,10 @@ fn unzip_with_shell(
       })?
       .wait()?
   } else {
-    fs::write(&archive_path, &archive_data)?;
+    fs::write(archive_path, &archive_data)?;
     Command::new("unzip")
       .current_dir(temp_dir_path)
-      .arg(&archive_path)
+      .arg(archive_path)
       .spawn()
       .map_err(|err| {
         if err.kind() == std::io::ErrorKind::NotFound {
