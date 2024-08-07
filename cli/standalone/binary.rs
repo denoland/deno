@@ -19,6 +19,7 @@ use std::process::Command;
 
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::bail;
@@ -33,6 +34,7 @@ use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
+use deno_semver::Version;
 use deno_semver::VersionReqSpecifierParseError;
 use eszip::EszipRelativeFileBaseUrl;
 use indexmap::IndexMap;
@@ -80,9 +82,18 @@ pub struct SerializedWorkspaceResolverImportMap {
   pub json: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SerializedResolverWorkspaceJsrPackage {
+  pub relative_base: String,
+  pub name: String,
+  pub version: Option<Version>,
+  pub exports: IndexMap<String, String>,
+}
+
 #[derive(Deserialize, Serialize)]
 pub struct SerializedWorkspaceResolver {
   pub import_map: Option<SerializedWorkspaceResolverImportMap>,
+  pub jsr_pkgs: Vec<SerializedResolverWorkspaceJsrPackage>,
   pub package_jsons: BTreeMap<String, serde_json::Value>,
   pub pkg_json_resolution: PackageJsonDepResolution,
 }
@@ -620,6 +631,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             json: i.to_json(),
           }
         }),
+        jsr_pkgs: self
+          .workspace_resolver
+          .jsr_packages()
+          .map(|pkg| SerializedResolverWorkspaceJsrPackage {
+            relative_base: root_dir_url.specifier_key(&pkg.base).into_owned(),
+            name: pkg.name.clone(),
+            version: pkg.version.clone(),
+            exports: pkg.exports.clone(),
+          })
+          .collect(),
         package_jsons: self
           .workspace_resolver
           .package_jsons()

@@ -423,6 +423,8 @@ class GPUAdapter {
   [_adapter];
   /** @type {bool} */
   [_invalid];
+  /** @type {GPUAdapterInfo | undefined} */
+  #adapterInfo;
 
   /** @returns {GPUSupportedFeatures} */
   get features() {
@@ -502,15 +504,19 @@ class GPUAdapter {
   }
 
   /**
-   * @returns {Promise<GPUAdapterInfo>}
+   * @returns {GPUAdapterInfo}
    */
-  requestAdapterInfo() {
+  get info() {
     webidl.assertBranded(this, GPUAdapterPrototype);
 
     if (this[_invalid]) {
       throw new TypeError(
         "The adapter cannot be reused, as it has been invalidated by a device creation",
       );
+    }
+
+    if (this.#adapterInfo !== undefined) {
+      return this.#adapterInfo;
     }
 
     const {
@@ -525,7 +531,8 @@ class GPUAdapter {
     adapterInfo[_architecture] = architecture;
     adapterInfo[_device] = device;
     adapterInfo[_description] = description;
-    return PromiseResolve(adapterInfo);
+    this.#adapterInfo = adapterInfo;
+    return adapterInfo;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {

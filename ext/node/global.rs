@@ -207,7 +207,7 @@ pub fn global_object_middleware<'s>(
     deno_globals,
     node_globals,
   };
-  scope.get_current_context().set_slot(scope, storage);
+  scope.get_current_context().set_slot(storage);
 }
 
 fn is_managed_key(
@@ -269,7 +269,7 @@ pub fn getter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let storage = context.get_slot::<GlobalsStorage>().unwrap();
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -302,7 +302,7 @@ pub fn setter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let storage = context.get_slot::<GlobalsStorage>().unwrap();
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -329,7 +329,7 @@ pub fn query<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let storage = context.get_slot::<GlobalsStorage>().unwrap();
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -361,7 +361,7 @@ pub fn deleter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let storage = context.get_slot::<GlobalsStorage>().unwrap();
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -390,7 +390,7 @@ pub fn enumerator<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let storage = context.get_slot::<GlobalsStorage>().unwrap();
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -424,7 +424,7 @@ pub fn definer<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let storage = context.get_slot::<GlobalsStorage>().unwrap();
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -458,7 +458,7 @@ pub fn descriptor<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let storage = context.get_slot::<GlobalsStorage>().unwrap();
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);

@@ -6,7 +6,7 @@
 
 import {
   op_node_dh_compute_secret,
-  op_node_dh_generate2,
+  op_node_dh_keys_generate_and_export,
   op_node_ecdh_compute_public_key,
   op_node_ecdh_compute_secret,
   op_node_ecdh_encode_pubkey,
@@ -198,7 +198,7 @@ export class DiffieHellman {
   generateKeys(encoding: BinaryToTextEncoding): string;
   generateKeys(_encoding?: BinaryToTextEncoding): Buffer | string {
     const generator = this.#checkGenerator();
-    const [privateKey, publicKey] = op_node_dh_generate2(
+    const [privateKey, publicKey] = op_node_dh_keys_generate_and_export(
       this.#prime,
       this.#primeLength ?? 0,
       generator,

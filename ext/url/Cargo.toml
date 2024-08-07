@@ -15,7 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
-urlpattern = "0.2.0"
+urlpattern = "0.3.0"
 
 [dev-dependencies]
 deno_bench_util.workspace = true
