@@ -8,7 +8,6 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
-use crate::standalone::binary::unpack_into_dir;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::version;
@@ -543,7 +542,7 @@ pub async fn upgrade(
   log::info!("Deno is upgrading to version {}", &install_version);
 
   let temp_dir = tempfile::TempDir::new()?;
-  let new_exe_path = unpack_into_dir(
+  let new_exe_path = crate::util::archive::unpack_into_dir(
     "deno",
     &ARCHIVE_NAME,
     archive_data,
