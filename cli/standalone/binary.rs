@@ -54,6 +54,7 @@ use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::standalone::virtual_fs::VfsEntry;
+use crate::util::archive;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -414,13 +415,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let archive_data = std::fs::read(binary_path)?;
     let temp_dir = tempfile::TempDir::new()?;
-    let base_binary_path = crate::util::archive::unpack_into_dir(
-      "denort",
-      &binary_name,
-      archive_data,
-      target.contains("windows"),
-      &temp_dir,
-    )?;
+    let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
+      exe_name: "denort",
+      archive_name: &binary_name,
+      archive_data: &archive_data,
+      is_windows: target.contains("windows"),
+      dest_path: temp_dir.path(),
+    })?;
     let base_binary = std::fs::read(base_binary_path)?;
     drop(temp_dir); // delete the temp dir
     Ok(base_binary)

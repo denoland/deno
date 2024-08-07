@@ -11,16 +11,16 @@ use deno_core::error::AnyError;
 
 fn unzip_with_shell(
   archive_path: &Path,
-  archive_data: Vec<u8>,
-  temp_dir_path: &Path,
+  archive_data: &[u8],
+  dest_path: &Path,
 ) -> Result<(), AnyError> {
+  fs::write(archive_path, archive_data)?;
   let unpack_status = if cfg!(windows) {
-    fs::write(archive_path, &archive_data)?;
     Command::new("tar.exe")
       .arg("xf")
       .arg(archive_path)
       .arg("-C")
-      .arg(temp_dir_path)
+      .arg(dest_path)
       .spawn()
       .map_err(|err| {
         if err.kind() == std::io::ErrorKind::NotFound {
@@ -34,9 +34,8 @@ fn unzip_with_shell(
       })?
       .wait()?
   } else {
-    fs::write(archive_path, &archive_data)?;
     Command::new("unzip")
-      .current_dir(temp_dir_path)
+      .current_dir(dest_path)
       .arg(archive_path)
       .spawn()
       .map_err(|err| {
@@ -62,27 +61,35 @@ fn unzip_with_shell(
 fn unzip(
   archive_name: &str,
   archive_data: &[u8],
-  temp_dir_path: &Path,
+  dest_path: &Path,
 ) -> Result<(), AnyError> {
   let mut archive = zip::ZipArchive::new(std::io::Cursor::new(archive_data))?;
   archive
-    .extract(temp_dir_path)
+    .extract(dest_path)
     .with_context(|| format!("failed to extract archive: {archive_name}"))?;
 
   Ok(())
 }
 
-pub fn unpack_into_dir(
-  exe_name: &str,
-  archive_name: &str,
-  archive_data: Vec<u8>,
-  is_windows: bool,
-  temp_dir: &tempfile::TempDir,
-) -> Result<PathBuf, AnyError> {
-  let temp_dir_path = temp_dir.path();
+pub struct UnpackArgs<'a> {
+  pub exe_name: &'a str,
+  pub archive_name: &'a str,
+  pub archive_data: &'a [u8],
+  pub is_windows: bool,
+  pub dest_path: &'a Path,
+}
+
+pub fn unpack_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
+  let UnpackArgs {
+    exe_name,
+    archive_name,
+    archive_data,
+    is_windows,
+    dest_path,
+  } = args;
   let exe_ext = if is_windows { "exe" } else { "" };
-  let archive_path = temp_dir_path.join(exe_name).with_extension("zip");
-  let exe_path = temp_dir_path.join(exe_name).with_extension(exe_ext);
+  let archive_path = dest_path.join(exe_name).with_extension("zip");
+  let exe_path = dest_path.join(exe_name).with_extension(exe_ext);
   assert!(!exe_path.exists());
 
   let archive_ext = Path::new(archive_name)
@@ -90,17 +97,17 @@ pub fn unpack_into_dir(
     .and_then(|ext| ext.to_str())
     .unwrap();
   match archive_ext {
-    "zip" => match unzip(archive_name, &archive_data, temp_dir_path) {
+    "zip" => match unzip(archive_name, archive_data, dest_path) {
       Ok(()) if !exe_path.exists() => {
         log::warn!("unpacking via the zip crate didn't produce the executable");
         // No error but didn't produce exe, fallback to shelling out
-        unzip_with_shell(&archive_path, archive_data, temp_dir_path)?;
+        unzip_with_shell(&archive_path, archive_data, dest_path)?;
       }
       Ok(_) => {}
       Err(e) => {
         log::warn!("unpacking via zip crate failed: {e}");
         // Fallback to shelling out
-        unzip_with_shell(&archive_path, archive_data, temp_dir_path)?;
+        unzip_with_shell(&archive_path, archive_data, dest_path)?;
       }
     },
     ext => bail!("Unsupported archive type: '{ext}'"),
