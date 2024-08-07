@@ -158,6 +158,7 @@ uuid = { workspace = true, features = ["serde"] }
 which.workspace = true
 zeromq.workspace = true
 zstd.workspace = true
+zip = { version = "2.1.6", default-features = false, features = ["deflate-zlib-ng"] }
 
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true
