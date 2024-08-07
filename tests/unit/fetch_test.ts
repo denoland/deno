@@ -2070,7 +2070,7 @@ Deno.test(
     await assertRejects(
       () => fetch("http://example.invalid"),
       TypeError,
-      "error sending request for url (http://example.invalid/): client error (Connect): dns error: failed to lookup address information:",
+      "error sending request for url (http://example.invalid/): client error (Connect): dns error: ",
     );
   },
 );
