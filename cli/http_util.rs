@@ -23,6 +23,7 @@ use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::header::ACCEPT;
 use http::header::AUTHORIZATION;
+use http::header::CONTENT_LENGTH;
 use http::header::IF_NONE_MATCH;
 use http::header::LOCATION;
 use http::StatusCode;
@@ -579,7 +580,15 @@ async fn get_response_body_with_progress(
 ) -> Result<Vec<u8>, AnyError> {
   use http_body::Body as _;
   if let Some(progress_guard) = progress_guard {
-    if let Some(total_size) = response.body().size_hint().exact() {
+    let mut total_size = response.body().size_hint().exact();
+    if total_size.is_none() {
+      total_size = response
+        .headers()
+        .get(CONTENT_LENGTH)
+        .and_then(|val| val.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok());
+    }
+    if let Some(total_size) = total_size {
       progress_guard.set_total_size(total_size);
       let mut current_size = 0;
       let mut data = Vec::with_capacity(total_size as usize);
