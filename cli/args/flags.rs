@@ -1272,7 +1272,7 @@ fn clap_root() -> Command {
     crate::version::TYPESCRIPT
   );
 
-  let mut cmd = run_args(Command::new("deno"), false)
+  let mut cmd = run_args(Command::new("deno"), true)
     .bin_name("deno")
     .styles(
       clap::builder::Styles::styled()
@@ -1442,7 +1442,7 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
   deno bench src/",
     )
     .defer(|cmd| {
-      runtime_args(cmd, true, false)
+      runtime_args(cmd, true, false, false)
         .arg(check_arg(true))
         .arg(
           Arg::new("json")
@@ -1502,7 +1502,7 @@ If no output file is given, the output is written to standard output:
   deno bundle jsr:@std/http/file-server",
     )
     .defer(|cmd| {
-      compile_args(cmd)
+      compile_args(cmd, false)
         .hide(true)
         .arg(check_arg(true))
         .arg(
@@ -1533,7 +1533,7 @@ Future runs of this module will trigger no downloads or compilation unless
 --reload is specified.",
     )
     .defer(|cmd| {
-      compile_args(cmd)
+      compile_args(cmd, false)
         .arg(check_arg(false))
         .arg(
           Arg::new("file")
@@ -1556,7 +1556,7 @@ fn check_subcommand() -> Command {
 
 Unless --reload is specified, this command will not re-download already cached dependencies.",
       )
-    .defer(|cmd| compile_args_without_check_args(cmd).arg(
+    .defer(|cmd| compile_args_without_check_args(cmd, false).arg(
       Arg::new("all")
         .long("all")
         .help("Type-check all code, including remote modules and npm packages")
@@ -1607,7 +1607,7 @@ supported in canary.
 ",
     )
     .defer(|cmd| {
-      runtime_args(cmd, true, false)
+      runtime_args(cmd, true, false, false)
       .arg(check_arg(true))
       .arg(
         Arg::new("include")
@@ -1939,7 +1939,7 @@ To evaluate as TypeScript:
 This command has implicit access to all permissions (--allow-all).",
     )
     .defer(|cmd| {
-      runtime_args(cmd, false, true)
+      runtime_args(cmd, false, true, false)
         .arg(check_arg(false))
         .arg(
           // TODO(@satyarohith): remove this argument in 2.0.
@@ -2262,7 +2262,7 @@ The installation root is determined, in order of precedence:
 
 These must be added to the path manually if required.")
     .defer(|cmd| {
-      let cmd = runtime_args(cmd, true, true).arg(check_arg(true)).arg(allow_scripts_arg());
+      let cmd = runtime_args(cmd, true, true, false).arg(check_arg(true)).arg(allow_scripts_arg());
       install_args(cmd, true)
     })
 }
@@ -2299,7 +2299,7 @@ The installation root is determined, in order of precedence:
 
 These must be added to the path manually if required.")
     .defer(|cmd| {
-      let cmd = runtime_args(cmd, true, true).arg(check_arg(true));
+      let cmd = runtime_args(cmd, true, true, false).arg(check_arg(true));
       install_args(cmd, false)
     })
 }
@@ -2498,7 +2498,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
 fn repl_subcommand() -> Command {
   Command::new("repl")
     .about("Read Eval Print Loop")
-    .defer(|cmd| runtime_args(cmd, true, true)
+    .defer(|cmd| runtime_args(cmd, true, true, false)
       .arg(check_arg(false))
       .arg(
         Arg::new("eval-file")
@@ -2518,27 +2518,27 @@ fn repl_subcommand() -> Command {
       .arg(env_file_arg())
 }
 
-fn run_args(command: Command, require_script: bool) -> Command {
-  runtime_args(command, true, true)
-    .arg(check_arg(false))
-    .arg(watch_arg(true))
-    .arg(watch_exclude_arg())
-    .arg(hmr_arg(true))
-    .arg(no_clear_screen_arg())
-    .arg(executable_ext_arg())
-    .arg(if require_script {
+fn run_args(command: Command, top_level: bool) -> Command {
+  runtime_args(command, true, true, top_level)
+    .arg(check_arg(false).hide(top_level))
+    .arg(watch_arg(true).hide(top_level))
+    .arg(watch_exclude_arg().hide(top_level))
+    .arg(hmr_arg(true).hide(top_level))
+    .arg(no_clear_screen_arg().hide(top_level))
+    .arg(executable_ext_arg().hide(top_level))
+    .arg(if top_level {
+      script_arg().trailing_var_arg(true).hide(true)
+    } else {
       script_arg()
         .required_unless_present("v8-flags")
         .trailing_var_arg(true)
-    } else {
-      script_arg().trailing_var_arg(true)
     })
-    .arg(env_file_arg())
-    .arg(no_code_cache_arg())
+    .arg(env_file_arg().hide(top_level))
+    .arg(no_code_cache_arg().hide(top_level))
 }
 
 fn run_subcommand() -> Command {
-  run_args(Command::new("run"), true)
+  run_args(Command::new("run"), false)
     .about("Run a JavaScript or TypeScript program")
     .long_about(
       "Run a JavaScript or TypeScript program
@@ -2575,7 +2575,7 @@ fn serve_host_validator(host: &str) -> Result<String, String> {
 }
 
 fn serve_subcommand() -> Command {
-  runtime_args(Command::new("serve"), true, true)
+  runtime_args(Command::new("serve"), true, true, false)
     .arg(
       Arg::new("port")
         .long("port")
@@ -2658,7 +2658,7 @@ Directory arguments are expanded to all contained files matching the glob
 
   deno test src/",
     )
-  .defer(|cmd| runtime_args(cmd, true, true)
+  .defer(|cmd| runtime_args(cmd, true, true, false)
     .arg(check_arg(true))
     .arg(
       Arg::new("ignore")
@@ -2963,24 +2963,24 @@ fn publish_subcommand() -> Command {
     })
 }
 
-fn compile_args(app: Command) -> Command {
-  compile_args_without_check_args(app.arg(no_check_arg()))
+fn compile_args(app: Command, hide: bool) -> Command {
+  compile_args_without_check_args(app.arg(no_check_arg().hide(hide)), hide)
 }
 
-fn compile_args_without_check_args(app: Command) -> Command {
+fn compile_args_without_check_args(app: Command, hide: bool) -> Command {
   app
-    .arg(import_map_arg())
-    .arg(no_remote_arg())
-    .arg(no_npm_arg())
-    .arg(node_modules_dir_arg())
-    .arg(vendor_arg())
-    .arg(config_arg())
-    .arg(no_config_arg())
-    .arg(reload_arg())
-    .arg(lock_arg())
+    .arg(import_map_arg().hide(hide))
+    .arg(no_remote_arg().hide(hide))
+    .arg(no_npm_arg().hide(hide))
+    .arg(node_modules_dir_arg().hide(hide))
+    .arg(vendor_arg().hide(hide))
+    .arg(config_arg().hide(hide))
+    .arg(no_config_arg().hide(hide))
+    .arg(reload_arg().hide(hide))
+    .arg(lock_arg().hide(hide))
     .arg(lock_write_arg())
-    .arg(no_lock_arg())
-    .arg(ca_file_arg())
+    .arg(no_lock_arg().hide(hide))
+    .arg(ca_file_arg().hide(hide))
 }
 
 static ALLOW_READ_HELP: &str = concat!(
@@ -3144,7 +3144,7 @@ static ALLOW_ALL_HELP: &str = concat!(
   "/basics/permissions\n"
 );
 
-fn permission_args(app: Command) -> Command {
+fn permission_args(app: Command, hide: bool) -> Command {
   app
     .arg(
       Arg::new("allow-read")
@@ -3155,7 +3155,8 @@ fn permission_args(app: Command) -> Command {
         .value_name("PATH")
         .help(ALLOW_READ_HELP)
         .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath),
+        .value_hint(ValueHint::AnyPath)
+        .hide(hide),
     )
     .arg(
       Arg::new("deny-read")
@@ -3166,7 +3167,8 @@ fn permission_args(app: Command) -> Command {
         .value_name("PATH")
         .help(DENY_READ_HELP)
         .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath),
+        .value_hint(ValueHint::AnyPath)
+        .hide(hide),
     )
     .arg(
       Arg::new("allow-write")
@@ -3177,7 +3179,8 @@ fn permission_args(app: Command) -> Command {
         .value_name("PATH")
         .help(ALLOW_WRITE_HELP)
         .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath),
+        .value_hint(ValueHint::AnyPath)
+        .hide(hide),
     )
     .arg(
       Arg::new("deny-write")
@@ -3188,7 +3191,8 @@ fn permission_args(app: Command) -> Command {
         .value_name("PATH")
         .help(DENY_WRITE_HELP)
         .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath),
+        .value_hint(ValueHint::AnyPath)
+        .hide(hide),
     )
     .arg(
       Arg::new("allow-net")
@@ -3198,7 +3202,8 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("IP_OR_HOSTNAME")
         .help(ALLOW_NET_HELP)
-        .value_parser(flags_net::validator),
+        .value_parser(flags_net::validator)
+        .hide(hide),
     )
     .arg(
       Arg::new("deny-net")
@@ -3208,9 +3213,10 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("IP_OR_HOSTNAME")
         .help(DENY_NET_HELP)
-        .value_parser(flags_net::validator),
+        .value_parser(flags_net::validator)
+        .hide(hide),
     )
-    .arg(unsafely_ignore_certificate_errors_arg())
+    .arg(unsafely_ignore_certificate_errors_arg().hide(hide))
     .arg(
       Arg::new("allow-env")
         .long("allow-env")
@@ -3229,7 +3235,8 @@ fn permission_args(app: Command) -> Command {
           } else {
             key.to_string()
           })
-        }),
+        })
+        .hide(hide),
     )
     .arg(
       Arg::new("deny-env")
@@ -3249,7 +3256,8 @@ fn permission_args(app: Command) -> Command {
           } else {
             key.to_string()
           })
-        }),
+        })
+        .hide(hide),
     )
     .arg(
       Arg::new("allow-sys")
@@ -3259,7 +3267,8 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("API_NAME")
         .help(ALLOW_SYS_HELP)
-        .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string)),
+        .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
+        .hide(hide),
     )
     .arg(
       Arg::new("deny-sys")
@@ -3269,7 +3278,8 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("API_NAME")
         .help(DENY_SYS_HELP)
-        .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string)),
+        .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
+        .hide(hide),
     )
     .arg(
       Arg::new("allow-run")
@@ -3278,7 +3288,8 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PROGRAM_NAME")
-        .help(ALLOW_RUN_HELP),
+        .help(ALLOW_RUN_HELP)
+        .hide(hide),
     )
     .arg(
       Arg::new("deny-run")
@@ -3287,7 +3298,8 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PROGRAM_NAME")
-        .help(DENY_RUN_HELP),
+        .help(DENY_RUN_HELP)
+        .hide(hide),
     )
     .arg(
       Arg::new("allow-ffi")
@@ -3298,7 +3310,8 @@ fn permission_args(app: Command) -> Command {
         .value_name("PATH")
         .help(ALLOW_FFI_HELP)
         .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath),
+        .value_hint(ValueHint::AnyPath)
+        .hide(hide),
     )
     .arg(
       Arg::new("deny-ffi")
@@ -3309,32 +3322,37 @@ fn permission_args(app: Command) -> Command {
         .value_name("PATH")
         .help(DENY_FFI_HELP)
         .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath),
+        .value_hint(ValueHint::AnyPath)
+        .hide(hide),
     )
     .arg(
       Arg::new("allow-hrtime")
         .long("allow-hrtime")
         .action(ArgAction::SetTrue)
-        .help(ALLOW_HRTIME_HELP),
+        .help(ALLOW_HRTIME_HELP)
+        .hide(hide),
     )
     .arg(
       Arg::new("deny-hrtime")
         .long("deny-hrtime")
         .action(ArgAction::SetTrue)
-        .help(DENY_HRTIME_HELP),
+        .help(DENY_HRTIME_HELP)
+        .hide(hide),
     )
     .arg(
       Arg::new("allow-all")
         .short('A')
         .long("allow-all")
         .action(ArgAction::SetTrue)
-        .help(ALLOW_ALL_HELP),
+        .help(ALLOW_ALL_HELP)
+        .hide(hide),
     )
     .arg(
       Arg::new("no-prompt")
         .long("no-prompt")
         .action(ArgAction::SetTrue)
-        .help("Always throw if required permission wasn't passed"),
+        .help("Always throw if required permission wasn't passed")
+        .hide(hide),
     )
 }
 
@@ -3342,29 +3360,30 @@ fn runtime_args(
   app: Command,
   include_perms: bool,
   include_inspector: bool,
+  hide: bool,
 ) -> Command {
-  let app = compile_args(app);
+  let app = compile_args(app, hide);
   let app = if include_perms {
-    permission_args(app)
+    permission_args(app, hide)
   } else {
     app
   };
   let app = if include_inspector {
-    inspect_args(app)
+    inspect_args(app, hide)
   } else {
     app
   };
   app
-    .arg(frozen_lockfile_arg())
-    .arg(cached_only_arg())
-    .arg(location_arg())
-    .arg(v8_flags_arg())
-    .arg(seed_arg())
+    .arg(frozen_lockfile_arg().hide(hide))
+    .arg(cached_only_arg().hide(hide))
+    .arg(location_arg().hide(hide))
+    .arg(v8_flags_arg().hide(hide))
+    .arg(seed_arg().hide(hide))
     .arg(enable_testing_features_arg())
     .arg(strace_ops_arg())
 }
 
-fn inspect_args(app: Command) -> Command {
+fn inspect_args(app: Command, hide: bool) -> Command {
   app
     .arg(
       Arg::new("inspect")
@@ -3373,7 +3392,8 @@ fn inspect_args(app: Command) -> Command {
         .help("Activate inspector on host:port (default: 127.0.0.1:9229)")
         .num_args(0..=1)
         .require_equals(true)
-        .value_parser(value_parser!(SocketAddr)),
+        .value_parser(value_parser!(SocketAddr))
+        .hide(hide),
     )
     .arg(
       Arg::new("inspect-brk")
@@ -3384,7 +3404,8 @@ fn inspect_args(app: Command) -> Command {
         )
         .num_args(0..=1)
         .require_equals(true)
-        .value_parser(value_parser!(SocketAddr)),
+        .value_parser(value_parser!(SocketAddr))
+        .hide(hide),
     )
     .arg(
       Arg::new("inspect-wait")
@@ -3395,7 +3416,8 @@ fn inspect_args(app: Command) -> Command {
         )
         .num_args(0..=1)
         .require_equals(true)
-        .value_parser(value_parser!(SocketAddr)),
+        .value_parser(value_parser!(SocketAddr))
+        .hide(hide),
     )
 }
 
