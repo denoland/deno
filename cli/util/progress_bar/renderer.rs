@@ -311,7 +311,10 @@ mod test {
     };
     let text = renderer.render(data.clone());
     let text = test_util::strip_ansi_codes(&text);
-    assert_eq!(text, "Blocking data 0.00KiB/10.00KiB (2/3)");
+    assert_eq!(
+      text,
+      "Blocking ⣯ [00:00] 2/3\n - data 0.00KiB/10.00KiB\n\n\n\n"
+    );
 
     data.pending_entries = 0;
     data.total_entries = 1;
@@ -319,6 +322,6 @@ mod test {
     data.display_entries[0].total_size = 0;
     let text = renderer.render(data);
     let text = test_util::strip_ansi_codes(&text);
-    assert_eq!(text, "Blocking data");
+    assert_eq!(text, "Blocking ⣟ [00:00]\n - data\n\n\n\n");
   }
 }
