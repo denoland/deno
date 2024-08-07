@@ -500,8 +500,6 @@ impl ModuleGraphBuilder {
       .maybe_file_watcher_reporter
       .as_ref()
       .map(|r| r.as_reporter());
-    let workspace_members =
-      self.options.resolve_deno_graph_workspace_members()?;
     let mut locker = self
       .lockfile
       .as_ref()
@@ -515,7 +513,6 @@ impl ModuleGraphBuilder {
           imports: maybe_imports,
           is_dynamic: options.is_dynamic,
           passthrough_jsr_specifiers: false,
-          workspace_members: &workspace_members,
           executor: Default::default(),
           file_system: &DenoGraphFsAdapter(self.fs.as_ref()),
           jsr_url_provider: &CliJsrUrlProvider,
