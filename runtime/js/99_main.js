@@ -45,6 +45,7 @@ const {
   PromiseResolve,
   SafeSet,
   StringPrototypeIncludes,
+  StringPrototypePadEnd,
   StringPrototypeSplit,
   StringPrototypeTrim,
   Symbol,
@@ -719,10 +720,10 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         const origError = console.error;
         const prefix = `[serve-worker-0 ]`;
         console.log = (...args) => {
-          return origLog(prefix, ...args);
+          return origLog(prefix, ...new primordials.SafeArrayIterator(args));
         };
         console.error = (...args) => {
-          return origError(prefix, ...args);
+          return origError(prefix, ...new primordials.SafeArrayIterator(args));
         };
       } else if (serveWorkerCount !== null) {
         const origLog = console.log;
@@ -730,12 +731,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         const base = `serve-worker-${serveWorkerCount + 1}`;
         // 15 = "serve-worker-nn".length, assuming
         // serveWorkerCount < 100
-        const prefix = `[${base.padEnd(15, " ")}]`;
+        const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
         console.log = (...args) => {
-          return origLog(prefix, ...args);
+          return origLog(prefix, ...new primordials.SafeArrayIterator(args));
         };
         console.error = (...args) => {
-          return origError(prefix, ...args);
+          return origError(prefix, ...new primordials.SafeArrayIterator(args));
         };
       }
     }
