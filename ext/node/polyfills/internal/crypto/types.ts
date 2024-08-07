@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+import { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import { Buffer } from "../../buffer.ts";
 
 export type HASH_DATA = string | ArrayBufferView | Buffer | ArrayBuffer;
@@ -34,6 +35,7 @@ export type KeyType =
 
 export interface PrivateKeyInput {
   key: string | Buffer;
+  encoding: BufferEncoding | "buffer";
   format?: KeyFormat | undefined;
   type?: "pkcs1" | "pkcs8" | "sec1" | undefined;
   passphrase?: string | Buffer | undefined;
@@ -41,6 +43,7 @@ export interface PrivateKeyInput {
 
 export interface PublicKeyInput {
   key: string | Buffer;
+  encoding: BufferEncoding | "buffer";
   format?: KeyFormat | undefined;
   type?: "pkcs1" | "spki" | undefined;
 }

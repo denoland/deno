@@ -382,7 +382,7 @@ pub struct GpuAdapterRes {
   rid: ResourceId,
   limits: wgpu_types::Limits,
   features: Vec<&'static str>,
-  is_software: bool,
+  is_fallback: bool,
 }
 
 #[derive(Serialize)]
@@ -392,7 +392,6 @@ pub struct GpuDeviceRes {
   queue_rid: ResourceId,
   limits: wgpu_types::Limits,
   features: Vec<&'static str>,
-  is_software: bool,
 }
 
 #[op2]
@@ -462,7 +461,8 @@ pub fn op_webgpu_request_adapter(
     rid,
     features,
     limits: adapter_limits,
-    is_software: false,
+    // TODO(lucacasonato): report correctly from wgpu
+    is_fallback: false,
   }))
 }
 
@@ -712,8 +712,6 @@ pub fn op_webgpu_request_device(
     queue_rid,
     features,
     limits,
-    // TODO(lucacasonato): report correctly from wgpu
-    is_software: false,
   })
 }
 
@@ -732,14 +730,13 @@ pub fn op_webgpu_request_adapter_info(
   state: Rc<RefCell<OpState>>,
   #[smi] adapter_rid: ResourceId,
 ) -> Result<GPUAdapterInfo, AnyError> {
-  let mut state = state.borrow_mut();
+  let state = state.borrow_mut();
   let adapter_resource =
-    state.resource_table.take::<WebGpuAdapter>(adapter_rid)?;
+    state.resource_table.get::<WebGpuAdapter>(adapter_rid)?;
   let adapter = adapter_resource.1;
   let instance = state.borrow::<Instance>();
 
   let info = gfx_select!(adapter => instance.adapter_get_info(adapter))?;
-  adapter_resource.close();
 
   Ok(GPUAdapterInfo {
     vendor: info.vendor.to_string(),

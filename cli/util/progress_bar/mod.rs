@@ -44,7 +44,7 @@ impl ProgressMessagePrompt {
 
 #[derive(Debug)]
 pub struct UpdateGuard {
-  maybe_entry: Option<ProgressBarEntry>,
+  maybe_entry: Option<Arc<ProgressBarEntry>>,
 }
 
 impl Drop for UpdateGuard {
@@ -75,13 +75,13 @@ pub enum ProgressBarStyle {
   TextOnly,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct ProgressBarEntry {
   id: usize,
   prompt: ProgressMessagePrompt,
   pub message: String,
-  pos: Arc<AtomicU64>,
-  total_size: Arc<AtomicU64>,
+  pos: AtomicU64,
+  total_size: AtomicU64,
   progress_bar: ProgressBarInner,
 }
 
@@ -111,6 +111,8 @@ impl ProgressBarEntry {
     let total_size = self.total_size.load(Ordering::Relaxed) as f64;
     if total_size == 0f64 {
       0f64
+    } else if pos > total_size {
+      1f64
     } else {
       pos / total_size
     }
@@ -125,7 +127,7 @@ struct InternalState {
   start_time: Instant,
   keep_alive_count: usize,
   total_entries: usize,
-  entries: Vec<ProgressBarEntry>,
+  entries: Vec<Arc<ProgressBarEntry>>,
 }
 
 #[derive(Clone, Debug)]
@@ -152,17 +154,17 @@ impl ProgressBarInner {
     &self,
     kind: ProgressMessagePrompt,
     message: String,
-  ) -> ProgressBarEntry {
+  ) -> Arc<ProgressBarEntry> {
     let mut internal_state = self.state.lock();
     let id = internal_state.total_entries;
-    let entry = ProgressBarEntry {
+    let entry = Arc::new(ProgressBarEntry {
       id,
       prompt: kind,
       message,
       pos: Default::default(),
       total_size: Default::default(),
       progress_bar: self.clone(),
-    };
+    });
     internal_state.entries.push(entry.clone());
     internal_state.total_entries += 1;
     internal_state.keep_alive_count += 1;
