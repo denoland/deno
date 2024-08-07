@@ -20,7 +20,6 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
 use serde::Deserialize;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
