@@ -50,11 +50,11 @@ impl WorkerExecutionMode {
     }
   }
   pub fn serve_info(&self) -> (Option<bool>, Option<usize>) {
-    match self {
+    match *self {
       WorkerExecutionMode::Serve {
         is_main,
         worker_count,
-      } => (Some(*is_main), worker_count.clone()),
+      } => (Some(is_main), worker_count),
       _ => (None, None),
     }
   }
