@@ -18,6 +18,7 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::unsync::spawn;
+use deno_core::url::Url;
 use deno_semver::Version;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -424,28 +425,7 @@ pub async fn upgrade(
   let output_exe_path =
     full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
 
-  let permissions = if let Ok(metadata) = fs::metadata(output_exe_path) {
-    let permissions = metadata.permissions();
-    if permissions.readonly() {
-      bail!(
-        "You do not have write permission to {}",
-        output_exe_path.display()
-      );
-    }
-    #[cfg(unix)]
-    if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
-      && !nix::unistd::Uid::effective().is_root()
-    {
-      bail!(concat!(
-        "You don't have write permission to {} because it's owned by root.\n",
-        "Consider updating deno through your package manager if its installed from it.\n",
-        "Otherwise run `deno upgrade` as root.",
-      ), output_exe_path.display());
-    }
-    permissions
-  } else {
-    fs::metadata(&current_exe_path)?.permissions()
-  };
+  let permissions = set_exe_permissions(&current_exe_path, output_exe_path)?;
 
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
@@ -534,21 +514,13 @@ pub async fn upgrade(
     }
   };
 
-  let download_url = if upgrade_flags.canary {
-    format!(
-      "https://dl.deno.land/canary/{}/{}",
-      install_version, *ARCHIVE_NAME
-    )
-  } else {
-    format!(
-      "{}/download/v{}/{}",
-      RELEASE_URL, install_version, *ARCHIVE_NAME
-    )
+  let download_url = get_download_url(&install_version, upgrade_flags.canary)?;
+  log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
+  let Some(archive_data) = download_package(&client, download_url).await?
+  else {
+    log::error!("Download could not be found, aborting");
+    std::process::exit(1)
   };
-
-  let archive_data = download_package(&client, &download_url)
-    .await
-    .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
 
   log::info!(
     "{}",
@@ -572,46 +544,29 @@ pub async fn upgrade(
     if !upgrade_flags.canary {
       print_release_notes(version::deno(), &install_version);
     }
+    drop(temp_dir);
+    return Ok(());
+  }
+
+  let output_exe_path =
+    full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
+  let output_result = if *output_exe_path == current_exe_path {
+    replace_exe(&new_exe_path, output_exe_path)
   } else {
-    let output_exe_path =
-      full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
-    let output_result = if *output_exe_path == current_exe_path {
-      replace_exe(&new_exe_path, output_exe_path)
-    } else {
-      fs::rename(&new_exe_path, output_exe_path)
-        .or_else(|_| fs::copy(&new_exe_path, output_exe_path).map(|_| ()))
-    };
-    if let Err(err) = output_result {
-      const WIN_ERROR_ACCESS_DENIED: i32 = 5;
-      if cfg!(windows) && err.raw_os_error() == Some(WIN_ERROR_ACCESS_DENIED) {
-        return Err(err).with_context(|| {
-          format!(
-            concat!(
-              "Could not replace the deno executable. This may be because an ",
-              "existing deno process is running. Please ensure there are no ",
-              "running deno processes (ex. Stop-Process -Name deno ; deno {}), ",
-              "close any editors before upgrading, and ensure you have ",
-              "sufficient permission to '{}'."
-            ),
-            // skip the first argument, which is the executable path
-            std::env::args().skip(1).collect::<Vec<_>>().join(" "),
-            output_exe_path.display(),
-          )
-        });
-      } else {
-        return Err(err.into());
-      }
-    }
-    log::info!(
-      "{}",
-      colors::green(format!(
-        "\nUpgraded successfully to Deno v{}\n",
-        install_version
-      ))
-    );
-    if !upgrade_flags.canary {
-      print_release_notes(version::deno(), &install_version);
-    }
+    fs::rename(&new_exe_path, output_exe_path)
+      .or_else(|_| fs::copy(&new_exe_path, output_exe_path).map(|_| ()))
+  };
+  check_windows_access_denied_error(output_result, &output_exe_path)?;
+
+  log::info!(
+    "{}",
+    colors::green(format!(
+      "\nUpgraded successfully to Deno v{}\n",
+      install_version
+    ))
+  );
+  if !upgrade_flags.canary {
+    print_release_notes(version::deno(), &install_version);
   }
 
   drop(temp_dir); // delete the temp dir
@@ -685,27 +640,34 @@ fn base_upgrade_url() -> Cow<'static, str> {
   }
 }
 
+fn get_download_url(version: &str, is_canary: bool) -> Result<Url, AnyError> {
+  let download_url = if is_canary {
+    format!("https://dl.deno.land/canary/{}/{}", version, *ARCHIVE_NAME)
+  } else {
+    format!("{}/download/v{}/{}", RELEASE_URL, version, *ARCHIVE_NAME)
+  };
+
+  Url::parse(&download_url).with_context(|| {
+    format!(
+      "Failed to parse URL to download new release: {}",
+      download_url
+    )
+  })
+}
+
 async fn download_package(
   client: &HttpClient,
-  download_url: &str,
-) -> Result<Vec<u8>, AnyError> {
-  log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
-  let maybe_bytes = {
-    let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
-    // provide an empty string here in order to prefer the downloading
-    // text above which will stay alive after the progress bars are complete
-    let progress = progress_bar.update("");
-    client
-      .download_with_progress(download_url.parse()?, None, &progress)
-      .await?
-  };
-  match maybe_bytes {
-    Some(bytes) => Ok(bytes),
-    None => {
-      log::error!("Download could not be found, aborting");
-      std::process::exit(1)
-    }
-  }
+  download_url: Url,
+) -> Result<Option<Vec<u8>>, AnyError> {
+  let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
+  // provide an empty string here in order to prefer the downloading
+  // text above which will stay alive after the progress bars are complete
+  let progress = progress_bar.update("");
+  let maybe_bytes = client
+    .download_with_progress(download_url.clone(), None, &progress)
+    .await
+    .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
+  Ok(maybe_bytes)
 }
 
 fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
@@ -720,6 +682,68 @@ fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
   // we try again with copy.
   fs::rename(from, to).or_else(|_| fs::copy(from, to).map(|_| ()))?;
   Ok(())
+}
+
+fn check_windows_access_denied_error(
+  output_result: Result<(), std::io::Error>,
+  output_exe_path: &Path,
+) -> Result<(), AnyError> {
+  let Err(err) = output_result else {
+    return Ok(());
+  };
+
+  if !cfg!(windows) {
+    return Err(err.into());
+  }
+
+  const WIN_ERROR_ACCESS_DENIED: i32 = 5;
+  if err.raw_os_error() != Some(WIN_ERROR_ACCESS_DENIED) {
+    return Err(err.into());
+  };
+
+  Err(err).with_context(|| {
+    format!(
+      concat!(
+        "Could not replace the deno executable. This may be because an ",
+        "existing deno process is running. Please ensure there are no ",
+        "running deno processes (ex. Stop-Process -Name deno ; deno {}), ",
+        "close any editors before upgrading, and ensure you have ",
+        "sufficient permission to '{}'."
+      ),
+      // skip the first argument, which is the executable path
+      std::env::args().skip(1).collect::<Vec<_>>().join(" "),
+      output_exe_path.display(),
+    )
+  })
+}
+
+fn set_exe_permissions(
+  current_exe_path: &Path,
+  output_exe_path: &Path,
+) -> Result<std::fs::Permissions, AnyError> {
+  let Ok(metadata) = fs::metadata(output_exe_path) else {
+    let metadata = fs::metadata(current_exe_path)?;
+    return Ok(metadata.permissions());
+  };
+
+  let permissions = metadata.permissions();
+  if permissions.readonly() {
+    bail!(
+      "You do not have write permission to {}",
+      output_exe_path.display()
+    );
+  }
+  #[cfg(unix)]
+  if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
+    && !nix::unistd::Uid::effective().is_root()
+  {
+    bail!(concat!(
+        "You don't have write permission to {} because it's owned by root.\n",
+        "Consider updating deno through your package manager if its installed from it.\n",
+        "Otherwise run `deno upgrade` as root.",
+      ), output_exe_path.display());
+  }
+  Ok(permissions)
 }
 
 fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
