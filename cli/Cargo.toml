@@ -46,7 +46,7 @@ upgrade = []
 # loading JS sources at runtime.
 hmr = ["deno_runtime/hmr"]
 # Vendor zlib as zlib-ng
-__vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
+__vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng", "zip/deflate-zlib-ng"]
 
 [build-dependencies]
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
@@ -157,8 +157,8 @@ typed-arena = "=2.0.1"
 uuid = { workspace = true, features = ["serde"] }
 which.workspace = true
 zeromq.workspace = true
+zip = { version = "2.1.6", default-features = false, features = ["deflate-flate2"] }
 zstd.workspace = true
-zip = { version = "2.1.6", default-features = false, features = ["deflate-zlib-ng"] }
 
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true
