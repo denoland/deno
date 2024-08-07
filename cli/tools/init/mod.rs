@@ -32,21 +32,21 @@ import { serveDir } from "@std/http/file-server";
 
 const routes: Route[] = [
   {
-    path: "/",
-    handler: (_request) => new Response("Home page"),
+    pattern: new URLPattern({ pathname: "/" }),
+    handler: () => new Response("Home page"),
   },
   {
-    path: new URLPattern({ pathname: "/users/:id" }),
-    handler: (_request, _info, params) =>
+    pattern: new URLPattern({ pathname: "/users/:id" }),
+    handler: (_req, _info, params) =>
       new Response(params?.pathname.groups.id),
   },
   {
-    path: new URLPattern({ pathname: "/static/*" }),
+    pattern: new URLPattern({ pathname: "/static/*" }),
     handler: (req) => serveDir(req, { urlRoot: "./" }),
   },
 ];
 
-function defaultHandler(_request: Request) {
+function defaultHandler(_req: Request) {
   return new Response("Not found", { status: 404 });
 }
 
