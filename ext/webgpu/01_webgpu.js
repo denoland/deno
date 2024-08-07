@@ -137,6 +137,8 @@ const _mappingRange = Symbol("[[mapping_range]]");
 const _mappedRanges = Symbol("[[mapped_ranges]]");
 const _mapMode = Symbol("[[map_mode]]");
 const _adapter = Symbol("[[adapter]]");
+const _adapterInfo = Symbol("[[adapterInfo]]");
+const _invalid = Symbol("[[invalid]]");
 const _cleanup = Symbol("[[cleanup]]");
 const _vendor = Symbol("[[vendor]]");
 const _architecture = Symbol("[[architecture]]");
@@ -414,18 +416,18 @@ function createGPUAdapter(inner) {
     features: createGPUSupportedFeatures(inner.features),
     limits: createGPUSupportedLimits(inner.limits),
   };
+  adapter[_adapterInfo] = undefined;
+  adapter[_invalid] = false;
   return adapter;
 }
 
-const _adapterInfo = Symbol("[[adapterInfo]]");
-const _invalid = Symbol("[[invalid]]");
 class GPUAdapter {
   /** @type {InnerGPUAdapter} */
   [_adapter];
   /** @type {GPUAdapterInfo | undefined} */
   [_adapterInfo];
   /** @type {boolean} */
-  [_invalid] = false;
+  [_invalid];
 
   /** @returns {GPUSupportedFeatures} */
   get features() {
