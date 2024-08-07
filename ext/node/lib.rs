@@ -247,25 +247,10 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_pbkdf2_async,
     ops::crypto::op_node_hkdf,
     ops::crypto::op_node_hkdf_async,
-    ops::crypto::op_node_generate_secret,
-    ops::crypto::op_node_generate_secret_async,
+    ops::crypto::op_node_fill_random,
+    ops::crypto::op_node_fill_random_async,
     ops::crypto::op_node_sign,
-    ops::crypto::op_node_generate_rsa,
-    ops::crypto::op_node_generate_rsa_async,
-    ops::crypto::op_node_dsa_generate,
-    ops::crypto::op_node_dsa_generate_async,
-    ops::crypto::op_node_ec_generate,
-    ops::crypto::op_node_ec_generate_async,
-    ops::crypto::op_node_ed25519_generate,
-    ops::crypto::op_node_ed25519_generate_async,
-    ops::crypto::op_node_x25519_generate,
-    ops::crypto::op_node_x25519_generate_async,
-    ops::crypto::op_node_dh_generate_group,
-    ops::crypto::op_node_dh_generate_group_async,
-    ops::crypto::op_node_dh_generate,
-    ops::crypto::op_node_dh_generate2,
     ops::crypto::op_node_dh_compute_secret,
-    ops::crypto::op_node_dh_generate_async,
     ops::crypto::op_node_verify,
     ops::crypto::op_node_random_int,
     ops::crypto::op_node_scrypt_sync,
@@ -274,8 +259,41 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_ecdh_compute_secret,
     ops::crypto::op_node_ecdh_compute_public_key,
     ops::crypto::op_node_ecdh_encode_pubkey,
-    ops::crypto::op_node_export_rsa_public_pem,
-    ops::crypto::op_node_export_rsa_spki_der,
+    ops::crypto::keys::op_node_create_private_key,
+    ops::crypto::keys::op_node_create_public_key,
+    ops::crypto::keys::op_node_create_secret_key,
+    ops::crypto::keys::op_node_derive_public_key_from_private_key,
+    ops::crypto::keys::op_node_dh_keys_generate_and_export,
+    ops::crypto::keys::op_node_export_private_key_der,
+    ops::crypto::keys::op_node_export_private_key_pem,
+    ops::crypto::keys::op_node_export_public_key_der,
+    ops::crypto::keys::op_node_export_public_key_pem,
+    ops::crypto::keys::op_node_export_secret_key_b64url,
+    ops::crypto::keys::op_node_export_secret_key,
+    ops::crypto::keys::op_node_generate_dh_group_key_async,
+    ops::crypto::keys::op_node_generate_dh_group_key,
+    ops::crypto::keys::op_node_generate_dh_key_async,
+    ops::crypto::keys::op_node_generate_dh_key,
+    ops::crypto::keys::op_node_generate_dsa_key_async,
+    ops::crypto::keys::op_node_generate_dsa_key,
+    ops::crypto::keys::op_node_generate_ec_key_async,
+    ops::crypto::keys::op_node_generate_ec_key,
+    ops::crypto::keys::op_node_generate_ed25519_key_async,
+    ops::crypto::keys::op_node_generate_ed25519_key,
+    ops::crypto::keys::op_node_generate_rsa_key_async,
+    ops::crypto::keys::op_node_generate_rsa_key,
+    ops::crypto::keys::op_node_generate_rsa_pss_key,
+    ops::crypto::keys::op_node_generate_rsa_pss_key_async,
+    ops::crypto::keys::op_node_generate_secret_key_async,
+    ops::crypto::keys::op_node_generate_secret_key,
+    ops::crypto::keys::op_node_generate_x25519_key_async,
+    ops::crypto::keys::op_node_generate_x25519_key,
+    ops::crypto::keys::op_node_get_asymmetric_key_details,
+    ops::crypto::keys::op_node_get_asymmetric_key_type,
+    ops::crypto::keys::op_node_get_private_key_from_pair,
+    ops::crypto::keys::op_node_get_public_key_from_pair,
+    ops::crypto::keys::op_node_get_symmetric_key_size,
+    ops::crypto::keys::op_node_key_type,
     ops::crypto::x509::op_node_x509_parse,
     ops::crypto::x509::op_node_x509_ca,
     ops::crypto::x509::op_node_x509_check_email,
@@ -303,8 +321,10 @@ deno_core::extension!(deno_node,
     ops::vm::op_vm_create_script,
     ops::vm::op_vm_create_context,
     ops::vm::op_vm_script_run_in_context,
-    ops::vm::op_vm_script_run_in_this_context,
     ops::vm::op_vm_is_context,
+    ops::vm::op_vm_compile_function,
+    ops::vm::op_vm_script_get_source_map_url,
+    ops::vm::op_vm_script_create_cached_data,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
     ops::idna::op_node_idna_punycode_to_ascii,
@@ -376,8 +396,6 @@ deno_core::extension!(deno_node,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
     ops::worker_threads::op_worker_threads_filename<P>,
-    ops::crypto::op_node_create_private_key,
-    ops::crypto::op_node_create_public_key,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
     ops::ipc::op_node_ipc_read,
@@ -620,7 +638,7 @@ deno_core::extension!(deno_node,
     "node:util" = "util.ts",
     "node:util/types" = "util/types.ts",
     "node:v8" = "v8.ts",
-    "node:vm" = "vm.ts",
+    "node:vm" = "vm.js",
     "node:worker_threads" = "worker_threads.ts",
     "node:zlib" = "zlib.ts",
   ],
@@ -643,6 +661,11 @@ deno_core::extension!(deno_node,
   customizer = |ext: &mut deno_core::Extension| {
     let mut external_references = Vec::with_capacity(14);
 
+    vm::QUERY_MAP_FN.with(|query| {
+      external_references.push(ExternalReference {
+        named_query: *query,
+      });
+    });
     vm::GETTER_MAP_FN.with(|getter| {
       external_references.push(ExternalReference {
         named_getter: *getter,
@@ -651,6 +674,11 @@ deno_core::extension!(deno_node,
     vm::SETTER_MAP_FN.with(|setter| {
       external_references.push(ExternalReference {
         named_setter: *setter,
+      });
+    });
+    vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
+      external_references.push(ExternalReference {
+        named_getter: *descriptor,
       });
     });
     vm::DELETER_MAP_FN.with(|deleter| {
@@ -668,12 +696,12 @@ deno_core::extension!(deno_node,
         named_definer: *definer,
       });
     });
-    vm::DESCRIPTOR_MAP_FN.with(|descriptor| {
+
+    vm::INDEXED_QUERY_MAP_FN.with(|query| {
       external_references.push(ExternalReference {
-        named_getter: *descriptor,
+        indexed_query: *query,
       });
     });
-
     vm::INDEXED_GETTER_MAP_FN.with(|getter| {
       external_references.push(ExternalReference {
         indexed_getter: *getter,
@@ -682,6 +710,11 @@ deno_core::extension!(deno_node,
     vm::INDEXED_SETTER_MAP_FN.with(|setter| {
       external_references.push(ExternalReference {
         indexed_setter: *setter,
+      });
+    });
+    vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
+      external_references.push(ExternalReference {
+        indexed_getter: *descriptor,
       });
     });
     vm::INDEXED_DELETER_MAP_FN.with(|deleter| {
@@ -694,9 +727,9 @@ deno_core::extension!(deno_node,
         indexed_definer: *definer,
       });
     });
-    vm::INDEXED_DESCRIPTOR_MAP_FN.with(|descriptor| {
+    vm::INDEXED_ENUMERATOR_MAP_FN.with(|enumerator| {
       external_references.push(ExternalReference {
-        indexed_getter: *descriptor,
+        enumerator: *enumerator,
       });
     });
 

@@ -87,9 +87,19 @@ enum UpgradeCheckKind {
 
 #[async_trait(?Send)]
 trait VersionProvider: Clone {
-  async fn latest_version(&self) -> Result<String, AnyError>;
+  /// Fetch latest available version for the given release channel
+  async fn latest_version(
+    &self,
+    release_channel: ReleaseChannel,
+  ) -> Result<String, AnyError>;
+
+  // TODO(bartlomieju): what this one actually returns?
   fn current_version(&self) -> Cow<str>;
-  fn release_channel(&self) -> ReleaseChannel;
+
+  // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
+  async fn get_current_exe_release_channel(
+    &self,
+  ) -> Result<ReleaseChannel, AnyError>;
 }
 
 #[derive(Clone)]
@@ -112,10 +122,13 @@ impl RealVersionProvider {
 
 #[async_trait(?Send)]
 impl VersionProvider for RealVersionProvider {
-  async fn latest_version(&self) -> Result<String, AnyError> {
-    get_latest_version(
+  async fn latest_version(
+    &self,
+    release_channel: ReleaseChannel,
+  ) -> Result<String, AnyError> {
+    fetch_latest_version(
       &self.http_client_provider.get_or_create()?,
-      self.release_channel(),
+      release_channel,
       self.check_kind,
     )
     .await
@@ -130,6 +143,17 @@ impl VersionProvider for RealVersionProvider {
       ReleaseChannel::Canary
     } else {
       ReleaseChannel::Stable
+    }
+  }
+
+  // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
+  async fn get_current_exe_release_channel(
+    &self,
+  ) -> Result<ReleaseChannel, AnyError> {
+    if version::is_canary() {
+      Ok(ReleaseChannel::Canary)
+    } else {
+      Ok(ReleaseChannel::Stable)
     }
   }
 }
@@ -222,14 +246,18 @@ fn get_minor_version(version: &str) -> &str {
 fn print_release_notes(current_version: &str, new_version: &str) {
   if get_minor_version(current_version) != get_minor_version(new_version) {
     log::info!(
-      "{}{}",
-      "Release notes: https://github.com/denoland/deno/releases/tag/v",
-      &new_version,
+      "Release notes:\n\n  {}\n",
+      colors::bold(format!(
+        "https://github.com/denoland/deno/releases/tag/v{}",
+        &new_version,
+      ))
     );
     log::info!(
-      "{}{}",
-      "Blog post: https://deno.com/blog/v",
-      get_minor_version(new_version)
+      "Blog post:\n\n  {}\n",
+      colors::bold(format!(
+        "https://deno.com/blog/v{}",
+        get_minor_version(new_version)
+      ))
     );
   }
 }
@@ -297,6 +325,7 @@ pub fn check_for_upgrades(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LspVersionUpgradeInfo {
   pub latest_version: String,
+  // TODO(bartlomieju): use `ReleaseChannel` instead
   pub is_canary: bool,
 }
 
@@ -315,28 +344,40 @@ pub async fn check_for_upgrades_for_lsp(
 async fn check_for_upgrades_for_lsp_with_provider(
   version_provider: &impl VersionProvider,
 ) -> Result<Option<LspVersionUpgradeInfo>, AnyError> {
-  let latest_version = version_provider.latest_version().await?;
+  let release_channel =
+    version_provider.get_current_exe_release_channel().await?;
+  let latest_version = version_provider.latest_version(release_channel).await?;
   let current_version = version_provider.current_version();
+
+  // Nothing to upgrade
   if current_version == latest_version {
-    Ok(None) // nothing to upgrade
-  } else if matches!(version_provider.release_channel(), ReleaseChannel::Canary)
-  {
-    Ok(Some(LspVersionUpgradeInfo {
-      latest_version,
-      is_canary: true,
-    }))
-  } else {
-    if let Ok(current) = Version::parse_standard(&current_version) {
-      if let Ok(latest) = Version::parse_standard(&latest_version) {
-        if current >= latest {
-          return Ok(None); // nothing to upgrade
+    return Ok(None);
+  }
+
+  match release_channel {
+    ReleaseChannel::Stable => {
+      if let Ok(current) = Version::parse_standard(&current_version) {
+        if let Ok(latest) = Version::parse_standard(&latest_version) {
+          if current >= latest {
+            return Ok(None); // nothing to upgrade
+          }
         }
       }
+      Ok(Some(LspVersionUpgradeInfo {
+        latest_version,
+        is_canary: false,
+      }))
     }
-    Ok(Some(LspVersionUpgradeInfo {
+
+    ReleaseChannel::Canary => Ok(Some(LspVersionUpgradeInfo {
       latest_version,
-      is_canary: false,
-    }))
+      is_canary: true,
+    })),
+
+    // TODO(bartlomieju)
+    ReleaseChannel::Lts => unreachable!(),
+    // TODO(bartlomieju)
+    ReleaseChannel::Rc => unreachable!(),
   }
 }
 
@@ -348,9 +389,15 @@ async fn fetch_and_store_latest_version<
   version_provider: &TVersionProvider,
 ) {
   // Fetch latest version or commit hash from server.
-  let latest_version = match version_provider.latest_version().await {
-    Ok(latest_version) => latest_version,
-    Err(_) => return,
+  let Ok(release_channel) =
+    version_provider.get_current_exe_release_channel().await
+  else {
+    return;
+  };
+  let Ok(latest_version) =
+    version_provider.latest_version(release_channel).await
+  else {
+    return;
   };
 
   env.write_check_file(
@@ -457,7 +504,7 @@ pub async fn upgrade(
 
   let install_version = match requested_version {
     RequestedVersion::LatestStable => {
-      log::info!("Looking up latest version");
+      log::info!("{}", colors::gray("Looking up latest version"));
       let latest_version = get_latest_version(
         &client,
         ReleaseChannel::Stable,
@@ -476,12 +523,18 @@ pub async fn upgrade(
 
       if !force && full_path_output_flag.is_none() && current_is_most_recent {
         log::info!(
-          "Local deno version {} is the most recent release",
-          current_bin_version::deno()
+          "{}",
+          colors::green(format!(
+            "\nLocal deno version {} is the most recent release\n",
+            current_bin_version::deno()
+          ))
         );
         return Ok(());
       } else {
-        log::info!("Found latest version {}", latest_version);
+        log::info!(
+          "{}",
+          colors::bold(format!("\nFound latest version {}\n", latest_version))
+        );
         latest_version
       }
     }
@@ -503,7 +556,7 @@ pub async fn upgrade(
       passed_version
     }
     RequestedVersion::LatestCanary => {
-      log::info!("Looking up latest canary version");
+      log::info!("{}", colors::gray("Looking up latest canary version"));
       let latest_version = get_latest_version(
         &client,
         ReleaseChannel::Canary,
@@ -516,12 +569,18 @@ pub async fn upgrade(
 
       if !force && full_path_output_flag.is_none() && current_is_most_recent {
         log::info!(
-          "Local deno version {} is the most recent release",
-          current_bin_version::GIT_COMMIT_HASH
+          "{}",
+          colors::green(format!(
+            "\nLocal deno version {} is the most recent release\n",
+            crate::version::GIT_COMMIT_HASH
+          ))
         );
         return Ok(());
       } else {
-        log::info!("Found latest version {}", latest_version);
+        log::info!(
+          "{}",
+          colors::bold(format!("\nFound latest version {}\n", latest_version))
+        );
         latest_version
       }
     }
@@ -560,7 +619,10 @@ pub async fn upgrade(
     .await
     .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
 
-  log::info!("Deno is upgrading to version {}", &install_version);
+  log::info!(
+    "{}",
+    colors::gray(format!("Deno is upgrading to version {}", &install_version))
+  );
 
   let temp_dir = tempfile::TempDir::new()?;
   let new_exe_path = unpack_into_dir(
@@ -609,7 +671,13 @@ pub async fn upgrade(
         return Err(err.into());
       }
     }
-    log::info!("Upgraded successfully");
+    log::info!(
+      "{}",
+      colors::green(format!(
+        "\nUpgraded successfully to Deno v{}\n",
+        install_version
+      ))
+    );
     if !upgrade_flags.canary {
       print_release_notes(current_bin_version::deno(), &install_version);
     }
@@ -621,16 +689,27 @@ pub async fn upgrade(
 
 #[derive(Debug, Clone, Copy)]
 enum ReleaseChannel {
+  /// Stable version, eg. 1.45.4, 2.0.0, 2.1.0
   Stable,
+
+  /// Pointing to a git hash
   Canary,
+
+  /// Long term support release
+  #[allow(unused)]
+  Lts,
+
+  /// Release candidate
+  #[allow(unused)]
+  Rc,
 }
 
-async fn get_latest_version(
+async fn fetch_latest_version(
   client: &HttpClient,
   release_channel: ReleaseChannel,
   check_kind: UpgradeCheckKind,
 ) -> Result<String, AnyError> {
-  let url = get_url(release_channel, env!("TARGET"), check_kind);
+  let url = get_latest_version_url(release_channel, env!("TARGET"), check_kind);
   let text = client.download_text(url.parse()?).await?;
   Ok(normalize_version_from_server(release_channel, &text))
 }
@@ -643,10 +722,11 @@ fn normalize_version_from_server(
   match release_channel {
     ReleaseChannel::Stable => text.trim_start_matches('v').to_string(),
     ReleaseChannel::Canary => text.to_string(),
+    _ => unreachable!(),
   }
 }
 
-fn get_url(
+fn get_latest_version_url(
   release_channel: ReleaseChannel,
   target_tuple: &str,
   check_kind: UpgradeCheckKind,
@@ -656,6 +736,7 @@ fn get_url(
     ReleaseChannel::Canary => {
       Cow::Owned(format!("canary-{target_tuple}-latest.txt"))
     }
+    _ => unreachable!(),
   };
   let query_param = match check_kind {
     UpgradeCheckKind::Execution => "",
@@ -677,7 +758,7 @@ async fn download_package(
   client: &HttpClient,
   download_url: &str,
 ) -> Result<Vec<u8>, AnyError> {
-  log::info!("Downloading {}", &download_url);
+  log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
   let maybe_bytes = {
     let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
     // provide an empty string here in order to prefer the downloading
@@ -883,7 +964,11 @@ mod test {
 
   #[async_trait(?Send)]
   impl VersionProvider for TestUpdateCheckerEnvironment {
-    async fn latest_version(&self) -> Result<String, AnyError> {
+    // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
+    async fn latest_version(
+      &self,
+      _release_channel: ReleaseChannel,
+    ) -> Result<String, AnyError> {
       match self.latest_version.borrow().clone() {
         Ok(result) => Ok(result),
         Err(err) => bail!("{}", err),
@@ -894,11 +979,14 @@ mod test {
       Cow::Owned(self.current_version.borrow().clone())
     }
 
-    fn release_channel(&self) -> ReleaseChannel {
+    // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
+    async fn get_current_exe_release_channel(
+      &self,
+    ) -> Result<ReleaseChannel, AnyError> {
       if *self.is_canary.borrow() {
-        ReleaseChannel::Canary
+        Ok(ReleaseChannel::Canary)
       } else {
-        ReleaseChannel::Stable
+        Ok(ReleaseChannel::Stable)
       }
     }
   }
@@ -1026,9 +1114,9 @@ mod test {
   }
 
   #[test]
-  fn test_get_url() {
+  fn test_get_latest_version_url() {
     assert_eq!(
-      get_url(
+      get_latest_version_url(
         ReleaseChannel::Canary,
         "aarch64-apple-darwin",
         UpgradeCheckKind::Execution
@@ -1036,7 +1124,7 @@ mod test {
       "https://dl.deno.land/canary-aarch64-apple-darwin-latest.txt"
     );
     assert_eq!(
-      get_url(
+      get_latest_version_url(
         ReleaseChannel::Canary,
         "aarch64-apple-darwin",
         UpgradeCheckKind::Lsp
@@ -1044,7 +1132,7 @@ mod test {
       "https://dl.deno.land/canary-aarch64-apple-darwin-latest.txt?lsp"
     );
     assert_eq!(
-      get_url(
+      get_latest_version_url(
         ReleaseChannel::Canary,
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Execution
@@ -1052,7 +1140,7 @@ mod test {
       "https://dl.deno.land/canary-x86_64-pc-windows-msvc-latest.txt"
     );
     assert_eq!(
-      get_url(
+      get_latest_version_url(
         ReleaseChannel::Canary,
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Lsp
@@ -1060,7 +1148,7 @@ mod test {
       "https://dl.deno.land/canary-x86_64-pc-windows-msvc-latest.txt?lsp"
     );
     assert_eq!(
-      get_url(
+      get_latest_version_url(
         ReleaseChannel::Stable,
         "aarch64-apple-darwin",
         UpgradeCheckKind::Execution
@@ -1068,7 +1156,7 @@ mod test {
       "https://dl.deno.land/release-latest.txt"
     );
     assert_eq!(
-      get_url(
+      get_latest_version_url(
         ReleaseChannel::Stable,
         "aarch64-apple-darwin",
         UpgradeCheckKind::Lsp
@@ -1076,7 +1164,7 @@ mod test {
       "https://dl.deno.land/release-latest.txt?lsp"
     );
     assert_eq!(
-      get_url(
+      get_latest_version_url(
         ReleaseChannel::Stable,
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Execution
@@ -1084,7 +1172,7 @@ mod test {
       "https://dl.deno.land/release-latest.txt"
     );
     assert_eq!(
-      get_url(
+      get_latest_version_url(
         ReleaseChannel::Stable,
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Lsp
