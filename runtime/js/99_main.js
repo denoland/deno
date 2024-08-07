@@ -717,8 +717,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       if (serveIsMain && serveWorkerCount) {
         const origLog = console.log;
         const origError = console.error;
-        const base = `serve-worker-0`;
-        const prefix = `[${base.padEnd(15, " ")}]`;
+        const prefix = `[serve-worker-0 ]`;
         console.log = (...args) => {
           return origLog(prefix, ...args);
         };
@@ -729,18 +728,14 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         const origLog = console.log;
         const origError = console.error;
         const base = `serve-worker-${serveWorkerCount + 1}`;
+        // 15 = "serve-worker-nn".length, assuming
+        // serveWorkerCount < 100
         const prefix = `[${base.padEnd(15, " ")}]`;
         console.log = (...args) => {
-          return origLog(
-            prefix,
-            ...args,
-          );
+          return origLog(prefix, ...args);
         };
         console.error = (...args) => {
-          return origError(
-            prefix,
-            ...args,
-          );
+          return origError(prefix, ...args);
         };
       }
     }
