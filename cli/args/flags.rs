@@ -245,6 +245,11 @@ pub struct InstallFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JSONReferenceFlags {
+  pub json: deno_core::serde_json::Value,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JupyterFlags {
   pub install: bool,
   pub kernel: bool,
@@ -426,6 +431,7 @@ pub enum DenoSubcommand {
   Init(InitFlags),
   Info(InfoFlags),
   Install(InstallFlags),
+  JSONReference(JSONReferenceFlags),
   Jupyter(JupyterFlags),
   Uninstall(UninstallFlags),
   Lsp,
@@ -1077,57 +1083,41 @@ impl Flags {
 
 static ENV_VARIABLES_HELP: &str = color_print::cstr!(
   r#"<y>Environment variables:</>
-    <g>DENO_AUTH_TOKENS</>     A semi-colon separated list of bearer tokens and
-                         hostnames to use when fetching remote modules from
-                         private repositories
-                         (e.g. "abcde12345@deno.land;54321edcba@github.com")
-
-    <g>DENO_FUTURE</>          Set to "1" to enable APIs that will take effect in
-                         Deno 2
-
-    <g>DENO_CERT</>            Load certificate authorities from PEM encoded file
-
-    <g>DENO_DIR</>             Set the cache directory
-
-    <g>DENO_INSTALL_ROOT</>    Set deno install's output directory
-                         (defaults to $HOME/.deno/bin)
-
-    <g>DENO_JOBS</>            Number of parallel workers used for the --parallel
-                         flag with the test subcommand. Defaults to number
-                         of available CPUs.
-
-    <g>DENO_REPL_HISTORY</>    Set REPL history file path
-                         History file is disabled when the value is empty
-                         (defaults to $DENO_DIR/deno_history.txt)
-
-    <g>DENO_NO_PACKAGE_JSON</> Disables auto-resolution of package.json
-
-    <g>DENO_NO_PROMPT</>       Set to disable permission prompts on access
-                         (alternative to passing --no-prompt on invocation)
-
-    <g>DENO_NO_UPDATE_CHECK</> Set to disable checking if a newer Deno version is
-                         available
-
-    <g>DENO_TLS_CA_STORE</>    Comma-separated list of order dependent certificate
-                         stores. Possible values: "system", "mozilla".
-                         Defaults to "mozilla".
-
-    <g>DENO_V8_FLAGS</>        Set V8 command line options
-
-    <g>DENO_WEBGPU_TRACE</>    Directory to use for wgpu traces
-
-    <g>HTTP_PROXY</>           Proxy address for HTTP requests
-                         (module downloads, fetch)
-
-    <g>HTTPS_PROXY</>          Proxy address for HTTPS requests
-                         (module downloads, fetch)
-
-    <g>NO_COLOR</>             Set to disable color
-
-    <g>NO_PROXY</>             Comma-separated list of hosts which do not use a proxy
-                         (module downloads, fetch)
-
-    <g>NPM_CONFIG_REGISTRY</>  URL to use for the npm registry."#
+  <g>DENO_AUTH_TOKENS</>      A semi-colon separated list of bearer tokens and
+                        hostnames to use when fetching remote modules from
+                        private repositories
+                        (e.g. "abcde12345@deno.land;54321edcba@github.com")
+  <g>DENO_FUTURE</>           Set to "1" to enable APIs that will take effect in
+                        Deno 2
+  <g>DENO_CERT</>             Load certificate authorities from PEM encoded file
+  <g>DENO_DIR</>              Set the cache directory
+  <g>DENO_INSTALL_ROOT</>     Set deno install's output directory
+                        (defaults to $HOME/.deno/bin)
+  <g>DENO_JOBS</>             Number of parallel workers used for the --parallel
+                        flag with the test subcommand. Defaults to number
+                        of available CPUs.
+  <g>DENO_REPL_HISTORY</>     Set REPL history file path
+                        History file is disabled when the value is empty
+                        (defaults to $DENO_DIR/deno_history.txt)
+  <g>DENO_NO_PACKAGE_JSON</>  Disables auto-resolution of package.json
+  <g>DENO_NO_PROMPT</>        Set to disable permission prompts on access
+                        (alternative to passing --no-prompt on invocation)
+  <g>DENO_NO_UPDATE_CHECK</>  Set to disable checking if a newer Deno version is
+                        available
+  <g>DENO_TLS_CA_STORE</>     Comma-separated list of order dependent certificate
+                        stores. Possible values: "system", "mozilla".
+                        Defaults to "mozilla".
+  <g>DENO_V8_FLAGS</>         Set V8 command line options
+  <g>DENO_WEBGPU_TRACE</>     Directory to use for wgpu traces
+  <g>DENO_WEBGPU_BACKEND</>   Single or list of backend to use for WebGPU
+  <g>HTTP_PROXY</>            Proxy address for HTTP requests
+                        (module downloads, fetch)
+  <g>HTTPS_PROXY</>           Proxy address for HTTPS requests
+                        (module downloads, fetch)
+  <g>NO_COLOR</>              Set to disable color
+  <g>NO_PROXY</>              Comma-separated list of hosts which do not use a proxy
+                        (module downloads, fetch)
+  <g>NPM_CONFIG_REGISTRY</>   URL to use for the npm registry."#
 );
 
 static DENO_HELP: &str = concat!(
@@ -1201,6 +1191,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "init" => init_parse(&mut flags, &mut m),
       "info" => info_parse(&mut flags, &mut m),
       "install" => install_parse(&mut flags, &mut m),
+      "json_reference" => json_reference_parse(&mut flags, &mut m, app),
       "jupyter" => jupyter_parse(&mut flags, &mut m),
       "lint" => lint_parse(&mut flags, &mut m),
       "lsp" => lsp_parse(&mut flags, &mut m),
@@ -1245,6 +1236,8 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
 }
 
+static UNSTABLE_HEADING: &str = "Unstable";
+
 fn clap_root() -> Command {
   let long_version = format!(
     "{} ({}, {})\nv8 {}\ntypescript {}",
@@ -1260,6 +1253,7 @@ fn clap_root() -> Command {
   );
 
   let mut cmd = Command::new("deno")
+    .next_line_help(false)
     .bin_name("deno")
     .styles(
       clap::builder::Styles::styled()
@@ -1269,12 +1263,14 @@ fn clap_root() -> Command {
         .placeholder(AnsiColor::Green.on_default())
     )
     .color(ColorChoice::Auto)
-    .max_term_width(80)
+    .term_width(800)
     .version(crate::version::deno())
     .long_version(long_version)
     // cause --unstable flags to display at the bottom of the help text
     .next_display_order(1000)
     .disable_version_flag(true)
+    .disable_help_flag(true)
+    .arg(help_arg())
     .arg(
       Arg::new("version")
         .short('V')
@@ -1288,7 +1284,8 @@ fn clap_root() -> Command {
         .long("unstable")
         .help("Enable unstable features and APIs")
         .action(ArgAction::SetTrue)
-        .global(true),
+        .global(true)
+        .help_heading(UNSTABLE_HEADING),
     )
     .arg(
       Arg::new("unstable-bare-node-builtins")
@@ -1297,7 +1294,7 @@ fn clap_root() -> Command {
         .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
-        .global(true),
+        .global(true).help_heading(UNSTABLE_HEADING),
     )
     .arg(
       Arg::new("unstable-byonm")
@@ -1306,7 +1303,7 @@ fn clap_root() -> Command {
         .env("DENO_UNSTABLE_BYONM")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
-        .global(true),
+        .global(true).help_heading(UNSTABLE_HEADING),
     )
     .arg(
       Arg::new("unstable-sloppy-imports")
@@ -1317,7 +1314,7 @@ fn clap_root() -> Command {
         .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
-        .global(true),
+        .global(true).help_heading(UNSTABLE_HEADING),
     );
 
   for (flag_name, help, _) in crate::UNSTABLE_GRANULAR_FLAGS {
@@ -1326,7 +1323,8 @@ fn clap_root() -> Command {
         .long(format!("unstable-{}", flag_name))
         .help(help)
         .action(ArgAction::SetTrue)
-        .global(true),
+        .global(true)
+        .help_heading(UNSTABLE_HEADING),
     );
   }
 
@@ -1350,42 +1348,53 @@ fn clap_root() -> Command {
         .action(ArgAction::SetTrue)
         .global(true),
     )
-    .subcommand(run_subcommand())
-    .subcommand(serve_subcommand())
+    .subcommand(run_subcommand().arg(help_arg()))
+    .subcommand(serve_subcommand().arg(help_arg()))
     .defer(|cmd| {
       cmd
-        .subcommand(add_subcommand())
-        .subcommand(bench_subcommand())
-        .subcommand(bundle_subcommand())
-        .subcommand(cache_subcommand())
-        .subcommand(check_subcommand())
-        .subcommand(compile_subcommand())
-        .subcommand(completions_subcommand())
-        .subcommand(coverage_subcommand())
-        .subcommand(doc_subcommand())
-        .subcommand(eval_subcommand())
-        .subcommand(fmt_subcommand())
-        .subcommand(init_subcommand())
-        .subcommand(info_subcommand())
+        .subcommand(add_subcommand().arg(help_arg()))
+        .subcommand(bench_subcommand().arg(help_arg()))
+        .subcommand(bundle_subcommand().arg(help_arg()))
+        .subcommand(cache_subcommand().arg(help_arg()))
+        .subcommand(check_subcommand().arg(help_arg()))
+        .subcommand(compile_subcommand().arg(help_arg()))
+        .subcommand(completions_subcommand().arg(help_arg()))
+        .subcommand(coverage_subcommand().arg(help_arg()))
+        .subcommand(doc_subcommand().arg(help_arg()))
+        .subcommand(eval_subcommand().arg(help_arg()))
+        .subcommand(fmt_subcommand().arg(help_arg()))
+        .subcommand(init_subcommand().arg(help_arg()))
+        .subcommand(info_subcommand().arg(help_arg()))
         .subcommand(if *DENO_FUTURE {
-          future_install_subcommand()
+          future_install_subcommand().arg(help_arg())
         } else {
-          install_subcommand()
+          install_subcommand().arg(help_arg())
         })
-        .subcommand(jupyter_subcommand())
-        .subcommand(uninstall_subcommand())
-        .subcommand(lsp_subcommand())
-        .subcommand(lint_subcommand())
-        .subcommand(publish_subcommand())
-        .subcommand(repl_subcommand())
-        .subcommand(task_subcommand())
-        .subcommand(test_subcommand())
-        .subcommand(types_subcommand())
-        .subcommand(upgrade_subcommand())
-        .subcommand(vendor_subcommand())
+        .subcommand(json_reference_subcommand().arg(help_arg()))
+        .subcommand(jupyter_subcommand().arg(help_arg()))
+        .subcommand(uninstall_subcommand().arg(help_arg()))
+        .subcommand(lsp_subcommand().arg(help_arg()))
+        .subcommand(lint_subcommand().arg(help_arg()))
+        .subcommand(publish_subcommand().arg(help_arg()))
+        .subcommand(repl_subcommand().arg(help_arg()))
+        .subcommand(task_subcommand().arg(help_arg()))
+        .subcommand(test_subcommand().arg(help_arg()))
+        .subcommand(types_subcommand().arg(help_arg()))
+        .subcommand(upgrade_subcommand().arg(help_arg()))
+        .subcommand(vendor_subcommand().arg(help_arg()))
     })
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
+    .next_line_help(false)
+}
+
+fn help_arg() -> Arg {
+  Arg::new("help")
+    .short('h')
+    .long("help")
+    .help("Print help (see more with '--help')")
+    .long_help("Print help (see a summary with '-h')")
+    .action(ArgAction::HelpShort)
 }
 
 fn add_subcommand() -> Command {
@@ -2291,6 +2300,10 @@ These must be added to the path manually if required.")
     })
 }
 
+fn json_reference_subcommand() -> Command {
+  Command::new("json_reference").hide(true)
+}
+
 fn jupyter_subcommand() -> Command {
   Command::new("jupyter")
     .arg(
@@ -2731,7 +2744,6 @@ Directory arguments are expanded to all contained files matching the glob
       Arg::new("clean")
         .long("clean")
         .help("Empty the temporary coverage profile data directory before running tests.
-
 Note: running multiple `deno test --clean` calls in series or parallel for the same coverage directory may cause race conditions.")
         .action(ArgAction::SetTrue),
     )
@@ -2964,166 +2976,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(ca_file_arg())
 }
 
-static ALLOW_READ_HELP: &str = concat!(
-  "Allow file system read access. Optionally specify allowed paths.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n",
-  "Examples:\n",
-  "  --allow-read\n",
-  "  --allow-read=\"/etc,/var/log.txt\""
-);
-
-static DENY_READ_HELP: &str = concat!(
-  "Deny file system read access. Optionally specify denied paths.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n",
-  "Examples:\n",
-  "  --deny-read\n",
-  "  --deny-read=\"/etc,/var/log.txt\""
-);
-
-static ALLOW_WRITE_HELP: &str = concat!(
-  "Allow file system write access. Optionally specify allowed paths.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n",
-  "Examples:\n",
-  "  --allow-write\n",
-  "  --allow-write=\"/etc,/var/log.txt\""
-);
-
-static DENY_WRITE_HELP: &str = concat!(
-  "Deny file system write access. Optionally specify denied paths.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n",
-  "Examples:\n",
-  "  --deny-write\n",
-  "  --deny-write=\"/etc,/var/log.txt\""
-);
-
-static ALLOW_NET_HELP: &str = concat!(
-  "Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n",
-  "Examples:\n",
-  "  --allow-net\n",
-  "  --allow-net=\"localhost:8080,deno.land\""
-);
-
-static DENY_NET_HELP: &str = concat!(
-  "Deny network access. Optionally specify denied IP addresses and host names, with ports as necessary.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n",
-  "Examples:\n",
-  "  --deny-net\n",
-  "  --deny-net=\"localhost:8080,deno.land\""
-);
-
-static ALLOW_ENV_HELP: &str = concat!(
-  "Allow access to system environment information. Optionally specify accessible environment variables.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n",
-  "Examples:\n",
-  "  --allow-env\n",
-  "  --allow-env=\"PORT,HOME,PATH\""
-);
-
-static DENY_ENV_HELP: &str = concat!(
-  "Deny access to system environment information. Optionally specify accessible environment variables.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n",
-  "Examples:\n",
-  "  --deny-env\n",
-  "  --deny-env=\"PORT,HOME,PATH\""
-);
-
-static ALLOW_SYS_HELP: &str = concat!(
-  "Allow access to OS information. Optionally allow specific APIs by function name.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n",
-  "Examples:\n",
-  "  --allow-sys\n",
-  "  --allow-sys=\"systemMemoryInfo,osRelease\""
-);
-
-static DENY_SYS_HELP: &str = concat!(
-  "Deny access to OS information. Optionally deny specific APIs by function name.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n",
-  "Examples:\n",
-  "  --deny-sys\n",
-  "  --deny-sys=\"systemMemoryInfo,osRelease\""
-);
-
-static ALLOW_RUN_HELP: &str = concat!(
-  "Allow running subprocesses. Optionally specify allowed runnable program names.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n",
-  "Examples:\n",
-  "  --allow-run\n",
-  "  --allow-run=\"whoami,ps\""
-);
-
-static DENY_RUN_HELP: &str = concat!(
-  "Deny running subprocesses. Optionally specify denied runnable program names.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n",
-  "Examples:\n",
-  "  --deny-run\n",
-  "  --deny-run=\"whoami,ps\""
-);
-
-static ALLOW_FFI_HELP: &str = concat!(
-  "(Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n",
-  "Examples:\n",
-  "  --allow-ffi\n",
-  "  --allow-ffi=\"./libfoo.so\""
-);
-
-static DENY_FFI_HELP: &str = concat!(
-  "(Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n",
-  "Examples:\n",
-  "  --deny-ffi\n",
-  "  --deny-ffi=\"./libfoo.so\""
-);
-
-static ALLOW_HRTIME_HELP: &str = concat!(
-  "Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n"
-);
-
-static DENY_HRTIME_HELP: &str = concat!(
-  "Deny high-resolution time measurement. Note: this can prevent timing attacks and fingerprinting.\n",
-  "Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n"
-);
-
-static ALLOW_ALL_HELP: &str = concat!(
-  "Allow all permissions. Learn more about permissions in Deno:\n",
-  "https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n"
-);
+static PERMISSIONS_HEADER: &str = "Permissions";
 
 fn permission_args(app: Command) -> Command {
   app
@@ -3134,9 +2987,12 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PATH")
-        .help(ALLOW_READ_HELP)
+        .help(
+          "Allow file system read access. Optionally specify allowed paths.",
+        )
         .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath),
+        .value_hint(ValueHint::AnyPath)
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("deny-read")
@@ -3145,9 +3001,10 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PATH")
-        .help(DENY_READ_HELP)
+        .help("Deny file system read access. Optionally specify denied paths.")
         .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath),
+        .value_hint(ValueHint::AnyPath)
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("allow-write")
@@ -3156,9 +3013,12 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PATH")
-        .help(ALLOW_WRITE_HELP)
+        .help(
+          "Allow file system write access. Optionally specify allowed paths.",
+        )
         .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath),
+        .value_hint(ValueHint::AnyPath)
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("deny-write")
@@ -3167,9 +3027,10 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PATH")
-        .help(DENY_WRITE_HELP)
+        .help("Deny file system write access. Optionally specify denied paths.")
         .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath),
+        .value_hint(ValueHint::AnyPath)
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("allow-net")
@@ -3178,8 +3039,9 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("IP_OR_HOSTNAME")
-        .help(ALLOW_NET_HELP)
-        .value_parser(flags_net::validator),
+        .help("Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.")
+        .value_parser(flags_net::validator)
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("deny-net")
@@ -3188,10 +3050,20 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("IP_OR_HOSTNAME")
-        .help(DENY_NET_HELP)
+        .help("Deny network access. Optionally specify denied IP addresses and host names, with ports as necessary.")
+        .value_parser(flags_net::validator)
+        .help_heading(PERMISSIONS_HEADER),
+    )
+    .arg(
+      Arg::new("unsafely-ignore-certificate-errors")
+        .long("unsafely-ignore-certificate-errors")
+        .num_args(0..)
+        .use_value_delimiter(true)
+        .require_equals(true)
+        .value_name("HOSTNAMES")
+        .help("DANGER: Disables verification of TLS certificates")
         .value_parser(flags_net::validator),
     )
-    .arg(unsafely_ignore_certificate_errors_arg())
     .arg(
       Arg::new("allow-env")
         .long("allow-env")
@@ -3199,7 +3071,7 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("VARIABLE_NAME")
-        .help(ALLOW_ENV_HELP)
+        .help("Allow access to system environment information. Optionally specify accessible environment variables.")
         .value_parser(|key: &str| {
           if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
             return Err(format!("invalid key \"{key}\""));
@@ -3210,7 +3082,8 @@ fn permission_args(app: Command) -> Command {
           } else {
             key.to_string()
           })
-        }),
+        })
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("deny-env")
@@ -3219,7 +3092,7 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("VARIABLE_NAME")
-        .help(DENY_ENV_HELP)
+        .help("Deny access to system environment information. Optionally specify accessible environment variables.")
         .value_parser(|key: &str| {
           if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
             return Err(format!("invalid key \"{key}\""));
@@ -3230,7 +3103,8 @@ fn permission_args(app: Command) -> Command {
           } else {
             key.to_string()
           })
-        }),
+        })
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("allow-sys")
@@ -3239,8 +3113,9 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("API_NAME")
-        .help(ALLOW_SYS_HELP)
-        .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string)),
+        .help("Allow access to OS information. Optionally allow specific APIs by function name.")
+        .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("deny-sys")
@@ -3249,8 +3124,9 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("API_NAME")
-        .help(DENY_SYS_HELP)
-        .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string)),
+        .help("Deny access to OS information. Optionally deny specific APIs by function name.")
+        .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("allow-run")
@@ -3259,7 +3135,8 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PROGRAM_NAME")
-        .help(ALLOW_RUN_HELP),
+        .help("Allow running subprocesses. Optionally specify allowed runnable program names.")
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("deny-run")
@@ -3268,7 +3145,8 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PROGRAM_NAME")
-        .help(DENY_RUN_HELP),
+        .help("Deny running subprocesses. Optionally specify denied runnable program names.")
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("allow-ffi")
@@ -3277,9 +3155,10 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PATH")
-        .help(ALLOW_FFI_HELP)
+        .help("(Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.")
         .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath),
+        .value_hint(ValueHint::AnyPath)
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("deny-ffi")
@@ -3288,34 +3167,39 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("PATH")
-        .help(DENY_FFI_HELP)
+        .help("(Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.")
         .value_parser(value_parser!(String))
-        .value_hint(ValueHint::AnyPath),
+        .value_hint(ValueHint::AnyPath)
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("allow-hrtime")
         .long("allow-hrtime")
         .action(ArgAction::SetTrue)
-        .help(ALLOW_HRTIME_HELP),
+        .help("Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.")
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("deny-hrtime")
         .long("deny-hrtime")
         .action(ArgAction::SetTrue)
-        .help(DENY_HRTIME_HELP),
+        .help("Deny high-resolution time measurement. Note: this can prevent timing attacks and fingerprinting.")
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("allow-all")
         .short('A')
         .long("allow-all")
         .action(ArgAction::SetTrue)
-        .help(ALLOW_ALL_HELP),
+        .help("Allow all permissions.")
+        .help_heading(PERMISSIONS_HEADER),
     )
     .arg(
       Arg::new("no-prompt")
         .long("no-prompt")
         .action(ArgAction::SetTrue)
-        .help("Always throw if required permission wasn't passed"),
+        .help("Always throw if required permission wasn't passed")
+        .help_heading(PERMISSIONS_HEADER),
     )
 }
 
@@ -3673,8 +3557,8 @@ fn lock_arg() -> Arg {
   Arg::new("lock")
     .long("lock")
     .value_name("FILE")
+    .default_missing_value("deno.lock")
     .help("Check the specified lock file.
-
 If value is not provided, defaults to \"deno.lock\" in the current working directory.")
     .num_args(0..=1)
     .value_parser(value_parser!(String))
@@ -3758,18 +3642,7 @@ fn vendor_arg() -> Arg {
     .value_parser(value_parser!(bool))
     .default_missing_value("true")
     .require_equals(true)
-    .help("UNSTABLE: Enables or disables the use of a local vendor folder for remote modules and node_modules folder for npm packages")
-}
-
-fn unsafely_ignore_certificate_errors_arg() -> Arg {
-  Arg::new("unsafely-ignore-certificate-errors")
-    .long("unsafely-ignore-certificate-errors")
-    .num_args(0..)
-    .use_value_delimiter(true)
-    .require_equals(true)
-    .value_name("HOSTNAMES")
-    .help("DANGER: Disables verification of TLS certificates")
-    .value_parser(flags_net::validator)
+    .help("UNSTABLE: Enables or disables the use of a local vendor folder\nfor remote modules and node_modules folder for npm packages")
 }
 
 fn allow_scripts_arg() -> Arg {
@@ -4171,6 +4044,80 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       kind: InstallKind::Local(local_flags),
     })
   }
+}
+
+fn json_reference_parse(
+  flags: &mut Flags,
+  _matches: &mut ArgMatches,
+  mut app: Command,
+) {
+  use deno_core::serde_json::json;
+
+  app.build();
+
+  fn serialize_command(
+    command: &mut Command,
+    top_level: bool,
+  ) -> deno_core::serde_json::Value {
+    let args = command
+      .get_arguments()
+      .filter(|arg| {
+        !arg.is_hide_set()
+          && if top_level {
+            true
+          } else {
+            !arg.is_global_set()
+          }
+      })
+      .map(|arg| {
+        let name = arg.get_id().as_str();
+        let short = arg.get_short();
+        let long = arg.get_long();
+        let aliases = arg.get_visible_aliases();
+        let required = arg.is_required_set();
+        let help = arg.get_help().map(|help| help.to_string());
+        let usage = arg.to_string();
+
+        json!({
+          "name": name,
+          "short": short,
+          "long": long,
+          "aliases": aliases,
+          "required": required,
+          "help": help,
+          "usage": usage,
+        })
+      })
+      .collect::<Vec<_>>();
+
+    let name = command.get_name().to_string();
+    let about = command.get_about().map(|about| about.to_string());
+    let long_about = command.get_long_about().map(|about| about.to_string());
+    let visible_aliases = command
+      .get_visible_aliases()
+      .map(|s| s.to_string())
+      .collect::<Vec<_>>();
+    let usage = command.render_usage().to_string();
+
+    let subcommands = command
+      .get_subcommands_mut()
+      .map(|command| serialize_command(command, false))
+      .collect::<Vec<_>>();
+
+    json!({
+      "name": name,
+      "about": about,
+      "long_about": long_about,
+      "visible_aliases": visible_aliases,
+      "args": args,
+      "subcommands": subcommands,
+      "usage": usage,
+    })
+  }
+
+  flags.subcommand = DenoSubcommand::JSONReference(JSONReferenceFlags {
+    json: serialize_command(&mut app, true),
+  })
 }
 
 fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4900,9 +4847,7 @@ fn lock_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn lock_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if matches.contains_id("lock") {
-    let lockfile = matches
-      .remove_one::<String>("lock")
-      .unwrap_or_else(|| String::from("./deno.lock"));
+    let lockfile = matches.remove_one::<String>("lock").unwrap();
     flags.lock = Some(lockfile);
   }
 }

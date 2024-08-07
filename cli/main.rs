@@ -154,6 +154,9 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(flags, install_flags).await
     }),
+    DenoSubcommand::JSONReference(json_reference) => spawn_subcommand(async move {
+      display::write_to_stdout_ignore_sigpipe(&deno_core::serde_json::to_vec_pretty(&json_reference.json).unwrap())
+    }),
     DenoSubcommand::Jupyter(jupyter_flags) => spawn_subcommand(async {
       tools::jupyter::kernel(flags, jupyter_flags).await
     }),
