@@ -6253,7 +6253,7 @@ declare namespace Deno {
    */
   export type ServeHandler = (
     request: Request,
-    info: ServeHandlerInfo,
+    info?: ServeHandlerInfo,
   ) => Response | Promise<Response>;
 
   /** Options which can be set when calling {@linkcode Deno.serve}.
