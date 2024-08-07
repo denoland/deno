@@ -70,6 +70,26 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsRename() {
+    const testDir = await makeTempDir();
+    const watcher = Deno.watchFs(testDir);
+    async function waitForRename() {
+      for await (const event of watcher) {
+        if (event.kind === "rename") {
+          break;
+        }
+      }
+    }
+    const eventPromise = waitForRename();
+    const file = testDir + "/file.txt";
+    await Deno.writeTextFile(file, "hello");
+    await Deno.rename(file, testDir + "/file2.txt");
+    await eventPromise;
+  },
+);
+
 // TODO(kt3k): This test is for the backward compatibility of `.return` method.
 // This should be removed at 2.0
 Deno.test(
