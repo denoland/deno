@@ -5,20 +5,32 @@ use num_bigint_dig::BigUint;
 use num_bigint_dig::RandBigInt;
 use num_traits::FromPrimitive;
 
+#[derive(Clone)]
 pub struct PublicKey(BigUint);
 
 impl PublicKey {
+  pub fn from_bytes(bytes: &[u8]) -> Self {
+    let public_key = BigUint::from_bytes_be(bytes);
+    Self(public_key)
+  }
+
   pub fn into_vec(self) -> Vec<u8> {
     self.0.to_bytes_be()
   }
 }
 
+#[derive(Clone)]
 pub struct PrivateKey(BigUint);
 
 impl PrivateKey {
   pub fn new(exponent_size: usize) -> Self {
     let mut rng = rand::thread_rng();
     let exponent = rng.gen_biguint(exponent_size);
+    Self(exponent)
+  }
+
+  pub fn from_bytes(bytes: &[u8]) -> Self {
+    let exponent = BigUint::from_bytes_be(bytes);
     Self(exponent)
   }
 
