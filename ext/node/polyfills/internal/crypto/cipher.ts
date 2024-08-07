@@ -41,7 +41,9 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 
-export function isStringOrBuffer(val) {
+export function isStringOrBuffer(
+  val: unknown,
+): val is string | Buffer | ArrayBuffer | ArrayBufferView {
   return typeof val === "string" ||
     isArrayBufferView(val) ||
     isAnyArrayBuffer(val) ||

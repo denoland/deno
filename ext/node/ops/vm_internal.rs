@@ -93,7 +93,6 @@ impl ContextifyContext {
     sandbox_obj: v8::Local<v8::Object>,
   ) {
     let tmp = init_global_template(scope, ContextInitMode::UseSnapshot);
-
     let context = create_v8_context(scope, tmp, ContextInitMode::UseSnapshot);
     Self::from_context(scope, context, sandbox_obj);
   }

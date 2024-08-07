@@ -3,14 +3,9 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import {
-  op_node_generate_secret,
-  op_node_generate_secret_async,
-} from "ext:core/ops";
+import { op_node_fill_random, op_node_fill_random_async } from "ext:core/ops";
 
-import {
-  MAX_SIZE as kMaxUint32,
-} from "ext:deno_node/internal/crypto/_randomBytes.ts";
+import { MAX_SIZE as kMaxUint32 } from "ext:deno_node/internal/crypto/_randomBytes.ts";
 import { Buffer } from "node:buffer";
 import { isAnyArrayBuffer, isArrayBufferView } from "node:util/types";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
@@ -37,12 +32,7 @@ function assertSize(size, offset, length) {
   }
 }
 
-export default function randomFill(
-  buf,
-  offset,
-  size,
-  cb,
-) {
+export default function randomFill(buf, offset, size, cb) {
   if (typeof offset === "function") {
     cb = offset;
     offset = 0;
@@ -55,14 +45,11 @@ export default function randomFill(
   assertOffset(offset, buf.length);
   assertSize(size, offset, buf.length);
 
-  op_node_generate_secret_async(Math.floor(size))
-    .then(
-      (randomData) => {
-        const randomBuf = Buffer.from(randomData.buffer);
-        randomBuf.copy(buf, offset, 0, size);
-        cb(null, buf);
-      },
-    );
+  op_node_fill_random_async(Math.floor(size)).then((randomData) => {
+    const randomBuf = Buffer.from(randomData.buffer);
+    randomBuf.copy(buf, offset, 0, size);
+    cb(null, buf);
+  });
 }
 
 export function randomFillSync(buf, offset = 0, size) {
@@ -89,7 +76,7 @@ export function randomFillSync(buf, offset = 0, size) {
   const bytes = isAnyArrayBuffer(buf)
     ? new Uint8Array(buf, offset, size)
     : new Uint8Array(buf.buffer, buf.byteOffset + offset, size);
-  op_node_generate_secret(bytes);
+  op_node_fill_random(bytes);
 
   return buf;
 }
