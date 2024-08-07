@@ -523,6 +523,7 @@ fn create_graph_resolver(
           Arc::new(ModuleSpecifier::parse("file:///").unwrap()),
           None,
           Vec::new(),
+          Vec::new(),
           PackageJsonDepResolution::Disabled,
         ))
       },
