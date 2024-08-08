@@ -501,6 +501,7 @@ pub async fn upgrade(
   Ok(())
 }
 
+// TODO(bartlomieju): consider using "strategy" pattern here.
 async fn select_version_to_upgrade(
   http_client_provider: Arc<HttpClientProvider>,
   maybe_passed_version: Option<String>,
@@ -753,10 +754,10 @@ fn set_exe_permissions(
     && !nix::unistd::Uid::effective().is_root()
   {
     bail!(concat!(
-        "You don't have write permission to {} because it's owned by root.\n",
-        "Consider updating deno through your package manager if its installed from it.\n",
-        "Otherwise run `deno upgrade` as root.",
-      ), output_exe_path.display());
+      "You don't have write permission to {} because it's owned by root.\n",
+      "Consider updating deno through your package manager if its installed from it.\n",
+      "Otherwise run `deno upgrade` as root.",
+    ), output_exe_path.display());
   }
   Ok(permissions)
 }
