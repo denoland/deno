@@ -90,7 +90,7 @@ bincode = "=1.3.3"
 bytes.workspace = true
 cache_control.workspace = true
 chrono = { workspace = true, features = ["now"] }
-clap = { version = "=4.5.13", features = ["env", "string"] }
+clap = { version = "=4.5.13", features = ["env", "string", "wrap_help"] }
 clap_complete = "=4.5.12"
 clap_complete_fig = "=4.5.2"
 color-print = "0.3.5"

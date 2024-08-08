@@ -1083,62 +1083,89 @@ impl Flags {
 
 static ENV_VARIABLES_HELP: &str = color_print::cstr!(
   r#"<y>Environment variables:</>
-  <g>DENO_AUTH_TOKENS</>      A semi-colon separated list of bearer tokens and
-                        hostnames to use when fetching remote modules from
-                        private repositories
-                        (e.g. "abcde12345@deno.land;54321edcba@github.com")
-  <g>DENO_FUTURE</>           Set to "1" to enable APIs that will take effect in
-                        Deno 2
+  <g>DENO_AUTH_TOKENS</>      A semi-colon separated list of bearer tokens and hostnames
+                        to use when fetching remote modules from private repositories
+                         <w>(e.g. "abcde12345@deno.land;54321edcba@github.com")</>
+  <g>DENO_FUTURE</>           Set to "1" to enable APIs that will take effect in Deno 2
   <g>DENO_CERT</>             Load certificate authorities from PEM encoded file
   <g>DENO_DIR</>              Set the cache directory
   <g>DENO_INSTALL_ROOT</>     Set deno install's output directory
-                        (defaults to $HOME/.deno/bin)
-  <g>DENO_JOBS</>             Number of parallel workers used for the --parallel
-                        flag with the test subcommand. Defaults to number
-                        of available CPUs.
+                         <w>(defaults to $HOME/.deno/bin)</>
+  <g>DENO_JOBS</>             Number of parallel workers used for the --parallel flag
+                        with the test subcommand. Defaults to number of available CPUs.
   <g>DENO_REPL_HISTORY</>     Set REPL history file path
                         History file is disabled when the value is empty
-                        (defaults to $DENO_DIR/deno_history.txt)
+                         <w>(defaults to $DENO_DIR/deno_history.txt)</>
   <g>DENO_NO_PACKAGE_JSON</>  Disables auto-resolution of package.json
   <g>DENO_NO_PROMPT</>        Set to disable permission prompts on access
-                        (alternative to passing --no-prompt on invocation)
-  <g>DENO_NO_UPDATE_CHECK</>  Set to disable checking if a newer Deno version is
-                        available
-  <g>DENO_TLS_CA_STORE</>     Comma-separated list of order dependent certificate
-                        stores. Possible values: "system", "mozilla".
-                        Defaults to "mozilla".
+                         <w>(alternative to passing --no-prompt on invocation)</>
+  <g>DENO_NO_UPDATE_CHECK</>  Set to disable checking if a newer Deno version is available
+  <g>DENO_TLS_CA_STORE</>     Comma-separated list of order dependent certificate stores.
+                        Possible values: "system", "mozilla".
+                         <w>(defaults to "mozilla")</>
   <g>DENO_V8_FLAGS</>         Set V8 command line options
   <g>DENO_WEBGPU_TRACE</>     Directory to use for wgpu traces
   <g>DENO_WEBGPU_BACKEND</>   Single or list of backend to use for WebGPU
   <g>HTTP_PROXY</>            Proxy address for HTTP requests
-                        (module downloads, fetch)
+                         <w>(module downloads, fetch)</>
   <g>HTTPS_PROXY</>           Proxy address for HTTPS requests
-                        (module downloads, fetch)
+                         <w>(module downloads, fetch)</>
   <g>NO_COLOR</>              Set to disable color
   <g>NO_PROXY</>              Comma-separated list of hosts which do not use a proxy
-                        (module downloads, fetch)
+                         <w>(module downloads, fetch)</>
   <g>NPM_CONFIG_REGISTRY</>   URL to use for the npm registry."#
 );
 
-static DENO_HELP: &str = concat!(
-  color_print::cstr!("<g>A modern JavaScript and TypeScript runtime</>"),
-  "
+static DENO_HELP: &str = color_print::cstr!(
+  "Deno: <g>A modern JavaScript and TypeScript runtime</>
 
-Docs: https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  color_print::cstr!(
-    "
-Standard Library: https://jsr.io/@std
-Modules: https://jsr.io/ https://deno.land/x/
-Bugs: https://github.com/denoland/deno/issues
+<w>Usage:</> <g>{usage}</>
 
+<y>Commands:</>
+  <y>Execution:</>
+    <g>run</>          Run a JavaScript or TypeScript program, or a task
+                  <w>deno run main.ts</>  <w>|</>  <w>deno run --allow-net=google.com main.ts</>  <w>|</>  <w>deno main.ts</>
+    <g>serve</>        Run a server
+                  <w>deno serve main.ts</>
+    <g>task</>         Run a task defined in the configuration file
+                  <w>deno task dev</>
+    <g>repl</>         Start an interactive Read-Eval-Print Loop (REPL) for Deno
+    <g>eval</>         Evaluate a script from the command line
 
-Deno by Example: https://docs.deno.com/examples
-  Start the REPL:              <g>deno</>
-  Execute a script:            <g>deno run https://examples.deno.land/hello-world.ts</>
-  Evaluate code in the shell:  <g>deno eval \"console.log(30933 + 404)\"</>
+  <y>Dependency management:</>
+    <g>add</>          Add dependencies
+                  <w>deno add @std/assert</>  <w>|</>  <w>deno add npm:express</>
+    <g>install</>      Install script as an executable
+    <g>uninstall</>    Uninstall a script previously installed with deno install
+
+  <y>Tooling:</>
+    <g>bench</>        Run benchmarks
+                  <w>deno bench bench.ts</>
+    <g>cache</>        Cache the dependencies
+    <g>check</>        Type-check the dependencies
+    <g>compile</>      Compile the script into a self contained executable
+                  <w>deno compile main.ts</>  <w>|</>  <w>deno compile --target=x86_64-unknown-linux-gnu</>
+    <g>coverage</>     Print coverage reports
+    <g>doc</>          Genereate and show documentation for a module or built-ins
+                  <w>deno doc</>  <w>|</>  <w>deno doc --json</>  <w>|</>  <w>deno doc --html mod.ts</>
+    <g>fmt</>          Format source files
+                  <w>deno fmt</>  <w>|</>  <w>deno fmt main.ts</>
+    <g>info</>         Show info about cache or info related to source file
+    <g>jupyter</>      Deno kernel for Jupyter notebooks
+    <g>lint</>         Lint source files
+    <g>init</>         Initialize a new project
+    <g>test</>         Run tests
+                  <w>deno test</>  <w>|</>  <w>deno test test.ts</>
+    <g>publish</>      Publish the current working directory's package or workspace
+    <g>upgrade</>      Upgrade deno executable to given version
+                  <w>deno upgrade</>  <w>|</>  <w>deno upgrade --version=1.45.0</>  <w>|</>  <w>deno upgrade --canary</>
+{after-help}
+
+<y>Docs:</> https://docs.deno.com
+<y>Standard Library:</> https://jsr.io/@std
+<y>Bugs:</> https://github.com/denoland/deno/issues
+<y>Discord:</> https://discord.gg/deno
 "
-  )
 );
 
 /// Main entry point for parsing deno's command line flags.
@@ -1294,7 +1321,8 @@ fn clap_root() -> Command {
         .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
-        .global(true).help_heading(UNSTABLE_HEADING),
+        .global(true)
+        .help_heading(UNSTABLE_HEADING),
     )
     .arg(
       Arg::new("unstable-byonm")
@@ -1303,7 +1331,8 @@ fn clap_root() -> Command {
         .env("DENO_UNSTABLE_BYONM")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
-        .global(true).help_heading(UNSTABLE_HEADING),
+        .global(true)
+        .help_heading(UNSTABLE_HEADING),
     )
     .arg(
       Arg::new("unstable-sloppy-imports")
@@ -1314,7 +1343,8 @@ fn clap_root() -> Command {
         .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
-        .global(true).help_heading(UNSTABLE_HEADING),
+        .global(true)
+        .help_heading(UNSTABLE_HEADING),
     );
 
   for (flag_name, help, _) in crate::UNSTABLE_GRANULAR_FLAGS {
@@ -1383,7 +1413,7 @@ fn clap_root() -> Command {
         .subcommand(upgrade_subcommand().arg(help_arg()))
         .subcommand(vendor_subcommand().arg(help_arg()))
     })
-    .long_about(DENO_HELP)
+    .help_template(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
     .next_line_help(false)
 }
@@ -1392,15 +1422,13 @@ fn help_arg() -> Arg {
   Arg::new("help")
     .short('h')
     .long("help")
-    .help("Print help (see more with '--help')")
-    .long_help("Print help (see a summary with '-h')")
+    .hide(true)
     .action(ArgAction::HelpShort)
 }
 
 fn add_subcommand() -> Command {
   Command::new("add")
-    .about("Add dependencies")
-    .long_about(
+    .about(
       "Add dependencies to the configuration file.
 
   deno add @std/path
@@ -1423,8 +1451,7 @@ You can add multiple dependencies at once:
 
 fn bench_subcommand() -> Command {
   Command::new("bench")
-    .about("Run benchmarks")
-    .long_about(
+    .about(
       "Run benchmarks using Deno's built-in bench tool.
 
 Evaluate the given modules, run all benches declared with 'Deno.bench()'
@@ -1484,8 +1511,8 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
 
 fn bundle_subcommand() -> Command {
   Command::new("bundle")
-    .about("Bundle module and dependencies into single file")
-    .long_about(
+    .hide(true)
+    .about(
       "⚠️ Warning: `deno bundle` is deprecated and will be removed in Deno 2.0.
 Use an alternative bundler like \"deno_emit\", \"esbuild\" or \"rollup\" instead.
 
@@ -1516,8 +1543,7 @@ If no output file is given, the output is written to standard output:
 
 fn cache_subcommand() -> Command {
   Command::new("cache")
-    .about("Cache the dependencies")
-    .long_about(
+    .about(
       "Cache and compile remote dependencies recursively.
 
 Download and compile a module with all of its static dependencies and save
@@ -1544,8 +1570,7 @@ Future runs of this module will trigger no downloads or compilation unless
 
 fn check_subcommand() -> Command {
   Command::new("check")
-      .about("Type-check the dependencies")
-      .long_about(
+      .about(
         "Download and type-check without execution.
 
   deno check jsr:@std/http/file-server
@@ -1579,8 +1604,7 @@ Unless --reload is specified, this command will not re-download already cached d
 
 fn compile_subcommand() -> Command {
   Command::new("compile")
-    .about("Compile the script into a self contained executable")
-    .long_about(
+    .about(
       "Compiles the given script into a self contained executable.
 
   deno compile -A jsr:@std/http/file-server
@@ -1652,8 +1676,7 @@ supported in canary.
 
 fn completions_subcommand() -> Command {
   Command::new("completions")
-    .about("Generate shell completions")
-    .long_about(
+    .about(
       "Output shell completion script to standard output.
 
   deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
@@ -1670,8 +1693,7 @@ fn completions_subcommand() -> Command {
 
 fn coverage_subcommand() -> Command {
   Command::new("coverage")
-    .about("Print coverage reports")
-    .long_about(
+    .about(
       "Print coverage reports from coverage profiles.
 
 Collect a coverage profile with deno test:
@@ -1781,8 +1803,7 @@ Generate html reports from lcov:
 
 fn doc_subcommand() -> Command {
   Command::new("doc")
-    .about("Show documentation for a module")
-    .long_about(
+    .about(
       "Show documentation for a module.
 
 Output documentation to standard output:
@@ -1922,8 +1943,7 @@ Show documentation for runtime built-ins:
 
 fn eval_subcommand() -> Command {
   Command::new("eval")
-    .about("Eval script")
-    .long_about(
+    .about(
       "Evaluate JavaScript from the command line.
 
   deno eval \"console.log('hello world')\"
@@ -1969,8 +1989,7 @@ This command has implicit access to all permissions (--allow-all).",
 
 fn fmt_subcommand() -> Command {
   Command::new("fmt")
-    .about("Format source files")
-    .long_about(
+    .about(
       "Auto-format JavaScript, TypeScript, Markdown, and JSON files.
 
   deno fmt
@@ -2115,8 +2134,7 @@ fn init_subcommand() -> Command {
 
 fn info_subcommand() -> Command {
   Command::new("info")
-      .about("Show info about cache or info related to source file")
-      .long_about(
+      .about(
         "Information about a module or the cache directories.
 
 Get information about a module:
@@ -2214,8 +2232,7 @@ fn install_args(cmd: Command, deno_future: bool) -> Command {
 fn future_install_subcommand() -> Command {
   Command::new("install")
     .visible_alias("i")
-    .about("Install dependencies")
-    .long_about(
+    .about(
 "Installs dependencies either in the local project or globally to a bin directory.
 
 Local installation
@@ -2265,8 +2282,7 @@ These must be added to the path manually if required.")
 
 fn install_subcommand() -> Command {
   Command::new("install")
-    .about("Install script as an executable")
-    .long_about(
+    .about(
 "Installs a script as an executable in the installation root's bin directory.
 
   deno install --global --allow-net --allow-read jsr:@std/http/file-server
@@ -2333,8 +2349,7 @@ fn jupyter_subcommand() -> Command {
 
 fn uninstall_subcommand() -> Command {
   Command::new("uninstall")
-      .about("Uninstall a script previously installed with deno install")
-      .long_about(
+      .about(
         "Uninstalls an executable script in the installation root's bin directory.
 
   deno uninstall serve
@@ -2377,43 +2392,35 @@ https://deno.land/manual@v",
 );
 
 fn lsp_subcommand() -> Command {
-  Command::new("lsp")
-    .about("Start the language server")
-    .long_about(LSP_HELP)
+  Command::new("lsp").about(LSP_HELP)
 }
 
 fn lint_subcommand() -> Command {
   Command::new("lint")
-    .about("Lint source files")
-    .long_about(
+    .about(
       "Lint JavaScript/TypeScript source code.
 
   deno lint
   deno lint myfile1.ts myfile2.js
 
 Print result as JSON:
-
   deno lint --json
 
 Read from stdin:
-
   cat file.ts | deno lint -
   cat file.ts | deno lint --json -
 
 List available rules:
-
   deno lint --rules
 
 Ignore diagnostics on the next line by preceding it with an ignore comment and
 rule name:
-
   // deno-lint-ignore no-explicit-any
   // deno-lint-ignore require-await no-empty
 
 Names of rules to ignore must be specified after ignore comment.
 
 Ignore linting a file by adding an ignore comment at the top of the file:
-
   // deno-lint-ignore-file
 ",
     )
@@ -2533,31 +2540,23 @@ fn run_subcommand() -> Command {
     )
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
-    .about("Run a JavaScript or TypeScript program")
-    .long_about(
-      "Run a JavaScript or TypeScript program
+    .about(
+      color_print::cstr!("Run a JavaScript or TypeScript program
 
-By default all programs are run in sandbox without access to disk, network or
-ability to spawn subprocesses.
-
-  deno run https://examples.deno.land/hello-world.ts
+By default all programs are run in sandbox without access to disk, network or ability to spawn subprocesses.
+  <w>deno run https://examples.deno.land/hello-world.ts</>
 
 Grant all permissions:
-
-  deno run -A jsr:@std/http/file-server
+  <w>deno run -A jsr:@std/http/file-server</>
 
 Grant permission to read from disk and listen to network:
-
-  deno run --allow-read --allow-net jsr:@std/http/file-server
+  <w>deno run --allow-read --allow-net jsr:@std/http/file-server</>
 
 Grant permission to read allow-listed files from disk:
-
-  deno run --allow-read=/etc jsr:@std/http/file-server
+  <w>deno run --allow-read=/etc jsr:@std/http/file-server</>
 
 Specifying the filename '-' to read the file from stdin.
-
-  curl https://examples.deno.land/hello-world.ts | deno run -",
-    )
+  <w>curl https://examples.deno.land/hello-world.ts | deno run -</>"))
 }
 
 fn serve_host_validator(host: &str) -> Result<String, String> {
@@ -2595,8 +2594,7 @@ fn serve_subcommand() -> Command {
     )
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
-    .about("Run a server")
-    .long_about("Run a server defined in a main module
+    .about("Run a server defined in a main module
 
 The serve command uses the default exports of the main module to determine which
 servers to start.
@@ -2615,8 +2613,7 @@ Start a server defined in server.ts, watching for changes and running on port 50
 
 fn task_subcommand() -> Command {
   Command::new("task")
-    .about("Run a task defined in the configuration file")
-    .long_about(
+    .about(
       "Run a task defined in the configuration file
 
   deno task build",
@@ -2638,8 +2635,7 @@ fn task_subcommand() -> Command {
 
 fn test_subcommand() -> Command {
   Command::new("test")
-    .about("Run tests")
-    .long_about(
+    .about(
       "Run tests using Deno's built-in test runner.
 
 Evaluate the given modules, run all tests declared with 'Deno.test()' and
@@ -2796,21 +2792,18 @@ Note: running multiple `deno test --clean` calls in series or parallel for the s
 }
 
 fn types_subcommand() -> Command {
-  Command::new("types")
-    .about("Print runtime TypeScript declarations")
-    .long_about(
-      "Print runtime TypeScript declarations.
+  Command::new("types").about(
+    "Print runtime TypeScript declarations.
 
   deno types > lib.deno.d.ts
 
 The declaration file could be saved and used for typing information.",
-    )
+  )
 }
 
 fn upgrade_subcommand() -> Command {
   Command::new("upgrade")
-    .about("Upgrade deno executable to given version")
-    .long_about(
+    .about(
       "Upgrade deno executable to the given version.
 Defaults to latest.
 
@@ -2865,8 +2858,7 @@ update to a different location, use the --output flag
 fn vendor_subcommand() -> Command {
   Command::new("vendor")
       .hide(true)
-      .about("Vendor remote modules into a local directory")
-      .long_about(
+      .about(
         "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.
 Add `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.
 
@@ -3061,6 +3053,7 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("HOSTNAMES")
+        .hide(true)
         .help("DANGER: Disables verification of TLS certificates")
         .value_parser(flags_net::validator),
     )
@@ -3339,6 +3332,7 @@ fn frozen_lockfile_arg() -> Arg {
     .long("frozen")
     .alias("frozen-lockfile")
     .value_parser(value_parser!(bool))
+    .value_name("BOOLEAN")
     .num_args(0..=1)
     .require_equals(true)
     .default_missing_value("true")
@@ -3402,6 +3396,7 @@ fn v8_flags_arg() -> Arg {
     .num_args(..)
     .use_value_delimiter(true)
     .require_equals(true)
+    .value_name("V8_FLAGS")
     .help("Set V8 command line options")
     .long_help("To see a list of all available flags use --v8-flags=--help.
     Any flags set with this flag are appended after the DENO_V8_FLAGS environmental variable")
@@ -3630,6 +3625,7 @@ fn node_modules_dir_arg() -> Arg {
     .long("node-modules-dir")
     .num_args(0..=1)
     .value_parser(value_parser!(bool))
+    .value_name("DIRECTORY")
     .default_missing_value("true")
     .require_equals(true)
     .help("Enables or disables the use of a local node_modules folder for npm packages")
@@ -3642,7 +3638,10 @@ fn vendor_arg() -> Arg {
     .value_parser(value_parser!(bool))
     .default_missing_value("true")
     .require_equals(true)
-    .help("UNSTABLE: Enables or disables the use of a local vendor folder\nfor remote modules and node_modules folder for npm packages")
+    .help(
+      "UNSTABLE: Enables or disables the use of a local vendor folder
+for remote modules and node_modules folder for npm packages",
+    )
 }
 
 fn allow_scripts_arg() -> Arg {
@@ -4092,7 +4091,6 @@ fn json_reference_parse(
 
     let name = command.get_name().to_string();
     let about = command.get_about().map(|about| about.to_string());
-    let long_about = command.get_long_about().map(|about| about.to_string());
     let visible_aliases = command
       .get_visible_aliases()
       .map(|s| s.to_string())
@@ -4107,7 +4105,6 @@ fn json_reference_parse(
     json!({
       "name": name,
       "about": about,
-      "long_about": long_about,
       "visible_aliases": visible_aliases,
       "args": args,
       "subcommands": subcommands,
