@@ -5343,6 +5343,8 @@ async fn listen_tls_alpn_fail() {
   assert!(status.success());
 }
 
+// Couldn't get the directory readonly on windows on the CI
+// so gave up because this being tested on unix is good enough
 #[cfg(unix)]
 #[test]
 fn emit_failed_readonly_file_system() {
