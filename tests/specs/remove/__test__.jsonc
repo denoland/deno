@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": ["add", "@std/archive", "@std/yaml"],
+    "output": "Add @std/dotenv - jsr:@std/dotenv@[WILDLINE]\nAdd @std/yaml - jsr:@std/yaml@@[WILDLINE]\n"
+  }, {
+    "args": ["remove", "@std/yaml", "@std/archive"],
+    "output": "Removed @std/yaml - jsr:@std/yaml@@[WILDLINE]\nRemoved @std/archive - jsr:@std/archive@[WILDLINE]\n"
+  }]
+}

@@ -84,6 +84,11 @@ pub struct AddFlags {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct RemoveFlags {
+  pub packages: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BenchFlags {
   pub files: FileFlags,
   pub filter: Option<String>,
@@ -413,6 +418,7 @@ pub struct PublishFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Add(AddFlags),
+  Remove(RemoveFlags),
   Bench(BenchFlags),
   Bundle(BundleFlags),
   Cache(CacheFlags),
@@ -1188,6 +1194,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   if let Some((subcommand, mut m)) = matches.remove_subcommand() {
     match subcommand.as_str() {
       "add" => add_parse(&mut flags, &mut m),
+      "remove" => remove_parse(&mut flags, &mut m),
       "bench" => bench_parse(&mut flags, &mut m),
       "bundle" => bundle_parse(&mut flags, &mut m),
       "cache" => cache_parse(&mut flags, &mut m),
@@ -1355,6 +1362,7 @@ fn clap_root() -> Command {
     .defer(|cmd| {
       cmd
         .subcommand(add_subcommand())
+        .subcommand(remove_subcommand())
         .subcommand(bench_subcommand())
         .subcommand(bundle_subcommand())
         .subcommand(cache_subcommand())
@@ -1405,6 +1413,30 @@ You can add multiple dependencies at once:
       cmd.arg(
         Arg::new("packages")
           .help("List of packages to add")
+          .required(true)
+          .num_args(1..)
+          .action(ArgAction::Append),
+      )
+    })
+}
+
+fn remove_subcommand() -> Command {
+  Command::new("remove")
+    .about("Remove dependencies")
+    .long_about(
+      "Remove dependencies from the configuration file.
+
+  deno remove @std/path
+
+You can remove multiple dependencies at once:
+
+  deno remove @std/path @std/assert
+",
+    )
+    .defer(|cmd| {
+      cmd.arg(
+        Arg::new("packages")
+          .help("List of packages to remove")
           .required(true)
           .num_args(1..)
           .action(ArgAction::Append),
@@ -3806,6 +3838,12 @@ fn add_parse_inner(
     .unwrap_or_else(|| matches.remove_many::<String>("packages").unwrap())
     .collect();
   AddFlags { packages }
+}
+
+fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.subcommand = DenoSubcommand::Remove(RemoveFlags {
+    packages: matches.remove_many::<String>("packages").unwrap().collect(),
+  });
 }
 
 fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -10077,6 +10115,35 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Add(AddFlags {
+          packages: svec!["@david/which", "@luca/hello"],
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn remove_subcommand() {
+    let r = flags_from_vec(svec!["deno", "remove"]);
+    r.unwrap_err();
+
+    let r = flags_from_vec(svec!["deno", "remove", "@david/which"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Remove(RemoveFlags {
+          packages: svec!["@david/which"],
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r =
+      flags_from_vec(svec!["deno", "remove", "@david/which", "@luca/hello"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Remove(RemoveFlags {
           packages: svec!["@david/which", "@luca/hello"],
         }),
         ..Flags::default()

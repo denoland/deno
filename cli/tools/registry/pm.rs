@@ -23,6 +23,7 @@ use jsonc_parser::ast::Value;
 use crate::args::AddFlags;
 use crate::args::CacheSetting;
 use crate::args::Flags;
+use crate::args::RemoveFlags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::jsr::JsrFetchResolver;
@@ -463,6 +464,19 @@ fn generate_imports(packages_to_version: Vec<(String, String)>) -> String {
     }
   }
   contents.join("\n")
+}
+
+pub async fn remove(
+  flags: Arc<Flags>,
+  remove_flags: RemoveFlags,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags.clone());
+  let options = factory.cli_options()?;
+  let start_dir = &options.start_dir;
+
+  if let Some(deno_json) = start_dir.maybe_deno_json() {}
+
+  if let Some(pkg_json) = start_dir.maybe_pkg_json() {}
 }
 
 fn update_config_file_content(
