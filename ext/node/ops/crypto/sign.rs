@@ -12,6 +12,7 @@ use rand::rngs::OsRng;
 use rsa::signature::hazmat::PrehashSigner as _;
 use rsa::signature::hazmat::PrehashVerifier as _;
 use rsa::traits::SignatureScheme as _;
+use sha2::Sha512;
 use spki::der::Decode;
 
 use crate::ops::crypto::digest::match_fixed_digest;
@@ -157,17 +158,25 @@ impl KeyObjectHandle {
           )));
         }
 
-        let mut precomputed_digest = PrecomputedDigest([0; 64]);
-        if digest.len() != precomputed_digest.0.len() {
-          return Err(type_error("Invalid sha512 digest"));
-        }
-        precomputed_digest.0.copy_from_slice(digest);
+        // let mut precomputed_digest = PrecomputedDigest([0; 64]);
+        // if digest.len() != precomputed_digest.0.len() {
+        //   return Err(type_error("Invalid sha512 digest"));
+        // }
+        // precomputed_digest.0.copy_from_slice(digest);
+
+        let mut precomputed_digest = Sha512::new();
+        Digest::update(&mut precomputed_digest, b"Hello, world!");
 
         let signature = key
           .sign_prehashed(precomputed_digest, None)
           .map_err(|_| generic_error("failed to sign digest with Ed25519"))?;
 
-        Ok(signature.to_bytes().into())
+        let mut bytes = signature.to_bytes().to_vec();
+        for byte in bytes.iter_mut() {
+          *byte = byte.swap_bytes();
+        }
+
+        Ok(bytes.into_boxed_slice())
       }
       AsymmetricPrivateKey::Dh(_) => {
         Err(type_error("DH key cannot be used for signing"))
