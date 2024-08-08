@@ -137,6 +137,8 @@ const _mappingRange = Symbol("[[mapping_range]]");
 const _mappedRanges = Symbol("[[mapped_ranges]]");
 const _mapMode = Symbol("[[map_mode]]");
 const _adapter = Symbol("[[adapter]]");
+const _adapterInfo = Symbol("[[adapterInfo]]");
+const _invalid = Symbol("[[invalid]]");
 const _cleanup = Symbol("[[cleanup]]");
 const _vendor = Symbol("[[vendor]]");
 const _architecture = Symbol("[[architecture]]");
@@ -414,14 +416,17 @@ function createGPUAdapter(inner) {
     features: createGPUSupportedFeatures(inner.features),
     limits: createGPUSupportedLimits(inner.limits),
   };
+  adapter[_adapterInfo] = undefined;
+  adapter[_invalid] = false;
   return adapter;
 }
 
-const _invalid = Symbol("[[invalid]]");
 class GPUAdapter {
   /** @type {InnerGPUAdapter} */
   [_adapter];
-  /** @type {bool} */
+  /** @type {GPUAdapterInfo | undefined} */
+  [_adapterInfo];
+  /** @type {boolean} */
   [_invalid];
 
   /** @returns {GPUSupportedFeatures} */
@@ -437,7 +442,7 @@ class GPUAdapter {
   /** @returns {boolean} */
   get isFallbackAdapter() {
     webidl.assertBranded(this, GPUAdapterPrototype);
-    return this[_adapter].isFallbackAdapter;
+    return this[_adapter].isFallback;
   }
 
   constructor() {
@@ -502,10 +507,14 @@ class GPUAdapter {
   }
 
   /**
-   * @returns {Promise<GPUAdapterInfo>}
+   * @returns {GPUAdapterInfo}
    */
-  requestAdapterInfo() {
+  get info() {
     webidl.assertBranded(this, GPUAdapterPrototype);
+
+    if (this[_adapterInfo] !== undefined) {
+      return this[_adapterInfo];
+    }
 
     if (this[_invalid]) {
       throw new TypeError(
@@ -525,7 +534,8 @@ class GPUAdapter {
     adapterInfo[_architecture] = architecture;
     adapterInfo[_device] = device;
     adapterInfo[_description] = description;
-    return PromiseResolve(adapterInfo);
+    this[_adapterInfo] = adapterInfo;
+    return adapterInfo;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -536,6 +546,7 @@ class GPUAdapter {
         keys: [
           "features",
           "limits",
+          "info",
           "isFallbackAdapter",
         ],
       }),
@@ -930,7 +941,6 @@ function GPUObjectBaseMixin(name, type) {
  * @property {number | undefined} rid
  * @property {GPUSupportedFeatures} features
  * @property {GPUSupportedLimits} limits
- * @property {GPUDevice} device
  */
 
 class InnerGPUDevice {

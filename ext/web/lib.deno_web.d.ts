@@ -306,9 +306,24 @@ declare interface TextDecodeOptions {
   stream?: boolean;
 }
 
-/** @category Encoding */
+/**
+ * Represents a decoder for a specific text encoding, allowing you to convert
+ * binary data into a string given the encoding.
+ *
+ * @example
+ * ```ts
+ * const decoder = new TextDecoder('utf-8');
+ * const buffer = new Uint8Array([72, 101, 108, 108, 111]);
+ * const decodedString = decoder.decode(buffer);
+ * console.log(decodedString); // Outputs: "Hello"
+ * ```
+ *
+ * @category Encoding
+ */
 declare interface TextDecoder extends TextDecoderCommon {
-  /** Returns the result of running encoding's decoder. */
+  /** Turns binary data, often in the form of a Uint8Array, into a string given
+   * the encoding.
+   */
   decode(input?: BufferSource, options?: TextDecodeOptions): string;
 }
 
@@ -338,6 +353,27 @@ declare interface TextEncoderEncodeIntoResult {
 declare interface TextEncoder extends TextEncoderCommon {
   /** Returns the result of running UTF-8's encoder. */
   encode(input?: string): Uint8Array;
+  encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
+}
+/**
+ * Allows you to convert a string into binary data (in the form of a Uint8Array)
+ * given the encoding.
+ *
+ * @example
+ * ```ts
+ * const encoder = new TextEncoder();
+ * const str = "Hello";
+ * const encodedData = encoder.encode(str);
+ * console.log(encodedData); // Outputs: Uint8Array(5) [72, 101, 108, 108, 111]
+ * ```
+ *
+ * @category Encoding
+ */
+declare interface TextEncoder extends TextEncoderCommon {
+  /** Turns a string into binary data (in the form of a Uint8Array) using UTF-8 encoding. */
+  encode(input?: string): Uint8Array;
+
+  /** Encodes a string into the destination Uint8Array and returns the result of the encoding. */
   encodeInto(input: string, dest: Uint8Array): TextEncoderEncodeIntoResult;
 }
 

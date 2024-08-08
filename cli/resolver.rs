@@ -535,6 +535,9 @@ impl Resolver for CliGraphResolver {
         MappedResolutionError::ImportMap(err) => {
           ResolveError::Other(err.into())
         }
+        MappedResolutionError::Workspace(err) => {
+          ResolveError::Other(err.into())
+        }
       });
     let result = match result {
       Ok(resolution) => match resolution {
@@ -551,6 +554,9 @@ impl Resolver for CliGraphResolver {
           } else {
             Ok(specifier)
           }
+        }
+        MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
+          Ok(specifier)
         }
         MappedResolution::WorkspaceNpmPackage {
           target_pkg_json: pkg_json,

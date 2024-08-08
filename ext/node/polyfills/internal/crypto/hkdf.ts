@@ -18,13 +18,12 @@ import {
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
 import {
+  kHandle,
   toBuf,
   validateByteSource,
 } from "ext:deno_node/internal/crypto/util.ts";
 import {
   createSecretKey,
-  getKeyMaterial,
-  isKeyObject,
   KeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
 import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
@@ -33,10 +32,11 @@ import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
+import { isKeyObject } from "ext:deno_node/internal/crypto/_keys.ts";
 
 const validateParameters = hideStackFrames((hash, key, salt, info, length) => {
   validateString(hash, "digest");
-  key = getKeyMaterial(prepareKey(key));
+  key = prepareKey(key);
   validateByteSource(salt, "salt");
   validateByteSource(info, "info");
 
@@ -111,7 +111,7 @@ export function hkdf(
 
   hash = hash.toLowerCase();
 
-  op_node_hkdf_async(hash, key, salt, info, length)
+  op_node_hkdf_async(hash, key[kHandle], salt, info, length)
     .then((okm) => callback(null, okm.buffer))
     .catch((err) => callback(new ERR_CRYPTO_INVALID_DIGEST(err), undefined));
 }
@@ -135,7 +135,7 @@ export function hkdfSync(
 
   const okm = new Uint8Array(length);
   try {
-    op_node_hkdf(hash, key, salt, info, okm);
+    op_node_hkdf(hash, key[kHandle], salt, info, okm);
   } catch (e) {
     throw new ERR_CRYPTO_INVALID_DIGEST(e);
   }

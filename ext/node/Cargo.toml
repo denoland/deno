@@ -20,6 +20,7 @@ sync_fs = ["deno_package_json/sync", "node_resolver/sync"]
 aead-gcm-stream = "0.1"
 aes.workspace = true
 async-trait.workspace = true
+base64.workspace = true
 blake2 = "0.10.6"
 brotli.workspace = true
 bytes.workspace = true
@@ -35,9 +36,11 @@ deno_net.workspace = true
 deno_package_json.workspace = true
 deno_permissions.workspace = true
 deno_whoami = "0.1.0"
+der = { version = "0.7.9", features = ["derive"] }
 digest = { version = "0.10.5", features = ["core-api", "std"] }
 dsa = "0.6.1"
 ecb.workspace = true
+ed25519-dalek = { version = "2.1.1", features = ["digest", "pkcs8", "rand_core", "signature"] }
 elliptic-curve.workspace = true
 errno = "0.2.8"
 faster-hex.workspace = true
@@ -70,6 +73,7 @@ p384.workspace = true
 path-clean = "=0.1.0"
 pbkdf2 = "0.12.1"
 pin-project-lite = "0.2.13"
+pkcs8 = { version = "0.10.2", features = ["std", "pkcs5", "encryption"] }
 rand.workspace = true
 regex.workspace = true
 ring.workspace = true
@@ -89,8 +93,9 @@ thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
 winapi.workspace = true
-x25519-dalek = "2.0.0"
+x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 x509-parser = "0.15.0"
+yoke = "0.7.4"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true
