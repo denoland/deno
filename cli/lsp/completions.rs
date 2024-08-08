@@ -18,6 +18,7 @@ use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
 use deno_graph::source::ResolutionMode;
 use deno_graph::Range;
+use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_runtime::fs_util::specifier_to_file_path;
 
 use deno_ast::LineAndColumnIndex;
@@ -192,6 +193,8 @@ pub async fn get_import_completions(
     get_npm_completions(specifier, &text, &range, npm_search_api).await
   {
     Some(lsp::CompletionResponse::List(completion_list))
+  } else if let Some(completion_list) = get_node_completions(&text, &range) {
+    Some(lsp::CompletionResponse::List(completion_list))
   } else if let Some(completion_list) =
     get_import_map_completions(specifier, &text, &range, maybe_import_map)
   {
@@ -215,16 +218,13 @@ pub async fn get_import_completions(
       module_registries,
     )
     .await;
-    let offset = if position.character > range.start.character {
-      (position.character - range.start.character) as usize
-    } else {
-      0
-    };
     let maybe_list = module_registries
-      .get_completions(&text, offset, &range, |s| {
+      .get_completions(&text, &range, resolved.as_ref(), |s| {
         documents.exists(s, file_referrer)
       })
       .await;
+    let maybe_list = maybe_list
+      .or_else(|| module_registries.get_origin_completions(&text, &range));
     let list = maybe_list.unwrap_or_else(|| CompletionList {
       items: get_workspace_completions(specifier, &text, &range, documents),
       is_incomplete: false,
@@ -731,6 +731,40 @@ async fn get_npm_completions(
     .collect();
   Some(CompletionList {
     is_incomplete: true,
+    items,
+  })
+}
+
+/// Get completions for `node:` specifiers.
+fn get_node_completions(
+  specifier: &str,
+  range: &lsp::Range,
+) -> Option<CompletionList> {
+  if !specifier.starts_with("node:") {
+    return None;
+  }
+  let items = SUPPORTED_BUILTIN_NODE_MODULES
+    .iter()
+    .map(|name| {
+      let specifier = format!("node:{}", name);
+      let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+        range: *range,
+        new_text: specifier.clone(),
+      }));
+      lsp::CompletionItem {
+        label: specifier,
+        kind: Some(lsp::CompletionItemKind::FILE),
+        detail: Some("(node)".to_string()),
+        text_edit,
+        commit_characters: Some(
+          IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+        ),
+        ..Default::default()
+      }
+    })
+    .collect();
+  Some(CompletionList {
+    is_incomplete: false,
     items,
   })
 }

@@ -1976,14 +1976,17 @@ Deno.test(
       },
     });
 
-    const err = await assertRejects(() =>
-      fetch(`http://localhost:${listenPort}/`, {
-        body: stream,
-        method: "POST",
-      })
+    const url = `http://localhost:${listenPort}/`;
+    const err = await assertRejects(
+      () =>
+        fetch(url, {
+          body: stream,
+          method: "POST",
+        }),
+      TypeError,
+      `error sending request for url (${url}): client error (SendRequest): error from user's Body stream`,
     );
 
-    assert(err instanceof TypeError, `err was not a TypeError ${err}`);
     assert(err.cause, `err.cause was null ${err}`);
     assert(
       err.cause instanceof Error,
@@ -2060,3 +2063,14 @@ Deno.test("URL authority is used as 'Authorization' header", async () => {
   await server.finished;
   assertEquals(authHeader, "Basic ZGVubzpsYW5k");
 });
+
+Deno.test(
+  { permissions: { net: true } },
+  async function errorMessageIncludesUrlAndDetails() {
+    await assertRejects(
+      () => fetch("http://example.invalid"),
+      TypeError,
+      "error sending request for url (http://example.invalid/): client error (Connect): dns error: ",
+    );
+  },
+);
