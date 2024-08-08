@@ -47,6 +47,7 @@ import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js"
 export {
   callbackify,
   debuglog,
+  debuglog as debug,
   format,
   formatWithOptions,
   inspect,
@@ -179,6 +180,7 @@ import {
   _TextEncoder,
   getSystemErrorName,
 } from "ext:deno_node/_utils.ts";
+import { debug } from "node:console";
 
 /** The global TextDecoder */
 export type TextDecoder = import("./_utils.ts")._TextDecoder;
@@ -321,5 +323,6 @@ export default {
   toUSVString,
   log,
   debuglog,
+  debug: debuglog,
   isDeepStrictEqual,
 };
