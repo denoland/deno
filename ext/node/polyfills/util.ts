@@ -180,7 +180,6 @@ import {
   _TextEncoder,
   getSystemErrorName,
 } from "ext:deno_node/_utils.ts";
-import { debug } from "node:console";
 
 /** The global TextDecoder */
 export type TextDecoder = import("./_utils.ts")._TextDecoder;
