@@ -417,6 +417,7 @@ pub enum DenoSubcommand {
   Bundle(BundleFlags),
   Cache(CacheFlags),
   Check(CheckFlags),
+  Clean,
   Compile(CompileFlags),
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
@@ -1192,6 +1193,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "bundle" => bundle_parse(&mut flags, &mut m),
       "cache" => cache_parse(&mut flags, &mut m),
       "check" => check_parse(&mut flags, &mut m),
+      "clean" => clean_parse(&mut flags, &mut m),
       "compile" => compile_parse(&mut flags, &mut m),
       "completions" => completions_parse(&mut flags, &mut m, app),
       "coverage" => coverage_parse(&mut flags, &mut m),
@@ -1359,6 +1361,7 @@ fn clap_root() -> Command {
         .subcommand(bundle_subcommand())
         .subcommand(cache_subcommand())
         .subcommand(check_subcommand())
+        .subcommand(clean_subcommand())
         .subcommand(compile_subcommand())
         .subcommand(completions_subcommand())
         .subcommand(coverage_subcommand())
@@ -1531,6 +1534,10 @@ Future runs of this module will trigger no downloads or compilation unless
         .arg(frozen_lockfile_arg())
         .arg(allow_scripts_arg())
     })
+}
+
+fn clean_subcommand() -> Command {
+  Command::new("clean").about("Remove the cache directory ($DENO_DIR)")
 }
 
 fn check_subcommand() -> Command {
@@ -3889,6 +3896,10 @@ fn check_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     flags.type_check_mode = TypeCheckMode::All;
   }
   flags.subcommand = DenoSubcommand::Check(CheckFlags { files });
+}
+
+fn clean_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
+  flags.subcommand = DenoSubcommand::Clean;
 }
 
 fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
