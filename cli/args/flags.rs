@@ -3255,9 +3255,7 @@ fn inspect_args(app: Command) -> Command {
 
 static IMPORT_MAP_HELP: &str = concat!(
   "Load import map file from local file or remote URL.
-Docs: https://docs.deno.com/runtime/manual/basics/import_maps
-Specification: https://wicg.github.io/import-maps/
-Examples: https://github.com/WICG/import-maps#the-import-map",
+Docs: https://docs.deno.com/runtime/manual/basics/import_maps",
 );
 
 fn import_map_arg() -> Arg {
@@ -3293,12 +3291,12 @@ fn reload_arg() -> Arg {
     .long("reload")
     .value_name("CACHE_BLOCKLIST")
     .help(
-      "Reload source code cache (recompile TypeScript)
-no value                                                 Reload everything
+      color_print::cstr!("Reload source code cache (recompile TypeScript)
+<w>no value                                                 Reload everything
 jsr:@std/http/file-server,jsr:@std/assert/assert-equals  Reloads specific modules
 npm:                                                     Reload all npm modules
-npm:chalk                                                Reload specific npm module",
-    )
+npm:chalk                                                Reload specific npm module</>",
+    ))
     .value_hint(ValueHint::FilePath)
     .value_parser(reload_arg_validate)
 }
