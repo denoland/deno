@@ -257,13 +257,14 @@ pub fn op_node_cipheriv_encrypt(
 pub fn op_node_cipheriv_final(
   state: &mut OpState,
   #[smi] rid: u32,
+  auto_pad: bool,
   #[buffer] input: &[u8],
   #[buffer] output: &mut [u8],
 ) -> Result<Option<Vec<u8>>, AnyError> {
   let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| type_error("Cipher context is already in use"))?;
-  context.r#final(input, output)
+  context.r#final(auto_pad, input, output)
 }
 
 #[op2(fast)]

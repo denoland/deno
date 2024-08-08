@@ -163,6 +163,8 @@ export class Cipheriv extends Transform implements Cipher {
 
   #authTag?: Buffer;
 
+  #autoPadding = true;
+
   constructor(
     cipher: string,
     key: CipherKey,
@@ -191,8 +193,12 @@ export class Cipheriv extends Transform implements Cipher {
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
     const buf = new Buffer(16);
+    if (this.#autoPadding && this.#cache.cache.byteLength != 16) {
+      throw new Error("Invalid final block size");
+    }
     const maybeTag = op_node_cipheriv_final(
       this.#context,
+      this.#autoPadding,
       this.#cache.cache,
       buf,
     );
@@ -217,8 +223,8 @@ export class Cipheriv extends Transform implements Cipher {
     return this;
   }
 
-  setAutoPadding(_autoPadding?: boolean): this {
-    notImplemented("crypto.Cipheriv.prototype.setAutoPadding");
+  setAutoPadding(autoPadding?: boolean): this {
+    this.#autoPadding = !!autoPadding;
     return this;
   }
 
