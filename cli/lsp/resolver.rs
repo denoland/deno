@@ -420,9 +420,14 @@ impl LspResolver {
     };
     self
       .by_scope
-      .iter()
-      .rfind(|(s, _)| file_referrer.as_str().starts_with(s.as_str()))
-      .map(|(_, r)| r.as_ref())
+      .values()
+      .rfind(|r| {
+        r.config_data
+          .as_ref()
+          .map(|d| d.scope_contains_specifier(file_referrer))
+          .unwrap_or(false)
+      })
+      .map(|r| r.as_ref())
       .unwrap_or(self.unscoped.as_ref())
   }
 }
