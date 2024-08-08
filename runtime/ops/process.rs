@@ -236,6 +236,7 @@ fn create_pipe(
     #[cfg(target_os = "macos")]
     let flags = 0;
 
+    // SAFETY: libc call, fds are correct size+align
     let ret = unsafe {
       libc::socketpair(
         libc::AF_UNIX,
@@ -250,11 +251,13 @@ fn create_pipe(
 
     if cfg!(target_os = "macos") {
       let fcntl = |fd: i32, flag: libc::c_int| -> Result<(), std::io::Error> {
-        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL, 0) };
+        // SAFETY: libc call, fd is valid
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
 
         if flags == -1 {
           return Err(fail(fds));
         }
+        // SAFETY: libc call, fd is valid
         let ret = unsafe { libc::fcntl(fd, libc::F_SETFL, flags | flag) };
         if ret == -1 {
           return Err(fail(fds));
@@ -263,6 +266,7 @@ fn create_pipe(
       };
 
       fn fail(fds: [i32; 2]) -> std::io::Error {
+        // SAFETY: libc call, fds are valid
         unsafe {
           libc::close(fds[0]);
           libc::close(fds[1]);

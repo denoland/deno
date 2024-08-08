@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 use std::rc::Rc;
 
 use deno_core::error::AnyError;
@@ -157,9 +159,8 @@ impl
 fn from_raw(
   stream: RawBiPipeHandle,
 ) -> Result<(BiPipeRead, BiPipeWrite), std::io::Error> {
-  // Safety: The fd is part of a pair of connected sockets created by child process
-  // implementation.
   use std::os::fd::FromRawFd;
+  // Safety: The fd is part of a pair of connected sockets
   let unix_stream = tokio::net::UnixStream::from_std(unsafe {
     std::os::unix::net::UnixStream::from_raw_fd(stream)
   })?;
