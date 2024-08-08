@@ -3137,6 +3137,7 @@ fn permission_args(app: Command) -> Command {
     .arg(
       Arg::new("allow-read")
         .long("allow-read")
+        .short('R')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
@@ -3159,6 +3160,7 @@ fn permission_args(app: Command) -> Command {
     .arg(
       Arg::new("allow-write")
         .long("allow-write")
+        .short('W')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
@@ -3181,6 +3183,7 @@ fn permission_args(app: Command) -> Command {
     .arg(
       Arg::new("allow-net")
         .long("allow-net")
+        .short('N')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
@@ -3202,6 +3205,7 @@ fn permission_args(app: Command) -> Command {
     .arg(
       Arg::new("allow-env")
         .long("allow-env")
+        .short('E')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
@@ -3242,6 +3246,7 @@ fn permission_args(app: Command) -> Command {
     .arg(
       Arg::new("allow-sys")
         .long("allow-sys")
+        .short('S')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
@@ -5688,6 +5693,26 @@ mod tests {
         )),
         permissions: PermissionFlags {
           allow_read: Some(vec![]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn short_permission_flags() {
+    let r = flags_from_vec(svec!["deno", "run", "-RW", "gist.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "gist.ts".to_string()
+        )),
+        permissions: PermissionFlags {
+          allow_read: Some(vec![]),
+          allow_write: Some(vec![]),
           ..Default::default()
         },
         code_cache_enabled: true,
