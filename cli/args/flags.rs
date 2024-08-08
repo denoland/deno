@@ -5190,7 +5190,6 @@ mod tests {
 
     let r = flags_from_vec(svec![
       "deno",
-      "run",
       "--watch",
       "--no-clear-screen",
       "script.ts"
@@ -5270,8 +5269,7 @@ mod tests {
 
   #[test]
   fn run_watch_with_external() {
-    let r =
-      flags_from_vec(svec!["deno", "run", "--watch=file1,file2", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "--watch=file1,file2", "script.ts"]);
     let flags = r.unwrap();
     assert_eq!(
       flags,
@@ -5324,7 +5322,6 @@ mod tests {
   fn run_watch_with_excluded_paths() {
     let r = flags_from_vec(svec!(
       "deno",
-      "run",
       "--watch",
       "--watch-exclude=foo",
       "script.ts"
@@ -5401,7 +5398,6 @@ mod tests {
 
     let r = flags_from_vec(svec![
       "deno",
-      "run",
       "--watch=foo,bar",
       "--watch-exclude=baz,qux",
       "script.ts"
@@ -5637,7 +5633,7 @@ mod tests {
 
   #[test]
   fn has_permission() {
-    let r = flags_from_vec(svec!["deno", "run", "--allow-read", "x.ts"]);
+    let r = flags_from_vec(svec!["deno", "--allow-read", "x.ts"]);
     assert_eq!(r.unwrap().has_permission(), true);
 
     let r = flags_from_vec(svec!["deno", "run", "--deny-read", "x.ts"]);
@@ -5652,7 +5648,7 @@ mod tests {
     let r = flags_from_vec(svec!["deno", "run", "x.ts", "--allow-read"]);
     assert_eq!(r.unwrap().has_permission_in_argv(), true);
 
-    let r = flags_from_vec(svec!["deno", "run", "x.ts", "--deny-read"]);
+    let r = flags_from_vec(svec!["deno", "x.ts", "--deny-read"]);
     assert_eq!(r.unwrap().has_permission_in_argv(), true);
 
     let r = flags_from_vec(svec!["deno", "run", "x.ts"]);
@@ -5734,7 +5730,7 @@ mod tests {
 
   #[test]
   fn deny_read() {
-    let r = flags_from_vec(svec!["deno", "run", "--deny-read", "gist.ts"]);
+    let r = flags_from_vec(svec!["deno", "--deny-read", "gist.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6982,8 +6978,7 @@ mod tests {
 
   #[test]
   fn deny_net_denylist() {
-    let r =
-      flags_from_vec(svec!["deno", "run", "--deny-net=127.0.0.1", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "--deny-net=127.0.0.1", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7089,8 +7084,7 @@ mod tests {
     let r =
       flags_from_vec(svec!["deno", "run", "--allow-env=HOME", "script.ts"]);
     assert!(r.is_ok());
-    let r =
-      flags_from_vec(svec!["deno", "run", "--allow-env=H=ME", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "--allow-env=H=ME", "script.ts"]);
     assert!(r.is_err());
     let r =
       flags_from_vec(svec!["deno", "run", "--allow-env=H\0ME", "script.ts"]);
@@ -7105,8 +7099,7 @@ mod tests {
     let r =
       flags_from_vec(svec!["deno", "run", "--deny-env=H=ME", "script.ts"]);
     assert!(r.is_err());
-    let r =
-      flags_from_vec(svec!["deno", "run", "--deny-env=H\0ME", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "--deny-env=H\0ME", "script.ts"]);
     assert!(r.is_err());
   }
 
@@ -7170,8 +7163,7 @@ mod tests {
 
   #[test]
   fn deny_sys_denylist() {
-    let r =
-      flags_from_vec(svec!["deno", "run", "--deny-sys=hostname", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "--deny-sys=hostname", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7321,7 +7313,7 @@ mod tests {
       flags_from_vec(svec!["deno", "run", "--reload=/absolute", "script.ts"]);
     assert!(r.is_err(), "Should reject absolute urls");
 
-    let r = flags_from_vec(svec!["deno", "run", "--reload=/", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "--reload=/", "script.ts"]);
     assert!(r.is_err(), "Should reject absolute root url");
 
     let r = flags_from_vec(svec!["deno", "run", "--reload=", "script.ts"]);
@@ -7634,8 +7626,7 @@ mod tests {
 
   #[test]
   fn run_no_code_cache() {
-    let r =
-      flags_from_vec(svec!["deno", "run", "--no-code-cache", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "--no-code-cache", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7864,7 +7855,7 @@ mod tests {
 
   #[test]
   fn quiet() {
-    let r = flags_from_vec(svec!["deno", "run", "-q", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "-q", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7982,7 +7973,7 @@ mod tests {
 
   #[test]
   fn no_check() {
-    let r = flags_from_vec(svec!["deno", "run", "--no-check", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "--no-check", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8148,8 +8139,7 @@ mod tests {
 
   #[test]
   fn local_npm() {
-    let r =
-      flags_from_vec(svec!["deno", "run", "--node-modules-dir", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "--node-modules-dir", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -8382,7 +8372,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "run", "--no-lock", "script.ts"]);
+    let r = flags_from_vec(svec!["deno", "--no-lock", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -9307,7 +9297,7 @@ mod tests {
 
   #[test]
   fn inspect_wait() {
-    let r = flags_from_vec(svec!["deno", "run", "--inspect-wait", "foo.js"]);
+    let r = flags_from_vec(svec!["deno", "--inspect-wait", "foo.js"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -9497,8 +9487,7 @@ mod tests {
     );
 
     let flags =
-      flags_from_vec(svec!["deno", "run", "https://example.com/foo.js"])
-        .unwrap();
+      flags_from_vec(svec!["deno", "https://example.com/foo.js"]).unwrap();
     assert_eq!(flags.config_path_args(&cwd), None);
 
     let flags =
@@ -9906,7 +9895,7 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "run", "--check=foo", "script.ts",]);
+    let r = flags_from_vec(svec!["deno", "--check=foo", "script.ts",]);
     assert_eq!(
       r.unwrap(),
       Flags {
