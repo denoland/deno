@@ -5346,8 +5346,8 @@ async fn listen_tls_alpn_fail() {
 #[test]
 fn emit_failed_readonly_file_system() {
   let context = TestContextBuilder::default().use_temp_cwd().build();
-  context.deno_dir().path().make_dir_readonly();
-  let temp_dir = context.temp_dir().path();
+  context.deno_dir().path().canonicalize().make_dir_readonly();
+  let temp_dir = context.temp_dir().path().canonicalize();
   temp_dir.join("main.ts").write("import './other.ts';");
   temp_dir.join("other.ts").write("console.log('hi');");
   let output = context
