@@ -134,6 +134,7 @@ deno_core::extension!(
     buffer::op_webgpu_create_buffer,
     buffer::op_webgpu_buffer_get_mapped_range,
     buffer::op_webgpu_buffer_unmap,
+    buffer::op_webgpu_buffer_get_map_blocking,
     // buffer async
     buffer::op_webgpu_buffer_get_map_async,
     // remaining sync ops
@@ -211,6 +212,7 @@ deno_core::extension!(
     queue::op_webgpu_queue_submit,
     queue::op_webgpu_write_buffer,
     queue::op_webgpu_write_texture,
+    queue::op_webgpu_queue_on_submitted_work_done,
     // shader
     shader::op_webgpu_create_shader_module,
     // surface

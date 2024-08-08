@@ -103,6 +103,7 @@ webidl.converters["ImageBitmapOptions"] = webidl.createDictionaryConverter(
   ],
 );
 
+/** images are stored as RGBA8 */
 const _bitmapData = Symbol("[[bitmapData]]");
 const _detached = Symbol("[[detached]]");
 class ImageBitmap {
@@ -351,4 +352,11 @@ function getBitmapData(imageBitmap) {
 
 internals.getBitmapData = getBitmapData;
 
-export { _bitmapData, _detached, createImageBitmap, ImageBitmap };
+export {
+  _bitmapData,
+  _detached,
+  _height,
+  _width,
+  createImageBitmap,
+  ImageBitmap,
+};

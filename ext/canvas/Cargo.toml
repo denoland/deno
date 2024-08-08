@@ -16,5 +16,5 @@ path = "lib.rs"
 [dependencies]
 deno_core.workspace = true
 deno_webgpu.workspace = true
-image = { version = "0.24.7", default-features = false, features = ["png"] }
+image = { version = "0.25.1", default-features = false, features = ["png"] }
 serde = { workspace = true, features = ["derive"] }
