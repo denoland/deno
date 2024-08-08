@@ -305,6 +305,8 @@ export class Decipheriv extends Transform implements Cipher {
   /** DecipherContext resource id */
   #context: number;
 
+  #autoPadding = true;
+
   /** ciphertext data cache */
   #cache: BlockModeCache;
 
@@ -339,17 +341,21 @@ export class Decipheriv extends Transform implements Cipher {
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
+    if (!this.#needsBlockCache || this.#cache.cache.byteLength === 0) {
+      return encoding === "buffer" ? Buffer.from([]) : "";
+    }
+    if (this.#cache.cache.byteLength != 16) {
+      throw new Error("Invalid final block size");
+    }
+
     let buf = new Buffer(16);
     op_node_decipheriv_final(
       this.#context,
+      this.#autoPadding,
       this.#cache.cache,
       buf,
       this.#authTag || NO_TAG,
     );
-
-    if (!this.#needsBlockCache) {
-      return encoding === "buffer" ? Buffer.from([]) : "";
-    }
 
     buf = buf.subarray(0, 16 - buf.at(-1)); // Padded in Pkcs7 mode
     return encoding === "buffer" ? buf : buf.toString(encoding);
@@ -370,8 +376,9 @@ export class Decipheriv extends Transform implements Cipher {
     return this;
   }
 
-  setAutoPadding(_autoPadding?: boolean): this {
-    notImplemented("crypto.Decipheriv.prototype.setAutoPadding");
+  setAutoPadding(autoPadding?: boolean): this {
+    this.#autoPadding = Boolean(autoPadding);
+    return this;
   }
 
   update(

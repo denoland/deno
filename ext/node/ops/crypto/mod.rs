@@ -316,6 +316,7 @@ pub fn op_node_decipheriv_decrypt(
 pub fn op_node_decipheriv_final(
   state: &mut OpState,
   #[smi] rid: u32,
+  auto_pad: bool,
   #[buffer] input: &[u8],
   #[buffer] output: &mut [u8],
   #[buffer] auth_tag: &[u8],
@@ -323,7 +324,7 @@ pub fn op_node_decipheriv_final(
   let context = state.resource_table.take::<cipher::DecipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| type_error("Cipher context is already in use"))?;
-  context.r#final(input, output, auth_tag)
+  context.r#final(auto_pad, input, output, auth_tag)
 }
 
 #[op2]
