@@ -417,6 +417,7 @@ pub enum DenoSubcommand {
   Bundle(BundleFlags),
   Cache(CacheFlags),
   Check(CheckFlags),
+  Clean,
   Compile(CompileFlags),
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
@@ -1192,6 +1193,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "bundle" => bundle_parse(&mut flags, &mut m),
       "cache" => cache_parse(&mut flags, &mut m),
       "check" => check_parse(&mut flags, &mut m),
+      "clean" => clean_parse(&mut flags, &mut m),
       "compile" => compile_parse(&mut flags, &mut m),
       "completions" => completions_parse(&mut flags, &mut m, app),
       "coverage" => coverage_parse(&mut flags, &mut m),
@@ -1359,6 +1361,7 @@ fn clap_root() -> Command {
         .subcommand(bundle_subcommand())
         .subcommand(cache_subcommand())
         .subcommand(check_subcommand())
+        .subcommand(clean_subcommand())
         .subcommand(compile_subcommand())
         .subcommand(completions_subcommand())
         .subcommand(coverage_subcommand())
@@ -1531,6 +1534,10 @@ Future runs of this module will trigger no downloads or compilation unless
         .arg(frozen_lockfile_arg())
         .arg(allow_scripts_arg())
     })
+}
+
+fn clean_subcommand() -> Command {
+  Command::new("clean").about("Remove the cache directory ($DENO_DIR)")
 }
 
 fn check_subcommand() -> Command {
@@ -3130,6 +3137,7 @@ fn permission_args(app: Command) -> Command {
     .arg(
       Arg::new("allow-read")
         .long("allow-read")
+        .short('R')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
@@ -3152,6 +3160,7 @@ fn permission_args(app: Command) -> Command {
     .arg(
       Arg::new("allow-write")
         .long("allow-write")
+        .short('W')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
@@ -3174,6 +3183,7 @@ fn permission_args(app: Command) -> Command {
     .arg(
       Arg::new("allow-net")
         .long("allow-net")
+        .short('N')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
@@ -3195,6 +3205,7 @@ fn permission_args(app: Command) -> Command {
     .arg(
       Arg::new("allow-env")
         .long("allow-env")
+        .short('E')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
@@ -3235,6 +3246,7 @@ fn permission_args(app: Command) -> Command {
     .arg(
       Arg::new("allow-sys")
         .long("allow-sys")
+        .short('S')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
@@ -3398,8 +3410,9 @@ fn import_map_arg() -> Arg {
 }
 
 fn env_file_arg() -> Arg {
-  Arg::new("env")
-    .long("env")
+  Arg::new("env-file")
+    .long("env-file")
+    .alias("env")
     .value_name("FILE")
     .help("Load .env file")
     .long_help("UNSTABLE: Load environment variables from local file. Only the first environment variable with a given key is used. Existing process environment variables are not overwritten.")
@@ -3889,6 +3902,10 @@ fn check_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     flags.type_check_mode = TypeCheckMode::All;
   }
   flags.subcommand = DenoSubcommand::Check(CheckFlags { files });
+}
+
+fn clean_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
+  flags.subcommand = DenoSubcommand::Clean;
 }
 
 fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4792,7 +4809,7 @@ fn import_map_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn env_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.env_file = matches.remove_one::<String>("env");
+  flags.env_file = matches.remove_one::<String>("env-file");
 }
 
 fn reload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -5677,6 +5694,26 @@ mod tests {
         )),
         permissions: PermissionFlags {
           allow_read: Some(vec![]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn short_permission_flags() {
+    let r = flags_from_vec(svec!["deno", "run", "-RW", "gist.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "gist.ts".to_string()
+        )),
+        permissions: PermissionFlags {
+          allow_read: Some(vec![]),
+          allow_write: Some(vec![]),
           ..Default::default()
         },
         code_cache_enabled: true,
@@ -7570,8 +7607,24 @@ mod tests {
   }
 
   #[test]
-  fn run_env_file_default() {
+  fn run_env_default() {
     let r = flags_from_vec(svec!["deno", "run", "--env", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        env_file: Some(".env".to_owned()),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_env_file_default() {
+    let r = flags_from_vec(svec!["deno", "run", "--env-file", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7601,9 +7654,30 @@ mod tests {
   }
 
   #[test]
-  fn run_env_file_defined() {
+  fn run_env_defined() {
     let r =
       flags_from_vec(svec!["deno", "run", "--env=.another_env", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        env_file: Some(".another_env".to_owned()),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_env_file_defined() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--env-file=.another_env",
+      "script.ts"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {

@@ -164,7 +164,7 @@ struct CliFactoryServices {
   global_http_cache: Deferred<Arc<GlobalHttpCache>>,
   http_cache: Deferred<Arc<dyn HttpCache>>,
   http_client_provider: Deferred<Arc<HttpClientProvider>>,
-  emit_cache: Deferred<EmitCache>,
+  emit_cache: Deferred<Arc<EmitCache>>,
   emitter: Deferred<Arc<Emitter>>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
@@ -492,9 +492,9 @@ impl CliFactory {
       .get_or_init(|| maybe_file_watcher_reporter)
   }
 
-  pub fn emit_cache(&self) -> Result<&EmitCache, AnyError> {
+  pub fn emit_cache(&self) -> Result<&Arc<EmitCache>, AnyError> {
     self.services.emit_cache.get_or_try_init(|| {
-      Ok(EmitCache::new(self.deno_dir()?.gen_cache.clone()))
+      Ok(Arc::new(EmitCache::new(self.deno_dir()?.gen_cache.clone())))
     })
   }
 

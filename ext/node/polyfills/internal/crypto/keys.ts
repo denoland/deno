@@ -232,7 +232,7 @@ export interface JsonWebKeyInput {
   format: "jwk";
 }
 
-function getKeyObjectHandle(key: KeyObject, ctx: KeyHandleContext) {
+export function getKeyObjectHandle(key: KeyObject, ctx: KeyHandleContext) {
   if (ctx === kCreatePrivate) {
     throw new ERR_INVALID_ARG_TYPE(
       "key",
