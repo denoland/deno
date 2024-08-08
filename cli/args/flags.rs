@@ -2645,11 +2645,7 @@ fn serve_subcommand() -> Command {
         .value_parser(serve_host_validator),
     )
     .arg(
-      Arg::new("parallel").long("parallel").num_args(0..=1)
-      .help("Run multiple server workers. Pass 0 to use the number of cores. Defaults to 0.")
-      .require_equals(true)
-      .default_missing_value("0")
-      .value_parser(value_parser!(usize))
+      parallel_arg("multiple server workers", false)
     )
     .arg(check_arg(false))
     .arg(watch_arg(true))
@@ -2812,11 +2808,7 @@ Directory arguments are expanded to all contained files matching the glob
           .action(ArgAction::SetTrue),
       )
       .arg(
-        Arg::new("parallel")
-          .long("parallel")
-          .help("Run test modules in parallel. Parallelism defaults to the number of available CPUs or the value in the DENO_JOBS environment variable.")
-          .conflicts_with("jobs")
-          .action(ArgAction::SetTrue)
+        parallel_arg("test modules", true)
       )
       .arg(
         Arg::new("jobs")
@@ -2857,6 +2849,18 @@ Directory arguments are expanded to all contained files matching the glob
       )
       .arg(env_file_arg())
     )
+}
+
+fn parallel_arg(descr: &str, jobs_fallback: bool) -> Arg {
+  let arg = Arg::new("parallel")
+    .long("parallel")
+    .help(format!("Run {descr} in parallel. Parallelism defaults to the number of available CPUs or the value in the DENO_JOBS environment variable."))
+    .action(ArgAction::SetTrue);
+  if jobs_fallback {
+    arg.conflicts_with("jobs")
+  } else {
+    arg
+  }
 }
 
 fn types_subcommand() -> Command {
@@ -4357,13 +4361,7 @@ fn serve_parse(
     .remove_one::<String>("host")
     .unwrap_or_else(|| "0.0.0.0".to_owned());
 
-  let worker_count = matches.remove_one::<usize>("parallel").map(|n| {
-    if n == 0 {
-      std::thread::available_parallelism().unwrap().get()
-    } else {
-      n
-    }
-  });
+  let worker_count = parallel_arg_parse(matches, false).map(|v| v.get());
 
   runtime_args_parse(flags, matches, true, true);
   // If the user didn't pass --allow-net, add this port to the network
@@ -4436,6 +4434,42 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Task(task_flags);
 }
 
+fn parallel_arg_parse(
+  matches: &mut ArgMatches,
+  fallback_to_jobs: bool,
+) -> Option<NonZeroUsize> {
+  if matches.get_flag("parallel") {
+    if let Ok(value) = env::var("DENO_JOBS") {
+      value.parse::<NonZeroUsize>().ok()
+    } else {
+      std::thread::available_parallelism().ok()
+    }
+  } else if fallback_to_jobs && matches.contains_id("jobs") {
+    // We can't change this to use the log crate because its not configured
+    // yet at this point since the flags haven't been parsed. This flag is
+    // deprecated though so it's not worth changing the code to use the log
+    // crate here and this is only done for testing anyway.
+    #[allow(clippy::print_stderr)]
+    {
+      eprintln!(
+        "⚠️ {}",
+        crate::colors::yellow(concat!(
+          "The `--jobs` flag is deprecated and will be removed in Deno 2.0.\n",
+          "Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.\n",
+          "Learn more at: https://docs.deno.com/runtime/manual/basics/env_variables"
+        )),
+      );
+    }
+    if let Some(value) = matches.remove_one::<NonZeroUsize>("jobs") {
+      Some(value)
+    } else {
+      std::thread::available_parallelism().ok()
+    }
+  } else {
+    None
+  }
+}
+
 fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(flags, matches, true, true);
@@ -4502,36 +4536,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     flags.argv.extend(script_arg);
   }
 
-  let concurrent_jobs = if matches.get_flag("parallel") {
-    if let Ok(value) = env::var("DENO_JOBS") {
-      value.parse::<NonZeroUsize>().ok()
-    } else {
-      std::thread::available_parallelism().ok()
-    }
-  } else if matches.contains_id("jobs") {
-    // We can't change this to use the log crate because its not configured
-    // yet at this point since the flags haven't been parsed. This flag is
-    // deprecated though so it's not worth changing the code to use the log
-    // crate here and this is only done for testing anyway.
-    #[allow(clippy::print_stderr)]
-    {
-      eprintln!(
-        "⚠️ {}",
-        crate::colors::yellow(concat!(
-        "The `--jobs` flag is deprecated and will be removed in Deno 2.0.\n",
-        "Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.\n",
-        "Learn more at: https://docs.deno.com/runtime/manual/basics/env_variables"
-        )),
-      );
-    }
-    if let Some(value) = matches.remove_one::<NonZeroUsize>("jobs") {
-      Some(value)
-    } else {
-      std::thread::available_parallelism().ok()
-    }
-  } else {
-    None
-  };
+  let concurrent_jobs = parallel_arg_parse(matches, true);
 
   let include = if let Some(files) = matches.remove_many::<String>("files") {
     files.collect()
