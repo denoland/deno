@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
-use std::ops::Deref;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -467,74 +467,30 @@ fn generate_imports(packages_to_version: Vec<(String, String)>) -> String {
   contents.join("\n")
 }
 
-trait ConfigFileLoader {
-  fn imports(&self) -> Result<IndexMap<String, String>, AnyError>;
-  fn update_imports(
-    &self,
-    imports: &IndexMap<String, String>,
-  ) -> Result<(), AnyError>;
-}
-
-impl ConfigFileLoader for deno_config::deno_json::ConfigFile {
-  fn imports(&self) -> Result<IndexMap<String, String>, AnyError> {
-    match &self.json.imports {
-      Some(imports) => {
-        let map: IndexMap<String, String> =
-          serde_json::from_value(imports.clone())
-            .context("Failed to parse imports from deno.json")?;
-        Ok(map)
-      }
-      None => Ok(IndexMap::new()),
-    }
-  }
-
-  fn update_imports(
-    &self,
-    imports: &IndexMap<String, String>,
-  ) -> Result<(), AnyError> {
-    let mut json = self.json.clone();
-    json.imports = Some(serde_json::to_value(imports)?);
-    std::fs::write(
-      self.specifier.to_file_path().unwrap(),
-      serde_json::to_string_pretty(&json)?,
-    )?;
-    Ok(())
-  }
-}
-
-impl ConfigFileLoader for deno_node::PackageJson {
-  fn imports(&self) -> Result<IndexMap<String, String>, AnyError> {
-    Ok(self.dependencies.clone().unwrap_or_default())
-  }
-
-  fn update_imports(
-    &self,
-    imports: &IndexMap<String, String>,
-  ) -> Result<(), AnyError> {
-    let mut package_json = self.clone();
-    package_json.dependencies = Some(imports.clone());
-    std::fs::write(
-      self.path.clone(),
-      serde_json::to_string_pretty(&package_json)?,
-    )?;
-    Ok(())
-  }
-}
-
-async fn remove_from_config<T: ConfigFileLoader + ?Sized>(
-  config: &T,
+async fn remove_from_config(
+  config_path: &Path,
+  keys: &[&'static str],
   packages_to_remove: &[String],
   removed_packages: &mut Vec<String>,
 ) -> Result<(), AnyError> {
-  let mut existing_imports = config.imports()?;
-  for package in packages_to_remove {
-    if existing_imports.shift_remove(package).is_some() {
-      removed_packages.push(package.clone());
+  let mut json: serde_json::Value =
+    serde_json::from_slice(&std::fs::read(&config_path)?)?;
+  for key in keys {
+    let Some(obj) = json.get_mut(*key).and_then(|v| v.as_object_mut()) else {
+      continue;
+    };
+    for package in packages_to_remove {
+      if obj.shift_remove(package).is_some() {
+        removed_packages.push(package.clone());
+      }
     }
   }
-  if !removed_packages.is_empty() {
-    config.update_imports(&existing_imports)?;
-  }
+
+  // todo: format with dprint
+  std::fs::write(
+    &config_path,
+    format!("{}\n", serde_json::to_string_pretty(&json)?),
+  )?;
 
   Ok(())
 }
@@ -551,7 +507,8 @@ pub async fn remove(
 
   if let Some(deno_json) = start_dir.maybe_deno_json() {
     remove_from_config(
-      deno_json.deref(),
+      &deno_json.specifier.to_file_path().unwrap(),
+      &["imports"],
       &remove_flags.packages,
       &mut removed_packages,
     )
@@ -560,7 +517,8 @@ pub async fn remove(
 
   if let Some(pkg_json) = start_dir.maybe_pkg_json() {
     remove_from_config(
-      pkg_json.deref(),
+      &pkg_json.path,
+      &["dependencies", "devDependencies"],
       &remove_flags.packages,
       &mut removed_packages,
     )
@@ -573,12 +531,10 @@ pub async fn remove(
     for package in &removed_packages {
       log::info!("Removed {}", crate::colors::green(package));
     }
-    // Update deno.lcok
+    // Update deno.lock
     node_resolver::PackageJsonThreadLocalCache::clear();
     let cli_factory = CliFactory::from_flags(flags);
-    if cli_factory.cli_options()?.enable_future_features() {
-      crate::module_loader::load_top_level_deps(&cli_factory).await?;
-    }
+    crate::module_loader::load_top_level_deps(&cli_factory).await?;
   }
 
   Ok(())
