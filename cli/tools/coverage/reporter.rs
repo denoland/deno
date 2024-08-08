@@ -475,8 +475,10 @@ impl HtmlCoverageReporter {
       format!("Coverage report for {node}")
     };
     let title = title.replace(std::path::MAIN_SEPARATOR, "/");
-    let breadcrumbs_parts =
-      node.split(std::path::MAIN_SEPARATOR).filter(|s| !s.is_empty()).collect::<Vec<_>>();
+    let breadcrumbs_parts = node
+      .split(std::path::MAIN_SEPARATOR)
+      .filter(|s| !s.is_empty())
+      .collect::<Vec<_>>();
     let head = self.create_html_head(&title);
     let breadcrumb_navigation =
       self.create_breadcrumbs_navigation(&breadcrumbs_parts, is_dir);
@@ -700,8 +702,7 @@ impl HtmlCoverageReporter {
 
     let mut root_url = "../".repeat(root_repeats);
     root_url += "index.html";
-    breadcrumbs_html
-      .push(format!("<a href='{root_url}'>All files</a>"));
+    breadcrumbs_html.push(format!("<a href='{root_url}'>All files</a>"));
 
     for (index, breadcrumb) in breadcrumbs_parts.iter().enumerate() {
       let mut full_url = "../".repeat(breadcrumbs_parts.len() - (index + 1));
@@ -720,12 +721,11 @@ impl HtmlCoverageReporter {
         }
       }
 
-      breadcrumbs_html
-        .push(format!("<a href='{full_url}'>{breadcrumb}</a>"))
+      breadcrumbs_html.push(format!("<a href='{full_url}'>{breadcrumb}</a>"))
     }
 
-    if breadcrumbs_parts.len()  == 0 {
-      return String::from("<span>All files</span>")
+    if breadcrumbs_parts.is_empty() {
+      return String::from("<span>All files</span>");
     }
 
     breadcrumbs_html.into_iter().collect::<Vec<_>>().join(" / ")
