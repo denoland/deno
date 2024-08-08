@@ -3050,7 +3050,6 @@ fn permission_args(app: Command) -> Command {
         .use_value_delimiter(true)
         .require_equals(true)
         .value_name("HOSTNAMES")
-        .hide(true)
         .help("DANGER: Disables verification of TLS certificates")
         .value_parser(flags_net::validator),
     )
@@ -3274,7 +3273,11 @@ fn env_file_arg() -> Arg {
   Arg::new("env")
     .long("env")
     .value_name("FILE")
-    .help("UNSTABLE: Load environment variables from local file. Only the first environment variable with a given key is used. Existing process environment variables are not overwritten.")
+    .help(
+      "UNSTABLE: Load environment variables from local file.
+Only the first environment variable with a given key is used.
+Existing process environment variables are not overwritten.",
+    )
     .value_hint(ValueHint::FilePath)
     .default_missing_value(".env")
     .require_equals(true)
