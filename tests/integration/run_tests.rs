@@ -5343,6 +5343,7 @@ async fn listen_tls_alpn_fail() {
   assert!(status.success());
 }
 
+#[cfg(unix)]
 #[test]
 fn emit_failed_readonly_file_system() {
   let context = TestContextBuilder::default().use_temp_cwd().build();
