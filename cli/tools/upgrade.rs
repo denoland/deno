@@ -33,6 +33,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
+const CANARY_URL: &str = "https://dl.deno.land/canary";
 
 pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -744,7 +745,7 @@ fn base_upgrade_url() -> Cow<'static, str> {
 
 fn get_download_url(version: &str, is_canary: bool) -> Result<Url, AnyError> {
   let download_url = if is_canary {
-    format!("https://dl.deno.land/canary/{}/{}", version, *ARCHIVE_NAME)
+    format!("{}/{}/{}", CANARY_URL, version, *ARCHIVE_NAME)
   } else {
     format!("{}/download/v{}/{}", RELEASE_URL, version, *ARCHIVE_NAME)
   };
