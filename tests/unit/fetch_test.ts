@@ -3,8 +3,8 @@ import {
   assert,
   assertEquals,
   assertRejects,
-  assertThrows,
   assertStringIncludes,
+  assertThrows,
   delay,
   fail,
   unimplemented,
@@ -1982,7 +1982,7 @@ Deno.test(
       fetch(url, {
         body: stream,
         method: "POST",
-      }),
+      })
     );
 
     assert(err instanceof TypeError, `err was ${err}`);
