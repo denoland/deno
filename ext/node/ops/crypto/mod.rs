@@ -273,6 +273,18 @@ pub fn op_node_cipheriv_final(
   context.r#final(auto_pad, input, output)
 }
 
+#[op2]
+#[buffer]
+pub fn op_node_cipheriv_take(
+  state: &mut OpState,
+  #[smi] rid: u32,
+) -> Result<Option<Vec<u8>>, AnyError> {
+  let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
+  let context = Rc::try_unwrap(context)
+    .map_err(|_| type_error("Cipher context is already in use"))?;
+  Ok(context.take_tag())
+}
+
 #[op2(fast)]
 #[smi]
 pub fn op_node_create_decipheriv(
