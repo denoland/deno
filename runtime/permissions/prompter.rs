@@ -333,9 +333,10 @@ impl PermissionPrompter for TtyPrompter {
       }
       let msg = format!(
         "Learn more at: {}",
-        colors::cyan_with_underline(
-          "https://docs.deno.land/permissions#<TODO: permission kind>"
-        )
+        colors::cyan_with_underline(&format!(
+          "https://docs.deno.land/go/allow-{}",
+          name
+        ))
       );
       writeln!(&mut output, "├- {}", colors::italic(&msg)).unwrap();
       let msg = format!("Run again with --allow-{name} to bypass this prompt.");
