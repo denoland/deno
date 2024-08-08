@@ -138,7 +138,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       let deno_dir = DenoDir::new(None)?;
       if deno_dir.root.exists() {
         std::fs::remove_dir_all(&deno_dir.root)?;
-        println!("{} {}", colors::green("Removed"), deno_dir.root.display());
+        log::info!("{} {}", colors::green("Removed"), deno_dir.root.display());
       }
       Ok::<(), std::io::Error>(())
     }),
