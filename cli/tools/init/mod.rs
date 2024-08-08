@@ -92,7 +92,7 @@ Deno.test(async function serverFetchStatic() {
       "deno.json",
       &json!({
         "tasks": {
-          "dev": "deno serve --watch --allow-read main.ts",
+          "dev": "deno serve --watch -R main.ts",
         },
         "imports": {
           "@std/assert": "jsr:@std/assert@1",
@@ -193,7 +193,7 @@ Deno.test(function addTest() {
   }
   if init_flags.serve {
     info!("  {}", colors::gray("# Run the server"));
-    info!("  deno serve --allow-read main.ts");
+    info!("  deno serve -R main.ts");
     info!("");
     info!(
       "  {}",
@@ -202,7 +202,7 @@ Deno.test(function addTest() {
     info!("  deno task dev");
     info!("");
     info!("  {}", colors::gray("# Run the tests"));
-    info!("  deno --allow-read test");
+    info!("  deno -R test");
   } else if init_flags.lib {
     info!("  {}", colors::gray("# Run the tests"));
     info!("  deno test");
