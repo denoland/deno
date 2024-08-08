@@ -62,11 +62,13 @@ use http::header::HOST;
 use http::header::PROXY_AUTHORIZATION;
 use http::header::RANGE;
 use http::header::USER_AGENT;
+use http::Extensions;
 use http::Method;
 use http::Uri;
 use http_body_util::BodyExt;
 use hyper::body::Frame;
 use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::connect::HttpInfo;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
@@ -1104,17 +1106,39 @@ impl ClientSendError {
   pub fn is_connect_error(&self) -> bool {
     self.source.is_connect()
   }
+
+  fn http_info(&self) -> Option<HttpInfo> {
+    let mut exts = Extensions::new();
+    self.source.connect_info()?.get_extras(&mut exts);
+    exts.remove::<HttpInfo>()
+  }
 }
 
 impl std::fmt::Display for ClientSendError {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-    write!(
-      f,
-      "error sending request for url ({uri}): {source}",
-      uri = self.uri,
-      // NOTE: we can use `std::error::Report` instead once it's stabilized.
-      source = error_reporter::Report::new(&self.source),
-    )
+    // NOTE: we can use `std::error::Report` instead once it's stabilized.
+    let detail = error_reporter::Report::new(&self.source);
+
+    match self.http_info() {
+      Some(http_info) => {
+        write!(
+          f,
+          "error sending request from {src} for {uri} ({dst}): {detail}",
+          src = http_info.local_addr(),
+          uri = self.uri,
+          dst = http_info.remote_addr(),
+          detail = detail,
+        )
+      }
+      None => {
+        write!(
+          f,
+          "error sending request for url ({uri}): {detail}",
+          uri = self.uri,
+          detail = detail,
+        )
+      }
+    }
   }
 }
 
