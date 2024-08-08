@@ -476,11 +476,11 @@ impl HtmlCoverageReporter {
     };
     let title = title.replace(std::path::MAIN_SEPARATOR, "/");
     let breadcrumbs_parts =
-      node.split(std::path::MAIN_SEPARATOR).collect::<Vec<_>>();
+      node.split(std::path::MAIN_SEPARATOR).filter(|s| !s.is_empty()).collect::<Vec<_>>();
     let head = self.create_html_head(&title);
     let breadcrumb_navigation =
       self.create_breadcrumbs_navigation(&breadcrumbs_parts, is_dir);
-    let header = self.create_html_header(&title, stats, &breadcrumb_navigation);
+    let header = self.create_html_header(&breadcrumb_navigation, stats);
     let footer = self.create_html_footer(timestamp);
     format!(
       "<!doctype html>
@@ -517,9 +517,8 @@ impl HtmlCoverageReporter {
   /// Creates header part of the contents for html report.
   pub fn create_html_header(
     &self,
-    title: &str,
+    breadcrumb_navigation: &str,
     stats: &CoverageStats,
-    breadcrumb_navigation: &String,
   ) -> String {
     let CoverageStats {
       line_hit,
@@ -536,7 +535,7 @@ impl HtmlCoverageReporter {
     format!(
       "
       <div class='pad1'>
-        <h1>{title}</h1>
+        <h1>{breadcrumb_navigation}</h1>
         <div class='clearfix'>
           <div class='fl pad1y space-right2'>
             <span class='strong'>{branch_percent:.2}%</span>
@@ -549,9 +548,6 @@ impl HtmlCoverageReporter {
             <span class='fraction'>{line_hit}/{line_total}</span>
           </div>
         </div>
-        <ul class='breadcrumb'>
-          {breadcrumb_navigation}
-        </ul>
       </div>
       <div class='status-line {line_class}'></div>"
     )
@@ -705,10 +701,15 @@ impl HtmlCoverageReporter {
     let mut root_url = "../".repeat(root_repeats);
     root_url += "index.html";
     breadcrumbs_html
-      .push((format!("<li><a href='{root_url}'>Home</a></li>")).to_string());
+      .push(format!("<a href='{root_url}'>All files</a>"));
 
     for (index, breadcrumb) in breadcrumbs_parts.iter().enumerate() {
       let mut full_url = "../".repeat(breadcrumbs_parts.len() - (index + 1));
+
+      if index == breadcrumbs_parts.len() - 1 {
+        breadcrumbs_html.push(format!("<span>{breadcrumb}</span>"));
+        continue;
+      }
 
       if is_dir {
         full_url += "index.html";
@@ -716,15 +717,17 @@ impl HtmlCoverageReporter {
         full_url += breadcrumb;
         if index != breadcrumbs_parts.len() - 1 {
           full_url += "/index.html";
-        } else {
-          full_url += ".html";
         }
       }
 
       breadcrumbs_html
-        .push(format!("<li><a href='{full_url}'>{breadcrumb}</a></li>"))
+        .push(format!("<a href='{full_url}'>{breadcrumb}</a>"))
     }
 
-    breadcrumbs_html.into_iter().collect::<Vec<_>>().join(" ")
+    if breadcrumbs_parts.len()  == 0 {
+      return String::from("<span>All files</span>")
+    }
+
+    breadcrumbs_html.into_iter().collect::<Vec<_>>().join(" / ")
   }
 }
