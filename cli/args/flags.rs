@@ -281,6 +281,7 @@ pub struct LintFlags {
   pub json: bool,
   pub compact: bool,
   pub watch: Option<WatchFlags>,
+  pub ext: Option<String>,
 }
 
 impl LintFlags {
@@ -2412,7 +2413,18 @@ Ignore linting a file by adding an ignore comment at the top of the file:
             .help("Fix any linting errors for rules that support it")
             .action(ArgAction::SetTrue),
         )
-        .arg(
+          .arg(
+            Arg::new("ext")
+                .long("ext")
+                .require_equals(true)
+                .value_name("EXT")
+                .help("Specify the file extension(s) to lint when reading from stdin.\
+                 For example, use `jsx` to lint JSX files or `tsx` for TSX files. \
+                 This argument is necessary because stdin input does not automatically infer the file type and thus requires explicit extension specification. \
+                 Example usage: `cat file.jsx | deno lint - --ext=jsx`. \
+                 Multiple extensions can be provided, separated by commas, like `jsx,tsx`."),
+          )
+          .arg(
           Arg::new("rules")
             .long("rules")
             .help("List available rules")
@@ -4227,6 +4239,9 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
   let json = matches.get_flag("json");
   let compact = matches.get_flag("compact");
+
+  let ext = matches.remove_many::<String>("ext").map(|f| f.collect());
+
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files: FileFlags {
       include: files,
@@ -4240,6 +4255,7 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     json,
     compact,
     watch: watch_arg_parse(matches),
+    ext,
   });
 }
 
@@ -6108,6 +6124,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Some(Default::default()),
+          None,
         }),
         ..Flags::default()
       }
