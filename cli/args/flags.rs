@@ -4305,7 +4305,7 @@ fn repl_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn run_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
-  app: Command,
+  mut app: Command,
   is_run_subommand: bool,
 ) -> clap::error::Result<()> {
   // todo(dsherret): remove this in Deno 2.0
@@ -4361,14 +4361,13 @@ fn run_parse(
 
   let mut script_arg =
     matches.remove_many::<String>("script_arg").ok_or_else(|| {
-      let mut app = app;
       if is_run_subommand {
         app.find_subcommand_mut("run").unwrap().error(
           clap::error::ErrorKind::MissingRequiredArgument,
           "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
         )
       } else {
-        app.error(
+        app.override_usage("deno [OPTIONS] [COMMAND] [SCRIPT_ARG]...").error(
           clap::error::ErrorKind::MissingRequiredArgument,
           "[SCRIPT_ARG] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand",
         )
@@ -10264,6 +10263,6 @@ mod tests {
     assert!(err.to_string().contains("error: [SCRIPT_ARG] may only be omitted with --v8-flags=--help, else to use the repl with arguments, please use the `deno repl` subcommand"));
     assert!(err
       .to_string()
-      .contains("Usage: deno [OPTIONS] [SCRIPT_ARG]... [COMMAND]"));
+      .contains("Usage: deno [OPTIONS] [COMMAND] [SCRIPT_ARG]..."));
   }
 }
