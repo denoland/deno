@@ -525,13 +525,19 @@ fn test_html_reporter() {
   assert_contains!(index_html, "href='bar.ts.html'");
 
   let foo_ts_html = tempdir.join("html").join("foo.ts.html").read_to_string();
-  assert_contains!(foo_ts_html, "<h1><a href='index.html'>All files</a> / foo.ts</h1>");
+  assert_contains!(
+    foo_ts_html,
+    "<h1><a href='index.html'>All files</a> / foo.ts</h1>"
+  );
   // Check that line count has correct title attribute
   assert_contains!(foo_ts_html, "<span class='cline-any cline-yes' title='This line is covered 1 time'>x1</span>");
   assert_contains!(foo_ts_html, "<span class='cline-any cline-yes' title='This line is covered 3 times'>x3</span>");
 
   let bar_ts_html = tempdir.join("html").join("bar.ts.html").read_to_string();
-  assert_contains!(bar_ts_html, "<h1><a href='index.html'>All files</a> / bar.ts</h1>");
+  assert_contains!(
+    bar_ts_html,
+    "<h1><a href='index.html'>All files</a> / bar.ts</h1>"
+  );
   // Check <T> in source code is escaped to &lt;T&gt;
   assert_contains!(bar_ts_html, "&lt;T&gt;");
   // Check that line anchors are correctly referenced by line number links
@@ -543,7 +549,10 @@ fn test_html_reporter() {
     .join("baz")
     .join("index.html")
     .read_to_string();
-  assert_contains!(baz_index_html, "<h1><a href='../index.html'>All files</a> / baz</h1>");
+  assert_contains!(
+    baz_index_html,
+    "<h1><a href='../index.html'>All files</a> / baz</h1>"
+  );
   assert_contains!(baz_index_html, "qux.ts");
   assert_contains!(baz_index_html, "href='qux.ts.html'");
   assert_contains!(baz_index_html, "quux.ts");

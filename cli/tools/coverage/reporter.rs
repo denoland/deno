@@ -708,7 +708,7 @@ impl HtmlCoverageReporter {
       let mut full_url = "../".repeat(breadcrumbs_parts.len() - (index + 1));
 
       if index == breadcrumbs_parts.len() - 1 {
-        breadcrumbs_html.push(format!("{breadcrumb}"));
+        breadcrumbs_html.push(breadcrumb.to_string());
         continue;
       }
 
