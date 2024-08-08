@@ -6096,6 +6096,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6124,7 +6125,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Some(Default::default()),
-          None,
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6157,7 +6158,8 @@ mod tests {
             hmr: false,
             no_clear_screen: true,
             exclude: vec![],
-          })
+          }),
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6185,6 +6187,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6207,6 +6210,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6234,6 +6238,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6262,6 +6267,7 @@ mod tests {
           json: false,
           compact: false,
           watch: Default::default(),
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6284,6 +6290,7 @@ mod tests {
           json: true,
           compact: false,
           watch: Default::default(),
+          ext: None,
         }),
         ..Flags::default()
       }
@@ -6313,6 +6320,7 @@ mod tests {
           json: true,
           compact: false,
           watch: Default::default(),
+          ext: None,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
@@ -6343,6 +6351,7 @@ mod tests {
           json: false,
           compact: true,
           watch: Default::default(),
+          ext: None,
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
