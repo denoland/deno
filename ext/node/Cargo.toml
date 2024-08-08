@@ -40,7 +40,7 @@ der = { version = "0.7.9", features = ["derive"] }
 digest = { version = "0.10.5", features = ["core-api", "std"] }
 dsa = "0.6.1"
 ecb.workspace = true
-ed25519-dalek = { version = "2.1.1", features = ["digest", "pkcs8", "rand_core", "signature" ] }
+ed25519-dalek = { version = "2.1.1", features = ["digest", "pkcs8", "rand_core", "signature"] }
 elliptic-curve.workspace = true
 errno = "0.2.8"
 faster-hex.workspace = true
