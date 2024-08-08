@@ -45,7 +45,6 @@ import {
   getKeyObjectHandle,
   kConsumePrivate,
   kConsumePublic,
-  KeyHandleContext,
   KeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
