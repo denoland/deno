@@ -3410,8 +3410,9 @@ fn import_map_arg() -> Arg {
 }
 
 fn env_file_arg() -> Arg {
-  Arg::new("env")
-    .long("env")
+  Arg::new("env-file")
+    .long("env-file")
+    .alias("env")
     .value_name("FILE")
     .help("Load .env file")
     .long_help("UNSTABLE: Load environment variables from local file. Only the first environment variable with a given key is used. Existing process environment variables are not overwritten.")
@@ -4808,7 +4809,7 @@ fn import_map_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn env_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.env_file = matches.remove_one::<String>("env");
+  flags.env_file = matches.remove_one::<String>("env-file");
 }
 
 fn reload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -7606,8 +7607,24 @@ mod tests {
   }
 
   #[test]
-  fn run_env_file_default() {
+  fn run_env_default() {
     let r = flags_from_vec(svec!["deno", "run", "--env", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        env_file: Some(".env".to_owned()),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_env_file_default() {
+    let r = flags_from_vec(svec!["deno", "run", "--env-file", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7637,9 +7654,30 @@ mod tests {
   }
 
   #[test]
-  fn run_env_file_defined() {
+  fn run_env_defined() {
     let r =
       flags_from_vec(svec!["deno", "run", "--env=.another_env", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        env_file: Some(".another_env".to_owned()),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_env_file_defined() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--env-file=.another_env",
+      "script.ts"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
