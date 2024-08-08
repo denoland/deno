@@ -1,12 +1,9 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::ToJsBuffer;
 use image::imageops::FilterType;
-use image::ColorType;
-use image::ImageDecoder;
 use image::Pixel;
 use image::RgbaImage;
 use serde::Deserialize;
@@ -82,9 +79,9 @@ fn op_image_process(
   // ignore 9.
 
   if let Some(premultiply) = args.premultiply {
-    let is_not_premultiplied = image_out.pixels().any(|pixel| {
-      (pixel.0[0].max(pixel.0[1]).max(pixel.0[2])) > (255 * pixel.0[3])
-    });
+    let is_not_premultiplied = image_out
+      .pixels()
+      .any(|pixel| (pixel.0[0].max(pixel.0[1]).max(pixel.0[2])) > pixel.0[3]);
 
     if premultiply {
       if is_not_premultiplied {
@@ -117,26 +114,15 @@ struct DecodedPng {
 
 #[op2]
 #[serde]
-fn op_image_decode_png(#[buffer] buf: &[u8]) -> Result<DecodedPng, AnyError> {
-  let png = image::codecs::png::PngDecoder::new(buf)?;
+fn op_image_decode_blob(#[buffer] buf: &[u8]) -> Result<DecodedPng, AnyError> {
+  let img = image::load_from_memory(buf)?;
 
-  let (width, height) = png.dimensions();
-
-  // TODO(@crowlKats): maybe use DynamicImage https://docs.rs/image/0.24.7/image/enum.DynamicImage.html ?
-  if png.color_type() != ColorType::Rgba8 {
-    return Err(type_error(format!(
-      "Color type '{:?}' not supported",
-      png.color_type()
-    )));
-  }
-
-  // read_image will assert that the buffer is the correct size, so we need to fill it with zeros
-  let mut png_data = vec![0_u8; png.total_bytes() as usize];
-
-  png.read_image(&mut png_data)?;
+  let width = img.width();
+  let height = img.height();
+  let rgba_data = img.to_rgba8().into_vec();
 
   Ok(DecodedPng {
-    data: png_data.into(),
+    data: rgba_data.into(),
     width,
     height,
   })
@@ -145,7 +131,7 @@ fn op_image_decode_png(#[buffer] buf: &[u8]) -> Result<DecodedPng, AnyError> {
 deno_core::extension!(
   deno_canvas,
   deps = [deno_webidl, deno_web, deno_webgpu],
-  ops = [op_image_process, op_image_decode_png],
+  ops = [op_image_process, op_image_decode_blob],
   lazy_loaded_esm = ["01_image.js"],
 );
 

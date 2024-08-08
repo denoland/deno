@@ -1249,6 +1249,52 @@ declare interface GPUImageCopyTexture {
  * @category GPU
  * @experimental
  */
+declare interface GPUImageCopyTextureTagged extends GPUImageCopyTexture {
+  colorSpace?: "srgb" | "display-p3";
+  premultipliedAlpha?: boolean;
+}
+
+/**
+ * @category GPU
+ * @tags unstable
+ */
+declare type GPUImageCopyExternalImageSource = any
+  // | HTMLImageElement
+  // | HTMLVideoElement
+  // | VideoFrame
+  // | HTMLCanvasElement
+  // | OffscreenCanvas
+  ;
+
+/**
+ * @category GPU
+ * @tags unstable
+ */
+declare interface GPUOrigin2DDict {
+  x: number,
+  y: number,
+}
+
+/**
+ * @category GPU
+ * @tags unstable
+ */
+declare type GPUOrigin2 = number[] | GPUOrigin2DDict;
+
+/**
+ * @category GPU
+ * @tags unstable
+ */
+declare interface GPUImageCopyExternalImage {
+  source: GPUImageCopyExternalImageSource,
+  origin?: GPUOrigin2,
+  flipY?: boolean,
+}
+
+/**
+ * @category GPU
+ * @tags unstable
+ */
 declare interface GPUProgrammablePassEncoder {
   setBindGroup(
     index: number,
@@ -1618,6 +1664,12 @@ declare class GPUQueue implements GPUObjectBase {
     data: BufferSource,
     dataLayout: GPUImageDataLayout,
     size: GPUExtent3D,
+  ): undefined;
+
+  copyExternalImageToTexture(
+    source: GPUImageCopyExternalImage,
+    destination: GPUImageCopyTextureTagged,
+    copySize: GPUExtent3D,
   ): undefined;
 }
 

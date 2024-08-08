@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 import { internals, primordials } from "ext:core/mod.js";
-import { op_image_decode_png, op_image_process } from "ext:core/ops";
+import { op_image_decode_blob, op_image_process } from "ext:core/ops";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
@@ -232,13 +232,13 @@ function createImageBitmap(
     return (async () => {
       const data = await image.arrayBuffer();
       const mimetype = sniffImage(image.type);
-      if (mimetype !== "image/png") {
+      if (mimetype !== "image/png" && mimetype !== "image/jpeg") {
         throw new DOMException(
           `Unsupported type '${image.type}'`,
           "InvalidStateError",
         );
       }
-      const { data: imageData, width, height } = op_image_decode_png(
+      const { data: imageData, width, height } = op_image_decode_blob(
         new Uint8Array(data),
       );
       const processedImage = processImage(
@@ -306,9 +306,9 @@ function processImage(input, width, height, sx, sy, sw, sh, options) {
     outputHeight = heightOfSourceRect;
   }
 
-  if (options.colorSpaceConversion === "none") {
-    throw new TypeError("options.colorSpaceConversion 'none' is not supported");
-  }
+  // if (options.colorSpaceConversion === "none") {
+  //   throw new TypeError("options.colorSpaceConversion 'none' is not supported");
+  // }
 
   /*
    * The cropping works differently than the spec specifies:
