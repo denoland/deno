@@ -47,6 +47,7 @@ import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js"
 export {
   callbackify,
   debuglog,
+  debuglog as debug,
   format,
   formatWithOptions,
   inspect,
@@ -321,5 +322,6 @@ export default {
   toUSVString,
   log,
   debuglog,
+  debug: debuglog,
   isDeepStrictEqual,
 };
