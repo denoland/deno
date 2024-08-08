@@ -29,7 +29,6 @@ fn get_diagnostic_class(_: &ParseDiagnostic) -> &'static str {
 fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
   use deno_graph::JsrLoadError;
   use deno_graph::NpmLoadError;
-  use deno_graph::WorkspaceLoadError;
 
   match err {
     ModuleGraphError::ResolutionError(err)
@@ -70,10 +69,6 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
           | JsrLoadError::PackageReqNotFound(_)
           | JsrLoadError::PackageVersionNotFound(_)
           | JsrLoadError::UnknownExport { .. } => "NotFound",
-        },
-        ModuleLoadError::Workspace(err) => match err {
-          WorkspaceLoadError::MemberInvalidExportPath { .. } => "TypeError",
-          WorkspaceLoadError::MissingMemberExports { .. } => "NotFound",
         },
       },
     },
