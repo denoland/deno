@@ -45,7 +45,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.41.2", features = ["transpiling"] }
-deno_core = { version = "0.302.0" }
+deno_core = { version = "0.303.0" }
 
 deno_bench_util = { version = "0.158.0", path = "./bench_util" }
 deno_lockfile = "0.20.0"
@@ -112,7 +112,7 @@ fast-socks5 = "0.9.6"
 faster-hex = "0.9"
 fastwebsockets = { version = "0.8", features = ["upgrade", "unstable-split"] }
 filetime = "0.2.16"
-flate2 = { version = "1.0.26", default-features = false }
+flate2 = { version = "1.0.30", default-features = false }
 fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
@@ -124,7 +124,7 @@ http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
 hyper = { version = "1.4.1", features = ["full"] }
 hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "tls12", "ring"] }
-hyper-util = { version = "=0.1.6", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
+hyper-util = { version = "=0.1.7", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
 ipnet = "2.3"

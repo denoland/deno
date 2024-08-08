@@ -669,8 +669,50 @@
       "test-util-types-exists.js",
       "test-util-types.js",
       "test-util.js",
+      "test-vm-access-process-env.js",
+      "test-vm-attributes-property-not-on-sandbox.js",
+      "test-vm-codegen.js",
+      "test-vm-context-async-script.js",
+      "test-vm-context-property-forwarding.js",
+      "test-vm-create-and-run-in-context.js",
+      "test-vm-create-context-accessors.js",
+      "test-vm-create-context-arg.js",
+      "test-vm-create-context-circular-reference.js",
+      "test-vm-createcacheddata.js",
+      "test-vm-cross-context.js",
+      "test-vm-data-property-writable.js",
+      "test-vm-deleting-property.js",
+      "test-vm-function-declaration.js",
+      "test-vm-function-redefinition.js",
+      "test-vm-getters.js",
+      "test-vm-global-assignment.js",
+      "test-vm-global-define-property.js",
+      "test-vm-global-identity.js",
+      "test-vm-global-setter.js",
+      "test-vm-harmony-symbols.js",
+      "test-vm-indexed-properties.js",
+      "test-vm-inherited_properties.js",
+      "test-vm-is-context.js",
+      "test-vm-low-stack-space.js",
+      "test-vm-new-script-new-context.js",
       "test-vm-new-script-this-context.js",
+      "test-vm-not-strict.js",
+      "test-vm-options-validation.js",
+      "test-vm-parse-abort-on-uncaught-exception.js",
+      "test-vm-preserves-property.js",
+      "test-vm-property-not-on-sandbox.js",
+      "test-vm-proxies.js",
+      "test-vm-proxy-failure-CP.js",
+      "test-vm-script-throw-in-tostring.js",
+      "test-vm-set-property-proxy.js",
+      "test-vm-set-proto-null-on-globalthis.js",
+      "test-vm-source-map-url.js",
       "test-vm-static-this.js",
+      "test-vm-strict-mode.js",
+      "test-vm-symbols.js",
+      "test-vm-timeout-escape-promise-2.js",
+      "test-vm-timeout-escape-promise.js",
+      "test-vm-timeout.js",
       "test-webcrypto-sign-verify.js",
       "test-whatwg-encoding-custom-api-basics.js",
       "test-whatwg-encoding-custom-textdecoder-ignorebom.js",
@@ -716,7 +758,9 @@
       "test-tty-stdout-end.js"
     ],
     "pummel": [],
-    "sequential": ["test-child-process-exit.js"]
+    "sequential": [
+      "test-child-process-exit.js"
+    ]
   },
   "windowsIgnore": {
     "parallel": [
@@ -744,7 +788,8 @@
       "test-net-server-listen-path.js",
       "test-net-socket-close-after-end.js",
       "test-util-inspect-long-running.js",
-      "test-util-inspect.js"
+      "test-util-inspect.js",
+      "test-vm-low-stack-space.js"
     ]
   },
   "darwinIgnore": {

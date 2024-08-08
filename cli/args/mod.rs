@@ -1435,7 +1435,6 @@ impl CliOptions {
     self
       .workspace()
       .jsr_packages()
-      .into_iter()
       .map(|pkg| config_to_deno_graph_workspace_member(&pkg.config_file))
       .collect::<Result<Vec<_>, _>>()
   }
@@ -1886,7 +1885,7 @@ fn load_env_variables_from_env_file(filename: Option<&String>) {
     Err(error) => {
       match error {
           dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
-          dotenvy::Error::Io(_)=> log::info!("{} The `--env` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
+          dotenvy::Error::Io(_)=> log::info!("{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
           dotenvy::Error::EnvVar(_)=> log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
           _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
         }
