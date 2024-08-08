@@ -31,6 +31,7 @@ use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
 
+use deno_runtime::deno_permissions::IsStandaloneBinary;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
@@ -81,6 +82,7 @@ fn load_env_vars(env_vars: &HashMap<String, String>) {
 }
 
 fn main() {
+  IsStandaloneBinary::get_instance(true).is_standalone_binary();
   let args: Vec<_> = env::args_os().collect();
   let standalone = standalone::extract_standalone(Cow::Owned(args));
   let future = async move {

@@ -21,6 +21,7 @@ use deno_core::ToJsBuffer;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsError;
 use deno_io::fs::FsStat;
+use deno_permissions::IsStandaloneBinary;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
 use rand::Rng;
@@ -67,7 +68,16 @@ fn map_permission_error(
       } else {
         (path.as_str(), "")
       };
-      custom_error("PermissionDenied", format!("Requires {err} access to {path}{truncated}, run again with the --allow-{err} flag"))
+      let msg = if !IsStandaloneBinary::get_instance(false)
+        .is_standalone_binary()
+      {
+        format!(
+          "Requires {err} access to {path}{truncated}, run again with the --allow-{err} flag")
+      } else {
+        format!(
+          "Requires {err} access to {path}{truncated}, specify the required permissions during compilation using `deno compile --allow-{err}`")
+      };
+      custom_error("PermissionDenied", msg)
     }
     err => Err::<(), _>(err)
       .context_path(operation, path)
