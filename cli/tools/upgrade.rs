@@ -237,22 +237,24 @@ fn get_minor_version(version: &str) -> &str {
 }
 
 fn print_release_notes(current_version: &str, new_version: &str) {
-  if get_minor_version(current_version) != get_minor_version(new_version) {
-    log::info!(
-      "Release notes:\n\n  {}\n",
-      colors::bold(format!(
-        "https://github.com/denoland/deno/releases/tag/v{}",
-        &new_version,
-      ))
-    );
-    log::info!(
-      "Blog post:\n\n  {}\n",
-      colors::bold(format!(
-        "https://deno.com/blog/v{}",
-        get_minor_version(new_version)
-      ))
-    );
+  if get_minor_version(current_version) == get_minor_version(new_version) {
+    return;
   }
+
+  log::info!(
+    "Release notes:\n\n  {}\n",
+    colors::bold(format!(
+      "https://github.com/denoland/deno/releases/tag/v{}",
+      &new_version,
+    ))
+  );
+  log::info!(
+    "Blog post:\n\n  {}\n",
+    colors::bold(format!(
+      "https://deno.com/blog/v{}",
+      get_minor_version(new_version)
+    ))
+  );
 }
 
 pub fn upgrade_check_enabled() -> bool {
@@ -431,15 +433,26 @@ pub async fn upgrade(
   let force_selection_of_new_version =
     upgrade_flags.force || full_path_output_flag.is_some();
 
-  let requested_version =
+  let requested_version2 =
     RequestedVersion::from_upgrade_flags(upgrade_flags.clone())?;
 
-  let maybe_install_version = select_version_to_upgrade(
-    http_client_provider.clone(),
-    requested_version,
-    force_selection_of_new_version,
-  )
-  .await?;
+  let maybe_install_version = match requested_version2 {
+    RequestedVersion::Latest(channel) => {
+      find_latest_version_to_upgrade(
+        http_client_provider.clone(),
+        channel,
+        force_selection_of_new_version,
+      )
+      .await?
+    }
+    RequestedVersion::SpecificVersion(channel, version) => {
+      select_specific_version_for_upgrade(
+        channel,
+        version,
+        force_selection_of_new_version,
+      )?
+    }
+  };
 
   let Some(install_version) = maybe_install_version else {
     return Ok(());
@@ -505,10 +518,8 @@ pub async fn upgrade(
 }
 
 enum RequestedVersion {
-  LatestStable,
-  LatestCanary,
-  SpecificStable(String),
-  SpecificCanary(String),
+  Latest(ReleaseChannel),
+  SpecificVersion(ReleaseChannel, String),
 }
 
 impl RequestedVersion {
@@ -516,11 +527,12 @@ impl RequestedVersion {
     let is_canary = upgrade_flags.canary;
 
     let Some(passed_version) = upgrade_flags.version else {
-      if is_canary {
-        return Ok(Self::LatestCanary);
+      let channel = if is_canary {
+        ReleaseChannel::Canary
       } else {
-        return Ok(Self::LatestStable);
-      }
+        ReleaseChannel::Stable
+      };
+      return Ok(Self::Latest(channel));
     };
 
     let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
@@ -529,28 +541,65 @@ impl RequestedVersion {
       .unwrap_or(&passed_version)
       .to_string();
 
-    if is_canary {
+    let (channel, passed_version) = if is_canary {
       if !re_hash.is_match(&passed_version) {
         bail!("Invalid commit hash passed");
       }
-      Ok(Self::SpecificCanary(passed_version))
+      (ReleaseChannel::Canary, passed_version)
     } else {
       if Version::parse_standard(&passed_version).is_err() {
         bail!("Invalid version passed");
       };
-      Ok(Self::SpecificStable(passed_version))
-    }
+      (ReleaseChannel::Stable, passed_version)
+    };
+
+    Ok(RequestedVersion::SpecificVersion(channel, passed_version))
   }
 }
 
-// TODO(bartlomieju): consider using "strategy" pattern here.
-async fn select_version_to_upgrade(
-  http_client_provider: Arc<HttpClientProvider>,
-  requested_version: RequestedVersion,
+fn select_specific_version_for_upgrade(
+  release_channel: ReleaseChannel,
+  version: String,
   force: bool,
 ) -> Result<Option<String>, AnyError> {
-  match requested_version {
-    RequestedVersion::LatestStable => {
+  match release_channel {
+    ReleaseChannel::Stable => {
+      let current_is_passed = if !crate::version::is_canary() {
+        crate::version::deno() == version
+      } else {
+        false
+      };
+
+      if !force && current_is_passed {
+        log::info!("Version {} is already installed", crate::version::deno());
+        return Ok(None);
+      }
+
+      Ok(Some(version))
+    }
+    ReleaseChannel::Canary => {
+      let current_is_passed = crate::version::GIT_COMMIT_HASH == version;
+      if !force && current_is_passed {
+        log::info!("Version {} is already installed", crate::version::deno());
+        return Ok(None);
+      }
+
+      Ok(Some(version))
+    }
+    // TODO(bartlomieju)
+    ReleaseChannel::Rc => unreachable!(),
+    // TODO(bartlomieju)
+    ReleaseChannel::Lts => unreachable!(),
+  }
+}
+
+async fn find_latest_version_to_upgrade(
+  http_client_provider: Arc<HttpClientProvider>,
+  release_channel: ReleaseChannel,
+  force: bool,
+) -> Result<Option<String>, AnyError> {
+  match release_channel {
+    ReleaseChannel::Stable => {
       log::info!("{}", colors::gray("Looking up latest version"));
       let client = http_client_provider.get_or_create()?;
       let latest_version = fetch_latest_version(
@@ -585,21 +634,7 @@ async fn select_version_to_upgrade(
         Ok(Some(latest_version))
       }
     }
-    RequestedVersion::SpecificStable(version) => {
-      let current_is_passed = if !crate::version::is_canary() {
-        crate::version::deno() == version
-      } else {
-        false
-      };
-
-      if !force && current_is_passed {
-        log::info!("Version {} is already installed", crate::version::deno());
-        return Ok(None);
-      }
-
-      Ok(Some(version))
-    }
-    RequestedVersion::LatestCanary => {
+    ReleaseChannel::Canary => {
       log::info!("{}", colors::gray("Looking up latest canary version"));
       let client = http_client_provider.get_or_create()?;
       let latest_hash = fetch_latest_version(
@@ -629,15 +664,10 @@ async fn select_version_to_upgrade(
         Ok(Some(latest_hash))
       }
     }
-    RequestedVersion::SpecificCanary(version) => {
-      let current_is_passed = crate::version::GIT_COMMIT_HASH == version;
-      if !force && current_is_passed {
-        log::info!("Version {} is already installed", crate::version::deno());
-        return Ok(None);
-      }
-
-      Ok(Some(version))
-    }
+    // TODO(bartlomieju)
+    ReleaseChannel::Rc => unreachable!(),
+    // TODO(bartlomieju)
+    ReleaseChannel::Lts => unreachable!(),
   }
 }
 
