@@ -65,10 +65,7 @@ impl CipherContext {
   }
 
   pub fn take_tag(self) -> Tag {
-    Rc::try_unwrap(self.cipher)
-      .ok()?
-      .into_inner()
-      .take_tag()
+    Rc::try_unwrap(self.cipher).ok()?.into_inner().take_tag()
   }
 
   pub fn r#final(
