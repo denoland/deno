@@ -223,23 +223,23 @@ impl DrawThreadRenderer for ProgressBarInner {
       if state.entries.is_empty() {
         return String::new();
       }
-      let preferred_entry = state
+      let display_entries = state
         .entries
         .iter()
-        .find(|e| e.percent() > 0f64)
-        .or_else(|| state.entries.iter().last())
-        .unwrap();
+        .map(|e| ProgressDataDisplayEntry {
+          prompt: e.prompt,
+          message: e.message.to_string(),
+          position: e.position(),
+          total_size: e.total_size(),
+        })
+        .collect::<Vec<_>>();
+
       ProgressData {
         duration: state.start_time.elapsed(),
         terminal_width: size.cols,
         pending_entries: state.entries.len(),
         total_entries: state.total_entries,
-        display_entry: ProgressDataDisplayEntry {
-          prompt: preferred_entry.prompt,
-          message: preferred_entry.message.clone(),
-          position: preferred_entry.position(),
-          total_size: preferred_entry.total_size(),
-        },
+        display_entries,
         percent_done: {
           let mut total_percent_sum = 0f64;
           for entry in &state.entries {
@@ -273,7 +273,7 @@ impl ProgressBar {
           Arc::new(renderer::BarProgressBarRenderer)
         }
         ProgressBarStyle::TextOnly => {
-          Arc::new(renderer::TextOnlyProgressBarRenderer)
+          Arc::new(renderer::TextOnlyProgressBarRenderer::default())
         }
       }),
     }
