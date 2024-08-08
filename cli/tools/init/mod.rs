@@ -54,13 +54,13 @@ Deno.test(function addTest() {
       &json!({
         "name": project_name,
         "version": "0.1.0",
+        "exports": "./mod.ts",
         "tasks": {
           "dev": "deno test --watch mod.ts"
         },
         "imports": {
           "@std/assert": "jsr:@std/assert@1"
         },
-        "exports": "./mod.ts"
       }),
     )?;
   } else {
