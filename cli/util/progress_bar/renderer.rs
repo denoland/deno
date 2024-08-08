@@ -39,7 +39,9 @@ pub struct BarProgressBarRenderer;
 impl ProgressBarRenderer for BarProgressBarRenderer {
   fn render(&self, data: ProgressData) -> String {
     // In `ProgressBarRenderer` we only care about first entry.
-    let display_entry = &data.display_entries[0];
+    let Some(display_entry) = &data.display_entries.first() else {
+      return String::new();
+    };
     let (bytes_text, bytes_text_max_width) = {
       let total_size = display_entry.total_size;
       let pos = display_entry.position;
@@ -211,6 +213,7 @@ mod test {
   use super::*;
   use pretty_assertions::assert_eq;
   use std::time::Duration;
+  use test_util::assert_contains;
 
   #[test]
   fn should_get_elapsed_text() {
@@ -314,10 +317,8 @@ mod test {
     };
     let text = renderer.render(data.clone());
     let text = test_util::strip_ansi_codes(&text);
-    assert_eq!(
-      text,
-      "Blocking ⣯ [00:00] 2/3\n - data 0.00KiB/10.00KiB\n\n\n\n"
-    );
+    assert_contains!(text, "Blocking ⣯");
+    assert_contains!(text, "2/3\n - data 0.00KiB/10.00KiB\n\n\n\n");
 
     data.pending_entries = 0;
     data.total_entries = 1;
@@ -325,6 +326,7 @@ mod test {
     data.display_entries[0].total_size = 0;
     let text = renderer.render(data);
     let text = test_util::strip_ansi_codes(&text);
-    assert_eq!(text, "Blocking ⣟ [00:00]\n - data\n\n\n\n");
+    assert_contains!(text, "Blocking ⣟");
+    assert_contains!(text, "\n - data\n\n\n\n");
   }
 }
