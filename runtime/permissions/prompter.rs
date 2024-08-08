@@ -334,7 +334,7 @@ impl PermissionPrompter for TtyPrompter {
       let msg = format!(
         "Learn more at: {}",
         colors::cyan_with_underline(&format!(
-          "https://docs.deno.land/go/--allow-{}",
+          "https://docs.deno.com/go/--allow-{}",
           name
         ))
       );
@@ -397,7 +397,7 @@ impl PermissionPrompter for TtyPrompter {
           clear_n_lines(&mut stderr_lock, 1);
           write!(
             stderr_lock,
-            "└ {} {opts} > ",
+            "┗ {} {opts} > ",
             colors::bold("Unrecognized option. Allow?")
           )
           .unwrap();
