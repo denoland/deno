@@ -186,9 +186,12 @@ impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
         }
       };
 
+      let message = display_entry
+        .message
+        .replace("https://registry.npmjs.org/", "npm:")
+        .replace("https://jsr.io/", "jsr:");
       display_str.push_str(
-        &colors::gray(format!(" - {}{}\n", display_entry.message, bytes_text))
-          .to_string(),
+        &colors::gray(format!(" - {}{}\n", message, bytes_text)).to_string(),
       );
     }
 
