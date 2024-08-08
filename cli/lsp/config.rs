@@ -1518,6 +1518,7 @@ impl ConfigData {
       WorkspaceResolver::new_raw(
         scope.clone(),
         None,
+        member_dir.workspace.resolver_jsr_pkgs().collect(),
         member_dir.workspace.package_jsons().cloned().collect(),
         pkg_json_dep_resolution,
       )

@@ -1010,6 +1010,7 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "curve25519-dalek-derive",
+ "digest",
  "fiat-crypto",
  "rustc_version 0.4.0",
  "subtle",
@@ -1328,9 +1329,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.26.1"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8188c39699541affc0c0f89bbba07d31212385fa0c4e1a5a9e530b0f3cbc776f"
+checksum = "fc1f3c577bf7fdbb449cb99c2560309364c71cc3dcc7af94387ef8810b089173"
 dependencies = [
  "anyhow",
  "deno_package_json",
@@ -1552,9 +1553,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.81.0"
+version = "0.81.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31f1f965754dcdbaa5c9433a8c8da4a3cb7d93f29b58aa84b5617fe887f57415"
+checksum = "d2cada0d9fd56536d3208cff2b130096e396ee2716466850cf0b7927249e40a0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1749,6 +1750,7 @@ dependencies = [
  "aead-gcm-stream",
  "aes",
  "async-trait",
+ "base64 0.21.7",
  "blake2",
  "brotli",
  "bytes",
@@ -1767,6 +1769,7 @@ dependencies = [
  "digest",
  "dsa",
  "ecb",
+ "ed25519-dalek",
  "elliptic-curve",
  "errno 0.2.8",
  "faster-hex",
@@ -1799,6 +1802,7 @@ dependencies = [
  "path-clean",
  "pbkdf2",
  "pin-project-lite",
+ "pkcs8",
  "rand",
  "regex",
  "ring",
@@ -1821,6 +1825,7 @@ dependencies = [
  "windows-sys 0.52.0",
  "x25519-dalek",
  "x509-parser",
+ "yoke",
 ]
 
 [[package]]
@@ -1951,9 +1956,9 @@ dependencies = [
 
 [[package]]
 name = "deno_semver"
-version = "0.5.7"
+version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e23ce551a58eeefc05a48042a9c76d3409c96a1a6a522a82c4ced26930ece201"
+checksum = "9fb7520ac21cb236c6f8cc81964e8bf22c72fc58c7b5f762f99b9a95abfe3212"
 dependencies = [
  "monch",
  "once_cell",
@@ -2537,6 +2542,32 @@ dependencies = [
  "rfc6979",
  "signature",
  "spki",
+]
+
+[[package]]
+name = "ed25519"
+version = "2.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "115531babc129696a58c64a4fef0a8bf9e9698629fb97e9e40767d235cfbcd53"
+dependencies = [
+ "pkcs8",
+ "signature",
+]
+
+[[package]]
+name = "ed25519-dalek"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a3daa8e81a3963a60642bcc1f90a670680bd4a77535faa384e9d1c79d620871"
+dependencies = [
+ "curve25519-dalek",
+ "ed25519",
+ "rand_core",
+ "serde",
+ "sha2",
+ "signature",
+ "subtle",
+ "zeroize",
 ]
 
 [[package]]
@@ -5020,12 +5051,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "pkcs5"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e847e2c91a18bfa887dd028ec33f2fe6f25db77db3619024764914affe8b69a6"
+dependencies = [
+ "aes",
+ "cbc",
+ "der",
+ "pbkdf2",
+ "scrypt",
+ "sha2",
+ "spki",
+]
+
+[[package]]
 name = "pkcs8"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f950b2377845cebe5cf8b5165cb3cc1a5e0fa5cfa3e1f7f55707d8fd82e0a7b7"
 dependencies = [
  "der",
+ "pkcs5",
+ "rand_core",
  "spki",
 ]
 
@@ -8383,6 +8431,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09041cd90cf85f7f8b2df60c646f853b7f535ce68f85244eb6731cf89fa498ec"
 
 [[package]]
+name = "yoke"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c5b1314b079b0930c31e3af543d8ee1757b1951ae1e1565ec704403a7240ca5"
+dependencies = [
+ "serde",
+ "stable_deref_trait",
+ "zerofrom",
+]
+
+[[package]]
 name = "zerocopy"
 version = "0.7.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8402,6 +8461,12 @@ dependencies = [
  "quote",
  "syn 2.0.72",
 ]
+
+[[package]]
+name = "zerofrom"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91ec111ce797d0e0784a1116d0ddcdbea84322cd79e5d5ad173daeba4f93ab55"
 
 [[package]]
 name = "zeroize"
