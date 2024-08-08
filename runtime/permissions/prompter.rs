@@ -319,14 +319,14 @@ impl PermissionPrompter for TtyPrompter {
     // output everything in one shot to make the tests more reliable
     {
       let mut output = String::new();
-      write!(&mut output, "┌ {PERMISSION_EMOJI}  ").unwrap();
+      write!(&mut output, "┏ {PERMISSION_EMOJI}  ").unwrap();
       write!(&mut output, "{}", colors::bold("Deno requests ")).unwrap();
       write!(&mut output, "{}", colors::bold(message.clone())).unwrap();
       writeln!(&mut output, "{}", colors::bold(".")).unwrap();
       if let Some(api_name) = api_name.clone() {
         writeln!(
           &mut output,
-          "├- Requested by `{}` API.",
+          "┠─ Requested by `{}` API.",
           colors::bold(api_name)
         )
         .unwrap();
@@ -334,14 +334,14 @@ impl PermissionPrompter for TtyPrompter {
       let msg = format!(
         "Learn more at: {}",
         colors::cyan_with_underline(&format!(
-          "https://docs.deno.land/go/allow-{}",
+          "https://docs.deno.land/go/--allow-{}",
           name
         ))
       );
-      writeln!(&mut output, "├- {}", colors::italic(&msg)).unwrap();
+      writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
       let msg = format!("Run again with --allow-{name} to bypass this prompt.");
-      writeln!(&mut output, "├- {}", colors::italic(&msg)).unwrap();
-      write!(&mut output, "└ {}", colors::bold("Allow?")).unwrap();
+      writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
+      write!(&mut output, "┗ {}", colors::bold("Allow?")).unwrap();
       write!(&mut output, " {opts} > ").unwrap();
 
       stderr_lock.write_all(output.as_bytes()).unwrap();
