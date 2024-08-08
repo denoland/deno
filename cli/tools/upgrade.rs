@@ -11,7 +11,7 @@ use crate::http_util::HttpClientProvider;
 use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
-use version;
+use crate::version;
 
 use async_trait::async_trait;
 use deno_core::anyhow::bail;
@@ -598,19 +598,21 @@ async fn find_latest_version_to_upgrade(
   release_channel: ReleaseChannel,
   force: bool,
 ) -> Result<Option<String>, AnyError> {
-  match release_channel {
-    ReleaseChannel::Stable => {
-      log::info!("{}", colors::gray("Looking up latest version"));
-      let client = http_client_provider.get_or_create()?;
-      let latest_version = fetch_latest_version(
-        &client,
-        ReleaseChannel::Stable,
-        UpgradeCheckKind::Execution,
-      )
+  log::info!(
+    "{}",
+    colors::gray(&format!("Looking up {} version", release_channel.name()))
+  );
+
+  let client = http_client_provider.get_or_create()?;
+  let latest_version =
+    fetch_latest_version(&client, release_channel, UpgradeCheckKind::Execution)
       .await?;
 
+  let (maybe_newer_latest_version, current_version) = match release_channel {
+    ReleaseChannel::Stable => {
+      let current_version = version::deno();
       let current_is_most_recent = if !version::is_canary() {
-        let current = Version::parse_standard(version::deno()).unwrap();
+        let current = Version::parse_standard(current_version).unwrap();
         let latest = Version::parse_standard(&latest_version).unwrap();
         current >= latest
       } else {
@@ -618,56 +620,48 @@ async fn find_latest_version_to_upgrade(
       };
 
       if !force && current_is_most_recent {
-        log::info!(
-          "{}",
-          colors::green(format!(
-            "\nLocal deno version {} is the most recent release\n",
-            version::deno()
-          ))
-        );
-        Ok(None)
+        (None, current_version)
       } else {
-        log::info!(
-          "{}",
-          colors::bold(format!("\nFound latest version {}\n", latest_version))
-        );
-        Ok(Some(latest_version))
+        (Some(latest_version), current_version)
       }
     }
     ReleaseChannel::Canary => {
-      log::info!("{}", colors::gray("Looking up latest canary version"));
-      let client = http_client_provider.get_or_create()?;
-      let latest_hash = fetch_latest_version(
-        &client,
-        ReleaseChannel::Canary,
-        UpgradeCheckKind::Execution,
-      )
-      .await?;
-
-      let current_is_most_recent = version::GIT_COMMIT_HASH == latest_hash;
+      let current_version = version::GIT_COMMIT_HASH;
+      let current_is_most_recent = current_version == latest_version;
 
       if !force && current_is_most_recent {
-        log::info!(
-          "{}",
-          colors::green(format!(
-            "\nLocal deno version {} is the most recent release\n",
-            version::GIT_COMMIT_HASH
-          ))
-        );
-        Ok(None)
+        (None, current_version)
       } else {
-        log::info!(
-          "{}",
-          colors::bold(format!("\nFound latest version {}\n", latest_hash))
-        );
-        Ok(Some(latest_hash))
+        (Some(latest_version), current_version)
       }
     }
     // TODO(bartlomieju)
     ReleaseChannel::Rc => unreachable!(),
     // TODO(bartlomieju)
     ReleaseChannel::Lts => unreachable!(),
+  };
+
+  log::info!("");
+  if let Some(newer_latest_version) = maybe_newer_latest_version.as_ref() {
+    log::info!(
+      "{}",
+      color_print::cformat!(
+        "<g>Found latest version {}</>",
+        newer_latest_version
+      )
+    );
+  } else {
+    log::info!(
+      "{}",
+      color_print::cformat!(
+        "<g>Local deno version {} is the most recent release</>",
+        current_version
+      )
+    );
   }
+  log::info!("");
+
+  Ok(maybe_newer_latest_version)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -685,6 +679,17 @@ enum ReleaseChannel {
   /// Release candidate
   #[allow(unused)]
   Rc,
+}
+
+impl ReleaseChannel {
+  fn name(&self) -> &str {
+    match self {
+      Self::Stable => "latest",
+      Self::Canary => "canary",
+      Self::Rc => "release candidate",
+      Self::Lts => "LTS (long term support)",
+    }
+  }
 }
 
 async fn fetch_latest_version(
