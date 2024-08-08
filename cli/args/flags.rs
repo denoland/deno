@@ -1631,9 +1631,7 @@ supported in canary.
       .arg(check_arg(true))
       .arg(
         Arg::new("include")
-          .long("include")
-          .help("Additional module to include in the module graph")
-          .long_help(
+          .help(
             "Includes an additional module in the compiled executable's module
     graph. Use this flag if a dynamically imported module or a web worker main
     module fails to load in the executable. This flag can be passed multiple
@@ -1769,8 +1767,7 @@ Generate html reports from lcov:
             .requires("lcov")
             .long("output")
             .value_parser(value_parser!(String))
-            .help("Output file (defaults to stdout) for lcov")
-            .long_help(
+            .help(
               "Exports the coverage report in lcov format to the given file.
     Filename should be passed along with '=' For example '--output=foo.lcov'
     If no --output arg is specified then the report is written to stdout.",
@@ -2541,19 +2538,19 @@ fn run_subcommand() -> Command {
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
     .about(
-      color_print::cstr!("Run a JavaScript or TypeScript program
+      color_print::cstr!("Run a JavaScript or TypeScript program, or a task or script.
 
 By default all programs are run in sandbox without access to disk, network or ability to spawn subprocesses.
   <w>deno run https://examples.deno.land/hello-world.ts</>
-
-Grant all permissions:
-  <w>deno run -A jsr:@std/http/file-server</>
 
 Grant permission to read from disk and listen to network:
   <w>deno run --allow-read --allow-net jsr:@std/http/file-server</>
 
 Grant permission to read allow-listed files from disk:
   <w>deno run --allow-read=/etc jsr:@std/http/file-server</>
+
+Grant all permissions:
+  <w>deno run -A jsr:@std/http/file-server</>
 
 Specifying the filename '-' to read the file from stdin.
   <w>curl https://examples.deno.land/hello-world.ts | deno run -</>"))
@@ -3269,8 +3266,7 @@ fn import_map_arg() -> Arg {
     .long("import-map")
     .alias("importmap")
     .value_name("FILE")
-    .help("Load import map file")
-    .long_help(IMPORT_MAP_HELP)
+    .help(IMPORT_MAP_HELP)
     .value_hint(ValueHint::FilePath)
 }
 
@@ -3278,8 +3274,7 @@ fn env_file_arg() -> Arg {
   Arg::new("env")
     .long("env")
     .value_name("FILE")
-    .help("Load .env file")
-    .long_help("UNSTABLE: Load environment variables from local file. Only the first environment variable with a given key is used. Existing process environment variables are not overwritten.")
+    .help("UNSTABLE: Load environment variables from local file. Only the first environment variable with a given key is used. Existing process environment variables are not overwritten.")
     .value_hint(ValueHint::FilePath)
     .default_missing_value(".env")
     .require_equals(true)
@@ -3293,20 +3288,13 @@ fn reload_arg() -> Arg {
     .use_value_delimiter(true)
     .require_equals(true)
     .long("reload")
-    .help("Reload source code cache (recompile TypeScript)")
     .value_name("CACHE_BLOCKLIST")
-    .long_help(
+    .help(
       "Reload source code cache (recompile TypeScript)
---reload
-  Reload everything
---reload=jsr:@std/http/file-server
-  Reload only standard modules
---reload=jsr:@std/http/file-server,jsr:@std/assert/assert-equals
-  Reloads specific modules
---reload=npm:
-  Reload all npm modules
---reload=npm:chalk
-  Reload specific npm module",
+no value                                                 Reload everything
+jsr:@std/http/file-server,jsr:@std/assert/assert-equals  Reloads specific modules
+npm:                                                     Reload all npm modules
+npm:chalk                                                Reload specific npm module",
     )
     .value_hint(ValueHint::FilePath)
     .value_parser(reload_arg_validate)
@@ -3397,8 +3385,7 @@ fn v8_flags_arg() -> Arg {
     .use_value_delimiter(true)
     .require_equals(true)
     .value_name("V8_FLAGS")
-    .help("Set V8 command line options")
-    .long_help("To see a list of all available flags use --v8-flags=--help.
+    .help("To see a list of all available flags use --v8-flags=--help.
     Any flags set with this flag are appended after the DENO_V8_FLAGS environmental variable")
 }
 
@@ -3411,10 +3398,7 @@ fn seed_arg() -> Arg {
 }
 
 fn hmr_arg(takes_files: bool) -> Arg {
-  let arg = Arg::new("hmr")
-    .long("unstable-hmr")
-    .help("UNSTABLE: Watch for file changes and hot replace modules")
-    .conflicts_with("watch");
+  let arg = Arg::new("hmr").long("unstable-hmr").conflicts_with("watch");
 
   if takes_files {
     arg
@@ -3423,24 +3407,22 @@ fn hmr_arg(takes_files: bool) -> Arg {
       .value_parser(value_parser!(String))
       .use_value_delimiter(true)
       .require_equals(true)
-      .long_help(
-        "Watch for file changes and restart process automatically.
+      .help(
+        "UNSTABLE: Watch for file changes and restart process automatically.
 Local files from entry point module graph are watched by default.
 Additional paths might be watched by passing them as arguments to this flag.",
       )
       .value_hint(ValueHint::AnyPath)
   } else {
-    arg.action(ArgAction::SetTrue).long_help(
-      "Watch for file changes and restart process automatically.
+    arg.action(ArgAction::SetTrue).help(
+      "UNSTABLE: Watch for file changes and restart process automatically.
       Only local files from entry point module graph are watched.",
     )
   }
 }
 
 fn watch_arg(takes_files: bool) -> Arg {
-  let arg = Arg::new("watch")
-    .long("watch")
-    .help("Watch for file changes and restart automatically");
+  let arg = Arg::new("watch").long("watch");
 
   if takes_files {
     arg
@@ -3449,14 +3431,14 @@ fn watch_arg(takes_files: bool) -> Arg {
       .value_parser(value_parser!(String))
       .use_value_delimiter(true)
       .require_equals(true)
-      .long_help(
+      .help(
         "Watch for file changes and restart process automatically.
 Local files from entry point module graph are watched by default.
 Additional paths might be watched by passing them as arguments to this flag.",
       )
       .value_hint(ValueHint::AnyPath)
   } else {
-    arg.action(ArgAction::SetTrue).long_help(
+    arg.action(ArgAction::SetTrue).help(
       "Watch for file changes and restart process automatically.
       Only local files from entry point module graph are watched.",
     )
@@ -3496,8 +3478,7 @@ fn no_check_arg() -> Arg {
     .require_equals(true)
     .value_name("NO_CHECK_TYPE")
     .long("no-check")
-    .help("Skip type-checking modules")
-    .long_help(
+    .help(
       "Skip type-checking. If the value of '--no-check=remote' is supplied,
 diagnostic errors from remote modules will be ignored.",
     )
@@ -3509,11 +3490,10 @@ fn check_arg(checks_local_by_default: bool) -> Arg {
     .long("check")
     .num_args(0..=1)
     .require_equals(true)
-    .value_name("CHECK_TYPE")
-    .help("Type-check modules");
+    .value_name("CHECK_TYPE");
 
   if checks_local_by_default {
-    arg.long_help(
+    arg.help(
       "Set type-checking behavior. This subcommand type-checks local modules by
 default, so adding --check is redundant.
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
@@ -3522,7 +3502,7 @@ will be included.
 Alternatively, the 'deno check' subcommand can be used.",
     )
   } else {
-    arg.long_help(
+    arg.help(
       "Enable type-checking. This subcommand does not type-check by default.
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
 will be included.
@@ -3593,8 +3573,7 @@ fn config_arg() -> Arg {
     .short('c')
     .long("config")
     .value_name("FILE")
-    .help("Specify the configuration file")
-    .long_help(CONFIG_HELP)
+    .help(CONFIG_HELP)
     .value_hint(ValueHint::FilePath)
 }
 
