@@ -18,6 +18,7 @@ use crate::resolver::CliSloppyImportsResolver;
 
 mod no_sloppy_imports;
 mod no_slow_types;
+mod require_node_prefix;
 
 // used for publishing
 pub use no_slow_types::collect_no_slow_type_diagnostics;
@@ -177,12 +178,17 @@ impl LintRuleProvider {
     maybe_config_file: Option<&ConfigFile>,
   ) -> ConfiguredRules {
     let deno_lint_rules = deno_lint::rules::get_all_rules();
-    let cli_lint_rules = vec![CliLintRule(CliLintRuleKind::Extended(
-      Box::new(no_sloppy_imports::NoSloppyImportsRule::new(
-        self.sloppy_imports_resolver.clone(),
-        self.workspace_resolver.clone(),
-      )),
-    ))];
+    let cli_lint_rules = vec![
+      CliLintRule(CliLintRuleKind::Extended(Box::new(
+        no_sloppy_imports::NoSloppyImportsRule::new(
+          self.sloppy_imports_resolver.clone(),
+          self.workspace_resolver.clone(),
+        ),
+      ))),
+      CliLintRule(CliLintRuleKind::Extended(Box::new(
+        require_node_prefix::RequireNodePrefix::new(),
+      ))),
+    ];
     let cli_graph_rules = vec![CliLintRule(CliLintRuleKind::Package(
       Box::new(no_slow_types::NoSlowTypesRule),
     ))];
