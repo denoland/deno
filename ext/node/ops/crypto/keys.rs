@@ -510,7 +510,7 @@ impl KeyObjectHandle {
           .algorithm
           .parameters
           .ok_or_else(|| type_error("missing dh parameters"))?;
-        let params = pkcs3::DhParameter::from_der(params.value())
+        let params = pkcs3::DhParameter::from_der(&params.to_der().unwrap())
           .map_err(|_| type_error("malformed dh parameters"))?;
         AsymmetricPrivateKey::Dh(DhPrivateKey {
           key: dh::PrivateKey::from_bytes(pk_info.private_key),
@@ -660,7 +660,7 @@ impl KeyObjectHandle {
           .algorithm
           .parameters
           .ok_or_else(|| type_error("missing dh parameters"))?;
-        let params = pkcs3::DhParameter::from_der(params.value())
+        let params = pkcs3::DhParameter::from_der(&params.to_der().unwrap())
           .map_err(|_| type_error("malformed dh parameters"))?;
         let Some(subject_public_key) = spki.subject_public_key.as_bytes()
         else {
