@@ -267,10 +267,11 @@ pub async fn add(
   let is_npm = config_file.is_npm();
   for selected_package in selected_packages {
     log::info!(
-      "Add {} - {}@{}",
-      crate::colors::green(&selected_package.import_name),
-      selected_package.package_name,
-      selected_package.version_req
+      "Add {}",
+      crate::colors::green(&format!(
+        "{}@{}",
+        selected_package.package_name, selected_package.version_req
+      )),
     );
 
     if is_npm {
