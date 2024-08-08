@@ -1553,7 +1553,7 @@ fn u32_slice_to_u8_slice(slice: &[u32]) -> &[u8] {
   unsafe {
     std::slice::from_raw_parts(
       slice.as_ptr() as *const u8,
-      slice.len() * std::mem::size_of::<u32>(),
+      std::mem::size_of_val(slice),
     )
   }
 }
