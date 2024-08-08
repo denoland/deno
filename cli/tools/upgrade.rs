@@ -412,7 +412,8 @@ pub async fn upgrade(
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
-  let client = factory.http_client_provider().get_or_create()?;
+  let http_client_provider = factory.http_client_provider();
+  let client = http_client_provider.get_or_create()?;
   let current_exe_path = std::env::current_exe()?;
   let full_path_output_flag = match &upgrade_flags.output {
     Some(output) => Some(
@@ -427,91 +428,18 @@ pub async fn upgrade(
 
   let permissions = set_exe_permissions(&current_exe_path, output_exe_path)?;
 
-  let install_version = match upgrade_flags.version {
-    Some(passed_version) => {
-      let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
-      let passed_version = passed_version
-        .strip_prefix('v')
-        .unwrap_or(&passed_version)
-        .to_string();
+  let force_selection_of_new_version =
+    upgrade_flags.force || full_path_output_flag.is_some();
+  let maybe_install_version = select_version_to_upgrade(
+    http_client_provider.clone(),
+    upgrade_flags.version.clone(),
+    upgrade_flags.canary,
+    force_selection_of_new_version,
+  )
+  .await?;
 
-      if upgrade_flags.canary && !re_hash.is_match(&passed_version) {
-        bail!("Invalid commit hash passed");
-      } else if !upgrade_flags.canary
-        && Version::parse_standard(&passed_version).is_err()
-      {
-        bail!("Invalid version passed");
-      }
-
-      let current_is_passed = if upgrade_flags.canary {
-        crate::version::GIT_COMMIT_HASH == passed_version
-      } else if !crate::version::is_canary() {
-        crate::version::deno() == passed_version
-      } else {
-        false
-      };
-
-      if !upgrade_flags.force
-        && full_path_output_flag.is_none()
-        && current_is_passed
-      {
-        log::info!("Version {} is already installed", crate::version::deno());
-        return Ok(());
-      }
-
-      passed_version
-    }
-    None => {
-      let release_channel = if upgrade_flags.canary {
-        log::info!("{}", colors::gray("Looking up latest canary version"));
-        ReleaseChannel::Canary
-      } else {
-        log::info!("{}", colors::gray("Looking up latest version"));
-        ReleaseChannel::Stable
-      };
-
-      let latest_version = fetch_latest_version(
-        &client,
-        release_channel,
-        UpgradeCheckKind::Execution,
-      )
-      .await?;
-
-      let current_is_most_recent = if upgrade_flags.canary {
-        let latest_hash = &latest_version;
-        crate::version::GIT_COMMIT_HASH == latest_hash
-      } else if !crate::version::is_canary() {
-        let current = Version::parse_standard(crate::version::deno()).unwrap();
-        let latest = Version::parse_standard(&latest_version).unwrap();
-        current >= latest
-      } else {
-        false
-      };
-
-      if !upgrade_flags.force
-        && full_path_output_flag.is_none()
-        && current_is_most_recent
-      {
-        log::info!(
-          "{}",
-          colors::green(format!(
-            "\nLocal deno version {} is the most recent release\n",
-            if upgrade_flags.canary {
-              crate::version::GIT_COMMIT_HASH
-            } else {
-              crate::version::deno()
-            }
-          ))
-        );
-        return Ok(());
-      } else {
-        log::info!(
-          "{}",
-          colors::bold(format!("\nFound latest version {}\n", latest_version))
-        );
-        latest_version
-      }
-    }
+  let Some(install_version) = maybe_install_version else {
+    return Ok(());
   };
 
   let download_url = get_download_url(&install_version, upgrade_flags.canary)?;
@@ -556,7 +484,7 @@ pub async fn upgrade(
     fs::rename(&new_exe_path, output_exe_path)
       .or_else(|_| fs::copy(&new_exe_path, output_exe_path).map(|_| ()))
   };
-  check_windows_access_denied_error(output_result, &output_exe_path)?;
+  check_windows_access_denied_error(output_result, output_exe_path)?;
 
   log::info!(
     "{}",
@@ -571,6 +499,93 @@ pub async fn upgrade(
 
   drop(temp_dir); // delete the temp dir
   Ok(())
+}
+
+async fn select_version_to_upgrade(
+  http_client_provider: Arc<HttpClientProvider>,
+  maybe_passed_version: Option<String>,
+  canary: bool,
+  force: bool,
+) -> Result<Option<String>, AnyError> {
+  match maybe_passed_version {
+    Some(passed_version) => {
+      let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
+      let passed_version = passed_version
+        .strip_prefix('v')
+        .unwrap_or(&passed_version)
+        .to_string();
+
+      if canary && !re_hash.is_match(&passed_version) {
+        bail!("Invalid commit hash passed");
+      } else if !canary && Version::parse_standard(&passed_version).is_err() {
+        bail!("Invalid version passed");
+      }
+
+      let current_is_passed = if canary {
+        crate::version::GIT_COMMIT_HASH == passed_version
+      } else if !crate::version::is_canary() {
+        crate::version::deno() == passed_version
+      } else {
+        false
+      };
+
+      if !force && current_is_passed {
+        log::info!("Version {} is already installed", crate::version::deno());
+        return Ok(None);
+      }
+
+      Ok(Some(passed_version))
+    }
+    None => {
+      let release_channel = if canary {
+        log::info!("{}", colors::gray("Looking up latest canary version"));
+        ReleaseChannel::Canary
+      } else {
+        log::info!("{}", colors::gray("Looking up latest version"));
+        ReleaseChannel::Stable
+      };
+
+      let client = http_client_provider.get_or_create()?;
+      let latest_version = fetch_latest_version(
+        &client,
+        release_channel,
+        UpgradeCheckKind::Execution,
+      )
+      .await?;
+
+      let current_is_most_recent = if canary {
+        let latest_hash = &latest_version;
+        crate::version::GIT_COMMIT_HASH == latest_hash
+      } else if !crate::version::is_canary() {
+        let current = Version::parse_standard(crate::version::deno()).unwrap();
+        let latest = Version::parse_standard(&latest_version).unwrap();
+        current >= latest
+      } else {
+        false
+      };
+
+      if !force && current_is_most_recent {
+        log::info!(
+          "{}",
+          colors::green(format!(
+            "\nLocal deno version {} is the most recent release\n",
+            if canary {
+              crate::version::GIT_COMMIT_HASH
+            } else {
+              crate::version::deno()
+            }
+          ))
+        );
+        Ok(None)
+      } else {
+        log::info!(
+          "{}",
+          colors::bold(format!("\nFound latest version {}\n", latest_version))
+        );
+        Ok(Some(latest_version))
+      }
+    }
+  }
 }
 
 #[derive(Debug, Clone, Copy)]
