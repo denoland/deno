@@ -123,7 +123,7 @@ libc.workspace = true
 libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
-malva = "=0.7.1"
+malva = "=0.8.0"
 memmem.workspace = true
 monch.workspace = true
 notify.workspace = true

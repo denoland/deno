@@ -810,6 +810,7 @@ fn get_resolved_malva_config(
     less_import_options_prefer_single_line: None,
     less_mixin_args_prefer_single_line: None,
     less_mixin_params_prefer_single_line: None,
+    top_level_declarations_prefer_single_line: None,
     selector_override_comment_directive: "deno-fmt-selector-override".into(),
     ignore_comment_directive: "deno-fmt-ignore".into(),
   };
