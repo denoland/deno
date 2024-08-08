@@ -431,7 +431,7 @@ impl Decipher {
         Ok(())
       }
       (Aes192Ecb(mut decryptor), false) => {
-        let _ = decryptor.decrypt_block_b2b_mut(
+        decryptor.decrypt_block_b2b_mut(
           GenericArray::from_slice(input),
           GenericArray::from_mut_slice(output),
         );
@@ -445,7 +445,7 @@ impl Decipher {
         Ok(())
       }
       (Aes256Ecb(mut decryptor), false) => {
-        let _ = decryptor.decrypt_block_b2b_mut(
+        decryptor.decrypt_block_b2b_mut(
           GenericArray::from_slice(input),
           GenericArray::from_mut_slice(output),
         );
