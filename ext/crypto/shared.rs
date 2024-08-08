@@ -130,6 +130,23 @@ impl V8RawKeyData {
     }
   }
 
+  pub fn as_ec_public_key_p521(&self) -> Result<p521::EncodedPoint, AnyError> {
+    match self {
+      V8RawKeyData::Public(data) => {
+        // public_key is a serialized EncodedPoint
+        p521::EncodedPoint::from_bytes(data)
+          .map_err(|_| type_error("expected valid public EC key"))
+      }
+      V8RawKeyData::Private(data) => {
+        let signing_key = p521::SecretKey::from_pkcs8_der(data)
+          .map_err(|_| type_error("expected valid private EC key"))?;
+        Ok(signing_key.public_key().to_encoded_point(false))
+      }
+      // Should never reach here.
+      V8RawKeyData::Secret(_) => unreachable!(),
+    }
+  }
+
   pub fn as_ec_private_key(&self) -> Result<&[u8], AnyError> {
     match self {
       V8RawKeyData::Private(data) => Ok(data),
