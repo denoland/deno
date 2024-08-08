@@ -573,8 +573,8 @@ export function generateKeyPair(
     const privateKeyHandle = op_node_get_private_key_from_pair(pair);
     const publicKeyHandle = op_node_get_public_key_from_pair(pair);
 
-    const privateKey = new PrivateKeyObject(privateKeyHandle);
-    const publicKey = new PublicKeyObject(publicKeyHandle);
+    let privateKey = new PrivateKeyObject(privateKeyHandle);
+    let publicKey = new PublicKeyObject(publicKeyHandle);
 
     if (typeof options === "object" && options !== null) {
       const { publicKeyEncoding, privateKeyEncoding } = options as any;
