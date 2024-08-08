@@ -24,11 +24,7 @@ pub fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
     create_file(
       &dir,
       "main.ts",
-      r#"import {
-  type Route,
-  route,
-} from "https://raw.githubusercontent.com/denoland/std/router/http/route.ts";
-import { serveDir } from "@std/http/file-server";
+      r#"import { type Route, route, serveDir } from "@std/http";
 
 const routes: Route[] = [
   {
@@ -37,8 +33,7 @@ const routes: Route[] = [
   },
   {
     pattern: new URLPattern({ pathname: "/users/:id" }),
-    handler: (_req, _info, params) =>
-      new Response(params?.pathname.groups.id),
+    handler: (_req, _info, params) => new Response(params?.pathname.groups.id),
   },
   {
     pattern: new URLPattern({ pathname: "/static/*" }),
@@ -57,7 +52,7 @@ export default {
     return handler(req);
   },
 } satisfies Deno.ServeDefaultExport;
-
+ 
 "#,
     )?;
     create_file(
