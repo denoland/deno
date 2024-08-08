@@ -3130,7 +3130,7 @@ fn permission_args(app: Command) -> Command {
     .arg(
       Arg::new("allow-read")
         .long("allow-read")
-        .short("R")
+        .short('R')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
@@ -3153,7 +3153,7 @@ fn permission_args(app: Command) -> Command {
     .arg(
       Arg::new("allow-write")
         .long("allow-write")
-        .short("W")
+        .short('W')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
@@ -3176,7 +3176,7 @@ fn permission_args(app: Command) -> Command {
     .arg(
       Arg::new("allow-net")
         .long("allow-net")
-        .short("N")
+        .short('N')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
@@ -3198,7 +3198,7 @@ fn permission_args(app: Command) -> Command {
     .arg(
       Arg::new("allow-env")
         .long("allow-env")
-        .short("E")
+        .short('E')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
@@ -3239,7 +3239,7 @@ fn permission_args(app: Command) -> Command {
     .arg(
       Arg::new("allow-sys")
         .long("allow-sys")
-        .short("S")
+        .short('S')
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
