@@ -11,7 +11,7 @@ use crate::http_util::HttpClientProvider;
 use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
-use crate::version;
+use version;
 
 use async_trait::async_trait;
 use deno_core::anyhow::bail;
@@ -564,23 +564,23 @@ fn select_specific_version_for_upgrade(
 ) -> Result<Option<String>, AnyError> {
   match release_channel {
     ReleaseChannel::Stable => {
-      let current_is_passed = if !crate::version::is_canary() {
-        crate::version::deno() == version
+      let current_is_passed = if !version::is_canary() {
+        version::deno() == version
       } else {
         false
       };
 
       if !force && current_is_passed {
-        log::info!("Version {} is already installed", crate::version::deno());
+        log::info!("Version {} is already installed", version::deno());
         return Ok(None);
       }
 
       Ok(Some(version))
     }
     ReleaseChannel::Canary => {
-      let current_is_passed = crate::version::GIT_COMMIT_HASH == version;
+      let current_is_passed = version::GIT_COMMIT_HASH == version;
       if !force && current_is_passed {
-        log::info!("Version {} is already installed", crate::version::deno());
+        log::info!("Version {} is already installed", version::deno());
         return Ok(None);
       }
 
@@ -609,8 +609,8 @@ async fn find_latest_version_to_upgrade(
       )
       .await?;
 
-      let current_is_most_recent = if !crate::version::is_canary() {
-        let current = Version::parse_standard(crate::version::deno()).unwrap();
+      let current_is_most_recent = if !version::is_canary() {
+        let current = Version::parse_standard(version::deno()).unwrap();
         let latest = Version::parse_standard(&latest_version).unwrap();
         current >= latest
       } else {
@@ -622,7 +622,7 @@ async fn find_latest_version_to_upgrade(
           "{}",
           colors::green(format!(
             "\nLocal deno version {} is the most recent release\n",
-            crate::version::deno()
+            version::deno()
           ))
         );
         Ok(None)
@@ -644,15 +644,14 @@ async fn find_latest_version_to_upgrade(
       )
       .await?;
 
-      let current_is_most_recent =
-        crate::version::GIT_COMMIT_HASH == latest_hash;
+      let current_is_most_recent = version::GIT_COMMIT_HASH == latest_hash;
 
       if !force && current_is_most_recent {
         log::info!(
           "{}",
           colors::green(format!(
             "\nLocal deno version {} is the most recent release\n",
-            crate::version::GIT_COMMIT_HASH
+            version::GIT_COMMIT_HASH
           ))
         );
         Ok(None)
