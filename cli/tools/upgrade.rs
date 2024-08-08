@@ -8,7 +8,7 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
-use crate::standalone::binary::unpack_into_dir;
+use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::version;
@@ -556,13 +556,13 @@ pub async fn upgrade(
   );
 
   let temp_dir = tempfile::TempDir::new()?;
-  let new_exe_path = unpack_into_dir(
-    "deno",
-    &ARCHIVE_NAME,
-    archive_data,
-    cfg!(windows),
-    &temp_dir,
-  )?;
+  let new_exe_path = archive::unpack_into_dir(archive::UnpackArgs {
+    exe_name: "deno",
+    archive_name: &ARCHIVE_NAME,
+    archive_data: &archive_data,
+    is_windows: cfg!(windows),
+    dest_path: temp_dir.path(),
+  })?;
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
