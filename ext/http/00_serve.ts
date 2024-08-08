@@ -185,7 +185,7 @@ class InnerRequest {
       this.headerList;
       this.close();
 
-      this.#upgraded = () => {};
+      this.#upgraded = () => { };
 
       const upgradeRid = op_http_upgrade_raw(external);
 
@@ -582,15 +582,15 @@ function serve(arg1, arg2) {
     options = { __proto__: null };
   }
 
-  const canOverrideOptions = !ObjectHasOwn(options, "path") &&
-    !ObjectHasOwn(options, "hostname") &&
-    !ObjectHasOwn(options, "port");
+  // const canOverrideOptions = !ObjectHasOwn(options, "path") &&
+  //   !ObjectHasOwn(options, "hostname") &&
+  //   !ObjectHasOwn(options, "port");
   const env =
     Deno.permissions.querySync({ name: "env", variable: "DENO_SERVE_ADDRESS" })
-        .state === "granted" &&
+      .state === "granted" &&
     Deno.env.get("DENO_SERVE_ADDRESS");
 
-  if (canOverrideOptions && env) {
+  if (env) {
     const delim = env.indexOf("/");
     if (delim >= 0) {
       const network = env.slice(0, delim);
@@ -614,9 +614,12 @@ function serve(arg1, arg2) {
           }
           options.hostname = hostname;
           options.port = port;
+          delete options.path;
           break;
         }
         case "unix": {
+          delete options.hostname;
+          delete options.port;
           options.path = address;
           break;
         }
