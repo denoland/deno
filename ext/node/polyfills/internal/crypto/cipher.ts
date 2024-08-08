@@ -17,6 +17,7 @@ import {
   op_node_decipheriv_decrypt,
   op_node_decipheriv_final,
   op_node_decipheriv_set_aad,
+  op_node_decipheriv_take,
   op_node_private_decrypt,
   op_node_private_encrypt,
   op_node_public_encrypt,
@@ -193,7 +194,8 @@ export class Cipheriv extends Transform implements Cipher {
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
     const buf = new Buffer(16);
-    if (this.#autoPadding && this.#cache.cache.byteLength != 16) {
+
+    if (!this.#autoPadding && this.#cache.cache.byteLength != 16) {
       throw new Error("Invalid final block size");
     }
     const maybeTag = op_node_cipheriv_final(
@@ -342,6 +344,7 @@ export class Decipheriv extends Transform implements Cipher {
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
     if (!this.#needsBlockCache || this.#cache.cache.byteLength === 0) {
+      op_node_decipheriv_take(this.#context);
       return encoding === "buffer" ? Buffer.from([]) : "";
     }
     if (this.#cache.cache.byteLength != 16) {
