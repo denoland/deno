@@ -9,7 +9,9 @@ import {
   op_node_create_public_key,
   op_node_get_asymmetric_key_type,
   op_node_sign,
+  op_node_sign_ed25519,
   op_node_verify,
+  op_node_verify_ed25519,
 } from "ext:core/ops";
 
 import {
@@ -207,18 +209,21 @@ export function signOneShot(
     );
   }
 
-  if (algorithm == null) {
-    if (op_node_get_asymmetric_key_type(handle) === "ed25519") {
-      algorithm = "sha512";
-    } else {
-      throw new TypeError(
-        "Algorithm must be specified when using non-Ed25519 keys",
-      );
+  let result: Buffer;
+  if (op_node_get_asymmetric_key_type(handle) === "ed25519") {
+    if (algorithm != null && algorithm !== "sha512") {
+      throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
     }
+    result = new Buffer(64);
+    op_node_sign_ed25519(handle, data, result);
+  } else if (algorithm == null) {
+    throw new TypeError(
+      "Algorithm must be specified when using non-Ed25519 keys",
+    );
+  } else {
+    result = Sign(algorithm!).update(data)
+      .sign(new PrivateKeyObject(handle));
   }
-
-  const result = Sign(algorithm!).update(data)
-    .sign(new PrivateKeyObject(handle));
 
   if (callback) {
     setTimeout(() => callback(null, result));
@@ -259,18 +264,20 @@ export function verifyOneShot(
     );
   }
 
-  if (algorithm == null) {
-    if (op_node_get_asymmetric_key_type(handle) === "ed25519") {
-      algorithm = "sha512";
-    } else {
-      throw new TypeError(
-        "Algorithm must be specified when using non-Ed25519 keys",
-      );
+  let result: boolean;
+  if (op_node_get_asymmetric_key_type(handle) === "ed25519") {
+    if (algorithm != null && algorithm !== "sha512") {
+      throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
     }
+    result = op_node_verify_ed25519(handle, data, signature);
+  } else if (algorithm == null) {
+    throw new TypeError(
+      "Algorithm must be specified when using non-Ed25519 keys",
+    );
+  } else {
+    result = Verify(algorithm!).update(data)
+      .verify(new PublicKeyObject(handle), signature);
   }
-
-  const result = Verify(algorithm!).update(data)
-    .verify(new PublicKeyObject(handle), signature);
 
   if (callback) {
     setTimeout(() => callback(null, result));
