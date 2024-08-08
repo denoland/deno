@@ -7,6 +7,7 @@
 import {
   op_node_dh_compute_secret,
   op_node_dh_keys_generate_and_export,
+  op_node_diffie_hellman,
   op_node_ecdh_compute_public_key,
   op_node_ecdh_compute_secret,
   op_node_ecdh_encode_pubkey,
@@ -40,7 +41,12 @@ import type {
   BinaryToTextEncoding,
   ECDHKeyFormat,
 } from "ext:deno_node/internal/crypto/types.ts";
-import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+import {
+  getKeyObjectHandle,
+  kConsumePrivate,
+  kConsumePublic,
+  KeyObject,
+} from "ext:deno_node/internal/crypto/keys.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 
 const DH_GENERATOR = 2;
@@ -1305,11 +1311,14 @@ export class ECDH {
   }
 }
 
-export function diffieHellman(_options: {
+export function diffieHellman(options: {
   privateKey: KeyObject;
   publicKey: KeyObject;
 }): Buffer {
-  notImplemented("crypto.diffieHellman");
+  const privateKey = getKeyObjectHandle(options.privateKey, kConsumePrivate);
+  const publicKey = getKeyObjectHandle(options.publicKey, kConsumePublic);
+  const bytes = op_node_diffie_hellman(privateKey, publicKey);
+  return Buffer.from(bytes);
 }
 
 export default {
