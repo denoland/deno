@@ -36,6 +36,7 @@ deno_net.workspace = true
 deno_package_json.workspace = true
 deno_permissions.workspace = true
 deno_whoami = "0.1.0"
+der = { version = "0.7.9", features = ["derive"] }
 digest = { version = "0.10.5", features = ["core-api", "std"] }
 dsa = "0.6.1"
 ecb.workspace = true

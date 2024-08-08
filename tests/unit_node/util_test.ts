@@ -8,6 +8,7 @@ import {
 } from "@std/assert";
 import { stripAnsiCode } from "@std/fmt/colors";
 import * as util from "node:util";
+import utilDefault from "node:util";
 import { Buffer } from "node:buffer";
 
 Deno.test({
@@ -321,4 +322,11 @@ Deno.test({
   fn() {
     util.parseArgs({});
   },
+});
+
+Deno.test("[util] debuglog() and debug()", () => {
+  assert(typeof util.debug === "function");
+  assert(typeof util.debuglog === "function");
+  assertEquals(util.debuglog, util.debug);
+  assertEquals(utilDefault.debuglog, utilDefault.debug);
 });

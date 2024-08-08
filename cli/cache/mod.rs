@@ -106,7 +106,7 @@ pub use deno_cache_dir::HttpCache;
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
-  emit_cache: EmitCache,
+  emit_cache: Arc<EmitCache>,
   file_fetcher: Arc<FileFetcher>,
   file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   global_http_cache: Arc<GlobalHttpCache>,
@@ -118,7 +118,7 @@ pub struct FetchCacher {
 
 impl FetchCacher {
   pub fn new(
-    emit_cache: EmitCache,
+    emit_cache: Arc<EmitCache>,
     file_fetcher: Arc<FileFetcher>,
     file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
     global_http_cache: Arc<GlobalHttpCache>,
