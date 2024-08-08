@@ -708,7 +708,7 @@ impl HtmlCoverageReporter {
       let mut full_url = "../".repeat(breadcrumbs_parts.len() - (index + 1));
 
       if index == breadcrumbs_parts.len() - 1 {
-        breadcrumbs_html.push(format!("<span>{breadcrumb}</span>"));
+        breadcrumbs_html.push(format!("{breadcrumb}"));
         continue;
       }
 
@@ -725,7 +725,7 @@ impl HtmlCoverageReporter {
     }
 
     if breadcrumbs_parts.is_empty() {
-      return String::from("<span>All files</span>");
+      return String::from("All files");
     }
 
     breadcrumbs_html.into_iter().collect::<Vec<_>>().join(" / ")
