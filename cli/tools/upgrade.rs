@@ -1103,8 +1103,15 @@ mod test {
 
   #[test]
   fn test_parse_upgrade_check_file() {
-    let file = CheckVersionFile::parse(
+    // NOTE(bartlomieju): pre-1.46 format
+    let maybe_file = CheckVersionFile::parse(
       "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2"
+        .to_string(),
+    );
+    assert!(maybe_file.is_none());
+    // NOTE(bartlomieju): post-1.46 format
+    let file = CheckVersionFile::parse(
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!stable"
         .to_string(),
     )
     .unwrap();
@@ -1118,6 +1125,7 @@ mod test {
     );
     assert_eq!(file.latest_version, "1.2.3".to_string());
     assert_eq!(file.current_version, "1.2.2".to_string());
+    assert_eq!(file.current_release_channel, ReleaseChannel::Stable);
 
     let result =
       CheckVersionFile::parse("2020-01-01T00:00:00+00:00!".to_string());
