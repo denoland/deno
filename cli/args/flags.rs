@@ -3604,8 +3604,8 @@ fn seed_arg() -> Arg {
 
 fn hmr_arg(takes_files: bool) -> Arg {
   let arg = Arg::new("hmr")
-    .long("unstable-hmr")
-    .help("UNSTABLE: Watch for file changes and hot replace modules")
+    .long("watch-hmr")
+    .help("Watch for file changes and hot replace modules")
     .conflicts_with("watch");
 
   if takes_files {
@@ -5252,7 +5252,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--unstable-hmr",
+      "--watch-hmr",
       "--no-clear-screen",
       "script.ts"
     ]);
@@ -5277,7 +5277,7 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--unstable-hmr=foo.txt",
+      "--watch-hmr=foo.txt",
       "--no-clear-screen",
       "script.ts"
     ]);

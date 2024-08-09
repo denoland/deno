@@ -117,7 +117,7 @@ impl crate::worker::HmrRunner for HmrRunner {
 
           // If after filtering there are no paths it means it's either a file
           // we can't HMR or an external file that was passed explicitly to
-          // `--unstable-hmr=<file>` path.
+          // `--watch-hmr=<file>` path.
           if filtered_paths.is_empty() {
             let _ = self.watcher_communicator.force_restart();
             continue;
