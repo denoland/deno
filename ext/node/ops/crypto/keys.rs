@@ -522,7 +522,7 @@ impl KeyObjectHandle {
     key: &[u8],
     format: &str,
     typ: &str,
-    _passphrase: Option<&[u8]>,
+    passphrase: Option<&[u8]>,
   ) -> Result<KeyObjectHandle, AnyError> {
     let document = match format {
       "pem" => {
@@ -542,23 +542,22 @@ impl KeyObjectHandle {
             Document::from_pkcs1_der(document.as_bytes())
               .map_err(|_| type_error("invalid PKCS#1 public key"))?
           }
-          EncryptedPrivateKeyInfo::PEM_LABEL => {
-            // FIXME
-            return Err(type_error(
-              "deriving public key from encrypted private key",
-            ));
-          }
-          PrivateKeyInfo::PEM_LABEL => {
-            // FIXME
-            return Err(type_error("public key cannot be a private key"));
-          }
-          sec1::EcPrivateKey::PEM_LABEL => {
-            // FIXME
-            return Err(type_error("deriving public key from ec private key"));
-          }
-          rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
-            // FIXME
-            return Err(type_error("deriving public key from rsa private key"));
+          EncryptedPrivateKeyInfo::PEM_LABEL
+          | PrivateKeyInfo::PEM_LABEL
+          | sec1::EcPrivateKey::PEM_LABEL
+          | rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
+            let handle = KeyObjectHandle::new_asymmetric_private_key_from_js(
+              key, format, typ, passphrase,
+            )?;
+            match handle {
+              KeyObjectHandle::AsymmetricPrivate(private) => {
+                return Ok(KeyObjectHandle::AsymmetricPublic(
+                  private.to_public_key(),
+                ))
+              }
+              KeyObjectHandle::AsymmetricPublic(_)
+              | KeyObjectHandle::Secret(_) => unreachable!(),
+            }
           }
           // TODO: handle x509 certificates as public keys
           _ => {
