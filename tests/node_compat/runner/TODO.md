@@ -1882,7 +1882,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-os-homedir-no-envvar.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-os-homedir-no-envvar.js)
 - [parallel/test-os-process-priority.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-os-process-priority.js)
 - [parallel/test-os-userinfo-handles-getter-errors.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-os-userinfo-handles-getter-errors.js)
-- [parallel/test-os.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-os.js)
 - [parallel/test-path-posix-relative-on-windows.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-path-posix-relative-on-windows.js)
 - [parallel/test-pending-deprecation.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-pending-deprecation.js)
 - [parallel/test-perf-gc-crash.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-perf-gc-crash.js)
