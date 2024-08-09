@@ -128,12 +128,14 @@ impl VersionProvider for RealVersionProvider {
     &self,
     release_channel: ReleaseChannel,
   ) -> Result<String, AnyError> {
-    fetch_latest_version(
+    let r = fetch_latest_version(
       &self.http_client_provider.get_or_create()?,
       release_channel,
       self.check_kind,
     )
-    .await
+    .await?;
+
+    Ok(r.version_or_hash)
   }
 
   fn current_version(&self) -> Cow<str> {
@@ -526,10 +528,13 @@ enum RequestedVersion {
 impl RequestedVersion {
   fn from_upgrade_flags(upgrade_flags: UpgradeFlags) -> Result<Self, AnyError> {
     let is_canary = upgrade_flags.canary;
+    let is_release_candidate = upgrade_flags.release_candidate;
 
     let Some(passed_version) = upgrade_flags.version else {
       let channel = if is_canary {
         ReleaseChannel::Canary
+      } else if is_release_candidate {
+        ReleaseChannel::Rc
       } else {
         ReleaseChannel::Stable
       };
@@ -605,7 +610,7 @@ async fn find_latest_version_to_upgrade(
   );
 
   let client = http_client_provider.get_or_create()?;
-  let latest_version =
+  let latest_version_found =
     fetch_latest_version(&client, release_channel, UpgradeCheckKind::Execution)
       .await?;
 
@@ -614,7 +619,9 @@ async fn find_latest_version_to_upgrade(
       let current_version = version::deno();
       let current_is_most_recent = if !version::is_canary() {
         let current = Version::parse_standard(current_version).unwrap();
-        let latest = Version::parse_standard(&latest_version).unwrap();
+        let latest =
+          Version::parse_standard(&latest_version_found.version_or_hash)
+            .unwrap();
         current >= latest
       } else {
         false
@@ -623,21 +630,32 @@ async fn find_latest_version_to_upgrade(
       if !force && current_is_most_recent {
         (None, current_version)
       } else {
-        (Some(latest_version), current_version)
+        (Some(latest_version_found), current_version)
       }
     }
     ReleaseChannel::Canary => {
       let current_version = version::GIT_COMMIT_HASH;
-      let current_is_most_recent = current_version == latest_version;
+      let current_is_most_recent =
+        current_version == latest_version_found.version_or_hash;
 
       if !force && current_is_most_recent {
         (None, current_version)
       } else {
-        (Some(latest_version), current_version)
+        (Some(latest_version_found), current_version)
       }
     }
     // TODO(bartlomieju)
-    ReleaseChannel::Rc => unreachable!(),
+    ReleaseChannel::Rc => {
+      let current_version = version::GIT_COMMIT_HASH;
+      let current_is_most_recent =
+        current_version == latest_version_found.version_or_hash;
+
+      if !force && current_is_most_recent {
+        (None, current_version)
+      } else {
+        (Some(latest_version_found), current_version)
+      }
+    }
     // TODO(bartlomieju)
     ReleaseChannel::Lts => unreachable!(),
   };
@@ -648,7 +666,7 @@ async fn find_latest_version_to_upgrade(
       "{}",
       color_print::cformat!(
         "<g>Found latest version {}</>",
-        newer_latest_version
+        newer_latest_version.display
       )
     );
   } else {
@@ -662,7 +680,7 @@ async fn find_latest_version_to_upgrade(
   }
   log::info!("");
 
-  Ok(maybe_newer_latest_version)
+  Ok(maybe_newer_latest_version.map(|v| v.version_or_hash))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -678,7 +696,6 @@ enum ReleaseChannel {
   Lts,
 
   /// Release candidate
-  #[allow(unused)]
   Rc,
 }
 
@@ -701,37 +718,59 @@ fn parse_rc_versions_text(text: &str) -> Result<Vec<String>, AnyError> {
   Ok(lines)
 }
 
+#[allow(unused)]
 async fn get_rc_versions(
   client: &HttpClient,
   check_kind: UpgradeCheckKind,
 ) -> Result<Vec<String>, AnyError> {
-  let url = get_url(
-    UpgradeReleaseKind::ReleaseCandidate,
-    env!("TARGET"),
-    check_kind,
-  );
+  let url =
+    get_latest_version_url(ReleaseChannel::Rc, env!("TARGET"), check_kind);
   let text = client.download_text(url.parse()?).await?;
   parse_rc_versions_text(&text)
+}
+
+struct LatestVersionFound {
+  version_or_hash: String,
+  display: String,
 }
 
 async fn fetch_latest_version(
   client: &HttpClient,
   release_channel: ReleaseChannel,
   check_kind: UpgradeCheckKind,
-) -> Result<String, AnyError> {
+) -> Result<LatestVersionFound, AnyError> {
   let url = get_latest_version_url(release_channel, env!("TARGET"), check_kind);
   let text = client.download_text(url.parse()?).await?;
-  Ok(normalize_version_from_server(release_channel, &text))
+  let version = normalize_version_from_server(release_channel, &text)?;
+  Ok(version)
 }
 
 fn normalize_version_from_server(
   release_channel: ReleaseChannel,
   text: &str,
-) -> String {
+) -> Result<LatestVersionFound, AnyError> {
   let text = text.trim();
   match release_channel {
-    ReleaseChannel::Stable => text.trim_start_matches('v').to_string(),
-    ReleaseChannel::Canary => text.to_string(),
+    ReleaseChannel::Stable => {
+      let v = text.trim_start_matches('v').to_string();
+      Ok(LatestVersionFound {
+        version_or_hash: v.to_string(),
+        display: v.to_string(),
+      })
+    }
+    ReleaseChannel::Canary => Ok(LatestVersionFound {
+      version_or_hash: text.to_string(),
+      display: text.to_string(),
+    }),
+    ReleaseChannel::Rc => {
+      let lines = parse_rc_versions_text(text)?;
+      let latest = lines.last().unwrap();
+      let v = latest.split(' ').collect::<Vec<_>>();
+      Ok(LatestVersionFound {
+        version_or_hash: v[0].to_string(),
+        display: v[1].to_string(),
+      })
+    }
     _ => unreachable!(),
   }
 }
@@ -1266,32 +1305,32 @@ mod test {
       "https://dl.deno.land/release-2-rc.txt?lsp"
     );
     assert_eq!(
-      get_url(
-        UpgradeReleaseKind::ReleaseCandidate,
+      get_latest_version_url(
+        ReleaseChannel::Rc,
         "aarch64-apple-darwin",
         UpgradeCheckKind::Execution
       ),
       "https://dl.deno.land/release-2-rc.txt"
     );
     assert_eq!(
-      get_url(
-        UpgradeReleaseKind::ReleaseCandidate,
+      get_latest_version_url(
+        ReleaseChannel::Rc,
         "aarch64-apple-darwin",
         UpgradeCheckKind::Lsp
       ),
       "https://dl.deno.land/release-2-rc.txt?lsp"
     );
     assert_eq!(
-      get_url(
-        UpgradeReleaseKind::ReleaseCandidate,
+      get_latest_version_url(
+        ReleaseChannel::Rc,
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Execution
       ),
       "https://dl.deno.land/release-2-rc.txt"
     );
     assert_eq!(
-      get_url(
-        UpgradeReleaseKind::ReleaseCandidate,
+      get_latest_version_url(
+        ReleaseChannel::Rc,
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Lsp
       ),
