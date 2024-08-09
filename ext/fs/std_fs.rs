@@ -197,16 +197,14 @@ impl FileSystem for RealFs {
   }
 
   fn rename_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
-    fs::rename(oldpath, newpath).map_err(Into::into)
+    rename(oldpath, newpath)
   }
   async fn rename_async(
     &self,
     oldpath: PathBuf,
     newpath: PathBuf,
   ) -> FsResult<()> {
-    spawn_blocking(move || fs::rename(oldpath, newpath))
-      .await?
-      .map_err(Into::into)
+    spawn_blocking(move || rename(&oldpath, &newpath)).await?
   }
 
   fn link_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
@@ -957,6 +955,29 @@ fn read_dir(path: &Path) -> FsResult<Vec<FsDirEntry>> {
     .collect();
 
   Ok(entries)
+}
+
+fn rename(oldpath: &Path, newpath: &Path) -> FsResult<()> {
+  match fs::rename(oldpath, newpath) {
+    Ok(_) => Ok(()),
+    Err(err) => {
+      if err.raw_os_error() == Some(libc::EXDEV) {
+        // EXDEV: rename fails because oldpath and newpath are not on the same
+        // mounted filesystem. We need to do a copy and remove.
+        //
+        // This check can be replaced with the following once
+        // https://github.com/rust-lang/rust/issues/86442 stabilizes:
+        //
+        //    if err.kind() == io::ErrorKind::CrossDeviceLink
+        //
+        copy_file(oldpath, newpath)?;
+        fs::remove_file(oldpath)?;
+        Ok(())
+      } else {
+        Err(err.into())
+      }
+    }
+  }
 }
 
 #[cfg(not(windows))]
