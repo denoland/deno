@@ -95,9 +95,9 @@ trait VersionProvider: Clone {
     release_channel: ReleaseChannel,
   ) -> Result<String, AnyError>;
 
-  // TODO(bartlomieju): what this one actually returns?
-  // TODO(bartlomieju): this should decide based on
-  // `get_current_exe_release_channel`.
+  /// Returns either a semver or git hash. It's up to implementor to
+  /// decide which one is appropriate, but in general only "stable"
+  /// and "lts" versions use semver.
   fn current_version(&self) -> Cow<str>;
 
   // TODO(bartlomieju): update to handle `Lts` channel
@@ -613,6 +613,7 @@ impl RequestedVersion {
     Ok(RequestedVersion::SpecificVersion(channel, passed_version))
   }
 
+  /// Channels that use Git hashes as versions are considered canary.
   pub fn is_canary(&self) -> bool {
     match self {
       Self::Latest(channel) => {
@@ -712,7 +713,6 @@ async fn find_latest_version_to_upgrade(
         (Some(latest_version_found), current_version)
       }
     }
-    // TODO(bartlomieju)
     ReleaseChannel::Rc => {
       let current_version = version::GIT_COMMIT_HASH;
       let current_is_most_recent =
