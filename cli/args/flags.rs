@@ -9891,9 +9891,11 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Run(RunFlags::new_default(
-          "script.ts".to_string(),
-        )),
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: None,
+          bare: true,
+        }),
         type_check_mode: TypeCheckMode::None,
         code_cache_enabled: true,
         ..Flags::default()
