@@ -39,8 +39,7 @@ pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
 
 // How often query server for new version. In hours.
-// const UPGRADE_CHECK_INTERVAL: i64 = 24;
-const UPGRADE_CHECK_INTERVAL: i64 = 1;
+const UPGRADE_CHECK_INTERVAL: i64 = 24;
 
 const UPGRADE_CHECK_FETCH_DELAY: Duration = Duration::from_millis(500);
 
@@ -125,10 +124,6 @@ impl RealVersionProvider {
   }
 }
 
-//
-
-///
-///
 #[async_trait(?Send)]
 impl VersionProvider for RealVersionProvider {
   async fn latest_version(
