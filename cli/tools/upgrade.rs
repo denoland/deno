@@ -39,7 +39,8 @@ pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
 
 // How often query server for new version. In hours.
-const UPGRADE_CHECK_INTERVAL: i64 = 24;
+// const UPGRADE_CHECK_INTERVAL: i64 = 24;
+const UPGRADE_CHECK_INTERVAL: i64 = 1;
 
 const UPGRADE_CHECK_FETCH_DELAY: Duration = Duration::from_millis(500);
 
@@ -124,6 +125,10 @@ impl RealVersionProvider {
   }
 }
 
+//
+
+///
+///
 #[async_trait(?Send)]
 impl VersionProvider for RealVersionProvider {
   async fn latest_version(
@@ -207,8 +212,8 @@ impl<
     }
   }
 
-  /// Returns the version if a new one is available and it should be prompted about.
-  pub fn should_prompt(&self) -> Option<String> {
+  /// Returns the current exe release channel and a version if a new one is available and it should be prompted about.
+  pub fn should_prompt(&self) -> Option<(ReleaseChannel, String)> {
     let file = self.maybe_file.as_ref()?;
     // If the current version saved is not the actually current version of the binary
     // It means
@@ -236,7 +241,7 @@ impl<
       .current_time()
       .signed_duration_since(file.last_prompt);
     if last_prompt_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL) {
-      Some(file.latest_version.clone())
+      Some((file.current_release_channel, file.latest_version.clone()))
     } else {
       None
     }
@@ -316,45 +321,45 @@ pub fn check_for_upgrades(
   }
 
   // Print a message if an update is available
-  spawn(async move {
-    let version_provider = RealVersionProvider::new(
-      http_client_provider,
-      UpgradeCheckKind::Execution,
-    );
-    let Ok(release_channel) =
-      version_provider.get_current_exe_release_channel().await
-    else {
-      return;
-    };
-    if let Some(upgrade_version) = update_checker.should_prompt() {
-      if log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal()
-      {
-        if matches!(release_channel, ReleaseChannel::Rc) {
-          log::info!(
-            "{} {}",
-            colors::green("A new release candidate of Deno is available."),
-            colors::italic_gray("Run `deno upgrade --rc` to install it.")
-          );
-        } else if version::is_canary() {
-          log::info!(
-            "{} {}",
-            colors::green("A new canary release of Deno is available."),
-            colors::italic_gray("Run `deno upgrade --canary` to install it.")
-          );
-        } else {
-          log::info!(
-            "{} {} → {} {}",
-            colors::green("A new release of Deno is available:"),
-            colors::cyan(version::deno()),
-            colors::cyan(&upgrade_version),
-            colors::italic_gray("Run `deno upgrade` to install it.")
-          );
-        }
+  if let Some((release_channel, upgrade_version)) =
+    update_checker.should_prompt()
+  {
+    let should_prompt =
+      log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal();
 
-        update_checker.store_prompted();
-      }
+    if !should_prompt {
+      return;
     }
-  });
+
+    match release_channel {
+      ReleaseChannel::Stable => {
+        log::info!(
+          "{} {} → {} {}",
+          colors::green("A new release of Deno is available:"),
+          colors::cyan(version::deno()),
+          colors::cyan(&upgrade_version),
+          colors::italic_gray("Run `deno upgrade` to install it.")
+        );
+      }
+      ReleaseChannel::Canary => {
+        log::info!(
+          "{} {}",
+          colors::green("A new canary release of Deno is available."),
+          colors::italic_gray("Run `deno upgrade --canary` to install it.")
+        );
+      }
+      ReleaseChannel::Rc => {
+        log::info!(
+          "{} {}",
+          colors::green("A new release candidate of Deno is available."),
+          colors::italic_gray("Run `deno upgrade --rc` to install it.")
+        );
+      }
+      ReleaseChannel::Lts => unreachable!(),
+    }
+
+    update_checker.store_prompted();
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -409,10 +414,13 @@ async fn check_for_upgrades_for_lsp_with_provider(
       is_canary: true,
     })),
 
+    ReleaseChannel::Rc => Ok(Some(LspVersionUpgradeInfo {
+      latest_version,
+      is_canary: true,
+    })),
+
     // TODO(bartlomieju)
     ReleaseChannel::Lts => unreachable!(),
-    // TODO(bartlomieju)
-    ReleaseChannel::Rc => unreachable!(),
   }
 }
 
@@ -444,6 +452,7 @@ async fn fetch_and_store_latest_version<
       last_checked: env.current_time(),
       current_version: version_provider.current_version().to_string(),
       latest_version,
+      current_release_channel: release_channel,
     }
     .serialize(),
   );
@@ -747,7 +756,7 @@ async fn find_latest_version_to_upgrade(
   Ok(maybe_newer_latest_version)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum ReleaseChannel {
   /// Stable version, eg. 1.45.4, 2.0.0, 2.1.0
   Stable,
@@ -771,6 +780,26 @@ impl ReleaseChannel {
       Self::Rc => "release candidate",
       Self::Lts => "LTS (long term support)",
     }
+  }
+
+  fn serialize(&self) -> String {
+    match self {
+      Self::Stable => "stable",
+      Self::Canary => "canary",
+      Self::Rc => "rc",
+      Self::Lts => "lts",
+    }
+    .to_string()
+  }
+
+  fn deserialize(str_: &str) -> Result<Self, AnyError> {
+    Ok(match str_ {
+      "stable" => Self::Stable,
+      "canary" => Self::Canary,
+      "rc" => Self::Rc,
+      "lts" => Self::Lts,
+      unknown => bail!("Unrecognized release channel: {}", unknown),
+    })
   }
 }
 
@@ -1006,13 +1035,14 @@ struct CheckVersionFile {
   pub last_checked: chrono::DateTime<chrono::Utc>,
   pub current_version: String,
   pub latest_version: String,
+  pub current_release_channel: ReleaseChannel,
 }
 
 impl CheckVersionFile {
   pub fn parse(content: String) -> Option<Self> {
     let split_content = content.split('!').collect::<Vec<_>>();
 
-    if split_content.len() != 4 {
+    if split_content.len() != 5 {
       return None;
     }
 
@@ -1024,6 +1054,15 @@ impl CheckVersionFile {
     if current_version.is_empty() {
       return None;
     }
+    let current_release_channel = split_content[4].trim().to_owned();
+    if current_release_channel.is_empty() {
+      return None;
+    }
+    let Ok(current_release_channel) =
+      ReleaseChannel::deserialize(&current_release_channel)
+    else {
+      return None;
+    };
 
     let last_prompt = chrono::DateTime::parse_from_rfc3339(split_content[0])
       .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -1037,16 +1076,18 @@ impl CheckVersionFile {
       last_checked,
       current_version,
       latest_version,
+      current_release_channel,
     })
   }
 
   fn serialize(&self) -> String {
     format!(
-      "{}!{}!{}!{}",
+      "{}!{}!{}!{}!{}",
       self.last_prompt.to_rfc3339(),
       self.last_checked.to_rfc3339(),
       self.latest_version,
       self.current_version,
+      self.current_release_channel.serialize(),
     )
   }
 
@@ -1107,10 +1148,11 @@ mod test {
       .with_timezone(&chrono::Utc),
       latest_version: "1.2.3".to_string(),
       current_version: "1.2.2".to_string(),
+      current_release_channel: ReleaseChannel::Stable,
     };
     assert_eq!(
       file.serialize(),
-      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2"
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!stable"
     );
   }
 
@@ -1233,25 +1275,37 @@ mod test {
     // should not check for latest version because we just did
     assert!(!checker.should_check_for_new_version());
     // but should prompt
-    assert_eq!(checker.should_prompt(), Some("1.1.0".to_string()));
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Stable, "1.1.0".to_string()))
+    );
 
     // fast forward an hour and bump the latest version
     env.add_hours(1);
     env.set_latest_version("1.2.0");
     assert!(!checker.should_check_for_new_version());
-    assert_eq!(checker.should_prompt(), Some("1.1.0".to_string()));
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Stable, "1.1.0".to_string()))
+    );
 
     // fast forward again and it should check for a newer version
     env.add_hours(UPGRADE_CHECK_INTERVAL);
     assert!(checker.should_check_for_new_version());
-    assert_eq!(checker.should_prompt(), Some("1.1.0".to_string()));
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Stable, "1.1.0".to_string()))
+    );
 
     fetch_and_store_latest_version(&env, &env).await;
 
     // reload and store that we prompted
     let checker = UpdateChecker::new(env.clone(), env.clone());
     assert!(!checker.should_check_for_new_version());
-    assert_eq!(checker.should_prompt(), Some("1.2.0".to_string()));
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Stable, "1.2.0".to_string()))
+    );
     checker.store_prompted();
 
     // reload and it should now say not to prompt
@@ -1262,7 +1316,10 @@ mod test {
     // but if we fast forward past the upgrade interval it should prompt again
     env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
     assert!(checker.should_check_for_new_version());
-    assert_eq!(checker.should_prompt(), Some("1.2.0".to_string()));
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Stable, "1.2.0".to_string()))
+    );
 
     // upgrade the version and it should stop prompting
     env.set_current_version("1.2.0");
@@ -1290,6 +1347,7 @@ mod test {
       last_checked: env.current_time(),
       latest_version: "1.26.2".to_string(),
       current_version: "1.27.0".to_string(),
+      current_release_channel: ReleaseChannel::Stable,
     }
     .serialize();
     env.write_check_file(&file_content);
@@ -1312,6 +1370,7 @@ mod test {
       last_checked: env.current_time(),
       latest_version: "1.26.2".to_string(),
       current_version: "1.25.0".to_string(),
+      current_release_channel: ReleaseChannel::Stable,
     }
     .serialize();
     env.write_check_file(&file_content);
@@ -1523,6 +1582,32 @@ mod test {
         maybe_info,
         Some(LspVersionUpgradeInfo {
           latest_version: "1234".to_string(),
+          is_canary: true,
+        })
+      );
+    }
+    // rc equal
+    {
+      env.set_is_canary(false);
+      env.set_current_version("1.2.3-rc.0");
+      env.set_latest_version("1.2.3-rc.0");
+      env.set_is_release_candidate(true);
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(maybe_info, None);
+    }
+    // canary different
+    {
+      env.set_latest_version("1.2.3-rc.0");
+      env.set_latest_version("1.2.3-rc.1");
+      let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
+        .await
+        .unwrap();
+      assert_eq!(
+        maybe_info,
+        Some(LspVersionUpgradeInfo {
+          latest_version: "1.2.3-rc.1".to_string(),
           is_canary: true,
         })
       );
