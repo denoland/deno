@@ -53,6 +53,7 @@ pub fn create_npm_fs_resolver(
       tarball_cache,
       resolution,
       system_info,
+      lifecycle_scripts,
     )),
   }
 }
