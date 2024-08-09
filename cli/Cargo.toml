@@ -87,15 +87,13 @@ deno_core = { workspace = true, features = [
 ] }
 deno_doc = { version = "0.145.0", features = ["html", "syntect"] }
 deno_emit = "=0.44.0"
-deno_graph = { version = "=0.81.1" }
+deno_graph = { version = "=0.81.2" }
 deno_lint = { version = "=0.62.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "=0.21.4"
 deno_package_json.workspace = true
-deno_runtime = { workspace = true, features = [
-  "include_js_files_for_snapshotting",
-] }
-deno_semver = "=0.5.9"
+deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_semver = "=0.5.10"
 deno_task_shell = "=0.17.0"
 deno_terminal.workspace = true
 eszip = "=0.73.0"
@@ -177,6 +175,7 @@ typed-arena = "=2.0.2"
 uuid = { workspace = true, features = ["serde"] }
 which.workspace = true
 zeromq.workspace = true
+zip = { version = "2.1.6", default-features = false, features = ["deflate-flate2"] }
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]

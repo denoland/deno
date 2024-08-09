@@ -1,0 +1,12 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "envs": {
+        "DENO_FUTURE": "1"
+      },
+      "args": "install npm:ajv@latest",
+      "output": "install.out"
+    }
+  ]
+}

@@ -7,8 +7,11 @@
 import {
   op_node_create_private_key,
   op_node_create_public_key,
+  op_node_get_asymmetric_key_type,
   op_node_sign,
+  op_node_sign_ed25519,
   op_node_verify,
+  op_node_verify_ed25519,
 } from "ext:core/ops";
 
 import {
@@ -30,6 +33,8 @@ import {
   kConsumePublic,
   KeyObject,
   prepareAsymmetricKey,
+  PrivateKeyObject,
+  PublicKeyObject,
 } from "ext:deno_node/internal/crypto/keys.ts";
 import { createHash } from "ext:deno_node/internal/crypto/hash.ts";
 import { ERR_CRYPTO_SIGN_KEY_REQUIRED } from "ext:deno_node/internal/errors.ts";
@@ -191,7 +196,34 @@ export function signOneShot(
     throw new ERR_CRYPTO_SIGN_KEY_REQUIRED();
   }
 
-  const result = Sign(algorithm!).update(data).sign(key);
+  const res = prepareAsymmetricKey(key, kConsumePrivate);
+  let handle;
+  if ("handle" in res) {
+    handle = res.handle;
+  } else {
+    handle = op_node_create_private_key(
+      res.data,
+      res.format,
+      res.type ?? "",
+      res.passphrase,
+    );
+  }
+
+  let result: Buffer;
+  if (op_node_get_asymmetric_key_type(handle) === "ed25519") {
+    if (algorithm != null && algorithm !== "sha512") {
+      throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
+    }
+    result = new Buffer(64);
+    op_node_sign_ed25519(handle, data, result);
+  } else if (algorithm == null) {
+    throw new TypeError(
+      "Algorithm must be specified when using non-Ed25519 keys",
+    );
+  } else {
+    result = Sign(algorithm!).update(data)
+      .sign(new PrivateKeyObject(handle));
+  }
 
   if (callback) {
     setTimeout(() => callback(null, result));
@@ -219,7 +251,33 @@ export function verifyOneShot(
     throw new ERR_CRYPTO_SIGN_KEY_REQUIRED();
   }
 
-  const result = Verify(algorithm!).update(data).verify(key, signature);
+  const res = prepareAsymmetricKey(key, kConsumePublic);
+  let handle;
+  if ("handle" in res) {
+    handle = res.handle;
+  } else {
+    handle = op_node_create_public_key(
+      res.data,
+      res.format,
+      res.type ?? "",
+      res.passphrase,
+    );
+  }
+
+  let result: boolean;
+  if (op_node_get_asymmetric_key_type(handle) === "ed25519") {
+    if (algorithm != null && algorithm !== "sha512") {
+      throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
+    }
+    result = op_node_verify_ed25519(handle, data, signature);
+  } else if (algorithm == null) {
+    throw new TypeError(
+      "Algorithm must be specified when using non-Ed25519 keys",
+    );
+  } else {
+    result = Verify(algorithm!).update(data)
+      .verify(new PublicKeyObject(handle), signature);
+  }
 
   if (callback) {
     setTimeout(() => callback(null, result));

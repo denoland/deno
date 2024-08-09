@@ -12,11 +12,13 @@ import {
   op_node_cipheriv_encrypt,
   op_node_cipheriv_final,
   op_node_cipheriv_set_aad,
+  op_node_cipheriv_take,
   op_node_create_cipheriv,
   op_node_create_decipheriv,
   op_node_decipheriv_decrypt,
   op_node_decipheriv_final,
   op_node_decipheriv_set_aad,
+  op_node_decipheriv_take,
   op_node_private_decrypt,
   op_node_private_encrypt,
   op_node_public_encrypt,
@@ -163,6 +165,8 @@ export class Cipheriv extends Transform implements Cipher {
 
   #authTag?: Buffer;
 
+  #autoPadding = true;
+
   constructor(
     cipher: string,
     key: CipherKey,
@@ -191,8 +195,17 @@ export class Cipheriv extends Transform implements Cipher {
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
     const buf = new Buffer(16);
+    if (this.#cache.cache.byteLength == 0) {
+      const maybeTag = op_node_cipheriv_take(this.#context);
+      if (maybeTag) this.#authTag = Buffer.from(maybeTag);
+      return encoding === "buffer" ? Buffer.from([]) : "";
+    }
+    if (!this.#autoPadding && this.#cache.cache.byteLength != 16) {
+      throw new Error("Invalid final block size");
+    }
     const maybeTag = op_node_cipheriv_final(
       this.#context,
+      this.#autoPadding,
       this.#cache.cache,
       buf,
     );
@@ -217,8 +230,8 @@ export class Cipheriv extends Transform implements Cipher {
     return this;
   }
 
-  setAutoPadding(_autoPadding?: boolean): this {
-    notImplemented("crypto.Cipheriv.prototype.setAutoPadding");
+  setAutoPadding(autoPadding?: boolean): this {
+    this.#autoPadding = !!autoPadding;
     return this;
   }
 
@@ -299,6 +312,8 @@ export class Decipheriv extends Transform implements Cipher {
   /** DecipherContext resource id */
   #context: number;
 
+  #autoPadding = true;
+
   /** ciphertext data cache */
   #cache: BlockModeCache;
 
@@ -333,17 +348,22 @@ export class Decipheriv extends Transform implements Cipher {
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
+    if (!this.#needsBlockCache || this.#cache.cache.byteLength === 0) {
+      op_node_decipheriv_take(this.#context);
+      return encoding === "buffer" ? Buffer.from([]) : "";
+    }
+    if (this.#cache.cache.byteLength != 16) {
+      throw new Error("Invalid final block size");
+    }
+
     let buf = new Buffer(16);
     op_node_decipheriv_final(
       this.#context,
+      this.#autoPadding,
       this.#cache.cache,
       buf,
       this.#authTag || NO_TAG,
     );
-
-    if (!this.#needsBlockCache) {
-      return encoding === "buffer" ? Buffer.from([]) : "";
-    }
 
     buf = buf.subarray(0, 16 - buf.at(-1)); // Padded in Pkcs7 mode
     return encoding === "buffer" ? buf : buf.toString(encoding);
@@ -364,8 +384,9 @@ export class Decipheriv extends Transform implements Cipher {
     return this;
   }
 
-  setAutoPadding(_autoPadding?: boolean): this {
-    notImplemented("crypto.Decipheriv.prototype.setAutoPadding");
+  setAutoPadding(autoPadding?: boolean): this {
+    this.#autoPadding = Boolean(autoPadding);
+    return this;
   }
 
   update(

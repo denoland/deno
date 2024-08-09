@@ -30,6 +30,7 @@ use rsa::pkcs1::EncodeRsaPublicKey;
 use rsa::traits::PublicKeyParts;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
+use sec1::der::Tag;
 use sec1::der::Writer as _;
 use sec1::pem::PemLabel as _;
 use sec1::DecodeEcPrivateKey as _;
@@ -46,7 +47,10 @@ use spki::EncodePublicKey as _;
 use spki::SubjectPublicKeyInfoRef;
 
 use super::dh;
+use super::dh::DiffieHellmanGroup;
 use super::digest::match_fixed_digest_with_oid;
+use super::pkcs3;
+use super::pkcs3::DhParameter;
 use super::primes::Prime;
 
 #[derive(Clone)]
@@ -66,8 +70,7 @@ pub enum AsymmetricPrivateKey {
   Ec(EcPrivateKey),
   X25519(x25519_dalek::StaticSecret),
   Ed25519(ed25519_dalek::SigningKey),
-  #[allow(unused)]
-  Dh(dh::PrivateKey),
+  Dh(DhPrivateKey),
 }
 
 #[derive(Clone)]
@@ -126,16 +129,20 @@ pub enum EcPrivateKey {
 }
 
 #[derive(Clone)]
+pub struct DhPrivateKey {
+  pub key: dh::PrivateKey,
+  pub params: DhParameter,
+}
+
+#[derive(Clone)]
 pub enum AsymmetricPublicKey {
   Rsa(rsa::RsaPublicKey),
   RsaPss(RsaPssPublicKey),
   Dsa(dsa::VerifyingKey),
   Ec(EcPublicKey),
-  #[allow(unused)]
   X25519(x25519_dalek::PublicKey),
   Ed25519(ed25519_dalek::VerifyingKey),
-  #[allow(unused)]
-  Dh(dh::PublicKey),
+  Dh(DhPublicKey),
 }
 
 #[derive(Clone)]
@@ -149,6 +156,12 @@ pub enum EcPublicKey {
   P224(p224::PublicKey),
   P256(p256::PublicKey),
   P384(p384::PublicKey),
+}
+
+#[derive(Clone)]
+pub struct DhPublicKey {
+  pub key: dh::PublicKey,
+  pub params: DhParameter,
 }
 
 impl KeyObjectHandle {
@@ -483,18 +496,22 @@ impl KeyObjectHandle {
         AsymmetricPrivateKey::X25519(x25519_dalek::StaticSecret::from(bytes))
       }
       ED25519_OID => {
-        let string_ref = OctetStringRef::from_der(pk_info.private_key)
+        let signing_key = ed25519_dalek::SigningKey::try_from(pk_info)
           .map_err(|_| type_error("invalid Ed25519 private key"))?;
-        if string_ref.as_bytes().len() != 32 {
-          return Err(type_error("Ed25519 private key is the wrong length"));
-        }
-        let mut bytes = [0; 32];
-        bytes.copy_from_slice(string_ref.as_bytes());
-        AsymmetricPrivateKey::Ed25519(ed25519_dalek::SigningKey::from(bytes))
+        AsymmetricPrivateKey::Ed25519(signing_key)
       }
-      DH_KEY_AGREEMENT_OID => AsymmetricPrivateKey::Dh(
-        dh::PrivateKey::from_bytes(pk_info.private_key),
-      ),
+      DH_KEY_AGREEMENT_OID => {
+        let params = pk_info
+          .algorithm
+          .parameters
+          .ok_or_else(|| type_error("missing dh parameters"))?;
+        let params = pkcs3::DhParameter::from_der(&params.to_der().unwrap())
+          .map_err(|_| type_error("malformed dh parameters"))?;
+        AsymmetricPrivateKey::Dh(DhPrivateKey {
+          key: dh::PrivateKey::from_bytes(pk_info.private_key),
+          params,
+        })
+      }
       _ => return Err(type_error("unsupported private key oid")),
     };
 
@@ -505,7 +522,7 @@ impl KeyObjectHandle {
     key: &[u8],
     format: &str,
     typ: &str,
-    _passphrase: Option<&[u8]>,
+    passphrase: Option<&[u8]>,
   ) -> Result<KeyObjectHandle, AnyError> {
     let document = match format {
       "pem" => {
@@ -525,23 +542,22 @@ impl KeyObjectHandle {
             Document::from_pkcs1_der(document.as_bytes())
               .map_err(|_| type_error("invalid PKCS#1 public key"))?
           }
-          EncryptedPrivateKeyInfo::PEM_LABEL => {
-            // FIXME
-            return Err(type_error(
-              "deriving public key from encrypted private key",
-            ));
-          }
-          PrivateKeyInfo::PEM_LABEL => {
-            // FIXME
-            return Err(type_error("public key cannot be a private key"));
-          }
-          sec1::EcPrivateKey::PEM_LABEL => {
-            // FIXME
-            return Err(type_error("deriving public key from ec private key"));
-          }
-          rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
-            // FIXME
-            return Err(type_error("deriving public key from rsa private key"));
+          EncryptedPrivateKeyInfo::PEM_LABEL
+          | PrivateKeyInfo::PEM_LABEL
+          | sec1::EcPrivateKey::PEM_LABEL
+          | rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
+            let handle = KeyObjectHandle::new_asymmetric_private_key_from_js(
+              key, format, typ, passphrase,
+            )?;
+            match handle {
+              KeyObjectHandle::AsymmetricPrivate(private) => {
+                return Ok(KeyObjectHandle::AsymmetricPublic(
+                  private.to_public_key(),
+                ))
+              }
+              KeyObjectHandle::AsymmetricPublic(_)
+              | KeyObjectHandle::Secret(_) => unreachable!(),
+            }
           }
           // TODO: handle x509 certificates as public keys
           _ => {
@@ -621,24 +637,25 @@ impl KeyObjectHandle {
         AsymmetricPublicKey::X25519(x25519_dalek::PublicKey::from(bytes))
       }
       ED25519_OID => {
-        let mut bytes = [0; 32];
-        let data = spki.subject_public_key.as_bytes().ok_or_else(|| {
-          type_error("malformed or missing public key in ed25519 spki")
-        })?;
-        if data.len() < 32 {
-          return Err(type_error("ed25519 public key is too short"));
-        }
-        bytes.copy_from_slice(&data[0..32]);
-        let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&bytes)
-          .map_err(|_| type_error("ed25519 public key is malformed"))?;
+        let verifying_key = ed25519_dalek::VerifyingKey::try_from(spki)
+          .map_err(|_| type_error("invalid Ed25519 private key"))?;
         AsymmetricPublicKey::Ed25519(verifying_key)
       }
       DH_KEY_AGREEMENT_OID => {
+        let params = spki
+          .algorithm
+          .parameters
+          .ok_or_else(|| type_error("missing dh parameters"))?;
+        let params = pkcs3::DhParameter::from_der(&params.to_der().unwrap())
+          .map_err(|_| type_error("malformed dh parameters"))?;
         let Some(subject_public_key) = spki.subject_public_key.as_bytes()
         else {
           return Err(type_error("malformed or missing public key in dh spki"));
         };
-        AsymmetricPublicKey::Dh(dh::PublicKey::from_bytes(subject_public_key))
+        AsymmetricPublicKey::Dh(DhPublicKey {
+          key: dh::PublicKey::from_bytes(subject_public_key),
+          params,
+        })
       }
       _ => return Err(type_error("unsupported public key oid")),
     };
@@ -788,16 +805,18 @@ impl AsymmetricPublicKey {
               .into_boxed_slice()
           }
           AsymmetricPublicKey::Dh(key) => {
-            let public_key_bytes = key.clone().into_vec();
-            let spki =
-              SubjectPublicKeyInfoRef {
-                algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
-                  oid: DH_KEY_AGREEMENT_OID,
-                  parameters: None,
-                },
-                subject_public_key: BitStringRef::from_bytes(&public_key_bytes)
-                  .map_err(|_| type_error("invalid DH public key"))?,
-              };
+            let public_key_bytes = key.key.clone().into_vec();
+            let params = key.params.to_der().unwrap();
+            let spki = SubjectPublicKeyInfoRef {
+              algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
+                oid: DH_KEY_AGREEMENT_OID,
+                parameters: Some(AnyRef::new(Tag::Sequence, &params).unwrap()),
+              },
+              subject_public_key: BitStringRef::from_bytes(&public_key_bytes)
+                .map_err(|_| {
+                type_error("invalid DH public key")
+              })?,
+            };
             spki
               .to_der()
               .map_err(|_| type_error("invalid DH public key"))?
@@ -917,11 +936,12 @@ impl AsymmetricPrivateKey {
               .into_boxed_slice()
           }
           AsymmetricPrivateKey::Dh(key) => {
-            let private_key = key.clone().into_vec();
+            let private_key = key.key.clone().into_vec();
+            let params = key.params.to_der().unwrap();
             let private_key = PrivateKeyInfo {
               algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
                 oid: DH_KEY_AGREEMENT_OID,
-                parameters: None,
+                parameters: Some(AnyRef::new(Tag::Sequence, &params).unwrap()),
               },
               private_key: &private_key,
               public_key: None,
@@ -1514,21 +1534,66 @@ pub async fn op_node_generate_ed25519_key_async() -> KeyObjectHandlePair {
   spawn_blocking(ed25519_generate).await.unwrap()
 }
 
+fn u32_slice_to_u8_slice(slice: &[u32]) -> &[u8] {
+  // SAFETY: just reinterpreting the slice as u8
+  unsafe {
+    std::slice::from_raw_parts(
+      slice.as_ptr() as *const u8,
+      std::mem::size_of_val(slice),
+    )
+  }
+}
+
 fn dh_group_generate(
   group_name: &str,
 ) -> Result<KeyObjectHandlePair, AnyError> {
-  let dh = match group_name {
-    "modp5" => dh::DiffieHellman::group::<dh::Modp1536>(),
-    "modp14" => dh::DiffieHellman::group::<dh::Modp2048>(),
-    "modp15" => dh::DiffieHellman::group::<dh::Modp3072>(),
-    "modp16" => dh::DiffieHellman::group::<dh::Modp4096>(),
-    "modp17" => dh::DiffieHellman::group::<dh::Modp6144>(),
-    "modp18" => dh::DiffieHellman::group::<dh::Modp8192>(),
+  let (dh, prime, generator) = match group_name {
+    "modp5" => (
+      dh::DiffieHellman::group::<dh::Modp1536>(),
+      dh::Modp1536::MODULUS,
+      dh::Modp1536::GENERATOR,
+    ),
+    "modp14" => (
+      dh::DiffieHellman::group::<dh::Modp2048>(),
+      dh::Modp2048::MODULUS,
+      dh::Modp2048::GENERATOR,
+    ),
+    "modp15" => (
+      dh::DiffieHellman::group::<dh::Modp3072>(),
+      dh::Modp3072::MODULUS,
+      dh::Modp3072::GENERATOR,
+    ),
+    "modp16" => (
+      dh::DiffieHellman::group::<dh::Modp4096>(),
+      dh::Modp4096::MODULUS,
+      dh::Modp4096::GENERATOR,
+    ),
+    "modp17" => (
+      dh::DiffieHellman::group::<dh::Modp6144>(),
+      dh::Modp6144::MODULUS,
+      dh::Modp6144::GENERATOR,
+    ),
+    "modp18" => (
+      dh::DiffieHellman::group::<dh::Modp8192>(),
+      dh::Modp8192::MODULUS,
+      dh::Modp8192::GENERATOR,
+    ),
     _ => return Err(type_error("Unsupported group name")),
   };
+  let params = DhParameter {
+    prime: asn1::Int::new(u32_slice_to_u8_slice(prime)).unwrap(),
+    base: asn1::Int::new(generator.to_be_bytes().as_slice()).unwrap(),
+    private_value_length: None,
+  };
   Ok(KeyObjectHandlePair::new(
-    AsymmetricPrivateKey::Dh(dh.private_key),
-    AsymmetricPublicKey::Dh(dh.public_key),
+    AsymmetricPrivateKey::Dh(DhPrivateKey {
+      key: dh.private_key,
+      params: params.clone(),
+    }),
+    AsymmetricPublicKey::Dh(DhPublicKey {
+      key: dh.public_key,
+      params,
+    }),
   ))
 }
 
@@ -1558,10 +1623,21 @@ fn dh_generate(
   let prime = prime
     .map(|p| p.into())
     .unwrap_or_else(|| Prime::generate(prime_len));
-  let dh = dh::DiffieHellman::new(prime, generator);
+  let dh = dh::DiffieHellman::new(prime.clone(), generator);
+  let params = DhParameter {
+    prime: asn1::Int::new(&prime.0.to_bytes_be()).unwrap(),
+    base: asn1::Int::new(generator.to_be_bytes().as_slice()).unwrap(),
+    private_value_length: None,
+  };
   Ok(KeyObjectHandlePair::new(
-    AsymmetricPrivateKey::Dh(dh.private_key),
-    AsymmetricPublicKey::Dh(dh.public_key),
+    AsymmetricPrivateKey::Dh(DhPrivateKey {
+      key: dh.private_key,
+      params: params.clone(),
+    }),
+    AsymmetricPublicKey::Dh(DhPublicKey {
+      key: dh.public_key,
+      params,
+    }),
   ))
 }
 

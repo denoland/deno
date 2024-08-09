@@ -1293,6 +1293,19 @@ export function findSourceMap(_path) {
   return undefined;
 }
 
+/**
+ * @param {string | URL} _specifier
+ * @param {string | URL} _parentUrl
+ * @param {{ parentURL: string | URL, data: any, transferList: any[] }} [_options]
+ */
+export function register(_specifier, _parentUrl, _options) {
+  // TODO(@marvinhagemeister): Stub implementation for programs registering
+  // TypeScript loaders. We don't support registering loaders for file
+  // types that Deno itself doesn't support at the moment.
+
+  return undefined;
+}
+
 export { builtinModules, createRequire, isBuiltin, Module };
 export const _cache = Module._cache;
 export const _extensions = Module._extensions;
