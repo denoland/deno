@@ -844,9 +844,13 @@ declare namespace Deno {
    */
   export class UnsafeWindowSurface {
     constructor(
-      system: "cocoa" | "win32" | "x11" | "wayland",
-      windowHandle: Deno.PointerValue<unknown>,
-      displayHandle: Deno.PointerValue<unknown>,
+      options: {
+        system: "cocoa" | "win32" | "x11" | "wayland";
+        windowHandle: Deno.PointerValue<unknown>;
+        displayHandle: Deno.PointerValue<unknown>;
+        width: number;
+        height: number;
+      },
     );
     getContext(context: "webgpu"): GPUCanvasContext;
     present(): void;
