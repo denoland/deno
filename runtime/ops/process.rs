@@ -221,6 +221,7 @@ type CreateCommand = (
   std::process::Command,
   Option<ResourceId>,
   Vec<Option<ResourceId>>,
+  Vec<deno_io::RawBiPipeHandle>,
 );
 
 fn create_pipe(
@@ -444,6 +445,7 @@ fn create_command(
 
   let mut extra_pipe_rids = Vec::new();
   let mut fds_to_dup = Vec::new();
+  let mut fds_to_close = Vec::new();
   #[cfg(unix)]
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
@@ -453,6 +455,7 @@ fn create_command(
       if ipc >= 0 {
         let (ipc_fd1, ipc_fd2) = create_pipe()?;
         fds_to_dup.push((ipc_fd2, ipc));
+        fds_to_close.push(ipc_fd2);
         /* One end returned to parent process (this) */
         let pipe_rid =
           state
@@ -471,6 +474,7 @@ fn create_command(
       if fd >= 0 {
         let (fd1, fd2) = create_pipe()?;
         fds_to_dup.push((fd2, fd));
+        fds_to_close.push(fd2);
         let rid = state.resource_table.add(
           match deno_io::BiPipeResource::from_raw_handle(fd1) {
             Ok(v) => v,
@@ -496,7 +500,7 @@ fn create_command(
       Ok(())
     });
 
-    Ok((command, ipc_rid, extra_pipe_rids))
+    Ok((command, ipc_rid, extra_pipe_rids, fds_to_close))
   }
 
   #[cfg(windows)]
@@ -669,6 +673,20 @@ fn spawn_child(
   })
 }
 
+fn close_raw_handle(fd: deno_io::RawBiPipeHandle) {
+  #[cfg(unix)]
+  {
+    // SAFETY: libc call
+    unsafe {
+      libc::close(fd);
+    }
+  }
+  #[cfg(windows)]
+  {
+    todo!();
+  }
+}
+
 #[op2]
 #[serde]
 fn op_spawn_child(
@@ -676,9 +694,13 @@ fn op_spawn_child(
   #[serde] args: SpawnArgs,
   #[string] api_name: String,
 ) -> Result<Child, AnyError> {
-  let (command, pipe_rid, extra_pipe_rids) =
+  let (command, pipe_rid, extra_pipe_rids, fds_to_close) =
     create_command(state, args, &api_name)?;
-  spawn_child(state, command, pipe_rid, extra_pipe_rids)
+  let child = spawn_child(state, command, pipe_rid, extra_pipe_rids);
+  for fd in fds_to_close {
+    close_raw_handle(fd);
+  }
+  child
 }
 
 #[op2(async)]
@@ -707,7 +729,7 @@ fn op_spawn_sync(
 ) -> Result<SpawnOutput, AnyError> {
   let stdout = matches!(args.stdio.stdout, StdioOrRid::Stdio(Stdio::Piped));
   let stderr = matches!(args.stdio.stderr, StdioOrRid::Stdio(Stdio::Piped));
-  let (mut command, _, _) =
+  let (mut command, _, _, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
   let output = command.output().with_context(|| {
     format!(

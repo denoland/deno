@@ -121,6 +121,20 @@ function maybeClose(child: ChildProcess) {
   }
 }
 
+function flushStdio(subprocess: ChildProcess) {
+  const stdio = subprocess.stdio;
+
+  if (stdio == null) return;
+
+  for (let i = 0; i < stdio.length; i++) {
+    const stream = stdio[i];
+    if (!stream || !stream.readable) {
+      continue;
+    }
+    stream.resume();
+  }
+}
+
 class PipeThing implements StreamBase {
   #rid: number;
   constructor(rid: number) {
@@ -295,8 +309,6 @@ export class ChildProcess extends EventEmitter {
           maybeClose(this);
         });
       }
-      // TODO(nathanwhit): once we impl > 3 stdio pipes make sure we also listen for their
-      // close events (like above)
 
       this.stdio[0] = this.stdin;
       this.stdio[1] = this.stdout;
@@ -313,6 +325,7 @@ export class ChildProcess extends EventEmitter {
           offset++;
         }
         if (pipeRids[i]) {
+          this[kClosesNeeded]++;
           this.stdio[i + offset] = new Socket(
             {
               handle: new Pipe(
@@ -322,6 +335,9 @@ export class ChildProcess extends EventEmitter {
               // deno-lint-ignore no-explicit-any
             } as any,
           );
+          this.stdio[i + offset]?.on("close", () => {
+            maybeClose(this);
+          });
 
           // this.stdio[i + offset] = new PipeThing(pipeRids[i]);
         }
@@ -373,6 +389,7 @@ export class ChildProcess extends EventEmitter {
           await this.#_waitForChildStreamsToClose();
           this.#closePipes();
           maybeClose(this);
+          nextTick(flushStdio, this);
         });
       })();
     } catch (err) {

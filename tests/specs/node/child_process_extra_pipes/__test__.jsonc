@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "cwd": "./test-pipe",
+      "commandName": "cargo",
+      "args": "build",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run -A main.ts",
+      "output": "data: hello world\nchild closed\npipe closed\n"
+    }
+  ]
+}
