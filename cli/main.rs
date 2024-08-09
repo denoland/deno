@@ -273,6 +273,10 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
       tools::registry::publish(flags, publish_flags).await
     }),
+    DenoSubcommand::Help(help) => spawn_subcommand(async move {
+      let help = help.ansi().to_string().into_bytes();
+      display::write_to_stdout_ignore_sigpipe(&help)
+    })
   };
 
   handle.await?

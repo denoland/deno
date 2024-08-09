@@ -446,6 +446,7 @@ pub enum DenoSubcommand {
   Upgrade(UpgradeFlags),
   Vendor(VendorFlags),
   Publish(PublishFlags),
+  Help(clap::builder::StyledStr),
 }
 
 impl DenoSubcommand {
@@ -1234,6 +1235,14 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       "upgrade" => upgrade_parse(&mut flags, &mut m),
       "vendor" => vendor_parse(&mut flags, &mut m),
       "publish" => publish_parse(&mut flags, &mut m),
+      "help" => {
+        let help = if let Some((sub, _)) = m.remove_subcommand() {
+          app.find_subcommand_mut(sub).unwrap().render_help()
+        } else {
+          app.render_help()
+        };
+        flags.subcommand = DenoSubcommand::Help(help)
+      }
       _ => unreachable!(),
     }
   } else {
@@ -1312,7 +1321,13 @@ fn clap_root() -> Command {
     .next_display_order(1000)
     .disable_version_flag(true)
     .disable_help_flag(true)
-    .arg(help_arg())
+    .disable_help_subcommand(true)
+    .arg(Arg::new("help")
+      .short('h')
+      .long("help")
+      .hide(true)
+      .action(ArgAction::HelpShort)
+      .global(true))
     .arg(
       Arg::new("version")
         .short('V')
@@ -1393,53 +1408,60 @@ fn clap_root() -> Command {
         .action(ArgAction::SetTrue)
         .global(true),
     )
-    .subcommand(run_subcommand().arg(help_arg()))
-    .subcommand(serve_subcommand().arg(help_arg()))
+    .subcommand(run_subcommand())
+    .subcommand(serve_subcommand())
     .defer(|cmd| {
-      cmd
-        .subcommand(add_subcommand().arg(help_arg()))
-        .subcommand(bench_subcommand().arg(help_arg()))
-        .subcommand(bundle_subcommand().arg(help_arg()))
-        .subcommand(cache_subcommand().arg(help_arg()))
-        .subcommand(check_subcommand().arg(help_arg()))
-        .subcommand(clean_subcommand().arg(help_arg()))
-        .subcommand(compile_subcommand().arg(help_arg()))
-        .subcommand(completions_subcommand().arg(help_arg()))
-        .subcommand(coverage_subcommand().arg(help_arg()))
-        .subcommand(doc_subcommand().arg(help_arg()))
-        .subcommand(eval_subcommand().arg(help_arg()))
-        .subcommand(fmt_subcommand().arg(help_arg()))
-        .subcommand(init_subcommand().arg(help_arg()))
-        .subcommand(info_subcommand().arg(help_arg()))
+      let cmd = cmd
+        .subcommand(add_subcommand())
+        .subcommand(bench_subcommand())
+        .subcommand(bundle_subcommand())
+        .subcommand(cache_subcommand())
+        .subcommand(check_subcommand())
+        .subcommand(clean_subcommand())
+        .subcommand(compile_subcommand())
+        .subcommand(completions_subcommand())
+        .subcommand(coverage_subcommand())
+        .subcommand(doc_subcommand())
+        .subcommand(eval_subcommand())
+        .subcommand(fmt_subcommand())
+        .subcommand(init_subcommand())
+        .subcommand(info_subcommand())
         .subcommand(if *DENO_FUTURE {
-          future_install_subcommand().arg(help_arg())
+          future_install_subcommand()
         } else {
-          install_subcommand().arg(help_arg())
+          install_subcommand()
         })
-        .subcommand(json_reference_subcommand().arg(help_arg()))
-        .subcommand(jupyter_subcommand().arg(help_arg()))
-        .subcommand(uninstall_subcommand().arg(help_arg()))
-        .subcommand(lsp_subcommand().arg(help_arg()))
-        .subcommand(lint_subcommand().arg(help_arg()))
-        .subcommand(publish_subcommand().arg(help_arg()))
-        .subcommand(repl_subcommand().arg(help_arg()))
-        .subcommand(task_subcommand().arg(help_arg()))
-        .subcommand(test_subcommand().arg(help_arg()))
-        .subcommand(types_subcommand().arg(help_arg()))
-        .subcommand(upgrade_subcommand().arg(help_arg()))
-        .subcommand(vendor_subcommand().arg(help_arg()))
+        .subcommand(json_reference_subcommand())
+        .subcommand(jupyter_subcommand())
+        .subcommand(uninstall_subcommand())
+        .subcommand(lsp_subcommand())
+        .subcommand(lint_subcommand())
+        .subcommand(publish_subcommand())
+        .subcommand(repl_subcommand())
+        .subcommand(task_subcommand())
+        .subcommand(test_subcommand())
+        .subcommand(types_subcommand())
+        .subcommand(upgrade_subcommand())
+        .subcommand(vendor_subcommand());
+
+      let help = help_subcommand(&cmd);
+      cmd.subcommand(help)
     })
     .help_template(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
     .next_line_help(false)
 }
 
-fn help_arg() -> Arg {
-  Arg::new("help")
-    .short('h')
-    .long("help")
+fn help_subcommand(app: &Command) -> Command {
+  Command::new("help")
     .hide(true)
-    .action(ArgAction::HelpShort)
+    .disable_help_subcommand(true)
+    .subcommands(app.get_subcommands().map(|command| {
+      Command::new(command.get_name().to_owned())
+        .hide(true)
+        .disable_help_flag(true)
+        .disable_version_flag(true)
+    }))
 }
 
 fn add_subcommand() -> Command {
