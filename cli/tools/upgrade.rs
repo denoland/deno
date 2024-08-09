@@ -73,7 +73,12 @@ impl UpdateCheckerEnvironment for RealUpdateCheckerEnvironment {
   }
 
   fn write_check_file(&self, text: &str) {
-    let _ = std::fs::write(&self.cache_file_path, text);
+    let a = std::fs::write(&self.cache_file_path, text);
+    eprintln!(
+      "write check file {} {:?}",
+      self.cache_file_path.display(),
+      a
+    );
   }
 
   fn current_time(&self) -> chrono::DateTime<chrono::Utc> {
@@ -96,9 +101,11 @@ trait VersionProvider: Clone {
   ) -> Result<String, AnyError>;
 
   // TODO(bartlomieju): what this one actually returns?
+  // TODO(bartlomieju): this should decide based on
+  // `get_current_exe_release_channel`.
   fn current_version(&self) -> Cow<str>;
 
-  // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
+  // TODO(bartlomieju): update to handle `Lts` channel
   async fn get_current_exe_release_channel(
     &self,
   ) -> Result<ReleaseChannel, AnyError>;
@@ -133,7 +140,9 @@ impl VersionProvider for RealVersionProvider {
       release_channel,
       self.check_kind,
     )
-    .await?;
+    .await;
+    eprintln!("latest version result {:#?}", r);
+    let r = r?;
 
     // TODO(bartlomieju): return `SelectedVersionToUpgrade` here
     Ok(r.version_or_hash)
@@ -143,12 +152,28 @@ impl VersionProvider for RealVersionProvider {
     Cow::Borrowed(version::release_version_or_canary_commit_hash())
   }
 
-  // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
+  // TODO(bartlomieju): update to handle `Lts` channel
   async fn get_current_exe_release_channel(
     &self,
   ) -> Result<ReleaseChannel, AnyError> {
     if version::is_canary() {
-      Ok(ReleaseChannel::Canary)
+      let rc_versions = get_rc_versions(
+        &self.http_client_provider.get_or_create()?,
+        self.check_kind,
+      )
+      .await;
+      eprintln!("rc versions {:#?}", rc_versions);
+      let rc_versions = rc_versions?;
+
+      let is_current_exe_an_rc = rc_versions
+        .iter()
+        .any(|(hash, _)| hash == version::GIT_COMMIT_HASH);
+
+      if is_current_exe_an_rc {
+        Ok(ReleaseChannel::Rc)
+      } else {
+        Ok(ReleaseChannel::Canary)
+      }
     } else {
       Ok(ReleaseChannel::Stable)
     }
@@ -277,8 +302,10 @@ pub fn check_for_upgrades(
   }
 
   let env = RealUpdateCheckerEnvironment::new(cache_file_path);
-  let version_provider =
-    RealVersionProvider::new(http_client_provider, UpgradeCheckKind::Execution);
+  let version_provider = RealVersionProvider::new(
+    http_client_provider.clone(),
+    UpgradeCheckKind::Execution,
+  );
   let update_checker = UpdateChecker::new(env, version_provider);
 
   if update_checker.should_check_for_new_version() {
@@ -291,34 +318,52 @@ pub fn check_for_upgrades(
       tokio::time::sleep(UPGRADE_CHECK_FETCH_DELAY).await;
 
       fetch_and_store_latest_version(&env, &version_provider).await;
-
+      eprintln!("fetched latest version");
       // text is used by the test suite
       log::debug!("Finished upgrade checker.")
     });
   }
 
   // Print a message if an update is available
-  if let Some(upgrade_version) = update_checker.should_prompt() {
-    if log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal() {
-      if version::is_canary() {
-        log::info!(
-          "{} {}",
-          colors::green("A new canary release of Deno is available."),
-          colors::italic_gray("Run `deno upgrade --canary` to install it.")
-        );
-      } else {
-        log::info!(
-          "{} {} → {} {}",
-          colors::green("A new release of Deno is available:"),
-          colors::cyan(version::deno()),
-          colors::cyan(&upgrade_version),
-          colors::italic_gray("Run `deno upgrade` to install it.")
-        );
-      }
+  spawn(async move {
+    let version_provider = RealVersionProvider::new(
+      http_client_provider,
+      UpgradeCheckKind::Execution,
+    );
+    let Ok(release_channel) =
+      version_provider.get_current_exe_release_channel().await
+    else {
+      return;
+    };
+    if let Some(upgrade_version) = update_checker.should_prompt() {
+      if log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal()
+      {
+        if matches!(release_channel, ReleaseChannel::Rc) {
+          log::info!(
+            "{} {}",
+            colors::green("A new release candidate of Deno is available."),
+            colors::italic_gray("Run `deno upgrade --rc` to install it.")
+          );
+        } else if version::is_canary() {
+          log::info!(
+            "{} {}",
+            colors::green("A new canary release of Deno is available."),
+            colors::italic_gray("Run `deno upgrade --canary` to install it.")
+          );
+        } else {
+          log::info!(
+            "{} {} → {} {}",
+            colors::green("A new release of Deno is available:"),
+            colors::cyan(version::deno()),
+            colors::cyan(&upgrade_version),
+            colors::italic_gray("Run `deno upgrade` to install it.")
+          );
+        }
 
-      update_checker.store_prompted();
+        update_checker.store_prompted();
+      }
     }
-  }
+  });
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -391,14 +436,17 @@ async fn fetch_and_store_latest_version<
   let Ok(release_channel) =
     version_provider.get_current_exe_release_channel().await
   else {
+    eprintln!("no release channel");
     return;
   };
   let Ok(latest_version) =
     version_provider.latest_version(release_channel).await
   else {
+    eprintln!("no latest version");
     return;
   };
 
+  eprintln!("latest version {}", latest_version);
   env.write_check_file(
     &CheckVersionFile {
       // put a date in the past here so that prompt can be shown on next run
@@ -444,14 +492,14 @@ pub async fn upgrade(
     RequestedVersion::Latest(channel) => {
       find_latest_version_to_upgrade(
         http_client_provider.clone(),
-        channel.clone(),
+        *channel,
         force_selection_of_new_version,
       )
       .await?
     }
     RequestedVersion::SpecificVersion(channel, version) => {
       select_specific_version_for_upgrade(
-        channel.clone(),
+        *channel,
         version.clone(),
         force_selection_of_new_version,
       )?
@@ -738,19 +786,37 @@ impl ReleaseChannel {
   }
 }
 
-fn parse_rc_versions_text(text: &str) -> Result<Vec<String>, AnyError> {
-  let lines: Vec<_> = text.split("\n").map(|s| s.to_string()).collect();
+// Return a list of available RC release in format of (<commit_hash>, <version_name>)
+fn parse_rc_versions_text(
+  text: &str,
+) -> Result<Vec<(String, String)>, AnyError> {
+  let lines: Vec<_> = text
+    .split("\n")
+    .map(|s| s.to_string())
+    .filter(|s| !s.is_empty())
+    .collect();
   if lines.is_empty() {
     bail!("No release candidates available");
   }
-  Ok(lines)
+
+  let mut parsed = Vec::with_capacity(lines.len());
+
+  for line in lines {
+    let v = line.split(' ').collect::<Vec<_>>();
+    eprintln!("line {:#?}", v);
+    if v.len() != 2 {
+      bail!("Malformed list of RC releases");
+    }
+    parsed.push((v[0].to_string(), v[1].to_string()));
+  }
+
+  Ok(parsed)
 }
 
-#[allow(unused)]
 async fn get_rc_versions(
   client: &HttpClient,
   check_kind: UpgradeCheckKind,
-) -> Result<Vec<String>, AnyError> {
+) -> Result<Vec<(String, String)>, AnyError> {
   let url =
     get_latest_version_url(ReleaseChannel::Rc, env!("TARGET"), check_kind);
   let text = client.download_text(url.parse()?).await?;
@@ -794,10 +860,9 @@ fn normalize_version_from_server(
     ReleaseChannel::Rc => {
       let lines = parse_rc_versions_text(text)?;
       let latest = lines.last().unwrap();
-      let v = latest.split(' ').collect::<Vec<_>>();
       Ok(SelectedVersionToUpgrade {
-        version_or_hash: v[0].to_string(),
-        display: v[1].to_string(),
+        version_or_hash: latest.0.to_string(),
+        display: latest.1.to_string(),
       })
     }
     _ => unreachable!(),
@@ -1133,12 +1198,14 @@ mod test {
       Cow::Owned(self.current_version.borrow().clone())
     }
 
-    // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
+    // TODO(bartlomieju): update to handle `Lts` channels
     async fn get_current_exe_release_channel(
       &self,
     ) -> Result<ReleaseChannel, AnyError> {
       if *self.is_canary.borrow() {
         Ok(ReleaseChannel::Canary)
+      } else if *self.is_release_candidate.borrow() {
+        Ok(ReleaseChannel::Rc)
       } else {
         Ok(ReleaseChannel::Stable)
       }
