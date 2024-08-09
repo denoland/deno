@@ -69,8 +69,8 @@ p256.workspace = true
 p384.workspace = true
 path-clean = "=0.1.0"
 pbkdf2 = "0.12.1"
-pin-project-lite = "0.2.13"
 pin-project.workspace = true
+pin-project-lite = "0.2.13"
 rand.workspace = true
 regex.workspace = true
 ring.workspace = true
