@@ -8,7 +8,7 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
-use crate::standalone::binary::unpack_into_dir;
+use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::version;
@@ -18,6 +18,7 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::unsync::spawn;
+use deno_core::url::Url;
 use deno_semver::Version;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -32,6 +33,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
+const CANARY_URL: &str = "https://dl.deno.land/canary";
 
 pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -87,11 +89,6 @@ enum UpgradeCheckKind {
 
 #[async_trait(?Send)]
 trait VersionProvider: Clone {
-<<<<<<< HEAD
-  fn is_canary(&self) -> bool;
-  async fn is_release_candidate(&self) -> Result<bool, AnyError>;
-  async fn latest_version(&self) -> Result<String, AnyError>;
-=======
   /// Fetch latest available version for the given release channel
   async fn latest_version(
     &self,
@@ -99,7 +96,6 @@ trait VersionProvider: Clone {
   ) -> Result<String, AnyError>;
 
   // TODO(bartlomieju): what this one actually returns?
->>>>>>> main
   fn current_version(&self) -> Cow<str>;
 
   // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
@@ -128,30 +124,11 @@ impl RealVersionProvider {
 
 #[async_trait(?Send)]
 impl VersionProvider for RealVersionProvider {
-<<<<<<< HEAD
-  async fn is_release_candidate(&self) -> Result<bool, AnyError> {
-    let rc_versions = get_rc_versions(
-      &self.http_client_provider.get_or_create()?,
-      self.check_kind,
-    )
-    .await?;
-
-    Ok(rc_versions.contains(&self.current_version().to_string()))
-  }
-
-  fn is_canary(&self) -> bool {
-    version::is_canary()
-  }
-
-  async fn latest_version(&self) -> Result<String, AnyError> {
-    get_latest_version(
-=======
   async fn latest_version(
     &self,
     release_channel: ReleaseChannel,
   ) -> Result<String, AnyError> {
     fetch_latest_version(
->>>>>>> main
       &self.http_client_provider.get_or_create()?,
       release_channel,
       self.check_kind,
@@ -261,22 +238,24 @@ fn get_minor_version(version: &str) -> &str {
 }
 
 fn print_release_notes(current_version: &str, new_version: &str) {
-  if get_minor_version(current_version) != get_minor_version(new_version) {
-    log::info!(
-      "Release notes:\n\n  {}\n",
-      colors::bold(format!(
-        "https://github.com/denoland/deno/releases/tag/v{}",
-        &new_version,
-      ))
-    );
-    log::info!(
-      "Blog post:\n\n  {}\n",
-      colors::bold(format!(
-        "https://deno.com/blog/v{}",
-        get_minor_version(new_version)
-      ))
-    );
+  if get_minor_version(current_version) == get_minor_version(new_version) {
+    return;
   }
+
+  log::info!(
+    "Release notes:\n\n  {}\n",
+    colors::bold(format!(
+      "https://github.com/denoland/deno/releases/tag/v{}",
+      &new_version,
+    ))
+  );
+  log::info!(
+    "Blog post:\n\n  {}\n",
+    colors::bold(format!(
+      "https://deno.com/blog/v{}",
+      get_minor_version(new_version)
+    ))
+  );
 }
 
 pub fn upgrade_check_enabled() -> bool {
@@ -436,7 +415,8 @@ pub async fn upgrade(
   upgrade_flags: UpgradeFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
-  let client = factory.http_client_provider().get_or_create()?;
+  let http_client_provider = factory.http_client_provider();
+  let client = http_client_provider.get_or_create()?;
   let current_exe_path = std::env::current_exe()?;
   let full_path_output_flag = match &upgrade_flags.output {
     Some(output) => Some(
@@ -449,131 +429,43 @@ pub async fn upgrade(
   let output_exe_path =
     full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
 
-  let permissions = if let Ok(metadata) = fs::metadata(output_exe_path) {
-    let permissions = metadata.permissions();
-    if permissions.readonly() {
-      bail!(
-        "You do not have write permission to {}",
-        output_exe_path.display()
-      );
-    }
-    #[cfg(unix)]
-    if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
-      && !nix::unistd::Uid::effective().is_root()
-    {
-      bail!(concat!(
-        "You don't have write permission to {} because it's owned by root.\n",
-        "Consider updating deno through your package manager if its installed from it.\n",
-        "Otherwise run `deno upgrade` as root.",
-      ), output_exe_path.display());
-    }
-    permissions
-  } else {
-    fs::metadata(&current_exe_path)?.permissions()
-  };
+  let permissions = set_exe_permissions(&current_exe_path, output_exe_path)?;
 
-  let install_version = match upgrade_flags.version {
-    Some(passed_version) => {
-      let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
-      let passed_version = passed_version
-        .strip_prefix('v')
-        .unwrap_or(&passed_version)
-        .to_string();
+  let force_selection_of_new_version =
+    upgrade_flags.force || full_path_output_flag.is_some();
 
-      if upgrade_flags.canary && !re_hash.is_match(&passed_version) {
-        bail!("Invalid commit hash passed");
-      } else if !upgrade_flags.canary
-        && Version::parse_standard(&passed_version).is_err()
-      {
-        bail!("Invalid version passed");
-      }
+  let requested_version =
+    RequestedVersion::from_upgrade_flags(upgrade_flags.clone())?;
 
-      let current_is_passed = if upgrade_flags.canary {
-        crate::version::GIT_COMMIT_HASH == passed_version
-      } else if !crate::version::is_canary() {
-        crate::version::deno() == passed_version
-      } else {
-        false
-      };
-
-      if !upgrade_flags.force
-        && full_path_output_flag.is_none()
-        && current_is_passed
-      {
-        log::info!("Version {} is already installed", crate::version::deno());
-        return Ok(());
-      }
-
-      passed_version
-    }
-    None => {
-      let release_channel = if upgrade_flags.canary {
-        log::info!("{}", colors::gray("Looking up latest canary version"));
-        ReleaseChannel::Canary
-      } else {
-        log::info!("{}", colors::gray("Looking up latest version"));
-        ReleaseChannel::Stable
-      };
-
-      let latest_version = fetch_latest_version(
-        &client,
-        release_channel,
-        UpgradeCheckKind::Execution,
+  let maybe_install_version = match requested_version {
+    RequestedVersion::Latest(channel) => {
+      find_latest_version_to_upgrade(
+        http_client_provider.clone(),
+        channel,
+        force_selection_of_new_version,
       )
-      .await?;
-
-      let current_is_most_recent = if upgrade_flags.canary {
-        let latest_hash = &latest_version;
-        crate::version::GIT_COMMIT_HASH == latest_hash
-      } else if !crate::version::is_canary() {
-        let current = Version::parse_standard(crate::version::deno()).unwrap();
-        let latest = Version::parse_standard(&latest_version).unwrap();
-        current >= latest
-      } else {
-        false
-      };
-
-      if !upgrade_flags.force
-        && full_path_output_flag.is_none()
-        && current_is_most_recent
-      {
-        log::info!(
-          "{}",
-          colors::green(format!(
-            "\nLocal deno version {} is the most recent release\n",
-            if upgrade_flags.canary {
-              crate::version::GIT_COMMIT_HASH
-            } else {
-              crate::version::deno()
-            }
-          ))
-        );
-        return Ok(());
-      } else {
-        log::info!(
-          "{}",
-          colors::bold(format!("\nFound latest version {}\n", latest_version))
-        );
-        latest_version
-      }
+      .await?
+    }
+    RequestedVersion::SpecificVersion(channel, version) => {
+      select_specific_version_for_upgrade(
+        channel,
+        version,
+        force_selection_of_new_version,
+      )?
     }
   };
 
-  let download_url = if upgrade_flags.canary {
-    format!(
-      "https://dl.deno.land/canary/{}/{}",
-      install_version, *ARCHIVE_NAME
-    )
-  } else {
-    format!(
-      "{}/download/v{}/{}",
-      RELEASE_URL, install_version, *ARCHIVE_NAME
-    )
+  let Some(install_version) = maybe_install_version else {
+    return Ok(());
   };
 
-  let archive_data = download_package(&client, &download_url)
-    .await
-    .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
+  let download_url = get_download_url(&install_version, upgrade_flags.canary)?;
+  log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
+  let Some(archive_data) = download_package(&client, download_url).await?
+  else {
+    log::error!("Download could not be found, aborting");
+    std::process::exit(1)
+  };
 
   log::info!(
     "{}",
@@ -581,13 +473,13 @@ pub async fn upgrade(
   );
 
   let temp_dir = tempfile::TempDir::new()?;
-  let new_exe_path = unpack_into_dir(
-    "deno",
-    &ARCHIVE_NAME,
-    archive_data,
-    cfg!(windows),
-    &temp_dir,
-  )?;
+  let new_exe_path = archive::unpack_into_dir(archive::UnpackArgs {
+    exe_name: "deno",
+    archive_name: &ARCHIVE_NAME,
+    archive_data: &archive_data,
+    is_windows: cfg!(windows),
+    dest_path: temp_dir.path(),
+  })?;
   fs::set_permissions(&new_exe_path, permissions)?;
   check_exe(&new_exe_path)?;
 
@@ -597,50 +489,180 @@ pub async fn upgrade(
     if !upgrade_flags.canary {
       print_release_notes(version::deno(), &install_version);
     }
+    drop(temp_dir);
+    return Ok(());
+  }
+
+  let output_exe_path =
+    full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
+  let output_result = if *output_exe_path == current_exe_path {
+    replace_exe(&new_exe_path, output_exe_path)
   } else {
-    let output_exe_path =
-      full_path_output_flag.as_ref().unwrap_or(&current_exe_path);
-    let output_result = if *output_exe_path == current_exe_path {
-      replace_exe(&new_exe_path, output_exe_path)
-    } else {
-      fs::rename(&new_exe_path, output_exe_path)
-        .or_else(|_| fs::copy(&new_exe_path, output_exe_path).map(|_| ()))
-    };
-    if let Err(err) = output_result {
-      const WIN_ERROR_ACCESS_DENIED: i32 = 5;
-      if cfg!(windows) && err.raw_os_error() == Some(WIN_ERROR_ACCESS_DENIED) {
-        return Err(err).with_context(|| {
-          format!(
-            concat!(
-              "Could not replace the deno executable. This may be because an ",
-              "existing deno process is running. Please ensure there are no ",
-              "running deno processes (ex. Stop-Process -Name deno ; deno {}), ",
-              "close any editors before upgrading, and ensure you have ",
-              "sufficient permission to '{}'."
-            ),
-            // skip the first argument, which is the executable path
-            std::env::args().skip(1).collect::<Vec<_>>().join(" "),
-            output_exe_path.display(),
-          )
-        });
-      } else {
-        return Err(err.into());
-      }
-    }
-    log::info!(
-      "{}",
-      colors::green(format!(
-        "\nUpgraded successfully to Deno v{}\n",
-        install_version
-      ))
-    );
-    if !upgrade_flags.canary {
-      print_release_notes(version::deno(), &install_version);
-    }
+    fs::rename(&new_exe_path, output_exe_path)
+      .or_else(|_| fs::copy(&new_exe_path, output_exe_path).map(|_| ()))
+  };
+  check_windows_access_denied_error(output_result, output_exe_path)?;
+
+  log::info!(
+    "{}",
+    colors::green(format!(
+      "\nUpgraded successfully to Deno v{}\n",
+      install_version
+    ))
+  );
+  if !upgrade_flags.canary {
+    print_release_notes(version::deno(), &install_version);
   }
 
   drop(temp_dir); // delete the temp dir
   Ok(())
+}
+
+enum RequestedVersion {
+  Latest(ReleaseChannel),
+  SpecificVersion(ReleaseChannel, String),
+}
+
+impl RequestedVersion {
+  fn from_upgrade_flags(upgrade_flags: UpgradeFlags) -> Result<Self, AnyError> {
+    let is_canary = upgrade_flags.canary;
+
+    let Some(passed_version) = upgrade_flags.version else {
+      let channel = if is_canary {
+        ReleaseChannel::Canary
+      } else {
+        ReleaseChannel::Stable
+      };
+      return Ok(Self::Latest(channel));
+    };
+
+    let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
+    let passed_version = passed_version
+      .strip_prefix('v')
+      .unwrap_or(&passed_version)
+      .to_string();
+
+    let (channel, passed_version) = if is_canary {
+      if !re_hash.is_match(&passed_version) {
+        bail!("Invalid commit hash passed");
+      }
+      (ReleaseChannel::Canary, passed_version)
+    } else {
+      if Version::parse_standard(&passed_version).is_err() {
+        bail!("Invalid version passed");
+      };
+      (ReleaseChannel::Stable, passed_version)
+    };
+
+    Ok(RequestedVersion::SpecificVersion(channel, passed_version))
+  }
+}
+
+fn select_specific_version_for_upgrade(
+  release_channel: ReleaseChannel,
+  version: String,
+  force: bool,
+) -> Result<Option<String>, AnyError> {
+  match release_channel {
+    ReleaseChannel::Stable => {
+      let current_is_passed = if !version::is_canary() {
+        version::deno() == version
+      } else {
+        false
+      };
+
+      if !force && current_is_passed {
+        log::info!("Version {} is already installed", version::deno());
+        return Ok(None);
+      }
+
+      Ok(Some(version))
+    }
+    ReleaseChannel::Canary => {
+      let current_is_passed = version::GIT_COMMIT_HASH == version;
+      if !force && current_is_passed {
+        log::info!("Version {} is already installed", version::deno());
+        return Ok(None);
+      }
+
+      Ok(Some(version))
+    }
+    // TODO(bartlomieju)
+    ReleaseChannel::Rc => unreachable!(),
+    // TODO(bartlomieju)
+    ReleaseChannel::Lts => unreachable!(),
+  }
+}
+
+async fn find_latest_version_to_upgrade(
+  http_client_provider: Arc<HttpClientProvider>,
+  release_channel: ReleaseChannel,
+  force: bool,
+) -> Result<Option<String>, AnyError> {
+  log::info!(
+    "{}",
+    colors::gray(&format!("Looking up {} version", release_channel.name()))
+  );
+
+  let client = http_client_provider.get_or_create()?;
+  let latest_version =
+    fetch_latest_version(&client, release_channel, UpgradeCheckKind::Execution)
+      .await?;
+
+  let (maybe_newer_latest_version, current_version) = match release_channel {
+    ReleaseChannel::Stable => {
+      let current_version = version::deno();
+      let current_is_most_recent = if !version::is_canary() {
+        let current = Version::parse_standard(current_version).unwrap();
+        let latest = Version::parse_standard(&latest_version).unwrap();
+        current >= latest
+      } else {
+        false
+      };
+
+      if !force && current_is_most_recent {
+        (None, current_version)
+      } else {
+        (Some(latest_version), current_version)
+      }
+    }
+    ReleaseChannel::Canary => {
+      let current_version = version::GIT_COMMIT_HASH;
+      let current_is_most_recent = current_version == latest_version;
+
+      if !force && current_is_most_recent {
+        (None, current_version)
+      } else {
+        (Some(latest_version), current_version)
+      }
+    }
+    // TODO(bartlomieju)
+    ReleaseChannel::Rc => unreachable!(),
+    // TODO(bartlomieju)
+    ReleaseChannel::Lts => unreachable!(),
+  };
+
+  log::info!("");
+  if let Some(newer_latest_version) = maybe_newer_latest_version.as_ref() {
+    log::info!(
+      "{}",
+      color_print::cformat!(
+        "<g>Found latest version {}</>",
+        newer_latest_version
+      )
+    );
+  } else {
+    log::info!(
+      "{}",
+      color_print::cformat!(
+        "<g>Local deno version {} is the most recent release</>",
+        current_version
+      )
+    );
+  }
+  log::info!("");
+
+  Ok(maybe_newer_latest_version)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -650,7 +672,7 @@ enum ReleaseChannel {
 
   /// Pointing to a git hash
   Canary,
-  
+
   /// Long term support release
   #[allow(unused)]
   Lts,
@@ -658,6 +680,17 @@ enum ReleaseChannel {
   /// Release candidate
   #[allow(unused)]
   Rc,
+}
+
+impl ReleaseChannel {
+  fn name(&self) -> &str {
+    match self {
+      Self::Stable => "latest",
+      Self::Canary => "canary",
+      Self::Rc => "release candidate",
+      Self::Lts => "LTS (long term support)",
+    }
+  }
 }
 
 fn parse_rc_versions_text(text: &str) -> Result<Vec<String>, AnyError> {
@@ -732,27 +765,34 @@ fn base_upgrade_url() -> Cow<'static, str> {
   }
 }
 
+fn get_download_url(version: &str, is_canary: bool) -> Result<Url, AnyError> {
+  let download_url = if is_canary {
+    format!("{}/{}/{}", CANARY_URL, version, *ARCHIVE_NAME)
+  } else {
+    format!("{}/download/v{}/{}", RELEASE_URL, version, *ARCHIVE_NAME)
+  };
+
+  Url::parse(&download_url).with_context(|| {
+    format!(
+      "Failed to parse URL to download new release: {}",
+      download_url
+    )
+  })
+}
+
 async fn download_package(
   client: &HttpClient,
-  download_url: &str,
-) -> Result<Vec<u8>, AnyError> {
-  log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
-  let maybe_bytes = {
-    let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
-    // provide an empty string here in order to prefer the downloading
-    // text above which will stay alive after the progress bars are complete
-    let progress = progress_bar.update("");
-    client
-      .download_with_progress(download_url.parse()?, None, &progress)
-      .await?
-  };
-  match maybe_bytes {
-    Some(bytes) => Ok(bytes),
-    None => {
-      log::error!("Download could not be found, aborting");
-      std::process::exit(1)
-    }
-  }
+  download_url: Url,
+) -> Result<Option<Vec<u8>>, AnyError> {
+  let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
+  // provide an empty string here in order to prefer the downloading
+  // text above which will stay alive after the progress bars are complete
+  let progress = progress_bar.update("");
+  let maybe_bytes = client
+    .download_with_progress(download_url.clone(), None, &progress)
+    .await
+    .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
+  Ok(maybe_bytes)
 }
 
 fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
@@ -767,6 +807,68 @@ fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {
   // we try again with copy.
   fs::rename(from, to).or_else(|_| fs::copy(from, to).map(|_| ()))?;
   Ok(())
+}
+
+fn check_windows_access_denied_error(
+  output_result: Result<(), std::io::Error>,
+  output_exe_path: &Path,
+) -> Result<(), AnyError> {
+  let Err(err) = output_result else {
+    return Ok(());
+  };
+
+  if !cfg!(windows) {
+    return Err(err.into());
+  }
+
+  const WIN_ERROR_ACCESS_DENIED: i32 = 5;
+  if err.raw_os_error() != Some(WIN_ERROR_ACCESS_DENIED) {
+    return Err(err.into());
+  };
+
+  Err(err).with_context(|| {
+    format!(
+      concat!(
+        "Could not replace the deno executable. This may be because an ",
+        "existing deno process is running. Please ensure there are no ",
+        "running deno processes (ex. Stop-Process -Name deno ; deno {}), ",
+        "close any editors before upgrading, and ensure you have ",
+        "sufficient permission to '{}'."
+      ),
+      // skip the first argument, which is the executable path
+      std::env::args().skip(1).collect::<Vec<_>>().join(" "),
+      output_exe_path.display(),
+    )
+  })
+}
+
+fn set_exe_permissions(
+  current_exe_path: &Path,
+  output_exe_path: &Path,
+) -> Result<std::fs::Permissions, AnyError> {
+  let Ok(metadata) = fs::metadata(output_exe_path) else {
+    let metadata = fs::metadata(current_exe_path)?;
+    return Ok(metadata.permissions());
+  };
+
+  let permissions = metadata.permissions();
+  if permissions.readonly() {
+    bail!(
+      "You do not have write permission to {}",
+      output_exe_path.display()
+    );
+  }
+  #[cfg(unix)]
+  if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
+    && !nix::unistd::Uid::effective().is_root()
+  {
+    bail!(concat!(
+      "You don't have write permission to {} because it's owned by root.\n",
+      "Consider updating deno through your package manager if its installed from it.\n",
+      "Otherwise run `deno upgrade` as root.",
+    ), output_exe_path.display());
+  }
+  Ok(permissions)
 }
 
 fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
@@ -948,23 +1050,11 @@ mod test {
 
   #[async_trait(?Send)]
   impl VersionProvider for TestUpdateCheckerEnvironment {
-<<<<<<< HEAD
-    async fn is_release_candidate(&self) -> Result<bool, AnyError> {
-      Ok(*self.is_release_candidate.borrow())
-    }
-
-    fn is_canary(&self) -> bool {
-      *self.is_canary.borrow()
-    }
-
-    async fn latest_version(&self) -> Result<String, AnyError> {
-=======
     // TODO(bartlomieju): update to handle `Lts` and `Rc` channels
     async fn latest_version(
       &self,
       _release_channel: ReleaseChannel,
     ) -> Result<String, AnyError> {
->>>>>>> main
       match self.latest_version.borrow().clone() {
         Ok(result) => Ok(result),
         Err(err) => bail!("{}", err),
@@ -1168,13 +1258,8 @@ mod test {
       "https://dl.deno.land/release-latest.txt"
     );
     assert_eq!(
-<<<<<<< HEAD
-      get_url(
-        UpgradeReleaseKind::ReleaseCandidate,
-=======
       get_latest_version_url(
         ReleaseChannel::Stable,
->>>>>>> main
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Lsp
       ),
