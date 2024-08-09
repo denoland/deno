@@ -254,6 +254,9 @@ fn get_minor_version(version: &str) -> &str {
 }
 
 fn print_release_notes(current_version: &str, new_version: &str) {
+  // TODO(bartlomieju): we might want to reconsider this one for RC releases.
+  // TODO(bartlomieju): also maybe just parse using `Version::standard` instead
+  // of using `get_minor_version`?
   if get_minor_version(current_version) == get_minor_version(new_version) {
     return;
   }
@@ -348,6 +351,7 @@ pub fn check_for_upgrades(
           colors::italic_gray("Run `deno upgrade --rc` to install it.")
         );
       }
+      // TODO(bartlomieju)
       ReleaseChannel::Lts => unreachable!(),
     }
 
@@ -358,7 +362,6 @@ pub fn check_for_upgrades(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LspVersionUpgradeInfo {
   pub latest_version: String,
-  // TODO(bartlomieju): use `ReleaseChannel` instead
   pub is_canary: bool,
 }
 
@@ -438,19 +441,17 @@ async fn fetch_and_store_latest_version<
     return;
   };
 
-  env.write_check_file(
-    &CheckVersionFile {
-      // put a date in the past here so that prompt can be shown on next run
-      last_prompt: env
-        .current_time()
-        .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
-      last_checked: env.current_time(),
-      current_version: version_provider.current_version().to_string(),
-      latest_version: latest_version.version_or_hash,
-      current_release_channel: release_channel,
-    }
-    .serialize(),
-  );
+  let version_file = CheckVersionFile {
+    // put a date in the past here so that prompt can be shown on next run
+    last_prompt: env
+      .current_time()
+      .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
+    last_checked: env.current_time(),
+    current_version: version_provider.current_version().to_string(),
+    latest_version: latest_version.version_or_hash,
+    current_release_channel: release_channel,
+  };
+  env.write_check_file(&version_file.serialize());
 }
 
 pub async fn upgrade(
