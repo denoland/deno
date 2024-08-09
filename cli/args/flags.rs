@@ -2884,7 +2884,7 @@ update to a different location, use the --output flag
         .arg(
           Arg::new("release_candidate")
             .long("rc")
-            .help("Upgrade to Deno 2 release candidate")
+            .help("Upgrade to a release candidate")
             .conflicts_with_all(["canary", "version"])
             .action(ArgAction::SetTrue),
         )
