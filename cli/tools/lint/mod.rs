@@ -152,7 +152,8 @@ pub async fn lint(
           start_dir.maybe_deno_json().map(|c| c.as_ref()),
         )?;
       let file_path = cli_options.initial_cwd().join(STDIN_FILE_NAME);
-      let r = lint_stdin(&file_path, lint_rules, deno_lint_config);
+      let r =
+        lint_stdin(&file_path, lint_rules, deno_lint_config, lint_flags.ext);
       let success = handle_lint_result(
         &file_path.to_string_lossy(),
         r,
@@ -355,7 +356,7 @@ impl WorkspaceLinter {
               }
             }
 
-            let r = linter.lint_file(&file_path, file_text);
+            let r = linter.lint_file(&file_path, file_text, None);
             if let Ok((file_source, file_diagnostics)) = &r {
               if let Some(incremental_cache) = &maybe_incremental_cache {
                 if file_diagnostics.is_empty() {
@@ -476,6 +477,7 @@ fn lint_stdin(
   file_path: &Path,
   configured_rules: ConfiguredRules,
   deno_lint_config: LintConfig,
+  ext: Option<String>,
 ) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
   let mut source_code = String::new();
   if stdin().read_to_string(&mut source_code).is_err() {
@@ -489,7 +491,7 @@ fn lint_stdin(
   });
 
   linter
-    .lint_file(file_path, deno_ast::strip_bom(source_code))
+    .lint_file(file_path, deno_ast::strip_bom(source_code), ext)
     .map_err(AnyError::from)
 }
 
