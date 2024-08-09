@@ -458,6 +458,7 @@ impl ReplSession {
       let report_tests_handle = spawn(report_tests(
         self.test_event_receiver.take().unwrap(),
         (self.test_reporter_factory)(),
+        None,
       ));
       run_tests_for_worker(
         &mut self.worker,
