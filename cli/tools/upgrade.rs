@@ -73,12 +73,7 @@ impl UpdateCheckerEnvironment for RealUpdateCheckerEnvironment {
   }
 
   fn write_check_file(&self, text: &str) {
-    let a = std::fs::write(&self.cache_file_path, text);
-    eprintln!(
-      "write check file {} {:?}",
-      self.cache_file_path.display(),
-      a
-    );
+    let _ = std::fs::write(&self.cache_file_path, text);
   }
 
   fn current_time(&self) -> chrono::DateTime<chrono::Utc> {
@@ -140,9 +135,7 @@ impl VersionProvider for RealVersionProvider {
       release_channel,
       self.check_kind,
     )
-    .await;
-    eprintln!("latest version result {:#?}", r);
-    let r = r?;
+    .await?;
 
     // TODO(bartlomieju): return `SelectedVersionToUpgrade` here
     Ok(r.version_or_hash)
@@ -161,9 +154,7 @@ impl VersionProvider for RealVersionProvider {
         &self.http_client_provider.get_or_create()?,
         self.check_kind,
       )
-      .await;
-      eprintln!("rc versions {:#?}", rc_versions);
-      let rc_versions = rc_versions?;
+      .await?;
 
       let is_current_exe_an_rc = rc_versions
         .iter()
@@ -318,7 +309,7 @@ pub fn check_for_upgrades(
       tokio::time::sleep(UPGRADE_CHECK_FETCH_DELAY).await;
 
       fetch_and_store_latest_version(&env, &version_provider).await;
-      eprintln!("fetched latest version");
+
       // text is used by the test suite
       log::debug!("Finished upgrade checker.")
     });
@@ -436,17 +427,14 @@ async fn fetch_and_store_latest_version<
   let Ok(release_channel) =
     version_provider.get_current_exe_release_channel().await
   else {
-    eprintln!("no release channel");
     return;
   };
   let Ok(latest_version) =
     version_provider.latest_version(release_channel).await
   else {
-    eprintln!("no latest version");
     return;
   };
 
-  eprintln!("latest version {}", latest_version);
   env.write_check_file(
     &CheckVersionFile {
       // put a date in the past here so that prompt can be shown on next run
@@ -803,7 +791,6 @@ fn parse_rc_versions_text(
 
   for line in lines {
     let v = line.split(' ').collect::<Vec<_>>();
-    eprintln!("line {:#?}", v);
     if v.len() != 2 {
       bail!("Malformed list of RC releases");
     }
