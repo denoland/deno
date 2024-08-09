@@ -434,10 +434,10 @@ pub async fn upgrade(
   let force_selection_of_new_version =
     upgrade_flags.force || full_path_output_flag.is_some();
 
-  let requested_version2 =
+  let requested_version =
     RequestedVersion::from_upgrade_flags(upgrade_flags.clone())?;
 
-  let maybe_install_version = match requested_version2 {
+  let maybe_install_version = match requested_version {
     RequestedVersion::Latest(channel) => {
       find_latest_version_to_upgrade(
         http_client_provider.clone(),
