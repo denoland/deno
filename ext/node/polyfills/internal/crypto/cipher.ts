@@ -12,6 +12,7 @@ import {
   op_node_cipheriv_encrypt,
   op_node_cipheriv_final,
   op_node_cipheriv_set_aad,
+  op_node_cipheriv_take,
   op_node_create_cipheriv,
   op_node_create_decipheriv,
   op_node_decipheriv_decrypt,
@@ -194,7 +195,11 @@ export class Cipheriv extends Transform implements Cipher {
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
     const buf = new Buffer(16);
-
+    if (this.#cache.cache.byteLength == 0) {
+      const maybeTag = op_node_cipheriv_take(this.#context);
+      if (maybeTag) this.#authTag = Buffer.from(maybeTag);
+      return encoding === "buffer" ? Buffer.from([]) : "";
+    }
     if (!this.#autoPadding && this.#cache.cache.byteLength != 16) {
       throw new Error("Invalid final block size");
     }

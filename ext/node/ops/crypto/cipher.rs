@@ -64,6 +64,10 @@ impl CipherContext {
     self.cipher.borrow_mut().encrypt(input, output);
   }
 
+  pub fn take_tag(self) -> Tag {
+    Rc::try_unwrap(self.cipher).ok()?.into_inner().take_tag()
+  }
+
   pub fn r#final(
     self,
     auto_pad: bool,
@@ -288,6 +292,15 @@ impl Cipher {
         );
         Ok(None)
       }
+    }
+  }
+
+  fn take_tag(self) -> Tag {
+    use Cipher::*;
+    match self {
+      Aes128Gcm(cipher) => Some(cipher.finish().to_vec()),
+      Aes256Gcm(cipher) => Some(cipher.finish().to_vec()),
+      _ => None,
     }
   }
 }
