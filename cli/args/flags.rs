@@ -1439,6 +1439,7 @@ You can add multiple dependencies at once:
 
 fn remove_subcommand() -> Command {
   Command::new("remove")
+    .alias("rm")
     .about("Remove dependencies")
     .long_about(
       "Remove dependencies from the configuration file.
