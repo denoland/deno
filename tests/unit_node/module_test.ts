@@ -6,6 +6,7 @@ import {
   findSourceMap,
   isBuiltin,
   Module,
+  register,
 } from "node:module";
 import { assert, assertEquals } from "@std/assert";
 import process from "node:process";
@@ -98,4 +99,9 @@ Deno.test("[node/module builtinModules] has 'module' in builtins", () => {
 // https://github.com/denoland/deno/issues/18666
 Deno.test("[node/module findSourceMap] is a function", () => {
   assertEquals(findSourceMap("foo"), undefined);
+});
+
+// https://github.com/denoland/deno/issues/24902
+Deno.test("[node/module register] is a function", () => {
+  assertEquals(register("foo"), undefined);
 });
