@@ -144,6 +144,7 @@ serde_repr.workspace = true
 sha2.workspace = true
 shell-escape = "=0.1.5"
 spki = { version = "0.7", features = ["pem"] }
+strsim = "0.11.1"
 tar.workspace = true
 tempfile.workspace = true
 text-size = "=1.1.0"

@@ -1214,6 +1214,7 @@ dependencies = [
  "sha2",
  "shell-escape",
  "spki",
+ "strsim 0.11.1",
  "tar",
  "tempfile",
  "test_server",

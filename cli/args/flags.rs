@@ -307,6 +307,7 @@ pub struct ReplFlags {
 pub struct RunFlags {
   pub script: String,
   pub watch: Option<WatchFlagsWithPaths>,
+  pub bare: bool,
 }
 
 impl RunFlags {
@@ -315,6 +316,7 @@ impl RunFlags {
     Self {
       script,
       watch: None,
+      bare: false,
     }
   }
 
@@ -447,7 +449,6 @@ pub enum DenoSubcommand {
   Upgrade(UpgradeFlags),
   Vendor(VendorFlags),
   Publish(PublishFlags),
-  Help(clap::builder::StyledStr),
 }
 
 impl DenoSubcommand {
@@ -1241,7 +1242,11 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
         } else {
           app.render_help()
         };
-        flags.subcommand = DenoSubcommand::Help(help)
+
+        return Err(clap::error::Error::raw(
+          clap::error::ErrorKind::DisplayHelp,
+          help.ansi(),
+        ));
       }
       _ => unreachable!(),
     }
@@ -1272,6 +1277,25 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   Ok(flags)
 }
 
+// copied from clap, https://github.com/clap-rs/clap/blob/4e1a565b8adb4f2ad74a9631565574767fdc37ae/clap_builder/src/parser/features/suggestions.rs#L11-L26
+pub fn did_you_mean<T, I>(v: &str, possible_values: I) -> Vec<String>
+where
+  T: AsRef<str>,
+  I: IntoIterator<Item = T>,
+{
+  let mut candidates: Vec<(f64, String)> = possible_values
+    .into_iter()
+    // GH #4660: using `jaro` because `jaro_winkler` implementation in `strsim-rs` is wrong
+    // causing strings with common prefix >=10 to be considered perfectly similar
+    .map(|pv| (strsim::jaro(v, pv.as_ref()), pv.as_ref().to_owned()))
+    // Confidence of 0.7 so that bar -> baz is suggested
+    .filter(|(confidence, _)| *confidence > 0.7)
+    .collect();
+  candidates
+    .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+  candidates.into_iter().map(|(_, pv)| pv).collect()
+}
+
 fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   // If user runs just `deno` binary we enter REPL and allow all permissions.
   if repl_flags.is_default_command {
@@ -1289,7 +1313,7 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
 
 static UNSTABLE_HEADING: &str = "Unstable";
 
-fn clap_root() -> Command {
+pub fn clap_root() -> Command {
   let long_version = format!(
     "{} ({}, {})\nv8 {}\ntypescript {}",
     crate::version::deno(),
@@ -4289,6 +4313,7 @@ fn run_parse(
   flags.subcommand = DenoSubcommand::Run(RunFlags {
     script,
     watch: watch_arg_parse_with_paths(matches),
+    bare: !is_run_subommand,
   });
 
   Ok(())
@@ -5086,6 +5111,7 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![],
           }),
+          bare: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5110,6 +5136,7 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
+          bare: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5135,6 +5162,7 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
+          bare: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5160,6 +5188,7 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
+          bare: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5186,6 +5215,7 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![],
           }),
+          bare: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5215,6 +5245,7 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
+          bare: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5243,6 +5274,7 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![String::from("foo")],
           }),
+          bare: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5268,6 +5300,7 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![String::from("bar")],
           }),
+          bare: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5294,6 +5327,7 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![String::from("foo"), String::from("bar")],
           }),
+          bare: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
@@ -5319,6 +5353,7 @@ mod tests {
             no_clear_screen: false,
             exclude: vec![String::from("baz"), String::from("qux"),],
           }),
+          bare: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
