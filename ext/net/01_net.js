@@ -33,9 +33,12 @@ const UDP_DGRAM_MAXSIZE = 65507;
 const {
   Error,
   Number,
+  NumberIsNaN,
+  NumberIsInteger,
   ObjectPrototypeIsPrototypeOf,
   ObjectDefineProperty,
   PromiseResolve,
+  RangeError,
   SafeSet,
   SetPrototypeAdd,
   SetPrototypeDelete,
@@ -531,9 +534,10 @@ const listenOptionApiName = Symbol("listenOptionApiName");
 function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
+      const port = validatePort(args.port);
       const { 0: rid, 1: addr } = op_net_listen_tcp({
         hostname: args.hostname ?? "0.0.0.0",
-        port: Number(args.port),
+        port,
       }, args.reusePort);
       addr.transport = "tcp";
       return new Listener(rid, addr);
@@ -554,14 +558,30 @@ function listen(args) {
   }
 }
 
+function validatePort(maybePort) {
+  if (typeof maybePort !== "number" && typeof maybePort !== "string") {
+    throw new TypeError(`Invalid port (expected number): '${maybePort}'`);
+  }
+  if (maybePort === "") throw new TypeError("Invalid port: ''");
+  const port = Number(maybePort);
+  if (NumberIsNaN(port) || !NumberIsInteger(port)) {
+    throw new TypeError(`Invalid port: '${maybePort}'`);
+  }
+  if (port < 0 || port > 65535) {
+    throw new RangeError(`Invalid port (out of range): '${maybePort}'`);
+  }
+  return port;
+}
+
 function createListenDatagram(udpOpFn, unixOpFn) {
   return function listenDatagram(args) {
     switch (args.transport) {
       case "udp": {
+        const port = validatePort(args.port);
         const { 0: rid, 1: addr } = udpOpFn(
           {
             hostname: args.hostname ?? "127.0.0.1",
-            port: args.port,
+            port,
           },
           args.reuseAddress ?? false,
           args.loopback ?? false,
@@ -586,10 +606,11 @@ function createListenDatagram(udpOpFn, unixOpFn) {
 async function connect(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
+      const port = validatePort(args.port);
       const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tcp(
         {
           hostname: args.hostname ?? "127.0.0.1",
-          port: args.port,
+          port,
         },
       );
       localAddr.transport = "tcp";
@@ -622,4 +643,5 @@ export {
   shutdown,
   TcpConn,
   UnixConn,
+  validatePort,
 };
