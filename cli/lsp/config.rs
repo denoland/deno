@@ -1115,6 +1115,7 @@ pub enum ConfigWatchedFileType {
 #[derive(Debug, Clone)]
 pub struct ConfigData {
   pub scope: Arc<ModuleSpecifier>,
+  pub canonicalized_scope: Option<Arc<ModuleSpecifier>>,
   pub member_dir: Arc<WorkspaceDirectory>,
   pub fmt_config: Arc<FmtConfig>,
   pub lint_config: Arc<LintConfig>,
@@ -1252,6 +1253,16 @@ impl ConfigData {
         }
         watched_files.entry(specifier).or_insert(file_type);
       };
+
+    let canonicalized_scope = (|| {
+      let path = scope.to_file_path().ok()?;
+      let path = canonicalize_path_maybe_not_exists(&path).ok()?;
+      let specifier = ModuleSpecifier::from_directory_path(path).ok()?;
+      if specifier == *scope {
+        return None;
+      }
+      Some(Arc::new(specifier))
+    })();
 
     if let Some(deno_json) = member_dir.maybe_deno_json() {
       lsp_log!(
@@ -1559,6 +1570,7 @@ impl ConfigData {
 
     ConfigData {
       scope,
+      canonicalized_scope,
       member_dir,
       resolver,
       sloppy_imports_resolver,
@@ -1587,6 +1599,15 @@ impl ConfigData {
   pub fn maybe_pkg_json(&self) -> Option<&Arc<deno_package_json::PackageJson>> {
     self.member_dir.maybe_pkg_json()
   }
+
+  pub fn scope_contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
+    specifier.as_str().starts_with(self.scope.as_str())
+      || self
+        .canonicalized_scope
+        .as_ref()
+        .map(|s| specifier.as_str().starts_with(s.as_str()))
+        .unwrap_or(false)
+  }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1601,8 +1622,9 @@ impl ConfigTree {
   ) -> Option<&ModuleSpecifier> {
     self
       .scopes
-      .keys()
-      .rfind(|s| specifier.as_str().starts_with(s.as_str()))
+      .iter()
+      .rfind(|(_, d)| d.scope_contains_specifier(specifier))
+      .map(|(s, _)| s)
   }
 
   pub fn data_for_specifier(

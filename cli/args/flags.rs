@@ -214,6 +214,7 @@ impl FmtFlags {
 pub struct InitFlags {
   pub dir: Option<String>,
   pub lib: bool,
+  pub serve: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2118,6 +2119,14 @@ fn init_subcommand() -> Command {
         .arg(
           Arg::new("lib")
             .long("lib")
+            .required(false)
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("serve")
+            .long("serve")
+            .long_help("Generate an example project for `deno serve`")
+            .conflicts_with("lib")
             .required(false)
             .action(ArgAction::SetTrue),
         )
@@ -4174,6 +4183,7 @@ fn init_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Init(InitFlags {
     dir: matches.remove_one::<String>("dir"),
     lib: matches.get_flag("lib"),
+    serve: matches.get_flag("serve"),
   });
 }
 
@@ -10026,7 +10036,8 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
           dir: None,
-          lib: false
+          lib: false,
+          serve: false,
         }),
         ..Flags::default()
       }
@@ -10038,7 +10049,8 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
           dir: Some(String::from("foo")),
-          lib: false
+          lib: false,
+          serve: false,
         }),
         ..Flags::default()
       }
@@ -10050,7 +10062,8 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
           dir: None,
-          lib: false
+          lib: false,
+          serve: false,
         }),
         log_level: Some(Level::Error),
         ..Flags::default()
@@ -10063,7 +10076,21 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
           dir: None,
-          lib: true
+          lib: true,
+          serve: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "--serve"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          dir: None,
+          lib: false,
+          serve: true,
         }),
         ..Flags::default()
       }
@@ -10075,7 +10102,8 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Init(InitFlags {
           dir: Some(String::from("foo")),
-          lib: true
+          lib: true,
+          serve: false,
         }),
         ..Flags::default()
       }
