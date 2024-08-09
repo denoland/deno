@@ -866,7 +866,7 @@ impl AnalyzedJsxPragmas {
 }
 
 /// Analyze provided source and return information about carious pragmas
-/// used to configure the JSX tranforms.
+/// used to configure the JSX transforms.
 fn analyze_jsx_pragmas(
   parsed_source: &ParsedSource,
 ) -> Option<AnalyzedJsxPragmas> {

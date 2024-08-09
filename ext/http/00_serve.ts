@@ -436,6 +436,11 @@ function fastSyncResponseOrStream(
 
   const stream = respBody.streamOrStatic;
   const body = stream.body;
+  if (body !== undefined) {
+    // We ensure the response has not been consumed yet in the caller of this
+    // function.
+    stream.consumed = true;
+  }
 
   if (TypedArrayPrototypeGetSymbolToStringTag(body) === "Uint8Array") {
     innerRequest?.close();
@@ -503,6 +508,12 @@ function mapToCallback(context, callback, onError) {
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
         throw TypeError(
           "Return value from serve handler must be a response or a promise resolving to a response",
+        );
+      }
+
+      if (response.bodyUsed) {
+        throw TypeError(
+          "The body of the Response returned from the serve handler has already been consumed.",
         );
       }
     } catch (error) {

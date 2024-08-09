@@ -4,9 +4,13 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { op_node_sign, op_node_verify } from "ext:core/ops";
+import {
+  op_node_create_private_key,
+  op_node_create_public_key,
+  op_node_sign,
+  op_node_verify,
+} from "ext:core/ops";
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   validateFunction,
   validateString,
@@ -22,12 +26,12 @@ import type {
   PublicKeyInput,
 } from "ext:deno_node/internal/crypto/types.ts";
 import {
+  kConsumePrivate,
+  kConsumePublic,
   KeyObject,
   prepareAsymmetricKey,
 } from "ext:deno_node/internal/crypto/keys.ts";
-import { createHash, Hash } from "ext:deno_node/internal/crypto/hash.ts";
-import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import { createHash } from "ext:deno_node/internal/crypto/hash.ts";
 import { ERR_CRYPTO_SIGN_KEY_REQUIRED } from "ext:deno_node/internal/errors.ts";
 
 export type DSAEncoding = "der" | "ieee-p1363";
@@ -72,16 +76,26 @@ export class SignImpl extends Writable {
   }
 
   sign(
-    privateKey: BinaryLike | SignKeyObjectInput | SignPrivateKeyInput,
+    // deno-lint-ignore no-explicit-any
+    privateKey: any,
     encoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    const { data, format, type } = prepareAsymmetricKey(privateKey);
+    const res = prepareAsymmetricKey(privateKey, kConsumePrivate);
+    let handle;
+    if ("handle" in res) {
+      handle = res.handle;
+    } else {
+      handle = op_node_create_private_key(
+        res.data,
+        res.format,
+        res.type ?? "",
+        res.passphrase,
+      );
+    }
     const ret = Buffer.from(op_node_sign(
+      handle,
       this.hash.digest(),
       this.#digestType,
-      data!,
-      type,
-      format,
     ));
     return encoding ? ret.toString(encoding) : ret;
   }
@@ -127,32 +141,27 @@ export class VerifyImpl extends Writable {
   }
 
   verify(
-    publicKey: BinaryLike | VerifyKeyObjectInput | VerifyPublicKeyInput,
+    // deno-lint-ignore no-explicit-any
+    publicKey: any,
     signature: BinaryLike,
     encoding?: BinaryToTextEncoding,
   ): boolean {
-    let keyData: BinaryLike;
-    let keyType: KeyType;
-    let keyFormat: KeyFormat;
-    if (typeof publicKey === "string" || isArrayBufferView(publicKey)) {
-      // if the key is BinaryLike, interpret it as a PEM encoded RSA key
-      // deno-lint-ignore no-explicit-any
-      keyData = publicKey as any;
-      keyType = "rsa";
-      keyFormat = "pem";
+    const res = prepareAsymmetricKey(publicKey, kConsumePublic);
+    let handle;
+    if ("handle" in res) {
+      handle = res.handle;
     } else {
-      // TODO(kt3k): Add support for the case when publicKey is a KeyObject,
-      // CryptoKey, etc
-      notImplemented(
-        "crypto.Verify.prototype.verify with non BinaryLike input",
+      handle = op_node_create_public_key(
+        res.data,
+        res.format,
+        res.type ?? "",
+        res.passphrase,
       );
     }
     return op_node_verify(
+      handle,
       this.hash.digest(),
       this.#digestType,
-      keyData!,
-      keyType,
-      keyFormat,
       Buffer.from(signature, encoding),
     );
   }

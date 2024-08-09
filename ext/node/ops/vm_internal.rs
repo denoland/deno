@@ -35,11 +35,12 @@ impl ContextifyScript {
       false,
       Some(host_defined_options),
     );
-    let source = v8::script_compiler::Source::new(source_str, Some(&origin));
+    let mut source =
+      v8::script_compiler::Source::new(source_str, Some(&origin));
 
     let unbound_script = v8::script_compiler::compile_unbound_script(
       scope,
-      source,
+      &mut source,
       v8::script_compiler::CompileOptions::NoCompileOptions,
       v8::script_compiler::NoCacheReason::NoReason,
     )
@@ -92,7 +93,6 @@ impl ContextifyContext {
     sandbox_obj: v8::Local<v8::Object>,
   ) {
     let tmp = init_global_template(scope, ContextInitMode::UseSnapshot);
-
     let context = create_v8_context(scope, tmp, ContextInitMode::UseSnapshot);
     Self::from_context(scope, context, sandbox_obj);
   }
@@ -226,15 +226,22 @@ pub fn create_v8_context<'a>(
   let scope = &mut v8::EscapableHandleScope::new(scope);
 
   let context = if mode == ContextInitMode::UseSnapshot {
-    v8::Context::from_snapshot(scope, VM_CONTEXT_INDEX).unwrap()
+    v8::Context::from_snapshot(scope, VM_CONTEXT_INDEX, Default::default())
+      .unwrap()
   } else {
-    let ctx = v8::Context::new_from_template(scope, object_template);
+    let ctx = v8::Context::new(
+      scope,
+      v8::ContextOptions {
+        global_template: Some(object_template),
+        ..Default::default()
+      },
+    );
     // SAFETY: ContextifyContexts will update this to a pointer to the native object
     unsafe {
       ctx.set_aligned_pointer_in_embedder_data(1, std::ptr::null_mut());
       ctx.set_aligned_pointer_in_embedder_data(2, std::ptr::null_mut());
       ctx.set_aligned_pointer_in_embedder_data(3, std::ptr::null_mut());
-      ctx.clear_all_slots(scope);
+      ctx.clear_all_slots();
     };
     ctx
   };

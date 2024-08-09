@@ -49,8 +49,13 @@ hmr = ["deno_runtime/hmr"]
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 
 [build-dependencies]
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime = { workspace = true, features = [
+  "include_js_files_for_snapshotting",
+  "only_snapshotted_js_sources",
+] }
+deno_core = { workspace = true, features = [
+  "include_js_files_for_snapshotting",
+] }
 lazy-regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -63,19 +68,34 @@ winapi.workspace = true
 winres.workspace = true
 
 [dependencies]
-deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
+deno_ast = { workspace = true, features = [
+  "bundler",
+  "cjs",
+  "codegen",
+  "proposal",
+  "react",
+  "sourcemap",
+  "transforms",
+  "typescript",
+  "view",
+  "visit",
+] }
 deno_cache_dir = { workspace = true }
-deno_config = { version = "=0.26.1", features = ["workspace", "sync"] }
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_config = { version = "=0.28.0", features = ["workspace", "sync"] }
+deno_core = { workspace = true, features = [
+  "include_js_files_for_snapshotting",
+] }
 deno_doc = { version = "0.145.0", features = ["html", "syntect"] }
 deno_emit = "=0.44.0"
-deno_graph = { version = "=0.81.0" }
+deno_graph = { version = "=0.81.1" }
 deno_lint = { version = "=0.62.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "=0.21.4"
 deno_package_json.workspace = true
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_semver = "=0.5.7"
+deno_runtime = { workspace = true, features = [
+  "include_js_files_for_snapshotting",
+] }
+deno_semver = "=0.5.9"
 deno_task_shell = "=0.17.0"
 deno_terminal.workspace = true
 eszip = "=0.73.0"
@@ -102,7 +122,7 @@ dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.3"
 dprint-plugin-jupyter = "=0.1.4"
 dprint-plugin-markdown = "=0.17.2"
-dprint-plugin-typescript = "=0.91.5"
+dprint-plugin-typescript = "=0.91.6"
 env_logger = "=0.11.5"
 fancy-regex = "=0.13.0"
 faster-hex.workspace = true
@@ -132,6 +152,7 @@ p256.workspace = true
 pathdiff = "0.2.1"
 percent-encoding.workspace = true
 phf.workspace = true
+pretty_yaml = "=0.4.0"
 quick-junit = "0.4"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
@@ -160,7 +181,16 @@ zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true
-winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+winapi = { workspace = true, features = [
+  "knownfolders",
+  "mswsock",
+  "objbase",
+  "shlobj",
+  "tlhelp32",
+  "winbase",
+  "winerror",
+  "winsock2",
+] }
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true

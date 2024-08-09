@@ -1518,6 +1518,7 @@ impl ConfigData {
       WorkspaceResolver::new_raw(
         scope.clone(),
         None,
+        member_dir.workspace.resolver_jsr_pkgs().collect(),
         member_dir.workspace.package_jsons().cloned().collect(),
         pkg_json_dep_resolution,
       )
@@ -1701,27 +1702,28 @@ impl ConfigTree {
         ws_settings = ws_settings.or(Some(&settings.unscoped));
       }
       if let Some(ws_settings) = ws_settings {
-        if let Some(config_path) = &ws_settings.config {
-          if let Ok(config_uri) = folder_uri.join(config_path) {
-            if let Ok(config_file_path) = config_uri.to_file_path() {
-              scopes.insert(
-                folder_uri.clone(),
-                Arc::new(
-                  ConfigData::load(
-                    Some(&config_file_path),
-                    folder_uri,
-                    settings,
-                    file_fetcher,
-                    &cached_fs,
-                    &deno_json_cache,
-                    &pkg_json_cache,
-                    &workspace_cache,
-                  )
-                  .await,
-                ),
-              );
-            }
-          }
+        let config_file_path = (|| {
+          let config_setting = ws_settings.config.as_ref()?;
+          let config_uri = folder_uri.join(config_setting).ok()?;
+          specifier_to_file_path(&config_uri).ok()
+        })();
+        if config_file_path.is_some() || ws_settings.import_map.is_some() {
+          scopes.insert(
+            folder_uri.clone(),
+            Arc::new(
+              ConfigData::load(
+                config_file_path.as_deref(),
+                folder_uri,
+                settings,
+                file_fetcher,
+                &cached_fs,
+                &deno_json_cache,
+                &pkg_json_cache,
+                &workspace_cache,
+              )
+              .await,
+            ),
+          );
         }
       }
     }
@@ -1772,29 +1774,6 @@ impl ConfigTree {
       }
     }
 
-    for folder_uri in settings.by_workspace_folder.keys() {
-      if !scopes
-        .keys()
-        .any(|s| folder_uri.as_str().starts_with(s.as_str()))
-      {
-        scopes.insert(
-          folder_uri.clone(),
-          Arc::new(
-            ConfigData::load(
-              None,
-              folder_uri,
-              settings,
-              file_fetcher,
-              &cached_fs,
-              &deno_json_cache,
-              &pkg_json_cache,
-              &workspace_cache,
-            )
-            .await,
-          ),
-        );
-      }
-    }
     self.scopes = Arc::new(scopes);
   }
 
