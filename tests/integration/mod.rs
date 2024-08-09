@@ -37,6 +37,8 @@ mod inspector;
 mod install;
 #[path = "js_unit_tests.rs"]
 mod js_unit_tests;
+#[path = "js_unit_tests_future.rs"]
+mod js_unit_tests_future;
 #[path = "jsr_tests.rs"]
 mod jsr;
 #[path = "jupyter_tests.rs"]
