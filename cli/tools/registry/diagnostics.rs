@@ -470,7 +470,7 @@ impl Diagnostic for PublishDiagnostic {
       InvalidExternalImport { imported, .. } => Cow::Owned(vec![
         Cow::Owned(format!("the import was resolved to '{}'", imported)),
         Cow::Borrowed("this specifier is not allowed to be imported on jsr"),
-        Cow::Borrowed("jsr only supports importing `jsr:`, `npm:`, and `data:` specifiers"),
+        Cow::Borrowed("jsr only supports importing `jsr:`, `npm:`, `data:`, `bun:`, and `node:` specifiers"),
       ]),
       UnsupportedJsxTsx { .. } => Cow::Owned(vec![
         Cow::Borrowed("follow https://github.com/jsr-io/jsr/issues/24 for updates"),
