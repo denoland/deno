@@ -64,6 +64,7 @@ mod unfurl;
 use auth::get_auth_method;
 use auth::AuthMethod;
 pub use pm::add;
+pub use pm::remove;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 

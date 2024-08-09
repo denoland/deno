@@ -1,0 +1,3 @@
+Created deno.json configuration file.
+Add jsr:@std/assert@1.0.0
+Add jsr:@std/http@1.0.0
