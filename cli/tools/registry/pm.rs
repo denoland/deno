@@ -269,10 +269,10 @@ pub async fn add(
   let is_npm = config_file.is_npm();
   for selected_package in selected_packages {
     log::info!(
-      "Add {} - {}@{}",
-      crate::colors::green(&selected_package.import_name),
-      selected_package.package_name,
-      selected_package.version_req
+      "Add {}{}{}",
+      crate::colors::green(&selected_package.package_name),
+      crate::colors::gray("@"),
+      selected_package.selected_version
     );
 
     if is_npm {
@@ -325,6 +325,7 @@ struct SelectedPackage {
   import_name: String,
   package_name: String,
   version_req: String,
+  selected_version: String,
 }
 
 enum PackageAndVersion {
@@ -352,6 +353,7 @@ async fn find_package_and_select_version_for_req(
         import_name: add_package_req.alias,
         package_name: jsr_prefixed_name,
         version_req: format!("{}{}", range_symbol, &nv.version),
+        selected_version: nv.version.to_string(),
       }))
     }
     AddPackageReqValue::Npm(req) => {
@@ -368,6 +370,7 @@ async fn find_package_and_select_version_for_req(
         import_name: add_package_req.alias,
         package_name: npm_prefixed_name,
         version_req: format!("{}{}", range_symbol, &nv.version),
+        selected_version: nv.version.to_string(),
       }))
     }
   }
