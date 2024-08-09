@@ -757,7 +757,7 @@ async fn get_rc_versions(
   parse_rc_versions_text(&text)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct SelectedVersionToUpgrade {
   version_or_hash: String,
   display: String,
@@ -1327,7 +1327,7 @@ mod test {
     );
     assert_eq!(
       get_latest_version_url(
-        ReleaseChannel::Stable,
+        ReleaseChannel::Rc,
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Lsp
       ),
@@ -1371,24 +1371,46 @@ mod test {
   fn test_normalize_version_server() {
     // should strip v for stable
     assert_eq!(
-      normalize_version_from_server(ReleaseChannel::Stable, "v1.0.0"),
-      "1.0.0"
+      normalize_version_from_server(ReleaseChannel::Stable, "v1.0.0").unwrap(),
+      SelectedVersionToUpgrade {
+        version_or_hash: "1.0.0".to_string(),
+        display: "1.0.0".to_string()
+      },
     );
     // should not replace v after start
     assert_eq!(
       normalize_version_from_server(
         ReleaseChannel::Stable,
         "  v1.0.0-test-v\n\n  "
-      ),
-      "1.0.0-test-v"
+      )
+      .unwrap(),
+      SelectedVersionToUpgrade {
+        version_or_hash: "1.0.0-test-v".to_string(),
+        display: "1.0.0-test-v".to_string()
+      }
     );
     // should not strip v for canary
     assert_eq!(
       normalize_version_from_server(
         ReleaseChannel::Canary,
         "  v1452345asdf   \n\n   "
-      ),
-      "v1452345asdf"
+      )
+      .unwrap(),
+      SelectedVersionToUpgrade {
+        version_or_hash: "v1452345asdf".to_string(),
+        display: "v1452345asdf".to_string()
+      }
+    );
+    assert_eq!(
+      normalize_version_from_server(
+        ReleaseChannel::Rc,
+        "asdfq345wdfasdfasdf v1.46.0-rc.0\nasdfq345wdfasdfasdf v1.46.0-rc.1\n"
+      )
+      .unwrap(),
+      SelectedVersionToUpgrade {
+        version_or_hash: "asdfq345wdfasdfasdf".to_string(),
+        display: "v1.46.0-rc.1".to_string(),
+      },
     );
   }
 

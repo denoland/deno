@@ -9096,7 +9096,6 @@ mod tests {
           version: None,
           output: None,
         }),
-        ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
       }
     );
