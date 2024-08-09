@@ -8,6 +8,8 @@ use std::thread;
 
 use deno_terminal::colors;
 
+use crate::ops::otel::OtelConfig;
+
 /// The execution mode for this worker. Some modes may have implicit behaviour.
 #[derive(Copy, Clone)]
 #[repr(u8)]
@@ -94,6 +96,8 @@ pub struct BootstrapOptions {
   // Used by `deno serve`
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  // OpenTelemetry output options. If `None`, OpenTelemetry is disabled.
+  pub otel_config: Option<OtelConfig>,
 }
 
 impl Default for BootstrapOptions {
@@ -130,6 +134,7 @@ impl Default for BootstrapOptions {
       mode: WorkerExecutionMode::None,
       serve_port: Default::default(),
       serve_host: Default::default(),
+      otel_config: None,
     }
   }
 }
@@ -173,6 +178,8 @@ struct BootstrapV8<'a>(
   u16,
   // serve host
   Option<&'a str>,
+  // OTEL enabled
+  bool,
 );
 
 impl BootstrapOptions {
@@ -199,6 +206,7 @@ impl BootstrapOptions {
       self.mode as u8 as _,
       self.serve_port.unwrap_or_default(),
       self.serve_host.as_deref(),
+      self.otel_config.is_some(),
     );
 
     bootstrap.serialize(ser).unwrap()

@@ -740,6 +740,7 @@ pub async fn run(
     false,
     // Code cache is not supported for standalone binary yet.
     None,
+    metadata.otel_config,
   );
 
   // Initialize v8 once from the main thread.

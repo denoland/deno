@@ -31,6 +31,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
+use deno_runtime::ops::otel::OtelConfig;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
@@ -143,6 +144,7 @@ struct SharedWorkerState {
   code_cache: Option<Arc<dyn code_cache::CodeCache>>,
   serve_port: Option<u16>,
   serve_host: Option<String>,
+  otel_config: Option<OtelConfig>, // `None` means OpenTelemetry is disabled.
 }
 
 impl SharedWorkerState {
@@ -417,6 +419,7 @@ impl CliMainWorkerFactory {
     disable_deprecated_api_warning: bool,
     verbose_deprecated_api_warning: bool,
     code_cache: Option<Arc<dyn code_cache::CodeCache>>,
+    otel_config: Option<OtelConfig>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedWorkerState {
@@ -443,6 +446,7 @@ impl CliMainWorkerFactory {
         disable_deprecated_api_warning,
         verbose_deprecated_api_warning,
         code_cache,
+        otel_config,
       }),
     }
   }
@@ -585,6 +589,7 @@ impl CliMainWorkerFactory {
         mode,
         serve_port: shared.serve_port,
         serve_host: shared.serve_host.clone(),
+        otel_config: shared.otel_config.clone(),
       },
       extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -789,6 +794,7 @@ fn create_web_worker_callback(
         mode,
         serve_port: shared.serve_port,
         serve_host: shared.serve_host.clone(),
+        otel_config: shared.otel_config.clone(),
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),

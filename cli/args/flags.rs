@@ -589,6 +589,7 @@ pub struct Flags {
   pub permissions: PermissionFlags,
   pub allow_scripts: PackagesAllowedScripts,
   pub eszip: bool,
+  pub otel: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -3330,6 +3331,7 @@ fn runtime_args(
     .arg(enable_testing_features_arg())
     .arg(strace_ops_arg())
     .arg(eszip_arg())
+    .arg(otel_arg())
 }
 
 fn inspect_args(app: Command) -> Command {
@@ -3454,6 +3456,14 @@ fn eszip_arg() -> Arg {
     .long("eszip-internal-do-not-use")
     .action(ArgAction::SetTrue)
     .help("Run eszip")
+}
+
+fn otel_arg() -> Arg {
+  Arg::new("otel-internal-do-not-use")
+    .long("otel-internal-do-not-use")
+    .action(ArgAction::SetTrue)
+    .help("Enable OpenTelemetry")
+    .hide(true)
 }
 
 /// Used for subcommands that operate on executable scripts only.
@@ -4740,6 +4750,7 @@ fn runtime_args_parse(
   env_file_arg_parse(flags, matches);
   strace_ops_parse(flags, matches);
   eszip_arg_parse(flags, matches);
+  otel_arg_parse(flags, matches);
 }
 
 fn inspect_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4828,6 +4839,12 @@ fn frozen_lockfile_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn eszip_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if matches.get_flag("eszip-internal-do-not-use") {
     flags.eszip = true;
+  }
+}
+
+fn otel_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if matches.get_flag("otel-internal-do-not-use") {
+    flags.otel = true;
   }
 }
 

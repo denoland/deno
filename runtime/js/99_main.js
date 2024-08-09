@@ -13,6 +13,7 @@ import {
   op_bootstrap_no_color,
   op_bootstrap_pid,
   op_main_module,
+  op_otel_log,
   op_ppid,
   op_set_format_exception_callback,
   op_snapshot_options,
@@ -61,6 +62,7 @@ import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:runtime/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import {
+  Console,
   customInspect,
   getDefaultInspectOptions,
   getStderrNoColor,
@@ -710,6 +712,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       11: mode,
       12: servePort,
       13: serveHost,
+      14: otelEnabled,
     } = runtimeOptions;
 
     if (mode === executionModes.run || mode === executionModes.serve) {
@@ -795,6 +798,15 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       closed: core.propGetterOnly(() => windowIsClosing),
     });
     ObjectSetPrototypeOf(globalThis, Window.prototype);
+
+    if (otelEnabled) {
+      const otelConsole = new Console(op_otel_log);
+      ObjectDefineProperty(
+        globalThis,
+        "console",
+        core.propNonEnumerable(otelConsole),
+      );
+    }
 
     if (inspectFlag) {
       const consoleFromDeno = globalThis.console;
@@ -924,6 +936,10 @@ function bootstrapWorkerRuntime(
       8: shouldDisableDeprecatedApiWarning,
       9: shouldUseVerboseDeprecatedApiWarning,
       10: future,
+      // 11: mode,
+      // 12: servePort,
+      // 13: serveHost,
+      14: otelEnabled,
     } = runtimeOptions;
 
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete
@@ -960,6 +976,15 @@ function bootstrapWorkerRuntime(
       );
     }
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
+
+    if (otelEnabled) {
+      const otelConsole = new Console(op_otel_log);
+      ObjectDefineProperty(
+        globalThis,
+        "console",
+        core.propNonEnumerable(otelConsole),
+      );
+    }
 
     const consoleFromDeno = globalThis.console;
     core.wrapConsole(consoleFromDeno, core.v8Console);

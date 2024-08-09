@@ -30,6 +30,7 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::ops::otel::OtelConfig;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use deno_semver::VersionReqSpecifierParseError;
@@ -103,6 +104,7 @@ pub struct Metadata {
   pub node_modules: Option<NodeModules>,
   pub disable_deprecated_api_warning: bool,
   pub unstable_config: UnstableConfig,
+  pub otel_config: Option<OtelConfig>, // None means disabled.
 }
 
 pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
@@ -645,6 +647,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         sloppy_imports: cli_options.unstable_sloppy_imports(),
         features: cli_options.unstable_features(),
       },
+      otel_config: cli_options.otel_config(),
     };
 
     write_binary_bytes(

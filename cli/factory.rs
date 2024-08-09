@@ -833,6 +833,7 @@ impl CliFactory {
       } else {
         None
       },
+      self.options.otel_config(),
     ))
   }
 

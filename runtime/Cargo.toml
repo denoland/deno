@@ -68,6 +68,7 @@ serde.workspace = true
 winapi.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 deno_ast.workspace = true
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
@@ -105,11 +106,17 @@ hyper-util.workspace = true
 hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 libc.workspace = true
 log.workspace = true
+maplit = "1.0.2"
 netif = "0.1.6"
 notify.workspace = true
 once_cell.workspace = true
+opentelemetry = "0.24.0"
+opentelemetry-otlp = { version = "0.17.0", default-features = false, features = ["logs", "http-proto", "reqwest-rustls-webpki-roots"] }
+opentelemetry-semantic-conventions = "0.16.0"
+opentelemetry_sdk = "0.24.1"
 percent-encoding.workspace = true
 regex.workspace = true
+reqwest.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
 serde.workspace = true
 signal-hook = "0.3.17"

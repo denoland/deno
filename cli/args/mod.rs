@@ -29,6 +29,7 @@ use deno_runtime::deno_fs::DenoConfigFsAdapter;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::ops::otel::OtelConfig;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::resolve_import_map_value_from_specifier;
 
@@ -67,6 +68,7 @@ use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
@@ -1101,6 +1103,13 @@ impl CliOptions {
     } else {
       None
     }
+  }
+
+  pub fn otel_config(&self) -> Option<OtelConfig> {
+    self.flags.otel.then(|| OtelConfig {
+      default_service_name: Cow::Borrowed("deno"),
+      default_service_version: Cow::Borrowed(crate::version::deno()),
+    })
   }
 
   pub fn env_file_name(&self) -> Option<&String> {

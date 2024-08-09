@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::io::Read;
 
 use deno_config::workspace::PackageJsonDepResolution;
@@ -11,6 +12,7 @@ use deno_core::futures::StreamExt;
 use deno_core::unsync::spawn;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::ops::otel::OtelConfig;
 use deno_runtime::WorkerExecutionMode;
 use eszip::EszipV2;
 use tokio_util::compat::TokioAsyncReadCompatExt;
@@ -289,6 +291,10 @@ pub async fn run_eszip(
         package_jsons: Default::default(),
         pkg_json_resolution: PackageJsonDepResolution::Disabled,
       },
+      otel_config: flags.otel.then(|| OtelConfig {
+        default_service_name: Cow::Borrowed("deno"),
+        default_service_version: Cow::Borrowed(crate::version::deno()),
+      }),
     },
     run_flags.script.as_bytes(),
     "run-eszip",

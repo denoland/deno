@@ -263,6 +263,7 @@ pub fn create_runtime_snapshot(
     ),
     ops::fs_events::deno_fs_events::init_ops(),
     ops::os::deno_os::init_ops(Default::default()),
+    ops::otel::deno_otel::init_ops(None),
     ops::permissions::deno_permissions::init_ops(),
     ops::process::deno_process::init_ops(),
     ops::signal::deno_signal::init_ops(),
