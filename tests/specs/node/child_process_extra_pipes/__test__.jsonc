@@ -9,7 +9,7 @@
     },
     {
       "args": "run -A main.ts",
-      "output": "data: hello world\nchild closed\npipe closed\n"
+      "output": "main.out"
     }
   ]
 }
