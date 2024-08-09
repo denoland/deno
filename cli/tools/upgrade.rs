@@ -17,9 +17,11 @@ use async_trait::async_trait;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_semver::Version;
+use http_body_util::BodyExt as _;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
@@ -418,6 +420,25 @@ pub async fn upgrade(
   let http_client_provider = factory.http_client_provider();
   let client = http_client_provider.get_or_create()?;
   let current_exe_path = std::env::current_exe()?;
+
+  if upgrade_flags.list {
+    let response = client
+      .get(Url::parse("https://deno.com/versions.json").unwrap())?
+      .send()
+      .await?;
+    let body = response.collect().await?.to_bytes();
+    let json_body: serde_json::Value = serde_json::from_slice(&body)?;
+    if let Some(cli_versions) = json_body.get("cli") {
+      if let Some(versions) = cli_versions.as_array() {
+        log::info!("{}", colors::bold("Available recent versions:"));
+        for version in versions.iter().take(10) {
+          log::info!(" - {}", colors::green(version.as_str().unwrap()));
+        }
+      }
+    }
+    return Ok(());
+  }
+
   let full_path_output_flag = match &upgrade_flags.output {
     Some(output) => Some(
       std::env::current_dir()

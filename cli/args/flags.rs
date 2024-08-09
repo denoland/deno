@@ -392,6 +392,7 @@ pub struct UpgradeFlags {
   pub dry_run: bool,
   pub force: bool,
   pub canary: bool,
+  pub list: bool,
   pub version: Option<String>,
   pub output: Option<String>,
 }
@@ -2876,6 +2877,15 @@ update to a different location, use the --output flag
             .action(ArgAction::SetTrue),
         )
         .arg(
+          Arg::new("list")
+            .long("list")
+            .help("List all available Deno versions")
+            .conflicts_with_all([
+              "output", "dry-run", "version", "canary", "force",
+            ])
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
           Arg::new("force")
             .long("force")
             .short('f')
@@ -4656,6 +4666,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let dry_run = matches.get_flag("dry-run");
   let force = matches.get_flag("force");
   let canary = matches.get_flag("canary");
+  let list = matches.get_flag("list");
   let version = matches.remove_one::<String>("version");
   let output = matches.remove_one::<String>("output");
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
@@ -4664,6 +4675,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     canary,
     version,
     output,
+    list,
   });
 }
 
