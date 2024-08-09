@@ -93,7 +93,7 @@ trait VersionProvider: Clone {
   async fn latest_version(
     &self,
     release_channel: ReleaseChannel,
-  ) -> Result<LatestVersion, AnyError>;
+  ) -> Result<AvailableVersion, AnyError>;
 
   /// Returns either a semver or git hash. It's up to implementor to
   /// decide which one is appropriate, but in general only "stable"
@@ -129,7 +129,7 @@ impl VersionProvider for RealVersionProvider {
   async fn latest_version(
     &self,
     release_channel: ReleaseChannel,
-  ) -> Result<LatestVersion, AnyError> {
+  ) -> Result<AvailableVersion, AnyError> {
     fetch_latest_version(
       &self.http_client_provider.get_or_create()?,
       release_channel,
@@ -630,7 +630,7 @@ fn select_specific_version_for_upgrade(
   release_channel: ReleaseChannel,
   version: String,
   force: bool,
-) -> Result<Option<LatestVersion>, AnyError> {
+) -> Result<Option<AvailableVersion>, AnyError> {
   match release_channel {
     ReleaseChannel::Stable => {
       let current_is_passed = if !version::is_canary() {
@@ -644,7 +644,7 @@ fn select_specific_version_for_upgrade(
         return Ok(None);
       }
 
-      Ok(Some(LatestVersion {
+      Ok(Some(AvailableVersion {
         version_or_hash: version.to_string(),
         display: version,
       }))
@@ -656,7 +656,7 @@ fn select_specific_version_for_upgrade(
         return Ok(None);
       }
 
-      Ok(Some(LatestVersion {
+      Ok(Some(AvailableVersion {
         version_or_hash: version.to_string(),
         display: version,
       }))
@@ -672,7 +672,7 @@ async fn find_latest_version_to_upgrade(
   http_client_provider: Arc<HttpClientProvider>,
   release_channel: ReleaseChannel,
   force: bool,
-) -> Result<Option<LatestVersion>, AnyError> {
+) -> Result<Option<AvailableVersion>, AnyError> {
   log::info!(
     "{}",
     colors::gray(&format!("Looking up {} version", release_channel.name()))
@@ -763,7 +763,7 @@ enum ReleaseChannel {
   #[allow(unused)]
   Lts,
 
-  /// Release candidate
+  /// Release candidate, poiting to a git hash
   Rc,
 }
 
@@ -835,7 +835,7 @@ async fn get_rc_versions(
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct LatestVersion {
+struct AvailableVersion {
   version_or_hash: String,
   display: String,
 }
@@ -844,7 +844,7 @@ async fn fetch_latest_version(
   client: &HttpClient,
   release_channel: ReleaseChannel,
   check_kind: UpgradeCheckKind,
-) -> Result<LatestVersion, AnyError> {
+) -> Result<AvailableVersion, AnyError> {
   let url = get_latest_version_url(release_channel, env!("TARGET"), check_kind);
   let text = client.download_text(url.parse()?).await?;
   let version = normalize_version_from_server(release_channel, &text)?;
@@ -854,24 +854,24 @@ async fn fetch_latest_version(
 fn normalize_version_from_server(
   release_channel: ReleaseChannel,
   text: &str,
-) -> Result<LatestVersion, AnyError> {
+) -> Result<AvailableVersion, AnyError> {
   let text = text.trim();
   match release_channel {
     ReleaseChannel::Stable => {
       let v = text.trim_start_matches('v').to_string();
-      Ok(LatestVersion {
+      Ok(AvailableVersion {
         version_or_hash: v.to_string(),
         display: v.to_string(),
       })
     }
-    ReleaseChannel::Canary => Ok(LatestVersion {
+    ReleaseChannel::Canary => Ok(AvailableVersion {
       version_or_hash: text.to_string(),
       display: text.to_string(),
     }),
     ReleaseChannel::Rc => {
       let lines = parse_rc_versions_text(text)?;
       let latest = lines.last().unwrap();
-      Ok(LatestVersion {
+      Ok(AvailableVersion {
         version_or_hash: latest.0.to_string(),
         display: latest.1.to_string(),
       })
@@ -1217,7 +1217,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
     is_canary: Rc<RefCell<bool>>,
     is_release_candidate: Rc<RefCell<bool>>,
     current_version: Rc<RefCell<String>>,
-    latest_version: Rc<RefCell<Result<LatestVersion, String>>>,
+    latest_version: Rc<RefCell<Result<AvailableVersion, String>>>,
     time: Rc<RefCell<chrono::DateTime<chrono::Utc>>>,
   }
 
@@ -1228,7 +1228,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
         current_version: Default::default(),
         is_canary: Default::default(),
         is_release_candidate: Default::default(),
-        latest_version: Rc::new(RefCell::new(Ok(LatestVersion {
+        latest_version: Rc::new(RefCell::new(Ok(AvailableVersion {
           version_or_hash: "".to_string(),
           display: "".to_string(),
         }))),
@@ -1252,7 +1252,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
     }
 
     pub fn set_latest_version(&self, version: &str) {
-      *self.latest_version.borrow_mut() = Ok(LatestVersion {
+      *self.latest_version.borrow_mut() = Ok(AvailableVersion {
         version_or_hash: version.to_string(),
         display: version.to_string(),
       });
@@ -1277,7 +1277,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
     async fn latest_version(
       &self,
       _release_channel: ReleaseChannel,
-    ) -> Result<LatestVersion, AnyError> {
+    ) -> Result<AvailableVersion, AnyError> {
       match self.latest_version.borrow().clone() {
         Ok(result) => Ok(result),
         Err(err) => bail!("{}", err),
@@ -1546,7 +1546,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
     // should strip v for stable
     assert_eq!(
       normalize_version_from_server(ReleaseChannel::Stable, "v1.0.0").unwrap(),
-      LatestVersion {
+      AvailableVersion {
         version_or_hash: "1.0.0".to_string(),
         display: "1.0.0".to_string()
       },
@@ -1558,7 +1558,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
         "  v1.0.0-test-v\n\n  "
       )
       .unwrap(),
-      LatestVersion {
+      AvailableVersion {
         version_or_hash: "1.0.0-test-v".to_string(),
         display: "1.0.0-test-v".to_string()
       }
@@ -1570,7 +1570,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
         "  v1452345asdf   \n\n   "
       )
       .unwrap(),
-      LatestVersion {
+      AvailableVersion {
         version_or_hash: "v1452345asdf".to_string(),
         display: "v1452345asdf".to_string()
       }
@@ -1581,7 +1581,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
         "asdfq345wdfasdfasdf v1.46.0-rc.0\nasdfq345wdfasdfasdf v1.46.0-rc.1\n"
       )
       .unwrap(),
-      LatestVersion {
+      AvailableVersion {
         version_or_hash: "asdfq345wdfasdfasdf".to_string(),
         display: "v1.46.0-rc.1".to_string(),
       },
