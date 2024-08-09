@@ -470,14 +470,15 @@ fn generate_imports(packages_to_version: Vec<(String, String)>) -> String {
   contents.join("\n")
 }
 
-async fn remove_from_config(
+fn remove_from_config(
   config_path: &Path,
   keys: &[&'static str],
   packages_to_remove: &[String],
   removed_packages: &mut Vec<String>,
+  fmt_options: &FmtOptionsConfig,
 ) -> Result<(), AnyError> {
   let mut json: serde_json::Value =
-    serde_json::from_slice(&std::fs::read(&config_path)?)?;
+    serde_json::from_slice(&std::fs::read(config_path)?)?;
   for key in keys {
     let Some(obj) = json.get_mut(*key).and_then(|v| v.as_object_mut()) else {
       continue;
@@ -489,11 +490,15 @@ async fn remove_from_config(
     }
   }
 
-  // todo: format with dprint
-  std::fs::write(
-    &config_path,
-    format!("{}\n", serde_json::to_string_pretty(&json)?),
-  )?;
+  let config = serde_json::to_string_pretty(&json)?;
+  let config =
+    crate::tools::fmt::format_json(config_path, &config, fmt_options)
+      .ok()
+      .map(|formatted_text| formatted_text.unwrap_or_else(|| config.clone()))
+      .unwrap_or(config);
+
+  std::fs::write(config_path, config)
+    .context("Failed to update configuration file")?;
 
   Ok(())
 }
@@ -502,9 +507,10 @@ pub async fn remove(
   flags: Arc<Flags>,
   remove_flags: RemoveFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags.clone());
+  let (config_file, factory) = DenoOrPackageJson::from_flags(flags.clone())?;
   let options = factory.cli_options()?;
   let start_dir = &options.start_dir;
+  let fmt_config_options = config_file.fmt_options();
 
   let mut removed_packages = Vec::new();
 
@@ -514,8 +520,8 @@ pub async fn remove(
       &["imports"],
       &remove_flags.packages,
       &mut removed_packages,
-    )
-    .await?;
+      &fmt_config_options,
+    )?;
   }
 
   if let Some(pkg_json) = start_dir.maybe_pkg_json() {
@@ -524,8 +530,8 @@ pub async fn remove(
       &["dependencies", "devDependencies"],
       &remove_flags.packages,
       &mut removed_packages,
-    )
-    .await?;
+      &fmt_config_options,
+    )?;
   }
 
   if removed_packages.is_empty() {
