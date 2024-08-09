@@ -12,30 +12,29 @@ fn help_output() {
 
   let stdout = output.combined_output();
   let subcommand_descriptions = vec![
-    "Run a JavaScript or TypeScript program",
+    "Run a JavaScript or TypeScript program, or a task",
+    "Run a server",
+    "Run a task defined in the configuration file",
+    "Start an interactive Read-Eval-Print Loop (REPL) for Deno",
+    "Evaluate a script from the command line",
+    "Add dependencies",
+    "Install script as an executable",
+    "Uninstall a script previously installed with deno install",
     "Run benchmarks",
-    "Bundle module and dependencies into single file",
     "Cache the dependencies",
     "Type-check the dependencies",
     "Compile the script into a self contained executable",
-    "Generate shell completions",
     "Print coverage reports",
-    "Show documentation for a module",
-    "Eval script",
+    "Genereate and show documentation for a module or built-ins",
     "Format source files",
-    "Initialize a new project",
     "Show info about cache or info related to source file",
-    "Install script as an executable",
-    "Uninstall a script previously installed with deno install",
-    "Start the language server",
+    "Deno kernel for Jupyter notebooks",
     "Lint source files",
-    "Read Eval Print Loop",
-    "Run a task defined in the configuration file",
+    "Initialize a new project",
     "Run tests",
-    "Print runtime TypeScript declarations",
+    "Publish the current working directory's package or workspace",
     #[cfg(feature = "upgrade")]
     "Upgrade deno executable to given version",
-    "Print this message or the help of the given subcommand(s)",
   ];
 
   for description in subcommand_descriptions {
