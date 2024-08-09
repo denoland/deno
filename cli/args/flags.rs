@@ -1645,6 +1645,7 @@ supported in canary.
       .arg(check_arg(true))
       .arg(
         Arg::new("include")
+          .long("include")
           .help(
             "Includes an additional module in the compiled executable's module
   graph. Use this flag if a dynamically imported module or a web worker main
