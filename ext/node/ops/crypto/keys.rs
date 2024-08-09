@@ -496,14 +496,9 @@ impl KeyObjectHandle {
         AsymmetricPrivateKey::X25519(x25519_dalek::StaticSecret::from(bytes))
       }
       ED25519_OID => {
-        let string_ref = OctetStringRef::from_der(pk_info.private_key)
+        let signing_key = ed25519_dalek::SigningKey::try_from(pk_info)
           .map_err(|_| type_error("invalid Ed25519 private key"))?;
-        if string_ref.as_bytes().len() != 32 {
-          return Err(type_error("Ed25519 private key is the wrong length"));
-        }
-        let mut bytes = [0; 32];
-        bytes.copy_from_slice(string_ref.as_bytes());
-        AsymmetricPrivateKey::Ed25519(ed25519_dalek::SigningKey::from(bytes))
+        AsymmetricPrivateKey::Ed25519(signing_key)
       }
       DH_KEY_AGREEMENT_OID => {
         let params = pk_info
@@ -643,16 +638,8 @@ impl KeyObjectHandle {
         AsymmetricPublicKey::X25519(x25519_dalek::PublicKey::from(bytes))
       }
       ED25519_OID => {
-        let mut bytes = [0; 32];
-        let data = spki.subject_public_key.as_bytes().ok_or_else(|| {
-          type_error("malformed or missing public key in ed25519 spki")
-        })?;
-        if data.len() < 32 {
-          return Err(type_error("ed25519 public key is too short"));
-        }
-        bytes.copy_from_slice(&data[0..32]);
-        let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&bytes)
-          .map_err(|_| type_error("ed25519 public key is malformed"))?;
+        let verifying_key = ed25519_dalek::VerifyingKey::try_from(spki)
+          .map_err(|_| type_error("invalid Ed25519 private key"))?;
         AsymmetricPublicKey::Ed25519(verifying_key)
       }
       DH_KEY_AGREEMENT_OID => {
