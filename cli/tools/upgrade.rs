@@ -135,6 +135,7 @@ impl VersionProvider for RealVersionProvider {
     )
     .await?;
 
+    // TODO(bartlomieju): return `SelectedVersionToUpgrade` here
     Ok(r.version_or_hash)
   }
 
@@ -439,29 +440,33 @@ pub async fn upgrade(
   let requested_version =
     RequestedVersion::from_upgrade_flags(upgrade_flags.clone())?;
 
-  let maybe_install_version = match requested_version {
+  let maybe_selected_version_to_upgrade = match &requested_version {
     RequestedVersion::Latest(channel) => {
       find_latest_version_to_upgrade(
         http_client_provider.clone(),
-        channel,
+        channel.clone(),
         force_selection_of_new_version,
       )
       .await?
     }
     RequestedVersion::SpecificVersion(channel, version) => {
       select_specific_version_for_upgrade(
-        channel,
-        version,
+        channel.clone(),
+        version.clone(),
         force_selection_of_new_version,
       )?
     }
   };
 
-  let Some(install_version) = maybe_install_version else {
+  let Some(selected_version_to_upgrade) = maybe_selected_version_to_upgrade
+  else {
     return Ok(());
   };
 
-  let download_url = get_download_url(&install_version, upgrade_flags.canary)?;
+  let download_url = get_download_url(
+    &selected_version_to_upgrade.version_or_hash,
+    requested_version.is_canary(),
+  )?;
   log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
   let Some(archive_data) = download_package(&client, download_url).await?
   else {
@@ -471,7 +476,10 @@ pub async fn upgrade(
 
   log::info!(
     "{}",
-    colors::gray(format!("Deno is upgrading to version {}", &install_version))
+    colors::gray(format!(
+      "Deno is upgrading to version {}",
+      &selected_version_to_upgrade.display
+    ))
   );
 
   let temp_dir = tempfile::TempDir::new()?;
@@ -488,8 +496,11 @@ pub async fn upgrade(
   if upgrade_flags.dry_run {
     fs::remove_file(&new_exe_path)?;
     log::info!("Upgraded successfully (dry run)");
-    if !upgrade_flags.canary {
-      print_release_notes(version::deno(), &install_version);
+    if !requested_version.is_canary() {
+      print_release_notes(
+        version::deno(),
+        &selected_version_to_upgrade.version_or_hash,
+      );
     }
     drop(temp_dir);
     return Ok(());
@@ -509,11 +520,11 @@ pub async fn upgrade(
     "{}",
     colors::green(format!(
       "\nUpgraded successfully to Deno v{}\n",
-      install_version
+      selected_version_to_upgrade.display
     ))
   );
-  if !upgrade_flags.canary {
-    print_release_notes(version::deno(), &install_version);
+  if !requested_version.is_canary() {
+    print_release_notes(version::deno(), &selected_version_to_upgrade.display);
   }
 
   drop(temp_dir); // delete the temp dir
@@ -561,13 +572,24 @@ impl RequestedVersion {
 
     Ok(RequestedVersion::SpecificVersion(channel, passed_version))
   }
+
+  pub fn is_canary(&self) -> bool {
+    match self {
+      Self::Latest(channel) => {
+        matches!(channel, ReleaseChannel::Canary | ReleaseChannel::Rc)
+      }
+      Self::SpecificVersion(channel, _) => {
+        matches!(channel, ReleaseChannel::Canary | ReleaseChannel::Rc)
+      }
+    }
+  }
 }
 
 fn select_specific_version_for_upgrade(
   release_channel: ReleaseChannel,
   version: String,
   force: bool,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<SelectedVersionToUpgrade>, AnyError> {
   match release_channel {
     ReleaseChannel::Stable => {
       let current_is_passed = if !version::is_canary() {
@@ -581,7 +603,10 @@ fn select_specific_version_for_upgrade(
         return Ok(None);
       }
 
-      Ok(Some(version))
+      Ok(Some(SelectedVersionToUpgrade {
+        version_or_hash: version.to_string(),
+        display: version,
+      }))
     }
     ReleaseChannel::Canary => {
       let current_is_passed = version::GIT_COMMIT_HASH == version;
@@ -590,7 +615,10 @@ fn select_specific_version_for_upgrade(
         return Ok(None);
       }
 
-      Ok(Some(version))
+      Ok(Some(SelectedVersionToUpgrade {
+        version_or_hash: version.to_string(),
+        display: version,
+      }))
     }
     // TODO(bartlomieju)
     ReleaseChannel::Rc => unreachable!(),
@@ -603,7 +631,7 @@ async fn find_latest_version_to_upgrade(
   http_client_provider: Arc<HttpClientProvider>,
   release_channel: ReleaseChannel,
   force: bool,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<SelectedVersionToUpgrade>, AnyError> {
   log::info!(
     "{}",
     colors::gray(&format!("Looking up {} version", release_channel.name()))
@@ -680,7 +708,7 @@ async fn find_latest_version_to_upgrade(
   }
   log::info!("");
 
-  Ok(maybe_newer_latest_version.map(|v| v.version_or_hash))
+  Ok(maybe_newer_latest_version)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -729,7 +757,8 @@ async fn get_rc_versions(
   parse_rc_versions_text(&text)
 }
 
-struct LatestVersionFound {
+#[derive(Debug, Clone)]
+struct SelectedVersionToUpgrade {
   version_or_hash: String,
   display: String,
 }
@@ -738,7 +767,7 @@ async fn fetch_latest_version(
   client: &HttpClient,
   release_channel: ReleaseChannel,
   check_kind: UpgradeCheckKind,
-) -> Result<LatestVersionFound, AnyError> {
+) -> Result<SelectedVersionToUpgrade, AnyError> {
   let url = get_latest_version_url(release_channel, env!("TARGET"), check_kind);
   let text = client.download_text(url.parse()?).await?;
   let version = normalize_version_from_server(release_channel, &text)?;
@@ -748,17 +777,17 @@ async fn fetch_latest_version(
 fn normalize_version_from_server(
   release_channel: ReleaseChannel,
   text: &str,
-) -> Result<LatestVersionFound, AnyError> {
+) -> Result<SelectedVersionToUpgrade, AnyError> {
   let text = text.trim();
   match release_channel {
     ReleaseChannel::Stable => {
       let v = text.trim_start_matches('v').to_string();
-      Ok(LatestVersionFound {
+      Ok(SelectedVersionToUpgrade {
         version_or_hash: v.to_string(),
         display: v.to_string(),
       })
     }
-    ReleaseChannel::Canary => Ok(LatestVersionFound {
+    ReleaseChannel::Canary => Ok(SelectedVersionToUpgrade {
       version_or_hash: text.to_string(),
       display: text.to_string(),
     }),
@@ -766,7 +795,7 @@ fn normalize_version_from_server(
       let lines = parse_rc_versions_text(text)?;
       let latest = lines.last().unwrap();
       let v = latest.split(' ').collect::<Vec<_>>();
-      Ok(LatestVersionFound {
+      Ok(SelectedVersionToUpgrade {
         version_or_hash: v[0].to_string(),
         display: v[1].to_string(),
       })
