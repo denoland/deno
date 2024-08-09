@@ -104,7 +104,35 @@ declare namespace Deno {
     /** Make the connection not block the event loop from finishing. */
     unref(): void;
 
+    /**
+     * A readable stream representing the data on the connection.
+     *
+     * When the connection is closed (EOF is encountered), the stream will also
+     * be closed. By default, when the stream is closed, the underlying
+     * network connection will also be closed. This means in particular that if
+     * `readable` is closed due to an EOF, the entire connection will be closed
+     * and this the `writable` end of the stream will also be closed.
+     *
+     * To prevent this behavior, you can set the `preventCloseOnEOF` option to
+     * `true` when creating the connection. This will prevent the connection
+     * from being closed when the stream is closed due to an EOF.
+     */
     readonly readable: ReadableStream<Uint8Array>;
+    /**
+     * A writable stream representing the data on the connection.
+     *
+     * When the connection is closed, the stream will also be closed. When the
+     * stream is closed, the underlying network connection will also be closed.
+     * This means in particular that if `writable` is closed, the entire
+     * connection will be closed and thus the `readable` end of the stream will
+     * also be closed.
+     *
+     * In cases where one wants to keep the connection open after writing to the
+     * writable, do not close the writable stream. For example, when using
+     * `ReadableStream#pipeTo()` to pipe a readable stream to the writable
+     * stream, pass the `preventClose` option with a value of `true` to prevent
+     * the writable stream from being closed when the readable stream is closed.
+     */
     readonly writable: WritableStream<Uint8Array>;
   }
 
@@ -329,6 +357,12 @@ declare namespace Deno {
      * @default {"127.0.0.1"} */
     hostname?: string;
     transport?: "tcp";
+    /** Prevent the connection from being closed automatically when the readable
+     * stream reaches EOF. This allows the connection to be reused for further
+     * writes or reads.
+     *
+     * @default {false} */
+    preventCloseOnEOF?: boolean;
   }
 
   /**
@@ -372,7 +406,16 @@ declare namespace Deno {
   /** @category Network */
   export interface UnixConnectOptions {
     transport: "unix";
+    /**
+     * The path to the Unix Socket to connect to.
+     */
     path: string;
+    /** Prevent the connection from being closed automatically when the readable
+     * stream reaches EOF. This allows the connection to be reused for further
+     * writes or reads.
+     *
+     * @default {false} */
+    preventCloseOnEOF?: boolean;
   }
 
   /** @category Network */
@@ -434,6 +477,12 @@ declare namespace Deno {
      * TLS handshake.
      */
     alpnProtocols?: string[];
+    /** Prevent the connection from being closed automatically when the readable
+     * stream reaches EOF. This allows the connection to be reused for further
+     * writes or reads.
+     *
+     * @default {false} */
+    preventCloseOnEOF?: boolean;
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
@@ -496,6 +545,12 @@ declare namespace Deno {
      * TLS handshake.
      */
     alpnProtocols?: string[];
+    /** Prevent the connection from being closed automatically when the readable
+     * stream reaches EOF. This allows the connection to be reused for further
+     * writes or reads.
+     *
+     * @default {false} */
+    preventCloseOnEOF?: boolean;
   }
 
   /** Start TLS handshake from an existing connection using an optional list of

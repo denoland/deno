@@ -77,12 +77,17 @@ class Process {
     this.pid = res.pid;
 
     if (res.stdinRid && res.stdinRid > 0) {
-      this.stdin = new FsFile(res.stdinRid, SymbolFor("Deno.internal.FsFile"));
+      this.stdin = new FsFile(
+        res.stdinRid,
+        false,
+        SymbolFor("Deno.internal.FsFile"),
+      );
     }
 
     if (res.stdoutRid && res.stdoutRid > 0) {
       this.stdout = new FsFile(
         res.stdoutRid,
+        false,
         SymbolFor("Deno.internal.FsFile"),
       );
     }
@@ -90,6 +95,7 @@ class Process {
     if (res.stderrRid && res.stderrRid > 0) {
       this.stderr = new FsFile(
         res.stderrRid,
+        false,
         SymbolFor("Deno.internal.FsFile"),
       );
     }
