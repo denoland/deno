@@ -178,6 +178,7 @@ fn package_json_dependency_entry(
 pub async fn add(
   flags: Arc<Flags>,
   add_flags: AddFlags,
+  cmd_name: &'static str,
 ) -> Result<(), AnyError> {
   let (config_file, cli_factory) =
     DenoOrPackageJson::from_flags(flags.clone())?;
@@ -234,8 +235,15 @@ pub async fn add(
     let package_and_version = package_and_version_result?;
 
     match package_and_version {
-      PackageAndVersion::NotFound(package_name) => {
-        bail!("{} was not found.", crate::colors::red(package_name));
+      PackageAndVersion::NotFound {
+        package: package_name,
+        found_npm_package: found_npm_alternative,
+      } => {
+        if let Some(alt) = found_npm_alternative {
+          bail!("{} was not found, but a matching npm package exists. Did you mean `{}`?", crate::colors::red(package_name), crate::colors::yellow(format!("deno {cmd_name} {alt}")));
+        } else {
+          bail!("{} was not found.", crate::colors::red(package_name));
+        }
       }
       PackageAndVersion::Selected(selected) => {
         selected_packages.push(selected);
@@ -327,7 +335,10 @@ struct SelectedPackage {
 }
 
 enum PackageAndVersion {
-  NotFound(String),
+  NotFound {
+    package: String,
+    found_npm_package: Option<String>,
+  },
   Selected(SelectedPackage),
 }
 
@@ -340,7 +351,17 @@ async fn find_package_and_select_version_for_req(
     AddPackageReqValue::Jsr(req) => {
       let jsr_prefixed_name = format!("jsr:{}", &req.name);
       let Some(nv) = jsr_resolver.req_to_nv(&req).await else {
-        return Ok(PackageAndVersion::NotFound(jsr_prefixed_name));
+        if let Some(npm_nv) = npm_resolver.req_to_nv(&req).await {
+          return Ok(PackageAndVersion::NotFound {
+            package: jsr_prefixed_name,
+            found_npm_package: Some(format!("npm:{npm_nv}")),
+          });
+        }
+
+        return Ok(PackageAndVersion::NotFound {
+          package: jsr_prefixed_name,
+          found_npm_package: None,
+        });
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
         '~'
@@ -357,7 +378,10 @@ async fn find_package_and_select_version_for_req(
     AddPackageReqValue::Npm(req) => {
       let npm_prefixed_name = format!("npm:{}", &req.name);
       let Some(nv) = npm_resolver.req_to_nv(&req).await else {
-        return Ok(PackageAndVersion::NotFound(npm_prefixed_name));
+        return Ok(PackageAndVersion::NotFound {
+          package: npm_prefixed_name,
+          found_npm_package: None,
+        });
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
         '~'

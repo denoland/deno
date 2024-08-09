@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "add ajv@latest",
+      "output": "error: jsr:ajv was not found, but a matching npm package exists. Did you mean `deno add npm:ajv@8.11.0`?\n",
+      "exitCode": 1
+    },
+    {
+      "envs": {
+        "DENO_FUTURE": "1"
+      },
+      "args": "install ajv@latest",
+      "output": "error: jsr:ajv was not found, but a matching npm package exists. Did you mean `deno install npm:ajv@8.11.0`?\n",
+      "exitCode": 1
+    }
+  ]
+}
