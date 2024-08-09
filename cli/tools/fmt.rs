@@ -244,6 +244,10 @@ fn format_markdown(
           | "typescript"
           | "json"
           | "jsonc"
+          | "css"
+          | "scss"
+          | "sass"
+          | "less"
           | "yml"
           | "yaml"
       ) {
@@ -262,6 +266,13 @@ fn format_markdown(
             let mut json_config = get_resolved_json_config(fmt_options);
             json_config.line_width = line_width;
             dprint_plugin_json::format_text(&fake_filename, text, &json_config)
+          }
+          "css" | "scss" | "sass" | "less" => {
+            if unstable_options.css {
+              format_css(&fake_filename, text, fmt_options)
+            } else {
+              Ok(None)
+            }
           }
           "yml" | "yaml" => {
             if unstable_options.yaml {
@@ -305,6 +316,20 @@ pub fn format_json(
   dprint_plugin_json::format_text(file_path, file_text, &config)
 }
 
+pub fn format_css(
+  file_path: &Path,
+  file_text: &str,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<Option<String>, AnyError> {
+  malva::format_text(
+    file_text,
+    malva::detect_syntax(file_path).unwrap_or(malva::Syntax::Css),
+    &get_resolved_malva_config(fmt_options),
+  )
+  .map(Some)
+  .map_err(AnyError::from)
+}
+
 /// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, or IPYNB file.
 pub fn format_file(
   file_path: &Path,
@@ -319,6 +344,13 @@ pub fn format_file(
       format_markdown(file_text, fmt_options, unstable_options)
     }
     "json" | "jsonc" => format_json(file_path, file_text, fmt_options),
+    "css" | "scss" | "sass" | "less" => {
+      if unstable_options.css {
+        format_css(file_path, file_text, fmt_options)
+      } else {
+        Ok(None)
+      }
+    }
     "yml" | "yaml" => {
       if unstable_options.yaml {
         pretty_yaml::format_text(
@@ -737,6 +769,58 @@ fn get_resolved_json_config(
   builder.build()
 }
 
+fn get_resolved_malva_config(
+  options: &FmtOptionsConfig,
+) -> malva::config::FormatOptions {
+  use malva::config::*;
+
+  let layout_options = LayoutOptions {
+    print_width: options.line_width.unwrap_or(80) as usize,
+    use_tabs: options.use_tabs.unwrap_or_default(),
+    indent_width: options.indent_width.unwrap_or(2) as usize,
+    line_break: LineBreak::Lf,
+  };
+
+  let language_options = LanguageOptions {
+    hex_case: HexCase::Lower,
+    hex_color_length: None,
+    quotes: if let Some(true) = options.single_quote {
+      Quotes::PreferSingle
+    } else {
+      Quotes::PreferDouble
+    },
+    operator_linebreak: OperatorLineBreak::Before,
+    block_selector_linebreak: BlockSelectorLineBreak::Consistent,
+    omit_number_leading_zero: false,
+    trailing_comma: true,
+    format_comments: false,
+    linebreak_in_pseudo_parens: true,
+    declaration_order: None,
+    single_line_block_threshold: None,
+    keyframe_selector_notation: None,
+    attr_value_quotes: AttrValueQuotes::Always,
+    prefer_single_line: false,
+    selectors_prefer_single_line: None,
+    function_args_prefer_single_line: None,
+    sass_content_at_rule_prefer_single_line: None,
+    sass_include_at_rule_prefer_single_line: None,
+    sass_map_prefer_single_line: None,
+    sass_module_config_prefer_single_line: None,
+    sass_params_prefer_single_line: None,
+    less_import_options_prefer_single_line: None,
+    less_mixin_args_prefer_single_line: None,
+    less_mixin_params_prefer_single_line: None,
+    top_level_declarations_prefer_single_line: None,
+    selector_override_comment_directive: "deno-fmt-selector-override".into(),
+    ignore_comment_directive: "deno-fmt-ignore".into(),
+  };
+
+  FormatOptions {
+    layout: layout_options,
+    language: language_options,
+  }
+}
+
 fn get_resolved_yaml_config(
   options: &FmtOptionsConfig,
 ) -> pretty_yaml::config::FormatOptions {
@@ -864,6 +948,10 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "mts"
         | "json"
         | "jsonc"
+        | "css"
+        | "scss"
+        | "sass"
+        | "less"
         | "md"
         | "mkd"
         | "mkdn"
@@ -906,6 +994,14 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
     assert!(is_supported_ext_fmt(Path::new("foo.json")));
     assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
+    assert!(is_supported_ext_fmt(Path::new("foo.css")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Css")));
+    assert!(is_supported_ext_fmt(Path::new("foo.scss")));
+    assert!(is_supported_ext_fmt(Path::new("foo.SCSS")));
+    assert!(is_supported_ext_fmt(Path::new("foo.sass")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Sass")));
+    assert!(is_supported_ext_fmt(Path::new("foo.less")));
+    assert!(is_supported_ext_fmt(Path::new("foo.LeSS")));
     assert!(is_supported_ext_fmt(Path::new("foo.yml")));
     assert!(is_supported_ext_fmt(Path::new("foo.Yml")));
     assert!(is_supported_ext_fmt(Path::new("foo.yaml")));
