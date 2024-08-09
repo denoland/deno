@@ -1167,8 +1167,7 @@ static DENO_HELP: &str = color_print::cstr!(
 <y>Standard Library:</> https://jsr.io/@std
 <y>Bugs:</> https://github.com/denoland/deno/issues
 <y>Discord:</> https://discord.gg/deno
-"
-);
+");
 
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
