@@ -93,7 +93,7 @@ trait VersionProvider: Clone {
   async fn latest_version(
     &self,
     release_channel: ReleaseChannel,
-  ) -> Result<String, AnyError>;
+  ) -> Result<LatestVersion, AnyError>;
 
   /// Returns either a semver or git hash. It's up to implementor to
   /// decide which one is appropriate, but in general only "stable"
@@ -129,16 +129,13 @@ impl VersionProvider for RealVersionProvider {
   async fn latest_version(
     &self,
     release_channel: ReleaseChannel,
-  ) -> Result<String, AnyError> {
-    let r = fetch_latest_version(
+  ) -> Result<LatestVersion, AnyError> {
+    fetch_latest_version(
       &self.http_client_provider.get_or_create()?,
       release_channel,
       self.check_kind,
     )
-    .await?;
-
-    // TODO(bartlomieju): return `SelectedVersionToUpgrade` here
-    Ok(r.version_or_hash)
+    .await
   }
 
   fn current_version(&self) -> Cow<str> {
@@ -315,17 +312,18 @@ pub fn check_for_upgrades(
     });
   }
 
+  // Don't bother doing any more computation if we're not in TTY environment.
+  let should_prompt =
+    log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal();
+
+  if !should_prompt {
+    return;
+  }
+
   // Print a message if an update is available
   if let Some((release_channel, upgrade_version)) =
     update_checker.should_prompt()
   {
-    let should_prompt =
-      log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal();
-
-    if !should_prompt {
-      return;
-    }
-
     match release_channel {
       ReleaseChannel::Stable => {
         log::info!(
@@ -385,32 +383,34 @@ async fn check_for_upgrades_for_lsp_with_provider(
   let current_version = version_provider.current_version();
 
   // Nothing to upgrade
-  if current_version == latest_version {
+  if current_version == latest_version.version_or_hash {
     return Ok(None);
   }
 
   match release_channel {
     ReleaseChannel::Stable => {
       if let Ok(current) = Version::parse_standard(&current_version) {
-        if let Ok(latest) = Version::parse_standard(&latest_version) {
+        if let Ok(latest) =
+          Version::parse_standard(&latest_version.version_or_hash)
+        {
           if current >= latest {
             return Ok(None); // nothing to upgrade
           }
         }
       }
       Ok(Some(LspVersionUpgradeInfo {
-        latest_version,
+        latest_version: latest_version.display,
         is_canary: false,
       }))
     }
 
     ReleaseChannel::Canary => Ok(Some(LspVersionUpgradeInfo {
-      latest_version,
+      latest_version: latest_version.display,
       is_canary: true,
     })),
 
     ReleaseChannel::Rc => Ok(Some(LspVersionUpgradeInfo {
-      latest_version,
+      latest_version: latest_version.display,
       is_canary: true,
     })),
 
@@ -446,7 +446,7 @@ async fn fetch_and_store_latest_version<
         .sub(chrono::Duration::hours(UPGRADE_CHECK_INTERVAL + 1)),
       last_checked: env.current_time(),
       current_version: version_provider.current_version().to_string(),
-      latest_version,
+      latest_version: latest_version.version_or_hash,
       current_release_channel: release_channel,
     }
     .serialize(),
@@ -630,7 +630,7 @@ fn select_specific_version_for_upgrade(
   release_channel: ReleaseChannel,
   version: String,
   force: bool,
-) -> Result<Option<SelectedVersionToUpgrade>, AnyError> {
+) -> Result<Option<LatestVersion>, AnyError> {
   match release_channel {
     ReleaseChannel::Stable => {
       let current_is_passed = if !version::is_canary() {
@@ -644,7 +644,7 @@ fn select_specific_version_for_upgrade(
         return Ok(None);
       }
 
-      Ok(Some(SelectedVersionToUpgrade {
+      Ok(Some(LatestVersion {
         version_or_hash: version.to_string(),
         display: version,
       }))
@@ -656,7 +656,7 @@ fn select_specific_version_for_upgrade(
         return Ok(None);
       }
 
-      Ok(Some(SelectedVersionToUpgrade {
+      Ok(Some(LatestVersion {
         version_or_hash: version.to_string(),
         display: version,
       }))
@@ -672,7 +672,7 @@ async fn find_latest_version_to_upgrade(
   http_client_provider: Arc<HttpClientProvider>,
   release_channel: ReleaseChannel,
   force: bool,
-) -> Result<Option<SelectedVersionToUpgrade>, AnyError> {
+) -> Result<Option<LatestVersion>, AnyError> {
   log::info!(
     "{}",
     colors::gray(&format!("Looking up {} version", release_channel.name()))
@@ -835,7 +835,7 @@ async fn get_rc_versions(
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct SelectedVersionToUpgrade {
+struct LatestVersion {
   version_or_hash: String,
   display: String,
 }
@@ -844,7 +844,7 @@ async fn fetch_latest_version(
   client: &HttpClient,
   release_channel: ReleaseChannel,
   check_kind: UpgradeCheckKind,
-) -> Result<SelectedVersionToUpgrade, AnyError> {
+) -> Result<LatestVersion, AnyError> {
   let url = get_latest_version_url(release_channel, env!("TARGET"), check_kind);
   let text = client.download_text(url.parse()?).await?;
   let version = normalize_version_from_server(release_channel, &text)?;
@@ -854,24 +854,24 @@ async fn fetch_latest_version(
 fn normalize_version_from_server(
   release_channel: ReleaseChannel,
   text: &str,
-) -> Result<SelectedVersionToUpgrade, AnyError> {
+) -> Result<LatestVersion, AnyError> {
   let text = text.trim();
   match release_channel {
     ReleaseChannel::Stable => {
       let v = text.trim_start_matches('v').to_string();
-      Ok(SelectedVersionToUpgrade {
+      Ok(LatestVersion {
         version_or_hash: v.to_string(),
         display: v.to_string(),
       })
     }
-    ReleaseChannel::Canary => Ok(SelectedVersionToUpgrade {
+    ReleaseChannel::Canary => Ok(LatestVersion {
       version_or_hash: text.to_string(),
       display: text.to_string(),
     }),
     ReleaseChannel::Rc => {
       let lines = parse_rc_versions_text(text)?;
       let latest = lines.last().unwrap();
-      Ok(SelectedVersionToUpgrade {
+      Ok(LatestVersion {
         version_or_hash: latest.0.to_string(),
         display: latest.1.to_string(),
       })
@@ -1139,8 +1139,45 @@ mod test {
   }
 
   #[test]
+  fn test_parse_rc_versions_text() {
+    let rc_versions = parse_rc_versions_text(
+      r#"qwerw3452gbxcvbarwett234 v1.46.0-rc.0
+cvbnfhuertt23523452345 v1.46.0-rc.1
+sdfq3452345egasdfgsdgf v2.0.0-rc.0
+asdf456yegfncbvjwe4523 v2.0.0-rc.1
+hjr6562w34rgzcvh56734a v2.0.0-rc.2
+bdfgtd6wergsdg3243234v v2.0.0-rc.3
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(rc_versions.len(), 6);
+    assert_eq!(rc_versions[3].0, "asdf456yegfncbvjwe4523");
+    assert_eq!(rc_versions[3].1, "v2.0.0-rc.1");
+
+    let rc_versions = parse_rc_versions_text(
+      r#"qwerw3452gbxcvbarwett234 v1.46.0-rc.0
+
+cvbnfhuertt23523452345 v1.46.0-rc.1
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(rc_versions.len(), 2);
+    assert_eq!(rc_versions[1].0, "cvbnfhuertt23523452345");
+    assert_eq!(rc_versions[1].1, "v1.46.0-rc.1");
+
+    let err =
+      parse_rc_versions_text(r#"qwerw3452gbxcvbarwett234     v1.46.0-rc.0"#)
+        .unwrap_err();
+    assert_eq!(err.to_string(), "Malformed list of RC releases");
+    let err = parse_rc_versions_text("").unwrap_err();
+    assert_eq!(err.to_string(), "No release candidates available");
+  }
+
+  #[test]
   fn test_serialize_upgrade_check_file() {
-    let file = CheckVersionFile {
+    let mut file = CheckVersionFile {
       last_prompt: chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z")
         .unwrap()
         .with_timezone(&chrono::Utc),
@@ -1157,6 +1194,21 @@ mod test {
       file.serialize(),
       "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!stable"
     );
+    file.current_release_channel = ReleaseChannel::Canary;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!canary"
+    );
+    file.current_release_channel = ReleaseChannel::Rc;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!rc"
+    );
+    file.current_release_channel = ReleaseChannel::Lts;
+    assert_eq!(
+      file.serialize(),
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!lts"
+    );
   }
 
   #[derive(Clone)]
@@ -1165,7 +1217,7 @@ mod test {
     is_canary: Rc<RefCell<bool>>,
     is_release_candidate: Rc<RefCell<bool>>,
     current_version: Rc<RefCell<String>>,
-    latest_version: Rc<RefCell<Result<String, String>>>,
+    latest_version: Rc<RefCell<Result<LatestVersion, String>>>,
     time: Rc<RefCell<chrono::DateTime<chrono::Utc>>>,
   }
 
@@ -1176,7 +1228,10 @@ mod test {
         current_version: Default::default(),
         is_canary: Default::default(),
         is_release_candidate: Default::default(),
-        latest_version: Rc::new(RefCell::new(Ok("".to_string()))),
+        latest_version: Rc::new(RefCell::new(Ok(LatestVersion {
+          version_or_hash: "".to_string(),
+          display: "".to_string(),
+        }))),
         time: Rc::new(RefCell::new(chrono::Utc::now())),
       }
     }
@@ -1197,7 +1252,10 @@ mod test {
     }
 
     pub fn set_latest_version(&self, version: &str) {
-      *self.latest_version.borrow_mut() = Ok(version.to_string());
+      *self.latest_version.borrow_mut() = Ok(LatestVersion {
+        version_or_hash: version.to_string(),
+        display: version.to_string(),
+      });
     }
 
     pub fn set_latest_version_err(&self, err: &str) {
@@ -1219,7 +1277,7 @@ mod test {
     async fn latest_version(
       &self,
       _release_channel: ReleaseChannel,
-    ) -> Result<String, AnyError> {
+    ) -> Result<LatestVersion, AnyError> {
       match self.latest_version.borrow().clone() {
         Ok(result) => Ok(result),
         Err(err) => bail!("{}", err),
@@ -1488,7 +1546,7 @@ mod test {
     // should strip v for stable
     assert_eq!(
       normalize_version_from_server(ReleaseChannel::Stable, "v1.0.0").unwrap(),
-      SelectedVersionToUpgrade {
+      LatestVersion {
         version_or_hash: "1.0.0".to_string(),
         display: "1.0.0".to_string()
       },
@@ -1500,7 +1558,7 @@ mod test {
         "  v1.0.0-test-v\n\n  "
       )
       .unwrap(),
-      SelectedVersionToUpgrade {
+      LatestVersion {
         version_or_hash: "1.0.0-test-v".to_string(),
         display: "1.0.0-test-v".to_string()
       }
@@ -1512,7 +1570,7 @@ mod test {
         "  v1452345asdf   \n\n   "
       )
       .unwrap(),
-      SelectedVersionToUpgrade {
+      LatestVersion {
         version_or_hash: "v1452345asdf".to_string(),
         display: "v1452345asdf".to_string()
       }
@@ -1523,7 +1581,7 @@ mod test {
         "asdfq345wdfasdfasdf v1.46.0-rc.0\nasdfq345wdfasdfasdf v1.46.0-rc.1\n"
       )
       .unwrap(),
-      SelectedVersionToUpgrade {
+      LatestVersion {
         version_or_hash: "asdfq345wdfasdfasdf".to_string(),
         display: "v1.46.0-rc.1".to_string(),
       },
