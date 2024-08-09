@@ -190,7 +190,7 @@ impl ShellCommand for NodeCommand {
       )
       .execute(context);
     }
-    args.extend(["run", "-A"].into_iter().map(|s| s.to_string()));
+    args.extend(["run"].into_iter().map(|s| s.to_string()));
     args.extend(context.args.iter().cloned());
 
     let mut state = context.state;
@@ -271,7 +271,6 @@ impl ShellCommand for NpmPackageBinCommand {
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     let mut args = vec![
       "run".to_string(),
-      "-A".to_string(),
       if self.npm_package.name == self.name {
         format!("npm:{}", self.npm_package)
       } else {
@@ -303,7 +302,6 @@ impl ShellCommand for NodeModulesFileRunCommand {
     let mut args = vec![
       "run".to_string(),
       "--ext=js".to_string(),
-      "-A".to_string(),
       self.path.to_string_lossy().to_string(),
     ];
     args.extend(context.args);
