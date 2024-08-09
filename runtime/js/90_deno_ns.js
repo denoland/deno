@@ -13,6 +13,7 @@ import * as console from "ext:deno_console/01_console.js";
 import * as ffi from "ext:deno_ffi/00_ffi.js";
 import * as net from "ext:deno_net/01_net.js";
 import * as tls from "ext:deno_net/02_tls.js";
+import * as quic from "ext:deno_net/03_quic.js";
 import * as serve from "ext:deno_http/00_serve.ts";
 import * as http from "ext:deno_http/01_http.js";
 import * as websocket from "ext:deno_http/02_websocket.ts";
@@ -306,6 +307,15 @@ denoNsUnstableById[unstableIds.net] = {
     op_net_listen_udp,
     op_net_listen_unixpacket,
   ),
+
+  connectQuic: quic.connectQuic,
+  listenQuic: quic.listenQuic,
+  QuicBidirectionalStream: quic.QuicBidirectionalStream,
+  QuicConn: quic.QuicConn,
+  QuicListener: quic.QuicListener,
+  QuicReceiveStream: quic.QuicReceiveStream,
+  QuicSendStream: quic.QuicSendStream,
+  QuicIncoming: quic.QuicIncoming,
 };
 
 // denoNsUnstableById[unstableIds.unsafeProto] = { __proto__: null }
@@ -341,6 +351,14 @@ const denoNsUnstable = {
   KvU64: kv.KvU64,
   KvListIterator: kv.KvListIterator,
   cron: cron.cron,
+  connectQuic: quic.connectQuic,
+  listenQuic: quic.listenQuic,
+  QuicBidirectionalStream: quic.QuicBidirectionalStream,
+  QuicConn: quic.QuicConn,
+  QuicListener: quic.QuicListener,
+  QuicReceiveStream: quic.QuicReceiveStream,
+  QuicSendStream: quic.QuicSendStream,
+  QuicIncoming: quic.QuicIncoming,
 };
 
 export { denoNs, denoNsUnstable, denoNsUnstableById, unstableIds };

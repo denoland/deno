@@ -5,6 +5,7 @@ pub mod ops;
 pub mod ops_tls;
 #[cfg(unix)]
 pub mod ops_unix;
+mod quic;
 pub mod raw;
 pub mod resolve_addr;
 mod tcp;
@@ -133,8 +134,31 @@ deno_core::extension!(deno_net,
     ops_unix::op_node_unstable_net_listen_unixpacket<P>,
     ops_unix::op_net_recv_unixpacket,
     ops_unix::op_net_send_unixpacket<P>,
+
+    quic::op_quic_accept,
+    quic::op_quic_accept_bi,
+    quic::op_quic_accept_incoming,
+    quic::op_quic_accept_uni,
+    quic::op_quic_close_connection,
+    quic::op_quic_close_endpoint,
+    quic::op_quic_connection_closed,
+    quic::op_quic_connection_get_protocol,
+    quic::op_quic_connection_get_remote_addr,
+    quic::op_quic_connect<P>,
+    quic::op_quic_endpoint_get_addr,
+    quic::op_quic_get_send_stream_priority,
+    quic::op_quic_incoming_accept,
+    quic::op_quic_incoming_refuse,
+    quic::op_quic_incoming_ignore,
+    quic::op_quic_listen<P>,
+    quic::op_quic_max_datagram_size,
+    quic::op_quic_open_bi,
+    quic::op_quic_open_uni,
+    quic::op_quic_read_datagram,
+    quic::op_quic_send_datagram,
+    quic::op_quic_set_send_stream_priority,
   ],
-  esm = [ "01_net.js", "02_tls.js" ],
+  esm = [ "01_net.js", "02_tls.js", "03_quic.js" ],
   options = {
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,

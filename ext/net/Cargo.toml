@@ -18,6 +18,7 @@ deno_core.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
 pin-project.workspace = true
+quinn = { version = "0.11.2", default-features = false, features = ["runtime-tokio", "rustls", "ring"] }
 rustls-tokio-stream.workspace = true
 serde.workspace = true
 socket2.workspace = true

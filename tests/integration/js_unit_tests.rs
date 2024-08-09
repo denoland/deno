@@ -69,6 +69,7 @@ util::unit_test_factory!(
     process_test,
     progressevent_test,
     promise_hooks_test,
+    quic_test,
     read_dir_test,
     read_file_test,
     read_link_test,
