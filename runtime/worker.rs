@@ -476,6 +476,14 @@ impl MainWorker {
       }
     });
 
+    let import_assertions_support = if options.bootstrap.future {
+      deno_core::ImportAssertionsSupport::Error
+    } else {
+      deno_core::ImportAssertionsSupport::CustomCallback(Box::new(
+        crate::shared::import_assertion_callback,
+      ))
+    };
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: options.startup_snapshot,
@@ -501,6 +509,7 @@ impl MainWorker {
       validate_import_attributes_cb: Some(Box::new(
         validate_import_attributes_callback,
       )),
+      import_assertions_support,
       eval_context_code_cache_cbs: options.v8_code_cache.map(|cache| {
         let cache_clone = cache.clone();
         (
@@ -544,17 +553,6 @@ impl MainWorker {
     if let Some(op_summary_metrics) = op_summary_metrics {
       js_runtime.op_state().borrow_mut().put(op_summary_metrics);
     }
-    extern "C" fn message_handler(
-      _msg: v8::Local<v8::Message>,
-      _exception: v8::Local<v8::Value>,
-    ) {
-      // TODO(@littledivy): Propogate message to users.
-    }
-
-    // Register message listener
-    js_runtime
-      .v8_isolate()
-      .add_message_listener(message_handler);
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
