@@ -6,6 +6,10 @@ import {
   findSourceMap,
   isBuiltin,
   Module,
+  // @ts-ignore Our internal @types/node is at v18.16.19 which predates
+  // this change. Updating it is difficult due to different types in Node
+  // for `import.meta.filename` and `import.meta.dirname` that Deno
+  // provides.
   register,
 } from "node:module";
 import { assert, assertEquals } from "@std/assert";
