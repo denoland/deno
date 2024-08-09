@@ -531,10 +531,14 @@ const listenOptionApiName = Symbol("listenOptionApiName");
 function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
-      const { 0: rid, 1: addr } = op_net_listen_tcp({
-        hostname: args.hostname ?? "0.0.0.0",
-        port: Number(args.port),
-      }, args.reusePort);
+      const { 0: rid, 1: addr } = op_net_listen_tcp(
+        {
+          hostname: args.hostname ?? "0.0.0.0",
+          port: Number(args.port),
+        },
+        args.reusePort,
+        args.loadBalanced ?? false,
+      );
       addr.transport = "tcp";
       return new Listener(rid, addr);
     }
