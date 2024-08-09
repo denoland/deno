@@ -175,10 +175,26 @@ fn package_json_dependency_entry(
   }
 }
 
+#[derive(Clone, Copy)]
+/// The name of the subcommand invoking the `add` operation.
+pub enum AddCommandName {
+  Add,
+  Install,
+}
+
+impl std::fmt::Display for AddCommandName {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      AddCommandName::Add => write!(f, "add"),
+      AddCommandName::Install => write!(f, "install"),
+    }
+  }
+}
+
 pub async fn add(
   flags: Arc<Flags>,
   add_flags: AddFlags,
-  cmd_name: &'static str,
+  cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
   let (config_file, cli_factory) =
     DenoOrPackageJson::from_flags(flags.clone())?;
@@ -237,10 +253,11 @@ pub async fn add(
     match package_and_version {
       PackageAndVersion::NotFound {
         package: package_name,
-        found_npm_package: found_npm_alternative,
+        found_npm_package,
+        package_req,
       } => {
-        if let Some(alt) = found_npm_alternative {
-          bail!("{} was not found, but a matching npm package exists. Did you mean `{}`?", crate::colors::red(package_name), crate::colors::yellow(format!("deno {cmd_name} {alt}")));
+        if found_npm_package {
+          bail!("{} was not found, but a matching npm package exists. Did you mean `{}`?", crate::colors::red(package_name), crate::colors::yellow(format!("deno {cmd_name} npm:{package_req}")));
         } else {
           bail!("{} was not found.", crate::colors::red(package_name));
         }
@@ -337,7 +354,8 @@ struct SelectedPackage {
 enum PackageAndVersion {
   NotFound {
     package: String,
-    found_npm_package: Option<String>,
+    found_npm_package: bool,
+    package_req: PackageReq,
   },
   Selected(SelectedPackage),
 }
@@ -351,16 +369,18 @@ async fn find_package_and_select_version_for_req(
     AddPackageReqValue::Jsr(req) => {
       let jsr_prefixed_name = format!("jsr:{}", &req.name);
       let Some(nv) = jsr_resolver.req_to_nv(&req).await else {
-        if let Some(npm_nv) = npm_resolver.req_to_nv(&req).await {
+        if npm_resolver.req_to_nv(&req).await.is_some() {
           return Ok(PackageAndVersion::NotFound {
             package: jsr_prefixed_name,
-            found_npm_package: Some(format!("npm:{npm_nv}")),
+            found_npm_package: true,
+            package_req: req,
           });
         }
 
         return Ok(PackageAndVersion::NotFound {
           package: jsr_prefixed_name,
-          found_npm_package: None,
+          found_npm_package: false,
+          package_req: req,
         });
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
@@ -380,7 +400,8 @@ async fn find_package_and_select_version_for_req(
       let Some(nv) = npm_resolver.req_to_nv(&req).await else {
         return Ok(PackageAndVersion::NotFound {
           package: npm_prefixed_name,
-          found_npm_package: None,
+          found_npm_package: false,
+          package_req: req,
         });
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
