@@ -1,0 +1,5 @@
+[UNORDERED_START]
+Download http://localhost:4261/@denotest/basic
+Download http://localhost:4262/@denotest2/basic
+error: Error getting response at http://localhost:4261/@denotest/basic for package "@denotest/basic": Both the username and password must be provided for basic auth
+[UNORDERED_END]
