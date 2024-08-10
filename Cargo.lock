@@ -1781,6 +1781,7 @@ dependencies = [
  "digest",
  "dsa",
  "ecb",
+ "ecdsa",
  "ed25519-dalek",
  "elliptic-curve",
  "errno 0.2.8",
