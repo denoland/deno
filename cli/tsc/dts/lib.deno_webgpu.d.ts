@@ -123,10 +123,10 @@ declare type GPUPowerPreference = "low-power" | "high-performance";
 declare class GPUAdapter {
   readonly features: GPUSupportedFeatures;
   readonly limits: GPUSupportedLimits;
+  readonly info: GPUAdapterInfo;
   readonly isFallbackAdapter: boolean;
 
   requestDevice(descriptor?: GPUDeviceDescriptor): Promise<GPUDevice>;
-  requestAdapterInfo(): Promise<GPUAdapterInfo>;
 }
 
 /**
@@ -1706,7 +1706,7 @@ declare type GPUErrorFilter = "out-of-memory" | "validation" | "internal";
  * @category GPU
  * @experimental
  */
-declare class GPUUncapturedErrorEvent extends EventTarget {
+declare class GPUUncapturedErrorEvent extends Event {
   constructor(
     type: string,
     gpuUncapturedErrorEventInitDict: GPUUncapturedErrorEventInit,

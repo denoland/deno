@@ -34,6 +34,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   PromisePrototypeThen,
+  StringPrototypeIncludes,
   Symbol,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
@@ -224,7 +225,7 @@ class InnerRequest {
           const wsRid = await wsPromise;
 
           // We have to wait for the go-ahead signal
-          await goAhead;
+          await goAhead.promise;
 
           ws[_rid] = wsRid;
           ws[_readyState] = WebSocket.OPEN;
@@ -435,6 +436,11 @@ function fastSyncResponseOrStream(
 
   const stream = respBody.streamOrStatic;
   const body = stream.body;
+  if (body !== undefined) {
+    // We ensure the response has not been consumed yet in the caller of this
+    // function.
+    stream.consumed = true;
+  }
 
   if (TypedArrayPrototypeGetSymbolToStringTag(body) === "Uint8Array") {
     innerRequest?.close();
@@ -502,6 +508,12 @@ function mapToCallback(context, callback, onError) {
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
         throw TypeError(
           "Return value from serve handler must be a response or a promise resolving to a response",
+        );
+      }
+
+      if (response.bodyUsed) {
+        throw TypeError(
+          "The body of the Response returned from the serve handler has already been consumed.",
         );
       }
     } catch (error) {
@@ -656,14 +668,20 @@ function serve(arg1, arg2) {
   // If the hostname is "0.0.0.0", we display "localhost" in console
   // because browsers in Windows don't resolve "0.0.0.0".
   // See the discussion in https://github.com/denoland/deno_std/issues/1165
-  const hostname = addr.hostname == "0.0.0.0" ? "localhost" : addr.hostname;
+  const hostname = (addr.hostname == "0.0.0.0" || addr.hostname == "::") &&
+      (Deno.build.os === "windows")
+    ? "localhost"
+    : addr.hostname;
   addr.hostname = hostname;
 
   const onListen = (scheme) => {
     if (options.onListen) {
       options.onListen(addr);
     } else {
-      console.log(`Listening on ${scheme}${addr.hostname}:${addr.port}/`);
+      const host = StringPrototypeIncludes(addr.hostname, ":")
+        ? `[${addr.hostname}]`
+        : addr.hostname;
+      console.log(`Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
 
@@ -747,26 +765,52 @@ function serveHttpOn(context, addr, callback) {
       PromisePrototypeCatch(callback(req), promiseErrorHandler);
     }
 
-    if (!context.closing && !context.closed) {
-      context.closing = op_http_close(rid, false);
-      context.close();
-    }
+    try {
+      if (!context.closing && !context.closed) {
+        context.closing = await op_http_close(rid, false);
+        context.close();
+      }
 
-    await context.closing;
-    context.close();
-    context.closed = true;
+      await context.closing;
+    } catch (error) {
+      if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
+        return;
+      }
+      if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+        return;
+      }
+
+      throw error;
+    } finally {
+      context.close();
+      context.closed = true;
+    }
   })();
 
   return {
     addr,
     finished,
     async shutdown() {
-      if (!context.closing && !context.closed) {
-        // Shut this HTTP server down gracefully
-        context.closing = op_http_close(context.serverRid, true);
+      try {
+        if (!context.closing && !context.closed) {
+          // Shut this HTTP server down gracefully
+          context.closing = op_http_close(context.serverRid, true);
+        }
+
+        await context.closing;
+      } catch (error) {
+        // The server was interrupted
+        if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
+          return;
+        }
+        if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+          return;
+        }
+
+        throw error;
+      } finally {
+        context.closed = true;
       }
-      await context.closing;
-      context.closed = true;
     },
     ref() {
       ref = true;

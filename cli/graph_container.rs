@@ -8,7 +8,7 @@ use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
 use deno_graph::ModuleGraph;
 use deno_runtime::colors;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainer;
 
 use crate::args::CliOptions;
 use crate::module_loader::ModuleLoadPreparer;
@@ -98,7 +98,7 @@ impl MainModuleGraphContainer {
     &self,
     files: &[String],
   ) -> Result<Vec<ModuleSpecifier>, AnyError> {
-    let excludes = self.cli_options.resolve_config_excludes()?;
+    let excludes = self.cli_options.workspace().resolve_config_excludes()?;
     Ok(
       files
         .iter()

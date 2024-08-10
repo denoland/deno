@@ -7,7 +7,7 @@ use std::env::current_exe;
 use std::io::Write;
 use std::path::Path;
 
-use runtimelib::dirs::user_data_dir;
+use jupyter_runtime::dirs::user_data_dir;
 
 const DENO_ICON_32: &[u8] = include_bytes!("./resources/deno-logo-32x32.png");
 const DENO_ICON_64: &[u8] = include_bytes!("./resources/deno-logo-64x64.png");

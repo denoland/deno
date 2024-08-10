@@ -216,6 +216,8 @@ fn no_snaps_included(test_name: &str, extension: &str) {
       "--quiet".to_string(),
       "--allow-read".to_string(),
       format!("--coverage={}", tempdir),
+      "--config".to_string(),
+      "../config/deno.json".to_string(),
       format!("coverage/no_snaps_included/{test_name}_test.{extension}"),
     ])
     .run();
@@ -256,6 +258,8 @@ fn no_tests_included(test_name: &str, extension: &str) {
       "--quiet".to_string(),
       "--allow-read".to_string(),
       format!("--coverage={}", tempdir),
+      "--config".to_string(),
+      "../config/deno.json".to_string(),
       format!("coverage/no_tests_included/{test_name}.test.{extension}"),
     ])
     .run();
@@ -337,6 +341,8 @@ fn no_transpiled_lines() {
       "test".to_string(),
       "--quiet".to_string(),
       format!("--coverage={}", tempdir),
+      "--config".to_string(),
+      "../config/deno.json".to_string(),
       "coverage/no_transpiled_lines/".to_string(),
     ])
     .run();
@@ -428,6 +434,39 @@ fn no_internal_node_code() {
   output.skip_output_check();
 
   // Check that coverage files contain no internal urls
+  let paths = tempdir.read_dir();
+  for path in paths {
+    let unwrapped = PathRef::new(path.unwrap().path());
+    let data = unwrapped.read_to_string();
+
+    let value: serde_json::Value = serde_json::from_str(&data).unwrap();
+    let url = value["url"].as_str().unwrap();
+    assert_starts_with!(url, "file:");
+  }
+}
+
+#[test]
+fn no_http_coverage_data() {
+  let _http_server_guard = test_util::http_server();
+  let context = TestContext::default();
+  let tempdir = context.temp_dir();
+  let tempdir = tempdir.path().join("cov");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      "--no-check".to_string(),
+      format!("--coverage={}", tempdir),
+      "coverage/no_http_coverage_data_test.ts".to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  // Check that coverage files contain no http urls
   let paths = tempdir.read_dir();
   for path in paths {
     let unwrapped = PathRef::new(path.unwrap().path());
@@ -547,14 +586,15 @@ fn test_summary_reporter() {
   output.assert_exit_code(0);
   output.skip_output_check();
 
-  let output = context
-    .new_command()
-    .args_vec(vec!["coverage".to_string(), format!("{}/", tempdir)])
-    .run();
+  {
+    let output = context
+      .new_command()
+      .args_vec(vec!["coverage".to_string(), format!("{}/", tempdir)])
+      .run();
 
-  output.assert_exit_code(0);
-  output.assert_matches_text(
-    "----------------------------------
+    output.assert_exit_code(0);
+    output.assert_matches_text(
+      "----------------------------------
 File         | Branch % | Line % |
 ----------------------------------
  bar.ts      |      0.0 |   57.1 |
@@ -565,7 +605,33 @@ File         | Branch % | Line % |
  All files   |     40.0 |   61.0 |
 ----------------------------------
 ",
-  );
+    );
+  }
+
+  // test --ignore flag works
+  {
+    let output = context
+      .new_command()
+      .args_vec(vec![
+        "coverage".to_string(),
+        format!("{}/", tempdir),
+        "--ignore=**/bar.ts,**/quux.ts".to_string(),
+      ])
+      .run();
+
+    output.assert_exit_code(0);
+    output.assert_matches_text(
+      "---------------------------------
+File        | Branch % | Line % |
+---------------------------------
+ baz/qux.ts |    100.0 |  100.0 |
+ foo.ts     |     50.0 |   76.9 |
+---------------------------------
+ All files  |     66.7 |   85.0 |
+---------------------------------
+",
+    );
+  }
 }
 
 #[test]

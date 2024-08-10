@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::TextChange;
-use deno_config::FmtOptionsConfig;
+use deno_config::deno_json::FmtOptionsConfig;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -15,8 +15,7 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_node;
-use deno_semver::jsr::JsrPackageReqReference;
-use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use jsonc_parser::ast::ObjectProp;
 use jsonc_parser::ast::Value;
@@ -50,8 +49,8 @@ impl DenoConfigFormat {
 }
 
 enum DenoOrPackageJson {
-  Deno(deno_config::ConfigFile, DenoConfigFormat),
-  Npm(deno_node::PackageJson, Option<FmtOptionsConfig>),
+  Deno(Arc<deno_config::deno_json::ConfigFile>, DenoConfigFormat),
+  Npm(Arc<deno_node::PackageJson>, Option<FmtOptionsConfig>),
 }
 
 impl DenoOrPackageJson {
@@ -88,7 +87,6 @@ impl DenoOrPackageJson {
       DenoOrPackageJson::Deno(deno, ..) => deno
         .to_fmt_config()
         .ok()
-        .flatten()
         .map(|f| f.options)
         .unwrap_or_default(),
       DenoOrPackageJson::Npm(_, config) => config.clone().unwrap_or_default(),
@@ -121,11 +119,12 @@ impl DenoOrPackageJson {
   /// creates a `deno.json` file - in this case
   /// we also return a new `CliFactory` that knows about
   /// the new config
-  fn from_flags(flags: Flags) -> Result<(Self, CliFactory), AnyError> {
-    let factory = CliFactory::from_flags(flags.clone())?;
-    let options = factory.cli_options().clone();
+  fn from_flags(flags: Arc<Flags>) -> Result<(Self, CliFactory), AnyError> {
+    let factory = CliFactory::from_flags(flags.clone());
+    let options = factory.cli_options()?;
+    let start_dir = &options.start_dir;
 
-    match (options.maybe_config_file(), options.maybe_package_json()) {
+    match (start_dir.maybe_deno_json(), start_dir.maybe_pkg_json()) {
       // when both are present, for now,
       // default to deno.json
       (Some(deno), Some(_) | None) => Ok((
@@ -141,21 +140,19 @@ impl DenoOrPackageJson {
       (None, Some(_) | None) => {
         std::fs::write(options.initial_cwd().join("deno.json"), "{}\n")
           .context("Failed to create deno.json file")?;
+        drop(factory); // drop to prevent use
         log::info!("Created deno.json configuration file.");
-        let new_factory = CliFactory::from_flags(flags.clone())?;
-        let new_options = new_factory.cli_options().clone();
+        let factory = CliFactory::from_flags(flags.clone());
+        let options = factory.cli_options()?.clone();
+        let start_dir = &options.start_dir;
         Ok((
           DenoOrPackageJson::Deno(
-            new_options
-              .maybe_config_file()
-              .as_ref()
-              .ok_or_else(|| {
-                anyhow!("config not found, but it was just created")
-              })?
-              .clone(),
+            start_dir.maybe_deno_json().cloned().ok_or_else(|| {
+              anyhow!("config not found, but it was just created")
+            })?,
             DenoConfigFormat::Json,
           ),
-          new_factory,
+          factory,
         ))
       }
     }
@@ -178,7 +175,27 @@ fn package_json_dependency_entry(
   }
 }
 
-pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
+#[derive(Clone, Copy)]
+/// The name of the subcommand invoking the `add` operation.
+pub enum AddCommandName {
+  Add,
+  Install,
+}
+
+impl std::fmt::Display for AddCommandName {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      AddCommandName::Add => write!(f, "add"),
+      AddCommandName::Install => write!(f, "install"),
+    }
+  }
+}
+
+pub async fn add(
+  flags: Arc<Flags>,
+  add_flags: AddFlags,
+  cmd_name: AddCommandName,
+) -> Result<(), AnyError> {
   let (config_file, cli_factory) =
     DenoOrPackageJson::from_flags(flags.clone())?;
 
@@ -188,31 +205,15 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   }
   let config_file_path = config_specifier.to_file_path().unwrap();
 
-  let http_client = cli_factory.http_client();
+  let http_client = cli_factory.http_client_provider();
 
   let mut selected_packages = Vec::with_capacity(add_flags.packages.len());
   let mut package_reqs = Vec::with_capacity(add_flags.packages.len());
 
-  for package_name in add_flags.packages.iter() {
-    let req = if package_name.starts_with("npm:") {
-      let pkg_req = NpmPackageReqReference::from_str(&format!(
-        "npm:{}",
-        package_name.strip_prefix("npm:").unwrap_or(package_name)
-      ))
-      .with_context(|| {
-        format!("Failed to parse package required: {}", package_name)
-      })?;
-      AddPackageReq::Npm(pkg_req)
-    } else {
-      let pkg_req = JsrPackageReqReference::from_str(&format!(
-        "jsr:{}",
-        package_name.strip_prefix("jsr:").unwrap_or(package_name)
-      ))
-      .with_context(|| {
-        format!("Failed to parse package required: {}", package_name)
-      })?;
-      AddPackageReq::Jsr(pkg_req)
-    };
+  for entry_text in add_flags.packages.iter() {
+    let req = AddPackageReq::parse(entry_text).with_context(|| {
+      format!("Failed to parse package required: {}", entry_text)
+    })?;
 
     package_reqs.push(req);
   }
@@ -227,6 +228,7 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     None,
   );
   deps_file_fetcher.set_download_log_level(log::Level::Trace);
+  let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
   let npm_resolver = Arc::new(NpmFetchResolver::new(deps_file_fetcher));
 
@@ -249,8 +251,16 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     let package_and_version = package_and_version_result?;
 
     match package_and_version {
-      PackageAndVersion::NotFound(package_name) => {
-        bail!("{} was not found.", crate::colors::red(package_name));
+      PackageAndVersion::NotFound {
+        package: package_name,
+        found_npm_package,
+        package_req,
+      } => {
+        if found_npm_package {
+          bail!("{} was not found, but a matching npm package exists. Did you mean `{}`?", crate::colors::red(package_name), crate::colors::yellow(format!("deno {cmd_name} npm:{package_req}")));
+        } else {
+          bail!("{} was not found.", crate::colors::red(package_name));
+        }
       }
       PackageAndVersion::Selected(selected) => {
         selected_packages.push(selected);
@@ -282,10 +292,10 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let is_npm = config_file.is_npm();
   for selected_package in selected_packages {
     log::info!(
-      "Add {} - {}@{}",
-      crate::colors::green(&selected_package.import_name),
-      selected_package.package_name,
-      selected_package.version_req
+      "Add {}{}{}",
+      crate::colors::green(&selected_package.package_name),
+      crate::colors::gray("@"),
+      selected_package.selected_version
     );
 
     if is_npm {
@@ -322,12 +332,12 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     .await
     .context("Failed to update configuration file")?;
 
-  // TODO(bartlomieju): we should now cache the imports from the deno.json.
-
+  // clear the previously cached package.json from memory before reloading it
+  node_resolver::PackageJsonThreadLocalCache::clear();
   // make a new CliFactory to pick up the updated config file
-  let cli_factory = CliFactory::from_flags(flags)?;
+  let cli_factory = CliFactory::from_flags(flags);
   // cache deps
-  if cli_factory.cli_options().enable_future_features() {
+  if cli_factory.cli_options()?.enable_future_features() {
     crate::module_loader::load_top_level_deps(&cli_factory).await?;
   }
 
@@ -338,10 +348,15 @@ struct SelectedPackage {
   import_name: String,
   package_name: String,
   version_req: String,
+  selected_version: String,
 }
 
 enum PackageAndVersion {
-  NotFound(String),
+  NotFound {
+    package: String,
+    found_npm_package: bool,
+    package_req: PackageReq,
+  },
   Selected(SelectedPackage),
 }
 
@@ -350,12 +365,23 @@ async fn find_package_and_select_version_for_req(
   npm_resolver: Arc<NpmFetchResolver>,
   add_package_req: AddPackageReq,
 ) -> Result<PackageAndVersion, AnyError> {
-  match add_package_req {
-    AddPackageReq::Jsr(pkg_ref) => {
-      let req = pkg_ref.req();
+  match add_package_req.value {
+    AddPackageReqValue::Jsr(req) => {
       let jsr_prefixed_name = format!("jsr:{}", &req.name);
-      let Some(nv) = jsr_resolver.req_to_nv(req).await else {
-        return Ok(PackageAndVersion::NotFound(jsr_prefixed_name));
+      let Some(nv) = jsr_resolver.req_to_nv(&req).await else {
+        if npm_resolver.req_to_nv(&req).await.is_some() {
+          return Ok(PackageAndVersion::NotFound {
+            package: jsr_prefixed_name,
+            found_npm_package: true,
+            package_req: req,
+          });
+        }
+
+        return Ok(PackageAndVersion::NotFound {
+          package: jsr_prefixed_name,
+          found_npm_package: false,
+          package_req: req,
+        });
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
         '~'
@@ -363,16 +389,20 @@ async fn find_package_and_select_version_for_req(
         '^'
       };
       Ok(PackageAndVersion::Selected(SelectedPackage {
-        import_name: req.name.to_string(),
+        import_name: add_package_req.alias,
         package_name: jsr_prefixed_name,
         version_req: format!("{}{}", range_symbol, &nv.version),
+        selected_version: nv.version.to_string(),
       }))
     }
-    AddPackageReq::Npm(pkg_ref) => {
-      let req = pkg_ref.req();
+    AddPackageReqValue::Npm(req) => {
       let npm_prefixed_name = format!("npm:{}", &req.name);
-      let Some(nv) = npm_resolver.req_to_nv(req).await else {
-        return Ok(PackageAndVersion::NotFound(npm_prefixed_name));
+      let Some(nv) = npm_resolver.req_to_nv(&req).await else {
+        return Ok(PackageAndVersion::NotFound {
+          package: npm_prefixed_name,
+          found_npm_package: false,
+          package_req: req,
+        });
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
         '~'
@@ -380,17 +410,94 @@ async fn find_package_and_select_version_for_req(
         '^'
       };
       Ok(PackageAndVersion::Selected(SelectedPackage {
-        import_name: req.name.to_string(),
+        import_name: add_package_req.alias,
         package_name: npm_prefixed_name,
         version_req: format!("{}{}", range_symbol, &nv.version),
+        selected_version: nv.version.to_string(),
       }))
     }
   }
 }
 
-enum AddPackageReq {
-  Jsr(JsrPackageReqReference),
-  Npm(NpmPackageReqReference),
+#[derive(Debug, PartialEq, Eq)]
+enum AddPackageReqValue {
+  Jsr(PackageReq),
+  Npm(PackageReq),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct AddPackageReq {
+  alias: String,
+  value: AddPackageReqValue,
+}
+
+impl AddPackageReq {
+  pub fn parse(entry_text: &str) -> Result<Self, AnyError> {
+    enum Prefix {
+      Jsr,
+      Npm,
+    }
+
+    fn parse_prefix(text: &str) -> (Option<Prefix>, &str) {
+      if let Some(text) = text.strip_prefix("jsr:") {
+        (Some(Prefix::Jsr), text)
+      } else if let Some(text) = text.strip_prefix("npm:") {
+        (Some(Prefix::Npm), text)
+      } else {
+        (None, text)
+      }
+    }
+
+    // parse the following:
+    // - alias@npm:<package_name>
+    // - other_alias@npm:<package_name>
+    // - @alias/other@jsr:<package_name>
+    fn parse_alias(entry_text: &str) -> Option<(&str, &str)> {
+      for prefix in ["npm:", "jsr:"] {
+        let Some(location) = entry_text.find(prefix) else {
+          continue;
+        };
+        let prefix = &entry_text[..location];
+        if let Some(alias) = prefix.strip_suffix('@') {
+          return Some((alias, &entry_text[location..]));
+        }
+      }
+      None
+    }
+
+    let (maybe_prefix, entry_text) = parse_prefix(entry_text);
+    let (prefix, maybe_alias, entry_text) = match maybe_prefix {
+      Some(prefix) => (prefix, None, entry_text),
+      None => match parse_alias(entry_text) {
+        Some((alias, text)) => {
+          let (maybe_prefix, entry_text) = parse_prefix(text);
+          (
+            maybe_prefix.unwrap_or(Prefix::Jsr),
+            Some(alias.to_string()),
+            entry_text,
+          )
+        }
+        None => (Prefix::Jsr, None, entry_text),
+      },
+    };
+
+    match prefix {
+      Prefix::Jsr => {
+        let package_req = PackageReq::from_str(entry_text)?;
+        Ok(AddPackageReq {
+          alias: maybe_alias.unwrap_or_else(|| package_req.name.to_string()),
+          value: AddPackageReqValue::Jsr(package_req),
+        })
+      }
+      Prefix::Npm => {
+        let package_req = PackageReq::from_str(entry_text)?;
+        Ok(AddPackageReq {
+          alias: maybe_alias.unwrap_or_else(|| package_req.name.to_string()),
+          value: AddPackageReqValue::Npm(package_req),
+        })
+      }
+    }
+  }
 }
 
 fn generate_imports(packages_to_version: Vec<(String, String)>) -> String {
@@ -429,7 +536,7 @@ fn update_config_file_content(
       text_changes.push(TextChange {
         range: insert_position..insert_position,
         // NOTE(bartlomieju): adding `\n` here to force the formatter to always
-        // produce a config file that is multline, like so:
+        // produce a config file that is multiline, like so:
         // ```
         // {
         //   "imports": {
@@ -454,4 +561,63 @@ fn update_config_file_content(
   .ok()
   .map(|formatted_text| formatted_text.unwrap_or_else(|| new_text.clone()))
   .unwrap_or(new_text)
+}
+
+#[cfg(test)]
+mod test {
+  use deno_semver::VersionReq;
+
+  use super::*;
+
+  #[test]
+  fn test_parse_add_package_req() {
+    assert_eq!(
+      AddPackageReq::parse("jsr:foo").unwrap(),
+      AddPackageReq {
+        alias: "foo".to_string(),
+        value: AddPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
+      }
+    );
+    assert_eq!(
+      AddPackageReq::parse("alias@jsr:foo").unwrap(),
+      AddPackageReq {
+        alias: "alias".to_string(),
+        value: AddPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
+      }
+    );
+    assert_eq!(
+      AddPackageReq::parse("@alias/pkg@npm:foo").unwrap(),
+      AddPackageReq {
+        alias: "@alias/pkg".to_string(),
+        value: AddPackageReqValue::Npm(PackageReq::from_str("foo").unwrap())
+      }
+    );
+    assert_eq!(
+      AddPackageReq::parse("@alias/pkg@jsr:foo").unwrap(),
+      AddPackageReq {
+        alias: "@alias/pkg".to_string(),
+        value: AddPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
+      }
+    );
+    assert_eq!(
+      AddPackageReq::parse("alias@jsr:foo@^1.5.0").unwrap(),
+      AddPackageReq {
+        alias: "alias".to_string(),
+        value: AddPackageReqValue::Jsr(
+          PackageReq::from_str("foo@^1.5.0").unwrap()
+        )
+      }
+    );
+    assert_eq!(
+      AddPackageReq::parse("@scope/pkg@tag").unwrap(),
+      AddPackageReq {
+        alias: "@scope/pkg".to_string(),
+        value: AddPackageReqValue::Jsr(PackageReq {
+          name: "@scope/pkg".to_string(),
+          // this is a tag
+          version_req: VersionReq::parse_from_specifier("tag").unwrap(),
+        }),
+      }
+    );
+  }
 }

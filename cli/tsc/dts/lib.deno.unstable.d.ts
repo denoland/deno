@@ -220,7 +220,7 @@ declare namespace Deno {
       : T extends NativeU32Enum<infer U> ? U
       : T extends NativeI32Enum<infer U> ? U
       : number
-    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
       ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
@@ -247,7 +247,7 @@ declare namespace Deno {
       : T extends NativeU32Enum<infer U> ? U
       : T extends NativeI32Enum<infer U> ? U
       : number
-    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
       ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
@@ -292,7 +292,7 @@ declare namespace Deno {
       : T extends NativeU32Enum<infer U> ? U
       : T extends NativeI32Enum<infer U> ? U
       : number
-    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
       ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
@@ -319,7 +319,7 @@ declare namespace Deno {
       : T extends NativeU32Enum<infer U> ? U
       : T extends NativeI32Enum<infer U> ? U
       : number
-    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBigIntType ? bigint
     : T extends NativeBooleanType ? boolean
     : T extends NativePointerType
       ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
@@ -371,11 +371,6 @@ declare namespace Deno {
     /** When `true`, function calls will run on a dedicated blocking thread and
      * will return a `Promise` resolving to the `result`. */
     nonblocking?: NonBlocking;
-    /** When `true`, function calls can safely callback into JavaScript or
-     * trigger a garbage collection event.
-     *
-     * @default {false} */
-    callback?: boolean;
     /** When `true`, dlopen will not fail if the symbol is not found.
      * Instead, the symbol will be set to `null`.
      *
@@ -501,7 +496,7 @@ declare namespace Deno {
    */
   export class UnsafePointer {
     /** Create a pointer from a numeric value. This one is <i>really</i> dangerous! */
-    static create<T = unknown>(value: number | bigint): PointerValue<T>;
+    static create<T = unknown>(value: bigint): PointerValue<T>;
     /** Returns `true` if the two pointers point to the same address. */
     static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
@@ -514,7 +509,7 @@ declare namespace Deno {
       offset: number,
     ): PointerValue<T>;
     /** Get the numeric value of a pointer */
-    static value(value: PointerValue): number | bigint;
+    static value(value: PointerValue): bigint;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -554,10 +549,10 @@ declare namespace Deno {
     getInt32(offset?: number): number;
     /** Gets an unsigned 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigUint64(offset?: number): number | bigint;
+    getBigUint64(offset?: number): bigint;
     /** Gets a signed 64-bit integer at the specified byte offset from the
      * pointer. */
-    getBigInt64(offset?: number): number | bigint;
+    getBigInt64(offset?: number): bigint;
     /** Gets a signed 32-bit float at the specified byte offset from the
      * pointer. */
     getFloat32(offset?: number): number;
@@ -816,7 +811,7 @@ declare namespace Deno {
    * );
    *
    * // Call the symbol `add`
-   * const result = dylib.symbols.add(35, 34); // 69
+   * const result = dylib.symbols.add(35n, 34n); // 69n
    *
    * console.log(`Result from external addition of 35 and 34: ${result}`);
    * ```
@@ -861,7 +856,7 @@ declare namespace Deno {
    *
    * These are unstable options which can be used with {@linkcode Deno.run}.
    *
-   * @category Sub Process
+   * @category Subprocess
    * @experimental
    */
   export interface UnstableRunOptions extends RunOptions {
@@ -924,7 +919,7 @@ declare namespace Deno {
    * Requires `allow-run` permission.
    *
    * @tags allow-run
-   * @category Sub Process
+   * @category Subprocess
    * @experimental
    */
   export function run<T extends UnstableRunOptions = UnstableRunOptions>(
@@ -965,7 +960,7 @@ declare namespace Deno {
     caCerts?: string[];
     /** A HTTP proxy to use for new connections. */
     proxy?: Proxy;
-    /** Sets the maximum numer of idle connections per host allowed in the pool. */
+    /** Sets the maximum number of idle connections per host allowed in the pool. */
     poolMaxIdlePerHost?: number;
     /** Set an optional timeout for idle sockets being kept-alive.
      * Set to false to disable the timeout. */
@@ -2611,7 +2606,7 @@ declare namespace Temporal {
   /**
    * When the name of a unit is provided to a Temporal API as a string, it is
    * usually singular, e.g. 'day' or 'hour'. But plural unit names like 'days'
-   * or 'hours' are aso accepted too.
+   * or 'hours' are also accepted.
    *
    * @category Temporal
    * @experimental
@@ -2930,8 +2925,8 @@ declare namespace Temporal {
          * This value must be either a `Temporal.PlainDateTime`, a
          * `Temporal.ZonedDateTime`, or a string or object value that can be
          * passed to `from()` of those types. Examples:
-         * - `'2020-01'01T00:00-08:00[America/Los_Angeles]'`
-         * - `'2020-01'01'`
+         * - `'2020-01-01T00:00-08:00[America/Los_Angeles]'`
+         * - `'2020-01-01'`
          * - `Temporal.PlainDate.from('2020-01-01')`
          *
          * `Temporal.ZonedDateTime` will be tried first because it's more
@@ -2976,8 +2971,8 @@ declare namespace Temporal {
        * This value must be either a `Temporal.PlainDateTime`, a
        * `Temporal.ZonedDateTime`, or a string or object value that can be passed
        * to `from()` of those types. Examples:
-       * - `'2020-01'01T00:00-08:00[America/Los_Angeles]'`
-       * - `'2020-01'01'`
+       * - `'2020-01-01T00:00-08:00[America/Los_Angeles]'`
+       * - `'2020-01-01'`
        * - `Temporal.PlainDate.from('2020-01-01')`
        *
        * `Temporal.ZonedDateTime` will be tried first because it's more
@@ -3012,8 +3007,8 @@ declare namespace Temporal {
      * This value must be either a `Temporal.PlainDateTime`, a
      * `Temporal.ZonedDateTime`, or a string or object value that can be passed
      * to `from()` of those types. Examples:
-     * - `'2020-01'01T00:00-08:00[America/Los_Angeles]'`
-     * - `'2020-01'01'`
+     * - `'2020-01-01T00:00-08:00[America/Los_Angeles]'`
+     * - `'2020-01-01'`
      * - `Temporal.PlainDate.from('2020-01-01')`
      *
      * `Temporal.ZonedDateTime` will be tried first because it's more
@@ -3031,6 +3026,16 @@ declare namespace Temporal {
       | PlainDateTimeLike
       | string;
   }
+
+  /**
+   * Options to control behaviour of `ZonedDateTime.prototype.getTimeZoneTransition()`
+   *
+   * @category Temporal
+   * @experimental
+   */
+  export type TransitionDirection = "next" | "previous" | {
+    direction: "next" | "previous";
+  };
 
   /**
    * @category Temporal
@@ -3132,9 +3137,7 @@ declare namespace Temporal {
    * @experimental
    */
   export class Instant {
-    static fromEpochSeconds(epochSeconds: number): Temporal.Instant;
     static fromEpochMilliseconds(epochMilliseconds: number): Temporal.Instant;
-    static fromEpochMicroseconds(epochMicroseconds: bigint): Temporal.Instant;
     static fromEpochNanoseconds(epochNanoseconds: bigint): Temporal.Instant;
     static from(item: Temporal.Instant | string): Temporal.Instant;
     static compare(
@@ -3142,9 +3145,7 @@ declare namespace Temporal {
       two: Temporal.Instant | string,
     ): ComparisonResult;
     constructor(epochNanoseconds: bigint);
-    readonly epochSeconds: number;
     readonly epochMilliseconds: number;
-    readonly epochMicroseconds: bigint;
     readonly epochNanoseconds: bigint;
     equals(other: Temporal.Instant | string): boolean;
     add(
@@ -3305,14 +3306,14 @@ declare namespace Temporal {
         | Temporal.PlainDateTime
         | PlainDateLike
         | string,
-    ): number;
+    ): number | undefined;
     yearOfWeek(
       date:
         | Temporal.PlainDate
         | Temporal.PlainDateTime
         | PlainDateLike
         | string,
-    ): number;
+    ): number | undefined;
     daysInWeek(
       date:
         | Temporal.PlainDate
@@ -3481,14 +3482,14 @@ declare namespace Temporal {
         | Temporal.PlainDateTime
         | PlainDateLike
         | string,
-    ): number;
+    ): number | undefined;
     yearOfWeek(
       date:
         | Temporal.PlainDate
         | Temporal.PlainDateTime
         | PlainDateLike
         | string,
-    ): number;
+    ): number | undefined;
     daysInWeek(
       date:
         | Temporal.PlainDate
@@ -3619,11 +3620,10 @@ declare namespace Temporal {
     readonly monthCode: string;
     readonly day: number;
     readonly calendarId: string;
-    getCalendar(): CalendarProtocol;
     readonly dayOfWeek: number;
     readonly dayOfYear: number;
-    readonly weekOfYear: number;
-    readonly yearOfWeek: number;
+    readonly weekOfYear: number | undefined;
+    readonly yearOfWeek: number | undefined;
     readonly daysInWeek: number;
     readonly daysInYear: number;
     readonly daysInMonth: number;
@@ -3760,11 +3760,10 @@ declare namespace Temporal {
     readonly microsecond: number;
     readonly nanosecond: number;
     readonly calendarId: string;
-    getCalendar(): CalendarProtocol;
     readonly dayOfWeek: number;
     readonly dayOfYear: number;
-    readonly weekOfYear: number;
-    readonly yearOfWeek: number;
+    readonly weekOfYear: number | undefined;
+    readonly yearOfWeek: number | undefined;
     readonly daysInWeek: number;
     readonly daysInYear: number;
     readonly daysInMonth: number;
@@ -3777,9 +3776,6 @@ declare namespace Temporal {
     ): Temporal.PlainDateTime;
     withPlainTime(
       timeLike?: Temporal.PlainTime | PlainTimeLike | string,
-    ): Temporal.PlainDateTime;
-    withPlainDate(
-      dateLike: Temporal.PlainDate | PlainDateLike | string,
     ): Temporal.PlainDateTime;
     withCalendar(calendar: CalendarLike): Temporal.PlainDateTime;
     add(
@@ -3836,8 +3832,6 @@ declare namespace Temporal {
       options?: ToInstantOptions,
     ): Temporal.ZonedDateTime;
     toPlainDate(): Temporal.PlainDate;
-    toPlainYearMonth(): Temporal.PlainYearMonth;
-    toPlainMonthDay(): Temporal.PlainMonthDay;
     toPlainTime(): Temporal.PlainTime;
     getISOFields(): PlainDateTimeISOFields;
     toLocaleString(
@@ -3888,7 +3882,6 @@ declare namespace Temporal {
     readonly monthCode: string;
     readonly day: number;
     readonly calendarId: string;
-    getCalendar(): CalendarProtocol;
     equals(other: Temporal.PlainMonthDay | PlainMonthDayLike | string): boolean;
     with(
       monthDayLike: PlainMonthDayLike,
@@ -4018,13 +4011,6 @@ declare namespace Temporal {
         | "nanosecond"
       >,
     ): Temporal.PlainTime;
-    toPlainDateTime(
-      temporalDate: Temporal.PlainDate | PlainDateLike | string,
-    ): Temporal.PlainDateTime;
-    toZonedDateTime(timeZoneAndDate: {
-      timeZone: TimeZoneLike;
-      plainDate: Temporal.PlainDate | PlainDateLike | string;
-    }): Temporal.ZonedDateTime;
     getISOFields(): PlainTimeISOFields;
     toLocaleString(
       locales?: string | string[],
@@ -4054,12 +4040,6 @@ declare namespace Temporal {
       dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
       options?: ToInstantOptions,
     ): Temporal.Instant;
-    getNextTransition?(
-      startingPoint: Temporal.Instant | string,
-    ): Temporal.Instant | null;
-    getPreviousTransition?(
-      startingPoint: Temporal.Instant | string,
-    ): Temporal.Instant | null;
     getPossibleInstantsFor(
       dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
     ): Temporal.Instant[];
@@ -4096,7 +4076,6 @@ declare namespace Temporal {
     static from(timeZone: TimeZoneLike): Temporal.TimeZone | TimeZoneProtocol;
     constructor(timeZoneIdentifier: string);
     readonly id: string;
-    equals(timeZone: TimeZoneLike): boolean;
     getOffsetNanosecondsFor(instant: Temporal.Instant | string): number;
     getOffsetStringFor(instant: Temporal.Instant | string): string;
     getPlainDateTimeFor(
@@ -4107,12 +4086,6 @@ declare namespace Temporal {
       dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
       options?: ToInstantOptions,
     ): Temporal.Instant;
-    getNextTransition(
-      startingPoint: Temporal.Instant | string,
-    ): Temporal.Instant | null;
-    getPreviousTransition(
-      startingPoint: Temporal.Instant | string,
-    ): Temporal.Instant | null;
     getPossibleInstantsFor(
       dateTime: Temporal.PlainDateTime | PlainDateTimeLike | string,
     ): Temporal.Instant[];
@@ -4165,7 +4138,6 @@ declare namespace Temporal {
     readonly month: number;
     readonly monthCode: string;
     readonly calendarId: string;
-    getCalendar(): CalendarProtocol;
     readonly daysInMonth: number;
     readonly daysInYear: number;
     readonly monthsInYear: number;
@@ -4277,13 +4249,11 @@ declare namespace Temporal {
     readonly microsecond: number;
     readonly nanosecond: number;
     readonly timeZoneId: string;
-    getTimeZone(): TimeZoneProtocol;
     readonly calendarId: string;
-    getCalendar(): CalendarProtocol;
     readonly dayOfWeek: number;
     readonly dayOfYear: number;
-    readonly weekOfYear: number;
-    readonly yearOfWeek: number;
+    readonly weekOfYear: number | undefined;
+    readonly yearOfWeek: number | undefined;
     readonly hoursInDay: number;
     readonly daysInWeek: number;
     readonly daysInMonth: number;
@@ -4303,9 +4273,6 @@ declare namespace Temporal {
     ): Temporal.ZonedDateTime;
     withPlainTime(
       timeLike?: Temporal.PlainTime | PlainTimeLike | string,
-    ): Temporal.ZonedDateTime;
-    withPlainDate(
-      dateLike: Temporal.PlainDate | PlainDateLike | string,
     ): Temporal.ZonedDateTime;
     withCalendar(calendar: CalendarLike): Temporal.ZonedDateTime;
     withTimeZone(timeZone: TimeZoneLike): Temporal.ZonedDateTime;
@@ -4359,11 +4326,12 @@ declare namespace Temporal {
       >,
     ): Temporal.ZonedDateTime;
     startOfDay(): Temporal.ZonedDateTime;
+    getTimeZoneTransition(
+      direction: TransitionDirection,
+    ): Temporal.ZonedDateTime | null;
     toInstant(): Temporal.Instant;
     toPlainDateTime(): Temporal.PlainDateTime;
     toPlainDate(): Temporal.PlainDate;
-    toPlainYearMonth(): Temporal.PlainYearMonth;
-    toPlainMonthDay(): Temporal.PlainMonthDay;
     toPlainTime(): Temporal.PlainTime;
     getISOFields(): ZonedDateTimeISOFields;
     toLocaleString(
@@ -4401,29 +4369,6 @@ declare namespace Temporal {
     instant: () => Temporal.Instant;
 
     /**
-     * Get the current calendar date and clock time in a specific calendar and
-     * time zone.
-     *
-     * The `calendar` parameter is required. When using the ISO 8601 calendar or
-     * if you don't understand the need for or implications of a calendar, then
-     * a more ergonomic alternative to this method is
-     * `Temporal.Now.zonedDateTimeISO()`.
-     *
-     * @param {CalendarLike} [calendar] - calendar identifier, or
-     * a `Temporal.Calendar` instance, or an object implementing the calendar
-     * protocol.
-     * @param {TimeZoneLike} [tzLike] -
-     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted, the environment's
-     * current time zone will be used.
-     */
-    zonedDateTime: (
-      calendar: CalendarLike,
-      tzLike?: TimeZoneLike,
-    ) => Temporal.ZonedDateTime;
-
-    /**
      * Get the current calendar date and clock time in a specific time zone,
      * using the ISO 8601 calendar.
      *
@@ -4434,34 +4379,6 @@ declare namespace Temporal {
      * current time zone will be used.
      */
     zonedDateTimeISO: (tzLike?: TimeZoneLike) => Temporal.ZonedDateTime;
-
-    /**
-     * Get the current calendar date and clock time in a specific calendar and
-     * time zone.
-     *
-     * The calendar is required. When using the ISO 8601 calendar or if you
-     * don't understand the need for or implications of a calendar, then a more
-     * ergonomic alternative to this method is `Temporal.Now.plainDateTimeISO`.
-     *
-     * Note that the `Temporal.PlainDateTime` type does not persist the time zone,
-     * but retaining the time zone is required for most time-zone-related use
-     * cases. Therefore, it's usually recommended to use
-     * `Temporal.Now.zonedDateTimeISO` or `Temporal.Now.zonedDateTime` instead
-     * of this function.
-     *
-     * @param {CalendarLike} [calendar] - calendar identifier, or
-     * a `Temporal.Calendar` instance, or an object implementing the calendar
-     * protocol.
-     * @param {TimeZoneLike} [tzLike] -
-     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted,
-     * the environment's current time zone will be used.
-     */
-    plainDateTime: (
-      calendar: CalendarLike,
-      tzLike?: TimeZoneLike,
-    ) => Temporal.PlainDateTime;
 
     /**
      * Get the current date and clock time in a specific time zone, using the
@@ -4479,27 +4396,6 @@ declare namespace Temporal {
      * current time zone will be used.
      */
     plainDateTimeISO: (tzLike?: TimeZoneLike) => Temporal.PlainDateTime;
-
-    /**
-     * Get the current calendar date in a specific calendar and time zone.
-     *
-     * The calendar is required. When using the ISO 8601 calendar or if you
-     * don't understand the need for or implications of a calendar, then a more
-     * ergonomic alternative to this method is `Temporal.Now.plainDateISO`.
-     *
-     * @param {CalendarLike} [calendar] - calendar identifier, or
-     * a `Temporal.Calendar` instance, or an object implementing the calendar
-     * protocol.
-     * @param {TimeZoneLike} [tzLike] -
-     * {@link https://en.wikipedia.org/wiki/List_of_tz_database_time_zones|IANA time zone identifier}
-     * string (e.g. `'Europe/London'`), `Temporal.TimeZone` instance, or an
-     * object implementing the time zone protocol. If omitted,
-     * the environment's current time zone will be used.
-     */
-    plainDate: (
-      calendar: CalendarLike,
-      tzLike?: TimeZoneLike,
-    ) => Temporal.PlainDate;
 
     /**
      * Get the current date in a specific time zone, using the ISO 8601

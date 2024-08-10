@@ -31,11 +31,23 @@ fn fmt_test() {
   let badly_formatted_json = t.path().join("badly_formatted.json");
   badly_formatted_original_json.copy(&badly_formatted_json);
 
+  let fixed_css = testdata_fmt_dir.join("badly_formatted_fixed.css");
+  let badly_formatted_original_css =
+    testdata_fmt_dir.join("badly_formatted.css");
+  let badly_formatted_css = t.path().join("badly_formatted.css");
+  badly_formatted_original_css.copy(&badly_formatted_css);
+
   let fixed_ipynb = testdata_fmt_dir.join("badly_formatted_fixed.ipynb");
   let badly_formatted_original_ipynb =
     testdata_fmt_dir.join("badly_formatted.ipynb");
   let badly_formatted_ipynb = t.path().join("badly_formatted.ipynb");
   badly_formatted_original_ipynb.copy(&badly_formatted_ipynb);
+
+  let fixed_yaml = testdata_fmt_dir.join("badly_formatted_fixed.yaml");
+  let badly_formatted_original_yaml =
+    testdata_fmt_dir.join("badly_formatted.yaml");
+  let badly_formatted_yaml = t.path().join("badly_formatted.yaml");
+  badly_formatted_original_yaml.copy(&badly_formatted_yaml);
 
   // First, check formatting by ignoring the badly formatted file.
   let output = context
@@ -43,11 +55,13 @@ fn fmt_test() {
     .current_dir(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
+      "--unstable-css".to_string(),
+      "--unstable-yaml".to_string(),
       format!(
-        "--ignore={badly_formatted_js},{badly_formatted_md},{badly_formatted_json},{badly_formatted_ipynb}",
+        "--ignore={badly_formatted_js},{badly_formatted_md},{badly_formatted_json},{badly_formatted_css},{badly_formatted_yaml},{badly_formatted_ipynb}",
       ),
       format!(
-        "--check {badly_formatted_js} {badly_formatted_md} {badly_formatted_json} {badly_formatted_ipynb}",
+        "--check {badly_formatted_js} {badly_formatted_md} {badly_formatted_json} {badly_formatted_css} {badly_formatted_yaml} {badly_formatted_ipynb}",
       ),
     ])
     .run();
@@ -63,9 +77,13 @@ fn fmt_test() {
     .args_vec(vec![
       "fmt".to_string(),
       "--check".to_string(),
+      "--unstable-css".to_string(),
+      "--unstable-yaml".to_string(),
       badly_formatted_js.to_string(),
       badly_formatted_md.to_string(),
       badly_formatted_json.to_string(),
+      badly_formatted_css.to_string(),
+      badly_formatted_yaml.to_string(),
       badly_formatted_ipynb.to_string(),
     ])
     .run();
@@ -79,9 +97,13 @@ fn fmt_test() {
     .current_dir(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
+      "--unstable-css".to_string(),
+      "--unstable-yaml".to_string(),
       badly_formatted_js.to_string(),
       badly_formatted_md.to_string(),
       badly_formatted_json.to_string(),
+      badly_formatted_css.to_string(),
+      badly_formatted_yaml.to_string(),
       badly_formatted_ipynb.to_string(),
     ])
     .run();
@@ -92,14 +114,20 @@ fn fmt_test() {
   let expected_js = fixed_js.read_to_string();
   let expected_md = fixed_md.read_to_string();
   let expected_json = fixed_json.read_to_string();
+  let expected_css = fixed_css.read_to_string();
+  let expected_yaml = fixed_yaml.read_to_string();
   let expected_ipynb = fixed_ipynb.read_to_string();
   let actual_js = badly_formatted_js.read_to_string();
   let actual_md = badly_formatted_md.read_to_string();
   let actual_json = badly_formatted_json.read_to_string();
+  let actual_css = badly_formatted_css.read_to_string();
+  let actual_yaml = badly_formatted_yaml.read_to_string();
   let actual_ipynb = badly_formatted_ipynb.read_to_string();
   assert_eq!(expected_js, actual_js);
   assert_eq!(expected_md, actual_md);
   assert_eq!(expected_json, actual_json);
+  assert_eq!(expected_css, actual_css);
+  assert_eq!(expected_yaml, actual_yaml);
   assert_eq!(expected_ipynb, actual_ipynb);
 }
 

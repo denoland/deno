@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import * as perfHooks from "node:perf_hooks";
 import { performance, PerformanceObserver } from "node:perf_hooks";
-import { assertEquals, assertThrows } from "@std/assert/mod.ts";
+import { assertEquals, assertThrows } from "@std/assert";
 
 Deno.test({
   name: "[perf_hooks] performance",
@@ -60,4 +60,11 @@ Deno.test({
       performance.timeOrigin = 1;
     });
   },
+});
+
+Deno.test("[perf_hooks]: eventLoopUtilization", () => {
+  const obj = performance.eventLoopUtilization();
+  assertEquals(typeof obj.idle, "number");
+  assertEquals(typeof obj.active, "number");
+  assertEquals(typeof obj.utilization, "number");
 });

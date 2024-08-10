@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -68,6 +69,7 @@ pub enum FsFileType {
   Junction,
 }
 
+/// WARNING: This is part of the public JS Deno API.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsDirEntry {
@@ -138,6 +140,19 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     gid: Option<u32>,
   ) -> FsResult<()>;
   async fn chown_async(
+    &self,
+    path: PathBuf,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()>;
+
+  fn lchown_sync(
+    &self,
+    path: &Path,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()>;
+  async fn lchown_async(
     &self,
     path: PathBuf,
     uid: Option<u32>,
@@ -219,6 +234,23 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     mtime_nanos: u32,
   ) -> FsResult<()>;
 
+  fn lutime_sync(
+    &self,
+    path: &Path,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()>;
+  async fn lutime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()>;
+
   fn write_file_sync(
     &self,
     path: &Path,
@@ -283,25 +315,36 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   fn exists_sync(&self, path: &Path) -> bool {
     self.stat_sync(path).is_ok()
   }
+  async fn exists_async(&self, path: PathBuf) -> FsResult<bool> {
+    Ok(self.stat_async(path).await.is_ok())
+  }
 
-  fn read_text_file_sync(
+  fn read_text_file_lossy_sync(
     &self,
     path: &Path,
     access_check: Option<AccessCheckCb>,
   ) -> FsResult<String> {
     let buf = self.read_file_sync(path, access_check)?;
-    String::from_utf8(buf).map_err(|err| {
-      std::io::Error::new(std::io::ErrorKind::InvalidData, err).into()
-    })
+    Ok(string_from_utf8_lossy(buf))
   }
-  async fn read_text_file_async<'a>(
+  async fn read_text_file_lossy_async<'a>(
     &'a self,
     path: PathBuf,
     access_check: Option<AccessCheckCb<'a>>,
   ) -> FsResult<String> {
     let buf = self.read_file_async(path, access_check).await?;
-    String::from_utf8(buf).map_err(|err| {
-      std::io::Error::new(std::io::ErrorKind::InvalidData, err).into()
-    })
+    Ok(string_from_utf8_lossy(buf))
+  }
+}
+
+// Like String::from_utf8_lossy but operates on owned values
+#[inline(always)]
+fn string_from_utf8_lossy(buf: Vec<u8>) -> String {
+  match String::from_utf8_lossy(&buf) {
+    // buf contained non-utf8 chars than have been patched
+    Cow::Owned(s) => s,
+    // SAFETY: if Borrowed then the buf only contains utf8 chars,
+    // we do this instead of .into_owned() to avoid copying the input buf
+    Cow::Borrowed(_) => unsafe { String::from_utf8_unchecked(buf) },
   }
 }

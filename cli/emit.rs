@@ -10,7 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::ModuleCodeString;
+use deno_core::ModuleCodeBytes;
 use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use deno_graph::Module;
@@ -18,7 +18,7 @@ use deno_graph::ModuleGraph;
 use std::sync::Arc;
 
 pub struct Emitter {
-  emit_cache: EmitCache,
+  emit_cache: Arc<EmitCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   transpile_and_emit_options:
     Arc<(deno_ast::TranspileOptions, deno_ast::EmitOptions)>,
@@ -28,13 +28,13 @@ pub struct Emitter {
 
 impl Emitter {
   pub fn new(
-    emit_cache: EmitCache,
+    emit_cache: Arc<EmitCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     transpile_options: deno_ast::TranspileOptions,
     emit_options: deno_ast::EmitOptions,
   ) -> Self {
     let transpile_and_emit_options_hash = {
-      let mut hasher = FastInsecureHasher::default();
+      let mut hasher = FastInsecureHasher::new_without_deno_version();
       hasher.write_hashable(&transpile_options);
       hasher.write_hashable(&emit_options);
       hasher.finish()
@@ -90,7 +90,7 @@ impl Emitter {
     &self,
     specifier: &ModuleSpecifier,
     source: &str,
-  ) -> Option<String> {
+  ) -> Option<Vec<u8>> {
     let source_hash = self.get_source_hash(source);
     self.emit_cache.get_emit_code(specifier, source_hash)
   }
@@ -100,7 +100,7 @@ impl Emitter {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     source: &Arc<str>,
-  ) -> Result<ModuleCodeString, AnyError> {
+  ) -> Result<ModuleCodeBytes, AnyError> {
     // Note: keep this in sync with the sync version below
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(specifier, source) {
@@ -139,7 +139,7 @@ impl Emitter {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
     source: &Arc<str>,
-  ) -> Result<ModuleCodeString, AnyError> {
+  ) -> Result<ModuleCodeBytes, AnyError> {
     // Note: keep this in sync with the async version above
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(specifier, source) {
@@ -172,23 +172,50 @@ impl Emitter {
       ModuleSpecifier::to_file_path(specifier).unwrap(),
     )
     .await?;
-    let source_arc: Arc<str> = source_code.into();
-    let parsed_source = self
-      .parsed_source_cache
-      .remove_or_parse_module(specifier, source_arc, media_type)?;
-    let mut options = self.transpile_and_emit_options.1.clone();
-    options.source_map = SourceMapOption::None;
-    let transpiled_source = parsed_source
-      .transpile(&self.transpile_and_emit_options.0, &options)?
-      .into_source();
-    Ok(transpiled_source.text)
+    match media_type {
+      MediaType::TypeScript
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Jsx
+      | MediaType::Tsx => {
+        let source_arc: Arc<str> = source_code.into();
+        let parsed_source = self
+          .parsed_source_cache
+          .remove_or_parse_module(specifier, source_arc, media_type)?;
+        // HMR doesn't work with embedded source maps for some reason, so set
+        // the option to not use them (though you should test this out because
+        // this statement is probably wrong)
+        let mut options = self.transpile_and_emit_options.1.clone();
+        options.source_map = SourceMapOption::None;
+        let transpiled_source = parsed_source
+          .transpile(&self.transpile_and_emit_options.0, &options)?
+          .into_source()
+          .into_string()?;
+        Ok(transpiled_source.text)
+      }
+      MediaType::JavaScript
+      | MediaType::Mjs
+      | MediaType::Cjs
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Json
+      | MediaType::Wasm
+      | MediaType::TsBuildInfo
+      | MediaType::SourceMap
+      | MediaType::Unknown => {
+        // clear this specifier from the parsed source cache as it's now out of date
+        self.parsed_source_cache.free(specifier);
+        Ok(source_code)
+      }
+    }
   }
 
   /// A hashing function that takes the source code and uses the global emit
   /// options then generates a string hash which can be stored to
   /// determine if the cached emit is valid or not.
   fn get_source_hash(&self, source_text: &str) -> u64 {
-    FastInsecureHasher::new()
+    FastInsecureHasher::new_without_deno_version() // stored in the transpile_and_emit_options_hash
       .write_str(source_text)
       .write_u64(self.transpile_and_emit_options_hash)
       .finish()
@@ -196,7 +223,7 @@ impl Emitter {
 }
 
 enum PreEmitResult {
-  Cached(ModuleCodeString),
+  Cached(ModuleCodeBytes),
   NotCached { source_hash: u64 },
 }
 
@@ -214,7 +241,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
     if let Some(emit_code) =
       self.0.emit_cache.get_emit_code(specifier, source_hash)
     {
-      PreEmitResult::Cached(emit_code.into())
+      PreEmitResult::Cached(emit_code.into_boxed_slice().into())
     } else {
       PreEmitResult::NotCached { source_hash }
     }
@@ -240,7 +267,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
     specifier: &ModuleSpecifier,
     transpile_result: TranspileResult,
     source_hash: u64,
-  ) -> ModuleCodeString {
+  ) -> ModuleCodeBytes {
     let transpiled_source = match transpile_result {
       TranspileResult::Owned(source) => source,
       TranspileResult::Cloned(source) => {
@@ -252,8 +279,8 @@ impl<'a> EmitParsedSourceHelper<'a> {
     self.0.emit_cache.set_emit_code(
       specifier,
       source_hash,
-      &transpiled_source.text,
+      &transpiled_source.source,
     );
-    transpiled_source.text.into()
+    transpiled_source.source.into_boxed_slice().into()
   }
 }

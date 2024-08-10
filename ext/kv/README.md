@@ -1,7 +1,7 @@
 # deno_kv
 
 This crate provides a key/value store for Deno. For an overview of Deno KV,
-please read the [manual](https://deno.land/manual/runtime/kv).
+please read the [manual](https://docs.deno.com/deploy/kv/manual).
 
 ## Storage Backends
 

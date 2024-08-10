@@ -9,11 +9,11 @@ use crate::factory::CliFactory;
 use crate::npm::CliNpmResolver;
 use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
-use crate::util::fs::FileCollector;
 use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
@@ -25,7 +25,6 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
-use deno_core::ModuleCodeString;
 use regex::Regex;
 use std::fs;
 use std::fs::File;
@@ -33,6 +32,7 @@ use std::io::BufWriter;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use text_lines::TextLines;
 use uuid::Uuid;
 
@@ -68,10 +68,14 @@ impl crate::worker::CoverageCollector for CoverageCollector {
 
     let script_coverages = self.take_precise_coverage().await?.result;
     for script_coverage in script_coverages {
-      // Filter out internal JS files from being included in coverage reports
+      // Filter out internal and http/https JS files and eval'd scripts
+      // from being included in coverage reports
       if script_coverage.url.starts_with("ext:")
         || script_coverage.url.starts_with("[ext:")
+        || script_coverage.url.starts_with("http:")
+        || script_coverage.url.starts_with("https:")
         || script_coverage.url.starts_with("node:")
+        || script_coverage.url.is_empty()
       {
         continue;
       }
@@ -397,11 +401,7 @@ fn collect_coverages(
         )?
       }
     }),
-    exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
-      initial_cwd,
-      &files.ignore,
-    )
-    .context("Invalid ignore pattern.")?,
+    exclude: PathOrPatternSet::new(vec![]),
   };
   let file_paths = FileCollector::new(|e| {
     e.path.extension().map(|ext| ext == "json").unwrap_or(false)
@@ -409,14 +409,30 @@ fn collect_coverages(
   .ignore_git_folder()
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(file_patterns)?;
+  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, file_patterns)?;
+
+  let coverage_patterns = FilePatterns {
+    base: initial_cwd.to_path_buf(),
+    include: None,
+    exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
+      initial_cwd,
+      &files.ignore,
+    )
+    .context("Invalid ignore pattern.")?,
+  };
 
   for file_path in file_paths {
     let new_coverage = fs::read_to_string(file_path.as_path())
       .map_err(AnyError::from)
-      .and_then(|json| serde_json::from_str(&json).map_err(AnyError::from))
+      .and_then(|json| {
+        serde_json::from_str::<cdp::ScriptCoverage>(&json)
+          .map_err(AnyError::from)
+      })
       .with_context(|| format!("Failed reading '{}'", file_path.display()))?;
-    coverages.push(new_coverage);
+    let url = Url::parse(&new_coverage.url)?;
+    if coverage_patterns.matches_specifier(&url) {
+      coverages.push(new_coverage);
+    }
   }
 
   coverages.sort_by_key(|k| k.url.clone());
@@ -458,17 +474,17 @@ fn filter_coverages(
 }
 
 pub async fn cover_files(
-  flags: Flags,
+  flags: Arc<Flags>,
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
   if coverage_flags.files.include.is_empty() {
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  let factory = CliFactory::from_flags(flags)?;
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let npm_resolver = factory.npm_resolver().await?;
   let file_fetcher = factory.file_fetcher()?;
-  let cli_options = factory.cli_options();
   let emitter = factory.emitter()?;
 
   assert!(!coverage_flags.files.include.is_empty());
@@ -549,7 +565,7 @@ pub async fn cover_files(
       | MediaType::Cjs
       | MediaType::Mjs
       | MediaType::Json => None,
-      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(String::new()),
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Some(Vec::new()),
       MediaType::TypeScript
       | MediaType::Jsx
       | MediaType::Mts
@@ -570,11 +586,13 @@ pub async fn cover_files(
         unreachable!()
       }
     };
-    let runtime_code: ModuleCodeString = transpiled_code
-      .map(|c| c.into())
-      .unwrap_or_else(|| original_source.clone().into());
+    let runtime_code: String = match transpiled_code {
+      Some(code) => String::from_utf8(code)
+        .with_context(|| format!("Failed decoding {}", file.specifier))?,
+      None => original_source.to_string(),
+    };
 
-    let source_map = source_map_from_code(&runtime_code);
+    let source_map = source_map_from_code(runtime_code.as_bytes());
     let coverage_report = generate_coverage_report(
       &script_coverage,
       runtime_code.as_str().to_owned(),

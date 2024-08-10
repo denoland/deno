@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-read --allow-env --allow-sys
+#!/usr/bin/env -S deno run --allow-read --allow-env --allow-sys --config=tests/config/deno.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 import { Node, Project, ts } from "npm:ts-morph@22.0.0";
 import { join, ROOT_PATH } from "./util.js";

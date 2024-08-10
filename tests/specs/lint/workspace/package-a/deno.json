@@ -1,0 +1,12 @@
+{
+  "lint": {
+    "rules": {
+      "include": [
+        "no-await-in-loop"
+      ],
+      "exclude": [
+        "no-unused-vars"
+      ]
+    }
+  }
+}

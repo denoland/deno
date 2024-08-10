@@ -135,7 +135,10 @@ declare namespace Deno {
 
   /** @category Network */
   export interface ListenOptions {
-    /** The port to listen on. */
+    /** The port to listen on.
+     *
+     * Set to `0` to listen on any available port.
+     */
     port: number;
     /** A literal IP address or host name that can be resolved to an IP address.
      *
@@ -149,7 +152,6 @@ declare namespace Deno {
   }
 
   /** @category Network */
-  // deno-lint-ignore no-empty-interface
   export interface TcpListenOptions extends ListenOptions {
   }
 

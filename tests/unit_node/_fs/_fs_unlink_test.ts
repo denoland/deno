@@ -1,5 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, fail } from "@std/assert/mod.ts";
+import { assertEquals, fail } from "@std/assert";
 import { existsSync } from "node:fs";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { unlink, unlinkSync } from "node:fs";

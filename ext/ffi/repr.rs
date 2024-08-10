@@ -112,11 +112,11 @@ unsafe extern "C" fn noop_deleter_callback(
 }
 
 #[op2(fast)]
+#[bigint]
 pub fn op_ffi_ptr_value<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
-  #[buffer] out: &mut [u32],
-) -> Result<(), AnyError>
+) -> Result<usize, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -124,18 +124,7 @@ where
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial(None)?;
 
-  let outptr = out.as_ptr() as *mut usize;
-  let length = out.len();
-  assert!(
-    length >= (std::mem::size_of::<usize>() / std::mem::size_of::<u32>())
-  );
-  assert_eq!(outptr as usize % std::mem::size_of::<usize>(), 0);
-
-  // SAFETY: Out buffer was asserted to be at least large enough to hold a usize, and properly aligned.
-  let out = unsafe { &mut *outptr };
-  *out = ptr as usize;
-
-  Ok(())
+  Ok(ptr as usize)
 }
 
 #[op2]
@@ -398,12 +387,14 @@ where
 }
 
 #[op2(fast)]
+#[bigint]
 pub fn op_ffi_read_u64<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
-  #[number] offset: isize,
-  #[buffer] out: &mut [u32],
-) -> Result<(), AnyError>
+  // Note: The representation of 64-bit integers is function-wide. We cannot
+  // choose to take this parameter as a number while returning a bigint.
+  #[bigint] offset: isize,
+) -> Result<u64, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
@@ -411,13 +402,6 @@ where
 
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial(None)?;
-
-  let outptr = out.as_mut_ptr() as *mut u64;
-
-  assert!(
-    out.len() >= (std::mem::size_of::<u64>() / std::mem::size_of::<u32>())
-  );
-  assert_eq!((outptr as usize % std::mem::size_of::<u64>()), 0);
 
   if ptr.is_null() {
     return Err(type_error("Invalid u64 pointer, pointer is null"));
@@ -427,32 +411,25 @@ where
   // SAFETY: ptr and offset are user provided.
     unsafe { ptr::read_unaligned::<u64>(ptr.offset(offset) as *const u64) };
 
-  // SAFETY: Length and alignment of out slice were asserted to be correct.
-  unsafe { *outptr = value };
-  Ok(())
+  Ok(value)
 }
 
 #[op2(fast)]
+#[bigint]
 pub fn op_ffi_read_i64<FP>(
   state: &mut OpState,
   ptr: *mut c_void,
-  #[number] offset: isize,
-  #[buffer] out: &mut [u32],
-) -> Result<(), AnyError>
+  // Note: The representation of 64-bit integers is function-wide. We cannot
+  // choose to take this parameter as a number while returning a bigint.
+  #[bigint] offset: isize,
+) -> Result<i64, AnyError>
 where
   FP: FfiPermissions + 'static,
 {
-  check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
+  check_unstable(state, "Deno.UnsafePointerView#getBigInt64");
 
   let permissions = state.borrow_mut::<FP>();
   permissions.check_partial(None)?;
-
-  let outptr = out.as_mut_ptr() as *mut i64;
-
-  assert!(
-    out.len() >= (std::mem::size_of::<i64>() / std::mem::size_of::<u32>())
-  );
-  assert_eq!((outptr as usize % std::mem::size_of::<i64>()), 0);
 
   if ptr.is_null() {
     return Err(type_error("Invalid i64 pointer, pointer is null"));
@@ -462,8 +439,7 @@ where
   // SAFETY: ptr and offset are user provided.
     unsafe { ptr::read_unaligned::<i64>(ptr.offset(offset) as *const i64) };
   // SAFETY: Length and alignment of out slice were asserted to be correct.
-  unsafe { *outptr = value };
-  Ok(())
+  Ok(value)
 }
 
 #[op2(fast)]

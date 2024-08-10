@@ -50,10 +50,10 @@ declare interface ImportMeta {
    * * Example:
    * ```
    * // Unix
-   * console.log(import.meta.dirname); // /home/alice/
+   * console.log(import.meta.dirname); // /home/alice
    *
    * // Windows
-   * console.log(import.meta.dirname); // C:\alice\
+   * console.log(import.meta.dirname); // C:\alice
    * ```
    */
   dirname?: string;
@@ -1465,6 +1465,23 @@ declare namespace Deno {
    * @category Runtime
    */
   export function exit(code?: number): never;
+
+  /** The exit code for the Deno process.
+   *
+   * If no exit code has been supplied, then Deno will assume a return code of `0`.
+   *
+   * When setting an exit code value, a number or non-NaN string must be provided,
+   * otherwise a TypeError will be thrown.
+   *
+   * ```ts
+   * console.log(Deno.exitCode); //-> 0
+   * Deno.exitCode = 1;
+   * console.log(Deno.exitCode); //-> 1
+   * ```
+   *
+   * @category Runtime
+   */
+  export var exitCode: number;
 
   /** An interface containing methods to interact with the process environment
    * variables.
@@ -4132,7 +4149,14 @@ declare namespace Deno {
    * @category File System */
   export interface FsEvent {
     /** The kind/type of the file system event. */
-    kind: "any" | "access" | "create" | "modify" | "remove" | "other";
+    kind:
+      | "any"
+      | "access"
+      | "create"
+      | "modify"
+      | "rename"
+      | "remove"
+      | "other";
     /** An array of paths that are associated with the file system event. */
     paths: string[];
     /** Any additional flags associated with the event. */
@@ -4219,7 +4243,7 @@ declare namespace Deno {
    * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
    * for migration instructions.
    *
-   * @category Sub Process */
+   * @category Subprocess */
   export interface RunOptions {
     /** Arguments to pass.
      *
@@ -4286,7 +4310,7 @@ declare namespace Deno {
    * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
    * for migration instructions.
    *
-   * @category Sub Process */
+   * @category Subprocess */
   export type ProcessStatus =
     | {
       success: true;
@@ -4307,7 +4331,7 @@ declare namespace Deno {
    * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
    * for migration instructions.
    *
-   * @category Sub Process */
+   * @category Subprocess */
   export class Process<T extends RunOptions = RunOptions> {
     /** The resource ID of the sub-process. */
     readonly rid: number;
@@ -4399,6 +4423,8 @@ declare namespace Deno {
     | "SIGINFO"
     | "SIGINT"
     | "SIGIO"
+    | "SIGPOLL"
+    | "SIGUNUSED"
     | "SIGKILL"
     | "SIGPIPE"
     | "SIGPROF"
@@ -4511,7 +4537,7 @@ declare namespace Deno {
    * for migration instructions.
    *
    * @tags allow-run
-   * @category Sub Process
+   * @category Subprocess
    */
   export function run<T extends RunOptions = RunOptions>(opt: T): Process<T>;
 
@@ -4522,6 +4548,9 @@ declare namespace Deno {
    *
    * If `stdin` is set to `"piped"`, the `stdin` {@linkcode WritableStream}
    * needs to be closed manually.
+   *
+   * `Command` acts as a builder. Each call to {@linkcode Command.spawn} or
+   * {@linkcode Command.output} will spawn a new subprocess.
    *
    * @example Spawn a subprocess and pipe the output to a file
    *
@@ -4577,15 +4606,13 @@ declare namespace Deno {
    * ```
    *
    * @tags allow-run
-   * @category Sub Process
+   * @category Subprocess
    */
   export class Command {
     constructor(command: string | URL, options?: CommandOptions);
     /**
      * Executes the {@linkcode Deno.Command}, waiting for it to finish and
      * collecting all of its output.
-     * If `spawn()` was called, calling this function will collect the remaining
-     * output.
      *
      * Will throw an error if `stdin: "piped"` is set.
      *
@@ -4613,7 +4640,7 @@ declare namespace Deno {
    * The interface for handling a child process returned from
    * {@linkcode Deno.Command.spawn}.
    *
-   * @category Sub Process
+   * @category Subprocess
    */
   export class ChildProcess implements AsyncDisposable {
     get stdin(): WritableStream<Uint8Array>;
@@ -4647,7 +4674,7 @@ declare namespace Deno {
   /**
    * Options which can be set when calling {@linkcode Deno.Command}.
    *
-   * @category Sub Process
+   * @category Subprocess
    */
   export interface CommandOptions {
     /** Arguments to pass to the process. */
@@ -4709,7 +4736,7 @@ declare namespace Deno {
   }
 
   /**
-   * @category Sub Process
+   * @category Subprocess
    */
   export interface CommandStatus {
     /** If the child process exits with a 0 status code, `success` will be set
@@ -4726,7 +4753,7 @@ declare namespace Deno {
    * {@linkcode Deno.Command.outputSync} which represents the result of spawning the
    * child process.
    *
-   * @category Sub Process
+   * @category Subprocess
    */
   export interface CommandOutput extends CommandStatus {
     /** The buffered output from the child process' `stdout`. */
@@ -4949,12 +4976,17 @@ declare namespace Deno {
       | "osUptime"
       | "uid"
       | "gid"
-      | "cpus";
+      | "username"
+      | "cpus"
+      | "homedir"
+      | "statfs"
+      | "getPriority"
+      | "setPriority";
   }
 
   /** The permission descriptor for the `allow-ffi` and `deny-ffi` permissions, which controls
    * access to loading _foreign_ code and interfacing with it via the
-   * [Foreign Function Interface API](https://deno.land/manual/runtime/ffi_api)
+   * [Foreign Function Interface API](https://docs.deno.com/runtime/manual/runtime/ffi_api)
    * available in Deno.  The option `path` allows scoping the permission to a
    * specific path on the host.
    *
@@ -5797,7 +5829,7 @@ declare namespace Deno {
    * Requires `allow-run` permission.
    *
    * @tags allow-run
-   * @category Sub Process
+   * @category Subprocess
    */
   export function kill(pid: number, signo?: Signal): void;
 
@@ -6231,12 +6263,43 @@ declare namespace Deno {
     info: ServeHandlerInfo,
   ) => Response | Promise<Response>;
 
+  /** Interface that module run with `deno serve` subcommand must conform to.
+   *
+   * To ensure your code is type-checked properly, make sure to add `satisfies Deno.ServeDefaultExport`
+   * to the `export default { ... }` like so:
+   *
+   * ```ts
+   * export default {
+   *   fetch(req) {
+   *     return new Response("Hello world");
+   *   }
+   * } satisfies Deno.ServeDefaultExport;
+   * ```
+   *
+   * @category HTTP Server
+   */
+  export interface ServeDefaultExport {
+    /** A handler for HTTP requests. Consumes a request and returns a response.
+     *
+     * If a handler throws, the server calling the handler will assume the impact
+     * of the error is isolated to the individual request. It will catch the error
+     * and if necessary will close the underlying connection.
+     *
+     * @category HTTP Server
+     */
+    fetch: (
+      request: Request,
+    ) => Response | Promise<Response>;
+  }
+
   /** Options which can be set when calling {@linkcode Deno.serve}.
    *
    * @category HTTP Server
    */
   export interface ServeOptions {
     /** The port to listen on.
+     *
+     * Set to `0` to listen on any available port.
      *
      * @default {8000} */
     port?: number;

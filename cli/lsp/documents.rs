@@ -33,7 +33,9 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
+use indexmap::IndexSet;
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -142,6 +144,20 @@ impl AssetOrDocument {
     }
   }
 
+  pub fn file_referrer(&self) -> Option<&ModuleSpecifier> {
+    match self {
+      AssetOrDocument::Asset(_) => None,
+      AssetOrDocument::Document(doc) => doc.file_referrer(),
+    }
+  }
+
+  pub fn scope(&self) -> Option<&ModuleSpecifier> {
+    match self {
+      AssetOrDocument::Asset(asset_doc) => Some(asset_doc.specifier()),
+      AssetOrDocument::Document(doc) => doc.scope(),
+    }
+  }
+
   pub fn maybe_semantic_tokens(&self) -> Option<lsp::SemanticTokens> {
     match self {
       AssetOrDocument::Asset(_) => None,
@@ -155,7 +171,7 @@ impl AssetOrDocument {
   pub fn text(&self) -> Arc<str> {
     match self {
       AssetOrDocument::Asset(a) => a.text(),
-      AssetOrDocument::Document(d) => d.text_info.text(),
+      AssetOrDocument::Document(d) => d.text.clone(),
     }
   }
 
@@ -191,7 +207,7 @@ impl AssetOrDocument {
 
   pub fn maybe_parsed_source(
     &self,
-  ) -> Option<Result<deno_ast::ParsedSource, deno_ast::ParseDiagnostic>> {
+  ) -> Option<&Result<deno_ast::ParsedSource, deno_ast::ParseDiagnostic>> {
     self.document().and_then(|d| d.maybe_parsed_source())
   }
 
@@ -226,7 +242,7 @@ fn get_maybe_test_module_fut(
   maybe_parsed_source: Option<&ParsedSourceResult>,
   config: &Config,
 ) -> Option<TestModuleFut> {
-  if !config.client_capabilities.testing_api {
+  if !config.testing_api_capable() {
     return None;
   }
   let parsed_source = maybe_parsed_source?.as_ref().ok()?.clone();
@@ -243,7 +259,7 @@ fn get_maybe_test_module_fut(
   let handle = tokio::task::spawn_blocking(move || {
     let mut collector = TestCollector::new(
       parsed_source.specifier().clone(),
-      parsed_source.text_info().clone(),
+      parsed_source.text_info_lazy().clone(),
     );
     parsed_source.module().visit_with(&mut collector);
     Arc::new(collector.take())
@@ -283,7 +299,8 @@ pub struct Document {
   open_data: Option<DocumentOpenData>,
   resolver: Arc<LspResolver>,
   specifier: ModuleSpecifier,
-  text_info: SourceTextInfo,
+  text: Arc<str>,
+  text_info_cell: once_cell::sync::OnceCell<SourceTextInfo>,
 }
 
 impl Document {
@@ -291,7 +308,7 @@ impl Document {
   #[allow(clippy::too_many_arguments)]
   fn new(
     specifier: ModuleSpecifier,
-    content: Arc<str>,
+    text: Arc<str>,
     maybe_lsp_version: Option<i32>,
     maybe_language_id: Option<LanguageId>,
     maybe_headers: Option<HashMap<String, String>>,
@@ -300,7 +317,10 @@ impl Document {
     cache: &Arc<LspCache>,
     file_referrer: Option<ModuleSpecifier>,
   ) -> Arc<Self> {
-    let text_info = SourceTextInfo::new(content);
+    let file_referrer = Some(&specifier)
+      .filter(|s| cache.is_valid_file_referrer(s))
+      .cloned()
+      .or(file_referrer);
     let media_type = resolve_media_type(
       &specifier,
       maybe_headers.as_ref(),
@@ -310,8 +330,8 @@ impl Document {
     let (maybe_parsed_source, maybe_module) =
       if media_type_is_diagnosable(media_type) {
         parse_and_analyze_module(
-          &specifier,
-          text_info.clone(),
+          specifier.clone(),
+          text.clone(),
           maybe_headers.as_ref(),
           media_type,
           file_referrer.as_ref(),
@@ -328,15 +348,19 @@ impl Document {
     let maybe_types_dependency = maybe_module
       .as_ref()
       .and_then(|m| Some(Arc::new(m.maybe_types_dependency.clone()?)));
-    let line_index = Arc::new(LineIndex::new(text_info.text_str()));
+    let line_index = Arc::new(LineIndex::new(text.as_ref()));
     let maybe_test_module_fut =
       get_maybe_test_module_fut(maybe_parsed_source.as_ref(), &config);
     Arc::new(Self {
       config,
       dependencies,
-      file_referrer: file_referrer.filter(|_| specifier.scheme() != "file"),
+      maybe_fs_version: calculate_fs_version(
+        cache,
+        &specifier,
+        file_referrer.as_ref(),
+      ),
+      file_referrer,
       maybe_types_dependency,
-      maybe_fs_version: calculate_fs_version(cache, &specifier),
       line_index,
       maybe_language_id,
       maybe_headers,
@@ -350,7 +374,8 @@ impl Document {
       }),
       resolver,
       specifier,
-      text_info,
+      text,
+      text_info_cell: once_cell::sync::OnceCell::new(),
     })
   }
 
@@ -371,9 +396,9 @@ impl Document {
     let maybe_test_module_fut;
     if media_type != self.media_type {
       let parsed_source_result =
-        parse_source(&self.specifier, self.text_info.clone(), media_type);
+        parse_source(self.specifier.clone(), self.text.clone(), media_type);
       let maybe_module = analyze_module(
-        &self.specifier,
+        self.specifier.clone(),
         &parsed_source_result,
         self.maybe_headers.as_ref(),
         self.file_referrer.as_ref(),
@@ -394,7 +419,7 @@ impl Document {
       let graph_resolver =
         resolver.as_graph_resolver(self.file_referrer.as_ref());
       let npm_resolver =
-        resolver.as_graph_npm_resolver(self.file_referrer.as_ref());
+        resolver.create_graph_npm_resolver(self.file_referrer.as_ref());
       dependencies = Arc::new(
         self
           .dependencies
@@ -406,7 +431,7 @@ impl Document {
                 s,
                 &CliJsrUrlProvider,
                 Some(graph_resolver),
-                Some(npm_resolver),
+                Some(&npm_resolver),
               ),
             )
           })
@@ -416,10 +441,10 @@ impl Document {
         Arc::new(d.with_new_resolver(
           &CliJsrUrlProvider,
           Some(graph_resolver),
-          Some(npm_resolver),
+          Some(&npm_resolver),
         ))
       });
-      maybe_parsed_source = self.maybe_parsed_source();
+      maybe_parsed_source = self.maybe_parsed_source().cloned();
       maybe_test_module_fut = self
         .maybe_test_module_fut
         .clone()
@@ -447,7 +472,8 @@ impl Document {
       }),
       resolver,
       specifier: self.specifier.clone(),
-      text_info: self.text_info.clone(),
+      text: self.text.clone(),
+      text_info_cell: once_cell::sync::OnceCell::new(),
     })
   }
 
@@ -456,7 +482,7 @@ impl Document {
     version: i32,
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Arc<Self>, AnyError> {
-    let mut content = self.text_info.text_str().to_string();
+    let mut content = self.text.to_string();
     let mut line_index = self.line_index.clone();
     let mut index_valid = IndexValid::All;
     for change in changes {
@@ -472,7 +498,7 @@ impl Document {
         index_valid = IndexValid::UpTo(0);
       }
     }
-    let text_info = SourceTextInfo::from_string(content);
+    let text: Arc<str> = content.into();
     let media_type = self.media_type;
     let (maybe_parsed_source, maybe_module) = if self
       .maybe_language_id
@@ -481,8 +507,8 @@ impl Document {
       .unwrap_or(false)
     {
       parse_and_analyze_module(
-        &self.specifier,
-        text_info.clone(),
+        self.specifier.clone(),
+        text.clone(),
         self.maybe_headers.as_ref(),
         media_type,
         self.file_referrer.as_ref(),
@@ -503,7 +529,7 @@ impl Document {
     let line_index = if index_valid == IndexValid::All {
       line_index
     } else {
-      Arc::new(LineIndex::new(text_info.text_str()))
+      Arc::new(LineIndex::new(text.as_ref()))
     };
     let maybe_test_module_fut =
       get_maybe_test_module_fut(maybe_parsed_source.as_ref(), &self.config);
@@ -515,7 +541,8 @@ impl Document {
       maybe_language_id: self.maybe_language_id,
       dependencies,
       maybe_types_dependency,
-      text_info,
+      text,
+      text_info_cell: once_cell::sync::OnceCell::new(),
       line_index,
       maybe_headers: self.maybe_headers.clone(),
       maybe_navigation_tree: Mutex::new(None),
@@ -535,11 +562,16 @@ impl Document {
       config: self.config.clone(),
       specifier: self.specifier.clone(),
       file_referrer: self.file_referrer.clone(),
-      maybe_fs_version: calculate_fs_version(cache, &self.specifier),
+      maybe_fs_version: calculate_fs_version(
+        cache,
+        &self.specifier,
+        self.file_referrer.as_ref(),
+      ),
       maybe_language_id: self.maybe_language_id,
       dependencies: self.dependencies.clone(),
       maybe_types_dependency: self.maybe_types_dependency.clone(),
-      text_info: self.text_info.clone(),
+      text: self.text.clone(),
+      text_info_cell: once_cell::sync::OnceCell::new(),
       line_index: self.line_index.clone(),
       maybe_headers: self.maybe_headers.clone(),
       maybe_navigation_tree: Mutex::new(
@@ -557,11 +589,16 @@ impl Document {
       config: self.config.clone(),
       specifier: self.specifier.clone(),
       file_referrer: self.file_referrer.clone(),
-      maybe_fs_version: calculate_fs_version(cache, &self.specifier),
+      maybe_fs_version: calculate_fs_version(
+        cache,
+        &self.specifier,
+        self.file_referrer.as_ref(),
+      ),
       maybe_language_id: self.maybe_language_id,
       dependencies: self.dependencies.clone(),
       maybe_types_dependency: self.maybe_types_dependency.clone(),
-      text_info: self.text_info.clone(),
+      text: self.text.clone(),
+      text_info_cell: once_cell::sync::OnceCell::new(),
       line_index: self.line_index.clone(),
       maybe_headers: self.maybe_headers.clone(),
       maybe_navigation_tree: Mutex::new(
@@ -582,12 +619,29 @@ impl Document {
     self.file_referrer.as_ref()
   }
 
-  pub fn content(&self) -> Arc<str> {
-    self.text_info.text()
+  pub fn scope(&self) -> Option<&ModuleSpecifier> {
+    self
+      .file_referrer
+      .as_ref()
+      .and_then(|r| self.config.tree.scope_for_specifier(r))
   }
 
-  pub fn text_info(&self) -> SourceTextInfo {
-    self.text_info.clone()
+  pub fn content(&self) -> &Arc<str> {
+    &self.text
+  }
+
+  pub fn text_info(&self) -> &SourceTextInfo {
+    // try to get the text info from the parsed source and if
+    // not then create one in the cell
+    self
+      .maybe_parsed_source()
+      .and_then(|p| p.as_ref().ok())
+      .map(|p| p.text_info_lazy())
+      .unwrap_or_else(|| {
+        self
+          .text_info_cell
+          .get_or_init(|| SourceTextInfo::new(self.text.clone()))
+      })
   }
 
   pub fn line_index(&self) -> Arc<LineIndex> {
@@ -644,8 +698,8 @@ impl Document {
 
   pub fn maybe_parsed_source(
     &self,
-  ) -> Option<Result<deno_ast::ParsedSource, deno_ast::ParseDiagnostic>> {
-    self.open_data.as_ref()?.maybe_parsed_source.clone()
+  ) -> Option<&Result<deno_ast::ParsedSource, deno_ast::ParseDiagnostic>> {
+    self.open_data.as_ref()?.maybe_parsed_source.as_ref()
   }
 
   pub async fn maybe_test_module(&self) -> Option<Arc<TestModule>> {
@@ -749,7 +803,10 @@ impl FileSystemDocuments {
     cache: &Arc<LspCache>,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<Arc<Document>> {
-    let new_fs_version = calculate_fs_version(cache, specifier);
+    let file_referrer = Some(specifier)
+      .filter(|s| cache.is_valid_file_referrer(s))
+      .or(file_referrer);
+    let new_fs_version = calculate_fs_version(cache, specifier, file_referrer);
     let old_doc = self.docs.get(specifier).map(|v| v.value().clone());
     let dirty = match &old_doc {
       None => true,
@@ -813,7 +870,7 @@ impl FileSystemDocuments {
         file_referrer.cloned(),
       )
     } else {
-      let http_cache = cache.root_vendor_or_global();
+      let http_cache = cache.for_specifier(file_referrer);
       let cache_key = http_cache.cache_item_key(specifier).ok()?;
       let bytes = http_cache
         .read_file_bytes(&cache_key, None, LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY)
@@ -888,10 +945,11 @@ pub struct Documents {
   /// settings.
   resolver: Arc<LspResolver>,
   /// The npm package requirements found in npm specifiers.
-  npm_specifier_reqs: Arc<Vec<PackageReq>>,
-  /// Gets if any document had a node: specifier such that a @types/node package
-  /// should be injected.
-  has_injected_types_node_package: bool,
+  npm_reqs_by_scope:
+    Arc<BTreeMap<Option<ModuleSpecifier>, BTreeSet<PackageReq>>>,
+  /// Config scopes that contain a node: specifier such that a @types/node
+  /// package should be injected.
+  scopes_with_node_specifier: Arc<HashSet<Option<ModuleSpecifier>>>,
 }
 
 impl Documents {
@@ -993,13 +1051,16 @@ impl Documents {
     &self,
     specifier: &'a ModuleSpecifier,
   ) -> Option<Cow<'a, ModuleSpecifier>> {
-    if specifier.scheme() == "file" {
-      Some(Cow::Borrowed(specifier))
-    } else {
-      self
-        .get(specifier)
-        .and_then(|d| d.file_referrer().cloned().map(Cow::Owned))
+    if self.is_valid_file_referrer(specifier) {
+      return Some(Cow::Borrowed(specifier));
     }
+    self
+      .get(specifier)
+      .and_then(|d| d.file_referrer().cloned().map(Cow::Owned))
+  }
+
+  pub fn is_valid_file_referrer(&self, specifier: &ModuleSpecifier) -> bool {
+    self.cache.is_valid_file_referrer(specifier)
   }
 
   /// Return `true` if the provided specifier can be resolved to a document,
@@ -1041,7 +1102,7 @@ impl Documents {
       Cow::Owned(
         self
           .resolver
-          .jsr_to_registry_url(&jsr_req_ref, file_referrer)?,
+          .jsr_to_resource_url(&jsr_req_ref, file_referrer)?,
       )
     } else {
       Cow::Borrowed(specifier)
@@ -1071,23 +1132,24 @@ impl Documents {
           .map(|p| p.is_file())
           .unwrap_or(false);
       }
-      if self.cache.root_vendor_or_global().contains(&specifier) {
+      if self.cache.for_specifier(file_referrer).contains(&specifier) {
         return true;
       }
     }
     false
   }
 
-  /// Returns a collection of npm package requirements.
-  pub fn npm_package_reqs(&mut self) -> Arc<Vec<PackageReq>> {
+  pub fn npm_reqs_by_scope(
+    &mut self,
+  ) -> Arc<BTreeMap<Option<ModuleSpecifier>, BTreeSet<PackageReq>>> {
     self.calculate_npm_reqs_if_dirty();
-    self.npm_specifier_reqs.clone()
+    self.npm_reqs_by_scope.clone()
   }
 
-  /// Returns if a @types/node package was injected into the npm
-  /// resolver based on the state of the documents.
-  pub fn has_injected_types_node_package(&self) -> bool {
-    self.has_injected_types_node_package
+  pub fn scopes_with_node_specifier(
+    &self,
+  ) -> &Arc<HashSet<Option<ModuleSpecifier>>> {
+    &self.scopes_with_node_specifier
   }
 
   /// Return a document for the specifier.
@@ -1184,9 +1246,13 @@ impl Documents {
     &self,
     specifiers: &[String],
     referrer: &ModuleSpecifier,
+    file_referrer: Option<&ModuleSpecifier>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
     let document = self.get(referrer);
-    let file_referrer = document.as_ref().and_then(|d| d.file_referrer());
+    let file_referrer = document
+      .as_ref()
+      .and_then(|d| d.file_referrer())
+      .or(file_referrer);
     let dependencies = document.as_ref().map(|d| d.dependencies());
     let mut results = Vec::new();
     for specifier in specifiers {
@@ -1243,7 +1309,7 @@ impl Documents {
     config: &Config,
     resolver: &Arc<LspResolver>,
     cache: &LspCache,
-    workspace_files: &BTreeSet<ModuleSpecifier>,
+    workspace_files: &IndexSet<ModuleSpecifier>,
   ) {
     self.config = Arc::new(config.clone());
     self.cache = Arc::new(cache.clone());
@@ -1307,31 +1373,33 @@ impl Documents {
   /// document and the value is a set of specifiers that depend on that
   /// document.
   fn calculate_npm_reqs_if_dirty(&mut self) {
-    let mut npm_reqs = HashSet::new();
-    let mut has_node_builtin_specifier = false;
+    let mut npm_reqs_by_scope: BTreeMap<_, BTreeSet<_>> = Default::default();
+    let mut scopes_with_specifier = HashSet::new();
     let is_fs_docs_dirty = self.file_system_docs.set_dirty(false);
     if !is_fs_docs_dirty && !self.dirty {
       return;
     }
     let mut visit_doc = |doc: &Arc<Document>| {
+      let scope = doc.scope();
+      let reqs = npm_reqs_by_scope.entry(scope.cloned()).or_default();
       for dependency in doc.dependencies().values() {
         if let Some(dep) = dependency.get_code() {
           if dep.scheme() == "node" {
-            has_node_builtin_specifier = true;
+            scopes_with_specifier.insert(scope.cloned());
           }
           if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-            npm_reqs.insert(reference.into_inner().req);
+            reqs.insert(reference.into_inner().req);
           }
         }
         if let Some(dep) = dependency.get_type() {
           if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-            npm_reqs.insert(reference.into_inner().req);
+            reqs.insert(reference.into_inner().req);
           }
         }
       }
       if let Some(dep) = doc.maybe_types_dependency().maybe_specifier() {
         if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-          npm_reqs.insert(reference.into_inner().req);
+          reqs.insert(reference.into_inner().req);
         }
       }
     };
@@ -1343,12 +1411,15 @@ impl Documents {
     }
 
     // fill the reqs from the lockfile
-    if let Some(lockfile) = self.config.tree.root_lockfile() {
-      let lockfile = lockfile.lock();
-      for key in lockfile.content.packages.specifiers.keys() {
-        if let Some(key) = key.strip_prefix("npm:") {
-          if let Ok(req) = PackageReq::from_str(key) {
-            npm_reqs.insert(req);
+    for (scope, config_data) in self.config.tree.data_by_scope().as_ref() {
+      if let Some(lockfile) = config_data.lockfile.as_ref() {
+        let reqs = npm_reqs_by_scope.entry(Some(scope.clone())).or_default();
+        let lockfile = lockfile.lock();
+        for key in lockfile.content.packages.specifiers.keys() {
+          if let Some(key) = key.strip_prefix("npm:") {
+            if let Ok(req) = PackageReq::from_str(key) {
+              reqs.insert(req);
+            }
           }
         }
       }
@@ -1357,17 +1428,15 @@ impl Documents {
     // Ensure a @types/node package exists when any module uses a node: specifier.
     // Unlike on the command line, here we just add @types/node to the npm package
     // requirements since this won't end up in the lockfile.
-    self.has_injected_types_node_package = has_node_builtin_specifier
-      && !npm_reqs.iter().any(|r| r.name == "@types/node");
-    if self.has_injected_types_node_package {
-      npm_reqs.insert(PackageReq::from_str("@types/node").unwrap());
+    for scope in &scopes_with_specifier {
+      let reqs = npm_reqs_by_scope.entry(scope.clone()).or_default();
+      if !reqs.iter().any(|r| r.name == "@types/node") {
+        reqs.insert(PackageReq::from_str("@types/node").unwrap());
+      }
     }
 
-    self.npm_specifier_reqs = Arc::new({
-      let mut reqs = npm_reqs.into_iter().collect::<Vec<_>>();
-      reqs.sort();
-      reqs
-    });
+    self.npm_reqs_by_scope = Arc::new(npm_reqs_by_scope);
+    self.scopes_with_node_specifier = Arc::new(scopes_with_specifier);
     self.dirty = false;
   }
 
@@ -1385,20 +1454,25 @@ impl Documents {
         return Some((specifier.clone(), MediaType::Dts));
       }
     }
-
-    if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
-      return self
-        .resolver
-        .npm_to_file_url(&npm_ref, referrer, file_referrer);
+    let mut specifier = specifier.clone();
+    let mut media_type = None;
+    if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&specifier) {
+      let (s, mt) =
+        self
+          .resolver
+          .npm_to_file_url(&npm_ref, referrer, file_referrer)?;
+      specifier = s;
+      media_type = Some(mt);
     }
-    let Some(doc) = self.get_or_load(specifier, referrer) else {
-      return Some((specifier.clone(), MediaType::from_specifier(specifier)));
+    let Some(doc) = self.get_or_load(&specifier, referrer) else {
+      let media_type =
+        media_type.unwrap_or_else(|| MediaType::from_specifier(&specifier));
+      return Some((specifier, media_type));
     };
     if let Some(types) = doc.maybe_types_dependency().maybe_specifier() {
-      self.resolve_dependency(types, specifier, file_referrer)
+      self.resolve_dependency(types, &specifier, file_referrer)
     } else {
-      let media_type = doc.media_type();
-      Some((doc.specifier().clone(), media_type))
+      Some((doc.specifier().clone(), doc.media_type()))
     }
   }
 }
@@ -1418,7 +1492,7 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
       if let Some(doc) = self.open_docs.get(specifier) {
         return Some(
           future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
-            content: Arc::from(doc.content()),
+            content: Arc::from(doc.content().clone()),
             specifier: doc.specifier().clone(),
             maybe_headers: None,
           })))
@@ -1455,14 +1529,14 @@ impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
 }
 
 fn parse_and_analyze_module(
-  specifier: &ModuleSpecifier,
-  text_info: SourceTextInfo,
+  specifier: ModuleSpecifier,
+  text: Arc<str>,
   maybe_headers: Option<&HashMap<String, String>>,
   media_type: MediaType,
   file_referrer: Option<&ModuleSpecifier>,
   resolver: &LspResolver,
 ) -> (Option<ParsedSourceResult>, Option<ModuleResult>) {
-  let parsed_source_result = parse_source(specifier, text_info, media_type);
+  let parsed_source_result = parse_source(specifier.clone(), text, media_type);
   let module_result = analyze_module(
     specifier,
     &parsed_source_result,
@@ -1474,13 +1548,13 @@ fn parse_and_analyze_module(
 }
 
 fn parse_source(
-  specifier: &ModuleSpecifier,
-  text_info: SourceTextInfo,
+  specifier: ModuleSpecifier,
+  text: Arc<str>,
   media_type: MediaType,
 ) -> ParsedSourceResult {
   deno_ast::parse_module(deno_ast::ParseParams {
-    specifier: specifier.clone(),
-    text_info,
+    specifier,
+    text,
     media_type,
     capture_tokens: true,
     scope_analysis: true,
@@ -1489,29 +1563,32 @@ fn parse_source(
 }
 
 fn analyze_module(
-  specifier: &ModuleSpecifier,
+  specifier: ModuleSpecifier,
   parsed_source_result: &ParsedSourceResult,
   maybe_headers: Option<&HashMap<String, String>>,
   file_referrer: Option<&ModuleSpecifier>,
   resolver: &LspResolver,
 ) -> ModuleResult {
   match parsed_source_result {
-    Ok(parsed_source) => Ok(deno_graph::parse_module_from_ast(
-      deno_graph::ParseModuleFromAstOptions {
-        graph_kind: deno_graph::GraphKind::TypesOnly,
-        specifier,
-        maybe_headers,
-        parsed_source,
-        // use a null file system because there's no need to bother resolving
-        // dynamic imports like import(`./dir/${something}`) in the LSP
-        file_system: &deno_graph::source::NullFileSystem,
-        jsr_url_provider: &CliJsrUrlProvider,
-        maybe_resolver: Some(resolver.as_graph_resolver(file_referrer)),
-        maybe_npm_resolver: Some(resolver.as_graph_npm_resolver(file_referrer)),
-      },
-    )),
+    Ok(parsed_source) => {
+      let npm_resolver = resolver.create_graph_npm_resolver(file_referrer);
+      Ok(deno_graph::parse_module_from_ast(
+        deno_graph::ParseModuleFromAstOptions {
+          graph_kind: deno_graph::GraphKind::TypesOnly,
+          specifier,
+          maybe_headers,
+          parsed_source,
+          // use a null file system because there's no need to bother resolving
+          // dynamic imports like import(`./dir/${something}`) in the LSP
+          file_system: &deno_graph::source::NullFileSystem,
+          jsr_url_provider: &CliJsrUrlProvider,
+          maybe_resolver: Some(resolver.as_graph_resolver(file_referrer)),
+          maybe_npm_resolver: Some(&npm_resolver),
+        },
+      ))
+    }
     Err(err) => Err(deno_graph::ModuleGraphError::ModuleError(
-      deno_graph::ModuleError::ParseErr(specifier.clone(), err.clone()),
+      deno_graph::ModuleError::ParseErr(specifier, err.clone()),
     )),
   }
 }
@@ -1520,7 +1597,9 @@ fn analyze_module(
 mod tests {
   use super::*;
   use crate::lsp::cache::LspCache;
-  use deno_config::ConfigFile;
+
+  use deno_config::deno_json::ConfigFile;
+  use deno_config::deno_json::ConfigParseOptions;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
@@ -1528,11 +1607,11 @@ mod tests {
 
   async fn setup() -> (Documents, LspCache, TempDir) {
     let temp_dir = TempDir::new();
-    let cache = LspCache::new(Some(temp_dir.uri()));
+    temp_dir.create_dir_all(".deno_dir");
+    let cache = LspCache::new(Some(temp_dir.uri().join(".deno_dir").unwrap()));
     let config = Config::default();
-    let resolver = LspResolver::default()
-      .with_new_config(&config, &cache, None)
-      .await;
+    let resolver =
+      Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let mut documents = Documents::default();
     documents.update_config(&config, &resolver, &cache, &Default::default());
     (documents, cache, temp_dir)
@@ -1599,7 +1678,7 @@ console.log(b);
       )
       .unwrap();
     assert_eq!(
-      &*documents.get(&specifier).unwrap().content(),
+      documents.get(&specifier).unwrap().content().as_ref(),
       r#"import * as b from "./b.ts";
 console.log(b, "hello deno");
 "#
@@ -1659,7 +1738,7 @@ console.log(b, "hello deno");
       [&file1_specifier, &file2_specifier, &file3_specifier]
         .into_iter()
         .cloned()
-        .collect::<BTreeSet<_>>();
+        .collect::<IndexSet<_>>();
 
     // set the initial import map and point to file 2
     {
@@ -1674,15 +1753,14 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &deno_config::ParseOptions::default(),
+            &ConfigParseOptions::default(),
           )
           .unwrap(),
         )
         .await;
 
-      let resolver = LspResolver::default()
-        .with_new_config(&config, &cache, None)
-        .await;
+      let resolver =
+        Arc::new(LspResolver::from_config(&config, &cache, None).await);
       documents.update_config(&config, &resolver, &cache, &workspace_files);
 
       // open the document
@@ -1719,15 +1797,14 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &deno_config::ParseOptions::default(),
+            &ConfigParseOptions::default(),
           )
           .unwrap(),
         )
         .await;
 
-      let resolver = LspResolver::default()
-        .with_new_config(&config, &cache, None)
-        .await;
+      let resolver =
+        Arc::new(LspResolver::from_config(&config, &cache, None).await);
       documents.update_config(&config, &resolver, &cache, &workspace_files);
 
       // check the document's dependencies

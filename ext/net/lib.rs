@@ -30,6 +30,35 @@ pub trait NetPermissions {
     -> Result<(), AnyError>;
 }
 
+impl NetPermissions for deno_permissions::PermissionsContainer {
+  #[inline(always)]
+  fn check_net<T: AsRef<str>>(
+    &mut self,
+    host: &(T, Option<u16>),
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_net(self, host, api_name)
+  }
+
+  #[inline(always)]
+  fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_read(self, path, api_name)
+  }
+
+  #[inline(always)]
+  fn check_write(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    deno_permissions::PermissionsContainer::check_write(self, path, api_name)
+  }
+}
+
 /// Helper for checking unstable features. Used for sync ops.
 fn check_unstable(state: &OpState, api_name: &str) {
   // TODO(bartlomieju): replace with `state.feature_checker.check_or_exit`
@@ -129,14 +158,28 @@ mod ops_unix {
   macro_rules! stub_op {
     ($name:ident) => {
       #[op2(fast)]
-      pub fn $name() {
-        panic!("Unsupported on non-unix platforms")
+      pub fn $name() -> Result<(), std::io::Error> {
+        let error_msg = format!(
+          "Operation `{:?}` not supported on non-unix platforms.",
+          stringify!($name)
+        );
+        Err(std::io::Error::new(
+          std::io::ErrorKind::Unsupported,
+          error_msg,
+        ))
       }
     };
     ($name:ident<P>) => {
       #[op2(fast)]
-      pub fn $name<P: NetPermissions>() {
-        panic!("Unsupported on non-unix platforms")
+      pub fn $name<P: NetPermissions>() -> Result<(), std::io::Error> {
+        let error_msg = format!(
+          "Operation `{:?}` not supported on non-unix platforms.",
+          stringify!($name)
+        );
+        Err(std::io::Error::new(
+          std::io::ErrorKind::Unsupported,
+          error_msg,
+        ))
       }
     };
   }

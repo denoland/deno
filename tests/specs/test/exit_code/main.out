@@ -1,0 +1,17 @@
+running 1 test from ./main.js
+Deno.exitCode ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+Deno.exitCode => ./main.js:1:6
+error: Error: Test case finished with exit code set to 42.
+    at exitSanitizer (ext:cli/40_test.js:113:15)
+    at async outerWrapped (ext:cli/40_test.js:134:14)
+
+ FAILURES 
+
+Deno.exitCode => ./main.js:1:6
+
+FAILED | 0 passed | 1 failed ([WILDCARD])
+
+error: Test failed

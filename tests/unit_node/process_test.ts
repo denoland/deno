@@ -21,10 +21,10 @@ import {
   assertStrictEquals,
   assertThrows,
   fail,
-} from "@std/assert/mod.ts";
-import { stripColor } from "@std/fmt/colors.ts";
-import * as path from "@std/path/mod.ts";
-import { delay } from "@std/async/delay.ts";
+} from "@std/assert";
+import { stripAnsiCode } from "@std/fmt/colors";
+import * as path from "@std/path";
+import { delay } from "@std/async/delay";
 
 const testDir = new URL(".", import.meta.url);
 
@@ -178,7 +178,7 @@ Deno.test({
     const { stdout } = await command.output();
 
     const decoder = new TextDecoder();
-    assertEquals(stripColor(decoder.decode(stdout).trim()), "1\n2");
+    assertEquals(stripAnsiCode(decoder.decode(stdout).trim()), "1\n2");
   },
 });
 
@@ -787,10 +787,10 @@ Deno.test("process.exitCode", () => {
   assertEquals(process.exitCode, undefined);
   process.exitCode = 127;
   assertEquals(process.exitCode, 127);
-  // deno-lint-ignore no-explicit-any
-  (process.exitCode as any) = "asdf";
-  // deno-lint-ignore no-explicit-any
-  assertEquals(process.exitCode as any, "asdf");
+  assertThrows(() => {
+    // deno-lint-ignore no-explicit-any
+    (process.exitCode as any) = "asdf";
+  });
   // deno-lint-ignore no-explicit-any
   (process.exitCode as any) = "10";
   process.exitCode = undefined; // reset
@@ -814,20 +814,12 @@ Deno.test("process.exitCode in should change exit code", async () => {
     127,
   );
   await exitCodeTest(
-    "import process from 'node:process'; process.exitCode = 2.5;",
-    2,
-  );
-  await exitCodeTest(
     "import process from 'node:process'; process.exitCode = '10';",
     10,
   );
   await exitCodeTest(
     "import process from 'node:process'; process.exitCode = '0x10';",
     16,
-  );
-  await exitCodeTest(
-    "import process from 'node:process'; process.exitCode = NaN;",
-    0,
   );
 });
 
@@ -905,7 +897,7 @@ Deno.test({
     const { stdout } = await command.output();
 
     const decoder = new TextDecoder();
-    assertEquals(stripColor(decoder.decode(stdout).trim()), "exit");
+    assertEquals(stripAnsiCode(decoder.decode(stdout).trim()), "exit");
   },
 });
 
@@ -924,7 +916,7 @@ Deno.test({
     const { stdout } = await command.output();
 
     const decoder = new TextDecoder();
-    assertEquals(stripColor(decoder.decode(stdout).trim()), "really exited");
+    assertEquals(stripAnsiCode(decoder.decode(stdout).trim()), "really exited");
   },
 });
 
@@ -1123,4 +1115,8 @@ Deno.test("process.listeners - include SIG* events", () => {
   assertEquals(process.listeners("SIGINT").length, 1);
   process.off("SIGINT", listener2);
   assertEquals(process.listeners("SIGINT").length, 0);
+});
+
+Deno.test(function processVersionsOwnProperty() {
+  assert(Object.prototype.hasOwnProperty.call(process, "versions"));
 });

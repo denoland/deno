@@ -81,7 +81,8 @@ fn init_subcommand_with_dir_arg() {
   let output = context
     .new_command()
     .env("NO_COLOR", "1")
-    .args("test my_dir/main_test.ts")
+    .current_dir("my_dir")
+    .args("test main_test.ts")
     .split_output()
     .run();
 
@@ -168,4 +169,51 @@ Run these commands to get started
 
   output.assert_exit_code(0);
   output.assert_matches_text("Log from main.ts that already exists\n");
+}
+
+#[tokio::test]
+async fn init_subcommand_serve() {
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+
+  let output = context
+    .new_command()
+    .args("init --serve")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+
+  let stderr = output.stderr();
+  assert_contains!(stderr, "Project initialized");
+  assert_contains!(stderr, "deno serve -R main.ts");
+  assert_contains!(stderr, "deno task dev");
+  assert_contains!(stderr, "deno -R test");
+
+  assert!(cwd.join("deno.json").exists());
+
+  let mut child = context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args("serve -R --port 9500 main.ts")
+    .spawn_with_piped_output();
+
+  tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+  let resp = reqwest::get("http://127.0.0.1:9500").await.unwrap();
+
+  let body = resp.text().await.unwrap();
+  assert_eq!(body, "Home page");
+
+  let _ = child.kill();
+
+  let output = context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args("-R test")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+  assert_contains!(output.stdout(), "4 passed");
+  output.skip_output_check();
 }

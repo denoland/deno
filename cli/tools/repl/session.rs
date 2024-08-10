@@ -99,6 +99,9 @@ Object.defineProperty(globalThis, "{0}", {{
     lastThrownError: undefined,
     inspectArgs: Deno[Deno.internal].inspectArgs,
     noColor: Deno.noColor,
+    get closed() {{
+      return typeof globalThis.closed === 'undefined' ? false : globalThis.closed;
+    }}
   }},
 }});
 Object.defineProperty(globalThis, "_", {{
@@ -251,7 +254,7 @@ impl ReplSession {
         ))
       })?;
     let ts_config_for_emit = cli_options
-      .resolve_ts_config_for_emit(deno_config::TsConfigType::Emit)?;
+      .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
     let (transpile_options, _) =
       crate::args::ts_config_to_transpile_and_emit_options(
         ts_config_for_emit.ts_config,
@@ -299,8 +302,9 @@ impl ReplSession {
   }
 
   pub async fn closing(&mut self) -> Result<bool, AnyError> {
+    let expression = format!(r#"{}.closed"#, *REPL_INTERNALS_NAME);
     let closed = self
-      .evaluate_expression("(this.closed)")
+      .evaluate_expression(&expression)
       .await?
       .result
       .value
@@ -628,6 +632,7 @@ impl ReplSession {
           transform_jsx: true,
           precompile_jsx: false,
           precompile_jsx_skip_elements: None,
+          precompile_jsx_dynamic_props: None,
           jsx_automatic: self.jsx.import_source.is_some(),
           jsx_development: false,
           jsx_factory: self.jsx.factory.clone(),
@@ -637,12 +642,14 @@ impl ReplSession {
         },
         &deno_ast::EmitOptions {
           source_map: deno_ast::SourceMapOption::None,
+          source_map_base: None,
           source_map_file: None,
           inline_sources: false,
-          keep_comments: false,
+          remove_comments: false,
         },
       )?
       .into_source()
+      .into_string()?
       .text;
 
     let value = self
@@ -817,7 +824,7 @@ fn parse_source_as(
 
   let parsed = deno_ast::parse_module(deno_ast::ParseParams {
     specifier,
-    text_info: deno_ast::SourceTextInfo::from_string(source),
+    text: source.into(),
     media_type,
     capture_tokens: true,
     maybe_syntax: None,
@@ -859,7 +866,7 @@ impl AnalyzedJsxPragmas {
 }
 
 /// Analyze provided source and return information about carious pragmas
-/// used to configure the JSX tranforms.
+/// used to configure the JSX transforms.
 fn analyze_jsx_pragmas(
   parsed_source: &ParsedSource,
 ) -> Option<AnalyzedJsxPragmas> {
@@ -884,7 +891,7 @@ fn analyze_jsx_pragmas(
           range: comment_source_to_position_range(
             c.start(),
             &m,
-            parsed_source.text_info(),
+            parsed_source.text_info_lazy(),
             true,
           ),
         });
@@ -898,7 +905,7 @@ fn analyze_jsx_pragmas(
           range: comment_source_to_position_range(
             c.start(),
             &m,
-            parsed_source.text_info(),
+            parsed_source.text_info_lazy(),
             false,
           ),
         });
@@ -912,7 +919,7 @@ fn analyze_jsx_pragmas(
           range: comment_source_to_position_range(
             c.start(),
             &m,
-            parsed_source.text_info(),
+            parsed_source.text_info_lazy(),
             false,
           ),
         });

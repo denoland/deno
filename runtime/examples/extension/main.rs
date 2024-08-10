@@ -10,7 +10,7 @@ use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::FsModuleLoader;
 use deno_core::ModuleSpecifier;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 

@@ -72,7 +72,7 @@ impl NpmCacheDir {
     registry_url: &Url,
   ) -> PathBuf {
     if folder_id.copy_index == 0 {
-      self.package_folder_for_name_and_version(&folder_id.nv, registry_url)
+      self.package_folder_for_nv(&folder_id.nv, registry_url)
     } else {
       self
         .package_name_folder(&folder_id.nv.name, registry_url)
@@ -80,7 +80,7 @@ impl NpmCacheDir {
     }
   }
 
-  pub fn package_folder_for_name_and_version(
+  pub fn package_folder_for_nv(
     &self,
     package: &PackageNv,
     registry_url: &Url,
@@ -197,14 +197,14 @@ pub fn mixed_case_package_name_encode(name: &str) -> String {
   // use base32 encoding because it's reversible and the character set
   // only includes the characters within 0-9 and A-Z so it can be lower cased
   base32::encode(
-    base32::Alphabet::RFC4648 { padding: false },
+    base32::Alphabet::Rfc4648Lower { padding: false },
     name.as_bytes(),
   )
   .to_lowercase()
 }
 
 pub fn mixed_case_package_name_decode(name: &str) -> Option<String> {
-  base32::decode(base32::Alphabet::RFC4648 { padding: false }, name)
+  base32::decode(base32::Alphabet::Rfc4648Lower { padding: false }, name)
     .and_then(|b| String::from_utf8(b).ok())
 }
 

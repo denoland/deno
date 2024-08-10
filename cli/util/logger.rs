@@ -41,6 +41,7 @@ pub fn init(maybe_level: Option<log::Level>) {
   // wgpu crates (gfx_backend), have a lot of useless INFO and WARN logs
   .filter_module("wgpu", log::LevelFilter::Error)
   .filter_module("gfx", log::LevelFilter::Error)
+  .filter_module("globset", log::LevelFilter::Error)
   // used to make available the lsp_debug which is then filtered out at runtime
   // in the cli logger
   .filter_module("deno::lsp::performance", log::LevelFilter::Debug)

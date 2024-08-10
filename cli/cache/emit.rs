@@ -6,6 +6,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::unsync::sync::AtomicFlag;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -14,15 +15,15 @@ use super::FastInsecureHasher;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct EmitMetadata {
-  pub source_hash: String,
-  pub emit_hash: String,
+  pub source_hash: u64,
+  pub emit_hash: u64,
 }
 
 /// The cache that stores previously emitted files.
-#[derive(Clone)]
 pub struct EmitCache {
   disk_cache: DiskCache,
   cli_version: &'static str,
+  emit_failed_flag: AtomicFlag,
 }
 
 impl EmitCache {
@@ -30,6 +31,7 @@ impl EmitCache {
     Self {
       disk_cache,
       cli_version: crate::version::deno(),
+      emit_failed_flag: Default::default(),
     }
   }
 
@@ -45,14 +47,14 @@ impl EmitCache {
     &self,
     specifier: &ModuleSpecifier,
     expected_source_hash: u64,
-  ) -> Option<String> {
+  ) -> Option<Vec<u8>> {
     let meta_filename = self.get_meta_filename(specifier)?;
     let emit_filename = self.get_emit_filename(specifier)?;
 
     // load and verify the meta data file is for this source and CLI version
     let bytes = self.disk_cache.get(&meta_filename).ok()?;
     let meta: EmitMetadata = serde_json::from_slice(&bytes).ok()?;
-    if meta.source_hash != expected_source_hash.to_string() {
+    if meta.source_hash != expected_source_hash {
       return None;
     }
 
@@ -63,8 +65,7 @@ impl EmitCache {
     }
 
     // everything looks good, return it
-    let emit_text = String::from_utf8(emit_bytes).ok()?;
-    Some(emit_text)
+    Some(emit_bytes)
   }
 
   /// Gets the filepath which stores the emit.
@@ -85,15 +86,13 @@ impl EmitCache {
     &self,
     specifier: &ModuleSpecifier,
     source_hash: u64,
-    code: &str,
+    code: &[u8],
   ) {
     if let Err(err) = self.set_emit_code_result(specifier, source_hash, code) {
-      // should never error here, but if it ever does don't fail
-      if cfg!(debug_assertions) {
-        panic!("Error saving emit data ({specifier}): {err}");
-      } else {
-        log::debug!("Error saving emit data({}): {}", specifier, err);
-      }
+      // might error in cases such as a readonly file system
+      log::debug!("Error saving emit data ({}): {}", specifier, err);
+      // assume the cache can't be written to and disable caching to it
+      self.emit_failed_flag.raise();
     }
   }
 
@@ -101,8 +100,13 @@ impl EmitCache {
     &self,
     specifier: &ModuleSpecifier,
     source_hash: u64,
-    code: &str,
+    code: &[u8],
   ) -> Result<(), AnyError> {
+    if self.emit_failed_flag.is_raised() {
+      log::debug!("Skipped emit cache save of {}", specifier);
+      return Ok(());
+    }
+
     let meta_filename = self
       .get_meta_filename(specifier)
       .ok_or_else(|| anyhow!("Could not get meta filename."))?;
@@ -112,15 +116,15 @@ impl EmitCache {
 
     // save the metadata
     let metadata = EmitMetadata {
-      source_hash: source_hash.to_string(),
-      emit_hash: compute_emit_hash(code.as_bytes(), self.cli_version),
+      source_hash,
+      emit_hash: compute_emit_hash(code, self.cli_version),
     };
     self
       .disk_cache
       .set(&meta_filename, &serde_json::to_vec(&metadata)?)?;
 
     // save the emit source
-    self.disk_cache.set(&emit_filename, code.as_bytes())?;
+    self.disk_cache.set(&emit_filename, code)?;
 
     Ok(())
   }
@@ -138,16 +142,15 @@ impl EmitCache {
   }
 }
 
-fn compute_emit_hash(bytes: &[u8], cli_version: &str) -> String {
+fn compute_emit_hash(bytes: &[u8], cli_version: &str) -> u64 {
   // it's ok to use an insecure hash here because
   // if someone can change the emit source then they
   // can also change the version hash
-  FastInsecureHasher::new()
+  FastInsecureHasher::new_without_deno_version() // use cli_version param instead
     .write(bytes)
     // emit should not be re-used between cli versions
-    .write(cli_version.as_bytes())
+    .write_str(cli_version)
     .finish()
-    .to_string()
 }
 
 #[cfg(test)]
@@ -163,7 +166,10 @@ mod test {
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
       cli_version: "1.0.0",
+      emit_failed_flag: Default::default(),
     };
+    let to_string =
+      |bytes: Vec<u8>| -> String { String::from_utf8(bytes).unwrap() };
 
     let specifier1 =
       ModuleSpecifier::from_file_path(temp_dir.path().join("file1.ts"))
@@ -174,36 +180,47 @@ mod test {
     assert_eq!(cache.get_emit_code(&specifier1, 1), None);
     let emit_code1 = "text1".to_string();
     let emit_code2 = "text2".to_string();
-    cache.set_emit_code(&specifier1, 10, &emit_code1);
-    cache.set_emit_code(&specifier2, 2, &emit_code2);
+    cache.set_emit_code(&specifier1, 10, emit_code1.as_bytes());
+    cache.set_emit_code(&specifier2, 2, emit_code2.as_bytes());
     // providing the incorrect source hash
     assert_eq!(cache.get_emit_code(&specifier1, 5), None);
     // providing the correct source hash
     assert_eq!(
-      cache.get_emit_code(&specifier1, 10),
+      cache.get_emit_code(&specifier1, 10).map(to_string),
       Some(emit_code1.clone()),
     );
-    assert_eq!(cache.get_emit_code(&specifier2, 2), Some(emit_code2));
+    assert_eq!(
+      cache.get_emit_code(&specifier2, 2).map(to_string),
+      Some(emit_code2)
+    );
 
     // try changing the cli version (should not load previous ones)
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
       cli_version: "2.0.0",
+      emit_failed_flag: Default::default(),
     };
     assert_eq!(cache.get_emit_code(&specifier1, 10), None);
-    cache.set_emit_code(&specifier1, 5, &emit_code1);
+    cache.set_emit_code(&specifier1, 5, emit_code1.as_bytes());
 
     // recreating the cache should still load the data because the CLI version is the same
     let cache = EmitCache {
       disk_cache,
       cli_version: "2.0.0",
+      emit_failed_flag: Default::default(),
     };
-    assert_eq!(cache.get_emit_code(&specifier1, 5), Some(emit_code1));
+    assert_eq!(
+      cache.get_emit_code(&specifier1, 5).map(to_string),
+      Some(emit_code1)
+    );
 
     // adding when already exists should not cause issue
     let emit_code3 = "asdf".to_string();
-    cache.set_emit_code(&specifier1, 20, &emit_code3);
+    cache.set_emit_code(&specifier1, 20, emit_code3.as_bytes());
     assert_eq!(cache.get_emit_code(&specifier1, 5), None);
-    assert_eq!(cache.get_emit_code(&specifier1, 20), Some(emit_code3));
+    assert_eq!(
+      cache.get_emit_code(&specifier1, 20).map(to_string),
+      Some(emit_code3)
+    );
   }
 }

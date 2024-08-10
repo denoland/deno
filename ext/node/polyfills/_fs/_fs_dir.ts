@@ -1,12 +1,21 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
+import { primordials } from "ext:core/mod.js";
 import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { ERR_MISSING_ARGS } from "ext:deno_node/internal/errors.ts";
 import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
+
+const {
+  Promise,
+  ObjectPrototypeIsPrototypeOf,
+  Uint8ArrayPrototype,
+  PromisePrototypeThen,
+  SymbolAsyncIterator,
+  ArrayIteratorPrototypeNext,
+  AsyncGeneratorPrototypeNext,
+  SymbolIterator,
+} = primordials;
 
 export default class Dir {
   #dirPath: string | Uint8Array;
@@ -21,7 +30,7 @@ export default class Dir {
   }
 
   get path(): string {
-    if (this.#dirPath instanceof Uint8Array) {
+    if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, this.#dirPath)) {
       return new TextDecoder().decode(this.#dirPath);
     }
     return this.#dirPath;
@@ -31,12 +40,12 @@ export default class Dir {
   read(callback?: (...args: any[]) => void): Promise<Dirent | null> {
     return new Promise((resolve, reject) => {
       if (!this.#asyncIterator) {
-        this.#asyncIterator = Deno.readDir(this.path)[Symbol.asyncIterator]();
+        this.#asyncIterator = Deno.readDir(this.path)[SymbolAsyncIterator]();
       }
       assert(this.#asyncIterator);
-      this.#asyncIterator
-        .next()
-        .then((iteratorResult) => {
+      PromisePrototypeThen(
+        AsyncGeneratorPrototypeNext(this.#asyncIterator),
+        (iteratorResult) => {
           resolve(
             iteratorResult.done ? null : new Dirent(iteratorResult.value),
           );
@@ -46,21 +55,23 @@ export default class Dir {
               iteratorResult.done ? null : new Dirent(iteratorResult.value),
             );
           }
-        }, (err) => {
+        },
+        (err) => {
           if (callback) {
             callback(err);
           }
           reject(err);
-        });
+        },
+      );
     });
   }
 
   readSync(): Dirent | null {
     if (!this.#syncIterator) {
-      this.#syncIterator = Deno.readDirSync(this.path)![Symbol.iterator]();
+      this.#syncIterator = Deno.readDirSync(this.path)![SymbolIterator]();
     }
 
-    const iteratorResult = this.#syncIterator.next();
+    const iteratorResult = ArrayIteratorPrototypeNext(this.#syncIterator);
     if (iteratorResult.done) {
       return null;
     } else {
@@ -92,7 +103,7 @@ export default class Dir {
     //No op
   }
 
-  async *[Symbol.asyncIterator](): AsyncIterableIterator<Dirent> {
+  async *[SymbolAsyncIterator](): AsyncIterableIterator<Dirent> {
     try {
       while (true) {
         const dirent: Dirent | null = await this.read();

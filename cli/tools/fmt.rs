@@ -13,14 +13,17 @@ use crate::args::FmtFlags;
 use crate::args::FmtOptions;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
+use crate::args::UnstableFmtOptions;
+use crate::cache::Caches;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::util::diff::diff;
 use crate::util::file_watcher;
 use crate::util::fs::canonicalize_path;
-use crate::util::fs::FileCollector;
 use crate::util::path::get_extension;
+use async_trait::async_trait;
 use deno_ast::ParsedSource;
+use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
@@ -47,11 +50,22 @@ use std::sync::Arc;
 use crate::cache::IncrementalCache;
 
 /// Format JavaScript/TypeScript files.
-pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
+pub async fn format(
+  flags: Arc<Flags>,
+  fmt_flags: FmtFlags,
+) -> Result<(), AnyError> {
   if fmt_flags.is_stdin() {
     let cli_options = CliOptions::from_flags(flags)?;
-    let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
+    let start_dir = &cli_options.start_dir;
+    let fmt_config = start_dir
+      .to_fmt_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
+    let fmt_options = FmtOptions::resolve(
+      fmt_config,
+      cli_options.resolve_config_unstable_fmt_options(),
+      &fmt_flags,
+    );
     return format_stdin(
+      &fmt_flags,
       fmt_options,
       cli_options
         .ext_flag()
@@ -68,44 +82,44 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
       move |flags, watcher_communicator, changed_paths| {
         let fmt_flags = fmt_flags.clone();
         Ok(async move {
-          let factory = CliFactory::from_flags(flags)?;
-          let cli_options = factory.cli_options();
-          let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
-          let files = collect_fmt_files(cli_options, fmt_options.files.clone())
-            .and_then(|files| {
-              if files.is_empty() {
-                Err(generic_error("No target files found."))
+          let factory = CliFactory::from_flags(flags);
+          let cli_options = factory.cli_options()?;
+          let caches = factory.caches()?;
+          let mut paths_with_options_batches =
+            resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
+
+          for paths_with_options in &mut paths_with_options_batches {
+            let _ = watcher_communicator
+              .watch_paths(paths_with_options.paths.clone());
+            let files = std::mem::take(&mut paths_with_options.paths);
+            paths_with_options.paths = if let Some(paths) = &changed_paths {
+              if fmt_flags.check {
+                // check all files on any changed (https://github.com/denoland/deno/issues/12446)
+                files
+                  .iter()
+                  .any(|path| {
+                    canonicalize_path(path)
+                      .map(|path| paths.contains(&path))
+                      .unwrap_or(false)
+                  })
+                  .then_some(files)
+                  .unwrap_or_else(|| [].to_vec())
               } else {
-                Ok(files)
+                files
+                  .into_iter()
+                  .filter(|path| {
+                    canonicalize_path(path)
+                      .map(|path| paths.contains(&path))
+                      .unwrap_or(false)
+                  })
+                  .collect::<Vec<_>>()
               }
-            })?;
-          let _ = watcher_communicator.watch_paths(files.clone());
-          let refmt_files = if let Some(paths) = changed_paths {
-            if fmt_options.check {
-              // check all files on any changed (https://github.com/denoland/deno/issues/12446)
-              files
-                .iter()
-                .any(|path| {
-                  canonicalize_path(path)
-                    .map(|path| paths.contains(&path))
-                    .unwrap_or(false)
-                })
-                .then_some(files)
-                .unwrap_or_else(|| [].to_vec())
             } else {
               files
-                .into_iter()
-                .filter(|path| {
-                  canonicalize_path(path)
-                    .map(|path| paths.contains(&path))
-                    .unwrap_or(false)
-                })
-                .collect::<Vec<_>>()
-            }
-          } else {
-            files
-          };
-          format_files(factory, fmt_options, refmt_files).await?;
+            };
+          }
+
+          format_files(caches, &fmt_flags, paths_with_options_batches).await?;
 
           Ok(())
         })
@@ -113,44 +127,83 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
     )
     .await?;
   } else {
-    let factory = CliFactory::from_flags(flags)?;
-    let cli_options = factory.cli_options();
-    let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
-    let files = collect_fmt_files(cli_options, fmt_options.files.clone())
-      .and_then(|files| {
-        if files.is_empty() {
-          Err(generic_error("No target files found."))
-        } else {
-          Ok(files)
-        }
-      })?;
-    format_files(factory, fmt_options, files).await?;
+    let factory = CliFactory::from_flags(flags);
+    let cli_options = factory.cli_options()?;
+    let caches = factory.caches()?;
+    let paths_with_options_batches =
+      resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
+    format_files(caches, &fmt_flags, paths_with_options_batches).await?;
   }
 
   Ok(())
 }
 
-async fn format_files(
-  factory: CliFactory,
-  fmt_options: FmtOptions,
+struct PathsWithOptions {
+  base: PathBuf,
   paths: Vec<PathBuf>,
-) -> Result<(), AnyError> {
-  let caches = factory.caches()?;
-  let check = fmt_options.check;
-  let incremental_cache = Arc::new(IncrementalCache::new(
-    caches.fmt_incremental_cache_db(),
-    &fmt_options.options,
-    &paths,
-  ));
-  if check {
-    check_source_files(paths, fmt_options.options, incremental_cache.clone())
-      .await?;
-  } else {
-    format_source_files(paths, fmt_options.options, incremental_cache.clone())
-      .await?;
+  options: FmtOptions,
+}
+
+fn resolve_paths_with_options_batches(
+  cli_options: &CliOptions,
+  fmt_flags: &FmtFlags,
+) -> Result<Vec<PathsWithOptions>, AnyError> {
+  let members_fmt_options =
+    cli_options.resolve_fmt_options_for_members(fmt_flags)?;
+  let mut paths_with_options_batches =
+    Vec::with_capacity(members_fmt_options.len());
+  for (_ctx, member_fmt_options) in members_fmt_options {
+    let files =
+      collect_fmt_files(cli_options, member_fmt_options.files.clone())?;
+    if !files.is_empty() {
+      paths_with_options_batches.push(PathsWithOptions {
+        base: member_fmt_options.files.base.clone(),
+        paths: files,
+        options: member_fmt_options,
+      });
+    }
   }
-  incremental_cache.wait_completion().await;
-  Ok(())
+  if paths_with_options_batches.is_empty() {
+    return Err(generic_error("No target files found."));
+  }
+  Ok(paths_with_options_batches)
+}
+
+async fn format_files(
+  caches: &Arc<Caches>,
+  fmt_flags: &FmtFlags,
+  paths_with_options_batches: Vec<PathsWithOptions>,
+) -> Result<(), AnyError> {
+  let formatter: Box<dyn Formatter> = if fmt_flags.check {
+    Box::new(CheckFormatter::default())
+  } else {
+    Box::new(RealFormatter::default())
+  };
+  for paths_with_options in paths_with_options_batches {
+    log::debug!(
+      "Formatting {} file(s) in {}",
+      paths_with_options.paths.len(),
+      paths_with_options.base.display()
+    );
+    let fmt_options = paths_with_options.options;
+    let paths = paths_with_options.paths;
+    let incremental_cache = Arc::new(IncrementalCache::new(
+      caches.fmt_incremental_cache_db(),
+      &(&fmt_options.options, &fmt_options.unstable), // cache key
+      &paths,
+    ));
+    formatter
+      .handle_files(
+        paths,
+        fmt_options.options,
+        fmt_options.unstable,
+        incremental_cache.clone(),
+      )
+      .await?;
+    incremental_cache.wait_completion().await;
+  }
+
+  formatter.finish()
 }
 
 fn collect_fmt_files(
@@ -161,7 +214,7 @@ fn collect_fmt_files(
     .ignore_git_folder()
     .ignore_node_modules()
     .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-    .collect_file_patterns(files)
+    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -169,6 +222,7 @@ fn collect_fmt_files(
 fn format_markdown(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
+  unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
   let markdown_config = get_resolved_markdown_config(fmt_options);
   dprint_plugin_markdown::format_text(
@@ -190,6 +244,12 @@ fn format_markdown(
           | "typescript"
           | "json"
           | "jsonc"
+          | "css"
+          | "scss"
+          | "sass"
+          | "less"
+          | "yml"
+          | "yaml"
       ) {
         // It's important to tell dprint proper file extension, otherwise
         // it might parse the file twice.
@@ -201,19 +261,41 @@ fn format_markdown(
 
         let fake_filename =
           PathBuf::from(format!("deno_fmt_stdin.{extension}"));
-        if matches!(extension, "json" | "jsonc") {
-          let mut json_config = get_resolved_json_config(fmt_options);
-          json_config.line_width = line_width;
-          dprint_plugin_json::format_text(&fake_filename, text, &json_config)
-        } else {
-          let mut codeblock_config =
-            get_resolved_typescript_config(fmt_options);
-          codeblock_config.line_width = line_width;
-          dprint_plugin_typescript::format_text(
-            &fake_filename,
-            text,
-            &codeblock_config,
-          )
+        match extension {
+          "json" | "jsonc" => {
+            let mut json_config = get_resolved_json_config(fmt_options);
+            json_config.line_width = line_width;
+            dprint_plugin_json::format_text(&fake_filename, text, &json_config)
+          }
+          "css" | "scss" | "sass" | "less" => {
+            if unstable_options.css {
+              format_css(&fake_filename, text, fmt_options)
+            } else {
+              Ok(None)
+            }
+          }
+          "yml" | "yaml" => {
+            if unstable_options.yaml {
+              pretty_yaml::format_text(
+                text,
+                &get_resolved_yaml_config(fmt_options),
+              )
+              .map(Some)
+              .map_err(AnyError::from)
+            } else {
+              Ok(None)
+            }
+          }
+          _ => {
+            let mut codeblock_config =
+              get_resolved_typescript_config(fmt_options);
+            codeblock_config.line_width = line_width;
+            dprint_plugin_typescript::format_text(
+              &fake_filename,
+              text.to_string(),
+              &codeblock_config,
+            )
+          }
         }
       } else {
         Ok(None)
@@ -234,28 +316,66 @@ pub fn format_json(
   dprint_plugin_json::format_text(file_path, file_text, &config)
 }
 
+pub fn format_css(
+  file_path: &Path,
+  file_text: &str,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<Option<String>, AnyError> {
+  malva::format_text(
+    file_text,
+    malva::detect_syntax(file_path).unwrap_or(malva::Syntax::Css),
+    &get_resolved_malva_config(fmt_options),
+  )
+  .map(Some)
+  .map_err(AnyError::from)
+}
+
 /// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, or IPYNB file.
 pub fn format_file(
   file_path: &Path,
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
+  unstable_options: &UnstableFmtOptions,
 ) -> Result<Option<String>, AnyError> {
   let ext = get_extension(file_path).unwrap_or_default();
 
   match ext.as_str() {
     "md" | "mkd" | "mkdn" | "mdwn" | "mdown" | "markdown" => {
-      format_markdown(file_text, fmt_options)
+      format_markdown(file_text, fmt_options, unstable_options)
     }
     "json" | "jsonc" => format_json(file_path, file_text, fmt_options),
+    "css" | "scss" | "sass" | "less" => {
+      if unstable_options.css {
+        format_css(file_path, file_text, fmt_options)
+      } else {
+        Ok(None)
+      }
+    }
+    "yml" | "yaml" => {
+      if unstable_options.yaml {
+        pretty_yaml::format_text(
+          file_text,
+          &get_resolved_yaml_config(fmt_options),
+        )
+        .map(Some)
+        .map_err(AnyError::from)
+      } else {
+        Ok(None)
+      }
+    }
     "ipynb" => dprint_plugin_jupyter::format_text(
       file_text,
       |file_path: &Path, file_text: String| {
-        format_file(file_path, &file_text, fmt_options)
+        format_file(file_path, &file_text, fmt_options, unstable_options)
       },
     ),
     _ => {
       let config = get_resolved_typescript_config(fmt_options);
-      dprint_plugin_typescript::format_text(file_path, file_text, &config)
+      dprint_plugin_typescript::format_text(
+        file_path,
+        file_text.to_string(),
+        &config,
+      )
     }
   }
 }
@@ -270,156 +390,199 @@ pub fn format_parsed_source(
   )
 }
 
-async fn check_source_files(
-  paths: Vec<PathBuf>,
-  fmt_options: FmtOptionsConfig,
-  incremental_cache: Arc<IncrementalCache>,
-) -> Result<(), AnyError> {
-  let not_formatted_files_count = Arc::new(AtomicUsize::new(0));
-  let checked_files_count = Arc::new(AtomicUsize::new(0));
+#[async_trait]
+trait Formatter {
+  async fn handle_files(
+    &self,
+    paths: Vec<PathBuf>,
+    fmt_options: FmtOptionsConfig,
+    unstable_options: UnstableFmtOptions,
+    incremental_cache: Arc<IncrementalCache>,
+  ) -> Result<(), AnyError>;
 
-  // prevent threads outputting at the same time
-  let output_lock = Arc::new(Mutex::new(0));
+  fn finish(&self) -> Result<(), AnyError>;
+}
 
-  run_parallelized(paths, {
-    let not_formatted_files_count = not_formatted_files_count.clone();
-    let checked_files_count = checked_files_count.clone();
-    move |file_path| {
-      checked_files_count.fetch_add(1, Ordering::Relaxed);
-      let file_text = read_file_contents(&file_path)?.text;
+#[derive(Default)]
+struct CheckFormatter {
+  not_formatted_files_count: Arc<AtomicUsize>,
+  checked_files_count: Arc<AtomicUsize>,
+}
 
-      // skip checking the file if we know it's formatted
-      if incremental_cache.is_file_same(&file_path, &file_text) {
-        return Ok(());
+#[async_trait]
+impl Formatter for CheckFormatter {
+  async fn handle_files(
+    &self,
+    paths: Vec<PathBuf>,
+    fmt_options: FmtOptionsConfig,
+    unstable_options: UnstableFmtOptions,
+    incremental_cache: Arc<IncrementalCache>,
+  ) -> Result<(), AnyError> {
+    // prevent threads outputting at the same time
+    let output_lock = Arc::new(Mutex::new(0));
+
+    run_parallelized(paths, {
+      let not_formatted_files_count = self.not_formatted_files_count.clone();
+      let checked_files_count = self.checked_files_count.clone();
+      move |file_path| {
+        checked_files_count.fetch_add(1, Ordering::Relaxed);
+        let file_text = read_file_contents(&file_path)?.text;
+
+        // skip checking the file if we know it's formatted
+        if incremental_cache.is_file_same(&file_path, &file_text) {
+          return Ok(());
+        }
+
+        match format_file(
+          &file_path,
+          &file_text,
+          &fmt_options,
+          &unstable_options,
+        ) {
+          Ok(Some(formatted_text)) => {
+            not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
+            let _g = output_lock.lock();
+            let diff = diff(&file_text, &formatted_text);
+            info!("");
+            info!("{} {}:", colors::bold("from"), file_path.display());
+            info!("{}", diff);
+          }
+          Ok(None) => {
+            // When checking formatting, only update the incremental cache when
+            // the file is the same since we don't bother checking for stable
+            // formatting here. Additionally, ensure this is done during check
+            // so that CIs that cache the DENO_DIR will get the benefit of
+            // incremental formatting
+            incremental_cache.update_file(&file_path, &file_text);
+          }
+          Err(e) => {
+            not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
+            let _g = output_lock.lock();
+            warn!("Error checking: {}", file_path.to_string_lossy());
+            warn!(
+              "{}",
+              format!("{e}")
+                .split('\n')
+                .map(|l| {
+                  if l.trim().is_empty() {
+                    String::new()
+                  } else {
+                    format!("  {l}")
+                  }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+            );
+          }
+        }
+        Ok(())
       }
+    })
+    .await?;
 
-      match format_file(&file_path, &file_text, &fmt_options) {
-        Ok(Some(formatted_text)) => {
-          not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
-          let _g = output_lock.lock();
-          let diff = diff(&file_text, &formatted_text);
-          info!("");
-          info!("{} {}:", colors::bold("from"), file_path.display());
-          info!("{}", diff);
-        }
-        Ok(None) => {
-          // When checking formatting, only update the incremental cache when
-          // the file is the same since we don't bother checking for stable
-          // formatting here. Additionally, ensure this is done during check
-          // so that CIs that cache the DENO_DIR will get the benefit of
-          // incremental formatting
-          incremental_cache.update_file(&file_path, &file_text);
-        }
-        Err(e) => {
-          not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
-          let _g = output_lock.lock();
-          warn!("Error checking: {}", file_path.to_string_lossy());
-          warn!(
-            "{}",
-            format!("{e}")
-              .split('\n')
-              .map(|l| {
-                if l.trim().is_empty() {
-                  String::new()
-                } else {
-                  format!("  {l}")
-                }
-              })
-              .collect::<Vec<_>>()
-              .join("\n")
-          );
-        }
-      }
-      Ok(())
-    }
-  })
-  .await?;
-
-  let not_formatted_files_count =
-    not_formatted_files_count.load(Ordering::Relaxed);
-  let checked_files_count = checked_files_count.load(Ordering::Relaxed);
-  let checked_files_str =
-    format!("{} {}", checked_files_count, files_str(checked_files_count));
-  if not_formatted_files_count == 0 {
-    info!("Checked {}", checked_files_str);
     Ok(())
-  } else {
-    let not_formatted_files_str = files_str(not_formatted_files_count);
-    Err(generic_error(format!(
-      "Found {not_formatted_files_count} not formatted {not_formatted_files_str} in {checked_files_str}",
-    )))
+  }
+
+  fn finish(&self) -> Result<(), AnyError> {
+    let not_formatted_files_count =
+      self.not_formatted_files_count.load(Ordering::Relaxed);
+    let checked_files_count = self.checked_files_count.load(Ordering::Relaxed);
+    let checked_files_str =
+      format!("{} {}", checked_files_count, files_str(checked_files_count));
+    if not_formatted_files_count == 0 {
+      info!("Checked {}", checked_files_str);
+      Ok(())
+    } else {
+      let not_formatted_files_str = files_str(not_formatted_files_count);
+      Err(generic_error(format!(
+        "Found {not_formatted_files_count} not formatted {not_formatted_files_str} in {checked_files_str}",
+      )))
+    }
   }
 }
 
-async fn format_source_files(
-  paths: Vec<PathBuf>,
-  fmt_options: FmtOptionsConfig,
-  incremental_cache: Arc<IncrementalCache>,
-) -> Result<(), AnyError> {
-  let formatted_files_count = Arc::new(AtomicUsize::new(0));
-  let checked_files_count = Arc::new(AtomicUsize::new(0));
-  let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
+#[derive(Default)]
+struct RealFormatter {
+  formatted_files_count: Arc<AtomicUsize>,
+  checked_files_count: Arc<AtomicUsize>,
+}
 
-  run_parallelized(paths, {
-    let formatted_files_count = formatted_files_count.clone();
-    let checked_files_count = checked_files_count.clone();
-    move |file_path| {
-      checked_files_count.fetch_add(1, Ordering::Relaxed);
-      let file_contents = read_file_contents(&file_path)?;
+#[async_trait]
+impl Formatter for RealFormatter {
+  async fn handle_files(
+    &self,
+    paths: Vec<PathBuf>,
+    fmt_options: FmtOptionsConfig,
+    unstable_options: UnstableFmtOptions,
+    incremental_cache: Arc<IncrementalCache>,
+  ) -> Result<(), AnyError> {
+    let output_lock = Arc::new(Mutex::new(0)); // prevent threads outputting at the same time
 
-      // skip formatting the file if we know it's formatted
-      if incremental_cache.is_file_same(&file_path, &file_contents.text) {
-        return Ok(());
+    run_parallelized(paths, {
+      let formatted_files_count = self.formatted_files_count.clone();
+      let checked_files_count = self.checked_files_count.clone();
+      move |file_path| {
+        checked_files_count.fetch_add(1, Ordering::Relaxed);
+        let file_contents = read_file_contents(&file_path)?;
+
+        // skip formatting the file if we know it's formatted
+        if incremental_cache.is_file_same(&file_path, &file_contents.text) {
+          return Ok(());
+        }
+
+        match format_ensure_stable(
+          &file_path,
+          &file_contents.text,
+          |file_path, file_text| {
+            format_file(file_path, file_text, &fmt_options, &unstable_options)
+          },
+        ) {
+          Ok(Some(formatted_text)) => {
+            incremental_cache.update_file(&file_path, &formatted_text);
+            write_file_contents(
+              &file_path,
+              FileContents {
+                had_bom: file_contents.had_bom,
+                text: formatted_text,
+              },
+            )?;
+            formatted_files_count.fetch_add(1, Ordering::Relaxed);
+            let _g = output_lock.lock();
+            info!("{}", file_path.to_string_lossy());
+          }
+          Ok(None) => {
+            incremental_cache.update_file(&file_path, &file_contents.text);
+          }
+          Err(e) => {
+            let _g = output_lock.lock();
+            log::error!("Error formatting: {}", file_path.to_string_lossy());
+            log::error!("   {e}");
+          }
+        }
+        Ok(())
       }
+    })
+    .await?;
+    Ok(())
+  }
 
-      match format_ensure_stable(
-        &file_path,
-        &file_contents.text,
-        &fmt_options,
-        format_file,
-      ) {
-        Ok(Some(formatted_text)) => {
-          incremental_cache.update_file(&file_path, &formatted_text);
-          write_file_contents(
-            &file_path,
-            FileContents {
-              had_bom: file_contents.had_bom,
-              text: formatted_text,
-            },
-          )?;
-          formatted_files_count.fetch_add(1, Ordering::Relaxed);
-          let _g = output_lock.lock();
-          info!("{}", file_path.to_string_lossy());
-        }
-        Ok(None) => {
-          incremental_cache.update_file(&file_path, &file_contents.text);
-        }
-        Err(e) => {
-          let _g = output_lock.lock();
-          log::error!("Error formatting: {}", file_path.to_string_lossy());
-          log::error!("   {e}");
-        }
-      }
-      Ok(())
-    }
-  })
-  .await?;
+  fn finish(&self) -> Result<(), AnyError> {
+    let formatted_files_count =
+      self.formatted_files_count.load(Ordering::Relaxed);
+    debug!(
+      "Formatted {} {}",
+      formatted_files_count,
+      files_str(formatted_files_count),
+    );
 
-  let formatted_files_count = formatted_files_count.load(Ordering::Relaxed);
-  debug!(
-    "Formatted {} {}",
-    formatted_files_count,
-    files_str(formatted_files_count),
-  );
-
-  let checked_files_count = checked_files_count.load(Ordering::Relaxed);
-  info!(
-    "Checked {} {}",
-    checked_files_count,
-    files_str(checked_files_count)
-  );
-
-  Ok(())
+    let checked_files_count = self.checked_files_count.load(Ordering::Relaxed);
+    info!(
+      "Checked {} {}",
+      checked_files_count,
+      files_str(checked_files_count)
+    );
+    Ok(())
+  }
 }
 
 /// When storing any formatted text in the incremental cache, we want
@@ -429,20 +592,15 @@ async fn format_source_files(
 fn format_ensure_stable(
   file_path: &Path,
   file_text: &str,
-  fmt_options: &FmtOptionsConfig,
-  fmt_func: impl Fn(
-    &Path,
-    &str,
-    &FmtOptionsConfig,
-  ) -> Result<Option<String>, AnyError>,
+  fmt_func: impl Fn(&Path, &str) -> Result<Option<String>, AnyError>,
 ) -> Result<Option<String>, AnyError> {
-  let formatted_text = fmt_func(file_path, file_text, fmt_options)?;
+  let formatted_text = fmt_func(file_path, file_text)?;
 
   match formatted_text {
     Some(mut current_text) => {
       let mut count = 0;
       loop {
-        match fmt_func(file_path, &current_text, fmt_options) {
+        match fmt_func(file_path, &current_text) {
           Ok(Some(next_pass_text)) => {
             // just in case
             if next_pass_text == current_text {
@@ -487,14 +645,23 @@ fn format_ensure_stable(
 /// Format stdin and write result to stdout.
 /// Treats input as set by `--ext` flag.
 /// Compatible with `--check` flag.
-fn format_stdin(fmt_options: FmtOptions, ext: &str) -> Result<(), AnyError> {
+fn format_stdin(
+  fmt_flags: &FmtFlags,
+  fmt_options: FmtOptions,
+  ext: &str,
+) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     bail!("Failed to read from stdin");
   }
   let file_path = PathBuf::from(format!("_stdin.{ext}"));
-  let formatted_text = format_file(&file_path, &source, &fmt_options.options)?;
-  if fmt_options.check {
+  let formatted_text = format_file(
+    &file_path,
+    &source,
+    &fmt_options.options,
+    &fmt_options.unstable,
+  )?;
+  if fmt_flags.check {
     #[allow(clippy::print_stdout)]
     if formatted_text.is_some() {
       println!("Not formatted stdin");
@@ -602,6 +769,93 @@ fn get_resolved_json_config(
   builder.build()
 }
 
+fn get_resolved_malva_config(
+  options: &FmtOptionsConfig,
+) -> malva::config::FormatOptions {
+  use malva::config::*;
+
+  let layout_options = LayoutOptions {
+    print_width: options.line_width.unwrap_or(80) as usize,
+    use_tabs: options.use_tabs.unwrap_or_default(),
+    indent_width: options.indent_width.unwrap_or(2) as usize,
+    line_break: LineBreak::Lf,
+  };
+
+  let language_options = LanguageOptions {
+    hex_case: HexCase::Lower,
+    hex_color_length: None,
+    quotes: if let Some(true) = options.single_quote {
+      Quotes::PreferSingle
+    } else {
+      Quotes::PreferDouble
+    },
+    operator_linebreak: OperatorLineBreak::Before,
+    block_selector_linebreak: BlockSelectorLineBreak::Consistent,
+    omit_number_leading_zero: false,
+    trailing_comma: true,
+    format_comments: false,
+    linebreak_in_pseudo_parens: true,
+    declaration_order: None,
+    single_line_block_threshold: None,
+    keyframe_selector_notation: None,
+    attr_value_quotes: AttrValueQuotes::Always,
+    prefer_single_line: false,
+    selectors_prefer_single_line: None,
+    function_args_prefer_single_line: None,
+    sass_content_at_rule_prefer_single_line: None,
+    sass_include_at_rule_prefer_single_line: None,
+    sass_map_prefer_single_line: None,
+    sass_module_config_prefer_single_line: None,
+    sass_params_prefer_single_line: None,
+    less_import_options_prefer_single_line: None,
+    less_mixin_args_prefer_single_line: None,
+    less_mixin_params_prefer_single_line: None,
+    top_level_declarations_prefer_single_line: None,
+    selector_override_comment_directive: "deno-fmt-selector-override".into(),
+    ignore_comment_directive: "deno-fmt-ignore".into(),
+  };
+
+  FormatOptions {
+    layout: layout_options,
+    language: language_options,
+  }
+}
+
+fn get_resolved_yaml_config(
+  options: &FmtOptionsConfig,
+) -> pretty_yaml::config::FormatOptions {
+  use pretty_yaml::config::*;
+
+  let layout_options = LayoutOptions {
+    print_width: options.line_width.unwrap_or(80) as usize,
+    use_tabs: options.use_tabs.unwrap_or_default(),
+    indent_width: options.indent_width.unwrap_or(2) as usize,
+    line_break: LineBreak::Lf,
+  };
+
+  let language_options = LanguageOptions {
+    quotes: if let Some(true) = options.single_quote {
+      Quotes::PreferSingle
+    } else {
+      Quotes::PreferDouble
+    },
+    trailing_comma: true,
+    format_comments: false,
+    indent_block_sequence_in_map: true,
+    brace_spacing: true,
+    bracket_spacing: false,
+    dash_spacing: DashSpacing::OneSpace,
+    trim_trailing_whitespaces: true,
+    trim_trailing_zero: false,
+    ignore_comment_directive: "deno-fmt-ignore".into(),
+  };
+
+  FormatOptions {
+    layout: layout_options,
+    language: language_options,
+  }
+}
+
 struct FileContents {
   text: String,
   had_bom: bool,
@@ -694,12 +948,18 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "mts"
         | "json"
         | "jsonc"
+        | "css"
+        | "scss"
+        | "sass"
+        | "less"
         | "md"
         | "mkd"
         | "mkdn"
         | "mdwn"
         | "mdown"
         | "markdown"
+        | "yml"
+        | "yaml"
         | "ipynb"
     )
   })
@@ -734,29 +994,35 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.JSONC")));
     assert!(is_supported_ext_fmt(Path::new("foo.json")));
     assert!(is_supported_ext_fmt(Path::new("foo.JsON")));
+    assert!(is_supported_ext_fmt(Path::new("foo.css")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Css")));
+    assert!(is_supported_ext_fmt(Path::new("foo.scss")));
+    assert!(is_supported_ext_fmt(Path::new("foo.SCSS")));
+    assert!(is_supported_ext_fmt(Path::new("foo.sass")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Sass")));
+    assert!(is_supported_ext_fmt(Path::new("foo.less")));
+    assert!(is_supported_ext_fmt(Path::new("foo.LeSS")));
+    assert!(is_supported_ext_fmt(Path::new("foo.yml")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Yml")));
+    assert!(is_supported_ext_fmt(Path::new("foo.yaml")));
+    assert!(is_supported_ext_fmt(Path::new("foo.YaML")));
     assert!(is_supported_ext_fmt(Path::new("foo.ipynb")));
   }
 
   #[test]
   #[should_panic(expected = "Formatting not stable. Bailed after 5 tries.")]
   fn test_format_ensure_stable_unstable_format() {
-    format_ensure_stable(
-      &PathBuf::from("mod.ts"),
-      "1",
-      &Default::default(),
-      |_, file_text, _| Ok(Some(format!("1{file_text}"))),
-    )
+    format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
+      Ok(Some(format!("1{file_text}")))
+    })
     .unwrap();
   }
 
   #[test]
   fn test_format_ensure_stable_error_first() {
-    let err = format_ensure_stable(
-      &PathBuf::from("mod.ts"),
-      "1",
-      &Default::default(),
-      |_, _, _| bail!("Error formatting."),
-    )
+    let err = format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, _| {
+      bail!("Error formatting.")
+    })
     .unwrap_err();
 
     assert_eq!(err.to_string(), "Error formatting.");
@@ -765,28 +1031,20 @@ mod test {
   #[test]
   #[should_panic(expected = "Formatting succeeded initially, but failed when")]
   fn test_format_ensure_stable_error_second() {
-    format_ensure_stable(
-      &PathBuf::from("mod.ts"),
-      "1",
-      &Default::default(),
-      |_, file_text, _| {
-        if file_text == "1" {
-          Ok(Some("11".to_string()))
-        } else {
-          bail!("Error formatting.")
-        }
-      },
-    )
+    format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
+      if file_text == "1" {
+        Ok(Some("11".to_string()))
+      } else {
+        bail!("Error formatting.")
+      }
+    })
     .unwrap();
   }
 
   #[test]
   fn test_format_stable_after_two() {
-    let result = format_ensure_stable(
-      &PathBuf::from("mod.ts"),
-      "1",
-      &Default::default(),
-      |_, file_text, _| {
+    let result =
+      format_ensure_stable(&PathBuf::from("mod.ts"), "1", |_, file_text| {
         if file_text == "1" {
           Ok(Some("11".to_string()))
         } else if file_text == "11" {
@@ -794,9 +1052,8 @@ mod test {
         } else {
           unreachable!();
         }
-      },
-    )
-    .unwrap();
+      })
+      .unwrap();
 
     assert_eq!(result, Some("11".to_string()));
   }
@@ -810,6 +1067,7 @@ mod test {
         single_quote: Some(true),
         ..Default::default()
       },
+      &UnstableFmtOptions::default(),
     )
     .unwrap()
     .unwrap();

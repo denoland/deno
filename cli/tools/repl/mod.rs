@@ -13,8 +13,8 @@ use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::WorkerExecutionMode;
 use rustyline::error::ReadlineError;
 
@@ -30,6 +30,7 @@ use editor::EditorHelper;
 use editor::ReplEditor;
 pub use session::EvaluationOutput;
 pub use session::ReplSession;
+pub use session::TsEvaluateResponse;
 pub use session::REPL_INTERNALS_NAME;
 
 use super::test::create_single_test_event_channel;
@@ -155,9 +156,12 @@ async fn read_eval_file(
 }
 
 #[allow(clippy::print_stdout)]
-pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+pub async fn run(
+  flags: Arc<Flags>,
+  repl_flags: ReplFlags,
+) -> Result<i32, AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &cli_options.permissions_options()?,

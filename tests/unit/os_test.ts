@@ -302,3 +302,70 @@ Deno.test(function memoryUsage() {
   assert(typeof mem.external === "number");
   assert(mem.rss >= mem.heapTotal);
 });
+
+Deno.test("Deno.exitCode getter and setter", () => {
+  // Initial value is 0
+  assertEquals(Deno.exitCode, 0);
+
+  try {
+    // Set a new value
+    Deno.exitCode = 5;
+    assertEquals(Deno.exitCode, 5);
+  } finally {
+    // Reset to initial value
+    Deno.exitCode = 0;
+  }
+
+  assertEquals(Deno.exitCode, 0);
+});
+
+Deno.test("Setting Deno.exitCode to non-number throws TypeError", () => {
+  // Throws on non-number values
+  assertThrows(
+    () => {
+      // @ts-expect-error Testing for runtime error
+      Deno.exitCode = "123";
+    },
+    TypeError,
+    "Exit code must be a number, got: 123 (string)",
+  );
+
+  // Throws on bigint values
+  assertThrows(
+    () => {
+      // @ts-expect-error Testing for runtime error
+      Deno.exitCode = 1n;
+    },
+    TypeError,
+    "Exit code must be a number, got: 1 (bigint)",
+  );
+});
+
+Deno.test("Setting Deno.exitCode to non-integer throws RangeError", () => {
+  // Throws on non-integer values
+  assertThrows(
+    () => {
+      Deno.exitCode = 3.14;
+    },
+    RangeError,
+    "Exit code must be an integer, got: 3.14",
+  );
+});
+
+Deno.test("Setting Deno.exitCode does not cause an immediate exit", () => {
+  let exited = false;
+
+  const originalExit = Deno.exit;
+  // @ts-expect-error; read-only
+  Deno.exit = () => {
+    exited = true;
+  };
+
+  try {
+    Deno.exitCode = 1;
+    assertEquals(exited, false);
+  } finally {
+    Deno.exit = originalExit;
+    Deno.exitCode = 0;
+  }
+});

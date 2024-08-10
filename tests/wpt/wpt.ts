@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-net --allow-env --allow-run
+#!/usr/bin/env -S deno run --allow-write --allow-read --allow-net --allow-env --allow-run --config=tests/config/deno.json
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 // This script is used to run WPT tests for Deno.
@@ -32,9 +32,9 @@ import {
   updateManifest,
   wptreport,
 } from "./runner/utils.ts";
-import { pooledMap } from "../util/std/async/pool.ts";
-import { blue, bold, green, red, yellow } from "../util/std/fmt/colors.ts";
-import { writeAll, writeAllSync } from "../util/std/io/write_all.ts";
+import { pooledMap } from "@std/async/pool";
+import { blue, bold, green, red, yellow } from "@std/fmt/colors";
+import { writeAll, writeAllSync } from "@std/io/write-all";
 import { saveExpectation } from "./runner/utils.ts";
 
 class TestFilter {
@@ -94,7 +94,7 @@ switch (command) {
     update
       Update the \`expectation.json\` to match the current reality.
 
-More details at https://deno.land/manual@main/contributing/web_platform_tests
+More details at https://docs.deno.com/runtime/manual/references/contributing/web_platform_tests
 
     `);
     break;
@@ -246,12 +246,12 @@ async function run() {
       };
       minifiedResults.push(minified);
     }
-    await Deno.writeTextFile(json, JSON.stringify(minifiedResults));
+    await Deno.writeTextFile(json, JSON.stringify(minifiedResults) + "\n");
   }
 
   if (wptreport) {
     const report = await generateWptReport(results, startTime, endTime);
-    await Deno.writeTextFile(wptreport, JSON.stringify(report));
+    await Deno.writeTextFile(wptreport, JSON.stringify(report) + "\n");
   }
 
   const code = reportFinal(results, endTime - startTime);
@@ -385,7 +385,7 @@ async function update() {
   const endTime = new Date().getTime();
 
   if (json) {
-    await Deno.writeTextFile(json, JSON.stringify(results));
+    await Deno.writeTextFile(json, JSON.stringify(results) + "\n");
   }
 
   const resultTests: Record<
@@ -447,7 +447,7 @@ function insertExpectation(
   assert(segment, "segments array must never be empty");
   if (segments.length > 0) {
     if (
-      !currentExpectation[segment] ||
+      currentExpectation[segment] === undefined ||
       Array.isArray(currentExpectation[segment]) ||
       typeof currentExpectation[segment] === "boolean"
     ) {
@@ -459,7 +459,14 @@ function insertExpectation(
       finalExpectation,
     );
   } else {
-    currentExpectation[segment] = finalExpectation;
+    if (
+      currentExpectation[segment] === undefined ||
+      Array.isArray(currentExpectation[segment]) ||
+      typeof currentExpectation[segment] === "boolean" ||
+      (currentExpectation[segment] as { ignore: boolean })?.ignore !== true
+    ) {
+      currentExpectation[segment] = finalExpectation;
+    }
   }
 }
 

@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use super::check_unstable;
-use crate::permissions::PermissionsContainer;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -18,6 +17,7 @@ use deno_io::fs::FileResource;
 use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
 use deno_io::ChildStdoutResource;
+use deno_permissions::PermissionsContainer;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -37,11 +37,12 @@ use std::os::unix::process::CommandExt;
 pub const UNSTABLE_FEATURE_NAME: &str = "process";
 
 #[derive(Copy, Clone, Eq, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub enum Stdio {
   Inherit,
   Piped,
   Null,
+  IpcForInternalUse,
 }
 
 impl Stdio {
@@ -50,6 +51,7 @@ impl Stdio {
       Stdio::Inherit => std::process::Stdio::inherit(),
       Stdio::Piped => std::process::Stdio::piped(),
       Stdio::Null => std::process::Stdio::null(),
+      _ => unreachable!(),
     }
   }
 }
@@ -72,6 +74,9 @@ impl<'de> Deserialize<'de> for StdioOrRid {
         "inherit" => Ok(StdioOrRid::Stdio(Stdio::Inherit)),
         "piped" => Ok(StdioOrRid::Stdio(Stdio::Piped)),
         "null" => Ok(StdioOrRid::Stdio(Stdio::Null)),
+        "ipc_for_internal_use" => {
+          Ok(StdioOrRid::Stdio(Stdio::IpcForInternalUse))
+        }
         val => Err(serde::de::Error::unknown_variant(
           val,
           &["inherit", "piped", "null"],
@@ -101,6 +106,10 @@ impl StdioOrRid {
         FileResource::with_file(state, *rid, |file| Ok(file.as_stdio()?))
       }
     }
+  }
+
+  pub fn is_ipc(&self) -> bool {
+    matches!(self, StdioOrRid::Stdio(Stdio::IpcForInternalUse))
   }
 }
 
@@ -150,9 +159,9 @@ pub struct SpawnArgs {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChildStdio {
-  stdin: Stdio,
-  stdout: Stdio,
-  stderr: Stdio,
+  stdin: StdioOrRid,
+  stdout: StdioOrRid,
+  stderr: StdioOrRid,
 }
 
 #[derive(Serialize)]
@@ -210,7 +219,7 @@ type CreateCommand = (std::process::Command, Option<ResourceId>);
 
 fn create_command(
   state: &mut OpState,
-  args: SpawnArgs,
+  mut args: SpawnArgs,
   api_name: &str,
 ) -> Result<CreateCommand, AnyError> {
   state
@@ -249,14 +258,19 @@ fn create_command(
     command.uid(uid);
   }
 
-  command.stdin(args.stdio.stdin.as_stdio());
+  if args.stdio.stdin.is_ipc() {
+    args.ipc = Some(0);
+  } else {
+    command.stdin(args.stdio.stdin.as_stdio(state)?);
+  }
+
   command.stdout(match args.stdio.stdout {
-    Stdio::Inherit => StdioOrRid::Rid(1).as_stdio(state)?,
-    value => value.as_stdio(),
+    StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(1).as_stdio(state)?,
+    value => value.as_stdio(state)?,
   });
   command.stderr(match args.stdio.stderr {
-    Stdio::Inherit => StdioOrRid::Rid(2).as_stdio(state)?,
-    value => value.as_stdio(),
+    StdioOrRid::Stdio(Stdio::Inherit) => StdioOrRid::Rid(2).as_stdio(state)?,
+    value => value.as_stdio(state)?,
   });
 
   #[cfg(unix)]
@@ -331,14 +345,15 @@ fn create_command(
       });
 
       /* One end returned to parent process (this) */
-      let pipe_rid = Some(
-        state
-          .resource_table
-          .add(deno_node::IpcJsonStreamResource::new(fd1 as _)?),
-      );
+      let pipe_rid = Some(state.resource_table.add(
+        deno_node::IpcJsonStreamResource::new(
+          fd1 as _,
+          deno_node::IpcRefTracker::new(state.external_ops_tracker.clone()),
+        )?,
+      ));
 
-      /* The other end passed to child process via DENO_CHANNEL_FD */
-      command.env("DENO_CHANNEL_FD", format!("{}", ipc));
+      /* The other end passed to child process via NODE_CHANNEL_FD */
+      command.env("NODE_CHANNEL_FD", format!("{}", ipc));
 
       return Ok((command, pipe_rid));
     }
@@ -456,14 +471,15 @@ fn create_command(
       }
 
       /* One end returned to parent process (this) */
-      let pipe_fd = Some(
-        state
-          .resource_table
-          .add(deno_node::IpcJsonStreamResource::new(hd1 as i64)?),
-      );
+      let pipe_fd = Some(state.resource_table.add(
+        deno_node::IpcJsonStreamResource::new(
+          hd1 as i64,
+          deno_node::IpcRefTracker::new(state.external_ops_tracker.clone()),
+        )?,
+      ));
 
-      /* The other end passed to child process via DENO_CHANNEL_FD */
-      command.env("DENO_CHANNEL_FD", format!("{}", hd2 as i64));
+      /* The other end passed to child process via NODE_CHANNEL_FD */
+      command.env("NODE_CHANNEL_FD", format!("{}", hd2 as i64));
 
       return Ok((command, pipe_fd));
     }
@@ -608,8 +624,8 @@ fn op_spawn_sync(
   state: &mut OpState,
   #[serde] args: SpawnArgs,
 ) -> Result<SpawnOutput, AnyError> {
-  let stdout = matches!(args.stdio.stdout, Stdio::Piped);
-  let stderr = matches!(args.stdio.stderr, Stdio::Piped);
+  let stdout = matches!(args.stdio.stdout, StdioOrRid::Stdio(Stdio::Piped));
+  let stderr = matches!(args.stdio.stderr, StdioOrRid::Stdio(Stdio::Piped));
   let (mut command, _) =
     create_command(state, args, "Deno.Command().outputSync()")?;
   let output = command.output().with_context(|| {

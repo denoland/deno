@@ -33,12 +33,13 @@ use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
-use deno_core::SourceMapGetter;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_node::NodeExtInitServices;
+use deno_permissions::PermissionsContainer;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
 use deno_web::BlobStore;
@@ -48,7 +49,6 @@ use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::permissions::PermissionsContainer;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::BootstrapOptions;
@@ -156,13 +156,11 @@ pub struct WorkerOptions {
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
+  pub node_services: Option<NodeExtInitServices>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
-  /// Source map reference for errors.
-  pub source_map_getter: Option<Rc<dyn SourceMapGetter>>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   // If true, the worker will wait for inspector session and break on first
   // statement of user code. Takes higher precedence than
@@ -225,9 +223,8 @@ impl Default for WorkerOptions {
       origin_storage_dir: Default::default(),
       cache_storage_dir: Default::default(),
       broadcast_channel: Default::default(),
-      source_map_getter: Default::default(),
       root_cert_store_provider: Default::default(),
-      npm_resolver: Default::default(),
+      node_services: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
       startup_snapshot: Default::default(),
@@ -329,9 +326,6 @@ impl MainWorker {
         enable_testing_features: bool,
       },
       state = |state, options| {
-        // Save the permissions container and the wrapper.
-        state.put::<deno_permissions::PermissionsContainer>(options.permissions.0.clone());
-        // This is temporary until we migrate all exts/ to the deno_permissions crate.
         state.put::<PermissionsContainer>(options.permissions);
         state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
       },
@@ -420,7 +414,7 @@ impl MainWorker {
         options.fs.clone(),
       ),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
-        options.npm_resolver,
+        options.node_services,
         options.fs,
       ),
       // Ops from this crate
@@ -455,8 +449,11 @@ impl MainWorker {
       ops::web_worker::deno_web_worker::init_ops_and_esm().disable(),
     ];
 
-    #[cfg(__runtime_js_sources)]
-    assert!(cfg!(not(feature = "only_snapshotted_js_sources")), "'__runtime_js_sources' is incompatible with 'only_snapshotted_js_sources'.");
+    #[cfg(feature = "hmr")]
+    assert!(
+      cfg!(not(feature = "only_snapshotted_js_sources")),
+      "'hmr' is incompatible with 'only_snapshotted_js_sources'."
+    );
 
     for extension in &mut extensions {
       if options.startup_snapshot.is_some() {
@@ -484,7 +481,6 @@ impl MainWorker {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: options.startup_snapshot,
       create_params: options.create_params,
-      source_map_getter: options.source_map_getter,
       skip_op_registration: options.skip_op_registration,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),

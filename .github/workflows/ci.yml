@@ -37,18 +37,18 @@ jobs:
           submodules: false
         if: github.event.pull_request.draft == true
       - id: check
+        if: 'github.event.pull_request.draft == true && (!contains(github.event.pull_request.labels.*.name, ''ci-draft''))'
         run: |-
           GIT_MESSAGE=$(git log --format=%s -n 1 ${{github.event.after}})
           echo Commit message: $GIT_MESSAGE
-          echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)
-        if: github.event.pull_request.draft == true
+          echo $GIT_MESSAGE | grep '\[ci\]' || (echo 'Exiting due to draft PR. Commit with [ci] to bypass or add the ci-draft label.' ; echo 'skip_build=true' >> $GITHUB_OUTPUT)
   build:
     name: '${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}-${{ matrix.arch }}'
     needs:
       - pre_build
     if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
     runs-on: '${{ matrix.runner }}'
-    timeout-minutes: 120
+    timeout-minutes: 150
     defaults:
       run:
         shell: bash
@@ -261,14 +261,14 @@ jobs:
           sudo apt-get -qq remove   'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'clang-16*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'llvm-16*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*' 'lld-16*' > /dev/null 2> /dev/null
 
           # Install clang-XXX, lld-XXX, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-17.list
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-18.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install --no-install-recommends clang-17 lld-17 clang-tools-17 clang-format-17 clang-tidy-17 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends clang-17 lld-17 clang-tools-17 clang-format-17 clang-tidy-17
+          sudo apt-get install --no-install-recommends clang-18 lld-18 clang-tools-18 clang-format-18 clang-tidy-18 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends clang-18 lld-18 clang-tools-18 clang-format-18 clang-tidy-18
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
@@ -305,8 +305,8 @@ jobs:
           CARGO_PROFILE_RELEASE_LTO=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-17
-            -C link-arg=-fuse-ld=lld-17
+            -C linker=clang-18
+            -C link-arg=-fuse-ld=lld-18
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -316,8 +316,8 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-17
-            -C link-arg=-fuse-ld=lld-17
+            -C linker=clang-18
+            -C link-arg=-fuse-ld=lld-18
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -325,7 +325,7 @@ jobs:
             --cfg tokio_unstable
             $RUSTFLAGS
           __1
-          CC=/usr/bin/clang-17
+          CC=/usr/bin/clang-18
           CFLAGS=-flto=thin $CFLAGS
           " > $GITHUB_ENV
       - name: Remove macOS cURL --ipv4 flag
@@ -367,8 +367,8 @@ jobs:
           path: |-
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
-          key: '93-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '93-cargo-home-${{ matrix.os }}-${{ matrix.arch }}'
+          key: '10-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '10-cargo-home-${{ matrix.os }}-${{ matrix.arch }}'
         if: '!(matrix.skip)'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
@@ -377,10 +377,11 @@ jobs:
           path: |-
             ./target
             !./target/*/gn_out
+            !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '93-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '10-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -493,7 +494,7 @@ jobs:
           matrix.job == 'test' &&
           matrix.profile == 'release' &&
           !startsWith(github.ref, 'refs/tags/'))
-        run: target/release/deno run -A --unstable ext/websocket/autobahn/fuzzingclient.js
+        run: target/release/deno run -A --unstable --config tests/config/deno.json ext/websocket/autobahn/fuzzingclient.js
       - name: 'Test (full, debug)'
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&
@@ -530,18 +531,18 @@ jobs:
         env:
           DENO_BIN: ./target/debug/deno
         run: |-
-          deno run -A --unstable --lock=tools/deno.lock.json       \
+          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
                   ./tests/wpt/wpt.ts setup
-          deno run -A --unstable --lock=tools/deno.lock.json       \
+          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
                    ./tests/wpt/wpt.ts run --quiet --binary="$DENO_BIN"
       - name: Run web platform tests (release)
         if: '!(matrix.skip) && (matrix.wpt && matrix.profile == ''release'')'
         env:
           DENO_BIN: ./target/release/deno
         run: |-
-          deno run -A --unstable --lock=tools/deno.lock.json        \
+          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
                    ./tests/wpt/wpt.ts setup
-          deno run -A --unstable --lock=tools/deno.lock.json        \
+          deno run -A --unstable --lock=tools/deno.lock.json --config tests/config/deno.json\
                    ./tests/wpt/wpt.ts run --quiet --release         \
                                       --binary="$DENO_BIN"          \
                                       --json=wpt.json               \
@@ -669,7 +670,7 @@ jobs:
             !./target/*/gn_out
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '93-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '10-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   publish-canary:
     name: publish canary
     runs-on: ubuntu-22.04

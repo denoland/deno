@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+pub mod blocklist;
 pub mod buffer;
 pub mod crypto;
 pub mod fs;
@@ -13,7 +14,6 @@ pub mod require;
 pub mod util;
 pub mod v8;
 pub mod vm;
-mod vm_internal;
 pub mod winerror;
 pub mod worker_threads;
 pub mod zlib;

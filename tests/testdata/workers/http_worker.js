@@ -1,4 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file no-deprecated-deno-api
+
 const listener = Deno.listen({ hostname: "127.0.0.1", port: 4506 });
 postMessage("ready");
 for await (const conn of listener) {
