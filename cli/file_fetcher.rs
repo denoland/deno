@@ -238,23 +238,22 @@ impl FileFetcher {
     );
 
     let cache_key = self.http_cache.cache_item_key(specifier)?; // compute this once
-    let Some(headers) = self.http_cache.read_headers(&cache_key)? else {
-      return Ok(None);
-    };
-    if let Some(redirect_to) = headers.get("location") {
-      let redirect =
-        deno_core::resolve_import(redirect_to, specifier.as_str())?;
-      return Ok(Some(FileOrRedirect::Redirect(redirect)));
-    }
-    let result = self.http_cache.read_file_bytes(
+    let result = self.http_cache.get(
       &cache_key,
       maybe_checksum
         .as_ref()
         .map(|c| deno_cache_dir::Checksum::new(c.as_str())),
       deno_cache_dir::GlobalToLocalCopy::Allow,
     );
-    let bytes = match result {
-      Ok(Some(bytes)) => bytes,
+    let cache_data = match result {
+      Ok(Some(cache_data)) => {
+        if let Some(redirect_to) = cache_data.metadata.headers.get("location") {
+          let redirect =
+            deno_core::resolve_import(redirect_to, specifier.as_str())?;
+          return Ok(Some(FileOrRedirect::Redirect(redirect)));
+        }
+        cache_data
+      }
       Ok(None) => return Ok(None),
       Err(err) => match err {
         deno_cache_dir::CacheReadFileError::Io(err) => return Err(err.into()),
@@ -274,8 +273,8 @@ impl FileFetcher {
 
     Ok(Some(FileOrRedirect::File(File {
       specifier: specifier.clone(),
-      maybe_headers: Some(headers),
-      source: Arc::from(bytes),
+      maybe_headers: Some(cache_data.metadata.headers),
+      source: Arc::from(cache_data.body),
     })))
   }
 
@@ -1480,13 +1479,10 @@ mod tests {
     let cache_key = file_fetcher.http_cache.cache_item_key(url).unwrap();
     let bytes = file_fetcher
       .http_cache
-      .read_file_bytes(
-        &cache_key,
-        None,
-        deno_cache_dir::GlobalToLocalCopy::Allow,
-      )
+      .get(&cache_key, None, deno_cache_dir::GlobalToLocalCopy::Allow)
       .unwrap()
-      .unwrap();
+      .unwrap()
+      .body;
     String::from_utf8(bytes).unwrap()
   }
 

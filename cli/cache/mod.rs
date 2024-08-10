@@ -10,6 +10,7 @@ use crate::npm::CliNpmResolver;
 use crate::util::fs::atomic_write_file_with_retries;
 
 use deno_ast::MediaType;
+use deno_cache_dir::DenoCacheEnvFsFile;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
@@ -19,6 +20,7 @@ use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -58,10 +60,26 @@ pub use parsed_source::ParsedSourceCache;
 /// Permissions used to save a file in the disk caches.
 pub const CACHE_PERM: u32 = 0o644;
 
+pub struct RealDenoCacheEnvFsFile(std::fs::File);
+
+impl DenoCacheEnvFsFile for RealDenoCacheEnvFsFile {
+  fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+    self.0.read(bytes)
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct RealDenoCacheEnv;
 
 impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
+  fn open_read(
+    &self,
+    path: &Path,
+  ) -> std::io::Result<Box<dyn DenoCacheEnvFsFile>> {
+    let fs_file = std::fs::OpenOptions::new().read(true).open(path)?;
+    Ok(Box::new(RealDenoCacheEnvFsFile(fs_file)))
+  }
+
   fn read_file_bytes(&self, path: &Path) -> std::io::Result<Option<Vec<u8>>> {
     match std::fs::read(path) {
       Ok(s) => Ok(Some(s)),
