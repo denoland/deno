@@ -16,7 +16,6 @@ const path = require("path");
 const util = require("util");
 const tmpdir = require("./tmpdir");
 
-
 function platformTimeout(ms) {
   return ms;
 }
@@ -59,7 +58,6 @@ let knownGlobals = [
   queueMicrotask,
   removeEventListener,
   reportError,
-  self,
   sessionStorage,
   setImmediate,
 ];
@@ -91,7 +89,7 @@ function allowGlobals(...allowlist) {
 
 if (process.env.NODE_TEST_KNOWN_GLOBALS !== '0') {
   if (process.env.NODE_TEST_KNOWN_GLOBALS) {
-    const knownFromEnv = process.env.NODE_TEST_KNOWN_GLOBALS.split(',');
+    const knownFromEnv = process.env.NODE_TEST_KNOWN_GLOBALS.split(',').map((name) => global[name]);
     allowGlobals(...knownFromEnv);
   }
 
@@ -446,13 +444,13 @@ const pwdCommand = isWindows ?
   function spawnPromisified(...args) {
     let stderr = '';
     let stdout = '';
-  
+
     const child = spawn(...args);
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (data) => { stderr += data; });
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (data) => { stdout += data; });
-  
+
     return new Promise((resolve, reject) => {
       child.on('close', (code, signal) => {
         resolve({

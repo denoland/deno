@@ -59,7 +59,6 @@ async fn generate_doc_nodes_for_builtin_types(
         imports: Vec::new(),
         is_dynamic: false,
         passthrough_jsr_specifiers: false,
-        workspace_members: &[],
         executor: Default::default(),
         file_system: &NullFileSystem,
         jsr_url_provider: Default::default(),

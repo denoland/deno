@@ -175,9 +175,26 @@ fn package_json_dependency_entry(
   }
 }
 
+#[derive(Clone, Copy)]
+/// The name of the subcommand invoking the `add` operation.
+pub enum AddCommandName {
+  Add,
+  Install,
+}
+
+impl std::fmt::Display for AddCommandName {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      AddCommandName::Add => write!(f, "add"),
+      AddCommandName::Install => write!(f, "install"),
+    }
+  }
+}
+
 pub async fn add(
   flags: Arc<Flags>,
   add_flags: AddFlags,
+  cmd_name: AddCommandName,
 ) -> Result<(), AnyError> {
   let (config_file, cli_factory) =
     DenoOrPackageJson::from_flags(flags.clone())?;
@@ -234,8 +251,16 @@ pub async fn add(
     let package_and_version = package_and_version_result?;
 
     match package_and_version {
-      PackageAndVersion::NotFound(package_name) => {
-        bail!("{} was not found.", crate::colors::red(package_name));
+      PackageAndVersion::NotFound {
+        package: package_name,
+        found_npm_package,
+        package_req,
+      } => {
+        if found_npm_package {
+          bail!("{} was not found, but a matching npm package exists. Did you mean `{}`?", crate::colors::red(package_name), crate::colors::yellow(format!("deno {cmd_name} npm:{package_req}")));
+        } else {
+          bail!("{} was not found.", crate::colors::red(package_name));
+        }
       }
       PackageAndVersion::Selected(selected) => {
         selected_packages.push(selected);
@@ -267,10 +292,10 @@ pub async fn add(
   let is_npm = config_file.is_npm();
   for selected_package in selected_packages {
     log::info!(
-      "Add {} - {}@{}",
-      crate::colors::green(&selected_package.import_name),
-      selected_package.package_name,
-      selected_package.version_req
+      "Add {}{}{}",
+      crate::colors::green(&selected_package.package_name),
+      crate::colors::gray("@"),
+      selected_package.selected_version
     );
 
     if is_npm {
@@ -323,10 +348,15 @@ struct SelectedPackage {
   import_name: String,
   package_name: String,
   version_req: String,
+  selected_version: String,
 }
 
 enum PackageAndVersion {
-  NotFound(String),
+  NotFound {
+    package: String,
+    found_npm_package: bool,
+    package_req: PackageReq,
+  },
   Selected(SelectedPackage),
 }
 
@@ -339,7 +369,19 @@ async fn find_package_and_select_version_for_req(
     AddPackageReqValue::Jsr(req) => {
       let jsr_prefixed_name = format!("jsr:{}", &req.name);
       let Some(nv) = jsr_resolver.req_to_nv(&req).await else {
-        return Ok(PackageAndVersion::NotFound(jsr_prefixed_name));
+        if npm_resolver.req_to_nv(&req).await.is_some() {
+          return Ok(PackageAndVersion::NotFound {
+            package: jsr_prefixed_name,
+            found_npm_package: true,
+            package_req: req,
+          });
+        }
+
+        return Ok(PackageAndVersion::NotFound {
+          package: jsr_prefixed_name,
+          found_npm_package: false,
+          package_req: req,
+        });
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
         '~'
@@ -350,12 +392,17 @@ async fn find_package_and_select_version_for_req(
         import_name: add_package_req.alias,
         package_name: jsr_prefixed_name,
         version_req: format!("{}{}", range_symbol, &nv.version),
+        selected_version: nv.version.to_string(),
       }))
     }
     AddPackageReqValue::Npm(req) => {
       let npm_prefixed_name = format!("npm:{}", &req.name);
       let Some(nv) = npm_resolver.req_to_nv(&req).await else {
-        return Ok(PackageAndVersion::NotFound(npm_prefixed_name));
+        return Ok(PackageAndVersion::NotFound {
+          package: npm_prefixed_name,
+          found_npm_package: false,
+          package_req: req,
+        });
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
         '~'
@@ -366,6 +413,7 @@ async fn find_package_and_select_version_for_req(
         import_name: add_package_req.alias,
         package_name: npm_prefixed_name,
         version_req: format!("{}{}", range_symbol, &nv.version),
+        selected_version: nv.version.to_string(),
       }))
     }
   }
@@ -488,7 +536,7 @@ fn update_config_file_content(
       text_changes.push(TextChange {
         range: insert_position..insert_position,
         // NOTE(bartlomieju): adding `\n` here to force the formatter to always
-        // produce a config file that is multline, like so:
+        // produce a config file that is multiline, like so:
         // ```
         // {
         //   "imports": {

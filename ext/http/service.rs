@@ -545,10 +545,10 @@ impl Body for HttpRecordResponse {
           ready!(Pin::new(stm).poll_frame(cx))
         }
         ResponseBytesInner::GZipStream(stm) => {
-          ready!(Pin::new(stm).poll_frame(cx))
+          ready!(Pin::new(stm.as_mut()).poll_frame(cx))
         }
         ResponseBytesInner::BrotliStream(stm) => {
-          ready!(Pin::new(stm).poll_frame(cx))
+          ready!(Pin::new(stm.as_mut()).poll_frame(cx))
         }
       };
       // This is where we retry the NoData response

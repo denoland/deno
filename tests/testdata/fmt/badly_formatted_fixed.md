@@ -35,3 +35,14 @@ function foo(): number {
   "numbers": ["1", "2"]
 }
 ```
+
+```yaml
+- item1
+- item2
+```
+
+```css
+#app > .btn {
+  color: #000;
+}
+```
