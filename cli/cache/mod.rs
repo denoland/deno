@@ -62,12 +62,8 @@ pub const CACHE_PERM: u32 = 0o644;
 pub struct RealDenoCacheEnv;
 
 impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
-  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Option<Vec<u8>>> {
-    match std::fs::read(path) {
-      Ok(s) => Ok(Some(s)),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-      Err(err) => Err(err),
-    }
+  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+    std::fs::read(path)
   }
 
   fn atomic_write_file(

@@ -2,7 +2,6 @@
 
 use super::cache::calculate_fs_version;
 use super::cache::LspCache;
-use super::cache::LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY;
 use super::config::Config;
 use super::resolver::LspResolver;
 use super::testing::TestCollector;
@@ -872,22 +871,19 @@ impl FileSystemDocuments {
     } else {
       let http_cache = cache.for_specifier(file_referrer);
       let cache_key = http_cache.cache_item_key(specifier).ok()?;
-      let bytes = http_cache
-        .read_file_bytes(&cache_key, None, LSP_DISALLOW_GLOBAL_TO_LOCAL_COPY)
-        .ok()??;
-      let specifier_headers = http_cache.read_headers(&cache_key).ok()??;
+      let cached_file = http_cache.get(&cache_key, None).ok()??;
       let (_, maybe_charset) =
         deno_graph::source::resolve_media_type_and_charset_from_headers(
           specifier,
-          Some(&specifier_headers),
+          Some(&cached_file.metadata.headers),
         );
       let content = deno_graph::source::decode_owned_source(
         specifier,
-        bytes,
+        cached_file.content,
         maybe_charset,
       )
       .ok()?;
-      let maybe_headers = Some(specifier_headers);
+      let maybe_headers = Some(cached_file.metadata.headers);
       Document::new(
         specifier.clone(),
         content.into(),

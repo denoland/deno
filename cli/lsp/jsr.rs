@@ -250,12 +250,9 @@ fn read_cached_url(
   cache: &Arc<dyn HttpCache>,
 ) -> Option<Vec<u8>> {
   cache
-    .read_file_bytes(
-      &cache.cache_item_key(url).ok()?,
-      None,
-      deno_cache_dir::GlobalToLocalCopy::Disallow,
-    )
+    .get(&cache.cache_item_key(url).ok()?, None)
     .ok()?
+    .map(|f| f.content)
 }
 
 // TODO(nayeemrmn): This is duplicated from a private function in deno_graph
