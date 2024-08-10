@@ -65,6 +65,7 @@ use auth::get_auth_method;
 use auth::AuthMethod;
 pub use pm::add;
 pub use pm::remove;
+pub use pm::AddCommandName;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 

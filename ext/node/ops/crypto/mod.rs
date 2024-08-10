@@ -20,6 +20,7 @@ use num_bigint_dig::BigUint;
 use rand::distributions::Distribution;
 use rand::distributions::Uniform;
 use rand::Rng;
+use ring::signature::Ed25519KeyPair;
 use std::future::Future;
 use std::rc::Rc;
 
@@ -270,6 +271,18 @@ pub fn op_node_cipheriv_final(
   let context = Rc::try_unwrap(context)
     .map_err(|_| type_error("Cipher context is already in use"))?;
   context.r#final(auto_pad, input, output)
+}
+
+#[op2]
+#[buffer]
+pub fn op_node_cipheriv_take(
+  state: &mut OpState,
+  #[smi] rid: u32,
+) -> Result<Option<Vec<u8>>, AnyError> {
+  let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
+  let context = Rc::try_unwrap(context)
+    .map_err(|_| type_error("Cipher context is already in use"))?;
+  Ok(context.take_tag())
 }
 
 #[op2(fast)]
@@ -937,4 +950,51 @@ pub fn op_node_diffie_hellman(
   };
 
   Ok(res)
+}
+
+#[op2(fast)]
+pub fn op_node_sign_ed25519(
+  #[cppgc] key: &KeyObjectHandle,
+  #[buffer] data: &[u8],
+  #[buffer] signature: &mut [u8],
+) -> Result<(), AnyError> {
+  let private = key
+    .as_private_key()
+    .ok_or_else(|| type_error("Expected private key"))?;
+
+  let ed25519 = match private {
+    AsymmetricPrivateKey::Ed25519(private) => private,
+    _ => return Err(type_error("Expected Ed25519 private key")),
+  };
+
+  let pair = Ed25519KeyPair::from_seed_unchecked(ed25519.as_bytes().as_slice())
+    .map_err(|_| type_error("Invalid Ed25519 private key"))?;
+  signature.copy_from_slice(pair.sign(data).as_ref());
+
+  Ok(())
+}
+
+#[op2(fast)]
+pub fn op_node_verify_ed25519(
+  #[cppgc] key: &KeyObjectHandle,
+  #[buffer] data: &[u8],
+  #[buffer] signature: &[u8],
+) -> Result<bool, AnyError> {
+  let public = key
+    .as_public_key()
+    .ok_or_else(|| type_error("Expected public key"))?;
+
+  let ed25519 = match &*public {
+    AsymmetricPublicKey::Ed25519(public) => public,
+    _ => return Err(type_error("Expected Ed25519 public key")),
+  };
+
+  let verified = ring::signature::UnparsedPublicKey::new(
+    &ring::signature::ED25519,
+    ed25519.as_bytes().as_slice(),
+  )
+  .verify(data, signature)
+  .is_ok();
+
+  Ok(verified)
 }
