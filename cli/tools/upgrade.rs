@@ -192,16 +192,15 @@ impl<
   }
 
   pub fn should_check_for_new_version(&self) -> bool {
-    match &self.maybe_file {
-      Some(file) => {
-        let last_check_age = self
-          .env
-          .current_time()
-          .signed_duration_since(file.last_checked);
-        last_check_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL)
-      }
-      None => true,
-    }
+    let Some(file) = &self.maybe_file else {
+      return true;
+    };
+
+    let last_check_age = self
+      .env
+      .current_time()
+      .signed_duration_since(file.last_checked);
+    last_check_age > chrono::Duration::hours(UPGRADE_CHECK_INTERVAL)
   }
 
   /// Returns the current exe release channel and a version if a new one is available and it should be prompted about.
@@ -451,6 +450,7 @@ async fn fetch_and_store_latest_version<
     latest_version: latest_version.version_or_hash,
     current_release_channel: release_channel,
   };
+
   env.write_check_file(&version_file.serialize());
 }
 
@@ -1397,6 +1397,21 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
     fetch_and_store_latest_version(&env, &env).await;
     assert!(checker.should_check_for_new_version());
     assert_eq!(checker.should_prompt(), None);
+
+    // now switch to RC release
+    env.set_is_release_candidate(true);
+    env.set_current_version("1.46.0-rc.0");
+    env.set_latest_version("1.46.0-rc.1");
+    fetch_and_store_latest_version(&env, &env).await;
+    env.add_hours(UPGRADE_CHECK_INTERVAL + 1);
+
+    // We should check for new version and prompt
+    let checker = UpdateChecker::new(env.clone(), env.clone());
+    assert!(checker.should_check_for_new_version());
+    assert_eq!(
+      checker.should_prompt(),
+      Some((ReleaseChannel::Rc, "1.46.0-rc.1".to_string()))
+    );
   }
 
   #[tokio::test]
