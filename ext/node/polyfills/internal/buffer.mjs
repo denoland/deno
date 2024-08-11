@@ -39,6 +39,7 @@ const {
   SymbolFor,
   SymbolToPrimitive,
   TypeError,
+  TypeErrorPrototype,
   TypedArrayPrototypeCopyWithin,
   TypedArrayPrototypeFill,
   TypedArrayPrototypeGetBuffer,
@@ -949,7 +950,7 @@ function _utf8Slice(buf, start, end) {
     // deno-lint-ignore prefer-primordials
     return decoder.decode(buf.slice(start, end));
   } catch (err) {
-    if (ObjectPrototypeIsPrototypeOf(TypeError, err)) {
+    if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, err)) {
       throw new NodeError("ERR_STRING_TOO_LONG", "String too long");
     }
     throw err;
