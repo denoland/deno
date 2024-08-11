@@ -170,11 +170,11 @@ fn get_npm_package(
   local_path: &str,
   package_name: &str,
 ) -> Result<Option<CustomNpmPackage>> {
-  env_logger::builder()
+  let _ = env_logger::builder()
     .filter_level(log::LevelFilter::Warn)
     .format_target(false)
     .format_timestamp(None)
-    .init();
+    .try_init();
   let registry_hostname = if package_name == "@denotest/tarballs-privateserver2"
   {
     "http://localhost:4262"
