@@ -490,7 +490,7 @@ delete Object.prototype.__proto__;
     // anything. We prefer to treat these as modules with no exports.
     2306,
     // TS2688: Cannot find type definition file for '...'.
-    // We ignore because type defintion files can end with '.ts'.
+    // We ignore because type definition files can end with '.ts'.
     2688,
     // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
     // option to 'node', or to add aliases to the 'paths' option?
@@ -1106,7 +1106,7 @@ delete Object.prototype.__proto__;
    * @param {any} data
    * @param {string | null} error
    */
-  // TODO(bartlomieju): this feels needlessly generic, both type chcking
+  // TODO(bartlomieju): this feels needlessly generic, both type checking
   // and language server use it with inefficient serialization. Id is not used
   // anyway...
   function respond(_id, data = null, error = null) {

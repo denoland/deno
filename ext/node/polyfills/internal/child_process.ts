@@ -1030,6 +1030,7 @@ const kNodeFlagsMap = new Map([
   ["--v8-pool-size", kLongArg],
 ]);
 const kDenoSubcommands = new Set([
+  "add",
   "bench",
   "bundle",
   "cache",
@@ -1046,6 +1047,7 @@ const kDenoSubcommands = new Set([
   "install",
   "lint",
   "lsp",
+  "publish",
   "repl",
   "run",
   "tasks",
@@ -1091,6 +1093,12 @@ function toDenoArgs(args: string[]): string[] {
     let flagInfo = kNodeFlagsMap.get(arg);
     let isLongWithValue = false;
     let flagValue;
+
+    if (flag === "--v8-options") {
+      // If --v8-options is passed, it should be replaced with --v8-flags="--help".
+      denoArgs.push("--v8-flags=--help");
+      continue;
+    }
 
     if (flagInfo === undefined) {
       // If the flag was not found, it's either not a known flag or it's a long

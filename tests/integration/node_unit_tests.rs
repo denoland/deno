@@ -71,6 +71,7 @@ util::unit_test_factory!(
     dgram_test,
     domain_test,
     fs_test,
+    fetch_test,
     http_test,
     http2_test,
     _randomBytes_test = internal / _randomBytes_test,

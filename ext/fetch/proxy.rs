@@ -727,7 +727,14 @@ where
         }
       }
       Proxied::Socks(ref p) => p.connected(),
-      Proxied::SocksTls(ref p) => p.inner().get_ref().0.connected(),
+      Proxied::SocksTls(ref p) => {
+        let tunneled_tls = p.inner().get_ref();
+        if tunneled_tls.1.alpn_protocol() == Some(b"h2") {
+          tunneled_tls.0.connected().negotiated_h2()
+        } else {
+          tunneled_tls.0.connected()
+        }
+      }
     }
   }
 }

@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -138,36 +137,15 @@ pub type NodeResolverRc<TEnv> = crate::sync::MaybeArc<NodeResolver<TEnv>>;
 pub struct NodeResolver<TEnv: NodeResolverEnv> {
   env: TEnv,
   npm_resolver: NpmResolverRc,
-  in_npm_package_cache: crate::sync::MaybeArcMutex<HashMap<String, bool>>,
 }
 
 impl<TEnv: NodeResolverEnv> NodeResolver<TEnv> {
   pub fn new(env: TEnv, npm_resolver: NpmResolverRc) -> Self {
-    Self {
-      env,
-      npm_resolver,
-      in_npm_package_cache: crate::sync::MaybeArcMutex::new(HashMap::new()),
-    }
+    Self { env, npm_resolver }
   }
 
   pub fn in_npm_package(&self, specifier: &Url) -> bool {
     self.npm_resolver.in_npm_package(specifier)
-  }
-
-  pub fn in_npm_package_with_cache(&self, specifier: Cow<str>) -> bool {
-    let mut cache = self.in_npm_package_cache.lock();
-
-    if let Some(result) = cache.get(specifier.as_ref()) {
-      return *result;
-    }
-
-    let result = if let Ok(specifier) = Url::parse(&specifier) {
-      self.npm_resolver.in_npm_package(&specifier)
-    } else {
-      false
-    };
-    cache.insert(specifier.into_owned(), result);
-    result
   }
 
   /// This function is an implementation of `defaultResolve` in

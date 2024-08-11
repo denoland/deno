@@ -266,7 +266,12 @@ async fn install_local(
   maybe_add_flags: Option<AddFlags>,
 ) -> Result<(), AnyError> {
   if let Some(add_flags) = maybe_add_flags {
-    return super::registry::add(flags, add_flags).await;
+    return super::registry::add(
+      flags,
+      add_flags,
+      super::registry::AddCommandName::Install,
+    )
+    .await;
   }
 
   let factory = CliFactory::from_flags(flags);

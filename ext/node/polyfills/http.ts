@@ -1642,7 +1642,9 @@ export class IncomingMessageForServer extends NodeReadable {
         }
       },
       destroy: (err, cb) => {
-        reader?.cancel().finally(() => cb(err));
+        reader?.cancel().catch(() => {
+          // Don't throw error - it's propagated to the user via 'error' event.
+        }).finally(nextTick(onError, this, err, cb));
       },
     });
     // TODO(@bartlomieju): consider more robust path extraction, e.g:
