@@ -10,6 +10,8 @@ use x509_parser::extensions;
 use x509_parser::pem;
 use x509_parser::prelude::*;
 
+use super::KeyObjectHandle;
+
 use std::ops::Deref;
 use yoke::Yoke;
 use yoke::Yokeable;
@@ -168,6 +170,17 @@ pub fn op_node_x509_get_subject(
 ) -> Result<String, AnyError> {
   let cert = cert.inner.get().deref();
   Ok(x509name_to_string(cert.subject(), oid_registry())?)
+}
+
+#[op2]
+#[cppgc]
+pub fn op_node_x509_public_key(
+  #[cppgc] cert: &Certificate,
+) -> Result<KeyObjectHandle, AnyError> {
+  let cert = cert.inner.get().deref();
+  let public_key = &cert.tbs_certificate.subject_pki;
+
+  KeyObjectHandle::new_x509_public_key(public_key)
 }
 
 // Attempt to convert attribute to string. If type is not a string, return value is the hex
