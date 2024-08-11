@@ -21,6 +21,7 @@ use deno_graph::source::Loader;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use std::collections::HashMap;
 use std::io::Read;
+use std::io::Seek;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -66,6 +67,10 @@ impl DenoCacheEnvFsFile for RealDenoCacheEnvFsFile {
   fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
     self.0.read(bytes)
   }
+
+  fn seek_relative(&mut self, amount: i64) -> std::io::Result<()> {
+    self.0.seek_relative(amount)
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -76,16 +81,12 @@ impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
     &self,
     path: &Path,
   ) -> std::io::Result<Box<dyn DenoCacheEnvFsFile>> {
-    let fs_file = std::fs::OpenOptions::new().read(true).open(path)?;
+    let fs_file = std::fs::File::open(path)?;
     Ok(Box::new(RealDenoCacheEnvFsFile(fs_file)))
   }
 
-  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Option<Vec<u8>>> {
-    match std::fs::read(path) {
-      Ok(s) => Ok(Some(s)),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-      Err(err) => Err(err),
-    }
+  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+    std::fs::read(path)
   }
 
   fn atomic_write_file(

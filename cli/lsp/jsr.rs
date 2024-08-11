@@ -258,13 +258,9 @@ fn read_cached_url(
   cache: &Arc<dyn HttpCache>,
 ) -> Option<Vec<u8>> {
   cache
-    .get(
-      &cache.cache_item_key(url).ok()?,
-      None,
-      deno_cache_dir::GlobalToLocalCopy::Disallow,
-    )
+    .get(&cache.cache_item_key(url).ok()?, None)
     .ok()?
-    .map(|f| f.body)
+    .map(|f| f.content)
 }
 
 #[derive(Debug)]

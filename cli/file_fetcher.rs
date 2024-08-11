@@ -11,7 +11,6 @@ use crate::http_util::HttpClientProvider;
 use crate::util::progress_bar::ProgressBar;
 
 use deno_ast::MediaType;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::custom_error;
 use deno_core::error::generic_error;
@@ -243,7 +242,6 @@ impl FileFetcher {
       maybe_checksum
         .as_ref()
         .map(|c| deno_cache_dir::Checksum::new(c.as_str())),
-      deno_cache_dir::GlobalToLocalCopy::Allow,
     );
     let cache_data = match result {
       Ok(Some(cache_data)) => {
@@ -274,7 +272,7 @@ impl FileFetcher {
     Ok(Some(FileOrRedirect::File(File {
       specifier: specifier.clone(),
       maybe_headers: Some(cache_data.metadata.headers),
-      source: Arc::from(cache_data.body),
+      source: Arc::from(cache_data.content),
     })))
   }
 
@@ -410,17 +408,14 @@ impl FileFetcher {
           match file_or_redirect {
             Some(file_or_redirect) => Ok(file_or_redirect),
             None => {
-              // Someone may have deleted the body from the cache since
-              // it's currently stored in a separate file from the headers,
-              // so delete the etag and try again
-              if maybe_etag.is_some() {
-                debug!("Cache body not found. Trying again without etag.");
-                maybe_etag = None;
-                continue;
-              } else {
-                // should never happen
-                bail!("Your deno cache directory is in an unrecoverable state. Please delete it and try again.")
-              }
+              // If this happens it means that some other process deleted
+              // the entry from the cache directory between the cache.read_headers call
+              // and the fetch_no_follow call, so just try again without an etag
+              // in order to repopulate the cache.
+              assert!(maybe_etag.is_some());
+              debug!("Cache body not found. Trying again without etag.");
+              maybe_etag = None;
+              continue;
             }
           }
         }
@@ -1479,10 +1474,10 @@ mod tests {
     let cache_key = file_fetcher.http_cache.cache_item_key(url).unwrap();
     let bytes = file_fetcher
       .http_cache
-      .get(&cache_key, None, deno_cache_dir::GlobalToLocalCopy::Allow)
+      .get(&cache_key, None)
       .unwrap()
       .unwrap()
-      .body;
+      .content;
     String::from_utf8(bytes).unwrap()
   }
 

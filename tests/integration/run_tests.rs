@@ -4989,39 +4989,6 @@ console.log(add(3, 4));
 }
 
 #[test]
-fn run_etag_delete_source_cache() {
-  let test_context = TestContextBuilder::new()
-    .use_temp_cwd()
-    .use_http_server()
-    .build();
-  test_context
-    .temp_dir()
-    .write("main.ts", "import 'http://localhost:4545/etag_script.ts'");
-  test_context
-    .new_command()
-    .args("cache main.ts")
-    .run()
-    .skip_output_check();
-
-  // The cache is currently stored unideally in two files where one file has the headers
-  // and the other contains the body. An issue can happen with the etag header where the
-  // headers file exists, but the body was deleted. We need to get the cache to gracefully
-  // handle this scenario.
-  let deno_dir = test_context.deno_dir().path();
-  let etag_script_path = deno_dir.join("deps/http/localhost_PORT4545/26110db7d42c9bad32386735cbc05c301f83e4393963deb8da14fec3b4202a13");
-  assert!(etag_script_path.exists());
-  etag_script_path.remove_file();
-
-  test_context
-    .new_command()
-    .args("cache --reload --log-level=debug main.ts")
-    .run()
-    .assert_matches_text(
-      "[WILDCARD]Cache body not found. Trying again without etag.[WILDCARD]",
-    );
-}
-
-#[test]
 fn code_cache_test() {
   let test_context = TestContextBuilder::new().use_temp_cwd().build();
   let deno_dir = test_context.deno_dir();
