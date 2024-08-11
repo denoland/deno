@@ -7,6 +7,7 @@ const {
   PromisePrototypeThen,
   PromisePrototypeCatch,
   ObjectEntries,
+  ArrayPrototypeMap,
   TypedArrayPrototypeSlice,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeGetByteLength,
@@ -115,9 +116,11 @@ export class BrotliCompress extends Transform {
       },
     });
 
-    const params = ObjectEntries(options?.params ?? {})
+    const params = ArrayPrototypeMap(
+      ObjectEntries(options?.params ?? {}),
       // Undo the stringification of the keys
-      .map(([key, value]) => [Number(key), value]);
+      (o) => [Number(o[0]), o[1]],
+    );
     this.#context = op_create_brotli_compress(params);
     const context = this.#context;
   }
