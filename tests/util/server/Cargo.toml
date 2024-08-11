@@ -59,7 +59,7 @@ url.workspace = true
 win32job = "2"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "winbase", "winerror",] }
+winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "winbase", "winerror"] }
 
 [build-dependencies]
 prost-build.workspace = true
