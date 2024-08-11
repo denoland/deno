@@ -566,16 +566,18 @@ Buffer.prototype.equals = function equals(b) {
   return BufferCompare(this, b) === 0;
 };
 
-Buffer.prototype.inspect = function inspect() {
-  let str = "";
-  const max = INSPECT_MAX_BYTES;
-  // deno-lint-ignore prefer-primordials
-  str = this.toString("hex", 0, max).replace(/(.{2})/g, "$1 ").trim();
-  if (this.length > max) {
-    str += " ... ";
-  }
-  return "<Buffer " + str + ">";
-};
+Buffer.prototype[customInspectSymbol] =
+  Buffer.prototype.inspect =
+    function inspect() {
+      let str = "";
+      const max = INSPECT_MAX_BYTES;
+      // deno-lint-ignore prefer-primordials
+      str = this.toString("hex", 0, max).replace(/(.{2})/g, "$1 ").trim();
+      if (this.length > max) {
+        str += " ... ";
+      }
+      return "<Buffer " + str + ">";
+    };
 
 Buffer.prototype.compare = function compare(
   target,
