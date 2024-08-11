@@ -21,10 +21,9 @@ bytes.workspace = true
 console_static_text.workspace = true
 deno_unsync = "0"
 denokv_proto.workspace = true
+env_logger = "0.11.5"
 fastwebsockets.workspace = true
 flate2 = { workspace = true, features = ["default"] }
-log = { workspace = true, features = ["serde"] }
-env_logger = "0.11.5"
 futures.workspace = true
 glob.workspace = true
 h2.workspace = true
@@ -35,6 +34,7 @@ hyper-util.workspace = true
 jsonc-parser.workspace = true
 lazy-regex.workspace = true
 libc.workspace = true
+log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
 monch.workspace = true
 nix.workspace = true
@@ -59,14 +59,7 @@ url.workspace = true
 win32job = "2"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = [
-    "consoleapi",
-    "synchapi",
-    "handleapi",
-    "namedpipeapi",
-    "winbase",
-    "winerror",
-] }
+winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "winbase", "winerror",] }
 
 [build-dependencies]
 prost-build.workspace = true
