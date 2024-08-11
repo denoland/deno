@@ -1164,7 +1164,7 @@ dependencies = [
  "dprint-plugin-jupyter",
  "dprint-plugin-markdown",
  "dprint-plugin-typescript",
- "env_logger",
+ "env_logger 0.10.0",
  "eszip",
  "fancy-regex",
  "faster-hex",
@@ -2679,6 +2679,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "env_filter"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f2c92ceda6ceec50f43169f9ee8424fe2db276791afde7b2cd8bc084cb376ab"
+dependencies = [
+ "log",
+ "regex",
+]
+
+[[package]]
 name = "env_logger"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2689,6 +2699,19 @@ dependencies = [
  "log",
  "regex",
  "termcolor",
+]
+
+[[package]]
+name = "env_logger"
+version = "0.11.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e13fa619b91fb2381732789fc5de83b45675e882f66623b7d8cb4f643017018d"
+dependencies = [
+ "anstream",
+ "anstyle",
+ "env_filter",
+ "humantime",
+ "log",
 ]
 
 [[package]]
@@ -7155,6 +7178,7 @@ dependencies = [
  "console_static_text",
  "deno_unsync",
  "denokv_proto",
+ "env_logger 0.11.5",
  "fastwebsockets",
  "flate2",
  "futures",
@@ -7167,6 +7191,7 @@ dependencies = [
  "jsonc-parser",
  "lazy-regex",
  "libc",
+ "log",
  "lsp-types",
  "monch",
  "nix 0.26.2",

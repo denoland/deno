@@ -23,6 +23,8 @@ deno_unsync = "0"
 denokv_proto.workspace = true
 fastwebsockets.workspace = true
 flate2 = { workspace = true, features = ["default"] }
+log = { workspace = true, features = ["serde"] }
+env_logger = "0.11.5"
 futures.workspace = true
 glob.workspace = true
 h2.workspace = true
@@ -57,7 +59,14 @@ url.workspace = true
 win32job = "2"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "winbase", "winerror"] }
+winapi = { workspace = true, features = [
+    "consoleapi",
+    "synchapi",
+    "handleapi",
+    "namedpipeapi",
+    "winbase",
+    "winerror",
+] }
 
 [build-dependencies]
 prost-build.workspace = true
