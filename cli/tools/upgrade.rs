@@ -1215,8 +1215,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
   #[derive(Clone)]
   struct TestUpdateCheckerEnvironment {
     file_text: Rc<RefCell<String>>,
-    is_canary: Rc<RefCell<bool>>,
-    is_release_candidate: Rc<RefCell<bool>>,
+    release_channel: Rc<RefCell<ReleaseChannel>>,
     current_version: Rc<RefCell<String>>,
     latest_version: Rc<RefCell<Result<AvailableVersion, String>>>,
     time: Rc<RefCell<chrono::DateTime<chrono::Utc>>>,
@@ -1227,8 +1226,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
       Self {
         file_text: Default::default(),
         current_version: Default::default(),
-        is_canary: Default::default(),
-        is_release_candidate: Default::default(),
+        release_channel: Rc::new(RefCell::new(ReleaseChannel::Stable)),
         latest_version: Rc::new(RefCell::new(Ok(AvailableVersion {
           version_or_hash: "".to_string(),
           display: "".to_string(),
@@ -1263,12 +1261,8 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
       *self.latest_version.borrow_mut() = Err(err.to_string());
     }
 
-    pub fn set_is_canary(&self, is_canary: bool) {
-      *self.is_canary.borrow_mut() = is_canary;
-    }
-
-    pub fn set_is_release_candidate(&self, is_release_candidate: bool) {
-      *self.is_release_candidate.borrow_mut() = is_release_candidate;
+    pub fn set_release_channel(&self, channel: ReleaseChannel) {
+      *self.release_channel.borrow_mut() = channel;
     }
   }
 
@@ -1289,17 +1283,10 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
       Cow::Owned(self.current_version.borrow().clone())
     }
 
-    // TODO(bartlomieju): update to handle `Lts` channels
     async fn get_current_exe_release_channel(
       &self,
     ) -> Result<ReleaseChannel, AnyError> {
-      if *self.is_canary.borrow() {
-        Ok(ReleaseChannel::Canary)
-      } else if *self.is_release_candidate.borrow() {
-        Ok(ReleaseChannel::Rc)
-      } else {
-        Ok(ReleaseChannel::Stable)
-      }
+      Ok(*self.release_channel.borrow())
     }
   }
 
@@ -1399,7 +1386,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
     assert_eq!(checker.should_prompt(), None);
 
     // now switch to RC release
-    env.set_is_release_candidate(true);
+    env.set_release_channel(ReleaseChannel::Rc);
     env.set_current_version("1.46.0-rc.0");
     env.set_latest_version("1.46.0-rc.1");
     fetch_and_store_latest_version(&env, &env).await;
@@ -1643,7 +1630,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
     {
       env.set_current_version("123");
       env.set_latest_version("123");
-      env.set_is_canary(true);
+      env.set_release_channel(ReleaseChannel::Canary);
       let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
         .await
         .unwrap();
@@ -1665,10 +1652,9 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
     }
     // rc equal
     {
-      env.set_is_canary(false);
+      env.set_release_channel(ReleaseChannel::Rc);
       env.set_current_version("1.2.3-rc.0");
       env.set_latest_version("1.2.3-rc.0");
-      env.set_is_release_candidate(true);
       let maybe_info = check_for_upgrades_for_lsp_with_provider(&env)
         .await
         .unwrap();
