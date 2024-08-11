@@ -2,7 +2,6 @@
 
 use deno_core::error::AnyError;
 use deno_core::op2;
-use deno_core::v8;
 
 use x509_parser::der_parser::asn1_rs::Any;
 use x509_parser::der_parser::asn1_rs::Tag;
@@ -11,19 +10,31 @@ use x509_parser::extensions;
 use x509_parser::pem;
 use x509_parser::prelude::*;
 
+use std::ops::Deref;
+use yoke::Yoke;
+use yoke::Yokeable;
+
 use digest::Digest;
 
+enum CertificateSources {
+  Der(Box<[u8]>),
+  Pem(pem::Pem),
+}
+
+#[derive(Yokeable)]
+struct CertificateView<'a> {
+  cert: X509Certificate<'a>,
+}
+
 pub(crate) struct Certificate {
-  _buf: Vec<u8>,
-  pem: Option<pem::Pem>,
-  cert: X509Certificate<'static>,
+  inner: Yoke<CertificateView<'static>, Box<CertificateSources>>,
 }
 
 impl deno_core::GarbageCollected for Certificate {}
 
 impl Certificate {
   fn fingerprint<D: Digest>(&self) -> Option<String> {
-    self.pem.as_ref().map(|pem| {
+    if let CertificateSources::Pem(pem) = self.inner.backing_cart().as_ref() {
       let mut hasher = D::new();
       hasher.update(&pem.contents);
       let bytes = hasher.finalize();
@@ -33,13 +44,15 @@ impl Certificate {
         hex.push_str(&format!("{:02X}:", byte));
       }
       hex.pop();
-      hex
-    })
+      Some(hex)
+    } else {
+      None
+    }
   }
 }
 
-impl std::ops::Deref for Certificate {
-  type Target = X509Certificate<'static>;
+impl<'a> Deref for CertificateView<'a> {
+  type Target = X509Certificate<'a>;
 
   fn deref(&self) -> &Self::Target {
     &self.cert
@@ -47,36 +60,35 @@ impl std::ops::Deref for Certificate {
 }
 
 #[op2]
-pub fn op_node_x509_parse<'s>(
-  scope: &'s mut v8::HandleScope,
+#[cppgc]
+pub fn op_node_x509_parse(
   #[buffer] buf: &[u8],
-) -> Result<v8::Local<'s, v8::Object>, AnyError> {
-  let pem = match pem::parse_x509_pem(buf) {
-    Ok((_, pem)) => Some(pem),
-    Err(_) => None,
+) -> Result<Certificate, AnyError> {
+  let source = match pem::parse_x509_pem(buf) {
+    Ok((_, pem)) => CertificateSources::Pem(pem),
+    Err(_) => CertificateSources::Der(buf.to_vec().into_boxed_slice()),
   };
 
-  let cert = pem
-    .as_ref()
-    .map(|pem| pem.parse_x509())
-    .unwrap_or_else(|| X509Certificate::from_der(buf).map(|(_, cert)| cert))?;
+  let inner =
+    Yoke::<CertificateView<'static>, Box<CertificateSources>>::try_attach_to_cart(
+      Box::new(source),
+      |source| {
+        let cert = match source {
+          CertificateSources::Pem(pem) => pem.parse_x509()?,
+          CertificateSources::Der(buf) => {
+            X509Certificate::from_der(buf).map(|(_, cert)| cert)?
+          }
+        };
+        Ok::<_, AnyError>(CertificateView { cert })
+      },
+    )?;
 
-  let cert = Certificate {
-    _buf: buf.to_vec(),
-    // SAFETY: Extending the lifetime of the certificate. Backing buffer is
-    // owned by the resource.
-    cert: unsafe {
-      std::mem::transmute::<X509Certificate<'_>, X509Certificate<'_>>(cert)
-    },
-    pem,
-  };
-
-  let obj = deno_core::cppgc::make_cppgc_object(scope, cert);
-  Ok(obj)
+  Ok(Certificate { inner })
 }
 
 #[op2(fast)]
 pub fn op_node_x509_ca(#[cppgc] cert: &Certificate) -> Result<bool, AnyError> {
+  let cert = cert.inner.get().deref();
   Ok(cert.is_ca())
 }
 
@@ -85,6 +97,7 @@ pub fn op_node_x509_check_email(
   #[cppgc] cert: &Certificate,
   #[string] email: &str,
 ) -> Result<bool, AnyError> {
+  let cert = cert.inner.get().deref();
   let subject = cert.subject();
   if subject
     .iter_email()
@@ -144,6 +157,7 @@ pub fn op_node_x509_fingerprint512(
 pub fn op_node_x509_get_issuer(
   #[cppgc] cert: &Certificate,
 ) -> Result<String, AnyError> {
+  let cert = cert.inner.get().deref();
   Ok(x509name_to_string(cert.issuer(), oid_registry())?)
 }
 
@@ -152,6 +166,7 @@ pub fn op_node_x509_get_issuer(
 pub fn op_node_x509_get_subject(
   #[cppgc] cert: &Certificate,
 ) -> Result<String, AnyError> {
+  let cert = cert.inner.get().deref();
   Ok(x509name_to_string(cert.subject(), oid_registry())?)
 }
 
@@ -220,6 +235,7 @@ fn x509name_to_string(
 pub fn op_node_x509_get_valid_from(
   #[cppgc] cert: &Certificate,
 ) -> Result<String, AnyError> {
+  let cert = cert.inner.get().deref();
   Ok(cert.validity().not_before.to_string())
 }
 
@@ -228,6 +244,7 @@ pub fn op_node_x509_get_valid_from(
 pub fn op_node_x509_get_valid_to(
   #[cppgc] cert: &Certificate,
 ) -> Result<String, AnyError> {
+  let cert = cert.inner.get().deref();
   Ok(cert.validity().not_after.to_string())
 }
 
@@ -236,6 +253,7 @@ pub fn op_node_x509_get_valid_to(
 pub fn op_node_x509_get_serial_number(
   #[cppgc] cert: &Certificate,
 ) -> Result<String, AnyError> {
+  let cert = cert.inner.get().deref();
   let mut s = cert.serial.to_str_radix(16);
   s.make_ascii_uppercase();
   Ok(s)
@@ -245,6 +263,7 @@ pub fn op_node_x509_get_serial_number(
 pub fn op_node_x509_key_usage(
   #[cppgc] cert: &Certificate,
 ) -> Result<u16, AnyError> {
+  let cert = cert.inner.get().deref();
   let key_usage = cert
     .extensions()
     .iter()
