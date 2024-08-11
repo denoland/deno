@@ -3605,6 +3605,8 @@ fn seed_arg() -> Arg {
 fn hmr_arg(takes_files: bool) -> Arg {
   let arg = Arg::new("hmr")
     .long("watch-hmr")
+    // NOTE(bartlomieju): compatibility with Deno pre-1.46
+    .alias("unstable-hmr")
     .help("Watch for file changes and hot replace modules")
     .conflicts_with("watch");
 
@@ -5253,6 +5255,31 @@ mod tests {
       "deno",
       "run",
       "--watch-hmr",
+      "--no-clear-screen",
+      "script.ts"
+    ]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            hmr: true,
+            paths: vec![],
+            no_clear_screen: true,
+            exclude: vec![],
+          }),
+        }),
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--unstable-hmr",
       "--no-clear-screen",
       "script.ts"
     ]);
