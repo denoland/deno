@@ -3,9 +3,10 @@
 import { core, primordials } from "ext:core/mod.js";
 const {
   Uint8Array,
+  Number,
   PromisePrototypeThen,
   PromisePrototypeCatch,
-  ObjectValues,
+  ObjectEntries,
   TypedArrayPrototypeSlice,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeGetByteLength,
@@ -114,7 +115,9 @@ export class BrotliCompress extends Transform {
       },
     });
 
-    const params = ObjectValues(options?.params ?? {});
+    const params = ObjectEntries(options?.params ?? {})
+      // Undo the stringification of the keys
+      .map(([key, value]) => [Number(key), value]);
     this.#context = op_create_brotli_compress(params);
     const context = this.#context;
   }
