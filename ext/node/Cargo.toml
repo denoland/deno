@@ -90,13 +90,14 @@ signature.workspace = true
 simd-json = "0.13.4"
 sm3 = "0.4.2"
 spki.workspace = true
+stable_deref_trait = "1.2.0"
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
 winapi.workspace = true
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 x509-parser = "0.15.0"
-yoke = "0.7.4"
+yoke = { version = "0.7.4", features = ["derive"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true
