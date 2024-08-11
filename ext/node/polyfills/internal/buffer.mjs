@@ -32,10 +32,13 @@ const {
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   RangeError,
+  SafeRegExp,
   String,
   StringFromCharCode,
   StringPrototypeCharCodeAt,
+  StringPrototypeReplace,
   StringPrototypeToLowerCase,
+  StringPrototypeTrim,
   SymbolFor,
   SymbolToPrimitive,
   TypeError,
@@ -566,13 +569,21 @@ Buffer.prototype.equals = function equals(b) {
   return BufferCompare(this, b) === 0;
 };
 
+const SPACER_PATTERN = new SafeRegExp(/(.{2})/g);
+
 Buffer.prototype[customInspectSymbol] =
   Buffer.prototype.inspect =
     function inspect() {
       let str = "";
       const max = INSPECT_MAX_BYTES;
-      // deno-lint-ignore prefer-primordials
-      str = this.toString("hex", 0, max).replace(/(.{2})/g, "$1 ").trim();
+      str = StringPrototypeTrim(
+        StringPrototypeReplace(
+          // deno-lint-ignore prefer-primordials
+          this.toString("hex", 0, max),
+          SPACER_PATTERN,
+          "$1 ",
+        ),
+      );
       if (this.length > max) {
         str += " ... ";
       }
