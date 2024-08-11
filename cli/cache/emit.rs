@@ -5,19 +5,10 @@ use std::path::PathBuf;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::serde_json;
 use deno_core::unsync::sync::AtomicFlag;
-use serde::Deserialize;
-use serde::Serialize;
 
 use super::DiskCache;
 use super::FastInsecureHasher;
-
-#[derive(Debug, Deserialize, Serialize)]
-struct EmitMetadata {
-  pub source_hash: u64,
-  pub emit_hash: u64,
-}
 
 /// The cache that stores previously emitted files.
 pub struct EmitCache {
@@ -48,37 +39,30 @@ impl EmitCache {
     specifier: &ModuleSpecifier,
     expected_source_hash: u64,
   ) -> Option<Vec<u8>> {
-    let meta_filename = self.get_meta_filename(specifier)?;
     let emit_filename = self.get_emit_filename(specifier)?;
 
     // load and verify the meta data file is for this source and CLI version
-    let bytes = self.disk_cache.get(&meta_filename).ok()?;
-    let meta: EmitMetadata = serde_json::from_slice(&bytes).ok()?;
-    if meta.source_hash != expected_source_hash {
+    let mut bytes = self.disk_cache.get(&emit_filename).ok()?;
+    if bytes.len() < 16 {
       return None;
     }
-
-    // load and verify the emit is for the meta data
-    let emit_bytes = self.disk_cache.get(&emit_filename).ok()?;
-    if meta.emit_hash != compute_emit_hash(&emit_bytes, self.cli_version) {
+    let mut u64_buf: [u8; 8] = [0; 8];
+    u64_buf.copy_from_slice(&bytes[bytes.len() - 16..bytes.len() - 8]);
+    let source_hash = u64::from_le_bytes(u64_buf);
+    u64_buf.copy_from_slice(&bytes[bytes.len() - 8..]);
+    let emit_hash = u64::from_le_bytes(u64_buf);
+    if source_hash != expected_source_hash {
+      return None;
+    }
+    bytes.truncate(bytes.len() - 16);
+    let emit_bytes = bytes;
+    // prevent using an emit from a different cli version or emits that were tampered with
+    if emit_hash != compute_emit_hash(&emit_bytes, self.cli_version) {
       return None;
     }
 
     // everything looks good, return it
     Some(emit_bytes)
-  }
-
-  /// Gets the filepath which stores the emit.
-  pub fn get_emit_filepath(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<PathBuf> {
-    Some(
-      self
-        .disk_cache
-        .location
-        .join(self.get_emit_filename(specifier)?),
-    )
   }
 
   /// Sets the emit code in the cache.
@@ -107,38 +91,26 @@ impl EmitCache {
       return Ok(());
     }
 
-    let meta_filename = self
-      .get_meta_filename(specifier)
-      .ok_or_else(|| anyhow!("Could not get meta filename."))?;
     let emit_filename = self
       .get_emit_filename(specifier)
       .ok_or_else(|| anyhow!("Could not get emit filename."))?;
 
-    // save the metadata
-    let metadata = EmitMetadata {
-      source_hash,
-      emit_hash: compute_emit_hash(code, self.cli_version),
-    };
-    self
-      .disk_cache
-      .set(&meta_filename, &serde_json::to_vec(&metadata)?)?;
-
-    // save the emit source
-    self.disk_cache.set(&emit_filename, code)?;
+    // we store the hashes at the end of the file so we can truncate them off when loading
+    let capacity = code.len() + 8 * 2;
+    let mut cache_data = Vec::with_capacity(capacity);
+    cache_data.extend(code);
+    cache_data.extend(source_hash.to_le_bytes());
+    cache_data.extend(compute_emit_hash(code, self.cli_version).to_le_bytes());
+    debug_assert_eq!(cache_data.len(), capacity);
+    self.disk_cache.set(&emit_filename, &cache_data)?;
 
     Ok(())
-  }
-
-  fn get_meta_filename(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
-    self
-      .disk_cache
-      .get_cache_filename_with_extension(specifier, "meta")
   }
 
   fn get_emit_filename(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
     self
       .disk_cache
-      .get_cache_filename_with_extension(specifier, "js")
+      .get_cache_filename_with_extension(specifier, "bin")
   }
 }
 
