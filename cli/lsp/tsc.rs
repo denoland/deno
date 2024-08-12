@@ -4232,14 +4232,10 @@ impl State {
   }
 
   fn get_document(&self, specifier: &ModuleSpecifier) -> Option<Arc<Document>> {
-    if let Some(scope) = &self.last_scope {
-      self.state_snapshot.documents.get_or_load(specifier, scope)
-    } else {
-      self
-        .state_snapshot
-        .documents
-        .get_or_load(specifier, &ModuleSpecifier::parse("file:///").unwrap())
-    }
+    self
+      .state_snapshot
+      .documents
+      .get_or_load(specifier, self.last_scope.as_ref())
   }
 
   fn get_asset_or_document(
@@ -4561,7 +4557,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           specifier,
           doc.file_referrer(),
         )?;
-        let types_doc = documents.get_or_load(&types, specifier)?;
+        let types_doc = documents.get_or_load(&types, doc.file_referrer())?;
         Some(types_doc.specifier().clone())
       })();
       // If there is a types dep, use that as the root instead. But if the doc
