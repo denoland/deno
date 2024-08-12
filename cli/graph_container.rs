@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::fs;
+use std::path::Path;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -85,13 +87,60 @@ impl MainModuleGraphContainer {
     &self,
     files: &[String],
   ) -> Result<(), AnyError> {
-    let specifiers = self.collect_specifiers(files)?;
+    let resolved_files = self.resolve_files(files)?;
+
+    let specifiers = self.collect_specifiers(&resolved_files)?;
 
     if specifiers.is_empty() {
       log::warn!("{} No matching files found.", colors::yellow("Warning"));
     }
 
     self.check_specifiers(&specifiers).await
+  }
+
+  fn resolve_files(
+    &self,
+    patterns: &[String],
+  ) -> Result<Vec<String>, AnyError> {
+    let mut resolved_files = Vec::new();
+
+    for pattern in patterns {
+      let expanded = glob::glob(pattern).expect("Failed to read glob pattern");
+      for entry in expanded {
+        match entry {
+          Ok(path) => {
+            if path.is_file() {
+              resolved_files.push(path.to_string_lossy().to_string());
+            } else if path.is_dir() {
+              resolved_files.extend(self.collect_ts_files_from_dir(&path)?);
+            }
+          }
+          Err(e) => return Err(AnyError::msg(format!("Glob error: {}", e))),
+        }
+      }
+    }
+
+    Ok(resolved_files)
+  }
+
+  #[allow(clippy::only_used_in_recursion)]
+  fn collect_ts_files_from_dir(
+    &self,
+    dir: &Path,
+  ) -> Result<Vec<String>, AnyError> {
+    let mut files = Vec::new();
+    for entry in fs::read_dir(dir)? {
+      let entry = entry?;
+      let path = entry.path();
+      if path.is_file() {
+        if path.extension().is_some() {
+          files.push(path.to_string_lossy().to_string());
+        }
+      } else if path.is_dir() {
+        files.extend(self.collect_ts_files_from_dir(&path)?);
+      }
+    }
+    Ok(files)
   }
 
   pub fn collect_specifiers(
