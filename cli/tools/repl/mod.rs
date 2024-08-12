@@ -44,18 +44,23 @@ struct Repl {
 #[allow(clippy::print_stdout)]
 impl Repl {
   async fn run(&mut self) -> Result<(), AnyError> {
+    let mut counter = 1;
     loop {
       let line = read_line_and_poll(
         &mut self.session,
         &mut self.message_handler,
         self.editor.clone(),
+        counter,
       )
       .await;
       match line {
         Ok(line) => {
           self.editor.set_should_exit_on_interrupt(false);
           self.editor.update_history(line.clone());
-          let output = self.session.evaluate_line_and_get_output(&line).await;
+          let output = self
+            .session
+            .evaluate_line_and_get_output(&line, counter)
+            .await;
 
           // We check for close and break here instead of making it a loop condition to get
           // consistent behavior in when the user evaluates a call to close().
@@ -63,7 +68,15 @@ impl Repl {
             break;
           }
 
-          println!("{}", output);
+          match output {
+            EvaluationOutput::Value(s) => {
+              self.editor.output(s, counter);
+            }
+            EvaluationOutput::Error(s) => {
+              println!("{}\n", s);
+            }
+          };
+          counter += 1;
         }
         Err(ReadlineError::Interrupted) => {
           if self.editor.should_exit_on_interrupt() {
@@ -92,8 +105,9 @@ async fn read_line_and_poll(
   repl_session: &mut ReplSession,
   message_handler: &mut RustylineSyncMessageHandler,
   editor: ReplEditor,
+  counter: usize,
 ) -> Result<String, ReadlineError> {
-  let mut line_fut = spawn_blocking(move || editor.readline());
+  let mut line_fut = spawn_blocking(move || editor.readline(counter));
   let mut poll_worker = true;
   let notifications_rc = repl_session.notifications.clone();
   let mut notifications = notifications_rc.lock().await;
@@ -114,9 +128,28 @@ async fn read_line_and_poll(
           Some(RustylineSyncMessage::LspCompletions {
             line_text,
             position,
+            explicit,
           }) => {
-            let result = repl_session.language_server.completions(&line_text, position).await;
+            let result = repl_session.language_server.completions(&line_text, position, explicit).await;
             message_handler.send(RustylineSyncResponse::LspCompletions(result)).unwrap();
+          }
+          Some(RustylineSyncMessage::Preview { line_text }) => {
+            let result = repl_session.evaluate_line_with_object_wrapping(&line_text, true).await;
+            let result = match result {
+              Ok(evaluate_response) => {
+                let cdp::EvaluateResponse {
+                  result,
+                  exception_details,
+                } = evaluate_response.value;
+                if exception_details.is_some() {
+                  None
+                } else {
+                  repl_session.get_eval_value(&result, true).await.ok().map(|s| (s, counter))
+                }
+              },
+              _ => None,
+            };
+            message_handler.send(RustylineSyncResponse::Preview(result)).unwrap();
           }
           None => {}, // channel closed
         }
@@ -217,7 +250,7 @@ pub async fn run(
         Ok(eval_source) => {
           let output = repl
             .session
-            .evaluate_line_and_get_output(&eval_source)
+            .evaluate_line_and_get_output(&eval_source, 0)
             .await;
           // only output errors
           if let EvaluationOutput::Error(error_text) = output {
@@ -232,7 +265,7 @@ pub async fn run(
   }
 
   if let Some(eval) = repl_flags.eval {
-    let output = repl.session.evaluate_line_and_get_output(&eval).await;
+    let output = repl.session.evaluate_line_and_get_output(&eval, 0).await;
     // only output errors
     if let EvaluationOutput::Error(error_text) = output {
       println!("Error in --eval flag: {error_text}");

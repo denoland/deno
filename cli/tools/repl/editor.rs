@@ -14,6 +14,8 @@ use deno_core::serde_json;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
+use rustyline::hint::Hinter;
+use rustyline::preview::Previewer;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
@@ -26,12 +28,11 @@ use rustyline::Editor;
 use rustyline::Event;
 use rustyline::EventContext;
 use rustyline::EventHandler;
+use rustyline::Helper;
 use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
 use rustyline::RepeatCount;
-use rustyline_derive::Helper;
-use rustyline_derive::Hinter;
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -43,7 +44,6 @@ use super::session::REPL_INTERNALS_NAME;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
-#[derive(Helper, Hinter)]
 pub struct EditorHelper {
   pub context_id: u64,
   pub sync_sender: RustylineSyncMessageSender,
@@ -181,6 +181,8 @@ fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
   word
 }
 
+impl Helper for EditorHelper {}
+
 impl Completer for EditorHelper {
   type Candidate = String;
 
@@ -190,7 +192,7 @@ impl Completer for EditorHelper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
-    let lsp_completions = self.sync_sender.lsp_completions(line, pos);
+    let lsp_completions = self.sync_sender.lsp_completions(line, pos, true);
     if !lsp_completions.is_empty() {
       // assumes all lsp completions have the same start position
       return Ok((
@@ -231,6 +233,51 @@ impl Completer for EditorHelper {
 
       Ok((pos - expr.len(), candidates))
     }
+  }
+}
+
+impl Hinter for EditorHelper {
+  type Hint = String;
+
+  fn hint(&self, line: &str, pos: usize, ctx: &Context) -> Option<Self::Hint> {
+    if line.trim().is_empty() || line.ends_with(')') || line.ends_with('}') {
+      return None;
+    }
+
+    let (p, completions) = self.complete(line, pos, ctx).ok()?;
+    let candidate = completions.into_iter().next()?;
+    // let lsp_completions = self.sync_sender.lsp_completions(line, pos, false);
+    //let completion = completions.into_iter().next()?;
+
+    // let p = completion.range.start;
+    // let candidate = completion.new_text;
+
+    let mut i = 0;
+    for (a, b) in line[p..].chars().zip(candidate.chars()) {
+      if a == b {
+        i += 1;
+      } else {
+        break;
+      }
+    }
+    Some(candidate[i..].to_owned())
+  }
+}
+
+impl Previewer for EditorHelper {
+  type Preview = String;
+
+  fn preview(
+    &self,
+    line: &str,
+    _pos: usize,
+    _ctx: &Context,
+  ) -> Option<Self::Preview> {
+    if line.trim().is_empty() {
+      return None;
+    }
+    let (preview, counter) = self.sync_sender.preview(line)?;
+    Some(format!("Out[{counter}]: {preview}"))
   }
 }
 
@@ -326,7 +373,11 @@ fn validate(input: &str) -> ValidationResult {
 
 impl Highlighter for EditorHelper {
   fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
-    hint.into()
+    format!("{}", colors::gray(hint)).into()
+  }
+
+  fn highlight_preview<'h>(&self, hint: &'h str) -> Cow<'h, str> {
+    format!("{}", colors::gray(hint)).into()
   }
 
   fn highlight_candidate<'c>(
@@ -477,8 +528,24 @@ impl ReplEditor {
     })
   }
 
-  pub fn readline(&self) -> Result<String, ReadlineError> {
-    self.inner.lock().readline("> ")
+  pub fn readline(&self, counter: usize) -> Result<String, ReadlineError> {
+    let prompt = format!(
+      "{}{}{}",
+      colors::green("In ["),
+      colors::green_bold(counter),
+      colors::green("]: ")
+    );
+    self.inner.lock().readline(&prompt)
+  }
+
+  pub fn output(&self, output: String, counter: usize) {
+    let prompt = format!(
+      "{}{}{}",
+      colors::red("Out["),
+      colors::red_bold(counter),
+      colors::red("]: ")
+    );
+    println!("{prompt}{output}\n");
   }
 
   pub fn update_history(&self, entry: String) {

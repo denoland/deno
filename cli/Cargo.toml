@@ -138,7 +138,6 @@ rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 ring.workspace = true
 rustyline.workspace = true
-rustyline-derive = "=0.7.0"
 serde.workspace = true
 serde_repr.workspace = true
 sha2.workspace = true

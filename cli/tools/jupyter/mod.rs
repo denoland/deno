@@ -407,7 +407,7 @@ impl JupyterReplSession {
     self
       .repl_session
       .language_server
-      .completions(line_text, position)
+      .completions(line_text, position, true)
       .await
   }
 
@@ -485,7 +485,7 @@ impl JupyterReplSession {
   ) -> Result<repl::TsEvaluateResponse, AnyError> {
     self
       .repl_session
-      .evaluate_line_with_object_wrapping(line)
+      .evaluate_line_with_object_wrapping(line, false)
       .await
   }
 

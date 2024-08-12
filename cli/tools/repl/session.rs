@@ -95,8 +95,6 @@ Object.defineProperty(globalThis, "{0}", {{
   enumerable: false,
   writable: false,
   value: {{
-    lastEvalResult: undefined,
-    lastThrownError: undefined,
     inspectArgs: Deno[Deno.internal].inspectArgs,
     noColor: Deno.noColor,
     get closed() {{
@@ -104,35 +102,6 @@ Object.defineProperty(globalThis, "{0}", {{
     }}
   }},
 }});
-Object.defineProperty(globalThis, "_", {{
-  configurable: true,
-  get: () => {0}.lastEvalResult,
-  set: (value) => {{
-   Object.defineProperty(globalThis, "_", {{
-     value: value,
-     writable: true,
-     enumerable: true,
-     configurable: true,
-   }});
-   console.log("Last evaluation result is no longer saved to _.");
-  }},
-}});
-
-Object.defineProperty(globalThis, "_error", {{
-  configurable: true,
-  get: () => {0}.lastThrownError,
-  set: (value) => {{
-   Object.defineProperty(globalThis, "_error", {{
-     value: value,
-     writable: true,
-     enumerable: true,
-     configurable: true,
-   }});
-
-   console.log("Last thrown error is no longer saved to _error.");
-  }},
-}});
-
 globalThis.clear = console.clear.bind(console);
 "#,
     *REPL_INTERNALS_NAME
@@ -289,7 +258,9 @@ impl ReplSession {
     };
 
     // inject prelude
-    repl_session.evaluate_expression(&get_prelude()).await?;
+    repl_session
+      .evaluate_expression(&get_prelude(), false)
+      .await?;
 
     Ok(repl_session)
   }
@@ -304,7 +275,7 @@ impl ReplSession {
   pub async fn closing(&mut self) -> Result<bool, AnyError> {
     let expression = format!(r#"{}.closed"#, *REPL_INTERNALS_NAME);
     let closed = self
-      .evaluate_expression(&expression)
+      .evaluate_expression(&expression, false)
       .await?
       .result
       .value
@@ -343,6 +314,7 @@ impl ReplSession {
   pub async fn evaluate_line_and_get_output(
     &mut self,
     line: &str,
+    counter: usize,
   ) -> EvaluationOutput {
     fn format_diagnostic(diagnostic: &deno_ast::ParseDiagnostic) -> String {
       let display_position = diagnostic.display_position();
@@ -358,8 +330,12 @@ impl ReplSession {
     async fn inner(
       session: &mut ReplSession,
       line: &str,
+      counter: usize,
     ) -> Result<EvaluationOutput, AnyError> {
-      match session.evaluate_line_with_object_wrapping(line).await {
+      match session
+        .evaluate_line_with_object_wrapping(line, false)
+        .await
+      {
         Ok(evaluate_response) => {
           let cdp::EvaluateResponse {
             result,
@@ -390,8 +366,8 @@ impl ReplSession {
               .commit_text(&evaluate_response.ts_code)
               .await;
 
-            session.set_last_eval_result(&result).await?;
-            let value = session.get_eval_value(&result).await?;
+            session.set_last_eval_result(&result, counter).await?;
+            let value = session.get_eval_value(&result, false).await?;
             EvaluationOutput::Value(value)
           })
         }
@@ -417,13 +393,14 @@ impl ReplSession {
       }
     }
 
-    let result = inner(self, line).await;
+    let result = inner(self, line, counter).await;
     result_to_evaluation_output(result)
   }
 
   pub async fn evaluate_line_with_object_wrapping(
     &mut self,
     line: &str,
+    throw_on_side_effect: bool,
   ) -> Result<TsEvaluateResponse, AnyError> {
     // Expressions like { "foo": "bar" } are interpreted as block expressions at the
     // statement level rather than an object literal so we interpret it as an expression statement
@@ -436,7 +413,9 @@ impl ReplSession {
       line.to_string()
     };
 
-    let evaluate_response = self.evaluate_ts_expression(&wrapped_line).await;
+    let evaluate_response = self
+      .evaluate_ts_expression(&wrapped_line, throw_on_side_effect)
+      .await;
 
     // If that fails, we retry it without wrapping in parens letting the error bubble up to the
     // user if it is still an error.
@@ -449,7 +428,9 @@ impl ReplSession {
           .exception_details
           .is_some())
     {
-      self.evaluate_ts_expression(line).await
+      self
+        .evaluate_ts_expression(line, throw_on_side_effect)
+        .await
     } else {
       evaluate_response
     };
@@ -486,10 +467,17 @@ impl ReplSession {
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
         Some(cdp::CallFunctionOnArgs {
-          function_declaration: format!(
-            r#"function (object) {{ {}.lastThrownError = object; }}"#,
-            *REPL_INTERNALS_NAME
-          ),
+          function_declaration: r#"
+          function (object) {
+            Object.defineProperty(globalThis, '_error', {
+              value: object,
+              enumerable: false,
+              configurable: true,
+              writable: true,
+            });
+          }
+          "#
+          .to_string(),
           object_id: None,
           arguments: Some(vec![error.into()]),
           silent: None,
@@ -509,14 +497,25 @@ impl ReplSession {
   async fn set_last_eval_result(
     &mut self,
     evaluate_result: &cdp::RemoteObject,
+    counter: usize,
   ) -> Result<(), AnyError> {
     self
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
         Some(cdp::CallFunctionOnArgs {
           function_declaration: format!(
-            r#"function (object) {{ {}.lastEvalResult = object; }}"#,
-            *REPL_INTERNALS_NAME
+            r#"function (object) {{
+              const desc = {{
+                writable: true,
+                configurable: true,
+                enumerable: false,
+                value: object,
+              }};
+              Object.defineProperties(globalThis, {{
+                _: desc,
+                "_{counter}": desc,
+              }});
+            }}"#,
           ),
           object_id: None,
           arguments: Some(vec![evaluate_result.into()]),
@@ -572,6 +571,7 @@ impl ReplSession {
   pub async fn get_eval_value(
     &mut self,
     evaluate_result: &cdp::RemoteObject,
+    no_color: bool,
   ) -> Result<String, AnyError> {
     // TODO(caspervonb) we should investigate using previews here but to keep things
     // consistent with the previous implementation we just get the preview result from
@@ -581,12 +581,12 @@ impl ReplSession {
         format!(
           r#"function (object) {{
           try {{
-            return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
+            return {0}.inspectArgs(["%o", object], {{ colors: (!{0}.noColor && !{1}) }});
           }} catch (err) {{
             return {0}.inspectArgs(["%o", err]);
           }}
         }}"#,
-          *REPL_INTERNALS_NAME
+          *REPL_INTERNALS_NAME, no_color
         ),
         &[evaluate_result.clone()],
       )
@@ -600,6 +600,7 @@ impl ReplSession {
   async fn evaluate_ts_expression(
     &mut self,
     expression: &str,
+    throw_on_side_effect: bool,
   ) -> Result<TsEvaluateResponse, AnyError> {
     let parsed_source =
       match parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx) {
@@ -653,7 +654,7 @@ impl ReplSession {
       .text;
 
     let value = self
-      .evaluate_expression(&format!("'use strict'; void 0;{transpiled_src}"))
+      .evaluate_expression(&transpiled_src, throw_on_side_effect)
       .await?;
 
     Ok(TsEvaluateResponse {
@@ -733,6 +734,7 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
+    throw_on_side_effect: bool,
   ) -> Result<cdp::EvaluateResponse, AnyError> {
     self
       .post_message_with_event_loop(
@@ -747,8 +749,12 @@ impl ReplSession {
           generate_preview: None,
           user_gesture: None,
           await_promise: None,
-          throw_on_side_effect: None,
-          timeout: None,
+          throw_on_side_effect: Some(throw_on_side_effect),
+          timeout: if throw_on_side_effect {
+            Some(100)
+          } else {
+            None
+          },
           disable_breaks: None,
           repl_mode: Some(true),
           allow_unsafe_eval_blocked_by_csp: None,

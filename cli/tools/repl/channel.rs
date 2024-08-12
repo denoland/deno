@@ -42,12 +42,17 @@ pub enum RustylineSyncMessage {
   LspCompletions {
     line_text: String,
     position: usize,
+    explicit: bool,
+  },
+  Preview {
+    line_text: String,
   },
 }
 
 pub enum RustylineSyncResponse {
   PostMessage(Result<Value, AnyError>),
   LspCompletions(Vec<ReplCompletionItem>),
+  Preview(Option<(String, usize)>),
 }
 
 pub struct RustylineSyncMessageSender {
@@ -75,7 +80,7 @@ impl RustylineSyncMessageSender {
     } else {
       match self.response_rx.borrow_mut().blocking_recv().unwrap() {
         RustylineSyncResponse::PostMessage(result) => result,
-        RustylineSyncResponse::LspCompletions(_) => unreachable!(),
+        _ => unreachable!(),
       }
     }
   }
@@ -84,12 +89,14 @@ impl RustylineSyncMessageSender {
     &self,
     line_text: &str,
     position: usize,
+    explicit: bool,
   ) -> Vec<ReplCompletionItem> {
     if self
       .message_tx
       .blocking_send(RustylineSyncMessage::LspCompletions {
         line_text: line_text.to_string(),
         position,
+        explicit,
       })
       .is_err()
     {
@@ -97,7 +104,24 @@ impl RustylineSyncMessageSender {
     } else {
       match self.response_rx.borrow_mut().blocking_recv().unwrap() {
         RustylineSyncResponse::LspCompletions(result) => result,
-        RustylineSyncResponse::PostMessage(_) => unreachable!(),
+        _ => unreachable!(),
+      }
+    }
+  }
+
+  pub fn preview(&self, line_text: &str) -> Option<(String, usize)> {
+    if self
+      .message_tx
+      .blocking_send(RustylineSyncMessage::Preview {
+        line_text: line_text.to_string(),
+      })
+      .is_err()
+    {
+      None
+    } else {
+      match self.response_rx.borrow_mut().blocking_recv().unwrap() {
+        RustylineSyncResponse::Preview(result) => result,
+        _ => unreachable!(),
       }
     }
   }

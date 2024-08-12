@@ -119,6 +119,7 @@ impl ReplLanguageServer {
     &mut self,
     line_text: &str,
     position: usize,
+    explicit: bool,
   ) -> Vec<ReplCompletionItem> {
     self.did_change(line_text).await;
     let text_info = deno_ast::SourceTextInfo::from_string(format!(
@@ -147,7 +148,11 @@ impl ReplLanguageServer {
           partial_result_token: None,
         },
         context: Some(CompletionContext {
-          trigger_kind: CompletionTriggerKind::INVOKED,
+          trigger_kind: if explicit {
+            CompletionTriggerKind::INVOKED
+          } else {
+            CompletionTriggerKind::TRIGGER_CHARACTER
+          },
           trigger_character: None,
         }),
       })
@@ -155,28 +160,34 @@ impl ReplLanguageServer {
       .ok()
       .unwrap_or_default();
 
-    let mut items = match response {
+    let items = match response {
       Some(CompletionResponse::Array(items)) => items,
       Some(CompletionResponse::List(list)) => list.items,
-      None => Vec::new(),
+      None => return vec![],
     };
-    items.sort_by_key(|item| {
-      if let Some(sort_text) = &item.sort_text {
-        sort_text.clone()
-      } else {
-        item.label.clone()
-      }
-    });
+
     items
       .into_iter()
       .filter_map(|item| {
-        item.text_edit.and_then(|edit| match edit {
-          CompletionTextEdit::Edit(edit) => Some(ReplCompletionItem {
+        if let Some(CompletionTextEdit::Edit(edit)) = item.text_edit {
+          return Some(ReplCompletionItem {
             new_text: edit.new_text,
             range: lsp_range_to_std_range(&text_info, &edit.range),
-          }),
-          CompletionTextEdit::InsertAndReplace(_) => None,
+          });
+        }
+        None
+        /*
+        if let Some(text) = item.insert_text {
+          return Some(ReplCompletionItem {
+            range:line_and_column.column_index..(line_and_column.column_index + text.len()),
+            new_text: text,
+          })
+        }
+        Some(ReplCompletionItem {
+          range: line_and_column.column_index..(line_and_column.column_index + item.label.len()),
+          new_text: item.label,
         })
+        */
       })
       .filter(|item| {
         // filter the results to only exact matches
