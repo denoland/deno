@@ -1329,7 +1329,7 @@ pub fn clap_root() -> Command {
   let long_version = format!(
     "{} ({}, {})\nv8 {}\ntypescript {}",
     crate::version::deno(),
-    if crate::version::is_canary() {
+    if crate::version::IS_CANARY {
       "canary"
     } else {
       env!("PROFILE")

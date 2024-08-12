@@ -147,7 +147,7 @@ impl VersionProvider for RealVersionProvider {
   async fn get_current_exe_release_channel(
     &self,
   ) -> Result<ReleaseChannel, AnyError> {
-    if version::is_canary() {
+    if version::IS_CANARY {
       let rc_versions = get_rc_versions(
         &self.http_client_provider.get_or_create()?,
         self.check_kind,
@@ -635,7 +635,7 @@ fn select_specific_version_for_upgrade(
 ) -> Result<Option<AvailableVersion>, AnyError> {
   match release_channel {
     ReleaseChannel::Stable => {
-      let current_is_passed = if !version::is_canary() {
+      let current_is_passed = if !version::IS_CANARY {
         version::deno() == version
       } else {
         false
@@ -688,7 +688,7 @@ async fn find_latest_version_to_upgrade(
   let (maybe_newer_latest_version, current_version) = match release_channel {
     ReleaseChannel::Stable => {
       let current_version = version::deno();
-      let current_is_most_recent = if !version::is_canary() {
+      let current_is_most_recent = if !version::IS_CANARY {
         let current = Version::parse_standard(current_version).unwrap();
         let latest =
           Version::parse_standard(&latest_version_found.version_or_hash)
