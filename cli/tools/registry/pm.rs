@@ -339,9 +339,7 @@ pub async fn add(
   // make a new CliFactory to pick up the updated config file
   let cli_factory = CliFactory::from_flags(flags);
   // cache deps
-  if cli_factory.cli_options()?.enable_future_features() {
-    crate::module_loader::load_top_level_deps(&cli_factory).await?;
-  }
+  crate::module_loader::load_top_level_deps(&cli_factory).await?;
 
   Ok(())
 }
@@ -539,7 +537,7 @@ fn remove_from_config(
   let config =
     crate::tools::fmt::format_json(config_path, &config, fmt_options)
       .ok()
-      .map(|formatted_text| formatted_text.unwrap_or_else(|| config.clone()))
+      .flatten()
       .unwrap_or(config);
 
   std::fs::write(config_path, config)
