@@ -116,23 +116,31 @@ impl ServeClient {
     String::from_utf8(std::mem::take(&mut *output_buf)).unwrap()
   }
 
-  async fn get(&self) -> RequestBuilder {
-    let endpoint = self.endpoint().await;
+  fn get(&self) -> RequestBuilder {
+    let endpoint = self.endpoint();
     self.client.get(&*endpoint)
   }
 
-  async fn endpoint(&self) -> String {
+  fn endpoint(&self) -> String {
     if let Some(e) = self.endpoint.borrow().as_ref() {
       return e.to_string();
     };
-    let mut port = None;
     let mut buffer = self.output_buf.borrow_mut();
     let mut temp_buf = [0u8; 64];
     let mut child = self.child.borrow_mut();
     let stdout = child.stdout.as_mut().unwrap();
     let port_regex = regex::bytes::Regex::new(r":(\d+)").unwrap();
 
-    for _ in 0..1000 {
+    let start = std::time::Instant::now();
+    // try to find the port number in the output
+    // it may not be the first line, so we need to read the output in a loop
+    let port = loop {
+      if start.elapsed() > Duration::from_secs(5) {
+        panic!(
+          "timed out waiting for serve to start. serve output:\n{}",
+          String::from_utf8_lossy(&buffer)
+        );
+      }
       let read = stdout.read(&mut temp_buf).unwrap();
       buffer.extend_from_slice(&temp_buf[..read]);
       if let Some(p) = port_regex
@@ -140,12 +148,12 @@ impl ServeClient {
         .and_then(|c| c.get(1))
         .map(|v| std::str::from_utf8(v.as_bytes()).unwrap().to_owned())
       {
-        port = Some(p);
-        break;
+        break p;
       }
-      tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-    let port = port.unwrap();
+      // this is technically blocking, but it's just a test and
+      // I don't want to switch RefCell to Mutex just for this
+      std::thread::sleep(Duration::from_millis(10));
+    };
     self
       .endpoint
       .replace(Some(format!("http://127.0.0.1:{port}")));
@@ -159,7 +167,7 @@ async fn deno_serve_port_0() {
   let client = ServeClient::builder()
     .entry_point("./serve/port_0.ts")
     .build();
-  let res = client.get().await.send().await.unwrap();
+  let res = client.get().send().await.unwrap();
   assert_eq!(200, res.status());
 
   let body = res.text().await.unwrap();
@@ -172,7 +180,7 @@ async fn deno_serve_no_args() {
   let client = ServeClient::builder()
     .entry_point("./serve/no_args.ts")
     .build();
-  let res = client.get().await.send().await.unwrap();
+  let res = client.get().send().await.unwrap();
   assert_eq!(200, res.status());
 
   let body = res.text().await.unwrap();
@@ -194,7 +202,7 @@ async fn deno_serve_parallel() {
     Regex::new(r"\[serve\-worker\-(\d+)\s*\] serving request").unwrap();
 
   for _ in 0..100 {
-    let response = timeout(Duration::from_secs(2), client.get().await.send())
+    let response = timeout(Duration::from_secs(2), client.get().send())
       .await
       .unwrap()
       .unwrap();
