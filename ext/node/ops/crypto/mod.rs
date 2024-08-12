@@ -42,6 +42,7 @@ mod md5_sha1;
 mod pkcs3;
 mod primes;
 mod sign;
+pub mod spkac;
 pub mod x509;
 
 use self::digest::match_fixed_digest_with_eager_block_buffer;
