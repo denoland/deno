@@ -23,13 +23,36 @@ struct EmitMetadata {
 pub struct EmitCache {
   disk_cache: DiskCache,
   cli_version: &'static str,
+  behavior: Behavior,
+}
+
+#[derive(Clone)]
+enum Behavior {
+  Normal,
+  Disable,
+  PanicOnFailure,
 }
 
 impl EmitCache {
   pub fn new(disk_cache: DiskCache) -> Self {
+    let behavior = match std::env::var("DENO_EMIT_CACHE_BEHAVIOR")
+      .unwrap_or_default()
+      .as_str()
+    {
+      "normal" | "" => Behavior::Normal,
+      "disable" => Behavior::Disable,
+      "panic-on-failure" => Behavior::PanicOnFailure,
+      _ => {
+        log::warn!(
+          "Unknown DENO_EMIT_CACHE_BEHAVIOR value, defaulting to normal"
+        );
+        Behavior::Normal
+      }
+    };
     Self {
       disk_cache,
       cli_version: crate::version::deno(),
+      behavior,
     }
   }
 
@@ -46,6 +69,10 @@ impl EmitCache {
     specifier: &ModuleSpecifier,
     expected_source_hash: u64,
   ) -> Option<Vec<u8>> {
+    if matches!(self.behavior, Behavior::Disable) {
+      return None;
+    }
+
     let meta_filename = self.get_meta_filename(specifier)?;
     let emit_filename = self.get_emit_filename(specifier)?;
 
@@ -88,7 +115,9 @@ impl EmitCache {
   ) {
     if let Err(err) = self.set_emit_code_result(specifier, source_hash, code) {
       // should never error here, but if it ever does don't fail
-      if cfg!(debug_assertions) {
+      if matches!(self.behavior, Behavior::PanicOnFailure)
+        || cfg!(debug_assertions)
+      {
         panic!("Error saving emit data ({specifier}): {err}");
       } else {
         log::debug!("Error saving emit data({}): {}", specifier, err);
@@ -102,6 +131,11 @@ impl EmitCache {
     source_hash: u64,
     code: &[u8],
   ) -> Result<(), AnyError> {
+    if matches!(self.behavior, Behavior::Disable) {
+      log::debug!("Skipped emit cache save of {}", specifier);
+      return Ok(());
+    }
+
     let meta_filename = self
       .get_meta_filename(specifier)
       .ok_or_else(|| anyhow!("Could not get meta filename."))?;
@@ -161,6 +195,7 @@ mod test {
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
       cli_version: "1.0.0",
+      behavior: Behavior::Normal,
     };
     let to_string =
       |bytes: Vec<u8>| -> String { String::from_utf8(bytes).unwrap() };
@@ -192,6 +227,7 @@ mod test {
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
       cli_version: "2.0.0",
+      behavior: Behavior::Normal,
     };
     assert_eq!(cache.get_emit_code(&specifier1, 10), None);
     cache.set_emit_code(&specifier1, 5, emit_code1.as_bytes());
@@ -200,6 +236,7 @@ mod test {
     let cache = EmitCache {
       disk_cache,
       cli_version: "2.0.0",
+      behavior: Behavior::Normal,
     };
     assert_eq!(
       cache.get_emit_code(&specifier1, 5).map(to_string),
