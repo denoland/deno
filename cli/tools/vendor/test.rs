@@ -234,6 +234,7 @@ impl VendorTestBuilder {
     let loader = self.loader.clone();
     let parsed_source_cache = ParsedSourceCache::default();
     let resolver = Arc::new(build_resolver(
+      output_dir.parent().unwrap(),
       self.jsx_import_source_config.clone(),
       self.maybe_original_import_map.clone(),
     ));
@@ -287,6 +288,7 @@ impl VendorTestBuilder {
 }
 
 fn build_resolver(
+  root_dir: &Path,
   maybe_jsx_import_source_config: Option<JsxImportSourceConfig>,
   maybe_original_import_map: Option<ImportMap>,
 ) -> CliGraphResolver {
@@ -295,7 +297,9 @@ fn build_resolver(
     npm_resolver: None,
     sloppy_imports_resolver: None,
     workspace_resolver: Arc::new(WorkspaceResolver::new_raw(
+      Arc::new(ModuleSpecifier::from_directory_path(root_dir).unwrap()),
       maybe_original_import_map,
+      Vec::new(),
       Vec::new(),
       deno_config::workspace::PackageJsonDepResolution::Enabled,
     )),

@@ -254,7 +254,7 @@ impl ReplSession {
         ))
       })?;
     let ts_config_for_emit = cli_options
-      .resolve_ts_config_for_emit(deno_config::TsConfigType::Emit)?;
+      .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
     let (transpile_options, _) =
       crate::args::ts_config_to_transpile_and_emit_options(
         ts_config_for_emit.ts_config,
@@ -642,6 +642,7 @@ impl ReplSession {
         },
         &deno_ast::EmitOptions {
           source_map: deno_ast::SourceMapOption::None,
+          source_map_base: None,
           source_map_file: None,
           inline_sources: false,
           remove_comments: false,
@@ -865,7 +866,7 @@ impl AnalyzedJsxPragmas {
 }
 
 /// Analyze provided source and return information about carious pragmas
-/// used to configure the JSX tranforms.
+/// used to configure the JSX transforms.
 fn analyze_jsx_pragmas(
   parsed_source: &ParsedSource,
 ) -> Option<AnalyzedJsxPragmas> {

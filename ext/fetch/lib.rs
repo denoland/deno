@@ -2,6 +2,8 @@
 
 mod fs_fetch_handler;
 mod proxy;
+#[cfg(test)]
+mod tests;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -24,6 +26,7 @@ use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
+use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
@@ -51,18 +54,21 @@ use bytes::Bytes;
 use data_url::DataUrl;
 use http::header::HeaderName;
 use http::header::HeaderValue;
+use http::header::ACCEPT;
 use http::header::ACCEPT_ENCODING;
+use http::header::AUTHORIZATION;
 use http::header::CONTENT_LENGTH;
 use http::header::HOST;
 use http::header::PROXY_AUTHORIZATION;
 use http::header::RANGE;
 use http::header::USER_AGENT;
+use http::Extensions;
 use http::Method;
 use http::Uri;
 use http_body_util::BodyExt;
 use hyper::body::Frame;
-use hyper_rustls::HttpsConnector;
 use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::connect::HttpInfo;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
@@ -75,6 +81,7 @@ use tower_http::decompression::Decompression;
 
 // Re-export data_url
 pub use data_url;
+pub use proxy::basic_auth;
 
 pub use fs_fetch_handler::FsFetchHandler;
 
@@ -347,7 +354,7 @@ where
   };
 
   let method = Method::from_bytes(&method)?;
-  let url = Url::parse(&url)?;
+  let mut url = Url::parse(&url)?;
 
   // Check scheme before asking for net permission
   let scheme = url.scheme();
@@ -383,6 +390,7 @@ where
       let permissions = state.borrow_mut::<FP>();
       permissions.check_net_url(&url, "fetch()")?;
 
+      let maybe_authority = extract_authority(&mut url);
       let uri = url
         .as_str()
         .parse::<Uri>()
@@ -424,8 +432,14 @@ where
 
       let mut request = http::Request::new(body);
       *request.method_mut() = method.clone();
-      *request.uri_mut() = uri;
+      *request.uri_mut() = uri.clone();
 
+      if let Some((username, password)) = maybe_authority {
+        request.headers_mut().insert(
+          AUTHORIZATION,
+          proxy::basic_auth(&username, password.as_deref()),
+        );
+      }
       if let Some(len) = con_len {
         request.headers_mut().insert(CONTENT_LENGTH, len.into());
       }
@@ -458,8 +472,15 @@ where
       let cancel_handle = CancelHandle::new_rc();
       let cancel_handle_ = cancel_handle.clone();
 
-      let fut =
-        async move { client.send(request).or_cancel(cancel_handle_).await };
+      let fut = {
+        async move {
+          client
+            .send(request)
+            .map_err(Into::into)
+            .or_cancel(cancel_handle_)
+            .await
+        }
+      };
 
       let request_rid = state.resource_table.add(FetchRequestResource {
         future: Box::pin(fut),
@@ -521,7 +542,11 @@ pub struct FetchResponse {
   pub content_length: Option<u64>,
   pub remote_addr_ip: Option<String>,
   pub remote_addr_port: Option<u16>,
-  pub error: Option<String>,
+  /// This field is populated if some error occurred which needs to be
+  /// reconstructed in the JS side to set the error _cause_.
+  /// In the tuple, the first element is an error message and the second one is
+  /// an error cause.
+  pub error: Option<(String, String)>,
 }
 
 #[op2(async)]
@@ -547,16 +572,16 @@ pub async fn op_fetch_send(
       // reconstruct an error chain (eg: `new TypeError(..., { cause: new Error(...) })`).
       // TODO(mmastrac): it would be a lot easier if we just passed a v8::Global through here instead
       let mut err_ref: &dyn std::error::Error = err.as_ref();
-      while let Some(err) = std::error::Error::source(err_ref) {
-        if let Some(err) = err.downcast_ref::<hyper::Error>() {
-          if let Some(err) = std::error::Error::source(err) {
+      while let Some(err_src) = std::error::Error::source(err_ref) {
+        if let Some(err_src) = err_src.downcast_ref::<hyper::Error>() {
+          if let Some(err_src) = std::error::Error::source(err_src) {
             return Ok(FetchResponse {
-              error: Some(err.to_string()),
+              error: Some((err.to_string(), err_src.to_string())),
               ..Default::default()
             });
           }
         }
-        err_ref = err;
+        err_ref = err_src;
       }
 
       return Err(type_error(err.to_string()));
@@ -974,6 +999,10 @@ pub fn create_http_client(
     deno_tls::SocketUse::Http,
   )?;
 
+  // Proxy TLS should not send ALPN
+  tls_config.alpn_protocols.clear();
+  let proxy_tls_config = Arc::from(tls_config.clone());
+
   let mut alpn_protocols = vec![];
   if options.http2 {
     alpn_protocols.push("h2".into());
@@ -986,7 +1015,6 @@ pub fn create_http_client(
 
   let mut http_connector = HttpConnector::new();
   http_connector.enforce_http(false);
-  let connector = HttpsConnector::from((http_connector, tls_config.clone()));
 
   let user_agent = user_agent
     .parse::<HeaderValue>()
@@ -1007,9 +1035,13 @@ pub fn create_http_client(
     proxies.prepend(intercept);
   }
   let proxies = Arc::new(proxies);
-  let mut connector =
-    proxy::ProxyConnector::new(proxies.clone(), connector, tls_config);
-  connector.user_agent(user_agent.clone());
+  let connector = proxy::ProxyConnector {
+    http: http_connector,
+    proxies: proxies.clone(),
+    tls: tls_config,
+    tls_proxy: proxy_tls_config,
+    user_agent: Some(user_agent.clone()),
+  };
 
   if let Some(pool_max_idle_per_host) = options.pool_max_idle_per_host {
     builder.pool_max_idle_per_host(pool_max_idle_per_host);
@@ -1058,26 +1090,121 @@ pub struct Client {
   user_agent: HeaderValue,
 }
 
-type Connector = proxy::ProxyConnector<HttpsConnector<HttpConnector>>;
+type Connector = proxy::ProxyConnector<HttpConnector>;
+
+// clippy is wrong here
+#[allow(clippy::declare_interior_mutable_const)]
+const STAR_STAR: HeaderValue = HeaderValue::from_static("*/*");
+
+#[derive(Debug)]
+pub struct ClientSendError {
+  uri: Uri,
+  source: hyper_util::client::legacy::Error,
+}
+
+impl ClientSendError {
+  pub fn is_connect_error(&self) -> bool {
+    self.source.is_connect()
+  }
+
+  fn http_info(&self) -> Option<HttpInfo> {
+    let mut exts = Extensions::new();
+    self.source.connect_info()?.get_extras(&mut exts);
+    exts.remove::<HttpInfo>()
+  }
+}
+
+impl std::fmt::Display for ClientSendError {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    // NOTE: we can use `std::error::Report` instead once it's stabilized.
+    let detail = error_reporter::Report::new(&self.source);
+
+    match self.http_info() {
+      Some(http_info) => {
+        write!(
+          f,
+          "error sending request from {src} for {uri} ({dst}): {detail}",
+          src = http_info.local_addr(),
+          uri = self.uri,
+          dst = http_info.remote_addr(),
+          detail = detail,
+        )
+      }
+      None => {
+        write!(
+          f,
+          "error sending request for url ({uri}): {detail}",
+          uri = self.uri,
+          detail = detail,
+        )
+      }
+    }
+  }
+}
+
+impl std::error::Error for ClientSendError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    Some(&self.source)
+  }
+}
 
 impl Client {
   pub async fn send(
     self,
     mut req: http::Request<ReqBody>,
-  ) -> Result<http::Response<ResBody>, AnyError> {
+  ) -> Result<http::Response<ResBody>, ClientSendError> {
     req
       .headers_mut()
       .entry(USER_AGENT)
       .or_insert_with(|| self.user_agent.clone());
 
+    req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
+
     if let Some(auth) = self.proxies.http_forward_auth(req.uri()) {
       req.headers_mut().insert(PROXY_AUTHORIZATION, auth.clone());
     }
 
-    let resp = self.inner.oneshot(req).await?;
+    let uri = req.uri().clone();
+
+    let resp = self
+      .inner
+      .oneshot(req)
+      .await
+      .map_err(|e| ClientSendError { uri, source: e })?;
     Ok(resp.map(|b| b.map_err(|e| anyhow!(e)).boxed()))
   }
 }
 
 pub type ReqBody = http_body_util::combinators::BoxBody<Bytes, Error>;
 pub type ResBody = http_body_util::combinators::BoxBody<Bytes, Error>;
+
+/// Copied from https://github.com/seanmonstar/reqwest/blob/b9d62a0323d96f11672a61a17bf8849baec00275/src/async_impl/request.rs#L572
+/// Check the request URL for a "username:password" type authority, and if
+/// found, remove it from the URL and return it.
+pub fn extract_authority(url: &mut Url) -> Option<(String, Option<String>)> {
+  use percent_encoding::percent_decode;
+
+  if url.has_authority() {
+    let username: String = percent_decode(url.username().as_bytes())
+      .decode_utf8()
+      .ok()?
+      .into();
+    let password = url.password().and_then(|pass| {
+      percent_decode(pass.as_bytes())
+        .decode_utf8()
+        .ok()
+        .map(String::from)
+    });
+    if !username.is_empty() || password.is_some() {
+      url
+        .set_username("")
+        .expect("has_authority means set_username shouldn't fail");
+      url
+        .set_password(None)
+        .expect("has_authority means set_password shouldn't fail");
+      return Some((username, password));
+    }
+  }
+
+  None
+}

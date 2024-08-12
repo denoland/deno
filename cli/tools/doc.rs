@@ -29,6 +29,7 @@ use doc::DocDiagnostic;
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 async fn generate_doc_nodes_for_builtin_types(
   doc_flags: DocFlags,
@@ -58,7 +59,6 @@ async fn generate_doc_nodes_for_builtin_types(
         imports: Vec::new(),
         is_dynamic: false,
         passthrough_jsr_specifiers: false,
-        workspace_members: &[],
         executor: Default::default(),
         file_system: &NullFileSystem,
         jsr_url_provider: Default::default(),
@@ -83,9 +83,12 @@ async fn generate_doc_nodes_for_builtin_types(
   Ok(IndexMap::from([(source_file_specifier, nodes)]))
 }
 
-pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+pub async fn doc(
+  flags: Arc<Flags>,
+  doc_flags: DocFlags,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let module_info_cache = factory.module_info_cache()?;
   let parsed_source_cache = factory.parsed_source_cache();
   let capturing_parser = parsed_source_cache.as_capturing_parser();
@@ -102,7 +105,7 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
     }
     DocSourceFileFlag::Paths(ref source_files) => {
       let module_graph_creator = factory.module_graph_creator().await?;
-      let maybe_lockfile = factory.maybe_lockfile();
+      let maybe_lockfile = cli_options.maybe_lockfile();
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
@@ -174,10 +177,10 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
           .into_iter()
           .map(|node| deno_doc::html::DocNodeWithContext {
             origin: short_path.clone(),
-            ns_qualifiers: Rc::new(vec![]),
+            ns_qualifiers: Rc::new([]),
             kind_with_drilldown:
-              deno_doc::html::DocNodeKindWithDrilldown::Other(node.kind),
-            inner: std::sync::Arc::new(node),
+              deno_doc::html::DocNodeKindWithDrilldown::Other(node.kind()),
+            inner: Rc::new(node),
             drilldown_parent_kind: None,
             parent: None,
           })
@@ -187,32 +190,31 @@ pub async fn doc(flags: Flags, doc_flags: DocFlags) -> Result<(), AnyError> {
       Default::default()
     };
 
-    let rewrite_map = if let Some(config_file) =
-      cli_options.workspace.resolve_start_ctx().maybe_deno_json()
-    {
-      let config = config_file.to_exports_config()?;
+    let rewrite_map =
+      if let Some(config_file) = cli_options.start_dir.maybe_deno_json() {
+        let config = config_file.to_exports_config()?;
 
-      let rewrite_map = config
-        .clone()
-        .into_map()
-        .into_keys()
-        .map(|key| {
-          Ok((
-            config.get_resolved(&key)?.unwrap(),
-            key
-              .strip_prefix('.')
-              .unwrap_or(&key)
-              .strip_prefix('/')
-              .unwrap_or(&key)
-              .to_owned(),
-          ))
-        })
-        .collect::<Result<IndexMap<_, _>, AnyError>>()?;
+        let rewrite_map = config
+          .clone()
+          .into_map()
+          .into_keys()
+          .map(|key| {
+            Ok((
+              config.get_resolved(&key)?.unwrap(),
+              key
+                .strip_prefix('.')
+                .unwrap_or(&key)
+                .strip_prefix('/')
+                .unwrap_or(&key)
+                .to_owned(),
+            ))
+          })
+          .collect::<Result<IndexMap<_, _>, AnyError>>()?;
 
-      Some(rewrite_map)
-    } else {
-      None
-    };
+        Some(rewrite_map)
+      } else {
+        None
+      };
 
     generate_docs_directory(
       doc_nodes_by_url,
@@ -297,7 +299,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
   }
 
   fn resolve_source(&self, location: &deno_doc::Location) -> Option<String> {
-    Some(location.filename.clone())
+    Some(location.filename.to_string())
   }
 }
 
@@ -489,9 +491,9 @@ fn print_docs_to_stdout(
   doc_flags: DocFlags,
   mut doc_nodes: Vec<deno_doc::DocNode>,
 ) -> Result<(), AnyError> {
-  doc_nodes.retain(|doc_node| doc_node.kind != doc::DocNodeKind::Import);
+  doc_nodes.retain(|doc_node| doc_node.kind() != doc::DocNodeKind::Import);
   let details = if let Some(filter) = doc_flags.filter {
-    let nodes = doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
+    let nodes = doc::find_nodes_by_name_recursively(doc_nodes, &filter);
     if nodes.is_empty() {
       bail!("Node {} was not found!", filter);
     }

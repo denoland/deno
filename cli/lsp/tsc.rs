@@ -215,6 +215,8 @@ pub enum SemicolonPreference {
   Remove,
 }
 
+// Allow due to false positive https://github.com/rust-lang/rust-clippy/issues/13170
+#[allow(clippy::needless_borrows_for_generic_args)]
 fn normalize_diagnostic(
   diagnostic: &mut crate::tsc::Diagnostic,
   specifier_map: &TscSpecifierMap,
@@ -2041,12 +2043,10 @@ impl DocumentSpan {
     let target_asset_or_doc =
       language_server.get_maybe_asset_or_document(&target_specifier)?;
     let target_line_index = target_asset_or_doc.line_index();
-    let file_referrer = language_server
-      .documents
-      .get_file_referrer(&target_specifier);
+    let file_referrer = target_asset_or_doc.file_referrer();
     let target_uri = language_server
       .url_map
-      .normalize_specifier(&target_specifier, file_referrer.as_deref())
+      .normalize_specifier(&target_specifier, file_referrer)
       .ok()?;
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
@@ -2090,10 +2090,10 @@ impl DocumentSpan {
       language_server.get_maybe_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let range = self.text_span.to_range(line_index);
-    let file_referrer = language_server.documents.get_file_referrer(&specifier);
+    let file_referrer = asset_or_doc.file_referrer();
     let mut target = language_server
       .url_map
-      .normalize_specifier(&specifier, file_referrer.as_deref())
+      .normalize_specifier(&specifier, file_referrer)
       .ok()?
       .into_url();
     target.set_fragment(Some(&format!(
@@ -2151,10 +2151,10 @@ impl NavigateToItem {
     let asset_or_doc =
       language_server.get_asset_or_document(&specifier).ok()?;
     let line_index = asset_or_doc.line_index();
-    let file_referrer = language_server.documents.get_file_referrer(&specifier);
+    let file_referrer = asset_or_doc.file_referrer();
     let uri = language_server
       .url_map
-      .normalize_specifier(&specifier, file_referrer.as_deref())
+      .normalize_specifier(&specifier, file_referrer)
       .ok()?;
     let range = self.text_span.to_range(line_index);
     let location = lsp::Location {
@@ -2944,7 +2944,7 @@ pub fn file_text_changes_to_workspace_edit(
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RefactorEditInfo {
-  edits: Vec<FileTextChanges>,
+  pub edits: Vec<FileTextChanges>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub rename_location: Option<u32>,
 }
@@ -4230,14 +4230,10 @@ impl State {
   }
 
   fn get_document(&self, specifier: &ModuleSpecifier) -> Option<Arc<Document>> {
-    if let Some(scope) = &self.last_scope {
-      self.state_snapshot.documents.get_or_load(specifier, scope)
-    } else {
-      self
-        .state_snapshot
-        .documents
-        .get_or_load(specifier, &ModuleSpecifier::parse("file:///").unwrap())
-    }
+    self
+      .state_snapshot
+      .documents
+      .get_or_load(specifier, self.last_scope.as_ref())
   }
 
   fn get_asset_or_document(
@@ -4559,7 +4555,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
           specifier,
           doc.file_referrer(),
         )?;
-        let types_doc = documents.get_or_load(&types, specifier)?;
+        let types_doc = documents.get_or_load(&types, doc.file_referrer())?;
         Some(types_doc.specifier().clone())
       })();
       // If there is a types dep, use that as the root instead. But if the doc
@@ -4905,7 +4901,7 @@ impl UserPreferences {
     config: &config::Config,
     specifier: &ModuleSpecifier,
   ) -> Self {
-    let fmt_options = config.tree.fmt_options_for_specifier(specifier);
+    let fmt_options = config.tree.fmt_config_for_specifier(specifier);
     let fmt_config = &fmt_options.options;
     let base_preferences = Self {
       allow_incomplete_completions: Some(true),
@@ -5012,8 +5008,8 @@ impl UserPreferences {
       // Only use workspace settings for quote style if there's no `deno.json`.
       quote_preference: if config
         .tree
-        .config_file_for_specifier(specifier)
-        .is_some()
+        .workspace_dir_for_specifier(specifier)
+        .is_some_and(|ctx| ctx.maybe_deno_json().is_some())
       {
         base_preferences.quote_preference
       } else {
@@ -5400,20 +5396,20 @@ mod tests {
   async fn setup(
     ts_config: Value,
     sources: &[(&str, &str, i32, LanguageId)],
-  ) -> (TsServer, Arc<StateSnapshot>, LspCache) {
+  ) -> (TempDir, TsServer, Arc<StateSnapshot>, LspCache) {
     let temp_dir = TempDir::new();
-    let cache = LspCache::new(Some(temp_dir.uri()));
+    let cache = LspCache::new(Some(temp_dir.uri().join(".deno_dir").unwrap()));
     let mut config = Config::default();
     config
       .tree
       .inject_config_file(
-        deno_config::ConfigFile::new(
+        deno_config::deno_json::ConfigFile::new(
           &json!({
             "compilerOptions": ts_config,
           })
           .to_string(),
-          resolve_url("file:///deno.json").unwrap(),
-          &deno_config::ConfigParseOptions::default(),
+          temp_dir.uri().join("deno.json").unwrap(),
+          &Default::default(),
         )
         .unwrap(),
       )
@@ -5422,16 +5418,9 @@ mod tests {
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
     let mut documents = Documents::default();
     documents.update_config(&config, &resolver, &cache, &Default::default());
-    for (specifier, source, version, language_id) in sources {
-      let specifier =
-        resolve_url(specifier).expect("failed to create specifier");
-      documents.open(
-        specifier.clone(),
-        *version,
-        *language_id,
-        (*source).into(),
-        None,
-      );
+    for (relative_specifier, source, version, language_id) in sources {
+      let specifier = temp_dir.uri().join(relative_specifier).unwrap();
+      documents.open(specifier, *version, *language_id, (*source).into(), None);
     }
     let snapshot = Arc::new(StateSnapshot {
       project_version: 0,
@@ -5456,7 +5445,7 @@ mod tests {
           .collect(),
       ),
     );
-    (ts_server, snapshot, cache)
+    (temp_dir, ts_server, snapshot, cache)
   }
 
   fn setup_op_state(state_snapshot: Arc<StateSnapshot>) -> OpState {
@@ -5485,7 +5474,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_diagnostics() {
-    let (ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5493,22 +5482,22 @@ mod tests {
         "lib": [],
       }),
       &[(
-        "file:///a.ts",
+        "a.ts",
         r#"console.log("hello deno");"#,
         1,
         LanguageId::TypeScript,
       )],
     )
     .await;
-    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
+    let specifier = temp_dir.uri().join("a.ts").unwrap();
     let diagnostics = ts_server
-      .get_diagnostics(snapshot, vec![specifier], Default::default())
+      .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
       json!({
-        "file:///a.ts": [
+        specifier.clone(): [
           {
             "start": {
               "line": 0,
@@ -5518,7 +5507,7 @@ mod tests {
               "line": 0,
               "character": 7
             },
-            "fileName": "file:///a.ts",
+            "fileName": specifier,
             "messageText": "Cannot find name 'console'. Do you need to change your target library? Try changing the \'lib\' compiler option to include 'dom'.",
             "sourceLine": "console.log(\"hello deno\");",
             "category": 1,
@@ -5531,7 +5520,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_diagnostics_lib() {
-    let (ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5540,24 +5529,24 @@ mod tests {
         "noEmit": true,
       }),
       &[(
-        "file:///a.ts",
+        "a.ts",
         r#"console.log(document.location);"#,
         1,
         LanguageId::TypeScript,
       )],
     )
     .await;
-    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
+    let specifier = temp_dir.uri().join("a.ts").unwrap();
     let diagnostics = ts_server
-      .get_diagnostics(snapshot, vec![specifier], Default::default())
+      .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!({ "file:///a.ts": [] }));
+    assert_eq!(json!(diagnostics), json!({ specifier: [] }));
   }
 
   #[tokio::test]
   async fn test_module_resolution() {
-    let (ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5565,7 +5554,7 @@ mod tests {
         "noEmit": true,
       }),
       &[(
-        "file:///a.ts",
+        "a.ts",
         r#"
         import { B } from "https://deno.land/x/b/mod.ts";
 
@@ -5578,17 +5567,17 @@ mod tests {
       )],
     )
     .await;
-    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
+    let specifier = temp_dir.uri().join("a.ts").unwrap();
     let diagnostics = ts_server
-      .get_diagnostics(snapshot, vec![specifier], Default::default())
+      .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!({ "file:///a.ts": [] }));
+    assert_eq!(json!(diagnostics), json!({ specifier: [] }));
   }
 
   #[tokio::test]
   async fn test_bad_module_specifiers() {
-    let (ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5596,7 +5585,7 @@ mod tests {
         "noEmit": true,
       }),
       &[(
-        "file:///a.ts",
+        "a.ts",
         r#"
         import { A } from ".";
         "#,
@@ -5605,15 +5594,15 @@ mod tests {
       )],
     )
     .await;
-    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
+    let specifier = temp_dir.uri().join("a.ts").unwrap();
     let diagnostics = ts_server
-      .get_diagnostics(snapshot, vec![specifier], Default::default())
+      .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
       json!({
-        "file:///a.ts": [{
+        specifier.clone(): [{
           "start": {
             "line": 1,
             "character": 8
@@ -5622,7 +5611,7 @@ mod tests {
             "line": 1,
             "character": 30
           },
-          "fileName": "file:///a.ts",
+          "fileName": specifier,
           "messageText": "\'A\' is declared but its value is never read.",
           "sourceLine": "        import { A } from \".\";",
           "category": 2,
@@ -5634,7 +5623,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_remote_modules() {
-    let (ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5642,7 +5631,7 @@ mod tests {
         "noEmit": true,
       }),
       &[(
-        "file:///a.ts",
+        "a.ts",
         r#"
         import { B } from "https://deno.land/x/b/mod.ts";
 
@@ -5655,17 +5644,17 @@ mod tests {
       )],
     )
     .await;
-    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
+    let specifier = temp_dir.uri().join("a.ts").unwrap();
     let diagnostics = ts_server
-      .get_diagnostics(snapshot, vec![specifier], Default::default())
+      .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
-    assert_eq!(json!(diagnostics), json!({ "file:///a.ts": [] }));
+    assert_eq!(json!(diagnostics), json!({ specifier: [] }));
   }
 
   #[tokio::test]
   async fn test_partial_modules() {
-    let (ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5673,7 +5662,7 @@ mod tests {
         "noEmit": true,
       }),
       &[(
-        "file:///a.ts",
+        "a.ts",
         r#"
         import {
           Application,
@@ -5689,15 +5678,15 @@ mod tests {
       )],
     )
     .await;
-    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
+    let specifier = temp_dir.uri().join("a.ts").unwrap();
     let diagnostics = ts_server
-      .get_diagnostics(snapshot, vec![specifier], Default::default())
+      .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
       json!({
-        "file:///a.ts": [{
+        specifier.clone(): [{
           "start": {
             "line": 1,
             "character": 8
@@ -5706,7 +5695,7 @@ mod tests {
             "line": 6,
             "character": 55,
           },
-          "fileName": "file:///a.ts",
+          "fileName": specifier.clone(),
           "messageText": "All imports in import declaration are unused.",
           "sourceLine": "        import {",
           "category": 2,
@@ -5720,7 +5709,7 @@ mod tests {
             "line": 8,
             "character": 29
           },
-          "fileName": "file:///a.ts",
+          "fileName": specifier,
           "messageText": "Expression expected.",
           "sourceLine": "        import * as test from",
           "category": 1,
@@ -5732,7 +5721,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_no_debug_failure() {
-    let (ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5740,22 +5729,22 @@ mod tests {
         "noEmit": true,
       }),
       &[(
-        "file:///a.ts",
+        "a.ts",
         r#"const url = new URL("b.js", import."#,
         1,
         LanguageId::TypeScript,
       )],
     )
     .await;
-    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
+    let specifier = temp_dir.uri().join("a.ts").unwrap();
     let diagnostics = ts_server
-      .get_diagnostics(snapshot, vec![specifier], Default::default())
+      .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
       json!({
-        "file:///a.ts": [
+        specifier.clone(): [
           {
             "start": {
               "line": 0,
@@ -5765,7 +5754,7 @@ mod tests {
               "line": 0,
               "character": 35
             },
-            "fileName": "file:///a.ts",
+            "fileName": specifier,
             "messageText": "Identifier expected.",
             "sourceLine": "const url = new URL(\"b.js\", import.",
             "category": 1,
@@ -5778,7 +5767,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_request_assets() {
-    let (ts_server, snapshot, _) = setup(json!({}), &[]).await;
+    let (_, ts_server, snapshot, _) = setup(json!({}), &[]).await;
     let assets = get_isolate_assets(&ts_server, snapshot).await;
     let mut asset_names = assets
       .iter()
@@ -5810,7 +5799,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_modify_sources() {
-    let (ts_server, snapshot, cache) = setup(
+    let (temp_dir, ts_server, snapshot, cache) = setup(
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -5818,7 +5807,7 @@ mod tests {
         "noEmit": true,
       }),
       &[(
-        "file:///a.ts",
+        "a.ts",
         r#"
           import * as a from "https://deno.land/x/example/a.ts";
           if (a.a === "b") {
@@ -5840,15 +5829,19 @@ mod tests {
         b"export const b = \"b\";\n",
       )
       .unwrap();
-    let specifier = resolve_url("file:///a.ts").unwrap();
+    let specifier = temp_dir.uri().join("a.ts").unwrap();
     let diagnostics = ts_server
-      .get_diagnostics(snapshot.clone(), vec![specifier], Default::default())
+      .get_diagnostics(
+        snapshot.clone(),
+        vec![specifier.clone()],
+        Default::default(),
+      )
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
       json!({
-        "file:///a.ts": [
+        specifier.clone(): [
           {
             "start": {
               "line": 2,
@@ -5858,7 +5851,7 @@ mod tests {
               "line": 2,
               "character": 17
             },
-            "fileName": "file:///a.ts",
+            "fileName": specifier,
             "messageText": "Property \'a\' does not exist on type \'typeof import(\"https://deno.land/x/example/a\")\'.",
             "sourceLine": "          if (a.a === \"b\") {",
             "code": 2339,
@@ -5886,15 +5879,19 @@ mod tests {
       [(&specifier_dep, ChangeKind::Opened)],
       None,
     );
-    let specifier = resolve_url("file:///a.ts").unwrap();
+    let specifier = temp_dir.uri().join("a.ts").unwrap();
     let diagnostics = ts_server
-      .get_diagnostics(snapshot.clone(), vec![specifier], Default::default())
+      .get_diagnostics(
+        snapshot.clone(),
+        vec![specifier.clone()],
+        Default::default(),
+      )
       .await
       .unwrap();
     assert_eq!(
       json!(diagnostics),
       json!({
-        "file:///a.ts": []
+        specifier: []
       })
     );
   }
@@ -5944,17 +5941,17 @@ mod tests {
         character: 16,
       })
       .unwrap();
-    let (ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
         "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      &[("file:///a.ts", fixture, 1, LanguageId::TypeScript)],
+      &[("a.ts", fixture, 1, LanguageId::TypeScript)],
     )
     .await;
-    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
+    let specifier = temp_dir.uri().join("a.ts").unwrap();
     let info = ts_server
       .get_completions(
         snapshot.clone(),
@@ -5969,7 +5966,7 @@ mod tests {
           trigger_kind: None,
         },
         Default::default(),
-        Some(ModuleSpecifier::parse("file:///").unwrap()),
+        Some(temp_dir.uri()),
       )
       .await
       .unwrap();
@@ -5986,7 +5983,7 @@ mod tests {
           preferences: None,
           data: None,
         },
-        Some(ModuleSpecifier::parse("file:///").unwrap()),
+        Some(temp_dir.uri()),
       )
       .await
       .unwrap()
@@ -6095,7 +6092,7 @@ mod tests {
         character: 33,
       })
       .unwrap();
-    let (ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -6103,12 +6100,12 @@ mod tests {
         "noEmit": true,
       }),
       &[
-        ("file:///a.ts", fixture_a, 1, LanguageId::TypeScript),
-        ("file:///b.ts", fixture_b, 1, LanguageId::TypeScript),
+        ("a.ts", fixture_a, 1, LanguageId::TypeScript),
+        ("b.ts", fixture_b, 1, LanguageId::TypeScript),
       ],
     )
     .await;
-    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
+    let specifier = temp_dir.uri().join("a.ts").unwrap();
     let fmt_options_config = FmtOptionsConfig {
       semi_colons: Some(false),
       single_quote: Some(true),
@@ -6129,7 +6126,7 @@ mod tests {
           ..Default::default()
         },
         FormatCodeSettings::from(&fmt_options_config),
-        Some(ModuleSpecifier::parse("file:///").unwrap()),
+        Some(temp_dir.uri()),
       )
       .await
       .unwrap();
@@ -6155,7 +6152,7 @@ mod tests {
           }),
           data: entry.data.clone(),
         },
-        Some(ModuleSpecifier::parse("file:///").unwrap()),
+        Some(temp_dir.uri()),
       )
       .await
       .unwrap()
@@ -6204,7 +6201,7 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_edits_for_file_rename() {
-    let (ts_server, snapshot, _) = setup(
+    let (temp_dir, ts_server, snapshot, _) = setup(
       json!({
         "target": "esnext",
         "module": "esnext",
@@ -6212,21 +6209,16 @@ mod tests {
         "noEmit": true,
       }),
       &[
-        (
-          "file:///a.ts",
-          r#"import "./b.ts";"#,
-          1,
-          LanguageId::TypeScript,
-        ),
-        ("file:///b.ts", r#""#, 1, LanguageId::TypeScript),
+        ("a.ts", r#"import "./b.ts";"#, 1, LanguageId::TypeScript),
+        ("b.ts", r#""#, 1, LanguageId::TypeScript),
       ],
     )
     .await;
     let changes = ts_server
       .get_edits_for_file_rename(
         snapshot,
-        resolve_url("file:///b.ts").unwrap(),
-        resolve_url("file:///🦕.ts").unwrap(),
+        temp_dir.uri().join("b.ts").unwrap(),
+        temp_dir.uri().join("🦕.ts").unwrap(),
         FormatCodeSettings::default(),
         UserPreferences::default(),
       )
@@ -6235,7 +6227,7 @@ mod tests {
     assert_eq!(
       changes,
       vec![FileTextChanges {
-        file_name: "file:///a.ts".to_string(),
+        file_name: temp_dir.uri().join("a.ts").unwrap().to_string(),
         text_changes: vec![TextChange {
           span: TextSpan {
             start: 8,
@@ -6280,21 +6272,21 @@ mod tests {
 
   #[tokio::test]
   async fn resolve_unknown_dependency() {
-    let (_, snapshot, _) = setup(
+    let (temp_dir, _, snapshot, _) = setup(
       json!({
         "target": "esnext",
         "module": "esnext",
         "lib": ["deno.ns", "deno.window"],
         "noEmit": true,
       }),
-      &[("file:///a.ts", "", 1, LanguageId::TypeScript)],
+      &[("a.ts", "", 1, LanguageId::TypeScript)],
     )
     .await;
     let mut state = setup_op_state(snapshot);
     let resolved = op_resolve_inner(
       &mut state,
       ResolveArgs {
-        base: "file:///a.ts".to_string(),
+        base: temp_dir.uri().join("a.ts").unwrap().to_string(),
         is_base_cjs: false,
         specifiers: vec!["./b.ts".to_string()],
       },
@@ -6303,7 +6295,7 @@ mod tests {
     assert_eq!(
       resolved,
       vec![Some((
-        "file:///b.ts".to_string(),
+        temp_dir.uri().join("b.ts").unwrap().to_string(),
         MediaType::TypeScript.as_ts_extension().to_string()
       ))]
     );

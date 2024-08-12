@@ -15,13 +15,6 @@ use util::TestContextBuilder;
 
 // NOTE: See how to make test npm packages at ./testdata/npm/README.md
 
-itest!(esm_import_cjs_default {
-  args: "run --allow-read --allow-env --quiet --check=all npm/esm_import_cjs_default/main.ts",
-  output: "npm/esm_import_cjs_default/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
 itest!(cjs_with_deps {
   args: "run --allow-read --allow-env npm/cjs_with_deps/main.js",
   output: "npm/cjs_with_deps/main.out",
@@ -324,14 +317,6 @@ itest!(check_local {
   exit_code: 1,
 });
 
-itest!(types_general {
-  args: "check --quiet npm/types/main.ts",
-  output: "npm/types/main.out",
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-  exit_code: 1,
-});
-
 itest!(types_ambient_module {
   args: "check --quiet npm/types_ambient_module/main.ts",
   output: "npm/types_ambient_module/main.out",
@@ -341,27 +326,11 @@ itest!(types_ambient_module {
 });
 
 itest!(types_ambient_module_import_map {
-    args: "check --quiet --import-map=npm/types_ambient_module/import_map.json npm/types_ambient_module/main_import_map.ts",
-    output: "npm/types_ambient_module/main_import_map.out",
-    envs: env_vars_for_npm_tests(),
-    http_server: true,
-    exit_code: 1,
-  });
-
-itest!(no_types_cjs {
-  args: "check --quiet npm/no_types_cjs/main.ts",
-  output_str: Some(""),
-  exit_code: 0,
+  args: "check --quiet --import-map=npm/types_ambient_module/import_map.json npm/types_ambient_module/main_import_map.ts",
+  output: "npm/types_ambient_module/main_import_map.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
-});
-
-itest!(no_types_in_conditional_exports {
-  args: "run --check npm/no_types_in_conditional_exports/main.ts",
-  output: "npm/no_types_in_conditional_exports/main.out",
-  exit_code: 0,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
+  exit_code: 1,
 });
 
 itest!(types_entry_value_not_exists {
@@ -2479,138 +2448,6 @@ fn byonm_package_specifier_not_installed_and_invalid_subpath() {
   output.assert_matches_text(
     r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDCARD]' imported from '[WILDCARD]main.ts'
     at file:///[WILDCARD]/main.ts:1:8
-"#,
-  );
-  output.assert_exit_code(1);
-}
-
-#[test]
-fn future_byonm_package_specifier_not_installed_and_invalid_subpath() {
-  let test_context = TestContextBuilder::for_npm()
-    .env("DENO_FUTURE", "1")
-    .use_temp_cwd()
-    .build();
-  let dir = test_context.temp_dir();
-  dir.path().join("package.json").write_json(&json!({
-    "dependencies": {
-      "chalk": "4",
-      "@denotest/conditional-exports-strict": "1"
-    }
-  }));
-  dir.write(
-    "main.ts",
-    "import chalk from 'chalk'; console.log(chalk.green('hi'));",
-  );
-
-  // no npm install has been run, so this should give an informative error
-  let output = test_context.new_command().args("run main.ts").run();
-  output.assert_matches_text(
-    r#"error: Could not resolve "chalk", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
-    at file:///[WILDCARD]/main.ts:1:19
-"#,
-  );
-  output.assert_exit_code(1);
-
-  // now test for an invalid sub path after doing an npm install
-  dir.write(
-    "main.ts",
-    "import '@denotest/conditional-exports-strict/test';",
-  );
-
-  test_context.run_npm("install");
-
-  let output = test_context.new_command().args("run main.ts").run();
-  output.assert_matches_text(
-    r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDCARD]' imported from '[WILDCARD]main.ts'
-    at file:///[WILDCARD]/main.ts:1:8
-"#,
-  );
-  output.assert_exit_code(1);
-}
-
-#[test]
-fn byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
-  let test_context = TestContextBuilder::for_npm()
-    .env("DENO_UNSTABLE_BYONM", "1")
-    .use_temp_cwd()
-    .build();
-  let dir = test_context.temp_dir();
-  dir.path().join("package.json").write_json(&json!({
-    "dependencies": {
-      "chalk": "4",
-      "@denotest/conditional-exports-strict": "1"
-    }
-  }));
-  dir.write(
-    "main.ts",
-    "import chalk from 'npm:chalk'; console.log(chalk.green('hi'));",
-  );
-
-  // no npm install has been run, so this should give an informative error
-  let output = test_context.new_command().args("run main.ts").run();
-  output.assert_matches_text(
-    r#"error: Could not find "chalk" in a node_modules folder. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
-    at file:///[WILDCARD]/main.ts:1:19
-"#,
-  );
-  output.assert_exit_code(1);
-
-  // now test for an invalid sub path after doing an npm install
-  dir.write(
-    "main.ts",
-    "import 'npm:@denotest/conditional-exports-strict/test';",
-  );
-
-  test_context.run_npm("install");
-
-  let output = test_context.new_command().args("run main.ts").run();
-  output.assert_matches_text(
-    r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDLINE]package.json' imported from '[WILDLINE]main.ts'
-    at file:///[WILDLINE]/main.ts:1:8
-"#,
-  );
-  output.assert_exit_code(1);
-}
-
-#[test]
-fn future_byonm_package_npm_specifier_not_installed_and_invalid_subpath() {
-  let test_context = TestContextBuilder::for_npm()
-    .env("DENO_FUTURE", "1")
-    .use_temp_cwd()
-    .build();
-  let dir = test_context.temp_dir();
-  dir.path().join("package.json").write_json(&json!({
-    "dependencies": {
-      "chalk": "4",
-      "@denotest/conditional-exports-strict": "1"
-    }
-  }));
-  dir.write(
-    "main.ts",
-    "import chalk from 'npm:chalk'; console.log(chalk.green('hi'));",
-  );
-
-  // no npm install has been run, so this should give an informative error
-  let output = test_context.new_command().args("run main.ts").run();
-  output.assert_matches_text(
-    r#"error: Could not find "chalk" in a node_modules folder. Deno expects the node_modules/ directory to be up to date. Did you forget to run `npm install`?
-    at file:///[WILDCARD]/main.ts:1:19
-"#,
-  );
-  output.assert_exit_code(1);
-
-  // now test for an invalid sub path after doing an npm install
-  dir.write(
-    "main.ts",
-    "import 'npm:@denotest/conditional-exports-strict/test';",
-  );
-
-  test_context.run_npm("install");
-
-  let output = test_context.new_command().args("run main.ts").run();
-  output.assert_matches_text(
-    r#"error: [ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './test' is not defined by "exports" in '[WILDLINE]package.json' imported from '[WILDLINE]main.ts'
-    at file:///[WILDLINE]/main.ts:1:8
 "#,
   );
   output.assert_exit_code(1);

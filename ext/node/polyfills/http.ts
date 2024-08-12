@@ -5,8 +5,8 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
-  op_fetch_response_upgrade,
-  op_fetch_send,
+  op_node_http_fetch_response_upgrade,
+  op_node_http_fetch_send,
   op_node_http_request,
 } from "ext:core/ops";
 
@@ -628,7 +628,7 @@ class ClientRequest extends OutgoingMessage {
 
     (async () => {
       try {
-        const res = await op_fetch_send(this._req.requestRid);
+        const res = await op_node_http_fetch_send(this._req.requestRid);
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
         }
@@ -676,7 +676,7 @@ class ClientRequest extends OutgoingMessage {
             throw new Error("not implemented CONNECT");
           }
 
-          const upgradeRid = await op_fetch_response_upgrade(
+          const upgradeRid = await op_node_http_fetch_response_upgrade(
             res.responseRid,
           );
           assert(typeof res.remoteAddrIp !== "undefined");
@@ -1439,12 +1439,11 @@ export class ServerResponse extends NodeWritable {
   }
 
   appendHeader(name: string, value: string | string[]) {
-    if (Array.isArray(value)) {
-      this.#hasNonStringHeaders = true;
-    }
     if (this.#headers[name] === undefined) {
+      if (Array.isArray(value)) this.#hasNonStringHeaders = true;
       this.#headers[name] = value;
     } else {
+      this.#hasNonStringHeaders = true;
       if (!Array.isArray(this.#headers[name])) {
         this.#headers[name] = [this.#headers[name]];
       }
@@ -1642,7 +1641,9 @@ export class IncomingMessageForServer extends NodeReadable {
         }
       },
       destroy: (err, cb) => {
-        reader?.cancel().finally(() => cb(err));
+        reader?.cancel().catch(() => {
+          // Don't throw error - it's propagated to the user via 'error' event.
+        }).finally(nextTick(onError, this, err, cb));
       },
     });
     // TODO(@bartlomieju): consider more robust path extraction, e.g:
