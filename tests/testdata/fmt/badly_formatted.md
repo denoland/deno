@@ -32,7 +32,7 @@ function foo(): number {
 {
   // Comment in JSON
   "key":          "value",
-                "key2":      
+                "key2":
                 "value2",
 }
 
@@ -48,4 +48,8 @@ function foo(): number {
 ```yaml
 -  item1
 -  item2
+```
+
+```css
+#app>.btn{ color : #000 }
 ```
