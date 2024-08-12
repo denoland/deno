@@ -67,7 +67,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir = { workspace = true }
 deno_config = { version = "=0.28.0", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "0.145.0", features = ["html", "syntect"] }
+deno_doc = { version = "0.146.0", features = ["html", "syntect"] }
 deno_emit = "=0.44.0"
 deno_graph = { version = "=0.81.2" }
 deno_lint = { version = "=0.62.0", features = ["docs"] }
@@ -155,7 +155,7 @@ tokio.workspace = true
 tokio-util.workspace = true
 tower-lsp.workspace = true
 twox-hash.workspace = true
-typed-arena = "=2.0.1"
+typed-arena = "=2.0.2"
 uuid = { workspace = true, features = ["serde"] }
 which.workspace = true
 zeromq.workspace = true
