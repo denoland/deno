@@ -4,13 +4,13 @@
     "args": ["add", "@std/assert", "@std/http"],
     "output": "add.out"
   }, {
-    "args": ["eval", "console.log(Deno.readTextFileSync('Deno.lock').trim())"],
+    "args": ["eval", "console.log(Deno.readTextFileSync('deno.lock').trim())"],
     "output": "add_lock.out"
   }, {
     "args": ["remove", "@std/assert", "@std/http"],
     "output": "rm.out"
   }, {
-    "args": ["eval", "console.log(Deno.readTextFileSync('Deno.lock').trim())"],
+    "args": ["eval", "console.log(Deno.readTextFileSync('deno.lock').trim())"],
     "output": "remove_lock.out"
   }]
 }
