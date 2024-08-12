@@ -45,6 +45,7 @@ use spki::der::Reader as _;
 use spki::DecodePublicKey as _;
 use spki::EncodePublicKey as _;
 use spki::SubjectPublicKeyInfoRef;
+use x509_parser::x509;
 
 use super::dh;
 use super::dh::DiffieHellmanGroup;
@@ -518,11 +519,63 @@ impl KeyObjectHandle {
     Ok(KeyObjectHandle::AsymmetricPrivate(private_key))
   }
 
+  pub fn new_x509_public_key(
+    spki: &x509::SubjectPublicKeyInfo,
+  ) -> Result<KeyObjectHandle, AnyError> {
+    use x509_parser::der_parser::asn1_rs::oid;
+    use x509_parser::public_key::PublicKey;
+
+    let key = match spki.parsed()? {
+      PublicKey::RSA(key) => {
+        let public_key = RsaPublicKey::new(
+          rsa::BigUint::from_bytes_be(key.modulus),
+          rsa::BigUint::from_bytes_be(key.exponent),
+        )?;
+        AsymmetricPublicKey::Rsa(public_key)
+      }
+      PublicKey::EC(point) => {
+        let data = point.data();
+        if let Some(params) = &spki.algorithm.parameters {
+          let curve_oid = params.as_oid()?;
+          const ID_SECP224R1: &[u8] = &oid!(raw 1.3.132.0.33);
+          const ID_SECP256R1: &[u8] = &oid!(raw 1.2.840.10045.3.1.7);
+          const ID_SECP384R1: &[u8] = &oid!(raw 1.3.132.0.34);
+
+          match curve_oid.as_bytes() {
+            ID_SECP224R1 => {
+              let public_key = p224::PublicKey::from_sec1_bytes(data)?;
+              AsymmetricPublicKey::Ec(EcPublicKey::P224(public_key))
+            }
+            ID_SECP256R1 => {
+              let public_key = p256::PublicKey::from_sec1_bytes(data)?;
+              AsymmetricPublicKey::Ec(EcPublicKey::P256(public_key))
+            }
+            ID_SECP384R1 => {
+              let public_key = p384::PublicKey::from_sec1_bytes(data)?;
+              AsymmetricPublicKey::Ec(EcPublicKey::P384(public_key))
+            }
+            _ => return Err(type_error("unsupported ec named curve")),
+          }
+        } else {
+          return Err(type_error("missing ec parameters"));
+        }
+      }
+      PublicKey::DSA(_) => {
+        let verifying_key = dsa::VerifyingKey::from_public_key_der(spki.raw)
+          .map_err(|_| type_error("malformed DSS public key"))?;
+        AsymmetricPublicKey::Dsa(verifying_key)
+      }
+      _ => return Err(type_error("unsupported x509 public key type")),
+    };
+
+    Ok(KeyObjectHandle::AsymmetricPublic(key))
+  }
+
   pub fn new_asymmetric_public_key_from_js(
     key: &[u8],
     format: &str,
     typ: &str,
-    _passphrase: Option<&[u8]>,
+    passphrase: Option<&[u8]>,
   ) -> Result<KeyObjectHandle, AnyError> {
     let document = match format {
       "pem" => {
@@ -542,23 +595,22 @@ impl KeyObjectHandle {
             Document::from_pkcs1_der(document.as_bytes())
               .map_err(|_| type_error("invalid PKCS#1 public key"))?
           }
-          EncryptedPrivateKeyInfo::PEM_LABEL => {
-            // FIXME
-            return Err(type_error(
-              "deriving public key from encrypted private key",
-            ));
-          }
-          PrivateKeyInfo::PEM_LABEL => {
-            // FIXME
-            return Err(type_error("public key cannot be a private key"));
-          }
-          sec1::EcPrivateKey::PEM_LABEL => {
-            // FIXME
-            return Err(type_error("deriving public key from ec private key"));
-          }
-          rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
-            // FIXME
-            return Err(type_error("deriving public key from rsa private key"));
+          EncryptedPrivateKeyInfo::PEM_LABEL
+          | PrivateKeyInfo::PEM_LABEL
+          | sec1::EcPrivateKey::PEM_LABEL
+          | rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
+            let handle = KeyObjectHandle::new_asymmetric_private_key_from_js(
+              key, format, typ, passphrase,
+            )?;
+            match handle {
+              KeyObjectHandle::AsymmetricPrivate(private) => {
+                return Ok(KeyObjectHandle::AsymmetricPublic(
+                  private.to_public_key(),
+                ))
+              }
+              KeyObjectHandle::AsymmetricPublic(_)
+              | KeyObjectHandle::Secret(_) => unreachable!(),
+            }
           }
           // TODO: handle x509 certificates as public keys
           _ => {

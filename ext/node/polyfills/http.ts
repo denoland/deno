@@ -1439,12 +1439,11 @@ export class ServerResponse extends NodeWritable {
   }
 
   appendHeader(name: string, value: string | string[]) {
-    if (Array.isArray(value)) {
-      this.#hasNonStringHeaders = true;
-    }
     if (this.#headers[name] === undefined) {
+      if (Array.isArray(value)) this.#hasNonStringHeaders = true;
       this.#headers[name] = value;
     } else {
+      this.#hasNonStringHeaders = true;
       if (!Array.isArray(this.#headers[name])) {
         this.#headers[name] = [this.#headers[name]];
       }
