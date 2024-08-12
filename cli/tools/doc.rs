@@ -313,16 +313,16 @@ impl deno_doc::html::HrefResolver for DocResolver {
           let res =
             deno_semver::npm::NpmPackageReqReference::from_str(module).ok()?;
           let name = &res.req().name;
-          return Some((
+          Some((
             format!("https://www.npmjs.com/package/{name}"),
             name.to_owned(),
-          ));
+          ))
         }
         "jsr" => {
           let res =
             deno_semver::jsr::JsrPackageReqReference::from_str(module).ok()?;
           let name = &res.req().name;
-          return Some((format!("https://jsr.io/{name}"), name.to_owned()));
+          Some((format!("https://jsr.io/{name}"), name.to_owned()))
         }
         _ => None,
       }
