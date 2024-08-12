@@ -1096,80 +1096,80 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
   r#"<y>Environment variables:</>
   <g>DENO_AUTH_TOKENS</>      A semi-colon separated list of bearer tokens and hostnames
                         to use when fetching remote modules from private repositories
-                         <w>(e.g. "abcde12345@deno.land;54321edcba@github.com")</>
+                         <p(245)>(e.g. "abcde12345@deno.land;54321edcba@github.com")</>
   <g>DENO_FUTURE</>           Set to "1" to enable APIs that will take effect in Deno 2
   <g>DENO_CERT</>             Load certificate authorities from PEM encoded file
   <g>DENO_DIR</>              Set the cache directory
   <g>DENO_INSTALL_ROOT</>     Set deno install's output directory
-                         <w>(defaults to $HOME/.deno/bin)</>
+                         <p(245)>(defaults to $HOME/.deno/bin)</>
   <g>DENO_JOBS</>             Number of parallel workers used for the --parallel flag
                         with the test subcommand. Defaults to number of available CPUs.
   <g>DENO_REPL_HISTORY</>     Set REPL history file path
                         History file is disabled when the value is empty
-                         <w>(defaults to $DENO_DIR/deno_history.txt)</>
+                         <p(245)>(defaults to $DENO_DIR/deno_history.txt)</>
   <g>DENO_NO_PACKAGE_JSON</>  Disables auto-resolution of package.json
   <g>DENO_NO_PROMPT</>        Set to disable permission prompts on access
-                         <w>(alternative to passing --no-prompt on invocation)</>
+                         <p(245)>(alternative to passing --no-prompt on invocation)</>
   <g>DENO_NO_UPDATE_CHECK</>  Set to disable checking if a newer Deno version is available
   <g>DENO_TLS_CA_STORE</>     Comma-separated list of order dependent certificate stores.
                         Possible values: "system", "mozilla".
-                         <w>(defaults to "mozilla")</>
+                         <p(245)>(defaults to "mozilla")</>
   <g>DENO_V8_FLAGS</>         Set V8 command line options
   <g>DENO_WEBGPU_TRACE</>     Directory to use for wgpu traces
   <g>DENO_WEBGPU_BACKEND</>   Single or list of backend to use for WebGPU
   <g>HTTP_PROXY</>            Proxy address for HTTP requests
-                         <w>(module downloads, fetch)</>
+                         <p(245)>(module downloads, fetch)</>
   <g>HTTPS_PROXY</>           Proxy address for HTTPS requests
-                         <w>(module downloads, fetch)</>
+                         <p(245)>(module downloads, fetch)</>
   <g>NO_COLOR</>              Set to disable color
   <g>NO_PROXY</>              Comma-separated list of hosts which do not use a proxy
-                         <w>(module downloads, fetch)</>
+                         <p(245)>(module downloads, fetch)</>
   <g>NPM_CONFIG_REGISTRY</>   URL to use for the npm registry."#
 );
 
 static DENO_HELP: &str = color_print::cstr!(
   "Deno: <g>A modern JavaScript and TypeScript runtime</>
 
-<w>Usage:</> <g>{usage}</>
+<p(245)>Usage:</> <g>{usage}</>
 
 <y>Commands:</>
   <y>Execution:</>
     <g>run</>          Run a JavaScript or TypeScript program, or a task
-                  <w>deno run main.ts</>  <w>|</>  <w>deno run --allow-net=google.com main.ts</>  <w>|</>  <w>deno main.ts</>
+                  <p(245)>deno run main.ts  |  deno run --allow-net=google.com main.ts  |  deno main.ts</>
     <g>serve</>        Run a server
-                  <w>deno serve main.ts</>
+                  <p(245)>deno serve main.ts</>
     <g>task</>         Run a task defined in the configuration file
-                  <w>deno task dev</>
+                  <p(245)>deno task dev</>
     <g>repl</>         Start an interactive Read-Eval-Print Loop (REPL) for Deno
     <g>eval</>         Evaluate a script from the command line
 
   <y>Dependency management:</>
     <g>add</>          Add dependencies
-                  <w>deno add @std/assert</>  <w>|</>  <w>deno add npm:express</>
+                  <p(245)>deno add @std/assert  |  deno add npm:express</>
     <g>install</>      Install script as an executable
     <g>uninstall</>    Uninstall a script previously installed with deno install
 
   <y>Tooling:</>
     <g>bench</>        Run benchmarks
-                  <w>deno bench bench.ts</>
+                  <p(245)>deno bench bench.ts</>
     <g>cache</>        Cache the dependencies
     <g>check</>        Type-check the dependencies
     <g>compile</>      Compile the script into a self contained executable
-                  <w>deno compile main.ts</>  <w>|</>  <w>deno compile --target=x86_64-unknown-linux-gnu</>
+                  <p(245)>deno compile main.ts  |  deno compile --target=x86_64-unknown-linux-gnu</>
     <g>coverage</>     Print coverage reports
     <g>doc</>          Genereate and show documentation for a module or built-ins
-                  <w>deno doc</>  <w>|</>  <w>deno doc --json</>  <w>|</>  <w>deno doc --html mod.ts</>
+                  <p(245)>deno doc  |  deno doc --json  |  deno doc --html mod.ts</>
     <g>fmt</>          Format source files
-                  <w>deno fmt</>  <w>|</>  <w>deno fmt main.ts</>
+                  <p(245)>deno fmt  |  deno fmt main.ts</>
     <g>info</>         Show info about cache or info related to source file
     <g>jupyter</>      Deno kernel for Jupyter notebooks
     <g>lint</>         Lint source files
     <g>init</>         Initialize a new project
     <g>test</>         Run tests
-                  <w>deno test</>  <w>|</>  <w>deno test test.ts</>
+                  <p(245)>deno test  |  deno test test.ts</>
     <g>publish</>      Publish the current working directory's package or workspace
     <g>upgrade</>      Upgrade deno executable to given version
-                  <w>deno upgrade</>  <w>|</>  <w>deno upgrade --version=1.45.0</>  <w>|</>  <w>deno upgrade --canary</>
+                  <p(245)>deno upgrade  |  deno upgrade --version=1.45.0  |  deno upgrade --canary</>
 {after-help}
 
 <y>Docs:</> https://docs.deno.com
@@ -2605,19 +2605,19 @@ fn run_subcommand() -> Command {
       color_print::cstr!("Run a JavaScript or TypeScript program, or a task or script.
 
 By default all programs are run in sandbox without access to disk, network or ability to spawn subprocesses.
-  <w>deno run https://examples.deno.land/hello-world.ts</>
+  <p(245)>deno run https://examples.deno.land/hello-world.ts</>
 
 Grant permission to read from disk and listen to network:
-  <w>deno run --allow-read --allow-net jsr:@std/http/file-server</>
+  <p(245)>deno run --allow-read --allow-net jsr:@std/http/file-server</>
 
 Grant permission to read allow-listed files from disk:
-  <w>deno run --allow-read=/etc jsr:@std/http/file-server</>
+  <p(245)>deno run --allow-read=/etc jsr:@std/http/file-server</>
 
 Grant all permissions:
-  <w>deno run -A jsr:@std/http/file-server</>
+  <p(245)>deno run -A jsr:@std/http/file-server</>
 
 Specifying the filename '-' to read the file from stdin.
-  <w>curl https://examples.deno.land/hello-world.ts | deno run -</>"))
+  <p(245)>curl https://examples.deno.land/hello-world.ts | deno run -</>"))
 }
 
 fn serve_host_validator(host: &str) -> Result<String, String> {
@@ -3357,7 +3357,7 @@ fn reload_arg() -> Arg {
     .value_name("CACHE_BLOCKLIST")
     .help(
       color_print::cstr!("Reload source code cache (recompile TypeScript)
-  <w>no value                                                 Reload everything
+  <p(245)>no value                                                 Reload everything
   jsr:@std/http/file-server,jsr:@std/assert/assert-equals  Reloads specific modules
   npm:                                                     Reload all npm modules
   npm:chalk                                                Reload specific npm module</>",
@@ -5180,6 +5180,7 @@ mod tests {
             no_clear_screen: true,
             exclude: vec![],
           }),
+          bare: false,
         }),
         code_cache_enabled: true,
         ..Flags::default()
