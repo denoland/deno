@@ -2882,7 +2882,7 @@ update to a different location, use the --output flag
             .action(ArgAction::SetTrue),
         )
         .arg(
-          Arg::new("release_candidate")
+          Arg::new("release-candidate")
             .long("rc")
             .help("Upgrade to a release candidate")
             .conflicts_with_all(["canary", "version"])
@@ -4654,7 +4654,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let dry_run = matches.get_flag("dry-run");
   let force = matches.get_flag("force");
   let canary = matches.get_flag("canary");
-  let release_candidate = matches.get_flag("release_candidate");
+  let release_candidate = matches.get_flag("release-candidate");
   let version = matches.remove_one::<String>("version");
   let output = matches.remove_one::<String>("output");
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
