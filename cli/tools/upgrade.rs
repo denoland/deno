@@ -891,7 +891,7 @@ fn get_latest_version_url(
     ReleaseChannel::Canary => {
       Cow::Owned(format!("canary-{target_tuple}-latest.txt"))
     }
-    ReleaseChannel::Rc => Cow::Borrowed("release-2-rc.txt"),
+    ReleaseChannel::Rc => Cow::Borrowed("release-rc.txt"),
     _ => unreachable!(),
   };
   let query_param = match check_kind {
@@ -1508,7 +1508,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Lsp
       ),
-      "https://dl.deno.land/release-2-rc.txt?lsp"
+      "https://dl.deno.land/release-rc.txt?lsp"
     );
     assert_eq!(
       get_latest_version_url(
@@ -1516,7 +1516,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
         "aarch64-apple-darwin",
         UpgradeCheckKind::Execution
       ),
-      "https://dl.deno.land/release-2-rc.txt"
+      "https://dl.deno.land/release-rc.txt"
     );
     assert_eq!(
       get_latest_version_url(
@@ -1524,7 +1524,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
         "aarch64-apple-darwin",
         UpgradeCheckKind::Lsp
       ),
-      "https://dl.deno.land/release-2-rc.txt?lsp"
+      "https://dl.deno.land/release-rc.txt?lsp"
     );
     assert_eq!(
       get_latest_version_url(
@@ -1532,7 +1532,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Execution
       ),
-      "https://dl.deno.land/release-2-rc.txt"
+      "https://dl.deno.land/release-rc.txt"
     );
     assert_eq!(
       get_latest_version_url(
@@ -1540,7 +1540,7 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Lsp
       ),
-      "https://dl.deno.land/release-2-rc.txt?lsp"
+      "https://dl.deno.land/release-rc.txt?lsp"
     );
   }
 
