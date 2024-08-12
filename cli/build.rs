@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use deno_core::snapshot::*;
 use deno_runtime::*;
+mod shared;
 
 mod ts {
   use super::*;

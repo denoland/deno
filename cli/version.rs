@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+pub use crate::shared::ReleaseChannel;
+
 pub const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_HASH");
 pub const TYPESCRIPT: &str = env!("TS_VERSION");
 

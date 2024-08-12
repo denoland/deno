@@ -20,6 +20,7 @@ mod node;
 mod npm;
 mod ops;
 mod resolver;
+mod shared;
 mod standalone;
 mod task_runner;
 mod tools;
