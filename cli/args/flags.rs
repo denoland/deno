@@ -1328,15 +1328,15 @@ static UNSTABLE_HEADING: &str = "Unstable";
 pub fn clap_root() -> Command {
   let long_version = format!(
     "{} ({}, {})\nv8 {}\ntypescript {}",
-    crate::version::deno(),
-    if crate::version::IS_CANARY {
+    crate::version::DENO_VERSION_INFO.deno,
+    if crate::version::DENO_VERSION_INFO.is_canary {
       "canary"
     } else {
       env!("PROFILE")
     },
     env!("TARGET"),
     deno_core::v8_version(),
-    crate::version::TYPESCRIPT
+    crate::version::DENO_VERSION_INFO.typescript
   );
 
   let mut cmd = run_args(Command::new("deno"), true)
@@ -1351,7 +1351,7 @@ pub fn clap_root() -> Command {
     )
     .color(ColorChoice::Auto)
     .term_width(800)
-    .version(crate::version::deno())
+    .version(crate::version::DENO_VERSION_INFO.deno)
     .long_version(long_version)
     // cause --unstable flags to display at the bottom of the help text
     .next_display_order(1000)

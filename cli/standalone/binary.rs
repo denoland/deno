@@ -398,8 +398,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let target = compile_flags.resolve_target();
     let binary_name = format!("denort-{target}.zip");
 
-    let binary_path_suffix = if crate::version::IS_CANARY {
-      format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
+    let binary_path_suffix = if crate::version::DENO_VERSION_INFO.is_canary {
+      format!(
+        "canary/{}/{}",
+        crate::version::DENO_VERSION_INFO.git_hash,
+        binary_name
+      )
     } else {
       format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
     };
