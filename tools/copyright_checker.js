@@ -22,7 +22,10 @@ export async function checkCopyright() {
   const sourceFiles = await getSources(ROOT_PATH, [
     // js and ts
     "*.js",
+    "*.mjs",
+    "*.jsx",
     "*.ts",
+    "*.tsx",
     ":!:.github/mtime_cache/action.js",
     ":!:cli/bench/testdata/**",
     ":!:cli/tools/bench/mitata.rs",
