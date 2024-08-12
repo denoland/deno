@@ -419,6 +419,11 @@ pub struct PublishFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HelpFlags {
+  pub help: clap::builder::StyledStr,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Add(AddFlags),
   Bench(BenchFlags),
@@ -449,6 +454,7 @@ pub enum DenoSubcommand {
   Upgrade(UpgradeFlags),
   Vendor(VendorFlags),
   Publish(PublishFlags),
+  Help(HelpFlags),
 }
 
 impl DenoSubcommand {
@@ -1243,10 +1249,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
           app.render_help()
         };
 
-        return Err(clap::error::Error::raw(
-          clap::error::ErrorKind::DisplayHelp,
-          help.ansi(),
-        ));
+        flags.subcommand = DenoSubcommand::Help(HelpFlags { help });
       }
       _ => unreachable!(),
     }
@@ -1630,13 +1633,13 @@ fn clean_subcommand() -> Command {
 
 fn check_subcommand() -> Command {
   Command::new("check")
-      .about(
-        "Download and type-check without execution.
+    .about(
+      "Download and type-check without execution.
 
   deno check jsr:@std/http/file-server
 
 Unless --reload is specified, this command will not re-download already cached dependencies.",
-      )
+    )
     .defer(|cmd| compile_args_without_check_args(cmd).arg(
       Arg::new("all")
         .long("all")
@@ -1688,48 +1691,48 @@ supported in canary.
     )
     .defer(|cmd| {
       runtime_args(cmd, true, false)
-      .arg(check_arg(true))
-      .arg(
-        Arg::new("include")
-          .long("include")
-          .help(
-            "Includes an additional module in the compiled executable's module
+        .arg(check_arg(true))
+        .arg(
+          Arg::new("include")
+            .long("include")
+            .help(
+              "Includes an additional module in the compiled executable's module
   graph. Use this flag if a dynamically imported module or a web worker main
   module fails to load in the executable. This flag can be passed multiple
   times, to include multiple additional modules.",
-          )
-          .action(ArgAction::Append)
-          .value_hint(ValueHint::FilePath),
-      )
-      .arg(
-        Arg::new("output")
-          .long("output")
-          .short('o')
-          .value_parser(value_parser!(String))
-          .help("Output file (defaults to $PWD/<inferred-name>)")
-          .value_hint(ValueHint::FilePath),
-      )
-      .arg(
-        Arg::new("target")
-          .long("target")
-          .help("Target OS architecture")
-          .value_parser([
-            "x86_64-unknown-linux-gnu",
-            "aarch64-unknown-linux-gnu",
-            "x86_64-pc-windows-msvc",
-            "x86_64-apple-darwin",
-            "aarch64-apple-darwin",
-          ]),
-      )
-      .arg(
-        Arg::new("no-terminal")
-          .long("no-terminal")
-          .help("Hide terminal on Windows")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(executable_ext_arg())
-      .arg(env_file_arg())
-      .arg(script_arg().required(true).trailing_var_arg(true))
+            )
+            .action(ArgAction::Append)
+            .value_hint(ValueHint::FilePath),
+        )
+        .arg(
+          Arg::new("output")
+            .long("output")
+            .short('o')
+            .value_parser(value_parser!(String))
+            .help("Output file (defaults to $PWD/<inferred-name>)")
+            .value_hint(ValueHint::FilePath),
+        )
+        .arg(
+          Arg::new("target")
+            .long("target")
+            .help("Target OS architecture")
+            .value_parser([
+              "x86_64-unknown-linux-gnu",
+              "aarch64-unknown-linux-gnu",
+              "x86_64-pc-windows-msvc",
+              "x86_64-apple-darwin",
+              "aarch64-apple-darwin",
+            ]),
+        )
+        .arg(
+          Arg::new("no-terminal")
+            .long("no-terminal")
+            .help("Hide terminal on Windows")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(executable_ext_arg())
+        .arg(env_file_arg())
+        .arg(script_arg().required(true).trailing_var_arg(true))
     })
 }
 
@@ -2182,8 +2185,8 @@ fn init_subcommand() -> Command {
 
 fn info_subcommand() -> Command {
   Command::new("info")
-      .about(
-        "Information about a module or the cache directories.
+    .about(
+      "Information about a module or the cache directories.
 
 Get information about a module:
   deno info jsr:@std/http/file-server
@@ -2200,7 +2203,7 @@ Without any additional arguments, 'deno info' shows:
 DENO_DIR: Directory containing Deno-managed files.
 Remote modules cache: Subdirectory containing downloaded remote modules.
 TypeScript compiler cache: Subdirectory containing TS compiler output.",
-      )
+    )
     .defer(|cmd| cmd
       .arg(Arg::new("file").required(false).value_hint(ValueHint::FilePath))
       .arg(reload_arg().requires("file"))
@@ -2280,7 +2283,7 @@ fn future_install_subcommand() -> Command {
   Command::new("install")
     .visible_alias("i")
     .about(
-"Installs dependencies either in the local project or globally to a bin directory.
+      "Installs dependencies either in the local project or globally to a bin directory.
 
 Local installation
 -------------------
@@ -2330,7 +2333,7 @@ These must be added to the path manually if required.")
 fn install_subcommand() -> Command {
   Command::new("install")
     .about(
-"Installs a script as an executable in the installation root's bin directory.
+      "Installs a script as an executable in the installation root's bin directory.
 
   deno install --global --allow-net --allow-read jsr:@std/http/file-server
   deno install -g https://examples.deno.land/color-logging.ts
@@ -2394,8 +2397,8 @@ fn jupyter_subcommand() -> Command {
 
 fn uninstall_subcommand() -> Command {
   Command::new("uninstall")
-      .about(
-        "Uninstalls an executable script in the installation root's bin directory.
+    .about(
+      "Uninstalls an executable script in the installation root's bin directory.
 
   deno uninstall serve
 
@@ -2420,7 +2423,7 @@ The installation root is determined, in order of precedence:
           .help("Remove globally installed package or module")
           .action(ArgAction::SetTrue)
       )
-)
+    )
 }
 
 static LSP_HELP: &str = concat!(
@@ -2566,7 +2569,7 @@ fn repl_subcommand() -> Command {
           .help("Evaluates the provided code when the REPL starts.")
           .value_name("code"),
       ))
-      .arg(env_file_arg())
+    .arg(env_file_arg())
 }
 
 fn run_args(command: Command, top_level: bool) -> Command {
@@ -2696,147 +2699,147 @@ Directory arguments are expanded to all contained files matching the glob
 {*_,*.,}test.{js,mjs,ts,mts,jsx,tsx} or **/__tests__/**:
   deno test src/",
     )
-  .defer(|cmd| runtime_args(cmd, true, true)
-    .arg(check_arg(true))
-    .arg(
-      Arg::new("ignore")
-        .long("ignore")
-        .num_args(1..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .help("Ignore files")
-        .value_hint(ValueHint::AnyPath),
-    )
-    .arg(
-      Arg::new("no-run")
-        .long("no-run")
-        .help("Cache test modules, but don't run tests")
-        .action(ArgAction::SetTrue),
-    )
-    .arg(
-      Arg::new("trace-ops")
-        .long("trace-ops")
-        .help("Deprecated alias for --trace-leaks.")
-        .hide(true)
-        .action(ArgAction::SetTrue),
-    )
-    .arg(
-      Arg::new("trace-leaks")
-        .long("trace-leaks")
-        .help("Enable tracing of leaks. Useful when debugging leaking ops in test, but impacts test execution time.")
-        .action(ArgAction::SetTrue),
-    )
-    .arg(
-      Arg::new("doc")
-        .long("doc")
-        .help("Type-check code blocks in JSDoc and Markdown")
-        .action(ArgAction::SetTrue),
-    )
-    .arg(
-      Arg::new("fail-fast")
-        .long("fail-fast")
-        .alias("failfast")
-        .help("Stop after N errors. Defaults to stopping after first failure.")
-        .num_args(0..=1)
-        .require_equals(true)
-        .value_name("N")
-        .value_parser(value_parser!(NonZeroUsize)),
-    )
-    // TODO(@lucacasonato): remove for Deno 2.0
-    .arg(
-      Arg::new("allow-none")
-        .long("allow-none")
-        .help("Don't return error code if no test files are found")
-        .hide(true)
-        .action(ArgAction::SetTrue),
-    )
-    .arg(
-      Arg::new("permit-no-files")
-        .long("permit-no-files")
-        .help("Don't return an error code if no test files were found")
-        .conflicts_with("allow-none")
-        .action(ArgAction::SetTrue),
-    )
-    .arg(
-      Arg::new("filter")
-        .allow_hyphen_values(true)
-        .long("filter")
-        .help("Run tests with this string or pattern in the test name"),
-    )
-    .arg(
-      Arg::new("shuffle")
-        .long("shuffle")
-        .value_name("NUMBER")
-        .help("Shuffle the order in which the tests are run")
-        .num_args(0..=1)
-        .require_equals(true)
-        .value_parser(value_parser!(u64)),
-    )
-    .arg(
-      Arg::new("coverage")
-        .long("coverage")
-        .value_name("DIR")
-        .num_args(0..=1)
-        .require_equals(true)
-        .default_missing_value("coverage")
-        .conflicts_with("inspect")
-        .conflicts_with("inspect-wait")
-        .conflicts_with("inspect-brk")
-        .help("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'."),
-    )
-    .arg(
-      Arg::new("clean")
-        .long("clean")
-        .help("Empty the temporary coverage profile data directory before running tests.
+    .defer(|cmd| runtime_args(cmd, true, true)
+      .arg(check_arg(true))
+      .arg(
+        Arg::new("ignore")
+          .long("ignore")
+          .num_args(1..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .help("Ignore files")
+          .value_hint(ValueHint::AnyPath),
+      )
+      .arg(
+        Arg::new("no-run")
+          .long("no-run")
+          .help("Cache test modules, but don't run tests")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("trace-ops")
+          .long("trace-ops")
+          .help("Deprecated alias for --trace-leaks.")
+          .hide(true)
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("trace-leaks")
+          .long("trace-leaks")
+          .help("Enable tracing of leaks. Useful when debugging leaking ops in test, but impacts test execution time.")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("doc")
+          .long("doc")
+          .help("Type-check code blocks in JSDoc and Markdown")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("fail-fast")
+          .long("fail-fast")
+          .alias("failfast")
+          .help("Stop after N errors. Defaults to stopping after first failure.")
+          .num_args(0..=1)
+          .require_equals(true)
+          .value_name("N")
+          .value_parser(value_parser!(NonZeroUsize)),
+      )
+      // TODO(@lucacasonato): remove for Deno 2.0
+      .arg(
+        Arg::new("allow-none")
+          .long("allow-none")
+          .help("Don't return error code if no test files are found")
+          .hide(true)
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("permit-no-files")
+          .long("permit-no-files")
+          .help("Don't return an error code if no test files were found")
+          .conflicts_with("allow-none")
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("filter")
+          .allow_hyphen_values(true)
+          .long("filter")
+          .help("Run tests with this string or pattern in the test name"),
+      )
+      .arg(
+        Arg::new("shuffle")
+          .long("shuffle")
+          .value_name("NUMBER")
+          .help("Shuffle the order in which the tests are run")
+          .num_args(0..=1)
+          .require_equals(true)
+          .value_parser(value_parser!(u64)),
+      )
+      .arg(
+        Arg::new("coverage")
+          .long("coverage")
+          .value_name("DIR")
+          .num_args(0..=1)
+          .require_equals(true)
+          .default_missing_value("coverage")
+          .conflicts_with("inspect")
+          .conflicts_with("inspect-wait")
+          .conflicts_with("inspect-brk")
+          .help("Collect coverage profile data into DIR. If DIR is not specified, it uses 'coverage/'."),
+      )
+      .arg(
+        Arg::new("clean")
+          .long("clean")
+          .help("Empty the temporary coverage profile data directory before running tests.
   Note: running multiple `deno test --clean` calls in series or parallel for the same coverage directory may cause race conditions.")
-        .action(ArgAction::SetTrue),
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("parallel")
+          .long("parallel")
+          .help("Run test modules in parallel. Parallelism defaults to the number of available CPUs or the value in the DENO_JOBS environment variable.")
+          .conflicts_with("jobs")
+          .action(ArgAction::SetTrue)
+      )
+      .arg(
+        Arg::new("jobs")
+          .short('j')
+          .long("jobs")
+          .help("deprecated: The `--jobs` flag is deprecated and will be removed in Deno 2.0. Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.")
+          .hide(true)
+          .num_args(0..=1)
+          .value_parser(value_parser!(NonZeroUsize)),
+      )
+      .arg(
+        Arg::new("files")
+          .help("List of file names to run")
+          .num_args(0..)
+          .action(ArgAction::Append)
+          .value_hint(ValueHint::AnyPath),
+      )
+      .arg(
+        watch_arg(false)
+          .conflicts_with("no-run")
+          .conflicts_with("coverage"),
+      )
+      .arg(watch_exclude_arg())
+      .arg(no_clear_screen_arg())
+      .arg(script_arg().last(true))
+      .arg(
+        Arg::new("junit-path")
+          .long("junit-path")
+          .value_name("PATH")
+          .value_hint(ValueHint::FilePath)
+          .help("Write a JUnit XML test report to PATH. Use '-' to write to stdout which is the default when PATH is not provided.")
+      )
+      .arg(
+        Arg::new("reporter")
+          .long("reporter")
+          .help("Select reporter to use. Default to 'pretty'.")
+          .value_parser(["pretty", "dot", "junit", "tap"])
+      )
+      .arg(env_file_arg())
     )
-    .arg(
-      Arg::new("parallel")
-        .long("parallel")
-        .help("Run test modules in parallel. Parallelism defaults to the number of available CPUs or the value in the DENO_JOBS environment variable.")
-        .conflicts_with("jobs")
-        .action(ArgAction::SetTrue)
-    )
-    .arg(
-      Arg::new("jobs")
-        .short('j')
-        .long("jobs")
-        .help("deprecated: The `--jobs` flag is deprecated and will be removed in Deno 2.0. Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.")
-        .hide(true)
-        .num_args(0..=1)
-        .value_parser(value_parser!(NonZeroUsize)),
-    )
-    .arg(
-      Arg::new("files")
-        .help("List of file names to run")
-        .num_args(0..)
-        .action(ArgAction::Append)
-        .value_hint(ValueHint::AnyPath),
-    )
-    .arg(
-      watch_arg(false)
-        .conflicts_with("no-run")
-        .conflicts_with("coverage"),
-    )
-    .arg(watch_exclude_arg())
-    .arg(no_clear_screen_arg())
-    .arg(script_arg().last(true))
-    .arg(
-      Arg::new("junit-path")
-        .long("junit-path")
-        .value_name("PATH")
-        .value_hint(ValueHint::FilePath)
-        .help("Write a JUnit XML test report to PATH. Use '-' to write to stdout which is the default when PATH is not provided.")
-    )
-    .arg(
-      Arg::new("reporter")
-        .long("reporter")
-        .help("Select reporter to use. Default to 'pretty'.")
-        .value_parser(["pretty", "dot", "junit", "tap"])
-    )
-    .arg(env_file_arg())
-  )
 }
 
 fn types_subcommand() -> Command {
@@ -2904,9 +2907,9 @@ update to a different location, use the --output flag:
 // TODO(bartlomieju): this subcommand is now deprecated, remove it in Deno 2.
 fn vendor_subcommand() -> Command {
   Command::new("vendor")
-      .hide(true)
-      .about(
-        "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.
+    .hide(true)
+    .about(
+      "⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.
 Add `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead.
 
 Vendor remote modules into a local directory.
@@ -2919,7 +2922,7 @@ maps remote specifiers to the downloaded files.
 
 Remote modules and multiple modules may also be specified:
   deno vendor main.ts test.deps.ts jsr:@std/path",
-      )
+    )
     .defer(|cmd| cmd
       .arg(
         Arg::new("specifiers")
@@ -2963,33 +2966,33 @@ fn publish_subcommand() -> Command {
           .long("token")
           .help("The API token to use when publishing. If unset, interactive authentication is be used")
       )
-      .arg(config_arg())
-      .arg(no_config_arg())
-      .arg(
-        Arg::new("dry-run")
-          .long("dry-run")
-          .help("Prepare the package for publishing performing all checks and validations without uploading")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
-        Arg::new("allow-slow-types")
-          .long("allow-slow-types")
-          .help("Allow publishing with slow types")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
-        Arg::new("allow-dirty")
-        .long("allow-dirty")
-        .help("Allow publishing if the repository has uncommitted changed")
-        .action(ArgAction::SetTrue),
-      ).arg(
+        .arg(config_arg())
+        .arg(no_config_arg())
+        .arg(
+          Arg::new("dry-run")
+            .long("dry-run")
+            .help("Prepare the package for publishing performing all checks and validations without uploading")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("allow-slow-types")
+            .long("allow-slow-types")
+            .help("Allow publishing with slow types")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("allow-dirty")
+            .long("allow-dirty")
+            .help("Allow publishing if the repository has uncommitted changed")
+            .action(ArgAction::SetTrue),
+        ).arg(
         Arg::new("no-provenance")
           .long("no-provenance")
           .help("Disable provenance attestation. Enabled by default on Github actions, publicly links the package to where it was built and published from.")
           .action(ArgAction::SetTrue)
       )
-      .arg(check_arg(/* type checks by default */ true))
-      .arg(no_check_arg())
+        .arg(check_arg(/* type checks by default */ true))
+        .arg(no_check_arg())
     })
 }
 
@@ -4432,9 +4435,9 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let allow_none = matches.get_flag("permit-no-files")
     || if matches.get_flag("allow-none") {
       eprintln!(
-        "⚠️ {}",
-        crate::colors::yellow("The `--allow-none` flag is deprecated and will be removed in Deno 2.0.\nUse the `--permit-no-files` flag instead."),
-      );
+      "⚠️ {}",
+      crate::colors::yellow("The `--allow-none` flag is deprecated and will be removed in Deno 2.0.\nUse the `--permit-no-files` flag instead."),
+    );
       true
     } else {
       false
@@ -4482,9 +4485,9 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       eprintln!(
         "⚠️ {}",
         crate::colors::yellow(concat!(
-          "The `--jobs` flag is deprecated and will be removed in Deno 2.0.\n",
-          "Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.\n",
-          "Learn more at: https://docs.deno.com/runtime/manual/basics/env_variables"
+        "The `--jobs` flag is deprecated and will be removed in Deno 2.0.\n",
+        "Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.\n",
+        "Learn more at: https://docs.deno.com/runtime/manual/basics/env_variables"
         )),
       );
     }
