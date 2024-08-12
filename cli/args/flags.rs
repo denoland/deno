@@ -398,6 +398,7 @@ pub struct TestFlags {
 pub struct UpgradeFlags {
   pub dry_run: bool,
   pub force: bool,
+  pub release_candidate: bool,
   pub canary: bool,
   pub version: Option<String>,
   pub output: Option<String>,
@@ -2908,6 +2909,13 @@ update to a different location, use the --output flag:
             .help("Upgrade to canary builds")
             .action(ArgAction::SetTrue),
         )
+        .arg(
+          Arg::new("release-candidate")
+            .long("rc")
+            .help("Upgrade to a release candidate")
+            .conflicts_with_all(["canary", "version"])
+            .action(ArgAction::SetTrue),
+        )
         .arg(ca_file_arg())
     })
 }
@@ -4568,11 +4576,13 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let dry_run = matches.get_flag("dry-run");
   let force = matches.get_flag("force");
   let canary = matches.get_flag("canary");
+  let release_candidate = matches.get_flag("release-candidate");
   let version = matches.remove_one::<String>("version");
   let output = matches.remove_one::<String>("output");
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
     dry_run,
     force,
+    release_candidate,
     canary,
     version,
     output,
@@ -5057,6 +5067,7 @@ mod tests {
           force: true,
           dry_run: true,
           canary: false,
+          release_candidate: false,
           version: None,
           output: None,
         }),
@@ -5075,6 +5086,7 @@ mod tests {
           force: false,
           dry_run: false,
           canary: false,
+          release_candidate: false,
           version: None,
           output: Some(String::from("example.txt")),
         }),
@@ -9039,6 +9051,7 @@ mod tests {
           force: false,
           dry_run: false,
           canary: false,
+          release_candidate: false,
           version: None,
           output: None,
         }),
@@ -9046,6 +9059,31 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn upgrade_release_candidate() {
+    let r = flags_from_vec(svec!["deno", "upgrade", "--rc"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Upgrade(UpgradeFlags {
+          force: false,
+          dry_run: false,
+          canary: false,
+          release_candidate: true,
+          version: None,
+          output: None,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "upgrade", "--rc", "--canary"]);
+    assert!(r.is_err());
+
+    let r = flags_from_vec(svec!["deno", "upgrade", "--rc", "--version"]);
+    assert!(r.is_err());
   }
 
   #[test]
