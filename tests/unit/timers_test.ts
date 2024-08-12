@@ -4,6 +4,7 @@ import {
   assertEquals,
   assertNotEquals,
   delay,
+  DENO_FUTURE,
   execCode,
   unreachable,
 } from "./test_util.ts";
@@ -308,11 +309,18 @@ Deno.test(async function timeoutCallbackThis() {
   };
   setTimeout(obj.foo, 1);
   await promise;
-  assertEquals(capturedThis, window);
+  if (!DENO_FUTURE) {
+    assertEquals(capturedThis, window);
+  } else {
+    assertEquals(capturedThis, globalThis);
+  }
 });
 
 Deno.test(async function timeoutBindThis() {
-  const thisCheckPassed = [null, undefined, window, globalThis];
+  const thisCheckPassed = [null, undefined, globalThis];
+  if (!DENO_FUTURE) {
+    thisCheckPassed.push(window);
+  }
 
   const thisCheckFailed = [
     0,
@@ -325,6 +333,9 @@ Deno.test(async function timeoutBindThis() {
     () => {},
     Object.prototype,
   ];
+  if (!DENO_FUTURE) {
+    thisCheckFailed.push(window);
+  }
 
   for (const thisArg of thisCheckPassed) {
     const { promise, resolve } = Promise.withResolvers<void>();
