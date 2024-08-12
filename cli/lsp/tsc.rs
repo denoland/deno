@@ -2043,12 +2043,10 @@ impl DocumentSpan {
     let target_asset_or_doc =
       language_server.get_maybe_asset_or_document(&target_specifier)?;
     let target_line_index = target_asset_or_doc.line_index();
-    let file_referrer = language_server
-      .documents
-      .get_file_referrer(&target_specifier);
+    let file_referrer = target_asset_or_doc.file_referrer();
     let target_uri = language_server
       .url_map
-      .normalize_specifier(&target_specifier, file_referrer.as_deref())
+      .normalize_specifier(&target_specifier, file_referrer)
       .ok()?;
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
@@ -2092,10 +2090,10 @@ impl DocumentSpan {
       language_server.get_maybe_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let range = self.text_span.to_range(line_index);
-    let file_referrer = language_server.documents.get_file_referrer(&specifier);
+    let file_referrer = asset_or_doc.file_referrer();
     let mut target = language_server
       .url_map
-      .normalize_specifier(&specifier, file_referrer.as_deref())
+      .normalize_specifier(&specifier, file_referrer)
       .ok()?
       .into_url();
     target.set_fragment(Some(&format!(
@@ -2153,10 +2151,10 @@ impl NavigateToItem {
     let asset_or_doc =
       language_server.get_asset_or_document(&specifier).ok()?;
     let line_index = asset_or_doc.line_index();
-    let file_referrer = language_server.documents.get_file_referrer(&specifier);
+    let file_referrer = asset_or_doc.file_referrer();
     let uri = language_server
       .url_map
-      .normalize_specifier(&specifier, file_referrer.as_deref())
+      .normalize_specifier(&specifier, file_referrer)
       .ok()?;
     let range = self.text_span.to_range(line_index);
     let location = lsp::Location {
