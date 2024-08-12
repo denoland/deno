@@ -6,7 +6,6 @@ import {
   assertRejects,
   assertStrictEquals,
   assertThrows,
-  DENO_FUTURE,
 } from "./test_util.ts";
 import { BufReader, BufWriter } from "@std/io";
 import { readAll } from "@std/io/read-all";
