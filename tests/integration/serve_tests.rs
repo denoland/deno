@@ -121,11 +121,9 @@ impl ServeClient {
     self.client.get(&*endpoint)
   }
 
-  async fn endpoint<'a>(&'a self) -> std::cell::Ref<'a, str> {
-    let None = self.endpoint.borrow().as_deref() else {
-      return std::cell::Ref::map(self.endpoint.borrow(), |s| {
-        s.as_deref().unwrap()
-      });
+  async fn endpoint(&self) -> String {
+    if let Some(e) = self.endpoint.borrow().as_ref() {
+      return e.to_string();
     };
     let mut port = None;
     let mut buffer = self.output_buf.borrow_mut();
@@ -152,9 +150,7 @@ impl ServeClient {
       .endpoint
       .replace(Some(format!("http://127.0.0.1:{port}")));
 
-    return std::cell::Ref::map(self.endpoint.borrow(), |s| {
-      s.as_deref().unwrap()
-    });
+    return self.endpoint.borrow().clone().unwrap();
   }
 }
 

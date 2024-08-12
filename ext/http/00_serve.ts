@@ -852,7 +852,7 @@ function registerDeclarativeServer(exports) {
         [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
           (serveWorkerCount !== null),
         onListen: ({ port, hostname }) => {
-          if (serveIsMain || true) {
+          if (serveIsMain) {
             const nThreads = serveWorkerCount > 1
               ? ` with ${serveWorkerCount} threads`
               : "";
