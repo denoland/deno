@@ -41,6 +41,9 @@ export async function checkCopyright() {
     "*.rs",
     ":!:ops/optimizer_tests/**",
 
+    // c
+    "*.c",
+
     // toml
     "*Cargo.toml",
   ]);
