@@ -373,7 +373,7 @@ fn create_command(
       }
     }
 
-    if !args.extra_pipes.is_empty() {
+    if args.extra_stdio.iter().any(|s| matches!(s, Stdio::Piped)) {
       log::warn!(
         "Additional stdio pipes beyond stdin/stdout/stderr are not currently supported on windows"
       );
