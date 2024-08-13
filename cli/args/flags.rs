@@ -1358,12 +1358,14 @@ pub fn clap_root() -> Command {
     .disable_version_flag(true)
     .disable_help_flag(true)
     .disable_help_subcommand(true)
-    .arg(Arg::new("help")
-      .short('h')
-      .long("help")
-      .hide(true)
-      .action(ArgAction::HelpShort)
-      .global(true))
+    .arg(
+      Arg::new("help")
+        .short('h')
+        .long("help")
+        .hide(true)
+        .action(ArgAction::HelpShort)
+        .global(true),
+    )
     .arg(
       Arg::new("version")
         .short('V')
