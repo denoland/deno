@@ -170,11 +170,6 @@ fn get_npm_package(
   local_path: &str,
   package_name: &str,
 ) -> Result<Option<CustomNpmPackage>> {
-  let _ = env_logger::builder()
-    .filter_level(log::LevelFilter::Warn)
-    .format_target(false)
-    .format_timestamp(None)
-    .try_init();
   let registry_hostname = if package_name == "@denotest/tarballs-privateserver2"
   {
     "http://localhost:4262"
@@ -266,15 +261,6 @@ fn get_npm_package(
           );
         }
       }
-    }
-
-    if let Some(deprecated) = version_info.get("deprecated") {
-      log::warn!(
-        "{}:{} is deprecated: {}",
-        serde_json::to_string(&version_info["name"]).unwrap(),
-        serde_json::to_string(&version_info["version"]).unwrap(),
-        serde_json::to_string(deprecated).unwrap()
-      );
     }
 
     versions.insert(version.clone(), version_info.into());

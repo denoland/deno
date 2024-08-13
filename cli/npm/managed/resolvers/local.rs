@@ -515,6 +515,14 @@ async fn sync_resolution_with_fs(
             .add(package.clone(), package_path);
         }
 
+        if package.deprecated.is_some() {
+          log::info!(
+            "{} {:?} is deprecated",
+            crate::colors::yellow("Warning"),
+            package.id
+          );
+        }
+
         // finally stop showing the progress bar
         drop(pb_guard); // explicit for clarity
         Ok::<_, AnyError>(())
