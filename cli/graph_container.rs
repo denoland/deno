@@ -5,7 +5,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_config::glob::{PathOrPattern, PathOrPatternSet};
+use deno_config::glob::PathOrPattern;
+use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;

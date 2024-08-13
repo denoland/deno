@@ -33,9 +33,8 @@ use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::DENO_FUTURE;
 use crate::cache::DenoDir;
-use crate::graph_container::{
-  resolve_files_from_patterns, ModuleGraphContainer,
-};
+use crate::graph_container::resolve_files_from_patterns;
+use crate::graph_container::ModuleGraphContainer;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;

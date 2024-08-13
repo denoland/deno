@@ -1,1 +1,1 @@
-console.log("globbing_support_done")
+console.log("globbing_support_done");
