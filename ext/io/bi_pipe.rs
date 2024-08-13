@@ -17,7 +17,8 @@ pub type RawBiPipeHandle = std::os::fd::RawFd;
 #[cfg(windows)]
 pub type RawBiPipeHandle = std::os::windows::io::RawHandle;
 
-/// One end of a bidirectional pipe. T
+/// One end of a bidirectional pipe. This implements the
+/// `Resource` trait.
 pub struct BiPipeResource {
   read_half: AsyncRefCell<BiPipeRead>,
   write_half: AsyncRefCell<BiPipeWrite>,
