@@ -340,6 +340,8 @@ pub fn bi_pipe_pair_raw() -> Result<(RawBiPipeHandle, RawBiPipeHandle), AnyError
   }
   #[cfg(windows)]
   {
+    // TODO(nathanwhit): more granular unsafe blocks
+    // SAFETY: win32 calls
     unsafe {
       use windows_sys::Win32::Foundation::CloseHandle;
       use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
