@@ -46,3 +46,7 @@ function foo(): number {
   color: #000;
 }
 ```
+
+```html
+<div class="container">content</div>
+```

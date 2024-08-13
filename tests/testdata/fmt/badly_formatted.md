@@ -53,3 +53,7 @@ function foo(): number {
 ```css
 #app>.btn{ color : #000 }
 ```
+
+```html
+<div class=container > content </div>
+```
