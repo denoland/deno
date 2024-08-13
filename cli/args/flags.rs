@@ -1374,8 +1374,6 @@ pub fn clap_root() -> Command {
         .action(ArgAction::Version)
         .help("Print version"),
     )
-    // reset the display order after the unstable flags
-    .next_display_order(0)
     .arg(
       Arg::new("log-level")
         .short('L')
@@ -3031,20 +3029,22 @@ fn permission_args(app: Command) -> Command {
     .after_help(color_print::cstr!(r#"<y>Permission options:</>
 Docs: https://docs.deno.com/go/permissions
 
-  <g>-A, --allow-all</>                              Allow all permissions.
-      <g>--{allow,deny}-{read,write}[=<<PATH>...]</>  Allow / deny file system read / write access. Optionally specify allowed / denied paths.
-                                                 <p(245)>--allow-read  |  --allow-write="/etc,/var/log.txt"  |  --deny-read="/usr"  |  --deny-write="/etc/hosts"</>
-      <g>--{allow,deny}-net[=<<IP_OR_HOSTNAME>...]</> Allow / deny network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                                 <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"  |  --deny-net="deno.com"</>
-      <g>--{allow,deny}-env[=<<VARIABLE_NAME>...]</>  Allow / deny access to environment variables. Optionally specify accessible / inacessible environment variables.
-                                                 <p(245)>--allow-env  |  --allow-env="PORT,HOME,PATH"  |  --deny-env="ACCESS_TOKEN"</>
-      <g>--{allow,deny}-sys[=<<API_NAME>...]</>       Allow / deny access to OS information. Optionally allow / deny specific APIs by function name.
-                                                 <p(245)>--allow-sys  |  --allow-sys="systemMemoryInfo,osRelease"  |  --deny-sys="hostname"</>
-      <g>--{allow,deny}-run[=<<PROGRAM_NAME>...]</>   Allow / deny running subprocesses. Optionally specify allowed / denied runnable program names.
-                                                 <p(245)>--allow-run  |  --allow-run="whoami,ps"  |  --deny-run="cat"</>
-      <g>--{allow,deny}-ffi[=<<PATH>...]</>           (Unstable) Allow / deny loading dynamic libraries. Optionally specify allowed / denied directories or files.
-                                                 <p(245)>--allow-ffi  |  --allow-ffi="./libfoo.so"  |  --deny-ffi="./libfoo.so"</>
-      <g>--{allow,deny}-hrtime</>                    Allow / deny high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.
+  <g>-A, --allow-all</>                               Allow all permissions.
+  <g>-R, --{allow,deny}-read[=<<PATH>...]</>           Allow / deny file system read access. Optionally specify allowed / denied paths.
+                                                  <p(245)>--allow-read  |  --allow-read="/etc,/var/log.txt"  |  --deny-read="/etc/hosts"</>
+  <g>-W, --{allow,write}-read[=<<PATH>...]</>          Allow / deny file system write access. Optionally specify allowed / denied paths.
+                                                  <p(245)>--allow-write  |  --allow-write="/etc,/var/log.txt"  |  --deny-write="/etc/hosts"</>
+  <g>-N, --{allow,deny}-net[=<<IP_OR_HOSTNAME>...]</>  Allow / deny network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
+                                                  <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"  |  --deny-net="deno.com"</>
+  <g>-E --{allow,deny}-env[=<<VARIABLE_NAME>...]</>    Allow / deny access to environment variables. Optionally specify accessible / inacessible environment variables.
+                                                  <p(245)>--allow-env  |  --allow-env="PORT,HOME,PATH"  |  --deny-env="ACCESS_TOKEN"</>
+  <g>-S --{allow,deny}-sys[=<<API_NAME>...]</>         Allow / deny access to OS information. Optionally allow / deny specific APIs by function name.
+                                                  <p(245)>--allow-sys  |  --allow-sys="systemMemoryInfo,osRelease"  |  --deny-sys="hostname"</>
+      <g>--{allow,deny}-run[=<<PROGRAM_NAME>...]</>    Allow / deny running subprocesses. Optionally specify allowed / denied runnable program names.
+                                                  <p(245)>--allow-run  |  --allow-run="whoami,ps"  |  --deny-run="cat"</>
+      <g>--{allow,deny}-ffi[=<<PATH>...]</>            (Unstable) Allow / deny loading dynamic libraries. Optionally specify allowed / denied directories or files.
+                                                  <p(245)>--allow-ffi  |  --allow-ffi="./libfoo.so"  |  --deny-ffi="./libfoo.so"</>
+      <g>--{allow,deny}-hrtime</>                     Allow / deny high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.
 "#))
     .arg(
       Arg::new("allow-all")
@@ -3731,7 +3731,6 @@ impl Iterator for UnstableArgsIter {
           "Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features."
         })
         .action(ArgAction::SetTrue)
-        .global(true)
         .help_heading(if *FULL_UNSTABLE_HELP {
           Some(UNSTABLE_HEADING)
         } else {
@@ -3744,7 +3743,6 @@ impl Iterator for UnstableArgsIter {
         .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
-        .global(true)
         .hide(!*FULL_UNSTABLE_HELP)
         .help_heading(UNSTABLE_HEADING)
     } else if self.idx == 2 {
@@ -3754,7 +3752,6 @@ impl Iterator for UnstableArgsIter {
         .env("DENO_UNSTABLE_BYONM")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
-        .global(true)
         .hide(!*FULL_UNSTABLE_HELP)
         .help_heading(UNSTABLE_HEADING)
     } else if self.idx == 3 {
@@ -3766,7 +3763,6 @@ impl Iterator for UnstableArgsIter {
       .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
       .value_parser(FalseyValueParser::new())
       .action(ArgAction::SetTrue)
-      .global(true)
       .hide(!*FULL_UNSTABLE_HELP)
       .help_heading(UNSTABLE_HEADING)
     } else if self.idx > 3
@@ -3778,7 +3774,6 @@ impl Iterator for UnstableArgsIter {
         .long(format!("unstable-{}", flag_name))
         .help(help)
         .action(ArgAction::SetTrue)
-        .global(true)
         .hide(!*FULL_UNSTABLE_HELP)
         .help_heading(UNSTABLE_HEADING)
     } else {
@@ -5855,7 +5850,7 @@ mod tests {
 
   #[test]
   fn short_permission_flags() {
-    let r = flags_from_vec(svec!["deno", "run", "-RW", "gist.ts"]);
+    let r = flags_from_vec(svec!["deno", "run", "-RNESW", "gist.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -5865,6 +5860,9 @@ mod tests {
         permissions: PermissionFlags {
           allow_read: Some(vec![]),
           allow_write: Some(vec![]),
+          allow_env: Some(vec![]),
+          allow_net: Some(vec![]),
+          allow_sys: Some(vec![]),
           ..Default::default()
         },
         code_cache_enabled: true,
