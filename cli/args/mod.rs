@@ -640,8 +640,6 @@ pub enum RootCertStoreLoadError {
   UnknownStore(String),
   #[error("Unable to add pem file to certificate store: {0}")]
   FailedAddPemFile(String),
-  #[error("Unable to add system certificate to certificate store: {0}")]
-  FailedAddSystemCert(String),
   #[error("Failed opening CA file: {0}")]
   CaFileOpenError(String),
 }
@@ -681,7 +679,7 @@ pub fn get_root_cert_store(
             log::error!(
               "{}",
               colors::yellow(&format!(
-                "Failed to load system certificate: {:?}",
+                "Unable to add system certificate to certificate store: {:?}",
                 err
               ))
             );
