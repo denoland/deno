@@ -932,7 +932,7 @@ async fn download_package(
   client: &HttpClient,
   download_url: Url,
 ) -> Result<Option<Vec<u8>>, AnyError> {
-  let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars(true));
+  let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
   // provide an empty string here in order to prefer the downloading
   // text above which will stay alive after the progress bars are complete
   let progress = progress_bar.update("");

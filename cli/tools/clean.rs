@@ -30,11 +30,10 @@ impl CleanState {
 }
 
 pub fn clean() -> Result<(), AnyError> {
-  let deno_dir =
-    DenoDir::new(Some(PathBuf::from("/Users/ib/dev/try_clean/dir")))?;
+  let deno_dir = DenoDir::new(None)?;
   if deno_dir.root.exists() {
     let no_of_files = walkdir::WalkDir::new(&deno_dir.root).into_iter().count();
-    let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars(false));
+    let progress_bar = ProgressBar::new(ProgressBarStyle::ProgressBars);
     let progress_guard =
       progress_bar.update_with_prompt(ProgressMessagePrompt::Cleaning, "");
 
