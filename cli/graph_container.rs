@@ -194,7 +194,8 @@ pub fn resolve_files_from_patterns(
         let base_path = pattern.base_path();
         visit_dirs(&base_path, &pattern_set, &mut result_files)?;
       }
-      _ => {}
+      PathOrPattern::NegatedPath(_) => {}
+      PathOrPattern::RemoteUrl(url) => result_files.push(url.to_string()),
     }
   }
 
