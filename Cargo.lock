@@ -1625,6 +1625,7 @@ dependencies = [
  "deno_core",
  "filetime",
  "fs3",
+ "libc",
  "log",
  "once_cell",
  "os_pipe",
@@ -1633,6 +1634,7 @@ dependencies = [
  "rand",
  "tokio",
  "winapi",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

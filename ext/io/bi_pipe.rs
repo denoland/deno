@@ -87,6 +87,7 @@ impl BiPipeResource {
   }
 }
 
+/// A bidirectional pipe
 #[pin_project::pin_project]
 pub struct BiPipe {
   #[pin]
@@ -268,3 +269,161 @@ macro_rules! impl_async_write {
 
 impl_async_write!(for BiPipeWrite -> self.inner);
 impl_async_write!(for BiPipe -> self.write_end);
+
+/// Creates both sides of a bidirectional pipe, returning the raw
+/// handles to the underlying OS resource.
+pub fn bi_pipe_pair_raw() -> Result<(RawBiPipeHandle, RawBiPipeHandle), AnyError>
+{
+  #[cfg(unix)]
+  {
+    // SockFlag is broken on macOS
+    // https://github.com/nix-rust/nix/issues/861
+    let mut fds = [-1, -1];
+    #[cfg(not(target_os = "macos"))]
+    let flags = libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK;
+
+    #[cfg(target_os = "macos")]
+    let flags = 0;
+
+    // SAFETY: libc call, fds are correct size+align
+    let ret = unsafe {
+      libc::socketpair(
+        libc::AF_UNIX,
+        libc::SOCK_STREAM | flags,
+        0,
+        fds.as_mut_ptr(),
+      )
+    };
+    if ret != 0 {
+      return Err(std::io::Error::last_os_error().into());
+    }
+
+    if cfg!(target_os = "macos") {
+      let fcntl = |fd: i32, flag: libc::c_int| -> Result<(), std::io::Error> {
+        // SAFETY: libc call, fd is valid
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+
+        if flags == -1 {
+          return Err(fail(fds));
+        }
+        // SAFETY: libc call, fd is valid
+        let ret = unsafe { libc::fcntl(fd, libc::F_SETFL, flags | flag) };
+        if ret == -1 {
+          return Err(fail(fds));
+        }
+        Ok(())
+      };
+
+      fn fail(fds: [i32; 2]) -> std::io::Error {
+        // SAFETY: libc call, fds are valid
+        unsafe {
+          libc::close(fds[0]);
+          libc::close(fds[1]);
+        }
+        std::io::Error::last_os_error()
+      }
+
+      // SOCK_NONBLOCK is not supported on macOS.
+      (fcntl)(fds[0], libc::O_NONBLOCK)?;
+      (fcntl)(fds[1], libc::O_NONBLOCK)?;
+
+      // SOCK_CLOEXEC is not supported on macOS.
+      (fcntl)(fds[0], libc::FD_CLOEXEC)?;
+      (fcntl)(fds[1], libc::FD_CLOEXEC)?;
+    }
+
+    let fd1 = fds[0];
+    let fd2 = fds[1];
+    Ok((fd1, fd2))
+  }
+  #[cfg(windows)]
+  {
+    unsafe {
+      use windows_sys::Win32::Foundation::CloseHandle;
+      use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
+      use windows_sys::Win32::Foundation::ERROR_PIPE_CONNECTED;
+      use windows_sys::Win32::Foundation::GENERIC_READ;
+      use windows_sys::Win32::Foundation::GENERIC_WRITE;
+      use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+      use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+      use windows_sys::Win32::Storage::FileSystem::CreateFileW;
+      use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_FIRST_PIPE_INSTANCE;
+      use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OVERLAPPED;
+      use windows_sys::Win32::Storage::FileSystem::OPEN_EXISTING;
+      use windows_sys::Win32::Storage::FileSystem::PIPE_ACCESS_DUPLEX;
+      use windows_sys::Win32::System::Pipes::ConnectNamedPipe;
+      use windows_sys::Win32::System::Pipes::CreateNamedPipeW;
+      use windows_sys::Win32::System::Pipes::PIPE_READMODE_BYTE;
+      use windows_sys::Win32::System::Pipes::PIPE_TYPE_BYTE;
+
+      use std::io;
+      use std::os::windows::ffi::OsStrExt;
+      use std::path::Path;
+      use std::ptr;
+
+      let (path, hd1) = loop {
+        let name = format!("\\\\.\\pipe\\{}", uuid::Uuid::new_v4());
+        let mut path = Path::new(&name)
+          .as_os_str()
+          .encode_wide()
+          .collect::<Vec<_>>();
+        path.push(0);
+
+        let hd1 = CreateNamedPipeW(
+          path.as_ptr(),
+          PIPE_ACCESS_DUPLEX
+            | FILE_FLAG_FIRST_PIPE_INSTANCE
+            | FILE_FLAG_OVERLAPPED,
+          PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
+          1,
+          65536,
+          65536,
+          0,
+          std::ptr::null_mut(),
+        );
+
+        if hd1 == INVALID_HANDLE_VALUE {
+          let err = io::Error::last_os_error();
+          /* If the pipe name is already in use, try again. */
+          if err.raw_os_error() == Some(ERROR_ACCESS_DENIED as i32) {
+            continue;
+          }
+
+          return Err(err.into());
+        }
+
+        break (path, hd1);
+      };
+
+      /* Create child pipe handle. */
+      let s = SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: ptr::null_mut(),
+        bInheritHandle: 1,
+      };
+      let hd2 = CreateFileW(
+        path.as_ptr(),
+        GENERIC_READ | GENERIC_WRITE,
+        0,
+        &s,
+        OPEN_EXISTING,
+        FILE_FLAG_OVERLAPPED,
+        0,
+      );
+      if hd2 == INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error().into());
+      }
+
+      // Will not block because we have create the pair.
+      if ConnectNamedPipe(hd1, ptr::null_mut()) == 0 {
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() != Some(ERROR_PIPE_CONNECTED as i32) {
+          CloseHandle(hd2);
+          return Err(err.into());
+        }
+      }
+
+      Ok((hd1 as _, hd2 as _))
+    }
+  }
+}
