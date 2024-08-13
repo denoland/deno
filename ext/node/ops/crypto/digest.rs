@@ -67,7 +67,7 @@ macro_rules! match_fixed_digest {
         type $type = ::blake2::Blake2s256;
         $body
       }
-      _ => match_fixed_digest_with_eager_block_buffer!($algorithm_name, fn <$type>() $body, _ => $other)
+      _ => crate::ops::crypto::digest::match_fixed_digest_with_eager_block_buffer!($algorithm_name, fn <$type>() $body, _ => $other)
     }
   };
 }
@@ -84,22 +84,24 @@ macro_rules! match_fixed_digest_with_eager_block_buffer {
         type $type = crate::ops::crypto::md5_sha1::Md5Sha1;
         $body
       }
-      _ => match_fixed_digest_with_oid!($algorithm_name, fn <$type>() $body, _ => $other)
+      _ => crate::ops::crypto::digest::match_fixed_digest_with_oid!($algorithm_name, fn <$type>() $body, _ => $other)
     }
   };
 }
 pub(crate) use match_fixed_digest_with_eager_block_buffer;
 
 macro_rules! match_fixed_digest_with_oid {
-  ($algorithm_name:expr, fn <$type:ident>() $body:block, _ => $other:block) => {
+  ($algorithm_name:expr, fn $(<$type:ident>)?($($hash_algorithm:ident: Option<RsaPssHashAlgorithm>)?) $body:block, _ => $other:block) => {
     match $algorithm_name {
       "rsa-md5" | "md5" | "md5withrsaencryption" | "ssl3-md5" => {
-        type $type = ::md5::Md5;
+        $(let $hash_algorithm = None;)?
+        $(type $type = ::md5::Md5;)?
         $body
       }
       "rsa-ripemd160" | "ripemd" | "ripemd160" | "ripemd160withrsa"
       | "rmd160" => {
-        type $type = ::ripemd::Ripemd160;
+        $(let $hash_algorithm = None;)?
+        $(type $type = ::ripemd::Ripemd160;)?
         $body
       }
       "rsa-sha1"
@@ -108,47 +110,58 @@ macro_rules! match_fixed_digest_with_oid {
       | "sha1-2"
       | "sha1withrsaencryption"
       | "ssl3-sha1" => {
-        type $type = ::sha1::Sha1;
+        $(let $hash_algorithm = Some(RsaPssHashAlgorithm::Sha1);)?
+        $(type $type = ::sha1::Sha1;)?
         $body
       }
       "rsa-sha224" | "sha224" | "sha224withrsaencryption" => {
-        type $type = ::sha2::Sha224;
+        $(let $hash_algorithm = Some(RsaPssHashAlgorithm::Sha224);)?
+        $(type $type = ::sha2::Sha224;)?
         $body
       }
       "rsa-sha256" | "sha256" | "sha256withrsaencryption" => {
-        type $type = ::sha2::Sha256;
+        $(let $hash_algorithm = Some(RsaPssHashAlgorithm::Sha256);)?
+        $(type $type = ::sha2::Sha256;)?
         $body
       }
       "rsa-sha384" | "sha384" | "sha384withrsaencryption" => {
-        type $type = ::sha2::Sha384;
+        $(let $hash_algorithm = Some(RsaPssHashAlgorithm::Sha384);)?
+        $(type $type = ::sha2::Sha384;)?
         $body
       }
       "rsa-sha512" | "sha512" | "sha512withrsaencryption" => {
-        type $type = ::sha2::Sha512;
+        $(let $hash_algorithm = Some(RsaPssHashAlgorithm::Sha512);)?
+        $(type $type = ::sha2::Sha512;)?
         $body
       }
       "rsa-sha512/224" | "sha512-224" | "sha512-224withrsaencryption" => {
-        type $type = ::sha2::Sha512_224;
+        $(let $hash_algorithm = Some(RsaPssHashAlgorithm::Sha512_224);)?
+        $(type $type = ::sha2::Sha512_224;)?
         $body
       }
       "rsa-sha512/256" | "sha512-256" | "sha512-256withrsaencryption" => {
-        type $type = ::sha2::Sha512_256;
+        $(let $hash_algorithm = Some(RsaPssHashAlgorithm::Sha512_256);)?
+        $(type $type = ::sha2::Sha512_256;)?
         $body
       }
       "rsa-sha3-224" | "id-rsassa-pkcs1-v1_5-with-sha3-224" | "sha3-224" => {
-        type $type = ::sha3::Sha3_224;
+        $(let $hash_algorithm = None;)?
+        $(type $type = ::sha3::Sha3_224;)?
         $body
       }
       "rsa-sha3-256" | "id-rsassa-pkcs1-v1_5-with-sha3-256" | "sha3-256" => {
-        type $type = ::sha3::Sha3_256;
+        $(let $hash_algorithm = None;)?
+        $(type $type = ::sha3::Sha3_256;)?
         $body
       }
       "rsa-sha3-384" | "id-rsassa-pkcs1-v1_5-with-sha3-384" | "sha3-384" => {
-        type $type = ::sha3::Sha3_384;
+        $(let $hash_algorithm = None;)?
+        $(type $type = ::sha3::Sha3_384;)?
         $body
       }
       "rsa-sha3-512" | "id-rsassa-pkcs1-v1_5-with-sha3-512" | "sha3-512" => {
-        type $type = ::sha3::Sha3_512;
+        $(let $hash_algorithm = None;)?
+        $(type $type = ::sha3::Sha3_512;)?
         $body
       }
       _ => $other,

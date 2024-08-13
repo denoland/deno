@@ -279,9 +279,16 @@ impl BenchOptions {
   }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct UnstableFmtOptions {
+  pub css: bool,
+  pub yaml: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct FmtOptions {
   pub options: FmtOptionsConfig,
+  pub unstable: UnstableFmtOptions,
   pub files: FilePatterns,
 }
 
@@ -295,13 +302,22 @@ impl FmtOptions {
   pub fn new_with_base(base: PathBuf) -> Self {
     Self {
       options: FmtOptionsConfig::default(),
+      unstable: Default::default(),
       files: FilePatterns::new_with_base(base),
     }
   }
 
-  pub fn resolve(fmt_config: FmtConfig, fmt_flags: &FmtFlags) -> Self {
+  pub fn resolve(
+    fmt_config: FmtConfig,
+    unstable: UnstableFmtOptions,
+    fmt_flags: &FmtFlags,
+  ) -> Self {
     Self {
       options: resolve_fmt_options(fmt_flags, fmt_config.options),
+      unstable: UnstableFmtOptions {
+        css: unstable.css || fmt_flags.unstable_css,
+        yaml: unstable.yaml || fmt_flags.unstable_yaml,
+      },
       files: fmt_config.files,
     }
   }
@@ -1306,12 +1322,21 @@ impl CliOptions {
     let member_configs = self
       .workspace()
       .resolve_fmt_config_for_members(&cli_arg_patterns)?;
+    let unstable = self.resolve_config_unstable_fmt_options();
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
-      let options = FmtOptions::resolve(config, fmt_flags);
+      let options = FmtOptions::resolve(config, unstable.clone(), fmt_flags);
       result.push((ctx, options));
     }
     Ok(result)
+  }
+
+  pub fn resolve_config_unstable_fmt_options(&self) -> UnstableFmtOptions {
+    let workspace = self.workspace();
+    UnstableFmtOptions {
+      css: workspace.has_unstable("fmt-css"),
+      yaml: workspace.has_unstable("fmt-yaml"),
+    }
   }
 
   pub fn resolve_workspace_lint_options(
@@ -1414,7 +1439,6 @@ impl CliOptions {
     self
       .workspace()
       .jsr_packages()
-      .into_iter()
       .map(|pkg| config_to_deno_graph_workspace_member(&pkg.config_file))
       .collect::<Result<Vec<_>, _>>()
   }
@@ -1640,8 +1664,13 @@ impl CliOptions {
           .map(|granular_flag| granular_flag.0)
           .collect();
 
-      let mut another_unstable_flags =
-        Vec::from(["sloppy-imports", "byonm", "bare-node-builtins"]);
+      let mut another_unstable_flags = Vec::from([
+        "sloppy-imports",
+        "byonm",
+        "bare-node-builtins",
+        "fmt-css",
+        "fmt-yaml",
+      ]);
       // add more unstable flags to the same vector holding granular flags
       all_valid_unstable_flags.append(&mut another_unstable_flags);
 
@@ -1861,7 +1890,7 @@ fn load_env_variables_from_env_file(filename: Option<&String>) {
     Err(error) => {
       match error {
           dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
-          dotenvy::Error::Io(_)=> log::info!("{} The `--env` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
+          dotenvy::Error::Io(_)=> log::info!("{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
           dotenvy::Error::EnvVar(_)=> log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
           _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
         }

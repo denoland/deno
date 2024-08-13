@@ -26,6 +26,7 @@ use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
+use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
@@ -61,11 +62,13 @@ use http::header::HOST;
 use http::header::PROXY_AUTHORIZATION;
 use http::header::RANGE;
 use http::header::USER_AGENT;
+use http::Extensions;
 use http::Method;
 use http::Uri;
 use http_body_util::BodyExt;
 use hyper::body::Frame;
 use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::connect::HttpInfo;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
@@ -429,7 +432,7 @@ where
 
       let mut request = http::Request::new(body);
       *request.method_mut() = method.clone();
-      *request.uri_mut() = uri;
+      *request.uri_mut() = uri.clone();
 
       if let Some((username, password)) = maybe_authority {
         request.headers_mut().insert(
@@ -469,8 +472,15 @@ where
       let cancel_handle = CancelHandle::new_rc();
       let cancel_handle_ = cancel_handle.clone();
 
-      let fut =
-        async move { client.send(request).or_cancel(cancel_handle_).await };
+      let fut = {
+        async move {
+          client
+            .send(request)
+            .map_err(Into::into)
+            .or_cancel(cancel_handle_)
+            .await
+        }
+      };
 
       let request_rid = state.resource_table.add(FetchRequestResource {
         future: Box::pin(fut),
@@ -532,7 +542,11 @@ pub struct FetchResponse {
   pub content_length: Option<u64>,
   pub remote_addr_ip: Option<String>,
   pub remote_addr_port: Option<u16>,
-  pub error: Option<String>,
+  /// This field is populated if some error occurred which needs to be
+  /// reconstructed in the JS side to set the error _cause_.
+  /// In the tuple, the first element is an error message and the second one is
+  /// an error cause.
+  pub error: Option<(String, String)>,
 }
 
 #[op2(async)]
@@ -558,16 +572,16 @@ pub async fn op_fetch_send(
       // reconstruct an error chain (eg: `new TypeError(..., { cause: new Error(...) })`).
       // TODO(mmastrac): it would be a lot easier if we just passed a v8::Global through here instead
       let mut err_ref: &dyn std::error::Error = err.as_ref();
-      while let Some(err) = std::error::Error::source(err_ref) {
-        if let Some(err) = err.downcast_ref::<hyper::Error>() {
-          if let Some(err) = std::error::Error::source(err) {
+      while let Some(err_src) = std::error::Error::source(err_ref) {
+        if let Some(err_src) = err_src.downcast_ref::<hyper::Error>() {
+          if let Some(err_src) = std::error::Error::source(err_src) {
             return Ok(FetchResponse {
-              error: Some(err.to_string()),
+              error: Some((err.to_string(), err_src.to_string())),
               ..Default::default()
             });
           }
         }
-        err_ref = err;
+        err_ref = err_src;
       }
 
       return Err(type_error(err.to_string()));
@@ -1082,11 +1096,63 @@ type Connector = proxy::ProxyConnector<HttpConnector>;
 #[allow(clippy::declare_interior_mutable_const)]
 const STAR_STAR: HeaderValue = HeaderValue::from_static("*/*");
 
+#[derive(Debug)]
+pub struct ClientSendError {
+  uri: Uri,
+  source: hyper_util::client::legacy::Error,
+}
+
+impl ClientSendError {
+  pub fn is_connect_error(&self) -> bool {
+    self.source.is_connect()
+  }
+
+  fn http_info(&self) -> Option<HttpInfo> {
+    let mut exts = Extensions::new();
+    self.source.connect_info()?.get_extras(&mut exts);
+    exts.remove::<HttpInfo>()
+  }
+}
+
+impl std::fmt::Display for ClientSendError {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    // NOTE: we can use `std::error::Report` instead once it's stabilized.
+    let detail = error_reporter::Report::new(&self.source);
+
+    match self.http_info() {
+      Some(http_info) => {
+        write!(
+          f,
+          "error sending request from {src} for {uri} ({dst}): {detail}",
+          src = http_info.local_addr(),
+          uri = self.uri,
+          dst = http_info.remote_addr(),
+          detail = detail,
+        )
+      }
+      None => {
+        write!(
+          f,
+          "error sending request for url ({uri}): {detail}",
+          uri = self.uri,
+          detail = detail,
+        )
+      }
+    }
+  }
+}
+
+impl std::error::Error for ClientSendError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    Some(&self.source)
+  }
+}
+
 impl Client {
   pub async fn send(
     self,
     mut req: http::Request<ReqBody>,
-  ) -> Result<http::Response<ResBody>, AnyError> {
+  ) -> Result<http::Response<ResBody>, ClientSendError> {
     req
       .headers_mut()
       .entry(USER_AGENT)
@@ -1098,7 +1164,13 @@ impl Client {
       req.headers_mut().insert(PROXY_AUTHORIZATION, auth.clone());
     }
 
-    let resp = self.inner.oneshot(req).await?;
+    let uri = req.uri().clone();
+
+    let resp = self
+      .inner
+      .oneshot(req)
+      .await
+      .map_err(|e| ClientSendError { uri, source: e })?;
     Ok(resp.map(|b| b.map_err(|e| anyhow!(e)).boxed()))
   }
 }

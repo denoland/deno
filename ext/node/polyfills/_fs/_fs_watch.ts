@@ -368,6 +368,8 @@ function convertDenoFsEventToNodeFsEvent(
 ): NodeFsEventType {
   if (kind === "create" || kind === "remove") {
     return "rename";
+  } else if (kind === "rename") {
+    return "rename";
   } else {
     return "change";
   }

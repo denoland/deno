@@ -19,6 +19,7 @@ use std::process::Command;
 
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::bail;
@@ -33,6 +34,7 @@ use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
+use deno_semver::Version;
 use deno_semver::VersionReqSpecifierParseError;
 use eszip::EszipRelativeFileBaseUrl;
 use indexmap::IndexMap;
@@ -52,6 +54,7 @@ use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::standalone::virtual_fs::VfsEntry;
+use crate::util::archive;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -80,9 +83,18 @@ pub struct SerializedWorkspaceResolverImportMap {
   pub json: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SerializedResolverWorkspaceJsrPackage {
+  pub relative_base: String,
+  pub name: String,
+  pub version: Option<Version>,
+  pub exports: IndexMap<String, String>,
+}
+
 #[derive(Deserialize, Serialize)]
 pub struct SerializedWorkspaceResolver {
   pub import_map: Option<SerializedWorkspaceResolverImportMap>,
+  pub jsr_pkgs: Vec<SerializedResolverWorkspaceJsrPackage>,
   pub package_jsons: BTreeMap<String, serde_json::Value>,
   pub pkg_json_resolution: PackageJsonDepResolution,
 }
@@ -307,72 +319,6 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
   Ok(u64::from_be_bytes(*fixed_arr))
 }
 
-pub fn unpack_into_dir(
-  exe_name: &str,
-  archive_name: &str,
-  archive_data: Vec<u8>,
-  is_windows: bool,
-  temp_dir: &tempfile::TempDir,
-) -> Result<PathBuf, AnyError> {
-  let temp_dir_path = temp_dir.path();
-  let exe_ext = if is_windows { "exe" } else { "" };
-  let archive_path = temp_dir_path.join(exe_name).with_extension("zip");
-  let exe_path = temp_dir_path.join(exe_name).with_extension(exe_ext);
-  assert!(!exe_path.exists());
-
-  let archive_ext = Path::new(archive_name)
-    .extension()
-    .and_then(|ext| ext.to_str())
-    .unwrap();
-  let unpack_status = match archive_ext {
-    "zip" if cfg!(windows) => {
-      fs::write(&archive_path, &archive_data)?;
-      Command::new("tar.exe")
-        .arg("xf")
-        .arg(&archive_path)
-        .arg("-C")
-        .arg(temp_dir_path)
-        .spawn()
-        .map_err(|err| {
-          if err.kind() == std::io::ErrorKind::NotFound {
-            std::io::Error::new(
-              std::io::ErrorKind::NotFound,
-              "`tar.exe` was not found in your PATH",
-            )
-          } else {
-            err
-          }
-        })?
-        .wait()?
-    }
-    "zip" => {
-      fs::write(&archive_path, &archive_data)?;
-      Command::new("unzip")
-        .current_dir(temp_dir_path)
-        .arg(&archive_path)
-        .spawn()
-        .map_err(|err| {
-          if err.kind() == std::io::ErrorKind::NotFound {
-            std::io::Error::new(
-              std::io::ErrorKind::NotFound,
-              "`unzip` was not found in your PATH, please install `unzip`",
-            )
-          } else {
-            err
-          }
-        })?
-        .wait()?
-    }
-    ext => bail!("Unsupported archive type: '{ext}'"),
-  };
-  if !unpack_status.success() {
-    bail!("Failed to unpack archive.");
-  }
-  assert!(exe_path.exists());
-  fs::remove_file(&archive_path)?;
-  Ok(exe_path)
-}
-
 pub struct DenoCompileBinaryWriter<'a> {
   deno_dir: &'a DenoDir,
   file_fetcher: &'a FileFetcher,
@@ -469,13 +415,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let archive_data = std::fs::read(binary_path)?;
     let temp_dir = tempfile::TempDir::new()?;
-    let base_binary_path = unpack_into_dir(
-      "denort",
-      &binary_name,
-      archive_data,
-      target.contains("windows"),
-      &temp_dir,
-    )?;
+    let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
+      exe_name: "denort",
+      archive_name: &binary_name,
+      archive_data: &archive_data,
+      is_windows: target.contains("windows"),
+      dest_path: temp_dir.path(),
+    })?;
     let base_binary = std::fs::read(base_binary_path)?;
     drop(temp_dir); // delete the temp dir
     Ok(base_binary)
@@ -620,6 +566,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             json: i.to_json(),
           }
         }),
+        jsr_pkgs: self
+          .workspace_resolver
+          .jsr_packages()
+          .map(|pkg| SerializedResolverWorkspaceJsrPackage {
+            relative_base: root_dir_url.specifier_key(&pkg.base).into_owned(),
+            name: pkg.name.clone(),
+            version: pkg.version.clone(),
+            exports: pkg.exports.clone(),
+          })
+          .collect(),
         package_jsons: self
           .workspace_resolver
           .package_jsons()

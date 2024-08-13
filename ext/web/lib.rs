@@ -13,9 +13,7 @@ use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ByteString;
-use deno_core::OpState;
-use deno_core::Resource;
-use deno_core::ResourceId;
+use deno_core::ToJsBuffer;
 use deno_core::U16String;
 
 use encoding_rs::CoderResult;
@@ -61,7 +59,6 @@ deno_core::extension!(deno_web,
   parameters = [P: TimersPermission],
   ops = [
     op_base64_decode,
-    op_base64_write,
     op_base64_encode,
     op_base64_atob,
     op_base64_btoa,
@@ -130,43 +127,12 @@ deno_core::extension!(deno_web,
 );
 
 #[op2]
-#[buffer]
-fn op_base64_decode(#[string] input: String) -> Result<Vec<u8>, AnyError> {
+#[serde]
+fn op_base64_decode(#[string] input: String) -> Result<ToJsBuffer, AnyError> {
   let mut s = input.into_bytes();
   let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
-  Ok(s)
-}
-
-#[op2(fast)]
-#[smi]
-fn op_base64_write(
-  #[string] input: String,
-  #[buffer] buffer: &mut [u8],
-  #[smi] start: u32,
-  #[smi] max_len: u32,
-) -> Result<u32, AnyError> {
-  let tsb_len = buffer.len() as u32;
-
-  if start > tsb_len {
-    return Err(type_error("Offset is out of bounds"));
-  }
-
-  let max_len = std::cmp::min(max_len, tsb_len - start) as usize;
-  let start = start as usize;
-
-  if max_len == 0 {
-    return Ok(0);
-  }
-
-  let mut s = input.into_bytes();
-  let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
-
-  let max_len = std::cmp::min(max_len, decoded_len);
-
-  buffer[start..start + max_len].copy_from_slice(&s[..max_len]);
-
-  Ok(max_len as u32)
+  Ok(s.into())
 }
 
 #[op2]
@@ -308,14 +274,13 @@ fn op_encoding_decode_single(
   }
 }
 
-#[op2(fast)]
-#[smi]
+#[op2]
+#[cppgc]
 fn op_encoding_new_decoder(
-  state: &mut OpState,
   #[string] label: &str,
   fatal: bool,
   ignore_bom: bool,
-) -> Result<ResourceId, AnyError> {
+) -> Result<TextDecoderResource, AnyError> {
   let encoding = Encoding::for_label(label.as_bytes()).ok_or_else(|| {
     range_error(format!(
       "The encoding label provided ('{label}') is invalid."
@@ -328,24 +293,19 @@ fn op_encoding_new_decoder(
     encoding.new_decoder_with_bom_removal()
   };
 
-  let rid = state.resource_table.add(TextDecoderResource {
+  Ok(TextDecoderResource {
     decoder: RefCell::new(decoder),
     fatal,
-  });
-
-  Ok(rid)
+  })
 }
 
 #[op2]
 #[serde]
 fn op_encoding_decode(
-  state: &mut OpState,
   #[anybuffer] data: &[u8],
-  #[smi] rid: ResourceId,
+  #[cppgc] resource: &TextDecoderResource,
   stream: bool,
 ) -> Result<U16String, AnyError> {
-  let resource = state.resource_table.get::<TextDecoderResource>(rid)?;
-
   let mut decoder = resource.decoder.borrow_mut();
   let fatal = resource.fatal;
 
@@ -388,11 +348,7 @@ struct TextDecoderResource {
   fatal: bool,
 }
 
-impl Resource for TextDecoderResource {
-  fn name(&self) -> Cow<str> {
-    "textDecoder".into()
-  }
-}
+impl deno_core::GarbageCollected for TextDecoderResource {}
 
 #[op2(fast(op_encoding_encode_into_fast))]
 fn op_encoding_encode_into(
