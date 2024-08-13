@@ -1128,6 +1128,8 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
   <g>DENO_FUTURE</>           Set to "1" to enable APIs that will take effect in Deno 2
   <g>DENO_CERT</>             Load certificate authorities from PEM encoded file
   <g>DENO_DIR</>              Set the cache directory
+  <g>DENO_INSTALL_ROOT</>     Set deno install's output directory
+                         <p(245)>(defaults to $HOME/.deno/bin)</>
   <g>DENO_JOBS</>             Number of parallel workers used for the --parallel flag
                         with the test subcommand. Defaults to number of available CPUs.
   <g>DENO_REPL_HISTORY</>     Set REPL history file path
@@ -2411,8 +2413,7 @@ The installation root is determined, in order of precedence:
         Arg::new("root")
           .long("root")
           .help("Installation root")
-          .value_hint(ValueHint::DirPath)
-          .env("DENO_INSTALL_ROOT")
+          .value_hint(ValueHint::DirPath),
       )
       .arg(
         Arg::new("global")
