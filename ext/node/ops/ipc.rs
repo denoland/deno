@@ -43,9 +43,6 @@ mod impl_ {
   use deno_io::BiPipeRead;
   use deno_io::BiPipeWrite;
 
-  #[cfg(windows)]
-  type NamedPipeClient = tokio::net::windows::named_pipe::NamedPipeClient;
-
   /// Wrapper around v8 value that implements Serialize.
   struct SerializeWrapper<'a, 'b>(
     RefCell<&'b mut v8::HandleScope<'a>>,
@@ -385,7 +382,10 @@ mod impl_ {
     }
 
     #[cfg(all(windows, test))]
-    fn from_stream(pipe: NamedPipeClient, ref_tracker: IpcRefTracker) -> Self {
+    fn from_stream(
+      pipe: tokio::net::windows::named_pipe::NamedPipeClient,
+      ref_tracker: IpcRefTracker,
+    ) -> Self {
       let (read_half, write_half) = tokio::io::split(pipe);
       Self {
         read_half: AsyncRefCell::new(IpcJsonStream::new(read_half.into())),

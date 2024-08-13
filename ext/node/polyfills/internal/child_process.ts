@@ -473,16 +473,6 @@ export class ChildProcess extends EventEmitter {
       assert(this.stdin);
       this.stdin.destroy();
     }
-    /// TODO(nathanwhit): for some reason when the child process exits
-    /// and the child end of the named pipe closes, reads still just return `Pending`
-    /// instead of returning that 0 bytes were read (to signal the pipe died).
-    /// For now, just forcibly disconnect, but in theory I think we could miss messages
-    /// that haven't been read yet.
-    if (Deno.build.os === "windows") {
-      if (this.canDisconnect) {
-        this.disconnect?.();
-      }
-    }
   }
 }
 

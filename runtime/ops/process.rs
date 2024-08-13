@@ -292,8 +292,6 @@ fn create_pipe(
   {
     unsafe {
       use windows_sys::Win32::Foundation::CloseHandle;
-      use windows_sys::Win32::Foundation::DuplicateHandle;
-      use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
       use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
       use windows_sys::Win32::Foundation::ERROR_PIPE_CONNECTED;
       use windows_sys::Win32::Foundation::GENERIC_READ;
@@ -309,80 +307,75 @@ fn create_pipe(
       use windows_sys::Win32::System::Pipes::CreateNamedPipeW;
       use windows_sys::Win32::System::Pipes::PIPE_READMODE_BYTE;
       use windows_sys::Win32::System::Pipes::PIPE_TYPE_BYTE;
-      use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
       use std::io;
       use std::os::windows::ffi::OsStrExt;
       use std::path::Path;
       use std::ptr;
 
-      if let Some(ipc) = args.ipc {
-        if ipc < 0 {
-          return Ok((command, None));
-        }
+      let (path, hd1) = loop {
+        let name = format!("\\\\.\\pipe\\{}", uuid::Uuid::new_v4());
+        let mut path = Path::new(&name)
+          .as_os_str()
+          .encode_wide()
+          .collect::<Vec<_>>();
+        path.push(0);
 
-        let (path, hd1) = loop {
-          let name = format!("\\\\.\\pipe\\{}", uuid::Uuid::new_v4());
-          let mut path = Path::new(&name)
-            .as_os_str()
-            .encode_wide()
-            .collect::<Vec<_>>();
-          path.push(0);
-
-          let hd1 = CreateNamedPipeW(
-            path.as_ptr(),
-            PIPE_ACCESS_DUPLEX
-              | FILE_FLAG_FIRST_PIPE_INSTANCE
-              | FILE_FLAG_OVERLAPPED,
-            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
-            1,
-            65536,
-            65536,
-            0,
-            std::ptr::null_mut(),
-          );
-
-          if hd1 == INVALID_HANDLE_VALUE {
-            let err = io::Error::last_os_error();
-            /* If the pipe name is already in use, try again. */
-            if err.raw_os_error() == Some(ERROR_ACCESS_DENIED as i32) {
-              continue;
-            }
-
-            return Err(err.into());
-          }
-
-          break (path, hd1);
-        };
-
-        /* Create child pipe handle. */
-        let s = SECURITY_ATTRIBUTES {
-          nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
-          lpSecurityDescriptor: ptr::null_mut(),
-          bInheritHandle: 1,
-        };
-        let mut hd2 = CreateFileW(
+        let hd1 = CreateNamedPipeW(
           path.as_ptr(),
-          GENERIC_READ | GENERIC_WRITE,
+          PIPE_ACCESS_DUPLEX
+            | FILE_FLAG_FIRST_PIPE_INSTANCE
+            | FILE_FLAG_OVERLAPPED,
+          PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
+          1,
+          65536,
+          65536,
           0,
-          &s,
-          OPEN_EXISTING,
-          FILE_FLAG_OVERLAPPED,
-          0,
+          std::ptr::null_mut(),
         );
-        if hd2 == INVALID_HANDLE_VALUE {
-          return Err(io::Error::last_os_error().into());
+
+        if hd1 == INVALID_HANDLE_VALUE {
+          let err = io::Error::last_os_error();
+          /* If the pipe name is already in use, try again. */
+          if err.raw_os_error() == Some(ERROR_ACCESS_DENIED as i32) {
+            continue;
+          }
+
+          return Err(err.into());
         }
 
-        // Will not block because we have create the pair.
-        if ConnectNamedPipe(hd1, ptr::null_mut()) == 0 {
-          let err = std::io::Error::last_os_error();
-          if err.raw_os_error() != Some(ERROR_PIPE_CONNECTED as i32) {
-            CloseHandle(hd2);
-            return Err(err.into());
-          }
+        break (path, hd1);
+      };
+
+      /* Create child pipe handle. */
+      let s = SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: ptr::null_mut(),
+        bInheritHandle: 1,
+      };
+      let hd2 = CreateFileW(
+        path.as_ptr(),
+        GENERIC_READ | GENERIC_WRITE,
+        0,
+        &s,
+        OPEN_EXISTING,
+        FILE_FLAG_OVERLAPPED,
+        0,
+      );
+      if hd2 == INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error().into());
+      }
+
+      // Will not block because we have create the pair.
+      if ConnectNamedPipe(hd1, ptr::null_mut()) == 0 {
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() != Some(ERROR_PIPE_CONNECTED as i32) {
+          CloseHandle(hd2);
+          return Err(err.into());
         }
       }
+
+      Ok((hd1 as _, hd2 as _))
     }
   }
 }
@@ -443,13 +436,13 @@ fn create_command(
     value => value.as_stdio(state)?,
   });
 
-  let mut extra_pipe_rids = Vec::new();
-  let mut fds_to_dup = Vec::new();
-  let mut fds_to_close = Vec::new();
   #[cfg(unix)]
   // TODO(bartlomieju):
   #[allow(clippy::undocumented_unsafe_blocks)]
   unsafe {
+    let mut extra_pipe_rids = Vec::new();
+    let mut fds_to_dup = Vec::new();
+    let mut fds_to_close = Vec::new();
     let mut ipc_rid = None;
     if let Some(ipc) = args.ipc {
       if ipc >= 0 {
@@ -504,70 +497,38 @@ fn create_command(
   }
 
   #[cfg(windows)]
-  // Safety: We setup a windows named pipe and pass one end to the child process.
-  unsafe {
-    use windows_sys::Win32::Foundation::CloseHandle;
-    use windows_sys::Win32::Foundation::DuplicateHandle;
-    use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
-    use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
-    use windows_sys::Win32::Foundation::ERROR_PIPE_CONNECTED;
-    use windows_sys::Win32::Foundation::GENERIC_READ;
-    use windows_sys::Win32::Foundation::GENERIC_WRITE;
-    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
-    use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
-    use windows_sys::Win32::Storage::FileSystem::CreateFileW;
-    use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_FIRST_PIPE_INSTANCE;
-    use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OVERLAPPED;
-    use windows_sys::Win32::Storage::FileSystem::OPEN_EXISTING;
-    use windows_sys::Win32::Storage::FileSystem::PIPE_ACCESS_DUPLEX;
-    use windows_sys::Win32::System::Pipes::ConnectNamedPipe;
-    use windows_sys::Win32::System::Pipes::CreateNamedPipeW;
-    use windows_sys::Win32::System::Pipes::PIPE_READMODE_BYTE;
-    use windows_sys::Win32::System::Pipes::PIPE_TYPE_BYTE;
-    use windows_sys::Win32::System::Threading::GetCurrentProcess;
-
-    use std::io;
-    use std::os::windows::ffi::OsStrExt;
-    use std::path::Path;
-    use std::ptr;
-
+  {
+    let mut ipc_rid = None;
+    let mut handles_to_close = Vec::with_capacity(1);
     if let Some(ipc) = args.ipc {
-      if ipc < 0 {
-        return Ok((command, None));
+      if ipc >= 0 {
+        let (hd1, hd2) = create_pipe()?;
+
+        /* One end returned to parent process (this) */
+        let pipe_rid = Some(state.resource_table.add(
+          deno_node::IpcJsonStreamResource::new(
+            hd1 as i64,
+            deno_node::IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?,
+        ));
+
+        /* The other end passed to child process via NODE_CHANNEL_FD */
+        command.env("NODE_CHANNEL_FD", format!("{}", hd2 as i64));
+
+        handles_to_close.push(hd2);
+
+        ipc_rid = pipe_rid;
       }
-
-      let (fd1, fd2) = create_pipe()?;
-      // Duplicating the handle to allow the child process to use it.
-      if DuplicateHandle(
-        GetCurrentProcess(),
-        hd2,
-        GetCurrentProcess(),
-        &mut hd2,
-        0,
-        1,
-        DUPLICATE_SAME_ACCESS,
-      ) == 0
-      {
-        return Err(std::io::Error::last_os_error().into());
-      }
-
-      /* One end returned to parent process (this) */
-      let pipe_fd = Some(state.resource_table.add(
-        deno_node::IpcJsonStreamResource::new(
-          hd1 as i64,
-          deno_node::IpcRefTracker::new(state.external_ops_tracker.clone()),
-        )?,
-      ));
-
-      /* The other end passed to child process via NODE_CHANNEL_FD */
-      command.env("NODE_CHANNEL_FD", format!("{}", hd2 as i64));
-
-      return Ok((command, pipe_fd));
     }
-  }
 
-  #[cfg(not(unix))]
-  return Ok((command, None));
+    if !args.extra_pipes.is_empty() {
+      log::warn!(
+        "Additional stdio pipes beyond stdin/stdout/stderr are not currently supported on windows"
+      );
+    }
+
+    Ok((command, ipc_rid, vec![], handles_to_close))
+  }
 }
 
 #[derive(Serialize)]
@@ -673,17 +634,20 @@ fn spawn_child(
   })
 }
 
-fn close_raw_handle(fd: deno_io::RawBiPipeHandle) {
+fn close_raw_handle(handle: deno_io::RawBiPipeHandle) {
   #[cfg(unix)]
   {
     // SAFETY: libc call
     unsafe {
-      libc::close(fd);
+      libc::close(handle);
     }
   }
   #[cfg(windows)]
   {
-    todo!();
+    // SAFETY: win32 call
+    unsafe {
+      windows_sys::Win32::Foundation::CloseHandle(handle as _);
+    }
   }
 }
 
@@ -694,11 +658,11 @@ fn op_spawn_child(
   #[serde] args: SpawnArgs,
   #[string] api_name: String,
 ) -> Result<Child, AnyError> {
-  let (command, pipe_rid, extra_pipe_rids, fds_to_close) =
+  let (command, pipe_rid, extra_pipe_rids, handles_to_close) =
     create_command(state, args, &api_name)?;
   let child = spawn_child(state, command, pipe_rid, extra_pipe_rids);
-  for fd in fds_to_close {
-    close_raw_handle(fd);
+  for handle in handles_to_close {
+    close_raw_handle(handle);
   }
   child
 }

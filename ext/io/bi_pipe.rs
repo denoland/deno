@@ -15,7 +15,7 @@ use tokio::io::AsyncWriteExt;
 pub type RawBiPipeHandle = std::os::fd::RawFd;
 
 #[cfg(windows)]
-pub type RawBiPipeHandle = std::os::windows::raw::Handle;
+pub type RawBiPipeHandle = std::os::windows::io::RawHandle;
 
 pub struct BiPipeResource {
   read_half: AsyncRefCell<BiPipeRead>,
@@ -24,13 +24,34 @@ pub struct BiPipeResource {
   raw_handle: RawBiPipeHandle,
 }
 
+#[cfg(windows)]
+// workaround because `RawHandle` doesn't impl `AsRawHandle`
+mod as_raw_handle {
+  use super::RawBiPipeHandle;
+  pub(super) struct RawHandleWrap(pub(super) RawBiPipeHandle);
+  impl std::os::windows::io::AsRawHandle for RawHandleWrap {
+    fn as_raw_handle(&self) -> std::os::windows::prelude::RawHandle {
+      self.0
+    }
+  }
+}
+
 impl deno_core::Resource for BiPipeResource {
   fn close(self: Rc<Self>) {
     self.cancel.cancel();
   }
 
   fn backing_handle(self: Rc<Self>) -> Option<deno_core::ResourceHandle> {
-    Some(deno_core::ResourceHandle::from_fd_like(&self.raw_handle))
+    #[cfg(unix)]
+    {
+      Some(deno_core::ResourceHandle::from_fd_like(&self.raw_handle))
+    }
+    #[cfg(windows)]
+    {
+      Some(deno_core::ResourceHandle::from_fd_like(
+        &as_raw_handle::RawHandleWrap(self.raw_handle),
+      ))
+    }
   }
 
   deno_core::impl_readable_byob!();
@@ -171,7 +192,7 @@ fn from_raw(
 #[cfg(windows)]
 fn from_raw(
   handle: RawBiPipeHandle,
-) -> Result<(BiPipeRead, BiPipeWrite), io::Error> {
+) -> Result<(BiPipeRead, BiPipeWrite), std::io::Error> {
   // Safety: We cannot use `get_osfhandle` because Deno statically links to msvcrt. It is not guaranteed that the
   // fd handle map will be the same.
   let pipe = unsafe {
