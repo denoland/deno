@@ -250,6 +250,7 @@ fn format_markdown(
           | "less"
           | "yml"
           | "yaml"
+          | "html"
       ) {
         // It's important to tell dprint proper file extension, otherwise
         // it might parse the file twice.
@@ -270,6 +271,13 @@ fn format_markdown(
           "css" | "scss" | "sass" | "less" => {
             if unstable_options.css {
               format_css(&fake_filename, text, fmt_options)
+            } else {
+              Ok(None)
+            }
+          }
+          "html" => {
+            if unstable_options.html {
+              format_html(&fake_filename, text, fmt_options)
             } else {
               Ok(None)
             }
@@ -316,6 +324,21 @@ pub fn format_json(
   dprint_plugin_json::format_text(file_path, file_text, &config)
 }
 
+pub fn format_html(
+  _file_path: &Path,
+  file_text: &str,
+  _fmt_options: &FmtOptionsConfig,
+) -> Result<Option<String>, AnyError> {
+  markup_fmt::format_text(
+    file_text,
+    markup_fmt::Language::Html,
+    &Default::default(),
+    |_, code, _| Ok::<_, std::convert::Infallible>(code.into()),
+  )
+  .map(Some)
+  .map_err(AnyError::from)
+}
+
 pub fn format_css(
   file_path: &Path,
   file_text: &str,
@@ -347,6 +370,13 @@ pub fn format_file(
     "css" | "scss" | "sass" | "less" => {
       if unstable_options.css {
         format_css(file_path, file_text, fmt_options)
+      } else {
+        Ok(None)
+      }
+    }
+    "html" => {
+      if unstable_options.html {
+        format_html(file_path, file_text, fmt_options)
       } else {
         Ok(None)
       }
@@ -961,6 +991,7 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "yml"
         | "yaml"
         | "ipynb"
+        | "html"
     )
   })
 }
@@ -1007,6 +1038,9 @@ mod test {
     assert!(is_supported_ext_fmt(Path::new("foo.yaml")));
     assert!(is_supported_ext_fmt(Path::new("foo.YaML")));
     assert!(is_supported_ext_fmt(Path::new("foo.ipynb")));
+    assert!(is_supported_ext_fmt(Path::new("foo.html")));
+    assert!(is_supported_ext_fmt(Path::new("foo.HTML")));
+    assert!(is_supported_ext_fmt(Path::new("foo.Html")));
   }
 
   #[test]
