@@ -216,6 +216,8 @@ fn no_snaps_included(test_name: &str, extension: &str) {
       "--quiet".to_string(),
       "--allow-read".to_string(),
       format!("--coverage={}", tempdir),
+      "--config".to_string(),
+      "../config/deno.json".to_string(),
       format!("coverage/no_snaps_included/{test_name}_test.{extension}"),
     ])
     .run();
@@ -256,6 +258,8 @@ fn no_tests_included(test_name: &str, extension: &str) {
       "--quiet".to_string(),
       "--allow-read".to_string(),
       format!("--coverage={}", tempdir),
+      "--config".to_string(),
+      "../config/deno.json".to_string(),
       format!("coverage/no_tests_included/{test_name}.test.{extension}"),
     ])
     .run();
@@ -337,6 +341,8 @@ fn no_transpiled_lines() {
       "test".to_string(),
       "--quiet".to_string(),
       format!("--coverage={}", tempdir),
+      "--config".to_string(),
+      "../config/deno.json".to_string(),
       "coverage/no_transpiled_lines/".to_string(),
     ])
     .run();

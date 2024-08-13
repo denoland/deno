@@ -167,13 +167,12 @@ pub fn op_jupyter_input(
       return Ok(None);
     }
 
-    let msg = JupyterMessage::new(
-      JupyterMessageContent::InputRequest(InputRequest {
-        prompt,
-        password: is_password,
-      }),
-      Some(&last_request),
-    );
+    let content = InputRequest {
+      prompt,
+      password: is_password,
+    };
+
+    let msg = JupyterMessage::new(content, Some(&last_request));
 
     let Ok(()) = stdin_connection_proxy.lock().tx.send(msg) else {
       return Ok(None);

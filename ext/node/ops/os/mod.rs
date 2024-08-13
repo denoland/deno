@@ -50,7 +50,7 @@ where
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions.check_sys("userInfo", "node:os.userInfo()")?;
+    permissions.check_sys("username", "node:os.userInfo()")?;
   }
 
   Ok(deno_whoami::username())
@@ -63,7 +63,7 @@ where
 {
   {
     let permissions = state.borrow_mut::<P>();
-    permissions.check_sys("geteuid", "node:os.geteuid()")?;
+    permissions.check_sys("uid", "node:os.geteuid()")?;
   }
 
   #[cfg(windows)]

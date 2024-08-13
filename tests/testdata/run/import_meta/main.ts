@@ -1,4 +1,4 @@
-import { assertThrows } from "../../../../tests/util/std/assert/mod.ts";
+import { assertThrows } from "@std/assert/throws";
 import "http://localhost:4545/run/import_meta/other.ts";
 import "./other.ts";
 

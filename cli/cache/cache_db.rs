@@ -470,7 +470,7 @@ mod tests {
   };
 
   static TEST_DB_BLACKHOLE: CacheDBConfiguration = CacheDBConfiguration {
-    table_initializer: "syntax error", // intentially cause an error
+    table_initializer: "syntax error", // intentionally cause an error
     on_version_change: "",
     preheat_queries: &[],
     on_failure: CacheFailure::Blackhole,

@@ -2,10 +2,12 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::env::current_exe;
 use std::ffi::OsString;
 use std::fs;
+use std::fs::File;
 use std::future::Future;
 use std::io::Read;
 use std::io::Seek;
@@ -17,6 +19,7 @@ use std::process::Command;
 
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::bail;
@@ -31,6 +34,7 @@ use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
+use deno_semver::Version;
 use deno_semver::VersionReqSpecifierParseError;
 use eszip::EszipRelativeFileBaseUrl;
 use indexmap::IndexMap;
@@ -50,6 +54,7 @@ use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::standalone::virtual_fs::VfsEntry;
+use crate::util::archive;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -68,7 +73,7 @@ pub enum NodeModules {
     node_modules_dir: Option<String>,
   },
   Byonm {
-    root_node_modules_dir: String,
+    root_node_modules_dir: Option<String>,
   },
 }
 
@@ -78,9 +83,18 @@ pub struct SerializedWorkspaceResolverImportMap {
   pub json: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SerializedResolverWorkspaceJsrPackage {
+  pub relative_base: String,
+  pub name: String,
+  pub version: Option<Version>,
+  pub exports: IndexMap<String, String>,
+}
+
 #[derive(Deserialize, Serialize)]
 pub struct SerializedWorkspaceResolver {
   pub import_map: Option<SerializedWorkspaceResolverImportMap>,
+  pub jsr_pkgs: Vec<SerializedResolverWorkspaceJsrPackage>,
   pub package_jsons: BTreeMap<String, serde_json::Value>,
   pub pkg_json_resolution: PackageJsonDepResolution,
 }
@@ -96,6 +110,7 @@ pub struct Metadata {
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<Vec<u8>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub env_vars_from_env_file: HashMap<String, String>,
   pub workspace_resolver: SerializedWorkspaceResolver,
   pub entrypoint_key: String,
   pub node_modules: Option<NodeModules>,
@@ -104,16 +119,19 @@ pub struct Metadata {
 }
 
 pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
-  let file_path = current_exe().unwrap();
-  let mut file = std::fs::File::open(file_path)?;
-  file.seek(SeekFrom::End(-(TRAILER_SIZE as i64)))?;
-  let mut trailer = [0; TRAILER_SIZE];
-  file.read_exact(&mut trailer)?;
-  let trailer = Trailer::parse(&trailer)?.unwrap();
-  file.seek(SeekFrom::Start(trailer.npm_vfs_pos))?;
-  let mut vfs_data = vec![0; trailer.npm_vfs_len() as usize];
-  file.read_exact(&mut vfs_data)?;
-  let mut dir: VirtualDirectory = serde_json::from_slice(&vfs_data)?;
+  let data = libsui::find_section("d3n0l4nd").unwrap();
+
+  // We do the first part sync so it can complete quickly
+  let trailer: [u8; TRAILER_SIZE] = data[0..TRAILER_SIZE].try_into().unwrap();
+  let trailer = match Trailer::parse(&trailer)? {
+    None => panic!("Could not find trailer"),
+    Some(trailer) => trailer,
+  };
+  let data = &data[TRAILER_SIZE..];
+
+  let vfs_data =
+    &data[trailer.npm_vfs_pos as usize..trailer.npm_files_pos as usize];
+  let mut dir: VirtualDirectory = serde_json::from_slice(vfs_data)?;
 
   // align the name of the directory with the root dir
   dir.name = root_dir_path
@@ -127,38 +145,32 @@ pub fn load_npm_vfs(root_dir_path: PathBuf) -> Result<FileBackedVfs, AnyError> {
     root_path: root_dir_path,
     start_file_offset: trailer.npm_files_pos,
   };
-  Ok(FileBackedVfs::new(file, fs_root))
+  Ok(FileBackedVfs::new(data.to_vec(), fs_root))
 }
 
 fn write_binary_bytes(
-  writer: &mut impl Write,
+  mut file_writer: File,
   original_bin: Vec<u8>,
   metadata: &Metadata,
   eszip: eszip::EszipV2,
   npm_vfs: Option<&VirtualDirectory>,
   npm_files: &Vec<Vec<u8>>,
+  compile_flags: &CompileFlags,
 ) -> Result<(), AnyError> {
   let metadata = serde_json::to_string(metadata)?.as_bytes().to_vec();
   let npm_vfs = serde_json::to_string(&npm_vfs)?.as_bytes().to_vec();
   let eszip_archive = eszip.into_bytes();
 
-  writer.write_all(&original_bin)?;
-  writer.write_all(&eszip_archive)?;
-  writer.write_all(&metadata)?;
-  writer.write_all(&npm_vfs)?;
-  for file in npm_files {
-    writer.write_all(file)?;
-  }
+  let mut writer = Vec::new();
 
   // write the trailer, which includes the positions
   // of the data blocks in the file
   writer.write_all(&{
-    let eszip_pos = original_bin.len() as u64;
-    let metadata_pos = eszip_pos + (eszip_archive.len() as u64);
+    let metadata_pos = eszip_archive.len() as u64;
     let npm_vfs_pos = metadata_pos + (metadata.len() as u64);
     let npm_files_pos = npm_vfs_pos + (npm_vfs.len() as u64);
     Trailer {
-      eszip_pos,
+      eszip_pos: 0,
       metadata_pos,
       npm_vfs_pos,
       npm_files_pos,
@@ -166,27 +178,36 @@ fn write_binary_bytes(
     .as_bytes()
   })?;
 
+  writer.write_all(&eszip_archive)?;
+  writer.write_all(&metadata)?;
+  writer.write_all(&npm_vfs)?;
+  for file in npm_files {
+    writer.write_all(file)?;
+  }
+
+  let target = compile_flags.resolve_target();
+  if target.contains("linux") {
+    libsui::Elf::new(&original_bin).append(&writer, &mut file_writer)?;
+  } else if target.contains("windows") {
+    libsui::PortableExecutable::from(&original_bin)?
+      .write_resource("d3n0l4nd", writer)?
+      .build(&mut file_writer)?;
+  } else if target.contains("darwin") {
+    libsui::Macho::from(original_bin)?
+      .write_section("d3n0l4nd", writer)?
+      .build_and_sign(&mut file_writer)?;
+  }
   Ok(())
 }
 
 pub fn is_standalone_binary(exe_path: &Path) -> bool {
-  let Ok(mut output_file) = std::fs::File::open(exe_path) else {
+  let Ok(data) = std::fs::read(exe_path) else {
     return false;
   };
-  if output_file
-    .seek(SeekFrom::End(-(TRAILER_SIZE as i64)))
-    .is_err()
-  {
-    // This seek may fail because the file is too small to possibly be
-    // `deno compile` output.
-    return false;
-  }
-  let mut trailer = [0; TRAILER_SIZE];
-  if output_file.read_exact(&mut trailer).is_err() {
-    return false;
-  };
-  let (magic_trailer, _) = trailer.split_at(8);
-  magic_trailer == MAGIC_TRAILER
+
+  libsui::utils::is_elf(&data)
+    || libsui::utils::is_pe(&data)
+    || libsui::utils::is_macho(&data)
 }
 
 /// This function will try to run this binary as a standalone binary
@@ -195,40 +216,32 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 /// then checking for the magic trailer string `d3n0l4nd`. If found,
 /// the bundle is executed. If not, this function exits with `Ok(None)`.
 pub fn extract_standalone(
-  exe_path: &Path,
   cli_args: Cow<Vec<OsString>>,
 ) -> Result<
   Option<impl Future<Output = Result<(Metadata, eszip::EszipV2), AnyError>>>,
   AnyError,
 > {
+  let Some(data) = libsui::find_section("d3n0l4nd") else {
+    return Ok(None);
+  };
+
   // We do the first part sync so it can complete quickly
-  let mut file = std::fs::File::open(exe_path)?;
-  file.seek(SeekFrom::End(-(TRAILER_SIZE as i64)))?;
-  let mut trailer = [0; TRAILER_SIZE];
-  file.read_exact(&mut trailer)?;
-  let trailer = match Trailer::parse(&trailer)? {
+  let trailer = match Trailer::parse(&data[0..TRAILER_SIZE])? {
     None => return Ok(None),
     Some(trailer) => trailer,
   };
-
-  file.seek(SeekFrom::Start(trailer.eszip_pos))?;
 
   let cli_args = cli_args.into_owned();
   // If we have an eszip, read it out
   Ok(Some(async move {
     let bufreader =
-      deno_core::futures::io::BufReader::new(AllowStdIo::new(file));
+      deno_core::futures::io::BufReader::new(&data[TRAILER_SIZE..]);
 
     let (eszip, loader) = eszip::EszipV2::parse(bufreader)
       .await
       .context("Failed to parse eszip header")?;
 
-    let mut bufreader =
-      loader.await.context("Failed to parse eszip archive")?;
-
-    bufreader
-      .seek(SeekFrom::Start(trailer.metadata_pos))
-      .await?;
+    let bufreader = loader.await.context("Failed to parse eszip archive")?;
 
     let mut metadata = String::new();
 
@@ -306,72 +319,6 @@ fn u64_from_bytes(arr: &[u8]) -> Result<u64, AnyError> {
   Ok(u64::from_be_bytes(*fixed_arr))
 }
 
-pub fn unpack_into_dir(
-  exe_name: &str,
-  archive_name: &str,
-  archive_data: Vec<u8>,
-  is_windows: bool,
-  temp_dir: &tempfile::TempDir,
-) -> Result<PathBuf, AnyError> {
-  let temp_dir_path = temp_dir.path();
-  let exe_ext = if is_windows { "exe" } else { "" };
-  let archive_path = temp_dir_path.join(exe_name).with_extension("zip");
-  let exe_path = temp_dir_path.join(exe_name).with_extension(exe_ext);
-  assert!(!exe_path.exists());
-
-  let archive_ext = Path::new(archive_name)
-    .extension()
-    .and_then(|ext| ext.to_str())
-    .unwrap();
-  let unpack_status = match archive_ext {
-    "zip" if cfg!(windows) => {
-      fs::write(&archive_path, &archive_data)?;
-      Command::new("tar.exe")
-        .arg("xf")
-        .arg(&archive_path)
-        .arg("-C")
-        .arg(temp_dir_path)
-        .spawn()
-        .map_err(|err| {
-          if err.kind() == std::io::ErrorKind::NotFound {
-            std::io::Error::new(
-              std::io::ErrorKind::NotFound,
-              "`tar.exe` was not found in your PATH",
-            )
-          } else {
-            err
-          }
-        })?
-        .wait()?
-    }
-    "zip" => {
-      fs::write(&archive_path, &archive_data)?;
-      Command::new("unzip")
-        .current_dir(temp_dir_path)
-        .arg(&archive_path)
-        .spawn()
-        .map_err(|err| {
-          if err.kind() == std::io::ErrorKind::NotFound {
-            std::io::Error::new(
-              std::io::ErrorKind::NotFound,
-              "`unzip` was not found in your PATH, please install `unzip`",
-            )
-          } else {
-            err
-          }
-        })?
-        .wait()?
-    }
-    ext => bail!("Unsupported archive type: '{ext}'"),
-  };
-  if !unpack_status.success() {
-    bail!("Failed to unpack archive.");
-  }
-  assert!(exe_path.exists());
-  fs::remove_file(&archive_path)?;
-  Ok(exe_path)
-}
-
 pub struct DenoCompileBinaryWriter<'a> {
   deno_dir: &'a DenoDir,
   file_fetcher: &'a FileFetcher,
@@ -403,7 +350,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   pub async fn write_bin(
     &self,
-    writer: &mut impl Write,
+    writer: File,
     eszip: eszip::EszipV2,
     root_dir_url: EszipRelativeFileBaseUrl<'_>,
     entrypoint: &ModuleSpecifier,
@@ -468,13 +415,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
     let archive_data = std::fs::read(binary_path)?;
     let temp_dir = tempfile::TempDir::new()?;
-    let base_binary_path = unpack_into_dir(
-      "denort",
-      &binary_name,
-      archive_data,
-      target.contains("windows"),
-      &temp_dir,
-    )?;
+    let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
+      exe_name: "denort",
+      archive_name: &binary_name,
+      archive_data: &archive_data,
+      is_windows: target.contains("windows"),
+      dest_path: temp_dir.path(),
+    })?;
     let base_binary = std::fs::read(base_binary_path)?;
     drop(temp_dir); // delete the temp dir
     Ok(base_binary)
@@ -493,7 +440,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       self
         .http_client_provider
         .get_or_create()?
-        .download_with_progress(download_url, None, &progress)
+        .download_with_progress(download_url.parse()?, None, &progress)
         .await?
     };
     let bytes = match maybe_bytes {
@@ -516,7 +463,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   #[allow(clippy::too_many_arguments)]
   fn write_standalone_binary(
     &self,
-    writer: &mut impl Write,
+    writer: File,
     original_bin: Vec<u8>,
     mut eszip: eszip::EszipV2,
     root_dir_url: EszipRelativeFileBaseUrl<'_>,
@@ -570,18 +517,27 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           Some(root_dir),
           files,
           Some(NodeModules::Byonm {
-            root_node_modules_dir: root_dir_url
-              .specifier_key(
-                &ModuleSpecifier::from_directory_path(
-                  // will always be set for byonm
-                  resolver.root_node_modules_path().unwrap(),
-                )
-                .unwrap(),
-              )
-              .into_owned(),
+            root_node_modules_dir: resolver.root_node_modules_path().map(
+              |node_modules_dir| {
+                root_dir_url
+                  .specifier_key(
+                    &ModuleSpecifier::from_directory_path(node_modules_dir)
+                      .unwrap(),
+                  )
+                  .into_owned()
+              },
+            ),
           }),
         )
       }
+    };
+
+    let env_vars_from_env_file = match cli_options.env_file_name() {
+      Some(env_filename) => {
+        log::info!("{} Environment variables from the file \"{}\" were embedded in the generated executable file", crate::colors::yellow("Warning"), env_filename);
+        get_file_env_vars(env_filename.to_string())?
+      }
+      None => Default::default(),
     };
 
     let metadata = Metadata {
@@ -596,6 +552,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       log_level: cli_options.log_level(),
       ca_stores: cli_options.ca_stores().clone(),
       ca_data,
+      env_vars_from_env_file,
       entrypoint_key: root_dir_url.specifier_key(entrypoint).into_owned(),
       workspace_resolver: SerializedWorkspaceResolver {
         import_map: self.workspace_resolver.maybe_import_map().map(|i| {
@@ -609,6 +566,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
             json: i.to_json(),
           }
         }),
+        jsr_pkgs: self
+          .workspace_resolver
+          .jsr_packages()
+          .map(|pkg| SerializedResolverWorkspaceJsrPackage {
+            relative_base: root_dir_url.specifier_key(&pkg.base).into_owned(),
+            name: pkg.name.clone(),
+            version: pkg.version.clone(),
+            exports: pkg.exports.clone(),
+          })
+          .collect(),
         package_jsons: self
           .workspace_resolver
           .package_jsons()
@@ -642,6 +609,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       eszip,
       npm_vfs.as_ref(),
       &npm_files,
+      compile_flags,
     )
   }
 
@@ -721,18 +689,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       InnerCliNpmResolverRef::Byonm(_) => {
         maybe_warn_different_system(&self.npm_system_info);
         let mut builder = VfsBuilder::new(root_path.to_path_buf())?;
-        for pkg_json in cli_options.workspace.package_jsons() {
+        for pkg_json in cli_options.workspace().package_jsons() {
           builder.add_file_at_path(&pkg_json.path)?;
         }
         // traverse and add all the node_modules directories in the workspace
         let mut pending_dirs = VecDeque::new();
         pending_dirs.push_back(
-          cli_options
-            .workspace
-            .root_folder()
-            .0
-            .to_file_path()
-            .unwrap(),
+          cli_options.workspace().root_dir().to_file_path().unwrap(),
         );
         while let Some(pending_dir) = pending_dirs.pop_front() {
           let entries = fs::read_dir(&pending_dir).with_context(|| {
@@ -755,6 +718,21 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     }
   }
+}
+
+/// This function returns the environment variables specified
+/// in the passed environment file.
+fn get_file_env_vars(
+  filename: String,
+) -> Result<HashMap<String, String>, dotenvy::Error> {
+  let mut file_env_vars = HashMap::new();
+  for item in dotenvy::from_filename_iter(filename)? {
+    let Ok((key, val)) = item else {
+      continue; // this failure will be warned about on load
+    };
+    file_env_vars.insert(key, val);
+  }
+  Ok(file_env_vars)
 }
 
 /// This function sets the subsystem field in the PE header to 2 (GUI subsystem)

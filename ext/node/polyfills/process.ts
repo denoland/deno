@@ -84,9 +84,9 @@ let ProcessExitCode: undefined | null | string | number;
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
   if (code || code === 0) {
-    denoOs.setExitCode(code);
+    process.exitCode = code;
   } else if (Number.isNaN(code)) {
-    denoOs.setExitCode(1);
+    process.exitCode = 1;
   }
 
   ProcessExitCode = denoOs.getExitCode();
@@ -408,7 +408,10 @@ Process.prototype.config = {
   target_defaults: {
     default_configuration: "Release",
   },
-  variables: {},
+  variables: {
+    llvm_version: "0.0",
+    enable_lto: "false",
+  },
 };
 
 /** https://nodejs.org/api/process.html#process_process_cwd */

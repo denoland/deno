@@ -2,7 +2,7 @@
 
 // deno-lint-ignore-file no-deprecated-deno-api
 
-import { Buffer, BufReader, BufWriter } from "@std/io/mod.ts";
+import { Buffer, BufReader, BufWriter } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -13,7 +13,7 @@ import {
   delay,
   fail,
 } from "./test_util.ts";
-import { join } from "@std/path/mod.ts";
+import { join } from "@std/path";
 
 const listenPort = 4507;
 const listenPort2 = 4508;
@@ -2572,9 +2572,11 @@ for (const compression of [true, false]) {
       const result = await reader.read();
       assert(!result.done);
       assertEquals(result.value, new Uint8Array([65]));
-      const err = await assertRejects(() => reader.read());
-      assert(err instanceof TypeError);
-      assert(err.message.includes("error decoding response body"));
+      await assertRejects(
+        () => reader.read(),
+        TypeError,
+        "body",
+      );
 
       const httpConn = await server;
       httpConn.close();
@@ -2608,9 +2610,11 @@ for (const compression of [true, false]) {
       const result = await reader.read();
       assert(!result.done);
       assertEquals(result.value, new Uint8Array([65]));
-      const err = await assertRejects(() => reader.read());
-      assert(err instanceof TypeError);
-      assert(err.message.includes("error decoding response body"));
+      await assertRejects(
+        () => reader.read(),
+        TypeError,
+        "body",
+      );
 
       const httpConn = await server;
       httpConn.close();

@@ -1,0 +1,2 @@
+error: Module not found "file:///[WILDCARD]/a.js". Maybe change the extension to '.ts' or run with --unstable-sloppy-imports
+    at file:///[WILDLINE]/main.ts:1:20

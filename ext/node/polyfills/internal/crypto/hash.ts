@@ -6,6 +6,7 @@
 
 import {
   op_node_create_hash,
+  op_node_export_secret_key,
   op_node_get_hashes,
   op_node_hash_clone,
   op_node_hash_digest,
@@ -32,7 +33,6 @@ import type {
   Encoding,
 } from "ext:deno_node/internal/crypto/types.ts";
 import {
-  getKeyMaterial,
   KeyObject,
   prepareSecretKey,
 } from "ext:deno_node/internal/crypto/keys.ts";
@@ -46,7 +46,10 @@ import {
   getDefaultEncoding,
   toBuf,
 } from "ext:deno_node/internal/crypto/util.ts";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import {
+  isAnyArrayBuffer,
+  isArrayBufferView,
+} from "ext:deno_node/internal/util/types.ts";
 
 const { ReflectApply, ObjectSetPrototypeOf } = primordials;
 
@@ -217,22 +220,28 @@ class HmacImpl extends Transform {
 
     validateString(hmac, "hmac");
 
-    const u8Key = key instanceof KeyObject
-      ? getKeyMaterial(key)
-      : prepareSecretKey(key, options?.encoding) as Buffer;
+    key = prepareSecretKey(key, options?.encoding);
+    let keyData;
+    if (isArrayBufferView(key)) {
+      keyData = key;
+    } else if (isAnyArrayBuffer(key)) {
+      keyData = new Uint8Array(key);
+    } else {
+      keyData = op_node_export_secret_key(key);
+    }
 
     const alg = hmac.toLowerCase();
     this.#algorithm = alg;
     const blockSize = (alg === "sha512" || alg === "sha384") ? 128 : 64;
-    const keySize = u8Key.length;
+    const keySize = keyData.length;
 
     let bufKey: Buffer;
 
     if (keySize > blockSize) {
       const hash = new Hash(alg, options);
-      bufKey = hash.update(u8Key).digest() as Buffer;
+      bufKey = hash.update(keyData).digest() as Buffer;
     } else {
-      bufKey = Buffer.concat([u8Key, this.#ZEROES], blockSize);
+      bufKey = Buffer.concat([keyData, this.#ZEROES], blockSize);
     }
 
     this.#ipad = Buffer.allocUnsafe(blockSize);

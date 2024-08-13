@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
+use deno_runtime::colors;
 use log::warn;
 
 use crate::args::CliOptions;
@@ -35,9 +36,13 @@ mod specifiers;
 mod test;
 
 pub async fn vendor(
-  flags: Flags,
+  flags: Arc<Flags>,
   vendor_flags: VendorFlags,
 ) -> Result<(), AnyError> {
+  log::info!(
+    "{}",
+    colors::yellow("⚠️ Warning: `deno vendor` is deprecated and will be removed in Deno 2.0.\nAdd `\"vendor\": true` to your `deno.json` or use the `--vendor` flag instead."),
+  );
   let mut cli_options = CliOptions::from_flags(flags)?;
   let raw_output_dir = match &vendor_flags.output_path {
     Some(output_path) => PathBuf::from(output_path).to_owned(),
@@ -47,17 +52,18 @@ pub async fn vendor(
   validate_output_dir(&output_dir, &vendor_flags)?;
   validate_options(&mut cli_options, &output_dir)?;
   let factory = CliFactory::from_cli_options(Arc::new(cli_options));
-  let cli_options = factory.cli_options();
-  if cli_options.workspace.config_folders().len() > 1 {
+  let cli_options = factory.cli_options()?;
+  if cli_options.workspace().config_folders().len() > 1 {
     bail!("deno vendor is not supported in a workspace. Set `\"vendor\": true` in the workspace deno.json file instead");
   }
   let entry_points =
     resolve_entry_points(&vendor_flags, cli_options.initial_cwd())?;
-  let jsx_import_source =
-    cli_options.workspace.to_maybe_jsx_import_source_config()?;
+  let jsx_import_source = cli_options
+    .workspace()
+    .to_maybe_jsx_import_source_config()?;
   let module_graph_creator = factory.module_graph_creator().await?.clone();
   let workspace_resolver = factory.workspace_resolver().await?;
-  let root_folder = cli_options.workspace.root_folder().1;
+  let root_folder = cli_options.workspace().root_folder_configs();
   let maybe_config_file = root_folder.deno_json.as_ref();
   let output = build::build(build::BuildInput {
     entry_points,
@@ -184,7 +190,7 @@ fn validate_options(
   let import_map_specifier = options
     .resolve_specified_import_map_specifier()?
     .or_else(|| {
-      let config_file = options.workspace.root_folder().1.deno_json.as_ref()?;
+      let config_file = options.workspace().root_deno_json()?;
       config_file
         .to_import_map_specifier()
         .ok()

@@ -21,6 +21,7 @@ mod npm;
 mod ops;
 mod resolver;
 mod standalone;
+mod task_runner;
 mod tools;
 mod tsc;
 mod util;
@@ -31,11 +32,13 @@ use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::DENO_FUTURE;
+use crate::cache::DenoDir;
 use crate::graph_container::ModuleGraphContainer;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
+use args::TaskFlags;
 use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 
@@ -49,9 +52,12 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_terminal::colors;
 use factory::CliFactory;
+use standalone::MODULE_NOT_FOUND;
 use std::env;
 use std::future::Future;
+use std::ops::Deref;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Ensures that all subcommands return an i32 exit code and an [`AnyError`] error type.
 trait SubcommandOutput {
@@ -89,10 +95,13 @@ fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
   )
 }
 
-async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
+async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
   let handle = match flags.subcommand.clone() {
     DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
-      tools::registry::add(flags, add_flags).await
+      tools::registry::add(flags, add_flags, tools::registry::AddCommandName::Add).await
+    }),
+    DenoSubcommand::Remove(remove_flags) => spawn_subcommand(async {
+      tools::registry::remove(flags, remove_flags).await
     }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       if bench_flags.watch.is_some() {
@@ -111,7 +120,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       tools::run::eval_command(flags, eval_flags).await
     }),
     DenoSubcommand::Cache(cache_flags) => spawn_subcommand(async move {
-      let factory = CliFactory::from_flags(flags)?;
+      let factory = CliFactory::from_flags(flags);
       let emitter = factory.emitter()?;
       let main_graph_container =
         factory.main_module_graph_container().await?;
@@ -121,12 +130,20 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       emitter.cache_module_emits(&main_graph_container.graph()).await
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
-      let factory = CliFactory::from_flags(flags)?;
+      let factory = CliFactory::from_flags(flags);
       let main_graph_container =
         factory.main_module_graph_container().await?;
       main_graph_container
         .load_and_type_check_files(&check_flags.files)
         .await
+    }),
+    DenoSubcommand::Clean => spawn_subcommand(async move {
+      let deno_dir = DenoDir::new(None)?;
+      if deno_dir.root.exists() {
+        std::fs::remove_dir_all(&deno_dir.root)?;
+        log::info!("{} {}", colors::green("Removed"), deno_dir.root.display());
+      }
+      Ok::<(), std::io::Error>(())
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       tools::compile::compile(flags, compile_flags).await
@@ -152,6 +169,9 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(flags, install_flags).await
     }),
+    DenoSubcommand::JSONReference(json_reference) => spawn_subcommand(async move {
+      display::write_to_stdout_ignore_sigpipe(&deno_core::serde_json::to_vec_pretty(&json_reference.json).unwrap())
+    }),
     DenoSubcommand::Jupyter(jupyter_flags) => spawn_subcommand(async {
       tools::jupyter::kernel(flags, jupyter_flags).await
     }),
@@ -175,16 +195,57 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     }
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.is_stdin() {
-        tools::run::run_from_stdin(flags).await
+        tools::run::run_from_stdin(flags.clone()).await
       } else {
-        tools::run::run_script(WorkerExecutionMode::Run, flags, run_flags.watch).await
+        let result = tools::run::run_script(WorkerExecutionMode::Run, flags.clone(), run_flags.watch).await;
+        match result {
+          Ok(v) => Ok(v),
+          Err(script_err) => {
+            if script_err.to_string().starts_with(MODULE_NOT_FOUND) {
+              if run_flags.bare {
+                let mut cmd = args::clap_root();
+                cmd.build();
+                let command_names = cmd.get_subcommands().map(|command| command.get_name()).collect::<Vec<_>>();
+                let suggestions = args::did_you_mean(&run_flags.script, command_names);
+                if !suggestions.is_empty() {
+                  let mut error = clap::error::Error::<clap::error::DefaultFormatter>::new(clap::error::ErrorKind::InvalidSubcommand).with_cmd(&cmd);
+                  error.insert(
+                    clap::error::ContextKind::SuggestedSubcommand,
+                    clap::error::ContextValue::Strings(suggestions),
+                  );
+
+                  Err(error.into())
+                } else {
+                  Err(script_err)
+                }
+              } else {
+                let mut new_flags = flags.deref().clone();
+                let task_flags = TaskFlags {
+                  cwd: None,
+                  task: Some(run_flags.script.clone()),
+                };
+                new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
+                let result = tools::task::execute_script(Arc::new(new_flags), task_flags.clone(), true).await;
+                match result {
+                  Ok(v) => Ok(v),
+                  Err(_) => {
+                    // Return script error for backwards compatibility.
+                    Err(script_err)
+                  }
+                }
+              }
+            } else {
+              Err(script_err)
+            }
+          }
+        }
       }
     }),
     DenoSubcommand::Serve(serve_flags) => spawn_subcommand(async move {
       tools::run::run_script(WorkerExecutionMode::Serve, flags, serve_flags.watch).await
     }),
     DenoSubcommand::Task(task_flags) => spawn_subcommand(async {
-      tools::task::execute_script(flags, task_flags).await
+      tools::task::execute_script(flags, task_flags, false).await
     }),
     DenoSubcommand::Test(test_flags) => {
       spawn_subcommand(async {
@@ -230,9 +291,11 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Vendor(vendor_flags) => spawn_subcommand(async {
       tools::vendor::vendor(flags, vendor_flags).await
     }),
-    // TODO:
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
       tools::registry::publish(flags, publish_flags).await
+    }),
+    DenoSubcommand::Help(help_flags) => spawn_subcommand(async move {
+      display::write_to_stdout_ignore_sigpipe(help_flags.help.ansi().to_string().as_bytes())
     }),
   };
 
@@ -329,7 +392,7 @@ pub fn main() {
     // initialize the V8 platform on a parent thread of all threads that will spawn
     // V8 isolates.
     let flags = resolve_flags_and_init(args)?;
-    run_subcommand(flags).await
+    run_subcommand(Arc::new(flags)).await
   };
 
   match create_and_run_current_thread_with_maybe_metrics(future) {
@@ -347,7 +410,8 @@ fn resolve_flags_and_init(
       if err.kind() == clap::error::ErrorKind::DisplayHelp
         || err.kind() == clap::error::ErrorKind::DisplayVersion =>
     {
-      err.print().unwrap();
+      // Ignore results to avoid BrokenPipe errors.
+      let _ = err.print();
       std::process::exit(0);
     }
     Err(err) => exit_for_error(AnyError::from(err)),
@@ -384,16 +448,20 @@ fn resolve_flags_and_init(
         // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
         vec!["--no-harmony-import-assertions".to_string()]
       } else {
-        // If we're still in v1.X version we want to support import assertions.
-        // V8 12.6 unshipped the support by default, so force it by passing a
-        // flag.
-        vec!["--harmony-import-assertions".to_string()]
+        vec![
+          // If we're still in v1.X version we want to support import assertions.
+          // V8 12.6 unshipped the support by default, so force it by passing a
+          // flag.
+          "--harmony-import-assertions".to_string(),
+          // Verify with DENO_FUTURE for now.
+          "--no-maglev".to_string(),
+        ]
       }
     }
   };
 
   init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
-  deno_core::JsRuntime::init_platform(None);
+  deno_core::JsRuntime::init_platform(None, !*DENO_FUTURE);
   util::logger::init(flags.log_level);
 
   Ok(flags)

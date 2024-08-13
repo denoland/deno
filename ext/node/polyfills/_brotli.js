@@ -3,9 +3,11 @@
 import { core, primordials } from "ext:core/mod.js";
 const {
   Uint8Array,
+  Number,
   PromisePrototypeThen,
   PromisePrototypeCatch,
-  ObjectValues,
+  ObjectEntries,
+  ArrayPrototypeMap,
   TypedArrayPrototypeSlice,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeGetByteLength,
@@ -114,19 +116,30 @@ export class BrotliCompress extends Transform {
       },
     });
 
-    const params = ObjectValues(options?.params ?? {});
+    const params = ArrayPrototypeMap(
+      ObjectEntries(options?.params ?? {}),
+      // Undo the stringification of the keys
+      (o) => [Number(o[0]), o[1]],
+    );
     this.#context = op_create_brotli_compress(params);
     const context = this.#context;
   }
 }
 
 function oneOffCompressOptions(options) {
-  const quality = options?.params?.[constants.BROTLI_PARAM_QUALITY] ??
+  let quality = options?.params?.[constants.BROTLI_PARAM_QUALITY] ??
     constants.BROTLI_DEFAULT_QUALITY;
   const lgwin = options?.params?.[constants.BROTLI_PARAM_LGWIN] ??
     constants.BROTLI_DEFAULT_WINDOW;
   const mode = options?.params?.[constants.BROTLI_PARAM_MODE] ??
     constants.BROTLI_MODE_GENERIC;
+
+  // NOTE(bartlomieju): currently the rust-brotli crate panics if the quality
+  // is set to 10. Coerce it down to 9.5 which is the maximum supported value.
+  // https://github.com/dropbox/rust-brotli/issues/216
+  if (quality == 10) {
+    quality = 9.5;
+  }
 
   return {
     quality,

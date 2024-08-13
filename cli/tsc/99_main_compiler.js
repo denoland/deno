@@ -169,6 +169,10 @@ delete Object.prototype.__proto__;
 
   const isCjsCache = new SpecifierIsCjsCache();
 
+  // Maps asset specifiers to the first scope that the asset was loaded into.
+  /** @type {Map<string, string | null>} */
+  const assetScopes = new Map();
+
   /** @type {number | null} */
   let projectVersionCache = null;
 
@@ -486,7 +490,7 @@ delete Object.prototype.__proto__;
     // anything. We prefer to treat these as modules with no exports.
     2306,
     // TS2688: Cannot find type definition file for '...'.
-    // We ignore because type defintion files can end with '.ts'.
+    // We ignore because type definition files can end with '.ts'.
     2688,
     // TS2792: Cannot find module. Did you mean to set the 'moduleResolution'
     // option to 'node', or to add aliases to the 'paths' option?
@@ -731,6 +735,7 @@ delete Object.prototype.__proto__;
           /** @type {[string, ts.Extension] | undefined} */
           const resolved = ops.op_resolve(
             containingFilePath,
+            isCjsCache.has(containingFilePath),
             [fileReference.fileName],
           )?.[0];
           if (resolved) {
@@ -764,6 +769,7 @@ delete Object.prototype.__proto__;
       /** @type {Array<[string, ts.Extension] | undefined>} */
       const resolved = ops.op_resolve(
         base,
+        isCjsCache.has(base),
         specifiers,
       );
       if (resolved) {
@@ -835,6 +841,9 @@ delete Object.prototype.__proto__;
       }
       const sourceFile = sourceFileCache.get(specifier);
       if (sourceFile) {
+        if (!assetScopes.has(specifier)) {
+          assetScopes.set(specifier, lastRequestScope);
+        }
         // This case only occurs for assets.
         return ts.ScriptSnapshot.fromString(sourceFile.text);
       }
@@ -1097,7 +1106,7 @@ delete Object.prototype.__proto__;
    * @param {any} data
    * @param {string | null} error
    */
-  // TODO(bartlomieju): this feels needlessly generic, both type chcking
+  // TODO(bartlomieju): this feels needlessly generic, both type checking
   // and language server use it with inefficient serialization. Id is not used
   // anyway...
   function respond(_id, data = null, error = null) {
@@ -1208,6 +1217,7 @@ delete Object.prototype.__proto__;
       const newConfigsByScope = maybeChange[2];
       if (newConfigsByScope) {
         isNodeSourceFileCache.clear();
+        assetScopes.clear();
         /** @type { typeof languageServiceEntries.byScope } */
         const newByScope = new Map();
         for (const [scope, config] of newConfigsByScope) {
@@ -1245,6 +1255,12 @@ delete Object.prototype.__proto__;
       }
     }
 
+    // For requests pertaining to an asset document, we make it so that the
+    // passed scope is just its own specifier. We map it to an actual scope here
+    // based on the first scope that the asset was loaded into.
+    if (scope?.startsWith(ASSETS_URL_PREFIX)) {
+      scope = assetScopes.get(scope) ?? null;
+    }
     lastRequestMethod = method;
     lastRequestScope = scope;
     const ls = (scope ? languageServiceEntries.byScope.get(scope)?.ls : null) ??

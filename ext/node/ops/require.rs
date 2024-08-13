@@ -10,16 +10,17 @@ use deno_core::JsRuntimeInspector;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
+use node_resolver::NodeModuleKind;
+use node_resolver::NodeResolutionMode;
+use node_resolver::REQUIRE_CONDITIONS;
 use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::resolution;
-use crate::resolution::NodeResolverRc;
-use crate::NodeModuleKind;
 use crate::NodePermissions;
-use crate::NodeResolutionMode;
+use crate::NodeRequireResolverRc;
+use crate::NodeResolverRc;
 use crate::NpmResolverRc;
 use crate::PackageJson;
 
@@ -30,7 +31,7 @@ fn ensure_read_permission<P>(
 where
   P: NodePermissions + 'static,
 {
-  let resolver = state.borrow::<NpmResolverRc>().clone();
+  let resolver = state.borrow::<NodeRequireResolverRc>().clone();
   let permissions = state.borrow_mut::<P>();
   resolver.ensure_read_permission(permissions, file_path)
 }
@@ -421,9 +422,9 @@ where
       &pkg.path,
       &expansion,
       exports,
-      &referrer,
+      Some(&referrer),
       NodeModuleKind::Cjs,
-      resolution::REQUIRE_CONDITIONS,
+      REQUIRE_CONDITIONS,
       NodeResolutionMode::Execution,
     )?;
     Ok(Some(if r.scheme() == "file" {
@@ -509,9 +510,9 @@ where
     &pkg.path,
     &format!(".{expansion}"),
     exports,
-    &referrer,
+    Some(&referrer),
     NodeModuleKind::Cjs,
-    resolution::REQUIRE_CONDITIONS,
+    REQUIRE_CONDITIONS,
     NodeResolutionMode::Execution,
   )?;
   Ok(Some(if r.scheme() == "file" {
@@ -538,6 +539,7 @@ where
   node_resolver
     .get_closest_package_json(&Url::from_file_path(filename).unwrap())
     .map(|maybe_pkg| maybe_pkg.map(|pkg| (*pkg).clone()))
+    .map_err(AnyError::from)
 }
 
 #[op2]
@@ -586,10 +588,10 @@ where
       deno_core::url::Url::from_file_path(&referrer_filename).unwrap();
     let url = node_resolver.package_imports_resolve(
       &request,
-      &referrer_url,
+      Some(&referrer_url),
       NodeModuleKind::Cjs,
       Some(&pkg),
-      resolution::REQUIRE_CONDITIONS,
+      REQUIRE_CONDITIONS,
       NodeResolutionMode::Execution,
     )?;
     Ok(Some(url_to_file_path_string(&url)?))

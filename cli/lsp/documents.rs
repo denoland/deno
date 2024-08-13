@@ -153,7 +153,7 @@ impl AssetOrDocument {
 
   pub fn scope(&self) -> Option<&ModuleSpecifier> {
     match self {
-      AssetOrDocument::Asset(_) => None,
+      AssetOrDocument::Asset(asset_doc) => Some(asset_doc.specifier()),
       AssetOrDocument::Document(doc) => doc.scope(),
     }
   }
@@ -1180,11 +1180,10 @@ impl Documents {
   pub fn get_or_load(
     &self,
     specifier: &ModuleSpecifier,
-    referrer: &ModuleSpecifier,
+    file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<Arc<Document>> {
-    let file_referrer = self.get_file_referrer(referrer);
     let specifier =
-      self.resolve_document_specifier(specifier, file_referrer.as_deref())?;
+      self.resolve_document_specifier(specifier, file_referrer)?;
     if let Some(document) = self.open_docs.get(&specifier) {
       Some(document.clone())
     } else {
@@ -1193,7 +1192,7 @@ impl Documents {
         &self.resolver,
         &self.config,
         &self.cache,
-        file_referrer.as_deref(),
+        file_referrer,
       )
     }
   }
@@ -1464,7 +1463,7 @@ impl Documents {
       specifier = s;
       media_type = Some(mt);
     }
-    let Some(doc) = self.get_or_load(&specifier, referrer) else {
+    let Some(doc) = self.get_or_load(&specifier, file_referrer) else {
       let media_type =
         media_type.unwrap_or_else(|| MediaType::from_specifier(&specifier));
       return Some((specifier, media_type));
@@ -1597,7 +1596,9 @@ fn analyze_module(
 mod tests {
   use super::*;
   use crate::lsp::cache::LspCache;
-  use deno_config::ConfigFile;
+
+  use deno_config::deno_json::ConfigFile;
+  use deno_config::deno_json::ConfigParseOptions;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
@@ -1751,7 +1752,7 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &deno_config::ConfigParseOptions::default(),
+            &ConfigParseOptions::default(),
           )
           .unwrap(),
         )
@@ -1795,7 +1796,7 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &deno_config::ConfigParseOptions::default(),
+            &ConfigParseOptions::default(),
           )
           .unwrap(),
         )

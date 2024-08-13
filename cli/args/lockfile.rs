@@ -1,14 +1,18 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
+use deno_config::deno_json::ConfigFile;
+use deno_config::workspace::Workspace;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
+use deno_lockfile::WorkspaceMemberConfig;
+use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_node::PackageJson;
 
-use crate::args::ConfigFile;
 use crate::cache;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::Flags;
@@ -92,9 +96,37 @@ impl CliLockfile {
 
   pub fn discover(
     flags: &Flags,
-    maybe_config_file: Option<&ConfigFile>,
-    maybe_package_json: Option<&PackageJson>,
+    workspace: &Workspace,
   ) -> Result<Option<CliLockfile>, AnyError> {
+    fn pkg_json_deps(maybe_pkg_json: Option<&PackageJson>) -> BTreeSet<String> {
+      let Some(pkg_json) = maybe_pkg_json else {
+        return Default::default();
+      };
+      pkg_json
+        .resolve_local_package_json_deps()
+        .values()
+        .filter_map(|dep| dep.as_ref().ok())
+        .filter_map(|dep| match dep {
+          PackageJsonDepValue::Req(req) => Some(req),
+          PackageJsonDepValue::Workspace(_) => None,
+        })
+        .map(|r| format!("npm:{}", r))
+        .collect()
+    }
+
+    fn deno_json_deps(
+      maybe_deno_json: Option<&ConfigFile>,
+    ) -> BTreeSet<String> {
+      maybe_deno_json
+        .map(|c| {
+          crate::args::deno_json::deno_json_deps(c)
+            .into_iter()
+            .map(|req| req.to_string())
+            .collect()
+        })
+        .unwrap_or_default()
+    }
+
     if flags.no_lock
       || matches!(
         flags.subcommand,
@@ -109,23 +141,9 @@ impl CliLockfile {
 
     let filename = match flags.lock {
       Some(ref lock) => PathBuf::from(lock),
-      None => match maybe_config_file {
-        Some(config_file) => {
-          if config_file.specifier.scheme() == "file" {
-            match config_file.resolve_lockfile_path()? {
-              Some(path) => path,
-              None => return Ok(None),
-            }
-          } else {
-            return Ok(None);
-          }
-        }
-        None => match maybe_package_json {
-          Some(package_json) => {
-            package_json.path.parent().unwrap().join("deno.lock")
-          }
-          None => return Ok(None),
-        },
+      None => match workspace.resolve_lockfile_path()? {
+        Some(path) => path,
+        None => return Ok(None),
       },
     };
 
@@ -141,6 +159,54 @@ impl CliLockfile {
     } else {
       Self::read_from_path(filename, flags.frozen_lockfile)?
     };
+
+    // initialize the lockfile with the workspace's configuration
+    let root_url = workspace.root_dir();
+    let root_folder = workspace.root_folder_configs();
+    let config = deno_lockfile::WorkspaceConfig {
+      root: WorkspaceMemberConfig {
+        package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
+        dependencies: deno_json_deps(root_folder.deno_json.as_deref()),
+      },
+      members: workspace
+        .config_folders()
+        .iter()
+        .filter(|(folder_url, _)| *folder_url != root_url)
+        .filter_map(|(folder_url, folder)| {
+          Some((
+            {
+              // should never be None here, but just ignore members that
+              // do fail for this
+              let mut relative_path = root_url.make_relative(folder_url)?;
+              if relative_path.ends_with('/') {
+                // make it slightly cleaner by removing the trailing slash
+                relative_path.pop();
+              }
+              relative_path
+            },
+            {
+              let config = WorkspaceMemberConfig {
+                package_json_deps: pkg_json_deps(folder.pkg_json.as_deref()),
+                dependencies: deno_json_deps(folder.deno_json.as_deref()),
+              };
+              if config.package_json_deps.is_empty()
+                && config.dependencies.is_empty()
+              {
+                // exclude empty workspace members
+                return None;
+              }
+              config
+            },
+          ))
+        })
+        .collect(),
+    };
+    lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
+      no_npm: flags.no_npm,
+      no_config: flags.config_flag == super::ConfigFlag::Disabled,
+      config,
+    });
+
     Ok(Some(lockfile))
   }
   pub fn read_from_path(
