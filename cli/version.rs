@@ -18,7 +18,7 @@ const RELEASE_CHANNEL: ReleaseChannel = if IS_CANARY {
 
 pub static DENO_VERSION_INFO: Lazy<DenoVersionInfo> = Lazy::new(|| {
   libsui::find_section("denoversion")
-    .map(|buf| serde_json::from_slice::<DenoVersionInfo>(&buf).unwrap())
+    .map(|buf| serde_json::from_slice::<DenoVersionInfo>(buf).unwrap())
     .unwrap_or(DenoVersionInfo {
       deno: if IS_CANARY {
         concat!(
