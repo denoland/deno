@@ -28,6 +28,7 @@ pub enum ProgressMessagePrompt {
   Download,
   Blocking,
   Initialize,
+  Cleaning,
 }
 
 impl ProgressMessagePrompt {
@@ -38,6 +39,7 @@ impl ProgressMessagePrompt {
       ProgressMessagePrompt::Initialize => {
         colors::green("Initialize").to_string()
       }
+      ProgressMessagePrompt::Cleaning => colors::green("Cleaning").to_string(),
     }
   }
 }
