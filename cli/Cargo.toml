@@ -155,6 +155,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tower-lsp.workspace = true
+tracing = { version = "0.1", features = ["log", "default"] }
 twox-hash.workspace = true
 typed-arena = "=2.0.2"
 uuid = { workspace = true, features = ["serde"] }
