@@ -138,15 +138,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         .await
     }),
     DenoSubcommand::Clean => spawn_subcommand(async move {
-      let deno_dir = DenoDir::new(None)?;
-      if deno_dir.root.exists() {
-        let no_of_files = walkdir::WalkDir::new(&deno_dir.root).into_iter().count();
-        let progress_bar = util::progress_bar::ProgressBar::new(util::progress_bar::ProgressBarStyle::DownloadBars);
-        let progress = progress_bar.update_with_prompt(util::progress_bar::ProgressMessagePrompt::Cleaning, "");
-        std::fs::remove_dir_all(&deno_dir.root)?;
-        log::info!("{} {}", colors::green("Removed"), deno_dir.root.display());
-      }
-      Ok::<(), std::io::Error>(())
+      tools::clean::clean()
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       tools::compile::compile(flags, compile_flags).await
