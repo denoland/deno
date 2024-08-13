@@ -1633,6 +1633,7 @@ dependencies = [
  "pin-project",
  "rand",
  "tokio",
+ "uuid",
  "winapi",
  "windows-sys 0.52.0",
 ]

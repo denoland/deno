@@ -17,6 +17,7 @@ pub type RawBiPipeHandle = std::os::fd::RawFd;
 #[cfg(windows)]
 pub type RawBiPipeHandle = std::os::windows::io::RawHandle;
 
+/// One end of a bidirectional pipe. T
 pub struct BiPipeResource {
   read_half: AsyncRefCell<BiPipeRead>,
   write_half: AsyncRefCell<BiPipeWrite>,
@@ -87,7 +88,7 @@ impl BiPipeResource {
   }
 }
 
-/// A bidirectional pipe
+/// One end of a bidirectional pipe
 #[pin_project::pin_project]
 pub struct BiPipe {
   #[pin]
@@ -271,7 +272,7 @@ impl_async_write!(for BiPipeWrite -> self.inner);
 impl_async_write!(for BiPipe -> self.write_end);
 
 /// Creates both sides of a bidirectional pipe, returning the raw
-/// handles to the underlying OS resource.
+/// handles to the underlying OS resources.
 pub fn bi_pipe_pair_raw() -> Result<(RawBiPipeHandle, RawBiPipeHandle), AnyError>
 {
   #[cfg(unix)]

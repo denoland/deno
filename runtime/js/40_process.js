@@ -181,7 +181,7 @@ function spawnChildInner(command, apiName, {
   signal = undefined,
   windowsRawArguments = false,
   ipc = -1,
-  extraPipes = [],
+  extraStdio = [],
 } = { __proto__: null }) {
   const child = op_spawn_child({
     cmd: pathFromURL(command),
@@ -196,7 +196,7 @@ function spawnChildInner(command, apiName, {
     stderr,
     windowsRawArguments,
     ipc,
-    extraPipes,
+    extraStdio,
   }, apiName);
   return new ChildProcess(illegalConstructorKey, {
     ...child,
@@ -222,19 +222,19 @@ function collectOutput(readableStream) {
   return readableStreamCollectIntoUint8Array(readableStream);
 }
 
-const _pipeFd = Symbol("[[pipeFd]]");
-const _extraPipeFds = Symbol("[[_extraPipeFds]]");
+const _ipcPipeRid = Symbol("[[ipcPipeRid]]");
+const _extraPipeRids = Symbol("[[_extraPipeRids]]");
 
-internals.getPipeFd = (process) => process[_pipeFd];
-internals.getExtraPipeFds = (process) => process[_extraPipeFds];
+internals.getIpcPipeRid = (process) => process[_ipcPipeRid];
+internals.getExtraPipeRids = (process) => process[_extraPipeRids];
 
 class ChildProcess {
   #rid;
   #waitPromise;
   #waitComplete = false;
 
-  [_pipeFd];
-  [_extraPipeFds];
+  [_ipcPipeRid];
+  [_extraPipeRids];
 
   #pid;
   get pid() {
@@ -272,7 +272,7 @@ class ChildProcess {
     stdinRid,
     stdoutRid,
     stderrRid,
-    pipeFd, // internal
+    ipcPipeRid, // internal
     extraPipeRids,
   } = null) {
     if (key !== illegalConstructorKey) {
@@ -281,8 +281,8 @@ class ChildProcess {
 
     this.#rid = rid;
     this.#pid = pid;
-    this[_pipeFd] = pipeFd;
-    this[_extraPipeFds] = extraPipeRids;
+    this[_ipcPipeRid] = ipcPipeRid;
+    this[_extraPipeRids] = extraPipeRids;
 
     if (stdinRid !== null) {
       this.#stdin = writableStreamForRid(stdinRid);
@@ -422,7 +422,7 @@ function spawnSync(command, {
     stdout,
     stderr,
     windowsRawArguments,
-    extraPipes: [],
+    extraStdio: [],
   });
   return {
     success: result.status.success,

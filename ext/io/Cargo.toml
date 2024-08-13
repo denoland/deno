@@ -22,6 +22,7 @@ log.workspace = true
 once_cell.workspace = true
 pin-project.workspace = true
 tokio.workspace = true
+uuid.workspace = true
 
 [target.'cfg(not(windows))'.dependencies]
 os_pipe.workspace = true

@@ -135,7 +135,9 @@ function flushStdio(subprocess: ChildProcess) {
   }
 }
 
-class PipeThing implements StreamBase {
+// Wraps a resource in a class that implements
+// StreamBase, so it can be used with node streams
+class StreamResource implements StreamBase {
   #rid: number;
   constructor(rid: number) {
     this.#rid = rid;
@@ -243,7 +245,7 @@ export class ChildProcess extends EventEmitter {
       stdin = "pipe",
       stdout = "pipe",
       stderr = "pipe",
-      ...rest
+      ...extraStdio
     ] = normalizedStdio;
     const [cmd, cmdArgs] = buildCommand(
       command,
@@ -255,11 +257,13 @@ export class ChildProcess extends EventEmitter {
 
     const ipc = normalizedStdio.indexOf("ipc");
 
-    const extraPipes = [];
-    for (let i = 0; i < rest.length; i++) {
-      const fd = i + 3;
-      if (fd === ipc) continue;
-      extraPipes.push(fd);
+    const extraStdioOffset = 3; // stdin, stdout, stderr
+
+    const extraStdioNormalized: DenoStdio[] = [];
+    for (let i = 0; i < extraStdio.length; i++) {
+      const fd = i + extraStdioOffset;
+      if (fd === ipc) extraStdioNormalized.push("null");
+      extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
     }
 
     const stringEnv = mapValues(env, (value) => value.toString());
@@ -273,7 +277,7 @@ export class ChildProcess extends EventEmitter {
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
         ipc, // internal
-        extraPipes,
+        extraStdio: extraStdioNormalized,
       }).spawn();
       this.pid = this.#process.pid;
 
@@ -318,28 +322,24 @@ export class ChildProcess extends EventEmitter {
         this.stdio[ipc] = null;
       }
 
-      let offset = ipc === 3 ? 4 : 3;
-      const pipeRids = internals.getExtraPipeFds(this.#process);
-      for (let i = 0; i < extraPipes.length; i++) {
-        if (i + offset === ipc) {
-          offset++;
-        }
-        if (pipeRids[i]) {
+      const pipeRids = internals.getExtraPipeRids(this.#process);
+      for (let i = 0; i < pipeRids.length; i++) {
+        const rid: number | null = pipeRids[i];
+        const fd = i + extraStdioOffset;
+        if (rid) {
           this[kClosesNeeded]++;
-          this.stdio[i + offset] = new Socket(
+          this.stdio[fd] = new Socket(
             {
               handle: new Pipe(
                 socketType.IPC,
-                new PipeThing(pipeRids[i]),
+                new StreamResource(rid),
               ),
               // deno-lint-ignore no-explicit-any
             } as any,
           );
-          this.stdio[i + offset]?.on("close", () => {
+          this.stdio[fd]?.on("close", () => {
             maybeClose(this);
           });
-
-          // this.stdio[i + offset] = new PipeThing(pipeRids[i]);
         }
       }
 
@@ -369,9 +369,9 @@ export class ChildProcess extends EventEmitter {
         }
       }
 
-      const pipeFd = internals.getPipeFd(this.#process);
-      if (typeof pipeFd == "number") {
-        setupChannel(this, pipeFd);
+      const pipeRid = internals.getIpcPipeRid(this.#process);
+      if (typeof pipeRid == "number") {
+        setupChannel(this, pipeRid);
         this[kClosesNeeded]++;
         this.on("disconnect", () => {
           maybeClose(this);

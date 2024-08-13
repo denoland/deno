@@ -155,7 +155,7 @@ pub struct SpawnArgs {
   #[serde(flatten)]
   stdio: ChildStdio,
 
-  extra_pipes: Vec<i32>,
+  extra_stdio: Vec<Stdio>,
 }
 
 #[derive(Deserialize)]
@@ -307,8 +307,14 @@ fn create_command(
       }
     }
 
-    for fd in args.extra_pipes {
-      if fd >= 0 {
+    for (i, stdio) in args.extra_stdio.into_iter().enumerate() {
+      // index 0 in `extra_stdio` actually refers to fd 3
+      // because we handle stdin,stdout,stderr specially
+      let fd = (i + 3) as i32;
+      // TODO(nathanwhit): handle inherited, but this relies on the parent process having
+      // fds open already. since we don't generally support dealing with raw fds,
+      // we can't properly support this
+      if matches!(stdio, Stdio::Piped) {
         let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
         fds_to_dup.push((fd2, fd));
         fds_to_close.push(fd2);
@@ -323,6 +329,8 @@ fn create_command(
           },
         );
         extra_pipe_rids.push(Some(rid));
+      } else {
+        extra_pipe_rids.push(None);
       }
     }
 
@@ -383,14 +391,14 @@ struct Child {
   stdin_rid: Option<ResourceId>,
   stdout_rid: Option<ResourceId>,
   stderr_rid: Option<ResourceId>,
-  pipe_fd: Option<ResourceId>,
+  ipc_pipe_rid: Option<ResourceId>,
   extra_pipe_rids: Vec<Option<ResourceId>>,
 }
 
 fn spawn_child(
   state: &mut OpState,
   command: std::process::Command,
-  pipe_fd: Option<ResourceId>,
+  ipc_pipe_rid: Option<ResourceId>,
   extra_pipe_rids: Vec<Option<ResourceId>>,
 ) -> Result<Child, AnyError> {
   let mut command = tokio::process::Command::from(command);
@@ -473,7 +481,7 @@ fn spawn_child(
     stdin_rid,
     stdout_rid,
     stderr_rid,
-    pipe_fd,
+    ipc_pipe_rid,
     extra_pipe_rids,
   })
 }
