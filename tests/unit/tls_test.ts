@@ -6,6 +6,7 @@ import {
   assertRejects,
   assertStrictEquals,
   assertThrows,
+  DENO_FUTURE,
 } from "./test_util.ts";
 import { BufReader, BufWriter } from "@std/io";
 import { readAll } from "@std/io/read-all";
@@ -1635,7 +1636,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true, read: true } },
+  { ignore: DENO_FUTURE, permissions: { net: true, read: true } },
   function listenTLSEcKey() {
     const listener = Deno.listenTls({
       hostname: "localhost",
