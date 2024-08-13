@@ -434,7 +434,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   ) -> Result<(), AnyError> {
     let download_url = format!("https://dl.deno.land/{binary_path_suffix}");
     let maybe_bytes = {
-      let progress_bars = ProgressBar::new(ProgressBarStyle::DownloadBars);
+      let progress_bars =
+        ProgressBar::new(ProgressBarStyle::DownloadBars(true));
       let progress = progress_bars.update(&download_url);
 
       self

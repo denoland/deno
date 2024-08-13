@@ -34,7 +34,7 @@ pub fn clean() -> Result<(), AnyError> {
     DenoDir::new(Some(PathBuf::from("/Users/ib/dev/try_clean/dir")))?;
   if deno_dir.root.exists() {
     let no_of_files = walkdir::WalkDir::new(&deno_dir.root).into_iter().count();
-    let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
+    let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars(false));
     let progress_guard =
       progress_bar.update_with_prompt(ProgressMessagePrompt::Cleaning, "");
 
@@ -50,13 +50,16 @@ pub fn clean() -> Result<(), AnyError> {
 
     rm_rf(&mut state, &deno_dir.root)?;
 
+    // Drop the guard so that progress bar disappears.
+    drop(state.progress_guard);
+
     log::info!(
       "{} {} {}",
       colors::green("Removed"),
       deno_dir.root.display(),
       colors::gray(&format!(
         "({} files, {})",
-        state.files_removed,
+        state.files_removed + state.dirs_removed,
         display::human_size(state.bytes_removed as f64)
       ))
     );

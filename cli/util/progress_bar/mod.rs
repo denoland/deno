@@ -73,7 +73,8 @@ impl UpdateGuard {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProgressBarStyle {
-  DownloadBars,
+  /// display_human_download_size
+  DownloadBars(bool),
   TextOnly,
 }
 
@@ -271,8 +272,10 @@ impl ProgressBar {
   pub fn new(style: ProgressBarStyle) -> Self {
     Self {
       inner: ProgressBarInner::new(match style {
-        ProgressBarStyle::DownloadBars => {
-          Arc::new(renderer::BarProgressBarRenderer)
+        ProgressBarStyle::DownloadBars(display_human_download_size) => {
+          Arc::new(renderer::BarProgressBarRenderer {
+            display_human_download_size,
+          })
         }
         ProgressBarStyle::TextOnly => {
           Arc::new(renderer::TextOnlyProgressBarRenderer::default())
