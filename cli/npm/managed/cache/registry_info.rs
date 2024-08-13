@@ -191,12 +191,17 @@ impl RegistryInfoDownloader {
   fn create_load_future(self: &Arc<Self>, name: &str) -> LoadFuture {
     let downloader = self.clone();
     let package_url = self.get_package_url(name);
-    let registry_config = self.npmrc.get_registry_config(name).clone();
+    let registry_config = self.npmrc.get_registry_config(name);
+    let maybe_auth_header =
+      match maybe_auth_header_for_npm_registry(&registry_config) {
+        Ok(maybe_auth_header) => maybe_auth_header,
+        Err(err) => {
+          return std::future::ready(Err(Arc::new(err))).boxed_local()
+        }
+      };
     let guard = self.progress_bar.update(package_url.as_str());
     let name = name.to_string();
     async move {
-      let maybe_auth_header =
-        maybe_auth_header_for_npm_registry(&registry_config)?;
       let maybe_bytes = downloader
         .http_client_provider
         .get_or_create()?
