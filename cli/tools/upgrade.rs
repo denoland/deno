@@ -18,6 +18,7 @@ use async_trait::async_trait;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::serde_json;
 use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_semver::Version;
@@ -1021,7 +1022,7 @@ impl CheckVersionFile {
       return None;
     }
     let Ok(current_release_channel) =
-      ReleaseChannel::deserialize(&current_release_channel)
+      serde_json::from_str::<ReleaseChannel>(&current_release_channel)
     else {
       return None;
     };
@@ -1049,7 +1050,7 @@ impl CheckVersionFile {
       self.last_checked.to_rfc3339(),
       self.latest_version,
       self.current_version,
-      self.current_release_channel.serialize(),
+      serde_json::to_string(&self.current_release_channel).unwrap(),
     )
   }
 
@@ -1078,7 +1079,7 @@ mod test {
     assert!(maybe_file.is_none());
     // NOTE(bartlomieju): post-1.46 format
     let file = CheckVersionFile::parse(
-      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!stable"
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!\"Stable\""
         .to_string(),
     )
     .unwrap();
@@ -1159,22 +1160,22 @@ cvbnfhuertt23523452345 v1.46.0-rc.1
     };
     assert_eq!(
       file.serialize(),
-      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!stable"
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!\"Stable\""
     );
     file.current_release_channel = ReleaseChannel::Canary;
     assert_eq!(
       file.serialize(),
-      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!canary"
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!\"Canary\""
     );
     file.current_release_channel = ReleaseChannel::Rc;
     assert_eq!(
       file.serialize(),
-      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!rc"
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!\"Rc\""
     );
     file.current_release_channel = ReleaseChannel::Lts;
     assert_eq!(
       file.serialize(),
-      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!lts"
+      "2020-01-01T00:00:00+00:00!2020-01-01T00:00:00+00:00!1.2.3!1.2.2!\"Lts\""
     );
   }
 

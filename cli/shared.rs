@@ -1,8 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// This module is shared between build script and the binaries. Use it sparsely.
-use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -30,25 +28,5 @@ impl ReleaseChannel {
       Self::Rc => "release candidate",
       Self::Lts => "LTS (long term support)",
     }
-  }
-
-  pub fn serialize(&self) -> String {
-    match self {
-      Self::Stable => "stable",
-      Self::Canary => "canary",
-      Self::Rc => "rc",
-      Self::Lts => "lts",
-    }
-    .to_string()
-  }
-
-  pub fn deserialize(str_: &str) -> Result<Self, AnyError> {
-    Ok(match str_ {
-      "stable" => Self::Stable,
-      "canary" => Self::Canary,
-      "rc" => Self::Rc,
-      "lts" => Self::Lts,
-      unknown => bail!("Unrecognized release channel: {}", unknown),
-    })
   }
 }
