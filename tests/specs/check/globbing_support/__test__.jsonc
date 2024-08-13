@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "check *.ts",
+      "output": "[WILDLINE]",
+      "exitCode": 0
+    },
+    {
+      "args": "check *.js",
+      "output": "Warning No matching files found.\n",
+      "exitCode": 0
+    }
+  ]
+}

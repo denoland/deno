@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_config::glob::{PathOrPattern, PathOrPatternSet};
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
@@ -87,60 +88,13 @@ impl MainModuleGraphContainer {
     &self,
     files: &[String],
   ) -> Result<(), AnyError> {
-    let resolved_files = self.resolve_files(files)?;
-
-    let specifiers = self.collect_specifiers(&resolved_files)?;
+    let specifiers = self.collect_specifiers(files)?;
 
     if specifiers.is_empty() {
       log::warn!("{} No matching files found.", colors::yellow("Warning"));
     }
 
     self.check_specifiers(&specifiers).await
-  }
-
-  fn resolve_files(
-    &self,
-    patterns: &[String],
-  ) -> Result<Vec<String>, AnyError> {
-    let mut resolved_files = Vec::new();
-
-    for pattern in patterns {
-      let expanded = glob::glob(pattern).expect("Failed to read glob pattern");
-      for entry in expanded {
-        match entry {
-          Ok(path) => {
-            if path.is_file() {
-              resolved_files.push(path.to_string_lossy().to_string());
-            } else if path.is_dir() {
-              resolved_files.extend(self.collect_ts_files_from_dir(&path)?);
-            }
-          }
-          Err(e) => return Err(AnyError::msg(format!("Glob error: {}", e))),
-        }
-      }
-    }
-
-    Ok(resolved_files)
-  }
-
-  #[allow(clippy::only_used_in_recursion)]
-  fn collect_ts_files_from_dir(
-    &self,
-    dir: &Path,
-  ) -> Result<Vec<String>, AnyError> {
-    let mut files = Vec::new();
-    for entry in fs::read_dir(dir)? {
-      let entry = entry?;
-      let path = entry.path();
-      if path.is_file() {
-        if path.extension().is_some() {
-          files.push(path.to_string_lossy().to_string());
-        }
-      } else if path.is_dir() {
-        files.extend(self.collect_ts_files_from_dir(&path)?);
-      }
-    }
-    Ok(files)
   }
 
   pub fn collect_specifiers(
@@ -203,4 +157,45 @@ impl<'a> ModuleGraphUpdatePermit for MainModuleGraphUpdatePermit<'a> {
     *self.inner.write() = Arc::new(self.graph);
     drop(self.permit); // explicit drop for clarity
   }
+}
+
+pub fn resolve_files_from_patterns(
+  pattern_set: PathOrPatternSet,
+) -> Result<Vec<String>, AnyError> {
+  let mut result_files = Vec::new();
+  fn visit_dirs(
+    dir: &Path,
+    pattern_set: &PathOrPatternSet,
+    result_files: &mut Vec<String>,
+  ) -> Result<(), AnyError> {
+    if dir.is_dir() {
+      for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+          visit_dirs(&path, pattern_set, result_files)?;
+        } else if pattern_set.matches_path(&path) {
+          result_files.push(path.to_string_lossy().into_owned());
+        }
+      }
+    }
+    Ok(())
+  }
+
+  for pattern in pattern_set.inner() {
+    match pattern {
+      PathOrPattern::Path(path) => {
+        if path.exists() && path.is_file() {
+          result_files.push(path.to_string_lossy().into_owned());
+        }
+      }
+      PathOrPattern::Pattern(pattern) => {
+        let base_path = pattern.base_path();
+        visit_dirs(&base_path, &pattern_set, &mut result_files)?;
+      }
+      _ => {}
+    }
+  }
+
+  Ok(result_files)
 }

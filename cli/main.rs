@@ -33,7 +33,9 @@ use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::DENO_FUTURE;
 use crate::cache::DenoDir;
-use crate::graph_container::ModuleGraphContainer;
+use crate::graph_container::{
+  resolve_files_from_patterns, ModuleGraphContainer,
+};
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
@@ -42,6 +44,7 @@ use args::TaskFlags;
 use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 
+use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -128,10 +131,16 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
       let factory = CliFactory::from_flags(flags);
-      let main_graph_container =
-        factory.main_module_graph_container().await?;
+      let main_graph_container = factory.main_module_graph_container().await?;
+
+      let cli_options = factory.cli_options().expect("Failed to get CLI options");
+
+      let base_path = cli_options.initial_cwd().to_path_buf();
+      let include_patterns = PathOrPatternSet::from_include_relative_path_or_patterns(&base_path, &check_flags.files)?;
+
+      let expanded_files = resolve_files_from_patterns(include_patterns)?;
       main_graph_container
-        .load_and_type_check_files(&check_flags.files)
+        .load_and_type_check_files(&expanded_files)
         .await
     }),
     DenoSubcommand::Clean => spawn_subcommand(async move {
