@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -23,6 +24,7 @@ use jsonc_parser::ast::Value;
 use crate::args::AddFlags;
 use crate::args::CacheSetting;
 use crate::args::Flags;
+use crate::args::RemoveFlags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::jsr::JsrFetchResolver;
@@ -337,9 +339,7 @@ pub async fn add(
   // make a new CliFactory to pick up the updated config file
   let cli_factory = CliFactory::from_flags(flags);
   // cache deps
-  if cli_factory.cli_options()?.enable_future_features() {
-    crate::module_loader::load_top_level_deps(&cli_factory).await?;
-  }
+  crate::module_loader::load_top_level_deps(&cli_factory).await?;
 
   Ok(())
 }
@@ -511,6 +511,85 @@ fn generate_imports(packages_to_version: Vec<(String, String)>) -> String {
     }
   }
   contents.join("\n")
+}
+
+fn remove_from_config(
+  config_path: &Path,
+  keys: &[&'static str],
+  packages_to_remove: &[String],
+  removed_packages: &mut Vec<String>,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<(), AnyError> {
+  let mut json: serde_json::Value =
+    serde_json::from_slice(&std::fs::read(config_path)?)?;
+  for key in keys {
+    let Some(obj) = json.get_mut(*key).and_then(|v| v.as_object_mut()) else {
+      continue;
+    };
+    for package in packages_to_remove {
+      if obj.shift_remove(package).is_some() {
+        removed_packages.push(package.clone());
+      }
+    }
+  }
+
+  let config = serde_json::to_string_pretty(&json)?;
+  let config =
+    crate::tools::fmt::format_json(config_path, &config, fmt_options)
+      .ok()
+      .flatten()
+      .unwrap_or(config);
+
+  std::fs::write(config_path, config)
+    .context("Failed to update configuration file")?;
+
+  Ok(())
+}
+
+pub async fn remove(
+  flags: Arc<Flags>,
+  remove_flags: RemoveFlags,
+) -> Result<(), AnyError> {
+  let (config_file, factory) = DenoOrPackageJson::from_flags(flags.clone())?;
+  let options = factory.cli_options()?;
+  let start_dir = &options.start_dir;
+  let fmt_config_options = config_file.fmt_options();
+
+  let mut removed_packages = Vec::new();
+
+  if let Some(deno_json) = start_dir.maybe_deno_json() {
+    remove_from_config(
+      &deno_json.specifier.to_file_path().unwrap(),
+      &["imports"],
+      &remove_flags.packages,
+      &mut removed_packages,
+      &fmt_config_options,
+    )?;
+  }
+
+  if let Some(pkg_json) = start_dir.maybe_pkg_json() {
+    remove_from_config(
+      &pkg_json.path,
+      &["dependencies", "devDependencies"],
+      &remove_flags.packages,
+      &mut removed_packages,
+      &fmt_config_options,
+    )?;
+  }
+
+  if removed_packages.is_empty() {
+    log::info!("No packages were removed");
+  } else {
+    for package in &removed_packages {
+      log::info!("Removed {}", crate::colors::green(package));
+    }
+    // Update deno.lock
+    node_resolver::PackageJsonThreadLocalCache::clear();
+    let cli_factory = CliFactory::from_flags(flags);
+    crate::module_loader::load_top_level_deps(&cli_factory).await?;
+  }
+
+  Ok(())
 }
 
 fn update_config_file_content(

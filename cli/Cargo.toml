@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.45.5"
+version = "1.46.0-rc.0"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -67,7 +67,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir = { workspace = true }
 deno_config = { version = "=0.28.0", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "0.145.0", features = ["html", "syntect"] }
+deno_doc = { version = "0.146.0", features = ["html", "syntect"] }
 deno_emit = "=0.44.0"
 deno_graph = { version = "=0.81.2" }
 deno_lint = { version = "=0.62.0", features = ["docs"] }
@@ -90,9 +90,9 @@ bincode = "=1.3.3"
 bytes.workspace = true
 cache_control.workspace = true
 chrono = { workspace = true, features = ["now"] }
-clap = { version = "=4.4.17", features = ["env", "string"] }
-clap_complete = "=4.4.7"
-clap_complete_fig = "=4.4.2"
+clap = { version = "=4.5.13", features = ["env", "string", "wrap_help"] }
+clap_complete = "=4.5.12"
+clap_complete_fig = "=4.5.2"
 color-print = "0.3.5"
 console_static_text.workspace = true
 dashmap = "5.5.3"
@@ -145,6 +145,7 @@ serde_repr.workspace = true
 sha2.workspace = true
 shell-escape = "=0.1.5"
 spki = { version = "0.7", features = ["pem"] }
+strsim = "0.11.1"
 tar.workspace = true
 tempfile.workspace = true
 text-size = "=1.1.0"
@@ -154,7 +155,7 @@ tokio.workspace = true
 tokio-util.workspace = true
 tower-lsp.workspace = true
 twox-hash.workspace = true
-typed-arena = "=2.0.1"
+typed-arena = "=2.0.2"
 uuid = { workspace = true, features = ["serde"] }
 which.workspace = true
 zeromq.workspace = true
