@@ -1172,6 +1172,7 @@ static DENO_HELP: &str = color_print::cstr!(
                   <p(245)>deno add @std/assert  |  deno add npm:express</>
     <g>install</>      Install script as an executable
     <g>uninstall</>    Uninstall a script previously installed with deno install
+    <g>rm</>           Remove dependencies from the configuration file
 
   <y>Tooling:</>
     <g>bench</>        Run benchmarks
@@ -1324,7 +1325,7 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
 }
 
-static UNSTABLE_HEADING: &str = "Unstable";
+static UNSTABLE_HEADING: &str = "Unstable options";
 
 pub fn clap_root() -> Command {
   let long_version = format!(
@@ -1370,18 +1371,6 @@ pub fn clap_root() -> Command {
         .long("version")
         .action(ArgAction::Version)
         .help("Print version"),
-    )
-    .arg(
-      Arg::new("unstable-sloppy-imports")
-        .long("unstable-sloppy-imports")
-        .help(
-          "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing.",
-        )
-        .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
-        .value_parser(FalseyValueParser::new())
-        .action(ArgAction::SetTrue)
-        .global(true)
-        .help_heading(UNSTABLE_HEADING),
     )
     // reset the display order after the unstable flags
     .next_display_order(0)
@@ -1484,15 +1473,13 @@ You can add multiple dependencies at once:
 fn remove_subcommand() -> Command {
   Command::new("remove")
     .alias("rm")
-    .about("Remove dependencies")
-    .long_about(
+    .about(
       "Remove dependencies from the configuration file.
 
   deno remove @std/path
 
 You can remove multiple dependencies at once:
-
-  deno remove @std/path @std/assert
+  <p(245)>deno remove @std/path @std/assert</>
 ",
     )
     .defer(|cmd| {
@@ -2182,7 +2169,7 @@ fn init_subcommand() -> Command {
         .arg(
           Arg::new("serve")
             .long("serve")
-            .long_help("Generate an example project for `deno serve`")
+            .help("Generate an example project for `deno serve`")
             .conflicts_with("lib")
             .required(false)
             .action(ArgAction::SetTrue),
@@ -3037,80 +3024,25 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(unsafely_ignore_certificate_errors_arg())
 }
 
-static PERMISSIONS_HEADER: &str = "Permissions";
-
 fn permission_args(app: Command) -> Command {
   app
     .after_help(color_print::cstr!(r#"<y>Permission options:</>
-  <g>-A, --allow-all</g>
-          Allow all permissions.
-      <g>--{allow,deny}-{read,write}[=<<PATH>...]</g>
-          Allow / deny file system read / write access. Optionally specify allowed / denied paths.
-      <g>--{allow,deny}-net[=<<IP_OR_HOSTNAME>...]</g>
-          Allow / deny network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
-      <g>--{allow,deny}-env[=<<VARIABLE_NAME>...]</g>
-          Allow / deny access to environment variables. Optionally specify accessible / inacessible environment variables.
-      <g>--{allow,deny}-sys[=<<API_NAME>...]</g>
-          Allow / deny access to OS information. Optionally allow / deny specific APIs by function name.
-      <g>--{allow,deny}-run[=<<PROGRAM_NAME>...]</g>
-          Allow / deny running subprocesses. Optionally specify allowed / denied runnable program names.
-      <g>--{allow,deny}-ffi[=<<PATH>...]</g>
-          (Unstable) Allow / deny loading dynamic libraries. Optionally specify allowed / denied directories or files.
-      <g>--{allow,deny}-hrtime</g>
-          Allow / deny high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.
-"#))
-    .after_long_help(color_print::cstr!(r#"<y>Permission options:</>
 Docs: https://docs.deno.com/go/permissions
 
-  <g>-A, --allow-all</g>
-          Allow all permissions.
-
-      <g>--{allow,deny}-{read,write}[=<<PATH>...]</g>
-          Allow / deny file system read / write access. Optionally specify allowed / denied paths.
-          Examples:
-            --allow-read
-            --allow-write="/etc,/var/log.txt"
-            --deny-read="/usr"
-            --deny-write="/etc/hosts"
-
-      <g>--{allow,deny}-net[=<<IP_OR_HOSTNAME>...]</g>
-          Allow / deny network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
-          Examples:
-            --allow-net
-            --allow-net="localhost:8080,deno.land"
-            --deny-net="deno.com"
-
-      <g>--{allow,deny}-env[=<<VARIABLE_NAME>...]</g>
-          Allow / deny access to environment variables. Optionally specify accessible / inaccessible environment variables.
-          Examples:
-            --allow-env
-            --allow-env="PORT,HOME,PATH"
-            --deny-env="ACCESS_TOKEN"
-
-      <g>--{allow,deny}-sys[=<<API_NAME>...]</g>
-          Allow / deny access to OS information. Optionally allow / deny specific APIs by function name.
-          Examples:
-            --allow-sys
-            --allow-sys="systemMemoryInfo,osRelease"
-            --deny-sys="hostname"
-
-      <g>--{allow,deny}-run[=<<PROGRAM_NAME>...]</g>
-          Allow / deny running subprocesses. Optionally specify allowed / denied runnable program names.
-          Examples:
-            --allow-run
-            --allow-run="whoami,ps"
-            --deny-run="cat"
-
-      <g>--{allow,deny}-ffi[=<<PATH>...]</g>
-          (Unstable) Allow / deny loading dynamic libraries. Optionally specify allowed / denied directories or files.
-          Examples:
-            --allow-ffi
-            --allow-ffi="./libfoo.so"
-            --deny-ffi="./libfoo.so"
-
-      <g>--{allow,deny}-hrtime</g>
-          Allow / deny high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.
-
+  <g>-A, --allow-all</>                              Allow all permissions.
+      <g>--{allow,deny}-{read,write}[=<<PATH>...]</>  Allow / deny file system read / write access. Optionally specify allowed / denied paths.
+                                                 <p(245)>--allow-read  |  --allow-write="/etc,/var/log.txt"  |  --deny-read="/usr"  |  --deny-write="/etc/hosts"</>
+      <g>--{allow,deny}-net[=<<IP_OR_HOSTNAME>...]</> Allow / deny network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
+                                                 <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"  |  --deny-net="deno.com"</>
+      <g>--{allow,deny}-env[=<<VARIABLE_NAME>...]</>  Allow / deny access to environment variables. Optionally specify accessible / inacessible environment variables.
+                                                 <p(245)>--allow-env  |  --allow-env="PORT,HOME,PATH"  |  --deny-env="ACCESS_TOKEN"</>
+      <g>--{allow,deny}-sys[=<<API_NAME>...]</>       Allow / deny access to OS information. Optionally allow / deny specific APIs by function name.
+                                                 <p(245)>--allow-sys  |  --allow-sys="systemMemoryInfo,osRelease"  |  --deny-sys="hostname"</>
+      <g>--{allow,deny}-run[=<<PROGRAM_NAME>...]</>   Allow / deny running subprocesses. Optionally specify allowed / denied runnable program names.
+                                                 <p(245)>--allow-run  |  --allow-run="whoami,ps"  |  --deny-run="cat"</>
+      <g>--{allow,deny}-ffi[=<<PATH>...]</>           (Unstable) Allow / deny loading dynamic libraries. Optionally specify allowed / denied directories or files.
+                                                 <p(245)>--allow-ffi  |  --allow-ffi="./libfoo.so"  |  --deny-ffi="./libfoo.so"</>
+      <g>--{allow,deny}-hrtime</>                    Allow / deny high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.
 "#))
     .arg(
       Arg::new("allow-all")
@@ -3118,8 +3050,7 @@ Docs: https://docs.deno.com/go/permissions
         .long("allow-all")
         .action(ArgAction::SetTrue)
         .help("Allow all permissions.")
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER)
+        .hide(true),
     )
     .arg(
       Arg::new("allow-read")
@@ -3132,8 +3063,7 @@ Docs: https://docs.deno.com/go/permissions
         .help("Allow file system read access. Optionally specify allowed paths.")
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER),
+        .hide(true),
     )
     .arg(
       Arg::new("deny-read")
@@ -3145,8 +3075,7 @@ Docs: https://docs.deno.com/go/permissions
         .help("Deny file system read access. Optionally specify denied paths.")
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER),
+        .hide(true),
     )
     .arg(
       Arg::new("allow-write")
@@ -3159,8 +3088,7 @@ Docs: https://docs.deno.com/go/permissions
         .help("Allow file system write access. Optionally specify allowed paths.")
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER),
+        .hide(true),
     )
     .arg(
       Arg::new("deny-write")
@@ -3172,8 +3100,7 @@ Docs: https://docs.deno.com/go/permissions
         .help("Deny file system write access. Optionally specify denied paths.")
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER),
+        .hide(true),
     )
     .arg(
       Arg::new("allow-net")
@@ -3185,8 +3112,7 @@ Docs: https://docs.deno.com/go/permissions
         .value_name("IP_OR_HOSTNAME")
         .help("Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.")
         .value_parser(flags_net::validator)
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER),
+        .hide(true),
     )
     .arg(
       Arg::new("deny-net")
@@ -3197,19 +3123,7 @@ Docs: https://docs.deno.com/go/permissions
         .value_name("IP_OR_HOSTNAME")
         .help("Deny network access. Optionally specify denied IP addresses and host names, with ports as necessary.")
         .value_parser(flags_net::validator)
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER)
-    )
-    .arg(
-      Arg::new("unsafely-ignore-certificate-errors")
-        .long("unsafely-ignore-certificate-errors")
-        .hide(true)
-        .num_args(0..)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .value_name("HOSTNAMES")
-        .help("DANGER: Disables verification of TLS certificates")
-        .value_parser(flags_net::validator),
+        .hide(true),
     )
     .arg(
       Arg::new("allow-env")
@@ -3231,8 +3145,7 @@ Docs: https://docs.deno.com/go/permissions
             key.to_string()
           })
         })
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER),
+        .hide(true),
     )
     .arg(
       Arg::new("deny-env")
@@ -3253,8 +3166,7 @@ Docs: https://docs.deno.com/go/permissions
             key.to_string()
           })
         })
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER),
+        .hide(true),
     )
     .arg(
       Arg::new("allow-sys")
@@ -3266,8 +3178,7 @@ Docs: https://docs.deno.com/go/permissions
         .value_name("API_NAME")
         .help("Allow access to OS information. Optionally allow specific APIs by function name.")
         .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER)
+        .hide(true),
     )
     .arg(
       Arg::new("deny-sys")
@@ -3278,8 +3189,7 @@ Docs: https://docs.deno.com/go/permissions
         .value_name("API_NAME")
         .help("Deny access to OS information. Optionally deny specific APIs by function name.")
         .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string))
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER),
+        .hide(true),
     )
     .arg(
       Arg::new("allow-run")
@@ -3289,8 +3199,7 @@ Docs: https://docs.deno.com/go/permissions
         .require_equals(true)
         .value_name("PROGRAM_NAME")
         .help("Allow running subprocesses. Optionally specify allowed runnable program names.")
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER),
+        .hide(true),
     )
     .arg(
       Arg::new("deny-run")
@@ -3300,8 +3209,7 @@ Docs: https://docs.deno.com/go/permissions
         .require_equals(true)
         .value_name("PROGRAM_NAME")
         .help("Deny running subprocesses. Optionally specify denied runnable program names.")
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER),
+        .hide(true),
     )
     .arg(
       Arg::new("allow-ffi")
@@ -3313,8 +3221,7 @@ Docs: https://docs.deno.com/go/permissions
         .help("(Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.")
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER),
+        .hide(true),
     )
     .arg(
       Arg::new("deny-ffi")
@@ -3326,32 +3233,28 @@ Docs: https://docs.deno.com/go/permissions
         .help("(Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.")
         .value_parser(value_parser!(String))
         .value_hint(ValueHint::AnyPath)
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER),
+        .hide(true),
     )
     .arg(
       Arg::new("allow-hrtime")
         .long("allow-hrtime")
         .action(ArgAction::SetTrue)
         .help("Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.")
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER),
+        .hide(true),
     )
     .arg(
       Arg::new("deny-hrtime")
         .long("deny-hrtime")
         .action(ArgAction::SetTrue)
         .help("Deny high-resolution time measurement. Note: this can prevent timing attacks and fingerprinting.")
-        .hide(true)
-        .help_heading(PERMISSIONS_HEADER),
+        .hide(true),
     )
     .arg(
       Arg::new("no-prompt")
         .long("no-prompt")
         .action(ArgAction::SetTrue)
         .help("Always throw if required permission wasn't passed")
-        .env("DENO_NO_PROMPT")
-        .help_heading(PERMISSIONS_HEADER)
+        .env("DENO_NO_PROMPT"),
     )
 }
 
@@ -3780,6 +3683,18 @@ fn vendor_arg() -> Arg {
     )
 }
 
+fn unsafely_ignore_certificate_errors_arg() -> Arg {
+  Arg::new("unsafely-ignore-certificate-errors")
+    .hide(true)
+    .long("unsafely-ignore-certificate-errors")
+    .num_args(0..)
+    .use_value_delimiter(true)
+    .require_equals(true)
+    .value_name("HOSTNAMES")
+    .help("DANGER: Disables verification of TLS certificates")
+    .value_parser(flags_net::validator)
+}
+
 fn allow_scripts_arg() -> Arg {
   Arg::new("allow-scripts")
     .long("allow-scripts")
@@ -3808,15 +3723,18 @@ impl Iterator for UnstableArgsIter {
     let arg = if self.idx == 0 {
       Arg::new("unstable")
         .long("unstable")
-        .help("Enable unstable features and APIs")
-        .long_help(if !*FULL_UNSTABLE_HELP {
-          "Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features.\n\nTo view the list of individual unstable feature flags, run this command again with DENO_UNSTABLE_HELP=1."
+        .help(if !*FULL_UNSTABLE_HELP {
+          "Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features.\n  To view the list of individual unstable feature flags, run this command again with DENO_UNSTABLE_HELP=1."
         } else {
           "Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features."
         })
         .action(ArgAction::SetTrue)
         .global(true)
-        .help_heading(UNSTABLE_HEADING)
+        .help_heading(if *FULL_UNSTABLE_HELP {
+          Some(UNSTABLE_HEADING)
+        } else {
+          None
+        })
     } else if self.idx == 1 {
       Arg::new("unstable-bare-node-builtins")
         .long("unstable-bare-node-builtins")
