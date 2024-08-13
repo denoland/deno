@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -23,6 +24,7 @@ use jsonc_parser::ast::Value;
 use crate::args::AddFlags;
 use crate::args::CacheSetting;
 use crate::args::Flags;
+use crate::args::RemoveFlags;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::jsr::JsrFetchResolver;
@@ -119,9 +121,9 @@ impl DenoOrPackageJson {
   /// creates a `deno.json` file - in this case
   /// we also return a new `CliFactory` that knows about
   /// the new config
-  fn from_flags(flags: Flags) -> Result<(Self, CliFactory), AnyError> {
-    let factory = CliFactory::from_flags(flags.clone())?;
-    let options = factory.cli_options();
+  fn from_flags(flags: Arc<Flags>) -> Result<(Self, CliFactory), AnyError> {
+    let factory = CliFactory::from_flags(flags.clone());
+    let options = factory.cli_options()?;
     let start_dir = &options.start_dir;
 
     match (start_dir.maybe_deno_json(), start_dir.maybe_pkg_json()) {
@@ -142,8 +144,8 @@ impl DenoOrPackageJson {
           .context("Failed to create deno.json file")?;
         drop(factory); // drop to prevent use
         log::info!("Created deno.json configuration file.");
-        let factory = CliFactory::from_flags(flags.clone())?;
-        let options = factory.cli_options().clone();
+        let factory = CliFactory::from_flags(flags.clone());
+        let options = factory.cli_options()?.clone();
         let start_dir = &options.start_dir;
         Ok((
           DenoOrPackageJson::Deno(
@@ -175,7 +177,27 @@ fn package_json_dependency_entry(
   }
 }
 
-pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
+#[derive(Clone, Copy)]
+/// The name of the subcommand invoking the `add` operation.
+pub enum AddCommandName {
+  Add,
+  Install,
+}
+
+impl std::fmt::Display for AddCommandName {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      AddCommandName::Add => write!(f, "add"),
+      AddCommandName::Install => write!(f, "install"),
+    }
+  }
+}
+
+pub async fn add(
+  flags: Arc<Flags>,
+  add_flags: AddFlags,
+  cmd_name: AddCommandName,
+) -> Result<(), AnyError> {
   let (config_file, cli_factory) =
     DenoOrPackageJson::from_flags(flags.clone())?;
 
@@ -231,8 +253,16 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     let package_and_version = package_and_version_result?;
 
     match package_and_version {
-      PackageAndVersion::NotFound(package_name) => {
-        bail!("{} was not found.", crate::colors::red(package_name));
+      PackageAndVersion::NotFound {
+        package: package_name,
+        found_npm_package,
+        package_req,
+      } => {
+        if found_npm_package {
+          bail!("{} was not found, but a matching npm package exists. Did you mean `{}`?", crate::colors::red(package_name), crate::colors::yellow(format!("deno {cmd_name} npm:{package_req}")));
+        } else {
+          bail!("{} was not found.", crate::colors::red(package_name));
+        }
       }
       PackageAndVersion::Selected(selected) => {
         selected_packages.push(selected);
@@ -264,10 +294,10 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
   let is_npm = config_file.is_npm();
   for selected_package in selected_packages {
     log::info!(
-      "Add {} - {}@{}",
-      crate::colors::green(&selected_package.import_name),
-      selected_package.package_name,
-      selected_package.version_req
+      "Add {}{}{}",
+      crate::colors::green(&selected_package.package_name),
+      crate::colors::gray("@"),
+      selected_package.selected_version
     );
 
     if is_npm {
@@ -305,13 +335,11 @@ pub async fn add(flags: Flags, add_flags: AddFlags) -> Result<(), AnyError> {
     .context("Failed to update configuration file")?;
 
   // clear the previously cached package.json from memory before reloading it
-  deno_node::PackageJsonThreadLocalCache::clear();
+  node_resolver::PackageJsonThreadLocalCache::clear();
   // make a new CliFactory to pick up the updated config file
-  let cli_factory = CliFactory::from_flags(flags)?;
+  let cli_factory = CliFactory::from_flags(flags);
   // cache deps
-  if cli_factory.cli_options().enable_future_features() {
-    crate::module_loader::load_top_level_deps(&cli_factory).await?;
-  }
+  crate::module_loader::load_top_level_deps(&cli_factory).await?;
 
   Ok(())
 }
@@ -320,10 +348,15 @@ struct SelectedPackage {
   import_name: String,
   package_name: String,
   version_req: String,
+  selected_version: String,
 }
 
 enum PackageAndVersion {
-  NotFound(String),
+  NotFound {
+    package: String,
+    found_npm_package: bool,
+    package_req: PackageReq,
+  },
   Selected(SelectedPackage),
 }
 
@@ -336,7 +369,19 @@ async fn find_package_and_select_version_for_req(
     AddPackageReqValue::Jsr(req) => {
       let jsr_prefixed_name = format!("jsr:{}", &req.name);
       let Some(nv) = jsr_resolver.req_to_nv(&req).await else {
-        return Ok(PackageAndVersion::NotFound(jsr_prefixed_name));
+        if npm_resolver.req_to_nv(&req).await.is_some() {
+          return Ok(PackageAndVersion::NotFound {
+            package: jsr_prefixed_name,
+            found_npm_package: true,
+            package_req: req,
+          });
+        }
+
+        return Ok(PackageAndVersion::NotFound {
+          package: jsr_prefixed_name,
+          found_npm_package: false,
+          package_req: req,
+        });
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
         '~'
@@ -347,12 +392,17 @@ async fn find_package_and_select_version_for_req(
         import_name: add_package_req.alias,
         package_name: jsr_prefixed_name,
         version_req: format!("{}{}", range_symbol, &nv.version),
+        selected_version: nv.version.to_string(),
       }))
     }
     AddPackageReqValue::Npm(req) => {
       let npm_prefixed_name = format!("npm:{}", &req.name);
       let Some(nv) = npm_resolver.req_to_nv(&req).await else {
-        return Ok(PackageAndVersion::NotFound(npm_prefixed_name));
+        return Ok(PackageAndVersion::NotFound {
+          package: npm_prefixed_name,
+          found_npm_package: false,
+          package_req: req,
+        });
       };
       let range_symbol = if req.version_req.version_text().starts_with('~') {
         '~'
@@ -363,6 +413,7 @@ async fn find_package_and_select_version_for_req(
         import_name: add_package_req.alias,
         package_name: npm_prefixed_name,
         version_req: format!("{}{}", range_symbol, &nv.version),
+        selected_version: nv.version.to_string(),
       }))
     }
   }
@@ -462,6 +513,85 @@ fn generate_imports(packages_to_version: Vec<(String, String)>) -> String {
   contents.join("\n")
 }
 
+fn remove_from_config(
+  config_path: &Path,
+  keys: &[&'static str],
+  packages_to_remove: &[String],
+  removed_packages: &mut Vec<String>,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<(), AnyError> {
+  let mut json: serde_json::Value =
+    serde_json::from_slice(&std::fs::read(config_path)?)?;
+  for key in keys {
+    let Some(obj) = json.get_mut(*key).and_then(|v| v.as_object_mut()) else {
+      continue;
+    };
+    for package in packages_to_remove {
+      if obj.shift_remove(package).is_some() {
+        removed_packages.push(package.clone());
+      }
+    }
+  }
+
+  let config = serde_json::to_string_pretty(&json)?;
+  let config =
+    crate::tools::fmt::format_json(config_path, &config, fmt_options)
+      .ok()
+      .flatten()
+      .unwrap_or(config);
+
+  std::fs::write(config_path, config)
+    .context("Failed to update configuration file")?;
+
+  Ok(())
+}
+
+pub async fn remove(
+  flags: Arc<Flags>,
+  remove_flags: RemoveFlags,
+) -> Result<(), AnyError> {
+  let (config_file, factory) = DenoOrPackageJson::from_flags(flags.clone())?;
+  let options = factory.cli_options()?;
+  let start_dir = &options.start_dir;
+  let fmt_config_options = config_file.fmt_options();
+
+  let mut removed_packages = Vec::new();
+
+  if let Some(deno_json) = start_dir.maybe_deno_json() {
+    remove_from_config(
+      &deno_json.specifier.to_file_path().unwrap(),
+      &["imports"],
+      &remove_flags.packages,
+      &mut removed_packages,
+      &fmt_config_options,
+    )?;
+  }
+
+  if let Some(pkg_json) = start_dir.maybe_pkg_json() {
+    remove_from_config(
+      &pkg_json.path,
+      &["dependencies", "devDependencies"],
+      &remove_flags.packages,
+      &mut removed_packages,
+      &fmt_config_options,
+    )?;
+  }
+
+  if removed_packages.is_empty() {
+    log::info!("No packages were removed");
+  } else {
+    for package in &removed_packages {
+      log::info!("Removed {}", crate::colors::green(package));
+    }
+    // Update deno.lock
+    node_resolver::PackageJsonThreadLocalCache::clear();
+    let cli_factory = CliFactory::from_flags(flags);
+    crate::module_loader::load_top_level_deps(&cli_factory).await?;
+  }
+
+  Ok(())
+}
+
 fn update_config_file_content(
   obj: jsonc_parser::ast::Object,
   config_file_contents: &str,
@@ -485,7 +615,7 @@ fn update_config_file_content(
       text_changes.push(TextChange {
         range: insert_position..insert_position,
         // NOTE(bartlomieju): adding `\n` here to force the formatter to always
-        // produce a config file that is multline, like so:
+        // produce a config file that is multiline, like so:
         // ```
         // {
         //   "imports": {

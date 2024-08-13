@@ -5,37 +5,103 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category Canvas */
+/**
+ * Specifies whether the image should be decoded using color space conversion.
+ * Either none or default (default). The value default indicates that
+ * implementation-specific behavior is used.
+ *
+ * @category Canvas
+ */
 declare type ColorSpaceConversion = "default" | "none";
 
-/** @category Canvas */
+/**
+ * Specifies how the bitmap image should be oriented.
+ *
+ * @category Canvas
+ */
 declare type ImageOrientation = "flipY" | "from-image" | "none";
 
-/** @category Canvas */
+/**
+ * Specifies whether the bitmap's color channels should be premultiplied by
+ * the alpha channel.
+ *
+ * @category Canvas
+ */
 declare type PremultiplyAlpha = "default" | "none" | "premultiply";
 
-/** @category Canvas */
+/**
+ * Specifies the algorithm to be used for resizing the input to match the
+ * output dimensions. One of `pixelated`, `low` (default), `medium`, or `high`.
+ *
+ * @category Canvas
+ */
 declare type ResizeQuality = "high" | "low" | "medium" | "pixelated";
 
-/** @category Canvas */
+/**
+ * The `ImageBitmapSource` type represents an image data source that can be
+ * used to create an `ImageBitmap`.
+ *
+ * @category Canvas */
 declare type ImageBitmapSource = Blob | ImageData;
 
-/** @category Canvas */
+/**
+ * The options of {@linkcode createImageBitmap}.
+ *
+ * @category Canvas */
 declare interface ImageBitmapOptions {
+  /**
+   * Specifies whether the image should be decoded using color space
+   * conversion. Either none or default (default). The value default
+   * indicates that implementation-specific behavior is used.
+   */
   colorSpaceConversion?: ColorSpaceConversion;
+  /** Specifies how the bitmap image should be oriented. */
   imageOrientation?: ImageOrientation;
+  /**
+   * Specifies whether the bitmap's color channels should be premultiplied
+   * by the alpha channel. One of none, premultiply, or default (default).
+   */
   premultiplyAlpha?: PremultiplyAlpha;
+  /** The output height. */
   resizeHeight?: number;
+  /**
+   * Specifies the algorithm to be used for resizing the input to match the
+   * output dimensions. One of pixelated, low (default), medium, or high.
+   */
   resizeQuality?: ResizeQuality;
+  /** The output width. */
   resizeWidth?: number;
 }
 
-/** @category Canvas */
+/**
+ * Create a new {@linkcode ImageBitmap} object from a given source.
+ *
+ * @param image The image to create an {@linkcode ImageBitmap} from.
+ * @param options The options for creating the {@linkcode ImageBitmap}.
+ *
+ * @category Canvas
+ */
 declare function createImageBitmap(
   image: ImageBitmapSource,
   options?: ImageBitmapOptions,
 ): Promise<ImageBitmap>;
-/** @category Canvas */
+/**
+ * Create a new {@linkcode ImageBitmap} object from a given source, cropping
+ * to the specified rectangle.
+ *
+ * @param image The image to create an {@linkcode ImageBitmap} from.
+ * @param sx The x coordinate of the top-left corner of the sub-rectangle from
+ *           which the {@linkcode ImageBitmap} will be cropped.
+ * @param sy The y coordinate of the top-left corner of the sub-rectangle from
+ *           which the {@linkcode ImageBitmap} will be cropped.
+ * @param sw The width of the sub-rectangle from which the
+ *           {@linkcode ImageBitmap} will be cropped.
+ * @param sh The height of the sub-rectangle from which the
+ *           {@linkcode ImageBitmap} will be cropped.
+ * @param options The options for creating the {@linkcode ImageBitmap}.
+ *
+ * @category Canvas
+ */
 declare function createImageBitmap(
   image: ImageBitmapSource,
   sx: number,
@@ -45,14 +111,31 @@ declare function createImageBitmap(
   options?: ImageBitmapOptions,
 ): Promise<ImageBitmap>;
 
-/** @category Canvas */
+/**
+ * `ImageBitmap` interface represents a bitmap image which can be drawn to a canvas.
+ *
+ * @category Canvas
+ */
 declare interface ImageBitmap {
+  /**
+   * The height of the bitmap.
+   */
   readonly height: number;
+  /**
+   * The width of the bitmap.
+   */
   readonly width: number;
+  /**
+   * Releases imageBitmap's resources.
+   */
   close(): void;
 }
 
-/** @category Canvas */
+/**
+ * `ImageBitmap` represents a bitmap image which can be drawn to a canvas.
+ *
+ * @category Canvas
+ */
 declare var ImageBitmap: {
   prototype: ImageBitmap;
   new (): ImageBitmap;

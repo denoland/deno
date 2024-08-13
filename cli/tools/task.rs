@@ -12,6 +12,7 @@ use deno_config::deno_json::Task;
 use deno_config::workspace::TaskOrScript;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceTasksConfig;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -26,11 +27,12 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 pub async fn execute_script(
-  flags: Flags,
+  flags: Arc<Flags>,
   task_flags: TaskFlags,
+  using_run: bool,
 ) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let start_dir = &cli_options.start_dir;
   if !start_dir.has_deno_or_pkg_json() {
     bail!("deno task couldn't find deno.json(c). See https://docs.deno.com/go/config")
@@ -140,7 +142,10 @@ pub async fn execute_script(
       }
     },
     None => {
-      log::error!("Task not found: {task_name}");
+      if using_run {
+        return Err(anyhow!("Task not found: {}", task_name));
+      }
+      log::error!("Task not found: {}", task_name);
       if log::log_enabled!(log::Level::Error) {
         print_available_tasks(
           &mut std::io::stderr(),

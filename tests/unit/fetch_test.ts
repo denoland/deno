@@ -3,12 +3,13 @@ import {
   assert,
   assertEquals,
   assertRejects,
+  assertStringIncludes,
   assertThrows,
   delay,
   fail,
   unimplemented,
 } from "./test_util.ts";
-import { Buffer } from "@std/io/buffer.ts";
+import { Buffer } from "@std/io/buffer";
 
 const listenPort = 4506;
 
@@ -1976,14 +1977,27 @@ Deno.test(
       },
     });
 
+    const url = `http://localhost:${listenPort}/`;
     const err = await assertRejects(() =>
-      fetch(`http://localhost:${listenPort}/`, {
+      fetch(url, {
         body: stream,
         method: "POST",
       })
     );
 
-    assert(err instanceof TypeError, `err was not a TypeError ${err}`);
+    assert(err instanceof TypeError, `err was ${err}`);
+
+    assertStringIncludes(
+      err.message,
+      "error sending request from 127.0.0.1:",
+      `err.message was ${err.message}`,
+    );
+    assertStringIncludes(
+      err.message,
+      ` for http://localhost:${listenPort}/ (127.0.0.1:${listenPort}): client error (SendRequest): error from user's Body stream`,
+      `err.message was ${err.message}`,
+    );
+
     assert(err.cause, `err.cause was null ${err}`);
     assert(
       err.cause instanceof Error,
@@ -2042,3 +2056,62 @@ Deno.test("Response with subarray TypedArray body", async () => {
   const expected = new Uint8Array([2, 3, 4, 5]);
   assertEquals(actual, expected);
 });
+
+// Regression test for https://github.com/denoland/deno/issues/24697
+Deno.test("URL authority is used as 'Authorization' header", async () => {
+  const deferred = Promise.withResolvers<string | null | undefined>();
+  const ac = new AbortController();
+
+  const server = Deno.serve({ port: 4502, signal: ac.signal }, (req) => {
+    deferred.resolve(req.headers.get("authorization"));
+    return new Response("Hello world");
+  });
+
+  const res = await fetch("http://deno:land@localhost:4502");
+  await res.text();
+  const authHeader = await deferred.promise;
+  ac.abort();
+  await server.finished;
+  assertEquals(authHeader, "Basic ZGVubzpsYW5k");
+});
+
+Deno.test(
+  { permissions: { net: true } },
+  async function errorMessageIncludesUrlAndDetailsWithNoTcpInfo() {
+    await assertRejects(
+      () => fetch("http://example.invalid"),
+      TypeError,
+      "error sending request for url (http://example.invalid/): client error (Connect): dns error: ",
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function errorMessageIncludesUrlAndDetailsWithTcpInfo() {
+    const listener = Deno.listen({ port: listenPort });
+    const server = (async () => {
+      const conn = await listener.accept();
+      listener.close();
+      // Immediately close the connection to simulate a connection error
+      conn.close();
+    })();
+
+    const url = `http://localhost:${listenPort}`;
+    const err = await assertRejects(() => fetch(url));
+
+    assert(err instanceof TypeError, `${err}`);
+    assertStringIncludes(
+      err.message,
+      "error sending request from 127.0.0.1:",
+      `${err.message}`,
+    );
+    assertStringIncludes(
+      err.message,
+      ` for http://localhost:${listenPort}/ (127.0.0.1:${listenPort}): client error (SendRequest): `,
+      `${err.message}`,
+    );
+
+    await server;
+  },
+);

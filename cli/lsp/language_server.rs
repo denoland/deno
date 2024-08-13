@@ -15,7 +15,6 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
-use deno_runtime::deno_fs::DenoConfigFsAdapter;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -93,6 +92,7 @@ use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
 use crate::args::Flags;
+use crate::args::UnstableFmtOptions;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
@@ -1333,8 +1333,9 @@ impl Inner {
     {
       return Ok(None);
     }
-    let document =
-      file_referrer.and_then(|r| self.documents.get_or_load(&specifier, &r));
+    let document = self
+      .documents
+      .get_or_load(&specifier, file_referrer.as_ref());
     let Some(document) = document else {
       return Ok(None);
     };
@@ -1362,6 +1363,19 @@ impl Inner {
         .clone();
       fmt_options.use_tabs = Some(!params.options.insert_spaces);
       fmt_options.indent_width = Some(params.options.tab_size as u8);
+      let maybe_workspace = self
+        .config
+        .tree
+        .data_for_specifier(&specifier)
+        .map(|d| &d.member_dir.workspace);
+      let unstable_options = UnstableFmtOptions {
+        css: maybe_workspace
+          .map(|w| w.has_unstable("fmt-css"))
+          .unwrap_or(false),
+        yaml: maybe_workspace
+          .map(|w| w.has_unstable("fmt-yaml"))
+          .unwrap_or(false),
+      };
       let document = document.clone();
       move || {
         let format_result = match document.maybe_parsed_source() {
@@ -1379,7 +1393,12 @@ impl Inner {
               .map(|ext| file_path.with_extension(ext))
               .unwrap_or(file_path);
             // it's not a js/ts file, so attempt to format its contents
-            format_file(&file_path, document.content(), &fmt_options)
+            format_file(
+              &file_path,
+              document.content(),
+              &fmt_options,
+              &unstable_options,
+            )
           }
         };
         match format_result {
@@ -1430,7 +1449,7 @@ impl Inner {
     {
       let dep_doc = dep
         .get_code()
-        .and_then(|s| self.documents.get_or_load(s, &specifier));
+        .and_then(|s| self.documents.get_or_load(s, file_referrer));
       let dep_maybe_types_dependency =
         dep_doc.as_ref().map(|d| d.maybe_types_dependency());
       let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_maybe_types_dependency) {
@@ -1810,7 +1829,10 @@ impl Inner {
         LspError::internal_error()
       })?;
       code_action
-    } else if kind.as_str().starts_with(CodeActionKind::REFACTOR.as_str()) {
+    } else if let Some(kind_suffix) = kind
+      .as_str()
+      .strip_prefix(CodeActionKind::REFACTOR.as_str())
+    {
       let mut code_action = params;
       let action_data: refactor::RefactorCodeActionData = from_value(data)
         .map_err(|err| {
@@ -1819,7 +1841,7 @@ impl Inner {
         })?;
       let asset_or_doc = self.get_asset_or_document(&action_data.specifier)?;
       let line_index = asset_or_doc.line_index();
-      let refactor_edit_info = self
+      let mut refactor_edit_info = self
         .ts_server
         .get_edits_for_refactor(
           self.snapshot(),
@@ -1841,6 +1863,17 @@ impl Inner {
           asset_or_doc.scope().cloned(),
         )
         .await?;
+      if kind_suffix == ".rewrite.function.returnType" {
+        refactor_edit_info.edits = fix_ts_import_changes(
+          &action_data.specifier,
+          &refactor_edit_info.edits,
+          &self.get_ts_response_import_mapper(&action_data.specifier),
+        )
+        .map_err(|err| {
+          error!("Unable to remap changes: {:#}", err);
+          LspError::internal_error()
+        })?
+      }
       code_action.edit = refactor_edit_info.to_workspace_edit(self)?;
       code_action
     } else {
@@ -3525,7 +3558,7 @@ impl Inner {
           initial_cwd.clone()
         ]),
         &WorkspaceDiscoverOptions {
-          fs: &DenoConfigFsAdapter::new(&deno_runtime::deno_fs::RealFs),
+          fs: Default::default(), // use real fs,
           deno_json_cache: None,
           pkg_json_cache: None,
           workspace_cache: None,
@@ -3543,7 +3576,7 @@ impl Inner {
       )?),
     };
     let cli_options = CliOptions::new(
-      Flags {
+      Arc::new(Flags {
         cache_path: Some(self.cache.deno_dir().root.clone()),
         ca_stores: workspace_settings.certificate_stores.clone(),
         ca_data: workspace_settings.tls_certificate.clone().map(CaData::File),
@@ -3563,7 +3596,7 @@ impl Inner {
         // bit of a hack to force the lsp to cache the @types/node package
         type_check_mode: crate::args::TypeCheckMode::Local,
         ..Default::default()
-      },
+      }),
       initial_cwd,
       config_data.and_then(|d| d.lockfile.clone()),
       config_data

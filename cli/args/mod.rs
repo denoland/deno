@@ -25,10 +25,7 @@ use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
-use deno_runtime::deno_fs::DenoConfigFsAdapter;
-use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::resolve_import_map_value_from_specifier;
 
@@ -64,7 +61,6 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_terminal::colors;
 use dotenvy::from_filename;
 use once_cell::sync::Lazy;
-use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -206,6 +202,7 @@ pub fn ts_config_to_transpile_and_emit_options(
       inline_sources: options.inline_sources,
       remove_comments: false,
       source_map,
+      source_map_base: None,
       source_map_file: None,
     },
   ))
@@ -282,9 +279,16 @@ impl BenchOptions {
   }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct UnstableFmtOptions {
+  pub css: bool,
+  pub yaml: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct FmtOptions {
   pub options: FmtOptionsConfig,
+  pub unstable: UnstableFmtOptions,
   pub files: FilePatterns,
 }
 
@@ -298,13 +302,22 @@ impl FmtOptions {
   pub fn new_with_base(base: PathBuf) -> Self {
     Self {
       options: FmtOptionsConfig::default(),
+      unstable: Default::default(),
       files: FilePatterns::new_with_base(base),
     }
   }
 
-  pub fn resolve(fmt_config: FmtConfig, fmt_flags: &FmtFlags) -> Self {
+  pub fn resolve(
+    fmt_config: FmtConfig,
+    unstable: UnstableFmtOptions,
+    fmt_flags: &FmtFlags,
+  ) -> Self {
     Self {
       options: resolve_fmt_options(fmt_flags, fmt_config.options),
+      unstable: UnstableFmtOptions {
+        css: unstable.css || fmt_flags.unstable_css,
+        yaml: unstable.yaml || fmt_flags.unstable_yaml,
+      },
       files: fmt_config.files,
     }
   }
@@ -521,7 +534,7 @@ pub fn discover_npmrc_from_workspace(
 ///
 /// In the future we will need to support it in user directory or global directory
 /// as per https://docs.npmjs.com/cli/v10/configuring-npm/npmrc#files.
-pub fn discover_npmrc(
+fn discover_npmrc(
   maybe_package_json_path: Option<PathBuf>,
   maybe_deno_json_path: Option<PathBuf>,
 ) -> Result<(Arc<ResolvedNpmRc>, Option<PathBuf>), AnyError> {
@@ -531,16 +544,22 @@ pub fn discover_npmrc(
     std::env::var(var_name).ok()
   }
 
+  #[derive(Debug, Error)]
+  #[error("Error loading .npmrc at {}.", path.display())]
+  struct NpmRcLoadError {
+    path: PathBuf,
+    #[source]
+    source: std::io::Error,
+  }
+
   fn try_to_read_npmrc(
     dir: &Path,
-  ) -> Result<Option<(String, PathBuf)>, AnyError> {
+  ) -> Result<Option<(String, PathBuf)>, NpmRcLoadError> {
     let path = dir.join(NPMRC_NAME);
     let maybe_source = match std::fs::read_to_string(&path) {
       Ok(source) => Some(source),
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
-      Err(err) => {
-        bail!("Error loading .npmrc at {}. {:#}", path.display(), err)
-      }
+      Err(err) => return Err(NpmRcLoadError { path, source: err }),
     };
 
     Ok(maybe_source.map(|source| (source, path)))
@@ -581,8 +600,20 @@ pub fn discover_npmrc(
   // home dir and then merge them.
   // 3. Try `.npmrc` in the user's home directory
   if let Some(home_dir) = cache::home_dir() {
-    if let Some((source, path)) = try_to_read_npmrc(&home_dir)? {
-      return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
+    match try_to_read_npmrc(&home_dir) {
+      Ok(Some((source, path))) => {
+        return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
+      }
+      Ok(None) => {}
+      Err(err) if err.source.kind() == std::io::ErrorKind::PermissionDenied => {
+        log::debug!(
+          "Skipping .npmrc in home directory due to permission denied error. {:#}",
+          err
+        );
+      }
+      Err(err) => {
+        return Err(err.into());
+      }
     }
   }
 
@@ -601,43 +632,6 @@ pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
   })
 }
 
-struct CliRootCertStoreProvider {
-  cell: OnceCell<RootCertStore>,
-  maybe_root_path: Option<PathBuf>,
-  maybe_ca_stores: Option<Vec<String>>,
-  maybe_ca_data: Option<CaData>,
-}
-
-impl CliRootCertStoreProvider {
-  pub fn new(
-    maybe_root_path: Option<PathBuf>,
-    maybe_ca_stores: Option<Vec<String>>,
-    maybe_ca_data: Option<CaData>,
-  ) -> Self {
-    Self {
-      cell: Default::default(),
-      maybe_root_path,
-      maybe_ca_stores,
-      maybe_ca_data,
-    }
-  }
-}
-
-impl RootCertStoreProvider for CliRootCertStoreProvider {
-  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
-    self
-      .cell
-      .get_or_try_init(|| {
-        get_root_cert_store(
-          self.maybe_root_path.clone(),
-          self.maybe_ca_stores.clone(),
-          self.maybe_ca_data.clone(),
-        )
-      })
-      .map_err(|e| e.into())
-  }
-}
-
 #[derive(Error, Debug, Clone)]
 pub enum RootCertStoreLoadError {
   #[error(
@@ -646,6 +640,8 @@ pub enum RootCertStoreLoadError {
   UnknownStore(String),
   #[error("Unable to add pem file to certificate store: {0}")]
   FailedAddPemFile(String),
+  #[error("Unable to add system certificate to certificate store: {0}")]
+  FailedAddSystemCert(String),
   #[error("Failed opening CA file: {0}")]
   CaFileOpenError(String),
 }
@@ -681,7 +677,9 @@ pub fn get_root_cert_store(
         for root in roots {
           root_cert_store
             .add(rustls::pki_types::CertificateDer::from(root.0))
-            .expect("Failed to add platform cert to root cert store");
+            .map_err(|e| {
+              RootCertStoreLoadError::FailedAddSystemCert(e.to_string())
+            })?;
         }
       }
       _ => {
@@ -763,7 +761,7 @@ struct CliOptionOverrides {
 pub struct CliOptions {
   // the source of the options is a detail the rest of the
   // application need not concern itself with, so keep these private
-  flags: Flags,
+  flags: Arc<Flags>,
   initial_cwd: PathBuf,
   maybe_node_modules_folder: Option<PathBuf>,
   npmrc: Arc<ResolvedNpmRc>,
@@ -776,7 +774,7 @@ pub struct CliOptions {
 
 impl CliOptions {
   pub fn new(
-    flags: Flags,
+    flags: Arc<Flags>,
     initial_cwd: PathBuf,
     maybe_lockfile: Option<Arc<CliLockfile>>,
     npmrc: Arc<ResolvedNpmRc>,
@@ -832,10 +830,9 @@ impl CliOptions {
     })
   }
 
-  pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
+  pub fn from_flags(flags: Arc<Flags>) -> Result<Self, AnyError> {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
-    let config_fs_adapter = DenoConfigFsAdapter::new(&RealFs);
     let maybe_vendor_override = flags.vendor.map(|v| match v {
       true => VendorEnablement::Enable { cwd: &initial_cwd },
       false => VendorEnablement::Disable,
@@ -860,11 +857,9 @@ impl CliOptions {
         log::debug!("package.json auto-discovery is disabled");
       }
       WorkspaceDiscoverOptions {
-        fs: &config_fs_adapter,
+        fs: Default::default(), // use real fs
         deno_json_cache: None,
-        pkg_json_cache: Some(
-          &deno_runtime::deno_node::PackageJsonThreadLocalCache,
-        ),
+        pkg_json_cache: Some(&node_resolver::PackageJsonThreadLocalCache),
         workspace_cache: None,
         config_parse_options,
         additional_config_file_names,
@@ -921,6 +916,16 @@ impl CliOptions {
       Arc::new(start_dir),
       false,
     )
+  }
+
+  /// This method is purposefully verbose to disourage its use. Do not use it
+  /// except in the factory structs. Instead, prefer specific methods on `CliOptions`
+  /// that can take all sources of information into account (ex. config files or env vars).
+  pub fn into_self_and_flags(
+    self: Arc<CliOptions>,
+  ) -> (Arc<CliOptions>, Arc<Flags>) {
+    let flags = self.flags.clone();
+    (self, flags)
   }
 
   #[inline(always)]
@@ -1084,10 +1089,10 @@ impl CliOptions {
   }
 
   pub fn node_ipc_fd(&self) -> Option<i64> {
-    let maybe_node_channel_fd = std::env::var("DENO_CHANNEL_FD").ok();
+    let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
     if let Some(node_channel_fd) = maybe_node_channel_fd {
       // Remove so that child processes don't inherit this environment variable.
-      std::env::remove_var("DENO_CHANNEL_FD");
+      std::env::remove_var("NODE_CHANNEL_FD");
       node_channel_fd.parse::<i64>().ok()
     } else {
       None
@@ -1244,16 +1249,6 @@ impl CliOptions {
     self.workspace().vendor_dir_path()
   }
 
-  pub fn resolve_root_cert_store_provider(
-    &self,
-  ) -> Arc<dyn RootCertStoreProvider> {
-    Arc::new(CliRootCertStoreProvider::new(
-      None,
-      self.flags.ca_stores.clone(),
-      self.flags.ca_data.clone(),
-    ))
-  }
-
   pub fn resolve_ts_config_for_emit(
     &self,
     config_type: TsConfigType,
@@ -1293,8 +1288,8 @@ impl CliOptions {
     Ok(Some(InspectorServer::new(host, version::get_user_agent())?))
   }
 
-  pub fn maybe_lockfile(&self) -> Option<Arc<CliLockfile>> {
-    self.maybe_lockfile.clone()
+  pub fn maybe_lockfile(&self) -> Option<&Arc<CliLockfile>> {
+    self.maybe_lockfile.as_ref()
   }
 
   pub fn to_compiler_option_types(
@@ -1327,12 +1322,21 @@ impl CliOptions {
     let member_configs = self
       .workspace()
       .resolve_fmt_config_for_members(&cli_arg_patterns)?;
+    let unstable = self.resolve_config_unstable_fmt_options();
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
-      let options = FmtOptions::resolve(config, fmt_flags);
+      let options = FmtOptions::resolve(config, unstable.clone(), fmt_flags);
       result.push((ctx, options));
     }
     Ok(result)
+  }
+
+  pub fn resolve_config_unstable_fmt_options(&self) -> UnstableFmtOptions {
+    let workspace = self.workspace();
+    UnstableFmtOptions {
+      css: workspace.has_unstable("fmt-css"),
+      yaml: workspace.has_unstable("fmt-yaml"),
+    }
   }
 
   pub fn resolve_workspace_lint_options(
@@ -1435,7 +1439,6 @@ impl CliOptions {
     self
       .workspace()
       .jsr_packages()
-      .into_iter()
       .map(|pkg| config_to_deno_graph_workspace_member(&pkg.config_file))
       .collect::<Result<Vec<_>, _>>()
   }
@@ -1538,10 +1541,6 @@ impl CliOptions {
 
   pub fn no_npm(&self) -> bool {
     self.flags.no_npm
-  }
-
-  pub fn no_config(&self) -> bool {
-    self.flags.config_flag == ConfigFlag::Disabled
   }
 
   pub fn permission_flags(&self) -> &PermissionFlags {
@@ -1665,8 +1664,13 @@ impl CliOptions {
           .map(|granular_flag| granular_flag.0)
           .collect();
 
-      let mut another_unstable_flags =
-        Vec::from(["sloppy-imports", "byonm", "bare-node-builtins"]);
+      let mut another_unstable_flags = Vec::from([
+        "sloppy-imports",
+        "byonm",
+        "bare-node-builtins",
+        "fmt-css",
+        "fmt-yaml",
+      ]);
       // add more unstable flags to the same vector holding granular flags
       all_valid_unstable_flags.append(&mut another_unstable_flags);
 
@@ -1881,7 +1885,7 @@ fn load_env_variables_from_env_file(filename: Option<&String>) {
     Err(error) => {
       match error {
           dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}",colors::yellow("Warning"), env_file_name, index, line),
-          dotenvy::Error::Io(_)=> log::info!("{} The `--env` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
+          dotenvy::Error::Io(_)=> log::info!("{} The `--env-file` flag was used, but the environment file specified '{}' was not found.",colors::yellow("Warning"),env_file_name),
           dotenvy::Error::EnvVar(_)=> log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}",colors::yellow("Warning"),env_file_name),
           _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
         }

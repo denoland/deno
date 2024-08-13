@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fs"
-version = "0.72.0"
+version = "0.74.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,12 +14,11 @@ description = "Ops for interacting with the file system"
 path = "lib.rs"
 
 [features]
-sync_fs = ["deno_config/sync"]
+sync_fs = []
 
 [dependencies]
 async-trait.workspace = true
 base32.workspace = true
-deno_config = { workspace = true, default-features = false }
 deno_core.workspace = true
 deno_io.workspace = true
 deno_permissions.workspace = true

@@ -11,7 +11,6 @@ use deno_config::fs::DenoConfigFs;
 use deno_config::fs::RealDenoConfigFs;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
-use deno_config::package_json::PackageJsonCache;
 use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::SpecifiedImportMap;
@@ -34,6 +33,7 @@ use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_package_json::PackageJsonCache;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::fs_util::specifier_to_file_path;
@@ -52,12 +52,16 @@ use crate::args::discover_npmrc_from_workspace;
 use crate::args::has_flag_env_var;
 use crate::args::CliLockfile;
 use crate::args::ConfigFile;
+use crate::args::LintFlags;
+use crate::args::LintOptions;
 use crate::args::DENO_FUTURE;
 use crate::cache::FastInsecureHasher;
 use crate::file_fetcher::FileFetcher;
 use crate::lsp::logging::lsp_warn;
-use crate::tools::lint::get_configured_rules;
-use crate::tools::lint::ConfiguredRules;
+use crate::resolver::SloppyImportsResolver;
+use crate::tools::lint::CliLinter;
+use crate::tools::lint::CliLinterOptions;
+use crate::tools::lint::LintRuleProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 pub const SETTINGS_SECTION: &str = "deno";
@@ -1111,13 +1115,13 @@ pub enum ConfigWatchedFileType {
 #[derive(Debug, Clone)]
 pub struct ConfigData {
   pub scope: Arc<ModuleSpecifier>,
+  pub canonicalized_scope: Option<Arc<ModuleSpecifier>>,
   pub member_dir: Arc<WorkspaceDirectory>,
   pub fmt_config: Arc<FmtConfig>,
   pub lint_config: Arc<LintConfig>,
   pub test_config: Arc<TestConfig>,
   pub exclude_files: Arc<PathOrPatternSet>,
-  pub deno_lint_config: DenoLintConfig,
-  pub lint_rules: Arc<ConfiguredRules>,
+  pub linter: Arc<CliLinter>,
   pub ts_config: Arc<LspTsConfig>,
   pub byonm: bool,
   pub node_modules_dir: Option<PathBuf>,
@@ -1125,6 +1129,7 @@ pub struct ConfigData {
   pub lockfile: Option<Arc<CliLockfile>>,
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
   pub resolver: Arc<WorkspaceResolver>,
+  pub sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
 }
@@ -1249,6 +1254,16 @@ impl ConfigData {
         watched_files.entry(specifier).or_insert(file_type);
       };
 
+    let canonicalized_scope = (|| {
+      let path = scope.to_file_path().ok()?;
+      let path = canonicalize_path_maybe_not_exists(&path).ok()?;
+      let specifier = ModuleSpecifier::from_directory_path(path).ok()?;
+      if specifier == *scope {
+        return None;
+      }
+      Some(Arc::new(specifier))
+    })();
+
     if let Some(deno_json) = member_dir.maybe_deno_json() {
       lsp_log!(
         "  Resolved Deno configuration file: \"{}\"",
@@ -1310,10 +1325,7 @@ impl ConfigData {
           LintConfig::new_with_base(default_file_pattern_base.clone())
         }),
     );
-    let lint_rules = Arc::new(get_configured_rules(
-      lint_config.options.rules.clone(),
-      member_dir.maybe_deno_json().map(|c| c.as_ref()),
-    ));
+
     let test_config = Arc::new(
       member_dir
         .to_test_config(FilePatterns::new_with_base(member_dir.dir_path()))
@@ -1517,6 +1529,7 @@ impl ConfigData {
       WorkspaceResolver::new_raw(
         scope.clone(),
         None,
+        member_dir.workspace.resolver_jsr_pkgs().collect(),
         member_dir.workspace.package_jsons().cloned().collect(),
         pkg_json_dep_resolution,
       )
@@ -1532,16 +1545,39 @@ impl ConfigData {
           .join("\n")
       );
     }
+    let unstable_sloppy_imports = std::env::var("DENO_UNSTABLE_SLOPPY_IMPORTS")
+      .is_ok()
+      || member_dir.workspace.has_unstable("sloppy-imports");
+    let sloppy_imports_resolver = unstable_sloppy_imports.then(|| {
+      Arc::new(SloppyImportsResolver::new_without_stat_cache(Arc::new(
+        deno_runtime::deno_fs::RealFs,
+      )))
+    });
+    let resolver = Arc::new(resolver);
+    let lint_rule_provider = LintRuleProvider::new(
+      sloppy_imports_resolver.clone(),
+      Some(resolver.clone()),
+    );
+    let linter = Arc::new(CliLinter::new(CliLinterOptions {
+      configured_rules: lint_rule_provider.resolve_lint_rules(
+        LintOptions::resolve((*lint_config).clone(), &LintFlags::default())
+          .rules,
+        member_dir.maybe_deno_json().map(|c| c.as_ref()),
+      ),
+      fix: false,
+      deno_lint_config,
+    }));
 
     ConfigData {
       scope,
+      canonicalized_scope,
       member_dir,
-      resolver: Arc::new(resolver),
+      resolver,
+      sloppy_imports_resolver,
       fmt_config,
       lint_config,
       test_config,
-      deno_lint_config,
-      lint_rules,
+      linter,
       exclude_files,
       ts_config: Arc::new(ts_config),
       byonm,
@@ -1560,10 +1596,17 @@ impl ConfigData {
     self.member_dir.maybe_deno_json()
   }
 
-  pub fn maybe_pkg_json(
-    &self,
-  ) -> Option<&Arc<deno_config::package_json::PackageJson>> {
+  pub fn maybe_pkg_json(&self) -> Option<&Arc<deno_package_json::PackageJson>> {
     self.member_dir.maybe_pkg_json()
+  }
+
+  pub fn scope_contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
+    specifier.as_str().starts_with(self.scope.as_str())
+      || self
+        .canonicalized_scope
+        .as_ref()
+        .map(|s| specifier.as_str().starts_with(s.as_str()))
+        .unwrap_or(false)
   }
 }
 
@@ -1579,8 +1622,9 @@ impl ConfigTree {
   ) -> Option<&ModuleSpecifier> {
     self
       .scopes
-      .keys()
-      .rfind(|s| specifier.as_str().starts_with(s.as_str()))
+      .iter()
+      .rfind(|(_, d)| d.scope_contains_specifier(specifier))
+      .map(|(s, _)| s)
   }
 
   pub fn data_for_specifier(
@@ -1680,27 +1724,28 @@ impl ConfigTree {
         ws_settings = ws_settings.or(Some(&settings.unscoped));
       }
       if let Some(ws_settings) = ws_settings {
-        if let Some(config_path) = &ws_settings.config {
-          if let Ok(config_uri) = folder_uri.join(config_path) {
-            if let Ok(config_file_path) = config_uri.to_file_path() {
-              scopes.insert(
-                folder_uri.clone(),
-                Arc::new(
-                  ConfigData::load(
-                    Some(&config_file_path),
-                    folder_uri,
-                    settings,
-                    file_fetcher,
-                    &cached_fs,
-                    &deno_json_cache,
-                    &pkg_json_cache,
-                    &workspace_cache,
-                  )
-                  .await,
-                ),
-              );
-            }
-          }
+        let config_file_path = (|| {
+          let config_setting = ws_settings.config.as_ref()?;
+          let config_uri = folder_uri.join(config_setting).ok()?;
+          specifier_to_file_path(&config_uri).ok()
+        })();
+        if config_file_path.is_some() || ws_settings.import_map.is_some() {
+          scopes.insert(
+            folder_uri.clone(),
+            Arc::new(
+              ConfigData::load(
+                config_file_path.as_deref(),
+                folder_uri,
+                settings,
+                file_fetcher,
+                &cached_fs,
+                &deno_json_cache,
+                &pkg_json_cache,
+                &workspace_cache,
+              )
+              .await,
+            ),
+          );
         }
       }
     }
@@ -1751,29 +1796,6 @@ impl ConfigTree {
       }
     }
 
-    for folder_uri in settings.by_workspace_folder.keys() {
-      if !scopes
-        .keys()
-        .any(|s| folder_uri.as_str().starts_with(s.as_str()))
-      {
-        scopes.insert(
-          folder_uri.clone(),
-          Arc::new(
-            ConfigData::load(
-              None,
-              folder_uri,
-              settings,
-              file_fetcher,
-              &cached_fs,
-              &deno_json_cache,
-              &pkg_json_cache,
-              &workspace_cache,
-            )
-            .await,
-          ),
-        );
-      }
-    }
     self.scopes = Arc::new(scopes);
   }
 
@@ -1793,7 +1815,7 @@ impl ConfigTree {
           &config_path,
         ),
         &deno_config::workspace::WorkspaceDiscoverOptions {
-          fs: &deno_runtime::deno_fs::DenoConfigFsAdapter::new(&test_fs),
+          fs: &crate::args::deno_json::DenoConfigFsAdapter(&test_fs),
           ..Default::default()
         },
       )
@@ -1888,7 +1910,7 @@ impl deno_config::deno_json::DenoJsonCache for DenoJsonMemCache {
 #[derive(Default)]
 struct PackageJsonMemCache(Mutex<HashMap<PathBuf, Arc<PackageJson>>>);
 
-impl deno_config::package_json::PackageJsonCache for PackageJsonMemCache {
+impl deno_package_json::PackageJsonCache for PackageJsonMemCache {
   fn get(&self, path: &Path) -> Option<Arc<PackageJson>> {
     self.0.lock().get(path).cloned()
   }

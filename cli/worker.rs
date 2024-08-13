@@ -18,13 +18,11 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
-use deno_core::SourceMapGetter;
 use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
-use deno_runtime::deno_node::NodeResolution;
-use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::NodeExtInitServices;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -41,6 +39,8 @@ use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_terminal::colors;
+use node_resolver::NodeResolution;
+use node_resolver::NodeResolutionMode;
 use tokio::select;
 
 use crate::args::CliLockfile;
@@ -55,7 +55,6 @@ use crate::version;
 
 pub struct ModuleLoaderAndSourceMapGetter {
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub source_map_getter: Option<Rc<dyn SourceMapGetter>>,
 }
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -146,7 +145,17 @@ struct SharedWorkerState {
 }
 
 impl SharedWorkerState {
-  // Currently empty
+  pub fn create_node_init_services(&self) -> NodeExtInitServices {
+    NodeExtInitServices {
+      node_require_resolver: self.npm_resolver.clone().into_require_resolver(),
+      node_resolver: self.node_resolver.clone(),
+      npm_process_state_provider: self
+        .npm_resolver
+        .clone()
+        .into_process_state_provider(),
+      npm_resolver: self.npm_resolver.clone().into_npm_resolver(),
+    }
+  }
 }
 
 pub struct CliMainWorker {
@@ -516,10 +525,7 @@ impl CliMainWorkerFactory {
       (main_module, false)
     };
 
-    let ModuleLoaderAndSourceMapGetter {
-      module_loader,
-      source_map_getter,
-    } = shared
+    let ModuleLoaderAndSourceMapGetter { module_loader } = shared
       .module_loader_factory
       .create_for_main(PermissionsContainer::allow_all(), permissions.clone());
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
@@ -596,7 +602,6 @@ impl CliMainWorkerFactory {
         .clone(),
       root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       seed: shared.options.seed,
-      source_map_getter,
       format_js_error_fn: Some(Arc::new(format_js_error)),
       create_web_worker_cb,
       maybe_inspector_server,
@@ -605,8 +610,7 @@ impl CliMainWorkerFactory {
       strace_ops: shared.options.strace_ops.clone(),
       module_loader,
       fs: shared.fs.clone(),
-      node_resolver: Some(shared.node_resolver.clone()),
-      npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
+      node_services: Some(shared.create_node_init_services()),
       get_error_class_fn: Some(&errors::get_error_class_name),
       cache_storage_dir,
       origin_storage_dir,
@@ -693,7 +697,7 @@ impl CliMainWorkerFactory {
       return Ok(None);
     }
 
-    let Some(resolution) = self
+    let resolution = self
       .shared
       .node_resolver
       .resolve_package_subpath_from_deno_module(
@@ -701,10 +705,7 @@ impl CliMainWorkerFactory {
         sub_path,
         /* referrer */ None,
         NodeResolutionMode::Execution,
-      )?
-    else {
-      return Ok(None);
-    };
+      )?;
     match &resolution {
       NodeResolution::BuiltIn(_) => Ok(None),
       NodeResolution::CommonJs(specifier) | NodeResolution::Esm(specifier) => {
@@ -730,13 +731,11 @@ fn create_web_worker_callback(
   Arc::new(move |args| {
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
-    let ModuleLoaderAndSourceMapGetter {
-      module_loader,
-      source_map_getter,
-    } = shared.module_loader_factory.create_for_worker(
-      args.parent_permissions.clone(),
-      args.permissions.clone(),
-    );
+    let ModuleLoaderAndSourceMapGetter { module_loader } =
+      shared.module_loader_factory.create_for_worker(
+        args.parent_permissions.clone(),
+        args.permissions.clone(),
+      );
     let create_web_worker_cb =
       create_web_worker_callback(mode, shared.clone(), stdio.clone());
 
@@ -802,11 +801,9 @@ fn create_web_worker_callback(
       seed: shared.options.seed,
       create_web_worker_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
-      source_map_getter,
       module_loader,
       fs: shared.fs.clone(),
-      node_resolver: Some(shared.node_resolver.clone()),
-      npm_resolver: Some(shared.npm_resolver.clone().into_npm_resolver()),
+      node_services: Some(shared.create_node_init_services()),
       worker_type: args.worker_type,
       maybe_inspector_server,
       get_error_class_fn: Some(&errors::get_error_class_name),

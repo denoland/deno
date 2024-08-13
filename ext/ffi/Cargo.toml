@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_ffi"
-version = "0.149.0"
+version = "0.151.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -27,3 +27,6 @@ serde_json = "1.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["errhandlingapi", "minwindef", "ntdef", "winbase", "winnt"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_aarch, values("x86_64", "aarch64"))'] }

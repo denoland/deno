@@ -137,33 +137,65 @@ class SampledLRUCache {
 
 const matchInputCache = new SampledLRUCache(4096);
 
+const _hasRegExpGroups = Symbol("[[hasRegExpGroups]]");
+
 class URLPattern {
   /** @type {Components} */
   [_components];
+  [_hasRegExpGroups];
 
   #reusedResult;
 
   /**
    * @param {URLPatternInput} input
-   * @param {string} [baseURL]
+   * @param {string} [baseURLOrOptions]
+   * @param {string} [maybeOptions]
    */
-  constructor(input, baseURL = undefined) {
+  constructor(
+    input,
+    baseURLOrOptions = undefined,
+    maybeOptions = undefined,
+  ) {
     this[webidl.brand] = webidl.brand;
     const prefix = "Failed to construct 'URLPattern'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
-    input = webidl.converters.URLPatternInput(input, prefix, "Argument 1");
-    if (baseURL !== undefined) {
-      baseURL = webidl.converters.USVString(baseURL, prefix, "Argument 2");
+
+    let baseURL;
+    let options;
+    if (webidl.type(baseURLOrOptions) === "String") {
+      webidl.requiredArguments(arguments.length, 1, prefix);
+      input = webidl.converters.URLPatternInput(input, prefix, "Argument 1");
+      baseURL = webidl.converters.USVString(
+        baseURLOrOptions,
+        prefix,
+        "Argument 2",
+      );
+      options = webidl.converters.URLPatternOptions(
+        maybeOptions !== undefined ? maybeOptions : { __proto: null },
+        prefix,
+        "Argument 3",
+      );
+    } else {
+      if (input !== undefined) {
+        input = webidl.converters.URLPatternInput(input, prefix, "Argument 1");
+      } else {
+        input = { __proto__: null };
+      }
+      options = webidl.converters.URLPatternOptions(
+        maybeOptions,
+        prefix,
+        "Argument 2",
+      );
     }
 
-    const components = op_urlpattern_parse(input, baseURL);
+    const components = op_urlpattern_parse(input, baseURL, options);
+    this[_hasRegExpGroups] = components.hasRegexpGroups;
 
     for (let i = 0; i < COMPONENTS_KEYS.length; ++i) {
       const key = COMPONENTS_KEYS[i];
       try {
         components[key].regexp = new SafeRegExp(
           components[key].regexpString,
-          "u",
+          options.ignoreCase ? "ui" : "u",
         );
       } catch (e) {
         throw new TypeError(`${prefix}: ${key} is invalid; ${e.message}`);
@@ -210,6 +242,11 @@ class URLPattern {
   get hash() {
     webidl.assertBranded(this, URLPatternPrototype);
     return this[_components].hash.patternString;
+  }
+
+  get hasRegExpGroups() {
+    webidl.assertBranded(this, URLPatternPrototype);
+    return this[_hasRegExpGroups];
   }
 
   /**
@@ -312,7 +349,7 @@ class URLPattern {
           const groups = res.groups;
           for (let i = 0; i < groupList.length; ++i) {
             // TODO(lucacasonato): this is vulnerable to override mistake
-            groups[groupList[i]] = match[i + 1] ?? "";
+            groups[groupList[i]] = match[i + 1];
           }
           break;
         }
@@ -344,6 +381,7 @@ class URLPattern {
           "pathname",
           "search",
           "hash",
+          "hasRegExpGroups",
         ],
       }),
       inspectOptions,
@@ -374,5 +412,14 @@ webidl.converters["URLPatternInput"] = (V, prefix, context, opts) => {
   }
   return webidl.converters.USVString(V, prefix, context, opts);
 };
+
+webidl.converters.URLPatternOptions = webidl
+  .createDictionaryConverter("URLPatternOptions", [
+    {
+      key: "ignoreCase",
+      converter: webidl.converters.boolean,
+      defaultValue: false,
+    },
+  ]);
 
 export { URLPattern };

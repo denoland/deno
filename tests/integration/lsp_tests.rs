@@ -172,6 +172,131 @@ fn lsp_triple_slash_types() {
 }
 
 #[test]
+fn unadded_dependency_message_with_import_map() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "import_map.json",
+    json!({
+      "imports": {
+
+      }
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "importMap": "import_map.json".to_string(),
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "file.ts",
+    r#"
+        import * as x from "@std/fs";
+      "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+    }),
+  );
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("file.ts"),
+    }
+  }));
+  // expected lsp_messages don't include the file path
+  let mut expected_lsp_messages = Vec::from(["`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
+  "'x' is declared but its value is never read.",
+  "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency."]);
+  expected_lsp_messages.sort();
+  let all_diagnostics = diagnostics.all();
+  let mut correct_lsp_messages = all_diagnostics
+    .iter()
+    .map(|d| d.message.as_str())
+    .collect::<Vec<&str>>();
+  correct_lsp_messages.sort();
+  let part1 = correct_lsp_messages[1].split("file").collect::<Vec<_>>()[0];
+  let part2 = correct_lsp_messages[1].split('\n').collect::<Vec<_>>()[1];
+  let file_path_removed_from_message = format!("{} {}", part1, part2);
+  correct_lsp_messages[1] = file_path_removed_from_message.as_str();
+  assert_eq!(correct_lsp_messages, expected_lsp_messages);
+  client.shutdown();
+}
+
+#[test]
+fn unadded_dependency_message() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+        "imports": {
+
+    }
+      })
+    .to_string(),
+  );
+  temp_dir.write(
+    "file.ts",
+    r#"
+        import * as x from "@std/fs";
+      "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.uri().join("file.ts").unwrap()],
+    }),
+  );
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("file.ts"),
+    }
+  }));
+  // expected lsp_messages don't include the file path
+  let mut expected_lsp_messages = Vec::from(["`x` is never used\nIf this is intentional, prefix it with an underscore like `_x`",
+  "'x' is declared but its value is never read.",
+  "Relative import path \"@std/fs\" not prefixed with / or ./ or ../ and not in import map from \" Hint: Use [deno add @std/fs] to add the dependency."]);
+  expected_lsp_messages.sort();
+  let all_diagnostics = diagnostics.all();
+  let mut correct_lsp_messages = all_diagnostics
+    .iter()
+    .map(|d| d.message.as_str())
+    .collect::<Vec<&str>>();
+  correct_lsp_messages.sort();
+  let part1 = correct_lsp_messages[1].split("file").collect::<Vec<_>>()[0];
+  let part2 = correct_lsp_messages[1].split('\n').collect::<Vec<_>>()[1];
+  let file_path_removed_from_message = format!("{} {}", part1, part2);
+  correct_lsp_messages[1] = file_path_removed_from_message.as_str();
+  assert_eq!(correct_lsp_messages, expected_lsp_messages);
+  client.shutdown();
+}
+
+#[test]
 fn lsp_import_map() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -7373,6 +7498,209 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
   client.shutdown();
 }
 
+#[test]
+fn lsp_completions_node_specifier() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import fs from \"node:as\";\n",
+    },
+  }));
+  let list = client.get_completion_list(
+    temp_dir.uri().join("file.ts").unwrap(),
+    (0, 23),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": ".",
+    }),
+  );
+  assert!(!list.is_incomplete);
+  assert_eq!(
+    list
+      .items
+      .iter()
+      .map(|i| i.label.as_str())
+      .collect::<Vec<_>>(),
+    vec![
+      "node:assert",
+      "node:assert/strict",
+      "node:async_hooks",
+      "node:buffer",
+      "node:child_process",
+      "node:cluster",
+      "node:console",
+      "node:constants",
+      "node:crypto",
+      "node:dgram",
+      "node:diagnostics_channel",
+      "node:dns",
+      "node:dns/promises",
+      "node:domain",
+      "node:events",
+      "node:fs",
+      "node:fs/promises",
+      "node:http",
+      "node:http2",
+      "node:https",
+      "node:module",
+      "node:net",
+      "node:os",
+      "node:path",
+      "node:path/posix",
+      "node:path/win32",
+      "node:perf_hooks",
+      "node:process",
+      "node:punycode",
+      "node:querystring",
+      "node:repl",
+      "node:readline",
+      "node:readline/promises",
+      "node:stream",
+      "node:stream/consumers",
+      "node:stream/promises",
+      "node:stream/web",
+      "node:string_decoder",
+      "node:sys",
+      "node:test",
+      "node:timers",
+      "node:timers/promises",
+      "node:tls",
+      "node:tty",
+      "node:url",
+      "node:util",
+      "node:util/types",
+      "node:v8",
+      "node:vm",
+      "node:worker_threads",
+      "node:zlib",
+    ],
+  );
+  for item in &list.items {
+    let specifier = item.label.as_str();
+    assert_eq!(
+      json!(item),
+      json!({
+        "label": specifier,
+        "kind": 17,
+        "detail": "(node)",
+        "textEdit": {
+          "range": {
+            "start": { "line": 0, "character": 16 },
+            "end": { "line": 0, "character": 23 },
+          },
+          "newText": specifier,
+        },
+        "commitCharacters": ["\"", "'"],
+      }),
+    );
+  }
+  client.shutdown();
+}
+
+#[test]
+fn lsp_infer_return_type() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", json!({}).to_string());
+  let types_file = source_file(
+    temp_dir.path().join("types.d.ts"),
+    r#"
+      export interface SomeInterface {
+        someField: number;
+      }
+      declare global {
+        export function someFunction(): SomeInterface;
+      }
+    "#,
+  );
+  let file = source_file(
+    temp_dir.path().join("file.ts"),
+    r#"
+      function foo() {
+        return someFunction();
+      }
+      foo();
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "range": {
+        "start": { "line": 1, "character": 15 },
+        "end": { "line": 1, "character": 18 },
+      },
+      "context": {
+        "diagnostics": [],
+        "only": ["refactor.rewrite.function.returnType"],
+      }
+    }),
+  );
+  assert_eq!(
+    &res,
+    &json!([
+      {
+        "title": "Infer function return type",
+        "kind": "refactor.rewrite.function.returnType",
+        "isPreferred": false,
+        "data": {
+          "specifier": file.uri(),
+          "range": {
+            "start": { "line": 1, "character": 15 },
+            "end": { "line": 1, "character": 18 },
+          },
+          "refactorName": "Infer function return type",
+          "actionName": "Infer function return type",
+        },
+      }
+    ]),
+  );
+  let code_action = res.as_array().unwrap().first().unwrap();
+  let res = client.write_request("codeAction/resolve", code_action);
+  assert_eq!(
+    &res,
+    &json!({
+      "title": "Infer function return type",
+      "kind": "refactor.rewrite.function.returnType",
+      "isPreferred": false,
+      "data": {
+        "specifier": file.uri(),
+        "range": {
+          "start": { "line": 1, "character": 15 },
+          "end": { "line": 1, "character": 18 },
+        },
+        "refactorName": "Infer function return type",
+        "actionName": "Infer function return type",
+      },
+      "edit": {
+        "documentChanges": [
+          {
+            "textDocument": { "uri": file.uri(), "version": null },
+            "edits": [
+              {
+                "range": {
+                  "start": { "line": 1, "character": 20 },
+                  "end": { "line": 1, "character": 20 },
+                },
+                "newText": format!(": import(\"{}\").SomeInterface", types_file.uri()),
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/23895.
 #[test]
 fn lsp_npm_types_nested_js_dts() {
@@ -8391,7 +8719,7 @@ fn lsp_npm_specifier_unopened_file() {
 }
 
 #[test]
-fn lsp_completions_node_specifier() {
+fn lsp_completions_node_builtin() {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -13870,7 +14198,10 @@ fn lsp_deno_json_workspace_jsr_resolution() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": format!("**Resolved Dependency**\n\n**Code**: jsr&#8203;:&#8203;@org/project1&#8203;@^1.0.0 (<{}project1/mod.ts>)\n", temp_dir.uri()),
+        "value": format!(
+          "**Resolved Dependency**\n\n**Code**: file&#8203;://{}\n",
+          temp_dir.uri().join("project1/mod.ts").unwrap().path(),
+        ),
       },
       "range": {
         "start": { "line": 0, "character": 7 },
@@ -14236,7 +14567,67 @@ fn lsp_sloppy_imports() {
     },
   }));
 
-  assert_eq!(json!(diagnostics.all()), json!([]));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([{
+    "range": {
+          "start": { "line": 0, "character": 19 },
+          "end": { "line": 0, "character": 24 }
+        },
+        "severity": 2,
+        "code": "no-sloppy-imports",
+        "source": "deno-lint",
+        "message": "Sloppy imports are not allowed.",
+        "data": [{
+          "description": "Add a '.ts' extension.",
+          "changes": [{
+            "range": {
+              "start": { "line": 0, "character": 19 },
+              "end": { "line": 0, "character": 24 },
+            },
+           "new_text": "'./a.ts'"
+          }]
+        }]
+    }, {
+    "range": {
+        "start": { "line": 1, "character": 19 },
+        "end": { "line": 1, "character": 27 }
+      },
+      "severity": 2,
+      "code": "no-sloppy-imports",
+      "source": "deno-lint",
+      "message": "Sloppy imports are not allowed.",
+      "data": [{
+        "description": "Change the extension to '.ts'.",
+        "changes": [{
+          "range": {
+            "start": { "line": 1, "character": 19 },
+            "end": { "line": 1, "character": 27 },
+          },
+         "new_text": "'./b.ts'"
+        }]
+      }]
+    }, {
+    "range": {
+        "start": { "line": 2, "character": 19 },
+        "end": { "line": 2, "character": 27 }
+      },
+      "severity": 2,
+      "code": "no-sloppy-imports",
+      "source": "deno-lint",
+      "message": "Sloppy imports are not allowed.",
+      "data": [{
+        "description": "Change the extension to '.d.ts'.",
+        "changes": [{
+          "range": {
+            "start": { "line": 2, "character": 19 },
+            "end": { "line": 2, "character": 27 },
+          },
+         "new_text": "'./c.d.ts'"
+        }]
+      }]
+    }])
+  );
 
   client.shutdown();
 }
@@ -14265,11 +14656,33 @@ fn lsp_sloppy_imports_prefers_dts() {
     "import { foo } from './a.js';\nconsole.log(foo);",
   );
   let diagnostics = client.did_open_file(&file);
-  // no warnings because "a.js" exists
-  assert_eq!(diagnostics.all().len(), 0);
+  // no other warnings because "a.js" exists
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([{
+      "range": {
+        "start": { "line": 0, "character": 20 },
+        "end": { "line": 0, "character": 28 }
+      },
+      "severity": 2,
+      "code": "no-sloppy-imports",
+      "source": "deno-lint",
+      "message": "Sloppy imports are not allowed.",
+      "data": [{
+        "description": "Change the extension to '.d.ts'.",
+        "changes": [{
+          "range": {
+            "start": { "line": 0, "character": 20 },
+            "end": { "line": 0, "character": 28 },
+          },
+         "new_text": "'./a.d.ts'"
+        }]
+      }]
+    }])
+  );
 
   let diagnostics = client.did_open_file(&a_dts);
-  assert_eq!(diagnostics.all().len(), 0, "Got {:#?}", diagnostics.all());
+  assert_eq!(json!(diagnostics.for_file(&a_dts.uri())), json!([]));
 
   let response = client.write_request(
     "textDocument/references",
