@@ -147,11 +147,14 @@ impl VersionProvider for RealVersionProvider {
     &self,
   ) -> Result<ReleaseChannel, AnyError> {
     if version::is_canary() {
+      // If this fails for whatever reason, just return an empty vector.
+      // It's better to miss that than throw error here.
       let rc_versions = get_rc_versions(
         &self.http_client_provider.get_or_create()?,
         self.check_kind,
       )
-      .await?;
+      .await
+      .unwrap_or_else(|_| vec![]);
 
       let is_current_exe_an_rc = rc_versions
         .iter()
