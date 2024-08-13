@@ -3,8 +3,10 @@
 /// This module is shared between build script and the binaries. Use it sparsely.
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use serde::Deserialize;
+use serde::Serialize;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ReleaseChannel {
   /// Stable version, eg. 1.45.4, 2.0.0, 2.1.0
   Stable,

@@ -187,7 +187,11 @@ fn write_binary_bytes(
 
   let target = compile_flags.resolve_target();
   if target.contains("linux") {
-    libsui::Elf::new(&original_bin).append(&writer, &mut file_writer)?;
+    libsui::Elf::new(&original_bin).append(
+      "d3n0l4nd",
+      &writer,
+      &mut file_writer,
+    )?;
   } else if target.contains("windows") {
     libsui::PortableExecutable::from(&original_bin)?
       .write_resource("d3n0l4nd", writer)?
