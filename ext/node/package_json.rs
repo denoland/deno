@@ -5,6 +5,7 @@ use deno_config::package_json::PackageJsonRc;
 use deno_fs::DenoConfigFsAdapter;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
@@ -42,6 +43,15 @@ pub fn load_pkg_json(
   fs: &dyn deno_fs::FileSystem,
   path: &Path,
 ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
+  // XXX: Quick hack to workaround missing negative lookup cache
+  thread_local! {
+    static NEGATIVE_CACHE: RefCell<HashSet<PathBuf>> = RefCell::new(HashSet::new());
+  }
+
+  if NEGATIVE_CACHE.with(|cache| cache.borrow().contains(path)) {
+    return Ok(None);
+  }
+
   let result = PackageJson::load_from_path(
     path,
     &DenoConfigFsAdapter::new(fs),
@@ -51,7 +61,12 @@ pub fn load_pkg_json(
     Ok(pkg_json) => Ok(Some(pkg_json)),
     Err(deno_config::package_json::PackageJsonLoadError::Io {
       source, ..
-    }) if source.kind() == ErrorKind::NotFound => Ok(None),
+    }) if source.kind() == ErrorKind::NotFound => {
+      NEGATIVE_CACHE.with(|cache| {
+        cache.borrow_mut().insert(path.to_path_buf());
+      });
+      Ok(None)
+    }
     Err(err) => Err(PackageJsonLoadError(err)),
   }
 }
