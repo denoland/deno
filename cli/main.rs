@@ -33,7 +33,6 @@ use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::DENO_FUTURE;
-use crate::cache::DenoDir;
 use crate::graph_container::ModuleGraphContainer;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
@@ -139,12 +138,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         .await
     }),
     DenoSubcommand::Clean => spawn_subcommand(async move {
-      let deno_dir = DenoDir::new(None)?;
-      if deno_dir.root.exists() {
-        std::fs::remove_dir_all(&deno_dir.root)?;
-        log::info!("{} {}", colors::green("Removed"), deno_dir.root.display());
-      }
-      Ok::<(), std::io::Error>(())
+      tools::clean::clean()
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       tools::compile::compile(flags, compile_flags).await
