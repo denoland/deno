@@ -280,7 +280,22 @@ impl CliMainWorker {
       /// Execute the given main module emitting load and unload events before and after execution
       /// respectively.
       pub async fn execute(&mut self) -> Result<(), AnyError> {
-        self.inner.execute_main_module_possibly_with_npm().await?;
+        if self.inner.is_main_cjs {
+          deno_node::load_cjs_module(
+            &mut self.inner.worker.js_runtime,
+            &self
+              .inner
+              .main_module
+              .to_file_path()
+              .unwrap()
+              .to_string_lossy(),
+            true,
+            self.inner.shared.options.inspect_brk,
+          )?;
+        } else {
+          self.inner.execute_main_module_possibly_with_npm().await?;
+        }
+
         self.inner.worker.dispatch_load_event()?;
         self.pending_unload = true;
 

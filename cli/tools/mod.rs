@@ -3,6 +3,7 @@
 pub mod bench;
 pub mod bundle;
 pub mod check;
+pub mod clean;
 pub mod compile;
 pub mod coverage;
 pub mod doc;

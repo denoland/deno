@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.45.5"
+version = "1.46.0-rc.0"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -67,7 +67,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir = { workspace = true }
 deno_config = { version = "=0.28.0", features = ["workspace", "sync"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "0.145.0", features = ["html", "syntect"] }
+deno_doc = { version = "0.146.0", features = ["html", "syntect"] }
 deno_emit = "=0.44.0"
 deno_graph = { version = "=0.81.2" }
 deno_lint = { version = "=0.62.0", features = ["docs"] }
@@ -123,7 +123,8 @@ libc.workspace = true
 libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
-malva = "=0.8.0"
+malva = "=0.9.0"
+markup_fmt = "=0.12.0"
 memmem.workspace = true
 monch.workspace = true
 notify.workspace = true
@@ -155,8 +156,9 @@ tokio.workspace = true
 tokio-util.workspace = true
 tower-lsp.workspace = true
 twox-hash.workspace = true
-typed-arena = "=2.0.1"
+typed-arena = "=2.0.2"
 uuid = { workspace = true, features = ["serde"] }
+walkdir = "=2.3.2"
 which.workspace = true
 zeromq.workspace = true
 zip = { version = "2.1.6", default-features = false, features = ["deflate-flate2"] }
@@ -173,7 +175,6 @@ nix.workspace = true
 deno_bench_util.workspace = true
 pretty_assertions.workspace = true
 test_util.workspace = true
-walkdir = "=2.3.2"
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.

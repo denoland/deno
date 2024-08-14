@@ -84,6 +84,11 @@ pub struct AddFlags {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct RemoveFlags {
+  pub packages: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BenchFlags {
   pub files: FileFlags,
   pub filter: Option<String>,
@@ -201,6 +206,8 @@ pub struct FmtFlags {
   pub no_semicolons: Option<bool>,
   pub watch: Option<WatchFlags>,
   pub unstable_css: bool,
+  pub unstable_html: bool,
+  pub unstable_component: bool,
   pub unstable_yaml: bool,
 }
 
@@ -400,6 +407,7 @@ pub struct TestFlags {
 pub struct UpgradeFlags {
   pub dry_run: bool,
   pub force: bool,
+  pub release_candidate: bool,
   pub canary: bool,
   pub version: Option<String>,
   pub output: Option<String>,
@@ -429,6 +437,7 @@ pub struct HelpFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Add(AddFlags),
+  Remove(RemoveFlags),
   Bench(BenchFlags),
   Bundle(BundleFlags),
   Cache(CacheFlags),
@@ -1217,6 +1226,7 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   if let Some((subcommand, mut m)) = matches.remove_subcommand() {
     match subcommand.as_str() {
       "add" => add_parse(&mut flags, &mut m),
+      "remove" => remove_parse(&mut flags, &mut m),
       "bench" => bench_parse(&mut flags, &mut m),
       "bundle" => bundle_parse(&mut flags, &mut m),
       "cache" => cache_parse(&mut flags, &mut m),
@@ -1443,6 +1453,7 @@ pub fn clap_root() -> Command {
     .defer(|cmd| {
       let cmd = cmd
         .subcommand(add_subcommand())
+        .subcommand(remove_subcommand())
         .subcommand(bench_subcommand())
         .subcommand(bundle_subcommand())
         .subcommand(cache_subcommand())
@@ -1509,6 +1520,31 @@ You can add multiple dependencies at once:
       cmd.arg(
         Arg::new("packages")
           .help("List of packages to add")
+          .required(true)
+          .num_args(1..)
+          .action(ArgAction::Append),
+      )
+    })
+}
+
+fn remove_subcommand() -> Command {
+  Command::new("remove")
+    .alias("rm")
+    .about("Remove dependencies")
+    .long_about(
+      "Remove dependencies from the configuration file.
+
+  deno remove @std/path
+
+You can remove multiple dependencies at once:
+
+  deno remove @std/path @std/assert
+",
+    )
+    .defer(|cmd| {
+      cmd.arg(
+        Arg::new("packages")
+          .help("List of packages to remove")
           .required(true)
           .num_args(1..)
           .action(ArgAction::Append),
@@ -2072,7 +2108,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             .default_value("ts")
             .value_parser([
               "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "css", "scss",
-              "sass", "less", "yml", "yaml", "ipynb",
+              "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
+              "ipynb",
             ]),
         )
         .arg(
@@ -2153,6 +2190,20 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           Arg::new("unstable-css")
             .long("unstable-css")
             .help("Enable formatting CSS, SCSS, Sass and Less files.")
+            .value_parser(FalseyValueParser::new())
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("unstable-html")
+            .long("unstable-html")
+            .help("Enable formatting HTML files.")
+            .value_parser(FalseyValueParser::new())
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("unstable-component")
+            .long("unstable-component")
+            .help("Enable formatting Svelte, Vue, Astro and Angular files.")
             .value_parser(FalseyValueParser::new())
             .action(ArgAction::SetTrue),
         )
@@ -2919,6 +2970,13 @@ update to a different location, use the --output flag:
           Arg::new("canary")
             .long("canary")
             .help("Upgrade to canary builds")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("release-candidate")
+            .long("rc")
+            .help("Upgrade to a release candidate")
+            .conflicts_with_all(["canary", "version"])
             .action(ArgAction::SetTrue),
         )
         .arg(ca_file_arg())
@@ -3731,6 +3789,12 @@ fn add_parse_inner(
   AddFlags { packages }
 }
 
+fn remove_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.subcommand = DenoSubcommand::Remove(RemoveFlags {
+    packages: matches.remove_many::<String>("packages").unwrap().collect(),
+  });
+}
+
 fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local;
 
@@ -4024,6 +4088,8 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let prose_wrap = matches.remove_one::<String>("prose-wrap");
   let no_semicolons = matches.remove_one::<bool>("no-semicolons");
   let unstable_css = matches.get_flag("unstable-css");
+  let unstable_html = matches.get_flag("unstable-html");
+  let unstable_component = matches.get_flag("unstable-component");
   let unstable_yaml = matches.get_flag("unstable-yaml");
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
@@ -4037,6 +4103,8 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     no_semicolons,
     watch: watch_arg_parse(matches),
     unstable_css,
+    unstable_html,
+    unstable_component,
     unstable_yaml,
   });
 }
@@ -4591,11 +4659,13 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let dry_run = matches.get_flag("dry-run");
   let force = matches.get_flag("force");
   let canary = matches.get_flag("canary");
+  let release_candidate = matches.get_flag("release-candidate");
   let version = matches.remove_one::<String>("version");
   let output = matches.remove_one::<String>("output");
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
     dry_run,
     force,
+    release_candidate,
     canary,
     version,
     output,
@@ -5080,6 +5150,7 @@ mod tests {
           force: true,
           dry_run: true,
           canary: false,
+          release_candidate: false,
           version: None,
           output: None,
         }),
@@ -5098,6 +5169,7 @@ mod tests {
           force: false,
           dry_run: false,
           canary: false,
+          release_candidate: false,
           version: None,
           output: Some(String::from("example.txt")),
         }),
@@ -5863,6 +5935,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -5888,6 +5962,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -5913,6 +5989,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -5938,6 +6016,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
@@ -5952,6 +6032,8 @@ mod tests {
       "--watch",
       "--no-clear-screen",
       "--unstable-css",
+      "--unstable-html",
+      "--unstable-component",
       "--unstable-yaml"
     ]);
     assert_eq!(
@@ -5970,6 +6052,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: true,
+          unstable_html: true,
+          unstable_component: true,
           unstable_yaml: true,
           watch: Some(WatchFlags {
             hmr: false,
@@ -6006,6 +6090,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
@@ -6031,6 +6117,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -6064,6 +6152,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
@@ -6102,6 +6192,8 @@ mod tests {
           prose_wrap: Some("never".to_string()),
           no_semicolons: Some(true),
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -6134,6 +6226,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: Some(false),
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -9062,6 +9156,7 @@ mod tests {
           force: false,
           dry_run: false,
           canary: false,
+          release_candidate: false,
           version: None,
           output: None,
         }),
@@ -9069,6 +9164,31 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn upgrade_release_candidate() {
+    let r = flags_from_vec(svec!["deno", "upgrade", "--rc"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Upgrade(UpgradeFlags {
+          force: false,
+          dry_run: false,
+          canary: false,
+          release_candidate: true,
+          version: None,
+          output: None,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "upgrade", "--rc", "--canary"]);
+    assert!(r.is_err());
+
+    let r = flags_from_vec(svec!["deno", "upgrade", "--rc", "--version"]);
+    assert!(r.is_err());
   }
 
   #[test]
@@ -10225,6 +10345,35 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Add(AddFlags {
+          packages: svec!["@david/which", "@luca/hello"],
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn remove_subcommand() {
+    let r = flags_from_vec(svec!["deno", "remove"]);
+    r.unwrap_err();
+
+    let r = flags_from_vec(svec!["deno", "remove", "@david/which"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Remove(RemoveFlags {
+          packages: svec!["@david/which"],
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r =
+      flags_from_vec(svec!["deno", "remove", "@david/which", "@luca/hello"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Remove(RemoveFlags {
           packages: svec!["@david/which", "@luca/hello"],
         }),
         ..Flags::default()
