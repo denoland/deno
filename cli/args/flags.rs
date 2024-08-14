@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::resolve_no_prompt;
+use crate::util::fs::canonicalize_path;
 use clap::builder::styling::AnsiColor;
 use clap::builder::FalseyValueParser;
 use clap::value_parser;
@@ -20,6 +22,7 @@ use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
+use deno_terminal::colors;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -34,9 +37,6 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-
-use crate::args::resolve_no_prompt;
-use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
 use super::DENO_FUTURE;
@@ -4700,8 +4700,20 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 
   if let Some(net_wl) = matches.remove_many::<String>("allow-net") {
-    let net_allowlist = flags_net::parse(net_wl.collect()).unwrap();
-    flags.permissions.allow_net = Some(net_allowlist);
+    match flags_net::parse(net_wl.collect()) {
+      Ok(net_allowlist) => {
+        flags.permissions.allow_net = Some(net_allowlist);
+      }
+      Err(e) => {
+        let msg: String = e.to_string();
+        eprintln!(
+          "{}: {}",
+          colors::red_bold("error"),
+          msg.trim_start_matches("error: ")
+        );
+        std::process::exit(e.exit_code())
+      }
+    }
   }
 
   if let Some(net_wl) = matches.remove_many::<String>("deny-net") {
