@@ -181,7 +181,7 @@ mod test {
   use super::*;
 
   #[test]
-  fn test_std_alternative() {
+  fn test_jsr_alternative() {
     #[track_caller]
     fn run_test(imported: &str, output: Option<&str>) {
       let imported = Url::parse(imported).unwrap();
