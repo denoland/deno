@@ -430,9 +430,9 @@ class Response {
 
 webidl.configureInterface(Response);
 ObjectDefineProperties(Response, {
-  json: { enumerable: true },
-  redirect: { enumerable: true },
-  error: { enumerable: true },
+  json: { __proto__: null, enumerable: true },
+  redirect: { __proto__: null, enumerable: true },
+  error: { __proto__: null, enumerable: true },
 });
 const ResponsePrototype = Response.prototype;
 mixinBody(ResponsePrototype, _body, _mimeType);

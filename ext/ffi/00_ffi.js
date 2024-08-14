@@ -482,10 +482,11 @@ class DynamicLibrary {
           this.symbols,
           symbol,
           {
+            __proto__: null,
             configurable: false,
             enumerable: true,
-            value,
             writable: false,
+            value,
           },
         );
         continue;
@@ -502,8 +503,10 @@ class DynamicLibrary {
           this.symbols,
           symbol,
           {
+            __proto__: null,
             configurable: false,
             enumerable: true,
+            writable: false,
             value: (...parameters) => {
               if (isStructResult) {
                 const buffer = new Uint8Array(structSize);
@@ -525,7 +528,6 @@ class DynamicLibrary {
                 );
               }
             },
-            writable: false,
           },
         );
       }

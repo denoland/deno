@@ -23,6 +23,7 @@ class FsWatcher {
   constructor(paths, options) {
     if (internals.future) {
       ObjectDefineProperty(this, "rid", {
+        __proto__: null,
         enumerable: false,
         value: undefined,
       });

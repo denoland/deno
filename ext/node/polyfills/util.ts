@@ -168,6 +168,7 @@ export function inherits<T, U>(
     );
   }
   ObjectDefineProperty(ctor, "super_", {
+    __proto__: null,
     value: superCtor,
     writable: true,
     configurable: true,

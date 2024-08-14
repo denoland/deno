@@ -31,6 +31,7 @@ class TlsConn extends Conn {
   constructor(rid, remoteAddr, localAddr) {
     super(rid, remoteAddr, localAddr);
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });
@@ -111,6 +112,7 @@ class TlsListener extends Listener {
   constructor(rid, addr) {
     super(rid, addr);
     ObjectDefineProperty(this, internalRidSymbol, {
+      __proto__: null,
       enumerable: false,
       value: rid,
     });

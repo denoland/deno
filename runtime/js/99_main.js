@@ -99,12 +99,14 @@ if (Symbol.metadata) {
 }
 ObjectDefineProperties(Symbol, {
   dispose: {
+    __proto__: null,
     value: SymbolDispose,
     enumerable: false,
     writable: false,
     configurable: false,
   },
   metadata: {
+    __proto__: null,
     value: SymbolMetadata,
     enumerable: false,
     writable: false,
@@ -547,7 +549,7 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(options) {
     const all = ObjectValues(unstableForWindowOrWorkerGlobalScope);
     for (let i = 0; i <= all.length; i++) {
       const props = all[i];
-      ObjectDefineProperties(globalThis, { ...props });
+      ObjectDefineProperties(globalThis, { __proto__: null, ...props });
     }
   } else {
     const featureIds = ArrayPrototypeMap(
@@ -561,7 +563,7 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(options) {
       const featureId = featureIds[i];
       if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
         const props = unstableForWindowOrWorkerGlobalScope[featureId];
-        ObjectDefineProperties(globalThis, { ...props });
+        ObjectDefineProperties(globalThis, { __proto__: null, ...props });
       }
     }
   }
@@ -651,6 +653,7 @@ ObjectDefineProperties(finalDenoNs, {
   // TODO(kt3k): Remove this export at v2
   // See https://github.com/denoland/deno/issues/9294
   customInspect: {
+    __proto__: null,
     get() {
       warnOnDeprecatedApi(
         "Deno.customInspect",
@@ -661,6 +664,7 @@ ObjectDefineProperties(finalDenoNs, {
     },
   },
   exitCode: {
+    __proto__: null,
     get() {
       return os.getExitCode();
     },
@@ -820,6 +824,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       // are lost.
       let jupyterNs = undefined;
       ObjectDefineProperty(finalDenoNs, "jupyter", {
+        __proto__: null,
         get() {
           if (jupyterNs) {
             return jupyterNs;

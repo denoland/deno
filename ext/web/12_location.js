@@ -35,6 +35,7 @@ class Location {
     url.password = "";
     ObjectDefineProperties(this, {
       hash: {
+        __proto__: null,
         get() {
           return url.hash;
         },
@@ -47,6 +48,7 @@ class Location {
         enumerable: true,
       },
       host: {
+        __proto__: null,
         get() {
           return url.host;
         },
@@ -59,6 +61,7 @@ class Location {
         enumerable: true,
       },
       hostname: {
+        __proto__: null,
         get() {
           return url.hostname;
         },
@@ -71,6 +74,7 @@ class Location {
         enumerable: true,
       },
       href: {
+        __proto__: null,
         get() {
           return url.href;
         },
@@ -83,12 +87,14 @@ class Location {
         enumerable: true,
       },
       origin: {
+        __proto__: null,
         get() {
           return url.origin;
         },
         enumerable: true,
       },
       pathname: {
+        __proto__: null,
         get() {
           return url.pathname;
         },
@@ -101,6 +107,7 @@ class Location {
         enumerable: true,
       },
       port: {
+        __proto__: null,
         get() {
           return url.port;
         },
@@ -113,6 +120,7 @@ class Location {
         enumerable: true,
       },
       protocol: {
+        __proto__: null,
         get() {
           return url.protocol;
         },
@@ -125,6 +133,7 @@ class Location {
         enumerable: true,
       },
       search: {
+        __proto__: null,
         get() {
           return url.search;
         },
@@ -137,6 +146,7 @@ class Location {
         enumerable: true,
       },
       ancestorOrigins: {
+        __proto__: null,
         get() {
           // TODO(nayeemrmn): Replace with a `DOMStringList` instance.
           return {
@@ -148,6 +158,7 @@ class Location {
         enumerable: true,
       },
       assign: {
+        __proto__: null,
         value: function assign() {
           throw new DOMException(
             `Cannot call "location.assign()".`,
@@ -157,6 +168,7 @@ class Location {
         enumerable: true,
       },
       reload: {
+        __proto__: null,
         value: function reload() {
           throw new DOMException(
             `Cannot call "location.reload()".`,
@@ -166,6 +178,7 @@ class Location {
         enumerable: true,
       },
       replace: {
+        __proto__: null,
         value: function replace() {
           throw new DOMException(
             `Cannot call "location.replace()".`,
@@ -175,12 +188,14 @@ class Location {
         enumerable: true,
       },
       toString: {
+        __proto__: null,
         value: function toString() {
           return url.href;
         },
         enumerable: true,
       },
       [SymbolFor("Deno.privateCustomInspect")]: {
+        __proto__: null,
         value: function (inspect, inspectOptions) {
           return `${this.constructor.name} ${
             inspect({
@@ -203,6 +218,7 @@ class Location {
 
 ObjectDefineProperties(Location.prototype, {
   [SymbolToStringTag]: {
+    __proto__: null,
     value: "Location",
     configurable: true,
   },
@@ -224,6 +240,7 @@ class WorkerLocation {
 
 ObjectDefineProperties(WorkerLocation.prototype, {
   hash: {
+    __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
@@ -235,6 +252,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     enumerable: true,
   },
   host: {
+    __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
@@ -246,6 +264,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     enumerable: true,
   },
   hostname: {
+    __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
@@ -257,6 +276,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     enumerable: true,
   },
   href: {
+    __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
@@ -268,6 +288,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     enumerable: true,
   },
   origin: {
+    __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
@@ -279,6 +300,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     enumerable: true,
   },
   pathname: {
+    __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
@@ -290,6 +312,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     enumerable: true,
   },
   port: {
+    __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
@@ -301,6 +324,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     enumerable: true,
   },
   protocol: {
+    __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
@@ -312,6 +336,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     enumerable: true,
   },
   search: {
+    __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
@@ -323,6 +348,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     enumerable: true,
   },
   toString: {
+    __proto__: null,
     value: function toString() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
       if (url == null) {
@@ -335,10 +361,12 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     writable: true,
   },
   [SymbolToStringTag]: {
+    __proto__: null,
     value: "WorkerLocation",
     configurable: true,
   },
   [SymbolFor("Deno.privateCustomInspect")]: {
+    __proto__: null,
     value: function (inspect, inspectOptions) {
       return `${this.constructor.name} ${
         inspect({
