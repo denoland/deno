@@ -149,14 +149,58 @@ pub async fn get_package(
 }
 
 pub fn get_jsr_alternative(imported: &Url) -> Option<String> {
-  if !matches!(imported.host_str(), Some("esm.sh")) {
-    return None;
+  if matches!(imported.host_str(), Some("esm.sh")) {
+    let mut segments = imported.path_segments()?;
+    match segments.next()? {
+      "gh" => None,
+      module => Some(format!("\"npm:{module}\"")),
+    }
+  } else if imported.as_str().starts_with("https://deno.land/") {
+    let mut segments = imported.path_segments()?;
+    let maybe_std = segments.next()?;
+    if maybe_std != "std" && !maybe_std.starts_with("std@") {
+      return None;
+    }
+    let module = segments.next()?;
+    let export = segments
+      .next()
+      .filter(|s| *s != "mod.ts")
+      .map(|s| s.strip_suffix(".ts").unwrap_or(s).replace("_", "-"));
+    Some(format!(
+      "\"jsr:@std/{}@1{}\"",
+      module,
+      export.map(|s| format!("/{}", s)).unwrap_or_default()
+    ))
+  } else {
+    None
   }
+}
 
-  let mut segments = imported.path_segments().unwrap();
-  match segments.next() {
-    Some("gh") => None,
-    Some(module) => Some(format!("\"npm:{module}\"")),
-    None => None,
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn test_std_alternative() {
+    #[track_caller]
+    fn run_test(imported: &str, output: Option<&str>) {
+      let imported = Url::parse(imported).unwrap();
+      let output = output.map(|s| s.to_string());
+      assert_eq!(get_jsr_alternative(&imported), output);
+    }
+
+    run_test("https://esm.sh/ts-morph", Some("\"npm:ts-morph\""));
+    run_test(
+      "https://deno.land/std/path/mod.ts",
+      Some("\"jsr:@std/path@1\""),
+    );
+    run_test(
+      "https://deno.land/std/path/join.ts",
+      Some("\"jsr:@std/path@1/join\""),
+    );
+    run_test(
+      "https://deno.land/std@0.229.0/path/join.ts",
+      Some("\"jsr:@std/path@1/join\""),
+    );
   }
 }
