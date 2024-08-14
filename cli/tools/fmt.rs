@@ -369,6 +369,7 @@ pub fn format_html(
               } else {
                 malva::config::Quotes::AlwaysSingle
               };
+            malva_config.language.single_line_top_level_declarations = true;
           }
           malva::format_text(
             text,
