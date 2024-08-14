@@ -102,7 +102,7 @@ impl EmitCache {
   }
 }
 
-const LAST_LINE_PREFIX: &str = "\n// denoCacheHashes=";
+const LAST_LINE_PREFIX: &str = "\n// denoCacheMetadata=";
 
 struct EmitFileSerializer {
   cli_version: &'static str,
