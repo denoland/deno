@@ -355,7 +355,7 @@ pub fn format_html(
     |text, hints| {
       let mut file_name =
         file_path.file_name().expect("missing file name").to_owned();
-      file_name.push("#.");
+      file_name.push(".");
       file_name.push(hints.ext);
       let path = file_path.with_file_name(file_name);
       match hints.ext {
@@ -423,7 +423,22 @@ pub fn format_html(
   .map(Some)
   .map_err(|error| match error {
     markup_fmt::FormatError::Syntax(error) => AnyError::from(error),
-    markup_fmt::FormatError::External(mut errors) => errors.remove(0),
+    markup_fmt::FormatError::External(errors) => {
+      let last = errors.len() - 1;
+      AnyError::msg(
+        errors
+          .into_iter()
+          .enumerate()
+          .map(|(i, error)| {
+            if i == last {
+              format!("{error}")
+            } else {
+              format!("{error}\n\n")
+            }
+          })
+          .collect::<String>(),
+      )
+    }
   })
 }
 
