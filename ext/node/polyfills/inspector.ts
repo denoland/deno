@@ -1,6 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+import {
+  op_inspector_get_notification,
+  op_inspector_post,
+  op_void_async_deferred,
+} from "ext:core/ops";
 import { EventEmitter } from "node:events";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { primordials } from "ext:core/mod.js";
@@ -15,23 +20,40 @@ class Session extends EventEmitter {
   #messageCallbacks = new SafeMap();
 
   /** Connects the session to the inspector back-end. */
-  connect() {
-    notImplemented("inspector.Session.prototype.connect");
+  connect(): void {
+    // notImplemented("inspector.Session.prototype.connect");
+    (async () => {
+      while (true) {
+        let notification;
+        try {
+          notification = await op_inspector_get_notification();
+        } catch (_e) {
+          break;
+        }
+        this.emit(notification.method, notification);
+        this.emit("inspectorNotification", notification);
+      }
+    })();
   }
 
   /** Connects the session to the main thread
    * inspector back-end. */
-  connectToMainThread() {
+  connectToMainThread(): void {
     notImplemented("inspector.Session.prototype.connectToMainThread");
   }
 
   /** Posts a message to the inspector back-end. */
   post(
-    _method: string,
-    _params?: Record<string, unknown>,
-    _callback?: (...args: unknown[]) => void,
-  ) {
-    notImplemented("inspector.Session.prototype.post");
+    method: string,
+    params?: Record<string, unknown>,
+    callback?: (...args: unknown[]) => void,
+  ): void {
+    Promise.all([
+      op_inspector_post(method, params).then((
+        response,
+      ) => callback?.(response)),
+      op_void_async_deferred(),
+    ]);
   }
 
   /** Immediately closes the session, all pending

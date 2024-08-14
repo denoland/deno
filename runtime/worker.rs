@@ -684,17 +684,32 @@ impl MainWorker {
         state.put(deno_node::ChildPipeFd(node_ipc_fd));
       }
     }
+    {
+      let scope = &mut self.js_runtime.handle_scope();
+      let scope = &mut v8::TryCatch::new(scope);
+      let args = options.as_v8(scope);
+      let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
+      let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
+      let undefined = v8::undefined(scope);
+      bootstrap_fn.call(scope, undefined.into(), &[args]);
+      if let Some(exception) = scope.exception() {
+        let error = JsError::from_v8_exception(scope, exception);
+        panic!("Bootstrap exception: {error}");
+      }
+    }
 
-    let scope = &mut self.js_runtime.handle_scope();
-    let scope = &mut v8::TryCatch::new(scope);
-    let args = options.as_v8(scope);
-    let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
-    let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
-    let undefined = v8::undefined(scope);
-    bootstrap_fn.call(scope, undefined.into(), &[args]);
-    if let Some(exception) = scope.exception() {
-      let error = JsError::from_v8_exception(scope, exception);
-      panic!("Bootstrap exception: {error}");
+    {
+      self.js_runtime.maybe_init_inspector();
+      let mut session =
+        self.js_runtime.inspector().borrow().create_local_session();
+      let recv = session.take_notification_rx();
+      let op_state = self.js_runtime.op_state();
+      op_state
+        .borrow_mut()
+        .put(Arc::new(std::sync::Mutex::new(recv)));
+      op_state
+        .borrow_mut()
+        .put(Arc::new(std::sync::Mutex::new(session)));
     }
   }
 
