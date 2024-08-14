@@ -466,6 +466,7 @@ class Command {
 
   spawn() {
     const options = {
+      __proto__: null,
       ...(this.#options ?? {}),
       stdout: this.#options?.stdout ?? "inherit",
       stderr: this.#options?.stderr ?? "inherit",

@@ -58,7 +58,7 @@ class Buffer {
     this.#buf = new Uint8Array(ab);
   }
 
-  bytes(options = { copy: true }) {
+  bytes(options = { __proto__: null, copy: true }) {
     if (options.copy === false) {
       return TypedArrayPrototypeSubarray(this.#buf, this.#off);
     }

@@ -89,7 +89,7 @@ class FsWatcher {
 
 function watchFs(
   paths,
-  options = { recursive: true },
+  options = { __proto__: null, recursive: true },
 ) {
   return new FsWatcher(ArrayIsArray(paths) ? paths : [paths], options);
 }
