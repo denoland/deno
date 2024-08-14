@@ -307,6 +307,9 @@ Deno.test("[node/http2 ClientHttp2Session.socket]", async () => {
   });
   req.end();
   await endPromise.promise;
+  assertEquals(client.socket.remoteAddress, "127.0.0.1");
+  assertEquals(client.socket.remotePort, 4246);
+  assertEquals(client.socket.remoteFamily, "IPv4");
   client.socket.setTimeout(0);
   assertEquals(receivedData, "hello world\n");
 });
