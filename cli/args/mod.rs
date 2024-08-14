@@ -808,12 +808,14 @@ impl CliOptions {
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
     let root_folder = start_dir.workspace.root_folder_configs();
-    let deno_dir_provider = Arc::new(DenoDirProvider::new(flags.cache_path.clone()));
+    let deno_dir_provider =
+      Arc::new(DenoDirProvider::new(flags.cache_path.clone()));
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
       root_folder.deno_json.as_deref(),
       root_folder.pkg_json.as_deref(),
+      &deno_dir_provider,
     )
     .with_context(|| "Resolving node_modules folder.")?;
 
@@ -1764,6 +1766,7 @@ fn resolve_node_modules_folder(
   flags: &Flags,
   maybe_config_file: Option<&ConfigFile>,
   maybe_package_json: Option<&PackageJson>,
+  deno_dir_provider: &Arc<DenoDirProvider>,
 ) -> Result<Option<PathBuf>, AnyError> {
   let use_node_modules_dir = flags
     .node_modules_dir
@@ -1775,7 +1778,17 @@ fn resolve_node_modules_folder(
   } else if let Some(state) = &*NPM_PROCESS_STATE {
     return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
   } else if let Some(package_json_path) = maybe_package_json.map(|c| &c.path) {
-    // always auto-discover the local_node_modules_folder when a package.json exists
+    if let Ok(deno_dir) = deno_dir_provider.get_or_create() {
+      if let Ok(root) = canonicalize_path_maybe_not_exists(&deno_dir.root) {
+        if package_json_path.starts_with(root) {
+          // if the package.json is in deno_dir, then do not use node_modules
+          // next to it as local node_modules dir
+          return Ok(None);
+        }
+      }
+    }
+    // auto-discover the local_node_modules_folder when a package.json exists
+    // and it's not in deno_dir
     package_json_path.parent().unwrap().join("node_modules")
   } else if use_node_modules_dir.is_none() {
     return Ok(None);
