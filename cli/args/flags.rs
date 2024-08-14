@@ -36,6 +36,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use crate::args::resolve_no_prompt;
 use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
@@ -741,7 +742,7 @@ impl PermissionFlags {
         &self.deny_write,
         initial_cwd,
       )?,
-      prompt: !self.no_prompt,
+      prompt: !resolve_no_prompt(self),
     })
   }
 }
@@ -1136,6 +1137,8 @@ static ENV_VARIABLES_HELP: &str = color_print::cstr!(
                         History file is disabled when the value is empty
                          <p(245)>(defaults to $DENO_DIR/deno_history.txt)</>
   <g>DENO_NO_PACKAGE_JSON</>  Disables auto-resolution of package.json
+  <g>DENO_NO_PROMPT</>        Set to disable permission prompts on access
+                         <p(245)>(alternative to passing --no-prompt on invocation)</>
   <g>DENO_NO_UPDATE_CHECK</>  Set to disable checking if a newer Deno version is available
   <g>DENO_TLS_CA_STORE</>     Comma-separated list of order dependent certificate stores.
                         Possible values: "system", "mozilla".
@@ -3256,8 +3259,7 @@ Docs: https://docs.deno.com/go/permissions
       Arg::new("no-prompt")
         .long("no-prompt")
         .action(ArgAction::SetTrue)
-        .help("Always throw if required permission wasn't passed")
-        .env("DENO_NO_PROMPT"),
+        .help("Always throw if required permission wasn't passed"),
     )
 }
 

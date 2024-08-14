@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::AddFlags;
+use crate::args::{resolve_no_prompt};
+use crate::args::{AddFlags};
 use crate::args::CaData;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
@@ -475,7 +476,7 @@ async fn resolve_shim_data(
     executable_args.push("--frozen".to_string());
   }
 
-  if flags.permissions.no_prompt {
+  if resolve_no_prompt(&flags.permissions) {
     executable_args.push("--no-prompt".to_string());
   }
 
