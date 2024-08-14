@@ -279,8 +279,15 @@ fn format_markdown(
               Ok(None)
             }
           }
-          "html" | "svelte" | "vue" | "astro" => {
+          "html" => {
             if unstable_options.html {
+              format_html(&fake_filename, text, fmt_options)
+            } else {
+              Ok(None)
+            }
+          }
+          "svelte" | "vue" | "astro" => {
+            if unstable_options.component {
               format_html(&fake_filename, text, fmt_options)
             } else {
               Ok(None)
@@ -464,8 +471,15 @@ pub fn format_file(
         Ok(None)
       }
     }
-    "html" | "svelte" | "vue" | "astro" => {
+    "html" => {
       if unstable_options.html {
+        format_html(file_path, file_text, fmt_options)
+      } else {
+        Ok(None)
+      }
+    }
+    "svelte" | "vue" | "astro" => {
+      if unstable_options.component {
         format_html(file_path, file_text, fmt_options)
       } else {
         Ok(None)

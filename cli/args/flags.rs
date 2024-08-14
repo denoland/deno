@@ -207,6 +207,7 @@ pub struct FmtFlags {
   pub watch: Option<WatchFlags>,
   pub unstable_css: bool,
   pub unstable_html: bool,
+  pub unstable_component: bool,
   pub unstable_yaml: bool,
 }
 
@@ -2193,9 +2194,14 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
         .arg(
           Arg::new("unstable-html")
             .long("unstable-html")
-            .help(
-              "Enable formatting HTML, Svelte, Vue, Astro and Angular files.",
-            )
+            .help("Enable formatting HTML files.")
+            .value_parser(FalseyValueParser::new())
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("unstable-component")
+            .long("unstable-component")
+            .help("Enable formatting Svelte, Vue, Astro and Angular files.")
             .value_parser(FalseyValueParser::new())
             .action(ArgAction::SetTrue),
         )
@@ -4070,6 +4076,7 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let no_semicolons = matches.remove_one::<bool>("no-semicolons");
   let unstable_css = matches.get_flag("unstable-css");
   let unstable_html = matches.get_flag("unstable-html");
+  let unstable_component = matches.get_flag("unstable-component");
   let unstable_yaml = matches.get_flag("unstable-yaml");
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
@@ -4084,6 +4091,7 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     watch: watch_arg_parse(matches),
     unstable_css,
     unstable_html,
+    unstable_component,
     unstable_yaml,
   });
 }
@@ -5905,6 +5913,7 @@ mod tests {
           no_semicolons: None,
           unstable_css: false,
           unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -5931,6 +5940,7 @@ mod tests {
           no_semicolons: None,
           unstable_css: false,
           unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -5957,6 +5967,7 @@ mod tests {
           no_semicolons: None,
           unstable_css: false,
           unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -5983,6 +5994,7 @@ mod tests {
           no_semicolons: None,
           unstable_css: false,
           unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
@@ -5998,6 +6010,7 @@ mod tests {
       "--no-clear-screen",
       "--unstable-css",
       "--unstable-html",
+      "--unstable-component",
       "--unstable-yaml"
     ]);
     assert_eq!(
@@ -6017,6 +6030,7 @@ mod tests {
           no_semicolons: None,
           unstable_css: true,
           unstable_html: true,
+          unstable_component: true,
           unstable_yaml: true,
           watch: Some(WatchFlags {
             hmr: false,
@@ -6054,6 +6068,7 @@ mod tests {
           no_semicolons: None,
           unstable_css: false,
           unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
@@ -6080,6 +6095,7 @@ mod tests {
           no_semicolons: None,
           unstable_css: false,
           unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -6114,6 +6130,7 @@ mod tests {
           no_semicolons: None,
           unstable_css: false,
           unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
@@ -6153,6 +6170,7 @@ mod tests {
           no_semicolons: Some(true),
           unstable_css: false,
           unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -6186,6 +6204,7 @@ mod tests {
           no_semicolons: Some(false),
           unstable_css: false,
           unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),

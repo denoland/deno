@@ -5533,9 +5533,9 @@ dependencies = [
 
 [[package]]
 name = "raffia"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a26ea01d105c934a90ddd1fca6a343bec14e1a24b72126ee6f364f5a5dd5ec2"
+checksum = "c36f58fa7ad2f26bca656054c902becddeac5582df2bb31d4b4d2a148c62cfd5"
 dependencies = [
  "raffia_macro",
  "smallvec",

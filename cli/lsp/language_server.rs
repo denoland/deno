@@ -1375,6 +1375,9 @@ impl Inner {
         html: maybe_workspace
           .map(|w| w.has_unstable("fmt-html"))
           .unwrap_or(false),
+        component: maybe_workspace
+          .map(|w| w.has_unstable("fmt-component"))
+          .unwrap_or(false),
         yaml: maybe_workspace
           .map(|w| w.has_unstable("fmt-yaml"))
           .unwrap_or(false),
