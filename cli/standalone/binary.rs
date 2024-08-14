@@ -187,14 +187,18 @@ fn write_binary_bytes(
 
   let target = compile_flags.resolve_target();
   if target.contains("linux") {
-    libsui::Elf::new(&original_bin).append("d3n0l4nd", &writer, &mut file_writer)?;
+    libsui::Elf::new(&original_bin).append(
+      "d3n0l4nd",
+      &writer,
+      &mut file_writer,
+    )?;
   } else if target.contains("windows") {
     let mut pe = libsui::PortableExecutable::from(&original_bin)?;
     if let Some(icon) = compile_flags.icon.as_ref() {
       let icon = std::fs::read(icon)?;
       pe = pe.set_icon(&icon)?;
     }
-    
+
     pe.write_resource("d3n0l4nd", writer)?
       .build(&mut file_writer)?;
   } else if target.contains("darwin") {
