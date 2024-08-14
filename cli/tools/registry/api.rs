@@ -202,5 +202,9 @@ mod test {
       "https://deno.land/std@0.229.0/path/join.ts",
       Some("\"jsr:@std/path@1/join\""),
     );
+    run_test(
+      "https://deno.land/std@0.229.0/path/something_underscore.ts",
+      Some("\"jsr:@std/path@1/something-underscore\""),
+    );
   }
 }
