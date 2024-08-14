@@ -88,22 +88,20 @@ export function read(
   } else {
     const opt = optOrBufferOrCb as ReadOptions;
     if (
-      opt.buffer !== null &&
       !isArrayBufferView(opt.buffer)
     ) {
       throw new ERR_INVALID_ARG_TYPE("buffer", [
         "Buffer",
         "TypedArray",
         "DataView",
-      ], opt.buffer);
+      ], optOrBufferOrCb);
     }
-    if (opt.buffer === null) {
+    if (opt.buffer === undefined) {
       buffer = Buffer.alloc(16384);
     } else {
       buffer = arrayBufferViewToUint8Array(opt.buffer);
     }
     offset = opt.offset ?? 0;
-    buffer = opt.buffer ?? Buffer.alloc(16384);
     length = opt.length ?? buffer.byteLength;
     position = opt.position ?? null;
   }
