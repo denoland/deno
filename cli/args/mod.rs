@@ -75,6 +75,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::cache;
+use crate::cache::DenoDirProvider;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
@@ -768,6 +769,7 @@ pub struct CliOptions {
   pub start_dir: Arc<WorkspaceDirectory>,
   pub disable_deprecated_api_warning: bool,
   pub verbose_deprecated_api_warning: bool,
+  pub deno_dir_provider: Arc<DenoDirProvider>,
 }
 
 impl CliOptions {
@@ -798,6 +800,7 @@ impl CliOptions {
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
     let root_folder = start_dir.workspace.root_folder_configs();
+    let deno_dir_provider = Arc::new(DenoDirProvider::new(flags.cache_path.clone()));
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
@@ -825,6 +828,7 @@ impl CliOptions {
       start_dir,
       disable_deprecated_api_warning,
       verbose_deprecated_api_warning,
+      deno_dir_provider,
     })
   }
 
@@ -1233,6 +1237,7 @@ impl CliOptions {
       overrides: self.overrides.clone(),
       disable_deprecated_api_warning: self.disable_deprecated_api_warning,
       verbose_deprecated_api_warning: self.verbose_deprecated_api_warning,
+      deno_dir_provider: self.deno_dir_provider.clone(),
     }
   }
 

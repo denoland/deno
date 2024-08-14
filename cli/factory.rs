@@ -158,7 +158,6 @@ impl<T> Deferred<T> {
 #[derive(Default)]
 struct CliFactoryServices {
   cli_options: Deferred<Arc<CliOptions>>,
-  deno_dir_provider: Deferred<Arc<DenoDirProvider>>,
   caches: Deferred<Arc<Caches>>,
   file_fetcher: Deferred<Arc<FileFetcher>>,
   global_http_cache: Deferred<Arc<GlobalHttpCache>>,
@@ -236,11 +235,7 @@ impl CliFactory {
   }
 
   pub fn deno_dir_provider(&self) -> Result<&Arc<DenoDirProvider>, AnyError> {
-    self.services.deno_dir_provider.get_or_try_init(|| {
-      Ok(Arc::new(DenoDirProvider::new(
-        self.cli_options()?.maybe_custom_root().clone(),
-      )))
-    })
+    Ok(&self.cli_options()?.deno_dir_provider)
   }
 
   pub fn deno_dir(&self) -> Result<&DenoDir, AnyError> {

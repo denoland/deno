@@ -67,7 +67,7 @@ impl DenoDir {
     let gen_path = root.join("gen");
 
     let deno_dir = Self {
-      root: std::fs::canonicalize(root)?,
+      root,
       gen_cache: DiskCache::new(&gen_path),
     };
 
