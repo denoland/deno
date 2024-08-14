@@ -121,6 +121,7 @@ pub struct CompileFlags {
   pub args: Vec<String>,
   pub target: Option<String>,
   pub no_terminal: bool,
+  pub icon: Option<String>,
   pub include: Vec<String>,
 }
 
@@ -1764,6 +1765,12 @@ supported in canary.
             .long("no-terminal")
             .help("Hide terminal on Windows")
             .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("icon")
+            .long("icon")
+            .help("Set the icon of the executable on Windows (.ico)")
+            .value_parser(value_parser!(String))
         )
         .arg(executable_ext_arg())
         .arg(env_file_arg())
@@ -3861,6 +3868,7 @@ fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let args = script.collect();
   let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
+  let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
   let include = match matches.remove_many::<String>("include") {
     Some(f) => f.collect(),
@@ -3874,6 +3882,7 @@ fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     args,
     target,
     no_terminal,
+    icon,
     include,
   });
 }
