@@ -9,6 +9,7 @@ import * as io from "ext:deno_io/12_io.js";
 import * as fs from "ext:deno_fs/30_fs.js";
 import { ReadOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import {
+  arrayBufferViewToUint8Array,
   validateOffsetLengthRead,
   validatePosition,
 } from "ext:deno_node/internal/fs/utils.mjs";
@@ -16,6 +17,7 @@ import {
   validateBuffer,
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 
 type readSyncOptions = {
   offset: number;
@@ -38,7 +40,7 @@ export function read(
 ): void;
 export function read(
   fd: number,
-  buffer: Buffer | Uint8Array,
+  buffer: ArrayBufferView,
   offset: number,
   length: number,
   position: number | null,
@@ -46,7 +48,7 @@ export function read(
 ): void;
 export function read(
   fd: number,
-  optOrBufferOrCb?: Buffer | Uint8Array | ReadOptions | Callback,
+  optOrBufferOrCb?: ArrayBufferView | ReadOptions | Callback,
   offsetOrCallback?: number | Callback,
   length?: number,
   position?: number | null,
@@ -75,9 +77,9 @@ export function read(
   }
 
   if (
-    optOrBufferOrCb instanceof Buffer || optOrBufferOrCb instanceof Uint8Array
+    isArrayBufferView(optOrBufferOrCb)
   ) {
-    buffer = optOrBufferOrCb;
+    buffer = arrayBufferViewToUint8Array(optOrBufferOrCb);
   } else if (typeof optOrBufferOrCb === "function") {
     offset = 0;
     buffer = Buffer.alloc(16384);
@@ -86,13 +88,19 @@ export function read(
   } else {
     const opt = optOrBufferOrCb as ReadOptions;
     if (
-      !(opt.buffer instanceof Buffer) && !(opt.buffer instanceof Uint8Array)
+      opt.buffer !== null &&
+      !isArrayBufferView(opt.buffer)
     ) {
       throw new ERR_INVALID_ARG_TYPE("buffer", [
         "Buffer",
         "TypedArray",
         "DataView",
-      ], optOrBufferOrCb);
+      ], opt.buffer);
+    }
+    if (opt.buffer === null) {
+      buffer = Buffer.alloc(16384);
+    } else {
+      buffer = arrayBufferViewToUint8Array(opt.buffer);
     }
     offset = opt.offset ?? 0;
     buffer = opt.buffer ?? Buffer.alloc(16384);
@@ -131,19 +139,19 @@ export function read(
 
 export function readSync(
   fd: number,
-  buffer: Buffer | Uint8Array,
+  buffer: ArrayBufferView,
   offset: number,
   length: number,
   position: number | null,
 ): number;
 export function readSync(
   fd: number,
-  buffer: Buffer | Uint8Array,
+  buffer: ArrayBufferView,
   opt: readSyncOptions,
 ): number;
 export function readSync(
   fd: number,
-  buffer: Buffer | Uint8Array,
+  buffer: ArrayBufferView,
   offsetOrOpt?: number | readSyncOptions,
   length?: number,
   position?: number | null,
@@ -155,6 +163,8 @@ export function readSync(
   }
 
   validateBuffer(buffer);
+
+  buffer = arrayBufferViewToUint8Array(buffer);
 
   if (length == null) {
     length = 0;

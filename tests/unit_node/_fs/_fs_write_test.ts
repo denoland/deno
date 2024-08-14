@@ -73,3 +73,42 @@ Deno.test({
     assertEquals(decoder.decode(data), "\x00\x00\x00\x00hello world");
   },
 });
+
+Deno.test({
+  name: "Accepts non Uint8Array buffer",
+  async fn() {
+    const tempFile: string = Deno.makeTempFileSync();
+    using file = Deno.openSync(tempFile, {
+      create: true,
+      write: true,
+      read: true,
+    });
+    const bytes = [0, 1, 2, 3, 4];
+    const buffer = new Int8Array(bytes);
+    for (let i = 0; i < buffer.length; i++) {
+      buffer[i] = i;
+    }
+    let nWritten = writeSync(file.rid, buffer);
+
+    const data = Deno.readFileSync(tempFile);
+
+    assertEquals(nWritten, 5);
+    assertEquals(data, new Uint8Array(bytes));
+
+    nWritten = await new Promise((resolve, reject) =>
+      write(
+        file.rid,
+        buffer,
+        0,
+        5,
+        (err: unknown, nwritten: number) => {
+          if (err) return reject(err);
+          resolve(nwritten);
+        },
+      )
+    );
+
+    assertEquals(nWritten, 5);
+    assertEquals(data, new Uint8Array(bytes));
+  },
+});
