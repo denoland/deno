@@ -1346,23 +1346,27 @@ fn lsp_import_map_import_completions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
-    "import-map.json",
-    r#"{
-  "imports": {
-    "/~/": "./lib/",
-    "/#/": "./src/",
-    "fs": "https://example.com/fs/index.js",
-    "std/": "https://example.com/std@0.123.0/"
-  }
-}"#,
+    "deno.json",
+    json!({
+      "imports": {
+        "/~/": "./lib/",
+        "/#/": "./src/",
+        "fs": "https://example.com/fs/index.js",
+        "std/": "https://example.com/std@0.123.0/",
+      },
+      "scopes": {
+        "file:///": {
+          "file": "./file.ts",
+        },
+      },
+    })
+    .to_string(),
   );
   temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().build();
-  client.initialize(|builder| {
-    builder.set_import_map("import-map.json");
-  });
+  client.initialize_default();
 
   let uri = temp_dir.uri().join("a.ts").unwrap();
 
@@ -1403,6 +1407,13 @@ fn lsp_import_map_import_completions() {
           "insertText": "..",
           "commitCharacters": ["\"", "'"],
         }, {
+          "label": "file",
+          "kind": 17,
+          "detail": "(import map)",
+          "sortText": "file",
+          "insertText": "file",
+          "commitCharacters": ["\"", "'"],
+        },  {
           "label": "std",
           "kind": 19,
           "detail": "(import map)",
