@@ -1337,7 +1337,7 @@ pub fn clap_root() -> Command {
     crate::version::DENO_VERSION_INFO.release_channel.name(),
     env!("PROFILE"),
     env!("TARGET"),
-    deno_core::v8_version(),
+    deno_core::v8::VERSION_STRING,
     crate::version::DENO_VERSION_INFO.typescript
   );
 
