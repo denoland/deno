@@ -549,7 +549,7 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(options) {
     const all = ObjectValues(unstableForWindowOrWorkerGlobalScope);
     for (let i = 0; i <= all.length; i++) {
       const props = all[i];
-      ObjectDefineProperties(globalThis, { __proto__: null, ...props });
+      ObjectDefineProperties(globalThis, { ...props });
     }
   } else {
     const featureIds = ArrayPrototypeMap(
@@ -563,7 +563,7 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(options) {
       const featureId = featureIds[i];
       if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
         const props = unstableForWindowOrWorkerGlobalScope[featureId];
-        ObjectDefineProperties(globalThis, { __proto__: null, ...props });
+        ObjectDefineProperties(globalThis, { ...props });
       }
     }
   }
