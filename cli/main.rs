@@ -236,7 +236,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       }
     }),
     DenoSubcommand::Serve(serve_flags) => spawn_subcommand(async move {
-      tools::run::run_script(WorkerExecutionMode::Serve, flags, serve_flags.watch).await
+      tools::serve::serve(flags, serve_flags).await
     }),
     DenoSubcommand::Task(task_flags) => spawn_subcommand(async {
       tools::task::execute_script(flags, task_flags, false).await

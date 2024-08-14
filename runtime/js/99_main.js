@@ -45,6 +45,7 @@ const {
   PromiseResolve,
   SafeSet,
   StringPrototypeIncludes,
+  StringPrototypePadEnd,
   StringPrototypeSplit,
   StringPrototypeTrim,
   Symbol,
@@ -709,7 +710,36 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       11: mode,
       12: servePort,
       13: serveHost,
+      14: serveIsMain,
+      15: serveWorkerCount,
     } = runtimeOptions;
+
+    if (mode === executionModes.serve) {
+      if (serveIsMain && serveWorkerCount) {
+        const origLog = console.log;
+        const origError = console.error;
+        const prefix = `[serve-worker-0 ]`;
+        console.log = (...args) => {
+          return origLog(prefix, ...new primordials.SafeArrayIterator(args));
+        };
+        console.error = (...args) => {
+          return origError(prefix, ...new primordials.SafeArrayIterator(args));
+        };
+      } else if (serveWorkerCount !== null) {
+        const origLog = console.log;
+        const origError = console.error;
+        const base = `serve-worker-${serveWorkerCount + 1}`;
+        // 15 = "serve-worker-nn".length, assuming
+        // serveWorkerCount < 100
+        const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
+        console.log = (...args) => {
+          return origLog(prefix, ...new primordials.SafeArrayIterator(args));
+        };
+        console.error = (...args) => {
+          return origError(prefix, ...new primordials.SafeArrayIterator(args));
+        };
+      }
+    }
 
     if (mode === executionModes.run || mode === executionModes.serve) {
       let serve = undefined;
@@ -725,13 +755,16 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         }
 
         if (mode === executionModes.serve && !serve) {
-          console.error(
-            `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
-            "color: yellow;",
-            "color: inherit;",
-            "font-weight: bold;",
-            "font-weight: normal;",
-          );
+          if (serveIsMain) {
+            // Only error if main worker
+            console.error(
+              `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
+              "color: yellow;",
+              "color: inherit;",
+              "font-weight: bold;",
+              "font-weight: normal;",
+            );
+          }
           return;
         }
 
@@ -746,7 +779,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
             );
           }
           if (mode === executionModes.serve) {
-            serve({ servePort, serveHost });
+            serve({ servePort, serveHost, serveIsMain, serveWorkerCount });
           }
         }
       });
