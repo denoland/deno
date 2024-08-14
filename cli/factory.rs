@@ -350,7 +350,7 @@ impl CliFactory {
         let fs = self.fs();
         let cli_options = self.cli_options()?;
         // For `deno install` we want to force the managed resolver so it can set up `node_modules/` directory.
-        create_cli_npm_resolver(if cli_options.use_byonm() && !matches!(cli_options.sub_command(), DenoSubcommand::Install(_) | DenoSubcommand::Add(_)) {
+        create_cli_npm_resolver(if cli_options.use_byonm() && !matches!(cli_options.sub_command(), DenoSubcommand::Install(_) | DenoSubcommand::Add(_) | DenoSubcommand::Remove(_)) {
           CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
             fs: fs.clone(),
             root_node_modules_dir: Some(match cli_options.node_modules_dir_path() {

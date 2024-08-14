@@ -282,6 +282,7 @@ impl BenchOptions {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct UnstableFmtOptions {
+  pub css: bool,
   pub yaml: bool,
 }
 
@@ -315,6 +316,7 @@ impl FmtOptions {
     Self {
       options: resolve_fmt_options(fmt_flags, fmt_config.options),
       unstable: UnstableFmtOptions {
+        css: unstable.css || fmt_flags.unstable_css,
         yaml: unstable.yaml || fmt_flags.unstable_yaml,
       },
       files: fmt_config.files,
@@ -639,8 +641,6 @@ pub enum RootCertStoreLoadError {
   UnknownStore(String),
   #[error("Unable to add pem file to certificate store: {0}")]
   FailedAddPemFile(String),
-  #[error("Unable to add system certificate to certificate store: {0}")]
-  FailedAddSystemCert(String),
   #[error("Failed opening CA file: {0}")]
   CaFileOpenError(String),
 }
@@ -674,11 +674,19 @@ pub fn get_root_cert_store(
       "system" => {
         let roots = load_native_certs().expect("could not load platform certs");
         for root in roots {
-          root_cert_store
-            .add(rustls::pki_types::CertificateDer::from(root.0))
-            .map_err(|e| {
-              RootCertStoreLoadError::FailedAddSystemCert(e.to_string())
-            })?;
+          if let Err(err) = root_cert_store
+            .add(rustls::pki_types::CertificateDer::from(root.0.clone()))
+          {
+            log::error!(
+              "{}",
+              colors::yellow(&format!(
+                "Unable to add system certificate to certificate store: {:?}",
+                err
+              ))
+            );
+            let hex_encoded_root = faster_hex::hex_string(&root.0);
+            log::error!("{}", colors::gray(&hex_encoded_root));
+          }
         }
       }
       _ => {
@@ -1335,8 +1343,10 @@ impl CliOptions {
   }
 
   pub fn resolve_config_unstable_fmt_options(&self) -> UnstableFmtOptions {
+    let workspace = self.workspace();
     UnstableFmtOptions {
-      yaml: self.workspace().has_unstable("fmt-yaml"),
+      css: workspace.has_unstable("fmt-css"),
+      yaml: workspace.has_unstable("fmt-yaml"),
     }
   }
 
@@ -1669,6 +1679,7 @@ impl CliOptions {
         "sloppy-imports",
         "byonm",
         "bare-node-builtins",
+        "fmt-css",
         "fmt-yaml",
       ]);
       // add more unstable flags to the same vector holding granular flags

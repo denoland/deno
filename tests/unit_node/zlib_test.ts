@@ -191,3 +191,22 @@ Deno.test("brotli decompress flush restore size", async () => {
   );
   assertEquals(output.length, input.length);
 });
+
+Deno.test("createBrotliCompress params", async () => {
+  const compress = createBrotliCompress({
+    params: {
+      [constants.BROTLI_PARAM_QUALITY]: 11,
+    },
+  });
+
+  const input = new Uint8Array(10000);
+  for (let i = 0; i < input.length; i++) {
+    input[i] = Math.random() * 256;
+  }
+  const output = await buffer(
+    Readable.from([input])
+      .pipe(compress)
+      .pipe(createBrotliDecompress()),
+  );
+  assertEquals(output.length, input.length);
+});
