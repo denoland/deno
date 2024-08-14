@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::{resolve_no_prompt};
-use crate::args::{AddFlags};
+use crate::args::resolve_no_prompt;
+use crate::args::AddFlags;
 use crate::args::CaData;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
