@@ -1151,8 +1151,6 @@ impl CliOptions {
               resolve_url_or_path("./$deno$stdin.ts", &cwd)
                 .map_err(AnyError::from)
             })?
-        } else if run_flags.watch.is_some() {
-          resolve_url_or_path(&run_flags.script, self.initial_cwd())?
         } else if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
           ModuleSpecifier::parse(&run_flags.script)?
         } else {
