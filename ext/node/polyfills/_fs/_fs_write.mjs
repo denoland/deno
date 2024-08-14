@@ -12,6 +12,7 @@ import {
 import * as io from "ext:deno_io/12_io.js";
 import * as fs from "ext:deno_fs/30_fs.js";
 import {
+  arrayBufferViewToUint8Array,
   getValidatedFd,
   validateOffsetLengthWrite,
   validateStringAfterArrayBufferView,
@@ -23,9 +24,7 @@ export function writeSync(fd, buffer, offset, length, position) {
   fd = getValidatedFd(fd);
 
   const innerWriteSync = (fd, buffer, offset, length, position) => {
-    if (buffer instanceof DataView) {
-      buffer = new Uint8Array(buffer.buffer);
-    }
+    buffer = arrayBufferViewToUint8Array(buffer);
     if (typeof position === "number") {
       fs.seekSync(fd, position, io.SeekMode.Start);
     }
@@ -69,9 +68,7 @@ export function write(fd, buffer, offset, length, position, callback) {
   fd = getValidatedFd(fd);
 
   const innerWrite = async (fd, buffer, offset, length, position) => {
-    if (buffer instanceof DataView) {
-      buffer = new Uint8Array(buffer.buffer);
-    }
+    buffer = arrayBufferViewToUint8Array(buffer);
     if (typeof position === "number") {
       await fs.seek(fd, position, io.SeekMode.Start);
     }
