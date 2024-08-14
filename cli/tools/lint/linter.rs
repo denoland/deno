@@ -231,7 +231,7 @@ fn apply_lint_fixes(
   for i in (1..quick_fixes.len()).rev() {
     let cur = &quick_fixes[i];
     let previous = &quick_fixes[i - 1];
-    let is_overlapping = cur.range.start < previous.range.end;
+    let is_overlapping = cur.range.start <= previous.range.end;
     if is_overlapping {
       quick_fixes.remove(i);
     }
