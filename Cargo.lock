@@ -1015,15 +1015,9 @@ dependencies = [
 
 [[package]]
 name = "css_dataset"
-version = "0.3.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0ed4c49b3d82ab5e2a0167f0d24d30872cbd8526b54fb060c84295ad7b6d71d"
-dependencies = [
- "phf 0.11.2",
- "phf_codegen 0.11.2",
- "serde",
- "serde_json",
-]
+checksum = "25670139e591f1c2869eb8d0d977028f8d05e859132b4c874ecd02a00d3c9174"
 
 [[package]]
 name = "ctr"
@@ -4275,9 +4269,9 @@ dependencies = [
 
 [[package]]
 name = "malva"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf982faadf37679302c3fcd8d843d29bf4bb4d323323cffb2f5217ad39578470"
+checksum = "6e6e9f16e424a6672f6726daf965333952dece79ef3d17aac712b92b3b72d0a8"
 dependencies = [
  "aho-corasick",
  "itertools 0.13.0",
@@ -4300,7 +4294,7 @@ checksum = "7a2629bb1404f3d34c2e921f21fd34ba00b206124c81f65c50b43b6aaefeb016"
 dependencies = [
  "log",
  "phf 0.10.1",
- "phf_codegen 0.10.0",
+ "phf_codegen",
  "string_cache",
  "string_cache_codegen",
  "tendril",
@@ -4308,15 +4302,14 @@ dependencies = [
 
 [[package]]
 name = "markup_fmt"
-version = "0.11.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29853cad9bee301eba8aa6b805bc849eef314447191fd77bc1f71b12911838fb"
+checksum = "33edf0c364d53d5518cf663824e7d5d5339c844daa54bb0208bee5202dde88f1"
 dependencies = [
  "aho-corasick",
  "css_dataset",
  "itertools 0.13.0",
  "memchr",
- "once_cell",
  "tiny_pretty",
 ]
 
@@ -5053,16 +5046,6 @@ checksum = "4fb1c3a8bc4dd4e5cfce29b44ffc14bedd2ee294559a294e2a4d4c9e9a6a13cd"
 dependencies = [
  "phf_generator 0.10.0",
  "phf_shared 0.10.0",
-]
-
-[[package]]
-name = "phf_codegen"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8d39688d359e6b34654d328e262234662d16cc0f60ec8dcbe5e718709342a5a"
-dependencies = [
- "phf_generator 0.11.2",
- "phf_shared 0.11.2",
 ]
 
 [[package]]

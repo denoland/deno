@@ -352,40 +352,60 @@ pub fn format_html(
     markup_fmt::detect_language(file_path)
       .unwrap_or(markup_fmt::Language::Html),
     &get_resolved_markup_fmt_config(fmt_options),
-    |path, text, line_width| {
-      let file_name = path.file_name().and_then(|s| s.to_str());
-      match &file_name {
-        Some("expr.ts" | "binding.ts" | "type_params.ts") => {
-          let mut typescript_config =
-            get_resolved_typescript_config(fmt_options);
-          typescript_config.line_width = line_width as u32;
-          typescript_config.semi_colons =
-            dprint_plugin_typescript::configuration::SemiColons::Asi;
-          dprint_plugin_typescript::format_text(
-            path,
-            text.to_string(),
-            &typescript_config,
+    |text, hints| {
+      let mut file_name =
+        file_path.file_name().expect("missing file name").to_owned();
+      file_name.push("#.");
+      file_name.push(hints.ext);
+      let path = file_path.with_file_name(file_name);
+      match hints.ext {
+        "css" | "scss" | "sass" | "less" => {
+          let mut malva_config = get_resolved_malva_config(fmt_options);
+          malva_config.layout.print_width = hints.print_width;
+          if hints.attr {
+            malva_config.language.quotes =
+              if let Some(true) = fmt_options.single_quote {
+                malva::config::Quotes::AlwaysDouble
+              } else {
+                malva::config::Quotes::AlwaysSingle
+              };
+          }
+          malva::format_text(
+            text,
+            malva::detect_syntax(path).unwrap_or(malva::Syntax::Css),
+            &malva_config,
           )
-          .map(|formatted| {
-            if let Some(formatted) = formatted {
-              Cow::from(formatted)
-            } else {
-              Cow::from(text)
-            }
-          })
+          .map(Cow::from)
+          .map_err(AnyError::from)
         }
-        Some("attr_expr.tsx") => {
+        "json" | "jsonc" => {
+          let mut json_config = get_resolved_json_config(fmt_options);
+          json_config.line_width = hints.print_width as u32;
+          dprint_plugin_json::format_text(&path, text, &json_config).map(
+            |formatted| {
+              if let Some(formatted) = formatted {
+                Cow::from(formatted)
+              } else {
+                Cow::from(text)
+              }
+            },
+          )
+        }
+        _ => {
           let mut typescript_config =
             get_resolved_typescript_config(fmt_options);
-          typescript_config.line_width = line_width as u32;
-          typescript_config.quote_style =
-            if let Some(true) = fmt_options.single_quote {
+          typescript_config.line_width = hints.print_width as u32;
+          if hints.attr {
+            typescript_config.quote_style = if let Some(true) =
+              fmt_options.single_quote
+            {
               dprint_plugin_typescript::configuration::QuoteStyle::AlwaysDouble
             } else {
               dprint_plugin_typescript::configuration::QuoteStyle::AlwaysSingle
             };
+          }
           dprint_plugin_typescript::format_text(
-            path,
+            &path,
             text.to_string(),
             &typescript_config,
           )
@@ -396,53 +416,6 @@ pub fn format_html(
               Cow::from(text)
             }
           })
-        }
-        _ => {
-          let ext = path.extension().and_then(|s| s.to_str());
-          match ext {
-            Some("json" | "jsonc") => {
-              let mut json_config = get_resolved_json_config(fmt_options);
-              json_config.line_width = line_width as u32;
-              dprint_plugin_json::format_text(path, text, &json_config).map(
-                |formatted| {
-                  if let Some(formatted) = formatted {
-                    Cow::from(formatted)
-                  } else {
-                    Cow::from(text)
-                  }
-                },
-              )
-            }
-            Some("css" | "scss" | "sass" | "less") => {
-              let mut malva_config = get_resolved_malva_config(fmt_options);
-              malva_config.layout.print_width = line_width;
-              malva::format_text(
-                text,
-                malva::detect_syntax(path).unwrap_or(malva::Syntax::Css),
-                &malva_config,
-              )
-              .map(Cow::from)
-              .map_err(AnyError::from)
-            }
-            Some(..) => {
-              let mut typescript_config =
-                get_resolved_typescript_config(fmt_options);
-              typescript_config.line_width = line_width as u32;
-              dprint_plugin_typescript::format_text(
-                path,
-                text.to_string(),
-                &typescript_config,
-              )
-              .map(|formatted| {
-                if let Some(formatted) = formatted {
-                  Cow::from(formatted)
-                } else {
-                  Cow::from(text)
-                }
-              })
-            }
-            None => Ok(Cow::from(text)),
-          }
         }
       }
     },
@@ -941,7 +914,7 @@ fn get_resolved_malva_config(
     less_import_options_prefer_single_line: None,
     less_mixin_args_prefer_single_line: None,
     less_mixin_params_prefer_single_line: None,
-    top_level_declarations_prefer_single_line: None,
+    single_line_top_level_declarations: false,
     selector_override_comment_directive: "deno-fmt-selector-override".into(),
     ignore_comment_directive: "deno-fmt-ignore".into(),
   };
@@ -1001,6 +974,7 @@ fn get_resolved_markup_fmt_config(
     svelte_attr_shorthand: Some(true),
     svelte_directive_shorthand: Some(true),
     astro_attr_shorthand: Some(true),
+    ignore_comment_directive: "deno-fmt-ignore".into(),
   };
 
   FormatOptions {
