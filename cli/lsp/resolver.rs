@@ -4,7 +4,6 @@ use crate::args::create_default_npmrc;
 use crate::args::CacheSetting;
 use crate::args::CliLockfile;
 use crate::args::PackageJsonInstallDepsProvider;
-use crate::args::DENO_FUTURE;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::Config;
@@ -421,9 +420,14 @@ impl LspResolver {
     };
     self
       .by_scope
-      .iter()
-      .rfind(|(s, _)| file_referrer.as_str().starts_with(s.as_str()))
-      .map(|(_, r)| r.as_ref())
+      .values()
+      .rfind(|r| {
+        r.config_data
+          .as_ref()
+          .map(|d| d.scope_contains_specifier(file_referrer))
+          .unwrap_or(false)
+      })
+      .map(|r| r.as_ref())
       .unwrap_or(self.unscoped.as_ref())
   }
 }
@@ -433,7 +437,7 @@ async fn create_npm_resolver(
   cache: &LspCache,
   http_client_provider: &Arc<HttpClientProvider>,
 ) -> Option<Arc<dyn CliNpmResolver>> {
-  let enable_byonm = config_data.map(|d| d.byonm).unwrap_or(*DENO_FUTURE);
+  let enable_byonm = config_data.map(|d| d.byonm).unwrap_or(false);
   let options = if enable_byonm {
     CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
       fs: Arc::new(deno_fs::RealFs),
@@ -522,6 +526,7 @@ fn create_graph_resolver(
           // this is fine because this is only used before initialization
           Arc::new(ModuleSpecifier::parse("file:///").unwrap()),
           None,
+          Vec::new(),
           Vec::new(),
           PackageJsonDepResolution::Disabled,
         ))

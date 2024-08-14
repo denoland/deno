@@ -44,16 +44,16 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.40.0", features = ["transpiling"] }
-deno_core = { version = "0.299.0" }
+deno_ast = { version = "=0.41.2", features = ["transpiling"] }
+deno_core = { version = "0.303.0" }
 
-deno_bench_util = { version = "0.157.0", path = "./bench_util" }
+deno_bench_util = { version = "0.158.0", path = "./bench_util" }
 deno_lockfile = "0.20.0"
 deno_media_type = { version = "0.1.4", features = ["module_specifier"] }
-deno_permissions = { version = "0.23.0", path = "./runtime/permissions" }
-deno_runtime = { version = "0.172.0", path = "./runtime" }
+deno_permissions = { version = "0.24.0", path = "./runtime/permissions" }
+deno_runtime = { version = "0.173.0", path = "./runtime" }
 deno_terminal = "0.2.0"
-napi_sym = { version = "0.93.0", path = "./cli/napi/sym" }
+napi_sym = { version = "0.94.0", path = "./cli/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
 denokv_proto = "0.8.1"
@@ -62,35 +62,35 @@ denokv_remote = "0.8.1"
 denokv_sqlite = { default-features = false, version = "0.8.1" }
 
 # exts
-deno_broadcast_channel = { version = "0.157.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.95.0", path = "./ext/cache" }
-deno_canvas = { version = "0.32.0", path = "./ext/canvas" }
-deno_console = { version = "0.163.0", path = "./ext/console" }
-deno_cron = { version = "0.43.0", path = "./ext/cron" }
-deno_crypto = { version = "0.177.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.187.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.150.0", path = "./ext/ffi" }
-deno_fs = { version = "0.73.0", path = "./ext/fs" }
-deno_http = { version = "0.161.0", path = "./ext/http" }
-deno_io = { version = "0.73.0", path = "./ext/io" }
-deno_kv = { version = "0.71.0", path = "./ext/kv" }
-deno_napi = { version = "0.94.0", path = "./ext/napi" }
-deno_net = { version = "0.155.0", path = "./ext/net" }
-deno_node = { version = "0.100.0", path = "./ext/node" }
-deno_tls = { version = "0.150.0", path = "./ext/tls" }
-deno_url = { version = "0.163.0", path = "./ext/url" }
-deno_web = { version = "0.194.0", path = "./ext/web" }
-deno_webgpu = { version = "0.130.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.163.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.168.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.158.0", path = "./ext/webstorage" }
-node_resolver = { version = "0.2.0", path = "./ext/node_resolver" }
+deno_broadcast_channel = { version = "0.158.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.96.0", path = "./ext/cache" }
+deno_canvas = { version = "0.33.0", path = "./ext/canvas" }
+deno_console = { version = "0.164.0", path = "./ext/console" }
+deno_cron = { version = "0.44.0", path = "./ext/cron" }
+deno_crypto = { version = "0.178.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.188.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.151.0", path = "./ext/ffi" }
+deno_fs = { version = "0.74.0", path = "./ext/fs" }
+deno_http = { version = "0.162.0", path = "./ext/http" }
+deno_io = { version = "0.74.0", path = "./ext/io" }
+deno_kv = { version = "0.72.0", path = "./ext/kv" }
+deno_napi = { version = "0.95.0", path = "./ext/napi" }
+deno_net = { version = "0.156.0", path = "./ext/net" }
+deno_node = { version = "0.101.0", path = "./ext/node" }
+deno_tls = { version = "0.151.0", path = "./ext/tls" }
+deno_url = { version = "0.164.0", path = "./ext/url" }
+deno_web = { version = "0.195.0", path = "./ext/web" }
+deno_webgpu = { version = "0.131.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.164.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.169.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.159.0", path = "./ext/webstorage" }
+node_resolver = { version = "0.3.0", path = "./ext/node_resolver" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
 async-trait = "0.1.73"
-base32 = "=0.4.0"
-base64 = "0.21.4"
+base32 = "=0.5.1"
+base64 = "0.21.7"
 bencher = "0.1"
 brotli = "6.0.0"
 bytes = "1.4.0"
@@ -108,10 +108,11 @@ dlopen2 = "0.6.1"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
 encoding_rs = "=0.8.33"
+fast-socks5 = "0.9.6"
 faster-hex = "0.9"
-fastwebsockets = { version = "0.6", features = ["upgrade", "unstable-split"] }
+fastwebsockets = { version = "0.8", features = ["upgrade", "unstable-split"] }
 filetime = "0.2.16"
-flate2 = { version = "1.0.26", default-features = false }
+flate2 = { version = "1.0.30", default-features = false }
 fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
@@ -123,7 +124,7 @@ http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
 hyper = { version = "1.4.1", features = ["full"] }
 hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "tls12", "ring"] }
-hyper-util = { version = "=0.1.6", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
+hyper-util = { version = "=0.1.7", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
 ipnet = "2.3"
@@ -135,7 +136,7 @@ log = "0.4.20"
 lsp-types = "=0.94.1" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
 monch = "=0.5.0"
-notify = "=5.0.0"
+notify = "=6.1.1"
 num-bigint = { version = "0.4", features = ["rand"] }
 once_cell = "1.17.1"
 os_pipe = { version = "=1.1.5", features = ["io_safety"] }
@@ -176,7 +177,7 @@ tar = "=0.4.40"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
 thiserror = "1.0.61"
-tokio = { version = "1.36.0", features = ["full"] }
+tokio = { version = "=1.36.0", features = ["full"] }
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
 tokio-rustls = { version = "0.26.0", default-features = false, features = ["ring", "tls12"] }
 tokio-socks = "0.5.1"

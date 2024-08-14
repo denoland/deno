@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use deno_terminal::colors;
@@ -19,7 +21,7 @@ pub struct ProgressDataDisplayEntry {
 #[derive(Clone)]
 pub struct ProgressData {
   pub terminal_width: u32,
-  pub display_entry: ProgressDataDisplayEntry,
+  pub display_entries: Vec<ProgressDataDisplayEntry>,
   pub pending_entries: usize,
   pub percent_done: f64,
   pub total_entries: usize,
@@ -32,23 +34,32 @@ pub trait ProgressBarRenderer: Send + Sync + std::fmt::Debug {
 
 /// Indicatif style progress bar.
 #[derive(Debug)]
-pub struct BarProgressBarRenderer;
+pub struct BarProgressBarRenderer {
+  pub display_human_download_size: bool,
+}
 
 impl ProgressBarRenderer for BarProgressBarRenderer {
   fn render(&self, data: ProgressData) -> String {
+    // In `ProgressBarRenderer` we only care about first entry.
+    let Some(display_entry) = &data.display_entries.first() else {
+      return String::new();
+    };
     let (bytes_text, bytes_text_max_width) = {
-      let total_size = data.display_entry.total_size;
-      let pos = data.display_entry.position;
+      let total_size = display_entry.total_size;
+      let pos = display_entry.position;
       if total_size == 0 {
         (String::new(), 0)
       } else {
-        let total_size_str = human_download_size(total_size, total_size);
-        (
-          format!(
-            " {}/{}",
+        let (pos_str, total_size_str) = if self.display_human_download_size {
+          (
             human_download_size(pos, total_size),
-            total_size_str,
-          ),
+            human_download_size(total_size, total_size),
+          )
+        } else {
+          (pos.to_string(), total_size.to_string())
+        };
+        (
+          format!(" {}/{}", pos_str, total_size_str,),
           2 + total_size_str.len() * 2,
         )
       }
@@ -69,11 +80,11 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
 
     let elapsed_text = get_elapsed_text(data.duration);
     let mut text = String::new();
-    if !data.display_entry.message.is_empty() {
+    if !display_entry.message.is_empty() {
       text.push_str(&format!(
         "{} {}{}\n",
         colors::green("Download"),
-        data.display_entry.message,
+        display_entry.message,
         bytes_text,
       ));
     }
@@ -106,7 +117,7 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
     text.push(']');
 
     // suffix
-    if data.display_entry.message.is_empty() {
+    if display_entry.message.is_empty() {
       text.push_str(&colors::gray(bytes_text).to_string());
     }
     text.push_str(&colors::gray(total_text).to_string());
@@ -116,40 +127,82 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
 }
 
 #[derive(Debug)]
-pub struct TextOnlyProgressBarRenderer;
+pub struct TextOnlyProgressBarRenderer {
+  last_tick: AtomicUsize,
+  start_time: std::time::Instant,
+}
 
+impl Default for TextOnlyProgressBarRenderer {
+  fn default() -> Self {
+    Self {
+      last_tick: Default::default(),
+      start_time: std::time::Instant::now(),
+    }
+  }
+}
+
+const SPINNER_CHARS: [&str; 8] = ["⣷", "⣯", "⣟", "⡿", "⢿", "⣻", "⣽", "⣾"];
 impl ProgressBarRenderer for TextOnlyProgressBarRenderer {
   fn render(&self, data: ProgressData) -> String {
-    let bytes_text = {
-      let total_size = data.display_entry.total_size;
-      let pos = data.display_entry.position;
-      if total_size == 0 {
-        String::new()
-      } else {
-        format!(
-          " {}/{}",
-          human_download_size(pos, total_size),
-          human_download_size(total_size, total_size)
-        )
-      }
+    let last_tick = {
+      let last_tick = self.last_tick.load(Ordering::Relaxed);
+      let last_tick = (last_tick + 1) % 8;
+      self.last_tick.store(last_tick, Ordering::Relaxed);
+      last_tick
     };
+    let current_time = std::time::Instant::now();
+
+    let mut display_str = format!(
+      "{} {} ",
+      data.display_entries[0].prompt.as_text(),
+      SPINNER_CHARS[last_tick]
+    );
+
+    let elapsed_time = current_time - self.start_time;
+    let fmt_elapsed_time = get_elapsed_text(elapsed_time);
+
     let total_text = if data.total_entries <= 1 {
       String::new()
     } else {
       format!(
-        " ({}/{})",
+        " {}/{}",
         data.total_entries - data.pending_entries,
         data.total_entries
       )
     };
 
-    format!(
-      "{} {}{}{}",
-      data.display_entry.prompt.as_text(),
-      data.display_entry.message,
-      colors::gray(bytes_text),
-      colors::gray(total_text),
-    )
+    display_str.push_str(&format!("{}{}\n", fmt_elapsed_time, total_text));
+
+    for i in 0..4 {
+      let Some(display_entry) = data.display_entries.get(i) else {
+        display_str.push('\n');
+        continue;
+      };
+
+      let bytes_text = {
+        let total_size = display_entry.total_size;
+        let pos = display_entry.position;
+        if total_size == 0 {
+          String::new()
+        } else {
+          format!(
+            " {}/{}",
+            human_download_size(pos, total_size),
+            human_download_size(total_size, total_size)
+          )
+        }
+      };
+
+      let message = display_entry
+        .message
+        .replace("https://registry.npmjs.org/", "npm:")
+        .replace("https://jsr.io/", "jsr:");
+      display_str.push_str(
+        &colors::gray(format!(" - {}{}\n", message, bytes_text)).to_string(),
+      );
+    }
+
+    display_str
   }
 }
 
@@ -165,6 +218,7 @@ mod test {
   use super::*;
   use pretty_assertions::assert_eq;
   use std::time::Duration;
+  use test_util::assert_contains;
 
   #[test]
   fn should_get_elapsed_text() {
@@ -195,14 +249,16 @@ mod test {
 
   #[test]
   fn should_render_bar_progress() {
-    let renderer = BarProgressBarRenderer;
+    let renderer = BarProgressBarRenderer {
+      display_human_download_size: true,
+    };
     let mut data = ProgressData {
-      display_entry: ProgressDataDisplayEntry {
+      display_entries: vec![ProgressDataDisplayEntry {
         prompt: ProgressMessagePrompt::Download,
         message: "data".to_string(),
         position: 0,
         total_size: 10 * BYTES_TO_KIB,
-      },
+      }],
       duration: Duration::from_secs(1),
       pending_entries: 1,
       total_entries: 1,
@@ -220,8 +276,8 @@ mod test {
     );
 
     data.percent_done = 0.5f64;
-    data.display_entry.position = 5 * BYTES_TO_KIB;
-    data.display_entry.message = String::new();
+    data.display_entries[0].position = 5 * BYTES_TO_KIB;
+    data.display_entries[0].message = "".to_string();
     data.total_entries = 3;
     let text = renderer.render(data.clone());
     let text = test_util::strip_ansi_codes(&text);
@@ -235,14 +291,14 @@ mod test {
 
     data.terminal_width = 50;
     data.pending_entries = 0;
-    data.display_entry.position = 10 * BYTES_TO_KIB;
+    data.display_entries[0].position = 10 * BYTES_TO_KIB;
     data.percent_done = 1.0f64;
     let text = renderer.render(data.clone());
     let text = test_util::strip_ansi_codes(&text);
     assert_eq!(text, "[00:01] [###########] 10.00KiB/10.00KiB (3/3)",);
 
-    data.display_entry.position = 0;
-    data.display_entry.total_size = 0;
+    data.display_entries[0].position = 0;
+    data.display_entries[0].total_size = 0;
     data.pending_entries = 0;
     data.total_entries = 1;
     let text = renderer.render(data);
@@ -252,14 +308,14 @@ mod test {
 
   #[test]
   fn should_render_text_only_progress() {
-    let renderer = TextOnlyProgressBarRenderer;
+    let renderer = TextOnlyProgressBarRenderer::default();
     let mut data = ProgressData {
-      display_entry: ProgressDataDisplayEntry {
+      display_entries: vec![ProgressDataDisplayEntry {
         prompt: ProgressMessagePrompt::Blocking,
         message: "data".to_string(),
         position: 0,
         total_size: 10 * BYTES_TO_KIB,
-      },
+      }],
       duration: Duration::from_secs(1),
       pending_entries: 1,
       total_entries: 3,
@@ -268,14 +324,16 @@ mod test {
     };
     let text = renderer.render(data.clone());
     let text = test_util::strip_ansi_codes(&text);
-    assert_eq!(text, "Blocking data 0.00KiB/10.00KiB (2/3)");
+    assert_contains!(text, "Blocking ⣯");
+    assert_contains!(text, "2/3\n - data 0.00KiB/10.00KiB\n\n\n\n");
 
     data.pending_entries = 0;
     data.total_entries = 1;
-    data.display_entry.position = 0;
-    data.display_entry.total_size = 0;
+    data.display_entries[0].position = 0;
+    data.display_entries[0].total_size = 0;
     let text = renderer.render(data);
     let text = test_util::strip_ansi_codes(&text);
-    assert_eq!(text, "Blocking data");
+    assert_contains!(text, "Blocking ⣟");
+    assert_contains!(text, "\n - data\n\n\n\n");
   }
 }
