@@ -4706,7 +4706,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       }
       Err(e) => {
         let msg: String = e.to_string();
-        eprintln!(
+        println!(
           "{}: {}",
           colors::red_bold("error"),
           msg.trim_start_matches("error: ")

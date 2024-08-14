@@ -1,6 +1,5 @@
 const hosts = [
-  "api.notion.com",
-  "api.notion.com:80",
+  "api.notion.com.",
   "www.google.com",
 ];
 

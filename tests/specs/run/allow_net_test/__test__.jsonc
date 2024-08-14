@@ -2,6 +2,14 @@
   "tempDir": true,
   "steps": [
     {
+      "args": " run --allow-net=api.notion.com.,www.google.com. host.js",
+      "output": ""
+    },
+    {
+      "args": " run --allow-net host.js",
+      "output": ""
+    },
+    {
       "args": " run --allow-net=*.amazon.com  host.js",
       "output": "err_i.out",
       "exitCode": 2
