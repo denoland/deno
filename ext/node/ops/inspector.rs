@@ -8,7 +8,7 @@ use deno_core::OpState;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 
 type NotificationReceiver = Arc<Mutex<UnboundedReceiver<serde_json::Value>>>;
 
@@ -32,9 +32,8 @@ pub async fn op_inspector_post(
     let s = state.borrow();
     s.borrow::<Arc<Mutex<LocalInspectorSession>>>().clone()
   };
-
-  let mut lock = session.lock().unwrap();
-  lock.post_message(&method, params).await
+  let mut session = session.lock().await;
+  session.post_message(&method, params).await
 }
 
 #[op2(async)]
@@ -47,7 +46,7 @@ pub async fn op_inspector_get_notification(
     s.borrow::<NotificationReceiver>().clone()
   };
 
-  let mut receiver = receiver.lock().unwrap();
+  let mut receiver = receiver.lock().await;
   let maybe_msg = receiver.next().await;
   maybe_msg
 }

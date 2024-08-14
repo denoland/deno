@@ -706,10 +706,10 @@ impl MainWorker {
       let op_state = self.js_runtime.op_state();
       op_state
         .borrow_mut()
-        .put(Arc::new(std::sync::Mutex::new(recv)));
+        .put(Arc::new(tokio::sync::Mutex::new(recv)));
       op_state
         .borrow_mut()
-        .put(Arc::new(std::sync::Mutex::new(session)));
+        .put(Arc::new(tokio::sync::Mutex::new(session)));
     }
   }
 

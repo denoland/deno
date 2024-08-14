@@ -1,14 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import {
-  op_inspector_get_notification,
-  op_inspector_post,
-  op_void_async_deferred,
-} from "ext:core/ops";
+import { op_inspector_get_notification, op_inspector_post } from "ext:core/ops";
 import { EventEmitter } from "node:events";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 
 const {
   SafeMap,
@@ -26,8 +22,11 @@ class Session extends EventEmitter {
       while (true) {
         let notification;
         try {
-          notification = await op_inspector_get_notification();
+          const opPromise = op_inspector_get_notification();
+          core.unrefOpPromise(opPromise);
+          notification = await opPromise;
         } catch (_e) {
+          console.log("notification error", _e);
           break;
         }
         this.emit(notification.method, notification);
@@ -48,12 +47,11 @@ class Session extends EventEmitter {
     params?: Record<string, unknown>,
     callback?: (...args: unknown[]) => void,
   ): void {
-    Promise.all([
-      op_inspector_post(method, params).then((
-        response,
-      ) => callback?.(response)),
-      op_void_async_deferred(),
-    ]);
+    op_inspector_post(method, params).then((
+      response,
+    ) => {
+      callback?.(response);
+    });
   }
 
   /** Immediately closes the session, all pending
