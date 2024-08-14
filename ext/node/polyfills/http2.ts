@@ -54,6 +54,7 @@ import {
   ERR_HTTP2_INVALID_STREAM,
   ERR_HTTP2_NO_SOCKET_MANIPULATION,
   ERR_HTTP2_SESSION_ERROR,
+  ERR_HTTP2_SOCKET_UNBOUND,
   ERR_HTTP2_STATUS_INVALID,
   ERR_HTTP2_STREAM_CANCEL,
   ERR_HTTP2_STREAM_ERROR,
@@ -95,6 +96,8 @@ const kSentTrailers = Symbol("sent-trailers");
 const kState = Symbol("state");
 const kType = Symbol("type");
 const kTimeout = Symbol("timeout");
+const kSocket = Symbol("socket");
+const kProxySocket = Symbol("proxySocket");
 
 const kDenoResponse = Symbol("kDenoResponse");
 const kDenoRid = Symbol("kDenoRid");
@@ -128,11 +131,76 @@ function debugHttp2(...args) {
   }
 }
 
-export class Http2Session extends EventEmitter {
-  constructor(type, _options /* socket */) {
-    super();
+const sessionProxySocketHandler = {
+  get(session, prop) {
+    switch (prop) {
+      case "setTimeout":
+      case "ref":
+      case "unref":
+        return FunctionPrototypeBind(session[prop], session);
+      case "destroy":
+      case "emit":
+      case "end":
+      case "pause":
+      case "read":
+      case "resume":
+      case "write":
+      case "setEncoding":
+      case "setKeepAlive":
+      case "setNoDelay":
+        throw new ERR_HTTP2_NO_SOCKET_MANIPULATION();
+      default: {
+        const socket = session[kSocket];
+        if (socket === undefined) {
+          throw new ERR_HTTP2_SOCKET_UNBOUND();
+        }
+        const value = socket[prop];
+        return typeof value === "function"
+          ? FunctionPrototypeBind(value, socket)
+          : value;
+      }
+    }
+  },
+  getPrototypeOf(session) {
+    const socket = session[kSocket];
+    if (socket === undefined) {
+      throw new ERR_HTTP2_SOCKET_UNBOUND();
+    }
+    return ReflectGetPrototypeOf(socket);
+  },
+  set(session, prop, value) {
+    switch (prop) {
+      case "setTimeout":
+      case "ref":
+      case "unref":
+        session[prop] = value;
+        return true;
+      case "destroy":
+      case "emit":
+      case "end":
+      case "pause":
+      case "read":
+      case "resume":
+      case "write":
+      case "setEncoding":
+      case "setKeepAlive":
+      case "setNoDelay":
+        throw new ERR_HTTP2_NO_SOCKET_MANIPULATION();
+      default: {
+        const socket = session[kSocket];
+        if (socket === undefined) {
+          throw new ERR_HTTP2_SOCKET_UNBOUND();
+        }
+        socket[prop] = value;
+        return true;
+      }
+    }
+  },
+};
 
-    // TODO(bartlomieju): Handle sockets here
+export class Http2Session extends EventEmitter {
+  constructor(type, _options, socket) {
+    super();
 
     this[kState] = {
       destroyCode: constants.NGHTTP2_NO_ERROR,
@@ -149,12 +217,11 @@ export class Http2Session extends EventEmitter {
     this[kEncrypted] = undefined;
     this[kAlpnProtocol] = undefined;
     this[kType] = type;
+    this[kProxySocket] = null;
+    this[kSocket] = socket;
     this[kTimeout] = null;
-    // this[kProxySocket] = null;
-    // this[kSocket] = socket;
-    // this[kHandle] = undefined;
 
-    // TODO(bartlomieju): connecting via socket
+    debugHttp2(type, "created");
   }
 
   get encrypted(): boolean {
@@ -206,9 +273,12 @@ export class Http2Session extends EventEmitter {
     return false;
   }
 
-  get socket(): Socket /*| TlsSocket*/ {
-    warnNotImplemented("Http2Session.socket");
-    return {};
+  get socket(): Socket {
+    const proxySocket = this[kProxySocket];
+    if (proxySocket === null) {
+      return this[kProxySocket] = new Proxy(this, sessionProxySocketHandler);
+    }
+    return proxySocket;
   }
 
   get type(): number {
@@ -274,7 +344,7 @@ export class Http2Session extends EventEmitter {
     if (this.closed || this.destroyed) {
       return;
     }
-
+    debugHttp2(this, "marking session closed");
     this[kState].flags |= SESSION_FLAGS_CLOSED;
     if (typeof callback === "function") {
       this.once("close", callback);
@@ -304,6 +374,10 @@ export class Http2Session extends EventEmitter {
 
   unref() {
     warnNotImplemented("Http2Session.unref");
+  }
+
+  _onTimeout() {
+    callTimeout(this, this);
   }
 
   setTimeout(msecs: number, callback?: () => void) {
@@ -357,7 +431,8 @@ function closeSession(session: Http2Session, code?: number, error?: Error) {
 
 export class ServerHttp2Session extends Http2Session {
   constructor() {
-    super(constants.NGHTTP2_SESSION_SERVER, {});
+    // TODO(satyarohith): pass socket instead of undefined
+    super(constants.NGHTTP2_SESSION_SERVER, {}, undefined);
   }
 
   altsvc(
@@ -395,7 +470,7 @@ export class ClientHttp2Session extends Http2Session {
     url: string,
     options: Record<string, unknown>,
   ) {
-    super(constants.NGHTTP2_SESSION_CLIENT, options);
+    super(constants.NGHTTP2_SESSION_CLIENT, options, socket);
     this[kPendingRequestCalls] = null;
     this[kDenoClientRid] = undefined;
     this[kDenoConnRid] = undefined;
@@ -2072,16 +2147,14 @@ const kStream = Symbol("stream");
 const kResponse = Symbol("response");
 const kHeaders = Symbol("headers");
 const kRawHeaders = Symbol("rawHeaders");
-const kSocket = Symbol("socket");
 const kTrailers = Symbol("trailers");
 const kRawTrailers = Symbol("rawTrailers");
 const kSetHeader = Symbol("setHeader");
 const kAppendHeader = Symbol("appendHeader");
 const kAborted = Symbol("aborted");
-const kProxySocket = Symbol("proxySocket");
 const kRequest = Symbol("request");
 
-const proxySocketHandler = {
+const streamProxySocketHandler = {
   has(stream, prop) {
     const ref = stream.session !== undefined ? stream.session[kSocket] : stream;
     return (prop in stream) || (prop in ref);
@@ -2280,7 +2353,7 @@ class Http2ServerRequest extends Readable {
     const stream = this[kStream];
     const proxySocket = stream[kProxySocket];
     if (proxySocket === null) {
-      return stream[kProxySocket] = new Proxy(stream, proxySocketHandler);
+      return stream[kProxySocket] = new Proxy(stream, streamProxySocketHandler);
     }
     return proxySocket;
   }
@@ -2484,7 +2557,7 @@ class Http2ServerResponse extends Stream {
     const stream = this[kStream];
     const proxySocket = stream[kProxySocket];
     if (proxySocket === null) {
-      return stream[kProxySocket] = new Proxy(stream, proxySocketHandler);
+      return stream[kProxySocket] = new Proxy(stream, streamProxySocketHandler);
     }
     return proxySocket;
   }

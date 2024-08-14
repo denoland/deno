@@ -74,6 +74,7 @@ util::unit_test_factory!(
     fetch_test,
     http_test,
     http2_test,
+    inspector_test,
     _randomBytes_test = internal / _randomBytes_test,
     _randomFill_test = internal / _randomFill_test,
     _randomInt_test = internal / _randomInt_test,
