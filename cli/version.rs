@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::serde_json;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
@@ -9,54 +8,53 @@ pub use crate::shared::ReleaseChannel;
 
 const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_HASH");
 const TYPESCRIPT: &str = env!("TS_VERSION");
+const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 const IS_CANARY: bool = option_env!("DENO_CANARY").is_some();
-const RELEASE_CHANNEL: ReleaseChannel = if IS_CANARY {
-  ReleaseChannel::Canary
-} else {
-  ReleaseChannel::Stable
-};
 
 pub static DENO_VERSION_INFO: Lazy<DenoVersionInfo> = Lazy::new(|| {
-  libsui::find_section("denoversion")
-    .map(|buf| serde_json::from_slice::<DenoVersionInfo>(buf).unwrap())
-    .unwrap_or(DenoVersionInfo {
-      deno: if IS_CANARY {
-        concat!(
-          env!("CARGO_PKG_VERSION"),
-          "+",
-          env!("GIT_COMMIT_HASH_SHORT")
-        )
+  let release_channel = libsui::find_section("denoreleasechannel")
+    .and_then(|buf| std::str::from_utf8(buf).ok())
+    .and_then(|str_| ReleaseChannel::deserialize(str_).ok())
+    .unwrap_or({
+      if IS_CANARY {
+        ReleaseChannel::Canary
       } else {
-        env!("CARGO_PKG_VERSION")
-      },
+        ReleaseChannel::Stable
+      }
+    });
 
-      // TODO(bartlomieju): remove, use `release_channel` instead
-      is_canary: IS_CANARY,
+  DenoVersionInfo {
+    deno: if IS_CANARY {
+      concat!(
+        env!("CARGO_PKG_VERSION"),
+        "+",
+        env!("GIT_COMMIT_HASH_SHORT")
+      )
+    } else {
+      env!("CARGO_PKG_VERSION")
+    },
 
-      release_channel: RELEASE_CHANNEL,
+    // TODO(bartlomieju): remove, use `release_channel` instead
+    is_canary: IS_CANARY,
 
-      git_hash: env!("GIT_COMMIT_HASH"),
+    release_channel,
 
-      version_or_git_hash: if IS_CANARY {
-        GIT_COMMIT_HASH
-      } else {
-        env!("CARGO_PKG_VERSION")
-      },
+    git_hash: GIT_COMMIT_HASH,
 
-      // Keep in sync with `deno` field.
-      user_agent: if IS_CANARY {
-        concat!(
-          "Deno/",
-          env!("CARGO_PKG_VERSION"),
-          "+",
-          env!("GIT_COMMIT_HASH_SHORT")
-        )
-      } else {
-        concat!("Deno/", env!("CARGO_PKG_VERSION"))
-      },
+    // Keep in sync with `deno` field.
+    user_agent: if IS_CANARY {
+      concat!(
+        "Deno/",
+        env!("CARGO_PKG_VERSION"),
+        "+",
+        env!("GIT_COMMIT_HASH_SHORT")
+      )
+    } else {
+      concat!("Deno/", env!("CARGO_PKG_VERSION"))
+    },
 
-      typescript: TYPESCRIPT,
-    })
+    typescript: TYPESCRIPT,
+  }
 });
 
 #[derive(Deserialize, Serialize)]
@@ -70,18 +68,25 @@ pub struct DenoVersionInfo {
   // TODO(bartlomieju): remove, use `release_channel` instead
   pub is_canary: bool,
 
-  #[allow(unused)]
   pub release_channel: ReleaseChannel,
 
   /// A full git hash.
   pub git_hash: &'static str,
 
-  /// For stable release, a semver like, eg. `v1.46.2`.
-  /// For canary release a full git hash, eg. `9bdab6fb6b93eb43b1930f40987fa4997287f9c8`.
-  pub version_or_git_hash: &'static str,
-
   /// A user-agent header that will be used in HTTP client.
   pub user_agent: &'static str,
 
   pub typescript: &'static str,
+}
+
+impl DenoVersionInfo {
+  /// For stable release, a semver like, eg. `v1.46.2`.
+  /// For canary release a full git hash, eg. `9bdab6fb6b93eb43b1930f40987fa4997287f9c8`.
+  pub fn version_or_git_hash(&self) -> &'static str {
+    if IS_CANARY {
+      self.git_hash
+    } else {
+      CARGO_PKG_VERSION
+    }
+  }
 }
