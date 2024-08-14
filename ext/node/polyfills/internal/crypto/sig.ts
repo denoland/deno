@@ -58,6 +58,35 @@ export interface VerifyKeyObjectInput extends SigningOptions {
   key: KeyObject;
 }
 
+function getSaltLength(options) {
+  return getIntOption("saltLength", options);
+}
+
+function getDSASignatureEncoding(options) {
+  if (typeof options === "object") {
+    const { dsaEncoding = "der" } = options;
+    if (dsaEncoding === "der") {
+      return 0;
+    } else if (dsaEncoding === "ieee-p1363") {
+      return 1;
+    }
+    throw new ERR_INVALID_ARG_VALUE("options.dsaEncoding", dsaEncoding);
+  }
+
+  return 0;
+}
+
+function getIntOption(name, options) {
+  const value = options[name];
+  if (value !== undefined) {
+    if (value === value >> 0) {
+      return value;
+    }
+    throw new ERR_INVALID_ARG_VALUE(`options.${name}`, value);
+  }
+  return undefined;
+}
+
 export type KeyLike = string | Buffer | KeyObject;
 
 export class SignImpl extends Writable {
@@ -86,6 +115,13 @@ export class SignImpl extends Writable {
     encoding?: BinaryToTextEncoding,
   ): Buffer | string {
     const res = prepareAsymmetricKey(privateKey, kConsumePrivate);
+
+    // Options specific to RSA-PSS
+    const pssSaltLength = getSaltLength(privateKey);
+
+    // Options specific to (EC)DSA
+    const dsaSigEnc = getDSASignatureEncoding(privateKey);
+
     let handle;
     if ("handle" in res) {
       handle = res.handle;
@@ -101,6 +137,8 @@ export class SignImpl extends Writable {
       handle,
       this.hash.digest(),
       this.#digestType,
+      pssSaltLength,
+      dsaSigEnc,
     ));
     return encoding ? ret.toString(encoding) : ret;
   }
@@ -152,6 +190,13 @@ export class VerifyImpl extends Writable {
     encoding?: BinaryToTextEncoding,
   ): boolean {
     const res = prepareAsymmetricKey(publicKey, kConsumePublic);
+
+    // Options specific to RSA-PSS
+    const pssSaltLength = getSaltLength(publicKey);
+
+    // Options specific to (EC)DSA
+    const dsaSigEnc = getDSASignatureEncoding(publicKey);
+
     let handle;
     if ("handle" in res) {
       handle = res.handle;
@@ -168,6 +213,8 @@ export class VerifyImpl extends Writable {
       this.hash.digest(),
       this.#digestType,
       Buffer.from(signature, encoding),
+      pssSaltLength,
+      dsaSigEnc,
     );
   }
 }

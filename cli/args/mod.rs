@@ -640,8 +640,6 @@ pub enum RootCertStoreLoadError {
   UnknownStore(String),
   #[error("Unable to add pem file to certificate store: {0}")]
   FailedAddPemFile(String),
-  #[error("Unable to add system certificate to certificate store: {0}")]
-  FailedAddSystemCert(String),
   #[error("Failed opening CA file: {0}")]
   CaFileOpenError(String),
 }
@@ -675,11 +673,19 @@ pub fn get_root_cert_store(
       "system" => {
         let roots = load_native_certs().expect("could not load platform certs");
         for root in roots {
-          root_cert_store
-            .add(rustls::pki_types::CertificateDer::from(root.0))
-            .map_err(|e| {
-              RootCertStoreLoadError::FailedAddSystemCert(e.to_string())
-            })?;
+          if let Err(err) = root_cert_store
+            .add(rustls::pki_types::CertificateDer::from(root.0.clone()))
+          {
+            log::error!(
+              "{}",
+              colors::yellow(&format!(
+                "Unable to add system certificate to certificate store: {:?}",
+                err
+              ))
+            );
+            let hex_encoded_root = faster_hex::hex_string(&root.0);
+            log::error!("{}", colors::gray(&hex_encoded_root));
+          }
         }
       }
       _ => {
@@ -1145,8 +1151,6 @@ impl CliOptions {
               resolve_url_or_path("./$deno$stdin.ts", &cwd)
                 .map_err(AnyError::from)
             })?
-        } else if run_flags.watch.is_some() {
-          resolve_url_or_path(&run_flags.script, self.initial_cwd())?
         } else if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
           ModuleSpecifier::parse(&run_flags.script)?
         } else {
