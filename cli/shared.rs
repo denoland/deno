@@ -26,7 +26,7 @@ impl ReleaseChannel {
       Self::Stable => "latest",
       Self::Canary => "canary",
       Self::Rc => "release candidate",
-      Self::Lts => "LTS (long term support)",
+      Self::Lts => "long term support",
     }
   }
 
