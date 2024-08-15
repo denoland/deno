@@ -475,6 +475,8 @@ fn load_private_keys_from_file(
 pub struct ListenTlsArgs {
   alpn_protocols: Option<Vec<String>>,
   reuse_port: bool,
+  #[serde(default)]
+  load_balanced: bool,
 }
 
 #[op2]
@@ -502,7 +504,11 @@ where
     .next()
     .ok_or_else(|| generic_error("No resolved address found"))?;
 
-  let tcp_listener = TcpListener::bind_direct(bind_addr, args.reuse_port)?;
+  let tcp_listener = if args.load_balanced {
+    TcpListener::bind_load_balanced(bind_addr)
+  } else {
+    TcpListener::bind_direct(bind_addr, args.reuse_port)
+  }?;
   let local_addr = tcp_listener.local_addr()?;
   let alpn = args
     .alpn_protocols

@@ -283,6 +283,8 @@ impl BenchOptions {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct UnstableFmtOptions {
   pub css: bool,
+  pub html: bool,
+  pub component: bool,
   pub yaml: bool,
 }
 
@@ -317,6 +319,8 @@ impl FmtOptions {
       options: resolve_fmt_options(fmt_flags, fmt_config.options),
       unstable: UnstableFmtOptions {
         css: unstable.css || fmt_flags.unstable_css,
+        html: unstable.html || fmt_flags.unstable_html,
+        component: unstable.component || fmt_flags.unstable_component,
         yaml: unstable.yaml || fmt_flags.unstable_yaml,
       },
       files: fmt_config.files,
@@ -1157,8 +1161,6 @@ impl CliOptions {
               resolve_url_or_path("./$deno$stdin.ts", &cwd)
                 .map_err(AnyError::from)
             })?
-        } else if run_flags.watch.is_some() {
-          resolve_url_or_path(&run_flags.script, self.initial_cwd())?
         } else if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
           ModuleSpecifier::parse(&run_flags.script)?
         } else {
@@ -1348,6 +1350,8 @@ impl CliOptions {
     let workspace = self.workspace();
     UnstableFmtOptions {
       css: workspace.has_unstable("fmt-css"),
+      html: workspace.has_unstable("fmt-html"),
+      component: workspace.has_unstable("fmt-component"),
       yaml: workspace.has_unstable("fmt-yaml"),
     }
   }
@@ -1682,6 +1686,8 @@ impl CliOptions {
         "byonm",
         "bare-node-builtins",
         "fmt-css",
+        "fmt-html",
+        "fmt-component",
         "fmt-yaml",
       ]);
       // add more unstable flags to the same vector holding granular flags

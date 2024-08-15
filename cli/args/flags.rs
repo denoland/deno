@@ -121,6 +121,7 @@ pub struct CompileFlags {
   pub args: Vec<String>,
   pub target: Option<String>,
   pub no_terminal: bool,
+  pub icon: Option<String>,
   pub include: Vec<String>,
 }
 
@@ -206,6 +207,8 @@ pub struct FmtFlags {
   pub no_semicolons: Option<bool>,
   pub watch: Option<WatchFlags>,
   pub unstable_css: bool,
+  pub unstable_html: bool,
+  pub unstable_component: bool,
   pub unstable_yaml: bool,
 }
 
@@ -337,6 +340,7 @@ pub struct ServeFlags {
   pub watch: Option<WatchFlagsWithPaths>,
   pub port: u16,
   pub host: String,
+  pub worker_count: Option<usize>,
 }
 
 impl ServeFlags {
@@ -347,6 +351,7 @@ impl ServeFlags {
       watch: None,
       port,
       host: host.to_owned(),
+      worker_count: None,
     }
   }
 }
@@ -1765,6 +1770,12 @@ supported in canary.
             .help("Hide terminal on Windows")
             .action(ArgAction::SetTrue),
         )
+        .arg(
+          Arg::new("icon")
+            .long("icon")
+            .help("Set the icon of the executable on Windows (.ico)")
+            .value_parser(value_parser!(String))
+        )
         .arg(executable_ext_arg())
         .arg(env_file_arg())
         .arg(script_arg().required(true).trailing_var_arg(true))
@@ -2104,7 +2115,8 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
             .default_value("ts")
             .value_parser([
               "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "css", "scss",
-              "sass", "less", "yml", "yaml", "ipynb",
+              "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
+              "ipynb",
             ]),
         )
         .arg(
@@ -2185,6 +2197,20 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           Arg::new("unstable-css")
             .long("unstable-css")
             .help("Enable formatting CSS, SCSS, Sass and Less files.")
+            .value_parser(FalseyValueParser::new())
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("unstable-html")
+            .long("unstable-html")
+            .help("Enable formatting HTML files.")
+            .value_parser(FalseyValueParser::new())
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("unstable-component")
+            .long("unstable-component")
+            .help("Enable formatting Svelte, Vue, Astro and Angular files.")
             .value_parser(FalseyValueParser::new())
             .action(ArgAction::SetTrue),
         )
@@ -2676,6 +2702,9 @@ fn serve_subcommand() -> Command {
         .help("The TCP address to serve on, defaulting to 0.0.0.0 (all interfaces).")
         .value_parser(serve_host_validator),
     )
+    .arg(
+      parallel_arg("multiple server workers", false)
+    )
     .arg(check_arg(false))
     .arg(watch_arg(true))
     .arg(watch_exclude_arg())
@@ -2837,11 +2866,7 @@ Directory arguments are expanded to all contained files matching the glob
           .action(ArgAction::SetTrue),
       )
       .arg(
-        Arg::new("parallel")
-          .long("parallel")
-          .help("Run test modules in parallel. Parallelism defaults to the number of available CPUs or the value in the DENO_JOBS environment variable.")
-          .conflicts_with("jobs")
-          .action(ArgAction::SetTrue)
+        parallel_arg("test modules", true)
       )
       .arg(
         Arg::new("jobs")
@@ -2882,6 +2907,18 @@ Directory arguments are expanded to all contained files matching the glob
       )
       .arg(env_file_arg())
     )
+}
+
+fn parallel_arg(descr: &str, jobs_fallback: bool) -> Arg {
+  let arg = Arg::new("parallel")
+    .long("parallel")
+    .help(format!("Run {descr} in parallel. Parallelism defaults to the number of available CPUs or the value in the DENO_JOBS environment variable."))
+    .action(ArgAction::SetTrue);
+  if jobs_fallback {
+    arg.conflicts_with("jobs")
+  } else {
+    arg
+  }
 }
 
 fn types_subcommand() -> Command {
@@ -3861,6 +3898,7 @@ fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let args = script.collect();
   let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
+  let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
   let include = match matches.remove_many::<String>("include") {
     Some(f) => f.collect(),
@@ -3874,6 +3912,7 @@ fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     args,
     target,
     no_terminal,
+    icon,
     include,
   });
 }
@@ -4058,6 +4097,8 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let prose_wrap = matches.remove_one::<String>("prose-wrap");
   let no_semicolons = matches.remove_one::<bool>("no-semicolons");
   let unstable_css = matches.get_flag("unstable-css");
+  let unstable_html = matches.get_flag("unstable-html");
+  let unstable_component = matches.get_flag("unstable-component");
   let unstable_yaml = matches.get_flag("unstable-yaml");
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
@@ -4071,6 +4112,8 @@ fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     no_semicolons,
     watch: watch_arg_parse(matches),
     unstable_css,
+    unstable_html,
+    unstable_component,
     unstable_yaml,
   });
 }
@@ -4395,6 +4438,8 @@ fn serve_parse(
     .remove_one::<String>("host")
     .unwrap_or_else(|| "0.0.0.0".to_owned());
 
+  let worker_count = parallel_arg_parse(matches, false).map(|v| v.get());
+
   runtime_args_parse(flags, matches, true, true);
   // If the user didn't pass --allow-net, add this port to the network
   // allowlist. If the host is 0.0.0.0, we add :{port} and allow the same network perms
@@ -4434,6 +4479,7 @@ fn serve_parse(
     watch: watch_arg_parse_with_paths(matches),
     port,
     host,
+    worker_count,
   });
 
   Ok(())
@@ -4463,6 +4509,42 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 
   flags.subcommand = DenoSubcommand::Task(task_flags);
+}
+
+fn parallel_arg_parse(
+  matches: &mut ArgMatches,
+  fallback_to_jobs: bool,
+) -> Option<NonZeroUsize> {
+  if matches.get_flag("parallel") {
+    if let Ok(value) = env::var("DENO_JOBS") {
+      value.parse::<NonZeroUsize>().ok()
+    } else {
+      std::thread::available_parallelism().ok()
+    }
+  } else if fallback_to_jobs && matches.contains_id("jobs") {
+    // We can't change this to use the log crate because its not configured
+    // yet at this point since the flags haven't been parsed. This flag is
+    // deprecated though so it's not worth changing the code to use the log
+    // crate here and this is only done for testing anyway.
+    #[allow(clippy::print_stderr)]
+    {
+      eprintln!(
+        "⚠️ {}",
+        crate::colors::yellow(concat!(
+          "The `--jobs` flag is deprecated and will be removed in Deno 2.0.\n",
+          "Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.\n",
+          "Learn more at: https://docs.deno.com/runtime/manual/basics/env_variables"
+        )),
+      );
+    }
+    if let Some(value) = matches.remove_one::<NonZeroUsize>("jobs") {
+      Some(value)
+    } else {
+      std::thread::available_parallelism().ok()
+    }
+  } else {
+    None
+  }
 }
 
 fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4531,36 +4613,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     flags.argv.extend(script_arg);
   }
 
-  let concurrent_jobs = if matches.get_flag("parallel") {
-    if let Ok(value) = env::var("DENO_JOBS") {
-      value.parse::<NonZeroUsize>().ok()
-    } else {
-      std::thread::available_parallelism().ok()
-    }
-  } else if matches.contains_id("jobs") {
-    // We can't change this to use the log crate because its not configured
-    // yet at this point since the flags haven't been parsed. This flag is
-    // deprecated though so it's not worth changing the code to use the log
-    // crate here and this is only done for testing anyway.
-    #[allow(clippy::print_stderr)]
-    {
-      eprintln!(
-        "⚠️ {}",
-        crate::colors::yellow(concat!(
-        "The `--jobs` flag is deprecated and will be removed in Deno 2.0.\n",
-        "Use the `--parallel` flag with possibly the `DENO_JOBS` environment variable instead.\n",
-        "Learn more at: https://docs.deno.com/runtime/manual/basics/env_variables"
-        )),
-      );
-    }
-    if let Some(value) = matches.remove_one::<NonZeroUsize>("jobs") {
-      Some(value)
-    } else {
-      std::thread::available_parallelism().ok()
-    }
-  } else {
-    None
-  };
+  let concurrent_jobs = parallel_arg_parse(matches, true);
 
   let include = if let Some(files) = matches.remove_many::<String>("files") {
     files.collect()
@@ -5891,6 +5944,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -5916,6 +5971,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -5941,6 +5998,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -5966,6 +6025,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
@@ -5980,6 +6041,8 @@ mod tests {
       "--watch",
       "--no-clear-screen",
       "--unstable-css",
+      "--unstable-html",
+      "--unstable-component",
       "--unstable-yaml"
     ]);
     assert_eq!(
@@ -5998,6 +6061,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: true,
+          unstable_html: true,
+          unstable_component: true,
           unstable_yaml: true,
           watch: Some(WatchFlags {
             hmr: false,
@@ -6034,6 +6099,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
@@ -6059,6 +6126,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -6092,6 +6161,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: None,
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Some(Default::default()),
         }),
@@ -6130,6 +6201,8 @@ mod tests {
           prose_wrap: Some("never".to_string()),
           no_semicolons: Some(true),
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -6162,6 +6235,8 @@ mod tests {
           prose_wrap: None,
           no_semicolons: Some(false),
           unstable_css: false,
+          unstable_html: false,
+          unstable_component: false,
           unstable_yaml: false,
           watch: Default::default(),
         }),
@@ -9488,6 +9563,7 @@ mod tests {
           args: vec![],
           target: None,
           no_terminal: false,
+          icon: None,
           include: vec![]
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -9499,7 +9575,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--icon", "favicon.ico", "--output", "colors", "--env=.example.env", "https://examples.deno.land/color-logging.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -9510,6 +9586,7 @@ mod tests {
           args: svec!["foo", "bar", "-p", "8080"],
           target: None,
           no_terminal: true,
+          icon: Some(String::from("favicon.ico")),
           include: vec![]
         }),
         import_map_path: Some("import_map.json".to_string()),

@@ -78,6 +78,7 @@
     "node:http": "../ext/node/polyfills/http.ts",
     "node:http2": "../ext/node/polyfills/http2.ts",
     "node:https": "../ext/node/polyfills/https.ts",
+    "node:inspector": "../ext/node/polyfills/inspector.ts",
     "ext:deno_node/inspector.ts": "../ext/node/polyfills/inspector.ts",
     "ext:deno_node/internal_binding/_libuv_winerror.ts": "../ext/node/polyfills/internal_binding/_libuv_winerror.ts",
     "ext:deno_node/internal_binding/_listen.ts": "../ext/node/polyfills/internal_binding/_listen.ts",

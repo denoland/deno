@@ -986,6 +986,16 @@ export const validatePosition = hideStackFrames((position) => {
   }
 });
 
+/** @type {(buffer: ArrayBufferView) => Uint8Array} */
+export const arrayBufferViewToUint8Array = hideStackFrames(
+  (buffer) => {
+    if (!(buffer instanceof Uint8Array)) {
+      return new Uint8Array(buffer.buffer);
+    }
+    return buffer;
+  },
+);
+
 export const realpathCacheKey = Symbol("realpathCacheKey");
 export const constants = {
   kIoMaxLength,
