@@ -8,6 +8,7 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
+use crate::shared::ReleaseChannel;
 use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -146,7 +147,8 @@ impl VersionProvider for RealVersionProvider {
   async fn get_current_exe_release_channel(
     &self,
   ) -> Result<ReleaseChannel, AnyError> {
-    if version::is_canary() {
+    // TODO(bartlomieju): remove hitting a remote server
+    if matches!(version::RELEASE_CHANNEL, ReleaseChannel::Canary) {
       // If this fails for whatever reason, just return an empty vector.
       // It's better to miss that than throw error here.
       let rc_versions = get_rc_versions(
@@ -636,11 +638,12 @@ fn select_specific_version_for_upgrade(
 ) -> Result<Option<AvailableVersion>, AnyError> {
   match release_channel {
     ReleaseChannel::Stable => {
-      let current_is_passed = if !version::is_canary() {
-        version::deno() == version
-      } else {
-        false
-      };
+      let current_is_passed =
+        if !matches!(version::RELEASE_CHANNEL, ReleaseChannel::Canary) {
+          version::deno() == version
+        } else {
+          false
+        };
 
       if !force && current_is_passed {
         log::info!("Version {} is already installed", version::deno());
@@ -691,15 +694,16 @@ async fn find_latest_version_to_upgrade(
   let (maybe_newer_latest_version, current_version) = match release_channel {
     ReleaseChannel::Stable => {
       let current_version = version::deno();
-      let current_is_most_recent = if !version::is_canary() {
-        let current = Version::parse_standard(current_version).unwrap();
-        let latest =
-          Version::parse_standard(&latest_version_found.version_or_hash)
-            .unwrap();
-        current >= latest
-      } else {
-        false
-      };
+      let current_is_most_recent =
+        if !matches!(version::RELEASE_CHANNEL, ReleaseChannel::Canary) {
+          let current = Version::parse_standard(current_version).unwrap();
+          let latest =
+            Version::parse_standard(&latest_version_found.version_or_hash)
+              .unwrap();
+          current >= latest
+        } else {
+          false
+        };
 
       if !force && current_is_most_recent {
         (None, current_version)
@@ -749,53 +753,6 @@ async fn find_latest_version_to_upgrade(
   log::info!("");
 
   Ok(maybe_newer_latest_version)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum ReleaseChannel {
-  /// Stable version, eg. 1.45.4, 2.0.0, 2.1.0
-  Stable,
-
-  /// Pointing to a git hash
-  Canary,
-
-  /// Long term support release
-  #[allow(unused)]
-  Lts,
-
-  /// Release candidate, poiting to a git hash
-  Rc,
-}
-
-impl ReleaseChannel {
-  fn name(&self) -> &str {
-    match self {
-      Self::Stable => "latest",
-      Self::Canary => "canary",
-      Self::Rc => "release candidate",
-      Self::Lts => "LTS (long term support)",
-    }
-  }
-
-  fn serialize(&self) -> String {
-    match self {
-      Self::Stable => "stable",
-      Self::Canary => "canary",
-      Self::Rc => "rc",
-      Self::Lts => "lts",
-    }
-    .to_string()
-  }
-
-  fn deserialize(str_: &str) -> Result<Self, AnyError> {
-    Ok(match str_ {
-      "stable" => Self::Stable,
-      "canary" => Self::Canary,
-      "rc" => Self::Rc,
-      "lts" => Self::Lts,
-      unknown => bail!("Unrecognized release channel: {}", unknown),
-    })
-  }
 }
 
 // Return a list of available RC release in format of (<commit_hash>, <version_name>)
