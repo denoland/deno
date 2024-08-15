@@ -32,7 +32,6 @@ use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::DENO_FUTURE;
-use crate::cache::DenoDir;
 use crate::graph_container::resolve_files_from_patterns;
 use crate::graph_container::ModuleGraphContainer;
 use crate::util::display;
@@ -102,6 +101,9 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
       tools::registry::add(flags, add_flags, tools::registry::AddCommandName::Add).await
     }),
+    DenoSubcommand::Remove(remove_flags) => spawn_subcommand(async {
+      tools::registry::remove(flags, remove_flags).await
+    }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       if bench_flags.watch.is_some() {
         tools::bench::run_benchmarks_with_watch(flags, bench_flags).await
@@ -143,12 +145,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         .await
     }),
     DenoSubcommand::Clean => spawn_subcommand(async move {
-      let deno_dir = DenoDir::new(None)?;
-      if deno_dir.root.exists() {
-        std::fs::remove_dir_all(&deno_dir.root)?;
-        log::info!("{} {}", colors::green("Removed"), deno_dir.root.display());
-      }
-      Ok::<(), std::io::Error>(())
+      tools::clean::clean()
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       tools::compile::compile(flags, compile_flags).await
@@ -173,6 +170,9 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(flags, install_flags).await
+    }),
+    DenoSubcommand::JSONReference(json_reference) => spawn_subcommand(async move {
+      display::write_to_stdout_ignore_sigpipe(&deno_core::serde_json::to_vec_pretty(&json_reference.json).unwrap())
     }),
     DenoSubcommand::Jupyter(jupyter_flags) => spawn_subcommand(async {
       tools::jupyter::kernel(flags, jupyter_flags).await
@@ -200,33 +200,51 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         tools::run::run_from_stdin(flags.clone()).await
       } else {
         let result = tools::run::run_script(WorkerExecutionMode::Run, flags.clone(), run_flags.watch).await;
-       match result {
-         Ok(v) =>  Ok(v),
-         Err(script_err) => {
-          if script_err.to_string().starts_with(MODULE_NOT_FOUND) {
-            let mut new_flags = flags.deref().clone();
-            let task_flags = TaskFlags {
-                cwd: None,
-                task: Some(run_flags.script.clone()),
-            };
-            new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
-            let result  = tools::task::execute_script(Arc::new(new_flags), task_flags.clone(), true).await;
-            match result {
-              Ok(v) => Ok(v),
-              Err(_) => {
-                  // Return script error for backwards compatibility.
+        match result {
+          Ok(v) => Ok(v),
+          Err(script_err) => {
+            if script_err.to_string().starts_with(MODULE_NOT_FOUND) {
+              if run_flags.bare {
+                let mut cmd = args::clap_root();
+                cmd.build();
+                let command_names = cmd.get_subcommands().map(|command| command.get_name()).collect::<Vec<_>>();
+                let suggestions = args::did_you_mean(&run_flags.script, command_names);
+                if !suggestions.is_empty() {
+                  let mut error = clap::error::Error::<clap::error::DefaultFormatter>::new(clap::error::ErrorKind::InvalidSubcommand).with_cmd(&cmd);
+                  error.insert(
+                    clap::error::ContextKind::SuggestedSubcommand,
+                    clap::error::ContextValue::Strings(suggestions),
+                  );
+
+                  Err(error.into())
+                } else {
                   Err(script_err)
+                }
+              } else {
+                let mut new_flags = flags.deref().clone();
+                let task_flags = TaskFlags {
+                  cwd: None,
+                  task: Some(run_flags.script.clone()),
+                };
+                new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
+                let result = tools::task::execute_script(Arc::new(new_flags), task_flags.clone(), true).await;
+                match result {
+                  Ok(v) => Ok(v),
+                  Err(_) => {
+                    // Return script error for backwards compatibility.
+                    Err(script_err)
+                  }
+                }
               }
+            } else {
+              Err(script_err)
             }
-          } else {
-            Err(script_err)
           }
-         },
-       }
+        }
       }
     }),
     DenoSubcommand::Serve(serve_flags) => spawn_subcommand(async move {
-      tools::run::run_script(WorkerExecutionMode::Serve, flags, serve_flags.watch).await
+      tools::serve::serve(flags, serve_flags).await
     }),
     DenoSubcommand::Task(task_flags) => spawn_subcommand(async {
       tools::task::execute_script(flags, task_flags, false).await
@@ -277,6 +295,9 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }),
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
       tools::registry::publish(flags, publish_flags).await
+    }),
+    DenoSubcommand::Help(help_flags) => spawn_subcommand(async move {
+      display::write_to_stdout_ignore_sigpipe(help_flags.help.ansi().to_string().as_bytes())
     }),
   };
 

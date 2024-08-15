@@ -312,6 +312,16 @@ impl<'a> TsResponseImportMapper<'a> {
         if let Some(result) = import_map.lookup(&specifier, referrer) {
           return Some(result);
         }
+        if let Some(req_ref_str) = specifier.as_str().strip_prefix("jsr:") {
+          if !req_ref_str.starts_with('/') {
+            let specifier_str = format!("jsr:/{req_ref_str}");
+            if let Ok(specifier) = ModuleSpecifier::parse(&specifier_str) {
+              if let Some(result) = import_map.lookup(&specifier, referrer) {
+                return Some(result);
+              }
+            }
+          }
+        }
       }
       return Some(spec_str);
     }

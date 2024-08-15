@@ -1367,21 +1367,20 @@ fn diagnose_resolution(
   let mut diagnostics = vec![];
   match resolution {
     Resolution::Ok(resolved) => {
+      let file_referrer = referrer_doc.file_referrer();
       let specifier = &resolved.specifier;
-      let managed_npm_resolver = snapshot
-        .resolver
-        .maybe_managed_npm_resolver(referrer_doc.file_referrer());
+      let managed_npm_resolver =
+        snapshot.resolver.maybe_managed_npm_resolver(file_referrer);
       for (_, headers) in snapshot
         .resolver
-        .redirect_chain_headers(specifier, referrer_doc.file_referrer())
+        .redirect_chain_headers(specifier, file_referrer)
       {
         if let Some(message) = headers.get("x-deno-warning") {
           diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
         }
       }
-      if let Some(doc) = snapshot
-        .documents
-        .get_or_load(specifier, referrer_doc.specifier())
+      if let Some(doc) =
+        snapshot.documents.get_or_load(specifier, file_referrer)
       {
         if let Some(headers) = doc.maybe_headers() {
           if let Some(message) = headers.get("x-deno-warning") {

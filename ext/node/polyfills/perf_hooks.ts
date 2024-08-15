@@ -10,11 +10,12 @@ import {
 } from "ext:deno_web/15_performance.js";
 
 class PerformanceObserver {
+  static supportedEntryTypes: string[] = [];
   observe() {
-    notImplemented("PerformanceObserver.observe");
+    // todo(lucacasonato): actually implement this
   }
   disconnect() {
-    notImplemented("PerformanceObserver.disconnect");
+    // todo(lucacasonato): actually implement this
   }
 }
 

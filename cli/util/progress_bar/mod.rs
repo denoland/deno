@@ -28,6 +28,7 @@ pub enum ProgressMessagePrompt {
   Download,
   Blocking,
   Initialize,
+  Cleaning,
 }
 
 impl ProgressMessagePrompt {
@@ -38,6 +39,7 @@ impl ProgressMessagePrompt {
       ProgressMessagePrompt::Initialize => {
         colors::green("Initialize").to_string()
       }
+      ProgressMessagePrompt::Cleaning => colors::green("Cleaning").to_string(),
     }
   }
 }
@@ -71,7 +73,13 @@ impl UpdateGuard {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProgressBarStyle {
+  /// Shows a progress bar with human readable download size
   DownloadBars,
+
+  /// Shows a progress bar with numeric progres count
+  ProgressBars,
+
+  /// Shows a list of currently downloaded files.
   TextOnly,
 }
 
@@ -270,7 +278,14 @@ impl ProgressBar {
     Self {
       inner: ProgressBarInner::new(match style {
         ProgressBarStyle::DownloadBars => {
-          Arc::new(renderer::BarProgressBarRenderer)
+          Arc::new(renderer::BarProgressBarRenderer {
+            display_human_download_size: true,
+          })
+        }
+        ProgressBarStyle::ProgressBars => {
+          Arc::new(renderer::BarProgressBarRenderer {
+            display_human_download_size: false,
+          })
         }
         ProgressBarStyle::TextOnly => {
           Arc::new(renderer::TextOnlyProgressBarRenderer::default())

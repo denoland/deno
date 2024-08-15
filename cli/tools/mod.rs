@@ -3,6 +3,7 @@
 pub mod bench;
 pub mod bundle;
 pub mod check;
+pub mod clean;
 pub mod compile;
 pub mod coverage;
 pub mod doc;
@@ -15,6 +16,7 @@ pub mod lint;
 pub mod registry;
 pub mod repl;
 pub mod run;
+pub mod serve;
 pub mod task;
 pub mod test;
 pub mod upgrade;

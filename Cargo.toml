@@ -177,7 +177,7 @@ tar = "=0.4.40"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
 thiserror = "1.0.61"
-tokio = { version = "1.36.0", features = ["full"] }
+tokio = { version = "=1.36.0", features = ["full"] }
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
 tokio-rustls = { version = "0.26.0", default-features = false, features = ["ring", "tls12"] }
 tokio-socks = "0.5.1"
@@ -228,6 +228,12 @@ opt-level = 'z' # Optimize for size
 [profile.release-with-debug]
 inherits = "release"
 debug = true
+
+# Faster to compile than `release` but with similar performance.
+[profile.release-lite]
+inherits = "release"
+codegen-units = 128
+lto = "thin"
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.bench]
