@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 import { renderToReadableStream } from "https://esm.run/react-dom/server";
 import * as React from "https://esm.run/react";
 const { serve } = Deno;

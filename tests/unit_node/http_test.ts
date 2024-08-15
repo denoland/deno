@@ -7,9 +7,9 @@ import https from "node:https";
 import net from "node:net";
 import fs from "node:fs";
 
-import { assert, assertEquals, fail } from "@std/assert/mod.ts";
-import { assertSpyCalls, spy } from "@std/testing/mock.ts";
-import { fromFileUrl, relative } from "@std/path/mod.ts";
+import { assert, assertEquals, fail } from "@std/assert";
+import { assertSpyCalls, spy } from "@std/testing/mock";
+import { fromFileUrl, relative } from "@std/path";
 
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
@@ -846,7 +846,10 @@ Deno.test(
   "[node/http] client upgrade",
   { permissions: { net: true } },
   async () => {
-    const { promise, resolve } = Promise.withResolvers<void>();
+    const { promise: serverClosed, resolve: resolveServer } = Promise
+      .withResolvers<void>();
+    const { promise: socketClosed, resolve: resolveSocket } = Promise
+      .withResolvers<void>();
     const server = http.createServer((req, res) => {
       // @ts-ignore: It exists on TLSSocket
       assert(!req.socket.encrypted);
@@ -887,12 +890,16 @@ Deno.test(
         // @ts-ignore it's a socket for real
         serverSocket!.end();
         server.close(() => {
-          resolve();
+          resolveServer();
+        });
+        socket.on("close", () => {
+          resolveSocket();
         });
       });
     });
 
-    await promise;
+    await serverClosed;
+    await socketClosed;
   },
 );
 
@@ -994,6 +1001,33 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "[node/http] client destroy before sending request should not error",
+  () => {
+    const request = http.request("http://localhost:5929/");
+    // Calling this would throw
+    request.destroy();
+  },
+);
+
+Deno.test(
+  "[node/http] destroyed requests should not be sent",
+  async () => {
+    let receivedRequest = false;
+    const server = Deno.serve(() => {
+      receivedRequest = true;
+      return new Response(null);
+    });
+    const request = http.request(`http://localhost:${server.addr.port}/`);
+    request.destroy();
+    request.end("hello");
+
+    await new Promise((r) => setTimeout(r, 500));
+    assertEquals(receivedRequest, false);
+    await server.shutdown();
+  },
+);
+
 Deno.test("[node/http] node:http exports globalAgent", async () => {
   const http = await import("node:http");
   assert(
@@ -1075,6 +1109,27 @@ Deno.test("[node/http] ServerResponse appendHeader", async () => {
     const res = await fetch(`http://localhost:${port}`);
     assertEquals(res.headers.get("foo"), "bar, baz, qux, quux");
     assertEquals(res.headers.getSetCookie(), ["a=b", "c=d", "e=f"]);
+    assertEquals(await res.text(), "Hello World");
+    server.close(() => {
+      resolve();
+    });
+  });
+
+  await promise;
+});
+
+Deno.test("[node/http] ServerResponse appendHeader set-cookie", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.appendHeader("Set-Cookie", "a=b");
+    res.appendHeader("Set-Cookie", "c=d");
+    res.end("Hello World");
+  });
+
+  server.listen(async () => {
+    const { port } = server.address() as { port: number };
+    const res = await fetch(`http://localhost:${port}`);
+    assertEquals(res.headers.getSetCookie(), ["a=b", "c=d"]);
     assertEquals(await res.text(), "Hello World");
     server.close(() => {
       resolve();
@@ -1274,6 +1329,86 @@ Deno.test("[node/http] client closing a streaming response doesn't terminate ser
   clearInterval(interval!);
 });
 
+Deno.test("[node/http] client closing a streaming request doesn't terminate server", async () => {
+  let interval: number;
+  let uploadedData = "";
+  let requestError: Error | null = null;
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    interval = setInterval(() => {
+      res.write("Hello, world!\n");
+    }, 100);
+    req.on("data", (chunk) => {
+      uploadedData += chunk.toString();
+    });
+    req.on("end", () => {
+      clearInterval(interval);
+    });
+    req.on("error", (err) => {
+      requestError = err;
+      clearInterval(interval);
+      res.end();
+    });
+  });
+
+  const deferred1 = Promise.withResolvers<void>();
+  server.listen(0, () => {
+    // deno-lint-ignore no-explicit-any
+    const port = (server.address() as any).port;
+
+    // Create a client connection to the server
+    const client = net.createConnection({ port }, () => {
+      const headers = [
+        "POST /upload HTTP/1.1",
+        "Host: localhost",
+        "Content-Type: text/plain",
+        "Transfer-Encoding: chunked",
+        "",
+        "",
+      ].join("\r\n");
+
+      client.write(headers);
+
+      const chunk = "A".repeat(100);
+      let sentChunks = 0;
+
+      function writeChunk() {
+        const chunkHeader = `${chunk.length.toString(16)}\r\n`;
+        client.write(chunkHeader);
+        client.write(chunk);
+        client.write("\r\n");
+        sentChunks++;
+
+        if (sentChunks >= 3) {
+          client.destroy();
+          setTimeout(() => {
+            deferred1.resolve();
+          }, 40);
+        } else {
+          setTimeout(writeChunk, 10);
+        }
+      }
+      writeChunk();
+    });
+  });
+
+  await deferred1.promise;
+  assert(requestError !== null, "Server should have received an error");
+  assert(
+    (requestError! as Error)?.name === "Http",
+    `Expected Http error, got ${(requestError! as Error)?.name}`,
+  );
+  assert(
+    (requestError! as Error)?.message.includes(
+      "error reading a body from connection",
+    ),
+  );
+  assertEquals(server.listening, true);
+  server.close();
+  assertEquals(server.listening, false);
+  clearInterval(interval!);
+});
+
 Deno.test("[node/http] http.request() post streaming body works", async () => {
   const server = http.createServer((req, res) => {
     if (req.method === "POST") {
@@ -1291,9 +1426,10 @@ Deno.test("[node/http] http.request() post streaming body works", async () => {
     }
   });
 
-  const deferred = Promise.withResolvers<void>();
+  const responseEnded = Promise.withResolvers<void>();
+  const fileClosed = Promise.withResolvers<void>();
   const timeout = setTimeout(() => {
-    deferred.reject(new Error("timeout"));
+    responseEnded.reject(new Error("timeout"));
   }, 5000);
   server.listen(0, () => {
     // deno-lint-ignore no-explicit-any
@@ -1325,7 +1461,7 @@ Deno.test("[node/http] http.request() post streaming body works", async () => {
         const response = JSON.parse(responseBody);
         assertEquals(res.statusCode, 200);
         assertEquals(response.bytes, contentLength);
-        deferred.resolve();
+        responseEnded.resolve();
       });
     });
 
@@ -1335,8 +1471,10 @@ Deno.test("[node/http] http.request() post streaming body works", async () => {
 
     const readStream = fs.createReadStream(filePath);
     readStream.pipe(req);
+    readStream.on("close", fileClosed.resolve);
   });
-  await deferred.promise;
+  await responseEnded.promise;
+  await fileClosed.promise;
   assertEquals(server.listening, true);
   server.close();
   clearTimeout(timeout);
@@ -1378,4 +1516,26 @@ Deno.test("[node/http] ServerResponse write transfer-encoding chunked", async ()
 Deno.test("[node/http] Server.address() can be null", () => {
   const server = http.createServer((_req, res) => res.end("it works"));
   assertEquals(server.address(), null);
+});
+
+Deno.test("[node/http] ClientRequest PUT subarray", async () => {
+  const buffer = Buffer.from("hello world");
+  const payload = buffer.subarray(6, 11);
+  let body = "";
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const req = http.request("http://localhost:4545/echo_server", {
+    method: "PUT",
+  }, (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      resolve();
+    });
+  });
+  req.once("error", (e) => reject(e));
+  req.end(payload);
+  await promise;
+  assertEquals(body, "world");
 });

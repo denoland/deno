@@ -315,6 +315,9 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   fn exists_sync(&self, path: &Path) -> bool {
     self.stat_sync(path).is_ok()
   }
+  async fn exists_async(&self, path: PathBuf) -> FsResult<bool> {
+    Ok(self.stat_async(path).await.is_ok())
+  }
 
   fn read_text_file_lossy_sync(
     &self,
@@ -331,64 +334,6 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   ) -> FsResult<String> {
     let buf = self.read_file_async(path, access_check).await?;
     Ok(string_from_utf8_lossy(buf))
-  }
-}
-
-pub struct DenoConfigFsAdapter<'a>(&'a dyn FileSystem);
-
-impl<'a> DenoConfigFsAdapter<'a> {
-  pub fn new(fs: &'a dyn FileSystem) -> Self {
-    Self(fs)
-  }
-}
-
-impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
-  fn read_to_string_lossy(
-    &self,
-    path: &Path,
-  ) -> Result<String, std::io::Error> {
-    self
-      .0
-      .read_text_file_lossy_sync(path, None)
-      .map_err(|err| err.into_io_error())
-  }
-
-  fn stat_sync(
-    &self,
-    path: &Path,
-  ) -> Result<deno_config::fs::FsMetadata, std::io::Error> {
-    self
-      .0
-      .stat_sync(path)
-      .map(|stat| deno_config::fs::FsMetadata {
-        is_file: stat.is_file,
-        is_directory: stat.is_directory,
-        is_symlink: stat.is_symlink,
-      })
-      .map_err(|err| err.into_io_error())
-  }
-
-  fn read_dir(
-    &self,
-    path: &Path,
-  ) -> Result<Vec<deno_config::fs::FsDirEntry>, std::io::Error> {
-    self
-      .0
-      .read_dir_sync(path)
-      .map_err(|err| err.into_io_error())
-      .map(|entries| {
-        entries
-          .into_iter()
-          .map(|e| deno_config::fs::FsDirEntry {
-            path: path.join(e.name),
-            metadata: deno_config::fs::FsMetadata {
-              is_file: e.is_file,
-              is_directory: e.is_directory,
-              is_symlink: e.is_symlink,
-            },
-          })
-          .collect()
-      })
   }
 }
 

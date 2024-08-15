@@ -10,16 +10,17 @@ use deno_core::JsRuntimeInspector;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_fs::FileSystemRc;
+use node_resolver::NodeModuleKind;
+use node_resolver::NodeResolutionMode;
+use node_resolver::REQUIRE_CONDITIONS;
 use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::resolution;
-use crate::resolution::NodeResolverRc;
-use crate::NodeModuleKind;
 use crate::NodePermissions;
-use crate::NodeResolutionMode;
+use crate::NodeRequireResolverRc;
+use crate::NodeResolverRc;
 use crate::NpmResolverRc;
 use crate::PackageJson;
 
@@ -30,7 +31,7 @@ fn ensure_read_permission<P>(
 where
   P: NodePermissions + 'static,
 {
-  let resolver = state.borrow::<NpmResolverRc>().clone();
+  let resolver = state.borrow::<NodeRequireResolverRc>().clone();
   let permissions = state.borrow_mut::<P>();
   resolver.ensure_read_permission(permissions, file_path)
 }
@@ -423,7 +424,7 @@ where
       exports,
       Some(&referrer),
       NodeModuleKind::Cjs,
-      resolution::REQUIRE_CONDITIONS,
+      REQUIRE_CONDITIONS,
       NodeResolutionMode::Execution,
     )?;
     Ok(Some(if r.scheme() == "file" {
@@ -511,7 +512,7 @@ where
     exports,
     Some(&referrer),
     NodeModuleKind::Cjs,
-    resolution::REQUIRE_CONDITIONS,
+    REQUIRE_CONDITIONS,
     NodeResolutionMode::Execution,
   )?;
   Ok(Some(if r.scheme() == "file" {
@@ -590,7 +591,7 @@ where
       Some(&referrer_url),
       NodeModuleKind::Cjs,
       Some(&pkg),
-      resolution::REQUIRE_CONDITIONS,
+      REQUIRE_CONDITIONS,
       NodeResolutionMode::Execution,
     )?;
     Ok(Some(url_to_file_path_string(&url)?))

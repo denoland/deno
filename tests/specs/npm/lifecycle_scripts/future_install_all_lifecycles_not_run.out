@@ -1,4 +1,3 @@
-⚠️ `deno install` behavior will change in Deno 2. To preserve the current behavior use the `-g` or `--global` flag.
 [UNORDERED_START]
 Download http://localhost:4260/@denotest/node-lifecycle-scripts
 Download http://localhost:4260/@denotest/bin
@@ -10,4 +9,4 @@ Initialize @denotest/bin@1.0.0
 warning: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
     This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache` or `deno install`
     (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>` or `deno install --allow-scripts=pkg1,pkg2`):
-      @denotest/node-lifecycle-scripts@1.0.0
+      npm:@denotest/node-lifecycle-scripts@1.0.0

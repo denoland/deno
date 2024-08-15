@@ -173,6 +173,15 @@ impl FileSystem for RealFs {
     spawn_blocking(move || lstat(&path)).await?.map(Into::into)
   }
 
+  fn exists_sync(&self, path: &Path) -> bool {
+    exists(path)
+  }
+  async fn exists_async(&self, path: PathBuf) -> FsResult<bool> {
+    spawn_blocking(move || exists(&path))
+      .await
+      .map_err(Into::into)
+  }
+
   fn realpath_sync(&self, path: &Path) -> FsResult<PathBuf> {
     realpath(path)
   }
@@ -812,6 +821,29 @@ fn stat_extra(
     Ok(info.dwVolumeSerialNumber as u64)
   }
 
+  use windows_sys::Wdk::Storage::FileSystem::FILE_ALL_INFORMATION;
+
+  unsafe fn query_file_information(
+    handle: winapi::shared::ntdef::HANDLE,
+  ) -> std::io::Result<FILE_ALL_INFORMATION> {
+    use windows_sys::Wdk::Storage::FileSystem::NtQueryInformationFile;
+
+    let mut info = std::mem::MaybeUninit::<FILE_ALL_INFORMATION>::zeroed();
+    let status = NtQueryInformationFile(
+      handle as _,
+      std::ptr::null_mut(),
+      info.as_mut_ptr() as *mut _,
+      std::mem::size_of::<FILE_ALL_INFORMATION>() as _,
+      18, /* FileAllInformation */
+    );
+
+    if status < 0 {
+      return Err(std::io::Error::last_os_error());
+    }
+
+    Ok(info.assume_init())
+  }
+
   // SAFETY: winapi calls
   unsafe {
     let mut path: Vec<_> = path.as_os_str().encode_wide().collect();
@@ -833,7 +865,66 @@ fn stat_extra(
     CloseHandle(file_handle);
     fsstat.dev = result?;
 
+    if let Ok(file_info) = query_file_information(file_handle) {
+      if file_info.BasicInformation.FileAttributes
+        & winapi::um::winnt::FILE_ATTRIBUTE_REPARSE_POINT
+        != 0
+      {
+        fsstat.is_symlink = true;
+      }
+
+      if file_info.BasicInformation.FileAttributes
+        & winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY
+        != 0
+      {
+        fsstat.mode |= libc::S_IFDIR as u32;
+        fsstat.size = 0;
+      } else {
+        fsstat.mode |= libc::S_IFREG as u32;
+        fsstat.size = file_info.StandardInformation.EndOfFile as u64;
+      }
+
+      if file_info.BasicInformation.FileAttributes
+        & winapi::um::winnt::FILE_ATTRIBUTE_READONLY
+        != 0
+      {
+        fsstat.mode |=
+          (libc::S_IREAD | (libc::S_IREAD >> 3) | (libc::S_IREAD >> 6)) as u32;
+      } else {
+        fsstat.mode |= ((libc::S_IREAD | libc::S_IWRITE)
+          | ((libc::S_IREAD | libc::S_IWRITE) >> 3)
+          | ((libc::S_IREAD | libc::S_IWRITE) >> 6))
+          as u32;
+      }
+    }
+
     Ok(())
+  }
+}
+
+fn exists(path: &Path) -> bool {
+  #[cfg(unix)]
+  {
+    use nix::unistd::access;
+    use nix::unistd::AccessFlags;
+    access(path, AccessFlags::F_OK).is_ok()
+  }
+
+  #[cfg(windows)]
+  {
+    use std::os::windows::ffi::OsStrExt;
+    use winapi::um::fileapi::GetFileAttributesW;
+    use winapi::um::fileapi::INVALID_FILE_ATTRIBUTES;
+
+    let path = path
+      .as_os_str()
+      .encode_wide()
+      .chain(std::iter::once(0))
+      .collect::<Vec<_>>();
+    // Safety: `path` is a null-terminated string
+    let attrs = unsafe { GetFileAttributesW(path.as_ptr()) };
+
+    attrs != INVALID_FILE_ATTRIBUTES
   }
 }
 

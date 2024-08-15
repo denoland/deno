@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 // This module is browser compatible.
 
-import { normalize as posixNormalize } from "jsr:/@std/path@^0.220.1/posix/normalize";
+import { normalize as posixNormalize } from "jsr:@std/path@^0.220.1/posix/normalize";
 
 /**
  * Normalize the `URL`, resolving `'..'` and `'.'` segments and multiple

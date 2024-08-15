@@ -35,7 +35,6 @@ use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
 use crate::worker::ModuleLoaderAndSourceMapGetter;
 use crate::worker::ModuleLoaderFactory;
-
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
@@ -55,7 +54,6 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
-use deno_core::SourceMapGetter;
 use deno_graph::source::ResolutionMode;
 use deno_graph::source::Resolver;
 use deno_graph::GraphKind;
@@ -65,15 +63,17 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
 use deno_runtime::code_cache;
-use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
+use node_resolver::NodeResolutionMode;
 
 pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
   let npm_resolver = factory.npm_resolver().await?;
+  let cli_options = factory.cli_options()?;
   if let Some(npm_resolver) = npm_resolver.as_managed() {
     if !npm_resolver.ensure_top_level_package_json_install().await? {
-      if let Some(lockfile) = factory.maybe_lockfile() {
+      if let Some(lockfile) = cli_options.maybe_lockfile() {
         lockfile.error_if_changed()?;
       }
 
@@ -107,7 +107,7 @@ pub async fn load_top_level_deps(factory: &CliFactory) -> Result<(), AnyError> {
         graph,
         &roots,
         false,
-        factory.cli_options().ts_type_lib_window(),
+        factory.cli_options()?.ts_type_lib_window(),
         deno_runtime::deno_permissions::PermissionsContainer::allow_all(),
       )
       .await?;
@@ -293,8 +293,7 @@ impl CliModuleLoaderFactory {
       shared: self.shared.clone(),
     })));
     ModuleLoaderAndSourceMapGetter {
-      module_loader: loader.clone(),
-      source_map_getter: Some(loader),
+      module_loader: loader,
     }
   }
 }
@@ -447,15 +446,14 @@ impl<TGraphContainer: ModuleGraphContainer>
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Some(result) = self.shared.node_resolver.resolve_if_in_npm_package(
-      specifier,
-      referrer,
-      NodeResolutionMode::Execution,
-    ) {
-      return match result? {
-        Some(res) => Ok(res.into_url()),
-        None => Err(generic_error("not found")),
-      };
+    if self.shared.node_resolver.in_npm_package(referrer) {
+      return Ok(
+        self
+          .shared
+          .node_resolver
+          .resolve(specifier, referrer, NodeResolutionMode::Execution)?
+          .into_url(),
+      );
     }
 
     let graph = self.graph_container.graph();
@@ -614,7 +612,8 @@ impl<TGraphContainer: ModuleGraphContainer>
     maybe_referrer: Option<&ModuleSpecifier>,
   ) -> Result<CodeOrDeferredEmit<'graph>, AnyError> {
     if specifier.scheme() == "node" {
-      unreachable!(); // Node built-in modules should be handled internally.
+      // Node built-in modules should be handled internally.
+      unreachable!("Deno bug. {} was misconfigured internally.", specifier);
     }
 
     match graph.get(specifier) {
@@ -726,6 +725,19 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     Ok(specifier)
   }
 
+  fn get_host_defined_options<'s>(
+    &self,
+    scope: &mut deno_core::v8::HandleScope<'s>,
+    name: &str,
+  ) -> Option<deno_core::v8::Local<'s, deno_core::v8::Data>> {
+    let name = deno_core::ModuleSpecifier::parse(name).ok()?;
+    if self.0.shared.node_resolver.in_npm_package(&name) {
+      Some(create_host_defined_options(scope))
+    } else {
+      None
+    }
+  }
+
   fn load(
     &self,
     specifier: &ModuleSpecifier,
@@ -828,11 +840,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     }
     std::future::ready(()).boxed_local()
   }
-}
 
-impl<TGraphContainer: ModuleGraphContainer> SourceMapGetter
-  for CliModuleLoader<TGraphContainer>
-{
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
     let specifier = resolve_url(file_name).ok()?;
     match specifier.scheme() {
@@ -845,7 +853,7 @@ impl<TGraphContainer: ModuleGraphContainer> SourceMapGetter
     source_map_from_code(source.code.as_bytes())
   }
 
-  fn get_source_line(
+  fn get_source_mapped_source_line(
     &self,
     file_name: &str,
     line_number: usize,

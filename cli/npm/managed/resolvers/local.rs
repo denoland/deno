@@ -7,9 +7,9 @@ mod bin_entries;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::Ordering;
+use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -32,10 +32,12 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node::errors::PackageFolderResolveError;
-use deno_runtime::deno_node::errors::PackageFolderResolveErrorKind;
 use deno_runtime::deno_node::NodePermissions;
 use deno_semver::package::PackageNv;
+use node_resolver::errors::PackageFolderResolveError;
+use node_resolver::errors::PackageFolderResolveIoError;
+use node_resolver::errors::PackageNotFoundError;
+use node_resolver::errors::ReferrerNotFoundError;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -185,14 +187,14 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   ) -> Result<PathBuf, PackageFolderResolveError> {
     let maybe_local_path = self
       .resolve_folder_for_specifier(referrer)
-      .map_err(|err| PackageFolderResolveErrorKind::Io {
+      .map_err(|err| PackageFolderResolveIoError {
         package_name: name.to_string(),
         referrer: referrer.clone(),
         source: err,
       })?;
     let Some(local_path) = maybe_local_path else {
       return Err(
-        PackageFolderResolveErrorKind::NotFoundReferrer {
+        ReferrerNotFoundError {
           referrer: referrer.clone(),
           referrer_extra: None,
         }
@@ -220,7 +222,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     }
 
     Err(
-      PackageFolderResolveErrorKind::NotFoundPackage {
+      PackageNotFoundError {
         package_name: name.to_string(),
         referrer: referrer.clone(),
         referrer_extra: None,
@@ -384,9 +386,24 @@ fn can_run_scripts(
   }
 }
 
-fn has_lifecycle_scripts(package: &NpmResolutionPackage) -> bool {
+// npm defaults to running `node-gyp rebuild` if there is a `binding.gyp` file
+// but it always fails if the package excludes the `binding.gyp` file when they publish.
+// (for example, `fsevents` hits this)
+fn is_broken_default_install_script(script: &str, package_path: &Path) -> bool {
+  script == "node-gyp rebuild" && !package_path.join("binding.gyp").exists()
+}
+
+fn has_lifecycle_scripts(
+  package: &NpmResolutionPackage,
+  package_path: &Path,
+) -> bool {
+  if let Some(install) = package.scripts.get("install") {
+    // default script
+    if !is_broken_default_install_script(install, package_path) {
+      return true;
+    }
+  }
   package.scripts.contains_key("preinstall")
-    || package.scripts.contains_key("install")
     || package.scripts.contains_key("postinstall")
 }
 
@@ -504,21 +521,22 @@ async fn sync_resolution_with_fs(
       });
     }
 
-    if has_lifecycle_scripts(package) {
+    let sub_node_modules = folder_path.join("node_modules");
+    let package_path =
+      join_package_name(&sub_node_modules, &package.id.nv.name);
+    if has_lifecycle_scripts(package, &package_path) {
       let scripts_run = folder_path.join(".scripts-run");
+      let has_warned = folder_path.join(".scripts-warned");
       if can_run_scripts(&lifecycle_scripts.allowed, &package.id.nv) {
         if !scripts_run.exists() {
-          let sub_node_modules = folder_path.join("node_modules");
-          let package_path =
-            join_package_name(&sub_node_modules, &package.id.nv.name);
           packages_with_scripts.push((
             package.clone(),
             package_path,
             scripts_run,
           ));
         }
-      } else if !scripts_run.exists() {
-        packages_with_scripts_not_run.push(package.id.nv.clone());
+      } else if !scripts_run.exists() && !has_warned.exists() {
+        packages_with_scripts_not_run.push((has_warned, package.id.nv.clone()));
       }
     }
   }
@@ -589,16 +607,90 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  // 4. Create all the top level packages in the node_modules folder, which are symlinks.
-  //
-  // Symlink node_modules/<package_name> to
-  // node_modules/.deno/<package_id>/node_modules/<package_name>
-  let mut found_names = HashSet::new();
-  let mut ids = snapshot.top_level_packages().collect::<Vec<_>>();
+  let mut found_names: HashMap<&String, &PackageNv> = HashMap::new();
+
+  // 4. Create symlinks for package json dependencies
+  {
+    for remote in pkg_json_deps_provider.remote_pkgs() {
+      let remote_pkg = if let Ok(remote_pkg) =
+        snapshot.resolve_pkg_from_pkg_req(&remote.req)
+      {
+        remote_pkg
+      } else if remote.req.version_req.tag().is_some() {
+        // couldn't find a match, and `resolve_best_package_id`
+        // panics if you give it a tag
+        continue;
+      } else if let Some(remote_id) = snapshot
+        .resolve_best_package_id(&remote.req.name, &remote.req.version_req)
+      {
+        snapshot.package_from_id(&remote_id).unwrap()
+      } else {
+        continue; // skip, package not found
+      };
+      let alias_clashes = remote.req.name != remote.alias
+        && newest_packages_by_name.contains_key(&remote.alias);
+      let install_in_child = {
+        // we'll install in the child if the alias is taken by another package, or
+        // if there's already a package with the same name but different version
+        // linked into the root
+        match found_names.entry(&remote.alias) {
+          Entry::Occupied(nv) => {
+            alias_clashes
+              || remote.req.name != nv.get().name // alias to a different package (in case of duplicate aliases)
+              || !remote.req.version_req.matches(&nv.get().version) // incompatible version
+          }
+          Entry::Vacant(entry) => {
+            entry.insert(&remote_pkg.id.nv);
+            alias_clashes
+          }
+        }
+      };
+      let target_folder_name = get_package_folder_id_folder_name(
+        &remote_pkg.get_package_cache_folder_id(),
+      );
+      let local_registry_package_path = join_package_name(
+        &deno_local_registry_dir
+          .join(&target_folder_name)
+          .join("node_modules"),
+        &remote_pkg.id.nv.name,
+      );
+      if install_in_child {
+        // symlink the dep into the package's child node_modules folder
+        let dest_path =
+          remote.base_dir.join("node_modules").join(&remote.alias);
+
+        symlink_package_dir(&local_registry_package_path, &dest_path)?;
+      } else {
+        // symlink the package into `node_modules/<alias>`
+        if setup_cache
+          .insert_root_symlink(&remote_pkg.id.nv.name, &target_folder_name)
+        {
+          symlink_package_dir(
+            &local_registry_package_path,
+            &join_package_name(root_node_modules_dir_path, &remote.alias),
+          )?;
+        }
+      }
+    }
+  }
+
+  // 5. Create symlinks for the remaining top level packages in the node_modules folder.
+  // (These may be present if they are not in the package.json dependencies, such as )
+  // Symlink node_modules/.deno/<package_id>/node_modules/<package_name> to
+  // node_modules/<package_name>
+  let mut ids = snapshot
+    .top_level_packages()
+    .filter(|f| !found_names.contains_key(&f.nv.name))
+    .collect::<Vec<_>>();
   ids.sort_by(|a, b| b.cmp(a)); // create determinism and only include the latest version
   for id in ids {
-    if !found_names.insert(&id.nv.name) {
-      continue; // skip, already handled
+    match found_names.entry(&id.nv.name) {
+      Entry::Occupied(_) => {
+        continue; // skip, already handled
+      }
+      Entry::Vacant(entry) => {
+        entry.insert(&id.nv);
+      }
     }
     let package = snapshot.package_from_id(id).unwrap();
     let target_folder_name =
@@ -618,11 +710,16 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  // 5. Create a node_modules/.deno/node_modules/<package-name> directory with
+  // 6. Create a node_modules/.deno/node_modules/<package-name> directory with
   // the remaining packages
   for package in newest_packages_by_name.values() {
-    if !found_names.insert(&package.id.nv.name) {
-      continue; // skip, already handled
+    match found_names.entry(&package.id.nv.name) {
+      Entry::Occupied(_) => {
+        continue; // skip, already handled
+      }
+      Entry::Vacant(entry) => {
+        entry.insert(&package.id.nv);
+      }
     }
 
     let target_folder_name =
@@ -643,20 +740,20 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  // 6. Set up `node_modules/.bin` entries for packages that need it.
+  // 7. Set up `node_modules/.bin` entries for packages that need it.
   {
     let bin_entries = std::mem::take(&mut *bin_entries.borrow_mut());
     bin_entries.finish(snapshot, &bin_node_modules_dir_path)?;
   }
 
-  // 7. Create symlinks for the workspace packages
+  // 8. Create symlinks for the workspace packages
   {
     // todo(#24419): this is not exactly correct because it should
     // install correctly for a workspace (potentially in sub directories),
     // but this is good enough for a first pass
     for workspace in pkg_json_deps_provider.workspace_pkgs() {
       symlink_package_dir(
-        &workspace.pkg_dir,
+        &workspace.target_dir,
         &root_node_modules_dir_path.join(&workspace.alias),
       )?;
     }
@@ -671,7 +768,16 @@ async fn sync_resolution_with_fs(
       &deno_local_registry_dir,
     )?;
     let init_cwd = lifecycle_scripts.initial_cwd.as_deref().unwrap();
+    let process_state = crate::npm::managed::npm_process_state(
+      snapshot.as_valid_serialized(),
+      Some(root_node_modules_dir_path),
+    );
 
+    let mut env_vars = crate::task_runner::real_env_vars();
+    env_vars.insert(
+      crate::args::NPM_RESOLUTION_STATE_ENV_VAR_NAME.to_string(),
+      process_state,
+    );
     for (package, package_path, scripts_run_path) in packages_with_scripts {
       // add custom commands for binaries from the package's dependencies. this will take precedence over the
       // baseline commands, so if the package relies on a bin that conflicts with one higher in the dependency tree, the
@@ -684,12 +790,17 @@ async fn sync_resolution_with_fs(
       )?;
       for script_name in ["preinstall", "install", "postinstall"] {
         if let Some(script) = package.scripts.get(script_name) {
+          if script_name == "install"
+            && is_broken_default_install_script(script, &package_path)
+          {
+            continue;
+          }
           let exit_code =
             crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
               task_name: script_name,
               script,
               cwd: &package_path,
-              env_vars: crate::task_runner::real_env_vars(),
+              env_vars: env_vars.clone(),
               custom_commands: custom_commands.clone(),
               init_cwd,
               argv: &[],
@@ -721,12 +832,15 @@ async fn sync_resolution_with_fs(
     };
     let packages = packages_with_scripts_not_run
       .iter()
-      .map(|p| p.to_string())
+      .map(|(_, p)| format!("npm:{p}"))
       .collect::<Vec<_>>()
       .join(", ");
     log::warn!("{}: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
     This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache`{maybe_install}
     (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>`{maybe_install_example}):\n      {packages}", crate::colors::yellow("warning"));
+    for (scripts_warned_path, _) in packages_with_scripts_not_run {
+      let _ignore_err = fs::write(scripts_warned_path, "");
+    }
   }
 
   setup_cache.save();
@@ -943,7 +1057,7 @@ fn junction_or_symlink_dir(
   match junction::create(old_path, new_path) {
     Ok(()) => Ok(()),
     Err(junction_err) => {
-      if cfg!(debug) {
+      if cfg!(debug_assertions) {
         // When running the tests, junctions should be created, but if not then
         // surface this error.
         log::warn!("Error creating junction. {:#}", junction_err);

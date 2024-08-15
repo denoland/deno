@@ -18,7 +18,7 @@ use deno_graph::ModuleGraph;
 use std::sync::Arc;
 
 pub struct Emitter {
-  emit_cache: EmitCache,
+  emit_cache: Arc<EmitCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   transpile_and_emit_options:
     Arc<(deno_ast::TranspileOptions, deno_ast::EmitOptions)>,
@@ -28,7 +28,7 @@ pub struct Emitter {
 
 impl Emitter {
   pub fn new(
-    emit_cache: EmitCache,
+    emit_cache: Arc<EmitCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     transpile_options: deno_ast::TranspileOptions,
     emit_options: deno_ast::EmitOptions,

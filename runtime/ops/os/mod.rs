@@ -4,8 +4,8 @@ use super::utils::into_string;
 use crate::worker::ExitCode;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::normalize_path;
 use deno_core::op2;
-use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::OpState;
 use deno_node::NODE_ENV_VAR_ALLOWLIST;
@@ -80,10 +80,8 @@ fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_read_blind(&current_exe, "exec_path", "Deno.execPath()")?;
-  // Now apply URL parser to current exe to get fully resolved path, otherwise
-  // we might get `./` and `../` bits in `exec_path`
-  let exe_url = Url::from_file_path(current_exe).unwrap();
-  let path = exe_url.to_file_path().unwrap();
+  // normalize path so it doesn't include '.' or '..' components
+  let path = normalize_path(current_exe);
 
   into_string(path.into_os_string())
 }

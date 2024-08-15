@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.166.0"
+version = "0.173.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -27,6 +27,9 @@ hmr = ["include_js_files_for_snapshotting"]
 # conditionally exclude the runtime source transpilation logic, and add an
 # assertion that a snapshot is provided.
 only_snapshotted_js_sources = ["include_js_files_for_snapshotting"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 
 [lib]
 name = "deno_runtime"
@@ -94,6 +97,7 @@ deno_webgpu.workspace = true
 deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
+node_resolver = { workspace = true, features = ["sync"] }
 
 dlopen2.workspace = true
 encoding_rs.workspace = true

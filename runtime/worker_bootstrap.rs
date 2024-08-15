@@ -10,7 +10,6 @@ use deno_terminal::colors;
 
 /// The execution mode for this worker. Some modes may have implicit behaviour.
 #[derive(Copy, Clone)]
-#[repr(u8)]
 pub enum WorkerExecutionMode {
   /// No special behaviour.
   None,
@@ -28,9 +27,37 @@ pub enum WorkerExecutionMode {
   /// `deno bench`
   Bench,
   /// `deno serve`
-  Serve,
+  Serve {
+    is_main: bool,
+    worker_count: Option<usize>,
+  },
   /// `deno jupyter`
   Jupyter,
+}
+
+impl WorkerExecutionMode {
+  pub fn discriminant(&self) -> u8 {
+    match self {
+      WorkerExecutionMode::None => 0,
+      WorkerExecutionMode::Worker => 1,
+      WorkerExecutionMode::Run => 2,
+      WorkerExecutionMode::Repl => 3,
+      WorkerExecutionMode::Eval => 4,
+      WorkerExecutionMode::Test => 5,
+      WorkerExecutionMode::Bench => 6,
+      WorkerExecutionMode::Serve { .. } => 7,
+      WorkerExecutionMode::Jupyter => 8,
+    }
+  }
+  pub fn serve_info(&self) -> (Option<bool>, Option<usize>) {
+    match *self {
+      WorkerExecutionMode::Serve {
+        is_main,
+        worker_count,
+      } => (Some(is_main), worker_count),
+      _ => (None, None),
+    }
+  }
 }
 
 /// The log level to use when printing diagnostic log messages, warnings,
@@ -77,6 +104,7 @@ pub struct BootstrapOptions {
   pub no_color: bool,
   pub is_stdout_tty: bool,
   pub is_stderr_tty: bool,
+  pub color_level: deno_terminal::colors::ColorLevel,
   // --unstable flag, deprecated
   pub unstable: bool,
   // --unstable-* flags
@@ -111,6 +139,7 @@ impl Default for BootstrapOptions {
       no_color: !colors::use_color(),
       is_stdout_tty: deno_terminal::is_stdout_tty(),
       is_stderr_tty: deno_terminal::is_stderr_tty(),
+      color_level: colors::get_color_level(),
       enable_op_summary_metrics: Default::default(),
       enable_testing_features: Default::default(),
       log_level: Default::default(),
@@ -173,6 +202,10 @@ struct BootstrapV8<'a>(
   u16,
   // serve host
   Option<&'a str>,
+  // serve is main
+  Option<bool>,
+  // serve worker count
+  Option<usize>,
 );
 
 impl BootstrapOptions {
@@ -184,6 +217,7 @@ impl BootstrapOptions {
     let scope = RefCell::new(scope);
     let ser = deno_core::serde_v8::Serializer::new(&scope);
 
+    let (serve_is_main, serve_worker_count) = self.mode.serve_info();
     let bootstrap = BootstrapV8(
       self.location.as_ref().map(|l| l.as_str()),
       self.unstable,
@@ -196,9 +230,11 @@ impl BootstrapOptions {
       self.disable_deprecated_api_warning,
       self.verbose_deprecated_api_warning,
       self.future,
-      self.mode as u8 as _,
+      self.mode.discriminant() as _,
       self.serve_port.unwrap_or_default(),
       self.serve_host.as_deref(),
+      serve_is_main,
+      serve_worker_count,
     );
 
     bootstrap.serialize(ser).unwrap()

@@ -45,6 +45,7 @@ const {
   PromiseResolve,
   SafeSet,
   StringPrototypeIncludes,
+  StringPrototypePadEnd,
   StringPrototypeSplit,
   StringPrototypeTrim,
   Symbol,
@@ -387,7 +388,6 @@ function formatException(error) {
 }
 
 core.registerErrorClass("NotFound", errors.NotFound);
-core.registerErrorClass("PermissionDenied", errors.PermissionDenied);
 core.registerErrorClass("ConnectionRefused", errors.ConnectionRefused);
 core.registerErrorClass("ConnectionReset", errors.ConnectionReset);
 core.registerErrorClass("ConnectionAborted", errors.ConnectionAborted);
@@ -533,7 +533,7 @@ function dispatchUnloadEvent() {
 }
 
 let hasBootstrapped = false;
-// Delete the `console` object that V8 automaticaly adds onto the global wrapper
+// Delete the `console` object that V8 automatically adds onto the global wrapper
 // object on context creation. We don't want this console object to shadow the
 // `console` object exposed by the ext/node globalThis proxy.
 delete globalThis.console;
@@ -710,7 +710,36 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       11: mode,
       12: servePort,
       13: serveHost,
+      14: serveIsMain,
+      15: serveWorkerCount,
     } = runtimeOptions;
+
+    if (mode === executionModes.serve) {
+      if (serveIsMain && serveWorkerCount) {
+        const origLog = console.log;
+        const origError = console.error;
+        const prefix = `[serve-worker-0 ]`;
+        console.log = (...args) => {
+          return origLog(prefix, ...new primordials.SafeArrayIterator(args));
+        };
+        console.error = (...args) => {
+          return origError(prefix, ...new primordials.SafeArrayIterator(args));
+        };
+      } else if (serveWorkerCount !== null) {
+        const origLog = console.log;
+        const origError = console.error;
+        const base = `serve-worker-${serveWorkerCount + 1}`;
+        // 15 = "serve-worker-nn".length, assuming
+        // serveWorkerCount < 100
+        const prefix = `[${StringPrototypePadEnd(base, 15, " ")}]`;
+        console.log = (...args) => {
+          return origLog(prefix, ...new primordials.SafeArrayIterator(args));
+        };
+        console.error = (...args) => {
+          return origError(prefix, ...new primordials.SafeArrayIterator(args));
+        };
+      }
+    }
 
     if (mode === executionModes.run || mode === executionModes.serve) {
       let serve = undefined;
@@ -726,13 +755,16 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         }
 
         if (mode === executionModes.serve && !serve) {
-          console.error(
-            `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
-            "color: yellow;",
-            "color: inherit;",
-            "font-weight: bold;",
-            "font-weight: normal;",
-          );
+          if (serveIsMain) {
+            // Only error if main worker
+            console.error(
+              `%cerror: %cdeno serve requires %cexport default { fetch }%c in the main module, did you mean to run \"deno run\"?`,
+              "color: yellow;",
+              "color: inherit;",
+              "font-weight: bold;",
+              "font-weight: normal;",
+            );
+          }
           return;
         }
 
@@ -747,7 +779,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
             );
           }
           if (mode === executionModes.serve) {
-            serve({ servePort, serveHost });
+            serve({ servePort, serveHost, serveIsMain, serveWorkerCount });
           }
         }
       });
@@ -850,6 +882,30 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       // Removes the `Temporal` API.
       delete globalThis.Temporal;
       delete globalThis.Date.prototype.toTemporalInstant;
+    } else {
+      // Removes the obsoleted `Temporal` API.
+      // https://github.com/tc39/proposal-temporal/pull/2895
+      // https://github.com/tc39/proposal-temporal/pull/2914
+      if (typeof Temporal.Instant.fromEpochSeconds === "undefined") {
+        throw "V8 removes obsoleted Temporal API now, no need to delete them!";
+      }
+      delete Temporal.Instant.fromEpochSeconds;
+      delete Temporal.Instant.fromEpochMicroseconds;
+      delete Temporal.Instant.prototype.epochSeconds;
+      delete Temporal.Instant.prototype.epochMicroseconds;
+      delete Temporal.PlainDateTime.prototype.withPlainDate;
+      delete Temporal.PlainDateTime.prototype.toPlainYearMonth;
+      delete Temporal.PlainDateTime.prototype.toPlainMonthDay;
+      delete Temporal.PlainTime.prototype.toPlainDateTime;
+      delete Temporal.PlainTime.prototype.toZonedDateTime;
+      delete Temporal.TimeZone.prototype.getNextTransition;
+      delete Temporal.TimeZone.prototype.getPreviousTransition;
+      delete Temporal.ZonedDateTime.prototype.withPlainDate;
+      delete Temporal.ZonedDateTime.prototype.toPlainYearMonth;
+      delete Temporal.ZonedDateTime.prototype.toPlainMonthDay;
+      delete Temporal.Now.zonedDateTime;
+      delete Temporal.Now.plainDateTime;
+      delete Temporal.Now.plainDate;
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -1009,6 +1065,30 @@ function bootstrapWorkerRuntime(
       // Removes the `Temporal` API.
       delete globalThis.Temporal;
       delete globalThis.Date.prototype.toTemporalInstant;
+    } else {
+      // Removes the obsoleted `Temporal` API.
+      // https://github.com/tc39/proposal-temporal/pull/2895
+      // https://github.com/tc39/proposal-temporal/pull/2914
+      if (typeof Temporal.Instant.fromEpochSeconds === "undefined") {
+        throw "V8 removes obsoleted Temporal API now, no need to delete them!";
+      }
+      delete Temporal.Instant.fromEpochSeconds;
+      delete Temporal.Instant.fromEpochMicroseconds;
+      delete Temporal.Instant.prototype.epochSeconds;
+      delete Temporal.Instant.prototype.epochMicroseconds;
+      delete Temporal.PlainDateTime.prototype.withPlainDate;
+      delete Temporal.PlainDateTime.prototype.toPlainYearMonth;
+      delete Temporal.PlainDateTime.prototype.toPlainMonthDay;
+      delete Temporal.PlainTime.prototype.toPlainDateTime;
+      delete Temporal.PlainTime.prototype.toZonedDateTime;
+      delete Temporal.TimeZone.prototype.getNextTransition;
+      delete Temporal.TimeZone.prototype.getPreviousTransition;
+      delete Temporal.ZonedDateTime.prototype.withPlainDate;
+      delete Temporal.ZonedDateTime.prototype.toPlainYearMonth;
+      delete Temporal.ZonedDateTime.prototype.toPlainMonthDay;
+      delete Temporal.Now.zonedDateTime;
+      delete Temporal.Now.plainDateTime;
+      delete Temporal.Now.plainDate;
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
