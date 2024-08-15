@@ -18,11 +18,7 @@ use crate::util::file_watcher::WatcherRestartMode;
 
 pub mod hmr;
 
-pub async fn run_script(
-  mode: WorkerExecutionMode,
-  flags: Arc<Flags>,
-  watch: Option<WatchFlagsWithPaths>,
-) -> Result<i32, AnyError> {
+pub fn check_permission_before_script(flags: &Flags) {
   if !flags.has_permission() && flags.has_permission_in_argv() {
     log::warn!(
       "{}",
@@ -33,6 +29,14 @@ To grant permissions, set them before the script argument. For example:
       )
     );
   }
+}
+
+pub async fn run_script(
+  mode: WorkerExecutionMode,
+  flags: Arc<Flags>,
+  watch: Option<WatchFlagsWithPaths>,
+) -> Result<i32, AnyError> {
+  check_permission_before_script(&flags);
 
   if let Some(watch_flags) = watch {
     return run_with_watch(mode, flags, watch_flags).await;
@@ -187,7 +191,7 @@ pub async fn eval_command(
   Ok(exit_code)
 }
 
-async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
+pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
   // ensure an "npm install" is done if the user has explicitly
   // opted into using a managed node_modules directory
   if factory.cli_options()?.node_modules_dir_enablement() == Some(true) {
