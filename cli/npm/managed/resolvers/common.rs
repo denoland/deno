@@ -196,6 +196,29 @@ fn is_broken_default_install_script(script: &str, package_path: &Path) -> bool {
   script == "node-gyp rebuild" && !package_path.join("binding.gyp").exists()
 }
 
+pub fn default_warn_not_run(
+  packages_with_scripts_not_run: &[(PathBuf, &PackageNv)],
+) {
+  if !packages_with_scripts_not_run.is_empty() {
+    let (maybe_install, maybe_install_example) = if *crate::args::DENO_FUTURE {
+      (
+        " or `deno install`",
+        " or `deno install --allow-scripts=pkg1,pkg2`",
+      )
+    } else {
+      ("", "")
+    };
+    let packages = packages_with_scripts_not_run
+      .iter()
+      .map(|(_, p)| format!("npm:{p}"))
+      .collect::<Vec<_>>()
+      .join(", ");
+    log::warn!("{}: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
+    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache`{maybe_install}
+    (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>`{maybe_install_example}):\n      {packages}", crate::colors::yellow("warning"));
+  }
+}
+
 impl<'a> LifecycleScripts<'a> {
   fn can_run_scripts(&self, package_nv: &PackageNv) -> bool {
     use crate::args::PackagesAllowedScripts;
@@ -243,26 +266,12 @@ impl<'a> LifecycleScripts<'a> {
     !self.packages_with_scripts.is_empty()
   }
 
-  pub fn warn_not_run_scripts(&self) {
+  pub fn warn_not_run_scripts(
+    &self,
+    warn_fn: impl Fn(&[(PathBuf, &PackageNv)]),
+  ) {
     if !self.packages_with_scripts_not_run.is_empty() {
-      let (maybe_install, maybe_install_example) = if *crate::args::DENO_FUTURE
-      {
-        (
-          " or `deno install`",
-          " or `deno install --allow-scripts=pkg1,pkg2`",
-        )
-      } else {
-        ("", "")
-      };
-      let packages = self
-        .packages_with_scripts_not_run
-        .iter()
-        .map(|(_, p)| format!("npm:{p}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-      log::warn!("{}: Packages contained npm lifecycle scripts (preinstall/install/postinstall) that were not executed.
-    This may cause the packages to not work correctly. To run them, use the `--allow-scripts` flag with `deno cache`{maybe_install}
-    (e.g. `deno cache --allow-scripts=pkg1,pkg2 <entrypoint>`{maybe_install_example}):\n      {packages}", crate::colors::yellow("warning"));
+      warn_fn(&self.packages_with_scripts_not_run);
       for (scripts_warned_path, _) in &self.packages_with_scripts_not_run {
         let _ignore_err = std::fs::write(scripts_warned_path, "");
       }
@@ -275,8 +284,9 @@ impl<'a> LifecycleScripts<'a> {
     packages: &[NpmResolutionPackage],
     root_node_modules_dir_path: Option<&Path>,
     get_package_path: impl Fn(&NpmResolutionPackage) -> PathBuf + Copy,
+    warn_fn: impl Fn(&[(PathBuf, &PackageNv)]),
   ) -> Result<(), AnyError> {
-    self.warn_not_run_scripts();
+    self.warn_not_run_scripts(warn_fn);
     let mut failed_packages = Vec::new();
     if !self.packages_with_scripts.is_empty() {
       // get custom commands for each bin available in the node_modules dir (essentially

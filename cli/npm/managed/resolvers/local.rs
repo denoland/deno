@@ -613,6 +613,7 @@ async fn sync_resolution_with_fs(
       |package| {
         local_node_modules_package_path(&deno_local_registry_dir, package)
       },
+      super::common::default_warn_not_run,
     )
     .await?;
 

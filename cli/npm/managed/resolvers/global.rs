@@ -16,6 +16,7 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
+use deno_semver::package::PackageNv;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
@@ -175,16 +176,8 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
       );
     }
 
-    if lifecycle_scripts.will_run_scripts() {
-      let snapshot = self.resolution.snapshot();
-      lifecycle_scripts
-        .finish(&snapshot, &package_partitions.packages, None, |package| {
-          self.cache.package_folder_for_nv(&package.id.nv)
-        })
-        .await?;
-    } else {
-      lifecycle_scripts.warn_not_run_scripts();
-    }
+    lifecycle_scripts.warn_not_run_scripts(warn_scripts_not_supported);
+
     Ok(())
   }
 
@@ -197,4 +190,14 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
       .registry_read_permission_checker
       .ensure_registry_read_permission(permissions, path)
   }
+}
+
+fn warn_scripts_not_supported(packages: &[(PathBuf, &PackageNv)]) {
+  let packages_str = packages
+    .iter()
+    .map(|(_, package_nv)| package_nv.to_string())
+    .collect::<Vec<String>>()
+    .join(", ");
+  log::warn!("{}: The following packages contained npm lifecycle scripts that were not executed: {}
+    Lifecycle scripts are only supported when using a local `node_modules` directory. Add `{}` to your deno config to enable it.", crate::colors::yellow("warning"), crate::colors::cyan(&packages_str), crate::colors::cyan("\"nodeModulesDir\": true"));
 }
