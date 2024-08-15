@@ -53,6 +53,7 @@ use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
+use crate::shared::ReleaseChannel;
 use crate::standalone::virtual_fs::VfsEntry;
 use crate::util::archive;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -416,10 +417,17 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let target = compile_flags.resolve_target();
     let binary_name = format!("denort-{target}.zip");
 
-    let binary_path_suffix = if crate::version::is_canary() {
-      format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
-    } else {
-      format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
+    let binary_path_suffix = match crate::version::RELEASE_CHANNEL {
+      ReleaseChannel::Canary => {
+        format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
+      }
+      ReleaseChannel::Stable => {
+        format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
+      }
+      _ => bail!(
+        "`deno compile` current doesn't support {} release channel",
+        crate::version::RELEASE_CHANNEL.name()
+      ),
     };
 
     let download_directory = self.deno_dir.dl_folder_path();
