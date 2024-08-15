@@ -672,7 +672,6 @@ ObjectDefineProperties(finalDenoNs, {
 });
 
 const {
-  denoVersion,
   tsVersion,
   v8Version,
   target,
@@ -697,21 +696,22 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     }
 
     const {
-      0: location_,
-      1: unstableFlag,
-      2: unstableFeatures,
-      3: inspectFlag,
-      5: hasNodeModulesDir,
-      6: argv0,
-      7: nodeDebug,
-      8: shouldDisableDeprecatedApiWarning,
-      9: shouldUseVerboseDeprecatedApiWarning,
-      10: future,
-      11: mode,
-      12: servePort,
-      13: serveHost,
-      14: serveIsMain,
-      15: serveWorkerCount,
+      0: denoVersion,
+      1: location_,
+      2: unstableFlag,
+      3: unstableFeatures,
+      5: inspectFlag,
+      6: hasNodeModulesDir,
+      7: argv0,
+      8: nodeDebug,
+      9: shouldDisableDeprecatedApiWarning,
+      10: shouldUseVerboseDeprecatedApiWarning,
+      11: future,
+      12: mode,
+      13: servePort,
+      14: serveHost,
+      15: serveIsMain,
+      16: serveWorkerCount,
     } = runtimeOptions;
 
     if (mode === executionModes.serve) {
@@ -970,16 +970,17 @@ function bootstrapWorkerRuntime(
     }
 
     const {
-      0: location_,
-      1: unstableFlag,
-      2: unstableFeatures,
-      4: enableTestingFeaturesFlag,
-      5: hasNodeModulesDir,
-      6: argv0,
-      7: nodeDebug,
-      8: shouldDisableDeprecatedApiWarning,
-      9: shouldUseVerboseDeprecatedApiWarning,
-      10: future,
+      0: denoVersion,
+      1: location_,
+      2: unstableFlag,
+      4: unstableFeatures,
+      5: enableTestingFeaturesFlag,
+      6: hasNodeModulesDir,
+      7: argv0,
+      8: nodeDebug,
+      9: shouldDisableDeprecatedApiWarning,
+      10: shouldUseVerboseDeprecatedApiWarning,
+      11: future,
     } = runtimeOptions;
 
     // TODO(iuioiua): remove in Deno v2. This allows us to dynamically delete

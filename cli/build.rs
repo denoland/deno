@@ -330,18 +330,7 @@ mod ts {
 fn create_cli_snapshot(snapshot_path: PathBuf) {
   use deno_runtime::ops::bootstrap::SnapshotOptions;
 
-  // NOTE(bartlomieju): keep in sync with `cli/version.rs`.
-  // Ideally we could deduplicate that code.
-  fn deno_version() -> String {
-    if env::var("DENO_CANARY").is_ok() {
-      format!("{}+{}", env!("CARGO_PKG_VERSION"), &git_commit_hash()[..7])
-    } else {
-      env!("CARGO_PKG_VERSION").to_string()
-    }
-  }
-
   let snapshot_options = SnapshotOptions {
-    deno_version: deno_version(),
     ts_version: ts::version(),
     v8_version: deno_core::v8_version(),
     target: std::env::var("TARGET").unwrap(),
