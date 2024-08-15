@@ -8,11 +8,11 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
+use crate::shared::ReleaseChannel;
 use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::version;
-use crate::version::ReleaseChannel;
 
 use async_trait::async_trait;
 use deno_core::anyhow::bail;
@@ -147,7 +147,11 @@ impl VersionProvider for RealVersionProvider {
   async fn get_current_exe_release_channel(
     &self,
   ) -> Result<ReleaseChannel, AnyError> {
-    if version::DENO_VERSION_INFO.is_canary {
+    // TODO(bartlomieju): remove hitting a remote server
+    if matches!(
+      version::DENO_VERSION_INFO.release_channel,
+      ReleaseChannel::Canary
+    ) {
       // If this fails for whatever reason, just return an empty vector.
       // It's better to miss that than throw error here.
       let rc_versions = get_rc_versions(
@@ -640,7 +644,10 @@ fn select_specific_version_for_upgrade(
 ) -> Result<Option<AvailableVersion>, AnyError> {
   match release_channel {
     ReleaseChannel::Stable => {
-      let current_is_passed = if !version::DENO_VERSION_INFO.is_canary {
+      let current_is_passed = if !matches!(
+        version::DENO_VERSION_INFO.release_channel,
+        ReleaseChannel::Canary
+      ) {
         version::DENO_VERSION_INFO.deno == version
       } else {
         false
@@ -701,7 +708,10 @@ async fn find_latest_version_to_upgrade(
   let (maybe_newer_latest_version, current_version) = match release_channel {
     ReleaseChannel::Stable => {
       let current_version = version::DENO_VERSION_INFO.deno;
-      let current_is_most_recent = if !version::DENO_VERSION_INFO.is_canary {
+      let current_is_most_recent = if !matches!(
+        version::DENO_VERSION_INFO.release_channel,
+        ReleaseChannel::Canary
+      ) {
         let current = Version::parse_standard(current_version).unwrap();
         let latest =
           Version::parse_standard(&latest_version_found.version_or_hash)

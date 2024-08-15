@@ -3,10 +3,8 @@
 /// This module is shared between build script and the binaries. Use it sparsely.
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use serde::Deserialize;
-use serde::Serialize;
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ReleaseChannel {
   /// Stable version, eg. 1.45.4, 2.0.0, 2.1.0
   Stable,
@@ -23,7 +21,7 @@ pub enum ReleaseChannel {
 }
 
 impl ReleaseChannel {
-  pub const fn name(&self) -> &str {
+  pub fn name(&self) -> &str {
     match self {
       Self::Stable => "latest",
       Self::Canary => "canary",
@@ -32,6 +30,8 @@ impl ReleaseChannel {
     }
   }
 
+  // NOTE(bartlomieju): do not ever change these values, tools like `patchver`
+  // rely on them.
   pub fn serialize(&self) -> String {
     match self {
       Self::Stable => "stable",
@@ -42,6 +42,8 @@ impl ReleaseChannel {
     .to_string()
   }
 
+  // NOTE(bartlomieju): do not ever change these values, tools like `patchver`
+  // rely on them.
   pub fn deserialize(str_: &str) -> Result<Self, AnyError> {
     Ok(match str_ {
       "stable" => Self::Stable,

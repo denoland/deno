@@ -1,18 +1,17 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use once_cell::sync::Lazy;
-use serde::Deserialize;
-use serde::Serialize;
 
-pub use crate::shared::ReleaseChannel;
+use crate::shared::ReleaseChannel;
 
 const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_HASH");
 const TYPESCRIPT: &str = env!("TS_VERSION");
 const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
+// TODO(bartlomieju): ideally we could remove this const.
 const IS_CANARY: bool = option_env!("DENO_CANARY").is_some();
 
 pub static DENO_VERSION_INFO: Lazy<DenoVersionInfo> = Lazy::new(|| {
-  let release_channel = libsui::find_section("denoreleasechannel")
+  let release_channel = libsui::find_section("denover")
     .and_then(|buf| std::str::from_utf8(buf).ok())
     .and_then(|str_| ReleaseChannel::deserialize(str_).ok())
     .unwrap_or({
@@ -24,6 +23,7 @@ pub static DENO_VERSION_INFO: Lazy<DenoVersionInfo> = Lazy::new(|| {
     });
 
   DenoVersionInfo {
+    // TODO(bartlomieju): fix further for RC and LTS releases
     deno: if IS_CANARY {
       concat!(
         env!("CARGO_PKG_VERSION"),
@@ -34,14 +34,12 @@ pub static DENO_VERSION_INFO: Lazy<DenoVersionInfo> = Lazy::new(|| {
       env!("CARGO_PKG_VERSION")
     },
 
-    // TODO(bartlomieju): remove, use `release_channel` instead
-    is_canary: IS_CANARY,
-
     release_channel,
 
     git_hash: GIT_COMMIT_HASH,
 
     // Keep in sync with `deno` field.
+    // TODO(bartlomieju): fix further for RC and LTS releases
     user_agent: if IS_CANARY {
       concat!(
         "Deno/",
@@ -57,16 +55,12 @@ pub static DENO_VERSION_INFO: Lazy<DenoVersionInfo> = Lazy::new(|| {
   }
 });
 
-#[derive(Deserialize, Serialize)]
 pub struct DenoVersionInfo {
   /// Human-readable version of the current Deno binary.
   ///
   /// For stable release, a semver, eg. `v1.46.2`.
   /// For canary release, a semver + 7-char git hash, eg. `v1.46.3+asdfqwq`.
   pub deno: &'static str,
-
-  // TODO(bartlomieju): remove, use `release_channel` instead
-  pub is_canary: bool,
 
   pub release_channel: ReleaseChannel,
 
