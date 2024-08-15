@@ -986,14 +986,14 @@ export const validatePosition = hideStackFrames((position) => {
   }
 });
 
-/** @type {(buffer: ArrayBufferView) => Uint8Array} */
+/** @type {(buffer: ArrayBufferView, offset = 0, length?: number) => Uint8Array} */
 export const arrayBufferViewToUint8Array = hideStackFrames(
-  (buffer) => {
+  (buffer, offset = 0, length) => {
     if (!(buffer instanceof Uint8Array)) {
       return new Uint8Array(
         buffer.buffer,
-        buffer.byteOffset,
-        buffer.byteLength,
+        buffer.byteOffset + offset,
+        length ?? buffer.byteLength - offset,
       );
     }
     return buffer;

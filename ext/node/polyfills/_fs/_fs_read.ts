@@ -28,7 +28,7 @@ type readSyncOptions = {
 type BinaryCallback = (
   err: Error | null,
   bytesRead: number | null,
-  data?: Buffer,
+  data?: ArrayBufferView,
 ) => void;
 type Callback = BinaryCallback;
 
@@ -56,7 +56,7 @@ export function read(
 ) {
   let cb: Callback | undefined;
   let offset = 0,
-    buffer: Buffer | Uint8Array;
+    buffer: ArrayBufferView;
 
   if (typeof fd !== "number") {
     throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
@@ -79,7 +79,7 @@ export function read(
   if (
     isArrayBufferView(optOrBufferOrCb)
   ) {
-    buffer = arrayBufferViewToUint8Array(optOrBufferOrCb);
+    buffer = optOrBufferOrCb;
   } else if (typeof optOrBufferOrCb === "function") {
     offset = 0;
     buffer = Buffer.alloc(16384);
@@ -99,10 +99,10 @@ export function read(
     if (opt.buffer === undefined) {
       buffer = Buffer.alloc(16384);
     } else {
-      buffer = arrayBufferViewToUint8Array(opt.buffer);
+      buffer = opt.buffer;
     }
     offset = opt.offset ?? 0;
-    length = opt.length ?? buffer.byteLength;
+    length = opt.length ?? buffer.byteLength - offset;
     position = opt.position ?? null;
   }
 
@@ -123,12 +123,18 @@ export function read(
         // We use sync calls below to avoid being affected by others during
         // these calls.
         fs.seekSync(fd, position, io.SeekMode.Start);
-        nread = io.readSync(fd, buffer);
+        nread = io.readSync(
+          fd,
+          arrayBufferViewToUint8Array(buffer, offset, length),
+        );
         fs.seekSync(fd, currentPosition, io.SeekMode.Start);
       } else {
-        nread = await io.read(fd, buffer);
+        nread = await io.read(
+          fd,
+          arrayBufferViewToUint8Array(buffer, offset, length),
+        );
       }
-      cb(null, nread ?? 0, Buffer.from(buffer.buffer, offset, length));
+      cb(null, nread ?? 0, buffer);
     } catch (error) {
       cb(error as Error, null);
     }
@@ -162,8 +168,6 @@ export function readSync(
 
   validateBuffer(buffer);
 
-  buffer = arrayBufferViewToUint8Array(buffer);
-
   if (length == null) {
     length = 0;
   }
@@ -174,7 +178,7 @@ export function readSync(
   } else if (offsetOrOpt !== undefined) {
     const opt = offsetOrOpt as readSyncOptions;
     offset = opt.offset ?? 0;
-    length = opt.length ?? buffer.byteLength;
+    length = opt.length ?? buffer.byteLength - offset;
     position = opt.position ?? null;
   }
 
@@ -191,7 +195,10 @@ export function readSync(
     fs.seekSync(fd, position, io.SeekMode.Start);
   }
 
-  const numberOfBytesRead = io.readSync(fd, buffer);
+  const numberOfBytesRead = io.readSync(
+    fd,
+    arrayBufferViewToUint8Array(buffer, offset, length),
+  );
 
   if (typeof position === "number" && position >= 0) {
     fs.seekSync(fd, currentPosition, io.SeekMode.Start);
