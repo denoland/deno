@@ -78,7 +78,7 @@ deno_runtime = { workspace = true, features = ["include_js_files_for_snapshottin
 deno_semver = "=0.5.10"
 deno_task_shell = "=0.17.0"
 deno_terminal.workspace = true
-eszip = "=0.73.0"
+eszip = "=0.74.0"
 libsui = "0.3.0"
 napi_sym.workspace = true
 node_resolver.workspace = true
