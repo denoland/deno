@@ -1333,13 +1333,12 @@ fn help_parse(flags: &mut Flags, mut subcommand: Command) {
       headings.insert(heading.clone());
 
       let heading_i = headings.iter().position(|h| h == &heading).unwrap();
-      i = (if heading == UNSTABLE_HEADING {
+      i += (if heading == UNSTABLE_HEADING {
         // ensures the unstable section is always last
         50
       } else {
         heading_i
-      } * 100)
-        + i;
+      }) * 100;
     }
 
     subcommand = subcommand.mut_arg(arg, |arg| arg.display_order(i));
