@@ -401,8 +401,7 @@ fn resolve_flags_and_init(
   let flags = match flags_from_vec(args) {
     Ok(flags) => flags,
     Err(err @ clap::Error { .. })
-      if err.kind() == clap::error::ErrorKind::DisplayHelp
-        || err.kind() == clap::error::ErrorKind::DisplayVersion =>
+      if err.kind() == clap::error::ErrorKind::DisplayVersion =>
     {
       // Ignore results to avoid BrokenPipe errors.
       let _ = err.print();

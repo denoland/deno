@@ -8232,7 +8232,7 @@ mod tests {
   #[test]
   fn uninstall_with_help_flag() {
     let r = flags_from_vec(svec!["deno", "uninstall", "--help"]);
-    assert_eq!(r.err().unwrap().kind(), clap::error::ErrorKind::DisplayHelp);
+    assert!(r.is_ok());
   }
 
   #[test]
