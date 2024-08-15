@@ -1,0 +1,5 @@
+data: hello world
+[UNORDERED_START]
+child closed
+pipe closed
+[UNORDERED_END]

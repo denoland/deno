@@ -20,12 +20,16 @@ filetime.workspace = true
 fs3.workspace = true
 log.workspace = true
 once_cell.workspace = true
+pin-project.workspace = true
 tokio.workspace = true
+uuid.workspace = true
 
 [target.'cfg(not(windows))'.dependencies]
 os_pipe.workspace = true
+libc.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winbase", "processenv", "errhandlingapi"] }
 rand.workspace = true
 parking_lot.workspace = true
+windows-sys.workspace = true
