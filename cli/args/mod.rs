@@ -1779,6 +1779,7 @@ fn resolve_node_modules_folder(
     return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
   } else if let Some(package_json_path) = maybe_package_json.map(|c| &c.path) {
     if let Ok(deno_dir) = deno_dir_provider.get_or_create() {
+      // `deno_dir.root` can be symlink in macOS
       if let Ok(root) = canonicalize_path_maybe_not_exists(&deno_dir.root) {
         if package_json_path.starts_with(root) {
           // if the package.json is in deno_dir, then do not use node_modules
