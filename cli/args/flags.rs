@@ -1425,7 +1425,6 @@ pub fn clap_root() -> Command {
         .num_args(0..=1)
         .require_equals(true)
         .value_parser(["unstable"])
-        .exclusive(true)
         .global(true),
     )
     .arg(
@@ -1525,7 +1524,7 @@ You can add multiple dependencies at once:
       cmd.arg(
         Arg::new("packages")
           .help("List of packages to add")
-          .required(true)
+          .required_unless_present("help")
           .num_args(1..)
           .action(ArgAction::Append),
       )
@@ -1548,7 +1547,7 @@ You can remove multiple dependencies at once:
       cmd.arg(
         Arg::new("packages")
           .help("List of packages to remove")
-          .required(true)
+          .required_unless_present("help")
           .num_args(1..)
           .action(ArgAction::Append),
       )
@@ -1633,7 +1632,7 @@ If no output file is given, the output is written to standard output:
         .arg(check_arg(true))
         .arg(
           Arg::new("source_file")
-            .required(true)
+            .required_unless_present("help")
             .value_hint(ValueHint::FilePath),
         )
         .arg(Arg::new("out_file").value_hint(ValueHint::FilePath))
@@ -1663,7 +1662,7 @@ Future runs of this module will trigger no downloads or compilation unless
         .arg(
           Arg::new("file")
             .num_args(1..)
-            .required(true)
+            .required_unless_present("help")
             .value_hint(ValueHint::FilePath),
         )
         .arg(frozen_lockfile_arg())
@@ -1706,7 +1705,7 @@ Unless --reload is specified, this command will not re-download already cached d
         .arg(
           Arg::new("file")
             .num_args(1..)
-            .required(true)
+            .required_unless_present("help")
             .value_hint(ValueHint::FilePath),
         )
       }
@@ -1785,7 +1784,7 @@ supported in canary.
         )
         .arg(executable_ext_arg())
         .arg(env_file_arg())
-        .arg(script_arg().required(true).trailing_var_arg(true))
+        .arg(script_arg().required_unless_present("help").trailing_var_arg(true))
     })
 }
 
@@ -1801,7 +1800,7 @@ fn completions_subcommand() -> Command {
       cmd.disable_help_subcommand(true).arg(
         Arg::new("shell")
           .value_parser(["bash", "fish", "powershell", "zsh", "fig"])
-          .required(true),
+          .required_unless_present("help"),
       )
     })
 }
@@ -2084,7 +2083,7 @@ This command has implicit access to all permissions (--allow-all).",
             .action(ArgAction::Append)
             .help("Code arg")
             .value_name("CODE_ARG")
-            .required(true),
+            .required_unless_present("help"),
         )
         .arg(env_file_arg())
     })
@@ -2286,7 +2285,7 @@ Remote modules cache: Subdirectory containing downloaded remote modules.
 TypeScript compiler cache: Subdirectory containing TS compiler output.",
     )
     .defer(|cmd| cmd
-      .arg(Arg::new("file").required(false).value_hint(ValueHint::FilePath))
+      .arg(Arg::new("file").value_hint(ValueHint::FilePath))
       .args(unstable_args(UnstableArgsConfig::ResolutionOnly))
       .arg(reload_arg().requires("file"))
       .arg(ca_file_arg())
@@ -2326,7 +2325,7 @@ fn install_args(cmd: Command, deno_future: bool) -> Command {
   } else {
     cmd.arg(
       Arg::new("cmd")
-        .required(true)
+        .required_unless_present("help")
         .num_args(1..)
         .value_hint(ValueHint::FilePath),
     )
@@ -2492,7 +2491,7 @@ The installation root is determined, in order of precedence:
   - DENO_INSTALL_ROOT environment variable
   - $HOME/.deno")
     .defer(|cmd| cmd
-      .arg(Arg::new("name").required(true))
+      .arg(Arg::new("name").required_unless_present("help"))
       .arg(
         Arg::new("root")
           .long("root")
@@ -2631,7 +2630,6 @@ Ignore linting a file by adding an ignore comment at the top of the file:
           Arg::new("files")
             .num_args(1..)
             .action(ArgAction::Append)
-            .required(false)
             .value_hint(ValueHint::AnyPath),
         )
         .arg(watch_arg(false))
@@ -2679,7 +2677,7 @@ fn run_args(command: Command, top_level: bool) -> Command {
       script_arg().trailing_var_arg(true).hide(true)
     } else {
       script_arg()
-        .required_unless_present("v8-flags")
+        .required_unless_present_any(["help", "v8-flags"])
         .trailing_var_arg(true)
     })
     .arg(env_file_arg())
@@ -2740,7 +2738,7 @@ fn serve_subcommand() -> Command {
     .arg(executable_ext_arg())
     .arg(
       script_arg()
-        .required_unless_present("v8-flags")
+        .required_unless_present_any(["help", "v8-flags"])
         .trailing_var_arg(true),
     )
     .arg(env_file_arg())
@@ -3065,7 +3063,7 @@ Remote modules and multiple modules may also be specified:
         Arg::new("specifiers")
           .num_args(1..)
           .action(ArgAction::Append)
-          .required(true),
+          .required_unless_present("help"),
       )
       .arg(
         Arg::new("output")
