@@ -1685,7 +1685,7 @@ Unless --reload is specified, this command will not re-download already cached d
     )
     .defer(|cmd| {
       compile_args_without_check_args(cmd)
-        .args(unstable_args(UnstableArgsConfig::ResolutionOnly))
+        .args(unstable_args(UnstableArgsConfig::ResolutionAndRuntime))
         .arg(
           Arg::new("all")
             .long("all")
@@ -4059,7 +4059,7 @@ fn cache_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn check_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local;
   compile_args_without_check_parse(flags, matches);
-  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
+  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   let files = matches.remove_many::<String>("file").unwrap().collect();
   if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
