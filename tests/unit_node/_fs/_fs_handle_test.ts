@@ -42,7 +42,10 @@ Deno.test("read specify opt", async function () {
   let res = await fileHandle.read(opt);
 
   assertEquals(res.bytesRead, byteLength);
-  assertEquals(new TextDecoder().decode(res.buffer as Uint8Array), "world");
+  assertEquals(
+    new TextDecoder().decode(res.buffer.subarray(6) as Uint8Array),
+    "world",
+  );
 
   const opt2 = {
     buffer: new Buffer(byteLength),
@@ -52,7 +55,10 @@ Deno.test("read specify opt", async function () {
   res = await fileHandle.read(opt2);
 
   assertEquals(res.bytesRead, byteLength);
-  assertEquals(decoder.decode(res.buffer as Uint8Array), "hello");
+  assertEquals(
+    decoder.decode(res.buffer.subarray(0, 5) as Uint8Array),
+    "hello",
+  );
 
   await fileHandle.close();
 });
