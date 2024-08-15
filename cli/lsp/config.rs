@@ -1115,6 +1115,7 @@ pub enum ConfigWatchedFileType {
 #[derive(Debug, Clone)]
 pub struct ConfigData {
   pub scope: Arc<ModuleSpecifier>,
+  pub canonicalized_scope: Option<Arc<ModuleSpecifier>>,
   pub member_dir: Arc<WorkspaceDirectory>,
   pub fmt_config: Arc<FmtConfig>,
   pub lint_config: Arc<LintConfig>,
@@ -1252,6 +1253,16 @@ impl ConfigData {
         }
         watched_files.entry(specifier).or_insert(file_type);
       };
+
+    let canonicalized_scope = (|| {
+      let path = scope.to_file_path().ok()?;
+      let path = canonicalize_path_maybe_not_exists(&path).ok()?;
+      let specifier = ModuleSpecifier::from_directory_path(path).ok()?;
+      if specifier == *scope {
+        return None;
+      }
+      Some(Arc::new(specifier))
+    })();
 
     if let Some(deno_json) = member_dir.maybe_deno_json() {
       lsp_log!(
@@ -1518,6 +1529,7 @@ impl ConfigData {
       WorkspaceResolver::new_raw(
         scope.clone(),
         None,
+        member_dir.workspace.resolver_jsr_pkgs().collect(),
         member_dir.workspace.package_jsons().cloned().collect(),
         pkg_json_dep_resolution,
       )
@@ -1558,6 +1570,7 @@ impl ConfigData {
 
     ConfigData {
       scope,
+      canonicalized_scope,
       member_dir,
       resolver,
       sloppy_imports_resolver,
@@ -1586,6 +1599,15 @@ impl ConfigData {
   pub fn maybe_pkg_json(&self) -> Option<&Arc<deno_package_json::PackageJson>> {
     self.member_dir.maybe_pkg_json()
   }
+
+  pub fn scope_contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
+    specifier.as_str().starts_with(self.scope.as_str())
+      || self
+        .canonicalized_scope
+        .as_ref()
+        .map(|s| specifier.as_str().starts_with(s.as_str()))
+        .unwrap_or(false)
+  }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1600,8 +1622,9 @@ impl ConfigTree {
   ) -> Option<&ModuleSpecifier> {
     self
       .scopes
-      .keys()
-      .rfind(|s| specifier.as_str().starts_with(s.as_str()))
+      .iter()
+      .rfind(|(_, d)| d.scope_contains_specifier(specifier))
+      .map(|(s, _)| s)
   }
 
   pub fn data_for_specifier(
@@ -1701,27 +1724,28 @@ impl ConfigTree {
         ws_settings = ws_settings.or(Some(&settings.unscoped));
       }
       if let Some(ws_settings) = ws_settings {
-        if let Some(config_path) = &ws_settings.config {
-          if let Ok(config_uri) = folder_uri.join(config_path) {
-            if let Ok(config_file_path) = config_uri.to_file_path() {
-              scopes.insert(
-                folder_uri.clone(),
-                Arc::new(
-                  ConfigData::load(
-                    Some(&config_file_path),
-                    folder_uri,
-                    settings,
-                    file_fetcher,
-                    &cached_fs,
-                    &deno_json_cache,
-                    &pkg_json_cache,
-                    &workspace_cache,
-                  )
-                  .await,
-                ),
-              );
-            }
-          }
+        let config_file_path = (|| {
+          let config_setting = ws_settings.config.as_ref()?;
+          let config_uri = folder_uri.join(config_setting).ok()?;
+          specifier_to_file_path(&config_uri).ok()
+        })();
+        if config_file_path.is_some() || ws_settings.import_map.is_some() {
+          scopes.insert(
+            folder_uri.clone(),
+            Arc::new(
+              ConfigData::load(
+                config_file_path.as_deref(),
+                folder_uri,
+                settings,
+                file_fetcher,
+                &cached_fs,
+                &deno_json_cache,
+                &pkg_json_cache,
+                &workspace_cache,
+              )
+              .await,
+            ),
+          );
         }
       }
     }
@@ -1772,29 +1796,6 @@ impl ConfigTree {
       }
     }
 
-    for folder_uri in settings.by_workspace_folder.keys() {
-      if !scopes
-        .keys()
-        .any(|s| folder_uri.as_str().starts_with(s.as_str()))
-      {
-        scopes.insert(
-          folder_uri.clone(),
-          Arc::new(
-            ConfigData::load(
-              None,
-              folder_uri,
-              settings,
-              file_fetcher,
-              &cached_fs,
-              &deno_json_cache,
-              &pkg_json_cache,
-              &workspace_cache,
-            )
-            .await,
-          ),
-        );
-      }
-    }
     self.scopes = Arc::new(scopes);
   }
 

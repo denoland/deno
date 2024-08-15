@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fetch"
-version = "0.187.0"
+version = "0.188.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,6 +21,7 @@ deno_core.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
 dyn-clone = "1"
+error_reporter = "1"
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
@@ -38,3 +39,6 @@ tokio-util = { workspace = true, features = ["io"] }
 tower.workspace = true
 tower-http.workspace = true
 tower-service.workspace = true
+
+[dev-dependencies]
+fast-socks5.workspace = true

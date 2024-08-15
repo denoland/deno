@@ -39,7 +39,7 @@ export class HandleWrap extends AsyncWrap {
 
   close(cb: () => void = () => {}) {
     this._onClose();
-    // We need to delay 'cb' at least 2 ticks to avoid "close" event happenning before "error" event in net.Socket
+    // We need to delay 'cb' at least 2 ticks to avoid "close" event happening before "error" event in net.Socket
     // See https://github.com/denoland/deno/pull/24656 for more information
     nextTick(nextTick, cb);
   }

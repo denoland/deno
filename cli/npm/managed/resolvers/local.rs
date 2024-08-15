@@ -612,12 +612,21 @@ async fn sync_resolution_with_fs(
   // 4. Create symlinks for package json dependencies
   {
     for remote in pkg_json_deps_provider.remote_pkgs() {
-      let Some(remote_id) = snapshot
+      let remote_pkg = if let Ok(remote_pkg) =
+        snapshot.resolve_pkg_from_pkg_req(&remote.req)
+      {
+        remote_pkg
+      } else if remote.req.version_req.tag().is_some() {
+        // couldn't find a match, and `resolve_best_package_id`
+        // panics if you give it a tag
+        continue;
+      } else if let Some(remote_id) = snapshot
         .resolve_best_package_id(&remote.req.name, &remote.req.version_req)
-      else {
+      {
+        snapshot.package_from_id(&remote_id).unwrap()
+      } else {
         continue; // skip, package not found
       };
-      let remote_pkg = snapshot.package_from_id(&remote_id).unwrap();
       let alias_clashes = remote.req.name != remote.alias
         && newest_packages_by_name.contains_key(&remote.alias);
       let install_in_child = {
@@ -1048,7 +1057,7 @@ fn junction_or_symlink_dir(
   match junction::create(old_path, new_path) {
     Ok(()) => Ok(()),
     Err(junction_err) => {
-      if cfg!(debug) {
+      if cfg!(debug_assertions) {
         // When running the tests, junctions should be created, but if not then
         // surface this error.
         log::warn!("Error creating junction. {:#}", junction_err);

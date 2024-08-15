@@ -642,6 +642,7 @@ impl ReplSession {
         },
         &deno_ast::EmitOptions {
           source_map: deno_ast::SourceMapOption::None,
+          source_map_base: None,
           source_map_file: None,
           inline_sources: false,
           remove_comments: false,
@@ -865,7 +866,7 @@ impl AnalyzedJsxPragmas {
 }
 
 /// Analyze provided source and return information about carious pragmas
-/// used to configure the JSX tranforms.
+/// used to configure the JSX transforms.
 fn analyze_jsx_pragmas(
   parsed_source: &ParsedSource,
 ) -> Option<AnalyzedJsxPragmas> {

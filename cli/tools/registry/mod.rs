@@ -64,6 +64,8 @@ mod unfurl;
 use auth::get_auth_method;
 use auth::AuthMethod;
 pub use pm::add;
+pub use pm::remove;
+pub use pm::AddCommandName;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 
@@ -165,7 +167,7 @@ pub async fn publish(
         log::info!("   {} ({})", file.specifier, human_size(file.size as f64),);
       }
     }
-    log::warn!("{} Aborting due to --dry-run", colors::yellow("Warning"));
+    log::warn!("{} Dry run complete", colors::green("Success"));
     return Ok(());
   }
 
