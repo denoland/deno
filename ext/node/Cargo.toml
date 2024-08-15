@@ -40,6 +40,7 @@ der = { version = "0.7.9", features = ["derive"] }
 digest = { version = "0.10.5", features = ["core-api", "std"] }
 dsa = "0.6.1"
 ecb.workspace = true
+ecdsa = "0.16.9"
 ed25519-dalek = { version = "2.1.1", features = ["digest", "pkcs8", "rand_core", "signature"] }
 elliptic-curve.workspace = true
 errno = "0.2.8"
@@ -89,13 +90,14 @@ signature.workspace = true
 simd-json = "0.13.4"
 sm3 = "0.4.2"
 spki.workspace = true
+stable_deref_trait = "1.2.0"
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
 winapi.workspace = true
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 x509-parser = "0.15.0"
-yoke = "0.7.4"
+yoke = { version = "0.7.4", features = ["derive"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true

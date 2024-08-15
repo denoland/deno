@@ -301,6 +301,35 @@ impl deno_doc::html::HrefResolver for DocResolver {
   fn resolve_source(&self, location: &deno_doc::Location) -> Option<String> {
     Some(location.filename.to_string())
   }
+
+  fn resolve_external_jsdoc_module(
+    &self,
+    module: &str,
+    _symbol: Option<&str>,
+  ) -> Option<(String, String)> {
+    if let Ok(url) = deno_core::url::Url::parse(module) {
+      match url.scheme() {
+        "npm" => {
+          let res =
+            deno_semver::npm::NpmPackageReqReference::from_str(module).ok()?;
+          let name = &res.req().name;
+          Some((
+            format!("https://www.npmjs.com/package/{name}"),
+            name.to_owned(),
+          ))
+        }
+        "jsr" => {
+          let res =
+            deno_semver::jsr::JsrPackageReqReference::from_str(module).ok()?;
+          let name = &res.req().name;
+          Some((format!("https://jsr.io/{name}"), name.to_owned()))
+        }
+        _ => None,
+      }
+    } else {
+      None
+    }
+  }
 }
 
 struct DenoDocResolver(bool);
@@ -341,6 +370,14 @@ impl deno_doc::html::HrefResolver for DenoDocResolver {
   }
 
   fn resolve_source(&self, _location: &deno_doc::Location) -> Option<String> {
+    None
+  }
+
+  fn resolve_external_jsdoc_module(
+    &self,
+    _module: &str,
+    _symbol: Option<&str>,
+  ) -> Option<(String, String)> {
     None
   }
 }
@@ -385,6 +422,14 @@ impl deno_doc::html::HrefResolver for NodeDocResolver {
   }
 
   fn resolve_source(&self, _location: &deno_doc::Location) -> Option<String> {
+    None
+  }
+
+  fn resolve_external_jsdoc_module(
+    &self,
+    _module: &str,
+    _symbol: Option<&str>,
+  ) -> Option<(String, String)> {
     None
   }
 }
