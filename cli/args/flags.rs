@@ -1314,6 +1314,33 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   Ok(flags)
 }
 
+macro_rules! heading {
+    ($($name:ident = $title:expr),+; $total:literal) => {
+      $(const $name: &str = $title;)+
+      const HEADING_ORDER: [&str; $total] = [$($name),+];
+    };
+}
+
+heading! {
+  // subcommand flags headings
+  DOC_HEADING = "Documentation options",
+  FMT_HEADING = "Formatting options",
+  COMPILE_HEADING = "Compile options",
+  LINT_HEADING = "Linting options",
+  TEST_HEADING = "Testing options",
+  UPGRADE_HEADING = "Upgrade options",
+  PUBLISH_HEADING = "Publishing options",
+
+  // categorized flags headings
+  TYPE_CHECKING_HEADING = "Type checking options",
+  FILE_WATCHING_HEADING = "File watching options",
+  DEBUGGING_HEADING = "Debugging options",
+  DEPENDENCY_MANAGEMENT_HEADING = "Dependency management options",
+
+  UNSTABLE_HEADING = "Unstable options";
+  12
+}
+
 fn help_parse(flags: &mut Flags, mut subcommand: Command) {
   let mut args = subcommand
     .get_arguments()
@@ -1324,15 +1351,21 @@ fn help_parse(flags: &mut Flags, mut subcommand: Command) {
       )
     })
     .collect::<Vec<_>>();
-  args.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
-
-  let mut headings = indexmap::IndexSet::new();
+  args.sort_by(|a, b| {
+    a.1
+      .as_ref()
+      .map(|heading| HEADING_ORDER.iter().position(|h| h == &heading))
+      .cmp(
+        &b.1
+          .as_ref()
+          .map(|heading| HEADING_ORDER.iter().position(|h| h == &heading)),
+      )
+      .then(a.0.cmp(&b.0))
+  });
 
   for (mut i, (arg, heading)) in args.into_iter().enumerate() {
     if let Some(heading) = heading {
-      headings.insert(heading.clone());
-
-      let heading_i = headings.iter().position(|h| h == &heading).unwrap();
+      let heading_i = HEADING_ORDER.iter().position(|h| h == &heading).unwrap();
       i += (if heading == UNSTABLE_HEADING {
         // ensures the unstable section is always last
         50
@@ -1382,8 +1415,6 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   }
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
 }
-
-static UNSTABLE_HEADING: &str = "Unstable options";
 
 pub fn clap_root() -> Command {
   let long_version = format!(
@@ -1712,8 +1743,6 @@ Unless --reload is specified, this command will not re-download already cached d
     )
 }
 
-const COMPILE_HEADING: &str = "Compile options";
-
 fn compile_subcommand() -> Command {
   Command::new("compile")
     .about(
@@ -1907,8 +1936,6 @@ Generate html reports from lcov:
     })
 }
 
-const DOC_HEADING: &str = "Documentation options";
-
 fn doc_subcommand() -> Command {
   Command::new("doc")
     .about(
@@ -2088,8 +2115,6 @@ This command has implicit access to all permissions (--allow-all).",
         .arg(env_file_arg())
     })
 }
-
-const FMT_HEADING: &str = "Formatting options";
 
 fn fmt_subcommand() -> Command {
   Command::new("fmt")
@@ -2521,8 +2546,6 @@ fn lsp_subcommand() -> Command {
   Command::new("lsp").about(LSP_HELP)
 }
 
-const LINT_HEADING: &str = "Linting options";
-
 fn lint_subcommand() -> Command {
   Command::new("lint")
     .about(
@@ -2783,8 +2806,6 @@ fn task_subcommand() -> Command {
     })
 }
 
-const TEST_HEADING: &str = "Testing options";
-
 fn test_subcommand() -> Command {
   Command::new("test")
     .about(
@@ -2971,8 +2992,6 @@ The declaration file could be saved and used for typing information.",
   )
 }
 
-const UPGRADE_HEADING: &str = "Upgrade options";
-
 fn upgrade_subcommand() -> Command {
   Command::new("upgrade")
     .about(
@@ -3093,8 +3112,6 @@ Remote modules and multiple modules may also be specified:
       .arg(unsafely_ignore_certificate_errors_arg())
     )
 }
-
-const PUBLISH_HEADING: &str = "Publishing options";
 
 fn publish_subcommand() -> Command {
   Command::new("publish")
@@ -3427,8 +3444,6 @@ fn runtime_args(
     .arg(strace_ops_arg())
 }
 
-const DEBUGGING_HEADING: &str = "Debugging options";
-
 fn inspect_args(app: Command) -> Command {
   app
     .arg(
@@ -3466,8 +3481,6 @@ fn inspect_args(app: Command) -> Command {
         .help_heading(DEBUGGING_HEADING),
     )
 }
-
-const DEPENDENCY_MANAGEMENT_HEADING: &str = "Dependency management options";
 
 fn import_map_arg() -> Arg {
   Arg::new("import-map")
@@ -3618,8 +3631,6 @@ fn seed_arg() -> Arg {
     .value_parser(value_parser!(u64))
 }
 
-const FILE_WATCHING_HEADING: &str = "File watching options";
-
 fn hmr_arg(takes_files: bool) -> Arg {
   let arg = Arg::new("hmr")
     .long("watch-hmr")
@@ -3706,8 +3717,6 @@ fn watch_exclude_arg() -> Arg {
     .value_hint(ValueHint::AnyPath)
     .help_heading(FILE_WATCHING_HEADING)
 }
-
-const TYPE_CHECKING_HEADING: &str = "Type checking options";
 
 fn no_check_arg() -> Arg {
   Arg::new("no-check")
