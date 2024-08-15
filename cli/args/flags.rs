@@ -4465,6 +4465,8 @@ fn lsp_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
 }
 
 fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
+
   config_args_parse(flags, matches);
   let files = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
@@ -4674,6 +4676,8 @@ fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     .remove_one::<String>("config")
     .map(ConfigFlag::Path)
     .unwrap_or(ConfigFlag::Discover);
+
+  unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
 
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),
