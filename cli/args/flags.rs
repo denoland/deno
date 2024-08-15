@@ -1,7 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use super::flags_net;
+use super::DENO_FUTURE;
 use crate::args::resolve_no_prompt;
 use crate::util::fs::canonicalize_path;
+use crate::util::logger;
 use clap::builder::styling::AnsiColor;
 use clap::builder::FalseyValueParser;
 use clap::value_parser;
@@ -24,6 +27,7 @@ use deno_runtime::deno_permissions::parse_sys_kind;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_terminal::colors;
 use log::debug;
+use log::log;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
@@ -37,9 +41,6 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-
-use super::flags_net;
-use super::DENO_FUTURE;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum ConfigFlag {
@@ -4705,8 +4706,10 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
         flags.permissions.allow_net = Some(net_allowlist);
       }
       Err(e) => {
+        logger::init(Option::from(Level::Error));
         let msg: String = e.to_string();
-        println!(
+        log!(
+          Level::Error,
           "{}: {}",
           colors::red_bold("error"),
           msg.trim_start_matches("error: ")
