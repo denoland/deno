@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 pub mod deno_json;
+pub mod env;
 mod flags;
 mod flags_net;
 mod import_map;
@@ -85,8 +86,7 @@ use deno_config::deno_json::TestConfig;
 
 pub fn npm_registry_url() -> &'static Url {
   static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
-    let env_var_name = "NPM_CONFIG_REGISTRY";
-    if let Ok(registry_url) = std::env::var(env_var_name) {
+    if let Some(registry_url) = *self::env::NPM_CONFIG_REGISTRY {
       // ensure there is a trailing slash for the directory
       let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
       match Url::parse(&registry_url) {
@@ -658,7 +658,7 @@ pub fn get_root_cert_store(
   let mut root_cert_store = RootCertStore::empty();
   let ca_stores: Vec<String> = maybe_ca_stores
     .or_else(|| {
-      let env_ca_store = env::var("DENO_TLS_CA_STORE").ok()?;
+      let env_ca_store = (*self::env::DENO_TLS_CA_STORE)?;
       Some(
         env_ca_store
           .split(',')
@@ -699,7 +699,7 @@ pub fn get_root_cert_store(
   }
 
   let ca_data =
-    maybe_ca_data.or_else(|| env::var("DENO_CERT").ok().map(CaData::File));
+    maybe_ca_data.or_else(|| (*self::env::DENO_CERT).map(CaData::File));
   if let Some(ca_data) = ca_data {
     let result = match ca_data {
       CaData::File(ca_file) => {

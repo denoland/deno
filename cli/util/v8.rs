@@ -4,8 +4,7 @@ pub mod convert;
 
 #[inline(always)]
 pub fn get_v8_flags_from_env() -> Vec<String> {
-  std::env::var("DENO_V8_FLAGS")
-    .ok()
+  crate::args::env::DENO_V8_FLAGS
     .map(|flags| flags.split(',').map(String::from).collect::<Vec<String>>())
     .unwrap_or_default()
 }

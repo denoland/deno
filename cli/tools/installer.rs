@@ -112,7 +112,7 @@ exec deno {} "$@"
 }
 
 fn get_installer_root() -> Result<PathBuf, io::Error> {
-  if let Ok(env_dir) = env::var("DENO_INSTALL_ROOT") {
+  if let Some(env_dir) = *crate::args::env::DENO_INSTALL_ROOT {
     if !env_dir.is_empty() {
       return canonicalize_path_maybe_not_exists(&PathBuf::from(env_dir));
     }

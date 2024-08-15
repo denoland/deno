@@ -1208,11 +1208,14 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
     }
   }
 
-  flags.unstable_config.bare_node_builtins =
-    matches.get_flag("unstable-bare-node-builtins");
-  flags.unstable_config.byonm = matches.get_flag("unstable-byonm");
-  flags.unstable_config.sloppy_imports =
-    matches.get_flag("unstable-sloppy-imports");
+  flags.unstable_config.bare_node_builtins = matches
+    .get_flag("unstable-bare-node-builtins")
+    || *super::env::DENO_UNSTABLE_BARE_NODE_BUILTINS;
+  flags.unstable_config.byonm =
+    matches.get_flag("unstable-byonm") || *super::env::DENO_UNSTABLE_BYONM;
+  flags.unstable_config.sloppy_imports = matches
+    .get_flag("unstable-sloppy-imports")
+    || *super::env::DENO_UNSTABLE_SLOPPY_IMPORTS;
 
   if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
@@ -1401,7 +1404,6 @@ pub fn clap_root() -> Command {
       Arg::new("unstable-bare-node-builtins")
         .long("unstable-bare-node-builtins")
         .help("Enable unstable bare node builtins feature")
-        .env("DENO_UNSTABLE_BARE_NODE_BUILTINS")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true)
@@ -1411,7 +1413,6 @@ pub fn clap_root() -> Command {
       Arg::new("unstable-byonm")
         .long("unstable-byonm")
         .help("Enable unstable 'bring your own node_modules' feature")
-        .env("DENO_UNSTABLE_BYONM")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true)
@@ -1423,7 +1424,6 @@ pub fn clap_root() -> Command {
         .help(
           "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing.",
         )
-        .env("DENO_UNSTABLE_SLOPPY_IMPORTS")
         .value_parser(FalseyValueParser::new())
         .action(ArgAction::SetTrue)
         .global(true)

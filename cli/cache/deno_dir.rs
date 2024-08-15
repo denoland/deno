@@ -43,8 +43,8 @@ pub struct DenoDir {
 
 impl DenoDir {
   pub fn new(maybe_custom_root: Option<PathBuf>) -> std::io::Result<Self> {
-    let maybe_custom_root =
-      maybe_custom_root.or_else(|| env::var("DENO_DIR").map(String::into).ok());
+    let maybe_custom_root = maybe_custom_root
+      .or_else(|| (*crate::args::env::DENO_DIR).map(String::into));
     let root: PathBuf = if let Some(root) = maybe_custom_root {
       root
     } else if let Some(cache_dir) = dirs::cache_dir() {
@@ -150,7 +150,7 @@ impl DenoDir {
   /// Path used for the REPL history file.
   /// Can be overridden or disabled by setting `DENO_REPL_HISTORY` environment variable.
   pub fn repl_history_file_path(&self) -> Option<PathBuf> {
-    if let Some(deno_repl_history) = env::var_os("DENO_REPL_HISTORY") {
+    if let Some(deno_repl_history) = *crate::args::env::DENO_REPL_HISTORY {
       if deno_repl_history.is_empty() {
         None
       } else {

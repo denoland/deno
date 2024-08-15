@@ -181,7 +181,7 @@ impl FileFetcher {
     progress_bar: Option<ProgressBar>,
   ) -> Self {
     Self {
-      auth_tokens: AuthTokens::new(env::var("DENO_AUTH_TOKENS").ok()),
+      auth_tokens: AuthTokens::new(*crate::args::env::DENO_AUTH_TOKENS),
       allow_remote,
       memory_files: Default::default(),
       cache_setting,
