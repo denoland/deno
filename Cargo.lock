@@ -1692,9 +1692,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.63.0"
+version = "0.63.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "267c773673e6b00d1acfff9b78df679282c431969531e6cb2786dc55b8f9af1b"
+checksum = "e0e6cc8fcb4819dd5e12d640d6fc455217c66bda00e30fd6d46d2844e3e1bdcf"
 dependencies = [
  "anyhow",
  "deno_ast",

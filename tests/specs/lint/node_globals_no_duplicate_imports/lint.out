@@ -3,7 +3,7 @@ error[no-node-globals]: NodeJS globals are not available in Deno
   | 
 3 | const _foo = process.env.FOO;
   |              ^^^^^^^
-  = hint: Import from the appropriate module instead
+  = hint: Add `import process from "node:process";`
 
   docs: https://lint.deno.land/rules/no-node-globals
 
@@ -13,7 +13,7 @@ error[no-node-globals]: NodeJS globals are not available in Deno
   | 
 7 | const _bar = process.env.BAR;
   |              ^^^^^^^
-  = hint: Import from the appropriate module instead
+  = hint: Add `import process from "node:process";`
 
   docs: https://lint.deno.land/rules/no-node-globals
 
