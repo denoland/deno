@@ -73,8 +73,8 @@ impl SpecifierUnfurler {
       self.workspace_resolver.resolve(specifier, referrer)
     {
       match resolved {
-        MappedResolution::Normal(specifier)
-        | MappedResolution::ImportMap(specifier) => Some(specifier),
+        MappedResolution::Normal { specifier, .. }
+        | MappedResolution::ImportMap { specifier, .. } => Some(specifier),
         MappedResolution::WorkspaceJsrPackage { pkg_req_ref, .. } => {
           Some(ModuleSpecifier::parse(&pkg_req_ref.to_string()).unwrap())
         }

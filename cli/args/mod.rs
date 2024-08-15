@@ -1073,7 +1073,7 @@ impl CliOptions {
     };
     Ok(
       self
-        .start_dir
+        .workspace()
         .create_resolver(
           CreateResolverOptions {
             pkg_json_dep_resolution,
