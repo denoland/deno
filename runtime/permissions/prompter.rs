@@ -342,11 +342,11 @@ impl PermissionPrompter for TtyPrompter {
         ))
       );
       writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
-        let msg = if !is_unary {
-            format!("Specify the required permissions during compile time using `deno compile --allow-{name}`.")
-        } else {
-            format!("Run again with --allow-{name} to bypass this prompt.")
-        };
+      let msg = if !is_unary {
+        format!("Specify the required permissions during compile time using `deno compile --allow-{name}`.")
+      } else {
+        format!("Run again with --allow-{name} to bypass this prompt.")
+      };
       writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
       write!(&mut output, "┗ {}", colors::bold("Allow?")).unwrap();
       write!(&mut output, " {opts} > ").unwrap();
