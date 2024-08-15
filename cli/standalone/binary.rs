@@ -417,18 +417,23 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let target = compile_flags.resolve_target();
     let binary_name = format!("denort-{target}.zip");
 
-    let binary_path_suffix = match crate::version::RELEASE_CHANNEL {
-      ReleaseChannel::Canary => {
-        format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
-      }
-      ReleaseChannel::Stable => {
-        format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
-      }
-      _ => bail!(
-        "`deno compile` current doesn't support {} release channel",
-        crate::version::RELEASE_CHANNEL.name()
-      ),
-    };
+    let binary_path_suffix =
+      match crate::version::DENO_VERSION_INFO.release_channel {
+        ReleaseChannel::Canary => {
+          format!(
+            "canary/{}/{}",
+            crate::version::DENO_VERSION_INFO.git_hash,
+            binary_name
+          )
+        }
+        ReleaseChannel::Stable => {
+          format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
+        }
+        _ => bail!(
+          "`deno compile` current doesn't support {} release channel",
+          crate::version::DENO_VERSION_INFO.release_channel.name()
+        ),
+      };
 
     let download_directory = self.deno_dir.dl_folder_path();
     let binary_path = download_directory.join(&binary_path_suffix);

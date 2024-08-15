@@ -1293,7 +1293,10 @@ impl CliOptions {
       return Ok(None);
     };
 
-    Ok(Some(InspectorServer::new(host, version::get_user_agent())?))
+    Ok(Some(InspectorServer::new(
+      host,
+      version::DENO_VERSION_INFO.user_agent,
+    )?))
   }
 
   pub fn maybe_lockfile(&self) -> Option<&Arc<CliLockfile>> {

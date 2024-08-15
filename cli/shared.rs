@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+/// This module is shared between build script and the binaries. Use it sparsely.
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 

@@ -1334,7 +1334,7 @@ static UNSTABLE_HEADING: &str = "Unstable";
 pub fn clap_root() -> Command {
   let long_version = format!(
     "{} ({}, {})\nv8 {}\ntypescript {}",
-    crate::version::deno(),
+    crate::version::DENO_VERSION_INFO.deno,
     // TODO(bartlomieju): alter what's printed here.
     // I think it's best if we print as follows:
     // <version>(+<short_git_hash>) (<release_channel>, <profile>, <target>)
@@ -1346,14 +1346,17 @@ pub fn clap_root() -> Command {
     //   v2.1.13-lts (LTS (long term support), release, aarch64-apple-darwin)
     // For canary it would be:
     //   v1.46.0+25bb59d (canary, release, aarch64-apple-darwin)
-    if matches!(crate::version::RELEASE_CHANNEL, ReleaseChannel::Canary) {
+    if matches!(
+      crate::version::DENO_VERSION_INFO.release_channel,
+      ReleaseChannel::Canary
+    ) {
       "canary"
     } else {
       env!("PROFILE")
     },
     env!("TARGET"),
     deno_core::v8_version(),
-    crate::version::TYPESCRIPT
+    crate::version::DENO_VERSION_INFO.typescript
   );
 
   let mut cmd = run_args(Command::new("deno"), true)
@@ -1368,7 +1371,7 @@ pub fn clap_root() -> Command {
     )
     .color(ColorChoice::Auto)
     .term_width(800)
-    .version(crate::version::deno())
+    .version(crate::version::DENO_VERSION_INFO.deno)
     .long_version(long_version)
     // cause --unstable flags to display at the bottom of the help text
     .next_display_order(1000)
