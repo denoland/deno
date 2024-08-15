@@ -1720,7 +1720,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.21.0"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b01138860cdf20cfca4c9e6bcda2bbe577f0c784f6f6938205d522ee2b6327ed"
 dependencies = [
  "serde",
  "serde_json",
@@ -1866,7 +1868,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.21.4"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01fd279be9f522ebfaabce7ff0f4b069c2c1d737946ba57456b579f9246669e8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2774,8 +2778,6 @@ dependencies = [
 [[package]]
 name = "eszip"
 version = "0.73.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1de63c5d16c099e1164154ba0c6fd1f54e1147ef635aaccc47702f8a442392a"
 dependencies = [
  "anyhow",
  "async-trait",
