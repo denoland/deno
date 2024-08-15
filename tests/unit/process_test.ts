@@ -5,7 +5,6 @@ import {
   assertStrictEquals,
   assertStringIncludes,
   assertThrows,
-  DENO_FUTURE,
 } from "./test_util.ts";
 
 Deno.test(
@@ -364,11 +363,7 @@ Deno.test(
 );
 
 Deno.test(
-  {
-    // Ignoring because uses `file.rid`
-    ignore: DENO_FUTURE,
-    permissions: { run: true, write: true, read: true },
-  },
+  { permissions: { run: true, write: true, read: true } },
   async function runRedirectStdoutStderr() {
     const tempDir = await Deno.makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
@@ -397,16 +392,11 @@ Deno.test(
 
     assertStringIncludes(text, "error");
     assertStringIncludes(text, "output");
-    console.log("finished tgis test");
   },
 );
 
 Deno.test(
-  {
-    // Ignoring because uses `file.rid`
-    ignore: DENO_FUTURE,
-    permissions: { run: true, write: true, read: true },
-  },
+  { permissions: { run: true, write: true, read: true } },
   async function runRedirectStdin() {
     const tempDir = await Deno.makeTempDir();
     const fileName = tempDir + "/redirected_stdio.txt";
