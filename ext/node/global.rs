@@ -65,6 +65,7 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 #[rustfmt::skip]
 const MANAGED_GLOBALS: [&[u16]; 13] = [
   &str_to_utf16::<6>("Buffer"),
+  &str_to_utf16::<17>("WorkerGlobalScope"),
   &str_to_utf16::<14>("clearImmediate"),
   &str_to_utf16::<13>("clearInterval"),
   &str_to_utf16::<12>("clearTimeout"),
@@ -76,11 +77,10 @@ const MANAGED_GLOBALS: [&[u16]; 13] = [
   &str_to_utf16::<12>("setImmediate"),
   &str_to_utf16::<11>("setInterval"),
   &str_to_utf16::<10>("setTimeout"),
-  &str_to_utf16::<6>("window"),
 ];
 
 const SHORTEST_MANAGED_GLOBAL: usize = 4;
-const LONGEST_MANAGED_GLOBAL: usize = 14;
+const LONGEST_MANAGED_GLOBAL: usize = 17;
 
 #[derive(Debug, Clone, Copy)]
 enum Mode {
