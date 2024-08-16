@@ -194,7 +194,7 @@ async function dumpRcVersion() {
   const output = await $`./deno -V`.stdout("piped");
   const denoVersion = output.stdout.slice(5).split("+")[0];
   $.logStep("Computed version", denoVersion);
-  await Deno.writeTextFile("./release.txt", denoVersion);
+  await Deno.writeTextFile("./release-rc-latest.txt", denoVersion);
 }
 
 async function main() {
