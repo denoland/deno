@@ -1359,11 +1359,11 @@ fn help_parse(flags: &mut Flags, mut subcommand: Command) {
   args.sort_by(|a, b| {
     a.1
       .as_ref()
-      .map(|heading| HEADING_ORDER.iter().position(|h| h == &heading))
+      .map(|heading| HEADING_ORDER.iter().position(|h| h == heading))
       .cmp(
         &b.1
           .as_ref()
-          .map(|heading| HEADING_ORDER.iter().position(|h| h == &heading)),
+          .map(|heading| HEADING_ORDER.iter().position(|h| h == heading)),
       )
       .then(a.0.cmp(&b.0))
   });
