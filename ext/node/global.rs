@@ -80,8 +80,25 @@ const MANAGED_GLOBALS: [&[u16]; 14] = [
   &str_to_utf16::<6>("window"),
 ];
 
-const SHORTEST_MANAGED_GLOBAL: usize = 4;
-const LONGEST_MANAGED_GLOBAL: usize = 17;
+// Calculates the shortest & longest length of global var names
+const MANAGED_GLOBALS_INFO: (usize, usize) = {
+  let l = MANAGED_GLOBALS[0].len();
+  let (mut longest, mut shortest, mut i) = (l, l, 1);
+  while i < MANAGED_GLOBALS.len() {
+    let l = MANAGED_GLOBALS[i].len();
+    if l > longest {
+      longest = l
+    }
+    if l < shortest {
+      shortest = l
+    }
+    i += 1;
+  }
+  (shortest, longest)
+};
+
+const SHORTEST_MANAGED_GLOBAL: usize = MANAGED_GLOBALS_INFO.0;
+const LONGEST_MANAGED_GLOBAL: usize = MANAGED_GLOBALS_INFO.1;
 
 #[derive(Debug, Clone, Copy)]
 enum Mode {
