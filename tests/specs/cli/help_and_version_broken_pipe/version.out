@@ -1,0 +1,2 @@
+Task version deno --version | echo
+

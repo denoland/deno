@@ -20,11 +20,11 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use jupyter_runtime::ExecutionCount;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
 use jupyter_runtime::messaging;
-use jupyter_runtime::AsChildOf;
 use jupyter_runtime::ConnectionInfo;
 use jupyter_runtime::JupyterMessage;
 use jupyter_runtime::JupyterMessageContent;
@@ -34,11 +34,12 @@ use jupyter_runtime::KernelShellConnection;
 use jupyter_runtime::ReplyError;
 use jupyter_runtime::ReplyStatus;
 use jupyter_runtime::StreamContent;
+use uuid::Uuid;
 
 use super::JupyterReplProxy;
 
 pub struct JupyterServer {
-  execution_count: usize,
+  execution_count: ExecutionCount,
   last_execution_request: Arc<Mutex<Option<JupyterMessage>>>,
   iopub_connection: Arc<Mutex<KernelIoPubConnection>>,
   repl_session_proxy: JupyterReplProxy,
@@ -62,16 +63,22 @@ impl JupyterServer {
     repl_session_proxy: JupyterReplProxy,
     setup_tx: oneshot::Sender<StartupData>,
   ) -> Result<(), AnyError> {
+    let session_id = Uuid::new_v4().to_string();
+
     let mut heartbeat =
       connection_info.create_kernel_heartbeat_connection().await?;
-    let shell_connection =
-      connection_info.create_kernel_shell_connection().await?;
-    let control_connection =
-      connection_info.create_kernel_control_connection().await?;
-    let mut stdin_connection =
-      connection_info.create_kernel_stdin_connection().await?;
-    let iopub_connection =
-      connection_info.create_kernel_iopub_connection().await?;
+    let shell_connection = connection_info
+      .create_kernel_shell_connection(&session_id)
+      .await?;
+    let control_connection = connection_info
+      .create_kernel_control_connection(&session_id)
+      .await?;
+    let mut stdin_connection = connection_info
+      .create_kernel_stdin_connection(&session_id)
+      .await?;
+    let iopub_connection = connection_info
+      .create_kernel_iopub_connection(&session_id)
+      .await?;
 
     let iopub_connection = Arc::new(Mutex::new(iopub_connection));
     let last_execution_request = Arc::new(Mutex::new(None));
@@ -96,7 +103,7 @@ impl JupyterServer {
     let cancel_handle = CancelHandle::new_rc();
 
     let mut server = Self {
-      execution_count: 0,
+      execution_count: ExecutionCount::new(0),
       iopub_connection: iopub_connection.clone(),
       last_execution_request: last_execution_request.clone(),
       repl_session_proxy,
@@ -468,7 +475,7 @@ impl JupyterServer {
     connection: &mut KernelShellConnection,
   ) -> Result<(), AnyError> {
     if !execute_request.silent && execute_request.store_history {
-      self.execution_count += 1;
+      self.execution_count.increment();
     }
     *self.last_execution_request.lock() = Some(parent_message.clone());
 
@@ -634,11 +641,11 @@ impl JupyterServer {
           messaging::ExecuteReply {
             execution_count: self.execution_count,
             status: ReplyStatus::Error,
-            error: Some(ReplyError {
+            error: Some(Box::new(ReplyError {
               ename,
               evalue,
               traceback,
-            }),
+            })),
             user_expressions: None,
             payload: Default::default(),
           }
@@ -654,7 +661,7 @@ impl JupyterServer {
     &mut self,
     message: JupyterMessage,
   ) -> Result<(), AnyError> {
-    self.iopub_connection.lock().send(message).await
+    self.iopub_connection.lock().send(message.clone()).await
   }
 }
 
@@ -663,10 +670,10 @@ fn kernel_info() -> messaging::KernelInfoReply {
     status: ReplyStatus::Ok,
     protocol_version: "5.3".to_string(),
     implementation: "Deno kernel".to_string(),
-    implementation_version: crate::version::deno().to_string(),
+    implementation_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
     language_info: messaging::LanguageInfo {
       name: "typescript".to_string(),
-      version: crate::version::TYPESCRIPT.to_string(),
+      version: crate::version::DENO_VERSION_INFO.typescript.to_string(),
       mimetype: "text/x.typescript".to_string(),
       file_extension: ".ts".to_string(),
       pygments_lexer: "typescript".to_string(),
@@ -686,10 +693,10 @@ fn kernel_info() -> messaging::KernelInfoReply {
 async fn publish_result(
   repl_session_proxy: &mut JupyterReplProxy,
   evaluate_result: &cdp::RemoteObject,
-  execution_count: usize,
+  execution_count: ExecutionCount,
 ) -> Result<Option<HashMap<String, serde_json::Value>>, AnyError> {
   let arg0 = cdp::CallArgument {
-    value: Some(serde_json::Value::Number(execution_count.into())),
+    value: Some(execution_count.into()),
     unserializable_value: None,
     object_id: None,
   };

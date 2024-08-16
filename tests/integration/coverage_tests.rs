@@ -216,6 +216,8 @@ fn no_snaps_included(test_name: &str, extension: &str) {
       "--quiet".to_string(),
       "--allow-read".to_string(),
       format!("--coverage={}", tempdir),
+      "--config".to_string(),
+      "../config/deno.json".to_string(),
       format!("coverage/no_snaps_included/{test_name}_test.{extension}"),
     ])
     .run();
@@ -256,6 +258,8 @@ fn no_tests_included(test_name: &str, extension: &str) {
       "--quiet".to_string(),
       "--allow-read".to_string(),
       format!("--coverage={}", tempdir),
+      "--config".to_string(),
+      "../config/deno.json".to_string(),
       format!("coverage/no_tests_included/{test_name}.test.{extension}"),
     ])
     .run();
@@ -337,6 +341,8 @@ fn no_transpiled_lines() {
       "test".to_string(),
       "--quiet".to_string(),
       format!("--coverage={}", tempdir),
+      "--config".to_string(),
+      "../config/deno.json".to_string(),
       "coverage/no_transpiled_lines/".to_string(),
     ])
     .run();
@@ -510,7 +516,7 @@ fn test_html_reporter() {
   output.assert_matches_text("HTML coverage report has been generated at [WILDCARD]/cov/html/index.html\n");
 
   let index_html = tempdir.join("html").join("index.html").read_to_string();
-  assert_contains!(index_html, "<h1>Coverage report for all files</h1>");
+  assert_contains!(index_html, "<h1>All files</h1>");
   assert_contains!(index_html, "baz/");
   assert_contains!(index_html, "href='baz/index.html'");
   assert_contains!(index_html, "foo.ts");
@@ -519,13 +525,19 @@ fn test_html_reporter() {
   assert_contains!(index_html, "href='bar.ts.html'");
 
   let foo_ts_html = tempdir.join("html").join("foo.ts.html").read_to_string();
-  assert_contains!(foo_ts_html, "<h1>Coverage report for foo.ts</h1>");
+  assert_contains!(
+    foo_ts_html,
+    "<h1><a href='index.html'>All files</a> / foo.ts</h1>"
+  );
   // Check that line count has correct title attribute
   assert_contains!(foo_ts_html, "<span class='cline-any cline-yes' title='This line is covered 1 time'>x1</span>");
   assert_contains!(foo_ts_html, "<span class='cline-any cline-yes' title='This line is covered 3 times'>x3</span>");
 
   let bar_ts_html = tempdir.join("html").join("bar.ts.html").read_to_string();
-  assert_contains!(bar_ts_html, "<h1>Coverage report for bar.ts</h1>");
+  assert_contains!(
+    bar_ts_html,
+    "<h1><a href='index.html'>All files</a> / bar.ts</h1>"
+  );
   // Check <T> in source code is escaped to &lt;T&gt;
   assert_contains!(bar_ts_html, "&lt;T&gt;");
   // Check that line anchors are correctly referenced by line number links
@@ -537,7 +549,10 @@ fn test_html_reporter() {
     .join("baz")
     .join("index.html")
     .read_to_string();
-  assert_contains!(baz_index_html, "<h1>Coverage report for baz/</h1>");
+  assert_contains!(
+    baz_index_html,
+    "<h1><a href='../index.html'>All files</a> / baz</h1>"
+  );
   assert_contains!(baz_index_html, "qux.ts");
   assert_contains!(baz_index_html, "href='qux.ts.html'");
   assert_contains!(baz_index_html, "quux.ts");
@@ -548,7 +563,7 @@ fn test_html_reporter() {
     .join("baz")
     .join("qux.ts.html")
     .read_to_string();
-  assert_contains!(baz_qux_ts_html, "<h1>Coverage report for baz/qux.ts</h1>");
+  assert_contains!(baz_qux_ts_html, "<h1><a href='../index.html'>All files</a> / <a href='../baz/index.html'>baz</a> / qux.ts</h1>");
 
   let baz_quux_ts_html = tempdir
     .join("html")
@@ -557,7 +572,7 @@ fn test_html_reporter() {
     .read_to_string();
   assert_contains!(
     baz_quux_ts_html,
-    "<h1>Coverage report for baz/quux.ts</h1>"
+    "<h1><a href='../index.html'>All files</a> / <a href='../baz/index.html'>baz</a> / quux.ts</h1>"
   );
 }
 

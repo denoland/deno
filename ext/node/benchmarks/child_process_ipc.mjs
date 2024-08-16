@@ -1,3 +1,5 @@
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
 import { fork } from "node:child_process";
 import process from "node:process";
 import { setImmediate } from "node:timers";
@@ -5,10 +7,20 @@ import { setImmediate } from "node:timers";
 if (process.env.CHILD) {
   const len = +process.env.CHILD;
   const msg = ".".repeat(len);
+  let waiting = false;
   const send = () => {
-    while (process.send(msg));
+    while (
+      process.send(msg, undefined, undefined, (_e) => {
+        if (waiting) {
+          waiting = false;
+          setImmediate(send);
+        }
+      })
+    );
     // Wait: backlog of unsent messages exceeds threshold
-    setImmediate(send);
+    // once the message is sent, the callback will be called
+    // and we'll resume
+    waiting = true;
   };
   send();
 } else {

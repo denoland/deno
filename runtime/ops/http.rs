@@ -8,11 +8,9 @@ use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceId;
-use deno_core::ToJsBuffer;
 use deno_http::http_create_conn_resource;
 use deno_net::io::TcpStreamResource;
 use deno_net::ops_tls::TlsStreamResource;
-use serde::Serialize;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "http";
 
@@ -73,12 +71,4 @@ fn op_http_start(
   }
 
   Err(bad_resource_id())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HttpUpgradeResult {
-  conn_rid: ResourceId,
-  conn_type: &'static str,
-  read_buf: ToJsBuffer,
 }

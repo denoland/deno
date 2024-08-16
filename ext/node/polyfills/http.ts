@@ -3,10 +3,10 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
-  op_fetch_response_upgrade,
-  op_fetch_send,
+  op_node_http_fetch_response_upgrade,
+  op_node_http_fetch_send,
   op_node_http_request,
 } from "ext:core/ops";
 
@@ -30,6 +30,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import {
   addAbortSignal,
+  Duplex as NodeDuplex,
   finished,
   Readable as NodeReadable,
   Writable as NodeWritable,
@@ -68,6 +69,7 @@ import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
 
 const { internalRidSymbol } = core;
+const { ArrayIsArray } = primordials;
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -289,12 +291,14 @@ class FakeSocket extends EventEmitter {
       encrypted?: boolean | undefined;
       remotePort?: number | undefined;
       remoteAddress?: string | undefined;
+      reader?: ReadableStreamDefaultReader | undefined;
     } = {},
   ) {
     super();
     this.remoteAddress = opts.remoteAddress;
     this.remotePort = opts.remotePort;
     this.encrypted = opts.encrypted;
+    this.reader = opts.reader;
     this.writable = true;
     this.readable = true;
   }
@@ -321,6 +325,7 @@ class ClientRequest extends OutgoingMessage {
   insecureHTTPParser: boolean;
   useChunkedEncodingByDefault: boolean;
   path: string;
+  _req: { requestRid: number; cancelHandleRid: number | null } | undefined;
 
   constructor(
     input: string | URL,
@@ -626,7 +631,7 @@ class ClientRequest extends OutgoingMessage {
 
     (async () => {
       try {
-        const res = await op_fetch_send(this._req.requestRid);
+        const res = await op_node_http_fetch_send(this._req.requestRid);
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
         }
@@ -674,7 +679,7 @@ class ClientRequest extends OutgoingMessage {
             throw new Error("not implemented CONNECT");
           }
 
-          const upgradeRid = await op_fetch_response_upgrade(
+          const upgradeRid = await op_node_http_fetch_response_upgrade(
             res.responseRid,
           );
           assert(typeof res.remoteAddrIp !== "undefined");
@@ -763,6 +768,9 @@ class ClientRequest extends OutgoingMessage {
 
   // deno-lint-ignore no-explicit-any
   end(chunk?: any, encoding?: any, cb?: any): this {
+    // Do nothing if request is already destroyed.
+    if (this.destroyed) return this;
+
     if (typeof chunk === "function") {
       cb = chunk;
       chunk = null;
@@ -795,6 +803,8 @@ class ClientRequest extends OutgoingMessage {
         //
       }
     })();
+
+    return this;
   }
 
   abort() {
@@ -818,7 +828,9 @@ class ClientRequest extends OutgoingMessage {
     if (rid) {
       core.tryClose(rid);
     }
-    if (this._req.cancelHandleRid !== null) {
+
+    // Request might be closed before we actually made it
+    if (this._req !== undefined && this._req.cancelHandleRid !== null) {
       core.tryClose(this._req.cancelHandleRid);
     }
     // If we're aborting, we don't care about any more response data.
@@ -1430,12 +1442,11 @@ export class ServerResponse extends NodeWritable {
   }
 
   appendHeader(name: string, value: string | string[]) {
-    if (Array.isArray(value)) {
-      this.#hasNonStringHeaders = true;
-    }
     if (this.#headers[name] === undefined) {
+      if (Array.isArray(value)) this.#hasNonStringHeaders = true;
       this.#headers[name] = value;
     } else {
+      this.#hasNonStringHeaders = true;
       if (!Array.isArray(this.#headers[name])) {
         this.#headers[name] = [this.#headers[name]];
       }
@@ -1458,20 +1469,65 @@ export class ServerResponse extends NodeWritable {
   getHeaderNames() {
     return Object.keys(this.#headers);
   }
-  getHeaders() {
+  getHeaders(): Record<string, string | number | string[]> {
+    // @ts-ignore Ignore null __proto__
     return { __proto__: null, ...this.#headers };
   }
   hasHeader(name: string) {
     return Object.hasOwn(this.#headers, name);
   }
 
-  writeHead(status: number, headers: Record<string, string> = {}) {
+  writeHead(
+    status: number,
+    statusMessage?: string,
+    headers?:
+      | Record<string, string | number | string[]>
+      | Array<[string, string]>,
+  ): this;
+  writeHead(
+    status: number,
+    headers?:
+      | Record<string, string | number | string[]>
+      | Array<[string, string]>,
+  ): this;
+  writeHead(
+    status: number,
+    statusMessageOrHeaders?:
+      | string
+      | Record<string, string | number | string[]>
+      | Array<[string, string]>,
+    maybeHeaders?:
+      | Record<string, string | number | string[]>
+      | Array<[string, string]>,
+  ): this {
     this.statusCode = status;
-    for (const k in headers) {
-      if (Object.hasOwn(headers, k)) {
-        this.setHeader(k, headers[k]);
+
+    let headers = null;
+    if (typeof statusMessageOrHeaders === "string") {
+      this.statusMessage = statusMessageOrHeaders;
+      if (maybeHeaders !== undefined) {
+        headers = maybeHeaders;
+      }
+    } else if (statusMessageOrHeaders !== undefined) {
+      headers = statusMessageOrHeaders;
+    }
+
+    if (headers !== null) {
+      if (ArrayIsArray(headers)) {
+        headers = headers as Array<[string, string]>;
+        for (let i = 0; i < headers.length; i++) {
+          this.appendHeader(headers[i][0], headers[i][1]);
+        }
+      } else {
+        headers = headers as Record<string, string>;
+        for (const k in headers) {
+          if (Object.hasOwn(headers, k)) {
+            this.setHeader(k, headers[k]);
+          }
+        }
       }
     }
+
     return this;
   }
 
@@ -1560,17 +1616,17 @@ export class ServerResponse extends NodeWritable {
 
 // TODO(@AaronO): optimize
 export class IncomingMessageForServer extends NodeReadable {
-  #req: Request;
   #headers: Record<string, string>;
   url: string;
   method: string;
-  // Polyfills part of net.Socket object.
-  // These properties are used by `npm:forwarded` for example.
-  socket: { remoteAddress: string; remotePort: number };
+  socket: Socket | FakeSocket;
 
-  constructor(req: Request, socket: FakeSocket) {
-    // Check if no body (GET/HEAD/OPTIONS/...)
-    const reader = req.body?.getReader();
+  constructor(socket: FakeSocket | Socket) {
+    const reader = socket instanceof FakeSocket
+      ? socket.reader
+      : socket instanceof Socket
+      ? NodeDuplex.toWeb(socket).readable.getReader()
+      : null;
     super({
       autoDestroy: true,
       emitClose: true,
@@ -1588,15 +1644,16 @@ export class IncomingMessageForServer extends NodeReadable {
         }
       },
       destroy: (err, cb) => {
-        reader?.cancel().finally(() => cb(err));
+        reader?.cancel().catch(() => {
+          // Don't throw error - it's propagated to the user via 'error' event.
+        }).finally(nextTick(onError, this, err, cb));
       },
     });
-    // TODO(@bartlomieju): consider more robust path extraction, e.g:
-    // url: (new URL(request.url).pathname),
-    this.url = req.url?.slice(req.url.indexOf("/", 8));
-    this.method = req.method;
+    this.url = "";
+    this.method = "";
     this.socket = socket;
-    this.#req = req;
+    this.upgrade = null;
+    this.rawHeaders = [];
   }
 
   get aborted() {
@@ -1614,7 +1671,7 @@ export class IncomingMessageForServer extends NodeReadable {
   get headers() {
     if (!this.#headers) {
       this.#headers = {};
-      const entries = headersEntries(this.#req.headers);
+      const entries = headersEntries(this.rawHeaders);
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         this.#headers[entry[0]] = entry[1];
@@ -1627,16 +1684,17 @@ export class IncomingMessageForServer extends NodeReadable {
     this.#headers = val;
   }
 
-  get upgrade(): boolean {
-    return Boolean(
-      this.#req.headers.get("connection")?.toLowerCase().includes("upgrade") &&
-        this.#req.headers.get("upgrade"),
-    );
-  }
-
   // connection is deprecated, but still tested in unit test.
   get connection() {
     return this.socket;
+  }
+
+  setTimeout(msecs, callback) {
+    if (callback) {
+      this.on("timeout", callback);
+    }
+    this.socket.setTimeout(msecs);
+    return this;
   }
 }
 
@@ -1650,9 +1708,6 @@ export function Server(opts, requestListener?: ServerHandler): ServerImpl {
 }
 
 export class ServerImpl extends EventEmitter {
-  #httpConnections: Set<Deno.HttpConn> = new Set();
-  #listener?: Deno.Listener;
-
   #addr: Deno.NetAddr | null = null;
   #hasClosed = false;
   #server: Deno.HttpServer;
@@ -1722,8 +1777,17 @@ export class ServerImpl extends EventEmitter {
         remoteAddress: info.remoteAddr.hostname,
         remotePort: info.remoteAddr.port,
         encrypted: this._encrypted,
+        reader: request.body?.getReader(),
       });
-      const req = new IncomingMessageForServer(request, socket);
+
+      const req = new IncomingMessageForServer(socket);
+      req.url = request.url?.slice(req.url.indexOf("/", 8));
+      req.method = request.method;
+      req.upgrade =
+        request.headers.get("connection")?.toLowerCase().includes("upgrade") &&
+        request.headers.get("upgrade");
+      req.rawHeaders = request.headers;
+
       if (req.upgrade && this.listenerCount("upgrade") > 0) {
         const { conn, response } = upgradeHttpRaw(request);
         const socket = new Socket({

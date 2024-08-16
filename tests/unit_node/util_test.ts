@@ -5,9 +5,10 @@ import {
   assertEquals,
   assertStrictEquals,
   assertThrows,
-} from "@std/assert/mod.ts";
-import { stripColor } from "@std/fmt/colors.ts";
+} from "@std/assert";
+import { stripAnsiCode } from "@std/fmt/colors";
 import * as util from "node:util";
+import utilDefault from "node:util";
 import { Buffer } from "node:buffer";
 
 Deno.test({
@@ -27,14 +28,14 @@ Deno.test({
 Deno.test({
   name: "[util] inspect",
   fn() {
-    assertEquals(stripColor(util.inspect({ foo: 123 })), "{ foo: 123 }");
-    assertEquals(stripColor(util.inspect("foo")), "'foo'");
+    assertEquals(stripAnsiCode(util.inspect({ foo: 123 })), "{ foo: 123 }");
+    assertEquals(stripAnsiCode(util.inspect("foo")), "'foo'");
     assertEquals(
-      stripColor(util.inspect("Deno's logo is so cute.")),
+      stripAnsiCode(util.inspect("Deno's logo is so cute.")),
       `"Deno's logo is so cute."`,
     );
     assertEquals(
-      stripColor(util.inspect([1, 2, 3, 4, 5, 6, 7])),
+      stripAnsiCode(util.inspect([1, 2, 3, 4, 5, 6, 7])),
       `[
   1, 2, 3, 4,
   5, 6, 7
@@ -321,4 +322,11 @@ Deno.test({
   fn() {
     util.parseArgs({});
   },
+});
+
+Deno.test("[util] debuglog() and debug()", () => {
+  assert(typeof util.debug === "function");
+  assert(typeof util.debuglog === "function");
+  assertEquals(util.debuglog, util.debug);
+  assertEquals(utilDefault.debuglog, utilDefault.debug);
 });

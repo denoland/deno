@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use deno_core::snapshot::*;
 use deno_runtime::*;
+mod shared;
 
 mod ts {
   use super::*;
@@ -325,22 +326,11 @@ mod ts {
   }
 }
 
-#[cfg(not(feature = "__runtime_js_sources"))]
+#[cfg(not(feature = "hmr"))]
 fn create_cli_snapshot(snapshot_path: PathBuf) {
   use deno_runtime::ops::bootstrap::SnapshotOptions;
 
-  // NOTE(bartlomieju): keep in sync with `cli/version.rs`.
-  // Ideally we could deduplicate that code.
-  fn deno_version() -> String {
-    if env::var("DENO_CANARY").is_ok() {
-      format!("{}+{}", env!("CARGO_PKG_VERSION"), &git_commit_hash()[..7])
-    } else {
-      env!("CARGO_PKG_VERSION").to_string()
-    }
-  }
-
   let snapshot_options = SnapshotOptions {
-    deno_version: deno_version(),
     ts_version: ts::version(),
     v8_version: deno_core::v8_version(),
     target: std::env::var("TARGET").unwrap(),
@@ -469,7 +459,7 @@ fn main() {
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
   ts::create_compiler_snapshot(compiler_snapshot_path, &c);
 
-  #[cfg(not(feature = "__runtime_js_sources"))]
+  #[cfg(not(feature = "hmr"))]
   {
     let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
     create_cli_snapshot(cli_snapshot_path);

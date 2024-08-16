@@ -156,9 +156,12 @@ async fn read_eval_file(
 }
 
 #[allow(clippy::print_stdout)]
-pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+pub async fn run(
+  flags: Arc<Flags>,
+  repl_flags: ReplFlags,
+) -> Result<i32, AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &cli_options.permissions_options()?,
@@ -239,7 +242,7 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   // Doing this manually, instead of using `log::info!` because these messages
   // are supposed to go to stdout, not stderr.
   if !cli_options.is_quiet() {
-    println!("Deno {}", crate::version::deno());
+    println!("Deno {}", crate::version::DENO_VERSION_INFO.deno);
     println!("exit using ctrl+d, ctrl+c, or close()");
     if repl_flags.is_default_command {
       println!(

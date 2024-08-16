@@ -1,24 +1,21 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::BenchFlags;
-use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;
-use crate::factory::CliFactoryBuilder;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
-use crate::util::fs::WalkEntry;
 use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
-use crate::version::get_user_agent;
 use crate::worker::CliMainWorkerFactory;
 
+use deno_config::glob::WalkEntry;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -403,14 +400,13 @@ fn has_supported_bench_path_name(path: &Path) -> bool {
 }
 
 pub async fn run_benchmarks(
-  flags: Flags,
+  flags: Arc<Flags>,
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
-  let cli_options = CliOptions::from_flags(flags)?;
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let workspace_bench_options =
     cli_options.resolve_workspace_bench_options(&bench_flags);
-  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
-  let cli_options = factory.cli_options();
   // Various bench files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
@@ -464,7 +460,7 @@ pub async fn run_benchmarks(
 
 // TODO(bartlomieju): heavy duplication of code with `cli/tools/test.rs`
 pub async fn run_benchmarks_with_watch(
-  flags: Flags,
+  flags: Arc<Flags>,
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
   file_watcher::watch_func(
@@ -480,9 +476,11 @@ pub async fn run_benchmarks_with_watch(
     move |flags, watcher_communicator, changed_paths| {
       let bench_flags = bench_flags.clone();
       Ok(async move {
-        let factory = CliFactoryBuilder::new()
-          .build_from_flags_for_watcher(flags, watcher_communicator.clone())?;
-        let cli_options = factory.cli_options();
+        let factory = CliFactory::from_flags_for_watcher(
+          flags,
+          watcher_communicator.clone(),
+        );
+        let cli_options = factory.cli_options()?;
         let workspace_bench_options =
           cli_options.resolve_workspace_bench_options(&bench_flags);
 

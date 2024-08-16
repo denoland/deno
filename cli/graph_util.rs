@@ -364,7 +364,7 @@ pub struct ModuleGraphBuilder {
   parsed_source_cache: Arc<ParsedSourceCache>,
   lockfile: Option<Arc<CliLockfile>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-  emit_cache: cache::EmitCache,
+  emit_cache: Arc<cache::EmitCache>,
   file_fetcher: Arc<FileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
 }
@@ -381,7 +381,7 @@ impl ModuleGraphBuilder {
     parsed_source_cache: Arc<ParsedSourceCache>,
     lockfile: Option<Arc<CliLockfile>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
-    emit_cache: cache::EmitCache,
+    emit_cache: Arc<cache::EmitCache>,
     file_fetcher: Arc<FileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
   ) -> Self {
@@ -481,7 +481,11 @@ impl ModuleGraphBuilder {
       }
     }
 
-    let maybe_imports = self.options.to_maybe_imports()?;
+    let maybe_imports = if options.graph_kind.include_types() {
+      self.options.to_compiler_option_types()?
+    } else {
+      Vec::new()
+    };
     let analyzer = self
       .module_info_cache
       .as_module_analyzer(&self.parsed_source_cache);
@@ -496,8 +500,6 @@ impl ModuleGraphBuilder {
       .maybe_file_watcher_reporter
       .as_ref()
       .map(|r| r.as_reporter());
-    let workspace_members =
-      self.options.resolve_deno_graph_workspace_members()?;
     let mut locker = self
       .lockfile
       .as_ref()
@@ -511,7 +513,6 @@ impl ModuleGraphBuilder {
           imports: maybe_imports,
           is_dynamic: options.is_dynamic,
           passthrough_jsr_specifiers: false,
-          workspace_members: &workspace_members,
           executor: Default::default(),
           file_system: &DenoGraphFsAdapter(self.fs.as_ref()),
           jsr_url_provider: &CliJsrUrlProvider,
@@ -746,8 +747,8 @@ fn enhanced_sloppy_imports_error_message(
     ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
     | ModuleError::Missing(specifier, _) => {
       let additional_message = SloppyImportsResolver::new(fs.clone())
-        .resolve(specifier, ResolutionMode::Execution)
-        .as_suggestion_message()?;
+        .resolve(specifier, ResolutionMode::Execution)?
+        .as_suggestion_message();
       Some(format!(
         "{} {} or run with --unstable-sloppy-imports",
         error,

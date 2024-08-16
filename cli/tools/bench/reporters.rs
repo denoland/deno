@@ -2,6 +2,8 @@
 
 use serde::Serialize;
 
+use crate::version;
+
 use super::*;
 
 pub trait BenchReporter {
@@ -25,7 +27,11 @@ struct JsonReporterOutput {
 impl Default for JsonReporterOutput {
   fn default() -> Self {
     Self {
-      runtime: format!("{} {}", get_user_agent(), env!("TARGET")),
+      runtime: format!(
+        "{} {}",
+        version::DENO_VERSION_INFO.user_agent,
+        env!("TARGET")
+      ),
       cpu: mitata::cpu::name(),
       benches: vec![],
     }
@@ -150,7 +156,7 @@ impl BenchReporter for ConsoleReporter {
         "{}\n",
         colors::gray(format!(
           "runtime: deno {} ({})",
-          crate::version::deno(),
+          crate::version::DENO_VERSION_INFO.deno,
           env!("TARGET")
         ))
       );

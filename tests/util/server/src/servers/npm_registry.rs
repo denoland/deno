@@ -150,7 +150,7 @@ async fn handle_req_for_registry(
   // serve the registry package files
   let uri_path = req.uri().path();
   let mut file_path = root_dir.to_path_buf();
-  file_path.push(&uri_path[1..].replace("%2f", "/").replace("%2F", "/"));
+  file_path.push(uri_path[1..].replace("%2f", "/").replace("%2F", "/"));
 
   // serve if the filepath exists
   if let Ok(file) = tokio::fs::read(&file_path).await {
@@ -297,6 +297,7 @@ async fn download_npm_registry_file(
   testdata_file_path: &PathBuf,
   is_tarball: bool,
 ) -> Result<(), anyhow::Error> {
+  let uri_path = uri_path.trim_start_matches('/');
   let url_parts = uri_path.split('/').collect::<Vec<_>>();
   let package_name = if url_parts[0].starts_with('@') {
     url_parts.into_iter().take(2).collect::<Vec<_>>().join("/")

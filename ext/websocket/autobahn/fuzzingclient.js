@@ -11,7 +11,8 @@ const AUTOBAHN_TESTSUITE_DOCKER =
   "crossbario/autobahn-testsuite:0.8.2@sha256:5d4ba3aa7d6ab2fdbf6606f3f4ecbe4b66f205ce1cbc176d6cdf650157e52242";
 
 const self = Deno.execPath();
-$`${self} run -A --unstable ${pwd}/autobahn_server.js`.spawn();
+$`${self} run -A --unstable --config ${pwd}/../../../tests/config/deno.json ${pwd}/autobahn_server.js`
+  .spawn();
 
 for (let i = 0; i < 6; i++) {
   try {

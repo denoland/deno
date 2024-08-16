@@ -1,16 +1,10 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import {
-  dirname,
-  fromFileUrl,
-  join,
-  resolve,
-  toFileUrl,
-} from "../tests/util/std/path/mod.ts";
+import { dirname, fromFileUrl, join, resolve, toFileUrl } from "@std/path";
 import { wait } from "https://deno.land/x/wait@0.1.13/mod.ts";
 export { dirname, fromFileUrl, join, resolve, toFileUrl };
-export { existsSync, walk } from "../tests/util/std/fs/mod.ts";
-export { TextLineStream } from "../tests/util/std/streams/text_line_stream.ts";
-export { delay } from "../tests/util/std/async/delay.ts";
+export { existsSync, walk } from "@std/fs";
+export { TextLineStream } from "@std/streams/text-line-stream";
+export { delay } from "@std/async/delay";
 
 // [toolName] --version output
 const versions = {

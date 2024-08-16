@@ -1,7 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-import { assert } from "@std/assert/mod.ts";
-import { fromFileUrl, relative } from "@std/path/mod.ts";
+import { assert } from "@std/assert";
+import { fromFileUrl, relative } from "@std/path";
 import { pipeline } from "node:stream/promises";
 import { createReadStream, createWriteStream } from "node:fs";
 

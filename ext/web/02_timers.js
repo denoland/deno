@@ -35,7 +35,7 @@ function checkThis(thisArg) {
 function setImmediate(callback, ...args) {
   if (args.length > 0) {
     const unboundCallback = callback;
-    callback = () => ReflectApply(unboundCallback, window, args);
+    callback = () => ReflectApply(unboundCallback, globalThis, args);
   }
 
   return core.queueImmediate(
@@ -55,7 +55,7 @@ function setTimeout(callback, timeout = 0, ...args) {
   }
   if (args.length > 0) {
     const unboundCallback = callback;
-    callback = () => ReflectApply(unboundCallback, window, args);
+    callback = () => ReflectApply(unboundCallback, globalThis, args);
   }
   timeout = webidl.converters.long(timeout);
   return core.queueUserTimer(
@@ -77,7 +77,7 @@ function setInterval(callback, timeout = 0, ...args) {
   }
   if (args.length > 0) {
     const unboundCallback = callback;
-    callback = () => ReflectApply(unboundCallback, window, args);
+    callback = () => ReflectApply(unboundCallback, globalThis, args);
   }
   timeout = webidl.converters.long(timeout);
   return core.queueUserTimer(

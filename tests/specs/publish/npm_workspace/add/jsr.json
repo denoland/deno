@@ -1,0 +1,5 @@
+{
+  "name": "@scope/add",
+  "version": "1.0.0",
+  "exports": "./index.ts"
+}

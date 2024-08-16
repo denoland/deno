@@ -2,6 +2,7 @@
 
 use deno_core::op2;
 use deno_core::OpState;
+use deno_terminal::colors::ColorLevel;
 use serde::Serialize;
 
 use crate::BootstrapOptions;
@@ -16,6 +17,7 @@ deno_core::extension!(
     op_bootstrap_language,
     op_bootstrap_log_level,
     op_bootstrap_no_color,
+    op_bootstrap_color_depth,
     op_bootstrap_is_stdout_tty,
     op_bootstrap_is_stderr_tty,
     op_bootstrap_unstable_args,
@@ -34,7 +36,6 @@ deno_core::extension!(
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotOptions {
-  pub deno_version: String,
   pub ts_version: String,
   pub v8_version: &'static str,
   pub target: String,
@@ -52,7 +53,6 @@ impl Default for SnapshotOptions {
     };
 
     Self {
-      deno_version: "dev".to_owned(),
       ts_version: "n/a".to_owned(),
       v8_version: deno_core::v8_version(),
       target,
@@ -124,6 +124,17 @@ pub fn op_bootstrap_log_level(state: &mut OpState) -> i32 {
 pub fn op_bootstrap_no_color(state: &mut OpState) -> bool {
   let options = state.borrow::<BootstrapOptions>();
   options.no_color
+}
+
+#[op2(fast)]
+pub fn op_bootstrap_color_depth(state: &mut OpState) -> i32 {
+  let options = state.borrow::<BootstrapOptions>();
+  match options.color_level {
+    ColorLevel::None => 1,
+    ColorLevel::Ansi => 4,
+    ColorLevel::Ansi256 => 8,
+    ColorLevel::TrueColor => 24,
+  }
 }
 
 #[op2(fast)]

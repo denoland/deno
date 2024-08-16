@@ -28,6 +28,8 @@ import {
   op_set_keepalive,
   op_set_nodelay,
 } from "ext:core/ops";
+const UDP_DGRAM_MAXSIZE = 65507;
+
 const {
   Error,
   Number,
@@ -378,7 +380,7 @@ class DatagramConn {
   #unref = false;
   #promise = null;
 
-  constructor(rid, addr, bufSize = 1024) {
+  constructor(rid, addr, bufSize = UDP_DGRAM_MAXSIZE) {
     this.#rid = rid;
     this.#addr = addr;
     this.bufSize = bufSize;
@@ -529,10 +531,14 @@ const listenOptionApiName = Symbol("listenOptionApiName");
 function listen(args) {
   switch (args.transport ?? "tcp") {
     case "tcp": {
-      const { 0: rid, 1: addr } = op_net_listen_tcp({
-        hostname: args.hostname ?? "0.0.0.0",
-        port: Number(args.port),
-      }, args.reusePort);
+      const { 0: rid, 1: addr } = op_net_listen_tcp(
+        {
+          hostname: args.hostname ?? "0.0.0.0",
+          port: Number(args.port),
+        },
+        args.reusePort,
+        args.loadBalanced ?? false,
+      );
       addr.transport = "tcp";
       return new Listener(rid, addr);
     }

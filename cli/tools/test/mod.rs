@@ -7,7 +7,6 @@ use crate::args::TestReporterConfig;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
-use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_container::MainModuleGraphContainer;
@@ -15,7 +14,6 @@ use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
-use crate::util::fs::WalkEntry;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
 use crate::util::path::mapped_specifier_for_tsc;
@@ -27,6 +25,7 @@ use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_ast::SourceRangedForSpanned;
 use deno_config::glob::FilePatterns;
+use deno_config::glob::WalkEntry;
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context as _;
@@ -881,12 +880,11 @@ async fn run_tests_for_worker_inner(
     // failing. If we don't do this, a connection to a test server we just tore down might be re-used in
     // the next test.
     // TODO(mmastrac): this should be some sort of callback that we can implement for any subsystem
-    #[allow(clippy::disallowed_types)] // allow using reqwest::Client here
     worker
       .js_runtime
       .op_state()
       .borrow_mut()
-      .try_take::<deno_runtime::deno_fetch::reqwest::Client>();
+      .try_take::<deno_runtime::deno_fetch::Client>();
 
     if desc.ignore {
       send_test_event(
@@ -1611,9 +1609,16 @@ pub(crate) fn is_supported_test_path(path: &Path) -> bool {
 fn has_supported_test_path_name(path: &Path) -> bool {
   if let Some(name) = path.file_stem() {
     let basename = name.to_string_lossy();
-    basename.ends_with("_test")
+    if basename.ends_with("_test")
       || basename.ends_with(".test")
       || basename == "test"
+    {
+      return true;
+    }
+
+    path
+      .components()
+      .any(|seg| seg.as_os_str().to_str() == Some("__tests__"))
   } else {
     false
   }
@@ -1648,7 +1653,7 @@ fn is_supported_test_ext(path: &Path) -> bool {
 /// input order.
 ///
 /// - Specifiers matching the `is_supported_test_ext` predicate are marked as
-/// `TestMode::Documentation`.
+///   `TestMode::Documentation`.
 /// - Specifiers matching the `is_supported_test_path` are marked as `TestMode::Executable`.
 /// - Specifiers matching both predicates are marked as `TestMode::Both`
 fn collect_specifiers_with_test_mode(
@@ -1732,11 +1737,11 @@ async fn fetch_specifiers_with_test_mode(
 }
 
 pub async fn run_tests(
-  flags: Flags,
+  flags: Arc<Flags>,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags)?;
-  let cli_options = factory.cli_options();
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
   let workspace_test_options =
     cli_options.resolve_workspace_test_options(&test_flags);
   let file_fetcher = factory.file_fetcher()?;
@@ -1815,7 +1820,7 @@ pub async fn run_tests(
 }
 
 pub async fn run_tests_with_watch(
-  flags: Flags,
+  flags: Arc<Flags>,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   // On top of the sigint handlers which are added and unbound for each test
@@ -1844,9 +1849,11 @@ pub async fn run_tests_with_watch(
     move |flags, watcher_communicator, changed_paths| {
       let test_flags = test_flags.clone();
       Ok(async move {
-        let factory = CliFactoryBuilder::new()
-          .build_from_flags_for_watcher(flags, watcher_communicator.clone())?;
-        let cli_options = factory.cli_options();
+        let factory = CliFactory::from_flags_for_watcher(
+          flags,
+          watcher_communicator.clone(),
+        );
+        let cli_options = factory.cli_options()?;
         let workspace_test_options =
           cli_options.resolve_workspace_test_options(&test_flags);
 
@@ -2077,6 +2084,18 @@ mod inner_test {
     assert!(is_supported_test_path(Path::new("foo/bar/test.jsx")));
     assert!(is_supported_test_path(Path::new("foo/bar/test.ts")));
     assert!(is_supported_test_path(Path::new("foo/bar/test.tsx")));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.js"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.jsx"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.ts"
+    )));
+    assert!(is_supported_test_path(Path::new(
+      "foo/bar/__tests__/foo.tsx"
+    )));
     assert!(!is_supported_test_path(Path::new("README.md")));
     assert!(!is_supported_test_path(Path::new("lib/typescript.d.ts")));
     assert!(!is_supported_test_path(Path::new("notatest.js")));

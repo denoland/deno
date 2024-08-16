@@ -1,33 +1,34 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+/// <reference types="npm:@types/node" />
 import {
   assertEquals,
   assertFalse,
   assertMatch,
   assertStrictEquals,
-} from "@std/assert/mod.ts";
+} from "@std/assert";
 import { read, readSync } from "node:fs";
 import { open, openSync } from "node:fs";
 import { Buffer } from "node:buffer";
-import * as path from "@std/path/mod.ts";
+import * as path from "@std/path";
 import { closeSync } from "node:fs";
 
 async function readTest(
   testData: string,
-  buffer: Buffer,
+  buffer: NodeJS.ArrayBufferView,
   offset: number,
   length: number,
   position: number | null = null,
   expected: (
     fd: number,
     bytesRead: number | null,
-    data: Buffer | undefined,
+    data: ArrayBufferView | undefined,
   ) => void,
 ) {
   let fd1 = 0;
   await new Promise<{
     fd: number;
     bytesRead: number | null;
-    data: Buffer | undefined;
+    data: ArrayBufferView | undefined;
   }>((resolve, reject) => {
     open(testData, "r", (err, fd) => {
       if (err) reject(err);
@@ -318,5 +319,37 @@ Deno.test({
       buffer,
     );
     closeSync(fd);
+  },
+});
+
+Deno.test({
+  name: "accepts non Uint8Array buffer",
+  async fn() {
+    const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
+    const testData = path.resolve(moduleDir, "testdata", "hello.txt");
+    const buffer = new ArrayBuffer(1024);
+    const buf = new Int8Array(buffer);
+    await readTest(
+      testData,
+      buf,
+      buf.byteOffset,
+      buf.byteLength,
+      null,
+      (_fd, bytesRead, data) => {
+        assertStrictEquals(bytesRead, 11);
+        assertEquals(data instanceof Buffer, true);
+        assertMatch((data as Buffer).toString(), /hello world/);
+      },
+    );
+    const fd = openSync(testData, "r");
+
+    try {
+      const nRead = readSync(fd, buf);
+      const expected = new TextEncoder().encode("hello world");
+
+      assertEquals(buf.slice(0, nRead), new Int8Array(expected.buffer));
+    } finally {
+      closeSync(fd);
+    }
   },
 });
