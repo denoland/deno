@@ -69,12 +69,7 @@ async function fetchLatestCanaryBinary(
   target: string,
 ) {
   const url = getCanaryBinaryUrl(version, binary, target);
-  const archiveName = getArchiveName(binary, target);
-  const fileName = `./${archiveName}`;
-  await remove(fileName);
-  const file = await Deno.open(fileName, { write: true, createNew: true });
-  const res = await fetch(url);
-  await res.body!.pipeTo(file.writable);
+  await $.request(url).showProgress().pipeToPath();
 }
 
 async function fetchLatestCanaryBinaries(canaryVersion: string) {
@@ -155,7 +150,9 @@ async function promoteBinaryToRc(binary: string, target: string) {
   await remove(unzippedName);
   await Deno.rename(rcBinaryName, unzippedName);
   // Set executable permission
-  Deno.chmod(unzippedName, 0o777);
+  if (!target.includes("windows")) {
+    Deno.chmod(unzippedName, 0o777);
+  }
 
   await createArchive(unzippedName, archiveName);
   await remove(unzippedName);
