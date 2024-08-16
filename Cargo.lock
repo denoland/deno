@@ -1658,13 +1658,17 @@ dependencies = [
  "deno_core",
  "filetime",
  "fs3",
+ "libc",
  "log",
  "once_cell",
  "os_pipe",
  "parking_lot 0.12.3",
+ "pin-project",
  "rand",
  "tokio",
+ "uuid",
  "winapi",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1699,9 +1703,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.62.0"
+version = "0.63.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69bb0887acec1830cac1a325ebe5cec96fdc41f61ee50e7b25447741007757b6"
+checksum = "e0e6cc8fcb4819dd5e12d640d6fc455217c66bda00e30fd6d46d2844e3e1bdcf"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -1709,6 +1713,7 @@ dependencies = [
  "if_chain",
  "log",
  "once_cell",
+ "phf 0.11.2",
  "regex",
  "serde",
  "serde_json",
@@ -4169,9 +4174,9 @@ dependencies = [
 
 [[package]]
 name = "libsui"
-version = "0.1.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c2fedcf6cb4dd935f94a90e1c4300c727fe7112b8455615e902828c7401f84d"
+checksum = "2d0f34a58599483cd44a31ff3622dbcca0c50679af60f98b705069dc729e70cf"
 dependencies = [
  "editpe",
  "libc",

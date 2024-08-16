@@ -20,6 +20,7 @@ mod node;
 mod npm;
 mod ops;
 mod resolver;
+mod shared;
 mod standalone;
 mod task_runner;
 mod tools;
@@ -313,7 +314,7 @@ fn setup_panic_hook() {
     eprintln!("var set and include the backtrace in your report.");
     eprintln!();
     eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
-    eprintln!("Version: {}", version::deno());
+    eprintln!("Version: {}", version::DENO_VERSION_INFO.deno);
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
     orig_hook(panic_info);
