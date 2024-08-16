@@ -986,7 +986,7 @@ export const validatePosition = hideStackFrames((position) => {
   }
 });
 
-/** @type {(buffer: ArrayBufferView, offset = 0, length?: number) => Uint8Array} */
+/** @type {(buffer: ArrayBufferView) => Uint8Array} */
 export const arrayBufferViewToUint8Array = hideStackFrames(
   (buffer) => {
     if (!(buffer instanceof Uint8Array)) {
