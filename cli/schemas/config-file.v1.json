@@ -546,6 +546,10 @@
         }
       }
     },
+    "license": {
+      "description": "The SPDX license identifier if this is a JSR package. Specify this or add a license file to the package.",
+      "type": ["string"]
+    },
     "lock": {
       "description": "Whether to use a lock file or the path to use for the lock file. Can be overridden by CLI arguments.",
       "type": ["string", "boolean"],

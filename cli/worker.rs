@@ -414,6 +414,7 @@ impl CliMainWorker {
   }
 }
 
+#[derive(Clone)]
 pub struct CliMainWorkerFactory {
   shared: Arc<SharedWorkerState>,
 }
@@ -546,7 +547,7 @@ impl CliMainWorkerFactory {
     let maybe_inspector_server = shared.maybe_inspector_server.clone();
 
     let create_web_worker_cb =
-      create_web_worker_callback(mode, shared.clone(), stdio.clone());
+      create_web_worker_callback(shared.clone(), stdio.clone());
 
     let maybe_storage_key = shared
       .storage_key_resolver
@@ -580,6 +581,7 @@ impl CliMainWorkerFactory {
 
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
+        deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
         args: shared.options.argv.clone(),
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
@@ -595,7 +597,7 @@ impl CliMainWorkerFactory {
         color_level: colors::get_color_level(),
         unstable: shared.options.unstable,
         unstable_features,
-        user_agent: version::get_user_agent().to_string(),
+        user_agent: version::DENO_VERSION_INFO.user_agent.to_string(),
         inspect: shared.options.is_inspecting,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
@@ -739,7 +741,6 @@ impl CliMainWorkerFactory {
 }
 
 fn create_web_worker_callback(
-  mode: WorkerExecutionMode,
   shared: Arc<SharedWorkerState>,
   stdio: deno_runtime::deno_io::Stdio,
 ) -> Arc<CreateWebWorkerCb> {
@@ -752,7 +753,7 @@ fn create_web_worker_callback(
         args.permissions.clone(),
       );
     let create_web_worker_cb =
-      create_web_worker_callback(mode, shared.clone(), stdio.clone());
+      create_web_worker_callback(shared.clone(), stdio.clone());
 
     let maybe_storage_key = shared
       .storage_key_resolver
@@ -778,6 +779,7 @@ fn create_web_worker_callback(
 
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
+        deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
         args: shared.options.argv.clone(),
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
@@ -793,7 +795,7 @@ fn create_web_worker_callback(
         is_stderr_tty: deno_terminal::is_stderr_tty(),
         unstable: shared.options.unstable,
         unstable_features,
-        user_agent: version::get_user_agent().to_string(),
+        user_agent: version::DENO_VERSION_INFO.user_agent.to_string(),
         inspect: shared.options.is_inspecting,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
@@ -802,7 +804,7 @@ fn create_web_worker_callback(
         disable_deprecated_api_warning: shared.disable_deprecated_api_warning,
         verbose_deprecated_api_warning: shared.verbose_deprecated_api_warning,
         future: shared.enable_future_features,
-        mode,
+        mode: WorkerExecutionMode::Worker,
         serve_port: shared.serve_port,
         serve_host: shared.serve_host.clone(),
       },

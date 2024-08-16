@@ -8,6 +8,7 @@ use crate::colors;
 use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
+use crate::shared::ReleaseChannel;
 use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -139,14 +140,18 @@ impl VersionProvider for RealVersionProvider {
   }
 
   fn current_version(&self) -> Cow<str> {
-    Cow::Borrowed(version::release_version_or_canary_commit_hash())
+    Cow::Borrowed(version::DENO_VERSION_INFO.version_or_git_hash())
   }
 
   // TODO(bartlomieju): update to handle `Lts` channel
   async fn get_current_exe_release_channel(
     &self,
   ) -> Result<ReleaseChannel, AnyError> {
-    if version::is_canary() {
+    // TODO(bartlomieju): remove hitting a remote server
+    if matches!(
+      version::DENO_VERSION_INFO.release_channel,
+      ReleaseChannel::Canary
+    ) {
       // If this fails for whatever reason, just return an empty vector.
       // It's better to miss that than throw error here.
       let rc_versions = get_rc_versions(
@@ -158,7 +163,7 @@ impl VersionProvider for RealVersionProvider {
 
       let is_current_exe_an_rc = rc_versions
         .iter()
-        .any(|(hash, _)| hash == version::GIT_COMMIT_HASH);
+        .any(|(hash, _)| hash == version::DENO_VERSION_INFO.git_hash);
 
       if is_current_exe_an_rc {
         Ok(ReleaseChannel::Rc)
@@ -336,7 +341,7 @@ pub fn check_for_upgrades(
         log::info!(
           "{} {} → {} {}",
           colors::green("A new release of Deno is available:"),
-          colors::cyan(version::deno()),
+          colors::cyan(version::DENO_VERSION_INFO.deno),
           colors::cyan(&upgrade_version),
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
@@ -544,7 +549,7 @@ pub async fn upgrade(
     log::info!("Upgraded successfully (dry run)");
     if !requested_version.is_canary() {
       print_release_notes(
-        version::deno(),
+        version::DENO_VERSION_INFO.deno,
         &selected_version_to_upgrade.version_or_hash,
       );
     }
@@ -567,7 +572,10 @@ pub async fn upgrade(
     colors::green(selected_version_to_upgrade.display())
   );
   if !requested_version.is_canary() {
-    print_release_notes(version::deno(), &selected_version_to_upgrade.display);
+    print_release_notes(
+      version::DENO_VERSION_INFO.deno,
+      &selected_version_to_upgrade.display,
+    );
   }
 
   drop(temp_dir); // delete the temp dir
@@ -636,14 +644,20 @@ fn select_specific_version_for_upgrade(
 ) -> Result<Option<AvailableVersion>, AnyError> {
   match release_channel {
     ReleaseChannel::Stable => {
-      let current_is_passed = if !version::is_canary() {
-        version::deno() == version
+      let current_is_passed = if !matches!(
+        version::DENO_VERSION_INFO.release_channel,
+        ReleaseChannel::Canary
+      ) {
+        version::DENO_VERSION_INFO.deno == version
       } else {
         false
       };
 
       if !force && current_is_passed {
-        log::info!("Version {} is already installed", version::deno());
+        log::info!(
+          "Version {} is already installed",
+          version::DENO_VERSION_INFO.deno
+        );
         return Ok(None);
       }
 
@@ -654,9 +668,12 @@ fn select_specific_version_for_upgrade(
       }))
     }
     ReleaseChannel::Canary => {
-      let current_is_passed = version::GIT_COMMIT_HASH == version;
+      let current_is_passed = version::DENO_VERSION_INFO.git_hash == version;
       if !force && current_is_passed {
-        log::info!("Version {} is already installed", version::deno());
+        log::info!(
+          "Version {} is already installed",
+          version::DENO_VERSION_INFO.deno
+        );
         return Ok(None);
       }
 
@@ -690,8 +707,11 @@ async fn find_latest_version_to_upgrade(
 
   let (maybe_newer_latest_version, current_version) = match release_channel {
     ReleaseChannel::Stable => {
-      let current_version = version::deno();
-      let current_is_most_recent = if !version::is_canary() {
+      let current_version = version::DENO_VERSION_INFO.deno;
+      let current_is_most_recent = if !matches!(
+        version::DENO_VERSION_INFO.release_channel,
+        ReleaseChannel::Canary
+      ) {
         let current = Version::parse_standard(current_version).unwrap();
         let latest =
           Version::parse_standard(&latest_version_found.version_or_hash)
@@ -708,7 +728,7 @@ async fn find_latest_version_to_upgrade(
       }
     }
     ReleaseChannel::Canary => {
-      let current_version = version::GIT_COMMIT_HASH;
+      let current_version = version::DENO_VERSION_INFO.git_hash;
       let current_is_most_recent =
         current_version == latest_version_found.version_or_hash;
 
@@ -719,7 +739,7 @@ async fn find_latest_version_to_upgrade(
       }
     }
     ReleaseChannel::Rc => {
-      let current_version = version::GIT_COMMIT_HASH;
+      let current_version = version::DENO_VERSION_INFO.git_hash;
       let current_is_most_recent =
         current_version == latest_version_found.version_or_hash;
 
@@ -749,53 +769,6 @@ async fn find_latest_version_to_upgrade(
   log::info!("");
 
   Ok(maybe_newer_latest_version)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum ReleaseChannel {
-  /// Stable version, eg. 1.45.4, 2.0.0, 2.1.0
-  Stable,
-
-  /// Pointing to a git hash
-  Canary,
-
-  /// Long term support release
-  #[allow(unused)]
-  Lts,
-
-  /// Release candidate, poiting to a git hash
-  Rc,
-}
-
-impl ReleaseChannel {
-  fn name(&self) -> &str {
-    match self {
-      Self::Stable => "latest",
-      Self::Canary => "canary",
-      Self::Rc => "release candidate",
-      Self::Lts => "LTS (long term support)",
-    }
-  }
-
-  fn serialize(&self) -> String {
-    match self {
-      Self::Stable => "stable",
-      Self::Canary => "canary",
-      Self::Rc => "rc",
-      Self::Lts => "lts",
-    }
-    .to_string()
-  }
-
-  fn deserialize(str_: &str) -> Result<Self, AnyError> {
-    Ok(match str_ {
-      "stable" => Self::Stable,
-      "canary" => Self::Canary,
-      "rc" => Self::Rc,
-      "lts" => Self::Lts,
-      unknown => bail!("Unrecognized release channel: {}", unknown),
-    })
-  }
 }
 
 // Return a list of available RC release in format of (<commit_hash>, <version_name>)
@@ -1097,7 +1070,7 @@ impl CheckVersionFile {
       self.last_checked.to_rfc3339(),
       self.latest_version,
       self.current_version,
-      self.current_release_channel.serialize(),
+      self.current_release_channel.serialize()
     )
   }
 

@@ -229,6 +229,12 @@ opt-level = 'z' # Optimize for size
 inherits = "release"
 debug = true
 
+# Faster to compile than `release` but with similar performance.
+[profile.release-lite]
+inherits = "release"
+codegen-units = 128
+lto = "thin"
+
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.bench]
 codegen-units = 1

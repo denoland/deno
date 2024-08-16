@@ -53,6 +53,7 @@ use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
+use crate::shared::ReleaseChannel;
 use crate::standalone::virtual_fs::VfsEntry;
 use crate::util::archive;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -187,10 +188,19 @@ fn write_binary_bytes(
 
   let target = compile_flags.resolve_target();
   if target.contains("linux") {
-    libsui::Elf::new(&original_bin).append(&writer, &mut file_writer)?;
+    libsui::Elf::new(&original_bin).append(
+      "d3n0l4nd",
+      &writer,
+      &mut file_writer,
+    )?;
   } else if target.contains("windows") {
-    libsui::PortableExecutable::from(&original_bin)?
-      .write_resource("d3n0l4nd", writer)?
+    let mut pe = libsui::PortableExecutable::from(&original_bin)?;
+    if let Some(icon) = compile_flags.icon.as_ref() {
+      let icon = std::fs::read(icon)?;
+      pe = pe.set_icon(&icon)?;
+    }
+
+    pe.write_resource("d3n0l4nd", writer)?
       .build(&mut file_writer)?;
   } else if target.contains("darwin") {
     libsui::Macho::from(original_bin)?
@@ -370,6 +380,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       set_windows_binary_to_gui(&mut original_binary)?;
     }
+    if compile_flags.icon.is_some() {
+      let target = compile_flags.resolve_target();
+      if !target.contains("windows") {
+        bail!(
+          "The `--icon` flag is only available when targeting Windows (current: {})",
+          target,
+        )
+      }
+    }
     self.write_standalone_binary(
       writer,
       original_binary,
@@ -398,11 +417,23 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let target = compile_flags.resolve_target();
     let binary_name = format!("denort-{target}.zip");
 
-    let binary_path_suffix = if crate::version::is_canary() {
-      format!("canary/{}/{}", crate::version::GIT_COMMIT_HASH, binary_name)
-    } else {
-      format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
-    };
+    let binary_path_suffix =
+      match crate::version::DENO_VERSION_INFO.release_channel {
+        ReleaseChannel::Canary => {
+          format!(
+            "canary/{}/{}",
+            crate::version::DENO_VERSION_INFO.git_hash,
+            binary_name
+          )
+        }
+        ReleaseChannel::Stable => {
+          format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
+        }
+        _ => bail!(
+          "`deno compile` current doesn't support {} release channel",
+          crate::version::DENO_VERSION_INFO.release_channel.name()
+        ),
+      };
 
     let download_directory = self.deno_dir.dl_folder_path();
     let binary_path = download_directory.join(&binary_path_suffix);
