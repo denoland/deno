@@ -1,11 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashSet;
-use std::sync::Arc;
-
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_runtime::code_cache;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
@@ -117,10 +113,7 @@ struct CodeCacheInner {
 
 impl CodeCacheInner {
   pub fn new(conn: CacheDB) -> Self {
-    Self {
-      conn,
-      prevent_cache: Arc::new(Mutex::new(HashSet::new())),
-    }
+    Self { conn }
   }
 
   pub fn get_sync(
