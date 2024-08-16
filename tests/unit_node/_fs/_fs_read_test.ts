@@ -324,64 +324,80 @@ Deno.test({
 });
 
 Deno.test({
-  name: "accepts non Uint8Array buffer",
+  name: "read with offset TypedArray buffers",
   async fn() {
     const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
     const testData = path.resolve(moduleDir, "testdata", "hello.txt");
     const buffer = new ArrayBuffer(1024);
 
+    const bufConstructors = [
+      Int8Array,
+      Uint8Array,
+    ];
     const offsets = [0, 24, 48];
 
     const resetBuffer = () => {
       new Uint8Array(buffer).fill(0);
     };
     const decoder = new TextDecoder();
-    // test combinations of buffers internally offset from their backing array buffer,
-    // and also offset in the read call
-    for (const innerOffset of offsets) {
-      for (const offset of offsets) {
-        resetBuffer();
-        const buf = new Int8Array(
-          buffer,
-          innerOffset,
-          buffer.byteLength - innerOffset,
-        );
-        await readTest(
-          testData,
-          buf,
-          offset,
-          buf.byteLength - offset,
-          null,
-          (_fd, bytesRead, data) => {
-            assert(data);
-            assert(bytesRead);
-            assertStrictEquals(bytesRead, 11);
-            assertEquals(data == buf, true);
-            assertEquals(
-              decoder.decode(data.subarray(offset, offset + bytesRead)),
-              "hello world",
-            );
-          },
-        );
-        resetBuffer();
-        const fd = openSync(testData, "r");
 
-        try {
-          const bytesRead = readSync(
-            fd,
+    for (const constr of bufConstructors) {
+      // test combinations of buffers internally offset from their backing array buffer,
+      // and also offset in the read call
+      for (const innerOffset of offsets) {
+        for (const offset of offsets) {
+          // test read
+          resetBuffer();
+          const buf = new constr(
+            buffer,
+            innerOffset,
+          );
+          await readTest(
+            testData,
             buf,
             offset,
             buf.byteLength - offset,
             null,
+            (_fd, bytesRead, data) => {
+              assert(data);
+              assert(bytesRead);
+              assertStrictEquals(bytesRead, 11);
+              assertEquals(data == buf, true);
+              const got = decoder.decode(
+                data.subarray(
+                  offset,
+                  offset + bytesRead,
+                ),
+              );
+              const want = "hello world";
+              assertEquals(got.length, want.length);
+              assertEquals(
+                got,
+                want,
+              );
+            },
           );
 
-          assertStrictEquals(bytesRead, 11);
-          assertEquals(
-            decoder.decode(buf.subarray(offset, offset + bytesRead)),
-            "hello world",
-          );
-        } finally {
-          closeSync(fd);
+          // test readSync
+          resetBuffer();
+          const fd = openSync(testData, "r");
+          try {
+            const bytesRead = readSync(
+              fd,
+              buf,
+              offset,
+              buf.byteLength - offset,
+              null,
+            );
+
+            assertStrictEquals(bytesRead, 11);
+            assertEquals(
+              decoder.decode(buf.subarray(offset, offset + bytesRead)),
+              "hello world",
+            );
+          } finally {
+            closeSync(fd);
+          }
         }
       }
     }
