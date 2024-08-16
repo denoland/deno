@@ -86,6 +86,7 @@ impl LspScopeResolver {
     config_data: Option<&Arc<ConfigData>>,
     cache: &LspCache,
     http_client_provider: Option<&Arc<HttpClientProvider>>,
+    patched_npm_pkgs: Vec<Url>,
   ) -> Self {
     let mut npm_resolver = None;
     let mut node_resolver = None;
@@ -94,6 +95,7 @@ impl LspScopeResolver {
         config_data.map(|d| d.as_ref()),
         cache,
         http_client,
+        patched_npm_pkgs,
       )
       .await;
       node_resolver = create_node_resolver(npm_resolver.as_ref());
@@ -177,6 +179,7 @@ impl LspResolver {
     http_client_provider: Option<&Arc<HttpClientProvider>>,
   ) -> Self {
     let mut by_scope = BTreeMap::new();
+    let all_patched_npm_pkgs = config.tree.all_patched_npm_pkgs();
     for (scope, config_data) in config.tree.data_by_scope().as_ref() {
       by_scope.insert(
         scope.clone(),
@@ -185,6 +188,7 @@ impl LspResolver {
             Some(config_data),
             cache,
             http_client_provider,
+            all_patched_npm_pkgs.clone(),
           )
           .await,
         ),
@@ -192,8 +196,13 @@ impl LspResolver {
     }
     Self {
       unscoped: Arc::new(
-        LspScopeResolver::from_config_data(None, cache, http_client_provider)
-          .await,
+        LspScopeResolver::from_config_data(
+          None,
+          cache,
+          http_client_provider,
+          all_patched_npm_pkgs,
+        )
+        .await,
       ),
       by_scope,
     }
@@ -436,6 +445,7 @@ async fn create_npm_resolver(
   config_data: Option<&ConfigData>,
   cache: &LspCache,
   http_client_provider: &Arc<HttpClientProvider>,
+  patched_npm_pkgs: Vec<Url>,
 ) -> Option<Arc<dyn CliNpmResolver>> {
   let enable_byonm = config_data.map(|d| d.byonm).unwrap_or(false);
   let options = if enable_byonm {
@@ -448,6 +458,7 @@ async fn create_npm_resolver(
             .map(|p| p.join("node_modules/"))
         })
       }),
+      patched_npm_pkgs,
     })
   } else {
     CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
@@ -482,6 +493,7 @@ async fn create_npm_resolver(
         .unwrap_or_else(create_default_npmrc),
       npm_system_info: NpmSystemInfo::default(),
       lifecycle_scripts: Default::default(),
+      patched_npm_pkgs,
     })
   };
   Some(create_cli_npm_resolver_for_lsp(options).await)

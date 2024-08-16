@@ -10,6 +10,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
@@ -74,6 +75,8 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
   pub npmrc: Arc<ResolvedNpmRc>,
   pub lifecycle_scripts: LifecycleScriptsConfig,
+  /// Directories of npm packages that have been patched.
+  pub patched_npm_pkgs: Vec<Url>,
 }
 
 pub async fn create_managed_npm_resolver_for_lsp(
@@ -103,6 +106,7 @@ pub async fn create_managed_npm_resolver_for_lsp(
       options.npm_system_info,
       snapshot,
       options.lifecycle_scripts,
+      options.patched_npm_pkgs,
     )
   })
   .await
@@ -128,6 +132,7 @@ pub async fn create_managed_npm_resolver(
     options.npm_system_info,
     snapshot,
     options.lifecycle_scripts,
+    options.patched_npm_pkgs,
   ))
 }
 
@@ -145,6 +150,7 @@ fn create_inner(
   npm_system_info: NpmSystemInfo,
   snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   lifecycle_scripts: LifecycleScriptsConfig,
+  patched_npm_pkgs: Vec<Url>,
 ) -> Arc<dyn CliNpmResolver> {
   let resolution = Arc::new(NpmResolution::from_serialized(
     npm_api.clone(),
@@ -181,6 +187,7 @@ fn create_inner(
     text_only_progress_bar,
     npm_system_info,
     lifecycle_scripts,
+    patched_npm_pkgs,
   ))
 }
 
@@ -268,6 +275,7 @@ pub struct ManagedCliNpmResolver {
   npm_system_info: NpmSystemInfo,
   top_level_install_flag: AtomicFlag,
   lifecycle_scripts: LifecycleScriptsConfig,
+  patched_npm_pkgs: Vec<Url>,
 }
 
 impl std::fmt::Debug for ManagedCliNpmResolver {
@@ -292,6 +300,7 @@ impl ManagedCliNpmResolver {
     text_only_progress_bar: ProgressBar,
     npm_system_info: NpmSystemInfo,
     lifecycle_scripts: LifecycleScriptsConfig,
+    patched_npm_pkgs: Vec<Url>,
   ) -> Self {
     Self {
       fs,
@@ -306,6 +315,7 @@ impl ManagedCliNpmResolver {
       npm_system_info,
       top_level_install_flag: Default::default(),
       lifecycle_scripts,
+      patched_npm_pkgs,
     }
   }
 
@@ -553,9 +563,17 @@ impl NpmResolver for ManagedCliNpmResolver {
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
+    if specifier.scheme() != "file" {
+      return false;
+    }
+
     let root_dir_url = self.fs_resolver.root_dir_url();
     debug_assert!(root_dir_url.as_str().ends_with('/'));
     specifier.as_ref().starts_with(root_dir_url.as_str())
+      || self
+        .patched_npm_pkgs
+        .iter()
+        .any(|url| specifier.as_str().starts_with(url.as_str()))
   }
 }
 
@@ -623,6 +641,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       self.text_only_progress_bar.clone(),
       self.npm_system_info.clone(),
       self.lifecycle_scripts.clone(),
+      self.patched_npm_pkgs.clone(),
     ))
   }
 

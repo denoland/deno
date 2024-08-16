@@ -50,6 +50,7 @@ use tower_lsp::lsp_types as lsp;
 use super::logging::lsp_log;
 use crate::args::discover_npmrc_from_workspace;
 use crate::args::has_flag_env_var;
+use crate::args::workspace_patched_npm_packages;
 use crate::args::CliLockfile;
 use crate::args::ConfigFile;
 use crate::args::LintFlags;
@@ -1131,6 +1132,7 @@ pub struct ConfigData {
   pub resolver: Arc<WorkspaceResolver>,
   pub sloppy_imports_resolver: Option<Arc<SloppyImportsResolver>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
+  pub patched_npm_pkgs: Vec<ModuleSpecifier>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
 }
 
@@ -1567,6 +1569,8 @@ impl ConfigData {
       fix: false,
       deno_lint_config,
     }));
+    let patched_npm_pkgs =
+      workspace_patched_npm_packages(&member_dir.workspace);
 
     ConfigData {
       scope,
@@ -1587,6 +1591,7 @@ impl ConfigData {
       npmrc,
       import_map_from_settings,
       watched_files,
+      patched_npm_pkgs,
     }
   }
 
@@ -1832,6 +1837,15 @@ impl ConfigTree {
     );
     assert!(data.maybe_deno_json().is_some());
     self.scopes = Arc::new([(scope, data)].into_iter().collect());
+  }
+
+  pub fn all_patched_npm_pkgs(&self) -> Vec<ModuleSpecifier> {
+    self
+      .scopes
+      .values()
+      .flat_map(|data| data.patched_npm_pkgs.iter())
+      .cloned()
+      .collect()
   }
 }
 

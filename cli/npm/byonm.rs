@@ -9,6 +9,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_package_json::PackageJsonDepValue;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::DenoPkgJsonFsAdapter;
@@ -36,6 +37,8 @@ pub struct CliNpmResolverByonmCreateOptions {
   pub fs: Arc<dyn FileSystem>,
   // todo(dsherret): investigate removing this
   pub root_node_modules_dir: Option<PathBuf>,
+  /// Directories of npm packages that have been patched.
+  pub patched_npm_pkgs: Vec<Url>,
 }
 
 pub fn create_byonm_npm_resolver(
@@ -44,6 +47,7 @@ pub fn create_byonm_npm_resolver(
   Arc::new(ByonmCliNpmResolver {
     fs: options.fs,
     root_node_modules_dir: options.root_node_modules_dir,
+    patched_npm_pkgs: options.patched_npm_pkgs,
   })
 }
 
@@ -51,6 +55,7 @@ pub fn create_byonm_npm_resolver(
 pub struct ByonmCliNpmResolver {
   fs: Arc<dyn FileSystem>,
   root_node_modules_dir: Option<PathBuf>,
+  patched_npm_pkgs: Vec<Url>,
 }
 
 impl ByonmCliNpmResolver {
@@ -216,11 +221,17 @@ impl NpmResolver for ByonmCliNpmResolver {
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    specifier.scheme() == "file"
-      && specifier
-        .path()
-        .to_ascii_lowercase()
-        .contains("/node_modules/")
+    if specifier.scheme() != "file" {
+      return false;
+    }
+    specifier
+      .path()
+      .to_ascii_lowercase()
+      .contains("/node_modules/")
+      || self
+        .patched_npm_pkgs
+        .iter()
+        .any(|url| specifier.as_str().starts_with(url.as_str()))
   }
 }
 
@@ -272,6 +283,7 @@ impl CliNpmResolver for ByonmCliNpmResolver {
     Arc::new(Self {
       fs: self.fs.clone(),
       root_node_modules_dir: self.root_node_modules_dir.clone(),
+      patched_npm_pkgs: self.patched_npm_pkgs.clone(),
     })
   }
 
