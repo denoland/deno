@@ -367,6 +367,9 @@ const nodeCustomInspectSymbol = SymbolFor("nodejs.util.inspect.custom");
 // Internal only, shouldn't be used by users.
 const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
 
+// Used to keep track if it's a wrapped inspect proxy
+const privateCustomInspectProxy = SymbolFor("Deno.privateCustomInspectProxy");
+
 function getUserOptions(ctx, isCrossContext) {
   const ret = {
     stylize: ctx.stylize,
@@ -618,7 +621,24 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     protoProps = undefined;
   }
 
-  let tag = value[SymbolToStringTag];
+  let base = "";
+  let formatter = () => [];
+  let braces;
+  let noIterator = true;
+  let i = 0;
+  const filter = ctx.showHidden ? 0 : 2;
+
+  let extrasType = kObjectType;
+
+  if (proxyDetails !== null && !ReflectGet(value, privateCustomInspectProxy)) {
+    if (ctx.showProxy) {
+      return `Proxy ` + formatValue(ctx, proxyDetails, recurseTimes);
+    }
+
+    return formatValue(ctx, proxyDetails[0], recurseTimes);
+  }
+
+  let tag = ReflectGet(value, SymbolToStringTag);
   // Only list the tag in case it's non-enumerable / not an own property.
   // Otherwise we'd print this twice.
   if (
@@ -634,294 +654,282 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
   ) {
     tag = "";
   }
-  let base = "";
-  let formatter = () => [];
-  let braces;
-  let noIterator = true;
-  let i = 0;
-  const filter = ctx.showHidden ? 0 : 2;
 
-  let extrasType = kObjectType;
-
-  if (proxyDetails !== null && ctx.showProxy) {
-    return `Proxy ` + formatValue(ctx, proxyDetails, recurseTimes);
-  } else {
-    // Iterators and the rest are split to reduce checks.
-    // We have to check all values in case the constructor is set to null.
-    // Otherwise it would not possible to identify all types properly.
-    if (ReflectHas(value, SymbolIterator) || constructor === null) {
-      noIterator = false;
-      if (ArrayIsArray(value)) {
-        // Only set the constructor for non ordinary ("Array [...]") arrays.
-        const prefix = (constructor !== "Array" || tag !== "")
-          ? getPrefix(constructor, tag, "Array", `(${value.length})`)
-          : "";
-        keys = op_get_non_index_property_names(value, filter);
-        braces = [`${prefix}[`, "]"];
-        if (
-          value.length === 0 && keys.length === 0 && protoProps === undefined
-        ) {
-          return `${braces[0]}]`;
-        }
-        extrasType = kArrayExtrasType;
-        formatter = formatArray;
-      } else if (
-        (proxyDetails === null && isSet(value)) ||
-        (proxyDetails !== null && isSet(proxyDetails[0]))
+  // Iterators and the rest are split to reduce checks.
+  // We have to check all values in case the constructor is set to null.
+  // Otherwise it would not possible to identify all types properly.
+  if (ReflectHas(value, SymbolIterator) || constructor === null) {
+    noIterator = false;
+    if (ArrayIsArray(value)) {
+      // Only set the constructor for non ordinary ("Array [...]") arrays.
+      const prefix = (constructor !== "Array" || tag !== "")
+        ? getPrefix(constructor, tag, "Array", `(${value.length})`)
+        : "";
+      keys = op_get_non_index_property_names(value, filter);
+      braces = [`${prefix}[`, "]"];
+      if (
+        value.length === 0 && keys.length === 0 && protoProps === undefined
       ) {
-        const set = proxyDetails?.[0] ?? value;
-        const size = SetPrototypeGetSize(set);
-        const prefix = getPrefix(constructor, tag, "Set", `(${size})`);
-        keys = getKeys(set, ctx.showHidden);
-        formatter = constructor !== null
-          ? FunctionPrototypeBind(formatSet, null, set)
-          : FunctionPrototypeBind(formatSet, null, SetPrototypeValues(set));
-        if (size === 0 && keys.length === 0 && protoProps === undefined) {
-          return `${prefix}{}`;
-        }
-        braces = [`${prefix}{`, "}"];
-      } else if (
-        (proxyDetails === null && isMap(value)) ||
-        (proxyDetails !== null && isMap(proxyDetails[0]))
-      ) {
-        const map = proxyDetails?.[0] ?? value;
-        const size = MapPrototypeGetSize(map);
-        const prefix = getPrefix(constructor, tag, "Map", `(${size})`);
-        keys = getKeys(map, ctx.showHidden);
-        formatter = constructor !== null
-          ? FunctionPrototypeBind(formatMap, null, map)
-          : FunctionPrototypeBind(formatMap, null, MapPrototypeEntries(map));
-        if (size === 0 && keys.length === 0 && protoProps === undefined) {
-          return `${prefix}{}`;
-        }
-        braces = [`${prefix}{`, "}"];
-      } else if (
-        (proxyDetails === null && isTypedArray(value)) ||
-        (proxyDetails !== null && isTypedArray(proxyDetails[0]))
-      ) {
-        const typedArray = proxyDetails?.[0] ?? value;
-        keys = op_get_non_index_property_names(typedArray, filter);
-        const bound = typedArray;
-        const fallback = "";
-        if (constructor === null) {
-          // TODO(wafuwafu13): Implement
-          // fallback = TypedArrayPrototypeGetSymbolToStringTag(value);
-          // // Reconstruct the array information.
-          // bound = new primordials[fallback](value);
-        }
-        const size = TypedArrayPrototypeGetLength(typedArray);
-        const prefix = getPrefix(constructor, tag, fallback, `(${size})`);
-        braces = [`${prefix}[`, "]"];
-        if (typedArray.length === 0 && keys.length === 0 && !ctx.showHidden) {
-          return `${braces[0]}]`;
-        }
-        // Special handle the value. The original value is required below. The
-        // bound function is required to reconstruct missing information.
-        formatter = FunctionPrototypeBind(formatTypedArray, null, bound, size);
-        extrasType = kArrayExtrasType;
-      } else if (
-        (proxyDetails === null && isMapIterator(value)) ||
-        (proxyDetails !== null && isMapIterator(proxyDetails[0]))
-      ) {
-        const mapIterator = proxyDetails?.[0] ?? value;
-        keys = getKeys(mapIterator, ctx.showHidden);
-        braces = getIteratorBraces("Map", tag);
-        // Add braces to the formatter parameters.
-        formatter = FunctionPrototypeBind(formatIterator, null, braces);
-      } else if (
-        (proxyDetails === null && isSetIterator(value)) ||
-        (proxyDetails !== null && isSetIterator(proxyDetails[0]))
-      ) {
-        const setIterator = proxyDetails?.[0] ?? value;
-        keys = getKeys(setIterator, ctx.showHidden);
-        braces = getIteratorBraces("Set", tag);
-        // Add braces to the formatter parameters.
-        formatter = FunctionPrototypeBind(formatIterator, null, braces);
-      } else {
-        noIterator = true;
+        return `${braces[0]}]`;
       }
+      extrasType = kArrayExtrasType;
+      formatter = formatArray;
+    } else if (
+      (proxyDetails === null && isSet(value)) ||
+      (proxyDetails !== null && isSet(proxyDetails[0]))
+    ) {
+      const set = proxyDetails?.[0] ?? value;
+      const size = SetPrototypeGetSize(set);
+      const prefix = getPrefix(constructor, tag, "Set", `(${size})`);
+      keys = getKeys(set, ctx.showHidden);
+      formatter = constructor !== null
+        ? FunctionPrototypeBind(formatSet, null, set)
+        : FunctionPrototypeBind(formatSet, null, SetPrototypeValues(set));
+      if (size === 0 && keys.length === 0 && protoProps === undefined) {
+        return `${prefix}{}`;
+      }
+      braces = [`${prefix}{`, "}"];
+    } else if (
+      (proxyDetails === null && isMap(value)) ||
+      (proxyDetails !== null && isMap(proxyDetails[0]))
+    ) {
+      const map = proxyDetails?.[0] ?? value;
+      const size = MapPrototypeGetSize(map);
+      const prefix = getPrefix(constructor, tag, "Map", `(${size})`);
+      keys = getKeys(map, ctx.showHidden);
+      formatter = constructor !== null
+        ? FunctionPrototypeBind(formatMap, null, map)
+        : FunctionPrototypeBind(formatMap, null, MapPrototypeEntries(map));
+      if (size === 0 && keys.length === 0 && protoProps === undefined) {
+        return `${prefix}{}`;
+      }
+      braces = [`${prefix}{`, "}"];
+    } else if (
+      (proxyDetails === null && isTypedArray(value)) ||
+      (proxyDetails !== null && isTypedArray(proxyDetails[0]))
+    ) {
+      const typedArray = proxyDetails?.[0] ?? value;
+      keys = op_get_non_index_property_names(typedArray, filter);
+      const bound = typedArray;
+      const fallback = "";
+      if (constructor === null) {
+        // TODO(wafuwafu13): Implement
+        // fallback = TypedArrayPrototypeGetSymbolToStringTag(value);
+        // // Reconstruct the array information.
+        // bound = new primordials[fallback](value);
+      }
+      const size = TypedArrayPrototypeGetLength(typedArray);
+      const prefix = getPrefix(constructor, tag, fallback, `(${size})`);
+      braces = [`${prefix}[`, "]"];
+      if (typedArray.length === 0 && keys.length === 0 && !ctx.showHidden) {
+        return `${braces[0]}]`;
+      }
+      // Special handle the value. The original value is required below. The
+      // bound function is required to reconstruct missing information.
+      formatter = FunctionPrototypeBind(formatTypedArray, null, bound, size);
+      extrasType = kArrayExtrasType;
+    } else if (
+      (proxyDetails === null && isMapIterator(value)) ||
+      (proxyDetails !== null && isMapIterator(proxyDetails[0]))
+    ) {
+      const mapIterator = proxyDetails?.[0] ?? value;
+      keys = getKeys(mapIterator, ctx.showHidden);
+      braces = getIteratorBraces("Map", tag);
+      // Add braces to the formatter parameters.
+      formatter = FunctionPrototypeBind(formatIterator, null, braces);
+    } else if (
+      (proxyDetails === null && isSetIterator(value)) ||
+      (proxyDetails !== null && isSetIterator(proxyDetails[0]))
+    ) {
+      const setIterator = proxyDetails?.[0] ?? value;
+      keys = getKeys(setIterator, ctx.showHidden);
+      braces = getIteratorBraces("Set", tag);
+      // Add braces to the formatter parameters.
+      formatter = FunctionPrototypeBind(formatIterator, null, braces);
+    } else {
+      noIterator = true;
     }
-    if (noIterator) {
-      keys = getKeys(value, ctx.showHidden);
-      braces = ["{", "}"];
-      if (constructor === "Object") {
-        if (isArgumentsObject(value)) {
-          braces[0] = "[Arguments] {";
-        } else if (tag !== "") {
-          braces[0] = `${getPrefix(constructor, tag, "Object")}{`;
-        }
-        if (keys.length === 0 && protoProps === undefined) {
-          return `${braces[0]}}`;
-        }
-      } else if (typeof value === "function") {
-        base = getFunctionBase(value, constructor, tag);
-        if (keys.length === 0 && protoProps === undefined) {
-          return ctx.stylize(base, "special");
-        }
-      } else if (
-        (proxyDetails === null && isRegExp(value)) ||
-        (proxyDetails !== null && isRegExp(proxyDetails[0]))
-      ) {
-        const regExp = proxyDetails?.[0] ?? value;
-        // Make RegExps say that they are RegExps
-        base = RegExpPrototypeToString(
-          constructor !== null ? regExp : new SafeRegExp(regExp),
-        );
-        const prefix = getPrefix(constructor, tag, "RegExp");
-        if (prefix !== "RegExp ") {
-          base = `${prefix}${base}`;
-        }
-        if (
-          (keys.length === 0 && protoProps === undefined) ||
-          (recurseTimes > ctx.depth && ctx.depth !== null)
-        ) {
-          return ctx.stylize(base, "regexp");
-        }
-      } else if (
-        (proxyDetails === null && isDate(value)) ||
-        (proxyDetails !== null && isDate(proxyDetails[0]))
-      ) {
-        const date = proxyDetails?.[0] ?? value;
-        if (NumberIsNaN(DatePrototypeGetTime(date))) {
-          return ctx.stylize("Invalid Date", "date");
-        } else {
-          base = DatePrototypeToISOString(date);
-          if (keys.length === 0 && protoProps === undefined) {
-            return ctx.stylize(base, "date");
-          }
-        }
-      } else if (
-        proxyDetails === null &&
-        ObjectPrototypeIsPrototypeOf(globalThis.Intl.Locale.prototype, value)
-      ) {
-        braces[0] = `${getPrefix(constructor, tag, "Intl.Locale")}{`;
-        ArrayPrototypeUnshift(
-          keys,
-          "baseName",
-          "calendar",
-          "caseFirst",
-          "collation",
-          "hourCycle",
-          "language",
-          "numberingSystem",
-          "numeric",
-          "region",
-          "script",
-        );
-      } else if (
-        proxyDetails === null &&
-        typeof globalThis.Temporal !== "undefined" &&
-        (
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.Instant.prototype,
-            value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.ZonedDateTime.prototype,
-            value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.PlainDate.prototype,
-            value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.PlainTime.prototype,
-            value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.PlainDateTime.prototype,
-            value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.PlainYearMonth.prototype,
-            value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.PlainMonthDay.prototype,
-            value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.Duration.prototype,
-            value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.TimeZone.prototype,
-            value,
-          ) ||
-          ObjectPrototypeIsPrototypeOf(
-            globalThis.Temporal.Calendar.prototype,
-            value,
-          )
-        )
-      ) {
-        // Temporal is not available in primordials yet
-        // deno-lint-ignore prefer-primordials
-        return ctx.stylize(value.toString(), "temporal");
-      } else if (
-        (proxyDetails === null &&
-          (isNativeError(value) ||
-            ObjectPrototypeIsPrototypeOf(ErrorPrototype, value))) ||
-        (proxyDetails !== null &&
-          (isNativeError(proxyDetails[0]) ||
-            ObjectPrototypeIsPrototypeOf(ErrorPrototype, proxyDetails[0])))
-      ) {
-        const error = proxyDetails?.[0] ?? value;
-        base = inspectError(error, ctx);
-        if (keys.length === 0 && protoProps === undefined) {
-          return base;
-        }
-      } else if (isAnyArrayBuffer(value)) {
-        // Fast path for ArrayBuffer and SharedArrayBuffer.
-        // Can't do the same for DataView because it has a non-primitive
-        // .buffer property that we need to recurse for.
-        const arrayType = isArrayBuffer(value)
-          ? "ArrayBuffer"
-          : "SharedArrayBuffer";
-
-        const prefix = getPrefix(constructor, tag, arrayType);
-        if (typedArray === undefined) {
-          formatter = formatArrayBuffer;
-        } else if (keys.length === 0 && protoProps === undefined) {
-          return prefix +
-            `{ byteLength: ${
-              formatNumber(ctx.stylize, TypedArrayPrototypeGetByteLength(value))
-            } }`;
-        }
-        braces[0] = `${prefix}{`;
-        ArrayPrototypeUnshift(keys, "byteLength");
-      } else if (isDataView(value)) {
-        braces[0] = `${getPrefix(constructor, tag, "DataView")}{`;
-        // .buffer goes last, it's not a primitive like the others.
-        ArrayPrototypeUnshift(keys, "byteLength", "byteOffset", "buffer");
-      } else if (isPromise(value)) {
-        braces[0] = `${getPrefix(constructor, tag, "Promise")}{`;
-        formatter = formatPromise;
-      } else if (isWeakSet(value)) {
-        braces[0] = `${getPrefix(constructor, tag, "WeakSet")}{`;
-        formatter = ctx.showHidden ? formatWeakSet : formatWeakCollection;
-      } else if (isWeakMap(value)) {
-        braces[0] = `${getPrefix(constructor, tag, "WeakMap")}{`;
-        formatter = ctx.showHidden ? formatWeakMap : formatWeakCollection;
-      } else if (isModuleNamespaceObject(value)) {
-        braces[0] = `${getPrefix(constructor, tag, "Module")}{`;
-        // Special handle keys for namespace objects.
-        formatter = FunctionPrototypeBind(formatNamespaceObject, null, keys);
-      } else if (isBoxedPrimitive(value)) {
-        base = getBoxedBase(value, ctx, keys, constructor, tag);
-        if (keys.length === 0 && protoProps === undefined) {
-          return base;
-        }
-      } else {
-        if (keys.length === 0 && protoProps === undefined) {
-          // TODO(wafuwafu13): Implement
-          // if (isExternal(value)) {
-          //   const address = getExternalValue(value).toString(16);
-          //   return ctx.stylize(`[External: ${address}]`, 'special');
-          // }
-          return `${getCtxStyle(value, constructor, tag)}{}`;
-        }
-        braces[0] = `${getCtxStyle(value, constructor, tag)}{`;
+  }
+  if (noIterator) {
+    keys = getKeys(value, ctx.showHidden);
+    braces = ["{", "}"];
+    if (constructor === "Object") {
+      if (isArgumentsObject(value)) {
+        braces[0] = "[Arguments] {";
+      } else if (tag !== "") {
+        braces[0] = `${getPrefix(constructor, tag, "Object")}{`;
       }
+      if (keys.length === 0 && protoProps === undefined) {
+        return `${braces[0]}}`;
+      }
+    } else if (typeof value === "function") {
+      base = getFunctionBase(value, constructor, tag);
+      if (keys.length === 0 && protoProps === undefined) {
+        return ctx.stylize(base, "special");
+      }
+    } else if (
+      (proxyDetails === null && isRegExp(value)) ||
+      (proxyDetails !== null && isRegExp(proxyDetails[0]))
+    ) {
+      const regExp = proxyDetails?.[0] ?? value;
+      // Make RegExps say that they are RegExps
+      base = RegExpPrototypeToString(
+        constructor !== null ? regExp : new SafeRegExp(regExp),
+      );
+      const prefix = getPrefix(constructor, tag, "RegExp");
+      if (prefix !== "RegExp ") {
+        base = `${prefix}${base}`;
+      }
+      if (
+        (keys.length === 0 && protoProps === undefined) ||
+        (recurseTimes > ctx.depth && ctx.depth !== null)
+      ) {
+        return ctx.stylize(base, "regexp");
+      }
+    } else if (
+      (proxyDetails === null && isDate(value)) ||
+      (proxyDetails !== null && isDate(proxyDetails[0]))
+    ) {
+      const date = proxyDetails?.[0] ?? value;
+      if (NumberIsNaN(DatePrototypeGetTime(date))) {
+        return ctx.stylize("Invalid Date", "date");
+      } else {
+        base = DatePrototypeToISOString(date);
+        if (keys.length === 0 && protoProps === undefined) {
+          return ctx.stylize(base, "date");
+        }
+      }
+    } else if (
+      proxyDetails === null &&
+      ObjectPrototypeIsPrototypeOf(globalThis.Intl.Locale.prototype, value)
+    ) {
+      braces[0] = `${getPrefix(constructor, tag, "Intl.Locale")}{`;
+      ArrayPrototypeUnshift(
+        keys,
+        "baseName",
+        "calendar",
+        "caseFirst",
+        "collation",
+        "hourCycle",
+        "language",
+        "numberingSystem",
+        "numeric",
+        "region",
+        "script",
+      );
+    } else if (
+      proxyDetails === null &&
+      typeof globalThis.Temporal !== "undefined" &&
+      (
+        ObjectPrototypeIsPrototypeOf(
+          globalThis.Temporal.Instant.prototype,
+          value,
+        ) ||
+        ObjectPrototypeIsPrototypeOf(
+          globalThis.Temporal.ZonedDateTime.prototype,
+          value,
+        ) ||
+        ObjectPrototypeIsPrototypeOf(
+          globalThis.Temporal.PlainDate.prototype,
+          value,
+        ) ||
+        ObjectPrototypeIsPrototypeOf(
+          globalThis.Temporal.PlainTime.prototype,
+          value,
+        ) ||
+        ObjectPrototypeIsPrototypeOf(
+          globalThis.Temporal.PlainDateTime.prototype,
+          value,
+        ) ||
+        ObjectPrototypeIsPrototypeOf(
+          globalThis.Temporal.PlainYearMonth.prototype,
+          value,
+        ) ||
+        ObjectPrototypeIsPrototypeOf(
+          globalThis.Temporal.PlainMonthDay.prototype,
+          value,
+        ) ||
+        ObjectPrototypeIsPrototypeOf(
+          globalThis.Temporal.Duration.prototype,
+          value,
+        ) ||
+        ObjectPrototypeIsPrototypeOf(
+          globalThis.Temporal.TimeZone.prototype,
+          value,
+        ) ||
+        ObjectPrototypeIsPrototypeOf(
+          globalThis.Temporal.Calendar.prototype,
+          value,
+        )
+      )
+    ) {
+      // Temporal is not available in primordials yet
+      // deno-lint-ignore prefer-primordials
+      return ctx.stylize(value.toString(), "temporal");
+    } else if (
+      (proxyDetails === null &&
+        (isNativeError(value) ||
+          ObjectPrototypeIsPrototypeOf(ErrorPrototype, value))) ||
+      (proxyDetails !== null &&
+        (isNativeError(proxyDetails[0]) ||
+          ObjectPrototypeIsPrototypeOf(ErrorPrototype, proxyDetails[0])))
+    ) {
+      const error = proxyDetails?.[0] ?? value;
+      base = inspectError(error, ctx);
+      if (keys.length === 0 && protoProps === undefined) {
+        return base;
+      }
+    } else if (isAnyArrayBuffer(value)) {
+      // Fast path for ArrayBuffer and SharedArrayBuffer.
+      // Can't do the same for DataView because it has a non-primitive
+      // .buffer property that we need to recurse for.
+      const arrayType = isArrayBuffer(value)
+        ? "ArrayBuffer"
+        : "SharedArrayBuffer";
+
+      const prefix = getPrefix(constructor, tag, arrayType);
+      if (typedArray === undefined) {
+        formatter = formatArrayBuffer;
+      } else if (keys.length === 0 && protoProps === undefined) {
+        return prefix +
+          `{ byteLength: ${
+            formatNumber(ctx.stylize, TypedArrayPrototypeGetByteLength(value))
+          } }`;
+      }
+      braces[0] = `${prefix}{`;
+      ArrayPrototypeUnshift(keys, "byteLength");
+    } else if (isDataView(value)) {
+      braces[0] = `${getPrefix(constructor, tag, "DataView")}{`;
+      // .buffer goes last, it's not a primitive like the others.
+      ArrayPrototypeUnshift(keys, "byteLength", "byteOffset", "buffer");
+    } else if (isPromise(value)) {
+      braces[0] = `${getPrefix(constructor, tag, "Promise")}{`;
+      formatter = formatPromise;
+    } else if (isWeakSet(value)) {
+      braces[0] = `${getPrefix(constructor, tag, "WeakSet")}{`;
+      formatter = ctx.showHidden ? formatWeakSet : formatWeakCollection;
+    } else if (isWeakMap(value)) {
+      braces[0] = `${getPrefix(constructor, tag, "WeakMap")}{`;
+      formatter = ctx.showHidden ? formatWeakMap : formatWeakCollection;
+    } else if (isModuleNamespaceObject(value)) {
+      braces[0] = `${getPrefix(constructor, tag, "Module")}{`;
+      // Special handle keys for namespace objects.
+      formatter = FunctionPrototypeBind(formatNamespaceObject, null, keys);
+    } else if (isBoxedPrimitive(value)) {
+      base = getBoxedBase(value, ctx, keys, constructor, tag);
+      if (keys.length === 0 && protoProps === undefined) {
+        return base;
+      }
+    } else {
+      if (keys.length === 0 && protoProps === undefined) {
+        // TODO(wafuwafu13): Implement
+        // if (isExternal(value)) {
+        //   const address = getExternalValue(value).toString(16);
+        //   return ctx.stylize(`[External: ${address}]`, 'special');
+        // }
+        return `${getCtxStyle(value, constructor, tag)}{}`;
+      }
+      braces[0] = `${getCtxStyle(value, constructor, tag)}{`;
     }
   }
 
@@ -3441,6 +3449,10 @@ function inspect(
   return formatValue(ctx, value, 0);
 }
 
+class FilteredProxy extends Proxy {
+  privateCustomInspectProxy;
+}
+
 /** Creates a proxy that represents a subset of the properties
  * of the original object optionally without evaluating the properties
  * in order to get the values. */
@@ -3454,6 +3466,8 @@ function createFilteredInspectProxy({ object, keys, evaluate }) {
     get(_target, key) {
       if (key === SymbolToStringTag) {
         return object.constructor?.name;
+      } else if (key === privateCustomInspectProxy) {
+        return true;
       } else if (ArrayPrototypeIncludes(keys, key)) {
         return ReflectGet(object, key);
       } else {

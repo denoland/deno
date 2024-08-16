@@ -1919,6 +1919,52 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInputIsProxiedError() {
   });
 });
 
+Deno.test(function consoleLogShouldNotInvokeProxyGetters() {
+  mockConsole((console, out) => {
+    const throw_ = () => {
+      throw new Error();
+    };
+    const proxy = new Proxy(
+      { foo: 123 },
+      { get: throw_ },
+    );
+    console.log(proxy);
+    assertStringIncludes(stripAnsiCode(out.toString()), "{ foo: 123 }\n");
+  });
+});
+
+Deno.test(function consoleLogShouldNotInvokeProxyHas() {
+  mockConsole((console, out) => {
+    const throw_ = () => {
+      throw new Error();
+    };
+    const proxy = new Proxy(
+      {},
+      {
+        get: throw_,
+        has: throw_,
+      },
+    );
+    console.log(proxy);
+    assertStringIncludes(stripAnsiCode(out.toString()), "{}\n");
+  });
+});
+
+Deno.test(function consoleLogShouldNotInvokeProxyOwnDescriptor() {
+  mockConsole((console, out) => {
+    const proxy = new Proxy(
+      { x: 10 },
+      {
+        getOwnPropertyDescriptor: () => {
+          throw new Error(`oops`);
+        },
+      },
+    );
+    console.log(proxy);
+    assertStringIncludes(stripAnsiCode(out.toString()), "{ x: 10 }\n");
+  });
+});
+
 // console.dir test
 Deno.test(function consoleDir() {
   mockConsole((console, out) => {
@@ -2117,30 +2163,6 @@ Deno.test(function inspectProxy() {
       new Proxy({ key: "value" }, {}),
     )),
     `{ key: "value" }`,
-  );
-  assertEquals(
-    stripAnsiCode(Deno.inspect(
-      new Proxy({}, {
-        get(_target, key) {
-          if (key === Symbol.toStringTag) {
-            return "MyProxy";
-          } else {
-            return 5;
-          }
-        },
-        getOwnPropertyDescriptor() {
-          return {
-            enumerable: true,
-            configurable: true,
-            value: 5,
-          };
-        },
-        ownKeys() {
-          return ["prop1", "prop2"];
-        },
-      }),
-    )),
-    `Object [MyProxy] { prop1: 5, prop2: 5 }`,
   );
   assertEquals(
     stripAnsiCode(Deno.inspect(
