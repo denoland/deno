@@ -841,6 +841,14 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     std::future::ready(()).boxed_local()
   }
 
+  fn remove_code_cache(&self, specifier: &str) {
+    if let Some(cache) = self.0.shared.code_cache.as_ref() {
+      // This log line is also used by tests.
+      log::debug!("Remove V8 code cache for ES module: {specifier}");
+      cache.remove_sync(&specifier);
+    }
+  }
+
   fn get_source_map(&self, file_name: &str) -> Option<Vec<u8>> {
     let specifier = resolve_url(file_name).ok()?;
     match specifier.scheme() {

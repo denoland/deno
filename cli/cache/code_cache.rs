@@ -80,6 +80,10 @@ impl CodeCache {
       data,
     ));
   }
+
+  pub fn remove_sync(&self, specifier: &str) {
+    Self::ensure_ok(self.inner.remove_sync(specifier))
+  }
 }
 
 impl code_cache::CodeCache for CodeCache {
