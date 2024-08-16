@@ -39,7 +39,7 @@ jobs:
 
       - name: Promote to RC
         run: |
-          deno run -A ./tools/release/promote_to_rc.ts ${{github.event.inputs.releaseKind}}
+          deno run -A ./tools/release/promote_to_rc.ts ${{github.event.inputs.commitHash}}
 
       - name: Upload archives to dl.deno.land
         run: |
