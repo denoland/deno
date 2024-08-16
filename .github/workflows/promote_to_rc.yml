@@ -1,0 +1,47 @@
+name: promote_to_rc
+
+on:
+  workflow_dispatch:
+    inputs:
+      commitHash:
+        description: 'Commit to promote to the Release Candidate'
+        required: true
+
+jobs:
+  promote-to-rc:
+    name: Promote to Release Candidate
+    runs-on: ubuntu-latest
+    if: github.repository == 'denoland/deno'
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.DENOBOT_PAT }}
+          submodules: recursive
+
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          project_id: denoland
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          export_environment_variables: true
+          create_credentials_file: true
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: denoland
+
+      - name: Install deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Promote to RC
+        run: |
+          deno run -A ./tools/release/promote_to_rc.ts ${{github.event.inputs.releaseKind}}
+
+      - name: Upload archives to dl.deno.land
+        run: |
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./*.zip gs://dl.deno.land/release/$(echo release-rc-latest.txt)/
+          gsutil -h "Cache-Control: no-cache" cp release-rc-latest.txt gs://dl.deno.land/release-rc-latest.txt
