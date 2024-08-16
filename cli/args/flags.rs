@@ -36,7 +36,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::args::resolve_no_prompt;
-use crate::shared::ReleaseChannel;
 use crate::util::fs::canonicalize_path;
 
 use super::flags_net;
@@ -1333,27 +1332,10 @@ static UNSTABLE_HEADING: &str = "Unstable";
 
 pub fn clap_root() -> Command {
   let long_version = format!(
-    "{} ({}, {})\nv8 {}\ntypescript {}",
+    "{} ({}, {}, {})\nv8 {}\ntypescript {}",
     crate::version::DENO_VERSION_INFO.deno,
-    // TODO(bartlomieju): alter what's printed here.
-    // I think it's best if we print as follows:
-    // <version>(+<short_git_hash>) (<release_channel>, <profile>, <target>)
-    // For stable it would be:
-    //   v1.46.0 (stable, release, aarch64-apple-darwin)
-    // For rc it would be:
-    //   v1.46.0-rc.2 (release candidate, release, aarch64-apple-darwin)
-    // For lts it would be:
-    //   v2.1.13-lts (LTS (long term support), release, aarch64-apple-darwin)
-    // For canary it would be:
-    //   v1.46.0+25bb59d (canary, release, aarch64-apple-darwin)
-    if matches!(
-      crate::version::DENO_VERSION_INFO.release_channel,
-      ReleaseChannel::Canary
-    ) {
-      "canary"
-    } else {
-      env!("PROFILE")
-    },
+    crate::version::DENO_VERSION_INFO.release_channel.name(),
+    env!("PROFILE"),
     env!("TARGET"),
     deno_core::v8_version(),
     crate::version::DENO_VERSION_INFO.typescript
