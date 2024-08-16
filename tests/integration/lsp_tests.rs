@@ -11713,6 +11713,66 @@ fn lsp_jsx_import_source_config_file_automatic_cache() {
 }
 
 #[test]
+fn lsp_jsx_import_source_byonm_preact() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "compilerOptions": {
+        "jsx": "react-jsx",
+        "jsxImportSource": "npm:preact@^10.19.6"
+      },
+      "unstable": ["byonm"],
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "preact": "^10.19.6",
+      },
+    })
+    .to_string(),
+  );
+  let file = source_file(temp_dir.path().join("file.tsx"), r#"<div></div>;"#);
+  context.run_npm("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "position": { "line": 0, "character": 1 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "(property) JSXInternal.IntrinsicElements.div: JSXInternal.HTMLAttributes<HTMLDivElement>",
+        },
+        "",
+      ],
+      "range": {
+        "start": { "line": 0, "character": 1 },
+        "end": { "line": 0, "character": 4 },
+      },
+    }),
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_jsx_import_source_types_pragma() {
   let context = TestContextBuilder::new()
     .use_http_server()

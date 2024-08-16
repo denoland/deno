@@ -43,6 +43,9 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/denoland/deno"
 
+[patch.crates-io]
+deno_graph = { path = "../deno_graph" }
+
 [workspace.dependencies]
 deno_ast = { version = "=0.41.2", features = ["transpiling"] }
 deno_core = { version = "0.303.0" }
