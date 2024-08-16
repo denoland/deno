@@ -63,7 +63,7 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 
 // UTF-16 encodings of the managed globals. THIS LIST MUST BE SORTED.
 #[rustfmt::skip]
-const MANAGED_GLOBALS: [&[u16]; 13] = [
+const MANAGED_GLOBALS: [&[u16]; 14] = [
   &str_to_utf16::<6>("Buffer"),
   &str_to_utf16::<17>("WorkerGlobalScope"),
   &str_to_utf16::<14>("clearImmediate"),
@@ -77,6 +77,7 @@ const MANAGED_GLOBALS: [&[u16]; 13] = [
   &str_to_utf16::<12>("setImmediate"),
   &str_to_utf16::<11>("setInterval"),
   &str_to_utf16::<10>("setTimeout"),
+  &str_to_utf16::<6>("window"),
 ];
 
 const SHORTEST_MANAGED_GLOBAL: usize = 4;
