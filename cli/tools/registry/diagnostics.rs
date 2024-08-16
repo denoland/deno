@@ -172,8 +172,7 @@ impl Diagnostic for PublishDiagnostic {
       MissingConstraint { .. } => DiagnosticLevel::Error,
       BannedTripleSlashDirectives { .. } => DiagnosticLevel::Error,
       SyntaxError { .. } => DiagnosticLevel::Error,
-      // todo(#24676): make this an error in Deno 1.46
-      MissingLicense { .. } => DiagnosticLevel::Warning,
+      MissingLicense { .. } => DiagnosticLevel::Error,
     }
   }
 

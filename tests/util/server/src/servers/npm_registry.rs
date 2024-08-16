@@ -150,7 +150,7 @@ async fn handle_req_for_registry(
   // serve the registry package files
   let uri_path = req.uri().path();
   let mut file_path = root_dir.to_path_buf();
-  file_path.push(&uri_path[1..].replace("%2f", "/").replace("%2F", "/"));
+  file_path.push(uri_path[1..].replace("%2f", "/").replace("%2F", "/"));
 
   // serve if the filepath exists
   if let Ok(file) = tokio::fs::read(&file_path).await {

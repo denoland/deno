@@ -147,7 +147,7 @@ fn visit_call_expr(
           let ast::Prop::KeyValue(key_value_prop) = prop.as_ref() else {
             continue;
           };
-          let ast::PropName::Ident(ast::Ident { sym, .. }) =
+          let ast::PropName::Ident(ast::IdentName { sym, .. }) =
             &key_value_prop.key
           else {
             continue;
@@ -187,7 +187,7 @@ fn visit_call_expr(
           };
           match prop.as_ref() {
             ast::Prop::KeyValue(key_value_prop) => {
-              let ast::PropName::Ident(ast::Ident { sym, .. }) =
+              let ast::PropName::Ident(ast::IdentName { sym, .. }) =
                 &key_value_prop.key
               else {
                 continue;
@@ -206,7 +206,7 @@ fn visit_call_expr(
               }
             }
             ast::Prop::Method(method_prop) => {
-              let ast::PropName::Ident(ast::Ident { sym, .. }) =
+              let ast::PropName::Ident(ast::IdentName { sym, .. }) =
                 &method_prop.key
               else {
                 continue;
@@ -472,7 +472,7 @@ impl Visit for TestCollector {
       collector: &mut TestCollector,
       node: &ast::CallExpr,
       range: &deno_ast::SourceRange,
-      ns_prop_ident: &ast::Ident,
+      ns_prop_ident: &ast::IdentName,
       member_expr: &ast::MemberExpr,
     ) {
       if ns_prop_ident.sym == "test" {

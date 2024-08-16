@@ -18,6 +18,7 @@ mod js;
 mod node;
 mod npm;
 mod resolver;
+mod shared;
 mod task_runner;
 mod util;
 mod version;
@@ -82,9 +83,7 @@ fn load_env_vars(env_vars: &HashMap<String, String>) {
 
 fn main() {
   let args: Vec<_> = env::args_os().collect();
-  let current_exe_path = current_exe().unwrap();
-  let standalone =
-    standalone::extract_standalone(&current_exe_path, Cow::Owned(args));
+  let standalone = standalone::extract_standalone(Cow::Owned(args));
   let future = async move {
     match standalone {
       Ok(Some(future)) => {

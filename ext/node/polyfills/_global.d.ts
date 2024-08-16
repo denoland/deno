@@ -2,20 +2,18 @@
 import { EventEmitter } from "ext:deno_node/_events.d.ts";
 import { Buffer } from "node:buffer";
 
-/** One of:
- * | "ascii"
- * | "utf8"
- * | "utf-8"
- * | "utf16le"
- * | "ucs2"
- * | "ucs-2"
- * | "base64"
- * | "base64url"
- * | "latin1"
- * | "binary"
- * | "hex";
- */
-export type BufferEncoding = string;
+export type BufferEncoding =
+  | "ascii"
+  | "utf8"
+  | "utf-8"
+  | "utf16le"
+  | "ucs2"
+  | "ucs-2"
+  | "base64"
+  | "base64url"
+  | "latin1"
+  | "binary"
+  | "hex";
 
 export interface Buffered {
   chunk: Buffer;
