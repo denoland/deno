@@ -22,7 +22,6 @@ const {
   ArrayPrototypeSort,
   ArrayPrototypeSplice,
   ObjectKeys,
-  ObjectPrototypeIsPrototypeOf,
   SafeArrayIterator,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
@@ -34,7 +33,7 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 
 const _list = Symbol("list");
 const _urlObject = Symbol("url object");
@@ -459,24 +458,22 @@ class URL {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(URLPrototype, this),
-        keys: [
-          "href",
-          "origin",
-          "protocol",
-          "username",
-          "password",
-          "host",
-          "hostname",
-          "port",
-          "pathname",
-          "hash",
-          "search",
-        ],
-      }),
+    return privateInspect(
+      this,
+      [
+        "href",
+        "origin",
+        "protocol",
+        "username",
+        "password",
+        "host",
+        "hostname",
+        "port",
+        "pathname",
+        "hash",
+        "search",
+      ],
+      inspect,
       inspectOptions,
     );
   }

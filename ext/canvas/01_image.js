@@ -4,7 +4,7 @@ import { internals, primordials } from "ext:core/mod.js";
 import { op_image_decode_png, op_image_process } from "ext:core/ops";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 import { BlobPrototype } from "ext:deno_web/09_file.js";
 import { sniffImage } from "ext:deno_web/01_mimesniff.js";
 const {
@@ -140,17 +140,7 @@ class ImageBitmap {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(ImageBitmapPrototype, this),
-        keys: [
-          "width",
-          "height",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["width", "height"], inspect, inspectOptions);
   }
 }
 const ImageBitmapPrototype = ImageBitmap.prototype;

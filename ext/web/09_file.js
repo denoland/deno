@@ -59,7 +59,7 @@ const {
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { ReadableStream } from "./06_streams.js";
 import { URL } from "ext:deno_url/00_url.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 
 // TODO(lucacasonato): this needs to not be hardcoded and instead depend on
 // host os.
@@ -435,17 +435,10 @@ class Blob {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(BlobPrototype, this),
-        keys: [
-          "size",
-          "type",
-        ],
-      }),
-      inspectOptions,
-    );
+    // return privateInspect(this, ["size", "type"], inspect, inspectOptions);
+    const { size, type } = this;
+    const value = { size, type };
+    return `${this.constructor.name} ${inspect(value, inspectOptions)}`;
   }
 }
 
@@ -554,16 +547,10 @@ class File extends Blob {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(FilePrototype, this),
-        keys: [
-          "name",
-          "size",
-          "type",
-        ],
-      }),
+    return privateInspect(
+      this,
+      ["name", "size", "type"],
+      inspect,
       inspectOptions,
     );
   }

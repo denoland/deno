@@ -47,7 +47,7 @@ const {
 
 import { URL } from "ext:deno_url/00_url.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
@@ -603,23 +603,21 @@ class WebSocket extends EventTarget {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(WebSocketPrototype, this),
-        keys: [
-          "url",
-          "readyState",
-          "extensions",
-          "protocol",
-          "binaryType",
-          "bufferedAmount",
-          "onmessage",
-          "onerror",
-          "onclose",
-          "onopen",
-        ],
-      }),
+    return privateInspect(
+      this,
+      [
+        "url",
+        "readyState",
+        "extensions",
+        "protocol",
+        "binaryType",
+        "bufferedAmount",
+        "onmessage",
+        "onerror",
+        "onclose",
+        "onopen",
+      ],
+      inspect,
       inspectOptions,
     );
   }

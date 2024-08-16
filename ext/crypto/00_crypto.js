@@ -81,8 +81,8 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 
 const supportedNamedCurves = ["P-256", "P-384", "P-521"];
 const recognisedUsages = [
@@ -380,17 +380,10 @@ class CryptoKey {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(CryptoKeyPrototype, this),
-        keys: [
-          "type",
-          "extractable",
-          "algorithm",
-          "usages",
-        ],
-      }),
+    return privateInspect(
+      this,
+      ["type", "extractable", "algorithm", "usages"],
+      inspect,
       inspectOptions,
     );
   }
@@ -4757,14 +4750,7 @@ class Crypto {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(CryptoPrototype, this),
-        keys: ["subtle"],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["subtle"], inspect, inspectOptions);
   }
 }
 

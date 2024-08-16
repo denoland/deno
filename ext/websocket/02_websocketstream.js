@@ -33,7 +33,7 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 import { Deferred, writableStreamClose } from "ext:deno_web/06_streams.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { add, remove } from "ext:deno_web/03_abort_signal.js";
@@ -426,16 +426,10 @@ class WebSocketStream {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(WebSocketStreamPrototype, this),
-        keys: [
-          "closed",
-          "opened",
-          "url",
-        ],
-      }),
+    return privateInspect(
+      this,
+      ["closed", "opened", "url"],
+      inspect,
       inspectOptions,
     );
   }
@@ -505,17 +499,10 @@ class WebSocketError extends DOMException {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(WebSocketErrorPrototype, this),
-        keys: [
-          "message",
-          "name",
-          "closeCode",
-          "reason",
-        ],
-      }),
+    return privateInspect(
+      this,
+      ["message", "name", "closeCode", "reason"],
+      inspect,
       inspectOptions,
     );
   }

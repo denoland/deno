@@ -8,12 +8,11 @@ import {
 } from "ext:core/ops";
 const {
   ObjectDefineProperties,
-  ObjectPrototypeIsPrototypeOf,
   SymbolFor,
 } = primordials;
 
 import * as location from "ext:deno_web/12_location.js";
-import * as console from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
@@ -38,17 +37,10 @@ class WorkerNavigator {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      console.createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(WorkerNavigatorPrototype, this),
-        keys: [
-          "hardwareConcurrency",
-          "userAgent",
-          "language",
-          "languages",
-        ],
-      }),
+    return privateInspect(
+      this,
+      ["hardwareConcurrency", "userAgent", "language", "languages"],
+      inspect,
       inspectOptions,
     );
   }

@@ -102,10 +102,7 @@ const {
   ObjectPrototypePropertyIsEnumerable,
   ObjectSetPrototypeOf,
   ObjectValues,
-  Proxy,
   ReflectGet,
-  ReflectGetOwnPropertyDescriptor,
-  ReflectGetPrototypeOf,
   ReflectHas,
   ReflectOwnKeys,
   RegExpPrototypeExec,
@@ -471,7 +468,7 @@ function formatValue(
       // inspect implementations in `extensions` need it, but may not have access
       // to the `Deno` namespace in web workers. Remove when the `Deno`
       // namespace is always enabled.
-      return String(value[privateCustomInspect](inspect, ctx));
+      return String(value[privateCustomInspect].call(value, inspect, ctx));
     } else if (ReflectHas(value, nodeCustomInspectSymbol)) {
       const maybeCustom = value[nodeCustomInspectSymbol];
       if (
@@ -3449,67 +3446,24 @@ function inspect(
   return formatValue(ctx, value, 0);
 }
 
-class FilteredProxy extends Proxy {
-  privateCustomInspectProxy;
-}
-
-/** Creates a proxy that represents a subset of the properties
- * of the original object optionally without evaluating the properties
- * in order to get the values. */
-function createFilteredInspectProxy({ object, keys, evaluate }) {
-  const obj = class {};
-  if (object.constructor?.name) {
-    ObjectDefineProperty(obj, "name", { value: object.constructor.name });
+/**
+ * Print a serialized version of the passed object with only the
+ * keys specified. This is used in `Deno.privateCustomInspect()`
+ * @template T
+ * @param {T} obj
+ * @param {keyof T} keys
+ * @param {typeof inspect} inspect
+ * @param {*} inspectOptions
+ * @returns {string}
+ */
+function privateInspect(obj, keys, inspect, inspectOptions) {
+  const value = {};
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    value[key] = ReflectGet(obj, key);
   }
 
-  return new Proxy(new obj(), {
-    get(_target, key) {
-      if (key === SymbolToStringTag) {
-        return object.constructor?.name;
-      } else if (key === privateCustomInspectProxy) {
-        return true;
-      } else if (ArrayPrototypeIncludes(keys, key)) {
-        return ReflectGet(object, key);
-      } else {
-        return undefined;
-      }
-    },
-    getOwnPropertyDescriptor(_target, key) {
-      if (!ArrayPrototypeIncludes(keys, key)) {
-        return undefined;
-      } else if (evaluate) {
-        return getEvaluatedDescriptor(object, key);
-      } else {
-        return getDescendantPropertyDescriptor(object, key) ??
-          getEvaluatedDescriptor(object, key);
-      }
-    },
-    has(_target, key) {
-      return ArrayPrototypeIncludes(keys, key);
-    },
-    ownKeys() {
-      return keys;
-    },
-  });
-
-  function getDescendantPropertyDescriptor(object, key) {
-    let propertyDescriptor = ReflectGetOwnPropertyDescriptor(object, key);
-    if (!propertyDescriptor) {
-      const prototype = ReflectGetPrototypeOf(object);
-      if (prototype) {
-        propertyDescriptor = getDescendantPropertyDescriptor(prototype, key);
-      }
-    }
-    return propertyDescriptor;
-  }
-
-  function getEvaluatedDescriptor(object, key) {
-    return {
-      configurable: true,
-      enumerable: true,
-      value: object[key],
-    };
-  }
+  return `${obj.constructor.name} ${inspect(value, inspectOptions)}`;
 }
 
 // Expose these fields to internalObject for tests.
@@ -3522,7 +3476,6 @@ internals.parseCssColor = parseCssColor;
 export {
   colors,
   Console,
-  createFilteredInspectProxy,
   createStylizeWithColor,
   CSI,
   customInspect,
@@ -3534,6 +3487,7 @@ export {
   getStdoutNoColor,
   inspect,
   inspectArgs,
+  privateInspect,
   quoteString,
   setNoColorFns,
   styles,

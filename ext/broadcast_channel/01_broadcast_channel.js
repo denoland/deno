@@ -13,14 +13,13 @@ const {
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
   ArrayPrototypeSplice,
-  ObjectPrototypeIsPrototypeOf,
   Symbol,
   SymbolFor,
   Uint8Array,
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 import {
   defineEventHandler,
   EventTarget,
@@ -143,18 +142,7 @@ class BroadcastChannel extends EventTarget {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(BroadcastChannelPrototype, this),
-        keys: [
-          "name",
-          "onmessage",
-          "onmessageerror",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["canvas"], inspect, inspectOptions);
   }
 }
 

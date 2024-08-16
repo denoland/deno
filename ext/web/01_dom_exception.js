@@ -15,14 +15,13 @@ const {
   ObjectCreate,
   ObjectEntries,
   ObjectHasOwn,
-  ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   Symbol,
   SymbolFor,
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 
 const _name = Symbol("name");
 const _message = Symbol("message");
@@ -137,16 +136,10 @@ class DOMException {
         return stack;
       }
     }
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this),
-        keys: [
-          "message",
-          "name",
-          "code",
-        ],
-      }),
+    return privateInspect(
+      this,
+      ["message", "name", "code"],
+      inspect,
       inspectOptions,
     );
   }

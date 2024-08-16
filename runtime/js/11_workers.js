@@ -21,7 +21,7 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 import { URL } from "ext:deno_url/00_url.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 import { serializePermissions } from "ext:runtime/10_permissions.js";
@@ -292,24 +292,16 @@ class Worker extends EventTarget {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(WorkerPrototype, this),
-        keys: [
-          "onerror",
-          "onmessage",
-          "onmessageerror",
-        ],
-      }),
+    return privateInspect(
+      this,
+      ["onerror", "onmessage", "onmessageerror"],
+      inspect,
       inspectOptions,
     );
   }
 
   [SymbolToStringTag] = "Worker";
 }
-
-const WorkerPrototype = Worker.prototype;
 
 defineEventHandler(Worker.prototype, "error");
 defineEventHandler(Worker.prototype, "message");

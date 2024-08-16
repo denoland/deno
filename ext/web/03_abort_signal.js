@@ -8,7 +8,6 @@ const {
   ArrayPrototypeEvery,
   ArrayPrototypePush,
   FunctionPrototypeApply,
-  ObjectPrototypeIsPrototypeOf,
   SafeSet,
   SafeSetIterator,
   SafeWeakRef,
@@ -25,7 +24,7 @@ const {
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { assert } from "./00_infra.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 import {
   defineEventHandler,
   Event,
@@ -250,16 +249,10 @@ class AbortSignal extends EventTarget {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(AbortSignalPrototype, this),
-        keys: [
-          "aborted",
-          "reason",
-          "onabort",
-        ],
-      }),
+    return privateInspect(
+      this,
+      ["aborted", "reason", "onabort"],
+      inspect,
       inspectOptions,
     );
   }
@@ -287,16 +280,7 @@ class AbortController {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(AbortControllerPrototype, this),
-        keys: [
-          "signal",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["signal"], inspect, inspectOptions);
   }
 }
 

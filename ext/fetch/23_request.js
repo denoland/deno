@@ -25,7 +25,7 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 import {
   byteUpperCase,
   HTTP_TOKEN_CODE_POINT_RE,
@@ -511,18 +511,10 @@ class Request {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(RequestPrototype, this),
-        keys: [
-          "bodyUsed",
-          "headers",
-          "method",
-          "redirect",
-          "url",
-        ],
-      }),
+    return privateInspect(
+      this,
+      ["bodyUsed", "headers", "method", "redirect", "url"],
+      inspect,
       inspectOptions,
     );
   }

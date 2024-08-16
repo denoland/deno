@@ -17,7 +17,6 @@ const {
   MathRandom,
   ObjectAssign,
   ObjectCreate,
-  ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeExec,
   RegExpPrototypeTest,
   SafeMap,
@@ -28,7 +27,7 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 
 const _components = Symbol("components");
 
@@ -368,22 +367,20 @@ class URLPattern {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(URLPatternPrototype, this),
-        keys: [
-          "protocol",
-          "username",
-          "password",
-          "hostname",
-          "port",
-          "pathname",
-          "search",
-          "hash",
-          "hasRegExpGroups",
-        ],
-      }),
+    return privateInspect(
+      this,
+      [
+        "protocol",
+        "username",
+        "password",
+        "hostname",
+        "port",
+        "pathname",
+        "search",
+        "hash",
+        "hasRegExpGroups",
+      ],
+      inspect,
       inspectOptions,
     );
   }

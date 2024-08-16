@@ -14,14 +14,13 @@ import {
   op_webgpu_surface_present,
 } from "ext:core/ops";
 const {
-  ObjectPrototypeIsPrototypeOf,
   Symbol,
   SymbolFor,
   TypeError,
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 
 const _surfaceRid = Symbol("[[surfaceRid]]");
@@ -144,16 +143,7 @@ class GPUCanvasContext {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUCanvasContextPrototype, this),
-        keys: [
-          "canvas",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["canvas"], inspect, inspectOptions);
   }
 }
 const GPUCanvasContextPrototype = GPUCanvasContext.prototype;

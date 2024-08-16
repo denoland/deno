@@ -127,7 +127,7 @@ import {
   setEventTargetData,
 } from "ext:deno_web/02_event.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 
 const _rid = Symbol("[[rid]]");
 const _size = Symbol("[[size]]");
@@ -391,7 +391,7 @@ class GPU {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
+    return privateInspect(this, [], inspect, inspectOptions);
   }
 }
 const GPUPrototype = GPU.prototype;
@@ -539,17 +539,15 @@ class GPUAdapter {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUAdapterPrototype, this),
-        keys: [
-          "features",
-          "limits",
-          "info",
-          "isFallbackAdapter",
-        ],
-      }),
+    return privateInspect(
+      this,
+      [
+        "features",
+        "limits",
+        "info",
+        "isFallbackAdapter",
+      ],
+      inspect,
       inspectOptions,
     );
   }
@@ -590,17 +588,15 @@ class GPUAdapterInfo {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUAdapterInfoPrototype, this),
-        keys: [
-          "vendor",
-          "architecture",
-          "device",
-          "description",
-        ],
-      }),
+    return privateInspect(
+      this,
+      [
+        "vendor",
+        "architecture",
+        "device",
+        "description",
+      ],
+      inspect,
       inspectOptions,
     );
   }
@@ -773,46 +769,41 @@ class GPUSupportedLimits {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(
-          GPUSupportedLimitsPrototype,
-          this,
-        ),
-        keys: [
-          "maxTextureDimension1D",
-          "maxTextureDimension2D",
-          "maxTextureDimension3D",
-          "maxTextureArrayLayers",
-          "maxBindGroups",
-          "maxBindingsPerBindGroup",
-          "maxBufferSize",
-          "maxDynamicUniformBuffersPerPipelineLayout",
-          "maxDynamicStorageBuffersPerPipelineLayout",
-          "maxSampledTexturesPerShaderStage",
-          "maxSamplersPerShaderStage",
-          "maxStorageBuffersPerShaderStage",
-          "maxStorageTexturesPerShaderStage",
-          "maxUniformBuffersPerShaderStage",
-          "maxUniformBufferBindingSize",
-          "maxStorageBufferBindingSize",
-          "minUniformBufferOffsetAlignment",
-          "minStorageBufferOffsetAlignment",
-          "maxVertexBuffers",
-          "maxVertexAttributes",
-          "maxVertexBufferArrayStride",
-          "maxInterStageShaderComponents",
-          "maxColorAttachments",
-          "maxColorAttachmentBytesPerSample",
-          "maxComputeWorkgroupStorageSize",
-          "maxComputeInvocationsPerWorkgroup",
-          "maxComputeWorkgroupSizeX",
-          "maxComputeWorkgroupSizeY",
-          "maxComputeWorkgroupSizeZ",
-          "maxComputeWorkgroupsPerDimension",
-        ],
-      }),
+    return privateInspect(
+      this,
+      [
+        "maxTextureDimension1D",
+        "maxTextureDimension2D",
+        "maxTextureDimension3D",
+        "maxTextureArrayLayers",
+        "maxBindGroups",
+        "maxBindingsPerBindGroup",
+        "maxBufferSize",
+        "maxDynamicUniformBuffersPerPipelineLayout",
+        "maxDynamicStorageBuffersPerPipelineLayout",
+        "maxSampledTexturesPerShaderStage",
+        "maxSamplersPerShaderStage",
+        "maxStorageBuffersPerShaderStage",
+        "maxStorageTexturesPerShaderStage",
+        "maxUniformBuffersPerShaderStage",
+        "maxUniformBufferBindingSize",
+        "maxStorageBufferBindingSize",
+        "minUniformBufferOffsetAlignment",
+        "minStorageBufferOffsetAlignment",
+        "maxVertexBuffers",
+        "maxVertexAttributes",
+        "maxVertexBufferArrayStride",
+        "maxInterStageShaderComponents",
+        "maxColorAttachments",
+        "maxColorAttachmentBytesPerSample",
+        "maxComputeWorkgroupStorageSize",
+        "maxComputeInvocationsPerWorkgroup",
+        "maxComputeWorkgroupSizeX",
+        "maxComputeWorkgroupSizeY",
+        "maxComputeWorkgroupSizeZ",
+        "maxComputeWorkgroupsPerDimension",
+      ],
+      inspect,
       inspectOptions,
     );
   }
@@ -881,18 +872,10 @@ class GPUDeviceLostInfo {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(
-          GPUDeviceLostInfoPrototype,
-          this,
-        ),
-        keys: [
-          "reason",
-          "message",
-        ],
-      }),
+    return privateInspect(
+      this,
+      ["reason", "message"],
+      inspect,
       inspectOptions,
     );
   }
@@ -1831,20 +1814,18 @@ class GPUDevice extends EventTarget {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUDevicePrototype, this),
-        keys: [
-          "features",
-          "label",
-          "limits",
-          "lost",
-          "queue",
-          // TODO(lucacasonato): emit an UncapturedErrorEvent
-          // "onuncapturederror"
-        ],
-      }),
+    return privateInspect(
+      this,
+      [
+        "features",
+        "label",
+        "limits",
+        "lost",
+        "queue",
+        // TODO(lucacasonato): emit an UncapturedErrorEvent
+        // "onuncapturederror"
+      ],
+      inspect,
       inspectOptions,
     );
   }
@@ -2062,16 +2043,7 @@ class GPUQueue {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUQueuePrototype, this),
-        keys: [
-          "label",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["label"], inspect, inspectOptions);
   }
 }
 GPUObjectBaseMixin("GPUQueue", GPUQueue);
@@ -2373,17 +2345,15 @@ class GPUBuffer {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUBufferPrototype, this),
-        keys: [
-          "label",
-          "mapState",
-          "size",
-          "usage",
-        ],
-      }),
+    return privateInspect(
+      this,
+      [
+        "label",
+        "mapState",
+        "size",
+        "usage",
+      ],
+      inspect,
       inspectOptions,
     );
   }
@@ -2585,22 +2555,20 @@ class GPUTexture {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUTexturePrototype, this),
-        keys: [
-          "label",
-          "width",
-          "height",
-          "depthOrArrayLayers",
-          "mipLevelCount",
-          "sampleCount",
-          "dimension",
-          "format",
-          "usage",
-        ],
-      }),
+    return privateInspect(
+      this,
+      [
+        "label",
+        "width",
+        "height",
+        "depthOrArrayLayers",
+        "mipLevelCount",
+        "sampleCount",
+        "dimension",
+        "format",
+        "usage",
+      ],
+      inspect,
       inspectOptions,
     );
   }
@@ -2664,16 +2632,7 @@ class GPUTextureView {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUTextureViewPrototype, this),
-        keys: [
-          "label",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["label"], inspect, inspectOptions);
   }
 }
 GPUObjectBaseMixin("GPUTextureView", GPUTextureView);
@@ -2755,19 +2714,7 @@ class GPUBindGroupLayout {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(
-          GPUBindGroupLayoutPrototype,
-          this,
-        ),
-        keys: [
-          "label",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["label"], inspect, inspectOptions);
   }
 }
 GPUObjectBaseMixin("GPUBindGroupLayout", GPUBindGroupLayout);
@@ -2806,23 +2753,10 @@ class GPUPipelineLayout {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(
-          GPUPipelineLayoutPrototype,
-          this,
-        ),
-        keys: [
-          "label",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["label"], inspect, inspectOptions);
   }
 }
 GPUObjectBaseMixin("GPUPipelineLayout", GPUPipelineLayout);
-const GPUPipelineLayoutPrototype = GPUPipelineLayout.prototype;
 
 /**
  * @param {string | null} label
@@ -2858,20 +2792,10 @@ class GPUBindGroup {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUBindGroupPrototype, this),
-        keys: [
-          "label",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["label"], inspect, inspectOptions);
   }
 }
 GPUObjectBaseMixin("GPUBindGroup", GPUBindGroup);
-const GPUBindGroupPrototype = GPUBindGroup.prototype;
 /**
  * @param {string | null} label
  * @param {InnerGPUDevice} device
@@ -2906,16 +2830,7 @@ class GPUShaderModule {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUShaderModulePrototype, this),
-        keys: [
-          "label",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["label"], inspect, inspectOptions);
   }
 }
 GPUObjectBaseMixin("GPUShaderModule", GPUShaderModule);
@@ -3000,19 +2915,7 @@ class GPUComputePipeline {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(
-          GPUComputePipelinePrototype,
-          this,
-        ),
-        keys: [
-          "label",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["label"], inspect, inspectOptions);
   }
 }
 GPUObjectBaseMixin("GPUComputePipeline", GPUComputePipeline);
@@ -3078,19 +2981,7 @@ class GPURenderPipeline {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(
-          GPURenderPipelinePrototype,
-          this,
-        ),
-        keys: [
-          "label",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["label"], inspect, inspectOptions);
   }
 }
 GPUObjectBaseMixin("GPURenderPipeline", GPURenderPipeline);
@@ -3799,19 +3690,7 @@ class GPUCommandEncoder {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(
-          GPUCommandEncoderPrototype,
-          this,
-        ),
-        keys: [
-          "label",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["label"], inspect, inspectOptions);
   }
 }
 GPUObjectBaseMixin("GPUCommandEncoder", GPUCommandEncoder);
@@ -4407,19 +4286,7 @@ class GPURenderPassEncoder {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(
-          GPURenderPassEncoderPrototype,
-          this,
-        ),
-        keys: [
-          "label",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["label"], inspect, inspectOptions);
   }
 }
 GPUObjectBaseMixin("GPURenderPassEncoder", GPURenderPassEncoder);
@@ -4683,19 +4550,7 @@ class GPUComputePassEncoder {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(
-          GPUComputePassEncoderPrototype,
-          this,
-        ),
-        keys: [
-          "label",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["label"], inspect, inspectOptions);
   }
 }
 GPUObjectBaseMixin("GPUComputePassEncoder", GPUComputePassEncoder);
@@ -4736,20 +4591,10 @@ class GPUCommandBuffer {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUCommandBufferPrototype, this),
-        keys: [
-          "label",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["label"], inspect, inspectOptions);
   }
 }
 GPUObjectBaseMixin("GPUCommandBuffer", GPUCommandBuffer);
-const GPUCommandBufferPrototype = GPUCommandBuffer.prototype;
 
 /**
  * @param {string | null} label
@@ -5124,19 +4969,7 @@ class GPURenderBundleEncoder {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(
-          GPURenderBundleEncoderPrototype,
-          this,
-        ),
-        keys: [
-          "label",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["label"], inspect, inspectOptions);
   }
 }
 GPUObjectBaseMixin("GPURenderBundleEncoder", GPURenderBundleEncoder);
@@ -5177,20 +5010,10 @@ class GPURenderBundle {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPURenderBundlePrototype, this),
-        keys: [
-          "label",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["label"], inspect, inspectOptions);
   }
 }
 GPUObjectBaseMixin("GPURenderBundle", GPURenderBundle);
-const GPURenderBundlePrototype = GPURenderBundle.prototype;
 /**
  * @param {string | null} label
  * @param {InnerGPUDevice} device
@@ -5248,16 +5071,10 @@ class GPUQuerySet {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUQuerySetPrototype, this),
-        keys: [
-          "label",
-          "type",
-          "count",
-        ],
-      }),
+    return privateInspect(
+      this,
+      ["label", "type", "count"],
+      inspect,
       inspectOptions,
     );
   }

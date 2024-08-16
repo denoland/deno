@@ -8,7 +8,6 @@ const {
   ArrayPrototypeReverse,
   ArrayPrototypeSlice,
   ObjectKeys,
-  ObjectPrototypeIsPrototypeOf,
   ReflectHas,
   Symbol,
   SymbolFor,
@@ -17,7 +16,7 @@ const {
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { structuredClone } from "./02_structured_clone.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 import { EventTarget } from "./02_event.js";
 import { opNow } from "./02_timers.js";
 import { DOMException } from "./01_dom_exception.js";
@@ -197,20 +196,10 @@ class PerformanceEntry {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(
-          PerformanceEntryPrototype,
-          this,
-        ),
-        keys: [
-          "name",
-          "entryType",
-          "startTime",
-          "duration",
-        ],
-      }),
+    return privateInspect(
+      this,
+      ["name", "entryType", "startTime", "duration"],
+      inspect,
       inspectOptions,
     );
   }
@@ -269,18 +258,10 @@ class PerformanceMark extends PerformanceEntry {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(PerformanceMarkPrototype, this),
-        keys: [
-          "name",
-          "entryType",
-          "startTime",
-          "duration",
-          "detail",
-        ],
-      }),
+    return privateInspect(
+      this,
+      ["name", "entryType", "startTime", "duration", "detail"],
+      inspect,
       inspectOptions,
     );
   }
@@ -328,21 +309,10 @@ class PerformanceMeasure extends PerformanceEntry {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(
-          PerformanceMeasurePrototype,
-          this,
-        ),
-        keys: [
-          "name",
-          "entryType",
-          "startTime",
-          "duration",
-          "detail",
-        ],
-      }),
+    return privateInspect(
+      this,
+      ["entryType", "startTime", "duration", "detail"],
+      inspect,
       inspectOptions,
     );
   }
@@ -579,14 +549,7 @@ class Performance extends EventTarget {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(PerformancePrototype, this),
-        keys: ["timeOrigin"],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["timeOrigin"], inspect, inspectOptions);
   }
 }
 webidl.configureInterface(Performance);

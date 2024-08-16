@@ -12,7 +12,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 import {
   byteLowerCase,
   HTTP_TAB_OR_SPACE,
@@ -34,7 +34,6 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ObjectDefineProperties,
-  ObjectPrototypeIsPrototypeOf,
   RangeError,
   RegExpPrototypeExec,
   SafeArrayIterator,
@@ -408,21 +407,19 @@ class Response {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(ResponsePrototype, this),
-        keys: [
-          "body",
-          "bodyUsed",
-          "headers",
-          "ok",
-          "redirected",
-          "status",
-          "statusText",
-          "url",
-        ],
-      }),
+    return privateInspect(
+      this,
+      [
+        "body",
+        "bodyUsed",
+        "headers",
+        "ok",
+        "redirected",
+        "status",
+        "statusText",
+        "url",
+      ],
+      inspect,
       inspectOptions,
     );
   }

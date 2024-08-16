@@ -10,7 +10,6 @@ const {
   NumberIsFinite,
   NumberIsNaN,
   ObjectDefineProperties,
-  ObjectPrototypeIsPrototypeOf,
   StringPrototypeEndsWith,
   StringPrototypeIncludes,
   StringPrototypeIndexOf,
@@ -21,7 +20,7 @@ const {
 } = primordials;
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 import { URL } from "ext:deno_url/00_url.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import {
@@ -333,19 +332,17 @@ class EventSource extends EventTarget {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(EventSourcePrototype, this),
-        keys: [
-          "readyState",
-          "url",
-          "withCredentials",
-          "onopen",
-          "onmessage",
-          "onerror",
-        ],
-      }),
+    return privateInspect(
+      this,
+      [
+        "readyState",
+        "url",
+        "withCredentials",
+        "onopen",
+        "onmessage",
+        "onerror",
+      ],
+      inspect,
       inspectOptions,
     );
   }

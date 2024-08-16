@@ -30,7 +30,7 @@ const {
   isArrayBuffer,
 } = core;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
+import { privateInspect } from "ext:deno_console/01_console.js";
 import {
   defineEventHandler,
   EventTarget,
@@ -69,17 +69,7 @@ class MessageChannel {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(MessageChannelPrototype, this),
-        keys: [
-          "port1",
-          "port2",
-        ],
-      }),
-      inspectOptions,
-    );
+    return privateInspect(this, ["port1", "port2"], inspect, inspectOptions);
   }
 }
 
@@ -277,15 +267,10 @@ class MessagePort extends EventTarget {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(MessagePortPrototype, this),
-        keys: [
-          "onmessage",
-          "onmessageerror",
-        ],
-      }),
+    return privateInspectSerialize(
+      this,
+      ["onmessage", "onmessageerror"],
+      inspect,
       inspectOptions,
     );
   }
