@@ -43,5 +43,5 @@ jobs:
 
       - name: Upload archives to dl.deno.land
         run: |
-          gsutil -h "Cache-Control: public, max-age=3600" cp ./*.zip gs://dl.deno.land/release/$(echo release-rc-latest.txt)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./*.zip gs://dl.deno.land/release/$(cat release-rc-latest.txt)/
           gsutil -h "Cache-Control: no-cache" cp release-rc-latest.txt gs://dl.deno.land/release-rc-latest.txt
