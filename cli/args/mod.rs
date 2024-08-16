@@ -75,6 +75,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::cache;
+use crate::cache::DenoDirProvider;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
@@ -282,6 +283,8 @@ impl BenchOptions {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct UnstableFmtOptions {
   pub css: bool,
+  pub html: bool,
+  pub component: bool,
   pub yaml: bool,
 }
 
@@ -316,6 +319,8 @@ impl FmtOptions {
       options: resolve_fmt_options(fmt_flags, fmt_config.options),
       unstable: UnstableFmtOptions {
         css: unstable.css || fmt_flags.unstable_css,
+        html: unstable.html || fmt_flags.unstable_html,
+        component: unstable.component || fmt_flags.unstable_component,
         yaml: unstable.yaml || fmt_flags.unstable_yaml,
       },
       files: fmt_config.files,
@@ -776,6 +781,7 @@ pub struct CliOptions {
   pub start_dir: Arc<WorkspaceDirectory>,
   pub disable_deprecated_api_warning: bool,
   pub verbose_deprecated_api_warning: bool,
+  pub deno_dir_provider: Arc<DenoDirProvider>,
 }
 
 impl CliOptions {
@@ -806,11 +812,14 @@ impl CliOptions {
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
     let root_folder = start_dir.workspace.root_folder_configs();
+    let deno_dir_provider =
+      Arc::new(DenoDirProvider::new(flags.cache_path.clone()));
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
       root_folder.deno_json.as_deref(),
       root_folder.pkg_json.as_deref(),
+      &deno_dir_provider,
     )
     .with_context(|| "Resolving node_modules folder.")?;
 
@@ -833,6 +842,7 @@ impl CliOptions {
       start_dir,
       disable_deprecated_api_warning,
       verbose_deprecated_api_warning,
+      deno_dir_provider,
     })
   }
 
@@ -1151,8 +1161,6 @@ impl CliOptions {
               resolve_url_or_path("./$deno$stdin.ts", &cwd)
                 .map_err(AnyError::from)
             })?
-        } else if run_flags.watch.is_some() {
-          resolve_url_or_path(&run_flags.script, self.initial_cwd())?
         } else if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
           ModuleSpecifier::parse(&run_flags.script)?
         } else {
@@ -1241,6 +1249,7 @@ impl CliOptions {
       overrides: self.overrides.clone(),
       disable_deprecated_api_warning: self.disable_deprecated_api_warning,
       verbose_deprecated_api_warning: self.verbose_deprecated_api_warning,
+      deno_dir_provider: self.deno_dir_provider.clone(),
     }
   }
 
@@ -1291,7 +1300,10 @@ impl CliOptions {
       return Ok(None);
     };
 
-    Ok(Some(InspectorServer::new(host, version::get_user_agent())?))
+    Ok(Some(InspectorServer::new(
+      host,
+      version::DENO_VERSION_INFO.user_agent,
+    )?))
   }
 
   pub fn maybe_lockfile(&self) -> Option<&Arc<CliLockfile>> {
@@ -1341,6 +1353,8 @@ impl CliOptions {
     let workspace = self.workspace();
     UnstableFmtOptions {
       css: workspace.has_unstable("fmt-css"),
+      html: workspace.has_unstable("fmt-html"),
+      component: workspace.has_unstable("fmt-component"),
       yaml: workspace.has_unstable("fmt-yaml"),
     }
   }
@@ -1675,6 +1689,8 @@ impl CliOptions {
         "byonm",
         "bare-node-builtins",
         "fmt-css",
+        "fmt-html",
+        "fmt-component",
         "fmt-yaml",
       ]);
       // add more unstable flags to the same vector holding granular flags
@@ -1759,6 +1775,7 @@ fn resolve_node_modules_folder(
   flags: &Flags,
   maybe_config_file: Option<&ConfigFile>,
   maybe_package_json: Option<&PackageJson>,
+  deno_dir_provider: &Arc<DenoDirProvider>,
 ) -> Result<Option<PathBuf>, AnyError> {
   let use_node_modules_dir = flags
     .node_modules_dir
@@ -1770,7 +1787,18 @@ fn resolve_node_modules_folder(
   } else if let Some(state) = &*NPM_PROCESS_STATE {
     return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
   } else if let Some(package_json_path) = maybe_package_json.map(|c| &c.path) {
-    // always auto-discover the local_node_modules_folder when a package.json exists
+    if let Ok(deno_dir) = deno_dir_provider.get_or_create() {
+      // `deno_dir.root` can be symlink in macOS
+      if let Ok(root) = canonicalize_path_maybe_not_exists(&deno_dir.root) {
+        if package_json_path.starts_with(root) {
+          // if the package.json is in deno_dir, then do not use node_modules
+          // next to it as local node_modules dir
+          return Ok(None);
+        }
+      }
+    }
+    // auto-discover the local_node_modules_folder when a package.json exists
+    // and it's not in deno_dir
     package_json_path.parent().unwrap().join("node_modules")
   } else if use_node_modules_dir.is_none() {
     return Ok(None);

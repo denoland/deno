@@ -70,7 +70,7 @@ deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"]
 deno_doc = { version = "0.146.0", features = ["html", "syntect"] }
 deno_emit = "=0.44.0"
 deno_graph = { version = "=0.81.2" }
-deno_lint = { version = "=0.62.0", features = ["docs"] }
+deno_lint = { version = "=0.63.1", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm = "=0.21.4"
 deno_package_json.workspace = true
@@ -79,7 +79,7 @@ deno_semver = "=0.5.10"
 deno_task_shell = "=0.17.0"
 deno_terminal.workspace = true
 eszip = "=0.73.0"
-libsui = "0.1.0"
+libsui = "0.3.0"
 napi_sym.workspace = true
 node_resolver.workspace = true
 
@@ -123,7 +123,8 @@ libc.workspace = true
 libz-sys.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
-malva = "=0.8.0"
+malva = "=0.9.0"
+markup_fmt = "=0.12.0"
 memmem.workspace = true
 monch.workspace = true
 notify.workspace = true
@@ -157,6 +158,7 @@ tower-lsp.workspace = true
 twox-hash.workspace = true
 typed-arena = "=2.0.2"
 uuid = { workspace = true, features = ["serde"] }
+walkdir = "=2.3.2"
 which.workspace = true
 zeromq.workspace = true
 zip = { version = "2.1.6", default-features = false, features = ["deflate-flate2"] }
@@ -173,7 +175,6 @@ nix.workspace = true
 deno_bench_util.workspace = true
 pretty_assertions.workspace = true
 test_util.workspace = true
-walkdir = "=2.3.2"
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.

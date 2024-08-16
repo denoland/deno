@@ -44,11 +44,11 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 
-interface Reader {
+export interface Reader {
   read(p: Uint8Array): Promise<number | null>;
 }
 
-interface Writer {
+export interface Writer {
   write(p: Uint8Array): Promise<number>;
 }
 
@@ -56,7 +56,12 @@ export interface Closer {
   close(): void;
 }
 
-type Ref = { ref(): void; unref(): void };
+export interface Ref {
+  ref(): void;
+  unref(): void;
+}
+
+export interface StreamBase extends Reader, Writer, Closer, Ref {}
 
 const enum StreamBaseStateFields {
   kReadBytesOrError,
