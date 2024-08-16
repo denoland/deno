@@ -125,13 +125,13 @@ export function read(
         fs.seekSync(fd, position, io.SeekMode.Start);
         nread = io.readSync(
           fd,
-          arrayBufferViewToUint8Array(buffer, offset, length),
+          arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length),
         );
         fs.seekSync(fd, currentPosition, io.SeekMode.Start);
       } else {
         nread = await io.read(
           fd,
-          arrayBufferViewToUint8Array(buffer, offset, length),
+          arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length),
         );
       }
       cb(null, nread ?? 0, buffer);
@@ -197,7 +197,7 @@ export function readSync(
 
   const numberOfBytesRead = io.readSync(
     fd,
-    arrayBufferViewToUint8Array(buffer, offset, length),
+    arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length),
   );
 
   if (typeof position === "number" && position >= 0) {
