@@ -1,7 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashSet;
+use std::sync::Arc;
+
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_runtime::code_cache;
 use deno_runtime::deno_webstorage::rusqlite::params;
 
@@ -81,8 +85,8 @@ impl CodeCache {
     ));
   }
 
-  pub fn remove_sync(&self, specifier: &str) {
-    Self::ensure_ok(self.inner.remove_sync(specifier))
+  pub fn remove_code_cache(&self, specifier: &str) {
+    Self::ensure_ok(self.inner.remove_code_cache(specifier))
   }
 }
 
@@ -113,7 +117,10 @@ struct CodeCacheInner {
 
 impl CodeCacheInner {
   pub fn new(conn: CacheDB) -> Self {
-    Self { conn }
+    Self {
+      conn,
+      prevent_cache: Arc::new(Mutex::new(HashSet::new())),
+    }
   }
 
   pub fn get_sync(
@@ -163,7 +170,7 @@ impl CodeCacheInner {
     Ok(())
   }
 
-  pub fn remove_sync(&self, specifier: &str) -> Result<(), AnyError> {
+  pub fn remove_code_cache(&self, specifier: &str) -> Result<(), AnyError> {
     let sql = "
       DELETE FROM codecache
       WHERE specifier=$1;";

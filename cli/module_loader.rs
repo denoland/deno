@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -44,6 +45,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
@@ -283,15 +285,18 @@ impl CliModuleLoaderFactory {
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
-    let loader = Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
-      lib,
-      root_permissions,
-      dynamic_permissions,
-      graph_container,
-      emitter: self.shared.emitter.clone(),
-      parsed_source_cache: self.shared.parsed_source_cache.clone(),
-      shared: self.shared.clone(),
-    })));
+    let loader = Rc::new(CliModuleLoader(
+      Rc::new(CliModuleLoaderInner {
+        lib,
+        root_permissions,
+        dynamic_permissions,
+        graph_container,
+        emitter: self.shared.emitter.clone(),
+        parsed_source_cache: self.shared.parsed_source_cache.clone(),
+        shared: self.shared.clone(),
+      }),
+      Default::default(),
+    ));
     ModuleLoaderAndSourceMapGetter {
       module_loader: loader,
     }
@@ -695,6 +700,10 @@ enum CodeOrDeferredEmit<'a> {
 // todo(dsherret): this double Rc boxing is not ideal
 struct CliModuleLoader<TGraphContainer: ModuleGraphContainer>(
   Rc<CliModuleLoaderInner<TGraphContainer>>,
+  // NOTE(bartlomieju): this is temporary, for deprecated import assertions.
+  // Should be removed in Deno 2.
+  // Modules stored here should not be V8 code-cached.
+  Arc<Mutex<HashSet<String>>>,
 );
 
 impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
@@ -827,6 +836,9 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     code_cache: &[u8],
   ) -> Pin<Box<dyn Future<Output = ()>>> {
     if let Some(cache) = self.0.shared.code_cache.as_ref() {
+      if self.1.lock().contains(specifier.as_str()) {
+        return std::future::ready(()).boxed_local();
+      }
       // This log line is also used by tests.
       log::debug!(
         "Updating V8 code cache for ES module: {specifier}, [{source_hash:?}]"
@@ -841,11 +853,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     std::future::ready(()).boxed_local()
   }
 
-  fn remove_code_cache(&self, specifier: &str) {
+  fn purge_and_prevent_code_cache(&self, specifier: &str) {
     if let Some(cache) = self.0.shared.code_cache.as_ref() {
       // This log line is also used by tests.
       log::debug!("Remove V8 code cache for ES module: {specifier}");
-      cache.remove_sync(specifier);
+      cache.remove_code_cache(specifier);
+      self.1.lock().insert(specifier.to_string());
     }
   }
 
