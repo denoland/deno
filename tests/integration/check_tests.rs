@@ -376,7 +376,7 @@ fn npm_module_check_then_error() {
     "npm:@denotest/breaking-change-between-versions".to_string(),
     "npm:@denotest/breaking-change-between-versions@1.0.0".to_string(),
   );
-  lockfile_path.write(&lockfile.as_json_string());
+  lockfile_path.write(lockfile.as_json_string());
   temp_dir.write(
     "main.ts",
     "import { oldName } from 'npm:@denotest/breaking-change-between-versions'; console.log(oldName());\n",
@@ -391,7 +391,7 @@ fn npm_module_check_then_error() {
     "npm:@denotest/breaking-change-between-versions".to_string(),
     "npm:@denotest/breaking-change-between-versions@2.0.0".to_string(),
   );
-  lockfile_path.write(&lockfile.as_json_string());
+  lockfile_path.write(lockfile.as_json_string());
 
   check_command
     .run()
