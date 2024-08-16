@@ -60,7 +60,6 @@ use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
-use deno_core::url::Url;
 use deno_core::FeatureChecker;
 
 use deno_runtime::deno_fs;
