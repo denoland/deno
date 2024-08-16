@@ -789,7 +789,7 @@ fn get_latest_version_url(
     ReleaseChannel::Canary => {
       Cow::Owned(format!("canary-{target_tuple}-latest.txt"))
     }
-    ReleaseChannel::Rc => Cow::Borrowed("release-rc.txt"),
+    ReleaseChannel::Rc => Cow::Borrowed("release-rc-latest.txt"),
     _ => unreachable!(),
   };
   let query_param = match check_kind {
