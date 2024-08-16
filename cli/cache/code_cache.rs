@@ -162,6 +162,15 @@ impl CodeCacheInner {
     self.conn.execute(sql, params)?;
     Ok(())
   }
+
+  pub fn remove_sync(&self, specifier: &str) -> Result<(), AnyError> {
+    let sql = "
+      DELETE FROM codecache
+      WHERE specifier=$1;";
+    let params = params![specifier];
+    self.conn.execute(sql, params)?;
+    Ok(())
+  }
 }
 
 fn serialize_code_cache_type(

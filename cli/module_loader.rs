@@ -845,7 +845,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     if let Some(cache) = self.0.shared.code_cache.as_ref() {
       // This log line is also used by tests.
       log::debug!("Remove V8 code cache for ES module: {specifier}");
-      cache.remove_sync(&specifier);
+      cache.remove_sync(specifier);
     }
   }
 
