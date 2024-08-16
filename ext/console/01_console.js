@@ -364,9 +364,6 @@ const nodeCustomInspectSymbol = SymbolFor("nodejs.util.inspect.custom");
 // Internal only, shouldn't be used by users.
 const privateCustomInspect = SymbolFor("Deno.privateCustomInspect");
 
-// Used to keep track if it's a wrapped inspect proxy
-const privateCustomInspectProxy = SymbolFor("Deno.privateCustomInspectProxy");
-
 function getUserOptions(ctx, isCrossContext) {
   const ret = {
     stylize: ctx.stylize,
@@ -454,7 +451,7 @@ function formatValue(
 
   // Provide a hook for user-specified inspect functions.
   // Check that value is an object with an inspect function on it.
-  if (ctx.customInspect) {
+  if (ctx.customInspect && proxyDetails === null) {
     if (
       ReflectHas(value, customInspect) &&
       typeof value[customInspect] === "function"
@@ -627,7 +624,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
 
   let extrasType = kObjectType;
 
-  if (proxyDetails !== null && !ReflectGet(value, privateCustomInspectProxy)) {
+  if (proxyDetails !== null) {
     if (ctx.showProxy) {
       return `Proxy ` + formatValue(ctx, proxyDetails, recurseTimes);
     }

@@ -4,9 +4,12 @@
 /// <reference lib="esnext" />
 
 declare module "ext:deno_console/01_console.js" {
-  function createFilteredInspectProxy<TObject>(params: {
-    object: TObject;
-    keys: (keyof TObject)[];
-    evaluate: boolean;
-  }): Record<string, unknown>;
+  function privateInspect<TObject>(
+    object: TObject,
+    keys: (keyof TObject)[],
+    // deno-lint-ignore no-explicit-any
+    inspect: any,
+    // deno-lint-ignore no-explicit-any
+    inspectOptions: any,
+  ): string;
 }

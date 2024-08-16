@@ -435,9 +435,7 @@ class Blob {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    // return privateInspect(this, ["size", "type"], inspect, inspectOptions);
-    const { size, type } = this;
-    const value = { size, type };
+    const value = { size: this[_size], type: this[_type] };
     return `${this.constructor.name} ${inspect(value, inspectOptions)}`;
   }
 }

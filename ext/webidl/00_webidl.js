@@ -1138,13 +1138,6 @@ function assertBranded(self, prototype) {
   if (
     !ObjectPrototypeIsPrototypeOf(prototype, self) || self[brand] !== brand
   ) {
-    console.log(
-      self.toString(),
-      prototype.toString(),
-      self === prototype,
-      self[brand],
-      brand.toString(),
-    );
     throw new TypeError("Illegal invocation");
   }
 }
