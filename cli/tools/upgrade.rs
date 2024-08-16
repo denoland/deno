@@ -35,6 +35,7 @@ use std::time::Duration;
 
 const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
 const CANARY_URL: &str = "https://dl.deno.land/canary";
+const RC_URL: &str = "https://dl.deno.land/release";
 
 pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -474,7 +475,7 @@ pub async fn upgrade(
 
   let download_url = get_download_url(
     &selected_version_to_upgrade.version_or_hash,
-    requested_version.is_canary(),
+    requested_version.release_channel(),
   )?;
   log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
   let Some(archive_data) = download_package(&client, download_url).await?
@@ -505,7 +506,7 @@ pub async fn upgrade(
   if upgrade_flags.dry_run {
     fs::remove_file(&new_exe_path)?;
     log::info!("Upgraded successfully (dry run)");
-    if !requested_version.is_canary() {
+    if requested_version.release_channel() == ReleaseChannel::Stable {
       print_release_notes(
         version::DENO_VERSION_INFO.deno,
         &selected_version_to_upgrade.version_or_hash,
@@ -529,7 +530,7 @@ pub async fn upgrade(
     "\nUpgraded successfully to Deno {}\n",
     colors::green(selected_version_to_upgrade.display())
   );
-  if !requested_version.is_canary() {
+  if requested_version.release_channel() == ReleaseChannel::Stable {
     print_release_notes(
       version::DENO_VERSION_INFO.deno,
       &selected_version_to_upgrade.display,
@@ -583,14 +584,10 @@ impl RequestedVersion {
   }
 
   /// Channels that use Git hashes as versions are considered canary.
-  pub fn is_canary(&self) -> bool {
+  pub fn release_channel(&self) -> ReleaseChannel {
     match self {
-      Self::Latest(channel) => {
-        matches!(channel, ReleaseChannel::Canary | ReleaseChannel::Rc)
-      }
-      Self::SpecificVersion(channel, _) => {
-        matches!(channel, ReleaseChannel::Canary | ReleaseChannel::Rc)
-      }
+      Self::Latest(channel) => *channel,
+      Self::SpecificVersion(channel, _) => *channel,
     }
   }
 }
@@ -663,7 +660,7 @@ async fn find_latest_version_to_upgrade(
       .await?;
 
   let (maybe_newer_latest_version, current_version) = match release_channel {
-    ReleaseChannel::Stable => {
+    ReleaseChannel::Stable | ReleaseChannel::Rc => {
       let current_version = version::DENO_VERSION_INFO.deno;
       let current_is_most_recent = if version::DENO_VERSION_INFO.release_channel
         != ReleaseChannel::Canary
@@ -684,17 +681,6 @@ async fn find_latest_version_to_upgrade(
       }
     }
     ReleaseChannel::Canary => {
-      let current_version = version::DENO_VERSION_INFO.git_hash;
-      let current_is_most_recent =
-        current_version == latest_version_found.version_or_hash;
-
-      if !force && current_is_most_recent {
-        (None, current_version)
-      } else {
-        (Some(latest_version_found), current_version)
-      }
-    }
-    ReleaseChannel::Rc => {
       let current_version = version::DENO_VERSION_INFO.git_hash;
       let current_is_most_recent =
         current_version == latest_version_found.version_or_hash;
@@ -808,11 +794,21 @@ fn base_upgrade_url() -> Cow<'static, str> {
   }
 }
 
-fn get_download_url(version: &str, is_canary: bool) -> Result<Url, AnyError> {
-  let download_url = if is_canary {
-    format!("{}/{}/{}", CANARY_URL, version, *ARCHIVE_NAME)
-  } else {
-    format!("{}/download/v{}/{}", RELEASE_URL, version, *ARCHIVE_NAME)
+fn get_download_url(
+  version: &str,
+  release_channel: ReleaseChannel,
+) -> Result<Url, AnyError> {
+  let download_url = match release_channel {
+    ReleaseChannel::Stable => {
+      format!("{}/download/v{}/{}", RELEASE_URL, version, *ARCHIVE_NAME)
+    }
+    ReleaseChannel::Rc => {
+      format!("{}/v{}/{}", RC_URL, version, *ARCHIVE_NAME)
+    }
+    ReleaseChannel::Canary => {
+      format!("{}/{}/{}", CANARY_URL, version, *ARCHIVE_NAME)
+    }
+    ReleaseChannel::Lts => unreachable!(),
   };
 
   Url::parse(&download_url).with_context(|| {
@@ -1373,7 +1369,7 @@ mod test {
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Lsp
       ),
-      "https://dl.deno.land/release-rc.txt?lsp"
+      "https://dl.deno.land/release-rc-latest.txt?lsp"
     );
     assert_eq!(
       get_latest_version_url(
@@ -1381,7 +1377,7 @@ mod test {
         "aarch64-apple-darwin",
         UpgradeCheckKind::Execution
       ),
-      "https://dl.deno.land/release-rc.txt"
+      "https://dl.deno.land/release-rc-latest.txt"
     );
     assert_eq!(
       get_latest_version_url(
@@ -1389,7 +1385,7 @@ mod test {
         "aarch64-apple-darwin",
         UpgradeCheckKind::Lsp
       ),
-      "https://dl.deno.land/release-rc.txt?lsp"
+      "https://dl.deno.land/release-rc-latest.txt?lsp"
     );
     assert_eq!(
       get_latest_version_url(
@@ -1397,7 +1393,7 @@ mod test {
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Execution
       ),
-      "https://dl.deno.land/release-rc.txt"
+      "https://dl.deno.land/release-rc-latest.txt"
     );
     assert_eq!(
       get_latest_version_url(
@@ -1405,7 +1401,7 @@ mod test {
         "x86_64-pc-windows-msvc",
         UpgradeCheckKind::Lsp
       ),
-      "https://dl.deno.land/release-rc.txt?lsp"
+      "https://dl.deno.land/release-rc-latest.txt?lsp"
     );
   }
 
