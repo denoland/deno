@@ -16,14 +16,14 @@ pub enum ReleaseChannel {
   #[allow(unused)]
   Lts,
 
-  /// Release candidate, poiting to a git hash
+  /// Release candidate, eg. 1.46.0-rc.0, 2.0.0-rc.1
   Rc,
 }
 
 impl ReleaseChannel {
   pub fn name(&self) -> &str {
     match self {
-      Self::Stable => "latest",
+      Self::Stable => "stable",
       Self::Canary => "canary",
       Self::Rc => "release candidate",
       Self::Lts => "long term support",
