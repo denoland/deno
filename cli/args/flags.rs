@@ -1450,6 +1450,7 @@ pub fn clap_root() -> Command {
   );
 
   run_args(Command::new("deno"), true)
+    .args(unstable_args(UnstableArgsConfig::ResolutionAndRuntime))
     .next_line_help(false)
     .bin_name("deno")
     .styles(
