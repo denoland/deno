@@ -36,7 +36,6 @@ deno_core::extension!(
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotOptions {
-  pub deno_version: String,
   pub ts_version: String,
   pub v8_version: &'static str,
   pub target: String,
@@ -54,7 +53,6 @@ impl Default for SnapshotOptions {
     };
 
     Self {
-      deno_version: "dev".to_owned(),
       ts_version: "n/a".to_owned(),
       v8_version: deno_core::v8_version(),
       target,
