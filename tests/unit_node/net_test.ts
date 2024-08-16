@@ -77,6 +77,7 @@ Deno.test("[node/net] net.connect().unref() works", async () => {
     port: 0, // any available port will do
     handler: () => new Response("hello"),
     onListen: async ({ port, hostname }) => {
+      hostname = Deno.build.os === "windows" ? "localhost" : hostname;
       const { stdout, stderr } = await new Deno.Command(Deno.execPath(), {
         args: [
           "eval",
