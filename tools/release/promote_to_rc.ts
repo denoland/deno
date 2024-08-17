@@ -124,7 +124,7 @@ async function runRcodesign(
   target: string,
   rcBinaryName: string,
 ) {
-  if (!target.includes("apple")) {
+  if (!target.includes("apple") || rcBinaryName.includes("denort")) {
     return;
   }
   $.logStep(`Codesign ${rcBinaryName}`);
