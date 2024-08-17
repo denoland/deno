@@ -176,7 +176,7 @@ async function promoteBinaryToRc(binary: string, target: string) {
   // Remove the unpatched binary and rename patched one.
   await remove(unzippedName);
   await Deno.rename(rcBinaryName, unzippedName);
-  await runRcodesign(target, rcBinaryName);
+  await runRcodesign(target, unzippedName);
   // Set executable permission
   if (!target.includes("windows")) {
     Deno.chmod(unzippedName, 0o777);
