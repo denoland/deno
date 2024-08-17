@@ -128,12 +128,10 @@ async function runRcodesign(
     return;
   }
   $.logStep(`Codesign ${rcBinaryName}`);
-  const tempFile = $.path("temp_p12");
+  const tempFile = $.path("temp.p12");
   let output;
   try {
     await $`echo $APPLE_CODESIGN_KEY | base64 -d`.stdout(tempFile);
-    const size = (await Deno.readFile(tempFile)).length;
-    $.logLight("Codesign file size", size);
     output =
       await $`rcodesign sign ./${rcBinaryName} --code-signature-flags=runtime --code-signature-flags=runtime --p12-password="$APPLE_CODESIGN_PASSWORD" --p12-file=${tempFile} --entitlements-xml-file=cli/entitlements.plist`;
   } finally {
