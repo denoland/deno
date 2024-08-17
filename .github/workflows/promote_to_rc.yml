@@ -10,7 +10,7 @@ on:
 jobs:
   promote-to-rc:
     name: Promote to Release Candidate
-    runs-on: ubuntu-latest
+    runs-on: macOS-latest
     if: github.repository == 'denoland/deno'
     steps:
       - name: Clone repository
