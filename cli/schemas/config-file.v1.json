@@ -613,7 +613,7 @@
       "items": {
         "type": "string"
       },
-      "description": "List of relative paths to folders containing JSR packages to use local versions of."
+      "description": "UNSTABLE: List of relative paths to folders containing JSR packages to use local versions of."
     },
     "workspace": {
       "oneOf": [
