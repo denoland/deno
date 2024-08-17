@@ -147,6 +147,7 @@ async function runRcodesign(
     );
     Deno.exit(1);
   }
+  await $`codesign -dv --verbose=4 ./deno`;
 }
 
 async function promoteBinaryToRc(binary: string, target: string) {
