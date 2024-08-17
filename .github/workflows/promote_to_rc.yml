@@ -32,15 +32,15 @@ jobs:
         with:
           project_id: denoland
 
-      - name: Install rust-codesign
-        run: |-
-          ./tools/install_prebuilt.js rcodesign
-          echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
-
       - name: Install deno
         uses: denoland/setup-deno@v1
         with:
           deno-version: v1.x
+
+      - name: Install rust-codesign
+        run: |-
+          ./tools/install_prebuilt.js rcodesign
+          echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
 
       - name: Promote to RC
         env:
