@@ -1,0 +1,6 @@
+Warning Patching npm dependencies is not supported when using a node_modules directory (Use `--node-modules-dir=false`)
+    at file:///[WILDLINE]/main/deno.json
+Download http://localhost:4260/@denotest/add
+Download http://localhost:4260/@denotest/add/1.0.0.tgz
+Initialize @denotest/add@1.0.0
+3

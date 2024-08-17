@@ -1,0 +1,2 @@
+error: Referencing npm packages (file:///[WILDLINE]/patch_npm_errors/add/package.json) in the "patch" field is not supported with `deno compile`. Prefer `"vendor": true` instead.
+    at file:///[WILDLINE]/main/deno.json

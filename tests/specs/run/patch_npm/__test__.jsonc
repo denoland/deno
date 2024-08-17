@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "global": {
+      "args": "run --allow-read=. main/main.ts",
+      "output": "main.out"
+    },
+    "local": {
+      "tempDir": true,
+      "args": "run --allow-read=. --node-modules-dir main/main.ts",
+      "output": "local.out"
+    }
+  }
+}

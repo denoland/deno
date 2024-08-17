@@ -1494,14 +1494,17 @@ impl ConfigData {
     let resolver = deno_core::unsync::spawn({
       let workspace = member_dir.workspace.clone();
       let file_fetcher = file_fetcher.cloned();
-      let using_node_modules_dir = node_modules_dir.is_some();
+      let has_node_modules_dir = node_modules_dir.is_some();
       async move {
         workspace
           .create_resolver(
             CreateResolverOptions {
               pkg_json_dep_resolution,
               specified_import_map,
-              using_node_modules_dir,
+              npm_resolver_mode: match has_node_modules_dir {
+                true => deno_config::workspace::NpmResolverMode::Local,
+                false => deno_config::workspace::NpmResolverMode::Global,
+              },
             },
             move |specifier| {
               let specifier = specifier.clone();

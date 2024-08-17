@@ -1088,7 +1088,10 @@ impl CliOptions {
           CreateResolverOptions {
             pkg_json_dep_resolution,
             specified_import_map: cli_arg_specified_import_map,
-            using_node_modules_dir: self.has_node_modules_dir(),
+            npm_resolver_mode: match self.has_node_modules_dir() {
+              true => deno_config::workspace::NpmResolverMode::Local,
+              false => deno_config::workspace::NpmResolverMode::Global,
+            },
           },
           |specifier| {
             let specifier = specifier.clone();
