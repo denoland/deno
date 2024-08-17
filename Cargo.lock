@@ -1390,6 +1390,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.303.0"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=remove_code_cache#ef0c7e87ba0d7889a3198a32bf856fc8092d3ce3"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1887,6 +1888,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.179.0"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=remove_code_cache#ef0c7e87ba0d7889a3198a32bf856fc8092d3ce3"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
@@ -6249,6 +6251,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.212.0"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=remove_code_cache#ef0c7e87ba0d7889a3198a32bf856fc8092d3ce3"
 dependencies = [
  "num-bigint",
  "serde",
