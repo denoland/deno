@@ -132,9 +132,10 @@ async function runRcodesign(
   const codesignKey = Deno.env.get("APPLE_CODESIGN_KEY");
   const codesignPassword = Deno.env.get("APPLE_CODESIGN_PASSWORD");
   const decodedKey = decodeBase64(codesignKey);
+  await Deno.writeTextFile("p12.p12", decodedKey);
   const output =
-    await $`rcodesign sign ${rcBinaryName} --code-signature-flags=runtime --code-signature-flags=runtime --p12-password="${codesignPassword}" --p12-file=<${decodedKey} --entitlements-xml-file=cli/entitlements.plist`;
-
+    await $`rcodesign sign ${rcBinaryName} --code-signature-flags=runtime --code-signature-flags=runtime --p12-password="${codesignPassword}" --p12-file=p12.p12 --entitlements-xml-file=cli/entitlements.plist`;
+  remove("p12.p12");
   if (output.code !== 0) {
     $.logError(
       `Failed to codesign ${rcBinaryName} (error code ${output.code})`,
