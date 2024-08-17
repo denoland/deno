@@ -21,6 +21,7 @@ use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceResolver;
+use deno_config::workspace::WorkspaceResolverDiagnostic;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -1493,12 +1494,14 @@ impl ConfigData {
     let resolver = deno_core::unsync::spawn({
       let workspace = member_dir.workspace.clone();
       let file_fetcher = file_fetcher.cloned();
+      let using_node_modules_dir = node_modules_dir.is_some();
       async move {
         workspace
           .create_resolver(
             CreateResolverOptions {
               pkg_json_dep_resolution,
               specified_import_map,
+              using_node_modules_dir,
             },
             move |specifier| {
               let specifier = specifier.clone();
@@ -1534,16 +1537,29 @@ impl ConfigData {
         pkg_json_dep_resolution,
       )
     });
-    if !resolver.diagnostics().is_empty() {
-      lsp_warn!(
-        "  Import map diagnostics:\n{}",
-        resolver
-          .diagnostics()
-          .iter()
-          .map(|d| format!("    - {d}"))
-          .collect::<Vec<_>>()
-          .join("\n")
-      );
+    for diagnostic in resolver.diagnostics() {
+      match diagnostic {
+        WorkspaceResolverDiagnostic::ImportMap(diagnostics) => {
+          lsp_warn!(
+            "  Import map diagnostics:\n{}",
+            diagnostics
+              .iter()
+              .map(|d| format!("    - {d}"))
+              .collect::<Vec<_>>()
+              .join("\n")
+          );
+        }
+        WorkspaceResolverDiagnostic::NpmPatchIgnored(diagnostic) => {
+          lsp_warn!(
+            "  {}",
+            format!("{}", diagnostic)
+              .split('\n')
+              .map(|l| format!("  {}", l))
+              .collect::<Vec<_>>()
+              .join("\n")
+          );
+        }
+      }
     }
     let unstable_sloppy_imports = std::env::var("DENO_UNSTABLE_SLOPPY_IMPORTS")
       .is_ok()

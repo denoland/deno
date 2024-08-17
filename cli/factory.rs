@@ -58,10 +58,12 @@ use std::path::PathBuf;
 
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceResolver;
+use deno_config::workspace::WorkspaceResolverDiagnostic;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::FeatureChecker;
 
+use deno_runtime::colors;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::DenoFsNodeResolverEnv;
 use deno_runtime::deno_node::NodeResolver;
@@ -436,16 +438,22 @@ impl CliFactory {
             },
           )
           .await?;
-        if !resolver.diagnostics().is_empty() {
-          warn!(
-            "Import map diagnostics:\n{}",
-            resolver
-              .diagnostics()
-              .iter()
-              .map(|d| format!("  - {d}"))
-              .collect::<Vec<_>>()
-              .join("\n")
-          );
+        for diagnostic in resolver.diagnostics() {
+          match diagnostic {
+            WorkspaceResolverDiagnostic::ImportMap(diagnostics) => {
+              warn!(
+                "Import map diagnostics:\n{}",
+                diagnostics
+                  .iter()
+                  .map(|d| format!("  - {d}"))
+                  .collect::<Vec<_>>()
+                  .join("\n")
+              );
+            }
+            WorkspaceResolverDiagnostic::NpmPatchIgnored(diagnostic) => {
+              warn!("{} {}", colors::yellow("Warning"), diagnostic);
+            }
+          }
         }
         Ok(Arc::new(resolver))
       })

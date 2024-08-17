@@ -1088,6 +1088,7 @@ impl CliOptions {
           CreateResolverOptions {
             pkg_json_dep_resolution,
             specified_import_map: cli_arg_specified_import_map,
+            using_node_modules_dir: self.has_node_modules_dir(),
           },
           |specifier| {
             let specifier = specifier.clone();
