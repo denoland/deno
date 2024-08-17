@@ -120,6 +120,26 @@ async function runPatchver(
   }
 }
 
+async function runRcodesign(
+  binary: string,
+  target: string,
+  rcBinaryName: string,
+) {
+  if (!target.includes("apple")) {
+    return;
+  }
+  $.logStep(`Codesign ${rcBinaryName}`);
+  const output =
+    await $`rcodesign sign ${rcBinaryName} --code-signature-flags=runtime --code-signature-flags=runtime --p12-password="$APPLE_CODESIGN_PASSWORD" --p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) --entitlements-xml-file=cli/entitlements.plist`;
+
+  if (output.code !== 0) {
+    $.logError(
+      `Failed to codesign ${rcBinaryName} (error code ${output.code})`,
+    );
+    Deno.exit(1);
+  }
+}
+
 async function promoteBinaryToRc(binary: string, target: string) {
   const unzippedName = getUnzippedFilename(binary, target);
   const rcBinaryName = getRcBinaryName(binary, target);
@@ -146,6 +166,8 @@ async function promoteBinaryToRc(binary: string, target: string) {
     rcBinaryName,
   );
   await runPatchver(unzippedName, target, rcBinaryName);
+  await runRcodesign(unzippedName, target, rcBinaryName);
+
   // Remove the unpatched binary and rename patched one.
   await remove(unzippedName);
   await Deno.rename(rcBinaryName, unzippedName);
