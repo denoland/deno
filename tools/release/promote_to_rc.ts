@@ -7,10 +7,10 @@ import { patchver } from "jsr:@deno/patchver@0.1.0";
 
 const SUPPORTED_TARGETS = [
   "aarch64-apple-darwin",
-  "aarch64-unknown-linux-gnu",
-  "x86_64-apple-darwin",
-  "x86_64-pc-windows-msvc",
-  "x86_64-unknown-linux-gnu",
+  // "aarch64-unknown-linux-gnu",
+  // "x86_64-apple-darwin",
+  // "x86_64-pc-windows-msvc",
+  // "x86_64-unknown-linux-gnu",
 ];
 
 const DENO_BINARIES = [
@@ -132,8 +132,10 @@ async function runRcodesign(
   let output;
   try {
     await $`echo $APPLE_CODESIGN_KEY | base64 -d`.stdout(tempFile);
+    const size = (await Deno.readFile(tempFile)).length;
+    $.logLight("Codesign file size", size);
     output =
-      await $`rcodesign sign ${rcBinaryName} --code-signature-flags=runtime --code-signature-flags=runtime --p12-password="$APPLE_CODESIGN_PASSWORD" --p12-file=${tempFile} --entitlements-xml-file=cli/entitlements.plist`;
+      await $`rcodesign sign ./${rcBinaryName} --code-signature-flags=runtime --code-signature-flags=runtime --p12-password="$APPLE_CODESIGN_PASSWORD" --p12-file=${tempFile} --entitlements-xml-file=cli/entitlements.plist`;
   } finally {
     try {
       tempFile.removeSync();
