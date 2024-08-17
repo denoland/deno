@@ -123,6 +123,7 @@ async function runPatchver(
 async function runRcodesign(
   target: string,
   rcBinaryName: string,
+  commitHash: string,
 ) {
   if (!target.includes("apple") || rcBinaryName.includes("denort")) {
     return;
@@ -133,7 +134,7 @@ async function runRcodesign(
   try {
     await $`echo $APPLE_CODESIGN_KEY | base64 -d`.stdout(tempFile);
     output =
-      await $`rcodesign sign ./${rcBinaryName} --code-signature-flags=runtime --code-signature-flags=runtime --p12-password="$APPLE_CODESIGN_PASSWORD" --p12-file=${tempFile} --entitlements-xml-file=cli/entitlements.plist`;
+      await $`rcodesign sign ./${rcBinaryName} --binary-identifier=deno-${commitHash} --code-signature-flags=runtime --code-signature-flags=runtime --p12-password="$APPLE_CODESIGN_PASSWORD" --p12-file=${tempFile} --entitlements-xml-file=cli/entitlements.plist`;
   } finally {
     try {
       tempFile.removeSync();
@@ -150,7 +151,11 @@ async function runRcodesign(
   await $`codesign -dv --verbose=4 ./deno`;
 }
 
-async function promoteBinaryToRc(binary: string, target: string) {
+async function promoteBinaryToRc(
+  binary: string,
+  target: string,
+  commitHash: string,
+) {
   const unzippedName = getUnzippedFilename(binary, target);
   const rcBinaryName = getRcBinaryName(binary, target);
   const archiveName = getArchiveName(binary, target);
@@ -179,7 +184,7 @@ async function promoteBinaryToRc(binary: string, target: string) {
   // Remove the unpatched binary and rename patched one.
   await remove(unzippedName);
   await Deno.rename(rcBinaryName, unzippedName);
-  await runRcodesign(target, unzippedName);
+  await runRcodesign(target, unzippedName, commitHash);
   // Set executable permission
   if (!target.includes("windows")) {
     Deno.chmod(unzippedName, 0o777);
@@ -189,7 +194,7 @@ async function promoteBinaryToRc(binary: string, target: string) {
   await remove(unzippedName);
 }
 
-async function promoteBinariesToRc() {
+async function promoteBinariesToRc(commitHash: string) {
   const totalCanaries = SUPPORTED_TARGETS.length * DENO_BINARIES.length;
 
   for (let targetIdx = 0; targetIdx < SUPPORTED_TARGETS.length; targetIdx++) {
@@ -204,7 +209,7 @@ async function promoteBinariesToRc() {
         target,
         "to RC...",
       );
-      await promoteBinaryToRc(binaryName, target);
+      await promoteBinaryToRc(binaryName, target, commitHash);
       $.logLight(
         `[${currentIdx}/${totalCanaries}]`,
         "Promoted",
@@ -234,7 +239,7 @@ async function main() {
   await fetchLatestCanaryBinaries(commitHash);
   console.log("All canary binaries ready");
   $.logStep("Promote canary binaries to RC...");
-  await promoteBinariesToRc();
+  await promoteBinariesToRc(commitHash);
 
   // Finally dump the version name to a `release.txt` file for uploading to GCP
   await dumpRcVersion();
