@@ -137,7 +137,9 @@ async function runRcodesign(
   } finally {
     try {
       tempFile.removeSync();
-    } catch {}
+    } catch {
+      // pass
+    }
   }
   if (output.code !== 0) {
     $.logError(
