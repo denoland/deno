@@ -216,13 +216,11 @@ impl NpmResolver for ByonmCliNpmResolver {
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    if specifier.scheme() != "file" {
-      return false;
-    }
-    specifier
-      .path()
-      .to_ascii_lowercase()
-      .contains("/node_modules/")
+    specifier.scheme() == "file"
+      && specifier
+        .path()
+        .to_ascii_lowercase()
+        .contains("/node_modules/")
   }
 }
 

@@ -553,10 +553,6 @@ impl NpmResolver for ManagedCliNpmResolver {
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
-    if specifier.scheme() != "file" {
-      return false;
-    }
-
     let root_dir_url = self.fs_resolver.root_dir_url();
     debug_assert!(root_dir_url.as_str().ends_with('/'));
     specifier.as_ref().starts_with(root_dir_url.as_str())

@@ -3,7 +3,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_config::workspace::NpmPackageConfig;
 use deno_config::workspace::Workspace;
 use deno_package_json::PackageJsonDepValue;
 use deno_semver::package::PackageReq;
@@ -50,13 +49,11 @@ impl PackageJsonInstallDepsProvider {
         };
         match dep {
           PackageJsonDepValue::Req(pkg_req) => {
-            let matches_pkg = |pkg: &NpmPackageConfig| {
+            let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
               pkg.matches_req(&pkg_req)
-              // do not resolve to the current package
-              && pkg.pkg_json.path != pkg_json.path
-            };
-            let workspace_pkg =
-              workspace_npm_pkgs.iter().find(|pkg| matches_pkg(pkg));
+                // do not resolve to the current package
+                && pkg.pkg_json.path != pkg_json.path
+            });
 
             if let Some(pkg) = workspace_pkg {
               workspace_pkgs.push(InstallNpmWorkspacePkg {
@@ -90,7 +87,6 @@ impl PackageJsonInstallDepsProvider {
 
       remote_pkgs.extend(pkg_pkgs);
     }
-
     remote_pkgs.shrink_to_fit();
     workspace_pkgs.shrink_to_fit();
     Self {
