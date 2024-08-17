@@ -121,7 +121,6 @@ async function runPatchver(
 }
 
 async function runRcodesign(
-  binary: string,
   target: string,
   rcBinaryName: string,
 ) {
@@ -166,7 +165,7 @@ async function promoteBinaryToRc(binary: string, target: string) {
     rcBinaryName,
   );
   await runPatchver(unzippedName, target, rcBinaryName);
-  await runRcodesign(unzippedName, target, rcBinaryName);
+  await runRcodesign(target, rcBinaryName);
 
   // Remove the unpatched binary and rename patched one.
   await remove(unzippedName);
