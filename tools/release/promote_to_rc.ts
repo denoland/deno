@@ -4,6 +4,7 @@
 import { $ } from "jsr:@david/dax@0.41.0";
 import { gray } from "jsr:@std/fmt@1/colors";
 import { patchver } from "jsr:@deno/patchver@0.1.0";
+import { decodeBase64 } from "jsr:@std/encoding@1";
 
 const SUPPORTED_TARGETS = [
   "aarch64-apple-darwin",
@@ -128,8 +129,11 @@ async function runRcodesign(
     return;
   }
   $.logStep(`Codesign ${rcBinaryName}`);
+  const codesignKey = Deno.env.get("APPLE_CODESIGN_KEY");
+  const codesignPassword = Deno.env.get("APPLE_CODESIGN_PASSWORD");
+  const decodedKey = decodeBase64(codesignKey);
   const output =
-    await $`rcodesign sign ${rcBinaryName} --code-signature-flags=runtime --code-signature-flags=runtime --p12-password="$APPLE_CODESIGN_PASSWORD" --p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) --entitlements-xml-file=cli/entitlements.plist`;
+    await $`rcodesign sign ${rcBinaryName} --code-signature-flags=runtime --code-signature-flags=runtime --p12-password="${codesignPassword}" --p12-file=<${decodedKey} --entitlements-xml-file=cli/entitlements.plist`;
 
   if (output.code !== 0) {
     $.logError(
