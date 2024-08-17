@@ -63,7 +63,6 @@ use dotenvy::from_filename;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
-use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
@@ -882,7 +881,6 @@ impl CliOptions {
         additional_config_file_names,
         discover_pkg_json,
         maybe_vendor_override,
-        node_modules_dir_flag: flags.node_modules_dir,
       }
     };
     let resolve_empty_options = || WorkspaceDirectoryEmptyOptions {
@@ -1915,26 +1913,6 @@ pub fn config_to_deno_graph_workspace_member(
     nv,
     exports: config.to_exports_config()?.into_map(),
   })
-}
-
-pub fn workspace_patched_npm_packages(workspace: &Workspace) -> BTreeSet<Url> {
-  let mut patched_pkgs = BTreeSet::new();
-  for folder in workspace.patch_folders() {
-    let Some(pkg_json) = folder.pkg_json.as_ref() else {
-      continue;
-    };
-    let dir_path = pkg_json.dir_path();
-    if let Some(canonicalized_dir) =
-      canonicalize_path_maybe_not_exists(dir_path).ok()
-    {
-      if canonicalized_dir != dir_path {
-        patched_pkgs
-          .insert(Url::from_directory_path(canonicalized_dir).unwrap());
-      }
-    }
-    patched_pkgs.insert(Url::from_directory_path(pkg_json.dir_path()).unwrap());
-  }
-  patched_pkgs
 }
 
 fn load_env_variables_from_env_file(filename: Option<&String>) {

@@ -448,7 +448,6 @@ async fn create_npm_resolver(
             .map(|p| p.join("node_modules/"))
         })
       }),
-      patched_npm_pkgs: Default::default(),
     })
   } else {
     CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
@@ -483,7 +482,6 @@ async fn create_npm_resolver(
         .unwrap_or_else(create_default_npmrc),
       npm_system_info: NpmSystemInfo::default(),
       lifecycle_scripts: Default::default(),
-      patched_npm_pkgs: Default::default(),
     })
   };
   Some(create_cli_npm_resolver_for_lsp(options).await)

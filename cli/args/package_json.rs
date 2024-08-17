@@ -41,9 +41,7 @@ impl PackageJsonInstallDepsProvider {
     let mut workspace_pkgs = Vec::new();
     let mut remote_pkgs = Vec::new();
     let workspace_npm_pkgs = workspace.npm_packages();
-    let patch_npm_pkgs = workspace.patch_npm_packages();
-    for pkg_json in workspace.package_jsons().chain(workspace.patch_pkg_jsons())
-    {
+    for pkg_json in workspace.package_jsons() {
       let deps = pkg_json.resolve_local_package_json_deps();
       let mut pkg_pkgs = Vec::with_capacity(deps.len());
       for (alias, dep) in deps {
@@ -66,7 +64,7 @@ impl PackageJsonInstallDepsProvider {
                 base_dir: pkg_json.dir_path().to_path_buf(),
                 target_dir: pkg.pkg_json.dir_path().to_path_buf(),
               });
-            } else if !patch_npm_pkgs.iter().any(|pkg| matches_pkg(pkg)) {
+            } else {
               pkg_pkgs.push(InstallNpmRemotePkg {
                 alias,
                 base_dir: pkg_json.dir_path().to_path_buf(),

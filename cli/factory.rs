@@ -1,7 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::get_root_cert_store;
-use crate::args::workspace_patched_npm_packages;
 use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
@@ -350,7 +349,6 @@ impl CliFactory {
       .get_or_try_init_async(async {
         let fs = self.fs();
         let cli_options = self.cli_options()?;
-        let patched_npm_pkgs = workspace_patched_npm_packages(cli_options.workspace());
 
         // For `deno install` we want to force the managed resolver so it can set up `node_modules/` directory.
         create_cli_npm_resolver(if cli_options.use_byonm() && !matches!(cli_options.sub_command(), DenoSubcommand::Install(_) | DenoSubcommand::Add(_) | DenoSubcommand::Remove(_)) {
@@ -363,7 +361,6 @@ impl CliFactory {
               None => canonicalize_path_maybe_not_exists(cli_options.initial_cwd())?
                 .join("node_modules"),
             }),
-            patched_npm_pkgs,
           })
         } else {
           CliNpmResolverCreateOptions::Managed(CliNpmResolverManagedCreateOptions {
@@ -393,7 +390,6 @@ impl CliFactory {
             npm_system_info: cli_options.npm_system_info(),
             npmrc: cli_options.npmrc().clone(),
             lifecycle_scripts: cli_options.lifecycle_scripts_config(),
-            patched_npm_pkgs,
           })
         }).await
       }.boxed_local())

@@ -1,5 +1,0 @@
-{
-  "args": "compile --output main main/main.ts",
-  "exitCode": 1,
-  "output": "main.out"
-}

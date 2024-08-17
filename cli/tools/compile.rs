@@ -53,16 +53,6 @@ pub async fn compile(
     );
   }
 
-  // error if someone specifies a patch field referencing npm packages
-  if let Some(pkg_json) = cli_options.workspace().patch_pkg_jsons().next() {
-    let root_deno_json_url = cli_options
-      .workspace()
-      .root_deno_json()
-      .map(|d| d.specifier.clone())
-      .unwrap_or_else(|| cli_options.workspace().root_dir().as_ref().clone());
-    bail!("Referencing npm packages ({}) in the \"patch\" field is not supported with `deno compile`. Prefer `\"vendor\": true` instead.\n    at {}", pkg_json.specifier(), root_deno_json_url);
-  }
-
   let output_path = resolve_compile_executable_output_path(
     http_client,
     &compile_flags,

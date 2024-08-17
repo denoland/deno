@@ -1171,7 +1171,6 @@ impl ConfigData {
             discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
             config_parse_options: Default::default(),
             maybe_vendor_override: None,
-            node_modules_dir_flag: None,
           },
         )
         .map(Arc::new)

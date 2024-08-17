@@ -515,8 +515,6 @@ pub async fn run(
               registry_configs: Default::default(),
             }),
             lifecycle_scripts: Default::default(),
-            // not supported in deno compile
-            patched_npm_pkgs: Default::default(),
           },
         ))
         .await?;
@@ -536,8 +534,6 @@ pub async fn run(
         CliNpmResolverCreateOptions::Byonm(CliNpmResolverByonmCreateOptions {
           fs: fs.clone(),
           root_node_modules_dir,
-          // not supported in deno compile
-          patched_npm_pkgs: Default::default(),
         }),
       )
       .await?;
@@ -565,8 +561,6 @@ pub async fn run(
             // so no need to create actual `.npmrc` configuration.
             npmrc: create_default_npmrc(),
             lifecycle_scripts: Default::default(),
-            // not supported in deno compile
-            patched_npm_pkgs: Default::default(),
           },
         ))
         .await?;

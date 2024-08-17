@@ -1,6 +1,5 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -11,7 +10,6 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
@@ -76,8 +74,6 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub package_json_deps_provider: Arc<PackageJsonInstallDepsProvider>,
   pub npmrc: Arc<ResolvedNpmRc>,
   pub lifecycle_scripts: LifecycleScriptsConfig,
-  /// Directories of npm packages that have been patched.
-  pub patched_npm_pkgs: BTreeSet<Url>,
 }
 
 pub async fn create_managed_npm_resolver_for_lsp(
@@ -107,7 +103,6 @@ pub async fn create_managed_npm_resolver_for_lsp(
       options.npm_system_info,
       snapshot,
       options.lifecycle_scripts,
-      options.patched_npm_pkgs,
     )
   })
   .await
@@ -133,7 +128,6 @@ pub async fn create_managed_npm_resolver(
     options.npm_system_info,
     snapshot,
     options.lifecycle_scripts,
-    options.patched_npm_pkgs,
   ))
 }
 
@@ -151,7 +145,6 @@ fn create_inner(
   npm_system_info: NpmSystemInfo,
   snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   lifecycle_scripts: LifecycleScriptsConfig,
-  patched_npm_pkgs: BTreeSet<Url>,
 ) -> Arc<dyn CliNpmResolver> {
   let resolution = Arc::new(NpmResolution::from_serialized(
     npm_api.clone(),
@@ -188,7 +181,6 @@ fn create_inner(
     text_only_progress_bar,
     npm_system_info,
     lifecycle_scripts,
-    patched_npm_pkgs,
   ))
 }
 
@@ -276,7 +268,6 @@ pub struct ManagedCliNpmResolver {
   npm_system_info: NpmSystemInfo,
   top_level_install_flag: AtomicFlag,
   lifecycle_scripts: LifecycleScriptsConfig,
-  patched_npm_pkgs: BTreeSet<Url>,
 }
 
 impl std::fmt::Debug for ManagedCliNpmResolver {
@@ -301,7 +292,6 @@ impl ManagedCliNpmResolver {
     text_only_progress_bar: ProgressBar,
     npm_system_info: NpmSystemInfo,
     lifecycle_scripts: LifecycleScriptsConfig,
-    patched_npm_pkgs: BTreeSet<Url>,
   ) -> Self {
     Self {
       fs,
@@ -316,7 +306,6 @@ impl ManagedCliNpmResolver {
       npm_system_info,
       top_level_install_flag: Default::default(),
       lifecycle_scripts,
-      patched_npm_pkgs,
     }
   }
 
@@ -324,7 +313,7 @@ impl ManagedCliNpmResolver {
     &self,
     pkg_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
-    let path = self.resolve_pkg_folder_inner(pkg_id)?;
+    let path = self.fs_resolver.package_folder(pkg_id)?;
     let path =
       canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())?;
     log::debug!(
@@ -333,14 +322,6 @@ impl ManagedCliNpmResolver {
       path.display()
     );
     Ok(path)
-  }
-
-  fn resolve_pkg_folder_inner(
-    &self,
-    pkg_id: &NpmPackageId,
-  ) -> Result<PathBuf, AnyError> {
-    // todo(THIS PR): need to make this take the patched packages into account
-    self.fs_resolver.package_folder(pkg_id)
   }
 
   /// Resolves the package id from the provided specifier.
@@ -373,7 +354,7 @@ impl ManagedCliNpmResolver {
     &self,
     package_id: &NpmPackageId,
   ) -> Result<u64, AnyError> {
-    let package_folder = self.resolve_pkg_folder_inner(package_id)?;
+    let package_folder = self.fs_resolver.package_folder(package_id)?;
     Ok(crate::util::fs::dir_size(&package_folder)?)
   }
 
@@ -389,7 +370,7 @@ impl ManagedCliNpmResolver {
     self
       .resolve_pkg_id_from_pkg_req(req)
       .ok()
-      .and_then(|id| self.resolve_pkg_folder_inner(&id).ok())
+      .and_then(|id| self.fs_resolver.package_folder(&id).ok())
       .map(|folder| folder.exists())
       .unwrap_or(false)
   }
@@ -579,10 +560,6 @@ impl NpmResolver for ManagedCliNpmResolver {
     let root_dir_url = self.fs_resolver.root_dir_url();
     debug_assert!(root_dir_url.as_str().ends_with('/'));
     specifier.as_ref().starts_with(root_dir_url.as_str())
-      || self
-        .patched_npm_pkgs
-        .iter()
-        .any(|url| specifier.as_str().starts_with(url.as_str()))
   }
 }
 
@@ -650,7 +627,6 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       self.text_only_progress_bar.clone(),
       self.npm_system_info.clone(),
       self.lifecycle_scripts.clone(),
-      self.patched_npm_pkgs.clone(),
     ))
   }
 
