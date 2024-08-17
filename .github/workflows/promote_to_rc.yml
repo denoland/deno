@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       commitHash:
-        description: "Commit to promote to the Release Candidate"
+        description: Commit to promote to the Release Candidate
         required: true
 
 jobs:
@@ -44,8 +44,8 @@ jobs:
 
       - name: Promote to RC
         env:
-          APPLE_CODESIGN_KEY: "${{ secrets.APPLE_CODESIGN_KEY }}"
-          APPLE_CODESIGN_PASSWORD: "${{ secrets.APPLE_CODESIGN_PASSWORD }}"
+          APPLE_CODESIGN_KEY: '${{ secrets.APPLE_CODESIGN_KEY }}'
+          APPLE_CODESIGN_PASSWORD: '${{ secrets.APPLE_CODESIGN_PASSWORD }}'
         run: |
           deno run -A ./tools/release/promote_to_rc.ts ${{github.event.inputs.commitHash}}
 
