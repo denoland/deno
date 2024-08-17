@@ -63,6 +63,7 @@ use dotenvy::from_filename;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::env;
 use std::io::BufReader;
@@ -881,6 +882,7 @@ impl CliOptions {
         additional_config_file_names,
         discover_pkg_json,
         maybe_vendor_override,
+        node_modules_dir_flag: flags.node_modules_dir,
       }
     };
     let resolve_empty_options = || WorkspaceDirectoryEmptyOptions {
@@ -1088,10 +1090,6 @@ impl CliOptions {
           CreateResolverOptions {
             pkg_json_dep_resolution,
             specified_import_map: cli_arg_specified_import_map,
-            npm_resolver_mode: match self.has_node_modules_dir() {
-              true => deno_config::workspace::NpmResolverMode::Local,
-              false => deno_config::workspace::NpmResolverMode::Global,
-            },
           },
           |specifier| {
             let specifier = specifier.clone();
@@ -1919,8 +1917,8 @@ pub fn config_to_deno_graph_workspace_member(
   })
 }
 
-pub fn workspace_patched_npm_packages(workspace: &Workspace) -> Vec<Url> {
-  let mut patched_pkgs = Vec::new(); // will be rare, so don't preallocate
+pub fn workspace_patched_npm_packages(workspace: &Workspace) -> BTreeSet<Url> {
+  let mut patched_pkgs = BTreeSet::new();
   for folder in workspace.patch_folders() {
     let Some(pkg_json) = folder.pkg_json.as_ref() else {
       continue;
@@ -1930,10 +1928,11 @@ pub fn workspace_patched_npm_packages(workspace: &Workspace) -> Vec<Url> {
       canonicalize_path_maybe_not_exists(dir_path).ok()
     {
       if canonicalized_dir != dir_path {
-        patched_pkgs.push(Url::from_directory_path(canonicalized_dir).unwrap())
+        patched_pkgs
+          .insert(Url::from_directory_path(canonicalized_dir).unwrap());
       }
     }
-    patched_pkgs.push(Url::from_directory_path(pkg_json.dir_path()).unwrap())
+    patched_pkgs.insert(Url::from_directory_path(pkg_json.dir_path()).unwrap());
   }
   patched_pkgs
 }

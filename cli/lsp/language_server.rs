@@ -3578,6 +3578,7 @@ impl Inner {
           } else {
             None
           },
+          node_modules_dir_flag: None,
         },
       )?),
     };

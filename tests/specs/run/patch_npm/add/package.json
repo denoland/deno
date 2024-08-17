@@ -1,4 +1,7 @@
 {
   "name": "@denotest/add",
-  "exports": "./mod.js"
+  "exports": "./mod.js",
+  "dependencies": {
+    "@denotest/subtract": "*"
+  }
 }

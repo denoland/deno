@@ -1,1 +1,5 @@
-module.exports.add = (a, b) => (a + b) * 2; // adds wrong
+module.exports.add = (a, b) => {
+  const { subtract } = require("@denotest/subtract");
+  // adds wrong
+  return subtract(a, -b) * 2;
+};

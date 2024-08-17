@@ -581,18 +581,23 @@ impl Resolver for CliGraphResolver {
           target_pkg_json: pkg_json,
           sub_path,
           ..
-        } => self
-          .node_resolver
-          .as_ref()
-          .unwrap()
-          .resolve_package_sub_path_from_deno_module(
-            pkg_json.dir_path(),
-            sub_path.as_deref(),
-            Some(referrer),
-            to_node_mode(mode),
-          )
-          .map_err(ResolveError::Other)
-          .map(|res| res.into_url()),
+        } => {
+          // found an npm package via config, so mark that
+          // we need to do an "npm install" later
+          self.found_package_json_dep_flag.raise();
+          self
+            .node_resolver
+            .as_ref()
+            .unwrap()
+            .resolve_package_sub_path_from_deno_module(
+              pkg_json.dir_path(),
+              sub_path.as_deref(),
+              Some(referrer),
+              to_node_mode(mode),
+            )
+            .map_err(ResolveError::Other)
+            .map(|res| res.into_url())
+        }
         MappedResolution::PackageJson {
           dep_result,
           alias,

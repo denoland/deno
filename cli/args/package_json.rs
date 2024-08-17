@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_config::workspace::NpmPackageConfig;
 use deno_config::workspace::Workspace;
 use deno_package_json::PackageJsonDepValue;
 use deno_semver::package::PackageReq;
@@ -40,7 +41,9 @@ impl PackageJsonInstallDepsProvider {
     let mut workspace_pkgs = Vec::new();
     let mut remote_pkgs = Vec::new();
     let workspace_npm_pkgs = workspace.npm_packages();
-    for pkg_json in workspace.package_jsons() {
+    let patch_npm_pkgs = workspace.patch_npm_packages();
+    for pkg_json in workspace.package_jsons().chain(workspace.patch_pkg_jsons())
+    {
       let deps = pkg_json.resolve_local_package_json_deps();
       let mut pkg_pkgs = Vec::with_capacity(deps.len());
       for (alias, dep) in deps {
@@ -49,11 +52,13 @@ impl PackageJsonInstallDepsProvider {
         };
         match dep {
           PackageJsonDepValue::Req(pkg_req) => {
-            let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
+            let matches_pkg = |pkg: &NpmPackageConfig| {
               pkg.matches_req(&pkg_req)
               // do not resolve to the current package
               && pkg.pkg_json.path != pkg_json.path
-            });
+            };
+            let workspace_pkg =
+              workspace_npm_pkgs.iter().find(|pkg| matches_pkg(pkg));
 
             if let Some(pkg) = workspace_pkg {
               workspace_pkgs.push(InstallNpmWorkspacePkg {
@@ -61,7 +66,7 @@ impl PackageJsonInstallDepsProvider {
                 base_dir: pkg_json.dir_path().to_path_buf(),
                 target_dir: pkg.pkg_json.dir_path().to_path_buf(),
               });
-            } else {
+            } else if !patch_npm_pkgs.iter().any(|pkg| matches_pkg(pkg)) {
               pkg_pkgs.push(InstallNpmRemotePkg {
                 alias,
                 base_dir: pkg_json.dir_path().to_path_buf(),
@@ -87,6 +92,7 @@ impl PackageJsonInstallDepsProvider {
 
       remote_pkgs.extend(pkg_pkgs);
     }
+
     remote_pkgs.shrink_to_fit();
     workspace_pkgs.shrink_to_fit();
     Self {

@@ -1,5 +1,6 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -76,7 +77,7 @@ pub struct CliNpmResolverManagedCreateOptions {
   pub npmrc: Arc<ResolvedNpmRc>,
   pub lifecycle_scripts: LifecycleScriptsConfig,
   /// Directories of npm packages that have been patched.
-  pub patched_npm_pkgs: Vec<Url>,
+  pub patched_npm_pkgs: BTreeSet<Url>,
 }
 
 pub async fn create_managed_npm_resolver_for_lsp(
@@ -150,7 +151,7 @@ fn create_inner(
   npm_system_info: NpmSystemInfo,
   snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   lifecycle_scripts: LifecycleScriptsConfig,
-  patched_npm_pkgs: Vec<Url>,
+  patched_npm_pkgs: BTreeSet<Url>,
 ) -> Arc<dyn CliNpmResolver> {
   let resolution = Arc::new(NpmResolution::from_serialized(
     npm_api.clone(),
@@ -275,7 +276,7 @@ pub struct ManagedCliNpmResolver {
   npm_system_info: NpmSystemInfo,
   top_level_install_flag: AtomicFlag,
   lifecycle_scripts: LifecycleScriptsConfig,
-  patched_npm_pkgs: Vec<Url>,
+  patched_npm_pkgs: BTreeSet<Url>,
 }
 
 impl std::fmt::Debug for ManagedCliNpmResolver {
@@ -300,7 +301,7 @@ impl ManagedCliNpmResolver {
     text_only_progress_bar: ProgressBar,
     npm_system_info: NpmSystemInfo,
     lifecycle_scripts: LifecycleScriptsConfig,
-    patched_npm_pkgs: Vec<Url>,
+    patched_npm_pkgs: BTreeSet<Url>,
   ) -> Self {
     Self {
       fs,
@@ -323,7 +324,7 @@ impl ManagedCliNpmResolver {
     &self,
     pkg_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError> {
-    let path = self.fs_resolver.package_folder(pkg_id)?;
+    let path = self.resolve_pkg_folder_inner(pkg_id)?;
     let path =
       canonicalize_path_maybe_not_exists_with_fs(&path, self.fs.as_ref())?;
     log::debug!(
@@ -334,7 +335,15 @@ impl ManagedCliNpmResolver {
     Ok(path)
   }
 
-  /// Resolves the package nv from the provided specifier.
+  fn resolve_pkg_folder_inner(
+    &self,
+    pkg_id: &NpmPackageId,
+  ) -> Result<PathBuf, AnyError> {
+    // todo(THIS PR): need to make this take the patched packages into account
+    self.fs_resolver.package_folder(pkg_id)
+  }
+
+  /// Resolves the package id from the provided specifier.
   pub fn resolve_pkg_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
@@ -364,7 +373,7 @@ impl ManagedCliNpmResolver {
     &self,
     package_id: &NpmPackageId,
   ) -> Result<u64, AnyError> {
-    let package_folder = self.fs_resolver.package_folder(package_id)?;
+    let package_folder = self.resolve_pkg_folder_inner(package_id)?;
     Ok(crate::util::fs::dir_size(&package_folder)?)
   }
 
@@ -380,7 +389,7 @@ impl ManagedCliNpmResolver {
     self
       .resolve_pkg_id_from_pkg_req(req)
       .ok()
-      .and_then(|id| self.fs_resolver.package_folder(&id).ok())
+      .and_then(|id| self.resolve_pkg_folder_inner(&id).ok())
       .map(|folder| folder.exists())
       .unwrap_or(false)
   }

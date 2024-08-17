@@ -54,7 +54,7 @@ pub async fn compile(
   }
 
   // error if someone specifies a patch field referencing npm packages
-  if let Some(pkg_json) = cli_options.workspace().patch_package_jsons().next() {
+  if let Some(pkg_json) = cli_options.workspace().patch_pkg_jsons().next() {
     let root_deno_json_url = cli_options
       .workspace()
       .root_deno_json()

@@ -1,6 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -38,7 +39,7 @@ pub struct CliNpmResolverByonmCreateOptions {
   // todo(dsherret): investigate removing this
   pub root_node_modules_dir: Option<PathBuf>,
   /// Directories of npm packages that have been patched.
-  pub patched_npm_pkgs: Vec<Url>,
+  pub patched_npm_pkgs: BTreeSet<Url>,
 }
 
 pub fn create_byonm_npm_resolver(
@@ -55,7 +56,7 @@ pub fn create_byonm_npm_resolver(
 pub struct ByonmCliNpmResolver {
   fs: Arc<dyn FileSystem>,
   root_node_modules_dir: Option<PathBuf>,
-  patched_npm_pkgs: Vec<Url>,
+  patched_npm_pkgs: BTreeSet<Url>,
 }
 
 impl ByonmCliNpmResolver {
