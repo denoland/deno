@@ -4,7 +4,6 @@
 import { $ } from "jsr:@david/dax@0.41.0";
 import { gray } from "jsr:@std/fmt@1/colors";
 import { patchver } from "jsr:@deno/patchver@0.1.0";
-import { decodeBase64 } from "jsr:@std/encoding@1";
 
 const SUPPORTED_TARGETS = [
   "aarch64-apple-darwin",
@@ -174,11 +173,10 @@ async function promoteBinaryToRc(binary: string, target: string) {
     rcBinaryName,
   );
   await runPatchver(unzippedName, target, rcBinaryName);
-  await runRcodesign(target, rcBinaryName);
-
   // Remove the unpatched binary and rename patched one.
   await remove(unzippedName);
   await Deno.rename(rcBinaryName, unzippedName);
+  await runRcodesign(target, rcBinaryName);
   // Set executable permission
   if (!target.includes("windows")) {
     Deno.chmod(unzippedName, 0o777);
