@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       commitHash:
-        description: 'Commit to promote to the Release Candidate'
+        description: Commit to promote to the Release Candidate
         required: true
 
 jobs:
   promote-to-rc:
     name: Promote to Release Candidate
-    runs-on: ubuntu-latest
+    runs-on: macOS-latest
     if: github.repository == 'denoland/deno'
     steps:
       - name: Clone repository
@@ -37,11 +37,19 @@ jobs:
         with:
           deno-version: v1.x
 
+      - name: Install rust-codesign
+        run: |-
+          ./tools/install_prebuilt.js rcodesign
+          echo $GITHUB_WORKSPACE/third_party/prebuilt/mac >> $GITHUB_PATH
+
       - name: Promote to RC
+        env:
+          APPLE_CODESIGN_KEY: '${{ secrets.APPLE_CODESIGN_KEY }}'
+          APPLE_CODESIGN_PASSWORD: '${{ secrets.APPLE_CODESIGN_PASSWORD }}'
         run: |
-          deno run -A ./tools/release/promote_to_rc.ts ${{github.event.inputs.releaseKind}}
+          deno run -A ./tools/release/promote_to_rc.ts ${{github.event.inputs.commitHash}}
 
       - name: Upload archives to dl.deno.land
         run: |
-          gsutil -h "Cache-Control: public, max-age=3600" cp ./*.zip gs://dl.deno.land/release/$(echo release-rc-latest.txt)/
+          gsutil -h "Cache-Control: public, max-age=3600" cp ./*.zip gs://dl.deno.land/release/$(cat release-rc-latest.txt)/
           gsutil -h "Cache-Control: no-cache" cp release-rc-latest.txt gs://dl.deno.land/release-rc-latest.txt

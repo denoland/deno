@@ -247,7 +247,7 @@ pub async fn add(
     .collect::<Vec<_>>();
 
   let stream_of_futures = deno_core::futures::stream::iter(package_futures);
-  let mut buffered = stream_of_futures.buffer_unordered(10);
+  let mut buffered = stream_of_futures.buffered(10);
 
   while let Some(package_and_version_result) = buffered.next().await {
     let package_and_version = package_and_version_result?;
