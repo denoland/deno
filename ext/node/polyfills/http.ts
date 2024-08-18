@@ -1781,7 +1781,8 @@ export class ServerImpl extends EventEmitter {
       });
 
       const req = new IncomingMessageForServer(socket);
-      req.url = request.url?.slice(req.url.indexOf("/", 8));
+      // Slice of the origin
+      req.url = request.url?.slice(request.url.indexOf("/", 8));
       req.method = request.method;
       req.upgrade =
         request.headers.get("connection")?.toLowerCase().includes("upgrade") &&
