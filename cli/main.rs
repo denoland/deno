@@ -32,7 +32,7 @@ use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::DENO_FUTURE;
-use crate::graph_container::resolve_files_from_patterns;
+use crate::graph_container::collect_check_files;
 use crate::graph_container::ModuleGraphContainer;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
@@ -42,6 +42,7 @@ use args::TaskFlags;
 use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 
+use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -139,9 +140,17 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       let base_path = cli_options.initial_cwd().to_path_buf();
       let include_patterns = PathOrPatternSet::from_include_relative_path_or_patterns(&base_path, &check_flags.files)?;
 
-      let expanded_files = resolve_files_from_patterns(include_patterns)?;
+      let mut file_patterns  = FilePatterns::new_with_base(base_path);
+      file_patterns.include=Some(include_patterns);
+      let collected_files  = collect_check_files(cli_options, file_patterns )?;
+
+      let file_paths = collected_files
+          .into_iter()
+          .map(|path| path.to_string_lossy().into_owned())
+          .collect::<Vec<String>>();
+
       main_graph_container
-        .load_and_type_check_files(&expanded_files)
+        .load_and_type_check_files(&file_paths)
         .await
     }),
     DenoSubcommand::Clean => spawn_subcommand(async move {

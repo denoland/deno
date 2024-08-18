@@ -1,12 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
-use std::fs;
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_config::glob::PathOrPattern;
-use deno_config::glob::PathOrPatternSet;
+use deno_config::glob::FileCollector;
+use deno_config::glob::FilePatterns;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url_or_path;
@@ -16,6 +15,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 
 use crate::args::CliOptions;
 use crate::module_loader::ModuleLoadPreparer;
+use crate::util::path::is_script_ext;
 
 pub trait ModuleGraphContainer: Clone + 'static {
   /// Acquires a permit to modify the module graph without other code
@@ -160,44 +160,13 @@ impl<'a> ModuleGraphUpdatePermit for MainModuleGraphUpdatePermit<'a> {
   }
 }
 
-pub fn resolve_files_from_patterns(
-  pattern_set: PathOrPatternSet,
-) -> Result<Vec<String>, AnyError> {
-  let mut result_files = Vec::new();
-  fn visit_dirs(
-    dir: &Path,
-    pattern_set: &PathOrPatternSet,
-    result_files: &mut Vec<String>,
-  ) -> Result<(), AnyError> {
-    if dir.is_dir() {
-      for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-          visit_dirs(&path, pattern_set, result_files)?;
-        } else if pattern_set.matches_path(&path) {
-          result_files.push(path.to_string_lossy().into_owned());
-        }
-      }
-    }
-    Ok(())
-  }
-
-  for pattern in pattern_set.inner() {
-    match pattern {
-      PathOrPattern::Path(path) => {
-        if path.exists() && path.is_file() {
-          result_files.push(path.to_string_lossy().into_owned());
-        }
-      }
-      PathOrPattern::Pattern(pattern) => {
-        let base_path = pattern.base_path();
-        visit_dirs(&base_path, &pattern_set, &mut result_files)?;
-      }
-      PathOrPattern::NegatedPath(_) => {}
-      PathOrPattern::RemoteUrl(url) => result_files.push(url.to_string()),
-    }
-  }
-
-  Ok(result_files)
+pub fn collect_check_files(
+  cli_options: &CliOptions,
+  files: FilePatterns,
+) -> Result<Vec<PathBuf>, AnyError> {
+  FileCollector::new(|e| is_script_ext(e.path))
+    .ignore_git_folder()
+    .ignore_node_modules()
+    .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
 }
