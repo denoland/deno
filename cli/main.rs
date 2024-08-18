@@ -49,6 +49,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
+use deno_core::url::Url;
 use deno_npm::resolution::SnapshotFromLockfileError;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
@@ -144,10 +145,16 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       file_patterns.include=Some(include_patterns);
       let collected_files  = collect_check_files(cli_options, file_patterns )?;
 
-      let file_paths = collected_files
+      let mut file_paths = collected_files
           .into_iter()
           .map(|path| path.to_string_lossy().into_owned())
           .collect::<Vec<String>>();
+
+      for pattern in check_flags.files.iter() {
+        if let Ok(url) = Url::parse(pattern){
+          file_paths.push(url.to_string());
+        }
+      }
 
       main_graph_container
         .load_and_type_check_files(&file_paths)
