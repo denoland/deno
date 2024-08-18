@@ -541,6 +541,7 @@ pub async fn upgrade(
   Ok(())
 }
 
+#[derive(Debug)]
 enum RequestedVersion {
   Latest(ReleaseChannel),
   SpecificVersion(ReleaseChannel, String),
@@ -660,24 +661,45 @@ async fn find_latest_version_to_upgrade(
       .await?;
 
   let (maybe_newer_latest_version, current_version) = match release_channel {
-    ReleaseChannel::Stable | ReleaseChannel::Rc => {
+    ReleaseChannel::Stable => {
       let current_version = version::DENO_VERSION_INFO.deno;
-      let current_is_most_recent = if version::DENO_VERSION_INFO.release_channel
-        != ReleaseChannel::Canary
-      {
+
+      // If the current binary is not a stable channel, we can skip
+      // computation if we're on a newer release - we're not.
+      if version::DENO_VERSION_INFO.release_channel != ReleaseChannel::Stable {
+        (Some(latest_version_found), current_version)
+      } else {
         let current = Version::parse_standard(current_version).unwrap();
         let latest =
           Version::parse_standard(&latest_version_found.version_or_hash)
             .unwrap();
-        current >= latest
-      } else {
-        false
-      };
+        let current_is_most_recent = current >= latest;
 
-      if !force && current_is_most_recent {
-        (None, current_version)
-      } else {
+        if !force && current_is_most_recent {
+          (None, current_version)
+        } else {
+          (Some(latest_version_found), current_version)
+        }
+      }
+    }
+    ReleaseChannel::Rc => {
+      let current_version = version::DENO_VERSION_INFO.deno;
+
+      // If the current binary is not an rc channel, we can skip
+      // computation if we're on a newer release - we're not.
+      if version::DENO_VERSION_INFO.release_channel != ReleaseChannel::Rc {
         (Some(latest_version_found), current_version)
+      } else {
+        let current = Version::parse_standard(current_version).unwrap();
+        let latest =
+          Version::parse_standard(&latest_version_found.version_or_hash)
+            .unwrap();
+        let current_is_most_recent = current >= latest;
+        if !force && current_is_most_recent {
+          (None, current_version)
+        } else {
+          (Some(latest_version_found), current_version)
+        }
       }
     }
     ReleaseChannel::Canary => {
