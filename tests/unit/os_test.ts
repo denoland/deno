@@ -202,7 +202,7 @@ Deno.test(async function execPathPerm() {
   // This is hack to bypass a bug in deno test runner,
   // Currently if you specify {read: true} permission, it will stil pass --allow-all (tests are run with deno test --allow-all) implicitly, so this test won't work
   // The workaround is to spawn a deno executable with the needed permissions
-  // TODO: remove this hack when the bug is fixed
+  // TODO(#25085): remove this hack when the bug is fixed
   const cmd = new Deno.Command(Deno.execPath(), {
     args: ["run", "--allow-read", "-"],
     stdin: "piped",
