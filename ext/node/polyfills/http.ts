@@ -1781,7 +1781,7 @@ export class ServerImpl extends EventEmitter {
       });
 
       const req = new IncomingMessageForServer(socket);
-      // Slice of the origin
+      // Slice off the origin so that we only have pathname + search
       req.url = request.url?.slice(request.url.indexOf("/", 8));
       req.method = request.method;
       req.upgrade =
