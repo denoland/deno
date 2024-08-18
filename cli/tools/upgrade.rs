@@ -645,14 +645,9 @@ fn select_specific_version_for_upgrade(
       }))
     }
     ReleaseChannel::Rc => {
-      let current_is_passed = if version::DENO_VERSION_INFO.release_channel
+      let current_is_passed = version::DENO_VERSION_INFO.release_channel
         == ReleaseChannel::Rc
-        && version::DENO_VERSION_INFO.deno == version
-      {
-        true
-      } else {
-        false
-      };
+        && version::DENO_VERSION_INFO.deno == version;
 
       if !force && current_is_passed {
         log::info!(
