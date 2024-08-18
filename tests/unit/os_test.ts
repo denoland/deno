@@ -224,7 +224,7 @@ Deno.test(async function execPathPerm() {
 
   assertStringIncludes(
     error,
-    `PermissionDenied: permission denied: readfile '/proc/net/dev'`,
+    `PermissionDenied: Requires all access to "/proc/net/dev", run again with the --allow-all flag`,
   );
 });
 
