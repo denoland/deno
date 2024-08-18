@@ -89,9 +89,9 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     api_name: &str,
   ) -> Result<Cow<'a, Path>, FsError> {
     if resolved {
-      self.check_special_file(path, api_name).map_err(|_| {
-        std::io::Error::from(std::io::ErrorKind::PermissionDenied)
-      })?;
+      self
+        .check_special_file(path, api_name)
+        .map_err(|err| FsError::PermissionDenied(err))?;
       return Ok(Cow::Borrowed(path));
     }
 
