@@ -2,20 +2,20 @@
   "tempDir": true,
   "steps": [{
     "if": "unix",
-    "args": "compile --output main main/main.ts",
+    "args": "compile --output my-app main/main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "unix",
-    "commandName": "./main",
+    "commandName": "./my-app",
     "args": [],
     "output": "main.out"
   }, {
     "if": "windows",
-    "args": "compile --output main.exe main/main.ts",
+    "args": "compile --output my-app.exe main/main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "windows",
-    "commandName": "./main.exe",
+    "commandName": "./my-app.exe",
     "args": [],
     "output": "main.out"
   }]
