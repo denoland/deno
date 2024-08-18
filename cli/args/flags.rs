@@ -2553,11 +2553,10 @@ Ignore linting a file by adding an ignore comment at the top of the file:
                 .long("ext")
                 .require_equals(true)
                 .value_name("EXT")
-                .help("Specify the file extension(s) to lint when reading from stdin.\
-                 For example, use `jsx` to lint JSX files or `tsx` for TSX files. \
-                 This argument is necessary because stdin input does not automatically infer the file type and thus requires explicit extension specification. \
-                 Example usage: `cat file.jsx | deno lint - --ext=jsx`. \
-                 Multiple extensions can be provided, separated by commas, like `jsx,tsx`."),
+                .help("Specify the file extension to lint when reading from stdin.\
+       For example, use `jsx` to lint JSX files or `tsx` for TSX files. \
+       This argument is necessary because stdin input does not automatically infer the file type and thus requires explicit extension specification. \
+       Example usage: `cat file.jsx | deno lint - --ext=jsx`."),
           )
           .arg(
           Arg::new("rules")
@@ -4319,7 +4318,7 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let json = matches.get_flag("json");
   let compact = matches.get_flag("compact");
 
-  let ext = matches.remove_many::<String>("ext").map(|f| f.collect());
+  let ext = matches.remove_one::<String>("ext");
 
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files: FileFlags {
