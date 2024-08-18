@@ -527,8 +527,12 @@ pub async fn upgrade(
   check_windows_access_denied_error(output_result, output_exe_path)?;
 
   log::info!(
-    "\nUpgraded successfully to Deno {}\n",
-    colors::green(selected_version_to_upgrade.display())
+    "\nUpgraded successfully to Deno {} {}\n",
+    colors::green(selected_version_to_upgrade.display()),
+    colors::gray(&format!(
+      "({})",
+      selected_version_to_upgrade.release_channel.name()
+    ))
   );
   if requested_version.release_channel() == ReleaseChannel::Stable {
     print_release_notes(
