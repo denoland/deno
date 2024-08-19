@@ -412,6 +412,7 @@ pub struct UpgradeFlags {
   pub canary: bool,
   pub version: Option<String>,
   pub output: Option<String>,
+  pub version_or_hash_or_channel: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2983,6 +2984,13 @@ update to a different location, use the --output flag:
             .conflicts_with_all(["canary", "version"])
             .action(ArgAction::SetTrue),
         )
+        .arg(
+          Arg::new("version-or-hash-or-channel")
+            .help("Version, channel or commit hash")
+            .value_name("VERSION")
+            .action(ArgAction::Append)
+            .trailing_var_arg(true),
+        )
         .arg(ca_file_arg())
     })
 }
@@ -4668,6 +4676,8 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let release_candidate = matches.get_flag("release-candidate");
   let version = matches.remove_one::<String>("version");
   let output = matches.remove_one::<String>("output");
+  let version_or_hash_or_channel =
+    matches.remove_one::<String>("version-or-hash-or-channel");
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
     dry_run,
     force,
@@ -4675,6 +4685,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     canary,
     version,
     output,
+    version_or_hash_or_channel,
   });
 }
 

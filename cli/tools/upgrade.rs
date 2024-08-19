@@ -553,20 +553,29 @@ enum RequestedVersion {
 impl RequestedVersion {
   fn from_upgrade_flags(upgrade_flags: UpgradeFlags) -> Result<Self, AnyError> {
     let is_canary = upgrade_flags.canary;
-    let is_release_candidate = upgrade_flags.release_candidate;
+    let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
+    let channel = if is_canary {
+      ReleaseChannel::Canary
+    } else if upgrade_flags.release_candidate {
+      ReleaseChannel::Rc
+    } else {
+      ReleaseChannel::Stable
+    };
+    let mut maybe_passed_version = upgrade_flags.version.clone();
 
-    let Some(passed_version) = upgrade_flags.version else {
-      let channel = if is_canary {
-        ReleaseChannel::Canary
-      } else if is_release_candidate {
-        ReleaseChannel::Rc
+    if let Some(val) = &upgrade_flags.version_or_hash_or_channel {
+      if let Ok(channel) = ReleaseChannel::deserialize(&val.to_lowercase()) {
+        // TODO(bartlomieju): print error if any other flags passed?
+        return Ok(Self::Latest(channel));
       } else {
-        ReleaseChannel::Stable
-      };
+        maybe_passed_version = Some(val.to_string());
+      }
+    }
+
+    let Some(passed_version) = maybe_passed_version else {
       return Ok(Self::Latest(channel));
     };
 
-    let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
     let passed_version = passed_version
       .strip_prefix('v')
       .unwrap_or(&passed_version)
