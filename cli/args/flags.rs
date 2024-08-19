@@ -400,7 +400,7 @@ pub struct TestFlags {
   pub shuffle: Option<u64>,
   pub concurrent_jobs: Option<NonZeroUsize>,
   pub trace_leaks: bool,
-  pub watch: Option<WatchFlags>,
+  pub watch: Option<WatchFlagsWithPaths>,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
 }
@@ -413,6 +413,7 @@ pub struct UpgradeFlags {
   pub canary: bool,
   pub version: Option<String>,
   pub output: Option<String>,
+  pub version_or_hash_or_channel: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1070,7 +1071,7 @@ impl Flags {
     })
     | DenoSubcommand::Test(TestFlags {
       watch:
-        Some(WatchFlags {
+        Some(WatchFlagsWithPaths {
           exclude: excluded_paths,
           ..
         }),
@@ -1428,7 +1429,7 @@ pub fn clap_root() -> Command {
     crate::version::DENO_VERSION_INFO.release_channel.name(),
     env!("PROFILE"),
     env!("TARGET"),
-    deno_core::v8_version(),
+    deno_core::v8::VERSION_STRING,
     crate::version::DENO_VERSION_INFO.typescript
   );
 
@@ -2976,7 +2977,7 @@ Directory arguments are expanded to all contained files matching the glob
           .value_hint(ValueHint::AnyPath),
       )
       .arg(
-        watch_arg(false)
+        watch_arg(true)
           .conflicts_with("no-run")
           .conflicts_with("coverage"),
       )
@@ -3029,8 +3030,23 @@ The declaration file could be saved and used for typing information.",
 fn upgrade_subcommand() -> Command {
   command(
     "upgrade",
-    "Upgrade deno executable to the given version.
-Defaults to latest.
+    color_print::cstr!("<g>Upgrade</> deno executable to the given version.
+
+<g>Latest</>
+
+  deno upgrade
+
+<g>Specific version</>
+
+  deno upgrade <p(245)>1.45.0</>
+  deno upgrade <p(245)>1.46.0-rc.1</>
+  deno upgrade <p(245)>9bc2dd29ad6ba334fd57a20114e367d3c04763d4</>
+
+<g>Channel</>
+
+  deno upgrade <p(245)>stable</>
+  deno upgrade <p(245)>rc</>
+  deno upgrade <p(245)>canary</>
 
 The version is downloaded from
 https://github.com/denoland/deno/releases
@@ -3038,7 +3054,7 @@ and is used to replace the current executable.
 
 If you want to not replace the current Deno executable but instead download an
 update to a different location, use the --output flag:
-  deno upgrade --output $HOME/my_deno",
+  deno upgrade --output $HOME/my_deno"),
     UnstableArgsConfig::None,
   )
   .hide(cfg!(not(feature = "upgrade")))
@@ -3048,7 +3064,8 @@ update to a different location, use the --output flag:
         Arg::new("version")
           .long("version")
           .help("The version to upgrade to")
-          .help_heading(UPGRADE_HEADING),
+          .help_heading(UPGRADE_HEADING)// NOTE(bartlomieju): pre-v1.46 compat
+          .hide(true),
       )
       .arg(
         Arg::new("output")
@@ -3078,7 +3095,8 @@ update to a different location, use the --output flag:
           .long("canary")
           .help("Upgrade to canary builds")
           .action(ArgAction::SetTrue)
-          .help_heading(UPGRADE_HEADING),
+          .help_heading(UPGRADE_HEADING)// NOTE(bartlomieju): pre-v1.46 compat
+          .hide(true),
       )
       .arg(
         Arg::new("release-candidate")
@@ -3086,7 +3104,16 @@ update to a different location, use the --output flag:
           .help("Upgrade to a release candidate")
           .conflicts_with_all(["canary", "version"])
           .action(ArgAction::SetTrue)
-          .help_heading(UPGRADE_HEADING),
+          .help_heading(UPGRADE_HEADING)
+          // NOTE(bartlomieju): pre-v1.46 compat
+          .hide(true),
+      )
+      .arg(
+        Arg::new("version-or-hash-or-channel")
+          .help(color_print::cstr!("Version <p(245)>(v1.46.0)</>, channel <p(245)>(rc, canary)</> or commit hash <p(245)>(9bc2dd29ad6ba334fd57a20114e367d3c04763d4)</>"))
+          .value_name("VERSION")
+          .action(ArgAction::Append)
+          .trailing_var_arg(true),
       )
       .arg(ca_file_arg())
       .arg(unsafely_ignore_certificate_errors_arg())
@@ -4906,7 +4933,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     allow_none,
     concurrent_jobs,
     trace_leaks,
-    watch: watch_arg_parse(matches),
+    watch: watch_arg_parse_with_paths(matches),
     reporter,
     junit_path,
   });
@@ -4926,6 +4953,8 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let release_candidate = matches.get_flag("release-candidate");
   let version = matches.remove_one::<String>("version");
   let output = matches.remove_one::<String>("output");
+  let version_or_hash_or_channel =
+    matches.remove_one::<String>("version-or-hash-or-channel");
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
     dry_run,
     force,
@@ -4933,6 +4962,7 @@ fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     canary,
     version,
     output,
+    version_or_hash_or_channel,
   });
 }
 
@@ -5338,17 +5368,21 @@ fn watch_arg_parse_with_paths(
     });
   }
 
-  matches
-    .remove_many::<String>("hmr")
-    .map(|paths| WatchFlagsWithPaths {
-      paths: paths.collect(),
-      hmr: true,
-      no_clear_screen: matches.get_flag("no-clear-screen"),
-      exclude: matches
-        .remove_many::<String>("watch-exclude")
-        .map(|f| f.collect::<Vec<String>>())
-        .unwrap_or_default(),
-    })
+  if matches.try_contains_id("hmr").is_ok() {
+    return matches.remove_many::<String>("hmr").map(|paths| {
+      WatchFlagsWithPaths {
+        paths: paths.collect(),
+        hmr: true,
+        no_clear_screen: matches.get_flag("no-clear-screen"),
+        exclude: matches
+          .remove_many::<String>("watch-exclude")
+          .map(|f| f.collect::<Vec<String>>())
+          .unwrap_or_default(),
+      }
+    });
+  }
+
+  None
 }
 
 fn unstable_args_parse(
@@ -5441,6 +5475,7 @@ mod tests {
           release_candidate: false,
           version: None,
           output: None,
+          version_or_hash_or_channel: None,
         }),
         ..Flags::default()
       }
@@ -5460,6 +5495,7 @@ mod tests {
           release_candidate: false,
           version: None,
           output: Some(String::from("example.txt")),
+          version_or_hash_or_channel: None,
         }),
         ..Flags::default()
       }
@@ -9385,13 +9421,179 @@ mod tests {
           trace_leaks: false,
           coverage_dir: None,
           clean: false,
-          watch: Some(WatchFlags {
+          watch: Some(WatchFlagsWithPaths {
             hmr: false,
             no_clear_screen: true,
             exclude: vec![],
+            paths: vec![],
           }),
           reporter: Default::default(),
           junit_path: None,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_watch_with_paths() {
+    let r = flags_from_vec(svec!("deno", "test", "--watch=foo"));
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![String::from("foo")],
+            no_clear_screen: false,
+            exclude: vec![],
+          }),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "test", "--watch=foo,bar"]);
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![String::from("foo"), String::from("bar")],
+            no_clear_screen: false,
+            exclude: vec![],
+          }),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_watch_with_excluded_paths() {
+    let r =
+      flags_from_vec(svec!("deno", "test", "--watch", "--watch-exclude=foo",));
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![],
+            no_clear_screen: false,
+            exclude: vec![String::from("foo")],
+          }),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!(
+      "deno",
+      "test",
+      "--watch=foo",
+      "--watch-exclude=bar",
+    ));
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![String::from("foo")],
+            no_clear_screen: false,
+            exclude: vec![String::from("bar")],
+          }),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "test",
+      "--watch",
+      "--watch-exclude=foo,bar",
+    ]);
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![],
+            no_clear_screen: false,
+            exclude: vec![String::from("foo"), String::from("bar")],
+          }),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "test",
+      "--watch=foo,bar",
+      "--watch-exclude=baz,qux",
+    ]);
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![String::from("foo"), String::from("bar")],
+            no_clear_screen: false,
+            exclude: vec![String::from("baz"), String::from("qux"),],
+          }),
+          ..TestFlags::default()
         }),
         type_check_mode: TypeCheckMode::Local,
         permissions: PermissionFlags {
@@ -9460,6 +9662,7 @@ mod tests {
           release_candidate: false,
           version: None,
           output: None,
+          version_or_hash_or_channel: None,
         }),
         ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
@@ -9480,6 +9683,7 @@ mod tests {
           release_candidate: true,
           version: None,
           output: None,
+          version_or_hash_or_channel: None,
         }),
         ..Flags::default()
       }

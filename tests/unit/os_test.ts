@@ -3,6 +3,7 @@ import {
   assert,
   assertEquals,
   assertNotEquals,
+  assertStringIncludes,
   assertThrows,
 } from "./test_util.ts";
 
@@ -193,6 +194,37 @@ Deno.test({ permissions: { read: false } }, function execPathPerm() {
     },
     Deno.errors.PermissionDenied,
     "Requires read access to <exec_path>, run again with the --allow-read flag",
+  );
+});
+
+Deno.test(async function execPathPerm() {
+  if (Deno.build.os !== "linux") return;
+  // This is hack to bypass a bug in deno test runner,
+  // Currently if you specify {read: true} permission, it will stil pass --allow-all (tests are run with deno test --allow-all) implicitly, so this test won't work
+  // The workaround is to spawn a deno executable with the needed permissions
+  // TODO(#25085): remove this hack when the bug is fixed
+  const cmd = new Deno.Command(Deno.execPath(), {
+    args: ["run", "--allow-read", "-"],
+    stdin: "piped",
+    stderr: "piped",
+  }).spawn();
+  const stdinWriter = cmd.stdin.getWriter();
+  await stdinWriter
+    .write(
+      new TextEncoder().encode('Deno.readTextFileSync("/proc/net/dev")'),
+    );
+  await stdinWriter.close();
+  await cmd.status;
+
+  const stderrReder = cmd.stderr.getReader();
+  const error = await stderrReder
+    .read()
+    .then((r) => new TextDecoder().decode(r.value));
+  await stderrReder.cancel();
+
+  assertStringIncludes(
+    error,
+    `PermissionDenied: Requires all access to "/proc/net/dev", run again with the --allow-all flag`,
   );
 });
 
