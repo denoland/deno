@@ -691,7 +691,7 @@ impl Inner {
 
     let version = format!(
       "{} ({}, {})",
-      crate::version::deno(),
+      crate::version::DENO_VERSION_INFO.deno,
       env!("PROFILE"),
       env!("TARGET")
     );
