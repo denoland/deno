@@ -472,7 +472,7 @@ async fn resolve_shim_data(
     executable_args.push("--cached-only".to_string());
   }
 
-  if flags.frozen_lockfile {
+  if flags.frozen_lockfile.unwrap_or(false) {
     executable_args.push("--frozen".to_string());
   }
 

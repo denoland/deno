@@ -147,22 +147,28 @@ impl CliLockfile {
       },
     };
 
+    let root_folder = workspace.root_folder_configs();
+    // CLI flag takes precedence over the config
+    let frozen = flags.frozen_lockfile.unwrap_or_else(|| {
+      root_folder
+        .deno_json
+        .as_ref()
+        .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
+        .unwrap_or(false)
+    });
+
     let lockfile = if flags.lock_write {
       log::warn!(
         "{} \"--lock-write\" flag is deprecated and will be removed in Deno 2.",
         crate::colors::yellow("Warning")
       );
-      CliLockfile::new(
-        Lockfile::new_empty(filename, true),
-        flags.frozen_lockfile,
-      )
+      CliLockfile::new(Lockfile::new_empty(filename, true), frozen)
     } else {
-      Self::read_from_path(filename, flags.frozen_lockfile)?
+      Self::read_from_path(filename, frozen)?
     };
 
     // initialize the lockfile with the workspace's configuration
     let root_url = workspace.root_dir();
-    let root_folder = workspace.root_folder_configs();
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
         package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
