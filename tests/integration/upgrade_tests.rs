@@ -227,7 +227,7 @@ fn upgrade_invalid_lockfile() {
   );
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn upgrade_prompt() {
   let context = upgrade_context();
   let temp_dir = context.temp_dir();

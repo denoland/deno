@@ -113,7 +113,10 @@ export class WriteStream extends Socket {
    * @returns {boolean}
    */
   hasColors(count, env) {
-    if (env === undefined && typeof count === "object") {
+    if (
+      env === undefined &&
+      (count === undefined || typeof count === "object" && count !== null)
+    ) {
       env = count;
       count = 16;
     }

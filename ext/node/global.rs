@@ -63,8 +63,9 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 
 // UTF-16 encodings of the managed globals. THIS LIST MUST BE SORTED.
 #[rustfmt::skip]
-const MANAGED_GLOBALS: [&[u16]; 13] = [
+const MANAGED_GLOBALS: [&[u16]; 14] = [
   &str_to_utf16::<6>("Buffer"),
+  &str_to_utf16::<17>("WorkerGlobalScope"),
   &str_to_utf16::<14>("clearImmediate"),
   &str_to_utf16::<13>("clearInterval"),
   &str_to_utf16::<12>("clearTimeout"),
@@ -79,8 +80,25 @@ const MANAGED_GLOBALS: [&[u16]; 13] = [
   &str_to_utf16::<6>("window"),
 ];
 
-const SHORTEST_MANAGED_GLOBAL: usize = 4;
-const LONGEST_MANAGED_GLOBAL: usize = 14;
+// Calculates the shortest & longest length of global var names
+const MANAGED_GLOBALS_INFO: (usize, usize) = {
+  let l = MANAGED_GLOBALS[0].len();
+  let (mut longest, mut shortest, mut i) = (l, l, 1);
+  while i < MANAGED_GLOBALS.len() {
+    let l = MANAGED_GLOBALS[i].len();
+    if l > longest {
+      longest = l
+    }
+    if l < shortest {
+      shortest = l
+    }
+    i += 1;
+  }
+  (shortest, longest)
+};
+
+const SHORTEST_MANAGED_GLOBAL: usize = MANAGED_GLOBALS_INFO.0;
+const LONGEST_MANAGED_GLOBAL: usize = MANAGED_GLOBALS_INFO.1;
 
 #[derive(Debug, Clone, Copy)]
 enum Mode {
@@ -207,7 +225,7 @@ pub fn global_object_middleware<'s>(
     deno_globals,
     node_globals,
   };
-  scope.get_current_context().set_slot(scope, storage);
+  scope.get_current_context().set_slot(storage);
 }
 
 fn is_managed_key(
@@ -269,7 +287,7 @@ pub fn getter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let storage = context.get_slot::<GlobalsStorage>().unwrap();
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -302,7 +320,7 @@ pub fn setter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let storage = context.get_slot::<GlobalsStorage>().unwrap();
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -329,7 +347,7 @@ pub fn query<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let storage = context.get_slot::<GlobalsStorage>().unwrap();
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -361,7 +379,7 @@ pub fn deleter<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let storage = context.get_slot::<GlobalsStorage>().unwrap();
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -390,7 +408,7 @@ pub fn enumerator<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let storage = context.get_slot::<GlobalsStorage>().unwrap();
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -424,7 +442,7 @@ pub fn definer<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let storage = context.get_slot::<GlobalsStorage>().unwrap();
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);
@@ -458,7 +476,7 @@ pub fn descriptor<'s>(
 
   let context = scope.get_current_context();
   let inner = {
-    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let storage = context.get_slot::<GlobalsStorage>().unwrap();
     storage.inner_for_mode(mode)
   };
   let inner = v8::Local::new(scope, inner);

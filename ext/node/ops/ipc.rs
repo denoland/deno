@@ -9,10 +9,6 @@ mod impl_ {
   use std::future::Future;
   use std::io;
   use std::mem;
-  #[cfg(unix)]
-  use std::os::fd::FromRawFd;
-  #[cfg(unix)]
-  use std::os::fd::RawFd;
   use std::pin::Pin;
   use std::rc::Rc;
   use std::sync::atomic::AtomicBool;
@@ -43,15 +39,9 @@ mod impl_ {
   use tokio::io::AsyncWriteExt;
   use tokio::io::ReadBuf;
 
-  #[cfg(unix)]
-  use tokio::net::unix::OwnedReadHalf;
-  #[cfg(unix)]
-  use tokio::net::unix::OwnedWriteHalf;
-  #[cfg(unix)]
-  use tokio::net::UnixStream;
-
-  #[cfg(windows)]
-  type NamedPipeClient = tokio::net::windows::named_pipe::NamedPipeClient;
+  use deno_io::BiPipe;
+  use deno_io::BiPipeRead;
+  use deno_io::BiPipeWrite;
 
   /// Wrapper around v8 value that implements Serialize.
   struct SerializeWrapper<'a, 'b>(
@@ -90,8 +80,14 @@ mod impl_ {
       let str = deno_core::serde_v8::to_utf8(value.try_into().unwrap(), scope);
       ser.serialize_str(&str)
     } else if value.is_string_object() {
-      let str =
-        deno_core::serde_v8::to_utf8(value.to_string(scope).unwrap(), scope);
+      let str = deno_core::serde_v8::to_utf8(
+        value.to_string(scope).ok_or_else(|| {
+          S::Error::custom(deno_core::error::generic_error(
+            "toString on string object failed",
+          ))
+        })?,
+        scope,
+      );
       ser.serialize_str(&str)
     } else if value.is_boolean() {
       ser.serialize_bool(value.is_true())
@@ -99,7 +95,7 @@ mod impl_ {
       ser.serialize_bool(value.boolean_value(scope))
     } else if value.is_array() {
       use serde::ser::SerializeSeq;
-      let array = v8::Local::<v8::Array>::try_from(value).unwrap();
+      let array = value.cast::<v8::Array>();
       let length = array.length();
       let mut seq = ser.serialize_seq(Some(length as usize))?;
       for i in 0..length {
@@ -111,13 +107,13 @@ mod impl_ {
     } else if value.is_object() {
       use serde::ser::SerializeMap;
       if value.is_array_buffer_view() {
-        let buffer = v8::Local::<v8::ArrayBufferView>::try_from(value).unwrap();
+        let buffer = value.cast::<v8::ArrayBufferView>();
         let mut buf = vec![0u8; buffer.byte_length()];
         let copied = buffer.copy_contents(&mut buf);
-        assert_eq!(copied, buf.len());
+        debug_assert_eq!(copied, buf.len());
         return ser.serialize_bytes(&buf);
       }
-      let object = value.to_object(scope).unwrap();
+      let object = value.cast::<v8::Object>();
       // node uses `JSON.stringify`, so to match its behavior (and allow serializing custom objects)
       // we need to respect the `toJSON` method if it exists.
       let to_json_key = v8::String::new_from_utf8(
@@ -128,8 +124,7 @@ mod impl_ {
       .unwrap()
       .into();
       if let Some(to_json) = object.get(scope, to_json_key) {
-        if to_json.is_function() {
-          let to_json = v8::Local::<v8::Function>::try_from(to_json).unwrap();
+        if let Ok(to_json) = to_json.try_cast::<v8::Function>() {
           let json_value = to_json.call(scope, object.into(), &[]).unwrap();
           return serialize_v8_value(scope, json_value, ser);
         }
@@ -149,6 +144,9 @@ mod impl_ {
         let key = keys.get_index(scope, i).unwrap();
         let key_str = key.to_rust_string_lossy(scope);
         let value = object.get(scope, key).unwrap();
+        if value.is_undefined() {
+          continue;
+        }
         map.serialize_entry(
           &key_str,
           &SerializeWrapper(RefCell::new(scope), value),
@@ -157,9 +155,10 @@ mod impl_ {
       map.end()
     } else {
       // TODO(nathanwhit): better error message
-      Err(S::Error::custom(deno_core::error::type_error(
-        "Unsupported type",
-      )))
+      Err(S::Error::custom(deno_core::error::type_error(format!(
+        "Unsupported type: {}",
+        value.type_repr()
+      ))))
     }
   }
 
@@ -340,10 +339,7 @@ mod impl_ {
 
   pub struct IpcJsonStreamResource {
     read_half: AsyncRefCell<IpcJsonStream>,
-    #[cfg(unix)]
-    write_half: AsyncRefCell<OwnedWriteHalf>,
-    #[cfg(windows)]
-    write_half: AsyncRefCell<tokio::io::WriteHalf<NamedPipeClient>>,
+    write_half: AsyncRefCell<BiPipeWrite>,
     cancel: Rc<CancelHandle>,
     queued_bytes: AtomicUsize,
     ref_tracker: IpcRefTracker,
@@ -355,38 +351,12 @@ mod impl_ {
     }
   }
 
-  #[cfg(unix)]
-  fn pipe(stream: RawFd) -> Result<(OwnedReadHalf, OwnedWriteHalf), io::Error> {
-    // Safety: The fd is part of a pair of connected sockets create by child process
-    // implementation.
-    let unix_stream = UnixStream::from_std(unsafe {
-      std::os::unix::net::UnixStream::from_raw_fd(stream)
-    })?;
-    Ok(unix_stream.into_split())
-  }
-
-  #[cfg(windows)]
-  fn pipe(
-    handle: i64,
-  ) -> Result<
-    (
-      tokio::io::ReadHalf<NamedPipeClient>,
-      tokio::io::WriteHalf<NamedPipeClient>,
-    ),
-    io::Error,
-  > {
-    // Safety: We cannot use `get_osfhandle` because Deno statically links to msvcrt. It is not guaranteed that the
-    // fd handle map will be the same.
-    let pipe = unsafe { NamedPipeClient::from_raw_handle(handle as _)? };
-    Ok(tokio::io::split(pipe))
-  }
-
   impl IpcJsonStreamResource {
     pub fn new(
       stream: i64,
       ref_tracker: IpcRefTracker,
     ) -> Result<Self, std::io::Error> {
-      let (read_half, write_half) = pipe(stream as _)?;
+      let (read_half, write_half) = BiPipe::from_raw(stream as _)?.split();
       Ok(Self {
         read_half: AsyncRefCell::new(IpcJsonStream::new(read_half)),
         write_half: AsyncRefCell::new(write_half),
@@ -397,11 +367,14 @@ mod impl_ {
     }
 
     #[cfg(all(unix, test))]
-    fn from_stream(stream: UnixStream, ref_tracker: IpcRefTracker) -> Self {
+    fn from_stream(
+      stream: tokio::net::UnixStream,
+      ref_tracker: IpcRefTracker,
+    ) -> Self {
       let (read_half, write_half) = stream.into_split();
       Self {
-        read_half: AsyncRefCell::new(IpcJsonStream::new(read_half)),
-        write_half: AsyncRefCell::new(write_half),
+        read_half: AsyncRefCell::new(IpcJsonStream::new(read_half.into())),
+        write_half: AsyncRefCell::new(write_half.into()),
         cancel: Default::default(),
         queued_bytes: Default::default(),
         ref_tracker,
@@ -409,11 +382,14 @@ mod impl_ {
     }
 
     #[cfg(all(windows, test))]
-    fn from_stream(pipe: NamedPipeClient, ref_tracker: IpcRefTracker) -> Self {
+    fn from_stream(
+      pipe: tokio::net::windows::named_pipe::NamedPipeClient,
+      ref_tracker: IpcRefTracker,
+    ) -> Self {
       let (read_half, write_half) = tokio::io::split(pipe);
       Self {
-        read_half: AsyncRefCell::new(IpcJsonStream::new(read_half)),
-        write_half: AsyncRefCell::new(write_half),
+        read_half: AsyncRefCell::new(IpcJsonStream::new(read_half.into())),
+        write_half: AsyncRefCell::new(write_half.into()),
         cancel: Default::default(),
         queued_bytes: Default::default(),
         ref_tracker,
@@ -483,26 +459,13 @@ mod impl_ {
   //
   // `\n` is used as a delimiter between messages.
   struct IpcJsonStream {
-    #[cfg(unix)]
-    pipe: OwnedReadHalf,
-    #[cfg(windows)]
-    pipe: tokio::io::ReadHalf<NamedPipeClient>,
+    pipe: BiPipeRead,
     buffer: Vec<u8>,
     read_buffer: ReadBuffer,
   }
 
   impl IpcJsonStream {
-    #[cfg(unix)]
-    fn new(pipe: OwnedReadHalf) -> Self {
-      Self {
-        pipe,
-        buffer: Vec::with_capacity(INITIAL_CAPACITY),
-        read_buffer: ReadBuffer::new(),
-      }
-    }
-
-    #[cfg(windows)]
-    fn new(pipe: tokio::io::ReadHalf<NamedPipeClient>) -> Self {
+    fn new(pipe: BiPipeRead) -> Self {
       Self {
         pipe,
         buffer: Vec::with_capacity(INITIAL_CAPACITY),
@@ -869,6 +832,7 @@ mod impl_ {
           r#"{ a: "field", toJSON() { return "custom"; } }"#,
           "\"custom\"",
         ),
+        (r#"{ a: undefined, b: 1 }"#, "{\"b\":1}"),
       ];
 
       for (input, expect) in cases {
