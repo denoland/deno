@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, DENO_FUTURE } from "./test_util.ts";
+import { assertEquals } from "./test_util.ts";
 
 Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function fdatasyncSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_fdatasyncSync.txt";
     using file = Deno.openSync(filename, {
@@ -18,7 +18,7 @@ Deno.test(
 );
 
 Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function fdatasyncSuccess() {
     const filename = (await Deno.makeTempDir()) + "/test_fdatasync.txt";
     using file = await Deno.open(filename, {
@@ -35,7 +35,7 @@ Deno.test(
 );
 
 Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   function fsyncSyncSuccess() {
     const filename = Deno.makeTempDirSync() + "/test_fsyncSync.txt";
     using file = Deno.openSync(filename, {
@@ -52,7 +52,7 @@ Deno.test(
 );
 
 Deno.test(
-  { ignore: DENO_FUTURE, permissions: { read: true, write: true } },
+  { permissions: { read: true, write: true } },
   async function fsyncSuccess() {
     const filename = (await Deno.makeTempDir()) + "/test_fsync.txt";
     using file = await Deno.open(filename, {

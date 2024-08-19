@@ -37,7 +37,10 @@ import {
 import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { delay } from "ext:deno_node/_util/async.ts";
-import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import {
+  kStreamBaseField,
+  StreamBase,
+} from "ext:deno_node/internal_binding/stream_wrap.ts";
 import {
   ceilPowOf2,
   INITIAL_ACCEPT_BACKOFF_DELAY,
@@ -68,7 +71,7 @@ export class Pipe extends ConnectionWrap {
   #closed = false;
   #acceptBackoffDelay?: number;
 
-  constructor(type: number, conn?: Deno.UnixConn) {
+  constructor(type: number, conn?: Deno.UnixConn | StreamBase) {
     let provider: providerType;
     let ipc: boolean;
 
@@ -100,8 +103,8 @@ export class Pipe extends ConnectionWrap {
 
     this.ipc = ipc;
 
-    if (conn && provider === providerType.PIPEWRAP) {
-      const localAddr = conn.localAddr as Deno.UnixAddr;
+    if (conn && provider === providerType.PIPEWRAP && "localAddr" in conn) {
+      const localAddr = conn.localAddr;
       this.#address = localAddr.path;
     }
   }

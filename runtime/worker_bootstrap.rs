@@ -92,6 +92,7 @@ impl From<log::Level> for WorkerLogLevel {
 /// Common bootstrap options for MainWorker & WebWorker
 #[derive(Clone)]
 pub struct BootstrapOptions {
+  pub deno_version: String,
   /// Sets `Deno.args` in JS runtime.
   pub args: Vec<String>,
   pub cpu_count: usize,
@@ -134,6 +135,7 @@ impl Default for BootstrapOptions {
     let user_agent = format!("Deno/{runtime_version}");
 
     Self {
+      deno_version: runtime_version.to_string(),
       user_agent,
       cpu_count,
       no_color: !colors::use_color(),
@@ -174,6 +176,8 @@ impl Default for BootstrapOptions {
 /// Keep this in sync with `99_main.js`.
 #[derive(Serialize)]
 struct BootstrapV8<'a>(
+  // deno version
+  &'a str,
   // location
   Option<&'a str>,
   // unstable
@@ -219,6 +223,7 @@ impl BootstrapOptions {
 
     let (serve_is_main, serve_worker_count) = self.mode.serve_info();
     let bootstrap = BootstrapV8(
+      &self.deno_version,
       self.location.as_ref().map(|l| l.as_str()),
       self.unstable,
       self.unstable_features.as_ref(),

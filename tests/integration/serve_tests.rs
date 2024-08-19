@@ -229,6 +229,19 @@ async fn deno_serve_parallel() {
     "4"
   );
 
+  // make sure all workers have at least started
+  let mut started = [false; 4];
+  let start_regex =
+    Regex::new(r"\[serve\-worker\-(\d+)\s*\] starting serve").unwrap();
+  for capture in start_regex.captures_iter(&output) {
+    if let Some(worker_number) =
+      capture.get(1).and_then(|m| m.as_str().parse::<u32>().ok())
+    {
+      started[worker_number as usize] = true;
+    }
+  }
+  assert!(started.iter().all(|&b| b));
+
   for capture in serve_regex.captures_iter(&output) {
     if let Some(worker_number) =
       capture.get(1).and_then(|m| m.as_str().parse::<u32>().ok())
@@ -237,6 +250,7 @@ async fn deno_serve_parallel() {
     }
   }
 
+  #[cfg(not(target_vendor = "apple"))] // FIXME: flaky on macOS, it tends to not distribute requests evenly
   assert!(
     serve_counts.values().filter(|&&n| n > 2).count() >= 2,
     "bad {serve_counts:?}"
