@@ -547,7 +547,7 @@ pub async fn upgrade(
   Ok(())
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum RequestedVersion {
   Latest(ReleaseChannel),
   SpecificVersion(ReleaseChannel, String),
@@ -1047,6 +1047,39 @@ mod test {
   use std::rc::Rc;
 
   use super::*;
+
+  #[test]
+  fn test_requested_version() {
+    let mut upgrade_flags = UpgradeFlags {
+      dry_run: false,
+      force: false,
+      release_candidate: false,
+      canary: false,
+      version: None,
+      output: None,
+      version_or_hash_or_channel: None,
+    };
+
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Stable));
+
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Stable));
+
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Stable));
+
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Stable));
+
+    let req_ver =
+      RequestedVersion::from_upgrade_flags(upgrade_flags.clone()).unwrap();
+    assert_eq!(req_ver, RequestedVersion::Latest(ReleaseChannel::Stable));
+  }
 
   #[test]
   fn test_parse_upgrade_check_file() {
