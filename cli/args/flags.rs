@@ -4581,7 +4581,6 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
   let json = matches.get_flag("json");
   let compact = matches.get_flag("compact");
-
   let ext = matches.remove_one::<String>("ext");
 
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
