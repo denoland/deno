@@ -94,15 +94,9 @@ impl CliLinter {
     &self,
     file_path: &Path,
     source_code: String,
-    ext: Option<String>,
   ) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
     let specifier = specifier_from_file_path(file_path)?;
-    let media_type = match ext {
-      Some(extension) => {
-        MediaType::from_str(&format!(".\\stdin.{}", extension))
-      }
-      None => MediaType::from_specifier(&specifier),
-    };
+    let media_type = MediaType::from_specifier(&specifier);
 
     if self.fix {
       self.lint_file_and_fix(&specifier, media_type, source_code, file_path)
