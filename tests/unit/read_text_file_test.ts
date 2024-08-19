@@ -146,7 +146,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true }, ignore: Deno.build.os !== "linux" },
+  { ignore: Deno.build.os !== "linux" },
   async function readTextFileProcFs() {
     const data = await Deno.readTextFile("/proc/self/stat");
     assert(data.length > 0);
