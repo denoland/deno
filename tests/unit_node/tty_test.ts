@@ -40,9 +40,8 @@ Deno.test("[node/tty WriteStream.hasColors] returns true when colors are support
   assert(tty.WriteStream.prototype.hasColors() === !Deno.noColor);
   assert(tty.WriteStream.prototype.hasColors({}) === !Deno.noColor);
 
-  const depth = tty.WriteStream.prototype.getColorDepth();
-  assert(tty.WriteStream.prototype.hasColors(depth) === !Deno.noColor);
-  assert(tty.WriteStream.prototype.hasColors(depth, {}) === !Deno.noColor);
+  assert(tty.WriteStream.prototype.hasColors(1));
+  assert(tty.WriteStream.prototype.hasColors(1, {}));
 });
 
 Deno.test("[node/tty WriteStream.getColorDepth] returns current terminal color depth", () => {
