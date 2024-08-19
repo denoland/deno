@@ -2616,9 +2616,9 @@ Ignore linting a file by adding an ignore comment at the top of the file:
                 .require_equals(true)
                 .value_name("EXT")
                 .help("Specify the file extension to lint when reading from stdin.\
-       For example, use `jsx` to lint JSX files or `tsx` for TSX files. \
-       This argument is necessary because stdin input does not automatically infer the file type and thus requires explicit extension specification. \
-       Example usage: `cat file.jsx | deno lint - --ext=jsx`."),
+  For example, use `jsx` to lint JSX files or `tsx` for TSX files. \
+  This argument is necessary because stdin input does not automatically infer the file type and thus requires explicit extension specification. \
+  Example usage: `cat file.jsx | deno lint - --ext=jsx`."),
         )
         .arg(
         Arg::new("rules")
