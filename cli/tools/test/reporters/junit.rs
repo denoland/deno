@@ -44,7 +44,7 @@ impl JunitTestReporter {
         kind: quick_junit::NonSuccessKind::Failure,
         message: Some(failure.overview()),
         ty: None,
-        description: Some(failure.format(failure_format_options)),
+        description: Some(failure.format(failure_format_options).into_owned()),
         reruns: vec![],
       },
       TestResult::Cancelled => quick_junit::TestCaseStatus::NonSuccess {
@@ -69,7 +69,9 @@ impl JunitTestReporter {
           kind: quick_junit::NonSuccessKind::Failure,
           message: Some(failure.overview()),
           ty: None,
-          description: Some(failure.format(failure_format_options)),
+          description: Some(
+            failure.format(failure_format_options).into_owned(),
+          ),
           reruns: vec![],
         }
       }

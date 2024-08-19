@@ -308,52 +308,51 @@ pub enum TestFailure {
 }
 
 impl TestFailure {
-  pub fn format(&self, options: &TestFailureFormatOptions) -> String {
-    let mut f = String::new();
-    let result = match self {
+  pub fn format(
+    &self,
+    options: &TestFailureFormatOptions,
+  ) -> Cow<'static, str> {
+    match self {
       TestFailure::JsError(js_error) => {
-        write!(f, "{}", format_test_error(js_error, options))
+        Cow::Owned(format_test_error(js_error, options))
       }
-      TestFailure::FailedSteps(1) => write!(f, "1 test step failed."),
-      TestFailure::FailedSteps(n) => write!(f, "{n} test steps failed."),
+      TestFailure::FailedSteps(1) => Cow::Borrowed("1 test step failed."),
+      TestFailure::FailedSteps(n) => {
+        Cow::Owned(format!("{} test steps failed.", n))
+      }
       TestFailure::IncompleteSteps => {
-        write!(f, "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.")
+        Cow::Borrowed("Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.")
       }
       TestFailure::Incomplete => {
-        write!(
-          f,
-          "Didn't complete before parent. Await step with `await t.step(...)`."
-        )
+        Cow::Borrowed("Didn't complete before parent. Await step with `await t.step(...)`.")
       }
       TestFailure::Leaked(details, trailer_notes) => {
-        let mut r = write!(f, "Leaks detected:");
+        let mut f = String::new();
+        write!(f, "Leaks detected:").unwrap();
         for detail in details {
-          r = write!(f, "\n  - {}", detail);
+          write!(f, "\n  - {}", detail).unwrap();
         }
         for trailer in trailer_notes {
-          r = write!(f, "\n{}", trailer);
+          write!(f, "\n{}", trailer).unwrap();
         }
-        r
+        Cow::Owned(f)
       }
       TestFailure::OverlapsWithSanitizers(long_names) => {
-        let mut r = write!(f, "Started test step while another test step with sanitizers was running:");
+        let mut f = String::new();
+        write!(f, "Started test step while another test step with sanitizers was running:").unwrap();
         for long_name in long_names {
-          r = write!(f, "\n  * {}", long_name);
+          write!(f, "\n  * {}", long_name).unwrap();
         }
-        r
+        Cow::Owned(f)
       }
       TestFailure::HasSanitizersAndOverlaps(long_names) => {
-        let mut r = write!(f, "Started test step with sanitizers while another test step was running:");
+        let mut f = String::new();
+        write!(f, "Started test step with sanitizers while another test step was running:").unwrap();
         for long_name in long_names {
-          r = write!(f, "\n  * {}", long_name);
+          write!(f, "\n  * {}", long_name).unwrap();
         }
-        r
+        Cow::Owned(f)
       }
-    };
-
-    match result {
-      Ok(_) => f,
-      Err(err) => format!("Failed to format {:?}: {}", self, err),
     }
   }
 
