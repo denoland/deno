@@ -285,18 +285,16 @@ impl CliModuleLoaderFactory {
     root_permissions: PermissionsContainer,
     dynamic_permissions: PermissionsContainer,
   ) -> ModuleLoaderAndSourceMapGetter {
-    let loader = Rc::new(CliModuleLoader(
-      Rc::new(CliModuleLoaderInner {
-        lib,
-        root_permissions,
-        dynamic_permissions,
-        graph_container,
-        emitter: self.shared.emitter.clone(),
-        parsed_source_cache: self.shared.parsed_source_cache.clone(),
-        shared: self.shared.clone(),
-      }),
-      Default::default(),
-    ));
+    let loader = Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
+      lib,
+      root_permissions,
+      dynamic_permissions,
+      graph_container,
+      emitter: self.shared.emitter.clone(),
+      parsed_source_cache: self.shared.parsed_source_cache.clone(),
+      shared: self.shared.clone(),
+      prevent_v8_code_cache: Default::default(),
+    })));
     ModuleLoaderAndSourceMapGetter {
       module_loader: loader,
     }
@@ -347,6 +345,10 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   emitter: Arc<Emitter>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   graph_container: TGraphContainer,
+  // NOTE(bartlomieju): this is temporary, for deprecated import assertions.
+  // Should be removed in Deno 2.
+  // Modules stored here should not be V8 code-cached.
+  prevent_v8_code_cache: Arc<Mutex<HashSet<String>>>,
 }
 
 impl<TGraphContainer: ModuleGraphContainer>
@@ -700,10 +702,6 @@ enum CodeOrDeferredEmit<'a> {
 // todo(dsherret): this double Rc boxing is not ideal
 struct CliModuleLoader<TGraphContainer: ModuleGraphContainer>(
   Rc<CliModuleLoaderInner<TGraphContainer>>,
-  // NOTE(bartlomieju): this is temporary, for deprecated import assertions.
-  // Should be removed in Deno 2.
-  // Modules stored here should not be V8 code-cached.
-  Arc<Mutex<HashSet<String>>>,
 );
 
 impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
@@ -836,7 +834,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     code_cache: &[u8],
   ) -> Pin<Box<dyn Future<Output = ()>>> {
     if let Some(cache) = self.0.shared.code_cache.as_ref() {
-      if self.1.lock().contains(specifier.as_str()) {
+      if self
+        .0
+        .prevent_v8_code_cache
+        .lock()
+        .contains(specifier.as_str())
+      {
         return std::future::ready(()).boxed_local();
       }
       // This log line is also used by tests.
@@ -858,7 +861,11 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       // This log line is also used by tests.
       log::debug!("Remove V8 code cache for ES module: {specifier}");
       cache.remove_code_cache(specifier);
-      self.1.lock().insert(specifier.to_string());
+      self
+        .0
+        .prevent_v8_code_cache
+        .lock()
+        .insert(specifier.to_string());
     }
   }
 
