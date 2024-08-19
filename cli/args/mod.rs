@@ -75,6 +75,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::cache;
+use crate::cache::DenoDirProvider;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::version;
@@ -780,6 +781,7 @@ pub struct CliOptions {
   pub start_dir: Arc<WorkspaceDirectory>,
   pub disable_deprecated_api_warning: bool,
   pub verbose_deprecated_api_warning: bool,
+  pub deno_dir_provider: Arc<DenoDirProvider>,
 }
 
 impl CliOptions {
@@ -810,11 +812,14 @@ impl CliOptions {
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
     let root_folder = start_dir.workspace.root_folder_configs();
+    let deno_dir_provider =
+      Arc::new(DenoDirProvider::new(flags.cache_path.clone()));
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
       root_folder.deno_json.as_deref(),
       root_folder.pkg_json.as_deref(),
+      &deno_dir_provider,
     )
     .with_context(|| "Resolving node_modules folder.")?;
 
@@ -837,6 +842,7 @@ impl CliOptions {
       start_dir,
       disable_deprecated_api_warning,
       verbose_deprecated_api_warning,
+      deno_dir_provider,
     })
   }
 
@@ -1243,6 +1249,7 @@ impl CliOptions {
       overrides: self.overrides.clone(),
       disable_deprecated_api_warning: self.disable_deprecated_api_warning,
       verbose_deprecated_api_warning: self.verbose_deprecated_api_warning,
+      deno_dir_provider: self.deno_dir_provider.clone(),
     }
   }
 
@@ -1293,7 +1300,10 @@ impl CliOptions {
       return Ok(None);
     };
 
-    Ok(Some(InspectorServer::new(host, version::get_user_agent())?))
+    Ok(Some(InspectorServer::new(
+      host,
+      version::DENO_VERSION_INFO.user_agent,
+    )?))
   }
 
   pub fn maybe_lockfile(&self) -> Option<&Arc<CliLockfile>> {
@@ -1443,16 +1453,6 @@ impl CliOptions {
     Ok(result)
   }
 
-  pub fn resolve_deno_graph_workspace_members(
-    &self,
-  ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
-    self
-      .workspace()
-      .jsr_packages()
-      .map(|pkg| config_to_deno_graph_workspace_member(&pkg.config_file))
-      .collect::<Result<Vec<_>, _>>()
-  }
-
   /// Vector of user script CLI arguments.
   pub fn argv(&self) -> &Vec<String> {
     &self.flags.argv
@@ -1539,10 +1539,6 @@ impl CliOptions {
 
   pub fn location_flag(&self) -> &Option<Url> {
     &self.flags.location
-  }
-
-  pub fn maybe_custom_root(&self) -> &Option<PathBuf> {
-    &self.flags.cache_path
   }
 
   pub fn no_remote(&self) -> bool {
@@ -1765,6 +1761,7 @@ fn resolve_node_modules_folder(
   flags: &Flags,
   maybe_config_file: Option<&ConfigFile>,
   maybe_package_json: Option<&PackageJson>,
+  deno_dir_provider: &Arc<DenoDirProvider>,
 ) -> Result<Option<PathBuf>, AnyError> {
   let use_node_modules_dir = flags
     .node_modules_dir
@@ -1776,7 +1773,18 @@ fn resolve_node_modules_folder(
   } else if let Some(state) = &*NPM_PROCESS_STATE {
     return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
   } else if let Some(package_json_path) = maybe_package_json.map(|c| &c.path) {
-    // always auto-discover the local_node_modules_folder when a package.json exists
+    if let Ok(deno_dir) = deno_dir_provider.get_or_create() {
+      // `deno_dir.root` can be symlink in macOS
+      if let Ok(root) = canonicalize_path_maybe_not_exists(&deno_dir.root) {
+        if package_json_path.starts_with(root) {
+          // if the package.json is in deno_dir, then do not use node_modules
+          // next to it as local node_modules dir
+          return Ok(None);
+        }
+      }
+    }
+    // auto-discover the local_node_modules_folder when a package.json exists
+    // and it's not in deno_dir
     package_json_path.parent().unwrap().join("node_modules")
   } else if use_node_modules_dir.is_none() {
     return Ok(None);
