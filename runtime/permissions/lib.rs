@@ -2243,18 +2243,18 @@ pub fn create_child_permissions(
 ) -> Result<Permissions, AnyError> {
   fn is_granted_unary(arg: &ChildUnaryPermissionArg) -> bool {
     match arg {
-      ChildUnaryPermissionArg::Inherit |
-      ChildUnaryPermissionArg::Granted => true,
-      ChildUnaryPermissionArg::NotGranted |
-      ChildUnaryPermissionArg::GrantedList(_) => false,
+      ChildUnaryPermissionArg::Inherit | ChildUnaryPermissionArg::Granted => {
+        true
+      }
+      ChildUnaryPermissionArg::NotGranted
+      | ChildUnaryPermissionArg::GrantedList(_) => false,
     }
   }
 
   fn is_granted_unit(arg: &ChildUnitPermissionArg) -> bool {
     match arg {
-        ChildUnitPermissionArg::Inherit |
-        ChildUnitPermissionArg::Granted => true,
-        ChildUnitPermissionArg::NotGranted => false,
+      ChildUnitPermissionArg::Inherit | ChildUnitPermissionArg::Granted => true,
+      ChildUnitPermissionArg::NotGranted => false,
     }
   }
 
@@ -2275,9 +2275,7 @@ pub fn create_child_permissions(
       &child_permissions_arg.run,
       &child_permissions_arg.ffi,
     ];
-    let unit_perms = [
-      &child_permissions_arg.hrtime
-    ];
+    let unit_perms = [&child_permissions_arg.hrtime];
     let allow_all = unary_perms.into_iter().all(is_granted_unary)
       && unit_perms.into_iter().all(is_granted_unit);
     if !allow_all {

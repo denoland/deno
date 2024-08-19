@@ -209,7 +209,7 @@ Deno.test(
       Deno.errors.PermissionDenied,
       `Requires all access to "/proc/net/dev", run again with the --allow-all flag`,
     );
-  }
+  },
 );
 
 Deno.test(
