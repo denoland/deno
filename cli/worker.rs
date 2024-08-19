@@ -581,6 +581,7 @@ impl CliMainWorkerFactory {
 
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
+        deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
         args: shared.options.argv.clone(),
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
@@ -596,7 +597,7 @@ impl CliMainWorkerFactory {
         color_level: colors::get_color_level(),
         unstable: shared.options.unstable,
         unstable_features,
-        user_agent: version::get_user_agent().to_string(),
+        user_agent: version::DENO_VERSION_INFO.user_agent.to_string(),
         inspect: shared.options.is_inspecting,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
@@ -778,6 +779,7 @@ fn create_web_worker_callback(
 
     let options = WebWorkerOptions {
       bootstrap: BootstrapOptions {
+        deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
         args: shared.options.argv.clone(),
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
@@ -793,7 +795,7 @@ fn create_web_worker_callback(
         is_stderr_tty: deno_terminal::is_stderr_tty(),
         unstable: shared.options.unstable,
         unstable_features,
-        user_agent: version::get_user_agent().to_string(),
+        user_agent: version::DENO_VERSION_INFO.user_agent.to_string(),
         inspect: shared.options.is_inspecting,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
