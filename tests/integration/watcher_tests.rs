@@ -323,7 +323,6 @@ async fn lint_all_files_on_each_change_test() {
     .arg("lint")
     .arg(t.path())
     .arg("--watch")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
@@ -470,7 +469,6 @@ async fn fmt_check_all_files_on_each_change_test() {
     .arg(t.path())
     .arg("--watch")
     .arg("--check")
-    .arg("--unstable")
     .piped_output()
     .spawn()
     .unwrap();
