@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "add @std/testing",
+      "output": "Add jsr:@std/testing@1.0.0\nDownload [WILDCARD]/@std/testing/1.0.0_meta.json\n"
+    }
+  ]
+}
