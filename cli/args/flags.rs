@@ -399,7 +399,7 @@ pub struct TestFlags {
   pub shuffle: Option<u64>,
   pub concurrent_jobs: Option<NonZeroUsize>,
   pub trace_leaks: bool,
-  pub watch: Option<WatchFlags>,
+  pub watch: Option<WatchFlagsWithPaths>,
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
 }
@@ -1070,7 +1070,7 @@ impl Flags {
     })
     | DenoSubcommand::Test(TestFlags {
       watch:
-        Some(WatchFlags {
+        Some(WatchFlagsWithPaths {
           exclude: excluded_paths,
           ..
         }),
@@ -2966,7 +2966,7 @@ Directory arguments are expanded to all contained files matching the glob
           .value_hint(ValueHint::AnyPath),
       )
       .arg(
-        watch_arg(false)
+        watch_arg(true)
           .conflicts_with("no-run")
           .conflicts_with("coverage"),
       )
@@ -4918,7 +4918,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     allow_none,
     concurrent_jobs,
     trace_leaks,
-    watch: watch_arg_parse(matches),
+    watch: watch_arg_parse_with_paths(matches),
     reporter,
     junit_path,
   });
@@ -5353,17 +5353,21 @@ fn watch_arg_parse_with_paths(
     });
   }
 
-  matches
-    .remove_many::<String>("hmr")
-    .map(|paths| WatchFlagsWithPaths {
-      paths: paths.collect(),
-      hmr: true,
-      no_clear_screen: matches.get_flag("no-clear-screen"),
-      exclude: matches
-        .remove_many::<String>("watch-exclude")
-        .map(|f| f.collect::<Vec<String>>())
-        .unwrap_or_default(),
-    })
+  if matches.try_contains_id("hmr").is_ok() {
+    return matches.remove_many::<String>("hmr").map(|paths| {
+      WatchFlagsWithPaths {
+        paths: paths.collect(),
+        hmr: true,
+        no_clear_screen: matches.get_flag("no-clear-screen"),
+        exclude: matches
+          .remove_many::<String>("watch-exclude")
+          .map(|f| f.collect::<Vec<String>>())
+          .unwrap_or_default(),
+      }
+    });
+  }
+
+  None
 }
 
 fn unstable_args_parse(
@@ -9392,13 +9396,179 @@ mod tests {
           trace_leaks: false,
           coverage_dir: None,
           clean: false,
-          watch: Some(WatchFlags {
+          watch: Some(WatchFlagsWithPaths {
             hmr: false,
             no_clear_screen: true,
             exclude: vec![],
+            paths: vec![],
           }),
           reporter: Default::default(),
           junit_path: None,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_watch_with_paths() {
+    let r = flags_from_vec(svec!("deno", "test", "--watch=foo"));
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![String::from("foo")],
+            no_clear_screen: false,
+            exclude: vec![],
+          }),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "test", "--watch=foo,bar"]);
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![String::from("foo"), String::from("bar")],
+            no_clear_screen: false,
+            exclude: vec![],
+          }),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_watch_with_excluded_paths() {
+    let r =
+      flags_from_vec(svec!("deno", "test", "--watch", "--watch-exclude=foo",));
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![],
+            no_clear_screen: false,
+            exclude: vec![String::from("foo")],
+          }),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!(
+      "deno",
+      "test",
+      "--watch=foo",
+      "--watch-exclude=bar",
+    ));
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![String::from("foo")],
+            no_clear_screen: false,
+            exclude: vec![String::from("bar")],
+          }),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "test",
+      "--watch",
+      "--watch-exclude=foo,bar",
+    ]);
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![],
+            no_clear_screen: false,
+            exclude: vec![String::from("foo"), String::from("bar")],
+          }),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "test",
+      "--watch=foo,bar",
+      "--watch-exclude=baz,qux",
+    ]);
+
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          watch: Some(WatchFlagsWithPaths {
+            hmr: false,
+            paths: vec![String::from("foo"), String::from("bar")],
+            no_clear_screen: false,
+            exclude: vec![String::from("baz"), String::from("qux"),],
+          }),
+          ..TestFlags::default()
         }),
         type_check_mode: TypeCheckMode::Local,
         permissions: PermissionFlags {
