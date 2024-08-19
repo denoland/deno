@@ -20,6 +20,7 @@ pub struct PrettyTestReporter {
     HashMap<usize, IndexMap<usize, (TestStepDescription, TestStepResult, u64)>>,
   summary: TestSummary,
   writer: Box<dyn std::io::Write>,
+  failure_format_options: TestFailureFormatOptions,
 }
 
 impl PrettyTestReporter {
@@ -29,6 +30,7 @@ impl PrettyTestReporter {
     filter: bool,
     repl: bool,
     cwd: Url,
+    failure_format_options: TestFailureFormatOptions,
   ) -> PrettyTestReporter {
     PrettyTestReporter {
       parallel,
@@ -45,6 +47,7 @@ impl PrettyTestReporter {
       child_results_buffer: Default::default(),
       summary: TestSummary::new(),
       writer: Box::new(std::io::stdout()),
+      failure_format_options,
     }
   }
 
@@ -245,7 +248,6 @@ impl TestReporter for PrettyTestReporter {
     description: &TestDescription,
     result: &TestResult,
     elapsed: u64,
-    _options: Option<&TestFailureFormatOptions>,
   ) {
     match &result {
       TestResult::Ok => {
@@ -333,7 +335,6 @@ impl TestReporter for PrettyTestReporter {
     elapsed: u64,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
-    _options: Option<&TestFailureFormatOptions>,
   ) {
     match &result {
       TestStepResult::Ok => {
@@ -395,7 +396,6 @@ impl TestReporter for PrettyTestReporter {
     elapsed: &Duration,
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
-    options: Option<&TestFailureFormatOptions>,
   ) {
     self.write_output_end();
     common::report_summary(
@@ -403,7 +403,7 @@ impl TestReporter for PrettyTestReporter {
       &self.cwd,
       &self.summary,
       elapsed,
-      options,
+      &self.failure_format_options,
     );
     if !self.repl {
       writeln!(&mut self.writer).unwrap();
@@ -416,7 +416,6 @@ impl TestReporter for PrettyTestReporter {
     tests_pending: &HashSet<usize>,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
-    _options: Option<&TestFailureFormatOptions>,
   ) {
     common::report_sigint(
       &mut self.writer,

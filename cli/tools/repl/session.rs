@@ -16,6 +16,7 @@ use crate::tools::test::send_test_event;
 use crate::tools::test::worker_has_tests;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventReceiver;
+use crate::tools::test::TestFailureFormatOptions;
 
 use deno_ast::diagnostics::Diagnostic;
 use deno_ast::swc::ast as swc_ast;
@@ -276,6 +277,7 @@ impl ReplSession {
           false,
           true,
           cwd_url.clone(),
+          TestFailureFormatOptions::default(),
         ))
       }),
       main_module,
@@ -458,7 +460,6 @@ impl ReplSession {
       let report_tests_handle = spawn(report_tests(
         self.test_event_receiver.take().unwrap(),
         (self.test_reporter_factory)(),
-        None,
       ));
       run_tests_for_worker(
         &mut self.worker,

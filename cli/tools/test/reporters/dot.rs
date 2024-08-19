@@ -9,11 +9,15 @@ pub struct DotTestReporter {
   width: usize,
   cwd: Url,
   summary: TestSummary,
+  failure_format_options: TestFailureFormatOptions,
 }
 
 #[allow(clippy::print_stdout)]
 impl DotTestReporter {
-  pub fn new(cwd: Url) -> DotTestReporter {
+  pub fn new(
+    cwd: Url,
+    failure_format_options: TestFailureFormatOptions,
+  ) -> DotTestReporter {
     let console_width = if let Some(size) = crate::util::console::console_size()
     {
       size.cols as usize
@@ -26,6 +30,7 @@ impl DotTestReporter {
       width: console_width,
       cwd,
       summary: TestSummary::new(),
+      failure_format_options,
     }
   }
 
@@ -103,7 +108,6 @@ impl TestReporter for DotTestReporter {
     description: &TestDescription,
     result: &TestResult,
     _elapsed: u64,
-    _options: Option<&TestFailureFormatOptions>,
   ) {
     match &result {
       TestResult::Ok => {
@@ -155,7 +159,6 @@ impl TestReporter for DotTestReporter {
     _elapsed: u64,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
-    _options: Option<&TestFailureFormatOptions>,
   ) {
     match &result {
       TestStepResult::Ok => {
@@ -186,14 +189,13 @@ impl TestReporter for DotTestReporter {
     elapsed: &Duration,
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
-    options: Option<&TestFailureFormatOptions>,
   ) {
     common::report_summary(
       &mut std::io::stdout(),
       &self.cwd,
       &self.summary,
       elapsed,
-      options,
+      &self.failure_format_options,
     );
     println!();
   }
@@ -203,7 +205,6 @@ impl TestReporter for DotTestReporter {
     tests_pending: &HashSet<usize>,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
-    _options: Option<&TestFailureFormatOptions>,
   ) {
     common::report_sigint(
       &mut std::io::stdout(),

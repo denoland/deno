@@ -48,10 +48,9 @@ impl TestReporter for CompoundTestReporter {
     description: &TestDescription,
     result: &TestResult,
     elapsed: u64,
-    options: Option<&TestFailureFormatOptions>,
   ) {
     for reporter in &mut self.test_reporters {
-      reporter.report_result(description, result, elapsed, options);
+      reporter.report_result(description, result, elapsed);
     }
   }
 
@@ -80,11 +79,9 @@ impl TestReporter for CompoundTestReporter {
     elapsed: u64,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
-    options: Option<&TestFailureFormatOptions>,
   ) {
     for reporter in &mut self.test_reporters {
-      reporter
-        .report_step_result(desc, result, elapsed, tests, test_steps, options);
+      reporter.report_step_result(desc, result, elapsed, tests, test_steps);
     }
   }
 
@@ -93,10 +90,9 @@ impl TestReporter for CompoundTestReporter {
     elapsed: &Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
-    options: Option<&TestFailureFormatOptions>,
   ) {
     for reporter in &mut self.test_reporters {
-      reporter.report_summary(elapsed, tests, test_steps, options);
+      reporter.report_summary(elapsed, tests, test_steps);
     }
   }
 
@@ -105,10 +101,9 @@ impl TestReporter for CompoundTestReporter {
     tests_pending: &HashSet<usize>,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
-    options: Option<&TestFailureFormatOptions>,
   ) {
     for reporter in &mut self.test_reporters {
-      reporter.report_sigint(tests_pending, tests, test_steps, options);
+      reporter.report_sigint(tests_pending, tests, test_steps);
     }
   }
 

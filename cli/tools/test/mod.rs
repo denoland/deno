@@ -288,7 +288,7 @@ impl From<&TestDescription> for TestFailureDescription {
   }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct TestFailureFormatOptions {
   pub hide_stacktraces: bool,
 }
@@ -308,7 +308,7 @@ pub enum TestFailure {
 }
 
 impl TestFailure {
-  pub fn format(&self, options: Option<&TestFailureFormatOptions>) -> String {
+  pub fn format(&self, options: &TestFailureFormatOptions) -> String {
     let mut f = String::new();
     let result = match self {
       TestFailure::JsError(js_error) => {
@@ -551,23 +551,31 @@ impl TestSummary {
 
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   let parallel = options.concurrent_jobs.get() > 1;
+  let failure_format_options = TestFailureFormatOptions {
+    hide_stacktraces: options.hide_stacktraces,
+  };
   let reporter: Box<dyn TestReporter> = match &options.reporter {
-    TestReporterConfig::Dot => {
-      Box::new(DotTestReporter::new(options.cwd.clone()))
-    }
+    TestReporterConfig::Dot => Box::new(DotTestReporter::new(
+      options.cwd.clone(),
+      failure_format_options,
+    )),
     TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
       parallel,
       options.log_level != Some(Level::Error),
       options.filter,
       false,
       options.cwd.clone(),
+      failure_format_options,
     )),
-    TestReporterConfig::Junit => {
-      Box::new(JunitTestReporter::new(options.cwd.clone(), "-".to_string()))
-    }
+    TestReporterConfig::Junit => Box::new(JunitTestReporter::new(
+      options.cwd.clone(),
+      "-".to_string(),
+      failure_format_options,
+    )),
     TestReporterConfig::Tap => Box::new(TapTestReporter::new(
       options.cwd.clone(),
       options.concurrent_jobs > NonZeroUsize::new(1).unwrap(),
+      failure_format_options,
     )),
   };
 
@@ -575,6 +583,9 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     let junit = Box::new(JunitTestReporter::new(
       options.cwd.clone(),
       junit_path.to_string(),
+      TestFailureFormatOptions {
+        hide_stacktraces: options.hide_stacktraces,
+      },
     ));
     return Box::new(CompoundTestReporter::new(vec![reporter, junit]));
   }
@@ -1444,17 +1455,7 @@ async fn test_specifiers(
     .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let handler = spawn(async move {
-    report_tests(
-      receiver,
-      reporter,
-      Some(&TestFailureFormatOptions {
-        hide_stacktraces: options.hide_stacktraces,
-      }),
-    )
-    .await
-    .0
-  });
+  let handler = spawn(async move { report_tests(receiver, reporter).await.0 });
 
   let (join_results, result) = future::join(join_stream, handler).await;
   sigint_handler_handle.abort();
@@ -1471,7 +1472,6 @@ async fn test_specifiers(
 pub async fn report_tests(
   mut receiver: TestEventReceiver,
   mut reporter: Box<dyn TestReporter>,
-  options: Option<&TestFailureFormatOptions>,
 ) -> (Result<(), AnyError>, TestEventReceiver) {
   let mut tests = IndexMap::new();
   let mut test_steps = IndexMap::new();
@@ -1520,12 +1520,7 @@ pub async fn report_tests(
             }
             _ => (),
           }
-          reporter.report_result(
-            tests.get(&id).unwrap(),
-            &result,
-            elapsed,
-            options,
-          );
+          reporter.report_result(tests.get(&id).unwrap(), &result, elapsed);
         }
       }
       TestEvent::UncaughtError(origin, error) => {
@@ -1549,7 +1544,6 @@ pub async fn report_tests(
             duration,
             &tests,
             &test_steps,
-            options,
           );
         }
       }
@@ -1570,7 +1564,6 @@ pub async fn report_tests(
             .collect(),
           &tests,
           &test_steps,
-          options,
         );
 
         #[allow(clippy::print_stderr)]
@@ -1585,7 +1578,7 @@ pub async fn report_tests(
   let elapsed = start_time
     .map(|t| Instant::now().duration_since(t))
     .unwrap_or_default();
-  reporter.report_summary(&elapsed, &tests, &test_steps, options);
+  reporter.report_summary(&elapsed, &tests, &test_steps);
   if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
     return (
       Err(generic_error(format!(

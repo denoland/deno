@@ -15,6 +15,7 @@ use crate::lsp::logging::lsp_log;
 use crate::tools::test;
 use crate::tools::test::create_test_event_channel;
 use crate::tools::test::FailFastTracker;
+use crate::tools::test::TestFailureFormatOptions;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -655,7 +656,10 @@ impl LspTestReporter {
         let desc = self.tests.get(&desc.id).unwrap();
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(failure.format(None), false),
+          messages: as_test_messages(
+            failure.format(&TestFailureFormatOptions::default()),
+            false,
+          ),
           duration: Some(elapsed as u32),
         })
       }
@@ -675,7 +679,7 @@ impl LspTestReporter {
     let err_string = format!(
       "Uncaught error from {}: {}\nThis error was not caught from a test and caused the test runner to fail on the referenced module.\nIt most likely originated from a dangling promise, event/timeout handler or top-level code.",
       origin,
-      test::fmt::format_test_error(js_error, None)
+      test::fmt::format_test_error(js_error, &TestFailureFormatOptions::default())
     );
     let messages = as_test_messages(err_string, false);
     for desc in self.tests.values().filter(|d| d.origin() == origin) {
@@ -751,7 +755,10 @@ impl LspTestReporter {
       test::TestStepResult::Failed(failure) => {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(failure.format(None), false),
+          messages: as_test_messages(
+            failure.format(&TestFailureFormatOptions::default()),
+            false,
+          ),
           duration: Some(elapsed as u32),
         })
       }

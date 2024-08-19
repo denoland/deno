@@ -20,11 +20,16 @@ pub struct TapTestReporter {
   n: usize,
   step_n: usize,
   step_results: HashMap<usize, Vec<(TestStepDescription, TestStepResult)>>,
+  failure_format_options: TestFailureFormatOptions,
 }
 
 #[allow(clippy::print_stdout)]
 impl TapTestReporter {
-  pub fn new(cwd: Url, is_concurrent: bool) -> TapTestReporter {
+  pub fn new(
+    cwd: Url,
+    is_concurrent: bool,
+    failure_format_options: TestFailureFormatOptions,
+  ) -> TapTestReporter {
     TapTestReporter {
       cwd,
       is_concurrent,
@@ -33,6 +38,7 @@ impl TapTestReporter {
       n: 0,
       step_n: 0,
       step_results: HashMap::new(),
+      failure_format_options,
     }
   }
 
@@ -45,10 +51,10 @@ impl TapTestReporter {
   }
 
   fn print_diagnostic(
+    &self,
     indent: usize,
     failure: &TestFailure,
     location: DiagnosticLocation,
-    options: Option<&TestFailureFormatOptions>,
   ) {
     // Unspecified behaviour:
     // The diagnostic schema is not specified by the TAP spec,
@@ -57,7 +63,7 @@ impl TapTestReporter {
     // YAML is a superset of JSON, so we can avoid a YAML dependency here.
     // This makes the output less readable though.
     let diagnostic = serde_json::to_string(&json!({
-      "message": failure.format(options),
+      "message": failure.format(&self.failure_format_options),
       "severity": "fail".to_string(),
       "at": location,
     }))
@@ -89,7 +95,6 @@ impl TapTestReporter {
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
-    options: Option<&TestFailureFormatOptions>,
   ) {
     if self.step_n == 0 {
       println!("# Subtest: {}", desc.root_name)
@@ -104,14 +109,13 @@ impl TapTestReporter {
     Self::print_line(4, status, self.step_n, &desc.name, directive);
 
     if let TestStepResult::Failed(failure) = result {
-      Self::print_diagnostic(
+      self.print_diagnostic(
         4,
         failure,
         DiagnosticLocation {
           file: to_relative_path_or_remote_url(&self.cwd, &desc.origin),
           line: desc.location.line_number,
         },
-        options,
       );
     }
   }
@@ -151,12 +155,11 @@ impl TestReporter for TapTestReporter {
     description: &TestDescription,
     result: &TestResult,
     _elapsed: u64,
-    options: Option<&TestFailureFormatOptions>,
   ) {
     if self.is_concurrent {
       let results = self.step_results.remove(&description.id);
       for (desc, result) in results.iter().flat_map(|v| v.iter()) {
-        self.print_step_result(desc, result, options);
+        self.print_step_result(desc, result);
       }
     }
 
@@ -175,14 +178,13 @@ impl TestReporter for TapTestReporter {
     Self::print_line(0, status, self.n, &description.name, directive);
 
     if let TestResult::Failed(failure) = result {
-      Self::print_diagnostic(
+      self.print_diagnostic(
         0,
         failure,
         DiagnosticLocation {
           file: to_relative_path_or_remote_url(&self.cwd, &description.origin),
           line: description.location.line_number,
         },
-        options,
       );
     }
   }
@@ -203,7 +205,6 @@ impl TestReporter for TapTestReporter {
     _elapsed: u64,
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
-    options: Option<&TestFailureFormatOptions>,
   ) {
     if self.is_concurrent {
       // All subtests must be reported immediately before the parent test.
@@ -217,7 +218,7 @@ impl TestReporter for TapTestReporter {
       return;
     }
 
-    self.print_step_result(desc, result, options);
+    self.print_step_result(desc, result);
   }
 
   fn report_summary(
@@ -225,7 +226,6 @@ impl TestReporter for TapTestReporter {
     _elapsed: &Duration,
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
-    _options: Option<&TestFailureFormatOptions>,
   ) {
     println!("1..{}", self.planned);
   }
@@ -235,7 +235,6 @@ impl TestReporter for TapTestReporter {
     tests_pending: &HashSet<usize>,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
-    _options: Option<&TestFailureFormatOptions>,
   ) {
     println!("Bail out! SIGINT received.");
     common::report_sigint(

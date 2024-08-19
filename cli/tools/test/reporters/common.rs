@@ -105,7 +105,7 @@ pub(super) fn report_summary(
   cwd: &Url,
   summary: &TestSummary,
   elapsed: &Duration,
-  options: Option<&TestFailureFormatOptions>,
+  options: &TestFailureFormatOptions,
 ) {
   if !summary.failures.is_empty() || !summary.uncaught_errors.is_empty() {
     #[allow(clippy::type_complexity)] // Type alias doesn't look better here

@@ -80,17 +80,15 @@ fn abbreviate_test_error(js_error: &JsError) -> JsError {
 //   - if stack trace consists only of internal code it is preserved as is
 pub fn format_test_error(
   js_error: &JsError,
-  options: Option<&TestFailureFormatOptions>,
+  options: &TestFailureFormatOptions,
 ) -> String {
   let mut js_error = abbreviate_test_error(js_error);
   js_error.exception_message = js_error
     .exception_message
     .trim_start_matches("Uncaught ")
     .to_string();
-  if let Some(options) = options {
-    if options.hide_stacktraces {
-      return js_error.exception_message;
-    }
+  if options.hide_stacktraces {
+    return js_error.exception_message;
   }
   format_js_error(&js_error)
 }
